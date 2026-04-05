@@ -13,6 +13,9 @@ from croniter import croniter
 from metrics import (
     agent_agenda_checkpoint_stale_total,
     agent_agenda_duration_seconds,
+    agent_agenda_error_duration_seconds,
+    agent_agenda_item_last_error_timestamp_seconds,
+    agent_agenda_item_last_success_timestamp_seconds,
     agent_agenda_items_registered,
     agent_agenda_lag_seconds,
     agent_agenda_parse_errors_total,
@@ -137,6 +140,8 @@ async def run_agenda_item(item: AgendaItem, bus: MessageBus) -> None:
                 agent_agenda_duration_seconds.labels(name=item.name).observe(time.monotonic() - _agenda_start)
             if agent_agenda_runs_total is not None:
                 agent_agenda_runs_total.labels(name=item.name, status="success").inc()
+            if agent_agenda_item_last_success_timestamp_seconds is not None:
+                agent_agenda_item_last_success_timestamp_seconds.labels(name=item.name).set(time.time())
         except asyncio.CancelledError:
             logger.info(f"Agenda '{item.name}' cancelled — bus.send continues in background unsupervised.")
             raise
@@ -144,6 +149,10 @@ async def run_agenda_item(item: AgendaItem, bus: MessageBus) -> None:
             logger.error(f"Agenda '{item.name}' error: {e}")
             if agent_agenda_runs_total is not None:
                 agent_agenda_runs_total.labels(name=item.name, status="error").inc()
+            if agent_agenda_error_duration_seconds is not None:
+                agent_agenda_error_duration_seconds.labels(name=item.name).observe(time.monotonic() - _agenda_start)
+            if agent_agenda_item_last_error_timestamp_seconds is not None:
+                agent_agenda_item_last_error_timestamp_seconds.labels(name=item.name).set(time.time())
         finally:
             item.running = False
             if agent_agenda_running_items is not None:

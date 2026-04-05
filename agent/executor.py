@@ -25,7 +25,9 @@ from metrics import (
     agent_context_warnings_total,
     agent_empty_responses_total,
     agent_file_watcher_restarts_total,
+    agent_log_entries_total,
     agent_log_write_errors_total,
+    agent_lru_cache_utilization_percent,
     agent_mcp_config_errors_total,
     agent_mcp_config_reloads_total,
     agent_mcp_servers_active,
@@ -47,7 +49,9 @@ from metrics import (
     agent_stderr_lines_per_task,
     agent_task_cancellations_total,
     agent_task_duration_seconds,
+    agent_task_error_duration_seconds,
     agent_task_retries_total,
+    agent_task_timeout_headroom_seconds,
     agent_tasks_total,
     agent_tasks_with_stderr_total,
     agent_text_blocks_per_query,
@@ -136,6 +140,8 @@ def _track_session(sessions: OrderedDict[str, float], session_id: str) -> None:
     sessions[session_id] = time.monotonic()
     if agent_active_sessions is not None:
         agent_active_sessions.set(len(sessions))
+    if agent_lru_cache_utilization_percent is not None:
+        agent_lru_cache_utilization_percent.set(len(sessions) / MAX_SESSIONS * 100)
 
 
 def get_conversation_logger() -> logging.Logger:
@@ -171,6 +177,8 @@ def log_entry(role: str, text: str, session_id: str, suffix: str = "") -> None:
         ts = datetime.now(timezone.utc).isoformat()
         conv = get_conversation_logger()
         conv.info(f"[{ts}] [{session_id}] [{role.upper()}]{suffix}\n{text}\n{'-' * 80}")
+        if agent_log_entries_total is not None:
+            agent_log_entries_total.labels(logger="conversation").inc()
     except Exception as e:
         if agent_log_write_errors_total is not None:
             agent_log_write_errors_total.inc()
@@ -201,6 +209,8 @@ def log_tool_event(event_type: str, block, session_id: str, model: str | None = 
                 "is_error": block.is_error,
             }
         get_trace_logger().info(json.dumps(entry))
+        if agent_log_entries_total is not None:
+            agent_log_entries_total.labels(logger="trace").inc()
     except Exception as e:
         if agent_log_write_errors_total is not None:
             agent_log_write_errors_total.inc()
@@ -220,6 +230,8 @@ def log_context_usage(usage: dict, session_id: str) -> None:
             "categories": usage.get("categories", []),
         }
         get_trace_logger().info(json.dumps(entry))
+        if agent_log_entries_total is not None:
+            agent_log_entries_total.labels(logger="trace").inc()
     except Exception as e:
         if agent_log_write_errors_total is not None:
             agent_log_write_errors_total.inc()
@@ -341,6 +353,8 @@ async def _run_inner(prompt: str, session_id: str, sessions: OrderedDict[str, fl
         logger.error(f"Session {session_id!r}: run_query timed out after {TASK_TIMEOUT_SECONDS}s.")
         if agent_tasks_total is not None:
             agent_tasks_total.labels(status="timeout").inc()
+        if agent_task_error_duration_seconds is not None:
+            agent_task_error_duration_seconds.observe(time.monotonic() - _start)
         raise
     except Exception:
         if is_new and any("already in use" in line.lower() for line in stderr_lines):
@@ -354,15 +368,21 @@ async def _run_inner(prompt: str, session_id: str, sessions: OrderedDict[str, fl
             except asyncio.TimeoutError:
                 if agent_tasks_total is not None:
                     agent_tasks_total.labels(status="timeout").inc()
+                if agent_task_error_duration_seconds is not None:
+                    agent_task_error_duration_seconds.observe(time.monotonic() - _start)
                 raise
             except Exception:
                 if agent_tasks_total is not None:
                     agent_tasks_total.labels(status="error").inc()
+                if agent_task_error_duration_seconds is not None:
+                    agent_task_error_duration_seconds.observe(time.monotonic() - _start)
                 raise
             _track_session(sessions, session_id)
         else:
             if agent_tasks_total is not None:
                 agent_tasks_total.labels(status="error").inc()
+            if agent_task_error_duration_seconds is not None:
+                agent_task_error_duration_seconds.observe(time.monotonic() - _start)
             raise
 
     if agent_tasks_total is not None:
@@ -373,6 +393,8 @@ async def _run_inner(prompt: str, session_id: str, sessions: OrderedDict[str, fl
         agent_stderr_lines_per_task.observe(len(stderr_lines))
     if agent_task_duration_seconds is not None:
         agent_task_duration_seconds.observe(time.monotonic() - _start)
+    if agent_task_timeout_headroom_seconds is not None:
+        agent_task_timeout_headroom_seconds.observe(TASK_TIMEOUT_SECONDS - (time.monotonic() - _start))
     response = "\n\n".join(collected) if collected else ""
     if not response:
         if agent_empty_responses_total is not None:

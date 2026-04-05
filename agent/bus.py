@@ -3,7 +3,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from metrics import agent_bus_queue_depth
+from metrics import agent_bus_dedup_total, agent_bus_queue_depth
 
 
 @dataclass
@@ -35,6 +35,8 @@ class MessageBus:
     def try_send(self, message: Message) -> bool:
         """Enqueue message only if no message of the same kind is already pending. Returns True if enqueued."""
         if message.kind in self._pending_kinds:
+            if agent_bus_dedup_total is not None:
+                agent_bus_dedup_total.labels(kind=message.kind).inc()
             return False
         if message.result is None:
             message.result = asyncio.get_running_loop().create_future()

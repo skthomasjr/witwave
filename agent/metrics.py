@@ -13,13 +13,17 @@ agent_active_sessions: prometheus_client.Gauge | None = None
 agent_agenda_checkpoint_stale_total: prometheus_client.Counter | None = None
 agent_checkpoint_write_errors_total: prometheus_client.Counter | None = None
 agent_agenda_duration_seconds: prometheus_client.Histogram | None = None
+agent_agenda_error_duration_seconds: prometheus_client.Histogram | None = None
 agent_agenda_lag_seconds: prometheus_client.Histogram | None = None
 agent_agenda_parse_errors_total: prometheus_client.Counter | None = None
+agent_agenda_item_last_error_timestamp_seconds: prometheus_client.Gauge | None = None
+agent_agenda_item_last_success_timestamp_seconds: prometheus_client.Gauge | None = None
 agent_agenda_items_registered: prometheus_client.Gauge | None = None
 agent_agenda_reloads_total: prometheus_client.Counter | None = None
 agent_agenda_running_items: prometheus_client.Gauge | None = None
 agent_agenda_runs_total: prometheus_client.Counter | None = None
 agent_agenda_skips_total: prometheus_client.Counter | None = None
+agent_bus_dedup_total: prometheus_client.Counter | None = None
 agent_bus_errors_total: prometheus_client.Counter | None = None
 agent_bus_processing_duration_seconds: prometheus_client.Histogram | None = None
 agent_info: prometheus_client.Info | None = None
@@ -33,13 +37,17 @@ agent_context_warnings_total: prometheus_client.Counter | None = None
 agent_empty_responses_total: prometheus_client.Counter | None = None
 agent_file_watcher_restarts_total: prometheus_client.Counter | None = None
 agent_heartbeat_duration_seconds: prometheus_client.Histogram | None = None
+agent_heartbeat_error_duration_seconds: prometheus_client.Histogram | None = None
 agent_heartbeat_lag_seconds: prometheus_client.Histogram | None = None
+agent_heartbeat_last_success_timestamp_seconds: prometheus_client.Gauge | None = None
 agent_heartbeat_load_errors_total: prometheus_client.Counter | None = None
 agent_heartbeat_runs_total: prometheus_client.Counter | None = None
 agent_heartbeat_reloads_total: prometheus_client.Counter | None = None
 agent_health_checks_total: prometheus_client.Counter | None = None
 agent_heartbeat_skips_total: prometheus_client.Counter | None = None
+agent_log_entries_total: prometheus_client.Counter | None = None
 agent_log_write_errors_total: prometheus_client.Counter | None = None
+agent_lru_cache_utilization_percent: prometheus_client.Gauge | None = None
 agent_mcp_config_errors_total: prometheus_client.Counter | None = None
 agent_mcp_config_reloads_total: prometheus_client.Counter | None = None
 agent_mcp_servers_active: prometheus_client.Gauge | None = None
@@ -62,6 +70,8 @@ agent_session_evictions_total: prometheus_client.Counter | None = None
 agent_session_starts_total: prometheus_client.Counter | None = None
 agent_task_cancellations_total: prometheus_client.Counter | None = None
 agent_task_duration_seconds: prometheus_client.Histogram | None = None
+agent_task_error_duration_seconds: prometheus_client.Histogram | None = None
+agent_task_timeout_headroom_seconds: prometheus_client.Histogram | None = None
 agent_uptime_seconds: prometheus_client.Gauge | None = None
 agent_task_retries_total: prometheus_client.Counter | None = None
 agent_tasks_total: prometheus_client.Counter | None = None
@@ -97,6 +107,11 @@ if _enabled:
         "Wall-clock seconds per agenda item execution.",
         ["name"],
     )
+    agent_agenda_error_duration_seconds = prometheus_client.Histogram(
+        "agent_agenda_error_duration_seconds",
+        "Wall-clock seconds for agenda items that end in error.",
+        ["name"],
+    )
     agent_agenda_lag_seconds = prometheus_client.Histogram(
         "agent_agenda_lag_seconds",
         "Delay between scheduled and actual agenda item execution start.",
@@ -104,6 +119,16 @@ if _enabled:
     agent_agenda_parse_errors_total = prometheus_client.Counter(
         "agent_agenda_parse_errors_total",
         "Total agenda file parse failures.",
+    )
+    agent_agenda_item_last_error_timestamp_seconds = prometheus_client.Gauge(
+        "agent_agenda_item_last_error_timestamp_seconds",
+        "Unix epoch of each agenda item's last failed run.",
+        ["name"],
+    )
+    agent_agenda_item_last_success_timestamp_seconds = prometheus_client.Gauge(
+        "agent_agenda_item_last_success_timestamp_seconds",
+        "Unix epoch of each agenda item's last successful run.",
+        ["name"],
     )
     agent_agenda_items_registered = prometheus_client.Gauge(
         "agent_agenda_items_registered",
@@ -126,6 +151,11 @@ if _enabled:
         "agent_agenda_skips_total",
         "Total agenda item skips due to previous run still in progress.",
         ["name"],
+    )
+    agent_bus_dedup_total = prometheus_client.Counter(
+        "agent_bus_dedup_total",
+        "Total messages dropped by try_send() due to a pending message of the same kind.",
+        ["kind"],
     )
     agent_bus_errors_total = prometheus_client.Counter(
         "agent_bus_errors_total",
@@ -183,9 +213,17 @@ if _enabled:
         "agent_heartbeat_duration_seconds",
         "Wall-clock seconds from heartbeat firing to response received.",
     )
+    agent_heartbeat_error_duration_seconds = prometheus_client.Histogram(
+        "agent_heartbeat_error_duration_seconds",
+        "Wall-clock seconds for heartbeats that end in error.",
+    )
     agent_heartbeat_lag_seconds = prometheus_client.Histogram(
         "agent_heartbeat_lag_seconds",
         "Delay between scheduled and actual heartbeat execution start.",
+    )
+    agent_heartbeat_last_success_timestamp_seconds = prometheus_client.Gauge(
+        "agent_heartbeat_last_success_timestamp_seconds",
+        "Unix epoch of the most recent successful heartbeat.",
     )
     agent_heartbeat_load_errors_total = prometheus_client.Counter(
         "agent_heartbeat_load_errors_total",
@@ -209,9 +247,18 @@ if _enabled:
         "agent_heartbeat_skips_total",
         "Total heartbeat skips due to previous heartbeat still pending.",
     )
+    agent_log_entries_total = prometheus_client.Counter(
+        "agent_log_entries_total",
+        "Total log entries written by logger type.",
+        ["logger"],
+    )
     agent_log_write_errors_total = prometheus_client.Counter(
         "agent_log_write_errors_total",
         "Total I/O failures in the conversation/trace logging subsystem.",
+    )
+    agent_lru_cache_utilization_percent = prometheus_client.Gauge(
+        "agent_lru_cache_utilization_percent",
+        "LRU session cache utilization as a percentage of MAX_SESSIONS.",
     )
     agent_mcp_config_errors_total = prometheus_client.Counter(
         "agent_mcp_config_errors_total",
@@ -307,6 +354,14 @@ if _enabled:
     agent_task_duration_seconds = prometheus_client.Histogram(
         "agent_task_duration_seconds",
         "Duration of agent tasks in seconds.",
+    )
+    agent_task_error_duration_seconds = prometheus_client.Histogram(
+        "agent_task_error_duration_seconds",
+        "Wall-clock seconds for tasks that end in error or timeout.",
+    )
+    agent_task_timeout_headroom_seconds = prometheus_client.Histogram(
+        "agent_task_timeout_headroom_seconds",
+        "Remaining timeout budget when a task completes successfully.",
     )
     agent_uptime_seconds = prometheus_client.Gauge(
         "agent_uptime_seconds",

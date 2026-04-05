@@ -24,7 +24,3 @@ node_modules/
 
 # Virtual environments
 .venv/
-
-# Agent runtime artifacts
-*.jsonl
-.checkpoints/

@@ -10,7 +10,9 @@ from croniter import croniter
 from metrics import (
     agent_file_watcher_restarts_total,
     agent_heartbeat_duration_seconds,
+    agent_heartbeat_error_duration_seconds,
     agent_heartbeat_lag_seconds,
+    agent_heartbeat_last_success_timestamp_seconds,
     agent_heartbeat_load_errors_total,
     agent_heartbeat_reloads_total,
     agent_heartbeat_runs_total,
@@ -115,10 +117,14 @@ async def _run_loop(
                         logger.info(f"Heartbeat response: {response}")
                     if agent_heartbeat_runs_total is not None:
                         agent_heartbeat_runs_total.labels(status="success").inc()
+                    if agent_heartbeat_last_success_timestamp_seconds is not None:
+                        agent_heartbeat_last_success_timestamp_seconds.set(time.time())
                 except Exception as e:
                     logger.error(f"Heartbeat executor error: {e}")
                     if agent_heartbeat_runs_total is not None:
                         agent_heartbeat_runs_total.labels(status="error").inc()
+                    if agent_heartbeat_error_duration_seconds is not None:
+                        agent_heartbeat_error_duration_seconds.observe(time.monotonic() - _hb_start)
     finally:
         stop_waiter.cancel()
 

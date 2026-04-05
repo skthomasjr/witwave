@@ -1,7 +1,7 @@
 ---
-status: reviewing
-locked_by: iris
-locked_at: "2026-04-05T02:33:35Z"
+status: idle
+locked_by: null
+locked_at: null
 ---
 
 # TODO
@@ -20,10 +20,7 @@ locked_at: "2026-04-05T02:33:35Z"
 
 ## Enhancements
 
-- [ ] **Metric: `agent_lru_cache_utilization_percent`** — Gauge that reports
-  `len(sessions) / MAX_SESSIONS * 100` after each `_track_session()` call in
-  `executor.py`. Shows how close the LRU cache is to the eviction threshold,
-  making it immediately actionable in dashboards without needing to know the
-  configured `MAX_SESSIONS` value. Define in `metrics.py` as a Gauge with no
-  labels. Set in `_track_session()` right after the existing
-  `agent_active_sessions.set()` call (executor.py line 138).
+- [ ] Add `agent_heartbeat_last_error_timestamp_seconds` Gauge (no labels) to track the Unix epoch of the most recent
+      failed heartbeat. Mirrors the existing `agent_heartbeat_last_success_timestamp_seconds`. Define in `metrics.py`,
+      import in `heartbeat.py`, and observe at line 127 on the error path inside `_run_loop()` using `time.time()`.
+      Document in `README.md`.
