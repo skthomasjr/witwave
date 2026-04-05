@@ -2,7 +2,8 @@ FROM debian:bookworm-20260316-slim
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-ENV DEBIAN_FRONTEND=noninteractive
+ENV DEBIAN_FRONTEND=noninteractive \
+    GH_PROMPT_DISABLED=1
 
 RUN apt-get update && apt-get install -y \
     zsh \

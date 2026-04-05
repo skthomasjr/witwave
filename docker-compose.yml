@@ -7,8 +7,8 @@ services:
       AGENT_NAME: iris
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
       CLAUDE_MODEL: claude-opus-4-6
-      GITHUB_REPO: https://github.com/skthomasjr/autonomous-agent
-      GITHUB_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
+      GH_REPO: skthomasjr/autonomous-agent
+      GH_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
     volumes:
       - ./.agents/iris/agent.md:/home/agent/agent.md:ro
       - ./.agents/iris/.claude:/home/agent/.claude
@@ -24,8 +24,8 @@ services:
       AGENT_NAME: nova
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
       CLAUDE_MODEL: claude-opus-4-6
-      GITHUB_REPO: https://github.com/skthomasjr/autonomous-agent
-      GITHUB_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
+      GH_REPO: skthomasjr/autonomous-agent
+      GH_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
     volumes:
       - ./.agents/nova/agent.md:/home/agent/agent.md:ro
       - ./.agents/nova/.claude:/home/agent/.claude
@@ -41,8 +41,8 @@ services:
       AGENT_NAME: kira
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
       CLAUDE_MODEL: claude-opus-4-6
-      GITHUB_REPO: https://github.com/skthomasjr/autonomous-agent
-      GITHUB_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
+      GH_REPO: skthomasjr/autonomous-agent
+      GH_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
     volumes:
       - ./.agents/kira/agent.md:/home/agent/agent.md:ro
       - ./.agents/kira/.claude:/home/agent/.claude
