@@ -1,6 +1,7 @@
 ---
 name: Work Evaluation
-description: Evaluates the source codebase and creates GitHub Issues for bugs, reliability issues, and code quality findings.
+description:
+  Evaluates the source codebase and creates GitHub Issues for bugs, reliability issues, and code quality findings.
 schedule: "0 * * * *"
 enabled: true
 ---
@@ -32,12 +33,12 @@ Steps:
    Do not skim. Consider how components interact with each other, not just in isolation.
 
 4. **Prometheus metrics review** — use `/github-issue list type/enhancement` to check whether any open issue already
-   proposes adding a new Prometheus metric (look for keywords: `metric`, `counter`, `gauge`, `histogram`,
-   `prometheus`). If no such issue exists, perform the following analysis and create one enhancement issue:
+   proposes adding a new Prometheus metric (look for keywords: `metric`, `counter`, `gauge`, `histogram`, `prometheus`).
+   If no such issue exists, perform the following analysis and create one enhancement issue:
 
-   a. Read `agent/main.py` and identify every metric currently defined (name, type, labels).
-   b. Evaluate what the next most valuable metric would be. Prefer metrics that reveal agent health or behavior that is
-   not already observable — consider in this order:
+   a. Read `agent/main.py` and identify every metric currently defined (name, type, labels). b. Evaluate what the next
+   most valuable metric would be. Prefer metrics that reveal agent health or behavior that is not already observable —
+   consider in this order:
 
    - **Request/task metrics** — counters or histograms on task volume, latency, or outcome (success/error/timeout)
    - **Session metrics** — active sessions, session evictions, session reuse rate
@@ -45,20 +46,20 @@ Steps:
    - **Business metrics** — agenda runs completed, agenda runs failed, heartbeat latency
    - **System metrics** — if none of the above adds meaningful new observability
 
-   c. Choose the single metric with the highest signal-to-noise ratio given what is already instrumented. Do not
-   propose a metric already covered by an existing open issue or existing definition in `main.py`.
-   d. Create one GitHub Issue describing: the metric name, type, labels, where in the code to define it (`main.py`)
-   and where to increment or observe it (the specific file and call site), and why it is the most valuable next metric.
+   c. Choose the single metric with the highest signal-to-noise ratio given what is already instrumented. Do not propose
+   a metric already covered by an existing open issue or existing definition in `main.py`. d. Create one GitHub Issue
+   describing: the metric name, type, labels, where in the code to define it (`main.py`) and where to increment or
+   observe it (the specific file and call site), and why it is the most valuable next metric.
 
 5. Check all currently open GitHub Issues of type `type/bug`, `type/reliability`, and `type/code-quality` using
-   `/github-issue list`. For each open issue, verify it against the current code — confirm whether the problem
-   described still exists at the referenced file and line. If a finding is no longer applicable, close the issue using
+   `/github-issue list`. For each open issue, verify it against the current code — confirm whether the problem described
+   still exists at the referenced file and line. If a finding is no longer applicable, close the issue using
    `/github-issue close <number> "No longer applicable — resolved without a direct fix"`.
 
 6. For each new finding from the code review, first check whether an open issue already covers it by searching
    `gh issue list --search "<filename> <brief keyword>"`. Only create an issue if no equivalent open issue exists.
-   Create using `/github-issue create task status/approved`.
-   The issue should be self-contained and readable without any other context. Include:
+   Create using `/github-issue create task status/approved`. The issue should be self-contained and readable without any
+   other context. Include:
 
    - **Type** — `type/bug`, `type/reliability`, `type/code-quality`, or `type/enhancement`
    - **Priority** — default to `priority/p2` unless the finding is a crash, data corruption, or security issue

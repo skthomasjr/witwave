@@ -212,7 +212,7 @@ When `METRICS_ENABLED` is set, Prometheus metrics are served at `/metrics`.
 | `agent_sdk_subprocess_spawn_duration_seconds`      | Histogram | _(none)_          | Time to initialize the ClaudeSDKClient subprocess                     |
 | `agent_startup_duration_seconds`                   | Gauge     | _(none)_          | Time from process start to ready state in seconds                     |
 | `agent_stderr_lines_per_task`                      | Histogram | _(none)_          | Number of SDK stderr lines captured per run() invocation              |
-| `agent_session_age_seconds`                        | Histogram | _(none)_          | Age of a session in seconds when evicted from the LRU cache           |
+| `agent_session_age_seconds`                        | Histogram | _(none)_          | Seconds since last use when a session is evicted from the LRU cache   |
 | `agent_session_idle_seconds`                       | Histogram | _(none)_          | Seconds a session was idle before being resumed                       |
 | `agent_session_evictions_total`                    | Counter   | _(none)_          | Total session evictions due to LRU cap                                |
 | `agent_session_starts_total`                       | Counter   | `type`            | Total session starts; `type` is `new` or `resumed`                    |

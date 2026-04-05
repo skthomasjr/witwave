@@ -16,8 +16,8 @@ works through the queue one item per cycle.
 - Within each type, work highest priority first (`priority/p0` before `priority/p1`, etc.)
 - Select the lowest-risk item — prefer changes isolated to a single file with no side effects
 - Lint all modified files before closing an issue
-- Graduate completed features from `docs/features-proposed.md` to `docs/features-completed.md` when all their issues
-  are closed
+- Graduate completed features from `docs/features-proposed.md` to `docs/features-completed.md` when all their issues are
+  closed
 - Trigger a fresh work evaluation (via Iris) when no approved issues remain
 
 ## Behavior

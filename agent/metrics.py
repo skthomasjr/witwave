@@ -407,7 +407,7 @@ if _enabled:
     )
     agent_session_age_seconds = prometheus_client.Histogram(
         "agent_session_age_seconds",
-        "Age of a session in seconds when evicted from the LRU cache.",
+        "Seconds since last use when a session is evicted from the LRU cache.",
     )
     agent_session_idle_seconds = prometheus_client.Histogram(
         "agent_session_idle_seconds",
