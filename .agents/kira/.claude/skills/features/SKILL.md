@@ -100,6 +100,19 @@ Break down an approved feature into TODO tasks and add them to `TODO.md` under `
    - Report what was unclear and stop — the feature will need to be re-approved before it can be promoted
 7. Append all tasks to the `## Enhancements` section in `TODO.md`. If the section does not exist, create it. Do not
    modify any other section.
-8. Change the feature's **Status:** in `features-proposed.md` from `approved` to `promoted`.
-9. Run `/lint-markdown` on both files.
-10. Confirm how many tasks were added and report them.
+8. For each task added, create a GitHub issue using `/github-issue create task status/approved`. Use the feature's
+   **Value** and **Implementation** fields as source material. The issue should be self-contained:
+   - **Type** — `type/enhancement`
+   - **Priority** — `priority/p2` unless the feature description indicates otherwise
+   - **Created by** — the agent running this skill
+   - **File** — the file(s) referenced in the task
+   - **Description** — a full paragraph explaining what the task implements, why it matters (from the Value field), and
+     how it fits into the broader feature (from the Implementation field)
+   - **Acceptance criteria** — specific, verifiable conditions derived from the task description
+   - **Notes** — the feature ID and title for traceability
+
+   After creating each issue, update the corresponding TODO entry to embed the issue number:
+   `- [ ] [F-XXX] [#<number>] <original text>`
+9. Change the feature's **Status:** in `features-proposed.md` from `approved` to `promoted`.
+10. Run `/lint-markdown` on both files.
+11. Confirm how many tasks were added and report them.

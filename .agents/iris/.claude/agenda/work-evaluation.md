@@ -53,10 +53,12 @@ Steps:
      it is the most valuable next metric.
 
 6. For each existing unchecked `- [ ]` item in `TODO.md`, verify it against the current code — confirm whether the issue
-   still exists at the referenced file and line. Remove unchecked items that are no longer applicable. Keep items that
-   are still valid, updating file/line references if they have shifted. Add any newly discovered issues using the
-   following section mapping. Never remove or modify items already marked `- [x]` — those are a permanent record of
-   completed work and must be preserved exactly as written.
+   still exists at the referenced file and line. Remove unchecked items that are no longer applicable. If a removed item
+   contains a GitHub issue number (e.g. `[#42]`), close it using
+   `/github-issue close <number> "No longer applicable — resolved without a direct fix"`. Keep items that are still
+   valid, updating file/line references if they have shifted. Add any newly discovered issues using the following
+   section mapping. Never remove or modify items already marked `- [x]` — those are a permanent record of completed
+   work and must be preserved exactly as written.
 
    - **Bugs** — incorrect behavior, logic errors, crashes, data corruption
    - **Reliability** — architectural issues, incorrect coupling, missing failure boundaries, fragile design, anything
@@ -80,8 +82,8 @@ Steps:
    - **Created by** — `iris`
    - **File** — the specific file and line number
    - **Description** — a full paragraph explaining: what the problem is, why it exists, what could go wrong if left
-     unaddressed, and any relevant context from the code review. This should be detailed enough that someone reading
-     the issue understands the problem without needing to look at TODO.md.
+     unaddressed, and any relevant context from the code review. This should be detailed enough that someone reading the
+     issue understands the problem without needing to look at TODO.md.
    - **Acceptance criteria** — one or more specific, verifiable conditions that define done
    - **Notes** — any additional context: related files, execution paths, or prior decisions that are relevant
 
