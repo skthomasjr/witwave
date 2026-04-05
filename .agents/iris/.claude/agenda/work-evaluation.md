@@ -69,13 +69,32 @@ Steps:
 7. Review the quality of all TODO entries — existing and new. Each item must: reference a specific file and line number,
    describe the problem clearly and concisely, be free of spelling and grammatical errors, and be placed in the correct
    section. Fix any entries that fall short of this standard.
-8. If the review reveals that `README.md` or `CLAUDE.md` contain clearly incorrect or outdated information (e.g., wrong
+
+8. For each TODO item added this run, create a GitHub issue using `/github-issue create task status/approved`. The issue
+   should be self-contained and readable without reference to TODO.md. Include:
+
+   - **Type** — map the TODO section: Bugs → `type/bug`, Reliability → `type/reliability`, Code Quality →
+     `type/code-quality`, Enhancements → `type/enhancement`
+   - **Priority** — default to `priority/p2` unless the finding is a crash, data corruption, or security issue
+     (`priority/p0`) or a significant reliability risk (`priority/p1`)
+   - **Created by** — `iris`
+   - **File** — the specific file and line number
+   - **Description** — a full paragraph explaining: what the problem is, why it exists, what could go wrong if left
+     unaddressed, and any relevant context from the code review. This should be detailed enough that someone reading
+     the issue understands the problem without needing to look at TODO.md.
+   - **Acceptance criteria** — one or more specific, verifiable conditions that define done
+   - **Notes** — any additional context: related files, execution paths, or prior decisions that are relevant
+
+   After creating each issue, update the corresponding TODO entry to embed the issue number:
+   `- [ ] [#<number>] <original text>`
+
+9. If the review reveals that `README.md` or `CLAUDE.md` contain clearly incorrect or outdated information (e.g., wrong
    file paths, removed files, stale instructions), make the minimal necessary corrections. Do not rewrite or expand
    them.
-9. If there are files or directories that should be ignored by git but are not covered by `.gitignore`, add them. Check
-   for common runtime artifacts: `*.log`, `__pycache__`, `.env`, and any agent runtime directories that should not be
-   committed.
-10. Run `/lint-markdown` to fix any markdown violations introduced in the files you modified.
-11. Run `/todo unlock iris` to release the lock.
-12. Do not touch files under `docs/`. Do not add commentary or explanations outside the files being updated. Do not do
+10. If there are files or directories that should be ignored by git but are not covered by `.gitignore`, add them. Check
+    for common runtime artifacts: `*.log`, `__pycache__`, `.env`, and any agent runtime directories that should not be
+    committed.
+11. Run `/lint-markdown` to fix any markdown violations introduced in the files you modified.
+12. Run `/todo unlock iris` to release the lock.
+13. Do not touch files under `docs/`. Do not add commentary or explanations outside the files being updated. Do not do
     anything else.
