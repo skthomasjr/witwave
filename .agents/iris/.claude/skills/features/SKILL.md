@@ -26,7 +26,7 @@ Move a fully implemented feature from `features-proposed.md` to `features-comple
    - Use the feature's existing `### F-XXX — <title>` heading
    - Set `**Status:** implemented`
    - Write a `**Summary:**` of 1–2 sentences describing what was built, based on the feature's Implementation field and
-     any context from the TODO items that were completed for it
+     any context from the GitHub Issues that were completed for it
    - Include a `---` separator after the entry
 5. Append the graduated entry to `features-completed.md`, after the last existing `---` separator.
 6. Remove the feature's entire `### F-XXX` section (from its heading line to just before the next `###` heading or end
@@ -38,7 +38,7 @@ Move a fully implemented feature from `features-proposed.md` to `features-comple
 
 ## `approve <feature-id>`
 
-Mark a feature as approved in `features-proposed.md`, making it eligible for promotion to `TODO.md`.
+Mark a feature as approved in `features-proposed.md`, making it eligible for promotion to GitHub Issues.
 
 **Arguments:** `approve F-XXX`
 
@@ -74,7 +74,7 @@ The first word after `reject` is the feature ID. The remainder is the reason for
 
 ## `promote <feature-id>`
 
-Break down an approved feature into TODO tasks and add them to `TODO.md` under `## Enhancements`.
+Break down an approved feature into tasks and create GitHub Issues for each.
 
 **Arguments:** `promote F-XXX`
 
@@ -84,35 +84,26 @@ Break down an approved feature into TODO tasks and add them to `TODO.md` under `
    may be promoted.
 3. Check the feature's **Questions:** field. If it contains unresolved questions (value is not `none`), report them and
    stop — do not promote a feature with open questions.
-4. Read `<repo-root>/TODO.md` and check the existing `## Enhancements` section for any items already prefixed with this
-   feature ID — collect them to avoid duplicates.
+4. Check for any existing open GitHub Issues tagged with this feature ID using
+   `gh issue list --search "[F-XXX]" --state open` to avoid creating duplicates.
 5. Break the feature down into tasks. Use the **Implementation** field as the authoritative description of what to
    build. Aim for the fewest tasks that still make sense as independent units of work — group changes to the same file
-   or logical concern into a single task. Each task must:
-   - Be prefixed with the feature ID — e.g. `[F-XXX]`
-   - Reference the file(s) involved
-   - Describe the full change clearly in one line
-   - Be formatted as `- [ ] [F-XXX] <file> — <description>`
-6. If during breakdown you encounter ambiguities that cannot be resolved from the codebase or docs, do not add
-   incomplete tasks. Instead:
+   or logical concern into a single task.
+6. If during breakdown you encounter ambiguities that cannot be resolved from the codebase or docs, do not create
+   incomplete issues. Instead:
    - Change the feature's **Status:** back to `proposed` in `features-proposed.md`
    - Add or update the **Questions:** field with each unresolved question listed specifically
    - Report what was unclear and stop — the feature will need to be re-approved before it can be promoted
-7. Append all tasks to the `## Enhancements` section in `TODO.md`. If the section does not exist, create it. Do not
-   modify any other section.
-8. For each task added, create a GitHub issue using `/github-issue create task status/approved`. Use the feature's
-   **Value** and **Implementation** fields as source material. The issue should be self-contained:
+7. For each task, create a GitHub issue using `/github-issue create task status/approved`. Use the feature's **Value**
+   and **Implementation** fields as source material. The issue should be self-contained:
    - **Type** — `type/enhancement`
    - **Priority** — `priority/p2` unless the feature description indicates otherwise
    - **Created by** — the agent running this skill
-   - **File** — the file(s) referenced in the task
+   - **File** — the file(s) involved in the task
    - **Description** — a full paragraph explaining what the task implements, why it matters (from the Value field), and
-     how it fits into the broader feature (from the Implementation field)
+     how it fits into the broader feature (from the Implementation field). Include the feature ID for traceability.
    - **Acceptance criteria** — specific, verifiable conditions derived from the task description
    - **Notes** — the feature ID and title for traceability
-
-   After creating each issue, update the corresponding TODO entry to embed the issue number:
-   `- [ ] [F-XXX] [#<number>] <original text>`
-9. Change the feature's **Status:** in `features-proposed.md` from `approved` to `promoted`.
-10. Run `/lint-markdown` on both files.
-11. Confirm how many tasks were added and report them.
+8. Change the feature's **Status:** in `features-proposed.md` from `approved` to `promoted`.
+9. Run `/lint-markdown` on `features-proposed.md`.
+10. Confirm how many issues were created and report them.

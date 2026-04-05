@@ -1,22 +1,19 @@
 ---
 name: Work Evaluation
-description:
-  Evaluates the source codebase and updates TODO.md with current bugs, reliability issues, and code quality findings.
+description: Evaluates the source codebase and creates GitHub Issues for bugs, reliability issues, and code quality findings.
 schedule: "0 * * * *"
 enabled: true
 ---
 
-Review the source code in the repo root and update `<repo-root>/TODO.md`.
+Review the source code in the repo root and create GitHub Issues for findings.
 
 Steps:
 
-1. Run `/todo lock reviewing iris` to acquire the lock. If the skill reports the file is locked by another agent, abort
-   — do not proceed.
-2. Read `<repo-root>/README.md` and `<repo-root>/CLAUDE.md` to understand the purpose, architecture, and intended
+1. Read `<repo-root>/README.md` and `<repo-root>/CLAUDE.md` to understand the purpose, architecture, and intended
    behavior of the system. Use this as the lens for the entire review — evaluate code against what it is supposed to do,
    not just whether it is technically correct in isolation.
-3. Read all source files under `<repo-root>/` using the glob pattern `**/*.py` and also read `Dockerfile`.
-4. Perform a deep review of the code. For each file, read and reason about it carefully. Evaluate across four
+2. Read all source files under `<repo-root>/` using the glob pattern `**/*.py` and also read `Dockerfile`.
+3. Perform a deep review of the code. For each file, read and reason about it carefully. Evaluate across four
    dimensions:
 
    - **Bugs & correctness** — trace execution paths, check error handling, race conditions, resource leaks, unbounded
@@ -34,69 +31,49 @@ Steps:
 
    Do not skim. Consider how components interact with each other, not just in isolation.
 
-5. **Prometheus metrics review** — check whether any unchecked `- [ ]` item in `TODO.md` already proposes adding a new
-   Prometheus metric (look for keywords: `metric`, `counter`, `gauge`, `histogram`, `prometheus`). If no such item
-   exists, perform the following analysis and add one Enhancements item:
+4. **Prometheus metrics review** — use `/github-issue list type/enhancement` to check whether any open issue already
+   proposes adding a new Prometheus metric (look for keywords: `metric`, `counter`, `gauge`, `histogram`,
+   `prometheus`). If no such issue exists, perform the following analysis and create one enhancement issue:
 
-   a. Read `agent/main.py` and identify every metric currently defined (name, type, labels). b. Evaluate what the next
-   most valuable metric would be. Prefer metrics that reveal agent health or behavior that is not already observable —
-   consider in this order:
+   a. Read `agent/main.py` and identify every metric currently defined (name, type, labels).
+   b. Evaluate what the next most valuable metric would be. Prefer metrics that reveal agent health or behavior that is
+   not already observable — consider in this order:
 
    - **Request/task metrics** — counters or histograms on task volume, latency, or outcome (success/error/timeout)
    - **Session metrics** — active sessions, session evictions, session reuse rate
    - **Queue/bus metrics** — messages queued, processing lag
    - **Business metrics** — agenda runs completed, agenda runs failed, heartbeat latency
-   - **System metrics** — if none of the above adds meaningful new observability c. Choose the single metric with the
-     highest signal-to-noise ratio given what is already instrumented. Do not propose a metric already covered by an
-     existing definition in `main.py`. d. Add one Enhancements item describing: the metric name, type, labels, where in
-     the code to define it (`main.py`) and where to increment or observe it (the specific file and call site), and why
-     it is the most valuable next metric.
+   - **System metrics** — if none of the above adds meaningful new observability
 
-6. For each existing unchecked `- [ ]` item in `TODO.md`, verify it against the current code — confirm whether the issue
-   still exists at the referenced file and line. Remove unchecked items that are no longer applicable. If a removed item
-   contains a GitHub issue number (e.g. `[#42]`), close it using
-   `/github-issue close <number> "No longer applicable — resolved without a direct fix"`. Keep items that are still
-   valid, updating file/line references if they have shifted. Add any newly discovered issues using the following
-   section mapping. Never remove or modify items already marked `- [x]` — those are a permanent record of completed
-   work and must be preserved exactly as written.
+   c. Choose the single metric with the highest signal-to-noise ratio given what is already instrumented. Do not
+   propose a metric already covered by an existing open issue or existing definition in `main.py`.
+   d. Create one GitHub Issue describing: the metric name, type, labels, where in the code to define it (`main.py`)
+   and where to increment or observe it (the specific file and call site), and why it is the most valuable next metric.
 
-   - **Bugs** — incorrect behavior, logic errors, crashes, data corruption
-   - **Reliability** — architectural issues, incorrect coupling, missing failure boundaries, fragile design, anything
-     structural that could cause instability or make the system hard to recover
-   - **Code Quality** — simplification opportunities, unnecessary complexity, hardcoded values that should be
-     configurable, tight coupling that would make future changes painful, maintainability or flexibility concerns
+5. Check all currently open GitHub Issues of type `type/bug`, `type/reliability`, and `type/code-quality` using
+   `/github-issue list`. For each open issue, verify it against the current code — confirm whether the problem
+   described still exists at the referenced file and line. If a finding is no longer applicable, close the issue using
+   `/github-issue close <number> "No longer applicable — resolved without a direct fix"`.
 
-   Preserve the existing section structure. Do not create new sections.
+6. For each new finding from the code review, create a GitHub issue using `/github-issue create task status/approved`.
+   The issue should be self-contained and readable without any other context. Include:
 
-7. Review the quality of all TODO entries — existing and new. Each item must: reference a specific file and line number,
-   describe the problem clearly and concisely, be free of spelling and grammatical errors, and be placed in the correct
-   section. Fix any entries that fall short of this standard.
-
-8. For each TODO item added this run, create a GitHub issue using `/github-issue create task status/approved`. The issue
-   should be self-contained and readable without reference to TODO.md. Include:
-
-   - **Type** — map the TODO section: Bugs → `type/bug`, Reliability → `type/reliability`, Code Quality →
-     `type/code-quality`, Enhancements → `type/enhancement`
+   - **Type** — `type/bug`, `type/reliability`, `type/code-quality`, or `type/enhancement`
    - **Priority** — default to `priority/p2` unless the finding is a crash, data corruption, or security issue
      (`priority/p0`) or a significant reliability risk (`priority/p1`)
    - **Created by** — `iris`
    - **File** — the specific file and line number
    - **Description** — a full paragraph explaining: what the problem is, why it exists, what could go wrong if left
-     unaddressed, and any relevant context from the code review. This should be detailed enough that someone reading the
-     issue understands the problem without needing to look at TODO.md.
+     unaddressed, and any relevant context from the code review
    - **Acceptance criteria** — one or more specific, verifiable conditions that define done
    - **Notes** — any additional context: related files, execution paths, or prior decisions that are relevant
 
-   After creating each issue, update the corresponding TODO entry to embed the issue number:
-   `- [ ] [#<number>] <original text>`
-
-9. If the review reveals that `README.md` or `CLAUDE.md` contain clearly incorrect or outdated information (e.g., wrong
+7. If the review reveals that `README.md` or `CLAUDE.md` contain clearly incorrect or outdated information (e.g., wrong
    file paths, removed files, stale instructions), make the minimal necessary corrections. Do not rewrite or expand
    them.
-10. If there are files or directories that should be ignored by git but are not covered by `.gitignore`, add them. Check
-    for common runtime artifacts: `*.log`, `__pycache__`, `.env`, and any agent runtime directories that should not be
-    committed.
-11. Run `/lint-markdown` to fix any markdown violations introduced in the files you modified.
-12. Run `/todo unlock iris` to release the lock.
-13. Do not touch files under `docs/`. Do not add commentary or explanations outside the files being updated. Do not do
+8. If there are files or directories that should be ignored by git but are not covered by `.gitignore`, add them. Check
+   for common runtime artifacts: `*.log`, `__pycache__`, `.env`, and any agent runtime directories that should not be
+   committed.
+9. Run `/lint-markdown` to fix any markdown violations introduced in the files you modified.
+10. Do not touch files under `docs/`. Do not add commentary or explanations outside the files being updated. Do not do
     anything else.

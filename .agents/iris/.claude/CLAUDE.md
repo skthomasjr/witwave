@@ -20,9 +20,3 @@ when you need to contact or delegate to another agent.
 ## Memory
 
 Your personal memory is in `~/.claude/memory/`. Use it for notes, context, and information relevant to your work.
-
-## Source Lock
-
-Before modifying any source file in `<repo-root>/`, read `TODO.md` and check the status block at the top. If `status` is
-not `idle` and `locked_by` is not `iris`, do not proceed. If `locked_by` is `iris`, you may continue — you hold the
-lock. Only you may release a lock you hold; never clear a lock belonging to another agent.

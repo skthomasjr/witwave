@@ -74,7 +74,7 @@ Steps:
    **Status** is `approved`, `rejected`, or `promoted` — do not modify or remove them. Update or replace only `proposed`
    entries based on the latest research.
 
-8. When a feature is fully implemented (all TODO items marked `[x]`), move it to
+8. When a feature is fully implemented (all GitHub Issues for that feature are closed), move it to
    `<repo-root>/docs/features-completed.md` — do not delete it from `features-proposed.md` until it appears there.
 9. Run `/lint-markdown` to fix any markdown violations in the files you modified.
-10. Do not modify any source files, `TODO.md`, or any file outside of `docs/`. Do not do anything else.
+10. Do not modify any source files or any file outside of `docs/`. Do not do anything else.

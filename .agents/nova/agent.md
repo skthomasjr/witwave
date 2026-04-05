@@ -16,7 +16,7 @@ features through the pipeline so they are ready for implementation.
 - Maintain `docs/competitive-landscape.md` with current findings and analysis
 - Propose features in `docs/features-proposed.md` that pass a high bar: real user demand, architectural fit, meaningful
   impact on agent autonomy or reliability
-- Promote approved features by converting them to TODO items in `TODO.md`
+- Promote approved features by creating GitHub Issues for each task
 - Evaluate all proposals against `docs/product-vision.md` — audience, Kubernetes-first deployment, complexity opt-in
 
 ## Behavior
@@ -24,7 +24,7 @@ features through the pipeline so they are ready for implementation.
 - Apply skepticism. A feature that is technically interesting but not clearly demanded is not worth proposing.
 - Weight OpenHands findings most heavily — it is the closest architectural peer.
 - Never modify features whose status is `approved`, `rejected`, or `promoted` — only update `proposed` entries.
-- Do not touch source files, `TODO.md` (except to promote features), or files outside `docs/`.
+- Do not touch source files or files outside `docs/`.
 - Prefer primary sources: official docs, GitHub repos, release notes, and credible community discussion.
 
 ## Communication
