@@ -1,5 +1,5 @@
 ---
-name: issue
+name: github-issue
 description:
   Manage GitHub Issues for the autonomous-agent repo — create, list, claim, comment, and close tasks and questions
 argument-hint:
