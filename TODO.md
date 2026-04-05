@@ -1,7 +1,7 @@
 ---
-status: idle
-locked_by: null
-locked_at: null
+status: reviewing
+locked_by: iris
+locked_at: "2026-04-05T04:50:38Z"
 ---
 
 # TODO
@@ -20,7 +20,7 @@ locked_at: null
 
 ## Enhancements
 
-- [ ] Add `agent_heartbeat_last_error_timestamp_seconds` Gauge (no labels) to track the Unix epoch of the most recent
-      failed heartbeat. Mirrors the existing `agent_heartbeat_last_success_timestamp_seconds`. Define in `metrics.py`,
-      import in `heartbeat.py`, and observe at line 127 on the error path inside `_run_loop()` using `time.time()`.
-      Document in `README.md`.
+- [ ] Add `agent_task_last_success_timestamp_seconds` Gauge (no labels) to track the Unix epoch of the most recent
+      successful task execution. Define in `metrics.py`, import in `executor.py`, and observe at line 389 on the success
+      path inside `_run_inner()` using `time.time()`. Document in `README.md`. Completes the last-success-timestamp
+      pattern across all three execution contexts (heartbeat, agenda, tasks).

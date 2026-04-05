@@ -39,6 +39,7 @@ agent_file_watcher_restarts_total: prometheus_client.Counter | None = None
 agent_heartbeat_duration_seconds: prometheus_client.Histogram | None = None
 agent_heartbeat_error_duration_seconds: prometheus_client.Histogram | None = None
 agent_heartbeat_lag_seconds: prometheus_client.Histogram | None = None
+agent_heartbeat_last_error_timestamp_seconds: prometheus_client.Gauge | None = None
 agent_heartbeat_last_success_timestamp_seconds: prometheus_client.Gauge | None = None
 agent_heartbeat_load_errors_total: prometheus_client.Counter | None = None
 agent_heartbeat_runs_total: prometheus_client.Counter | None = None
@@ -220,6 +221,10 @@ if _enabled:
     agent_heartbeat_lag_seconds = prometheus_client.Histogram(
         "agent_heartbeat_lag_seconds",
         "Delay between scheduled and actual heartbeat execution start.",
+    )
+    agent_heartbeat_last_error_timestamp_seconds = prometheus_client.Gauge(
+        "agent_heartbeat_last_error_timestamp_seconds",
+        "Unix epoch of the most recent failed heartbeat.",
     )
     agent_heartbeat_last_success_timestamp_seconds = prometheus_client.Gauge(
         "agent_heartbeat_last_success_timestamp_seconds",

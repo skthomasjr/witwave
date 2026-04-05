@@ -172,6 +172,7 @@ When `METRICS_ENABLED` is set, Prometheus metrics are served at `/metrics`.
 | `agent_heartbeat_duration_seconds`                 | Histogram | _(none)_          | Wall-clock seconds from heartbeat firing to response received         |
 | `agent_heartbeat_error_duration_seconds`           | Histogram | _(none)_          | Wall-clock seconds for heartbeats that end in error                   |
 | `agent_heartbeat_lag_seconds`                      | Histogram | _(none)_          | Delay between scheduled and actual heartbeat execution start          |
+| `agent_heartbeat_last_error_timestamp_seconds`     | Gauge     | _(none)_          | Unix epoch of the most recent failed heartbeat                        |
 | `agent_heartbeat_last_success_timestamp_seconds`   | Gauge     | _(none)_          | Unix epoch of the most recent successful heartbeat                    |
 | `agent_heartbeat_load_errors_total`                | Counter   | _(none)_          | Total heartbeat config load/parse failures                            |
 | `agent_heartbeat_reloads_total`                    | Counter   | _(none)_          | Total HEARTBEAT.md file-change reload events                          |
