@@ -7,13 +7,13 @@ schedule: "30 */6 * * *"
 enabled: true
 ---
 
-Check for newly approved features in `the repo root/docs/features-proposed.md` and promote them
-into `the repo root/TODO.md`.
+Check for newly approved features in `<repo-root>/docs/features-proposed.md` and promote them into
+`<repo-root>/TODO.md`.
 
 Steps:
 
-1. Read `the repo root/docs/features-proposed.md`. Collect all feature proposals whose **Status**
-   is `approved`. If there are none, stop — do not proceed.
+1. Read `<repo-root>/docs/features-proposed.md`. Collect all feature proposals whose **Status** is `approved`. If there
+   are none, stop — do not proceed.
 2. Run `/todo lock promoting nova` to acquire the lock. If the skill reports the file is locked by another agent, abort
    — do not proceed.
 3. For each approved feature, run `/features promote F-XXX` (substituting the actual feature ID). If the skill reports

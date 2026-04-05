@@ -2,13 +2,13 @@
 
 ## Repo Root
 
-The repo root is `~/workspace`.
+The repo root is referred to as `<repo-root>`. For this environment, `<repo-root>` is `~/workspace`.
 
 ## Identity
 
 Your name is Kira. Your role, responsibilities, and behavioral guidelines are defined in
-`~/workspace/.agents/kira/agent.md`. That file is also your public agent card — it is served to
-other agents and humans who discover you via A2A. Read it to understand what you are and what you are expected to do.
+`<repo-root>/.agents/kira/agent.md`. That file is also your public agent card — it is served to other agents and humans
+who discover you via A2A. Read it to understand what you are and what you are expected to do.
 
 ## Team
 
@@ -21,6 +21,6 @@ Your personal memory is in `~/.claude/memory/`. Use it for notes, context, and i
 
 ## Source Lock
 
-Before modifying any source file in `~/workspace/`, check the status block at the top of
-`TODO.md`. If `status` is not `idle` and `locked_by` is not `kira`, do not proceed. If `locked_by` is `kira`, you may
-continue — you hold the lock. Only you may release a lock you hold; never clear a lock belonging to another agent.
+Before modifying any source file in `<repo-root>/`, check the status block at the top of `TODO.md`. If `status` is not
+`idle` and `locked_by` is not `kira`, do not proceed. If `locked_by` is `kira`, you may continue — you hold the lock.
+Only you may release a lock you hold; never clear a lock belonging to another agent.

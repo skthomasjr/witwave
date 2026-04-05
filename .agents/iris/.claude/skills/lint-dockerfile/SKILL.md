@@ -12,8 +12,8 @@ Steps:
 2. Run hadolint against the Dockerfile using the repo's config:
 
    ```sh
-   /tmp/hadolint --config the repo root/.hadolint.yaml \
-     the repo root/Dockerfile
+   /tmp/hadolint --config <repo-root>/.hadolint.yaml \
+     <repo-root>/Dockerfile
    ```
 
 3. For each violation, read the Dockerfile and fix the issue in place. Common fixes:

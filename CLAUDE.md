@@ -4,7 +4,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repo Root
 
-The repo root is the directory containing this file.
+The repo root is referred to as `<repo-root>`. For this environment, `<repo-root>` is the directory containing this
+file.
+
+## Skills
+
+Skills under `.claude/skills/` are for local use. Skills that agents need must also be copied to each agent's
+`.agents/<name>/.claude/skills/` directory. When a shared skill is updated, sync the change to all agents that have a
+copy.
+
+## Working with Claude Code
+
+- Do not run `git commit` unless explicitly asked.
+- Do not run `git push` unless explicitly asked.
 
 ## Project Overview
 

@@ -7,7 +7,7 @@ schedule: "*/10 * * * *"
 enabled: true
 ---
 
-Resolve the highest-priority unchecked item in `the repo root/TODO.md`.
+Resolve the highest-priority unchecked item in `<repo-root>/TODO.md`.
 
 Priority order — move to the next section only when the current section has no remaining unchecked `- [ ]` items:
 
@@ -20,17 +20,16 @@ Steps:
 
 1. Run `/todo lock fixing kira` to acquire the lock. If the skill reports the file is locked by another agent, abort —
    do not proceed.
-2. Read `the repo root/TODO.md`. Find the active section using the priority order above. If all
-   sections are fully clear (no unchecked `- [ ]` items), run `/todo unlock kira` to release the lock, then stop — do
-   not proceed further this run.
+2. Read `<repo-root>/TODO.md`. Find the active section using the priority order above. If all sections are fully clear
+   (no unchecked `- [ ]` items), run `/todo unlock kira` to release the lock, then stop — do not proceed further this
+   run.
 3. From the unchecked `- [ ]` items in the active section, select the lowest risk item — prefer items isolated to a
    single file, with no side effects on other components, requiring the smallest change.
-4. Read `the repo root/README.md` and `the repo root/CLAUDE.md` to
-   understand the purpose, architecture, and intended behavior of the system. Use this as the lens for the fix.
-5. If the selected item includes a feature ID prefix (e.g. `[F-002]`), read
-   `the repo root/docs/features-proposed.md` and locate that feature's row. Use the Value,
-   Implementation, and Risk fields as the authoritative description of what to build and how — do not deviate from the
-   specified implementation without good reason.
+4. Read `<repo-root>/README.md` and `<repo-root>/CLAUDE.md` to understand the purpose, architecture, and intended
+   behavior of the system. Use this as the lens for the fix.
+5. If the selected item includes a feature ID prefix (e.g. `[F-002]`), read `<repo-root>/docs/features-proposed.md` and
+   locate that feature's row. Use the Value, Implementation, and Risk fields as the authoritative description of what to
+   build and how — do not deviate from the specified implementation without good reason.
 6. Read the relevant source file(s) for the selected item. Understand the surrounding code and how it fits into the
    broader system before making any changes.
 7. Implement the fix. Make the minimal change necessary — do not refactor surrounding code, add features, or change
@@ -54,7 +53,7 @@ Steps:
     feature ID) to move it from `features-proposed.md` to `features-completed.md`.
 13. Run `/todo unlock kira` to release the lock.
 14. Run `/todo cleanup` to remove completed items and stamp fully-cleared sections.
-15. Re-read `the repo root/TODO.md` and check whether all sections are fully clear (no remaining
-    unchecked `- [ ]` items). If they are all clear, run `/delegate iris /run-agenda work-evaluation` to trigger a fresh
-    evaluation immediately — do not wait for the next scheduled run.
+15. Re-read `<repo-root>/TODO.md` and check whether all sections are fully clear (no remaining unchecked `- [ ]` items).
+    If they are all clear, run `/delegate iris /run-agenda work-evaluation` to trigger a fresh evaluation immediately —
+    do not wait for the next scheduled run.
 16. Do not do anything else.

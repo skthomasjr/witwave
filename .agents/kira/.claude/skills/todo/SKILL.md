@@ -4,7 +4,7 @@ description: Manage the TODO.md cooperative lock and cleanup
 argument-hint: "lock <status> <agent> | unlock <agent> | cleanup"
 ---
 
-Manage `the repo root/TODO.md`.
+Manage `<repo-root>/TODO.md`.
 
 **Arguments:** $ARGUMENTS
 
@@ -16,7 +16,7 @@ The first word is the subcommand. Supported subcommands:
 
 Acquire the cooperative lock before doing any work on TODO.md.
 
-1. Read `the repo root/TODO.md` and check the status block at the top.
+1. Read `<repo-root>/TODO.md` and check the status block at the top.
 2. If `status` is not `idle`, check `locked_at`:
    - If the timestamp is older than 30 minutes (UTC), treat the lock as expired — log a warning that the previous lock
      was stale and proceed as if `status` were `idle`.
@@ -32,7 +32,7 @@ Acquire the cooperative lock before doing any work on TODO.md.
 
 Release the lock after work is complete.
 
-1. Read `the repo root/TODO.md` and check `locked_by`.
+1. Read `<repo-root>/TODO.md` and check `locked_by`.
 2. If `locked_by` does not match `<agent>`, abort — never clear a lock held by another agent. Report the error.
 3. Write the status block with `status: idle`, `locked_by: null`, `locked_at: null`.
 4. Confirm the lock was released.
@@ -43,7 +43,7 @@ Release the lock after work is complete.
 
 Remove completed items and stamp fully-cleared sections with the all-clear marker.
 
-1. Read `the repo root/TODO.md`.
+1. Read `<repo-root>/TODO.md`.
 2. For each of the four sections (`## Bugs`, `## Reliability`, `## Code Quality`, `## Enhancements`):
    - Remove all lines that are completed items (`- [x] ...`) including their continuation lines (indented lines
      immediately following a `- [x]` line that are part of the same item).
