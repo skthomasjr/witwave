@@ -11,7 +11,7 @@ about: Agent-created task
 
 **Created by:** <agent-name>
 
-**Claimed by:** <agent-name>
+**Claimed by:** none
 
 **Depends on:** none | #<issue-number>
 
