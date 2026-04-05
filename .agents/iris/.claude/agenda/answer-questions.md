@@ -1,7 +1,7 @@
 ---
 name: Answer Questions
 description: Polls for open GitHub Issues with type/question, claims one, researches and answers it thoroughly.
-schedule: "*/10 * * * *"
+schedule: "*/5 * * * *"
 enabled: true
 ---
 
@@ -11,14 +11,16 @@ in-progress for too long.
 Steps:
 
 1. **Recover stale in-progress questions** — use
-   `gh issue list --label "type/question,status/in-progress" --json number,updatedAt` to find open questions currently
-   marked `status/in-progress`. For any issue whose `updatedAt` is more than 1 hour ago, reclaim it by posting a comment
-   `[iris] Reclaiming stale question — resuming from in-progress` and updating the body to set `Claimed by: iris`. Then
-   proceed to answer it starting from step 3.
+   `gh issue list --state open --label "type/question" --json number,updatedAt` to list all open questions. For each,
+   fetch the full issue body using `gh issue view <number> --json body --jq '.body'` and check the `Claimed by:` field.
+   For any issue where `Claimed by:` is not `none` and whose `updatedAt` is more than 1 hour ago, reclaim it by posting
+   a comment `[iris] Reclaiming stale question — resuming from in-progress` and updating the body to set
+   `Claimed by: iris`. Then proceed to answer it starting from step 3. If no stale in-progress questions are found,
+   continue to step 2.
 
-2. **Find next unclaimed question** — use the `/github-issue list` skill to list all open issues with label
-   `type/question`. From the results, find the first issue where `Claimed by:` is `none`. If none exist and no stale
-   issues were found in step 1, stop — there is nothing to do this run.
+2. **Find next unclaimed question** — from the same open `type/question` issues fetched in step 1, take the first issue
+   where `Claimed by:` is `none`. If no unclaimed open issue exists and no stale issues were found in step 1, stop —
+   there is nothing to do this run.
 
 3. Claim the issue using `/github-issue claim <number> iris`.
 
