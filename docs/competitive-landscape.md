@@ -1,7 +1,8 @@
 # Competitive Landscape
 
-Last updated: 2026-04-05 by nova (fifth pass — OpenHands v1.6.0 Kubernetes/RBAC, Claude Agent SDK in-process custom
-tools + corrected budget API + planning mode confirmed, LangGraph v1.1 node caching + deferred nodes)
+Last updated: 2026-04-05 by nova (sixth pass — Devin 2.2 self-verification + Schedule Devins, Claude Agent SDK
+HookMatcher callback API + task_budget + AgentDefinition, mini-SWE-agent v2 tool calling, CrewAI root_scope + Qdrant
+Edge, Observability theme updated to reflect 70+ metrics)
 
 ---
 
@@ -72,10 +73,12 @@ The Claude Agent SDK (renamed from Claude Code SDK, late 2025) is the runtime th
 the current release is `0.1.56` (delta: fix for silent truncation of large MCP tool results over 50K chars). Key SDK
 capabilities not yet wired into this project:
 
-**Hooks system — 18 total events:** `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `UserPromptSubmit`, `Stop`,
-`SubagentStart`, `SubagentStop`, `PreCompact`, `PermissionRequest`, `PermissionDenied`, `Notification`, `SessionStart`,
-`SessionEnd`, `Setup`, `TeammateIdle`, `TaskCompleted`, `ConfigChange`, `WorktreeCreate`, `WorktreeRemove`. Entirely
-unused by this project. Key underused capabilities within the hooks system:
+**Hooks system — Python callback API via `HookMatcher`:** The SDK overview page confirms hooks are registered as Python
+callback functions in `ClaudeAgentOptions`, not file-based config. Example from SDK docs:
+`hooks={"PostToolUse": [HookMatcher(matcher="Edit|Write", hooks=[log_file_change])]}`. The `matcher` is a regex on tool
+names; `hooks` is a list of async callback functions. Available events include `PreToolUse`, `PostToolUse`, `Stop`,
+`SessionStart`, `SessionEnd`, `UserPromptSubmit`, and more. Entirely unused by this project. Key underused capabilities
+within the hooks system:
 
 - **`updatedInput` in `PreToolUse`**: rewrite tool arguments before execution — not just block or allow, but actively
   transform (e.g., sandbox path redirection, argument normalization, stripping dangerous flags). This enables ACI-style
@@ -84,10 +87,10 @@ unused by this project. Key underused capabilities within the hooks system:
   agent loop.
 - **`systemMessage` output**: any hook can inject model-visible guidance when an action is blocked or modified.
 
-**Budget and turn control:** `max_budget_usd` caps total API spend per session (USD); `max_turns` caps agentic turns
-(tool-use round trips). Both are unset in this project — a stuck or looping agent can exhaust quota with no bound.
-`get_context_usage()` (0.1.52) exposes real-time token consumption by category, enabling proactive warnings before
-context exhaustion causes silent failure.
+**Budget and turn control:** `task_budget` (v0.1.51) caps token budget per session. `maxTurns` is available as an
+`AgentDefinition` field for subagent turn limits. Both are unset in this project — a stuck or looping agent can exhaust
+quota with no bound. `get_context_usage()` (0.1.52) exposes real-time token consumption by category, enabling proactive
+warnings before context exhaustion causes silent failure.
 
 **In-process custom tools:** The `@tool()` decorator and `create_sdk_mcp_server()` factory allow defining custom tools
 as plain Python functions inside the harness process — no subprocess, no IPC overhead, no separate MCP server to manage.
@@ -99,10 +102,14 @@ operational weight of an external MCP server.
 exposed by this harness. `RateLimitEvent`, `TaskStarted`, `TaskProgress`, `TaskNotification` typed messages also
 available.
 
+**Programmatic subagent definitions (0.1.49–0.1.51):** `AgentDefinition` accepts `description`, `prompt`, `tools`,
+`disallowedTools`, `maxTurns`, `initialPrompt`, `skills`, `memory`, and `mcpServers`. Passed via
+`agents={"name": AgentDefinition(...)}` in `ClaudeAgentOptions`. Enables the harness to define specialized subagents
+programmatically without file-based configuration. Entirely unused by this project.
+
 **Advanced execution options:** `enable_file_checkpointing` enables file-change tracking for session rewinding. `effort`
 sets thinking depth (`"low"`, `"medium"`, `"high"`, `"max"`). `plugins` accepts a list of `SdkPluginConfig` objects for
-custom plugins loaded from local paths. `agents` allows programmatically defined subagent definitions. All unused by
-this project.
+custom plugins loaded from local paths. All unused by this project.
 
 **Permission modes:** Five modes — `default`, `dontAsk`, `acceptEdits`, `bypassPermissions`, `plan` — set via
 `permission_mode` in `ClaudeAgentOptions`. The `plan` mode (read-only execution + single writable plan file) is
@@ -110,10 +117,12 @@ confirmed in current SDK docs and mirrors OpenHands's Planning Agent pattern exa
 for HITL (main agents only — unavailable to subagents per SDK bug #12890; this project does not use subagents, so not
 blocking).
 
-**Relative standing:** This project uses a narrow slice of the SDK — the core `query()` loop, session management, and
-MCP config. The hooks system (18 events), `updatedInput` for argument rewriting, `max_budget_usd`/`max_turns` for cost
-control, in-process custom tools, and `permission_mode="plan"` for structured task execution are the most actionable
-gaps. Each is a targeted addition to `executor.py` with no structural changes to the project.
+**Relative standing:** This project uses a growing but still narrow slice of the SDK — `ClaudeSDKClient` with
+`get_context_usage()`, session resume, MCP config, per-agent model selection, and 70+ Prometheus metrics wrapping the
+execution path. The hooks system (Python callback API via `HookMatcher`), `task_budget` for cost control, in-process
+custom tools, `permission_mode="plan"` for structured task execution, and `AgentDefinition` for programmatic subagents
+are the most actionable gaps. Each is a targeted addition to `executor.py`'s `make_options()` with no structural changes
+to the project.
 
 ### Devin (Cognition)
 
@@ -127,9 +136,25 @@ assign backlog items, Devin drafts PRs, engineers review output rather than indi
 in parallel. The embedded observable IDE (shell + editor + browser) allows engineers to watch or take over at any point.
 Deployed by Goldman Sachs alongside 12,000 human engineers.
 
+**Devin 2.2 (February 24, 2026) — self-verification and computer use:** Devin now implements a complete autonomous
+development cycle: plan → code → review → auto-fix → PR — all before a human opens the PR. Computer use testing gives
+Devin access to its own Linux desktop to launch and test desktop applications, with screen recordings for review.
+Startup time was reduced 3x. The self-verification loop is the most complete closed-loop autonomous development cycle
+shipped by any agent product.
+
+**Schedule Devins (March 2026) — self-scheduling and parallel delegation:** Devin can now set up its own recurring
+schedules from natural language descriptions, carrying state between runs via persistent notes. A coordinator Devin
+delegates to managed Devins — each a full isolated VM — that work in parallel. This is architecturally close to this
+project's agenda + A2A delegation model, but with a key difference: Devin infers the schedule from natural language
+rather than requiring explicit cron expressions. The stateful scheduling pattern (each run builds on the previous)
+validates this project's session-based agenda design.
+
 **Relative standing:** Devin is a vertical product; this project is infrastructure. Transferable lessons: show the plan
-before acting, structure work for parallel execution, and make agent actions observable mid-run. All reinforce this
-project's agenda-based design.
+before acting, structure work for parallel execution, make agent actions observable mid-run, and carry state across
+scheduled runs. The self-verification loop (plan → code → review → fix) and self-scheduling are the strongest new
+patterns. This project's agenda system already provides scheduled execution with session continuity; Devin's "Schedule
+Devins" validates the model while highlighting the value of event-driven triggers (F-013) and planning mode (F-012) as
+complements to cron.
 
 ### SWE-agent
 
@@ -143,9 +168,16 @@ with tight feedback loops achieves strong benchmark performance with near-zero s
 detecting training data contamination. Current open-source SOTA: Claude 4.5 Opus at 76.8% on bash-only. The v1.1.0
 release shipped training trajectories for fine-tuning.
 
+**Mini-SWE-agent v2 (2026):** A major rewrite that switches to native tool calling API by default (text-based action
+parsing still available), adds multimodal input support, and reaches 74%+ on SWE-bench Verified with Gemini 3 Pro.
+Research finding: randomly switching between GPT-5 and Sonnet 4 during a run boosts performance — model diversity within
+a single run is a novel technique not yet explored by this project or competitors.
+
 **Relative standing:** mini-SWE-agent's 100-line implementation validates the core ACI principle more strongly than
-ever: simplicity and constraints outperform complex scaffolding. This project's tool list remains general-purpose with
-no harness-level guardrails. The SDK's `PreToolUse` hook with `updatedInput` is the natural implementation point for
+ever: simplicity and constraints outperform complex scaffolding. The v2 model-diversity finding is notable — this
+project already supports per-agent model selection via `CLAUDE_MODEL`, and per-agenda-item model selection via the
+`model` frontmatter field, but not mid-run model switching. This project's tool list remains general-purpose with no
+harness-level guardrails. The SDK's `PreToolUse` hook with `updatedInput` is the natural implementation point for
 ACI-style argument transforms and blocking.
 
 ### AutoGPT
@@ -174,13 +206,20 @@ serialization** (v1.13.0, April 2026) enables snapshots of crew state for crash 
 `LLMCallCompletedEvent`. Qdrant Edge added for on-device vector storage. Enterprise Control Plane adds real-time tracing
 and a unified control plane; 1.4B agentic automations claimed.
 
+**March 2026 additions:** Automatic `root_scope` for hierarchical memory isolation — memory hierarchies are now inferred
+automatically rather than requiring manual scope configuration. **Agent skills** were implemented as a first-class
+concept. **Tool search** dynamically injects appropriate tools during execution rather than loading all tools upfront,
+saving tokens. These additions bring CrewAI closer to this project's skill-document and tool-selection patterns.
+
 A 2026 documented limitation: when a crew completes its task, coordination patterns, delegation decisions, and role
 effectiveness data are lost — without shared persistent memory, teams cannot compound intelligence over time.
 
 **Relative standing:** CrewAI's unified structured memory with composite recall and hierarchical scoping remains the
-clearest memory gap relative to this project. RuntimeState serialization advances the durability story. This project
-uses A2A for coordination (distributed, standard, network-based); CrewAI uses in-process Python calls (tighter coupling,
-lower latency).
+clearest memory gap relative to this project. RuntimeState serialization advances the durability story. CrewAI's new
+tool search (dynamic tool injection) is interesting — this project's `ALLOWED_TOOLS` env var is static per agent. The
+automatic `root_scope` for memory isolation validates the value of hierarchical scoping for multi-agent teams. This
+project uses A2A for coordination (distributed, standard, network-based); CrewAI uses in-process Python calls (tighter
+coupling, lower latency).
 
 ### LangGraph
 
@@ -226,9 +265,11 @@ it as the coordination layer between autonomous agents)
 The protocol ecosystem has expanded to four recognized layers: **MCP** (agent-to-tool), **A2A v0.3** (agent-to-agent —
 gRPC transport, signed agent security cards, 150+ supporting organizations), **ACP** (lightweight async messaging), and
 **UCP** (agentic commerce — co-developed with Shopify, Visa, Mastercard, January 2026). LangGraph 2.0 added native A2A
-integration. The W3C AI Agent Protocol Community Group is working toward official web standards (expected 2026–2027).
-The winning production coordination topology: hybrid — a high-level orchestrator for strategic decisions + local mesh
-networks for tactical execution.
+integration. **Microsoft Foundry** added an A2A Tool (Preview) in early 2026, letting Foundry agents call any
+A2A-protocol endpoint with explicit auth and clean call/response semantics — further validating A2A as the
+cross-platform agent communication standard. The W3C AI Agent Protocol Community Group is working toward official web
+standards (expected 2026–2027). The winning production coordination topology: hybrid — a high-level orchestrator for
+strategic decisions + local mesh networks for tactical execution.
 
 This project already implements A2A and is well-positioned within this growing ecosystem. The hybrid topology insight
 aligns with the project's existing design (heartbeat-driven orchestration + A2A delegation).
@@ -257,20 +298,27 @@ named keys. No infrastructure dependency beyond a shared Docker volume. (F-003, 
 
 ### Observability
 
-**What competitors do:** OpenHands provides per-run tool-use traces. Devin surfaces step-by-step reasoning in a UI.
-LangGraph emits OpenTelemetry-compatible spans — OTel-based tracing across all reasoning steps, tool calls, and memory
-accesses is the 2026 emerging standard. A new term — "AI archaeology" — describes the difficulty of debugging long
-execution traces; good observability prevents this. 89% of organizations have implemented agent observability in 2026.
-The Claude Agent SDK's `get_context_usage()` method (0.1.52) exposes token consumption by category, enabling proactive
-context exhaustion warnings before they cause silent failure. The JSONL tool-use trace log (F-002, implemented) provides
-the raw data layer.
+**What competitors do:** OpenHands provides per-run tool-use traces. Devin 2.2 surfaces screen recordings of agent
+testing. LangGraph emits OpenTelemetry-compatible spans — OTel-based tracing across all reasoning steps, tool calls, and
+memory accesses is the 2026 emerging standard. CrewAI tracks token usage in `LLMCallCompletedEvent`. A new term — "AI
+archaeology" — describes the difficulty of debugging long execution traces; good observability prevents this. 89% of
+organizations have implemented agent observability in 2026.
+
+**Where this project stands:** This project now has **70+ Prometheus metrics** across all subsystems — SDK query
+duration/errors/tool calls, per-tool latency and error rates, context token usage and exhaustion events, bus queue depth
+and processing duration, per-agenda-item duration/lag/success/error timestamps, heartbeat timing and skip counts,
+session LRU cache utilization, MCP config reload tracking, health probe hit counts, startup duration, and more. This is
+among the most comprehensive agent observability implementations in the ecosystem. The JSONL tool-use trace log (F-002)
+provides the raw event layer. Context usage monitoring via `get_context_usage()` (F-011) provides proactive threshold
+warnings.
 
 **What users value most:** The ability to understand why an agent took a specific action, and to surface patterns (which
 tools fail most, which agenda items are slowest) without reading free-text logs. Proactive warnings before context
-limits silently degrade reliability.
+limits silently degrade reliability. The next frontier is OpenTelemetry-compatible distributed tracing across
+multi-agent workflows.
 
-**Candidate features:** Context usage monitoring via `get_context_usage()` (F-011, implemented). Optional Prometheus
-`/metrics` endpoint (F-008, implemented).
+**Candidate features:** Context usage monitoring via `get_context_usage()` (F-011, implemented). Prometheus `/metrics`
+endpoint with 70+ metrics (F-008, implemented).
 
 ---
 

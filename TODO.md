@@ -1,14 +1,18 @@
 ---
-status: reviewing
-locked_by: iris
-locked_at: "2026-04-05T06:22:56Z"
+status: fixing
+locked_by: kira
+locked_at: 2026-04-05T15:30:18Z
 ---
 
 # TODO
 
 ## Bugs
 
-✨ _All clear_
+- [ ] [#14] `agent_session_idle_seconds` reports session age instead of idle time (`executor.py` line 352).
+      `_track_session()` (line 142) calls `move_to_end()` on reuse but never updates the stored `time.monotonic()`
+      timestamp. The metric computes `time.monotonic() - sessions[session_id]` which yields total session age, not time
+      since last use. Fix: update `sessions[session_id] = time.monotonic()` after `move_to_end()` in `_track_session()`,
+      and rename the eviction metric variable from `created_at` to `last_used_at` to reflect the new semantics.
 
 ## Reliability
 
@@ -20,7 +24,7 @@ locked_at: "2026-04-05T06:22:56Z"
 
 ## Enhancements
 
-- [ ] Add `agent_bus_error_processing_duration_seconds` histogram (labeled by `kind`) to record the duration of bus
-      message processing when it ends in an error. This completes the error-duration pattern already established for
-      tasks, heartbeats, and agenda items — the bus worker in `main.py` `bus_worker()` is the only execution path
-      without a dedicated error-duration metric. Observe `time.monotonic() - t0` inside the `except Exception` block.
+- [ ] [#15] Add `agent_sdk_subprocess_spawn_duration_seconds` Histogram metric — time the `ClaudeSDKClient.__aenter__()`
+      call in `run_query()` (`executor.py` line 261) to isolate SDK subprocess spawn latency from query processing.
+      Declare in `metrics.py`, observe as `time.monotonic() - _spawn_start` at the top of the `async with` block body.
+      Surfaces a key latency component currently hidden inside `agent_sdk_session_duration_seconds`.

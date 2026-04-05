@@ -20,6 +20,8 @@ from bus import MessageBus
 from executor import AgentExecutor, mcp_config_watcher
 from heartbeat import heartbeat_runner
 from metrics import (
+    agent_bus_consumer_idle_seconds,
+    agent_bus_error_processing_duration_seconds,
     agent_bus_errors_total,
     agent_bus_last_processed_timestamp_seconds,
     agent_bus_messages_total,
@@ -170,12 +172,15 @@ async def _sub_app_lifespan(app):
 
 async def bus_worker(bus: MessageBus, executor: AgentExecutor) -> None:
     logger.info("Message bus worker started.")
+    _idle_start = time.monotonic()
     while True:
         message = await bus.receive()
+        if agent_bus_consumer_idle_seconds is not None:
+            agent_bus_consumer_idle_seconds.observe(time.monotonic() - _idle_start)
         if agent_bus_messages_total is not None:
             agent_bus_messages_total.labels(kind=message.kind).inc()
         if agent_bus_wait_seconds is not None and message.enqueued_at:
-            agent_bus_wait_seconds.observe(time.monotonic() - message.enqueued_at)
+            agent_bus_wait_seconds.labels(kind=message.kind).observe(time.monotonic() - message.enqueued_at)
         t0 = time.monotonic()
         try:
             await executor.process_bus(message)
@@ -183,11 +188,14 @@ async def bus_worker(bus: MessageBus, executor: AgentExecutor) -> None:
             logger.error(f"Bus worker error: {e}")
             if agent_bus_errors_total is not None:
                 agent_bus_errors_total.inc()
+            if agent_bus_error_processing_duration_seconds is not None:
+                agent_bus_error_processing_duration_seconds.labels(kind=message.kind).observe(time.monotonic() - t0)
         finally:
             if agent_bus_processing_duration_seconds is not None:
                 agent_bus_processing_duration_seconds.labels(kind=message.kind).observe(time.monotonic() - t0)
             if agent_bus_last_processed_timestamp_seconds is not None:
                 agent_bus_last_processed_timestamp_seconds.set(time.time())
+            _idle_start = time.monotonic()
 
 
 async def _set_ready_when_started(server: uvicorn.Server) -> None:

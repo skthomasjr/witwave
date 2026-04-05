@@ -24,3 +24,14 @@ node_modules/
 
 # Virtual environments
 .venv/
+
+# Agent runtime artifacts
+*.jsonl
+.checkpoints/
+.claude/memory/
+.claude/sessions/
+.claude/session-env/
+.claude/shell-snapshots/
+.claude/projects/
+.claude/plans/
+.claude/backups/

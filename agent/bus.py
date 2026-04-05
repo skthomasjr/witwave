@@ -3,7 +3,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from metrics import agent_bus_dedup_total, agent_bus_queue_depth
+from metrics import agent_bus_dedup_total, agent_bus_pending_kinds, agent_bus_queue_depth
 
 
 @dataclass
@@ -26,6 +26,8 @@ class MessageBus:
         if message.result is None:
             message.result = asyncio.get_running_loop().create_future()
         self._pending_kinds.add(message.kind)
+        if agent_bus_pending_kinds is not None:
+            agent_bus_pending_kinds.set(len(self._pending_kinds))
         message.enqueued_at = time.monotonic()
         await self._queue.put(message)
         if agent_bus_queue_depth is not None:
@@ -41,6 +43,8 @@ class MessageBus:
         if message.result is None:
             message.result = asyncio.get_running_loop().create_future()
         self._pending_kinds.add(message.kind)
+        if agent_bus_pending_kinds is not None:
+            agent_bus_pending_kinds.set(len(self._pending_kinds))
         message.enqueued_at = time.monotonic()
         self._queue.put_nowait(message)
         if agent_bus_queue_depth is not None:
@@ -52,4 +56,6 @@ class MessageBus:
         if agent_bus_queue_depth is not None:
             agent_bus_queue_depth.set(self._queue.qsize())
         self._pending_kinds.discard(message.kind)
+        if agent_bus_pending_kinds is not None:
+            agent_bus_pending_kinds.set(len(self._pending_kinds))
         return message

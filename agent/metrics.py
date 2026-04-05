@@ -24,12 +24,15 @@ agent_agenda_reloads_total: prometheus_client.Counter | None = None
 agent_agenda_running_items: prometheus_client.Gauge | None = None
 agent_agenda_runs_total: prometheus_client.Counter | None = None
 agent_agenda_skips_total: prometheus_client.Counter | None = None
+agent_bus_consumer_idle_seconds: prometheus_client.Histogram | None = None
 agent_bus_dedup_total: prometheus_client.Counter | None = None
+agent_bus_error_processing_duration_seconds: prometheus_client.Histogram | None = None
 agent_bus_errors_total: prometheus_client.Counter | None = None
 agent_bus_last_processed_timestamp_seconds: prometheus_client.Gauge | None = None
 agent_bus_processing_duration_seconds: prometheus_client.Histogram | None = None
 agent_info: prometheus_client.Info | None = None
 agent_bus_messages_total: prometheus_client.Counter | None = None
+agent_bus_pending_kinds: prometheus_client.Gauge | None = None
 agent_bus_queue_depth: prometheus_client.Gauge | None = None
 agent_bus_wait_seconds: prometheus_client.Histogram | None = None
 agent_concurrent_queries: prometheus_client.Gauge | None = None
@@ -64,15 +67,18 @@ agent_sdk_context_fetch_errors_total: prometheus_client.Counter | None = None
 agent_sdk_errors_total: prometheus_client.Counter | None = None
 agent_sdk_tokens_per_query: prometheus_client.Histogram | None = None
 agent_sdk_tool_calls_per_query: prometheus_client.Histogram | None = None
+agent_sdk_tool_duration_seconds: prometheus_client.Histogram | None = None
 agent_sdk_tool_calls_total: prometheus_client.Counter | None = None
 agent_sdk_tool_errors_total: prometheus_client.Counter | None = None
 agent_sdk_messages_per_query: prometheus_client.Histogram | None = None
 agent_sdk_result_errors_total: prometheus_client.Counter | None = None
 agent_sdk_session_duration_seconds: prometheus_client.Histogram | None = None
 agent_sdk_query_duration_seconds: prometheus_client.Histogram | None = None
+agent_sdk_query_error_duration_seconds: prometheus_client.Histogram | None = None
 agent_startup_duration_seconds: prometheus_client.Gauge | None = None
 agent_stderr_lines_per_task: prometheus_client.Histogram | None = None
 agent_session_age_seconds: prometheus_client.Histogram | None = None
+agent_session_idle_seconds: prometheus_client.Histogram | None = None
 agent_session_evictions_total: prometheus_client.Counter | None = None
 agent_session_starts_total: prometheus_client.Counter | None = None
 agent_task_cancellations_total: prometheus_client.Counter | None = None
@@ -165,9 +171,18 @@ if _enabled:
         "Total agenda item skips due to previous run still in progress.",
         ["name"],
     )
+    agent_bus_consumer_idle_seconds = prometheus_client.Histogram(
+        "agent_bus_consumer_idle_seconds",
+        "Idle time between consecutive bus worker processing cycles.",
+    )
     agent_bus_dedup_total = prometheus_client.Counter(
         "agent_bus_dedup_total",
         "Total messages dropped by try_send() due to a pending message of the same kind.",
+        ["kind"],
+    )
+    agent_bus_error_processing_duration_seconds = prometheus_client.Histogram(
+        "agent_bus_error_processing_duration_seconds",
+        "Wall-clock seconds for bus messages that end in error.",
         ["kind"],
     )
     agent_bus_errors_total = prometheus_client.Counter(
@@ -192,6 +207,10 @@ if _enabled:
         "Total messages processed through the message bus.",
         ["kind"],
     )
+    agent_bus_pending_kinds = prometheus_client.Gauge(
+        "agent_bus_pending_kinds",
+        "Number of distinct message kinds currently queued in the bus.",
+    )
     agent_bus_queue_depth = prometheus_client.Gauge(
         "agent_bus_queue_depth",
         "Current depth of the message bus queue.",
@@ -199,6 +218,7 @@ if _enabled:
     agent_bus_wait_seconds = prometheus_client.Histogram(
         "agent_bus_wait_seconds",
         "Seconds a message waited in the bus queue before processing.",
+        ["kind"],
     )
     agent_concurrent_queries = prometheus_client.Gauge(
         "agent_concurrent_queries",
@@ -335,6 +355,11 @@ if _enabled:
         "Number of tool calls per run_query() invocation.",
         buckets=(0, 1, 2, 5, 10, 20, 50, 100, 200),
     )
+    agent_sdk_tool_duration_seconds = prometheus_client.Histogram(
+        "agent_sdk_tool_duration_seconds",
+        "Wall-clock seconds per tool call from ToolUseBlock to ToolResultBlock.",
+        ["tool"],
+    )
     agent_sdk_tool_calls_total = prometheus_client.Counter(
         "agent_sdk_tool_calls_total",
         "Total tool calls by tool name.",
@@ -362,6 +387,10 @@ if _enabled:
         "agent_sdk_query_duration_seconds",
         "Raw SDK query time in seconds inside run_query().",
     )
+    agent_sdk_query_error_duration_seconds = prometheus_client.Histogram(
+        "agent_sdk_query_error_duration_seconds",
+        "Wall-clock seconds for run_query() calls that end in error.",
+    )
     agent_startup_duration_seconds = prometheus_client.Gauge(
         "agent_startup_duration_seconds",
         "Time from process start to ready state in seconds.",
@@ -374,6 +403,10 @@ if _enabled:
     agent_session_age_seconds = prometheus_client.Histogram(
         "agent_session_age_seconds",
         "Age of a session in seconds when evicted from the LRU cache.",
+    )
+    agent_session_idle_seconds = prometheus_client.Histogram(
+        "agent_session_idle_seconds",
+        "Seconds a session was idle before being resumed.",
     )
     agent_session_evictions_total = prometheus_client.Counter(
         "agent_session_evictions_total",

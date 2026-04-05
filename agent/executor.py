@@ -42,14 +42,17 @@ from metrics import (
     agent_sdk_errors_total,
     agent_sdk_messages_per_query,
     agent_sdk_query_duration_seconds,
+    agent_sdk_query_error_duration_seconds,
     agent_sdk_result_errors_total,
     agent_sdk_session_duration_seconds,
     agent_sdk_tokens_per_query,
     agent_sdk_tool_calls_per_query,
     agent_sdk_tool_calls_total,
+    agent_sdk_tool_duration_seconds,
     agent_sdk_tool_errors_total,
     agent_session_age_seconds,
     agent_session_evictions_total,
+    agent_session_idle_seconds,
     agent_session_starts_total,
     agent_stderr_lines_per_task,
     agent_task_cancellations_total,
@@ -252,6 +255,7 @@ async def run_query(
     _query_start = time.monotonic()
     _message_count = 0
     _tool_names: dict[str, str] = {}  # tool_use_id → tool name
+    _tool_start_times: dict[str, float] = {}  # tool_use_id → monotonic start
     _last_total_tokens = 0
     _session_start = time.monotonic()
     try:
@@ -266,13 +270,19 @@ async def run_query(
                             log_entry("agent", block.text, session_id)
                         elif isinstance(block, ToolUseBlock):
                             _tool_names[block.id] = block.name
+                            _tool_start_times[block.id] = time.monotonic()
                             if agent_sdk_tool_calls_total is not None:
                                 agent_sdk_tool_calls_total.labels(tool=block.name).inc()
                             log_tool_event("tool_use", block, session_id, model=model)
                         elif isinstance(block, ToolResultBlock):
+                            tool_name = _tool_names.get(block.tool_use_id, "unknown")
                             if block.is_error and agent_sdk_tool_errors_total is not None:
-                                tool_name = _tool_names.get(block.tool_use_id, "unknown")
                                 agent_sdk_tool_errors_total.labels(tool=tool_name).inc()
+                            _t_start = _tool_start_times.pop(block.tool_use_id, None)
+                            if _t_start is not None and agent_sdk_tool_duration_seconds is not None:
+                                agent_sdk_tool_duration_seconds.labels(tool=tool_name).observe(
+                                    time.monotonic() - _t_start
+                                )
                             log_tool_event("tool_result", block, session_id, model=model)
                     try:
                         usage = await client.get_context_usage()
@@ -299,10 +309,14 @@ async def run_query(
                 elif isinstance(message, ResultMessage) and message.is_error:
                     if agent_sdk_result_errors_total is not None:
                         agent_sdk_result_errors_total.inc()
+                    if agent_sdk_query_error_duration_seconds is not None:
+                        agent_sdk_query_error_duration_seconds.observe(time.monotonic() - _query_start)
                     raise RuntimeError("\n".join(message.errors or []))
     except (OSError, ConnectionError):
         if agent_sdk_client_errors_total is not None:
             agent_sdk_client_errors_total.inc()
+        if agent_sdk_query_error_duration_seconds is not None:
+            agent_sdk_query_error_duration_seconds.observe(time.monotonic() - _query_start)
         raise
     if agent_sdk_session_duration_seconds is not None:
         agent_sdk_session_duration_seconds.observe(time.monotonic() - _session_start)
@@ -334,6 +348,8 @@ async def _run_inner(prompt: str, session_id: str, sessions: OrderedDict[str, fl
     if agent_model_requests_total is not None:
         agent_model_requests_total.labels(model=resolved_model or "default").inc()
     is_new = session_id not in sessions
+    if not is_new and agent_session_idle_seconds is not None:
+        agent_session_idle_seconds.observe(time.monotonic() - sessions[session_id])
     if agent_session_starts_total is not None:
         agent_session_starts_total.labels(type="new" if is_new else "resumed").inc()
 

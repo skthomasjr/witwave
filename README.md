@@ -158,13 +158,16 @@ When `METRICS_ENABLED` is set, Prometheus metrics are served at `/metrics`.
 | `agent_agenda_running_items`                       | Gauge     | _(none)_          | Number of agenda items currently executing                            |
 | `agent_agenda_runs_total`                          | Counter   | `name`, `status`  | Total agenda item executions; `status` is `success` or `error`        |
 | `agent_agenda_skips_total`                         | Counter   | `name`            | Total agenda item skips due to previous run still in progress         |
+| `agent_bus_consumer_idle_seconds`                  | Histogram | _(none)_          | Idle time between consecutive bus worker processing cycles            |
 | `agent_bus_dedup_total`                            | Counter   | `kind`            | Total messages dropped by try_send() due to pending same-kind message |
+| `agent_bus_error_processing_duration_seconds`      | Histogram | `kind`            | Wall-clock seconds for bus messages that end in error                 |
 | `agent_bus_errors_total`                           | Counter   | _(none)_          | Total unhandled errors in the bus worker                              |
 | `agent_bus_last_processed_timestamp_seconds`       | Gauge     | _(none)_          | Unix epoch of the most recent message processed by the bus worker     |
 | `agent_bus_messages_total`                         | Counter   | `kind`            | Total messages processed through the message bus                      |
 | `agent_bus_processing_duration_seconds`            | Histogram | `kind`            | End-to-end processing time for each bus message                       |
+| `agent_bus_pending_kinds`                          | Gauge     | _(none)_          | Number of distinct message kinds currently queued in the bus          |
 | `agent_bus_queue_depth`                            | Gauge     | _(none)_          | Current depth of the message bus queue                                |
-| `agent_bus_wait_seconds`                           | Histogram | _(none)_          | Seconds a message waited in the bus queue before processing           |
+| `agent_bus_wait_seconds`                           | Histogram | `kind`            | Seconds a message waited in the bus queue before processing           |
 | `agent_concurrent_queries`                         | Gauge     | _(none)_          | Number of run() calls currently in flight                             |
 | `agent_context_exhaustion_total`                   | Counter   | _(none)_          | Total context window exhaustion events (usage >= 100%)                |
 | `agent_context_tokens`                             | Histogram | _(none)_          | Absolute token count from get_context_usage() per SDK turn            |
@@ -199,14 +202,17 @@ When `METRICS_ENABLED` is set, Prometheus metrics are served at `/metrics`.
 | `agent_sdk_tokens_per_query`                       | Histogram | _(none)_          | Aggregate token count from final get_context_usage() per run_query()  |
 | `agent_sdk_tool_calls_per_query`                   | Histogram | _(none)_          | Number of tool calls per run_query() invocation                       |
 | `agent_sdk_tool_calls_total`                       | Counter   | `tool`            | Total tool calls by tool name                                         |
+| `agent_sdk_tool_duration_seconds`                  | Histogram | `tool`            | Wall-clock seconds per tool call from ToolUseBlock to ToolResultBlock |
 | `agent_sdk_tool_errors_total`                      | Counter   | `tool`            | Total tool execution errors by tool name                              |
 | `agent_sdk_messages_per_query`                     | Histogram | _(none)_          | Number of SDK messages received per run_query() call                  |
 | `agent_sdk_query_duration_seconds`                 | Histogram | _(none)_          | Raw SDK query time in seconds inside run_query()                      |
+| `agent_sdk_query_error_duration_seconds`           | Histogram | _(none)_          | Wall-clock seconds for run_query() calls that end in error            |
 | `agent_sdk_result_errors_total`                    | Counter   | _(none)_          | Total SDK ResultMessage errors returned during run_query()            |
 | `agent_sdk_session_duration_seconds`               | Histogram | _(none)_          | Raw SDK connection lifetime in seconds (ClaudeSDKClient block)        |
 | `agent_startup_duration_seconds`                   | Gauge     | _(none)_          | Time from process start to ready state in seconds                     |
 | `agent_stderr_lines_per_task`                      | Histogram | _(none)_          | Number of SDK stderr lines captured per run() invocation              |
 | `agent_session_age_seconds`                        | Histogram | _(none)_          | Age of a session in seconds when evicted from the LRU cache           |
+| `agent_session_idle_seconds`                       | Histogram | _(none)_          | Seconds a session was idle before being resumed                       |
 | `agent_session_evictions_total`                    | Counter   | _(none)_          | Total session evictions due to LRU cap                                |
 | `agent_session_starts_total`                       | Counter   | `type`            | Total session starts; `type` is `new` or `resumed`                    |
 | `agent_task_cancellations_total`                   | Counter   | _(none)_          | Total task cancellation requests                                      |
