@@ -56,7 +56,7 @@ compatibility:
 The core platform is the agent runtime. The following support workloads are on the roadmap as the platform matures:
 
 - **UI** — a lightweight web interface for monitoring agent activity, reviewing logs, triggering agenda items, and
-  managing TODO.md — aimed at the individual and small-team audience
+  managing GitHub Issues — aimed at the individual and small-team audience
 - **Shared memory service** — a structured key-value store accessible to all agents on the team, replacing the current
   flat markdown memory files for data that requires reliable read/write semantics (see F-003)
 - **Metrics aggregation** — a Prometheus-compatible scrape target and optional Grafana dashboard for teams running
