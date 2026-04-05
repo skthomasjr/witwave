@@ -1,0 +1,12 @@
+**/.claude/agenda/.checkpoints/
+**/.claude/backups/
+**/.claude/memory/
+**/.claude/mcp.json
+**/.claude/plans/
+**/.claude/projects/
+**/.claude/session-env/
+**/.claude/sessions/
+**/.claude/shell-snapshots/
+**/.claude/telemetry/
+**/logs/
+**/settings.local.json

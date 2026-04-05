@@ -1,0 +1,45 @@
+services:
+  iris:
+    image: claude-agent:latest
+    ports:
+      - "8000:8000"
+    environment:
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+      AGENT_NAME: iris
+      CLAUDE_MODEL: claude-opus-4-6
+    volumes:
+      - ./.agents/iris/agent.md:/home/agent/agent.md:ro
+      - ./.agents/iris/.claude:/home/agent/.claude
+      - ./.agents/iris/logs:/home/agent/logs
+      - .:/home/agent/workspace/source/autonomous-agent
+      - ./.agents/manifest.json:/home/agent/manifest.json:ro
+
+  nova:
+    image: claude-agent:latest
+    ports:
+      - "8001:8000"
+    environment:
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+      AGENT_NAME: nova
+      CLAUDE_MODEL: claude-opus-4-6
+    volumes:
+      - ./.agents/nova/agent.md:/home/agent/agent.md:ro
+      - ./.agents/nova/.claude:/home/agent/.claude
+      - ./.agents/nova/logs:/home/agent/logs
+      - .:/home/agent/workspace/source/autonomous-agent
+      - ./.agents/manifest.json:/home/agent/manifest.json:ro
+
+  kira:
+    image: claude-agent:latest
+    ports:
+      - "8002:8000"
+    environment:
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+      AGENT_NAME: kira
+      CLAUDE_MODEL: claude-opus-4-6
+    volumes:
+      - ./.agents/kira/agent.md:/home/agent/agent.md:ro
+      - ./.agents/kira/.claude:/home/agent/.claude
+      - ./.agents/kira/logs:/home/agent/logs
+      - .:/home/agent/workspace/source/autonomous-agent
+      - ./.agents/manifest.json:/home/agent/manifest.json:ro

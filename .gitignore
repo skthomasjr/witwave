@@ -1,0 +1,30 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+
+# Node
+node_modules/
+
+# Logs
+*.log
+
+# Virtual environments
+.venv/
+
+# Agent runtime artifacts
+*.jsonl
+.checkpoints/
