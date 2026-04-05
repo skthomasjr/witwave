@@ -6,17 +6,17 @@ schedule: "0 * * * *"
 enabled: true
 ---
 
-Review the source code in `~/workspace` and update
-`~/workspace/TODO.md`.
+Review the source code in the repo root and update
+`the repo root/TODO.md`.
 
 Steps:
 
 1. Run `/todo lock reviewing iris` to acquire the lock. If the skill reports the file is locked by another agent, abort
    — do not proceed.
-2. Read `~/workspace/README.md` and `~/workspace/CLAUDE.md` to
+2. Read `the repo root/README.md` and `the repo root/CLAUDE.md` to
    understand the purpose, architecture, and intended behavior of the system. Use this as the lens for the entire review
    — evaluate code against what it is supposed to do, not just whether it is technically correct in isolation.
-3. Read all source files under `~/workspace/` using the glob pattern `**/*.py` and also read
+3. Read all source files under `the repo root/` using the glob pattern `**/*.py` and also read
    `Dockerfile`.
 4. Perform a deep review of the code. For each file, read and reason about it carefully. Evaluate across four
    dimensions:

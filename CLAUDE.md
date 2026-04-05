@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Repo Root
+
+The repo root is the directory containing this file.
+
 ## Project Overview
 
 autonomous-agent is an autonomous agent built on the Claude Agent SDK — persistent, self-directed, with its own

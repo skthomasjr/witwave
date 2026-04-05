@@ -8,15 +8,15 @@ Steps:
 2. Run prettier to format all Markdown files, which aligns table columns and normalises whitespace:
 
    ```sh
-   find /home/agent/workspace -name "*.md" | \
-     xargs prettier --config /home/agent/workspace/.prettierrc.yaml --write
+   find the repo root/ -name "*.md" | \
+     xargs prettier --config the repo root/.prettierrc.yaml --write
    ```
 
 3. Run markdownlint across all Markdown files using the repo's config:
 
    ```sh
-   find /home/agent/workspace -name "*.md" | \
-     xargs markdownlint --config /home/agent/workspace/.markdownlint.yaml
+   find the repo root/ -name "*.md" | \
+     xargs markdownlint --config the repo root/.markdownlint.yaml
    ```
 
 4. For each violation, read the affected file and fix the issue in place. Common fixes:

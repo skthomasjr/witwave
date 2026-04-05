@@ -8,11 +8,11 @@ Steps:
 2. Run yamllint across all YAML files using the repo's config:
 
    ```sh
-   yamllint -c ~/workspace/.yamllint.yaml \
-     ~/workspace/**/*.yml \
-     ~/workspace/**/*.yaml \
-     ~/workspace/*.yml \
-     ~/workspace/*.yaml
+   yamllint -c the repo root/.yamllint.yaml \
+     the repo root/**/*.yml \
+     the repo root/**/*.yaml \
+     the repo root/*.yml \
+     the repo root/*.yaml
    ```
 
 3. For each violation, read the affected file and fix the issue in place. Common fixes:

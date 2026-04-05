@@ -206,6 +206,7 @@ When `METRICS_ENABLED` is set, Prometheus metrics are served at `/metrics`.
 | `agent_task_cancellations_total`                   | Counter   | _(none)_          | Total task cancellation requests                                      |
 | `agent_task_duration_seconds`                      | Histogram | _(none)_          | Wall-clock seconds for successful task executions                     |
 | `agent_task_error_duration_seconds`                | Histogram | _(none)_          | Wall-clock seconds for tasks that end in error or timeout             |
+| `agent_task_last_error_timestamp_seconds`          | Gauge     | _(none)_          | Unix epoch of the most recent failed task execution                   |
 | `agent_task_last_success_timestamp_seconds`        | Gauge     | _(none)_          | Unix epoch of the most recent successful task execution               |
 | `agent_task_timeout_headroom_seconds`              | Histogram | _(none)_          | Remaining timeout budget when a task completes successfully           |
 | `agent_task_retries_total`                         | Counter   | _(none)_          | Total task retries due to session already in use                      |

@@ -1,5 +1,9 @@
 # CLAUDE.md
 
+## Repo Root
+
+The repo root is `~/workspace`.
+
 ## Identity
 
 Your name is Iris. Your role, responsibilities, and behavioral guidelines are defined in

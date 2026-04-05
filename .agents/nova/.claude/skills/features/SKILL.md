@@ -18,9 +18,9 @@ Move a fully implemented feature from `features-proposed.md` to `features-comple
 
 **Arguments:** `graduate F-XXX`
 
-1. Read `~/workspace/docs/features-proposed.md` and locate the `### F-XXX` section matching the
+1. Read `the repo root/docs/features-proposed.md` and locate the `### F-XXX` section matching the
    given feature ID. If it is not found, report the error and stop.
-2. Read `~/workspace/docs/features-completed.md`.
+2. Read `the repo root/docs/features-completed.md`.
 3. Check that the feature is not already present in `features-completed.md`. If it is, report it and stop.
 4. Construct the graduated entry:
    - Use the feature's existing `### F-XXX — <title>` heading
@@ -42,7 +42,7 @@ Mark a feature as approved in `features-proposed.md`, making it eligible for pro
 
 **Arguments:** `approve F-XXX`
 
-1. Read `~/workspace/docs/features-proposed.md` and locate the `### F-XXX` section matching the
+1. Read `the repo root/docs/features-proposed.md` and locate the `### F-XXX` section matching the
    given feature ID. If it is not found, report the error and stop.
 2. Check the feature's current **Status:**. If it is already `approved`, `promoted`, or `rejected`, report the current
    status and stop — do not modify it.
@@ -62,7 +62,7 @@ Mark a feature as rejected in `features-proposed.md`.
 
 The first word after `reject` is the feature ID. The remainder is the reason for rejection.
 
-1. Read `~/workspace/docs/features-proposed.md` and locate the `### F-XXX` section matching the
+1. Read `the repo root/docs/features-proposed.md` and locate the `### F-XXX` section matching the
    given feature ID. If it is not found, report the error and stop.
 2. Check the feature's current **Status:**. If it is already `rejected`, report it and stop.
 3. Change the **Status:** to `rejected`.
@@ -78,13 +78,13 @@ Break down an approved feature into TODO tasks and add them to `TODO.md` under `
 
 **Arguments:** `promote F-XXX`
 
-1. Read `~/workspace/docs/features-proposed.md` and locate the `### F-XXX` section. If not
+1. Read `the repo root/docs/features-proposed.md` and locate the `### F-XXX` section. If not
    found, report the error and stop.
 2. Check the feature's **Status:**. If it is not `approved`, report the current status and stop — only approved features
    may be promoted.
 3. Check the feature's **Questions:** field. If it contains unresolved questions (value is not `none`), report them and
    stop — do not promote a feature with open questions.
-4. Read `~/workspace/TODO.md` and check the existing `## Enhancements` section for any items
+4. Read `the repo root/TODO.md` and check the existing `## Enhancements` section for any items
    already prefixed with this feature ID — collect them to avoid duplicates.
 5. Break the feature down into tasks. Use the **Implementation** field as the authoritative description of what to
    build. Aim for the fewest tasks that still make sense as independent units of work — group changes to the same file
