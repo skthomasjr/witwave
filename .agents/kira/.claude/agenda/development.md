@@ -41,9 +41,9 @@ Steps:
 9. Review the change critically before considering it done. Re-read the modified file in full. Ask: Does this fix
    actually solve the problem as described? Could it introduce a regression elsewhere? Are there edge cases the fix
    doesn't handle? Does it interact with any other component in an unexpected way? If you find a problem, revise the
-   fix. Do not mark the item complete until you are confident the change is correct and does not introduce new issues.
+   fix. Do not close the issue until you are confident the change is correct and does not introduce new issues.
 10. Run `/lint <file1> [file2 ...]` on all files you modified. If lint reports errors it cannot auto-fix, fix them
-    manually before proceeding. Do not mark the item complete while lint errors remain.
+    manually before proceeding. Do not close the issue while lint errors remain.
 11. Evaluate whether the change warrants any documentation updates. Read `README.md`, `CLAUDE.md`, and any relevant
     files under `docs/` and ask: does this change introduce new behavior, configuration, environment variables, files,
     or conventions that a developer or agent would need to know about? If so, make the minimal necessary updates —
