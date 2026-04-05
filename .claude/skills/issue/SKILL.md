@@ -80,7 +80,7 @@ List open issues, optionally filtered.
 Use the Bash tool to list issues:
 
 ```bash
-gh issuelist \
+gh issue list \
   --repo skthomasjr/autonomous-agent \
   --label "<label-filters>" \
   --json number,title,labels,assignees,createdAt \
@@ -100,7 +100,7 @@ Claim an issue — mark it as in-progress by the specified agent.
 1. Use the Bash tool to fetch the current issue body:
 
 ```bash
-gh issueview <number> \
+gh issue view <number> \
   --repo skthomasjr/autonomous-agent \
   --json body,labels --jq '{body: .body, labels: [.labels[].name]}'
 ```
@@ -110,7 +110,7 @@ gh issueview <number> \
 4. Apply the `status/in-progress` label and remove `status/pending` or `status/approved` if present:
 
 ```bash
-gh issueedit <number> \
+gh issue edit <number> \
   --repo skthomasjr/autonomous-agent \
   --body "<updated body>" \
   --add-label "status/in-progress" \
@@ -120,7 +120,7 @@ gh issueedit <number> \
 5. Post a comment:
 
 ```bash
-gh issuecomment <number> \
+gh issue comment <number> \
   --repo skthomasjr/autonomous-agent \
   --body "[<agent>] Claimed — status/in-progress"
 ```
@@ -138,7 +138,7 @@ Post a comment on an issue.
 Use the Bash tool:
 
 ```bash
-gh issuecomment <number> \
+gh issue comment <number> \
   --repo skthomasjr/autonomous-agent \
   --body "<message>"
 ```
@@ -156,7 +156,7 @@ Close an issue with a final comment.
 1. Post the closing comment:
 
 ```bash
-gh issuecomment <number> \
+gh issue comment <number> \
   --repo skthomasjr/autonomous-agent \
   --body "<message>"
 ```
@@ -164,7 +164,7 @@ gh issuecomment <number> \
 2. Remove the `status/in-progress` label and close the issue:
 
 ```bash
-gh issueclose <number> \
+gh issue close <number> \
   --repo skthomasjr/autonomous-agent \
   --remove-label "status/in-progress"
 ```
