@@ -35,7 +35,7 @@ Create a new task issue from the task template.
 4. Use the Bash tool to create the issue:
 
 ```bash
-GITHUB_TOKEN=$GITHUB_TOKEN_AUTONOMOUS_AGENT gh issue create \
+gh issue create \
   --repo skthomasjr/autonomous-agent \
   --title "<concise title derived from description>" \
   --label "<type-label>,<priority-label>,status/pending" \
@@ -60,7 +60,7 @@ Create a new question issue from the question template.
 4. Use the Bash tool to create the issue:
 
 ```bash
-GITHUB_TOKEN=$GITHUB_TOKEN_AUTONOMOUS_AGENT gh issue create \
+gh issue create \
   --repo skthomasjr/autonomous-agent \
   --title "<concise title derived from the question>" \
   --label "type/question" \
@@ -80,7 +80,7 @@ List open issues, optionally filtered.
 Use the Bash tool to list issues:
 
 ```bash
-GITHUB_TOKEN=$GITHUB_TOKEN_AUTONOMOUS_AGENT gh issue list \
+gh issuelist \
   --repo skthomasjr/autonomous-agent \
   --label "<label-filters>" \
   --json number,title,labels,assignees,createdAt \
@@ -100,7 +100,7 @@ Claim an issue — mark it as in-progress by the specified agent.
 1. Use the Bash tool to fetch the current issue body:
 
 ```bash
-GITHUB_TOKEN=$GITHUB_TOKEN_AUTONOMOUS_AGENT gh issue view <number> \
+gh issueview <number> \
   --repo skthomasjr/autonomous-agent \
   --json body,labels --jq '{body: .body, labels: [.labels[].name]}'
 ```
@@ -110,7 +110,7 @@ GITHUB_TOKEN=$GITHUB_TOKEN_AUTONOMOUS_AGENT gh issue view <number> \
 4. Apply the `status/in-progress` label and remove `status/pending` or `status/approved` if present:
 
 ```bash
-GITHUB_TOKEN=$GITHUB_TOKEN_AUTONOMOUS_AGENT gh issue edit <number> \
+gh issueedit <number> \
   --repo skthomasjr/autonomous-agent \
   --body "<updated body>" \
   --add-label "status/in-progress" \
@@ -120,7 +120,7 @@ GITHUB_TOKEN=$GITHUB_TOKEN_AUTONOMOUS_AGENT gh issue edit <number> \
 5. Post a comment:
 
 ```bash
-GITHUB_TOKEN=$GITHUB_TOKEN_AUTONOMOUS_AGENT gh issue comment <number> \
+gh issuecomment <number> \
   --repo skthomasjr/autonomous-agent \
   --body "[<agent>] Claimed — status/in-progress"
 ```
@@ -138,7 +138,7 @@ Post a comment on an issue.
 Use the Bash tool:
 
 ```bash
-GITHUB_TOKEN=$GITHUB_TOKEN_AUTONOMOUS_AGENT gh issue comment <number> \
+gh issuecomment <number> \
   --repo skthomasjr/autonomous-agent \
   --body "<message>"
 ```
@@ -156,7 +156,7 @@ Close an issue with a final comment.
 1. Post the closing comment:
 
 ```bash
-GITHUB_TOKEN=$GITHUB_TOKEN_AUTONOMOUS_AGENT gh issue comment <number> \
+gh issuecomment <number> \
   --repo skthomasjr/autonomous-agent \
   --body "<message>"
 ```
@@ -164,7 +164,7 @@ GITHUB_TOKEN=$GITHUB_TOKEN_AUTONOMOUS_AGENT gh issue comment <number> \
 2. Remove the `status/in-progress` label and close the issue:
 
 ```bash
-GITHUB_TOKEN=$GITHUB_TOKEN_AUTONOMOUS_AGENT gh issue close <number> \
+gh issueclose <number> \
   --repo skthomasjr/autonomous-agent \
   --remove-label "status/in-progress"
 ```
