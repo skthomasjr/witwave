@@ -7,12 +7,12 @@ schedule: "30 */6 * * *"
 enabled: true
 ---
 
-Check for newly approved features in `~/workspace/source/autonomous-agent/docs/features-proposed.md` and promote them
-into `~/workspace/source/autonomous-agent/TODO.md`.
+Check for newly approved features in `~/workspace/docs/features-proposed.md` and promote them
+into `~/workspace/TODO.md`.
 
 Steps:
 
-1. Read `~/workspace/source/autonomous-agent/docs/features-proposed.md`. Collect all feature proposals whose **Status**
+1. Read `~/workspace/docs/features-proposed.md`. Collect all feature proposals whose **Status**
    is `approved`. If there are none, stop — do not proceed.
 2. Run `/todo lock promoting nova` to acquire the lock. If the skill reports the file is locked by another agent, abort
    — do not proceed.

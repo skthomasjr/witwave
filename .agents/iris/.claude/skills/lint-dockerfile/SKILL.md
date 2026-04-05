@@ -12,8 +12,8 @@ Steps:
 2. Run hadolint against the Dockerfile using the repo's config:
 
    ```sh
-   /tmp/hadolint --config ~/workspace/source/autonomous-agent/.hadolint.yaml \
-     ~/workspace/source/autonomous-agent/Dockerfile
+   /tmp/hadolint --config ~/workspace/.hadolint.yaml \
+     ~/workspace/Dockerfile
    ```
 
 3. For each violation, read the Dockerfile and fix the issue in place. Common fixes:

@@ -13,7 +13,7 @@ services:
       - ./.agents/iris/agent.md:/home/agent/agent.md:ro
       - ./.agents/iris/.claude:/home/agent/.claude
       - ./.agents/iris/logs:/home/agent/logs
-      - .:/home/agent/workspace/source/autonomous-agent
+      - .:/home/agent/workspace
       - ./.agents/manifest.json:/home/agent/manifest.json:ro
 
   nova:
@@ -30,7 +30,7 @@ services:
       - ./.agents/nova/agent.md:/home/agent/agent.md:ro
       - ./.agents/nova/.claude:/home/agent/.claude
       - ./.agents/nova/logs:/home/agent/logs
-      - .:/home/agent/workspace/source/autonomous-agent
+      - .:/home/agent/workspace
       - ./.agents/manifest.json:/home/agent/manifest.json:ro
 
   kira:
@@ -47,5 +47,5 @@ services:
       - ./.agents/kira/agent.md:/home/agent/agent.md:ro
       - ./.agents/kira/.claude:/home/agent/.claude
       - ./.agents/kira/logs:/home/agent/logs
-      - .:/home/agent/workspace/source/autonomous-agent
+      - .:/home/agent/workspace
       - ./.agents/manifest.json:/home/agent/manifest.json:ro

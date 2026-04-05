@@ -50,6 +50,8 @@ from metrics import (
     agent_task_cancellations_total,
     agent_task_duration_seconds,
     agent_task_error_duration_seconds,
+    agent_task_last_error_timestamp_seconds,
+    agent_task_last_success_timestamp_seconds,
     agent_task_retries_total,
     agent_task_timeout_headroom_seconds,
     agent_tasks_total,
@@ -355,6 +357,8 @@ async def _run_inner(prompt: str, session_id: str, sessions: OrderedDict[str, fl
             agent_tasks_total.labels(status="timeout").inc()
         if agent_task_error_duration_seconds is not None:
             agent_task_error_duration_seconds.observe(time.monotonic() - _start)
+        if agent_task_last_error_timestamp_seconds is not None:
+            agent_task_last_error_timestamp_seconds.set(time.time())
         raise
     except Exception:
         if is_new and any("already in use" in line.lower() for line in stderr_lines):
@@ -370,12 +374,16 @@ async def _run_inner(prompt: str, session_id: str, sessions: OrderedDict[str, fl
                     agent_tasks_total.labels(status="timeout").inc()
                 if agent_task_error_duration_seconds is not None:
                     agent_task_error_duration_seconds.observe(time.monotonic() - _start)
+                if agent_task_last_error_timestamp_seconds is not None:
+                    agent_task_last_error_timestamp_seconds.set(time.time())
                 raise
             except Exception:
                 if agent_tasks_total is not None:
                     agent_tasks_total.labels(status="error").inc()
                 if agent_task_error_duration_seconds is not None:
                     agent_task_error_duration_seconds.observe(time.monotonic() - _start)
+                if agent_task_last_error_timestamp_seconds is not None:
+                    agent_task_last_error_timestamp_seconds.set(time.time())
                 raise
             _track_session(sessions, session_id)
         else:
@@ -383,10 +391,14 @@ async def _run_inner(prompt: str, session_id: str, sessions: OrderedDict[str, fl
                 agent_tasks_total.labels(status="error").inc()
             if agent_task_error_duration_seconds is not None:
                 agent_task_error_duration_seconds.observe(time.monotonic() - _start)
+            if agent_task_last_error_timestamp_seconds is not None:
+                agent_task_last_error_timestamp_seconds.set(time.time())
             raise
 
     if agent_tasks_total is not None:
         agent_tasks_total.labels(status="success").inc()
+    if agent_task_last_success_timestamp_seconds is not None:
+        agent_task_last_success_timestamp_seconds.set(time.time())
     if stderr_lines and agent_tasks_with_stderr_total is not None:
         agent_tasks_with_stderr_total.inc()
     if agent_stderr_lines_per_task is not None:

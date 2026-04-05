@@ -8,17 +8,17 @@ enabled: true
 ---
 
 Research the competitive landscape of autonomous agent products and update the docs in
-`~/workspace/source/autonomous-agent/docs/` with findings and proposals.
+`~/workspace/docs/` with findings and proposals.
 
 Steps:
 
-1. Read `~/workspace/source/autonomous-agent/README.md`, `~/workspace/source/autonomous-agent/CLAUDE.md`, and all files
-   under `~/workspace/source/autonomous-agent/docs/` to understand the current state and direction of the project. Pay
+1. Read `~/workspace/README.md`, `~/workspace/CLAUDE.md`, and all files
+   under `~/workspace/docs/` to understand the current state and direction of the project. Pay
    particular attention to `docs/product-vision.md` — it defines the target audience, deployment target (Kubernetes),
    and design principles. All feature proposals must be evaluated against this vision: does this feature serve the
    individual, the enterprise, or both? Does it align with Kubernetes-first deployment? Does it respect the principle
    that complexity is opt-in?
-2. Read all source files under `~/workspace/source/autonomous-agent/` using the glob pattern `**/*.py` and also read
+2. Read all source files under `~/workspace/` using the glob pattern `**/*.py` and also read
    `Dockerfile` and `docker-compose.yml` to understand what is already built and how it works. Form a clear picture of
    the current capabilities and limitations before researching anything external.
 3. Research the following products using WebSearch and WebFetch. Prefer primary sources — official docs, GitHub repos,
@@ -46,7 +46,7 @@ Steps:
    interesting? Would it fit naturally into the existing architecture without requiring a rewrite? Features that are
    nice-to-have, speculative, or primarily cosmetic should be discarded. Aim for quality over quantity — propose only
    features you would confidently recommend implementing next.
-6. Update `~/workspace/source/autonomous-agent/docs/competitive-landscape.md` with the following structure:
+6. Update `~/workspace/docs/competitive-landscape.md` with the following structure:
 
    ## Reference Products
 
@@ -61,7 +61,7 @@ Steps:
    - What users value most
    - Candidate features for this project (only those that passed critical evaluation)
 
-7. Update `~/workspace/source/autonomous-agent/docs/features-proposed.md` with feature proposals. The file contains only
+7. Update `~/workspace/docs/features-proposed.md` with feature proposals. The file contains only
    `## Feature Proposals` — one `### F-XXX` section per feature with these labeled fields:
 
    - **Status:** — `proposed`, `approved`, `rejected`, or `promoted`
@@ -76,7 +76,7 @@ Steps:
    entries based on the latest research.
 
 8. When a feature is fully implemented (all TODO items marked `[x]`), move it to
-   `~/workspace/source/autonomous-agent/docs/features-completed.md` — do not delete it from `features-proposed.md` until
+   `~/workspace/docs/features-completed.md` — do not delete it from `features-proposed.md` until
    it appears there.
 9. Run `/lint-markdown` to fix any markdown violations in the files you modified.
 10. Do not modify any source files, `TODO.md`, or any file outside of `docs/`. Do not do anything else.

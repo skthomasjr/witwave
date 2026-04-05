@@ -8,11 +8,11 @@ Steps:
 2. Run yamllint across all YAML files using the repo's config:
 
    ```sh
-   yamllint -c ~/workspace/source/autonomous-agent/.yamllint.yaml \
-     ~/workspace/source/autonomous-agent/**/*.yml \
-     ~/workspace/source/autonomous-agent/**/*.yaml \
-     ~/workspace/source/autonomous-agent/*.yml \
-     ~/workspace/source/autonomous-agent/*.yaml
+   yamllint -c ~/workspace/.yamllint.yaml \
+     ~/workspace/**/*.yml \
+     ~/workspace/**/*.yaml \
+     ~/workspace/*.yml \
+     ~/workspace/*.yaml
    ```
 
 3. For each violation, read the affected file and fix the issue in place. Common fixes:

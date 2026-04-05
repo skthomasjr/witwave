@@ -7,22 +7,22 @@ Steps:
 2. Run ruff lint with auto-fix across all Python files:
 
    ```sh
-   ruff check --fix --config ~/workspace/source/autonomous-agent/.ruff.toml \
-     ~/workspace/source/autonomous-agent/agent/
+   ruff check --fix --config ~/workspace/.ruff.toml \
+     ~/workspace/agent/
    ```
 
 3. Run ruff format across all Python files:
 
    ```sh
-   ruff format --config ~/workspace/source/autonomous-agent/.ruff.toml \
-     ~/workspace/source/autonomous-agent/agent/
+   ruff format --config ~/workspace/.ruff.toml \
+     ~/workspace/agent/
    ```
 
 4. Re-run ruff check (without --fix) to surface any remaining violations that could not be auto-fixed:
 
    ```sh
-   ruff check --config ~/workspace/source/autonomous-agent/.ruff.toml \
-     ~/workspace/source/autonomous-agent/agent/
+   ruff check --config ~/workspace/.ruff.toml \
+     ~/workspace/agent/
    ```
 
 5. For any remaining violations that ruff could not auto-fix, read the affected file and fix manually. Common cases:

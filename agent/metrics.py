@@ -72,6 +72,8 @@ agent_session_starts_total: prometheus_client.Counter | None = None
 agent_task_cancellations_total: prometheus_client.Counter | None = None
 agent_task_duration_seconds: prometheus_client.Histogram | None = None
 agent_task_error_duration_seconds: prometheus_client.Histogram | None = None
+agent_task_last_error_timestamp_seconds: prometheus_client.Gauge | None = None
+agent_task_last_success_timestamp_seconds: prometheus_client.Gauge | None = None
 agent_task_timeout_headroom_seconds: prometheus_client.Histogram | None = None
 agent_uptime_seconds: prometheus_client.Gauge | None = None
 agent_task_retries_total: prometheus_client.Counter | None = None
@@ -363,6 +365,14 @@ if _enabled:
     agent_task_error_duration_seconds = prometheus_client.Histogram(
         "agent_task_error_duration_seconds",
         "Wall-clock seconds for tasks that end in error or timeout.",
+    )
+    agent_task_last_error_timestamp_seconds = prometheus_client.Gauge(
+        "agent_task_last_error_timestamp_seconds",
+        "Unix epoch of the most recent failed task execution.",
+    )
+    agent_task_last_success_timestamp_seconds = prometheus_client.Gauge(
+        "agent_task_last_success_timestamp_seconds",
+        "Unix epoch of the most recent successful task execution.",
     )
     agent_task_timeout_headroom_seconds = prometheus_client.Histogram(
         "agent_task_timeout_headroom_seconds",
