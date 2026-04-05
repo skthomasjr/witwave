@@ -73,6 +73,7 @@ agent_sdk_tool_errors_total: prometheus_client.Counter | None = None
 agent_sdk_messages_per_query: prometheus_client.Histogram | None = None
 agent_sdk_result_errors_total: prometheus_client.Counter | None = None
 agent_sdk_session_duration_seconds: prometheus_client.Histogram | None = None
+agent_sdk_subprocess_spawn_duration_seconds: prometheus_client.Histogram | None = None
 agent_sdk_query_duration_seconds: prometheus_client.Histogram | None = None
 agent_sdk_query_error_duration_seconds: prometheus_client.Histogram | None = None
 agent_startup_duration_seconds: prometheus_client.Gauge | None = None
@@ -382,6 +383,10 @@ if _enabled:
     agent_sdk_session_duration_seconds = prometheus_client.Histogram(
         "agent_sdk_session_duration_seconds",
         "Raw SDK connection lifetime in seconds (async with ClaudeSDKClient block).",
+    )
+    agent_sdk_subprocess_spawn_duration_seconds = prometheus_client.Histogram(
+        "agent_sdk_subprocess_spawn_duration_seconds",
+        "Time to initialize the ClaudeSDKClient subprocess.",
     )
     agent_sdk_query_duration_seconds = prometheus_client.Histogram(
         "agent_sdk_query_duration_seconds",

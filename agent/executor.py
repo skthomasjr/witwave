@@ -45,6 +45,7 @@ from metrics import (
     agent_sdk_query_error_duration_seconds,
     agent_sdk_result_errors_total,
     agent_sdk_session_duration_seconds,
+    agent_sdk_subprocess_spawn_duration_seconds,
     agent_sdk_tokens_per_query,
     agent_sdk_tool_calls_per_query,
     agent_sdk_tool_calls_total,
@@ -140,13 +141,14 @@ def _track_session(sessions: OrderedDict[str, float], session_id: str) -> None:
     """Record session_id access, evicting the least-recently-used entry if the cap is reached."""
     if session_id in sessions:
         sessions.move_to_end(session_id)
+        sessions[session_id] = time.monotonic()
         return
     if len(sessions) >= MAX_SESSIONS:
-        _evicted_id, created_at = sessions.popitem(last=False)  # evict oldest (least-recently-used)
+        _evicted_id, last_used_at = sessions.popitem(last=False)  # evict oldest (least-recently-used)
         if agent_session_evictions_total is not None:
             agent_session_evictions_total.inc()
         if agent_session_age_seconds is not None:
-            agent_session_age_seconds.observe(time.monotonic() - created_at)
+            agent_session_age_seconds.observe(time.monotonic() - last_used_at)
     sessions[session_id] = time.monotonic()
     if agent_active_sessions is not None:
         agent_active_sessions.set(len(sessions))
@@ -259,7 +261,10 @@ async def run_query(
     _last_total_tokens = 0
     _session_start = time.monotonic()
     try:
+        _spawn_start = time.monotonic()
         async with ClaudeSDKClient(options=options) as client:
+            if agent_sdk_subprocess_spawn_duration_seconds is not None:
+                agent_sdk_subprocess_spawn_duration_seconds.observe(time.monotonic() - _spawn_start)
             await client.query(prompt)
             async for message in client.receive_response():
                 _message_count += 1

@@ -209,6 +209,7 @@ When `METRICS_ENABLED` is set, Prometheus metrics are served at `/metrics`.
 | `agent_sdk_query_error_duration_seconds`           | Histogram | _(none)_          | Wall-clock seconds for run_query() calls that end in error            |
 | `agent_sdk_result_errors_total`                    | Counter   | _(none)_          | Total SDK ResultMessage errors returned during run_query()            |
 | `agent_sdk_session_duration_seconds`               | Histogram | _(none)_          | Raw SDK connection lifetime in seconds (ClaudeSDKClient block)        |
+| `agent_sdk_subprocess_spawn_duration_seconds`      | Histogram | _(none)_          | Time to initialize the ClaudeSDKClient subprocess                     |
 | `agent_startup_duration_seconds`                   | Gauge     | _(none)_          | Time from process start to ready state in seconds                     |
 | `agent_stderr_lines_per_task`                      | Histogram | _(none)_          | Number of SDK stderr lines captured per run() invocation              |
 | `agent_session_age_seconds`                        | Histogram | _(none)_          | Age of a session in seconds when evicted from the LRU cache           |
