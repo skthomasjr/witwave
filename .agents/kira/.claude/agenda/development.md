@@ -51,7 +51,7 @@ Steps:
     expand documentation beyond what the change directly warrants.
 12. Close the issue using `/github-issue close <number> "Resolved by kira"`.
 13. If the issue body contains a feature ID (e.g. `[F-007]`), run
-    `gh search issues "[F-007]" --state open --repo skthomasjr/autonomous-agent` to check whether any issues for that
+    `gh search issues "[F-007]" --state open --repo $GH_REPO` to check whether any issues for that
     feature are still open. If none remain open, run `/features graduate F-XXX` to move it from `features-proposed.md`
     to `features-completed.md`.
 14. Check whether any approved issues remain open. If none remain across all types, run

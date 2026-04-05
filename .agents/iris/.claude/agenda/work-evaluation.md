@@ -57,7 +57,7 @@ Steps:
    `/github-issue close <number> "No longer applicable — resolved without a direct fix"`.
 
 6. For each new finding from the code review, first check whether an open issue already covers it by running
-   `gh search issues "<filename> <brief keyword>" --state open --repo skthomasjr/autonomous-agent`. Only create an
+   `gh search issues "<filename> <brief keyword>" --state open --repo $GH_REPO`. Only create an
    issue if no equivalent open issue exists.
    Create using `/github-issue create task status/approved`. The issue should be self-contained and readable without any
    other context. Include:
