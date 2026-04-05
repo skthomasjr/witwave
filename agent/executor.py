@@ -16,10 +16,12 @@ from bus import Message
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from claude_agent_sdk.types import AssistantMessage, ResultMessage, TextBlock, ToolResultBlock, ToolUseBlock
 from metrics import (
+    agent_a2a_last_request_timestamp_seconds,
     agent_a2a_request_duration_seconds,
     agent_a2a_requests_total,
     agent_active_sessions,
     agent_concurrent_queries,
+    agent_context_exhaustion_total,
     agent_context_tokens,
     agent_context_usage_percent,
     agent_context_warnings_total,
@@ -35,11 +37,14 @@ from metrics import (
     agent_prompt_length_bytes,
     agent_response_length_bytes,
     agent_running_tasks,
+    agent_sdk_client_errors_total,
     agent_sdk_context_fetch_errors_total,
     agent_sdk_errors_total,
     agent_sdk_messages_per_query,
     agent_sdk_query_duration_seconds,
     agent_sdk_result_errors_total,
+    agent_sdk_session_duration_seconds,
+    agent_sdk_tokens_per_query,
     agent_sdk_tool_calls_per_query,
     agent_sdk_tool_calls_total,
     agent_sdk_tool_errors_total,
@@ -247,52 +252,66 @@ async def run_query(
     _query_start = time.monotonic()
     _message_count = 0
     _tool_names: dict[str, str] = {}  # tool_use_id → tool name
-    async with ClaudeSDKClient(options=options) as client:
-        await client.query(prompt)
-        async for message in client.receive_response():
-            _message_count += 1
-            if isinstance(message, AssistantMessage):
-                for block in message.content:
-                    if isinstance(block, TextBlock):
-                        collected.append(block.text)
-                        log_entry("agent", block.text, session_id)
-                    elif isinstance(block, ToolUseBlock):
-                        _tool_names[block.id] = block.name
-                        if agent_sdk_tool_calls_total is not None:
-                            agent_sdk_tool_calls_total.labels(tool=block.name).inc()
-                        log_tool_event("tool_use", block, session_id, model=model)
-                    elif isinstance(block, ToolResultBlock):
-                        if block.is_error and agent_sdk_tool_errors_total is not None:
-                            tool_name = _tool_names.get(block.tool_use_id, "unknown")
-                            agent_sdk_tool_errors_total.labels(tool=tool_name).inc()
-                        log_tool_event("tool_result", block, session_id, model=model)
-                try:
-                    usage = await client.get_context_usage()
-                    pct = usage.get("percentage", 0.0)
-                    if agent_context_tokens is not None:
-                        agent_context_tokens.observe(usage.get("totalTokens", 0))
-                    if agent_context_usage_percent is not None:
-                        agent_context_usage_percent.observe(pct)
-                    if pct >= CONTEXT_USAGE_WARN_THRESHOLD * 100:
-                        if agent_context_warnings_total is not None:
-                            agent_context_warnings_total.inc()
-                        logger.warning(
-                            f"Session {session_id!r}: context usage {usage['percentage']:.1f}% "
-                            f"exceeds threshold {CONTEXT_USAGE_WARN_THRESHOLD * 100:.0f}%"
-                        )
-                        log_context_usage(usage, session_id)
-                except Exception as e:
-                    if agent_sdk_context_fetch_errors_total is not None:
-                        agent_sdk_context_fetch_errors_total.inc()
-                    logger.warning(f"Session {session_id!r}: get_context_usage failed: {e}")
-            elif isinstance(message, ResultMessage) and message.is_error:
-                if agent_sdk_result_errors_total is not None:
-                    agent_sdk_result_errors_total.inc()
-                raise RuntimeError("\n".join(message.errors or []))
+    _last_total_tokens = 0
+    _session_start = time.monotonic()
+    try:
+        async with ClaudeSDKClient(options=options) as client:
+            await client.query(prompt)
+            async for message in client.receive_response():
+                _message_count += 1
+                if isinstance(message, AssistantMessage):
+                    for block in message.content:
+                        if isinstance(block, TextBlock):
+                            collected.append(block.text)
+                            log_entry("agent", block.text, session_id)
+                        elif isinstance(block, ToolUseBlock):
+                            _tool_names[block.id] = block.name
+                            if agent_sdk_tool_calls_total is not None:
+                                agent_sdk_tool_calls_total.labels(tool=block.name).inc()
+                            log_tool_event("tool_use", block, session_id, model=model)
+                        elif isinstance(block, ToolResultBlock):
+                            if block.is_error and agent_sdk_tool_errors_total is not None:
+                                tool_name = _tool_names.get(block.tool_use_id, "unknown")
+                                agent_sdk_tool_errors_total.labels(tool=tool_name).inc()
+                            log_tool_event("tool_result", block, session_id, model=model)
+                    try:
+                        usage = await client.get_context_usage()
+                        pct = usage.get("percentage", 0.0)
+                        _last_total_tokens = usage.get("totalTokens", 0)
+                        if agent_context_tokens is not None:
+                            agent_context_tokens.observe(_last_total_tokens)
+                        if agent_context_usage_percent is not None:
+                            agent_context_usage_percent.observe(pct)
+                        if pct >= 100 and agent_context_exhaustion_total is not None:
+                            agent_context_exhaustion_total.inc()
+                        if pct >= CONTEXT_USAGE_WARN_THRESHOLD * 100:
+                            if agent_context_warnings_total is not None:
+                                agent_context_warnings_total.inc()
+                            logger.warning(
+                                f"Session {session_id!r}: context usage {usage['percentage']:.1f}% "
+                                f"exceeds threshold {CONTEXT_USAGE_WARN_THRESHOLD * 100:.0f}%"
+                            )
+                            log_context_usage(usage, session_id)
+                    except Exception as e:
+                        if agent_sdk_context_fetch_errors_total is not None:
+                            agent_sdk_context_fetch_errors_total.inc()
+                        logger.warning(f"Session {session_id!r}: get_context_usage failed: {e}")
+                elif isinstance(message, ResultMessage) and message.is_error:
+                    if agent_sdk_result_errors_total is not None:
+                        agent_sdk_result_errors_total.inc()
+                    raise RuntimeError("\n".join(message.errors or []))
+    except (OSError, ConnectionError):
+        if agent_sdk_client_errors_total is not None:
+            agent_sdk_client_errors_total.inc()
+        raise
+    if agent_sdk_session_duration_seconds is not None:
+        agent_sdk_session_duration_seconds.observe(time.monotonic() - _session_start)
     if agent_sdk_query_duration_seconds is not None:
         agent_sdk_query_duration_seconds.observe(time.monotonic() - _query_start)
     if agent_sdk_messages_per_query is not None:
         agent_sdk_messages_per_query.observe(_message_count)
+    if agent_sdk_tokens_per_query is not None:
+        agent_sdk_tokens_per_query.observe(_last_total_tokens)
     if agent_sdk_tool_calls_per_query is not None:
         agent_sdk_tool_calls_per_query.observe(len(_tool_names))
     if agent_text_blocks_per_query is not None:
@@ -447,6 +466,8 @@ class AgentExecutor(A2AAgentExecutor):
         finally:
             if agent_a2a_request_duration_seconds is not None:
                 agent_a2a_request_duration_seconds.observe(time.monotonic() - _exec_start)
+            if agent_a2a_last_request_timestamp_seconds is not None:
+                agent_a2a_last_request_timestamp_seconds.set(time.time())
             if task_id and task_id in self._running_tasks:
                 self._running_tasks.pop(task_id)
                 if agent_running_tasks is not None:

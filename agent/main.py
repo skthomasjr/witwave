@@ -21,6 +21,7 @@ from executor import AgentExecutor, mcp_config_watcher
 from heartbeat import heartbeat_runner
 from metrics import (
     agent_bus_errors_total,
+    agent_bus_last_processed_timestamp_seconds,
     agent_bus_messages_total,
     agent_bus_processing_duration_seconds,
     agent_bus_wait_seconds,
@@ -185,6 +186,8 @@ async def bus_worker(bus: MessageBus, executor: AgentExecutor) -> None:
         finally:
             if agent_bus_processing_duration_seconds is not None:
                 agent_bus_processing_duration_seconds.labels(kind=message.kind).observe(time.monotonic() - t0)
+            if agent_bus_last_processed_timestamp_seconds is not None:
+                agent_bus_last_processed_timestamp_seconds.set(time.time())
 
 
 async def _set_ready_when_started(server: uvicorn.Server) -> None:
