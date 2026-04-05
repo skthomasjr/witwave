@@ -84,8 +84,8 @@ Break down an approved feature into tasks and create GitHub Issues for each.
    may be promoted.
 3. Check the feature's **Questions:** field. If it contains unresolved questions (value is not `none`), report them and
    stop — do not promote a feature with open questions.
-4. Check for any existing open GitHub Issues tagged with this feature ID using
-   `gh issue list --search "[F-XXX]" --state open` to avoid creating duplicates.
+4. Check for any existing open GitHub Issues for this feature using
+   `gh search issues "[F-XXX]" --state open --repo skthomasjr/autonomous-agent` to avoid creating duplicates.
 5. Break the feature down into tasks. Use the **Implementation** field as the authoritative description of what to
    build. Aim for the fewest tasks that still make sense as independent units of work — group changes to the same file
    or logical concern into a single task.

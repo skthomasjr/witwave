@@ -27,7 +27,8 @@ Steps:
    single file, minimal side effects, smallest change.
 3. Fetch the full issue body using `gh issue view <number> --json body --jq '.body'` to read the description,
    file reference, and acceptance criteria.
-4. Claim the issue using `/github-issue claim <number> kira` to mark it in-progress.
+4. Claim the issue using `/github-issue claim <number> kira` to mark it in-progress. If the claim fails because the
+   issue is already claimed, return to step 1 and select the next candidate.
 5. Read `<repo-root>/README.md` and `<repo-root>/CLAUDE.md` to understand the purpose, architecture, and intended
    behavior of the system. Use this as the lens for the fix.
 6. If the issue body contains a feature ID (e.g. `[F-002]`), read `<repo-root>/docs/features-proposed.md` and locate
@@ -49,9 +50,10 @@ Steps:
     correct stale references, add new env vars or config options, update architecture descriptions. Do not rewrite or
     expand documentation beyond what the change directly warrants.
 12. Close the issue using `/github-issue close <number> "Resolved by kira"`.
-13. If the issue body contains a feature ID (e.g. `[F-007]`), check whether all GitHub Issues tagged with that feature
-    ID are now closed. If they are all closed, run `/features graduate F-XXX` to move it from `features-proposed.md`
-    to `features-completed.md`.
+13. If the issue body contains a feature ID (e.g. `[F-007]`), run
+    `gh search issues "[F-007]" --state open --repo skthomasjr/autonomous-agent` to check whether any issues for that
+    feature are still open. If none remain open, run `/features graduate F-XXX` to move it from
+    `features-proposed.md` to `features-completed.md`.
 14. Check whether any approved issues remain open. If none remain across all types, run
     `/delegate iris /run-agenda work-evaluation` to trigger a fresh evaluation immediately — do not wait for the next
     scheduled run.
