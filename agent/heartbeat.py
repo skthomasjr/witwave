@@ -195,4 +195,8 @@ async def heartbeat_runner(bus: MessageBus) -> None:
         logger.warning("Heartbeat directory watcher exited — directory deleted or unavailable. Retrying in 10s.")
         if agent_file_watcher_restarts_total is not None:
             agent_file_watcher_restarts_total.labels(watcher="heartbeat").inc()
+        if loop_task and not loop_task.done():
+            stop_event.set()
+            await loop_task
+            stop_event.clear()
         await asyncio.sleep(10)
