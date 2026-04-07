@@ -263,6 +263,7 @@ class ClaudeBackend:
 
     async def run_query(self, prompt: str, session_id: str, is_new: bool) -> list[str]:
         stderr_lines: list[str] = []
+        _query_start = time.monotonic()
 
         def capture_stderr(line: str) -> None:
             stderr_lines.append(line)
@@ -276,6 +277,8 @@ class ClaudeBackend:
             if is_new and any("already in use" in line.lower() for line in stderr_lines):
                 if agent_task_retries_total is not None:
                     agent_task_retries_total.inc()
+                if agent_sdk_query_error_duration_seconds is not None:
+                    agent_sdk_query_error_duration_seconds.labels(backend=self.id).observe(time.monotonic() - _query_start)
                 return await self._run_query(prompt, self._make_options(session_id, resume=True, stderr_fn=capture_stderr), session_id)
             raise
         finally:
