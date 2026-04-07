@@ -159,7 +159,7 @@ Steps:
 
    - **Type:** `feature`
    - **Priority:** `priority/p0` through `priority/p3`
-   - **Created by:** `<agent-name>`
+   - **Created by:** `<agent-name>` (value of `$AGENT_NAME` if set, otherwise `local-agent`)
    - **Description:** must include all of the following sections:
 
      **Confidence:** `high | medium | low` — one sentence justification

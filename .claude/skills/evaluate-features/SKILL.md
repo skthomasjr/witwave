@@ -116,7 +116,7 @@ Steps:
    - **Title:** short and concrete — `"Add X to Y"` or `"Wire Z into W"`
    - **Type:** `type/feature`
    - **Priority:** inherited from the feature issue
-   - **Created by:** `<agent-name>`
+   - **Created by:** `<agent-name>` (value of `$AGENT_NAME` if set, otherwise `local-agent`)
    - **Feature:** `#<feature-number>`
    - **Feature Theme:** `<theme-label>`
    - **Feature Slice:** closed-count + 1 for the first new task this run,
