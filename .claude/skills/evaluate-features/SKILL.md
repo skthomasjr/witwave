@@ -66,9 +66,9 @@ Steps:
 
    - **Open type/feature issues exist for the current theme/slice** — the
      current theme has not fully landed. Check the comment thread: if no
-     "waiting" comment exists for these issue numbers, post `"Waiting on
-     open type/feature issues for theme '<theme>' slice <N> before planning
-     next theme: #N, #N"`. Move on. Do not proceed to 2c.
+     "waiting" comment exists for these issue numbers, run
+     `/github-issue comment <number> "Waiting on open type/feature issues for theme '<theme>' slice <N> before planning next theme: #N, #N"`.
+     Move on. Do not proceed to 2c.
 
    - **Fully implemented** — all type/feature issues across all themes and
      slices are closed AND all acceptance criteria are met in the source. Run
@@ -82,9 +82,8 @@ Steps:
      1. Fetch the issue body (`gh issue view <number> --json body --jq '.body'`),
         update its `**Status:**` line to `status/needs-more-info`, then apply
         the updated body and labels in one call:
-        `gh issue edit <number> --body "<updated body>" --add-label "status/needs-more-info" --remove-label "status/approved"`
-     2. Post: `"Core complete — handed off to evaluate-gaps / evaluate-bugs.
-        Relabel to status/approved to re-enter this queue."`
+        `gh issue edit <number> --body "<updated body>" --add-label "status/needs-more-info" --remove-label "status/approved,status/in-progress,status/pending"`
+     2. Run `/github-issue comment <number> "Core complete — handed off to evaluate-gaps / evaluate-bugs. Relabel to status/approved to re-enter this queue."`
      Move on.
 
    - **Not started or partially implemented** — all type/feature issues for
@@ -150,8 +149,7 @@ Steps:
    > - [ ] `AGENT_WEBHOOK_URL` env var populates the field
    > - [ ] An invalid URL raises `ValueError` on config load
 
-   **f. Post a comment on the feature issue:**
-   `"Theme '<label>' — tasks created: #N, #N, #N"`
+   **f.** Run `/github-issue comment <number> "Theme '<label>' — tasks created: #N, #N, #N"`
 
 3. **Report:**
    - Tasks created per feature (numbers, titles, theme, dependencies)
