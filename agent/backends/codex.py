@@ -72,7 +72,7 @@ class CodexBackend:
 
         # Flush any final output not captured via streaming deltas
         final = getattr(result, "final_output", None)
-        if final and isinstance(final, str) and final != "".join(collected):
+        if final and isinstance(final, str) and not collected:
             collected.append(final)
 
         full_response = "".join(collected)
