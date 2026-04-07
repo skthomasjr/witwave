@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import time
 from dataclasses import dataclass, field
@@ -7,6 +8,9 @@ from typing import Any
 from metrics import agent_bus_dedup_total, agent_bus_pending_kinds, agent_bus_queue_depth
 
 BUS_MAX_QUEUE_DEPTH = int(os.environ.get("BUS_MAX_QUEUE_DEPTH", "100"))
+BUS_SEND_TIMEOUT = float(os.environ.get("BUS_SEND_TIMEOUT", "30.0"))
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -33,7 +37,14 @@ class MessageBus:
             agent_bus_pending_kinds.set(len(self._pending_kinds))
         message.enqueued_at = time.monotonic()
         try:
-            await self._queue.put(message)
+            try:
+                await asyncio.wait_for(self._queue.put(message), timeout=BUS_SEND_TIMEOUT)
+            except asyncio.TimeoutError:
+                self._pending_kinds.discard(message.kind)
+                if agent_bus_pending_kinds is not None:
+                    agent_bus_pending_kinds.set(len(self._pending_kinds))
+                logger.error(f"Bus send timed out after {BUS_SEND_TIMEOUT}s — queue full (depth={self._queue.qsize()})")
+                raise asyncio.QueueFull()
             if agent_bus_queue_depth is not None:
                 agent_bus_queue_depth.set(self._queue.qsize())
             return await message.result
