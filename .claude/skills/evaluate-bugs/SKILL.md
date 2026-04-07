@@ -49,7 +49,17 @@ Steps:
    - docker-compose bugs: misconfigured volume mounts, missing or incorrect environment variables, port
      conflicts, missing `restart` policies that would leave a crashed agent unrecovered
    - Cross-file consistency: every env var referenced in `docker-compose.yml` should have a corresponding
-     default in the Python source; every host path in a volume mount should exist in the repository
+     default in the Python source; every host path in a volume mount should exist in the repository.
+     To make this check systematic, extract all env var names from docker-compose.yml and cross-reference
+     each against the Python source:
+
+     ```bash
+     # Extract env var names referenced in docker-compose.yml (${VAR} and $VAR forms)
+     grep -oP '\$\{?\K[A-Z_][A-Z0-9_]+(?=\}?)' <repo-root>/docker-compose.yml | sort -u
+     ```
+
+     For each var found, grep `agent/*.py` to confirm a default exists (e.g. `os.environ.get("VAR", ...)`).
+     If a var has no Python default, file a bug — the agent will fail silently or crash if the var is unset.
 
 7. For each bug found, cross-reference against the list loaded in step 1. If not already covered, also run
    `/github-issue search "<filename> <brief keyword>"` as a secondary check. Only proceed if no equivalent open
