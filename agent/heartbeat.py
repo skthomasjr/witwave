@@ -13,6 +13,7 @@ from metrics import (
     agent_heartbeat_error_duration_seconds,
     agent_heartbeat_lag_seconds,
     agent_heartbeat_last_error_timestamp_seconds,
+    agent_heartbeat_last_run_timestamp_seconds,
     agent_heartbeat_last_success_timestamp_seconds,
     agent_heartbeat_load_errors_total,
     agent_heartbeat_reloads_total,
@@ -25,10 +26,10 @@ from watchfiles import awatch
 
 logger = logging.getLogger(__name__)
 
-HEARTBEAT_PATH = os.environ.get("HEARTBEAT_PATH", "/home/agent/.claude/HEARTBEAT.md")
+HEARTBEAT_PATH = os.environ.get("HEARTBEAT_PATH", "/home/agent/.nyx/HEARTBEAT.md")
 DEFAULT_SCHEDULE = "*/30 * * * *"
 HEARTBEAT_DIR = os.path.dirname(HEARTBEAT_PATH)
-AGENT_NAME = os.environ.get("AGENT_NAME", "claude-agent")
+AGENT_NAME = os.environ.get("AGENT_NAME", "nyx-agent")
 HEARTBEAT_SESSION = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{AGENT_NAME}.heartbeat"))
 # Sentinel token: heartbeat prompts should include this string to suppress response logging.
 HEARTBEAT_OK = "HEARTBEAT_OK"
@@ -110,6 +111,8 @@ async def _run_loop(
                 continue
             if message.result is not None:
                 logger.info("Heartbeat firing.")
+                if agent_heartbeat_last_run_timestamp_seconds is not None:
+                    agent_heartbeat_last_run_timestamp_seconds.set(time.time())
                 try:
                     response = await message.result
                     if agent_heartbeat_duration_seconds is not None:

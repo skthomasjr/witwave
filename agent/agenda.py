@@ -15,6 +15,7 @@ from metrics import (
     agent_agenda_duration_seconds,
     agent_agenda_error_duration_seconds,
     agent_agenda_item_last_error_timestamp_seconds,
+    agent_agenda_item_last_run_timestamp_seconds,
     agent_agenda_item_last_success_timestamp_seconds,
     agent_agenda_items_registered,
     agent_agenda_lag_seconds,
@@ -32,9 +33,9 @@ from watchfiles import awatch
 
 logger = logging.getLogger(__name__)
 
-AGENDA_DIR = os.environ.get("AGENDA_DIR", "/home/agent/.claude/agenda")
+AGENDA_DIR = os.environ.get("AGENDA_DIR", "/home/agent/.nyx/agenda")
 CHECKPOINT_DIR = os.path.join(AGENDA_DIR, ".checkpoints")
-AGENT_NAME = os.environ.get("AGENT_NAME", "claude-agent")
+AGENT_NAME = os.environ.get("AGENT_NAME", "nyx-agent")
 
 
 @dataclass
@@ -135,6 +136,8 @@ async def run_agenda_item(item: AgendaItem, bus: MessageBus) -> None:
             logger.info(f"Agenda '{item.name}' firing.")
             _agenda_start = time.monotonic()
             message = Message(prompt=prompt, session_id=item.session_id, kind=f"agenda:{item.name}", model=item.model)
+            if agent_agenda_item_last_run_timestamp_seconds is not None:
+                agent_agenda_item_last_run_timestamp_seconds.labels(name=item.name).set(time.time())
             await asyncio.shield(bus.send(message))
             if agent_agenda_duration_seconds is not None:
                 agent_agenda_duration_seconds.labels(name=item.name).observe(time.monotonic() - _agenda_start)

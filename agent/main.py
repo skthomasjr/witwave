@@ -17,7 +17,7 @@ from a2a.types import (
 )
 from agenda import AgendaRunner
 from bus import MessageBus
-from executor import AgentExecutor, mcp_config_watcher
+from executor import AgentExecutor
 from heartbeat import heartbeat_runner
 from metrics import (
     agent_bus_consumer_idle_seconds,
@@ -27,6 +27,7 @@ from metrics import (
     agent_bus_messages_total,
     agent_bus_processing_duration_seconds,
     agent_bus_wait_seconds,
+    agent_event_loop_lag_seconds,
     agent_health_checks_total,
     agent_info,
     agent_startup_duration_seconds,
@@ -44,7 +45,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-AGENT_NAME = os.environ.get("AGENT_NAME", "claude-agent")
+AGENT_NAME = os.environ.get("AGENT_NAME", "nyx-agent")
 AGENT_HOST = os.environ.get("AGENT_HOST", "0.0.0.0")
 AGENT_PORT = int(os.environ.get("AGENT_PORT", "8000"))
 AGENT_URL = os.environ.get("AGENT_URL", f"http://localhost:{AGENT_PORT}/")
@@ -57,7 +58,7 @@ start_time: datetime = datetime.now(timezone.utc)
 
 
 def load_agent_description() -> str:
-    path = os.environ.get("AGENT_MD_PATH", "/home/agent/agent.md")
+    path = os.environ.get("AGENT_MD_PATH", "/home/agent/.nyx/agent-card.md")
     try:
         with open(path) as f:
             return f.read()
@@ -78,7 +79,7 @@ def build_agent_card() -> AgentCard:
             AgentSkill(
                 id="general",
                 name="General",
-                description="General-purpose task execution via Claude Code.",
+                description="General-purpose task execution.",
                 tags=["general"],
             )
         ],
@@ -170,6 +171,16 @@ async def _sub_app_lifespan(app):
         await task
 
 
+async def _event_loop_monitor() -> None:
+    _interval = 1.0
+    while True:
+        _before = time.monotonic()
+        await asyncio.sleep(_interval)
+        lag = time.monotonic() - _before - _interval
+        if lag > 0 and agent_event_loop_lag_seconds is not None:
+            agent_event_loop_lag_seconds.observe(lag)
+
+
 async def bus_worker(bus: MessageBus, executor: AgentExecutor) -> None:
     logger.info("Message bus worker started.")
     _idle_start = time.monotonic()
@@ -191,6 +202,8 @@ async def bus_worker(bus: MessageBus, executor: AgentExecutor) -> None:
             if agent_bus_error_processing_duration_seconds is not None:
                 agent_bus_error_processing_duration_seconds.labels(kind=message.kind).observe(time.monotonic() - t0)
         finally:
+            if message.result is not None and not message.result.done():
+                message.result.cancel()
             if agent_bus_processing_duration_seconds is not None:
                 agent_bus_processing_duration_seconds.labels(kind=message.kind).observe(time.monotonic() - t0)
             if agent_bus_last_processed_timestamp_seconds is not None:
@@ -279,7 +292,8 @@ async def main():
         bus_worker(bus, executor),
         heartbeat_runner(bus),
         agenda_runner.run(),
-        mcp_config_watcher(),
+        _event_loop_monitor(),
+        *executor._mcp_watchers(),
         _set_ready_when_started(server),
     )
 

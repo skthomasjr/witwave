@@ -18,6 +18,7 @@ agent_agenda_error_duration_seconds: prometheus_client.Histogram | None = None
 agent_agenda_lag_seconds: prometheus_client.Histogram | None = None
 agent_agenda_parse_errors_total: prometheus_client.Counter | None = None
 agent_agenda_item_last_error_timestamp_seconds: prometheus_client.Gauge | None = None
+agent_agenda_item_last_run_timestamp_seconds: prometheus_client.Gauge | None = None
 agent_agenda_item_last_success_timestamp_seconds: prometheus_client.Gauge | None = None
 agent_agenda_items_registered: prometheus_client.Gauge | None = None
 agent_agenda_reloads_total: prometheus_client.Counter | None = None
@@ -38,20 +39,24 @@ agent_bus_wait_seconds: prometheus_client.Histogram | None = None
 agent_concurrent_queries: prometheus_client.Gauge | None = None
 agent_context_exhaustion_total: prometheus_client.Counter | None = None
 agent_context_tokens: prometheus_client.Histogram | None = None
+agent_context_tokens_remaining: prometheus_client.Histogram | None = None
 agent_context_usage_percent: prometheus_client.Histogram | None = None
 agent_context_warnings_total: prometheus_client.Counter | None = None
 agent_empty_responses_total: prometheus_client.Counter | None = None
+agent_event_loop_lag_seconds: prometheus_client.Histogram | None = None
 agent_file_watcher_restarts_total: prometheus_client.Counter | None = None
 agent_heartbeat_duration_seconds: prometheus_client.Histogram | None = None
 agent_heartbeat_error_duration_seconds: prometheus_client.Histogram | None = None
 agent_heartbeat_lag_seconds: prometheus_client.Histogram | None = None
 agent_heartbeat_last_error_timestamp_seconds: prometheus_client.Gauge | None = None
+agent_heartbeat_last_run_timestamp_seconds: prometheus_client.Gauge | None = None
 agent_heartbeat_last_success_timestamp_seconds: prometheus_client.Gauge | None = None
 agent_heartbeat_load_errors_total: prometheus_client.Counter | None = None
 agent_heartbeat_runs_total: prometheus_client.Counter | None = None
 agent_heartbeat_reloads_total: prometheus_client.Counter | None = None
 agent_health_checks_total: prometheus_client.Counter | None = None
 agent_heartbeat_skips_total: prometheus_client.Counter | None = None
+agent_log_bytes_total: prometheus_client.Counter | None = None
 agent_log_entries_total: prometheus_client.Counter | None = None
 agent_log_write_errors_total: prometheus_client.Counter | None = None
 agent_lru_cache_utilization_percent: prometheus_client.Gauge | None = None
@@ -66,16 +71,20 @@ agent_sdk_client_errors_total: prometheus_client.Counter | None = None
 agent_sdk_context_fetch_errors_total: prometheus_client.Counter | None = None
 agent_sdk_errors_total: prometheus_client.Counter | None = None
 agent_sdk_tokens_per_query: prometheus_client.Histogram | None = None
+agent_sdk_tool_call_input_size_bytes: prometheus_client.Histogram | None = None
 agent_sdk_tool_calls_per_query: prometheus_client.Histogram | None = None
 agent_sdk_tool_duration_seconds: prometheus_client.Histogram | None = None
+agent_sdk_turns_per_query: prometheus_client.Histogram | None = None
 agent_sdk_tool_calls_total: prometheus_client.Counter | None = None
 agent_sdk_tool_errors_total: prometheus_client.Counter | None = None
+agent_sdk_tool_result_size_bytes: prometheus_client.Histogram | None = None
 agent_sdk_messages_per_query: prometheus_client.Histogram | None = None
 agent_sdk_result_errors_total: prometheus_client.Counter | None = None
 agent_sdk_session_duration_seconds: prometheus_client.Histogram | None = None
 agent_sdk_subprocess_spawn_duration_seconds: prometheus_client.Histogram | None = None
 agent_sdk_query_duration_seconds: prometheus_client.Histogram | None = None
 agent_sdk_query_error_duration_seconds: prometheus_client.Histogram | None = None
+agent_sdk_time_to_first_message_seconds: prometheus_client.Histogram | None = None
 agent_startup_duration_seconds: prometheus_client.Gauge | None = None
 agent_stderr_lines_per_task: prometheus_client.Histogram | None = None
 agent_session_age_seconds: prometheus_client.Histogram | None = None
@@ -143,6 +152,11 @@ if _enabled:
     agent_agenda_item_last_error_timestamp_seconds = prometheus_client.Gauge(
         "agent_agenda_item_last_error_timestamp_seconds",
         "Unix epoch of each agenda item's last failed run.",
+        ["name"],
+    )
+    agent_agenda_item_last_run_timestamp_seconds = prometheus_client.Gauge(
+        "agent_agenda_item_last_run_timestamp_seconds",
+        "Unix epoch of each agenda item's most recent execution, regardless of outcome.",
         ["name"],
     )
     agent_agenda_item_last_success_timestamp_seconds = prometheus_client.Gauge(
@@ -233,6 +247,11 @@ if _enabled:
         "agent_context_tokens",
         "Absolute token count from get_context_usage() per SDK turn.",
     )
+    agent_context_tokens_remaining = prometheus_client.Histogram(
+        "agent_context_tokens_remaining",
+        "Remaining token budget (maxTokens - totalTokens) per get_context_usage() call.",
+        buckets=(1000, 5000, 10000, 25000, 50000, 100000, 150000),
+    )
     agent_context_usage_percent = prometheus_client.Histogram(
         "agent_context_usage_percent",
         "Context window utilization percentage per SDK turn.",
@@ -245,6 +264,10 @@ if _enabled:
     agent_empty_responses_total = prometheus_client.Counter(
         "agent_empty_responses_total",
         "Total tasks that produced no text output.",
+    )
+    agent_event_loop_lag_seconds = prometheus_client.Histogram(
+        "agent_event_loop_lag_seconds",
+        "Excess delay beyond expected sleep duration, measuring asyncio event loop congestion.",
     )
     agent_file_watcher_restarts_total = prometheus_client.Counter(
         "agent_file_watcher_restarts_total",
@@ -266,6 +289,10 @@ if _enabled:
     agent_heartbeat_last_error_timestamp_seconds = prometheus_client.Gauge(
         "agent_heartbeat_last_error_timestamp_seconds",
         "Unix epoch of the most recent failed heartbeat.",
+    )
+    agent_heartbeat_last_run_timestamp_seconds = prometheus_client.Gauge(
+        "agent_heartbeat_last_run_timestamp_seconds",
+        "Unix epoch of the most recent heartbeat execution, regardless of outcome.",
     )
     agent_heartbeat_last_success_timestamp_seconds = prometheus_client.Gauge(
         "agent_heartbeat_last_success_timestamp_seconds",
@@ -292,6 +319,11 @@ if _enabled:
     agent_heartbeat_skips_total = prometheus_client.Counter(
         "agent_heartbeat_skips_total",
         "Total heartbeat skips due to previous heartbeat still pending.",
+    )
+    agent_log_bytes_total = prometheus_client.Counter(
+        "agent_log_bytes_total",
+        "Total bytes written by the logging subsystem.",
+        ["logger"],
     )
     agent_log_entries_total = prometheus_client.Counter(
         "agent_log_entries_total",
@@ -337,64 +369,96 @@ if _enabled:
     )
     agent_sdk_client_errors_total = prometheus_client.Counter(
         "agent_sdk_client_errors_total",
-        "Total ClaudeSDKClient connection-level failures (setup/teardown).",
+        "Total backend client connection-level failures (setup/teardown).",
+        ["backend"],
     )
     agent_sdk_context_fetch_errors_total = prometheus_client.Counter(
         "agent_sdk_context_fetch_errors_total",
-        "Total get_context_usage() call failures.",
+        "Total context usage fetch failures.",
+        ["backend"],
     )
     agent_sdk_errors_total = prometheus_client.Counter(
         "agent_sdk_errors_total",
-        "Total stderr lines emitted by the Claude SDK subprocess.",
+        "Total stderr/error lines emitted by the backend subprocess.",
+        ["backend"],
     )
     agent_sdk_tokens_per_query = prometheus_client.Histogram(
         "agent_sdk_tokens_per_query",
-        "Aggregate token count from the final get_context_usage() call per run_query().",
+        "Aggregate token count per run_query() invocation.",
+        ["backend"],
+    )
+    agent_sdk_tool_call_input_size_bytes = prometheus_client.Histogram(
+        "agent_sdk_tool_call_input_size_bytes",
+        "Byte length of each tool call input payload by tool name.",
+        ["backend", "tool"],
     )
     agent_sdk_tool_calls_per_query = prometheus_client.Histogram(
         "agent_sdk_tool_calls_per_query",
         "Number of tool calls per run_query() invocation.",
+        ["backend"],
         buckets=(0, 1, 2, 5, 10, 20, 50, 100, 200),
     )
     agent_sdk_tool_duration_seconds = prometheus_client.Histogram(
         "agent_sdk_tool_duration_seconds",
-        "Wall-clock seconds per tool call from ToolUseBlock to ToolResultBlock.",
-        ["tool"],
+        "Wall-clock seconds per tool call.",
+        ["backend", "tool"],
+    )
+    agent_sdk_turns_per_query = prometheus_client.Histogram(
+        "agent_sdk_turns_per_query",
+        "Number of assistant turns per run_query() invocation.",
+        ["backend"],
+        buckets=(1, 2, 3, 5, 10, 20, 50, 100),
     )
     agent_sdk_tool_calls_total = prometheus_client.Counter(
         "agent_sdk_tool_calls_total",
         "Total tool calls by tool name.",
-        ["tool"],
+        ["backend", "tool"],
     )
     agent_sdk_tool_errors_total = prometheus_client.Counter(
         "agent_sdk_tool_errors_total",
         "Total tool execution errors by tool name.",
-        ["tool"],
+        ["backend", "tool"],
+    )
+    agent_sdk_tool_result_size_bytes = prometheus_client.Histogram(
+        "agent_sdk_tool_result_size_bytes",
+        "Byte length of each tool result by tool name.",
+        ["backend", "tool"],
     )
     agent_sdk_messages_per_query = prometheus_client.Histogram(
         "agent_sdk_messages_per_query",
-        "Number of SDK messages received per run_query() call.",
+        "Number of backend messages received per run_query() call.",
+        ["backend"],
         buckets=(1, 2, 5, 10, 20, 50, 100, 200),
     )
     agent_sdk_result_errors_total = prometheus_client.Counter(
         "agent_sdk_result_errors_total",
-        "Total SDK ResultMessage errors returned during run_query().",
+        "Total backend result errors returned during run_query().",
+        ["backend"],
     )
     agent_sdk_session_duration_seconds = prometheus_client.Histogram(
         "agent_sdk_session_duration_seconds",
-        "Raw SDK connection lifetime in seconds (async with ClaudeSDKClient block).",
+        "Backend session/connection lifetime in seconds.",
+        ["backend"],
     )
     agent_sdk_subprocess_spawn_duration_seconds = prometheus_client.Histogram(
         "agent_sdk_subprocess_spawn_duration_seconds",
-        "Time to initialize the ClaudeSDKClient subprocess.",
+        "Time to initialize the backend client/subprocess.",
+        ["backend"],
     )
     agent_sdk_query_duration_seconds = prometheus_client.Histogram(
         "agent_sdk_query_duration_seconds",
-        "Raw SDK query time in seconds inside run_query().",
+        "Raw backend query time in seconds inside run_query().",
+        ["backend"],
     )
     agent_sdk_query_error_duration_seconds = prometheus_client.Histogram(
         "agent_sdk_query_error_duration_seconds",
         "Wall-clock seconds for run_query() calls that end in error.",
+        ["backend"],
+    )
+    agent_sdk_time_to_first_message_seconds = prometheus_client.Histogram(
+        "agent_sdk_time_to_first_message_seconds",
+        "Seconds from query submission to the first response message.",
+        ["backend"],
     )
     agent_startup_duration_seconds = prometheus_client.Gauge(
         "agent_startup_duration_seconds",
