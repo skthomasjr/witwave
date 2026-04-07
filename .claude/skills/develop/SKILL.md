@@ -24,4 +24,27 @@ Steps:
 
 5. Run `/evaluate-features`, then `/work-features`.
 
-6. Report that the codebase is clean — no open bugs, skill issues, risks, gaps, or feature work remains.
+6. Report a summary of the run. Track the step number reached each iteration
+   and the reason for any restart. Format the report as both a path trace and
+   a pass table:
+
+   **Path trace** — shows the sequence of steps and where restarts occurred:
+
+   ```
+   Run path:  1 → 2 → 3 → 1 → 2 → 3 → 4 → 5 → 6
+                    ↑               ↑
+               new risks        new bugs
+   ```
+
+   **Pass table** — one row per pass through the loop:
+
+   ```
+   Pass  Skills  Bugs  Risks  Gaps  Features  Restart?
+     1      1      3      2     —       —      yes (risks filed)
+     2      0      1      0     —       —      yes (bugs filed)
+     3      0      0      0     3       2      no → done
+
+   Issues resolved: 14  |  Blocked: 3 (awaiting human input)
+   ```
+
+   Show both. Keep the prose minimal — the visuals tell the story.
