@@ -84,17 +84,19 @@ List issues, optionally filtered.
 
 **Arguments:** `list [type/<label>] [priority/<label>] [status/<label>] [state:open|closed|all]`
 
-Use the Bash tool to list issues. Default state is `open`. Pass `state:all` to include closed issues:
+Use the Bash tool to list issues. Default state is `open`. Pass `state:all` to include closed issues.
+Each label argument maps to a **separate** `--label` flag — do not combine multiple labels in one flag:
 
 ```bash
 gh issue list \
   --state <open|closed|all> \
-  --label "<label-filters>" \
+  --label "<label1>" \
+  --label "<label2>" \
   --json number,title,labels,assignees,createdAt \
   --jq '.[] | "#\(.number) \(.title) [\(.labels | map(.name) | join(", "))]"'
 ```
 
-If no filters are provided, list all open issues. Display results clearly with issue number, title, and labels.
+Omit `--label` entirely if no filters are provided. Display results clearly with issue number, title, and labels.
 
 ---
 
