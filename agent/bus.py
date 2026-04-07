@@ -32,18 +32,15 @@ class MessageBus:
         if agent_bus_pending_kinds is not None:
             agent_bus_pending_kinds.set(len(self._pending_kinds))
         message.enqueued_at = time.monotonic()
-        enqueued = False
         try:
             await self._queue.put(message)
-            enqueued = True
             if agent_bus_queue_depth is not None:
                 agent_bus_queue_depth.set(self._queue.qsize())
             return await message.result
         except asyncio.CancelledError:
-            if not enqueued:
-                self._pending_kinds.discard(message.kind)
-                if agent_bus_pending_kinds is not None:
-                    agent_bus_pending_kinds.set(len(self._pending_kinds))
+            self._pending_kinds.discard(message.kind)
+            if agent_bus_pending_kinds is not None:
+                agent_bus_pending_kinds.set(len(self._pending_kinds))
             raise
 
     def try_send(self, message: Message) -> bool:
