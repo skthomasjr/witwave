@@ -98,6 +98,7 @@ agent_task_last_error_timestamp_seconds: prometheus_client.Gauge | None = None
 agent_task_last_success_timestamp_seconds: prometheus_client.Gauge | None = None
 agent_task_timeout_headroom_seconds: prometheus_client.Histogram | None = None
 agent_uptime_seconds: prometheus_client.Gauge | None = None
+agent_task_restarts_total: prometheus_client.Counter | None = None
 agent_task_retries_total: prometheus_client.Counter | None = None
 agent_tasks_total: prometheus_client.Counter | None = None
 agent_tasks_with_stderr_total: prometheus_client.Counter | None = None
@@ -513,6 +514,11 @@ if _enabled:
     agent_uptime_seconds = prometheus_client.Gauge(
         "agent_uptime_seconds",
         "Agent uptime in seconds, computed on each Prometheus scrape.",
+    )
+    agent_task_restarts_total = prometheus_client.Counter(
+        "agent_task_restarts_total",
+        "Total worker restarts by the _guarded() loop after an unexpected exception.",
+        ["task"],
     )
     agent_task_retries_total = prometheus_client.Counter(
         "agent_task_retries_total",

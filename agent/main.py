@@ -31,6 +31,7 @@ from metrics import (
     agent_health_checks_total,
     agent_info,
     agent_startup_duration_seconds,
+    agent_task_restarts_total,
     agent_up,
     agent_uptime_seconds,
 )
@@ -181,6 +182,8 @@ async def _guarded(coro_fn, *args, restart_delay: float = 5.0) -> None:
             raise
         except Exception as exc:
             logger.error(f"Task {coro_fn.__name__!r} crashed: {exc!r} — restarting in {restart_delay}s")
+            if agent_task_restarts_total is not None:
+                agent_task_restarts_total.labels(task=coro_fn.__name__).inc()
             await asyncio.sleep(restart_delay)
 
 
