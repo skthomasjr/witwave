@@ -345,7 +345,7 @@ class AgentExecutor(A2AAgentExecutor):
                 agent_a2a_requests_total.labels(status="error").inc()
             raise
         finally:
-            asyncio.create_task(self.on_prompt_completed(
+            _opc_task = asyncio.create_task(self.on_prompt_completed(
                 source="a2a",
                 kind="a2a",
                 session_id=session_id,
@@ -354,6 +354,11 @@ class AgentExecutor(A2AAgentExecutor):
                 duration_seconds=time.monotonic() - _exec_start,
                 error=_error,
             ))
+            _opc_task.add_done_callback(
+                lambda t: logger.error(f"on_prompt_completed error: {t.exception()}")
+                if not t.cancelled() and t.exception() is not None
+                else None
+            )
             if agent_a2a_request_duration_seconds is not None:
                 agent_a2a_request_duration_seconds.observe(time.monotonic() - _exec_start)
             if agent_a2a_last_request_timestamp_seconds is not None:
@@ -398,7 +403,7 @@ class AgentExecutor(A2AAgentExecutor):
             if message.result is not None:
                 message.result.set_exception(e)
         finally:
-            asyncio.create_task(self.on_prompt_completed(
+            _opc_task = asyncio.create_task(self.on_prompt_completed(
                 source="bus",
                 kind=message.kind,
                 session_id=_session_id,
@@ -407,3 +412,8 @@ class AgentExecutor(A2AAgentExecutor):
                 duration_seconds=time.monotonic() - _bus_start,
                 error=_error,
             ))
+            _opc_task.add_done_callback(
+                lambda t: logger.error(f"on_prompt_completed error: {t.exception()}")
+                if not t.cancelled() and t.exception() is not None
+                else None
+            )
