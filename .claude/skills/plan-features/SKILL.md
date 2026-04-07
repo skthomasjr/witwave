@@ -95,7 +95,7 @@ Steps:
    **Community signal — this is where real demand lives:**
 
    - Search Hacker News: `site:news.ycombinator.com "autonomous agent"`,
-     "claude code" site:news.ycombinator.com`, "agentic coding".
+     `"claude code" site:news.ycombinator.com`, "agentic coding".
      Read top comment threads for pain points and feature requests.
    - Search Reddit: `site:reddit.com/r/LocalLLaMA autonomous agent`,
      `site:reddit.com/r/ClaudeAI "claude code"`. Look for recurring
