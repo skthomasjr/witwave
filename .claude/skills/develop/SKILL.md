@@ -22,7 +22,7 @@ Steps:
 4. Once steps 1, 2, and 3 all complete without filing any new issues, run `/evaluate-gaps`,
    then `/work-gaps`.
 
-5. Run `/evaluate-features`, then `/work-features`.
+5. Run `/evaluate-features`, then `/work-features`. If `work-features` resolved any issues, go to step 1.
 
 6. Report a summary of the run. Track the step number reached each iteration
    and the reason for any restart. Format the report as both a path trace and
