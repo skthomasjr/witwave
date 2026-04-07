@@ -1,5 +1,5 @@
 ---
-name: features
+name: plan-features
 description: >-
   Research the competitive landscape and maintain a backlog of up to 25
   high-value feature proposals as GitHub Issues labelled type/feature
