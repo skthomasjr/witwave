@@ -106,6 +106,9 @@ Steps:
      cd <repo-root> && python -m pytest <relevant-test-path> -v
      ```
 
+   - If no tests exist, trace the execution path manually and confirm the fix
+     handles the edge cases described in the issue.
+
    **h. Close the issue.**
 
    Run `/github-issue close <number> "<one sentence describing what was improved and where>"`.
