@@ -184,11 +184,13 @@ class AgendaRunner:
         self._bus = bus
         self._items: dict[str, AgendaItem] = {}
 
-    def _register(self, path: str) -> None:
+    async def _register(self, path: str) -> None:
         item = parse_agenda_file(path)
         if not item:
             return
-        self._unregister(path)
+        cancelled = self._unregister(path)
+        if cancelled is not None:
+            await asyncio.gather(cancelled, return_exceptions=True)
         task = asyncio.create_task(run_agenda_item(item, self._bus))
         item.task = task
         self._items[path] = item
@@ -196,7 +198,7 @@ class AgendaRunner:
             agent_agenda_items_registered.set(len(self._items))
         logger.info(f"Agenda '{item.name}' registered. Schedule: {item.schedule}")
 
-    def _unregister(self, path: str) -> None:
+    def _unregister(self, path: str) -> asyncio.Task | None:
         existing = self._items.pop(path, None)
         if existing and existing.task:
             if existing.running:
@@ -204,10 +206,14 @@ class AgendaRunner:
             else:
                 logger.info(f"Agenda '{existing.name}' unregistered.")
             existing.task.cancel()
+            if agent_agenda_items_registered is not None:
+                agent_agenda_items_registered.set(len(self._items))
+            return existing.task
         if agent_agenda_items_registered is not None:
             agent_agenda_items_registered.set(len(self._items))
+        return None
 
-    def _scan(self) -> None:
+    async def _scan(self) -> None:
         if os.path.isdir(CHECKPOINT_DIR):
             try:
                 cp_filenames = os.listdir(CHECKPOINT_DIR)
@@ -237,7 +243,7 @@ class AgendaRunner:
             return
         for filename in agenda_files:
             if filename.endswith(".md"):
-                self._register(os.path.join(AGENDA_DIR, filename))
+                await self._register(os.path.join(AGENDA_DIR, filename))
 
     async def run(self) -> None:
         logger.info(f"Agenda runner watching {AGENDA_DIR}")
@@ -248,7 +254,7 @@ class AgendaRunner:
                 await asyncio.sleep(10)
                 continue
 
-            self._scan()
+            await self._scan()
             async for changes in awatch(AGENDA_DIR):
                 if agent_watcher_events_total is not None:
                     agent_watcher_events_total.labels(watcher="agenda").inc()
@@ -259,7 +265,7 @@ class AgendaRunner:
                         logger.info(f"Agenda file changed: {path}")
                         if agent_agenda_reloads_total is not None:
                             agent_agenda_reloads_total.inc()
-                        self._register(path)
+                        await self._register(path)
                     else:
                         logger.info(f"Agenda file removed: {path}")
                         if agent_agenda_reloads_total is not None:
@@ -269,6 +275,7 @@ class AgendaRunner:
             logger.warning("Agenda directory watcher exited — directory deleted or unavailable. Retrying in 10s.")
             if agent_file_watcher_restarts_total is not None:
                 agent_file_watcher_restarts_total.labels(watcher="agenda").inc()
-            for path in list(self._items.keys()):
-                self._unregister(path)
+            cancelled = [t for path in list(self._items.keys()) if (t := self._unregister(path)) is not None]
+            if cancelled:
+                await asyncio.gather(*cancelled, return_exceptions=True)
             await asyncio.sleep(10)
