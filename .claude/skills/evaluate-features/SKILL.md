@@ -65,8 +65,9 @@ Steps:
    Then take the appropriate path:
 
    - **Open type/feature issues exist for the current theme/slice** — the
-     current theme has not fully landed. Check the comment thread: if no
-     "waiting" comment exists for these issue numbers, run
+     current theme has not fully landed. Run `/github-issue view <number>`
+     to fetch the feature issue's current comment thread. If no comment
+     containing "Waiting on open type/feature issues" exists, run
      `/github-issue comment <number> "Waiting on open type/feature issues for theme '<theme>' slice <N> before planning next theme: #N, #N"`.
      Move on. Do not proceed to 2c.
 
