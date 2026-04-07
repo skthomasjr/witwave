@@ -200,24 +200,24 @@ When `METRICS_ENABLED` is set, Prometheus metrics are served at `/metrics`.
 | `agent_prompt_length_bytes`                        | Histogram | _(none)_          | Byte length of incoming prompts passed to run()                       |
 | `agent_response_length_bytes`                      | Histogram | _(none)_          | Byte length of responses returned by run()                            |
 | `agent_running_tasks`                              | Gauge     | _(none)_          | Number of currently in-progress tasks                                 |
-| `agent_sdk_client_errors_total`                    | Counter   | _(none)_          | Total ClaudeSDKClient connection-level failures (setup/teardown)      |
-| `agent_sdk_context_fetch_errors_total`             | Counter   | _(none)_          | Total get_context_usage() call failures                               |
-| `agent_sdk_errors_total`                           | Counter   | _(none)_          | Total stderr lines emitted by the Claude SDK subprocess               |
-| `agent_sdk_tokens_per_query`                       | Histogram | _(none)_          | Aggregate token count from final get_context_usage() per run_query()  |
-| `agent_sdk_tool_call_input_size_bytes`             | Histogram | `tool`            | Byte length of each ToolUseBlock input payload by tool name           |
-| `agent_sdk_tool_calls_per_query`                   | Histogram | _(none)_          | Number of tool calls per run_query() invocation                       |
-| `agent_sdk_tool_calls_total`                       | Counter   | `tool`            | Total tool calls by tool name                                         |
-| `agent_sdk_tool_duration_seconds`                  | Histogram | `tool`            | Wall-clock seconds per tool call from ToolUseBlock to ToolResultBlock |
-| `agent_sdk_tool_errors_total`                      | Counter   | `tool`            | Total tool execution errors by tool name                              |
-| `agent_sdk_tool_result_size_bytes`                 | Histogram | `tool`            | Byte length of each ToolResultBlock content by tool name              |
-| `agent_sdk_turns_per_query`                        | Histogram | _(none)_          | Number of AssistantMessage turns per run_query() invocation           |
-| `agent_sdk_messages_per_query`                     | Histogram | _(none)_          | Number of SDK messages received per run_query() call                  |
-| `agent_sdk_query_duration_seconds`                 | Histogram | _(none)_          | Raw SDK query time in seconds inside run_query()                      |
-| `agent_sdk_query_error_duration_seconds`           | Histogram | _(none)_          | Wall-clock seconds for run_query() calls that end in error            |
-| `agent_sdk_time_to_first_message_seconds`          | Histogram | _(none)_          | Seconds from client.query() to first AssistantMessage in run_query()  |
-| `agent_sdk_result_errors_total`                    | Counter   | _(none)_          | Total SDK ResultMessage errors returned during run_query()            |
-| `agent_sdk_session_duration_seconds`               | Histogram | _(none)_          | Raw SDK connection lifetime in seconds (ClaudeSDKClient block)        |
-| `agent_sdk_subprocess_spawn_duration_seconds`      | Histogram | _(none)_          | Time to initialize the ClaudeSDKClient subprocess                     |
+| `agent_sdk_client_errors_total`                    | Counter   | `backend`         | Total ClaudeSDKClient connection-level failures (setup/teardown)      |
+| `agent_sdk_context_fetch_errors_total`             | Counter   | `backend`         | Total get_context_usage() call failures                               |
+| `agent_sdk_errors_total`                           | Counter   | `backend`         | Total stderr lines emitted by the Claude SDK subprocess               |
+| `agent_sdk_tokens_per_query`                       | Histogram | `backend`         | Aggregate token count from final get_context_usage() per run_query()  |
+| `agent_sdk_tool_call_input_size_bytes`             | Histogram | `backend`, `tool` | Byte length of each ToolUseBlock input payload by tool name           |
+| `agent_sdk_tool_calls_per_query`                   | Histogram | `backend`         | Number of tool calls per run_query() invocation                       |
+| `agent_sdk_tool_calls_total`                       | Counter   | `backend`, `tool` | Total tool calls by tool name                                         |
+| `agent_sdk_tool_duration_seconds`                  | Histogram | `backend`, `tool` | Wall-clock seconds per tool call from ToolUseBlock to ToolResultBlock |
+| `agent_sdk_tool_errors_total`                      | Counter   | `backend`, `tool` | Total tool execution errors by tool name                              |
+| `agent_sdk_tool_result_size_bytes`                 | Histogram | `backend`, `tool` | Byte length of each ToolResultBlock content by tool name              |
+| `agent_sdk_turns_per_query`                        | Histogram | `backend`         | Number of AssistantMessage turns per run_query() invocation           |
+| `agent_sdk_messages_per_query`                     | Histogram | `backend`         | Number of SDK messages received per run_query() call                  |
+| `agent_sdk_query_duration_seconds`                 | Histogram | `backend`         | Raw SDK query time in seconds inside run_query()                      |
+| `agent_sdk_query_error_duration_seconds`           | Histogram | `backend`         | Wall-clock seconds for run_query() calls that end in error            |
+| `agent_sdk_time_to_first_message_seconds`          | Histogram | `backend`         | Seconds from client.query() to first AssistantMessage in run_query()  |
+| `agent_sdk_result_errors_total`                    | Counter   | `backend`         | Total SDK ResultMessage errors returned during run_query()            |
+| `agent_sdk_session_duration_seconds`               | Histogram | `backend`         | Raw SDK connection lifetime in seconds (ClaudeSDKClient block)        |
+| `agent_sdk_subprocess_spawn_duration_seconds`      | Histogram | `backend`         | Time to initialize the ClaudeSDKClient subprocess                     |
 | `agent_startup_duration_seconds`                   | Gauge     | _(none)_          | Time from process start to ready state in seconds                     |
 | `agent_stderr_lines_per_task`                      | Histogram | _(none)_          | Number of SDK stderr lines captured per run() invocation              |
 | `agent_session_age_seconds`                        | Histogram | _(none)_          | Seconds since last use when a session is evicted from the LRU cache   |
