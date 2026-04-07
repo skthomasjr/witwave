@@ -272,7 +272,7 @@ class AgentExecutor(A2AAgentExecutor):
         _exec_start = time.monotonic()
         prompt = context.get_user_input()
         metadata = context.message.metadata or {}
-        _raw_sid = str(metadata.get("session_id") or "").strip()[:256]
+        _raw_sid = "".join(c for c in str(metadata.get("session_id") or "").strip()[:256] if c >= " ")
         session_id = _raw_sid or str(uuid.uuid4())
         backend_id = metadata.get("backend_id") or None
         task_id = context.task_id
