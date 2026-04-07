@@ -32,7 +32,7 @@ Steps:
       feature issue number for `<number>`:
 
       ```bash
-      gh issue list --state all --label "type/task" --limit 100 \
+      gh issue list --state all --label "type/feature" --limit 100 \
         --json number,title,state,body \
         --jq '.[] | select(.body | contains("**Feature:** #<number>")) |
           "#\(.number) [\(.state)] theme:\(.body | capture("\\*\\*Feature Theme:\\*\\* (?<t>[\\w-]+)").t // "?") slice:\(.body | capture("\\*\\*Feature Slice:\\*\\* (?<s>[0-9]+)").s // "?") \(.title)"'
@@ -101,7 +101,7 @@ Steps:
    For each issue provide:
 
    - **Title:** short and concrete — `"Add X to Y"` or `"Wire Z into W"`
-   - **Type:** `type/task`
+   - **Type:** `type/feature`
    - **Priority:** inherited from the feature issue
    - **Created by:** `<agent-name>`
    - **Feature:** `#<feature-number>`

@@ -26,7 +26,7 @@ The optional status argument overrides the default status. If omitted, status de
 
 1. Read `<repo-root>/.github/ISSUE_TEMPLATE/task.md` to load the template structure.
 2. Prompt for the following fields:
-   - **Type** — one of: `type/bug`, `type/reliability`, `type/code-quality`, `type/enhancement`, `type/documentation`, `type/skill`, `feature`, `type/task`
+   - **Type** — one of: `type/bug`, `type/reliability`, `type/code-quality`, `type/enhancement`, `type/documentation`, `type/skill`, `type/feature`, `type/task`, `feature`
    - **Priority** — one of: `priority/p0`, `priority/p1`, `priority/p2`, `priority/p3`
    - **Created by** — the agent or human name creating this issue
    - **Feature** — feature issue number this task implements (e.g. `#42`), or `none`
