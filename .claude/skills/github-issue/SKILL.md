@@ -238,7 +238,7 @@ gh issue view <number> --json body --jq '.body'
 gh issue edit <number> \
   --body "<updated body>" \
   --add-label "<terminal-label>" \
-  --remove-label "status/in-progress,status/pending,status/approved,status/needs-more-info"
+  --remove-label "status/in-progress,status/pending,status/approved"
 ```
 
 5. Post the closing comment:
