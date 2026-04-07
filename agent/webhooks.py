@@ -67,7 +67,14 @@ def parse_webhook_file(path: str) -> WebhookSubscription | None:
 
         name = fields.get("name") or os.path.splitext(os.path.basename(path))[0]
         signing_secret_env_var = fields.get("signing-secret-env-var") or None
-        signing_secret = os.environ.get(signing_secret_env_var) if signing_secret_env_var else None
+        signing_secret: str | None = None
+        if signing_secret_env_var:
+            signing_secret = os.environ.get(signing_secret_env_var) or None
+            if not signing_secret:
+                logger.warning(
+                    f"Webhook file {path}: signing-secret-env-var {signing_secret_env_var!r} is unset or empty — "
+                    f"webhook deliveries will be unsigned."
+                )
         description = fields.get("description") or None
 
         return WebhookSubscription(
