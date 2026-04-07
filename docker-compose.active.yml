@@ -6,6 +6,7 @@ services:
       - "8000:8000"
     environment:
       AGENT_NAME: iris
+      AGENT_PORT: 8000
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       GH_REPO: skthomasjr/autonomous-agent
@@ -30,6 +31,7 @@ services:
       - "8001:8000"
     environment:
       AGENT_NAME: nova
+      AGENT_PORT: 8000
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       GH_REPO: skthomasjr/autonomous-agent
@@ -54,6 +56,7 @@ services:
       - "8002:8000"
     environment:
       AGENT_NAME: kira
+      AGENT_PORT: 8000
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       GH_REPO: skthomasjr/autonomous-agent
