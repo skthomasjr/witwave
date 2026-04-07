@@ -55,7 +55,8 @@ Steps:
 
      ```bash
      # Extract env var names referenced in docker-compose.active.yml (${VAR} and $VAR forms)
-     grep -oP '\$\{?\K[A-Z_][A-Z0-9_]+(?=\}?)' <repo-root>/docker-compose.active.yml | sort -u
+     # Uses -E (POSIX ERE) for macOS/BSD grep compatibility — avoid -P (GNU/PCRE only)
+     grep -oE '\$\{?[A-Z_][A-Z0-9_]+\}?' <repo-root>/docker-compose.active.yml | grep -oE '[A-Z_][A-Z0-9_]+' | sort -u
      ```
 
      For each var found, grep `agent/*.py` to confirm a default exists (e.g. `os.environ.get("VAR", ...)`).
