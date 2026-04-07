@@ -74,7 +74,7 @@ Steps:
 
    - Run `/github-issue comment <number> "Design decision required — <describe what needs to be decided
      and why it cannot be resolved with a local change>. Leaving open for review."`
-   - Move on to the next gap. Do not attempt a fix.
+   - Move on to the next gap. Do not attempt a fix. Do not proceed to step 4d.
 
    **d. Claim the issue.**
 
