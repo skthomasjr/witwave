@@ -11,15 +11,15 @@ services:
       GH_REPO: skthomasjr/autonomous-agent
       GH_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
     volumes:
-      - ./.agents/iris/.claude:/home/agent/.claude
-      - ./.agents/iris/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
-      - ./.agents/iris/.nyx/skills:/home/agent/.claude/skills:ro
-      - ./.agents/iris/.codex:/home/agent/.codex
-      - ./.agents/iris/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
-      - ./.agents/iris/.nyx/skills:/home/agent/.codex/skills:ro
-      - ./.agents/iris/.nyx:/home/agent/.nyx
-      - ./.agents/iris/logs:/home/agent/logs
-      - ./.agents/manifest.json:/home/agent/.nyx/manifest.json:ro
+      - ./.agents/active/iris/.claude:/home/agent/.claude
+      - ./.agents/active/iris/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
+      - ./.agents/active/iris/.nyx/skills:/home/agent/.claude/skills:ro
+      - ./.agents/active/iris/.codex:/home/agent/.codex
+      - ./.agents/active/iris/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
+      - ./.agents/active/iris/.nyx/skills:/home/agent/.codex/skills:ro
+      - ./.agents/active/iris/.nyx:/home/agent/.nyx
+      - ./.agents/active/iris/logs:/home/agent/logs
+      - ./.agents/active/manifest.json:/home/agent/.nyx/manifest.json:ro
       - .:/home/agent/workspace
 
   nova:
@@ -34,15 +34,15 @@ services:
       GH_REPO: skthomasjr/autonomous-agent
       GH_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
     volumes:
-      - ./.agents/nova/.claude:/home/agent/.claude
-      - ./.agents/nova/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
-      - ./.agents/nova/.nyx/skills:/home/agent/.claude/skills:ro
-      - ./.agents/nova/.codex:/home/agent/.codex
-      - ./.agents/nova/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
-      - ./.agents/nova/.nyx/skills:/home/agent/.codex/skills:ro
-      - ./.agents/nova/.nyx:/home/agent/.nyx
-      - ./.agents/nova/logs:/home/agent/logs
-      - ./.agents/manifest.json:/home/agent/.nyx/manifest.json:ro
+      - ./.agents/active/nova/.claude:/home/agent/.claude
+      - ./.agents/active/nova/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
+      - ./.agents/active/nova/.nyx/skills:/home/agent/.claude/skills:ro
+      - ./.agents/active/nova/.codex:/home/agent/.codex
+      - ./.agents/active/nova/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
+      - ./.agents/active/nova/.nyx/skills:/home/agent/.codex/skills:ro
+      - ./.agents/active/nova/.nyx:/home/agent/.nyx
+      - ./.agents/active/nova/logs:/home/agent/logs
+      - ./.agents/active/manifest.json:/home/agent/.nyx/manifest.json:ro
       - .:/home/agent/workspace
 
   kira:
@@ -57,13 +57,13 @@ services:
       GH_REPO: skthomasjr/autonomous-agent
       GH_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
     volumes:
-      - ./.agents/kira/.claude:/home/agent/.claude
-      - ./.agents/kira/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
-      - ./.agents/kira/.nyx/skills:/home/agent/.claude/skills:ro
-      - ./.agents/kira/.codex:/home/agent/.codex
-      - ./.agents/kira/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
-      - ./.agents/kira/.nyx/skills:/home/agent/.codex/skills:ro
-      - ./.agents/kira/.nyx:/home/agent/.nyx
-      - ./.agents/kira/logs:/home/agent/logs
-      - ./.agents/manifest.json:/home/agent/.nyx/manifest.json:ro
+      - ./.agents/active/kira/.claude:/home/agent/.claude
+      - ./.agents/active/kira/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
+      - ./.agents/active/kira/.nyx/skills:/home/agent/.claude/skills:ro
+      - ./.agents/active/kira/.codex:/home/agent/.codex
+      - ./.agents/active/kira/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
+      - ./.agents/active/kira/.nyx/skills:/home/agent/.codex/skills:ro
+      - ./.agents/active/kira/.nyx:/home/agent/.nyx
+      - ./.agents/active/kira/logs:/home/agent/logs
+      - ./.agents/active/manifest.json:/home/agent/.nyx/manifest.json:ro
       - .:/home/agent/workspace

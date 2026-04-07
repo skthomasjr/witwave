@@ -11,7 +11,7 @@ file.
 ## Skills
 
 Skills under `.claude/skills/` are for local use. Skills that agents need must also be copied to each agent's
-`.agents/<name>/.claude/skills/` directory. When a shared skill is updated, sync the change to all agents that have a
+`.agents/active/<name>/.claude/skills/` directory. When a shared skill is updated, sync the change to all agents that have a
 copy.
 
 ## Agent Identity
@@ -38,25 +38,26 @@ files and environment variables — no identity or behavior is baked into the im
 
 - **A2A protocol** — primary communication layer (HTTP/JSON-RPC). Each agent exposes `/.well-known/agent.json` for
   discovery and `/` for task execution.
-- **Agent configuration** — defined under `.agents/<name>/`. Runtime config lives in `.nyx/`: `agent.md` (A2A
+- **Agent configuration** — defined under `.agents/active/<name>/`. Runtime config lives in `.nyx/`: `agent.md` (A2A
   identity), `backends.yaml` (backend selection), `HEARTBEAT.md` (proactive schedule), and `agenda/` (scheduled work
   items). `agent-card.md` is the description text served in the A2A agent card. Behavioral config for Claude
   Code lives in `.claude/CLAUDE.md`.
-- **Conversation logging** — each agent writes a `conversation.log` to `.agents/<name>/logs/`.
+- **Conversation logging** — each agent writes a `conversation.log` to `.agents/active/<name>/logs/`.
 
 ## Project Structure
 
 ```text
 .agents/
-├── iris/
-│   ├── .nyx/           # Runtime config (agent-card.md, backends.yaml, agenda/)
-│   └── .claude/        # Claude Code config (CLAUDE.md, skills/, memory/)
-├── nova/
-│   ├── .nyx/
-│   └── .claude/
-└── kira/
-    ├── .nyx/
-    └── .claude/
+└── active/
+    ├── iris/
+    │   ├── .nyx/           # Runtime config (agent-card.md, backends.yaml, agenda/)
+    │   └── .claude/        # Claude Code config (CLAUDE.md, skills/, memory/)
+    ├── nova/
+    │   ├── .nyx/
+    │   └── .claude/
+    └── kira/
+        ├── .nyx/
+        └── .claude/
 agent/
 ├── main.py             # A2A server entrypoint
 ├── executor.py         # Bridges A2A and Claude Agent SDK

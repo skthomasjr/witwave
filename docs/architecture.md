@@ -16,22 +16,23 @@ When a proposed change is architectural in nature — a new runtime primitive, a
 
 ```text
 .agents/
-├── manifest.json              # Registry of all agents in this deployment
-├── iris/
-│   ├── .nyx/                  # Runtime config
-│   │   ├── agent-card.md      # A2A identity description
-│   │   ├── backends.yaml      # Backend selection (claude, codex)
-│   │   ├── HEARTBEAT.md       # Proactive heartbeat schedule
-│   │   └── agenda/            # Scheduled work items (*.md)
-│   ├── .claude/               # Claude Code config
-│   │   ├── CLAUDE.md          # Agent-specific behavioral guidance
-│   │   ├── skills/            # Agent-local skills
-│   │   └── memory/            # Persistent markdown memory files
-│   ├── .codex/                # Codex config
-│   └── logs/
-│       └── conversation.log   # Per-run JSONL conversation log
-├── nova/                      # Same structure as iris/
-└── kira/                      # Same structure as iris/
+└── active/                    # Live autonomous agents
+    ├── manifest.json          # Registry of all agents in this deployment
+    ├── iris/
+    │   ├── .nyx/              # Runtime config
+    │   │   ├── agent-card.md  # A2A identity description
+    │   │   ├── backends.yaml  # Backend selection (claude, codex)
+    │   │   ├── HEARTBEAT.md   # Proactive heartbeat schedule
+    │   │   └── agenda/        # Scheduled work items (*.md)
+    │   ├── .claude/           # Claude Code config
+    │   │   ├── CLAUDE.md      # Agent-specific behavioral guidance
+    │   │   ├── skills/        # Agent-local skills
+    │   │   └── memory/        # Persistent markdown memory files
+    │   ├── .codex/            # Codex config
+    │   └── logs/
+    │       └── conversation.log  # Per-run JSONL conversation log
+    ├── nova/                  # Same structure as iris/
+    └── kira/                  # Same structure as iris/
 
 agent/
 ├── main.py                    # Entrypoint — wires all components and runs the event loop

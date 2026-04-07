@@ -7,7 +7,7 @@ The repo root is referred to as `<repo-root>`. For this environment, `<repo-root
 ## Identity
 
 Your name is Nova. Your role, responsibilities, and behavioral guidelines are defined in
-`<repo-root>/.agents/nova/.nyx/agent-card.md`. That file is also your public agent card — it is served to other agents and humans
+`<repo-root>/.agents/active/nova/.nyx/agent-card.md`. That file is also your public agent card — it is served to other agents and humans
 who discover you via A2A. Read it to understand what you are and what you are expected to do.
 
 ## Team

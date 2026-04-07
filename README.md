@@ -52,13 +52,14 @@ curl http://localhost:8000/.well-known/agent.json
 
 ## Agent Structure
 
-Agents are defined under `.agents/`. Each agent has its own identity, configuration, and memory.
+Active agents are defined under `.agents/active/`. Each agent has its own identity, configuration, and memory.
 
 ```text
 .agents/
-├── iris/              # Iris (port 8000)
-├── nova/              # Nova (port 8001)
-└── kira/              # Kira (port 8002)
+└── active/
+    ├── iris/          # Iris (port 8000)
+    ├── nova/          # Nova (port 8001)
+    └── kira/          # Kira (port 8002)
 ```
 
 Each agent directory contains:
@@ -76,10 +77,10 @@ Each agent directory contains:
 1. Copy an existing agent directory:
 
    ```bash
-   cp -r .agents/iris .agents/<name>
+   cp -r .agents/active/iris .agents/active/<name>
    ```
 
-2. Update `.agents/<name>/.nyx/agent-card.md` with the agent's identity and role
+2. Update `.agents/active/<name>/.nyx/agent-card.md` with the agent's identity and role
 
 3. Add the agent to `docker-compose.yml` with the next available port
 
