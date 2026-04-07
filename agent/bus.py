@@ -47,7 +47,13 @@ class MessageBus:
                 raise asyncio.QueueFull()
             if agent_bus_queue_depth is not None:
                 agent_bus_queue_depth.set(self._queue.qsize())
-            return await message.result
+            try:
+                return await message.result
+            except BaseException:
+                self._pending_kinds.discard(message.kind)
+                if agent_bus_pending_kinds is not None:
+                    agent_bus_pending_kinds.set(len(self._pending_kinds))
+                raise
         except asyncio.CancelledError:
             self._pending_kinds.discard(message.kind)
             if agent_bus_pending_kinds is not None:
