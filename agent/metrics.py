@@ -104,6 +104,8 @@ agent_tasks_total: prometheus_client.Counter | None = None
 agent_tasks_with_stderr_total: prometheus_client.Counter | None = None
 agent_text_blocks_per_query: prometheus_client.Histogram | None = None
 agent_watcher_events_total: prometheus_client.Counter | None = None
+agent_triggers_requests_total: prometheus_client.Counter | None = None
+agent_webhooks_delivery_total: prometheus_client.Counter | None = None
 
 if _enabled:
     agent_a2a_last_request_timestamp_seconds = prometheus_client.Gauge(
@@ -542,4 +544,14 @@ if _enabled:
         "agent_watcher_events_total",
         "Total raw file-system change events detected by each watcher.",
         ["watcher"],
+    )
+    agent_triggers_requests_total = prometheus_client.Counter(
+        "agent_triggers_requests_total",
+        "Total inbound trigger HTTP requests by method and response code.",
+        ["method", "code"],
+    )
+    agent_webhooks_delivery_total = prometheus_client.Counter(
+        "agent_webhooks_delivery_total",
+        "Total outbound webhook delivery attempts by result and subscription.",
+        ["result", "subscription"],
     )
