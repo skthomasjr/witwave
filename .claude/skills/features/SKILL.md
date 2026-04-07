@@ -180,12 +180,17 @@ Steps:
 
    b. Ask:
       - **Already implemented?** Check the source files from step 1b. If so,
-        close the issue: `/github-issue close <number> "Implemented — <summary>"`
-        and add label `status/implemented`.
+        fetch the current body (`gh issue view <number> --json body --jq '.body'`),
+        update the `**Status:**` line to `status/implemented`, then apply the
+        updated body and label:
+        `gh issue edit <number> --body "<updated body>" --add-label "status/implemented" --remove-label "status/pending,status/approved,status/in-progress"`
+        Then close: `/github-issue close <number> "Implemented — <summary>"`
       - **Superseded or obsolete?** Update the body to note why, post a comment
-        explaining the change, then close:
-        `/github-issue close <number> "Superseded — <one sentence reason>"`
-        and add label `status/wont-fix`.
+        explaining the change, then fetch the current body
+        (`gh issue view <number> --json body --jq '.body'`), update the
+        `**Status:**` line to `status/wont-fix`, and apply the updated body and label:
+        `gh issue edit <number> --body "<updated body>" --add-label "status/wont-fix" --remove-label "status/pending,status/approved,status/in-progress"`
+        Then close: `/github-issue close <number> "Superseded — <one sentence reason>"`
       - **Implementation details stale?** Do file paths, API names, env vars,
         or SDK APIs still match the current codebase? Update the issue body
         directly with corrected details, then post a brief comment noting
