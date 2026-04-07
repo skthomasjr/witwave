@@ -52,22 +52,29 @@ Steps:
    **Acceptance criteria**, **Implementation**, **Confidence**, and
    **Questions** fields.
 
-   **b. Assess implementation status.** Search the source for existing code.
-   Cross-reference closed tasks. Then take the appropriate path:
+   **b. Assess implementation status.** Check for any open `type/feature`
+   issues linked to this feature (from the task history loaded in step 1b).
 
-   - **Fully implemented** — all acceptance criteria are met in the source.
-     Run `/github-issue close <number> "Fully implemented — all acceptance
-     criteria met"` and move on. If criteria are not all met despite code
-     being present, treat as partially implemented.
+   **Hard rule: do not plan a new theme or create any new issues if any
+   existing `type/feature` issues for this feature are still open.** All
+   work from the current theme must be fully closed before moving forward.
 
-   - **Tasks still open** — the current theme has not landed. Check the
-     comment thread from step 2a: if no "waiting" comment exists for these
-     task numbers, post `"Waiting on open tasks before planning next theme:
-     #N, #N"`. Move on.
+   Then take the appropriate path:
 
-   - **Hand-off** — core behavior is working and only refinements remain
-     (error handling, a log line, a metric, a config default) that
-     `evaluate-gaps` or `evaluate-bugs` would catch naturally. To hand off:
+   - **Any open type/feature issues exist** — the current theme has not
+     fully landed. Check the comment thread: if no "waiting" comment exists
+     for these issue numbers, post `"Waiting on open type/feature issues
+     before planning next theme: #N, #N"`. Move on. Do not proceed to 2c.
+
+   - **Fully implemented** — all open type/feature issues are closed AND
+     all acceptance criteria are met in the source. Run
+     `/github-issue close <number> "Fully implemented — all acceptance
+     criteria met"` and move on.
+
+   - **Hand-off** — all open type/feature issues are closed, core behavior
+     is working, and only refinements remain (error handling, a log line, a
+     metric, a config default) that `evaluate-gaps` or `evaluate-bugs` would
+     catch naturally. To hand off:
      1. Fetch the issue body (`gh issue view <number> --json body --jq '.body'`),
         update its `**Status:**` line to `status/needs-more-info`, then apply
         the updated body and labels in one call:
@@ -76,7 +83,9 @@ Steps:
         Relabel to status/approved to re-enter this queue."`
      Move on.
 
-   - **Not started or partially implemented** — continue to 2c.
+   - **Not started or partially implemented** — all open type/feature issues
+     are closed but acceptance criteria are not yet fully met. Continue to 2c
+     to plan the next theme.
 
    **c. Determine the next theme.** Based on completed themes and current
    codebase state, choose the next logical phase. Name it with a short
