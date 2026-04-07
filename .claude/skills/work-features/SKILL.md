@@ -72,7 +72,7 @@ Steps:
    Read the current version of the file(s) cited in the issue. Confirm the
    work has not already been done. If the issue has already been implemented:
 
-   - Run `/github-issue close <number> "Already implemented — closing as implemented"`
+   - Run `/github-issue close <number> "Already resolved — closing as implemented"`
    - Move on to the next issue.
 
    **c. Claim the issue.**
