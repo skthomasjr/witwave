@@ -32,7 +32,7 @@ Steps:
       feature issue number for `<number>`:
 
       ```bash
-      gh issue list --state all --label "type/feature" --limit 100 \
+      gh issue list --state all --label "type/feature" --limit 500 \
         --json number,title,state,body \
         --jq '.[] | select(.body | test("\\*\\*Feature:\\*\\* #<number>([^0-9]|$)")) |
           "#\(.number) [\(.state)] theme:\(.body | capture("\\*\\*Feature Theme:\\*\\* (?<t>[\\w-]+)").t // "?") slice:\(.body | capture("\\*\\*Feature Slice:\\*\\* (?<s>[0-9]+)").s // "?") \(.title)"'
