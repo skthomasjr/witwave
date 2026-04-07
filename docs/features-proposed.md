@@ -1,7 +1,7 @@
 # Features Proposed
 
-Last updated: 2026-04-05 by nova (fifth pass — OpenHands v1.6.0 Kubernetes/RBAC, SDK budget API corrected to
-max_budget_usd/max_turns, permission_mode="plan" confirmed, LangGraph v1.1 deferred nodes; added F-012, F-013)
+Last updated: 2026-04-05 by nova (sixth pass — SDK budget API corrected to task_budget, HookMatcher callback API
+confirmed, stale line references fixed, Devin 2.2 self-verification + Schedule Devins evidence added)
 
 See [competitive-landscape.md](competitive-landscape.md) for competitor analysis and research themes that inform these
 proposals.
@@ -20,9 +20,10 @@ needs to be unlocked. Directly addresses Devin's key lesson: agents need to know
 available to main agents only — it is unavailable to subagents per SDK bug #12890. This project does not use subagents,
 so this limitation is not blocking.
 
-**Implementation:** Add `"AskUserQuestion"` to the `allowed_tools` list at `executor.py:156`. One element added to an
-existing list. The operator receives the question in the active conversation; the agent awaits the reply before
-proceeding. No session or bus changes needed.
+**Implementation:** Add `"AskUserQuestion"` to the `_DEFAULT_TOOLS` string at `executor.py:77`, or set it via the
+`ALLOWED_TOOLS` env var. The tools list is environment-driven: `ALLOWED_TOOLS` defaults to `_DEFAULT_TOOLS` at line 78.
+One element added to the default string. The operator receives the question in the active conversation; the agent awaits
+the reply before proceeding. No session or bus changes needed.
 
 **Risk:** Low — isolated to a single list; no effect on agents that never call the tool.
 
@@ -57,11 +58,12 @@ path (inspectable)? Does the YAML schema need versioning from day one?
 
 **Status:** proposed
 
-**Value:** The Claude Agent SDK ships 18 hook events (`PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Notification`,
-`Stop`, `SubagentStart`, `SubagentStop`, `PreCompact`, `PermissionRequest`, `PermissionDenied`, `UserPromptSubmit`,
-`SessionStart`, `SessionEnd`, `Setup`, `TeammateIdle`, `TaskCompleted`, `ConfigChange`, `WorktreeCreate/Remove`) that
-are entirely unused by this project. This is the SDK's primary mechanism for programmatic safety and harness-level audit
-— directly addressing the SWE-agent ACI philosophy gap and validated by LangGraph 2.0's first-class guardrail nodes.
+**Value:** The Claude Agent SDK provides a Python callback-based hooks system via `HookMatcher` — events include
+`PreToolUse`, `PostToolUse`, `Stop`, `SessionStart`, `SessionEnd`, `UserPromptSubmit`, and more. Hooks are registered as
+async callback functions in `ClaudeAgentOptions`:
+`hooks={"PostToolUse": [HookMatcher(matcher="Edit|Write", hooks=[callback])]}`. The `matcher` is a regex on tool names.
+Entirely unused by this project. This is the SDK's primary mechanism for programmatic safety and harness-level audit —
+directly addressing the SWE-agent ACI philosophy gap and validated by LangGraph 2.0's first-class guardrail nodes.
 Without hooks, this project relies entirely on agent judgment to avoid dangerous operations and on free-text log
 scanning for post-hoc audit.
 
@@ -120,24 +122,23 @@ operations rather than outright denying them?
 **Status:** proposed
 
 **Value:** Prevents runaway API costs from stuck or looping agents. The current project has no budget or turn bound — a
-looping agent can exhaust significant API quota with no operator warning. The Claude Agent SDK provides two
-complementary controls: `max_budget_usd` caps total API spend in USD per session, and `max_turns` caps agentic turns
-(tool-use round trips). Industry research in 2026 finds 90% of production agents are over-resourced; cost control is a
-top operational concern. Both controls are directly addressable via env vars and one-line additions to `make_options()`.
+looping agent can exhaust significant API quota with no operator warning. The Claude Agent SDK provides `task_budget`
+(v0.1.51) for token budget management per session. `maxTurns` is available as an `AgentDefinition` field for subagent
+turn limits. Industry research in 2026 finds 90% of production agents are over-resourced; cost control is a top
+operational concern. `task_budget` is directly addressable via an env var and a one-line addition to `make_options()`.
 
-**Implementation:** In `make_options()` in `executor.py`, read two optional env vars: `MAX_BUDGET_USD` (float) and
-`MAX_TURNS` (integer). If set, pass as `max_budget_usd` and `max_turns` to `ClaudeAgentOptions` respectively. If not
-set, omit — no cap applied. Entirely opt-in. No changes to execution path, bus, or session management. Per-agent limits
-are configurable via distinct env vars in each service's `environment` block in `docker-compose.yml`. Both can be set
-independently: `MAX_TURNS` is the lighter guardrail for runaway loops; `MAX_BUDGET_USD` is the financial ceiling.
+**Implementation:** In `make_options()` in `executor.py`, read an optional env var `TASK_BUDGET` (integer, token count).
+If set, pass as `task_budget` to `ClaudeAgentOptions`. If not set, omit — no cap applied. Entirely opt-in. No changes to
+execution path, bus, or session management. Per-agent limits are configurable via distinct env vars in each service's
+`environment` block in `docker-compose.yml`.
 
-**Risk:** Low — isolated to `make_options()`; agents without these env vars set are completely unaffected. Setting
-`MAX_TURNS` too low would silently cut off legitimate long-running tasks, so defaults should be unset (no cap).
+**Risk:** Low — isolated to `make_options()`; agents without the env var set are completely unaffected. Setting
+`TASK_BUDGET` too low would silently cut off legitimate long-running tasks, so the default should be unset (no cap).
 
-**Questions:** Should heartbeat and agenda runs share the same caps as A2A-triggered runs, or should each message kind
-have its own limit? The `kind` field in `Message` would allow per-kind env vars (e.g., `MAX_TURNS_HEARTBEAT`,
-`MAX_TURNS_AGENDA`). Should exceeding `max_budget_usd` raise a catchable exception or terminate the session silently?
-The SDK behaviour on budget exhaustion needs verification before implementing error-handling logic.
+**Questions:** Should heartbeat and agenda runs share the same cap as A2A-triggered runs, or should each message kind
+have its own limit? The `kind` field in `Message` would allow per-kind env vars (e.g., `TASK_BUDGET_HEARTBEAT`,
+`TASK_BUDGET_AGENDA`). Should exceeding `task_budget` raise a catchable exception or terminate the session silently? The
+SDK behavior on budget exhaustion needs verification before implementing error-handling logic.
 
 ---
 
@@ -147,13 +148,14 @@ The SDK behaviour on budget exhaustion needs verification before implementing er
 
 **Value:** Complex agenda items that involve multi-file changes, architectural decisions, or irreversible side effects
 benefit from a structured planning phase before execution. OpenHands v1.5.0 made the Planning Agent its headline feature
-(two-phase Plan/Code workflow); Devin enforces plan-before-code as a hard checkpoint in its assign-and-review loop.
-SWE-agent research confirms that agents which plan before acting produce fewer cascading failures. Without a planning
-phase, agents jump directly into implementation — the most common source of wasted compute and operator trust erosion in
-long-running autonomous runs. The Claude Agent SDK's `permission_mode="plan"` implements exactly this pattern natively:
-read-only tool access plus a single writable plan file, preventing code changes until the plan is reviewed. This serves
-both individuals (safer autonomous runs) and enterprise teams (auditable intent before action). Complexity is opt-in —
-only agenda items that set the frontmatter flag are affected.
+(two-phase Plan/Code workflow); Devin 2.2 now implements a full plan → code → review → auto-fix → PR cycle where
+planning is the mandatory first step; Devin enforces plan-before-code as a hard checkpoint in its assign-and-review
+loop. SWE-agent research confirms that agents which plan before acting produce fewer cascading failures. Without a
+planning phase, agents jump directly into implementation — the most common source of wasted compute and operator trust
+erosion in long-running autonomous runs. The Claude Agent SDK's `permission_mode="plan"` implements exactly this pattern
+natively: read-only tool access plus a single writable plan file, preventing code changes until the plan is reviewed.
+This serves both individuals (safer autonomous runs) and enterprise teams (auditable intent before action). Complexity
+is opt-in — only agenda items that set the frontmatter flag are affected.
 
 **Implementation:** In `agenda.py`'s `parse_agenda_file()`, recognize a `mode` frontmatter field. When `mode: plan` is
 set, store it on the `AgendaItem` dataclass (new optional `mode` field, default `None`). In `run_agenda_item()`, pass
@@ -184,19 +186,20 @@ Manual handoff is simpler and safer for the initial implementation.
 
 ### F-013 — On-demand agenda item trigger via HTTP
 
-**Status:** proposed
+**Status:** superseded — use **triggers** with frontmatter **`agenda-item`** (see `temp/triggers-spec.md` §7). A separate **`POST /trigger/{name}`** route is **not** planned; **`POST /triggers/{endpoint}`** covers custom prompts and agenda dispatch with shared auth (HMAC / `TRIGGERS_AUTH_TOKEN`).
 
-**Value:** The current architecture is purely schedule-driven (cron). Agents cannot react to external events — a GitHub
+**Value (historical — problem statement still valid):** The current architecture is purely schedule-driven (cron). Agents cannot react to external events — a GitHub
 webhook, a Slack notification, a completed CI/CD run, or a monitoring alert cannot directly trigger an agent to act.
 This is the core workflow pattern behind Devin (reads tickets from Linear/Jira/GitHub/Slack), OpenHands enterprise
 integrations, and the multi-agent coordination research finding that hybrid orchestration (schedule + event-driven)
-outperforms either approach alone. An HTTP trigger endpoint closes the gap between this project's autonomous scheduled
-model and reactive, event-driven workflows without requiring external message brokers or new infrastructure. This serves
-both individuals (trigger from a local script or curl) and enterprises (wire into existing webhook-based toolchains).
-Kubernetes-native: the endpoint is already behind a `Service`/`Ingress` and can be secured with standard network
-policies.
+outperforms either approach alone. Devin's "Schedule Devins" (March 2026) adds self-scheduling with parallel delegation,
+validating hybrid schedule + event-driven patterns as the production standard. An HTTP trigger endpoint closes the gap
+between this project's autonomous scheduled model and reactive, event-driven workflows without requiring external
+message brokers or new infrastructure. This serves both individuals (trigger from a local script or curl) and
+enterprises (wire into existing webhook-based toolchains). Kubernetes-native: the endpoint is already behind a
+`Service`/`Ingress` and can be secured with standard network policies.
 
-**Implementation:** Add a `POST /trigger/{name}` route in `main.py`. The handler accepts an optional JSON body
+**Implementation (historical — replaced by `temp/triggers-spec.md`):** Add a `POST /trigger/{name}` route in `main.py`. The handler accepts an optional JSON body
 `{"prompt": "override text", "session_id": "optional-override"}`. It looks up the named agenda item in
 `AgendaRunner._items` and fires a `Message` onto the bus with the item's configured content (or the override prompt if
 provided), its configured session ID (or override), and `kind=f"trigger:{name}"`. Returns 202 with the session ID if

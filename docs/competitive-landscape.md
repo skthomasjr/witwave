@@ -363,9 +363,11 @@ external systems (F-009).
 fan-out, and now native A2A integration. A2A (used by this project) is at v0.3 with 150+ supporting organizations.
 Research shows structured planner-worker hierarchies significantly outperform flat "bag of agents" patterns:
 unstructured swarms compound errors at up to 17x the rate of structured coordination. The winning production topology is
-hybrid: a high-level orchestrator for strategic coordination + local mesh networks for tactical execution. Devin reacts
-to external events (GitHub PRs, Jira tickets, Slack messages) rather than only scheduled runs — event-driven triggers
-are the mechanism that bridges autonomous agents to the rest of the organization's toolchain.
+hybrid: a high-level orchestrator for strategic coordination + local mesh networks for tactical execution. Devin's
+"Schedule Devins" (March 2026) adds self-scheduling with parallel delegation to managed Devins, each in an isolated VM —
+validating this project's agenda-based scheduling model. Devin also reacts to external events (GitHub PRs, Jira tickets,
+Slack messages) rather than only scheduled runs — event-driven triggers bridge autonomous agents to the rest of the
+organization's toolchain.
 
 **What users value most:** Assigning a task to a specific agent and getting a result back without manually constructing
 A2A request payloads. Clear accountability in multi-agent workflows. The ability for external systems (CI/CD pipelines,
@@ -424,8 +426,8 @@ before it touches production files, giving operators a low-friction checkpoint.
 
 ### Cost / Token Management
 
-**What competitors do:** The Claude Agent SDK provides `max_budget_usd` to cap total API spend per session in USD and
-`max_turns` to cap the number of agentic turns (tool-use round trips). `get_context_usage()` (0.1.52) exposes real-time
+**What competitors do:** The Claude Agent SDK provides `task_budget` (v0.1.51) to cap token budget per session, and
+`maxTurns` as an `AgentDefinition` field for subagent turn limits. `get_context_usage()` (0.1.52) exposes real-time
 token consumption by category. CrewAI v1.13.0 added token usage tracking in `LLMCallCompletedEvent`. Industry research
 in 2026 finds 90% of production agents are over-resourced, with cost control emerging as a top operational concern. The
 compounding reliability finding is relevant: at 85% per-step reliability, a 10-step workflow succeeds only ~20% of the
@@ -435,5 +437,5 @@ error.
 **What users value most:** Predictable, bounded API costs per agent run. Proactive warnings before context limits cause
 silent degradation. No runaway API bills from stuck or looping agents.
 
-**Candidate features:** Budget cap per agent run via `max_budget_usd` or turn cap via `max_turns` (F-010). Context usage
-monitoring via `get_context_usage()` (F-011, implemented).
+**Candidate features:** Budget cap per agent run via `task_budget` (F-010). Context usage monitoring via
+`get_context_usage()` (F-011, implemented).

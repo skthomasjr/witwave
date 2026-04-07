@@ -64,8 +64,12 @@ ready, 503 while initializing), `GET /health/live` (liveness probe — always 20
 **Status:** implemented
 
 **Summary:** Opt-in `/metrics` endpoint added to `main.py`, enabled via `METRICS_ENABLED=true` env var. Mounts
-`prometheus_client.make_asgi_app()` and registers a single `agent_up` gauge set to `1.0` at startup. `prometheus-client`
-added to Dockerfile pip dependencies. Zero overhead when disabled.
+`prometheus_client.make_asgi_app()`. Now exposes 70+ Prometheus metrics across all subsystems: SDK query
+duration/errors/tool calls, per-tool latency and error rates, context token usage and exhaustion events, bus queue depth
+and processing duration, per-agenda-item duration/lag/success/error timestamps, heartbeat timing and skip counts,
+session LRU cache utilization, MCP config reload tracking, health probe hit counts, startup duration, and more. Metrics
+defined in `metrics.py` and instrumented throughout `executor.py`, `main.py`, `agenda.py`, `heartbeat.py`, and `bus.py`.
+`prometheus-client` added to Dockerfile pip dependencies. Zero overhead when disabled.
 
 ---
 
