@@ -1,10 +1,11 @@
 ---
 name: github-issue
 description:
-  Manage GitHub Issues for the autonomous-agent repo — create, list, claim, comment, and close tasks and questions
-argument-hint:
-  "create task [status/<status>] | create question | list | claim <number> <agent> | comment <number> <message> | close
-  <number> <message>"
+  Manage GitHub Issues for the autonomous-agent repo — create, list, search, view, claim, comment, relabel, and close
+  tasks and questions
+argument-hint: >-
+  create task [status/<status>] | create question | list | search <query> | view <number> | claim <number> <agent> |
+  comment <number> <message> | relabel <number> add <label> [remove <label>] | close <number> <message>
 ---
 
 Manage GitHub Issues in `skthomasjr/autonomous-agent`.
@@ -92,6 +93,48 @@ If no filters are provided, list all open issues. Display results clearly with i
 
 ---
 
+## `search <query>`
+
+Search open issues by keyword.
+
+**Arguments:** `search "executor session_id"`
+
+Use the Bash tool to search issues:
+
+```bash
+gh search issues "$QUERY" --state open --repo ${GH_REPO:-skthomasjr/autonomous-agent} \
+  --json number,title,labels \
+  --jq '.[] | "#\(.number) \(.title) [\(.labels | map(.name) | join(", "))]"'
+```
+
+Display results clearly with issue number, title, and labels. If no results are found, report that clearly.
+
+---
+
+## `view <number>`
+
+Fetch an issue's full body and comment thread.
+
+**Arguments:** `view 42`
+
+Use the Bash tool:
+
+```bash
+gh issue view <number> --comments \
+  --json number,title,labels,body,comments \
+  --jq '{
+    number: .number,
+    title: .title,
+    labels: [.labels[].name],
+    body: .body,
+    comments: [.comments[] | {author: .author.login, body: .body, createdAt: .createdAt}]
+  }'
+```
+
+Display the issue body followed by each comment in chronological order with its author and timestamp.
+
+---
+
 ## `claim <number> <agent>`
 
 Claim an issue — mark it as in-progress by the specified agent.
@@ -124,6 +167,25 @@ gh issue comment <number> \
 ```
 
 6. Confirm the claim.
+
+---
+
+## `relabel <number> add <label> [remove <label>]`
+
+Add and/or remove labels on an issue without touching the body or posting a comment.
+
+**Arguments:** `relabel 42 add status/wont-fix remove status/approved`
+
+Use the Bash tool:
+
+```bash
+gh issue edit <number> \
+  --add-label "<label-to-add>" \
+  --remove-label "<label-to-remove>"
+```
+
+Omit `--remove-label` if no label needs to be removed. Multiple labels can be comma-separated in either argument.
+Report the updated label set.
 
 ---
 
@@ -160,8 +222,8 @@ gh issue comment <number> \
 2. Remove the `status/in-progress` label and close the issue:
 
 ```bash
-gh issue close <number> \
-  --remove-label "status/in-progress"
+gh issue edit <number> --remove-label "status/in-progress"
+gh issue close <number>
 ```
 
 3. Confirm the issue is closed.
