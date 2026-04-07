@@ -60,6 +60,12 @@ Steps:
    - **Inconsistent conventions** — the same concept handled differently across
      skills (e.g. one skill uses `status/wont-fix` where another uses a comment
      only, or `Created by` set differently)
+   - **OS portability** — commands that use BSD-only or GNU-only coreutil syntax
+     (e.g. `grep -P`, `sed -i` without an extension argument, `date -d`), tools
+     only available on one platform (e.g. `brew` commands, `apt` commands), or
+     shell features not portable across macOS (zsh/bash) and Linux (bash). Skills
+     run on macOS when invoked locally and on Linux inside containerized agents —
+     both paths are active and must work without OS-specific branching.
 
 6. For each finding, cross-reference against the list loaded in step 1. If not
    already covered, also run `/github-issue search "<skill-name> <brief keyword>"`
