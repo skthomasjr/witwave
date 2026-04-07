@@ -1,5 +1,5 @@
 ---
-name: fix-risks
+name: working-risks
 description: >-
   Fix open risk issues one at a time — triage, prioritize, verify, and resolve each risk with full
   context before touching a single line of code

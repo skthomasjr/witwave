@@ -13,13 +13,13 @@ is done.
 
 Steps:
 
-1. Run `/fix-skills`, then `/evaluate-skills`. If new skill issues were filed, go to step 1.
+1. Run `/working-skills`, then `/evaluate-skills`. If new skill issues were filed, go to step 1.
 
-2. Run `/fix-bugs`, then `/evaluate-bugs`. If new bug issues were filed, go to step 1.
+2. Run `/working-bugs`, then `/evaluate-bugs`. If new bug issues were filed, go to step 1.
 
-3. Run `/fix-risks`, then `/evaluate-risks`. If new risk issues were filed, go to step 1.
+3. Run `/working-risks`, then `/evaluate-risks`. If new risk issues were filed, go to step 1.
 
-4. Once steps 1, 2, and 3 all complete without filing any new issues, run `/fix-gaps`, then
+4. Once steps 1, 2, and 3 all complete without filing any new issues, run `/working-gaps`, then
    `/evaluate-gaps`. If new gap issues were filed, go to step 1.
 
 5. Report that the codebase is clean — no open bugs, skill issues, risks, or gaps remain.

@@ -30,7 +30,7 @@ Steps:
 
 4. Build a complete map of the skill layer before drawing any conclusions:
 
-   - Which skills call other skills (e.g. `fix-bugs` calling `/github-issue`)?
+   - Which skills call other skills (e.g. `working-bugs` calling `/github-issue`)?
    - Which subcommands does each skill expose?
    - Which placeholders are used (`<repo-root>`, `<agent-name>`, `$ARGUMENTS`,
      etc.) and how are they resolved?
