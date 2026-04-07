@@ -67,3 +67,11 @@ services:
       - ./.agents/active/kira/logs:/home/agent/logs
       - ./.agents/active/manifest.json:/home/agent/.nyx/manifest.json:ro
       - .:/home/agent/workspace
+
+  ui:
+    build:
+      context: .
+      dockerfile: ui/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:80"
