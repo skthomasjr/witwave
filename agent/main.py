@@ -171,6 +171,19 @@ async def _sub_app_lifespan(app):
         await task
 
 
+async def _guarded(coro_fn, *args, restart_delay: float = 5.0) -> None:
+    """Run a coroutine function in a restart loop, catching unexpected exceptions."""
+    while True:
+        try:
+            await coro_fn(*args)
+            return  # clean exit — do not restart
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.error(f"Task {coro_fn.__name__!r} crashed: {exc!r} — restarting in {restart_delay}s")
+            await asyncio.sleep(restart_delay)
+
+
 async def _event_loop_monitor() -> None:
     _interval = 1.0
     while True:
@@ -289,10 +302,10 @@ async def main():
 
     await asyncio.gather(
         server.serve(),
-        bus_worker(bus, executor),
-        heartbeat_runner(bus),
-        agenda_runner.run(),
-        _event_loop_monitor(),
+        _guarded(bus_worker, bus, executor),
+        _guarded(heartbeat_runner, bus),
+        _guarded(agenda_runner.run),
+        _guarded(_event_loop_monitor),
         *executor._mcp_watchers(),
         _set_ready_when_started(server),
     )
