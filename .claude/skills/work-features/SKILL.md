@@ -1,8 +1,8 @@
 ---
 name: work-features
 description: >-
-  Review open feature proposals one at a time — triage, approve, enrich, defer,
-  or close each one so the feature backlog stays actionable and evaluate-features
+  Review open feature proposals one at a time — triage, approve, enrich, or
+  defer each one so the feature backlog stays actionable and evaluate-features
   has a clean queue to work from
 ---
 
@@ -70,7 +70,7 @@ Steps:
      Value or Implementation, stale file references, unanswered Questions
    - `status/needs-more-info` proposals — assess whether the blocker has been
      resolved; re-approve or close
-   - Low-confidence or speculative proposals — reassess or close
+   - Low-confidence or speculative proposals — reassess; flag for human review if no clear path forward
 
    Within a tier, act on higher-priority proposals first (`p0` before `p1`, etc.).
 
@@ -90,30 +90,17 @@ Steps:
      `gh issue edit <number> --body "<updated body>" --add-label "status/approved" --remove-label "status/in-progress"`
    - Skip this proposal and move on to the next one.
 
-   **b. Verify the proposal is still relevant.**
+   **b. Check implementation progress.**
 
-   Use the task history loaded in step 1 combined with the source code to assess
-   implementation status. A feature is only fully implemented when all its
-   Acceptance criteria are met in the source — not just when all current tasks
-   are closed (there may be more themes to plan). If open tasks exist for this
-   feature, it is still in progress — do not close or re-evaluate it; move on.
+   Use the task history loaded in step 1 to determine whether this proposal is
+   already being driven by `evaluate-features`. Do not close feature issues —
+   closing is `evaluate-features`' responsibility, not this skill's.
 
    - If open tasks exist for this feature: skip — `evaluate-features` is
      already driving it. Move on to the next proposal.
-   - If fully implemented (all Acceptance criteria met in source):
-     - Fetch the current issue body: `gh issue view <number> --json body --jq '.body'`
-     - Update the body's `**Status:**` line to `status/implemented`.
-     - Apply the updated body and relabel in one call:
-       `gh issue edit <number> --body "<updated body>" --add-label "status/implemented" --remove-label "status/pending,status/approved,status/in-progress,status/needs-more-info"`
-     - Run `/github-issue close <number> "Already implemented — closing as implemented"`
-     - Move on.
-   - If superseded or the idea is no longer viable:
-     - Fetch the current issue body: `gh issue view <number> --json body --jq '.body'`
-     - Update the body's `**Status:**` line to `status/wont-fix`.
-     - Apply the updated body and relabel in one call:
-       `gh issue edit <number> --body "<updated body>" --add-label "status/wont-fix" --remove-label "status/pending,status/approved,status/in-progress,status/needs-more-info"`
-     - Run `/github-issue close <number> "Superseded — <one sentence reason>"`
-     - Move on.
+   - If all tasks are closed and no open tasks remain: the last theme has
+     landed. Leave the feature open — `evaluate-features` will either plan
+     the next theme or close it once all Acceptance criteria are met.
 
    **c. Classify the proposal.**
 
@@ -131,9 +118,9 @@ Steps:
      human judgment (architectural decisions, product direction, external
      constraints). Post a comment describing what is needed and set
      `status/needs-more-info`. Do not approve under uncertainty.
-   - **Close as wont-fix** — the proposal is speculative, duplicates a closed
-     issue, or no longer aligns with the project's direction. Close with a clear
-     reason.
+   - **Leave pending** — the proposal is speculative or low-confidence but not
+     clearly wrong. Leave it in its current status and note it in the summary
+     for human review. Do not close it.
 
    **d. Act on the proposal.**
 
@@ -160,16 +147,16 @@ Steps:
      exactly what decision or information is required and why it cannot be resolved
      from the codebase alone>"`
 
-   For **Close as wont-fix**: see step 4b.
+   For **Leave pending**: no label or body changes. Note the issue number and
+   reason in the step 5 summary for human review.
 
 5. After all proposals are acted on, report a summary:
 
-   - Proposals approved (issue number, title, any enrichments made)
+   - Proposals approved (issue number, title)
    - Proposals approved after enrichment (issue number, what was updated)
    - Proposals set to needs-more-info (issue number, what was asked)
-   - Proposals closed as implemented (issue number, reason)
-   - Proposals closed as wont-fix (issue number, reason)
-   - Any proposals skipped and why
+   - Proposals skipped — in-flight (issue number, open task numbers)
+   - Proposals left pending for human review (issue number, reason)
    - Total open `status/approved` `type/feature` count — this is the queue
      available to `evaluate-features`
 
