@@ -269,6 +269,18 @@ class AgentExecutor(A2AAgentExecutor):
                 watchers.append(watcher())
         return watchers
 
+    async def on_prompt_completed(
+        self,
+        source: str,
+        kind: str,
+        session_id: str,
+        success: bool,
+        response: str,
+        duration_seconds: float,
+        error: str | None = None,
+    ) -> None:
+        pass
+
     async def backends_watcher(self) -> None:
         """Watch BACKENDS_CONFIG_PATH and reload backends on file change."""
         from backends.config import BACKENDS_CONFIG_PATH
@@ -312,22 +324,36 @@ class AgentExecutor(A2AAgentExecutor):
                 self._running_tasks[task_id] = current
                 if agent_running_tasks is not None:
                     agent_running_tasks.inc()
+        _response = ""
+        _success = False
+        _error: str | None = None
         try:
-            response = await run(
+            _response = await run(
                 prompt, session_id, self._sessions,
                 self._backends, self._default_backend_id,
                 backend_id=backend_id,
                 model=model,
             )
-            if response:
-                await event_queue.enqueue_event(new_agent_text_message(response))
+            _success = True
+            if _response:
+                await event_queue.enqueue_event(new_agent_text_message(_response))
             if agent_a2a_requests_total is not None:
                 agent_a2a_requests_total.labels(status="success").inc()
-        except Exception:
+        except Exception as _exc:
+            _error = repr(_exc)
             if agent_a2a_requests_total is not None:
                 agent_a2a_requests_total.labels(status="error").inc()
             raise
         finally:
+            asyncio.create_task(self.on_prompt_completed(
+                source="a2a",
+                kind="a2a",
+                session_id=session_id,
+                success=_success,
+                response=_response,
+                duration_seconds=time.monotonic() - _exec_start,
+                error=_error,
+            ))
             if agent_a2a_request_duration_seconds is not None:
                 agent_a2a_request_duration_seconds.observe(time.monotonic() - _exec_start)
             if agent_a2a_last_request_timestamp_seconds is not None:
@@ -349,18 +375,35 @@ class AgentExecutor(A2AAgentExecutor):
             logger.info(f"Task {task_id!r} cancellation requested but no running task found.")
 
     async def process_bus(self, message: Message) -> None:
+        _bus_start = time.monotonic()
+        _session_id = message.session_id or str(uuid.uuid4())
+        _response = ""
+        _success = False
+        _error: str | None = None
         try:
-            response = await run(
+            _response = await run(
                 message.prompt,
-                message.session_id or str(uuid.uuid4()),
+                _session_id,
                 self._sessions,
                 self._backends,
                 self._default_backend_id,
                 model=message.model,
             )
+            _success = True
             if message.result is not None:
-                message.result.set_result(response)
+                message.result.set_result(_response)
         except Exception as e:
+            _error = repr(e)
             logger.exception(f"process_bus error for session {message.session_id!r}: {e}")
             if message.result is not None:
                 message.result.set_exception(e)
+        finally:
+            asyncio.create_task(self.on_prompt_completed(
+                source="bus",
+                kind=message.kind,
+                session_id=_session_id,
+                success=_success,
+                response=_response,
+                duration_seconds=time.monotonic() - _bus_start,
+                error=_error,
+            ))
