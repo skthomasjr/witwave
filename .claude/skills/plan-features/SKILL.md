@@ -224,10 +224,10 @@ Steps:
 7. **Update docs** if research surfaced significant new information:
 
    - `docs/competitive-landscape.md` — the `## Gap Analysis` section was
-     already written in step 3. Additionally update any competitor section
-     where new facts, features, or positioning have emerged. Update the
-     `Last updated:` line at the top. Only add or update — do not delete
-     existing content.
+     already written in step 3; do not touch it here. Additionally update any
+     competitor section where new facts, features, or positioning have emerged.
+     Update the `Last updated:` line at the top. Only add or update — do not
+     delete existing content in any section other than `## Gap Analysis`.
    - `docs/product-vision.md` — if research revealed a shift in what the
      market values, a pattern this project should adopt, or a strategic
      direction worth capturing, update the vision to reflect it. Be
