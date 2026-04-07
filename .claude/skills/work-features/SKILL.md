@@ -33,6 +33,22 @@ Steps:
    - Whether the Questions field has unresolved blockers
    - Whether the Acceptance criteria are specific and verifiable
 
+   Then load the full task history for each feature so you know its
+   implementation progress before evaluating anything. Substitute the actual
+   feature issue number for `<number>`:
+
+   ```bash
+   gh issue list --state all --label "type/task" --limit 100 \
+     --json number,title,state,body \
+     --jq '.[] | select(.body | contains("**Feature:** #<number>")) |
+       "#\(.number) [\(.state)] theme:\(.body | capture("\\*\\*Feature Theme:\\*\\* (?<t>[\\w-]+)").t // "?") slice:\(.body | capture("\\*\\*Feature Slice:\\*\\* (?<s>[0-9]+)").s // "?") \(.title)"'
+   ```
+
+   For each feature note: which themes are fully closed, which theme is
+   currently in-flight (has open tasks), and how many slices exist total.
+   This is the ground truth for implementation progress — do not rely on
+   source code alone to judge whether a feature is "done".
+
 2. Build a complete picture of the codebase before evaluating anything:
 
    Read `<repo-root>/README.md` and `<repo-root>/AGENTS.md` to understand the
@@ -76,10 +92,15 @@ Steps:
 
    **b. Verify the proposal is still relevant.**
 
-   Check whether the feature has already been implemented in the source:
+   Use the task history loaded in step 1 combined with the source code to assess
+   implementation status. A feature is only fully implemented when all its
+   Acceptance criteria are met in the source — not just when all current tasks
+   are closed (there may be more themes to plan). If open tasks exist for this
+   feature, it is still in progress — do not close or re-evaluate it; move on.
 
-   - Search the codebase for code that would satisfy the acceptance criteria.
-   - If fully implemented:
+   - If open tasks exist for this feature: skip — `evaluate-features` is
+     already driving it. Move on to the next proposal.
+   - If fully implemented (all Acceptance criteria met in source):
      - Fetch the current issue body: `gh issue view <number> --json body --jq '.body'`
      - Update the body's `**Status:**` line to `status/implemented`.
      - Apply the updated body and relabel in one call:
