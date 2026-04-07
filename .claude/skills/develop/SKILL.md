@@ -13,23 +13,13 @@ is done.
 
 Steps:
 
-1. Run `/fix-bugs`. Work through every open bug issue until none remain.
+1. Run `/fix-skills`, then `/evaluate-skills`. If new skill issues were filed, go to step 1.
 
-2. Run `/evaluate-skills`. Note how many new bug issues were filed.
+2. Run `/fix-bugs`, then `/evaluate-bugs`. If new bug issues were filed, go to step 1.
 
-3. Run `/evaluate-bugs`. Note how many new bug issues were filed.
+3. Run `/fix-risks`, then `/evaluate-risks`. If new risk issues were filed, go to step 1.
 
-4. Run `/evaluate-risks`. Note how many new risk issues were filed.
+4. Once steps 1, 2, and 3 all complete without filing any new issues, run `/fix-gaps`, then
+   `/evaluate-gaps`. If new gap issues were filed, go to step 1.
 
-5. Run `/fix-risks`. Work through every open risk issue until none remain (or are deferred with a comment).
-
-6. If any new issues were filed in steps 2, 3, or 4, go to step 1.
-
-7. Once the loop exits cleanly (no new issues filed in steps 2, 3, or 4), and `/evaluate-gaps` has
-   not yet run this session, run `/evaluate-gaps` once, then `/fix-gaps` once. Then go to step 1
-   to verify no new bugs or risks were introduced by the gap fixes. Skip step 7 on that return pass
-   — evaluate-gaps runs exactly once per develop session regardless of how many times step 1 is
-   reached afterward.
-
-8. Report that the codebase is clean — no open bugs or risks remain, and the highest-value gaps have
-   been addressed.
+5. Report that the codebase is clean — no open bugs, skill issues, risks, or gaps remain.
