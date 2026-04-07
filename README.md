@@ -41,7 +41,7 @@ export CLAUDE_CODE_OAUTH_TOKEN=your-token-here
 ### 3. Start the agents
 
 ```bash
-docker compose up -d
+docker compose -f docker-compose.active.yml up -d
 ```
 
 ### 4. Verify
@@ -82,14 +82,14 @@ Each agent directory contains:
 
 2. Update `.agents/active/<name>/.nyx/agent-card.md` with the agent's identity and role
 
-3. Add the agent to `docker-compose.yml` with the next available port
+3. Add the agent to `docker-compose.active.yml` with the next available port
 
 4. Add the agent to the port table in `CLAUDE.md`
 
 5. Start the agent:
 
    ```bash
-   docker compose up -d <name>
+   docker compose -f docker-compose.active.yml up -d <name>
    ```
 
 ## Communication

@@ -18,7 +18,7 @@ Steps:
    against this vision: does this feature serve the individual, the enterprise, or both? Does it align with
    Kubernetes-first deployment? Does it respect the principle that complexity is opt-in?
 2. Read all source files under `<repo-root>/` using the glob pattern `**/*.py` and also read `Dockerfile` and
-   `docker-compose.yml` to understand what is already built and how it works. Form a clear picture of the current
+   `docker-compose.active.yml` to understand what is already built and how it works. Form a clear picture of the current
    capabilities and limitations before researching anything external.
 3. Research the following products using WebSearch and WebFetch. Prefer primary sources — official docs, GitHub repos,
    release notes, changelogs, and credible community discussion (Hacker News, Reddit, GitHub issues, developer blogs).

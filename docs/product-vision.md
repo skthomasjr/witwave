@@ -45,7 +45,7 @@ compatibility:
 
 | Artifact             | Status      | Description                                     |
 | -------------------- | ----------- | ----------------------------------------------- |
-| `docker-compose.yml` | Shipped     | Local development and single-host deployment    |
+| `docker-compose.active.yml` | Shipped     | Local development and single-host deployment    |
 | Helm chart           | Planned     | Parameterized Kubernetes deployment for teams   |
 | Kubernetes Operator  | Considering | Declarative agent lifecycle management via CRDs |
 

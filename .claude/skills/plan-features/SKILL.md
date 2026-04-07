@@ -21,7 +21,7 @@ Steps:
       current capabilities, target audience, and design principles.
 
    b. Read all Python source files under `<repo-root>/agent/` and
-      `<repo-root>/agent/backends/` plus `Dockerfile` and `docker-compose.yml`
+      `<repo-root>/agent/backends/` plus `Dockerfile` and `docker-compose.active.yml`
       to understand what is already built.
 
    c. Load all `feature` issues (open and closed) so you know what has

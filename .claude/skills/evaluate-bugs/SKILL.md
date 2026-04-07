@@ -26,7 +26,7 @@ Steps:
    - Also read any dependency/manifest files present: `requirements.txt`, `pyproject.toml`, `package.json`,
      `package-lock.json`, `go.mod`, `Cargo.toml`, `pom.xml`, `*.csproj`. These reveal version mismatches,
      missing dependencies, and outdated packages that are a common source of bugs.
-   - Read `<repo-root>/Dockerfile` and `<repo-root>/docker-compose.yml` in full.
+   - Read `<repo-root>/Dockerfile` and `<repo-root>/docker-compose.active.yml` in full.
 
 5. Read every source file discovered in step 4 in full. Do not skim. After reading all files, build a mental model
    of how the components connect — data flow, call chains, shared state, error propagation paths — before drawing
@@ -48,14 +48,14 @@ Steps:
      that silently fail
    - docker-compose bugs: misconfigured volume mounts, missing or incorrect environment variables, port
      conflicts, missing `restart` policies that would leave a crashed agent unrecovered
-   - Cross-file consistency: every env var referenced in `docker-compose.yml` should have a corresponding
+   - Cross-file consistency: every env var referenced in `docker-compose.active.yml` should have a corresponding
      default in the Python source; every host path in a volume mount should exist in the repository.
-     To make this check systematic, extract all env var names from docker-compose.yml and cross-reference
+     To make this check systematic, extract all env var names from docker-compose.active.yml and cross-reference
      each against the Python source:
 
      ```bash
-     # Extract env var names referenced in docker-compose.yml (${VAR} and $VAR forms)
-     grep -oP '\$\{?\K[A-Z_][A-Z0-9_]+(?=\}?)' <repo-root>/docker-compose.yml | sort -u
+     # Extract env var names referenced in docker-compose.active.yml (${VAR} and $VAR forms)
+     grep -oP '\$\{?\K[A-Z_][A-Z0-9_]+(?=\}?)' <repo-root>/docker-compose.active.yml | sort -u
      ```
 
      For each var found, grep `agent/*.py` to confirm a default exists (e.g. `os.environ.get("VAR", ...)`).

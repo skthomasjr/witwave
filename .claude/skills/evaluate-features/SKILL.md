@@ -43,7 +43,7 @@ Steps:
 
    c. Read `README.md`, `AGENTS.md`, all files under `docs/`, every source
       file under `agent/` and `agent/backends/`, `Dockerfile`, and
-      `docker-compose.yml`. Do not skim — a complete picture of the codebase
+      `docker-compose.active.yml`. Do not skim — a complete picture of the codebase
       is required before assessing any feature.
 
 2. **For each approved feature, in priority order (`p0` first):**

@@ -78,7 +78,7 @@ docs/
     └── question.md            # Question template
 
 Dockerfile                     # nyx-agent image — no identity baked in
-docker-compose.yml             # Local multi-agent deployment
+docker-compose.active.yml             # Local multi-agent deployment
 AGENTS.md                      # Canonical repo instructions for all coding agents
 CLAUDE.md                      # Claude Code compatibility shim → AGENTS.md
 ```

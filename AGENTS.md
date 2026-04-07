@@ -66,7 +66,7 @@ agent/
 ├── agenda.py           # Agenda scheduler
 ├── metrics.py          # Prometheus metrics definitions
 └── utils.py            # Shared utilities (e.g. frontmatter parser)
-docker-compose.yml      # Runs all agents locally
+docker-compose.active.yml      # Runs all agents locally
 Dockerfile              # nyx-agent image
 ```
 
@@ -74,7 +74,7 @@ Dockerfile              # nyx-agent image
 
 ```bash
 docker build -t nyx-agent:latest .
-docker compose up -d
+docker compose -f docker-compose.active.yml up -d
 ```
 
 ## Interacting with Agents
