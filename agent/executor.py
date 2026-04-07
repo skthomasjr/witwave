@@ -286,7 +286,7 @@ class AgentExecutor(A2AAgentExecutor):
         from backends.config import BACKENDS_CONFIG_PATH
         from watchfiles import awatch
 
-        watch_dir = os.path.dirname(BACKENDS_CONFIG_PATH) or "."
+        watch_dir = os.path.dirname(os.path.abspath(BACKENDS_CONFIG_PATH))
         logger.info(f"Backends watcher watching {BACKENDS_CONFIG_PATH}")
         while True:
             if not os.path.isdir(watch_dir):
