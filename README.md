@@ -29,7 +29,7 @@ Each agent:
 ### 1. Build the image
 
 ```bash
-docker build -t claude-agent:latest .
+docker build -t nyx-agent:latest .
 ```
 
 ### 2. Configure credentials
@@ -65,13 +65,10 @@ Each agent directory contains:
 
 ```text
 <agent>/
-├── agent.md           # Agent identity — served via A2A agent card
-├── logs/              # Conversation log (runtime, not committed)
-└── .claude/
-    ├── CLAUDE.md      # Behavioral configuration
-    ├── HEARTBEAT.md   # Heartbeat schedule and prompt
-    ├── agenda/        # Scheduled work items
-    └── memory/        # Personal memory (runtime, not committed)
+├── .claude/           # Claude Code config (settings.json, mcp.json, memory/)
+├── .codex/            # Codex config (config.toml)
+├── .nyx/              # Runtime config (agent-card.md, backends.yaml, HEARTBEAT.md, agenda/, skills/)
+└── logs/              # Conversation log (runtime, not committed)
 ```
 
 ## Adding an Agent
@@ -82,7 +79,7 @@ Each agent directory contains:
    cp -r .agents/iris .agents/<name>
    ```
 
-2. Update `.agents/<name>/agent.md` with the agent's identity and role
+2. Update `.agents/<name>/.nyx/agent-card.md` with the agent's identity and role
 
 3. Add the agent to `docker-compose.yml` with the next available port
 
@@ -123,12 +120,13 @@ Three authentication methods are supported, configured via environment variable:
 
 | Environment variable           | Default                                             | Description                                                          |
 | ------------------------------ | --------------------------------------------------- | -------------------------------------------------------------------- |
-| `AGENT_NAME`                   | `claude-agent`                                      | Agent display name                                                   |
+| `AGENT_NAME`                   | `nyx-agent`                                  | Agent display name                                                   |
 | `AGENT_PORT`                   | `8000`                                              | HTTP port the agent listens on                                       |
 | `AGENT_VERSION`                | `0.1.0`                                             | Version string reported in the A2A agent card                        |
 | `ALLOWED_TOOLS`                | `Read,Write,Edit,Bash,Glob,Grep,WebSearch,WebFetch` | Comma-separated list of Claude Code tools to enable                  |
 | `MAX_SESSIONS`                 | `10000`                                             | Maximum number of concurrent sessions tracked in memory              |
 | `TASK_TIMEOUT_SECONDS`         | `300`                                               | Seconds before an individual SDK query call is cancelled             |
+| `BUS_MAX_QUEUE_DEPTH`          | `100`                                               | Maximum messages queued in the internal bus; excess messages are dropped |
 | `MCP_CONFIG_PATH`              | `/home/agent/.claude/mcp.json`                      | Path to the MCP server configuration file                            |
 | `METRICS_ENABLED`              | _(unset)_                                           | Set to any non-empty value to expose Prometheus `/metrics`           |
 | `CLAUDE_MODEL`                 | _(unset)_                                           | Override the default Claude model used by the SDK                    |
@@ -150,6 +148,7 @@ When `METRICS_ENABLED` is set, Prometheus metrics are served at `/metrics`.
 | `agent_agenda_duration_seconds`                    | Histogram | `name`            | Wall-clock seconds per agenda item execution                          |
 | `agent_agenda_error_duration_seconds`              | Histogram | `name`            | Wall-clock seconds for agenda items that end in error                 |
 | `agent_agenda_item_last_error_timestamp_seconds`   | Gauge     | `name`            | Unix epoch of each agenda item's last failed run                      |
+| `agent_agenda_item_last_run_timestamp_seconds`     | Gauge     | `name`            | Unix epoch of each agenda item's most recent execution, any outcome   |
 | `agent_agenda_item_last_success_timestamp_seconds` | Gauge     | `name`            | Unix epoch of each agenda item's last successful run                  |
 | `agent_agenda_lag_seconds`                         | Histogram | _(none)_          | Delay between scheduled and actual agenda item execution start        |
 | `agent_agenda_parse_errors_total`                  | Counter   | _(none)_          | Total agenda file parse failures                                      |
@@ -171,14 +170,17 @@ When `METRICS_ENABLED` is set, Prometheus metrics are served at `/metrics`.
 | `agent_concurrent_queries`                         | Gauge     | _(none)_          | Number of run() calls currently in flight                             |
 | `agent_context_exhaustion_total`                   | Counter   | _(none)_          | Total context window exhaustion events (usage >= 100%)                |
 | `agent_context_tokens`                             | Histogram | _(none)_          | Absolute token count from get_context_usage() per SDK turn            |
+| `agent_context_tokens_remaining`                   | Histogram | _(none)_          | Remaining token budget (maxTokens - totalTokens) per usage call       |
 | `agent_context_usage_percent`                      | Histogram | _(none)_          | Context window utilization percentage per SDK turn                    |
 | `agent_context_warnings_total`                     | Counter   | _(none)_          | Total context usage threshold warnings                                |
 | `agent_empty_responses_total`                      | Counter   | _(none)_          | Total tasks that produced no text output                              |
+| `agent_event_loop_lag_seconds`                     | Histogram | _(none)_          | Excess delay beyond expected sleep, measuring asyncio event loop congestion |
 | `agent_file_watcher_restarts_total`                | Counter   | `watcher`         | Total file watcher restarts due to missing or deleted directory       |
 | `agent_heartbeat_duration_seconds`                 | Histogram | _(none)_          | Wall-clock seconds from heartbeat firing to response received         |
 | `agent_heartbeat_error_duration_seconds`           | Histogram | _(none)_          | Wall-clock seconds for heartbeats that end in error                   |
 | `agent_heartbeat_lag_seconds`                      | Histogram | _(none)_          | Delay between scheduled and actual heartbeat execution start          |
 | `agent_heartbeat_last_error_timestamp_seconds`     | Gauge     | _(none)_          | Unix epoch of the most recent failed heartbeat                        |
+| `agent_heartbeat_last_run_timestamp_seconds`       | Gauge     | _(none)_          | Unix epoch of the most recent heartbeat execution, any outcome        |
 | `agent_heartbeat_last_success_timestamp_seconds`   | Gauge     | _(none)_          | Unix epoch of the most recent successful heartbeat                    |
 | `agent_heartbeat_load_errors_total`                | Counter   | _(none)_          | Total heartbeat config load/parse failures                            |
 | `agent_heartbeat_reloads_total`                    | Counter   | _(none)_          | Total HEARTBEAT.md file-change reload events                          |
@@ -186,6 +188,7 @@ When `METRICS_ENABLED` is set, Prometheus metrics are served at `/metrics`.
 | `agent_health_checks_total`                        | Counter   | `probe`           | Total HTTP health endpoint hits; `probe` is `start`, `live`, `ready`  |
 | `agent_heartbeat_skips_total`                      | Counter   | _(none)_          | Total heartbeat skips due to previous heartbeat still pending         |
 | `agent_info`                                       | Info      | `version`,`agent` | Static agent metadata (version and name)                              |
+| `agent_log_bytes_total`                            | Counter   | `logger`          | Total bytes written; `logger` is `conversation` or `trace`            |
 | `agent_log_entries_total`                          | Counter   | `logger`          | Total log entries written; `logger` is `conversation` or `trace`      |
 | `agent_log_write_errors_total`                     | Counter   | _(none)_          | Total I/O failures in the conversation/trace logging subsystem        |
 | `agent_lru_cache_utilization_percent`              | Gauge     | _(none)_          | LRU session cache utilization as a percentage of MAX_SESSIONS         |
@@ -200,13 +203,17 @@ When `METRICS_ENABLED` is set, Prometheus metrics are served at `/metrics`.
 | `agent_sdk_context_fetch_errors_total`             | Counter   | _(none)_          | Total get_context_usage() call failures                               |
 | `agent_sdk_errors_total`                           | Counter   | _(none)_          | Total stderr lines emitted by the Claude SDK subprocess               |
 | `agent_sdk_tokens_per_query`                       | Histogram | _(none)_          | Aggregate token count from final get_context_usage() per run_query()  |
+| `agent_sdk_tool_call_input_size_bytes`             | Histogram | `tool`            | Byte length of each ToolUseBlock input payload by tool name           |
 | `agent_sdk_tool_calls_per_query`                   | Histogram | _(none)_          | Number of tool calls per run_query() invocation                       |
 | `agent_sdk_tool_calls_total`                       | Counter   | `tool`            | Total tool calls by tool name                                         |
 | `agent_sdk_tool_duration_seconds`                  | Histogram | `tool`            | Wall-clock seconds per tool call from ToolUseBlock to ToolResultBlock |
 | `agent_sdk_tool_errors_total`                      | Counter   | `tool`            | Total tool execution errors by tool name                              |
+| `agent_sdk_tool_result_size_bytes`                 | Histogram | `tool`            | Byte length of each ToolResultBlock content by tool name              |
+| `agent_sdk_turns_per_query`                        | Histogram | _(none)_          | Number of AssistantMessage turns per run_query() invocation           |
 | `agent_sdk_messages_per_query`                     | Histogram | _(none)_          | Number of SDK messages received per run_query() call                  |
 | `agent_sdk_query_duration_seconds`                 | Histogram | _(none)_          | Raw SDK query time in seconds inside run_query()                      |
 | `agent_sdk_query_error_duration_seconds`           | Histogram | _(none)_          | Wall-clock seconds for run_query() calls that end in error            |
+| `agent_sdk_time_to_first_message_seconds`          | Histogram | _(none)_          | Seconds from client.query() to first AssistantMessage in run_query()  |
 | `agent_sdk_result_errors_total`                    | Counter   | _(none)_          | Total SDK ResultMessage errors returned during run_query()            |
 | `agent_sdk_session_duration_seconds`               | Histogram | _(none)_          | Raw SDK connection lifetime in seconds (ClaudeSDKClient block)        |
 | `agent_sdk_subprocess_spawn_duration_seconds`      | Histogram | _(none)_          | Time to initialize the ClaudeSDKClient subprocess                     |

@@ -30,8 +30,8 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | g
     && apt-get update && apt-get install -y gh \
     && rm -rf /var/lib/apt/lists/*
 
-# Claude Code CLI and linting tools
-RUN npm install -g @anthropic-ai/claude-code@2.1.91 markdownlint-cli@0.44.0 prettier@3.5.3
+# Claude Code CLI, Codex CLI, and linting tools
+RUN npm install -g @anthropic-ai/claude-code@2.1.91 @openai/codex markdownlint-cli@0.44.0 prettier@3.5.3
 
 RUN useradd -m -s /usr/bin/zsh -u 1000 agent
 
@@ -49,11 +49,13 @@ RUN pip install --no-cache-dir \
     uvicorn==0.43.0 \
     watchfiles==1.1.1 \
     yamllint==1.37.0 \
-    ruff==0.11.2
+    ruff==0.11.2 \
+    openai-agents==0.9.3 \
+    pyyaml==6.0.2
 
 COPY --chown=agent:agent agent/ /home/agent/agent/
 
-RUN mkdir -p /home/agent/workspace
+RUN mkdir -p /home/agent/.nyx /home/agent/workspace
 WORKDIR /home/agent/workspace
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
