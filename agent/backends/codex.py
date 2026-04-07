@@ -58,8 +58,6 @@ class CodexBackend:
         session = SQLiteSession(session_id, CODEX_SESSION_DB)
         run_config = RunConfig(model_provider=MultiProvider(openai_api_key=self._api_key)) if self._api_key else None
 
-        self._log_entry("user", prompt, session_id)
-
         collected: list[str] = []
         _query_start = time.monotonic()
         try:
