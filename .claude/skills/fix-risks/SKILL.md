@@ -64,10 +64,10 @@ Steps:
    present and unchanged. If the risk has already been addressed:
 
    - Fetch the current issue body: `gh issue view <number> --json body --jq '.body'`
-   - Update the body's `**Status:**` line to `status/wont-fix`.
+   - Update the body's `**Status:**` line to `status/implemented`.
    - Apply the updated body and relabel in one call:
-     `gh issue edit <number> --body "<updated body>" --add-label "status/wont-fix" --remove-label "status/pending,status/approved,status/in-progress"`
-   - Run `/github-issue close <number> "Code no longer contains this risk — closing as wont-fix"`
+     `gh issue edit <number> --body "<updated body>" --add-label "status/implemented" --remove-label "status/pending,status/approved,status/in-progress,status/needs-more-info"`
+   - Run `/github-issue close <number> "Already resolved — closing as implemented"`
    - Move on to the next risk.
 
    **c. Classify the fix.**
@@ -151,7 +151,7 @@ Steps:
 5. After all risks are resolved (or deferred), report a summary:
 
    - Risks fixed (issue number, title, file changed)
-   - Risks closed as wont-fix (issue number, reason)
+   - Risks closed as already implemented (issue number, reason)
    - Risks deferred as architectural (issue number, comment posted)
    - Any risks skipped and why
 
