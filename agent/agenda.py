@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 AGENDA_DIR = os.environ.get("AGENDA_DIR", "/home/agent/.nyx/agenda")
 CHECKPOINT_DIR = os.path.join(AGENDA_DIR, ".checkpoints")
 AGENT_NAME = os.environ.get("AGENT_NAME", "nyx-agent")
+_AGENDA_MAX_CONCURRENT = int(os.environ.get("AGENDA_MAX_CONCURRENT", "0"))
 
 
 @dataclass
@@ -92,7 +93,7 @@ def parse_agenda_file(path: str) -> AgendaItem | None:
         return None
 
 
-async def run_agenda_item(item: AgendaItem, bus: MessageBus) -> None:
+async def run_agenda_item(item: AgendaItem, bus: MessageBus, semaphore: asyncio.Semaphore | None = None) -> None:
     cron = croniter(item.schedule, datetime.now(timezone.utc))
     while True:
         next_run = cron.get_next(datetime)
@@ -110,6 +111,9 @@ async def run_agenda_item(item: AgendaItem, bus: MessageBus) -> None:
             if agent_agenda_skips_total is not None:
                 agent_agenda_skips_total.labels(name=item.name).inc()
             continue
+
+        if semaphore is not None:
+            await semaphore.acquire()
 
         item.running = True
         if agent_agenda_running_items is not None:
@@ -168,6 +172,8 @@ async def run_agenda_item(item: AgendaItem, bus: MessageBus) -> None:
             item.running = False
             if agent_agenda_running_items is not None:
                 agent_agenda_running_items.dec()
+            if semaphore is not None:
+                semaphore.release()
             if checkpoint_path is not None:
                 try:
                     os.remove(checkpoint_path)
@@ -183,6 +189,11 @@ class AgendaRunner:
     def __init__(self, bus: MessageBus):
         self._bus = bus
         self._items: dict[str, AgendaItem] = {}
+        self._semaphore: asyncio.Semaphore | None = (
+            asyncio.Semaphore(_AGENDA_MAX_CONCURRENT) if _AGENDA_MAX_CONCURRENT > 0 else None
+        )
+        if self._semaphore is not None:
+            logger.info(f"Agenda concurrency limit: {_AGENDA_MAX_CONCURRENT} concurrent items")
 
     async def _register(self, path: str) -> None:
         item = parse_agenda_file(path)
@@ -191,7 +202,7 @@ class AgendaRunner:
         cancelled = self._unregister(path)
         if cancelled is not None:
             await asyncio.gather(cancelled, return_exceptions=True)
-        task = asyncio.create_task(run_agenda_item(item, self._bus))
+        task = asyncio.create_task(run_agenda_item(item, self._bus, self._semaphore))
         item.task = task
         self._items[path] = item
         if agent_agenda_items_registered is not None:
