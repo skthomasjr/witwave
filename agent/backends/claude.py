@@ -156,7 +156,7 @@ class ClaudeBackend:
             **({"env": env} if env else {}),
         )
 
-    async def _run_query(self, prompt: str, options: ClaudeAgentOptions, session_id: str) -> list[str]:
+    async def _run_query(self, prompt: str, options: ClaudeAgentOptions, session_id: str, effective_model: str | None = None) -> list[str]:
         collected: list[str] = []
         _query_start = time.monotonic()
         _message_count = 0
@@ -192,7 +192,7 @@ class ClaudeBackend:
                                     agent_sdk_tool_call_input_size_bytes.labels(backend=self.id, tool=block.name).observe(
                                         len(json.dumps(block.input).encode())
                                     )
-                                _log_tool_event("tool_use", block, session_id, self._log_trace, model=self._model)
+                                _log_tool_event("tool_use", block, session_id, self._log_trace, model=effective_model)
                             elif isinstance(block, ToolResultBlock):
                                 tool_name = _tool_names.get(block.tool_use_id, "unknown")
                                 if block.is_error and agent_sdk_tool_errors_total is not None:
@@ -206,7 +206,7 @@ class ClaudeBackend:
                                     agent_sdk_tool_result_size_bytes.labels(backend=self.id, tool=tool_name).observe(
                                         len(str(block.content).encode())
                                     )
-                                _log_tool_event("tool_result", block, session_id, self._log_trace, model=self._model)
+                                _log_tool_event("tool_result", block, session_id, self._log_trace, model=effective_model)
                         try:
                             usage = await client.get_context_usage()
                             pct = usage.get("percentage", 0.0)
@@ -271,15 +271,16 @@ class ClaudeBackend:
                 agent_sdk_errors_total.labels(backend=self.id).inc()
             logger.error(f"[{self.id}] [claude stderr] {line}")
 
+        effective_model = model or self._model
         try:
-            return await self._run_query(prompt, self._make_options(session_id, resume=not is_new, stderr_fn=capture_stderr, model=model), session_id)
+            return await self._run_query(prompt, self._make_options(session_id, resume=not is_new, stderr_fn=capture_stderr, model=model), session_id, effective_model=effective_model)
         except Exception:
             if is_new and any("already in use" in line.lower() for line in stderr_lines):
                 if agent_task_retries_total is not None:
                     agent_task_retries_total.inc()
                 if agent_sdk_query_error_duration_seconds is not None:
                     agent_sdk_query_error_duration_seconds.labels(backend=self.id).observe(time.monotonic() - _query_start)
-                return await self._run_query(prompt, self._make_options(session_id, resume=True, stderr_fn=capture_stderr, model=model), session_id)
+                return await self._run_query(prompt, self._make_options(session_id, resume=True, stderr_fn=capture_stderr, model=model), session_id, effective_model=effective_model)
             raise
         finally:
             if agent_stderr_lines_per_task is not None:
