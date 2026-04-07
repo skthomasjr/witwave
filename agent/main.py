@@ -52,6 +52,7 @@ AGENT_PORT = int(os.environ.get("AGENT_PORT", "8000"))
 AGENT_URL = os.environ.get("AGENT_URL", f"http://localhost:{AGENT_PORT}/")
 AGENT_VERSION = os.environ.get("AGENT_VERSION", "0.1.0")
 metrics_enabled = bool(os.environ.get("METRICS_ENABLED"))
+WORKER_MAX_RESTARTS = int(os.environ.get("WORKER_MAX_RESTARTS", "5"))
 
 _ready: bool = False
 _startup_mono: float = 0.0
@@ -172,8 +173,14 @@ async def _sub_app_lifespan(app):
         await task
 
 
-async def _guarded(coro_fn, *args, restart_delay: float = 5.0) -> None:
-    """Run a coroutine function in a restart loop, catching unexpected exceptions."""
+async def _guarded(coro_fn, *args, restart_delay: float = 5.0, critical: bool = False) -> None:
+    """Run a coroutine function in a restart loop, catching unexpected exceptions.
+
+    If critical=True, sets _ready=False after WORKER_MAX_RESTARTS consecutive crashes,
+    signalling to Kubernetes that the pod can no longer serve traffic.
+    """
+    global _ready
+    consecutive_restarts = 0
     while True:
         try:
             await coro_fn(*args)
@@ -181,9 +188,13 @@ async def _guarded(coro_fn, *args, restart_delay: float = 5.0) -> None:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            logger.error(f"Task {coro_fn.__name__!r} crashed: {exc!r} — restarting in {restart_delay}s")
+            consecutive_restarts += 1
+            logger.error(f"Task {coro_fn.__name__!r} crashed: {exc!r} — restarting in {restart_delay}s (consecutive restart #{consecutive_restarts})")
             if agent_task_restarts_total is not None:
                 agent_task_restarts_total.labels(task=coro_fn.__name__).inc()
+            if critical and consecutive_restarts >= WORKER_MAX_RESTARTS:
+                logger.error(f"Task {coro_fn.__name__!r} has crashed {consecutive_restarts} consecutive times — marking agent not ready")
+                _ready = False
             await asyncio.sleep(restart_delay)
 
 
@@ -305,7 +316,7 @@ async def main():
 
     await asyncio.gather(
         server.serve(),
-        _guarded(bus_worker, bus, executor),
+        _guarded(bus_worker, bus, executor, critical=True),
         _guarded(heartbeat_runner, bus),
         _guarded(agenda_runner.run),
         _guarded(_event_loop_monitor),
