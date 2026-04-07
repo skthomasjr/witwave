@@ -64,7 +64,7 @@ def parse_agenda_file(path: str) -> AgendaItem | None:
         session_id = fields.get("session") or None
         model = fields.get("model") or None
         if "enabled" in fields:
-            enabled = str(fields["enabled"]).lower() != "false"
+            enabled = str(fields["enabled"]).lower() not in ("false", "")
 
         if not enabled:
             logger.info(f"Agenda file {path}: disabled, skipping.")

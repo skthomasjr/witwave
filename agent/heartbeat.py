@@ -48,7 +48,7 @@ def load_heartbeat() -> tuple[str, str, str | None] | None:
     if "schedule" in fields:
         schedule = fields["schedule"]
     if "enabled" in fields:
-        enabled = str(fields["enabled"]).lower() != "false"
+        enabled = str(fields["enabled"]).lower() not in ("false", "")
     model = fields.get("model") or None
 
     if not enabled:

@@ -34,7 +34,7 @@ def parse_webhook_file(path: str) -> WebhookSubscription | None:
 
         enabled = True
         if "enabled" in fields:
-            enabled = str(fields["enabled"]).lower() != "false"
+            enabled = str(fields["enabled"]).lower() not in ("false", "")
         if not enabled:
             logger.info(f"Webhook file {path}: disabled, skipping.")
             return None

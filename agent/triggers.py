@@ -40,7 +40,7 @@ def parse_trigger_file(path: str) -> TriggerItem | None:
 
         enabled = True
         if "enabled" in fields:
-            enabled = str(fields["enabled"]).lower() != "false"
+            enabled = str(fields["enabled"]).lower() not in ("false", "")
         if not enabled:
             logger.info(f"Trigger file {path}: disabled, skipping.")
             return None

@@ -24,6 +24,6 @@ def parse_frontmatter(raw: str) -> tuple[dict[str, str], str]:
     parsed = yaml.safe_load(match.group(1))
     if not isinstance(parsed, dict):
         parsed = {}
-    fields: dict[str, str] = {k: str(v) for k, v in parsed.items() if v is not None}
+    fields: dict[str, str] = {k: str(v) if v is not None else "" for k, v in parsed.items()}
 
     return fields, match.group(2).strip()
