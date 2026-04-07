@@ -138,7 +138,15 @@ async def run_agenda_item(item: AgendaItem, bus: MessageBus) -> None:
             message = Message(prompt=prompt, session_id=item.session_id, kind=f"agenda:{item.name}", model=item.model)
             if agent_agenda_item_last_run_timestamp_seconds is not None:
                 agent_agenda_item_last_run_timestamp_seconds.labels(name=item.name).set(time.time())
-            await asyncio.shield(bus.send(message))
+            _send_task = asyncio.ensure_future(bus.send(message))
+
+            def _log_send_result(t: asyncio.Task, _name: str = item.name) -> None:
+                exc = t.exception() if not t.cancelled() else None
+                if exc is not None:
+                    logger.error(f"Agenda '{_name}' background bus.send failed: {exc}")
+
+            _send_task.add_done_callback(_log_send_result)
+            await asyncio.shield(_send_task)
             if agent_agenda_duration_seconds is not None:
                 agent_agenda_duration_seconds.labels(name=item.name).observe(time.monotonic() - _agenda_start)
             if agent_agenda_runs_total is not None:
@@ -146,7 +154,7 @@ async def run_agenda_item(item: AgendaItem, bus: MessageBus) -> None:
             if agent_agenda_item_last_success_timestamp_seconds is not None:
                 agent_agenda_item_last_success_timestamp_seconds.labels(name=item.name).set(time.time())
         except asyncio.CancelledError:
-            logger.info(f"Agenda '{item.name}' cancelled — bus.send continues in background unsupervised.")
+            logger.info(f"Agenda '{item.name}' cancelled — bus.send continues in background supervised.")
             raise
         except Exception as e:
             logger.error(f"Agenda '{item.name}' error: {e}")
