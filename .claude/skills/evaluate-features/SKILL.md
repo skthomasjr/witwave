@@ -21,7 +21,7 @@ Steps:
 
       ```bash
       gh issue list --state open \
-        --label "type/feature" --label "status/approved" --limit 100 \
+        --label "feature" --label "status/approved" --limit 100 \
         --json number,title \
         --jq '.[] | "#\(.number) \(.title)"'
       ```

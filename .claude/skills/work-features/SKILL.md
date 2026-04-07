@@ -18,7 +18,7 @@ Steps:
 1. Load all open feature proposals from GitHub:
 
    ```bash
-   gh issue list --state open --label "type/feature" --limit 100 \
+   gh issue list --state open --label "feature" --limit 100 \
      --json number,title,labels \
      --jq '.[] | "#\(.number) \(.title) [\(.labels | map(.name) | join(", "))]"'
    ```
@@ -157,7 +157,7 @@ Steps:
    - Proposals set to needs-more-info (issue number, what was asked)
    - Proposals skipped — in-flight (issue number, open task numbers)
    - Proposals left pending for human review (issue number, reason)
-   - Total open `status/approved` `type/feature` count — this is the queue
+   - Total open `status/approved` `feature` count — this is the queue
      available to `evaluate-features`
 
 6. Reflect on the triage process. If you encountered any ambiguity, missing

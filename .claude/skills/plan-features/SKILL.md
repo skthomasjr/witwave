@@ -2,13 +2,13 @@
 name: plan-features
 description: >-
   Research the competitive landscape and maintain a backlog of up to 25
-  high-value feature proposals as GitHub Issues labelled type/feature
+  high-value feature proposals as GitHub Issues labelled feature
 ---
 
-Maintain the feature backlog as GitHub Issues labelled `type/feature`. Each run
+Maintain the feature backlog as GitHub Issues labelled `feature`. Each run
 loads the current backlog, researches the competitive landscape, creates new
 feature issues to fill any slots below 25 open proposals, and enriches or
-updates existing issues with new evidence. Never exceed 25 open `type/feature`
+updates existing issues with new evidence. Never exceed 25 open `feature`
 issues — if already at 25, focus entirely on enriching existing ones.
 
 Steps:
@@ -24,11 +24,11 @@ Steps:
       `<repo-root>/agent/backends/` plus `Dockerfile` and `docker-compose.yml`
       to understand what is already built.
 
-   c. Load all `type/feature` issues (open and closed) so you know what has
+   c. Load all `feature` issues (open and closed) so you know what has
       already been proposed or implemented:
 
       ```bash
-      gh issue list --state all --label "type/feature" --limit 100 \
+      gh issue list --state all --label "feature" --limit 100 \
         --json number,title,state,labels \
         --jq '.[] | "#\(.number) [\(.state)] \(.title)"'
       ```
@@ -151,13 +151,13 @@ Steps:
    proposals per run — and only if each one is genuinely compelling: strong
    evidence of demand, clear implementation path, and meaningful impact on
    agent autonomy, reliability, or usefulness. It is better to add 1 excellent
-   proposal than 3 mediocre ones. If the open `type/feature` count is already
+   proposal than 3 mediocre ones. If the open `feature` count is already
    at 25, skip to step 6.
 
 5. **Create new feature issues.** For each new proposal, run
    `/github-issue create task status/pending` and provide:
 
-   - **Type:** `type/feature`
+   - **Type:** `feature`
    - **Priority:** `priority/p0` through `priority/p3`
    - **Created by:** `<agent-name>`
    - **Description:** must include all of the following sections:
@@ -187,7 +187,7 @@ Steps:
    Write complete, specific issues — not stubs. A proposal is only useful if
    an engineer can read it and understand exactly what to build and why.
 
-6. **Re-evaluate all open `type/feature` issues** that existed before this run
+6. **Re-evaluate all open `feature` issues** that existed before this run
    (the issue numbers noted in step 1c). Do not re-evaluate issues created in
    step 5. For each pre-existing open issue:
 
@@ -254,7 +254,7 @@ Steps:
    - Existing issues updated (number, what changed, reason)
    - Issues closed as implemented or obsolete (number, reason)
    - Features discarded as duplicates (title, one-line reason)
-   - Total open `type/feature` issue count (should be ≤ 25)
+   - Total open `feature` issue count (should be ≤ 25)
 
 9. **Reflect on the research process itself.** If you encountered any friction,
    gaps, or opportunities to improve this skill — search queries that produced

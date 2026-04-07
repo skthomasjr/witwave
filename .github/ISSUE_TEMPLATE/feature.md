@@ -3,7 +3,7 @@ name: Feature
 about: A feature request or idea
 ---
 
-**Type:** type/feature
+**Type:** feature
 
 **Priority:** priority/p0 | priority/p1 | priority/p2 | priority/p3
 
