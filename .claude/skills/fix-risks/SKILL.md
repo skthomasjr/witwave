@@ -129,6 +129,25 @@ Steps:
 
    Run `/github-issue close <number> "<one sentence describing what was fixed and where>"`.
 
+   **i. Commit and push the fix.**
+
+   Stage and commit only the files changed by this fix:
+
+   ```bash
+   git add <changed files>
+   git commit -m "Fix <short description> (#<number>)"
+   ```
+
+   Then push. If the push fails due to a diverged remote, rebase and retry once:
+
+   ```bash
+   git push origin main || (git pull --rebase origin main && git push origin main)
+   ```
+
+   If the push still fails after the rebase, post a comment on the issue:
+   `/github-issue comment <number> "Fix committed locally but push failed — manual push required"`,
+   then continue to the next risk.
+
 5. After all risks are resolved (or deferred), report a summary:
 
    - Risks fixed (issue number, title, file changed)
