@@ -3,7 +3,7 @@ name: Task
 about: Agent-created task
 ---
 
-**Type:** type/bug | type/reliability | type/code-quality | type/enhancement | type/documentation | type/question | type/skill | type/feature
+**Type:** type/bug | type/reliability | type/code-quality | type/enhancement | type/documentation | type/question | type/skill | type/feature | type/task
 
 **Priority:** priority/p0 | priority/p1 | priority/p2 | priority/p3
 
@@ -12,6 +12,12 @@ about: Agent-created task
 **Created by:** <agent-name>
 
 **Claimed by:** none
+
+**Feature:** none | #<issue-number>
+
+**Feature Theme:** none | <short-label>
+
+**Feature Slice:** none | <number>
 
 **Depends on:** none | #<issue-number>
 

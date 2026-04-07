@@ -26,9 +26,12 @@ The optional status argument overrides the default status. If omitted, status de
 
 1. Read `<repo-root>/.github/ISSUE_TEMPLATE/task.md` to load the template structure.
 2. Prompt for the following fields:
-   - **Type** — one of: `type/bug`, `type/reliability`, `type/code-quality`, `type/enhancement`, `type/documentation`, `type/skill`, `type/feature`
+   - **Type** — one of: `type/bug`, `type/reliability`, `type/code-quality`, `type/enhancement`, `type/documentation`, `type/skill`, `type/feature`, `type/task`
    - **Priority** — one of: `priority/p0`, `priority/p1`, `priority/p2`, `priority/p3`
    - **Created by** — the agent or human name creating this issue
+   - **Feature** — feature issue number this task implements (e.g. `#42`), or `none`
+   - **Feature Theme** — short label for the phase of work (e.g. `data-model`, `api-layer`, `config`), or `none` if **Feature** is `none`
+   - **Feature Slice** — slice number within the feature (e.g. `1`, `2`), or `none` if **Feature** is `none`
    - **Depends on** — issue number(s) or `none`
    - **File** — primary file and line number (e.g. `agent/executor.py:152`)
    - **Description** — clear description of the problem or enhancement
@@ -41,7 +44,9 @@ The optional status argument overrides the default status. If omitted, status de
 ```bash
 gh issue create \
   --title "<concise title derived from description>" \
-  --label "<type-label>,<priority-label>,<status>" \
+  --label "<type-label>" \
+  --label "<priority-label>" \
+  --label "<status>" \
   --body "<formatted body>"
 ```
 
