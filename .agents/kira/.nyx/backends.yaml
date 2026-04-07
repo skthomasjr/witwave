@@ -1,0 +1,11 @@
+backends:
+  - id: claude
+    type: claude
+    default: true
+    model: claude-opus-4-6
+    auth-env: CLAUDE_CODE_OAUTH_TOKEN
+
+  - id: claude-fallback
+    type: claude
+    model: claude-opus-4-6
+    auth-env: CLAUDE_CODE_OAUTH_TOKEN

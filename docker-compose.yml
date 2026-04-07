@@ -1,51 +1,69 @@
 services:
   iris:
-    image: claude-agent:latest
+    image: nyx-agent:latest
+    restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
       AGENT_NAME: iris
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
-      CLAUDE_MODEL: claude-opus-4-6
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
       GH_REPO: skthomasjr/autonomous-agent
       GH_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
     volumes:
-      - ./.agents/iris/agent.md:/home/agent/agent.md:ro
       - ./.agents/iris/.claude:/home/agent/.claude
+      - ./.agents/iris/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
+      - ./.agents/iris/.nyx/skills:/home/agent/.claude/skills:ro
+      - ./.agents/iris/.codex:/home/agent/.codex
+      - ./.agents/iris/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
+      - ./.agents/iris/.nyx/skills:/home/agent/.codex/skills:ro
+      - ./.agents/iris/.nyx:/home/agent/.nyx
       - ./.agents/iris/logs:/home/agent/logs
+      - ./.agents/manifest.json:/home/agent/.nyx/manifest.json:ro
       - .:/home/agent/workspace
-      - ./.agents/manifest.json:/home/agent/manifest.json:ro
 
   nova:
-    image: claude-agent:latest
+    image: nyx-agent:latest
+    restart: unless-stopped
     ports:
       - "8001:8000"
     environment:
       AGENT_NAME: nova
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
-      CLAUDE_MODEL: claude-opus-4-6
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
       GH_REPO: skthomasjr/autonomous-agent
       GH_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
     volumes:
-      - ./.agents/nova/agent.md:/home/agent/agent.md:ro
       - ./.agents/nova/.claude:/home/agent/.claude
+      - ./.agents/nova/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
+      - ./.agents/nova/.nyx/skills:/home/agent/.claude/skills:ro
+      - ./.agents/nova/.codex:/home/agent/.codex
+      - ./.agents/nova/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
+      - ./.agents/nova/.nyx/skills:/home/agent/.codex/skills:ro
+      - ./.agents/nova/.nyx:/home/agent/.nyx
       - ./.agents/nova/logs:/home/agent/logs
+      - ./.agents/manifest.json:/home/agent/.nyx/manifest.json:ro
       - .:/home/agent/workspace
-      - ./.agents/manifest.json:/home/agent/manifest.json:ro
 
   kira:
-    image: claude-agent:latest
+    image: nyx-agent:latest
+    restart: unless-stopped
     ports:
       - "8002:8000"
     environment:
       AGENT_NAME: kira
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
-      CLAUDE_MODEL: claude-opus-4-6
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
       GH_REPO: skthomasjr/autonomous-agent
       GH_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
     volumes:
-      - ./.agents/kira/agent.md:/home/agent/agent.md:ro
       - ./.agents/kira/.claude:/home/agent/.claude
+      - ./.agents/kira/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
+      - ./.agents/kira/.nyx/skills:/home/agent/.claude/skills:ro
+      - ./.agents/kira/.codex:/home/agent/.codex
+      - ./.agents/kira/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
+      - ./.agents/kira/.nyx/skills:/home/agent/.codex/skills:ro
+      - ./.agents/kira/.nyx:/home/agent/.nyx
       - ./.agents/kira/logs:/home/agent/logs
+      - ./.agents/manifest.json:/home/agent/.nyx/manifest.json:ro
       - .:/home/agent/workspace
-      - ./.agents/manifest.json:/home/agent/manifest.json:ro

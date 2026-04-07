@@ -1,7 +1,6 @@
-**/.claude/agenda/.checkpoints/
+**/.nyx/agenda/.checkpoints/
 **/.claude/backups/
 **/.claude/memory/
-**/.claude/mcp.json
 **/.claude/plans/
 **/.claude/projects/
 **/.claude/session-env/
