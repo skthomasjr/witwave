@@ -198,5 +198,5 @@ async def heartbeat_runner(bus: MessageBus) -> None:
         if loop_task and not loop_task.done():
             stop_event.set()
             await loop_task
-            stop_event.clear()
+        stop_event.clear()
         await asyncio.sleep(10)
