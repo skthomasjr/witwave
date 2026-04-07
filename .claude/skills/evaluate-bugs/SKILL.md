@@ -26,7 +26,7 @@ Steps:
    - Also read any dependency/manifest files present: `requirements.txt`, `pyproject.toml`, `package.json`,
      `package-lock.json`, `go.mod`, `Cargo.toml`, `pom.xml`, `*.csproj`. These reveal version mismatches,
      missing dependencies, and outdated packages that are a common source of bugs.
-   - Read `<repo-root>/Dockerfile` and `<repo-root>/docker-compose.active.yml` in full.
+   - Read `<repo-root>/agent/Dockerfile` and `<repo-root>/docker-compose.active.yml` in full.
 
 5. Read every source file discovered in step 4 in full. Do not skim. After reading all files, build a mental model
    of how the components connect — data flow, call chains, shared state, error propagation paths — before drawing
