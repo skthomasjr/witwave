@@ -22,7 +22,7 @@ PROMPT=$(echo "$ARGS" | cut -d' ' -f2-)
 PORT=$(grep -l "^  ${TARGET_AGENT}:" docker-compose*.yml 2>/dev/null | xargs -I{} grep -A5 "^  ${TARGET_AGENT}:" {} | grep -o '"[0-9]*:8000"' | cut -d'"' -f2 | cut -d':' -f1)
 PROJECT_PATH=$(pwd | sed 's|^/||' | tr '/' '-')
 SESSION_ID=$(ls -t ~/.claude/projects/${PROJECT_PATH}/*.jsonl 2>/dev/null | head -1 | xargs basename -s .jsonl)
-MESSAGE_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
+MESSAGE_ID=$(python3 -c "import uuid; print(uuid.uuid4())")
 
 curl -s -X POST http://localhost:${PORT}/ \
   -H "Content-Type: application/json" \
