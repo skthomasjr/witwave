@@ -90,6 +90,7 @@ Each label argument maps to a **separate** `--label` flag — do not combine mul
 ```bash
 gh issue list \
   --state <open|closed|all> \
+  --limit 200 \
   --label "<label1>" \
   --label "<label2>" \
   --json number,title,labels,assignees,createdAt \
