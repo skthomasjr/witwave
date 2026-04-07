@@ -12,7 +12,7 @@ class AgentBackend(Protocol):
     id: str
     """Unique identifier for this backend instance, matching backends.yaml."""
 
-    async def run_query(self, prompt: str, session_id: str, is_new: bool) -> list[str]:
+    async def run_query(self, prompt: str, session_id: str, is_new: bool, model: str | None = None) -> list[str]:
         """Execute a prompt and return a list of collected text responses.
 
         Args:

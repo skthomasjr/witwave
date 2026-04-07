@@ -42,12 +42,19 @@ class CodexBackend:
             )
         return self._agent
 
-    async def run_query(self, prompt: str, session_id: str, is_new: bool) -> list[str]:
+    async def run_query(self, prompt: str, session_id: str, is_new: bool, model: str | None = None) -> list[str]:
         log_dir = os.path.dirname(CODEX_SESSION_DB)
         if log_dir:
             os.makedirs(log_dir, exist_ok=True)
 
-        agent = self._get_agent()
+        if model and model != self._model:
+            agent = Agent(
+                name=self._agent_name,
+                instructions=f"Your name is {self._agent_name}.",
+                model=model,
+            )
+        else:
+            agent = self._get_agent()
         session = SQLiteSession(session_id, CODEX_SESSION_DB)
         run_config = RunConfig(model_provider=MultiProvider(openai_api_key=self._api_key)) if self._api_key else None
 

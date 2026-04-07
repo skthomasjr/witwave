@@ -213,7 +213,7 @@ async def _run_inner(
     _start = time.monotonic()
     try:
         collected = await asyncio.wait_for(
-            backend.run_query(prompt, session_id, is_new),
+            backend.run_query(prompt, session_id, is_new, model=model),
             timeout=TASK_TIMEOUT_SECONDS,
         )
         _track_session(sessions, session_id)

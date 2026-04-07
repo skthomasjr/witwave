@@ -136,7 +136,7 @@ class ClaudeBackend:
                 agent_file_watcher_restarts_total.labels(watcher="mcp").inc()
             await asyncio.sleep(10)
 
-    def _make_options(self, session_id: str, resume: bool, stderr_fn) -> ClaudeAgentOptions:
+    def _make_options(self, session_id: str, resume: bool, stderr_fn, model: str | None = None) -> ClaudeAgentOptions:
         # Build subprocess env override when a specific credential is configured.
         # The Claude SDK subprocess reads CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY
         # from its environment. We inject the resolved credential under the correct
@@ -152,7 +152,7 @@ class ClaudeBackend:
             session_id=None if resume else session_id,
             stderr=stderr_fn,
             mcp_servers=self._mcp_servers,
-            model=self._model,
+            model=model or self._model,
             **({"env": env} if env else {}),
         )
 
@@ -261,7 +261,7 @@ class ClaudeBackend:
             agent_text_blocks_per_query.observe(len(collected))
         return collected
 
-    async def run_query(self, prompt: str, session_id: str, is_new: bool) -> list[str]:
+    async def run_query(self, prompt: str, session_id: str, is_new: bool, model: str | None = None) -> list[str]:
         stderr_lines: list[str] = []
         _query_start = time.monotonic()
 
@@ -272,14 +272,14 @@ class ClaudeBackend:
             logger.error(f"[{self.id}] [claude stderr] {line}")
 
         try:
-            return await self._run_query(prompt, self._make_options(session_id, resume=not is_new, stderr_fn=capture_stderr), session_id)
+            return await self._run_query(prompt, self._make_options(session_id, resume=not is_new, stderr_fn=capture_stderr, model=model), session_id)
         except Exception:
             if is_new and any("already in use" in line.lower() for line in stderr_lines):
                 if agent_task_retries_total is not None:
                     agent_task_retries_total.inc()
                 if agent_sdk_query_error_duration_seconds is not None:
                     agent_sdk_query_error_duration_seconds.labels(backend=self.id).observe(time.monotonic() - _query_start)
-                return await self._run_query(prompt, self._make_options(session_id, resume=True, stderr_fn=capture_stderr), session_id)
+                return await self._run_query(prompt, self._make_options(session_id, resume=True, stderr_fn=capture_stderr, model=model), session_id)
             raise
         finally:
             if agent_stderr_lines_per_task is not None:
