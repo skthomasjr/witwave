@@ -275,6 +275,7 @@ class AgentExecutor(A2AAgentExecutor):
         _raw_sid = "".join(c for c in str(metadata.get("session_id") or "").strip()[:256] if c >= " ")
         session_id = _raw_sid or str(uuid.uuid4())
         backend_id = metadata.get("backend_id") or None
+        model = metadata.get("model") or None
         task_id = context.task_id
 
         if task_id:
@@ -288,6 +289,7 @@ class AgentExecutor(A2AAgentExecutor):
                 prompt, session_id, self._sessions,
                 self._backends, self._default_backend_id,
                 backend_id=backend_id,
+                model=model,
             )
             if response:
                 await event_queue.enqueue_event(new_agent_text_message(response))
