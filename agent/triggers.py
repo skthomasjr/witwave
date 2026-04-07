@@ -55,7 +55,7 @@ def parse_trigger_file(path: str) -> TriggerItem | None:
 
         name = fields.get("name") or endpoint
         session_str = fields.get("session") or None
-        session_id = session_str or str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{AGENT_NAME}.trigger.{endpoint}"))
+        session_id = session_str or str(uuid.uuid5(uuid.NAMESPACE_URL, f"{AGENT_NAME}.trigger.{endpoint}"))
         model = fields.get("model") or None
         secret_env_var = fields.get("secret-env-var") or None
         agenda_item = fields.get("agenda-item") or None

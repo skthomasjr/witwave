@@ -82,7 +82,7 @@ def parse_agenda_file(path: str) -> AgendaItem | None:
         name = name or filename
         if not session_id:
             # Generate a deterministic UUID from the agent name and filename
-            session_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{AGENT_NAME}.{filename}"))
+            session_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{AGENT_NAME}.{filename}"))
 
         return AgendaItem(path=path, name=name, schedule=schedule, session_id=session_id, content=content, model=model)
 
