@@ -52,22 +52,26 @@ Steps:
    **Acceptance criteria**, **Implementation**, **Confidence**, and
    **Questions** fields.
 
-   **b. Assess implementation status.** Check for any open `type/feature`
-   issues linked to this feature (from the task history loaded in step 1b).
+   **b. Assess implementation status.** From the task history loaded in
+   step 1b, identify the current theme — the theme of any open `type/feature`
+   issues for this feature. Then check whether all issues for that specific
+   theme and slice are closed.
 
    **Hard rule: do not plan a new theme or create any new issues if any
-   existing `type/feature` issues for this feature are still open.** All
-   work from the current theme must be fully closed before moving forward.
+   `type/feature` issues for the current theme and slice are still open.**
+   Every issue in the current theme must be fully closed before moving to
+   the next theme.
 
    Then take the appropriate path:
 
-   - **Any open type/feature issues exist** — the current theme has not
-     fully landed. Check the comment thread: if no "waiting" comment exists
-     for these issue numbers, post `"Waiting on open type/feature issues
-     before planning next theme: #N, #N"`. Move on. Do not proceed to 2c.
+   - **Open type/feature issues exist for the current theme/slice** — the
+     current theme has not fully landed. Check the comment thread: if no
+     "waiting" comment exists for these issue numbers, post `"Waiting on
+     open type/feature issues for theme '<theme>' slice <N> before planning
+     next theme: #N, #N"`. Move on. Do not proceed to 2c.
 
-   - **Fully implemented** — all open type/feature issues are closed AND
-     all acceptance criteria are met in the source. Run
+   - **Fully implemented** — all type/feature issues across all themes and
+     slices are closed AND all acceptance criteria are met in the source. Run
      `/github-issue close <number> "Fully implemented — all acceptance
      criteria met"` and move on.
 
@@ -83,9 +87,9 @@ Steps:
         Relabel to status/approved to re-enter this queue."`
      Move on.
 
-   - **Not started or partially implemented** — all open type/feature issues
-     are closed but acceptance criteria are not yet fully met. Continue to 2c
-     to plan the next theme.
+   - **Not started or partially implemented** — all type/feature issues for
+     the current theme and slice are closed but acceptance criteria are not
+     yet fully met in the source. Continue to 2c to plan the next theme.
 
    **c. Determine the next theme.** Based on completed themes and current
    codebase state, choose the next logical phase. Name it with a short
