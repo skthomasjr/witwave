@@ -55,7 +55,7 @@ Steps:
    - **Orphaned skills** — do NOT flag any skill under `.claude/skills/` as
      an orphan. Every skill in that directory is available for direct user
      invocation regardless of whether another skill calls it. Standalone
-     user-callable skills (e.g. `redeploy`, `remote`, `research-features`,
+     user-callable skills (e.g. `redeploy`, `remote`, `plan-features`,
      `evaluate-gaps`, `evaluate-risks`) are intentionally standalone.
    - **Inconsistent conventions** — the same concept handled differently across
      skills (e.g. one skill uses `status/wont-fix` where another uses a comment
