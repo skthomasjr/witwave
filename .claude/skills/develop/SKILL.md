@@ -17,4 +17,6 @@ Steps:
 
 5. Run `/evaluate-features`, then `/work-features`.
 
-6. Report a one-paragraph summary: issues worked and resolved per category, any blocked items, and done.
+6. Run `/work-bugs`, then `/evaluate-bugs`. If new bug issues were filed, repeat step 6.
+
+7. Report a one-paragraph summary: issues worked and resolved per category, any blocked items, and done.
