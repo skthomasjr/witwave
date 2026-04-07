@@ -20,6 +20,8 @@ Steps:
 3. Run `/work-risks`, then `/evaluate-risks`. If new risk issues were filed, go to step 1.
 
 4. Once steps 1, 2, and 3 all complete without filing any new issues, run `/work-gaps`, then
-   `/evaluate-gaps`. If new gap issues were filed, go to step 1.
+   `/evaluate-gaps`, then `/work-gaps` again to work any newly filed gap issues.
 
-5. Report that the codebase is clean — no open bugs, skill issues, risks, or gaps remain.
+5. Run `/work-features`, then `/evaluate-features`. If new type/feature issues were filed, go to step 1.
+
+6. Report that the codebase is clean — no open bugs, skill issues, risks, gaps, or feature work remains.
