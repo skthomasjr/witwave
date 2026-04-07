@@ -1,8 +1,8 @@
 # Competitive Landscape
 
-Last updated: 2026-04-05 by nova (sixth pass — Devin 2.2 self-verification + Schedule Devins, Claude Agent SDK
-HookMatcher callback API + task_budget + AgentDefinition, mini-SWE-agent v2 tool calling, CrewAI root_scope + Qdrant
-Edge, Observability theme updated to reflect 70+ metrics)
+Last updated: 2026-04-07 by local-agent (seventh pass — Microsoft Agent Governance Toolkit + OWASP Agentic Top 10,
+Hermes Agent auto-generated skills + SQLite FTS5 memory, OpenTelemetry as 2026 distributed tracing standard,
+OpenHands v1.6.0 Kubernetes + hook support, LangGraph v1.1 node caching + deferred nodes, Gap Analysis section added)
 
 ---
 
@@ -179,6 +179,26 @@ project already supports per-agent model selection via `CLAUDE_MODEL`, and per-a
 `model` frontmatter field, but not mid-run model switching. This project's tool list remains general-purpose with no
 harness-level guardrails. The SDK's `PreToolUse` hook with `updatedInput` is the natural implementation point for
 ACI-style argument transforms and blocking.
+
+### Hermes Agent (NousResearch)
+
+**Autonomy model:** Autonomous (runs persistently on user-controlled infrastructure; connects to messaging platforms and
+operates proactively — the closest architectural peer to this project in the new 2026 open-source landscape)
+
+Hermes Agent (MIT, released February 2026, v0.7.0 as of April 3, 2026) is built around the thesis that an agent
+should learn from completed work and get measurably better the longer it runs. Key capabilities: persistent memory via
+prompt-injected files + SQLite FTS5 with LLM-powered summarization; **auto-generated skills** — after completing a
+complex task the agent writes a new skill document for future reuse; six terminal backends (local, Docker, SSH, Daytona,
+Singularity, Modal); 40+ built-in tools (web search, browser automation, vision, image generation, TTS, multi-model
+reasoning); multi-platform messaging gateway (Telegram, Discord, Slack, WhatsApp, CLI). v0.7.0 added a pluggable memory
+provider interface and same-provider credential pools for automatic rotation. The "auto-generated skills" pattern is the
+clearest capability gap relative to this project.
+
+**Relative standing:** Hermes Agent is the most direct architectural peer discovered to date — persistent, containerized,
+self-hosted, multi-agent-capable. Its layered memory stack (FTS5 + LLM summarization + pluggable providers) and
+auto-skill-generation are materially ahead of this project's flat markdown files and static skill documents. Its
+messaging-first gateway (Telegram, Slack, Discord) is out of scope for this project's A2A/HTTP model, but the
+auto-skill-generation pattern is directly applicable.
 
 ### AutoGPT
 
@@ -424,6 +444,44 @@ before it touches production files, giving operators a low-friction checkpoint.
 
 ---
 
+### Safety / Governance
+
+**What competitors do:** Microsoft released the Agent Governance Toolkit (April 2, 2026, MIT license) — the first
+open-source toolkit to address all 10 OWASP Agentic Top 10 risks (published December 2025) with deterministic,
+sub-millisecond policy enforcement. The OWASP taxonomy covers: goal hijacking, tool misuse, identity abuse, memory
+poisoning, cascading failures, and rogue agents. Galileo released Agent Control (open source), a centralized guardrails
+platform with write-once policies enforced across all agent deployments. OpenGuardrails adds a guard-agent layer.
+McKinsey red-team research (2026) demonstrated an AI agent gaining full enterprise access in 120 minutes. EU AI Act
+high-risk obligations take effect August 2026; Colorado AI Act becomes enforceable June 2026.
+
+**What users value most:** Prevention first (hooks), then human intervention (`AskUserQuestion`), then recording (trace
+log). Operators want to express policies in a file they can read and review — not Python callbacks buried in the harness
+code. 80.9% of teams have pushed agents into production, but only 14.4% with full security approval.
+
+**Candidate features:** SDK hook integration for callback-level guardrails (F-009, #68). Declarative policy engine
+that evaluates a JSON/YAML policy file before every tool call — maps OWASP Agentic Top 10 risk categories to
+enforcement rules without requiring Python code changes.
+
+---
+
+### Self-Improvement / Lifelong Learning
+
+**What competitors do:** Hermes Agent auto-generates skill documents after successfully completing complex tasks — a
+closed learning loop from execution → skill synthesis → future reuse. Google's Always-On Memory Agent continuously
+ingests information and consolidates it in the background (LLM-driven, no vector database). Agent Zero enables
+self-correction and transparent learning from experience. The 2026 category framing: "can AI remember what it learned
+yesterday and do it better tomorrow?"
+
+**What users value most:** Agents that accumulate capability over time — not just memory of facts, but procedural
+knowledge of how to accomplish recurring classes of tasks. The 2026 community signal: context engineering (what the
+agent knows going in) has overtaken prompt design as the key differentiator.
+
+**Candidate features:** Post-task skill synthesis — after completing a complex agenda run, the agent evaluates whether
+a reusable skill should be written to `.nyx/skills/` and writes it if so. No new infrastructure required; the skill
+directory already exists and agents already load skills from it.
+
+---
+
 ### Cost / Token Management
 
 **What competitors do:** The Claude Agent SDK provides `task_budget` (v0.1.51) to cap token budget per session, and
@@ -439,3 +497,27 @@ silent degradation. No runaway API bills from stuck or looping agents.
 
 **Candidate features:** Budget cap per agent run via `task_budget` (F-010). Context usage monitoring via
 `get_context_usage()` (F-011, implemented).
+
+---
+
+## Gap Analysis
+
+_Last updated: 2026-04-07 by local-agent_
+
+- **Memory and knowledge management:** Flat markdown memory files work for prose notes but are fragile for structured data. Hermes Agent (NousResearch, February 2026) ships SQLite FTS5 with LLM-powered summarization and a pluggable memory provider interface — the gap vs. this project is widening. CrewAI's documented 2026 limitation (losing coordination state when a crew ends) confirms that persistent structured shared memory is a meaningful differentiator. F-003 (shared memory index) remains on hold pending shared volume infrastructure.
+
+- **Human-in-the-loop and approval gates:** `AskUserQuestion` is available in the SDK but not yet enabled in this project (F-001, open). LangGraph 2.0's redesigned `interrupt()` with structured payloads and Claude Code's community-reported demand for approval gates before destructive operations both confirm this is a consistently-wanted primitive. Enabling it is a one-line change.
+
+- **Multi-agent coordination and delegation:** A2A-based delegation is implemented (F-006, closed). LangGraph v1.1's deferred nodes provide the reference pattern for fan-out/fan-in coordination this project does not yet support. The winning production topology (orchestrator + local mesh) aligns with current design; the gap is fan-out task distribution with result aggregation.
+
+- **Scheduling and event-driven triggers:** Inbound HTTP triggers (F-013/F-007, #71) are approved but not yet implemented. Outbound webhooks (#72) are approved but not yet implemented. Devin's self-scheduling validates the agenda model. The remaining gap is completing the event-driven bridge between this project and external systems.
+
+- **Observability and debuggability:** This project leads with 70+ Prometheus metrics. The next frontier is OpenTelemetry distributed tracing — LangGraph emits OTel-compatible spans; 89% of organizations have implemented agent observability in 2026 (industry finding). Cross-agent trace propagation (W3C `traceparent` header) is unimplemented and represents the clearest observability gap for multi-agent workflows.
+
+- **Safety and guardrails:** Microsoft released the Agent Governance Toolkit (April 2, 2026, MIT license) — the first toolkit to address all 10 OWASP Agentic Top 10 risks with deterministic, sub-millisecond policy enforcement. OWASP published the Top 10 for Agentic Applications in December 2025. EU AI Act high-risk obligations take effect August 2026. This project's SDK hook integration (#68) addresses the callback layer but not the declarative policy layer that operators can configure without writing Python. The gap is a file-based policy DSL (JSON/YAML) that maps OWASP risk categories to enforcement rules, evaluated before every tool call.
+
+- **Tooling and integrations (MCP, webhooks, APIs):** MCP configuration is implemented (F-004, closed). Outbound webhooks (#72) and inbound triggers (#71) are approved but unimplemented. Dynamic tool injection (CrewAI's tool search, which loads only the tools relevant to the current task rather than all tools upfront) is not yet explored; this project uses a static `ALLOWED_TOOLS` env var.
+
+- **Cost and resource management:** `task_budget` env var is proposed (#69, open) but not implemented. Industry finding: 90% of production agents are over-resourced in 2026; cost control is treated as a first-class architectural concern. The per-message-kind budget split (separate caps for heartbeat, agenda, A2A-triggered runs) is an open question in #69 that would unlock fine-grained cost control.
+
+- **Self-improvement and lifelong learning:** Hermes Agent's auto-generated skills (writing a new skill document after completing a complex task) and Google's Always-On Memory Agent (continuous ingestion + background consolidation) represent a new category this project does not yet address. The project already has a skill document system; closing the loop from execution → post-task skill synthesis → capability accumulation is a novel and high-value direction with no existing open issue.
