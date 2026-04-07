@@ -123,7 +123,7 @@ class ClaudeBackend:
                 if agent_watcher_events_total is not None:
                     agent_watcher_events_total.labels(watcher="mcp").inc()
                 for _, path in changes:
-                    if path == MCP_CONFIG_PATH:
+                    if os.path.abspath(path) == os.path.abspath(MCP_CONFIG_PATH):
                         self._mcp_servers = self._load_mcp_config()
                         if agent_mcp_servers_active is not None:
                             agent_mcp_servers_active.set(len(self._mcp_servers))
