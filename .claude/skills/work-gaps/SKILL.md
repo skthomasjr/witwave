@@ -60,10 +60,6 @@ Steps:
    Read the current version of the file(s) cited in the issue. Confirm the problematic code is still
    present and unchanged. If the gap has already been addressed:
 
-   - Fetch the current issue body: `gh issue view <number> --json body --jq '.body'`
-   - Update the body's `**Status:**` line to `status/implemented`.
-   - Apply the updated body and relabel in one call:
-     `gh issue edit <number> --body "<updated body>" --add-label "status/implemented" --remove-label "status/pending,status/approved,status/in-progress,status/needs-more-info"`
    - Run `/github-issue close <number> "Already resolved — closing as implemented"`
    - Move on to the next gap.
 
