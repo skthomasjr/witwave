@@ -67,13 +67,12 @@ agent/
 ├── metrics.py          # Prometheus metrics definitions
 └── utils.py            # Shared utilities (e.g. frontmatter parser)
 docker-compose.active.yml      # Runs all agents locally
-Dockerfile              # nyx-agent image
 ```
 
 ## Running Locally
 
 ```bash
-docker build -t nyx-agent:latest .
+docker build -f agent/Dockerfile -t nyx-agent:latest .
 docker compose -f docker-compose.active.yml up -d
 ```
 

@@ -35,6 +35,7 @@ When a proposed change is architectural in nature — a new runtime primitive, a
     └── kira/                  # Same structure as iris/
 
 agent/
+├── Dockerfile                 # nyx-agent image — no identity baked in
 ├── main.py                    # Entrypoint — wires all components and runs the event loop
 ├── executor.py                # Bridges A2A requests and the Claude Agent SDK
 ├── bus.py                     # Internal async message bus (deduplication, backpressure)
@@ -77,8 +78,8 @@ docs/
     ├── task.md                # Implementation task template (label: type/*)
     └── question.md            # Question template
 
-Dockerfile                     # nyx-agent image — no identity baked in
-docker-compose.active.yml             # Local multi-agent deployment
+docker-compose.active.yml      # Local multi-agent deployment (active agents)
+docker-compose.test.yml        # Test agent deployment (bob)
 AGENTS.md                      # Canonical repo instructions for all coding agents
 CLAUDE.md                      # Claude Code compatibility shim → AGENTS.md
 ```
@@ -224,7 +225,7 @@ The `/develop` skill runs a continuous improvement loop:
 ### Local
 
 ```bash
-docker build -t nyx-agent:latest .
+docker build -f agent/Dockerfile -t nyx-agent:latest .
 docker compose up -d
 ```
 

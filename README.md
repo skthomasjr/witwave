@@ -29,7 +29,7 @@ Each agent:
 ### 1. Build the image
 
 ```bash
-docker build -t nyx-agent:latest .
+docker build -f agent/Dockerfile -t nyx-agent:latest .
 ```
 
 ### 2. Configure credentials
