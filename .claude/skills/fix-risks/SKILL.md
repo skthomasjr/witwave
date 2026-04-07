@@ -77,7 +77,7 @@ Steps:
 
    - Run `/github-issue comment <number> "Architectural risk — requires human judgment: <describe
      what decision is needed and what the tradeoffs are>. Leaving open for review."`
-   - Move on to the next risk. Do not attempt a fix.
+   - Move on to the next risk. Do not attempt a fix. Do not proceed to step 4d.
 
    **d. Claim the issue.**
 
