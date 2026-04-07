@@ -20,9 +20,9 @@ Steps:
 3. Run `/work-risks`, then `/evaluate-risks`. If new risk issues were filed, go to step 1.
 
 4. Once steps 1, 2, and 3 all complete without filing any new issues, run `/evaluate-gaps`,
-   then `/work-gaps`. If `work-gaps` resolved any issues, go to step 1.
+   then `/work-gaps`. If `work-gaps` fixed any issues (committed new code), go to step 1.
 
-5. Run `/evaluate-features`, then `/work-features`. If `work-features` resolved any issues, go to step 1.
+5. Run `/evaluate-features`, then `/work-features`. If `work-features` implemented any issues (committed new code), go to step 1.
 
 6. Report a summary of the run. Track the step number reached each iteration
    and the reason for any restart. Format the report as both a path trace and
