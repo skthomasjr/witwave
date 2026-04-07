@@ -238,7 +238,7 @@ Steps:
 
    ```bash
    git add docs/competitive-landscape.md docs/product-vision.md
-   git commit -m "$(git diff --cached --name-only | tr '\n' ' ' | sed 's/ $//'): update from features research pass"
+   git commit -m "docs: update competitive landscape and product vision from features research pass"
    git push origin main || (git pull --rebase origin main && git push origin main)
    ```
 
