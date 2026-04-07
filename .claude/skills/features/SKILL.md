@@ -65,6 +65,18 @@ Steps:
      Focus on: runtime isolation, evaluation harness, multi-agent routing,
      long-horizon task management.
 
+   - **Hermes Agent (NousResearch)** — closest architectural peer: persistent,
+     containerized, self-hosted, multi-agent-capable. Fetch
+     `https://github.com/nousresearch/hermes-agent` — read the README,
+     releases, and issues labeled "enhancement". Focus on: auto-generated skills
+     pattern, layered memory stack, and any scheduling or coordination patterns.
+
+   - **Microsoft Agent Governance Toolkit** — first open-source toolkit covering
+     OWASP Agentic Top 10 risks. Fetch
+     `https://github.com/microsoft/agent-governance-toolkit` — read releases and
+     OWASP compliance updates. Focus on: guardrail primitives, audit logging
+     patterns, and security controls applicable to this project.
+
    - **Any other app doing persistent autonomous agentic work** — search
      broadly: "persistent autonomous agent open source 2026",
      "self-directed coding agent GitHub", "always-on agent platform",
@@ -93,6 +105,9 @@ Steps:
      real workflow friction.
    - Check the Anthropic Discord and Claude Code GitHub Discussions for
      the most-requested features and unresolved pain points.
+   - Search for governance/safety signal: `"agent governance" OR "OWASP agentic"
+     open source 2026`, "AI agent safety guardrails open source". Look for new
+     toolkits or frameworks covering runtime security controls for agents.
 
 3. **Identify and record gaps.** Compare what competitors offer against what
    this project currently provides (from step 1). For each theme below, write
