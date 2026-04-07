@@ -20,7 +20,7 @@ Steps:
 3. Run `/work-risks`, then `/evaluate-risks`. If new risk issues were filed, go to step 1.
 
 4. Once steps 1, 2, and 3 all complete without filing any new issues, run `/evaluate-gaps`,
-   then `/work-gaps`.
+   then `/work-gaps`. If `work-gaps` resolved any issues, go to step 1.
 
 5. Run `/evaluate-features`, then `/work-features`. If `work-features` resolved any issues, go to step 1.
 
