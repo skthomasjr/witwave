@@ -12,8 +12,8 @@ and workflow inconsistencies.
 
 Steps:
 
-1. Load all existing open bug issues from GitHub so you can avoid creating
-   duplicates throughout the review. Run `/github-issue list type/bug` and keep
+1. Load all existing open skill issues from GitHub so you can avoid creating
+   duplicates throughout the review. Run `/github-issue list type/skill` and keep
    the results in mind for every finding — if a finding is already covered by an
    open issue, skip it.
 
@@ -52,22 +52,22 @@ Steps:
      with each other or produce an impossible state
    - **Silent skip conditions** — a step says "if X, skip" but never specifies
      what to do after skipping (infinite loop risk in autonomous runs)
-   - **Orphaned skills** — skills that exist but are neither user-invokable
-     (i.e. listed in the system-reminder as available skills) nor referenced by
-     any other skill or documented workflow, and may be stale. Skills that are
-     user-invokable standalone tools (e.g. `redeploy`, `remote`, `evaluate-gaps`,
-     `evaluate-risks`) are intentionally standalone and are never orphans.
+   - **Orphaned skills** — do NOT flag any skill under `.claude/skills/` as
+     an orphan. Every skill in that directory is available for direct user
+     invocation regardless of whether another skill calls it. Standalone
+     user-callable skills (e.g. `redeploy`, `remote`, `research-features`,
+     `evaluate-gaps`, `evaluate-risks`) are intentionally standalone.
    - **Inconsistent conventions** — the same concept handled differently across
      skills (e.g. one skill uses `status/wont-fix` where another uses a comment
      only, or `Created by` set differently)
 
-6. For each bug found, cross-reference against the list loaded in step 1. If not
+6. For each finding, cross-reference against the list loaded in step 1. If not
    already covered, also run `/github-issue search "<skill-name> <brief keyword>"`
    as a secondary check. Only proceed if no equivalent open issue exists.
 
-7. For each new bug, run `/github-issue create task status/approved` and provide:
+7. For each new finding, run `/github-issue create task status/approved` and provide:
 
-   - **Type:** `type/bug`
+   - **Type:** `type/skill`
    - **Priority:** `priority/p2` by default; `priority/p1` if the bug would
      cause a skill to silently corrupt issue state or loop forever; `priority/p3`
      for cosmetic or low-impact inconsistencies
