@@ -1,0 +1,9 @@
+{
+  "agents": [
+    {
+      "name": "bob",
+      "url": "http://bob:8000/",
+      "description": "Test agent"
+    }
+  ]
+}

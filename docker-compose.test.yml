@@ -1,0 +1,20 @@
+services:
+  bob:
+    image: nyx-agent:latest
+    restart: "no"
+    ports:
+      - "8099:8000"
+    environment:
+      AGENT_NAME: bob
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+      GH_REPO: skthomasjr/autonomous-agent
+      GH_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
+    volumes:
+      - ./.agents/test/bob/.claude:/home/agent/.claude
+      - ./.agents/test/bob/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
+      - ./.agents/test/bob/.codex:/home/agent/.codex
+      - ./.agents/test/bob/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
+      - ./.agents/test/bob/.nyx:/home/agent/.nyx
+      - ./.agents/test/bob/logs:/home/agent/logs
+      - ./.agents/test/manifest.json:/home/agent/.nyx/manifest.json:ro
+      - .:/home/agent/workspace
