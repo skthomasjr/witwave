@@ -243,6 +243,8 @@ class ClaudeBackend:
                 agent_sdk_client_errors_total.labels(backend=self.id).inc()
             if agent_sdk_query_error_duration_seconds is not None:
                 agent_sdk_query_error_duration_seconds.labels(backend=self.id).observe(time.monotonic() - _query_start)
+            if agent_sdk_session_duration_seconds is not None:
+                agent_sdk_session_duration_seconds.labels(backend=self.id).observe(time.monotonic() - _session_start)
             raise
 
         if agent_sdk_session_duration_seconds is not None:
