@@ -10,13 +10,14 @@ services:
       GH_REPO: skthomasjr/autonomous-agent
       GH_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
     volumes:
-      - ./.agents/test/bob/.claude:/home/agent/.claude
       - ./.agents/test/bob/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
-      - ./.agents/test/bob/.codex:/home/agent/.codex
+      - ./.agents/test/bob/.claude/mcp.json:/home/agent/.claude/mcp.json
+      - ./.agents/test/bob/.claude/settings.json:/home/agent/.claude/settings.json
       - ./.agents/test/bob/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
+      - ./.agents/test/bob/.codex/config.toml:/home/agent/.codex/config.toml
       - ./.agents/test/bob/.nyx:/home/agent/.nyx
-      - ./.agents/test/bob/logs:/home/agent/logs
       - ./.agents/test/manifest.json:/home/agent/.nyx/manifest.json:ro
+      - ./.agents/test/bob/logs:/home/agent/logs
       - .:/home/agent/workspace
 
   tom:
@@ -30,15 +31,16 @@ services:
       GH_REPO: skthomasjr/autonomous-agent
       GH_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
     volumes:
-      - ./.agents/test/tom/.claude:/home/agent/.claude
       - ./.agents/test/tom/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
+      - ./.agents/test/tom/.claude/mcp.json:/home/agent/.claude/mcp.json
+      - ./.agents/test/tom/.claude/settings.json:/home/agent/.claude/settings.json
       - ./.claude/skills:/home/agent/.claude/skills:ro
-      - ./.agents/test/tom/.codex:/home/agent/.codex
       - ./.agents/test/tom/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
+      - ./.agents/test/tom/.codex/config.toml:/home/agent/.codex/config.toml
       - ./.claude/skills:/home/agent/.codex/skills:ro
       - ./.agents/test/tom/.nyx:/home/agent/.nyx
-      - ./.agents/test/tom/logs:/home/agent/logs
       - ./.agents/test/manifest.json:/home/agent/.nyx/manifest.json:ro
+      - ./.agents/test/tom/logs:/home/agent/logs
       - .:/home/agent/workspace
 
   ui:
