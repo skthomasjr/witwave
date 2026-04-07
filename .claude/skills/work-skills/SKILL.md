@@ -1,5 +1,5 @@
 ---
-name: working-skills
+name: work-skills
 description: >-
   Fix open skill issues one at a time — triage, prioritize, verify, and resolve
   each skill document bug with full context before touching a single line of

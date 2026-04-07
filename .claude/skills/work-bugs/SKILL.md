@@ -1,5 +1,5 @@
 ---
-name: working-bugs
+name: work-bugs
 description: >-
   Fix open bug issues one at a time — triage, prioritize, verify, and resolve
   each bug with full context before touching a single line of code

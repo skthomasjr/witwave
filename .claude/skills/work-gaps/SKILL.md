@@ -1,5 +1,5 @@
 ---
-name: working-gaps
+name: work-gaps
 description: >-
   Fix open enhancement issues one at a time — triage, prioritize, verify, and resolve each gap
   with full context before touching a single line of code
