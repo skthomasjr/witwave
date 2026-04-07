@@ -11,7 +11,7 @@ Send a prompt to a named remote agent. The first word of the arguments is the ag
 Use the Bash tool to:
 
 1. Parse the agent name and prompt from the arguments (first word = agent name, remainder = prompt)
-2. Read `docker-compose.active.yml` in the current directory to find the host port mapped to that agent's service
+2. Search all `docker-compose*.yml` files in the current directory to find the host port mapped to that agent's service
 3. Derive the current session ID from the most recently modified `.jsonl` file in the Claude project directory
 4. Send the prompt via A2A JSON-RPC to the correct port
 
@@ -19,7 +19,7 @@ Use the Bash tool to:
 ARGS="$ARGUMENTS"
 TARGET_AGENT=$(echo "$ARGS" | awk '{print $1}')
 PROMPT=$(echo "$ARGS" | cut -d' ' -f2-)
-PORT=$(grep -A5 "^  ${TARGET_AGENT}:" docker-compose.active.yml | grep -o '"[0-9]*:8000"' | cut -d'"' -f2 | cut -d':' -f1)
+PORT=$(grep -l "^  ${TARGET_AGENT}:" docker-compose*.yml 2>/dev/null | xargs -I{} grep -A5 "^  ${TARGET_AGENT}:" {} | grep -o '"[0-9]*:8000"' | cut -d'"' -f2 | cut -d':' -f1)
 PROJECT_PATH=$(pwd | sed 's|^/||' | tr '/' '-')
 SESSION_ID=$(ls -t ~/.claude/projects/${PROJECT_PATH}/*.jsonl 2>/dev/null | head -1 | xargs basename -s .jsonl)
 MESSAGE_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
@@ -34,4 +34,4 @@ curl -s -X POST http://localhost:${PORT}/ \
 ```
 
 Parse the JSON response and display the agent's reply clearly, prefixed with the agent name. If the agent is unreachable
-or the name is not found in docker-compose.active.yml, report the error clearly.
+or the name is not found in any docker-compose*.yml file, report the error clearly.

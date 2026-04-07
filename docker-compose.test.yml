@@ -18,3 +18,33 @@ services:
       - ./.agents/test/bob/logs:/home/agent/logs
       - ./.agents/test/manifest.json:/home/agent/.nyx/manifest.json:ro
       - .:/home/agent/workspace
+
+  tom:
+    image: nyx-agent:latest
+    restart: "no"
+    ports:
+      - "8098:8000"
+    environment:
+      AGENT_NAME: tom
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+      GH_REPO: skthomasjr/autonomous-agent
+      GH_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
+    volumes:
+      - ./.agents/test/tom/.claude:/home/agent/.claude
+      - ./.agents/test/tom/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
+      - ./.claude/skills:/home/agent/.claude/skills:ro
+      - ./.agents/test/tom/.codex:/home/agent/.codex
+      - ./.agents/test/tom/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
+      - ./.claude/skills:/home/agent/.codex/skills:ro
+      - ./.agents/test/tom/.nyx:/home/agent/.nyx
+      - ./.agents/test/tom/logs:/home/agent/logs
+      - ./.agents/test/manifest.json:/home/agent/.nyx/manifest.json:ro
+      - .:/home/agent/workspace
+
+  ui:
+    build:
+      context: .
+      dockerfile: ui/Dockerfile
+    restart: "no"
+    ports:
+      - "3001:80"

@@ -74,4 +74,4 @@ services:
       dockerfile: ui/Dockerfile
     restart: unless-stopped
     ports:
-      - "3000:80"
+      - "3002:80"

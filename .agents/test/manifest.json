@@ -1,9 +1,12 @@
 {
-  "agents": [
+  "team": [
     {
       "name": "bob",
-      "url": "http://bob:8000/",
-      "description": "Test agent"
+      "url": "http://bob:8000"
+    },
+    {
+      "name": "tom",
+      "url": "http://tom:8000"
     }
   ]
 }
