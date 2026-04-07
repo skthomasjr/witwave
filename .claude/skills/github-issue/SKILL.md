@@ -208,22 +208,43 @@ Report confirmation.
 
 ## `close <number> <message>`
 
-Close an issue with a final comment.
+Close an issue with a final comment, updating the body status field and applying a terminal label.
 
 **Arguments:** `close 42 "Fixed in executor.py — log_entry now called per TextBlock"`
 
-1. Post the closing comment:
+1. Fetch the current issue body:
+
+```bash
+gh issue view <number> --json body --jq '.body'
+```
+
+2. Determine the terminal status label:
+   - Read the `**Status:**` line from the body.
+   - If it is already a terminal value (anything other than `status/in-progress`, `status/pending`, or `status/approved`), keep it as the terminal label.
+   - Otherwise, set the terminal label to `status/implemented`.
+
+3. Update the body's `**Status:**` line to the terminal label value determined in step 2.
+
+4. Apply the updated body and labels:
+
+```bash
+gh issue edit <number> \
+  --body "<updated body>" \
+  --add-label "<terminal-label>" \
+  --remove-label "status/in-progress,status/pending,status/approved"
+```
+
+5. Post the closing comment:
 
 ```bash
 gh issue comment <number> \
   --body "<message>"
 ```
 
-2. Remove the `status/in-progress` label and close the issue:
+6. Close the issue:
 
 ```bash
-gh issue edit <number> --remove-label "status/in-progress"
 gh issue close <number>
 ```
 
-3. Confirm the issue is closed.
+7. Confirm the issue is closed.
