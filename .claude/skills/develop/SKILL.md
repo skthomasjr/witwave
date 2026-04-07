@@ -38,13 +38,12 @@ Steps:
 
    **Pass table** — one row per pass through the loop:
 
-   ```
-   Pass  Skills  Bugs  Risks  Gaps  Features  Restart?
-     1      1      3      2     —       —      yes (risks filed)
-     2      0      1      0     —       —      yes (bugs filed)
-     3      0      0      0     3       2      no → done
+   | Pass | Skills | Bugs | Risks | Gaps | Features | Restart? |
+   |------|--------|------|-------|------|----------|----------|
+   | 1    | 1      | 3    | 2     | —    | —        | yes (risks filed) |
+   | 2    | 0      | 1    | 0     | —    | —        | yes (bugs filed) |
+   | 3    | 0      | 0    | 0     | 3    | 2        | no → done |
 
-   Issues resolved: 14  |  Blocked: 3 (awaiting human input)
-   ```
+   **Issues resolved: 14  |  Blocked: 3 (awaiting human input)**
 
    Show both. Keep the prose minimal — the visuals tell the story.
