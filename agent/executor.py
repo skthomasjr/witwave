@@ -269,6 +269,33 @@ class AgentExecutor(A2AAgentExecutor):
                 watchers.append(watcher())
         return watchers
 
+    async def backends_watcher(self) -> None:
+        """Watch BACKENDS_CONFIG_PATH and reload backends on file change."""
+        from backends.config import BACKENDS_CONFIG_PATH
+        from watchfiles import awatch
+
+        watch_dir = os.path.dirname(BACKENDS_CONFIG_PATH) or "."
+        logger.info(f"Backends watcher watching {BACKENDS_CONFIG_PATH}")
+        while True:
+            if not os.path.isdir(watch_dir):
+                logger.info("Backends config directory not found — retrying in 10s.")
+                await asyncio.sleep(10)
+                continue
+            async for changes in awatch(watch_dir):
+                for _, path in changes:
+                    if os.path.abspath(path) == os.path.abspath(BACKENDS_CONFIG_PATH):
+                        logger.info("backends.yaml changed — reloading.")
+                        try:
+                            new_backends, new_default_id = load_backends()
+                            self._backends = new_backends
+                            self._default_backend_id = new_default_id
+                            logger.info(f"Backends reloaded: {list(new_backends.keys())} (default: {new_default_id})")
+                        except Exception as e:
+                            logger.error(f"Failed to reload backends — keeping previous config: {e}")
+                        break
+            logger.warning("Backends watcher exited — retrying in 10s.")
+            await asyncio.sleep(10)
+
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         _exec_start = time.monotonic()
         prompt = context.get_user_input()

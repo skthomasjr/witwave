@@ -320,6 +320,7 @@ async def main():
         _guarded(heartbeat_runner, bus),
         _guarded(agenda_runner.run),
         _guarded(_event_loop_monitor),
+        _guarded(executor.backends_watcher),
         *executor._mcp_watchers(),
         _set_ready_when_started(server),
     )
