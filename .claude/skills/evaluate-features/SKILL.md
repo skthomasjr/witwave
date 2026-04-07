@@ -68,10 +68,11 @@ Steps:
    - **Hand-off** — core behavior is working and only refinements remain
      (error handling, a log line, a metric, a config default) that
      `evaluate-gaps` or `evaluate-bugs` would catch naturally. To hand off:
-     1. Fetch the issue body and update its `**Status:**` line to
-        `status/needs-more-info`.
-     2. Run `/github-issue relabel <number> add status/needs-more-info remove status/approved`
-     3. Post: `"Core complete — handed off to evaluate-gaps / evaluate-bugs.
+     1. Fetch the issue body (`gh issue view <number> --json body --jq '.body'`),
+        update its `**Status:**` line to `status/needs-more-info`, then apply
+        the updated body and labels in one call:
+        `gh issue edit <number> --body "<updated body>" --add-label "status/needs-more-info" --remove-label "status/approved"`
+     2. Post: `"Core complete — handed off to evaluate-gaps / evaluate-bugs.
         Relabel to status/approved to re-enter this queue."`
      Move on.
 
