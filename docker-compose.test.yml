@@ -20,6 +20,47 @@ services:
       - ./.agents/test/bob/logs:/home/agent/logs
       - .:/home/agent/workspace
 
+  bob-a2-claude:
+    build:
+      context: .
+      dockerfile: a2-claude/Dockerfile
+    image: a2-claude:latest
+    restart: "no"
+    ports:
+      - "8090:8080"
+    environment:
+      AGENT_NAME: bob-a2-claude
+      AGENT_URL: http://bob-a2-claude:8080
+      AGENT_MD: /home/agent/agent.md
+      BACKEND_PORT: 8080
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+    volumes:
+      - ./.agents/test/bob/a2-claude/agent.md:/home/agent/agent.md:ro
+      - ./.agents/test/bob/.claude/mcp.json:/home/agent/.claude/mcp.json:ro
+      - ./.agents/test/bob/a2-claude/logs:/home/agent/logs
+      - ./.agents/test/bob/a2-claude/memory:/home/agent/memory
+      - .:/home/agent/workspace
+
+  bob-a2-codex:
+    build:
+      context: .
+      dockerfile: a2-codex/Dockerfile
+    image: a2-codex:latest
+    restart: "no"
+    ports:
+      - "8091:8080"
+    environment:
+      AGENT_NAME: bob-a2-codex
+      AGENT_URL: http://bob-a2-codex:8080
+      AGENT_MD: /home/agent/agent.md
+      BACKEND_PORT: 8080
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    volumes:
+      - ./.agents/test/bob/a2-codex/agent.md:/home/agent/agent.md:ro
+      - ./.agents/test/bob/a2-codex/logs:/home/agent/logs
+      - ./.agents/test/bob/a2-codex/memory:/home/agent/memory
+      - .:/home/agent/workspace
+
   tom:
     image: nyx-agent:latest
     restart: "no"
@@ -41,6 +82,47 @@ services:
       - ./.agents/test/tom/.nyx:/home/agent/.nyx
       - ./.agents/test/manifest.json:/home/agent/.nyx/manifest.json:ro
       - ./.agents/test/tom/logs:/home/agent/logs
+      - .:/home/agent/workspace
+
+  tom-a2-claude:
+    build:
+      context: .
+      dockerfile: a2-claude/Dockerfile
+    image: a2-claude:latest
+    restart: "no"
+    ports:
+      - "8088:8080"
+    environment:
+      AGENT_NAME: tom-a2-claude
+      AGENT_URL: http://tom-a2-claude:8080
+      AGENT_MD: /home/agent/agent.md
+      BACKEND_PORT: 8080
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+    volumes:
+      - ./.agents/test/tom/a2-claude/agent.md:/home/agent/agent.md:ro
+      - ./.agents/test/tom/.claude/mcp.json:/home/agent/.claude/mcp.json:ro
+      - ./.agents/test/tom/a2-claude/logs:/home/agent/logs
+      - ./.agents/test/tom/a2-claude/memory:/home/agent/memory
+      - .:/home/agent/workspace
+
+  tom-a2-codex:
+    build:
+      context: .
+      dockerfile: a2-codex/Dockerfile
+    image: a2-codex:latest
+    restart: "no"
+    ports:
+      - "8089:8080"
+    environment:
+      AGENT_NAME: tom-a2-codex
+      AGENT_URL: http://tom-a2-codex:8080
+      AGENT_MD: /home/agent/agent.md
+      BACKEND_PORT: 8080
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    volumes:
+      - ./.agents/test/tom/a2-codex/agent.md:/home/agent/agent.md:ro
+      - ./.agents/test/tom/a2-codex/logs:/home/agent/logs
+      - ./.agents/test/tom/a2-codex/memory:/home/agent/memory
       - .:/home/agent/workspace
 
   ui:

@@ -1,14 +1,18 @@
 # Architecture
 
-_Last updated: 2026-04-07_
+_Last updated: 2026-04-08_
 
 ---
 
 ## Purpose
 
-This document describes the current architecture of the autonomous agent platform — how the runtime is structured, how agents are configured and deployed, how they communicate, and how the skill and issue layers are organized. It also captures known architectural patterns from the competitive landscape and serves as the reference for evaluating large structural changes.
+This document describes the current architecture of the autonomous agent platform — how the runtime is structured, how
+agents are configured and deployed, how they communicate, and how the skill and issue layers are organized. It also
+captures known architectural patterns from the competitive landscape and serves as the reference for evaluating large
+structural changes.
 
-When a proposed change is architectural in nature — a new runtime primitive, a significant repo restructuring, a new protocol layer, a shift in deployment model — it should be discussed here first before becoming a `feature` issue.
+When a proposed change is architectural in nature — a new runtime primitive, a significant repo restructuring, a new
+protocol layer, a shift in deployment model — it should be discussed here first before becoming a `feature` issue.
 
 ---
 
@@ -16,41 +20,72 @@ When a proposed change is architectural in nature — a new runtime primitive, a
 
 ```text
 .agents/
-└── active/                    # Live autonomous agents
-    ├── manifest.json          # Registry of all agents in this deployment
-    ├── iris/
-    │   ├── .nyx/              # Runtime config
-    │   │   ├── agent-card.md  # A2A identity description
-    │   │   ├── backends.yaml  # Backend selection (claude, codex)
-    │   │   ├── HEARTBEAT.md   # Proactive heartbeat schedule
-    │   │   └── agenda/        # Scheduled work items (*.md)
-    │   ├── .claude/           # Claude Code config
-    │   │   ├── CLAUDE.md      # Agent-specific behavioral guidance
-    │   │   ├── skills/        # Agent-local skills
-    │   │   └── memory/        # Persistent markdown memory files
-    │   ├── .codex/            # Codex config
-    │   └── logs/
-    │       └── conversation.log  # Per-run JSONL conversation log
-    ├── nova/                  # Same structure as iris/
-    └── kira/                  # Same structure as iris/
+├── active/                    # Live autonomous agents
+│   ├── manifest.json          # Registry of all agents in this deployment
+│   ├── iris/
+│   │   ├── .nyx/              # Runtime config (mounted into nyx-agent)
+│   │   │   ├── AGENTS.md      # Agent-specific behavioral guidance
+│   │   │   ├── agent-card.md  # A2A identity description
+│   │   │   ├── backends.yaml  # Backend routing config (type: a2a)
+│   │   │   ├── HEARTBEAT.md   # Proactive heartbeat schedule
+│   │   │   ├── agenda/        # Scheduled work items (*.md)
+│   │   │   └── skills/        # Agent-local skill documents
+│   │   ├── .claude/           # Claude Code config
+│   │   │   ├── mcp.json
+│   │   │   └── settings.json
+│   │   ├── .codex/            # Codex config
+│   │   │   └── config.toml
+│   │   ├── logs/              # nyx-agent logs
+│   │   ├── a2-claude/         # Claude backend instance
+│   │   │   ├── agent.md       # Backend identity (mounted at startup)
+│   │   │   ├── logs/          # conversation.log, trace.jsonl
+│   │   │   └── memory/        # Persistent markdown memory files
+│   │   └── a2-codex/          # Codex backend instance
+│   │       ├── agent.md
+│   │       ├── logs/
+│   │       └── memory/
+│   ├── nova/                  # Same structure as iris/
+│   └── kira/                  # Same structure as iris/
+└── test/                      # Test agents
+    ├── manifest.json
+    ├── bob/                   # Same structure as active agents
+    └── tom/
 
-agent/
-├── Dockerfile                 # nyx-agent image — no identity baked in
+agent/                         # nyx-agent source (router/scheduler)
+├── Dockerfile
 ├── main.py                    # Entrypoint — wires all components and runs the event loop
-├── executor.py                # Bridges A2A requests and the Claude Agent SDK
+├── executor.py                # Routes A2A requests to the configured backend
 ├── bus.py                     # Internal async message bus (deduplication, backpressure)
 ├── heartbeat.py               # Heartbeat scheduler — drives proactive agent behavior
 ├── agenda.py                  # Agenda scheduler — executes scheduled work items
-├── metrics.py                 # Prometheus metric definitions (70+ metrics)
+├── metrics.py                 # Prometheus metric definitions (agent_* prefix)
 ├── utils.py                   # Shared utilities (frontmatter parser, etc.)
 └── backends/
     ├── base.py                # AgentBackend abstract base class
-    ├── claude.py              # ClaudeSDKClient — wraps the Claude Agent SDK
-    ├── codex.py               # CodexBackend — wraps the Codex CLI
-    └── config.py              # Backend configuration and selection
+    ├── a2a.py                 # A2ABackend — forwards requests to a remote A2A agent
+    ├── claude.py              # ClaudeBackend — local Claude Agent SDK (legacy fallback)
+    ├── codex.py               # CodexBackend — local Codex CLI (legacy fallback)
+    └── config.py              # Backend config loader; supports type: a2a, claude, codex
+
+a2-claude/                     # Claude backend source
+├── Dockerfile
+├── main.py                    # A2A server entrypoint
+├── executor.py                # Claude Agent SDK executor; owns session state and logging
+├── metrics.py                 # Prometheus metric definitions (a2_* prefix)
+└── requirements.txt
+
+a2-codex/                      # Codex backend source
+├── Dockerfile
+├── main.py                    # A2A server entrypoint
+├── executor.py                # OpenAI Agents SDK executor; owns session state and logging
+├── metrics.py                 # Prometheus metric definitions (a2_* prefix, parity with a2-claude)
+└── requirements.txt
+
+ui/                            # Web UI
 
 .claude/
 └── skills/                    # Local Claude Code skills (user-invokable slash commands)
+    ├── deploy/                # Build images and manage Docker Compose environments
     ├── develop/               # Continuous improvement loop
     ├── evaluate-bugs/         # Find bugs → file issues
     ├── evaluate-features/     # Translate feature proposals → type/feature work items
@@ -59,7 +94,6 @@ agent/
     ├── evaluate-skills/       # Find skill bugs → file issues
     ├── github-issue/          # GitHub Issue management (create, list, claim, close)
     ├── plan-features/         # Research competitive landscape → file feature proposals
-    ├── redeploy/              # Rebuild image and recreate containers
     ├── remote/                # Send prompts to running agents via A2A
     ├── work-bugs/             # Work type/bug issues
     ├── work-features/         # Work type/feature issues
@@ -78,8 +112,8 @@ docs/
     ├── task.md                # Implementation task template (label: type/*)
     └── question.md            # Question template
 
-docker-compose.active.yml      # Local multi-agent deployment (active agents)
-docker-compose.test.yml        # Test agent deployment (bob)
+docker-compose.active.yml      # Active environment (iris, nova, kira + backends + ui)
+docker-compose.test.yml        # Test environment (bob, tom + backends + ui)
 AGENTS.md                      # Canonical repo instructions for all coding agents
 CLAUDE.md                      # Claude Code compatibility shim → AGENTS.md
 ```
@@ -90,76 +124,156 @@ CLAUDE.md                      # Claude Code compatibility shim → AGENTS.md
 
 ### Overview
 
-Each agent is a containerized instance of the `nyx-agent` image. The image contains the runtime; identity and behavior are injected via mounted files and environment variables. All agents are identical at the image level.
+Each named agent is a cluster of containers:
+
+1. **nyx-agent** — the infrastructure layer. Receives external A2A requests, fires heartbeats, runs agenda items, and
+   forwards all LLM work to a configured backend. Owns no LLM itself.
+2. **a2-claude** (per agent) — a standalone A2A server backed by the Claude Agent SDK. Owns session state, memory,
+   and conversation logging.
+3. **a2-codex** (per agent) — a standalone A2A server backed by the OpenAI Agents SDK. Same interface as a2-claude.
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                      nyx-agent container                │
-│                                                         │
-│  ┌──────────┐   ┌──────────┐   ┌─────────────────────┐ │
-│  │ Heartbeat│   │  Agenda  │   │   A2A HTTP Server   │ │
-│  │ Scheduler│   │ Scheduler│   │ (Starlette + uvicorn)│ │
-│  └────┬─────┘   └────┬─────┘   └──────────┬──────────┘ │
-│       │              │                     │             │
-│       └──────────────┴─────────────────────┘            │
-│                      │                                  │
-│               ┌──────▼──────┐                           │
-│               │ Message Bus │  (async, deduplicated)    │
-│               └──────┬──────┘                           │
-│                      │                                  │
-│               ┌──────▼──────┐                           │
-│               │  Executor   │  (AgentExecutor)          │
-│               └──────┬──────┘                           │
-│                      │                                  │
-│               ┌──────▼──────┐                           │
-│               │   Backend   │  (Claude SDK / Codex)    │
-│               └─────────────┘                           │
-│                                                         │
-│  /health/start   /health/live   /health/ready           │
-│  /metrics        /.well-known/agent.json                │
-└─────────────────────────────────────────────────────────┘
+External A2A caller
+        │
+        ▼
+┌───────────────────────────────────────────┐
+│               nyx-agent container          │
+│                                           │
+│  ┌──────────┐  ┌──────────┐  ┌─────────┐ │
+│  │Heartbeat │  │  Agenda  │  │  A2A    │ │
+│  │Scheduler │  │Scheduler │  │ Server  │ │
+│  └────┬─────┘  └────┬─────┘  └────┬────┘ │
+│       │              │             │      │
+│       └──────────────┴─────────────┘      │
+│                      │                   │
+│              ┌───────▼────────┐           │
+│              │  Message Bus   │           │
+│              └───────┬────────┘           │
+│                      │                   │
+│              ┌───────▼────────┐           │
+│              │   Executor     │           │
+│              │ (reads routing)│           │
+│              └───────┬────────┘           │
+│                      │                   │
+│              ┌───────▼────────┐           │
+│              │  A2ABackend    │           │
+│              │ (HTTP forward) │           │
+└──────────────┼────────────────┼───────────┘
+               │                │
+               ▼                ▼
+   ┌──────────────────┐  ┌──────────────────┐
+   │  a2-claude       │  │  a2-codex        │
+   │  (Claude SDK)    │  │  (OpenAI SDK)    │
+   │                  │  │                  │
+   │  /.well-known/   │  │  /.well-known/   │
+   │  agent.json      │  │  agent.json      │
+   │  / (A2A)         │  │  / (A2A)         │
+   │  /health         │  │  /health         │
+   │  /metrics        │  │  /metrics        │
+   └──────────────────┘  └──────────────────┘
 ```
 
-### Components
+### nyx-agent Components
 
-**`main.py`** — The entrypoint. Constructs the `MessageBus`, `AgentExecutor`, `AgendaRunner`, and A2A HTTP server, then runs all of them concurrently via `asyncio.gather`. A `_guarded` wrapper catches crashes in any background task and restarts it with a delay. An event loop lag monitor observes scheduling delays as a Prometheus histogram.
+**`main.py`** — The entrypoint. Constructs the `MessageBus`, `AgentExecutor`, `AgendaRunner`, and A2A HTTP server,
+then runs all of them concurrently via `asyncio.gather`. A `_guarded` wrapper catches crashes in any background task
+and restarts it with a delay.
 
-**`bus.py`** — An async `asyncio.Queue`-backed message bus. Deduplicates in-flight messages by `kind` — if a heartbeat message is already in-flight, a second heartbeat is dropped rather than queued. Produces `BusMessage` objects with a `result` future that callers can await.
+**`bus.py`** — An async `asyncio.Queue`-backed message bus. Deduplicates in-flight messages by `kind` — if a
+heartbeat message is already in-flight, a second heartbeat is dropped rather than queued.
 
-**`heartbeat.py`** — Watches `HEARTBEAT.md` for changes via `awatch`. On each heartbeat interval, enqueues a heartbeat message on the bus. Drives proactive agent behavior without external triggers.
+**`heartbeat.py`** — Watches `HEARTBEAT.md` for changes via `awatch`. On each heartbeat interval, enqueues a
+heartbeat message on the bus. The executor forwards the heartbeat prompt to the backend named in `routing.heartbeat`.
 
-**`agenda.py`** — Reads `*.md` files from the `agenda/` directory. Each file has YAML frontmatter defining a cron schedule, optional model override, enabled flag, and priority. The runner fires agenda items on schedule by enqueuing messages on the bus.
+**`agenda.py`** — Reads `*.md` files from the `agenda/` directory. Each file has YAML frontmatter defining a cron
+schedule. Fires agenda items on schedule by enqueuing messages on the bus. The executor forwards each item to the
+backend named in `routing.agenda`.
 
-**`executor.py`** — The core bridge between the bus and the Claude Agent SDK (or Codex). Receives `BusMessage` objects, resolves the backend, constructs `ClaudeAgentOptions` (or equivalent), and calls `run_query`. Manages MCP config watchers that hot-reload tool configuration when mounted files change.
+**`executor.py`** — Receives `BusMessage` objects from the bus, resolves the target backend from `routing.*`, and
+calls `backend.run_query(prompt, session_id, is_new)`. For `type: a2a` backends, this is an HTTP forward via
+`A2ABackend`. Legacy local backends (`type: claude`, `type: codex`) remain available as a fallback during transition.
 
-**`backends/`** — Pluggable backend abstraction. `base.py` defines `AgentBackend.run_query(prompt, session_id, is_new, model)`. `claude.py` wraps the Claude Agent SDK's `ClaudeSDKClient`. `codex.py` wraps the Codex CLI. Selection is driven by `backends.yaml` in the agent's `.nyx/` directory.
+**`backends/a2a.py`** — Implements `AgentBackend.run_query` by constructing an A2A `message/send` JSON-RPC payload
+and forwarding it to the backend URL. The backend URL can be overridden per-backend via an environment variable
+(`A2A_URL_<ID_UPPERCASED>`), enabling Kubernetes sidecar, separate pod, or Docker Compose deployments without config
+file changes.
+
+### Backend Components (a2-claude and a2-codex)
+
+Both backends share identical structure and API surface; they differ only in their LLM SDK.
+
+**`main.py`** — Builds the A2A `AgentCard` from the mounted `agent.md` file (via `AGENT_MD` env var), wires the
+`AgentExecutor` and `InMemoryTaskStore`, and serves the full Starlette application with routes for
+`/.well-known/agent.json`, `/` (A2A), `/health`, and `/metrics`.
+
+**`executor.py`** — Implements the A2A `AgentExecutor` interface. Manages session continuity using the session ID
+passed in the A2A request metadata. Writes `conversation.log` and `trace.jsonl` to the mounted logs directory.
+
+**`metrics.py`** — Prometheus metric definitions with `a2_*` prefix. Metric names and labels are kept at parity
+across `a2-claude` and `a2-codex`.
 
 ---
 
 ## Configuration Model
 
-Agent identity and behavior are entirely file-based. No identity is baked into the image.
+Agent identity and behavior are entirely file-based. No identity is baked into any image.
+
+### nyx-agent config files
 
 | File            | Location          | Purpose                                               |
 |-----------------|-------------------|-------------------------------------------------------|
+| `AGENTS.md`     | `.nyx/`           | Behavioral guidance (served as CLAUDE.md and AGENTS.md in container) |
 | `agent-card.md` | `.nyx/`           | A2A identity — description text served in agent card  |
-| `backends.yaml` | `.nyx/`           | Backend selection and model configuration             |
+| `backends.yaml` | `.nyx/`           | Backend definitions and routing                       |
 | `HEARTBEAT.md`  | `.nyx/`           | Heartbeat schedule and prompt                         |
 | `agenda/*.md`   | `.nyx/agenda/`    | Scheduled work items with cron frontmatter            |
-| `CLAUDE.md`     | `.claude/`        | Behavioral guidance for Claude Code                   |
-| `skills/`       | `.claude/skills/` | Agent-local skill documents                           |
-| `memory/`       | `.claude/memory/` | Persistent markdown memory files                      |
+| `skills/`       | `.nyx/skills/`    | Agent-local skill documents                           |
 
-Environment variables override or extend file-based config:
+### Backend config files
 
-| Variable             | Purpose                                       |
-|----------------------|-----------------------------------------------|
-| `AGENT_NAME`         | Agent identity (`iris`, `nova`, `kira`)       |
-| `AGENT_PORT`         | HTTP port                                     |
-| `AGENT_URL`          | Public A2A endpoint URL                       |
-| `AGENT_MODEL`        | Default model override                        |
-| `METRICS_ENABLED`    | Enable Prometheus `/metrics` endpoint         |
-| `ANTHROPIC_API_KEY`  | Claude API credentials                        |
+| File       | Location            | Purpose                                                    |
+|------------|---------------------|------------------------------------------------------------|
+| `agent.md` | `<name>/a2-claude/` | Identity injected into the Claude backend at startup       |
+| `agent.md` | `<name>/a2-codex/`  | Identity injected into the Codex backend at startup        |
+| `memory/`  | `<name>/a2-claude/memory/` | Persistent markdown memory files for Claude backend |
+| `memory/`  | `<name>/a2-codex/memory/`  | Persistent markdown memory files for Codex backend  |
+
+### backends.yaml schema
+
+```yaml
+backends:
+  - id: <backend-id>       # Unique name; referenced in routing block
+    type: a2a              # "a2a" for remote backends; "claude"/"codex" for local (legacy)
+    url: http://<service>:8080   # Service URL; overridable via A2A_URL_<ID> env var
+    default: true          # Mark exactly one backend as default
+
+routing:
+  a2a: <backend-id>        # Backend for incoming A2A requests
+  heartbeat: <backend-id>  # Backend for heartbeat-triggered work
+  agenda: <backend-id>     # Backend for agenda task execution
+```
+
+### Key environment variables
+
+**nyx-agent:**
+
+| Variable               | Default                            | Description                              |
+|------------------------|------------------------------------|------------------------------------------|
+| `AGENT_NAME`           | `nyx-agent`                        | Agent display name (e.g. `iris`)         |
+| `AGENT_PORT`           | `8000`                             | HTTP port                                |
+| `BACKENDS_CONFIG_PATH` | `/home/agent/.nyx/backends.yaml`   | Path to backends config                  |
+| `METRICS_ENABLED`      | _(unset)_                          | Enable Prometheus `/metrics`             |
+| `A2A_URL_<ID>`         | _(unset)_                          | Per-backend URL override (e.g. `A2A_URL_IRIS_A2_CLAUDE`) |
+
+**Backends (a2-claude / a2-codex):**
+
+| Variable          | Default                    | Description                                            |
+|-------------------|----------------------------|--------------------------------------------------------|
+| `AGENT_NAME`      | `a2-claude` / `a2-codex`   | Backend instance name (e.g. `iris-a2-claude`)          |
+| `AGENT_URL`       | `http://localhost:8080/`   | Public A2A endpoint URL reported in agent card         |
+| `AGENT_MD`        | `/home/agent/agent.md`     | Path to mounted identity file                          |
+| `BACKEND_PORT`    | `8080`                     | HTTP port the backend listens on (internal)            |
+| `METRICS_ENABLED` | _(unset)_                  | Enable Prometheus `/metrics`                           |
 
 ---
 
@@ -167,16 +281,42 @@ Environment variables override or extend file-based config:
 
 ### A2A Protocol
 
-Agents communicate via the A2A protocol (HTTP/JSON-RPC). Each agent exposes:
+Agents communicate via the A2A protocol (HTTP/JSON-RPC). External callers always target the **nyx agent** by its
+hostname/port. nyx reads the `routing.a2a` entry from `backends.yaml` and forwards the request unchanged to the
+configured backend. The backend session ID matches the session ID provided by the external caller, preserving
+conversation continuity across turns.
+
+Each nyx-agent exposes:
 
 - `/.well-known/agent.json` — agent card for discovery
-- `/` — task execution endpoint
+- `/` — task execution endpoint (`message/send`)
 
-The `/remote` skill wraps A2A into a natural-language pattern for agent-to-agent delegation.
+Each backend exposes the same A2A surface plus:
 
-### Internal Message Bus
+- `/health` — health check endpoint
+- `/metrics` — Prometheus metrics endpoint
 
-All internal work — heartbeat ticks, agenda fires, A2A-inbound tasks — flows through the `MessageBus`. The bus serializes execution: one message processed at a time, deduplicated by kind. This prevents concurrent SDK calls from the same agent process.
+### Internal Message Bus (nyx-agent)
+
+All internal work — heartbeat ticks, agenda fires, A2A-inbound tasks — flows through the `MessageBus`. The bus
+serializes execution: one message processed at a time, deduplicated by kind. This prevents concurrent outbound
+backend calls from the same nyx-agent process.
+
+---
+
+## Port Assignments
+
+| Agent | nyx-agent | a2-claude | a2-codex |
+|-------|-----------|-----------|----------|
+| iris  | 8000      | 8010      | 8011     |
+| nova  | 8001      | 8020      | 8021     |
+| kira  | 8002      | 8030      | 8031     |
+| bob   | 8099      | 8090      | 8091     |
+| tom   | 8098      | 8088      | 8089     |
+| ui (active) | 3002 | —       | —        |
+| ui (test)   | 3001 | —       | —        |
+
+Backend containers all listen on port 8080 internally; host port mappings are as above.
 
 ---
 
@@ -224,26 +364,33 @@ The `/develop` skill runs a continuous improvement loop:
 
 ### Local
 
+Build all three images and bring up the active environment:
+
 ```bash
 docker build -f agent/Dockerfile -t nyx-agent:latest .
-docker compose up -d
+docker build -f a2-claude/Dockerfile -t a2-claude:latest .
+docker build -f a2-codex/Dockerfile -t a2-codex:latest .
+docker compose -f docker-compose.active.yml up -d
 ```
 
-Three agents run locally:
+Port assignments per agent:
 
-| Agent | Port |
-|-------|-----:|
-| iris  | 8000 |
-| nova  | 8001 |
-| kira  | 8002 |
+| Agent | nyx-agent | a2-claude | a2-codex |
+|-------|-----------|-----------|----------|
+| iris  | 8000      | 8010      | 8011     |
+| nova  | 8001      | 8020      | 8021     |
+| kira  | 8002      | 8030      | 8031     |
 
 ### Kubernetes (Target)
 
 All infrastructure decisions are evaluated against Kubernetes compatibility:
 
-- Health probes follow the three-probe model (`/health/start`, `/health/live`, `/health/ready`)
+- Health probes follow the three-probe model (`/health/start`, `/health/live`, `/health/ready`) for nyx-agent;
+  `/health` for backend containers
 - Configuration injected via env vars and mounted `ConfigMap`/`Secret` volumes
-- Stateless containers — horizontally scalable
+- Backend URL configurable via `A2A_URL_<ID>` env var — supports sidecar (`http://localhost:8080`), separate pod
+  (`http://a2-claude-svc:8080`), or Compose service DNS (`http://iris-a2-claude:8080`) without config file changes
+- Stateless containers at the nyx-agent layer (all state lives in backends)
 - Standard HTTP endpoints suitable for `Service` and `Ingress`
 
 A Helm chart is planned. A Kubernetes Operator (declarative agent lifecycle via CRDs) is under consideration.
@@ -254,37 +401,61 @@ A Helm chart is planned. A Kubernetes Operator (declarative agent lifecycle via 
 
 ### Patterns in Use
 
-**File-based configuration over compiled-in identity.** A new agent is a new directory with mounted files — not a new image build. This enables the same image to serve any number of identities.
+**nyx as pure infrastructure.** nyx-agent owns the scheduling and relay layer; LLM execution is the sole
+responsibility of backend containers. This separation allows each layer to evolve independently and enables swapping
+LLM backends without touching the scheduler.
 
-**Message bus serialization.** All work flows through a single async queue per agent process. Prevents concurrent SDK calls, enforces deduplication, and provides a single instrumentation point for latency and throughput metrics.
+**File-based configuration over compiled-in identity.** A new agent is a new directory with mounted files — not a
+new image build. The same image serves any number of identities.
 
-**Backend abstraction.** The `AgentBackend` interface decouples the executor from any specific LLM provider. Claude SDK and Codex are both supported today; new backends require only implementing `run_query`.
+**Named routing over round-robin.** `backends.yaml` routes each concern (a2a, heartbeat, agenda) to a named backend
+id. Routing is deterministic and explicit — no load-balancing or dynamic selection.
 
-**Guarded restart loop.** Every background task (`heartbeat_runner`, `bus_worker`, `agenda_runner`) runs inside `_guarded()` — a crash-restart wrapper that logs the failure, increments a metric, and restarts after a delay. No task can take down the agent process.
+**Per-backend URL override.** The `A2A_URL_<ID>` env var allows the same `backends.yaml` config file to work across
+Docker Compose, Kubernetes sidecars, and separate pod deployments.
 
-**Skill documents as workflow.** Agent behavior is expressed in markdown skill files, not hardcoded logic. Skills are hot-swappable without rebuilding the image or restarting the container.
+**Message bus serialization.** All work flows through a single async queue per nyx-agent process. Prevents concurrent
+outbound backend calls, enforces deduplication, and provides a single instrumentation point for latency and throughput.
 
-**Theme/slice feature decomposition.** Large features are broken into themes (logical phases) and slices (discrete work units within a theme). No new theme begins until all slices of the current theme are closed.
+**Guarded restart loop.** Every background task (`heartbeat_runner`, `bus_worker`, `agenda_runner`) runs inside
+`_guarded()` — a crash-restart wrapper that logs the failure, increments a metric, and restarts after a delay. No
+task can take down the nyx-agent process.
+
+**Skill documents as workflow.** Agent behavior is expressed in markdown skill files, not hardcoded logic. Skills are
+hot-swappable without rebuilding the image or restarting the container.
+
+**Theme/slice feature decomposition.** Large features are broken into themes (logical phases) and slices (discrete
+work units within a theme). No new theme begins until all slices of the current theme are closed.
 
 ### Patterns to Evaluate
 
-The following patterns are used by competitors and represent potential architectural directions. Each should be evaluated as an architectural change proposal before becoming a feature issue:
+The following patterns represent potential architectural directions. Each should be evaluated as an architectural
+change proposal before becoming a feature issue:
 
-**Plan-before-code execution mode.** OpenHands v1.5.0 and Devin both enforce a two-phase pattern: read-only planning → execution. The Claude Agent SDK supports `permission_mode="plan"` natively. Applicable to agenda items with high blast radius.
+**Plan-before-code execution mode.** OpenHands v1.5.0 and Devin both enforce a two-phase pattern: read-only planning
+→ execution. The Claude Agent SDK supports `permission_mode="plan"` natively. Applicable to agenda items with high
+blast radius.
 
-**In-process custom tools.** The Claude Agent SDK's `@tool()` decorator and `create_sdk_mcp_server()` factory allow defining tools as plain Python functions inside the harness process — no external MCP server. Enables lightweight harness-native tools without operational overhead.
+**In-process custom tools.** The Claude Agent SDK's `@tool()` decorator and `create_sdk_mcp_server()` factory allow
+defining tools as plain Python functions inside the harness process — no external MCP server.
 
-**Programmatic subagent definitions.** `AgentDefinition` in `ClaudeAgentOptions` allows defining specialized subagents programmatically (description, prompt, tools, maxTurns, skills, memory) without file-based configuration.
+**Programmatic subagent definitions.** `AgentDefinition` in `ClaudeAgentOptions` allows defining specialized
+subagents programmatically without file-based configuration.
 
-**Hooks system.** The SDK's `HookMatcher` API registers Python callbacks on `PreToolUse`, `PostToolUse`, `Stop`, `SessionStart`, etc. `PreToolUse` supports `updatedInput` — rewriting tool arguments before execution. Enables ACI-style guardrails at the harness layer.
+**Hooks system.** The SDK's `HookMatcher` API registers Python callbacks on `PreToolUse`, `PostToolUse`, `Stop`,
+`SessionStart`, etc. `PreToolUse` supports `updatedInput` — rewriting tool arguments before execution.
 
-**Structured shared memory.** Competitors (CrewAI, AutoGPT, Hermes Agent) use structured persistent memory with semantic search. This project uses flat markdown files. SQLite FTS5 with LLM-powered summarization (Hermes Agent pattern) or a unified structured memory class (CrewAI pattern) are the strongest reference implementations.
+**Structured shared memory.** Competitors use structured persistent memory with semantic search. This project uses
+flat markdown files per backend. SQLite FTS5 with LLM-powered summarization is the strongest reference.
 
-**Auto-generated skills.** Hermes Agent writes a new skill document after completing a complex task — a closed learning loop from execution to capability accumulation. The skill directory already exists; the gap is the post-task synthesis step.
+**Auto-generated skills.** Hermes Agent writes a new skill document after completing a complex task — a closed
+learning loop from execution to capability accumulation.
 
-**Declarative policy engine.** LangGraph 2.0 ships guardrail nodes as first-class primitives. Microsoft's Agent Governance Toolkit (MIT, April 2026) addresses all OWASP Agentic Top 10 risks with sub-millisecond enforcement. A file-based policy DSL (JSON/YAML) evaluated before every tool call would add this without requiring Python code changes.
+**Declarative policy engine.** A file-based policy DSL (JSON/YAML) evaluated before every tool call would add
+guardrails without requiring Python code changes.
 
-**Event-driven triggers.** Devin reacts to GitHub PRs, Jira tickets, and Slack messages in addition to scheduled runs. An inbound HTTP trigger endpoint would bridge this project to external systems without cron schedules.
+**Event-driven triggers.** An inbound HTTP trigger endpoint would bridge this project to external systems (GitHub PRs,
+Slack messages, Jira tickets) without cron schedules.
 
 ---
 

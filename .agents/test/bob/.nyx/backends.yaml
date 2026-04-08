@@ -1,6 +1,14 @@
 backends:
-  - id: claude
-    type: claude
+  - id: bob-a2-claude
+    type: a2a
+    url: http://bob-a2-claude:8080
     default: true
-    model: claude-haiku-4-5-20251001
-    auth-env: CLAUDE_CODE_OAUTH_TOKEN
+
+  - id: bob-a2-codex
+    type: a2a
+    url: http://bob-a2-codex:8080
+
+routing:
+  a2a: bob-a2-claude
+  heartbeat: bob-a2-claude
+  agenda: bob-a2-claude

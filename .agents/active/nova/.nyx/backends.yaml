@@ -1,11 +1,14 @@
 backends:
-  - id: claude
-    type: claude
+  - id: nova-a2-claude
+    type: a2a
+    url: http://nova-a2-claude:8080
     default: true
-    model: claude-opus-4-6
-    auth-env: CLAUDE_CODE_OAUTH_TOKEN
 
-  - id: claude-fallback
-    type: claude
-    model: claude-opus-4-6
-    auth-env: CLAUDE_CODE_OAUTH_TOKEN
+  - id: nova-a2-codex
+    type: a2a
+    url: http://nova-a2-codex:8080
+
+routing:
+  a2a: nova-a2-claude
+  heartbeat: nova-a2-claude
+  agenda: nova-a2-claude

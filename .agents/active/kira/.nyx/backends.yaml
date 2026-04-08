@@ -1,11 +1,14 @@
 backends:
-  - id: claude
-    type: claude
+  - id: kira-a2-claude
+    type: a2a
+    url: http://kira-a2-claude:8080
     default: true
-    model: claude-opus-4-6
-    auth-env: CLAUDE_CODE_OAUTH_TOKEN
 
-  - id: claude-fallback
-    type: claude
-    model: claude-opus-4-6
-    auth-env: CLAUDE_CODE_OAUTH_TOKEN
+  - id: kira-a2-codex
+    type: a2a
+    url: http://kira-a2-codex:8080
+
+routing:
+  a2a: kira-a2-claude
+  heartbeat: kira-a2-claude
+  agenda: kira-a2-claude

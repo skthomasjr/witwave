@@ -8,8 +8,8 @@ Manage nyx-agent environments using Docker Compose.
 
 ## Actions
 
-- **up** — build the image and bring up the environment
-- **redeploy** — build the image and force-recreate all running containers
+- **up** — build all images and bring up the environment
+- **redeploy** — build all images and force-recreate all running containers
 - **down** — tear down the environment (stop and remove containers)
 - **status** — show which environments are running and which agents in each are reachable
 
@@ -38,8 +38,14 @@ docker compose -f docker-compose.<env>.yml ps --services --filter status=running
 ## Running the action
 
 **up / redeploy:**
+
+Build all three images (nyx-agent, a2-claude, a2-codex), then bring up the environment:
+
 ```bash
-docker build -f agent/Dockerfile -t nyx-agent:latest . && docker compose -f docker-compose.<env>.yml up -d --force-recreate
+docker build -f agent/Dockerfile -t nyx-agent:latest . \
+  && docker build -f a2-claude/Dockerfile -t a2-claude:latest . \
+  && docker build -f a2-codex/Dockerfile -t a2-codex:latest . \
+  && docker compose -f docker-compose.<env>.yml up -d --force-recreate
 ```
 
 **down:**
@@ -55,12 +61,18 @@ For each `docker-compose.*.yml` found in the repo root (or just the specified en
 docker compose -f docker-compose.<env>.yml ps
 ```
 
-For each running container that maps port 8000 internally, extract the host port from the compose file and probe the agent's A2A discovery endpoint:
+For each running nyx-agent container (those mapping port 8000 internally), extract the host port from the compose file and probe the agent's A2A discovery endpoint:
 
 ```bash
 curl -sf http://localhost:<host-port>/.well-known/agent.json
 ```
 
-Report a table per environment showing: container name, status, and — for agent containers — whether the A2A endpoint responded and the agent's name from the response. Non-agent containers (e.g. `ui`) should show status only.
+For each running backend container (a2-claude / a2-codex, those mapping port 8080 internally), probe the health endpoint:
+
+```bash
+curl -sf http://localhost:<host-port>/health
+```
+
+Report a table per environment showing: container name, status, and — for agent containers — whether the A2A or health endpoint responded. Non-agent containers (e.g. `ui`) should show status only.
 
 Report the outcome clearly — confirm which containers were affected or report any errors.

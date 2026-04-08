@@ -1,11 +1,14 @@
 backends:
-  - id: claude
-    type: claude
+  - id: iris-a2-claude
+    type: a2a
+    url: http://iris-a2-claude:8080
     default: true
-    model: claude-opus-4-6
-    auth-env: CLAUDE_CODE_OAUTH_TOKEN
 
-  - id: claude-fallback
-    type: claude
-    model: claude-opus-4-6
-    auth-env: CLAUDE_CODE_OAUTH_TOKEN
+  - id: iris-a2-codex
+    type: a2a
+    url: http://iris-a2-codex:8080
+
+routing:
+  a2a: iris-a2-claude
+  heartbeat: iris-a2-claude
+  agenda: iris-a2-claude

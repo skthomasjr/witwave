@@ -24,6 +24,47 @@ services:
       - ./.agents/active/iris/logs:/home/agent/logs
       - .:/home/agent/workspace
 
+  iris-a2-claude:
+    build:
+      context: .
+      dockerfile: a2-claude/Dockerfile
+    image: a2-claude:latest
+    restart: unless-stopped
+    ports:
+      - "8010:8080"
+    environment:
+      AGENT_NAME: iris-a2-claude
+      AGENT_URL: http://iris-a2-claude:8080
+      AGENT_MD: /home/agent/agent.md
+      BACKEND_PORT: 8080
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+    volumes:
+      - ./.agents/active/iris/a2-claude/agent.md:/home/agent/agent.md:ro
+      - ./.agents/active/iris/.claude/mcp.json:/home/agent/.claude/mcp.json:ro
+      - ./.agents/active/iris/a2-claude/logs:/home/agent/logs
+      - ./.agents/active/iris/a2-claude/memory:/home/agent/memory
+      - .:/home/agent/workspace
+
+  iris-a2-codex:
+    build:
+      context: .
+      dockerfile: a2-codex/Dockerfile
+    image: a2-codex:latest
+    restart: unless-stopped
+    ports:
+      - "8011:8080"
+    environment:
+      AGENT_NAME: iris-a2-codex
+      AGENT_URL: http://iris-a2-codex:8080
+      AGENT_MD: /home/agent/agent.md
+      BACKEND_PORT: 8080
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    volumes:
+      - ./.agents/active/iris/a2-codex/agent.md:/home/agent/agent.md:ro
+      - ./.agents/active/iris/a2-codex/logs:/home/agent/logs
+      - ./.agents/active/iris/a2-codex/memory:/home/agent/memory
+      - .:/home/agent/workspace
+
   nova:
     image: nyx-agent:latest
     restart: unless-stopped
@@ -49,6 +90,47 @@ services:
       - ./.agents/active/nova/logs:/home/agent/logs
       - .:/home/agent/workspace
 
+  nova-a2-claude:
+    build:
+      context: .
+      dockerfile: a2-claude/Dockerfile
+    image: a2-claude:latest
+    restart: unless-stopped
+    ports:
+      - "8020:8080"
+    environment:
+      AGENT_NAME: nova-a2-claude
+      AGENT_URL: http://nova-a2-claude:8080
+      AGENT_MD: /home/agent/agent.md
+      BACKEND_PORT: 8080
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+    volumes:
+      - ./.agents/active/nova/a2-claude/agent.md:/home/agent/agent.md:ro
+      - ./.agents/active/nova/.claude/mcp.json:/home/agent/.claude/mcp.json:ro
+      - ./.agents/active/nova/a2-claude/logs:/home/agent/logs
+      - ./.agents/active/nova/a2-claude/memory:/home/agent/memory
+      - .:/home/agent/workspace
+
+  nova-a2-codex:
+    build:
+      context: .
+      dockerfile: a2-codex/Dockerfile
+    image: a2-codex:latest
+    restart: unless-stopped
+    ports:
+      - "8021:8080"
+    environment:
+      AGENT_NAME: nova-a2-codex
+      AGENT_URL: http://nova-a2-codex:8080
+      AGENT_MD: /home/agent/agent.md
+      BACKEND_PORT: 8080
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    volumes:
+      - ./.agents/active/nova/a2-codex/agent.md:/home/agent/agent.md:ro
+      - ./.agents/active/nova/a2-codex/logs:/home/agent/logs
+      - ./.agents/active/nova/a2-codex/memory:/home/agent/memory
+      - .:/home/agent/workspace
+
   kira:
     image: nyx-agent:latest
     restart: unless-stopped
@@ -72,6 +154,47 @@ services:
       - ./.agents/active/kira/.nyx:/home/agent/.nyx
       - ./.agents/active/manifest.json:/home/agent/.nyx/manifest.json:ro
       - ./.agents/active/kira/logs:/home/agent/logs
+      - .:/home/agent/workspace
+
+  kira-a2-claude:
+    build:
+      context: .
+      dockerfile: a2-claude/Dockerfile
+    image: a2-claude:latest
+    restart: unless-stopped
+    ports:
+      - "8030:8080"
+    environment:
+      AGENT_NAME: kira-a2-claude
+      AGENT_URL: http://kira-a2-claude:8080
+      AGENT_MD: /home/agent/agent.md
+      BACKEND_PORT: 8080
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+    volumes:
+      - ./.agents/active/kira/a2-claude/agent.md:/home/agent/agent.md:ro
+      - ./.agents/active/kira/.claude/mcp.json:/home/agent/.claude/mcp.json:ro
+      - ./.agents/active/kira/a2-claude/logs:/home/agent/logs
+      - ./.agents/active/kira/a2-claude/memory:/home/agent/memory
+      - .:/home/agent/workspace
+
+  kira-a2-codex:
+    build:
+      context: .
+      dockerfile: a2-codex/Dockerfile
+    image: a2-codex:latest
+    restart: unless-stopped
+    ports:
+      - "8031:8080"
+    environment:
+      AGENT_NAME: kira-a2-codex
+      AGENT_URL: http://kira-a2-codex:8080
+      AGENT_MD: /home/agent/agent.md
+      BACKEND_PORT: 8080
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    volumes:
+      - ./.agents/active/kira/a2-codex/agent.md:/home/agent/agent.md:ro
+      - ./.agents/active/kira/a2-codex/logs:/home/agent/logs
+      - ./.agents/active/kira/a2-codex/memory:/home/agent/memory
       - .:/home/agent/workspace
 
   ui:

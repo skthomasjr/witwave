@@ -42,6 +42,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass, field
+from typing import Optional
 
 import yaml
 
@@ -49,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 BACKENDS_CONFIG_PATH = os.environ.get("BACKENDS_CONFIG_PATH", "/home/agent/.nyx/backends.yaml")
 
-VALID_TYPES = {"claude", "codex"}
+VALID_TYPES = {"claude", "codex", "a2a"}
 
 
 @dataclass
@@ -59,6 +60,7 @@ class BackendConfig:
     default: bool = False
     model: str | None = None
     auth_env: str | None = None
+    url: str | None = None
     extra: dict = field(default_factory=dict)
 
 
@@ -142,7 +144,7 @@ def load_backends_config() -> list[BackendConfig]:
                 f"Valid types: {sorted(VALID_TYPES)}"
             )
 
-        known = {"id", "type", "default", "model", "auth-env"}
+        known = {"id", "type", "default", "model", "auth-env", "url"}
         extra = {k: v for k, v in entry.items() if k not in known}
 
         configs.append(
@@ -152,6 +154,7 @@ def load_backends_config() -> list[BackendConfig]:
                 default=bool(entry.get("default", False)),
                 model=entry.get("model") or None,
                 auth_env=entry.get("auth-env") or None,
+                url=entry.get("url") or None,
                 extra=extra,
             )
         )
@@ -175,12 +178,17 @@ def load_backends_config() -> list[BackendConfig]:
 
     for c in configs:
         marker = " [default]" if c.default else ""
-        env = auth_env_name(c)
-        cred = "configured" if credential_for(c) else "NOT SET"
-        logger.info(
-            f"Backend configured: {c.id} (type={c.type}, model={c.model or 'default'}, "
-            f"auth={env or 'none'} [{cred}]){marker}"
-        )
+        if c.type == "a2a":
+            logger.info(
+                f"Backend configured: {c.id} (type={c.type}, url={c.url or 'NOT SET'}){marker}"
+            )
+        else:
+            env = auth_env_name(c)
+            cred = "configured" if credential_for(c) else "NOT SET"
+            logger.info(
+                f"Backend configured: {c.id} (type={c.type}, model={c.model or 'default'}, "
+                f"auth={env or 'none'} [{cred}]){marker}"
+            )
 
     return configs
 
@@ -190,3 +198,50 @@ def get_default(configs: list[BackendConfig]) -> BackendConfig:
         if c.default:
             return c
     return configs[0]
+
+
+@dataclass
+class RoutingConfig:
+    """Named backend routing overrides read from the 'routing:' block in backends.yaml.
+
+    Each field names the backend id to use for that concern.
+    If a field is None, the caller falls back to the default backend.
+    """
+    a2a: Optional[str] = None
+    heartbeat: Optional[str] = None
+    agenda: Optional[str] = None
+
+
+def load_routing_config() -> RoutingConfig:
+    """Load the optional 'routing:' block from backends.yaml.
+
+    Returns a RoutingConfig with all fields set to None if:
+    - the config file does not exist,
+    - the file has no 'routing:' block, or
+    - the block cannot be parsed.
+
+    This preserves the existing default-backend fallback behavior for callers
+    that check for None.
+    """
+    if not os.path.exists(BACKENDS_CONFIG_PATH):
+        return RoutingConfig()
+
+    try:
+        with open(BACKENDS_CONFIG_PATH) as f:
+            raw = yaml.safe_load(f)
+    except Exception as e:
+        logger.warning(f"Failed to read {BACKENDS_CONFIG_PATH} for routing config: {e}")
+        return RoutingConfig()
+
+    if not isinstance(raw, dict):
+        return RoutingConfig()
+
+    routing_raw = raw.get("routing")
+    if not isinstance(routing_raw, dict):
+        return RoutingConfig()
+
+    return RoutingConfig(
+        a2a=routing_raw.get("a2a") or None,
+        heartbeat=routing_raw.get("heartbeat") or None,
+        agenda=routing_raw.get("agenda") or None,
+    )

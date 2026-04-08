@@ -11,9 +11,10 @@ from a2a.server.agent_execution import AgentExecutor as A2AAgentExecutor
 from a2a.server.agent_execution import RequestContext
 from a2a.server.events import EventQueue
 from a2a.utils import new_agent_text_message
+from backends.a2a import A2ABackend
 from backends.claude import ClaudeBackend
 from backends.codex import CodexBackend
-from backends.config import BackendConfig, get_default, load_backends_config
+from backends.config import BackendConfig, RoutingConfig, get_default, load_backends_config, load_routing_config
 from bus import Message
 from metrics import (
     agent_a2a_last_request_timestamp_seconds,
@@ -131,6 +132,8 @@ def _build_backend(config: BackendConfig):
             agent_name=AGENT_NAME,
             log_entry_fn=log_entry,
         )
+    if config.type == "a2a":
+        return A2ABackend(config=config)
     raise ValueError(f"Unknown backend type: {config.type!r}")
 
 
@@ -143,6 +146,14 @@ def load_backends():
     backends = {c.id: _build_backend(c) for c in configs}
     default_id = get_default(configs).id
     return backends, default_id
+
+
+def load_routing() -> RoutingConfig:
+    try:
+        return load_routing_config()
+    except Exception as e:
+        logger.warning(f"Failed to load routing config — using default backend for all concerns: {e}")
+        return RoutingConfig()
 
 
 def _track_session(sessions: OrderedDict[str, float], session_id: str) -> None:
@@ -205,7 +216,8 @@ async def _run_inner(
         agent_session_starts_total.labels(type="new" if is_new else "resumed").inc()
 
     logger.info(f"Session {session_id} ({'new' if is_new else 'existing'}) backend={resolved_id} — prompt: {prompt!r}")
-    log_entry("user", prompt, session_id, suffix=f" [backend: {resolved_id}]")
+    if not isinstance(backend, A2ABackend):
+        log_entry("user", prompt, session_id, suffix=f" [backend: {resolved_id}]")
 
     if agent_prompt_length_bytes is not None:
         agent_prompt_length_bytes.observe(len(prompt.encode()))
@@ -260,7 +272,22 @@ class AgentExecutor(A2AAgentExecutor):
         self._sessions: OrderedDict[str, float] = OrderedDict()
         self._running_tasks: dict[str, asyncio.Task] = {}
         self._backends, self._default_backend_id = load_backends()
+        self._routing: RoutingConfig = load_routing()
         self._mcp_watcher_tasks: list[asyncio.Task] = []
+
+    def _backend_id_for_kind(self, kind: str) -> str | None:
+        """Return the routing-configured backend id for the given message kind.
+
+        Returns None when no routing override is configured for the kind,
+        in which case the caller should fall back to the default backend.
+        """
+        if kind == "a2a" and self._routing.a2a:
+            return self._routing.a2a
+        if kind == "heartbeat" and self._routing.heartbeat:
+            return self._routing.heartbeat
+        if kind.startswith("agenda") and self._routing.agenda:
+            return self._routing.agenda
+        return None
 
     def _mcp_watchers(self):
         """Return callables for any backends that have an MCP config watcher."""
@@ -303,6 +330,7 @@ class AgentExecutor(A2AAgentExecutor):
                             new_backends, new_default_id = load_backends()
                             self._backends = new_backends
                             self._default_backend_id = new_default_id
+                            self._routing = load_routing()
                             logger.info(f"Backends reloaded: {list(new_backends.keys())} (default: {new_default_id})")
                             # Cancel old MCP watcher tasks and start new ones for the reloaded backends.
                             for t in self._mcp_watcher_tasks:
@@ -328,7 +356,8 @@ class AgentExecutor(A2AAgentExecutor):
         metadata = context.message.metadata or {}
         _raw_sid = "".join(c for c in str(metadata.get("session_id") or "").strip()[:256] if c >= " ")
         session_id = _raw_sid or str(uuid.uuid4())
-        backend_id = metadata.get("backend_id") or None
+        # Explicit backend_id in metadata takes priority; otherwise use routing config.
+        backend_id = metadata.get("backend_id") or self._backend_id_for_kind("a2a") or None
         model = metadata.get("model") or None
         task_id = context.task_id
 
@@ -399,6 +428,8 @@ class AgentExecutor(A2AAgentExecutor):
         _response = ""
         _success = False
         _error: str | None = None
+        # Use routing config to select the backend for this message kind.
+        _routed_backend_id = self._backend_id_for_kind(message.kind)
         try:
             _response = await run(
                 message.prompt,
@@ -406,6 +437,7 @@ class AgentExecutor(A2AAgentExecutor):
                 self._sessions,
                 self._backends,
                 self._default_backend_id,
+                backend_id=_routed_backend_id,
                 model=message.model,
             )
             _success = True
