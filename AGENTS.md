@@ -71,7 +71,7 @@ Each backend:
 - Manages its own session state, conversation log (`conversation.log`), and memory (`/memory/`)
 - Receives identity via a mounted `agent.md` file (equivalent to `CLAUDE.md`)
 
-Each named agent has its own dedicated backend instances. For example, iris has `iris-a2-claude` and `iris-a2-codex`.
+Each named agent has its own dedicated backend instances. For example, iris has `iris-a2-claude`, `iris-a2-codex`, and `iris-a2-gemini`.
 
 ### Routing configuration
 
