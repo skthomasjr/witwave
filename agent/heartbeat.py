@@ -209,8 +209,18 @@ async def heartbeat_runner(bus: MessageBus) -> None:
             stop_event.set()
             await loop_task
         stop_event.clear()
+        try:
+            loaded = load_heartbeat()
+        except Exception as e:
+            if agent_heartbeat_load_errors_total is not None:
+                agent_heartbeat_load_errors_total.inc()
+            logger.warning(f"Heartbeat reload error after watcher restart — skipping: {e}")
+            loaded = None
         if loaded:
             schedule, content, model = loaded
             loop_task = asyncio.create_task(_run_loop(bus, schedule, content, stop_event, model=model))
             loop_task.add_done_callback(_loop_task_done_callback)
+        else:
+            loop_task = None
+            logger.info("Heartbeat disabled or empty after watcher restart.")
         await asyncio.sleep(10)
