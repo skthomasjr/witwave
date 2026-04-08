@@ -438,7 +438,7 @@ class AgentExecutor(A2AAgentExecutor):
                 message.result.set_result(_response)
         except Exception as e:
             _error = repr(e)
-            logger.exception(f"process_bus error for session {message.session_id!r}: {e}")
+            logger.exception(f"process_bus error for session {_session_id!r}: {e}")
             if message.result is not None:
                 message.result.set_exception(e)
         finally:
