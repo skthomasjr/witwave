@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
 # Inner urllib timeout must be shorter than the outer asyncio timeout so that
 # the thread always finishes before asyncio cancels it, preventing a thread leak.
-_HTTP_TIMEOUT_SECONDS = TASK_TIMEOUT_SECONDS - 10
+_HTTP_TIMEOUT_SECONDS = max(TASK_TIMEOUT_SECONDS - 10, 10)
 
 
 class A2ABackend:
