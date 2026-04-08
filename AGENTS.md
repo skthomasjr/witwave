@@ -10,9 +10,9 @@ file.
 
 ## Skills
 
-Skills under `.claude/skills/` are for local use. Skills that agents need must also be copied to each agent's
-`.agents/active/<name>/.nyx/skills/` directory. When a shared skill is updated, sync the change to all agents that have a
-copy.
+Skills under `.claude/skills/` are mounted directly into each `a2-claude` backend container at
+`/home/agent/.claude/skills/`. Agents always have the same skills as the local Claude Code session — no per-agent
+copying required.
 
 ## Agent Identity
 
@@ -108,8 +108,7 @@ Agent identity and behavior are file-based — nothing is baked into images.
 │   ├── agent-card.md        # A2A identity description text
 │   ├── backends.yaml        # Backend selection and routing
 │   ├── HEARTBEAT.md         # Proactive heartbeat schedule and prompt
-│   ├── agenda/              # Scheduled work items (*.md with cron frontmatter)
-│   └── skills/              # Agent-local skill documents
+│   └── agenda/              # Scheduled work items (*.md with cron frontmatter)
 ├── .claude/                 # Claude Code config
 │   ├── mcp.json             # MCP server configuration
 │   └── settings.json        # Claude Code settings

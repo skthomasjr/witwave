@@ -15,14 +15,11 @@ services:
       - ./.agents/active/iris/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
       - ./.agents/active/iris/.claude/mcp.json:/home/agent/.claude/mcp.json
       - ./.agents/active/iris/.claude/settings.json:/home/agent/.claude/settings.json
-      - ./.agents/active/iris/.nyx/skills:/home/agent/.claude/skills:ro
       - ./.agents/active/iris/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
       - ./.agents/active/iris/.codex/config.toml:/home/agent/.codex/config.toml
-      - ./.agents/active/iris/.nyx/skills:/home/agent/.codex/skills:ro
       - ./.agents/active/iris/.nyx:/home/agent/.nyx
       - ./.agents/active/manifest.json:/home/agent/.nyx/manifest.json:ro
       - ./.agents/active/iris/logs:/home/agent/logs
-      - .:/home/agent/workspace
 
   iris-a2-claude:
     build:
@@ -41,6 +38,7 @@ services:
     volumes:
       - ./.agents/active/iris/a2-claude/agent.md:/home/agent/agent.md:ro
       - ./.agents/active/iris/.claude/mcp.json:/home/agent/.claude/mcp.json:ro
+      - ./.claude/skills:/home/agent/.claude/skills:ro
       - ./.agents/active/iris/a2-claude/logs:/home/agent/logs
       - ./.agents/active/iris/a2-claude/memory:/home/agent/memory
       - .:/home/agent/workspace
@@ -81,14 +79,11 @@ services:
       - ./.agents/active/nova/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
       - ./.agents/active/nova/.claude/mcp.json:/home/agent/.claude/mcp.json
       - ./.agents/active/nova/.claude/settings.json:/home/agent/.claude/settings.json
-      - ./.agents/active/nova/.nyx/skills:/home/agent/.claude/skills:ro
       - ./.agents/active/nova/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
       - ./.agents/active/nova/.codex/config.toml:/home/agent/.codex/config.toml
-      - ./.agents/active/nova/.nyx/skills:/home/agent/.codex/skills:ro
       - ./.agents/active/nova/.nyx:/home/agent/.nyx
       - ./.agents/active/manifest.json:/home/agent/.nyx/manifest.json:ro
       - ./.agents/active/nova/logs:/home/agent/logs
-      - .:/home/agent/workspace
 
   nova-a2-claude:
     build:
@@ -107,6 +102,7 @@ services:
     volumes:
       - ./.agents/active/nova/a2-claude/agent.md:/home/agent/agent.md:ro
       - ./.agents/active/nova/.claude/mcp.json:/home/agent/.claude/mcp.json:ro
+      - ./.claude/skills:/home/agent/.claude/skills:ro
       - ./.agents/active/nova/a2-claude/logs:/home/agent/logs
       - ./.agents/active/nova/a2-claude/memory:/home/agent/memory
       - .:/home/agent/workspace
@@ -147,14 +143,11 @@ services:
       - ./.agents/active/kira/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
       - ./.agents/active/kira/.claude/mcp.json:/home/agent/.claude/mcp.json
       - ./.agents/active/kira/.claude/settings.json:/home/agent/.claude/settings.json
-      - ./.agents/active/kira/.nyx/skills:/home/agent/.claude/skills:ro
       - ./.agents/active/kira/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
       - ./.agents/active/kira/.codex/config.toml:/home/agent/.codex/config.toml
-      - ./.agents/active/kira/.nyx/skills:/home/agent/.codex/skills:ro
       - ./.agents/active/kira/.nyx:/home/agent/.nyx
       - ./.agents/active/manifest.json:/home/agent/.nyx/manifest.json:ro
       - ./.agents/active/kira/logs:/home/agent/logs
-      - .:/home/agent/workspace
 
   kira-a2-claude:
     build:
@@ -173,6 +166,7 @@ services:
     volumes:
       - ./.agents/active/kira/a2-claude/agent.md:/home/agent/agent.md:ro
       - ./.agents/active/kira/.claude/mcp.json:/home/agent/.claude/mcp.json:ro
+      - ./.claude/skills:/home/agent/.claude/skills:ro
       - ./.agents/active/kira/a2-claude/logs:/home/agent/logs
       - ./.agents/active/kira/a2-claude/memory:/home/agent/memory
       - .:/home/agent/workspace

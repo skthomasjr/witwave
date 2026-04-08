@@ -18,7 +18,6 @@ services:
       - ./.agents/test/bob/.nyx:/home/agent/.nyx
       - ./.agents/test/manifest.json:/home/agent/.nyx/manifest.json:ro
       - ./.agents/test/bob/logs:/home/agent/logs
-      - .:/home/agent/workspace
 
   bob-a2-claude:
     build:
@@ -37,6 +36,7 @@ services:
     volumes:
       - ./.agents/test/bob/a2-claude/agent.md:/home/agent/agent.md:ro
       - ./.agents/test/bob/.claude/mcp.json:/home/agent/.claude/mcp.json:ro
+      - ./.claude/skills:/home/agent/.claude/skills:ro
       - ./.agents/test/bob/a2-claude/logs:/home/agent/logs
       - ./.agents/test/bob/a2-claude/memory:/home/agent/memory
       - .:/home/agent/workspace
@@ -80,7 +80,6 @@ services:
       - ./.agents/test/tom/.nyx:/home/agent/.nyx
       - ./.agents/test/manifest.json:/home/agent/.nyx/manifest.json:ro
       - ./.agents/test/tom/logs:/home/agent/logs
-      - .:/home/agent/workspace
 
   tom-a2-claude:
     build:
@@ -99,6 +98,7 @@ services:
     volumes:
       - ./.agents/test/tom/a2-claude/agent.md:/home/agent/agent.md:ro
       - ./.agents/test/tom/.claude/mcp.json:/home/agent/.claude/mcp.json:ro
+      - ./.claude/skills:/home/agent/.claude/skills:ro
       - ./.agents/test/tom/a2-claude/logs:/home/agent/logs
       - ./.agents/test/tom/a2-claude/memory:/home/agent/memory
       - .:/home/agent/workspace
