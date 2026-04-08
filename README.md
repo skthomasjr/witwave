@@ -118,13 +118,13 @@ backends:
   - id: iris-a2-claude
     type: a2a
     url: http://iris-a2-claude:8080
-    default: true
 
   - id: iris-a2-codex
     type: a2a
     url: http://iris-a2-codex:8080
 
 routing:
+  default: iris-a2-claude    # fallback backend when no per-concern override matches
   a2a: iris-a2-claude        # handles incoming A2A requests
   heartbeat: iris-a2-claude  # handles heartbeat-triggered work
   agenda: iris-a2-claude     # handles agenda task execution
