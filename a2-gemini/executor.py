@@ -201,6 +201,15 @@ def _make_client() -> genai.Client:
     return genai.Client(api_key=GEMINI_API_KEY)
 
 
+_session_locks: dict[str, asyncio.Lock] = {}
+
+
+def _get_session_lock(session_id: str) -> asyncio.Lock:
+    if session_id not in _session_locks:
+        _session_locks[session_id] = asyncio.Lock()
+    return _session_locks[session_id]
+
+
 async def run_query(
     prompt: str,
     session_id: str,
@@ -213,61 +222,63 @@ async def run_query(
     if agent_md_content:
         instructions = f"{agent_md_content}\n\nYour session ID is {session_id}."
 
-    history = await asyncio.to_thread(_load_history, session_id)
+    lock = _get_session_lock(session_id)
+    async with lock:
+        history = await asyncio.to_thread(_load_history, session_id)
 
-    client = _make_client()
+        client = _make_client()
 
-    # Create chat with persisted history and system instruction
-    chat = client.aio.chats.create(
-        model=resolved_model,
-        config=types.GenerateContentConfig(
-            system_instruction=instructions,
-        ),
-        history=history,
-    )
+        # Create chat with persisted history and system instruction
+        chat = client.aio.chats.create(
+            model=resolved_model,
+            config=types.GenerateContentConfig(
+                system_instruction=instructions,
+            ),
+            history=history,
+        )
 
-    collected: list[str] = []
-    _query_start = time.monotonic()
-    _session_start = time.monotonic()
-    _first_chunk_at: float | None = None
-    _turn_count = 0
-    _message_count = 0
+        collected: list[str] = []
+        _query_start = time.monotonic()
+        _session_start = time.monotonic()
+        _first_chunk_at: float | None = None
+        _turn_count = 0
+        _message_count = 0
 
-    try:
-        async for chunk in await chat.send_message_stream(prompt):
-            _message_count += 1
-            text = getattr(chunk, "text", None)
-            if text:
-                if _first_chunk_at is None:
-                    _first_chunk_at = time.monotonic()
-                    if a2_sdk_time_to_first_message_seconds is not None:
-                        a2_sdk_time_to_first_message_seconds.labels(backend=_BACKEND_ID).observe(
-                            _first_chunk_at - _query_start
-                        )
-                collected.append(text)
-        _turn_count = 1
-    except Exception:
-        if a2_sdk_query_error_duration_seconds is not None:
-            a2_sdk_query_error_duration_seconds.labels(backend=_BACKEND_ID).observe(
-                time.monotonic() - _query_start
-            )
+        try:
+            async for chunk in await chat.send_message_stream(prompt):
+                _message_count += 1
+                text = getattr(chunk, "text", None)
+                if text:
+                    if _first_chunk_at is None:
+                        _first_chunk_at = time.monotonic()
+                        if a2_sdk_time_to_first_message_seconds is not None:
+                            a2_sdk_time_to_first_message_seconds.labels(backend=_BACKEND_ID).observe(
+                                _first_chunk_at - _query_start
+                            )
+                    collected.append(text)
+            _turn_count = 1
+        except Exception:
+            if a2_sdk_query_error_duration_seconds is not None:
+                a2_sdk_query_error_duration_seconds.labels(backend=_BACKEND_ID).observe(
+                    time.monotonic() - _query_start
+                )
+            if a2_sdk_session_duration_seconds is not None:
+                a2_sdk_session_duration_seconds.labels(backend=_BACKEND_ID).observe(
+                    time.monotonic() - _session_start
+                )
+            raise
+
         if a2_sdk_session_duration_seconds is not None:
             a2_sdk_session_duration_seconds.labels(backend=_BACKEND_ID).observe(
                 time.monotonic() - _session_start
             )
-        raise
 
-    if a2_sdk_session_duration_seconds is not None:
-        a2_sdk_session_duration_seconds.labels(backend=_BACKEND_ID).observe(
-            time.monotonic() - _session_start
-        )
+        full_response = "".join(collected)
+        if full_response:
+            log_entry("agent", full_response, session_id)
 
-    full_response = "".join(collected)
-    if full_response:
-        log_entry("agent", full_response, session_id)
-
-    # Persist updated history
-    await asyncio.to_thread(_save_history, session_id, chat.history)
+        # Persist updated history
+        await asyncio.to_thread(_save_history, session_id, chat.history)
 
     if a2_sdk_query_duration_seconds is not None:
         a2_sdk_query_duration_seconds.labels(backend=_BACKEND_ID).observe(time.monotonic() - _query_start)
