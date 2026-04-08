@@ -434,12 +434,12 @@ class AgentExecutor(A2AAgentExecutor):
                 model=message.model,
             )
             _success = True
-            if message.result is not None:
+            if message.result is not None and not message.result.done():
                 message.result.set_result(_response)
         except Exception as e:
             _error = repr(e)
             logger.exception(f"process_bus error for session {_session_id!r}: {e}")
-            if message.result is not None:
+            if message.result is not None and not message.result.done():
                 message.result.set_exception(e)
         finally:
             _opc_task = asyncio.create_task(self.on_prompt_completed(
