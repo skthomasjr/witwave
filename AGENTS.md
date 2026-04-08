@@ -219,7 +219,6 @@ request internally to its configured backend (e.g. `iris-a2-claude`). Never targ
 | nova  | 8001 | 8020      | 8021     | 8022      |
 | kira  | 8002 | 8030      | 8031     | 8032      |
 | bob   | 8099 | 8090      | 8091     | 8092      |
-| tom   | 8098 | 8088      | 8089     | 8087      |
 
 The `/remote` skill derives the session ID automatically from the current Claude Code session. Pass it explicitly only
 when you need to target a specific session.
