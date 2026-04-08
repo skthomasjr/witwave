@@ -52,47 +52,14 @@ a2_log_bytes_total: prometheus_client.Counter | None = None
 a2_log_entries_total: prometheus_client.Counter | None = None
 a2_log_write_errors_total: prometheus_client.Counter | None = None
 
-# SDK / subprocess metrics
-a2_sdk_subprocess_spawn_duration_seconds: prometheus_client.Histogram | None = None
+# SDK metrics
 a2_sdk_query_duration_seconds: prometheus_client.Histogram | None = None
 a2_sdk_query_error_duration_seconds: prometheus_client.Histogram | None = None
 a2_sdk_time_to_first_message_seconds: prometheus_client.Histogram | None = None
 a2_sdk_session_duration_seconds: prometheus_client.Histogram | None = None
 a2_sdk_messages_per_query: prometheus_client.Histogram | None = None
 a2_sdk_turns_per_query: prometheus_client.Histogram | None = None
-a2_sdk_tokens_per_query: prometheus_client.Histogram | None = None
-a2_sdk_errors_total: prometheus_client.Counter | None = None
-a2_sdk_result_errors_total: prometheus_client.Counter | None = None
-a2_sdk_client_errors_total: prometheus_client.Counter | None = None
-a2_sdk_context_fetch_errors_total: prometheus_client.Counter | None = None
-
-# Tool call metrics
-a2_sdk_tool_calls_total: prometheus_client.Counter | None = None
-a2_sdk_tool_calls_per_query: prometheus_client.Histogram | None = None
-a2_sdk_tool_duration_seconds: prometheus_client.Histogram | None = None
-a2_sdk_tool_errors_total: prometheus_client.Counter | None = None
-a2_sdk_tool_call_input_size_bytes: prometheus_client.Histogram | None = None
-a2_sdk_tool_result_size_bytes: prometheus_client.Histogram | None = None
 a2_text_blocks_per_query: prometheus_client.Histogram | None = None
-a2_stderr_lines_per_task: prometheus_client.Histogram | None = None
-a2_tasks_with_stderr_total: prometheus_client.Counter | None = None
-a2_task_retries_total: prometheus_client.Counter | None = None
-
-# Context window metrics
-a2_context_tokens: prometheus_client.Histogram | None = None
-a2_context_tokens_remaining: prometheus_client.Histogram | None = None
-a2_context_usage_percent: prometheus_client.Histogram | None = None
-a2_context_exhaustion_total: prometheus_client.Counter | None = None
-a2_context_warnings_total: prometheus_client.Counter | None = None
-
-# MCP metrics
-a2_mcp_config_errors_total: prometheus_client.Counter | None = None
-a2_mcp_config_reloads_total: prometheus_client.Counter | None = None
-a2_mcp_servers_active: prometheus_client.Gauge | None = None
-
-# File watcher metrics
-a2_watcher_events_total: prometheus_client.Counter | None = None
-a2_file_watcher_restarts_total: prometheus_client.Counter | None = None
 
 if _enabled:
     a2_up = prometheus_client.Gauge("a2_up", "Backend agent is running", ["agent"])
@@ -238,12 +205,7 @@ if _enabled:
         "Total I/O failures in the conversation/trace logging subsystem.",
     )
 
-    # SDK / subprocess
-    a2_sdk_subprocess_spawn_duration_seconds = prometheus_client.Histogram(
-        "a2_sdk_subprocess_spawn_duration_seconds",
-        "Time to initialize the backend client/subprocess.",
-        ["backend"],
-    )
+    # SDK
     a2_sdk_query_duration_seconds = prometheus_client.Histogram(
         "a2_sdk_query_duration_seconds",
         "Raw backend query time in seconds inside run_query().",
@@ -276,129 +238,8 @@ if _enabled:
         ["backend"],
         buckets=(1, 2, 3, 5, 10, 20, 50, 100),
     )
-    a2_sdk_tokens_per_query = prometheus_client.Histogram(
-        "a2_sdk_tokens_per_query",
-        "Aggregate token count per run_query() invocation.",
-        ["backend"],
-    )
-    a2_sdk_errors_total = prometheus_client.Counter(
-        "a2_sdk_errors_total",
-        "Total stderr/error lines emitted by the backend subprocess.",
-        ["backend"],
-    )
-    a2_sdk_result_errors_total = prometheus_client.Counter(
-        "a2_sdk_result_errors_total",
-        "Total backend result errors returned during run_query().",
-        ["backend"],
-    )
-    a2_sdk_client_errors_total = prometheus_client.Counter(
-        "a2_sdk_client_errors_total",
-        "Total backend client connection-level failures (setup/teardown).",
-        ["backend"],
-    )
-    a2_sdk_context_fetch_errors_total = prometheus_client.Counter(
-        "a2_sdk_context_fetch_errors_total",
-        "Total context usage fetch failures.",
-        ["backend"],
-    )
-
-    # Tools
-    a2_sdk_tool_calls_total = prometheus_client.Counter(
-        "a2_sdk_tool_calls_total",
-        "Total tool calls by tool name.",
-        ["backend", "tool"],
-    )
-    a2_sdk_tool_calls_per_query = prometheus_client.Histogram(
-        "a2_sdk_tool_calls_per_query",
-        "Number of tool calls per run_query() invocation.",
-        ["backend"],
-        buckets=(0, 1, 2, 5, 10, 20, 50, 100, 200),
-    )
-    a2_sdk_tool_duration_seconds = prometheus_client.Histogram(
-        "a2_sdk_tool_duration_seconds",
-        "Wall-clock seconds per tool call.",
-        ["backend", "tool"],
-    )
-    a2_sdk_tool_errors_total = prometheus_client.Counter(
-        "a2_sdk_tool_errors_total",
-        "Total tool execution errors by tool name.",
-        ["backend", "tool"],
-    )
-    a2_sdk_tool_call_input_size_bytes = prometheus_client.Histogram(
-        "a2_sdk_tool_call_input_size_bytes",
-        "Byte length of each tool call input payload by tool name.",
-        ["backend", "tool"],
-    )
-    a2_sdk_tool_result_size_bytes = prometheus_client.Histogram(
-        "a2_sdk_tool_result_size_bytes",
-        "Byte length of each tool result by tool name.",
-        ["backend", "tool"],
-    )
     a2_text_blocks_per_query = prometheus_client.Histogram(
         "a2_text_blocks_per_query",
         "Number of text blocks returned per run_query() invocation.",
         buckets=(0, 1, 2, 5, 10, 20, 50, 100),
-    )
-    a2_stderr_lines_per_task = prometheus_client.Histogram(
-        "a2_stderr_lines_per_task",
-        "Number of SDK stderr lines captured per run() invocation.",
-        buckets=(0, 1, 2, 5, 10, 20, 50, 100),
-    )
-    a2_tasks_with_stderr_total = prometheus_client.Counter(
-        "a2_tasks_with_stderr_total",
-        "Total task executions that produced any SDK stderr output.",
-    )
-    a2_task_retries_total = prometheus_client.Counter(
-        "a2_task_retries_total",
-        "Total task retries due to session already in use.",
-    )
-
-    # Context window
-    a2_context_tokens = prometheus_client.Histogram(
-        "a2_context_tokens",
-        "Absolute token count from get_context_usage() per SDK turn.",
-    )
-    a2_context_tokens_remaining = prometheus_client.Histogram(
-        "a2_context_tokens_remaining",
-        "Remaining token budget (maxTokens - totalTokens) per get_context_usage() call.",
-        buckets=(1000, 5000, 10000, 25000, 50000, 100000, 150000),
-    )
-    a2_context_usage_percent = prometheus_client.Histogram(
-        "a2_context_usage_percent",
-        "Context window utilization percentage per SDK turn.",
-        buckets=(50, 70, 80, 90, 95, 99, 100),
-    )
-    a2_context_exhaustion_total = prometheus_client.Counter(
-        "a2_context_exhaustion_total",
-        "Total context window exhaustion events (usage >= 100%).",
-    )
-    a2_context_warnings_total = prometheus_client.Counter(
-        "a2_context_warnings_total",
-        "Total context usage threshold warnings.",
-    )
-
-    # MCP
-    a2_mcp_config_errors_total = prometheus_client.Counter(
-        "a2_mcp_config_errors_total",
-        "Total MCP config file parse/load failures.",
-    )
-    a2_mcp_config_reloads_total = prometheus_client.Counter(
-        "a2_mcp_config_reloads_total",
-        "Total MCP config file reload events.",
-    )
-    a2_mcp_servers_active = prometheus_client.Gauge(
-        "a2_mcp_servers_active",
-        "Number of currently loaded MCP servers.",
-    )
-
-    # File watchers
-    a2_watcher_events_total = prometheus_client.Counter(
-        "a2_watcher_events_total",
-        "Total raw file-system change events detected by each watcher.",
-        ["watcher"],
-    )
-    a2_file_watcher_restarts_total = prometheus_client.Counter(
-        "a2_file_watcher_restarts_total",
-        "Total file watcher restart events due to missing or deleted directory.",
-        ["watcher"],
     )
