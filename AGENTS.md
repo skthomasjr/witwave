@@ -164,21 +164,21 @@ a2-claude/                   # Claude backend source
 ├── Dockerfile
 ├── main.py                  # A2A server entrypoint
 ├── executor.py              # Claude Agent SDK executor; owns sessions and logging
-├── metrics.py               # Prometheus metrics (parity with a2-codex)
+├── metrics.py               # Prometheus metrics (superset of a2-codex/a2-gemini; adds tool, context, MCP metrics)
 └── requirements.txt
 
 a2-codex/                    # Codex backend source
 ├── Dockerfile
 ├── main.py                  # A2A server entrypoint
 ├── executor.py              # OpenAI Agents SDK executor; owns sessions and logging
-├── metrics.py               # Prometheus metrics (parity with a2-claude)
+├── metrics.py               # Prometheus metrics (common a2_* set; subset of a2-claude)
 └── requirements.txt
 
 a2-gemini/                   # Gemini backend source
 ├── Dockerfile
 ├── main.py                  # A2A server entrypoint
 ├── executor.py              # google-genai SDK executor; owns sessions and logging
-├── metrics.py               # Prometheus metrics (parity with a2-claude/a2-codex)
+├── metrics.py               # Prometheus metrics (common a2_* set; subset of a2-claude)
 └── requirements.txt
 
 ui/                          # Web UI
