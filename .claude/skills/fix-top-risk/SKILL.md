@@ -8,6 +8,8 @@ Find the single most impactful risk in the codebase, fix it, commit, and push.
 
 No GitHub issues. No comments. No tracking. Just find it, fix it, ship it.
 
+**This skill targets things that work correctly today but are fragile or dangerous** — code that will fail, hang, leak, or break under conditions that could reasonably occur in production. If the code is already producing wrong results or has crashed, use `/fix-top-bug` instead.
+
 ## Scope
 
 Search only these locations — nothing else:
@@ -47,7 +49,6 @@ Before fixing anything, ask: **could this cause harm — a security breach, a re
 **Do not fix** — stop and report "no actionable risks found":
 - Risks that only trigger under deliberate misconfiguration or adversarial input beyond normal use
 - Theoretical risks with no realistic trigger path
-- Style, naming, or formatting preferences
 
 If nothing clears the bar, stop immediately and report: "No actionable risks found — all identified issues are below the risk threshold."
 

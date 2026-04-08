@@ -32,7 +32,14 @@ Steps:
    of how the components connect — data flow, call chains, shared state, error propagation paths — before drawing
    any conclusions.
 
-6. Perform a deep bug review. Focus exclusively on bugs — trace execution paths and look for:
+6. Perform a deep bug review. A bug is a defect with a real consequence — crash, data loss, incorrect output,
+   resource leak, silent failure, always-wrong metric, or misleading operator-facing log on a reachable path.
+
+   **In docs:** factually wrong information that would cause a developer to fail — a command that doesn't work,
+   a file path that doesn't exist, a port that's wrong. Incomplete docs are not bugs. When code and docs
+   conflict, the code is the source of truth.
+
+   Focus exclusively on bugs — trace execution paths and look for:
 
    - Incorrect logic or wrong assumptions about inputs, state, or ordering
    - Unhandled error cases or exceptions that could crash or corrupt state
@@ -40,7 +47,6 @@ Steps:
    - Resource leaks (file handles, connections, subprocesses, memory)
    - Off-by-one errors, boundary conditions, empty or null inputs
    - Incorrect use of APIs or library interfaces (including version-specific behavior)
-   - Security vulnerabilities (injection, credential exposure, path traversal, insecure defaults)
    - Silent failures where errors are swallowed without logging or propagation
    - Dependency version mismatches or known-broken version ranges
    - Cross-component bugs that only appear when two or more components interact

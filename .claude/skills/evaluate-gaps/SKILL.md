@@ -31,25 +31,28 @@ Steps:
    of how the components connect — data flow, call chains, shared state, error propagation paths — before drawing
    any conclusions.
 
-6. Perform a deep code quality review. Focus exclusively on gaps — things that work but could be cleaner, safer, or
-   more consistent. Look for:
+6. Perform a deep code quality review. Focus exclusively on gaps — things that **work but could be meaningfully
+   better**. A gap is not a bug, not a style issue, and not a hypothetical future feature. It must be a concrete
+   improvement to code that is already running and must be fixable in a small, self-contained change.
 
+   **Worth finding:**
    - Dead code, unreachable paths, or unused variables and imports
-   - Overly complex logic that could be expressed more directly
-   - Duplicated logic that should be consolidated
-   - Inconsistent patterns across similar components (e.g. error handling done differently in two places)
+   - Duplicated logic in two or more places that should be consolidated
+   - Inconsistent patterns across similar components (e.g. one logs errors, another silently swallows them)
    - Missing error handling at system boundaries (external calls, file I/O, network)
-   - Silent successes that should be logged or surfaced
    - Hardcoded values that should be configurable via environment variables or config files
-   - Functions or methods doing too many things that should be decomposed
-   - Missing or misleading log messages that would hinder debugging
-   - Tightly coupled components where a seam would make future changes safer
-   - Patterns that would force large rewrites for small feature changes
    - Missing Prometheus metrics on critical paths where behavior is currently unobservable
-   - Insufficient or missing log messages that would leave you guessing when something goes wrong
+   - Missing or misleading log messages that would leave an operator guessing during an incident
    - Missing health or liveness signals for background tasks, scheduled jobs, or long-running loops
    - Silent successes or failures in background work that leave no trace in logs or metrics
-   - Runtime state or configuration that cannot be inspected or verified without stopping the process
+
+   **Not a gap — skip these:**
+   - Style, naming, or formatting preferences
+   - Things that only matter for hypothetical future features
+   - Refactors that change structure without improving behavior or observability
+   - Functions "doing too many things" without a concrete behavioral problem
+   - Tightly coupled components where no actual coupling defect exists today
+   - Anything requiring significant redesign — gaps must be small and self-contained
 
 7. From all the gaps identified, select only the **single highest-value finding per category** (code quality,
    observability, logging, etc.). Do not create issues for every gap found — pick the one that would deliver the
