@@ -337,7 +337,10 @@ async def _run_query_inner(
                         a2_sdk_result_errors_total.labels(backend=_backend_id).inc()
                     if a2_sdk_query_error_duration_seconds is not None:
                         a2_sdk_query_error_duration_seconds.labels(backend=_backend_id).observe(time.monotonic() - _query_start)
-                    raise RuntimeError("\n".join(message.errors or []))
+                    error_parts = list(message.errors or [])
+                    if not error_parts and message.result:
+                        error_parts = [message.result]
+                    raise RuntimeError("\n".join(error_parts) if error_parts else "Claude SDK returned an error result with no details")
     except (OSError, ConnectionError):
         if a2_sdk_client_errors_total is not None:
             a2_sdk_client_errors_total.labels(backend=_backend_id).inc()
