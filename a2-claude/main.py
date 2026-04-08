@@ -142,16 +142,23 @@ async def _sub_app_lifespan(app):
 
 
 async def _guarded(coro_fn, *args, restart_delay: float = 5.0, critical: bool = False) -> None:
-    """Run a coroutine function in a restart loop, catching unexpected exceptions."""
+    """Run a coroutine function in a restart loop, catching unexpected exceptions.
+
+    The consecutive restart counter resets whenever a run lasts at least restart_delay
+    seconds, so transient failures spread over time do not accumulate toward the threshold.
+    """
     global _ready
     consecutive_restarts = 0
     while True:
+        _attempt_start = time.monotonic()
         try:
             await coro_fn(*args)
             return
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            if time.monotonic() - _attempt_start >= restart_delay:
+                consecutive_restarts = 0
             consecutive_restarts += 1
             logger.error(f"Task {coro_fn.__name__!r} crashed: {exc!r} — restarting in {restart_delay}s (consecutive restart #{consecutive_restarts})")
             if a2_task_restarts_total is not None:
