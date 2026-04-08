@@ -191,9 +191,7 @@ Each backend container additionally exposes:
 
 ## Memory
 
-Each backend agent manages its own memory at `.agents/<env>/<name>/<backend>/memory/`. Memory files are markdown
-documents written and read by the backend at runtime. They are not committed to source control. nyx-agent has no
-memory layer of its own.
+Each backend agent manages its own memory at `.agents/<env>/<name>/<backend>/memory/`. For `a2-claude` and `a2-codex`, memory files are markdown documents. For `a2-gemini`, conversation history is stored as JSON in `memory/sessions/`. Memory files are not committed to source control. nyx-agent has no memory layer of its own.
 
 ## Authentication
 
