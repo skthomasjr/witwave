@@ -135,6 +135,14 @@ async def _run_loop(
         stop_waiter.cancel()
 
 
+def _loop_task_done_callback(t: asyncio.Task) -> None:
+    """Log and count unexpected exceptions from a _run_loop task."""
+    if not t.cancelled() and t.exception() is not None:
+        logger.error(f"Heartbeat loop_task crashed: {t.exception()!r}")
+        if agent_heartbeat_runs_total is not None:
+            agent_heartbeat_runs_total.labels(status="error").inc()
+
+
 async def heartbeat_runner(bus: MessageBus) -> None:
     try:
         loaded = load_heartbeat()
@@ -154,6 +162,7 @@ async def heartbeat_runner(bus: MessageBus) -> None:
 
     if loaded:
         loop_task = asyncio.create_task(_run_loop(bus, schedule, content, stop_event, model=model))
+        loop_task.add_done_callback(_loop_task_done_callback)
 
     while True:
         if not os.path.isdir(HEARTBEAT_DIR):
@@ -191,6 +200,7 @@ async def heartbeat_runner(bus: MessageBus) -> None:
                     schedule, content, model = loaded
                     logger.info(f"Heartbeat reloaded. Schedule: {schedule}")
                     loop_task = asyncio.create_task(_run_loop(bus, schedule, content, stop_event, model=model))
+                    loop_task.add_done_callback(_loop_task_done_callback)
 
         logger.warning("Heartbeat directory watcher exited — directory deleted or unavailable. Retrying in 10s.")
         if agent_file_watcher_restarts_total is not None:
@@ -202,4 +212,5 @@ async def heartbeat_runner(bus: MessageBus) -> None:
         if loaded:
             schedule, content, model = loaded
             loop_task = asyncio.create_task(_run_loop(bus, schedule, content, stop_event, model=model))
+            loop_task.add_done_callback(_loop_task_done_callback)
         await asyncio.sleep(10)
