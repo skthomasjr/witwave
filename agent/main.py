@@ -321,7 +321,7 @@ async def main():
         _guarded(agenda_runner.run),
         _guarded(_event_loop_monitor),
         _guarded(executor.backends_watcher),
-        *executor._mcp_watchers(),
+        *[_guarded(w) for w in executor._mcp_watchers()],
         _set_ready_when_started(server),
     )
 

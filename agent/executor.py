@@ -228,6 +228,7 @@ async def _run_inner(
             agent_task_last_error_timestamp_seconds.set(time.time())
         raise
     except Exception:
+        _track_session(sessions, session_id)
         if agent_tasks_total is not None:
             agent_tasks_total.labels(status="error").inc()
         if agent_task_error_duration_seconds is not None:
@@ -261,12 +262,12 @@ class AgentExecutor(A2AAgentExecutor):
         self._backends, self._default_backend_id = load_backends()
 
     def _mcp_watchers(self):
-        """Return coroutines for any backends that have an MCP config watcher."""
+        """Return callables for any backends that have an MCP config watcher."""
         watchers = []
         for backend in self._backends.values():
             watcher = getattr(backend, "mcp_config_watcher", None)
             if callable(watcher):
-                watchers.append(watcher())
+                watchers.append(watcher)
         return watchers
 
     async def on_prompt_completed(

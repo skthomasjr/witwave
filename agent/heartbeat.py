@@ -199,4 +199,7 @@ async def heartbeat_runner(bus: MessageBus) -> None:
             stop_event.set()
             await loop_task
         stop_event.clear()
+        if loaded:
+            schedule, content, model = loaded
+            loop_task = asyncio.create_task(_run_loop(bus, schedule, content, stop_event, model=model))
         await asyncio.sleep(10)

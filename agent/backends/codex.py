@@ -56,6 +56,8 @@ class CodexBackend:
         else:
             agent = self._get_agent()
         session = SQLiteSession(session_id, CODEX_SESSION_DB)
+        if is_new:
+            await session.clear_session()
         run_config = RunConfig(model_provider=MultiProvider(openai_api_key=self._api_key)) if self._api_key else None
 
         collected: list[str] = []
