@@ -210,6 +210,14 @@ class AgendaRunner:
         if cancelled is not None:
             await asyncio.gather(cancelled, return_exceptions=True)
         task = asyncio.create_task(run_agenda_item(item, self._bus, self._semaphore))
+
+        def _task_done_callback(t: asyncio.Task, _name: str = item.name) -> None:
+            if not t.cancelled() and t.exception() is not None:
+                logger.error(f"Agenda '{_name}' task crashed: {t.exception()!r}")
+                if agent_agenda_runs_total is not None:
+                    agent_agenda_runs_total.labels(name=_name, status="error").inc()
+
+        task.add_done_callback(_task_done_callback)
         item.task = task
         self._items[path] = item
         if agent_agenda_items_registered is not None:
