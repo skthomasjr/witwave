@@ -142,7 +142,7 @@ Agent identity and behavior are file-based — nothing is baked into images.
 ├── active/                  # Active (production-like) agents: iris, nova, kira
 │   ├── manifest.json        # Registry of all agents in this deployment
 │   └── <name>/              # Per-agent directory (see layout above)
-└── test/                    # Test agents: bob
+└── test/                    # Test agents: bob, tom
     ├── manifest.json
     └── <name>/
 
