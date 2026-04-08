@@ -457,7 +457,6 @@ async def _run_inner(
         _track_session(sessions, session_id)
     except asyncio.TimeoutError:
         logger.error(f"Session {session_id!r}: timed out after {TASK_TIMEOUT_SECONDS}s.")
-        _track_session(sessions, session_id)
         if a2_tasks_total is not None:
             a2_tasks_total.labels(status="timeout").inc()
         if a2_task_error_duration_seconds is not None:
@@ -466,7 +465,6 @@ async def _run_inner(
             a2_task_last_error_timestamp_seconds.set(time.time())
         raise
     except Exception:
-        _track_session(sessions, session_id)
         if a2_tasks_total is not None:
             a2_tasks_total.labels(status="error").inc()
         if a2_task_error_duration_seconds is not None:

@@ -216,7 +216,6 @@ async def _run_inner(
         _track_session(sessions, session_id)
     except asyncio.TimeoutError:
         logger.error(f"Session {session_id!r}: backend {resolved_id!r} timed out after {TASK_TIMEOUT_SECONDS}s.")
-        _track_session(sessions, session_id)
         if agent_tasks_total is not None:
             agent_tasks_total.labels(status="timeout").inc()
         if agent_task_error_duration_seconds is not None:
@@ -225,7 +224,6 @@ async def _run_inner(
             agent_task_last_error_timestamp_seconds.set(time.time())
         raise
     except Exception:
-        _track_session(sessions, session_id)
         if agent_tasks_total is not None:
             agent_tasks_total.labels(status="error").inc()
         if agent_task_error_duration_seconds is not None:
