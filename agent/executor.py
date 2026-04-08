@@ -12,7 +12,7 @@ from a2a.server.agent_execution import RequestContext
 from a2a.server.events import EventQueue
 from a2a.utils import new_agent_text_message
 from backends.a2a import A2ABackend
-from backends.config import BackendConfig, RoutingConfig, get_default, load_backends_config, load_routing_config
+from backends.config import BackendConfig, RoutingConfig, load_backends_config, load_routing_config
 from bus import Message
 from metrics import (
     agent_a2a_last_request_timestamp_seconds,
@@ -121,7 +121,15 @@ def _build_backend(config: BackendConfig):
 def load_backends():
     configs = load_backends_config()
     backends = {c.id: _build_backend(c) for c in configs}
-    default_id = get_default(configs).id
+    routing = load_routing_config()
+    if routing.default:
+        if routing.default not in backends:
+            raise ValueError(f"routing.default '{routing.default}' does not match any configured backend id.")
+        default_id = routing.default
+    else:
+        default_id = configs[0].id
+        logger.info(f"No routing.default specified — using first backend: '{default_id}'")
+    logger.info(f"Default backend: '{default_id}'")
     return backends, default_id
 
 

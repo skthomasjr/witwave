@@ -1,14 +1,14 @@
 backends:
-  - id: bob-a2-claude
+  - id: claude
     type: a2a
     url: http://bob-a2-claude:8080
-    default: true
 
-  - id: bob-a2-codex
+  - id: codex
     type: a2a
     url: http://bob-a2-codex:8080
 
 routing:
-  a2a: bob-a2-claude
-  heartbeat: bob-a2-claude
-  agenda: bob-a2-claude
+  default: claude
+  a2a: claude
+  heartbeat: claude
+  agenda: claude

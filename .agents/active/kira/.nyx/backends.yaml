@@ -1,14 +1,14 @@
 backends:
-  - id: kira-a2-claude
+  - id: claude
     type: a2a
     url: http://kira-a2-claude:8080
-    default: true
 
-  - id: kira-a2-codex
+  - id: codex
     type: a2a
     url: http://kira-a2-codex:8080
 
 routing:
-  a2a: kira-a2-claude
-  heartbeat: kira-a2-claude
-  agenda: kira-a2-claude
+  default: claude
+  a2a: claude
+  heartbeat: claude
+  agenda: claude

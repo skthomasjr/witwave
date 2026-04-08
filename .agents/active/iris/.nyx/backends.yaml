@@ -1,14 +1,14 @@
 backends:
-  - id: iris-a2-claude
+  - id: claude
     type: a2a
     url: http://iris-a2-claude:8080
-    default: true
 
-  - id: iris-a2-codex
+  - id: codex
     type: a2a
     url: http://iris-a2-codex:8080
 
 routing:
-  a2a: iris-a2-claude
-  heartbeat: iris-a2-claude
-  agenda: iris-a2-claude
+  default: claude
+  a2a: claude
+  heartbeat: claude
+  agenda: claude

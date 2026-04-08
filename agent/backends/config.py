@@ -5,10 +5,19 @@ Reads backends.yaml from BACKENDS_CONFIG_PATH (default: /home/agent/.nyx/backend
 Example backends.yaml:
 
     backends:
-      - id: primary
+      - id: claude
         type: a2a
-        default: true
         url: http://claude-code-agent:8000
+
+      - id: codex
+        type: a2a
+        url: http://codex-agent:8000
+
+    routing:
+      default: claude
+      a2a: claude
+      heartbeat: claude
+      agenda: claude
 
 Supported backend types:
     a2a  → A2A HTTP/JSON-RPC backend
@@ -34,7 +43,6 @@ VALID_TYPES = {"a2a"}
 class BackendConfig:
     id: str
     type: str
-    default: bool = False
     model: str | None = None
     auth_env: str | None = None
     url: str | None = None
@@ -78,14 +86,13 @@ def load_backends_config() -> list[BackendConfig]:
                 f"Valid types: {sorted(VALID_TYPES)}"
             )
 
-        known = {"id", "type", "default", "model", "auth-env", "url"}
+        known = {"id", "type", "model", "auth-env", "url"}
         extra = {k: v for k, v in entry.items() if k not in known}
 
         configs.append(
             BackendConfig(
                 id=backend_id,
                 type=backend_type,
-                default=bool(entry.get("default", False)),
                 model=entry.get("model") or None,
                 auth_env=entry.get("auth-env") or None,
                 url=entry.get("url") or None,
@@ -97,33 +104,10 @@ def load_backends_config() -> list[BackendConfig]:
     if len(ids) != len(set(ids)):
         raise ValueError(f"Duplicate backend ids in backends.yaml: {ids}")
 
-    defaults = [c for c in configs if c.default]
-    if len(defaults) > 1:
-        raise ValueError(
-            f"Multiple backends marked as default: {[c.id for c in defaults]}"
-        )
-
-    # If no default is explicitly set, mark the first one
-    if not defaults:
-        configs[0].default = True
-        logger.info(
-            f"No default backend specified — using first: '{configs[0].id}'"
-        )
-
     for c in configs:
-        marker = " [default]" if c.default else ""
-        logger.info(
-            f"Backend configured: {c.id} (type={c.type}, url={c.url or 'NOT SET'}){marker}"
-        )
+        logger.info(f"Backend configured: {c.id} (type={c.type}, url={c.url or 'NOT SET'})")
 
     return configs
-
-
-def get_default(configs: list[BackendConfig]) -> BackendConfig:
-    for c in configs:
-        if c.default:
-            return c
-    return configs[0]
 
 
 @dataclass
@@ -131,8 +115,9 @@ class RoutingConfig:
     """Named backend routing overrides read from the 'routing:' block in backends.yaml.
 
     Each field names the backend id to use for that concern.
-    If a field is None, the caller falls back to the default backend.
+    If a per-concern field is None, the caller falls back to the default backend.
     """
+    default: Optional[str] = None
     a2a: Optional[str] = None
     heartbeat: Optional[str] = None
     agenda: Optional[str] = None
@@ -167,6 +152,7 @@ def load_routing_config() -> RoutingConfig:
         return RoutingConfig()
 
     return RoutingConfig(
+        default=routing_raw.get("default") or None,
         a2a=routing_raw.get("a2a") or None,
         heartbeat=routing_raw.get("heartbeat") or None,
         agenda=routing_raw.get("agenda") or None,
