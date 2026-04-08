@@ -12,8 +12,6 @@ from a2a.server.agent_execution import RequestContext
 from a2a.server.events import EventQueue
 from a2a.utils import new_agent_text_message
 from backends.a2a import A2ABackend
-from backends.claude import ClaudeBackend
-from backends.codex import CodexBackend
 from backends.config import BackendConfig, RoutingConfig, get_default, load_backends_config, load_routing_config
 from bus import Message
 from metrics import (
@@ -32,7 +30,6 @@ from metrics import (
     agent_session_evictions_total,
     agent_session_idle_seconds,
     agent_session_starts_total,
-    agent_stderr_lines_per_task,
     agent_task_cancellations_total,
     agent_task_duration_seconds,
     agent_task_error_duration_seconds,
@@ -40,7 +37,6 @@ from metrics import (
     agent_task_last_success_timestamp_seconds,
     agent_task_timeout_headroom_seconds,
     agent_tasks_total,
-    agent_tasks_with_stderr_total,
     agent_log_bytes_total,
     agent_log_entries_total,
     agent_log_write_errors_total,
@@ -51,8 +47,6 @@ logger = logging.getLogger(__name__)
 AGENT_NAME = os.environ.get("AGENT_NAME", "nyx-agent")
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.log")
 TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/trace.jsonl")
-_DEFAULT_TOOLS = "Read,Write,Edit,Bash,Glob,Grep,WebSearch,WebFetch"
-ALLOWED_TOOLS: list[str] = [t.strip() for t in os.environ.get("ALLOWED_TOOLS", _DEFAULT_TOOLS).split(",") if t.strip()]
 
 MAX_LOG_BYTES = 10 * 1024 * 1024
 MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "10000"))
@@ -118,31 +112,13 @@ def log_trace(text: str) -> None:
 
 
 def _build_backend(config: BackendConfig):
-    if config.type == "claude":
-        return ClaudeBackend(
-            config=config,
-            agent_name=AGENT_NAME,
-            allowed_tools=ALLOWED_TOOLS,
-            log_entry_fn=log_entry,
-            log_trace_fn=log_trace,
-        )
-    if config.type == "codex":
-        return CodexBackend(
-            config=config,
-            agent_name=AGENT_NAME,
-            log_entry_fn=log_entry,
-        )
     if config.type == "a2a":
         return A2ABackend(config=config)
     raise ValueError(f"Unknown backend type: {config.type!r}")
 
 
 def load_backends():
-    try:
-        configs = load_backends_config()
-    except Exception as e:
-        logger.error(f"Failed to load backends config — falling back to single Claude backend: {e}")
-        configs = [BackendConfig(id="claude", type="claude", default=True, model=os.environ.get("CLAUDE_MODEL") or None)]
+    configs = load_backends_config()
     backends = {c.id: _build_backend(c) for c in configs}
     default_id = get_default(configs).id
     return backends, default_id

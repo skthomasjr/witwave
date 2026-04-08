@@ -5,36 +5,13 @@ Reads backends.yaml from BACKENDS_CONFIG_PATH (default: /home/agent/.nyx/backend
 Example backends.yaml:
 
     backends:
-      - id: claude-enterprise
-        type: claude
+      - id: primary
+        type: a2a
         default: true
-        model: claude-opus-4-6
-        auth-env: CLAUDE_CODE_OAUTH_TOKEN_ENTERPRISE
+        url: http://claude-code-agent:8000
 
-      - id: claude-personal
-        type: claude
-        model: claude-sonnet-4-6
-        auth-env: ANTHROPIC_API_KEY_PERSONAL
-
-      - id: codex
-        type: codex
-        model: gpt-5.3-codex
-        auth-env: OPENAI_API_KEY
-
-The auth-env field names the environment variable that holds the credential
-for that backend instance. The credential value is never stored in the config
-file — only the name of the env var that contains it.
-
-Supported credential types by backend:
-    claude  → OAuth token (CLAUDE_CODE_OAUTH_TOKEN) or API key (ANTHROPIC_API_KEY)
-    codex   → API key (OPENAI_API_KEY)
-
-If auth_env is omitted, each backend type falls back to its default env var:
-    claude  → CLAUDE_CODE_OAUTH_TOKEN, then ANTHROPIC_API_KEY
-    codex   → OPENAI_API_KEY
-
-If no config file is present, a single Claude backend is created from
-environment variables for backwards compatibility.
+Supported backend types:
+    a2a  → A2A HTTP/JSON-RPC backend
 """
 
 from __future__ import annotations
@@ -50,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 BACKENDS_CONFIG_PATH = os.environ.get("BACKENDS_CONFIG_PATH", "/home/agent/.nyx/backends.yaml")
 
-VALID_TYPES = {"claude", "codex", "a2a"}
+VALID_TYPES = {"a2a"}
 
 
 @dataclass
@@ -64,57 +41,14 @@ class BackendConfig:
     extra: dict = field(default_factory=dict)
 
 
-# Default env var fallback chains per backend type.
-# Each entry is a list of env var names tried in order — first non-empty value wins.
-_DEFAULT_AUTH_ENV: dict[str, list[str]] = {
-    "claude": ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"],
-    "codex": ["OPENAI_API_KEY"],
-}
-
-
-def credential_for(backend: BackendConfig) -> str | None:
-    """Return the credential value for a backend.
-
-    If auth_env is set, reads exactly that env var.
-    Otherwise falls back to the default chain for the backend type.
-    Returns None if no credential is found.
-    """
-    if backend.auth_env:
-        return os.environ.get(backend.auth_env) or None
-    for var in _DEFAULT_AUTH_ENV.get(backend.type, []):
-        value = os.environ.get(var)
-        if value:
-            return value
-    return None
-
-
-def auth_env_name(backend: BackendConfig) -> str | None:
-    """Return the env var name that holds the credential, for logging purposes."""
-    if backend.auth_env:
-        return backend.auth_env
-    for var in _DEFAULT_AUTH_ENV.get(backend.type, []):
-        if os.environ.get(var):
-            return var
-    return None
-
-
 def load_backends_config() -> list[BackendConfig]:
     """Load and validate backends from config file.
 
-    Falls back to a single default Claude backend if no config file exists.
+    Raises FileNotFoundError if no config file exists.
     Raises ValueError if the config is malformed or contains no valid backends.
     """
     if not os.path.exists(BACKENDS_CONFIG_PATH):
-        logger.info(
-            f"No backends config found at {BACKENDS_CONFIG_PATH} — "
-            "falling back to single Claude backend."
-        )
-        return [BackendConfig(
-            id="claude",
-            type="claude",
-            default=True,
-            model=os.environ.get("CLAUDE_MODEL") or None,
-        )]
+        raise FileNotFoundError(f"backends.yaml not found at {BACKENDS_CONFIG_PATH}")
 
     with open(BACKENDS_CONFIG_PATH) as f:
         raw = yaml.safe_load(f)
@@ -178,17 +112,9 @@ def load_backends_config() -> list[BackendConfig]:
 
     for c in configs:
         marker = " [default]" if c.default else ""
-        if c.type == "a2a":
-            logger.info(
-                f"Backend configured: {c.id} (type={c.type}, url={c.url or 'NOT SET'}){marker}"
-            )
-        else:
-            env = auth_env_name(c)
-            cred = "configured" if credential_for(c) else "NOT SET"
-            logger.info(
-                f"Backend configured: {c.id} (type={c.type}, model={c.model or 'default'}, "
-                f"auth={env or 'none'} [{cred}]){marker}"
-            )
+        logger.info(
+            f"Backend configured: {c.id} (type={c.type}, url={c.url or 'NOT SET'}){marker}"
+        )
 
     return configs
 
