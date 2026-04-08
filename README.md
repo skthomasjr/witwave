@@ -204,7 +204,7 @@ memory layer of its own.
 
 | Variable          | Default               | Description                                             |
 |-------------------|-----------------------|---------------------------------------------------------|
-| `AGENT_NAME`      | `a2-claude`/`a2-codex`| Backend instance name (e.g. `iris-a2-claude`)           |
+| `AGENT_NAME`      | `a2-claude`/`a2-codex`/`a2-gemini`| Backend instance name (e.g. `iris-a2-claude`)  |
 | `AGENT_URL`       | `http://localhost:8080/` | Public A2A endpoint URL for the agent card            |
 | `AGENT_MD`        | `/home/agent/agent.md`| Path to the identity file mounted into the container    |
 | `BACKEND_PORT`    | `8080`                | HTTP port the backend listens on (internal)             |
