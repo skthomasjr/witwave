@@ -138,7 +138,7 @@ Agent identity and behavior are file-based — nothing is baked into images.
 ├── active/                  # Active (production-like) agents: iris, nova, kira
 │   ├── manifest.json        # Registry of all agents in this deployment
 │   └── <name>/              # Per-agent directory (see layout above)
-└── test/                    # Test agents: bob, tom
+└── test/                    # Test agents: bob
     ├── manifest.json
     └── <name>/
 
@@ -179,7 +179,7 @@ a2-gemini/                   # Gemini backend source
 
 ui/                          # Web UI
 docker-compose.active.yml    # Active environment (iris, nova, kira + backends + ui)
-docker-compose.test.yml      # Test environment (bob, tom + backends + ui)
+docker-compose.test.yml      # Test environment (bob + backends + ui)
 ```
 
 ## Building Images
