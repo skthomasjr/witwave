@@ -31,7 +31,7 @@ autonomous-agent is a multi-container autonomous agent platform. Each named agen
 
 - A **nyx-agent** container — the infrastructure layer (A2A relay, heartbeat scheduler, agenda scheduler). It owns
   no LLM itself; it forwards all work to a backend.
-- One or more **backend** containers (`a2-claude`, `a2-codex`) — the LLM execution layer. Each backend is a full A2A
+- One or more **backend** containers (`a2-claude`, `a2-codex`, `a2-gemini`) — the LLM execution layer. Each backend is a full A2A
   server that manages its own sessions, memory, conversation logs, and Prometheus metrics.
 
 Multiple named agents can collaborate as a team via the A2A protocol, but the named agent (nyx + its backends) is the
@@ -56,7 +56,7 @@ live in the backend container.
 
 ### Backend containers
 
-Two backend types exist, each implemented as a standalone A2A server:
+Three backend types exist, each implemented as a standalone A2A server:
 
 - **`a2-claude`** — Claude Agent SDK backend. Source in `a2-claude/`. Image: `a2-claude:latest`.
 - **`a2-codex`** — OpenAI Agents SDK (Codex) backend. Source in `a2-codex/`. Image: `a2-codex:latest`.
