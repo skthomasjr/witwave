@@ -15,7 +15,7 @@ and shipping — closing the loop without a human in the hot path.
 
 Built on the [A2A protocol](https://a2a-protocol.org). Each named agent is a pair of containers: a **nyx-agent**
 infrastructure layer (A2A relay, heartbeat scheduler, agenda scheduler) and one or more **backend** containers that do
-the actual LLM work (Claude Agent SDK via `a2-claude`, OpenAI Agents SDK via `a2-codex`).
+the actual LLM work (Claude Agent SDK via `a2-claude`, OpenAI Agents SDK via `a2-codex`, Google Gemini SDK via `a2-gemini`).
 
 Multiple agents can collaborate as a team, but the named agent (nyx + its backends) is the deployable unit.
 
@@ -24,7 +24,7 @@ Multiple agents can collaborate as a team, but the named agent (nyx + its backen
 Each agent:
 
 - Runs as a nyx-agent container that receives A2A requests, fires heartbeats, and runs agenda items
-- Forwards all LLM work to a dedicated backend container (`a2-claude` or `a2-codex`)
+- Forwards all LLM work to a dedicated backend container (`a2-claude`, `a2-codex`, or `a2-gemini`)
 - Exposes an [A2A (Agent-to-Agent)](https://a2a-protocol.org) interface for communication
 - Has its own identity, memory, and configuration — none baked into the image
 
