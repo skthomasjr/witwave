@@ -177,6 +177,15 @@ def _save_history(session_id: str, history: list[types.Content]) -> None:
         logger.warning(f"Failed to save session history for {session_id!r}: {e}")
 
 
+_session_locks: dict[str, asyncio.Lock] = {}
+
+
+def _get_session_lock(session_id: str) -> asyncio.Lock:
+    if session_id not in _session_locks:
+        _session_locks[session_id] = asyncio.Lock()
+    return _session_locks[session_id]
+
+
 def _track_session(sessions: OrderedDict[str, float], session_id: str) -> None:
     if session_id in sessions:
         sessions.move_to_end(session_id)
@@ -184,6 +193,7 @@ def _track_session(sessions: OrderedDict[str, float], session_id: str) -> None:
         return
     if len(sessions) >= MAX_SESSIONS:
         _evicted_id, last_used_at = sessions.popitem(last=False)
+        _session_locks.pop(_evicted_id, None)
         if a2_session_evictions_total is not None:
             a2_session_evictions_total.inc()
         if a2_session_age_seconds is not None:
@@ -199,15 +209,6 @@ def _make_client() -> genai.Client:
     if not GEMINI_API_KEY:
         raise RuntimeError("No Gemini API key configured. Set GEMINI_API_KEY or GOOGLE_API_KEY.")
     return genai.Client(api_key=GEMINI_API_KEY)
-
-
-_session_locks: dict[str, asyncio.Lock] = {}
-
-
-def _get_session_lock(session_id: str) -> asyncio.Lock:
-    if session_id not in _session_locks:
-        _session_locks[session_id] = asyncio.Lock()
-    return _session_locks[session_id]
 
 
 async def run_query(
