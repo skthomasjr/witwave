@@ -221,5 +221,5 @@ memory layer of its own.
 
 When `METRICS_ENABLED` is set, Prometheus metrics are served at `/metrics` on both nyx-agent and backend containers.
 
-Backend containers (`a2-claude`, `a2-codex`, `a2-gemini`) expose `a2_*`-prefixed metrics with parity across all implementations.
+Backend containers (`a2-claude`, `a2-codex`, `a2-gemini`) expose `a2_*`-prefixed metrics. `a2-claude` exposes a superset that includes tool call, context window, and MCP metrics; `a2-codex` and `a2-gemini` expose the common `a2_*` set.
 nyx-agent exposes `agent_*`-prefixed infrastructure metrics (bus, heartbeat, agenda, sessions, etc.).
