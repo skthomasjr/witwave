@@ -280,7 +280,13 @@ class AgendaRunner:
                 await asyncio.sleep(10)
                 continue
 
-            await self._scan()
+            # Close the TOCTOU race: schedule _scan() as a concurrent task so
+            # it runs after awatch() has entered its RustNotify context manager
+            # (i.e. after the OS-level watch is registered). Any files added
+            # between watch registration and scan completion are already tracked
+            # by the watcher. _scan() + _register() are idempotent so duplicate
+            # events from both the scan and the watcher are safe.
+            asyncio.ensure_future(self._scan())
             async for changes in awatch(AGENDA_DIR):
                 if agent_watcher_events_total is not None:
                     agent_watcher_events_total.labels(watcher="agenda").inc()
