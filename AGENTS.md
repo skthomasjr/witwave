@@ -87,6 +87,10 @@ backends:
     type: a2a
     url: http://iris-a2-codex:8080
 
+  - id: iris-a2-gemini
+    type: a2a
+    url: http://iris-a2-gemini:8080
+
 routing:
   default: iris-a2-claude    # fallback backend when no per-concern override matches
   a2a: iris-a2-claude        # handles incoming A2A requests
