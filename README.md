@@ -95,7 +95,7 @@ Each agent directory contains:
 
 ```text
 <agent>/
-├── .nyx/              # Runtime config (agent-card.md, backends.yaml, HEARTBEAT.md, agenda/, skills/)
+├── .nyx/              # Runtime config (agent-card.md, backends.yaml, HEARTBEAT.md, agenda/)
 ├── .claude/           # Claude Code config (settings.json, mcp.json)
 ├── .codex/            # Codex config (config.toml)
 ├── logs/              # nyx-agent logs (runtime, not committed)
