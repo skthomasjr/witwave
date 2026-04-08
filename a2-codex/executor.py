@@ -34,7 +34,6 @@ from metrics import (
     a2_sdk_query_error_duration_seconds,
     a2_sdk_session_duration_seconds,
     a2_sdk_time_to_first_message_seconds,
-    a2_sdk_tokens_per_query,
     a2_sdk_turns_per_query,
     a2_session_age_seconds,
     a2_session_evictions_total,
@@ -233,8 +232,6 @@ async def run_query(
         a2_sdk_query_duration_seconds.labels(backend=_BACKEND_ID).observe(time.monotonic() - _query_start)
     if a2_sdk_messages_per_query is not None:
         a2_sdk_messages_per_query.labels(backend=_BACKEND_ID).observe(_message_count)
-    if a2_sdk_tokens_per_query is not None:
-        a2_sdk_tokens_per_query.labels(backend=_BACKEND_ID).observe(0)
     if a2_sdk_turns_per_query is not None:
         a2_sdk_turns_per_query.labels(backend=_BACKEND_ID).observe(_turn_count)
     if a2_text_blocks_per_query is not None:
