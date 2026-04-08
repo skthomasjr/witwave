@@ -260,6 +260,8 @@ async def _guarded_watcher(coro_fn, restart_delay: float = 5.0) -> None:
             raise
         except Exception as exc:
             logger.error(f"MCP watcher {coro_fn.__name__!r} crashed: {exc!r} — restarting in {restart_delay}s")
+            if agent_task_restarts_total is not None:
+                agent_task_restarts_total.labels(task=coro_fn.__name__).inc()
             await asyncio.sleep(restart_delay)
 
 
