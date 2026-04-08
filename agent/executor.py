@@ -243,6 +243,19 @@ async def _run_inner(
     return response
 
 
+async def _guarded_watcher(coro_fn, restart_delay: float = 5.0) -> None:
+    """Restart a watcher coroutine on unexpected exceptions (mirrors main._guarded)."""
+    while True:
+        try:
+            await coro_fn()
+            return
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.error(f"MCP watcher {coro_fn.__name__!r} crashed: {exc!r} — restarting in {restart_delay}s")
+            await asyncio.sleep(restart_delay)
+
+
 class AgentExecutor(A2AAgentExecutor):
     def __init__(self):
         self._sessions: OrderedDict[str, float] = OrderedDict()
@@ -313,7 +326,7 @@ class AgentExecutor(A2AAgentExecutor):
                                 t.cancel()
                             self._mcp_watcher_tasks = []
                             for watcher in self._mcp_watchers():
-                                task = asyncio.create_task(watcher())
+                                task = asyncio.create_task(_guarded_watcher(watcher))
                                 task.add_done_callback(
                                     lambda t, _w=watcher: logger.error(f"MCP watcher {_w.__name__!r} exited unexpectedly: {t.exception()!r}")
                                     if not t.cancelled() and t.exception() is not None

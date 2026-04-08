@@ -149,9 +149,7 @@ agent/                       # nyx-agent source (router/scheduler)
 └── backends/
     ├── base.py              # AgentBackend abstract base class
     ├── a2a.py               # A2ABackend — forwards requests to remote A2A backend
-    ├── claude.py            # ClaudeBackend — local Claude Agent SDK (legacy fallback)
-    ├── codex.py             # CodexBackend — local Codex CLI (legacy fallback)
-    └── config.py            # Backend config loader (supports type: a2a, claude, codex)
+    └── config.py            # Backend config loader (supports type: a2a)
 
 a2-claude/                   # Claude backend source
 ├── Dockerfile
