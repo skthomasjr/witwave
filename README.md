@@ -114,6 +114,7 @@ Each agent directory contains:
     ├── agent.md
     ├── logs/
     └── memory/
+        └── sessions/  # JSON conversation history per session
 ```
 
 ## Routing Configuration
