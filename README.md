@@ -171,7 +171,7 @@ Agents communicate over the [A2A protocol](https://a2a-protocol.org) via JSON-RP
 
 Each backend container additionally exposes:
 
-- `GET /health` — health check: `{"status": "ok", "agent": ..., "uptime_seconds": ...}`
+- `GET /health` — health check: 200/`{"status": "ok", "agent": ..., "uptime_seconds": ...}` or 503/`{"status": "starting"}` while initializing
 - `GET /metrics` — Prometheus metrics (when `METRICS_ENABLED` is set)
 
 ## Memory
