@@ -1,8 +1,21 @@
 # autonomous-agent
 
-An autonomous agent platform built on the [A2A protocol](https://a2a-protocol.org). Each named agent is a pair of
-containers: a **nyx-agent** infrastructure layer (A2A relay, heartbeat scheduler, agenda scheduler) and one or more
-**backend** containers that do the actual LLM work (Claude Agent SDK via `a2-claude`, OpenAI Agents SDK via `a2-codex`).
+A platform for building persistent, self-directed AI agents that can work autonomously on software projects — including
+improving themselves.
+
+The primary use case is autonomous software development: agents that can triage issues, implement features, fix bugs,
+evaluate their own work, and iterate — continuously and without human intervention. The same platform can be pointed at
+any software project, not just this one.
+
+Agents are currently bootstrapped manually using AI CLI tools (Claude Code, Codex). The long-term goal is for the
+agents to take over their own development cycle: evaluating the codebase, proposing improvements, implementing them,
+and shipping — closing the loop without a human in the hot path.
+
+---
+
+Built on the [A2A protocol](https://a2a-protocol.org). Each named agent is a pair of containers: a **nyx-agent**
+infrastructure layer (A2A relay, heartbeat scheduler, agenda scheduler) and one or more **backend** containers that do
+the actual LLM work (Claude Agent SDK via `a2-claude`, OpenAI Agents SDK via `a2-codex`).
 
 Multiple agents can collaborate as a team, but the named agent (nyx + its backends) is the deployable unit.
 
