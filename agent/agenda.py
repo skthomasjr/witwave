@@ -112,8 +112,10 @@ async def run_agenda_item(item: AgendaItem, bus: MessageBus, semaphore: asyncio.
                 agent_agenda_skips_total.labels(name=item.name).inc()
             continue
 
+        _semaphore_acquired = False
         if semaphore is not None:
             await semaphore.acquire()
+            _semaphore_acquired = True
 
         item.running = True
         if agent_agenda_running_items is not None:
@@ -177,7 +179,7 @@ async def run_agenda_item(item: AgendaItem, bus: MessageBus, semaphore: asyncio.
             item.running = False
             if agent_agenda_running_items is not None:
                 agent_agenda_running_items.dec()
-            if semaphore is not None:
+            if semaphore is not None and _semaphore_acquired:
                 semaphore.release()
             if checkpoint_path is not None:
                 try:
