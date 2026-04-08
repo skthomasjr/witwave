@@ -61,7 +61,7 @@ _DEFAULT_TOOLS = "Read,Write,Edit,Bash,Glob,Grep,WebSearch,WebFetch"
 ALLOWED_TOOLS: list[str] = [t.strip() for t in os.environ.get("ALLOWED_TOOLS", _DEFAULT_TOOLS).split(",") if t.strip()]
 
 CONTEXT_USAGE_WARN_THRESHOLD = float(os.environ.get("CONTEXT_USAGE_WARN_THRESHOLD", "0.9"))
-MAX_LOG_BYTES = 10 * 1024 * 1024
+MAX_LOG_BYTES = int(os.environ.get("MAX_LOG_BYTES", str(10 * 1024 * 1024)))
 MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "10000"))
 TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
 

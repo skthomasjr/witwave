@@ -48,7 +48,7 @@ AGENT_NAME = os.environ.get("AGENT_NAME", "nyx-agent")
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.log")
 TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/trace.jsonl")
 
-MAX_LOG_BYTES = 10 * 1024 * 1024
+MAX_LOG_BYTES = int(os.environ.get("MAX_LOG_BYTES", str(10 * 1024 * 1024)))
 MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "10000"))
 TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
 
