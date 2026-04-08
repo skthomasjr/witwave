@@ -49,6 +49,7 @@ Backend containers:
 docker build -f agent/Dockerfile -t nyx-agent:latest .
 docker build -f a2-claude/Dockerfile -t a2-claude:latest .
 docker build -f a2-codex/Dockerfile -t a2-codex:latest .
+docker build -f a2-gemini/Dockerfile -t a2-gemini:latest .
 ```
 
 ### 2. Configure credentials
@@ -56,6 +57,7 @@ docker build -f a2-codex/Dockerfile -t a2-codex:latest .
 ```bash
 export CLAUDE_CODE_OAUTH_TOKEN=your-token-here
 export OPENAI_API_KEY=your-key-here
+export GEMINI_API_KEY=your-key-here
 ```
 
 ### 3. Start the agents
@@ -83,12 +85,12 @@ backend instances, logs, and memory.
 ```text
 .agents/
 ├── active/
-│   ├── iris/          # Iris (nyx: 8000 | a2-claude: 8010 | a2-codex: 8011)
-│   ├── nova/          # Nova (nyx: 8001 | a2-claude: 8020 | a2-codex: 8021)
-│   └── kira/          # Kira (nyx: 8002 | a2-claude: 8030 | a2-codex: 8031)
+│   ├── iris/          # Iris (nyx: 8000 | a2-claude: 8010 | a2-codex: 8011 | a2-gemini: 8012)
+│   ├── nova/          # Nova (nyx: 8001 | a2-claude: 8020 | a2-codex: 8021 | a2-gemini: 8022)
+│   └── kira/          # Kira (nyx: 8002 | a2-claude: 8030 | a2-codex: 8031 | a2-gemini: 8032)
 └── test/
-    ├── bob/           # Bob  (nyx: 8099 | a2-claude: 8090 | a2-codex: 8091)
-    └── tom/           # Tom  (nyx: 8098 | a2-claude: 8088 | a2-codex: 8089)
+    ├── bob/           # Bob  (nyx: 8099 | a2-claude: 8090 | a2-codex: 8091 | a2-gemini: 8092)
+    └── tom/           # Tom  (nyx: 8098 | a2-claude: 8088 | a2-codex: 8089 | a2-gemini: 8087)
 ```
 
 Each agent directory contains:
@@ -103,7 +105,11 @@ Each agent directory contains:
 │   ├── agent.md       # Backend identity
 │   ├── logs/          # Conversation log (runtime, not committed)
 │   └── memory/        # Persistent memory (runtime, not committed)
-└── a2-codex/          # Codex backend instance
+├── a2-codex/          # Codex backend instance
+│   ├── agent.md
+│   ├── logs/
+│   └── memory/
+└── a2-gemini/         # Gemini backend instance
     ├── agent.md
     ├── logs/
     └── memory/
@@ -182,6 +188,7 @@ memory layer of its own.
 | a2-claude  | Claude Max (OAuth) | `CLAUDE_CODE_OAUTH_TOKEN`                                    |
 | a2-claude  | Anthropic API key  | `ANTHROPIC_API_KEY`                                          |
 | a2-codex   | OpenAI API key     | `OPENAI_API_KEY`                                             |
+| a2-gemini  | Gemini API key     | `GEMINI_API_KEY` or `GOOGLE_API_KEY`                         |
 
 ## Configuration
 
@@ -194,7 +201,7 @@ memory layer of its own.
 | `BACKENDS_CONFIG_PATH` | `/home/agent/.nyx/backends.yaml` | Path to the backends config file     |
 | `METRICS_ENABLED`      | _(unset)_  | Set to any non-empty value to expose `/metrics`          |
 
-### Backend (a2-claude / a2-codex) environment variables
+### Backend (a2-claude / a2-codex / a2-gemini) environment variables
 
 | Variable          | Default               | Description                                             |
 |-------------------|-----------------------|---------------------------------------------------------|

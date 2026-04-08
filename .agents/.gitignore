@@ -8,4 +8,5 @@
 **/.claude/shell-snapshots/
 **/.claude/telemetry/
 **/logs/
+**/memory/sessions/
 **/settings.local.json

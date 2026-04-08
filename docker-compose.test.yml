@@ -61,6 +61,27 @@ services:
       - ./.agents/test/bob/a2-codex/memory:/home/agent/memory
       - .:/home/agent/workspace
 
+  bob-a2-gemini:
+    build:
+      context: .
+      dockerfile: a2-gemini/Dockerfile
+    image: a2-gemini:latest
+    restart: "no"
+    ports:
+      - "8092:8080"
+    environment:
+      AGENT_NAME: bob-a2-gemini
+      AGENT_URL: http://bob-a2-gemini:8080
+      AGENT_MD: /home/agent/agent.md
+      BACKEND_PORT: 8080
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+    volumes:
+      - ./.agents/test/bob/a2-gemini/agent.md:/home/agent/agent.md:ro
+      - ./.agents/test/bob/.nyx/AGENTS.md:/home/agent/.gemini/AGENTS.md:ro
+      - ./.agents/test/bob/a2-gemini/logs:/home/agent/logs
+      - ./.agents/test/bob/a2-gemini/memory:/home/agent/memory
+      - .:/home/agent/workspace
+
   tom:
     image: nyx-agent:latest
     restart: "no"
@@ -121,6 +142,27 @@ services:
       - ./.claude/skills:/home/agent/.codex/skills
       - ./.agents/test/tom/a2-codex/logs:/home/agent/logs
       - ./.agents/test/tom/a2-codex/memory:/home/agent/memory
+      - .:/home/agent/workspace
+
+  tom-a2-gemini:
+    build:
+      context: .
+      dockerfile: a2-gemini/Dockerfile
+    image: a2-gemini:latest
+    restart: "no"
+    ports:
+      - "8087:8080"
+    environment:
+      AGENT_NAME: tom-a2-gemini
+      AGENT_URL: http://tom-a2-gemini:8080
+      AGENT_MD: /home/agent/agent.md
+      BACKEND_PORT: 8080
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+    volumes:
+      - ./.agents/test/tom/a2-gemini/agent.md:/home/agent/agent.md:ro
+      - ./.agents/test/tom/.nyx/AGENTS.md:/home/agent/.gemini/AGENTS.md:ro
+      - ./.agents/test/tom/a2-gemini/logs:/home/agent/logs
+      - ./.agents/test/tom/a2-gemini/memory:/home/agent/memory
       - .:/home/agent/workspace
 
   ui:

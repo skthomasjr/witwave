@@ -60,6 +60,7 @@ Two backend types exist, each implemented as a standalone A2A server:
 
 - **`a2-claude`** — Claude Agent SDK backend. Source in `a2-claude/`. Image: `a2-claude:latest`.
 - **`a2-codex`** — OpenAI Agents SDK (Codex) backend. Source in `a2-codex/`. Image: `a2-codex:latest`.
+- **`a2-gemini`** — Google Gemini backend (google-genai SDK). Source in `a2-gemini/`. Image: `a2-gemini:latest`.
 
 Each backend:
 
@@ -114,15 +115,20 @@ Agent identity and behavior are file-based — nothing is baked into images.
 │   └── settings.json        # Claude Code settings
 ├── .codex/                  # Codex backend config (mounted into a2-codex)
 │   └── config.toml
+├── .gemini/                 # Gemini backend config (mounted into a2-gemini; no extra config required)
 ├── logs/                    # nyx-agent logs (runtime, not committed)
 ├── a2-claude/               # Claude backend instance for this agent
 │   ├── agent.md             # Backend identity (injected at startup)
 │   ├── logs/                # Backend conversation log (runtime, not committed)
 │   └── memory/              # Backend persistent memory (runtime, not committed)
-└── a2-codex/                # Codex backend instance for this agent
+├── a2-codex/                # Codex backend instance for this agent
+│   ├── agent.md
+│   ├── logs/
+│   └── memory/
+└── a2-gemini/               # Gemini backend instance for this agent
     ├── agent.md
     ├── logs/
-    └── memory/
+    └── memory/              # Includes sessions/ subdir for JSON session history
 ```
 
 ## Project Structure
@@ -164,6 +170,13 @@ a2-codex/                    # Codex backend source
 ├── metrics.py               # Prometheus metrics (parity with a2-claude)
 └── requirements.txt
 
+a2-gemini/                   # Gemini backend source
+├── Dockerfile
+├── main.py                  # A2A server entrypoint
+├── executor.py              # google-genai SDK executor; owns sessions and logging
+├── metrics.py               # Prometheus metrics (parity with a2-claude/a2-codex)
+└── requirements.txt
+
 ui/                          # Web UI
 docker-compose.active.yml    # Active environment (iris, nova, kira + backends + ui)
 docker-compose.test.yml      # Test environment (bob, tom + backends + ui)
@@ -180,6 +193,9 @@ docker build -f a2-claude/Dockerfile -t a2-claude:latest .
 
 # Codex backend
 docker build -f a2-codex/Dockerfile -t a2-codex:latest .
+
+# Gemini backend
+docker build -f a2-gemini/Dockerfile -t a2-gemini:latest .
 ```
 
 ## Running Locally
@@ -188,6 +204,7 @@ docker build -f a2-codex/Dockerfile -t a2-codex:latest .
 docker build -f agent/Dockerfile -t nyx-agent:latest . \
   && docker build -f a2-claude/Dockerfile -t a2-claude:latest . \
   && docker build -f a2-codex/Dockerfile -t a2-codex:latest . \
+  && docker build -f a2-gemini/Dockerfile -t a2-gemini:latest . \
   && docker compose -f docker-compose.active.yml up -d
 ```
 
@@ -196,13 +213,13 @@ docker build -f agent/Dockerfile -t nyx-agent:latest . \
 Use the `/remote` skill to interact with running agents. Always target the **nyx agent by name** — nyx routes the
 request internally to its configured backend (e.g. `iris-a2-claude`). Never target backend services directly.
 
-| Agent | Port | a2-claude | a2-codex |
-| ----- | ---- | --------- | -------- |
-| iris  | 8000 | 8010      | 8011     |
-| nova  | 8001 | 8020      | 8021     |
-| kira  | 8002 | 8030      | 8031     |
-| bob   | 8099 | 8090      | 8091     |
-| tom   | 8098 | 8088      | 8089     |
+| Agent | Port | a2-claude | a2-codex | a2-gemini |
+| ----- | ---- | --------- | -------- | --------- |
+| iris  | 8000 | 8010      | 8011     | 8012      |
+| nova  | 8001 | 8020      | 8021     | 8022      |
+| kira  | 8002 | 8030      | 8031     | 8032      |
+| bob   | 8099 | 8090      | 8091     | 8092      |
+| tom   | 8098 | 8088      | 8089     | 8087      |
 
 The `/remote` skill derives the session ID automatically from the current Claude Code session. Pass it explicitly only
 when you need to target a specific session.

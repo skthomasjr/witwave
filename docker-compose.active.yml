@@ -63,6 +63,27 @@ services:
       - ./.agents/active/iris/a2-codex/memory:/home/agent/memory
       - .:/home/agent/workspace
 
+  iris-a2-gemini:
+    build:
+      context: .
+      dockerfile: a2-gemini/Dockerfile
+    image: a2-gemini:latest
+    restart: unless-stopped
+    ports:
+      - "8012:8080"
+    environment:
+      AGENT_NAME: iris-a2-gemini
+      AGENT_URL: http://iris-a2-gemini:8080
+      AGENT_MD: /home/agent/agent.md
+      BACKEND_PORT: 8080
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+    volumes:
+      - ./.agents/active/iris/a2-gemini/agent.md:/home/agent/agent.md:ro
+      - ./.agents/active/iris/.nyx/AGENTS.md:/home/agent/.gemini/AGENTS.md:ro
+      - ./.agents/active/iris/a2-gemini/logs:/home/agent/logs
+      - ./.agents/active/iris/a2-gemini/memory:/home/agent/memory
+      - .:/home/agent/workspace
+
   nova:
     image: nyx-agent:latest
     restart: unless-stopped
@@ -127,6 +148,27 @@ services:
       - ./.agents/active/nova/a2-codex/memory:/home/agent/memory
       - .:/home/agent/workspace
 
+  nova-a2-gemini:
+    build:
+      context: .
+      dockerfile: a2-gemini/Dockerfile
+    image: a2-gemini:latest
+    restart: unless-stopped
+    ports:
+      - "8022:8080"
+    environment:
+      AGENT_NAME: nova-a2-gemini
+      AGENT_URL: http://nova-a2-gemini:8080
+      AGENT_MD: /home/agent/agent.md
+      BACKEND_PORT: 8080
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+    volumes:
+      - ./.agents/active/nova/a2-gemini/agent.md:/home/agent/agent.md:ro
+      - ./.agents/active/nova/.nyx/AGENTS.md:/home/agent/.gemini/AGENTS.md:ro
+      - ./.agents/active/nova/a2-gemini/logs:/home/agent/logs
+      - ./.agents/active/nova/a2-gemini/memory:/home/agent/memory
+      - .:/home/agent/workspace
+
   kira:
     image: nyx-agent:latest
     restart: unless-stopped
@@ -189,6 +231,27 @@ services:
       - ./.claude/skills:/home/agent/.codex/skills
       - ./.agents/active/kira/a2-codex/logs:/home/agent/logs
       - ./.agents/active/kira/a2-codex/memory:/home/agent/memory
+      - .:/home/agent/workspace
+
+  kira-a2-gemini:
+    build:
+      context: .
+      dockerfile: a2-gemini/Dockerfile
+    image: a2-gemini:latest
+    restart: unless-stopped
+    ports:
+      - "8032:8080"
+    environment:
+      AGENT_NAME: kira-a2-gemini
+      AGENT_URL: http://kira-a2-gemini:8080
+      AGENT_MD: /home/agent/agent.md
+      BACKEND_PORT: 8080
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+    volumes:
+      - ./.agents/active/kira/a2-gemini/agent.md:/home/agent/agent.md:ro
+      - ./.agents/active/kira/.nyx/AGENTS.md:/home/agent/.gemini/AGENTS.md:ro
+      - ./.agents/active/kira/a2-gemini/logs:/home/agent/logs
+      - ./.agents/active/kira/a2-gemini/memory:/home/agent/memory
       - .:/home/agent/workspace
 
   ui:
