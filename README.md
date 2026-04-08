@@ -76,6 +76,12 @@ curl http://localhost:8000/.well-known/agent.json
 # Claude backend for iris
 curl http://localhost:8010/.well-known/agent.json
 curl http://localhost:8010/health
+
+# Codex backend for iris
+curl http://localhost:8011/health
+
+# Gemini backend for iris
+curl http://localhost:8012/health
 ```
 
 ## Agent Structure
