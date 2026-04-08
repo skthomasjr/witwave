@@ -1,14 +1,22 @@
 ---
 name: fix-top-bug
-description: Find the single most impactful bug in the codebase, fix it, commit, and push — no issues, no ceremony
-argument-hint: ""
+description: Find and fix the top N bugs in the codebase, commit, and push — no issues, no ceremony
+argument-hint: "[N]"
 ---
 
-Find the single most impactful bug in the codebase, fix it, commit, and push.
+Find and fix the top bugs in the codebase, commit each fix, and push.
 
-No GitHub issues. No comments. No tracking. Just find it, fix it, ship it.
+No GitHub issues. No comments. No tracking. Just find them, fix them, ship them.
 
 **This skill targets things that are already broken** — code producing wrong results, crashes, misleading output, missing docs. If the code works correctly today but is fragile or dangerous under future conditions, use `/fix-top-risk` instead.
+
+## Argument
+
+The optional argument is a number — how many bugs to fix in this run. Default is `1` if no argument is given.
+
+Examples: `/fix-top-bug`, `/fix-top-bug 5`, `/fix-top-bug 20`
+
+If fewer bugs exist than the requested count, fix all that exist and report the shortfall.
 
 ## Scope
 
@@ -52,30 +60,36 @@ When code and docs conflict, the code is the source of truth.
 
 ## Steps
 
-1. **Understand the codebase.**
+1. **Parse the count.**
+
+   Read the argument. If it is a positive integer, that is `N` (the number of bugs to fix). If omitted or not a number, `N = 1`.
+
+2. **Understand the codebase.**
 
    Read `README.md` and `AGENTS.md` to orient yourself. Then read every source file in the scoped directories to build a complete picture of the system.
 
-2. **Find the top bug.**
+3. **Find up to N bugs.**
 
-   Prioritize in this order:
+   Scan the entire scope and collect all bugs that clear the severity bar. Rank them:
 
    - Crashes or unhandled exceptions in hot paths
    - Silent data loss or incorrect behavior on a reachable path
    - Resource leaks that accumulate in normal operation
    - Logic errors that produce wrong results
 
-   Apply the severity bar. If nothing clears it, stop and report "no actionable bugs found."
+   Take the top N. If fewer than N exist, note the shortfall — you will report it at the end.
 
-3. **Fully understand it before touching anything.**
+4. **For each bug (in ranked order):**
+
+   **a. Fully understand it before touching anything.**
 
    Trace the execution path from entry point to failure. Understand what the correct behavior should be. If a fix requires a third-party SDK or library, search the codebase for existing usage and read the relevant stubs to confirm the correct API.
 
-4. **Fix it.**
+   **b. Fix it.**
 
    Make the smallest change that corrects the bug. Do not refactor surrounding code, add comments, or clean up unrelated issues.
 
-5. **Verify the fix.**
+   **c. Verify the fix.**
 
    Re-read the changed file(s). Confirm the fix is correct and nothing adjacent was broken. If tests exist, run them:
 
@@ -83,9 +97,9 @@ When code and docs conflict, the code is the source of truth.
    cd <repo-root> && python -m pytest -v
    ```
 
-6. **Commit and push.**
+   **d. Commit and push.**
 
-   Stage only the changed files and commit with a concise message:
+   Stage only the files changed by this fix and commit:
 
    ```bash
    git add <changed files>
@@ -93,6 +107,6 @@ When code and docs conflict, the code is the source of truth.
    git push origin main || (git pull --rebase origin main && git push origin main)
    ```
 
-7. **Report.**
+5. **Report.**
 
-   One paragraph: what the bug was, where it was, what the fix was, and why it was the top pick.
+   One paragraph per bug fixed: what the bug was, where it was, what the fix was, and why it ranked where it did. If fewer bugs were found than requested, state how many were found and fixed.

@@ -1,12 +1,20 @@
 ---
 name: fix-top-gap
-description: Find the single most valuable enhancement gap in the codebase, fix it, commit, and push — no issues, no ceremony
-argument-hint: ""
+description: Find and fix the top N enhancement gaps in the codebase, commit, and push — no issues, no ceremony
+argument-hint: "[N]"
 ---
 
-Find the single most valuable enhancement gap in the codebase, fix it, commit, and push.
+Find and fix the top enhancement gaps in the codebase, commit each fix, and push.
 
-No GitHub issues. No comments. No tracking. Just find it, fix it, ship it.
+No GitHub issues. No comments. No tracking. Just find them, fix them, ship them.
+
+## Argument
+
+The optional argument is a number — how many gaps to fix in this run. Default is `1` if no argument is given.
+
+Examples: `/fix-top-gap`, `/fix-top-gap 5`, `/fix-top-gap 20`
+
+If fewer gaps exist than the requested count, fix all that exist and report the shortfall.
 
 ## Scope
 
@@ -44,17 +52,21 @@ If nothing clears the bar, stop immediately and report: "No actionable gaps foun
 
 ## The value bar
 
-Pick the gap where fixing it delivers the most **observable improvement** — better debuggability in production, reduced risk of a future bug, or elimination of real cognitive overhead. A gap that makes an incident 10x faster to diagnose beats five minor cleanups.
+Pick the gaps where fixing them delivers the most **observable improvement** — better debuggability in production, reduced risk of a future bug, or elimination of real cognitive overhead. A gap that makes an incident 10x faster to diagnose beats five minor cleanups.
 
 ## Steps
 
-1. **Understand the codebase.**
+1. **Parse the count.**
+
+   Read the argument. If it is a positive integer, that is `N` (the number of gaps to fix). If omitted or not a number, `N = 1`.
+
+2. **Understand the codebase.**
 
    Read `README.md` and `AGENTS.md` to orient yourself. Then read every source file in the scoped directories to build a complete picture of the system.
 
-2. **Find the top gap.**
+3. **Find up to N gaps.**
 
-   Look for:
+   Scan the entire scope and collect all gaps that clear the value bar. Rank by observable improvement delivered:
 
    - Missing observability on critical paths (metrics, logs, health signals)
    - Duplicated logic that should be consolidated
@@ -63,17 +75,19 @@ Pick the gap where fixing it delivers the most **observable improvement** — be
    - Inconsistent patterns across similar components
    - Missing error handling at system boundaries (external calls, file I/O, network)
 
-   Pick the single most valuable one. Apply the value bar. If nothing clears it, stop and report "no actionable gaps found."
+   Take the top N. If fewer than N exist, note the shortfall — you will report it at the end.
 
-3. **Fully understand it before touching anything.**
+4. **For each gap (in ranked order):**
+
+   **a. Fully understand it before touching anything.**
 
    Trace the code paths involved. Understand what the correct improvement looks like and that it won't break anything adjacent.
 
-4. **Fix it.**
+   **b. Fix it.**
 
    Make the smallest change that delivers the improvement. Do not refactor surrounding code or fix unrelated issues.
 
-5. **Verify the fix.**
+   **c. Verify the fix.**
 
    Re-read the changed file(s). Confirm the change is correct and nothing adjacent was broken. If tests exist, run them:
 
@@ -81,9 +95,9 @@ Pick the gap where fixing it delivers the most **observable improvement** — be
    cd <repo-root> && python -m pytest -v
    ```
 
-6. **Commit and push.**
+   **d. Commit and push.**
 
-   Stage only the changed files and commit with a concise message:
+   Stage only the files changed by this fix and commit:
 
    ```bash
    git add <changed files>
@@ -91,6 +105,6 @@ Pick the gap where fixing it delivers the most **observable improvement** — be
    git push origin main || (git pull --rebase origin main && git push origin main)
    ```
 
-7. **Report.**
+5. **Report.**
 
-   One paragraph: what the gap was, where it was, what the fix was, and why it was the top pick.
+   One paragraph per gap fixed: what the gap was, where it was, what the fix was, and why it ranked where it did. If fewer gaps were found than requested, state how many were found and fixed.
