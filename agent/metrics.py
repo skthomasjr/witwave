@@ -312,10 +312,12 @@ if _enabled:
     agent_session_age_seconds = prometheus_client.Histogram(
         "agent_session_age_seconds",
         "Seconds since last use when a session is evicted from the LRU cache.",
+        buckets=(60, 300, 900, 1800, 3600, 7200, 14400, 28800, 86400),
     )
     agent_session_idle_seconds = prometheus_client.Histogram(
         "agent_session_idle_seconds",
         "Seconds a session was idle before being resumed.",
+        buckets=(60, 300, 900, 1800, 3600, 7200, 14400, 28800, 86400),
     )
     agent_session_evictions_total = prometheus_client.Counter(
         "agent_session_evictions_total",
