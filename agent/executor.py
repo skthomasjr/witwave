@@ -260,6 +260,7 @@ class AgentExecutor(A2AAgentExecutor):
         self._sessions: OrderedDict[str, float] = OrderedDict()
         self._running_tasks: dict[str, asyncio.Task] = {}
         self._backends, self._default_backend_id = load_backends()
+        self._mcp_watcher_tasks: list[asyncio.Task] = []
 
     def _mcp_watchers(self):
         """Return callables for any backends that have an MCP config watcher."""
@@ -303,6 +304,18 @@ class AgentExecutor(A2AAgentExecutor):
                             self._backends = new_backends
                             self._default_backend_id = new_default_id
                             logger.info(f"Backends reloaded: {list(new_backends.keys())} (default: {new_default_id})")
+                            # Cancel old MCP watcher tasks and start new ones for the reloaded backends.
+                            for t in self._mcp_watcher_tasks:
+                                t.cancel()
+                            self._mcp_watcher_tasks = []
+                            for watcher in self._mcp_watchers():
+                                task = asyncio.create_task(watcher())
+                                task.add_done_callback(
+                                    lambda t, _w=watcher: logger.error(f"MCP watcher {_w.__name__!r} exited unexpectedly: {t.exception()!r}")
+                                    if not t.cancelled() and t.exception() is not None
+                                    else None
+                                )
+                                self._mcp_watcher_tasks.append(task)
                         except Exception as e:
                             logger.error(f"Failed to reload backends — keeping previous config: {e}")
                         break

@@ -314,6 +314,17 @@ async def main():
 
     agenda_runner = AgendaRunner(bus)
 
+    # Start MCP watcher tasks as tracked background tasks so backends_watcher
+    # can cancel and replace them when backends are hot-reloaded.
+    for _w in executor._mcp_watchers():
+        _mcp_task = asyncio.create_task(_guarded(_w))
+        _mcp_task.add_done_callback(
+            lambda t, _wn=_w.__name__: logger.error(f"MCP watcher {_wn!r} exited unexpectedly: {t.exception()!r}")
+            if not t.cancelled() and t.exception() is not None
+            else None
+        )
+        executor._mcp_watcher_tasks.append(_mcp_task)
+
     await asyncio.gather(
         server.serve(),
         _guarded(bus_worker, bus, executor, critical=True),
@@ -321,7 +332,6 @@ async def main():
         _guarded(agenda_runner.run),
         _guarded(_event_loop_monitor),
         _guarded(executor.backends_watcher),
-        *[_guarded(w) for w in executor._mcp_watchers()],
         _set_ready_when_started(server),
     )
 
