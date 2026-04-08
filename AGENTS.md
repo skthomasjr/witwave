@@ -230,5 +230,4 @@ when you need to target a specific session.
 ## Memory
 
 Each backend manages its own memory under `.agents/<env>/<name>/<backend>/memory/` (e.g.
-`.agents/active/iris/a2-claude/memory/`). Memory files are markdown documents written and read by the backend at
-runtime. They are not committed to source control. nyx-agent has no memory layer of its own.
+`.agents/active/iris/a2-claude/memory/`). For `a2-claude` and `a2-codex`, memory files are markdown documents. For `a2-gemini`, conversation history is stored as JSON in `memory/sessions/`. Memory files are not committed to source control. nyx-agent has no memory layer of its own.
