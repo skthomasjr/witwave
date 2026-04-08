@@ -2,30 +2,17 @@ FROM debian:bookworm-20260316-slim
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-ENV DEBIAN_FRONTEND=noninteractive \
-    GH_PROMPT_DISABLED=1
+ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y \
-    zsh \
-    git \
     curl \
-    jq \
     ca-certificates \
-    gnupg \
-    procps \
-    iptables \
     python3 \
     python3-pip \
     python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
-# GitHub CLI
-RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list \
-    && apt-get update && apt-get install -y gh \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN useradd -m -s /usr/bin/zsh -u 1000 agent
+RUN useradd -m -s /bin/bash -u 1000 agent
 
 USER agent
 WORKDIR /home/agent
@@ -39,8 +26,6 @@ RUN pip install --no-cache-dir \
     prometheus-client==0.24.1 \
     uvicorn==0.43.0 \
     watchfiles==1.1.1 \
-    yamllint==1.37.0 \
-    ruff==0.11.2 \
     pyyaml==6.0.2
 
 COPY --chown=agent:agent agent/ /home/agent/agent/
