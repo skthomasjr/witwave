@@ -164,9 +164,11 @@ routing:
 
 5. Add the agent and its backends to `docker-compose.active.yml` using the next available ports
 
-6. Update the port table in `AGENTS.md`
+6. Register the agent in `.agents/active/manifest.json`
 
-7. Start the agent and its backends:
+7. Update the port table in `AGENTS.md` and `README.md`
+
+8. Start the agent and its backends:
 
    ```bash
    docker compose -f docker-compose.active.yml up -d <name> <name>-a2-claude <name>-a2-codex <name>-a2-gemini
