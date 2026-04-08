@@ -100,6 +100,7 @@ Each agent directory contains:
 ├── .nyx/              # Runtime config (agent-card.md, backends.yaml, HEARTBEAT.md, agenda/)
 ├── .claude/           # Claude Code config (settings.json, mcp.json)
 ├── .codex/            # Codex config (config.toml)
+├── .gemini/           # Gemini backend config (no extra config required)
 ├── logs/              # nyx-agent logs (runtime, not committed)
 ├── a2-claude/         # Claude backend instance
 │   ├── agent.md       # Backend identity
