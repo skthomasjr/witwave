@@ -145,7 +145,7 @@ routing:
 
 2. Update `.agents/active/<name>/.nyx/agent-card.md` with the agent's identity and role
 
-3. Update `.agents/active/<name>/a2-claude/agent.md` (and `a2-codex/agent.md`) with backend identity
+3. Update `.agents/active/<name>/a2-claude/agent.md` (and `a2-codex/agent.md` and `a2-gemini/agent.md`) with backend identity
 
 4. Update `.agents/active/<name>/.nyx/backends.yaml` with the new agent's backend service names and URLs
 
@@ -156,7 +156,7 @@ routing:
 7. Start the agent and its backends:
 
    ```bash
-   docker compose -f docker-compose.active.yml up -d <name> <name>-a2-claude <name>-a2-codex
+   docker compose -f docker-compose.active.yml up -d <name> <name>-a2-claude <name>-a2-codex <name>-a2-gemini
    ```
 
 ## Communication
