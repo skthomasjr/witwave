@@ -10,9 +10,9 @@ file.
 
 ## Skills
 
-Skills under `.claude/skills/` are mounted directly into each `a2-claude` backend container at
-`/home/agent/.claude/skills/`. Agents always have the same skills as the local Claude Code session — no per-agent
-copying required.
+Skills under `.claude/skills/` are mounted directly into each backend container — `a2-claude` at
+`/home/agent/.claude/skills/` and `a2-codex` at `/home/agent/.codex/skills/`. Agents always have the same skills as
+the local Claude Code session — no per-agent copying required.
 
 ## Agent Identity
 
@@ -104,15 +104,15 @@ Agent identity and behavior are file-based — nothing is baked into images.
 ```text
 .agents/active/<name>/
 ├── .nyx/                    # Runtime config (mounted into nyx-agent)
-│   ├── AGENTS.md            # Agent-specific behavioral guidance (served as CLAUDE.md and AGENTS.md)
+│   ├── AGENTS.md            # Agent-specific behavioral guidance (mounted as CLAUDE.md and AGENTS.md in backends)
 │   ├── agent-card.md        # A2A identity description text
 │   ├── backends.yaml        # Backend selection and routing
 │   ├── HEARTBEAT.md         # Proactive heartbeat schedule and prompt
 │   └── agenda/              # Scheduled work items (*.md with cron frontmatter)
-├── .claude/                 # Claude Code config
+├── .claude/                 # Claude backend config (mounted into a2-claude)
 │   ├── mcp.json             # MCP server configuration
 │   └── settings.json        # Claude Code settings
-├── .codex/                  # Codex config
+├── .codex/                  # Codex backend config (mounted into a2-codex)
 │   └── config.toml
 ├── logs/                    # nyx-agent logs (runtime, not committed)
 ├── a2-claude/               # Claude backend instance for this agent

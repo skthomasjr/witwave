@@ -12,11 +12,6 @@ services:
       GH_REPO: skthomasjr/autonomous-agent
       GH_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
     volumes:
-      - ./.agents/active/iris/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
-      - ./.agents/active/iris/.claude/mcp.json:/home/agent/.claude/mcp.json
-      - ./.agents/active/iris/.claude/settings.json:/home/agent/.claude/settings.json
-      - ./.agents/active/iris/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
-      - ./.agents/active/iris/.codex/config.toml:/home/agent/.codex/config.toml
       - ./.agents/active/iris/.nyx:/home/agent/.nyx
       - ./.agents/active/manifest.json:/home/agent/.nyx/manifest.json:ro
       - ./.agents/active/iris/logs:/home/agent/logs
@@ -37,8 +32,10 @@ services:
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
     volumes:
       - ./.agents/active/iris/a2-claude/agent.md:/home/agent/agent.md:ro
-      - ./.agents/active/iris/.claude/mcp.json:/home/agent/.claude/mcp.json:ro
-      - ./.claude/skills:/home/agent/.claude/skills:ro
+      - ./.agents/active/iris/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
+      - ./.agents/active/iris/.claude/mcp.json:/home/agent/.claude/mcp.json
+      - ./.agents/active/iris/.claude/settings.json:/home/agent/.claude/settings.json
+      - ./.claude/skills:/home/agent/.claude/skills
       - ./.agents/active/iris/a2-claude/logs:/home/agent/logs
       - ./.agents/active/iris/a2-claude/memory:/home/agent/memory
       - .:/home/agent/workspace
@@ -59,6 +56,9 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
     volumes:
       - ./.agents/active/iris/a2-codex/agent.md:/home/agent/agent.md:ro
+      - ./.agents/active/iris/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
+      - ./.agents/active/iris/.codex/config.toml:/home/agent/.codex/config.toml
+      - ./.claude/skills:/home/agent/.codex/skills
       - ./.agents/active/iris/a2-codex/logs:/home/agent/logs
       - ./.agents/active/iris/a2-codex/memory:/home/agent/memory
       - .:/home/agent/workspace
@@ -76,11 +76,6 @@ services:
       GH_REPO: skthomasjr/autonomous-agent
       GH_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
     volumes:
-      - ./.agents/active/nova/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
-      - ./.agents/active/nova/.claude/mcp.json:/home/agent/.claude/mcp.json
-      - ./.agents/active/nova/.claude/settings.json:/home/agent/.claude/settings.json
-      - ./.agents/active/nova/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
-      - ./.agents/active/nova/.codex/config.toml:/home/agent/.codex/config.toml
       - ./.agents/active/nova/.nyx:/home/agent/.nyx
       - ./.agents/active/manifest.json:/home/agent/.nyx/manifest.json:ro
       - ./.agents/active/nova/logs:/home/agent/logs
@@ -101,8 +96,10 @@ services:
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
     volumes:
       - ./.agents/active/nova/a2-claude/agent.md:/home/agent/agent.md:ro
-      - ./.agents/active/nova/.claude/mcp.json:/home/agent/.claude/mcp.json:ro
-      - ./.claude/skills:/home/agent/.claude/skills:ro
+      - ./.agents/active/nova/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
+      - ./.agents/active/nova/.claude/mcp.json:/home/agent/.claude/mcp.json
+      - ./.agents/active/nova/.claude/settings.json:/home/agent/.claude/settings.json
+      - ./.claude/skills:/home/agent/.claude/skills
       - ./.agents/active/nova/a2-claude/logs:/home/agent/logs
       - ./.agents/active/nova/a2-claude/memory:/home/agent/memory
       - .:/home/agent/workspace
@@ -123,6 +120,9 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
     volumes:
       - ./.agents/active/nova/a2-codex/agent.md:/home/agent/agent.md:ro
+      - ./.agents/active/nova/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
+      - ./.agents/active/nova/.codex/config.toml:/home/agent/.codex/config.toml
+      - ./.claude/skills:/home/agent/.codex/skills
       - ./.agents/active/nova/a2-codex/logs:/home/agent/logs
       - ./.agents/active/nova/a2-codex/memory:/home/agent/memory
       - .:/home/agent/workspace
@@ -140,11 +140,6 @@ services:
       GH_REPO: skthomasjr/autonomous-agent
       GH_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
     volumes:
-      - ./.agents/active/kira/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
-      - ./.agents/active/kira/.claude/mcp.json:/home/agent/.claude/mcp.json
-      - ./.agents/active/kira/.claude/settings.json:/home/agent/.claude/settings.json
-      - ./.agents/active/kira/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
-      - ./.agents/active/kira/.codex/config.toml:/home/agent/.codex/config.toml
       - ./.agents/active/kira/.nyx:/home/agent/.nyx
       - ./.agents/active/manifest.json:/home/agent/.nyx/manifest.json:ro
       - ./.agents/active/kira/logs:/home/agent/logs
@@ -165,8 +160,10 @@ services:
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
     volumes:
       - ./.agents/active/kira/a2-claude/agent.md:/home/agent/agent.md:ro
-      - ./.agents/active/kira/.claude/mcp.json:/home/agent/.claude/mcp.json:ro
-      - ./.claude/skills:/home/agent/.claude/skills:ro
+      - ./.agents/active/kira/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
+      - ./.agents/active/kira/.claude/mcp.json:/home/agent/.claude/mcp.json
+      - ./.agents/active/kira/.claude/settings.json:/home/agent/.claude/settings.json
+      - ./.claude/skills:/home/agent/.claude/skills
       - ./.agents/active/kira/a2-claude/logs:/home/agent/logs
       - ./.agents/active/kira/a2-claude/memory:/home/agent/memory
       - .:/home/agent/workspace
@@ -187,6 +184,9 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
     volumes:
       - ./.agents/active/kira/a2-codex/agent.md:/home/agent/agent.md:ro
+      - ./.agents/active/kira/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
+      - ./.agents/active/kira/.codex/config.toml:/home/agent/.codex/config.toml
+      - ./.claude/skills:/home/agent/.codex/skills
       - ./.agents/active/kira/a2-codex/logs:/home/agent/logs
       - ./.agents/active/kira/a2-codex/memory:/home/agent/memory
       - .:/home/agent/workspace

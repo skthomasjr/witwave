@@ -10,11 +10,6 @@ services:
       GH_REPO: skthomasjr/autonomous-agent
       GH_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
     volumes:
-      - ./.agents/test/bob/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
-      - ./.agents/test/bob/.claude/mcp.json:/home/agent/.claude/mcp.json
-      - ./.agents/test/bob/.claude/settings.json:/home/agent/.claude/settings.json
-      - ./.agents/test/bob/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
-      - ./.agents/test/bob/.codex/config.toml:/home/agent/.codex/config.toml
       - ./.agents/test/bob/.nyx:/home/agent/.nyx
       - ./.agents/test/manifest.json:/home/agent/.nyx/manifest.json:ro
       - ./.agents/test/bob/logs:/home/agent/logs
@@ -35,8 +30,10 @@ services:
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
     volumes:
       - ./.agents/test/bob/a2-claude/agent.md:/home/agent/agent.md:ro
-      - ./.agents/test/bob/.claude/mcp.json:/home/agent/.claude/mcp.json:ro
-      - ./.claude/skills:/home/agent/.claude/skills:ro
+      - ./.agents/test/bob/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
+      - ./.agents/test/bob/.claude/mcp.json:/home/agent/.claude/mcp.json
+      - ./.agents/test/bob/.claude/settings.json:/home/agent/.claude/settings.json
+      - ./.claude/skills:/home/agent/.claude/skills
       - ./.agents/test/bob/a2-claude/logs:/home/agent/logs
       - ./.agents/test/bob/a2-claude/memory:/home/agent/memory
       - .:/home/agent/workspace
@@ -57,6 +54,9 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
     volumes:
       - ./.agents/test/bob/a2-codex/agent.md:/home/agent/agent.md:ro
+      - ./.agents/test/bob/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
+      - ./.agents/test/bob/.codex/config.toml:/home/agent/.codex/config.toml
+      - ./.claude/skills:/home/agent/.codex/skills
       - ./.agents/test/bob/a2-codex/logs:/home/agent/logs
       - ./.agents/test/bob/a2-codex/memory:/home/agent/memory
       - .:/home/agent/workspace
@@ -72,11 +72,6 @@ services:
       GH_REPO: skthomasjr/autonomous-agent
       GH_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
     volumes:
-      - ./.agents/test/tom/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
-      - ./.agents/test/tom/.claude/mcp.json:/home/agent/.claude/mcp.json
-      - ./.agents/test/tom/.claude/settings.json:/home/agent/.claude/settings.json
-      - ./.agents/test/tom/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
-      - ./.agents/test/tom/.codex/config.toml:/home/agent/.codex/config.toml
       - ./.agents/test/tom/.nyx:/home/agent/.nyx
       - ./.agents/test/manifest.json:/home/agent/.nyx/manifest.json:ro
       - ./.agents/test/tom/logs:/home/agent/logs
@@ -97,8 +92,10 @@ services:
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
     volumes:
       - ./.agents/test/tom/a2-claude/agent.md:/home/agent/agent.md:ro
-      - ./.agents/test/tom/.claude/mcp.json:/home/agent/.claude/mcp.json:ro
-      - ./.claude/skills:/home/agent/.claude/skills:ro
+      - ./.agents/test/tom/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
+      - ./.agents/test/tom/.claude/mcp.json:/home/agent/.claude/mcp.json
+      - ./.agents/test/tom/.claude/settings.json:/home/agent/.claude/settings.json
+      - ./.claude/skills:/home/agent/.claude/skills
       - ./.agents/test/tom/a2-claude/logs:/home/agent/logs
       - ./.agents/test/tom/a2-claude/memory:/home/agent/memory
       - .:/home/agent/workspace
@@ -119,6 +116,9 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
     volumes:
       - ./.agents/test/tom/a2-codex/agent.md:/home/agent/agent.md:ro
+      - ./.agents/test/tom/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
+      - ./.agents/test/tom/.codex/config.toml:/home/agent/.codex/config.toml
+      - ./.claude/skills:/home/agent/.codex/skills
       - ./.agents/test/tom/a2-codex/logs:/home/agent/logs
       - ./.agents/test/tom/a2-codex/memory:/home/agent/memory
       - .:/home/agent/workspace
