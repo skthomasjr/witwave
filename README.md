@@ -40,6 +40,7 @@ Backend containers:
 - Docker Compose
 - A Claude Code OAuth token (`claude setup-token`) or Anthropic API key (for `a2-claude`)
 - An OpenAI API key (for `a2-codex`)
+- A Gemini API key (for `a2-gemini`)
 
 ## Getting Started
 
