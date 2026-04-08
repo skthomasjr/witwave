@@ -264,6 +264,7 @@ class AgentExecutor(A2AAgentExecutor):
         self._backends, self._default_backend_id = load_backends()
         self._routing: RoutingConfig = load_routing()
         self._mcp_watcher_tasks: list[asyncio.Task] = []
+        self._background_tasks: set[asyncio.Task] = set()
 
     def _backend_id_for_kind(self, kind: str) -> str | None:
         """Return the routing-configured backend id for the given message kind.
@@ -387,6 +388,8 @@ class AgentExecutor(A2AAgentExecutor):
                 duration_seconds=time.monotonic() - _exec_start,
                 error=_error,
             ))
+            self._background_tasks.add(_opc_task)
+            _opc_task.add_done_callback(self._background_tasks.discard)
             _opc_task.add_done_callback(
                 lambda t: logger.error(f"on_prompt_completed error: {t.exception()}")
                 if not t.cancelled() and t.exception() is not None
@@ -448,6 +451,8 @@ class AgentExecutor(A2AAgentExecutor):
                 duration_seconds=time.monotonic() - _bus_start,
                 error=_error,
             ))
+            self._background_tasks.add(_opc_task)
+            _opc_task.add_done_callback(self._background_tasks.discard)
             _opc_task.add_done_callback(
                 lambda t: logger.error(f"on_prompt_completed error: {t.exception()}")
                 if not t.cancelled() and t.exception() is not None
