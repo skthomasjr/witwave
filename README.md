@@ -13,7 +13,7 @@ and shipping — closing the loop without a human in the hot path.
 
 ---
 
-Built on the [A2A protocol](https://a2a-protocol.org). Each named agent is a pair of containers: a **nyx-agent**
+Built on the [A2A protocol](https://a2a-protocol.org). Each named agent is a set of containers: a **nyx-agent**
 infrastructure layer (A2A relay, heartbeat scheduler, agenda scheduler) and one or more **backend** containers that do
 the actual LLM work (Claude Agent SDK via `a2-claude`, OpenAI Agents SDK via `a2-codex`, Google Gemini SDK via `a2-gemini`).
 
