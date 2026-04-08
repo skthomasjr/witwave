@@ -184,7 +184,7 @@ async def _run_inner(
         raise ValueError(f"No backend configured with id '{resolved_id}'")
 
     if agent_model_requests_total is not None:
-        agent_model_requests_total.labels(model=model or resolved_id).inc()
+        agent_model_requests_total.labels(model=model or "default").inc()
 
     is_new = session_id not in sessions
     if not is_new and agent_session_idle_seconds is not None:
