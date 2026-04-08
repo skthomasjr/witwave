@@ -135,6 +135,7 @@ async def run_agenda_item(item: AgendaItem, bus: MessageBus, semaphore: asyncio.
             if agent_checkpoint_write_errors_total is not None:
                 agent_checkpoint_write_errors_total.inc()
             logger.error(f"Agenda '{item.name}' checkpoint write failed: {e}")
+        _send_task: asyncio.Task | None = None
         try:
             prompt = f"Agenda item: {item.name}\n\n{item.content}"
             logger.info(f"Agenda '{item.name}' firing.")
@@ -158,7 +159,11 @@ async def run_agenda_item(item: AgendaItem, bus: MessageBus, semaphore: asyncio.
             if agent_agenda_item_last_success_timestamp_seconds is not None:
                 agent_agenda_item_last_success_timestamp_seconds.labels(name=item.name).set(time.time())
         except asyncio.CancelledError:
-            logger.info(f"Agenda '{item.name}' cancelled — bus.send continues in background supervised.")
+            if _send_task is not None and not _send_task.done():
+                logger.info(f"Agenda '{item.name}' cancelled — awaiting in-flight bus.send before clearing running flag.")
+                await asyncio.gather(_send_task, return_exceptions=True)
+            else:
+                logger.info(f"Agenda '{item.name}' cancelled.")
             raise
         except Exception as e:
             logger.error(f"Agenda '{item.name}' error: {e}")
