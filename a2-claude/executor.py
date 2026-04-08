@@ -88,6 +88,7 @@ ALLOWED_TOOLS: list[str] = [t.strip() for t in os.environ.get("ALLOWED_TOOLS", _
 
 CONTEXT_USAGE_WARN_THRESHOLD = float(os.environ.get("CONTEXT_USAGE_WARN_THRESHOLD", "0.9"))
 MAX_LOG_BYTES = int(os.environ.get("MAX_LOG_BYTES", str(10 * 1024 * 1024)))
+MAX_LOG_BACKUP_COUNT = int(os.environ.get("MAX_LOG_BACKUP_COUNT", "1"))
 MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "10000"))
 TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
 
@@ -118,7 +119,7 @@ def get_conversation_logger() -> logging.Logger:
         log_dir = os.path.dirname(CONVERSATION_LOG)
         if log_dir:
             os.makedirs(log_dir, exist_ok=True)
-        handler = RotatingFileHandler(CONVERSATION_LOG, maxBytes=MAX_LOG_BYTES, backupCount=1)
+        handler = RotatingFileHandler(CONVERSATION_LOG, maxBytes=MAX_LOG_BYTES, backupCount=MAX_LOG_BACKUP_COUNT)
         handler.setFormatter(logging.Formatter("%(message)s"))
         conv_logger.addHandler(handler)
         conv_logger.setLevel(logging.INFO)
@@ -132,7 +133,7 @@ def get_trace_logger() -> logging.Logger:
         trace_dir = os.path.dirname(TRACE_LOG)
         if trace_dir:
             os.makedirs(trace_dir, exist_ok=True)
-        handler = RotatingFileHandler(TRACE_LOG, maxBytes=MAX_LOG_BYTES, backupCount=1)
+        handler = RotatingFileHandler(TRACE_LOG, maxBytes=MAX_LOG_BYTES, backupCount=MAX_LOG_BACKUP_COUNT)
         handler.setFormatter(logging.Formatter("%(message)s"))
         trace_logger.addHandler(handler)
         trace_logger.setLevel(logging.INFO)
