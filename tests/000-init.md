@@ -3,6 +3,18 @@ description: Builds all images, deploys the test environment via docker-compose,
 enabled: true
 ---
 
+Clear all test agent logs so tests start with a clean slate:
+
+```
+rm -f .agents/test/bob/a2-claude/logs/conversation.log
+rm -f .agents/test/bob/a2-claude/logs/trace.jsonl
+rm -f .agents/test/bob/a2-codex/logs/conversation.log
+rm -f .agents/test/bob/a2-codex/logs/trace.jsonl
+rm -f .agents/test/bob/a2-gemini/logs/conversation.log
+rm -f .agents/test/bob/a2-gemini/logs/trace.jsonl
+rm -f .agents/test/bob/logs/agent.log
+```
+
 Build all images and bring up the test environment:
 
 ```
