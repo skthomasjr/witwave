@@ -49,6 +49,21 @@ Respond with DISABLED_CONTINUATION_FIRED.
 EOF
 ```
 
+Disable the heartbeat by replacing HEARTBEAT.md with an `enabled: false` version:
+
+```
+cp .agents/test/bob/.nyx/HEARTBEAT.md .agents/test/bob/.nyx/HEARTBEAT.md.bak
+
+cat > .agents/test/bob/.nyx/HEARTBEAT.md << 'EOF'
+---
+description: Disabled heartbeat — should not fire.
+schedule: "* * * * *"
+enabled: false
+---
+Respond with DISABLED_HEARTBEAT_FIRED.
+EOF
+```
+
 ## Verification
 
 Wait 10 seconds for the file watchers to pick up the new files.
@@ -71,22 +86,24 @@ Check the conversation log at `.agents/test/bob/a2-claude/logs/conversation.log`
 - `DISABLED_JOB_FIRED`
 - `DISABLED_TRIGGER_FIRED`
 - `DISABLED_CONTINUATION_FIRED`
+- `DISABLED_HEARTBEAT_FIRED`
 
 ## Cleanup
 
-Remove the test fixtures:
+Remove the test fixtures and restore the heartbeat:
 
 ```
 rm .agents/test/bob/.nyx/jobs/disabled-test.md
 rm .agents/test/bob/.nyx/triggers/disabled-test.md
 rm .agents/test/bob/.nyx/continuations/disabled-test.md
+mv .agents/test/bob/.nyx/HEARTBEAT.md.bak .agents/test/bob/.nyx/HEARTBEAT.md
 ```
 
 ## Pass/Fail Criteria
 
 The test passes if ALL of the following are true:
 1. The disabled trigger endpoint returned 404.
-2. None of `DISABLED_JOB_FIRED`, `DISABLED_TRIGGER_FIRED`, or `DISABLED_CONTINUATION_FIRED` appear in the conversation log.
+2. None of `DISABLED_JOB_FIRED`, `DISABLED_TRIGGER_FIRED`, `DISABLED_CONTINUATION_FIRED`, or `DISABLED_HEARTBEAT_FIRED` appear in the conversation log.
 
 The test fails if the disabled trigger returned anything other than 404, or if any disabled sentinel string appears in the log.
 
