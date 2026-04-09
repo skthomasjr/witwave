@@ -77,7 +77,7 @@ class TaskItem:
     days_expr: str
     tz: ZoneInfo
     window_start: dtime
-    window_end: dtime | None          # effective close time (may be derived from window_duration)
+    window_end: dtime | None          # close time derived from window_start + window_duration
     loop: bool
     loop_gap: float | None            # seconds
     done_when: str | None
@@ -142,24 +142,11 @@ def parse_task_file(path: str) -> TaskItem | None:
                 agent_sched_task_parse_errors_total.inc()
             return None
 
-        # window-end and window-duration (mutually exclusive)
-        we_raw = fields.get("window-end") or fields.get("window_end")
+        # window-duration
         wd_raw = fields.get("window-duration") or fields.get("window_duration")
         window_end: dtime | None = None
 
-        if we_raw and wd_raw:
-            logger.warning(f"Task file {path}: both 'window-end' and 'window-duration' set — using 'window-end', ignoring 'window-duration'.")
-
-        if we_raw:
-            try:
-                h, m = str(we_raw).split(":")
-                window_end = dtime(int(h), int(m), tzinfo=None)
-            except Exception:
-                logger.warning(f"Task file {path}: invalid 'window-end' {we_raw!r}, skipping.")
-                if agent_sched_task_parse_errors_total is not None:
-                    agent_sched_task_parse_errors_total.inc()
-                return None
-        elif wd_raw:
+        if wd_raw:
             try:
                 duration_secs = parse_duration(str(wd_raw))
             except ValueError as e:
@@ -167,7 +154,6 @@ def parse_task_file(path: str) -> TaskItem | None:
                 if agent_sched_task_parse_errors_total is not None:
                     agent_sched_task_parse_errors_total.inc()
                 return None
-            # Compute effective window_end from window_start + duration
             ws_dt = datetime.combine(date.today(), window_start)
             we_dt = ws_dt + timedelta(seconds=duration_secs)
             window_end = we_dt.time()
@@ -175,7 +161,7 @@ def parse_task_file(path: str) -> TaskItem | None:
         # loop
         loop = str(fields.get("loop", "false")).lower() not in ("false", "")
         if loop and window_end is None:
-            logger.warning(f"Task file {path}: 'loop: true' requires 'window-end' or 'window-duration' — disabling loop.")
+            logger.warning(f"Task file {path}: 'loop: true' requires 'window-duration' — disabling loop.")
             loop = False
 
         # loop-gap

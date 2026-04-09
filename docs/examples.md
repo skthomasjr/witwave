@@ -189,11 +189,10 @@ Frontmatter fields:
 | `start`           | No       | Earliest date the task is eligible to run (inclusive, `YYYY-MM-DD`). Omit for no lower bound. |
 | `end`             | No       | Last date the task is eligible to run (inclusive, `YYYY-MM-DD`). Omit for no expiry. |
 | `days`            | No       | Cron weekday expression — numeric (`1-5`, `1,3,5`) or abbreviation (`Mon-Fri`, `Mon,Wed,Fri`). Default: `*` (every day). |
-| `timezone`        | No       | IANA time zone (e.g. `America/New_York`). Applied to `window-start` and `window-end`. Default: `UTC`. |
+| `timezone`        | No       | IANA time zone (e.g. `America/New_York`). Applied to `window-start`. Default: `UTC`. |
 | `window-start`    | Yes      | Start of the daily run window (`HH:MM` in the task's time zone). |
-| `window-end`      | No       | End of the daily run window (`HH:MM`). Mutually exclusive with `window-duration`. Required to enable looping. |
-| `window-duration` | No       | Duration of the run window from `window-start`. Format: `30m`, `4h`, `1h30m`. Mutually exclusive with `window-end`. |
-| `loop`            | No       | If `true`, re-run within the window after each completion. Requires `window-end` or `window-duration`. Default: `false`. |
+| `window-duration` | No       | Duration of the run window from `window-start`. Format: `30m`, `4h`, `1h30m`. Required to enable looping. |
+| `loop`            | No       | If `true`, re-run within the window after each completion. Requires `window-duration`. Default: `false`. |
 | `loop-gap`        | No       | Pause after a run completes before the next iteration. Format: `30s`, `15m`, `1h`, `1h30m`. Default: no pause. |
 | `done-when`       | No       | Stop looping for the day if the backend response contains this string. |
 | `model`           | No       | Model override passed to the backend. |
