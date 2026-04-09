@@ -18,6 +18,7 @@ Example backends.yaml:
       a2a: claude
       heartbeat: claude
       job: claude
+      task: claude
 
 Supported backend types:
     a2a  → A2A HTTP/JSON-RPC backend
@@ -121,6 +122,7 @@ class RoutingConfig:
     a2a: Optional[str] = None
     heartbeat: Optional[str] = None
     job: Optional[str] = None
+    task: Optional[str] = None
 
 
 def load_routing_config() -> RoutingConfig:
@@ -156,4 +158,5 @@ def load_routing_config() -> RoutingConfig:
         a2a=routing_raw.get("a2a") or None,
         heartbeat=routing_raw.get("heartbeat") or None,
         job=routing_raw.get("job") or None,
+        task=routing_raw.get("task") or None,
     )

@@ -74,6 +74,19 @@ agent_uptime_seconds: prometheus_client.Gauge | None = None
 agent_task_restarts_total: prometheus_client.Counter | None = None
 agent_tasks_total: prometheus_client.Counter | None = None
 agent_watcher_events_total: prometheus_client.Counter | None = None
+agent_sched_task_checkpoint_stale_total: prometheus_client.Counter | None = None
+agent_sched_task_duration_seconds: prometheus_client.Histogram | None = None
+agent_sched_task_error_duration_seconds: prometheus_client.Histogram | None = None
+agent_sched_task_item_last_error_timestamp_seconds: prometheus_client.Gauge | None = None
+agent_sched_task_item_last_run_timestamp_seconds: prometheus_client.Gauge | None = None
+agent_sched_task_item_last_success_timestamp_seconds: prometheus_client.Gauge | None = None
+agent_sched_task_items_registered: prometheus_client.Gauge | None = None
+agent_sched_task_lag_seconds: prometheus_client.Histogram | None = None
+agent_sched_task_parse_errors_total: prometheus_client.Counter | None = None
+agent_sched_task_reloads_total: prometheus_client.Counter | None = None
+agent_sched_task_running_items: prometheus_client.Gauge | None = None
+agent_sched_task_runs_total: prometheus_client.Counter | None = None
+agent_sched_task_skips_total: prometheus_client.Counter | None = None
 
 
 if _enabled:
@@ -370,5 +383,64 @@ if _enabled:
         "agent_watcher_events_total",
         "Total raw file-system change events detected by each watcher.",
         ["watcher"],
+    )
+    agent_sched_task_checkpoint_stale_total = prometheus_client.Counter(
+        "agent_sched_task_checkpoint_stale_total",
+        "Total stale checkpoint files found during task runner startup scan.",
+    )
+    agent_sched_task_duration_seconds = prometheus_client.Histogram(
+        "agent_sched_task_duration_seconds",
+        "Wall-clock seconds per scheduled task execution.",
+        ["name"],
+    )
+    agent_sched_task_error_duration_seconds = prometheus_client.Histogram(
+        "agent_sched_task_error_duration_seconds",
+        "Wall-clock seconds for scheduled tasks that end in error.",
+        ["name"],
+    )
+    agent_sched_task_item_last_error_timestamp_seconds = prometheus_client.Gauge(
+        "agent_sched_task_item_last_error_timestamp_seconds",
+        "Unix epoch of each scheduled task's last failed run.",
+        ["name"],
+    )
+    agent_sched_task_item_last_run_timestamp_seconds = prometheus_client.Gauge(
+        "agent_sched_task_item_last_run_timestamp_seconds",
+        "Unix epoch of each scheduled task's most recent execution, regardless of outcome.",
+        ["name"],
+    )
+    agent_sched_task_item_last_success_timestamp_seconds = prometheus_client.Gauge(
+        "agent_sched_task_item_last_success_timestamp_seconds",
+        "Unix epoch of each scheduled task's last successful run.",
+        ["name"],
+    )
+    agent_sched_task_items_registered = prometheus_client.Gauge(
+        "agent_sched_task_items_registered",
+        "Number of currently registered scheduled tasks.",
+    )
+    agent_sched_task_lag_seconds = prometheus_client.Histogram(
+        "agent_sched_task_lag_seconds",
+        "Delay between scheduled window open and actual task execution start.",
+    )
+    agent_sched_task_parse_errors_total = prometheus_client.Counter(
+        "agent_sched_task_parse_errors_total",
+        "Total scheduled task file parse failures.",
+    )
+    agent_sched_task_reloads_total = prometheus_client.Counter(
+        "agent_sched_task_reloads_total",
+        "Total scheduled task file-change reload events.",
+    )
+    agent_sched_task_running_items = prometheus_client.Gauge(
+        "agent_sched_task_running_items",
+        "Number of scheduled tasks currently executing.",
+    )
+    agent_sched_task_runs_total = prometheus_client.Counter(
+        "agent_sched_task_runs_total",
+        "Total scheduled task executions by name and outcome.",
+        ["name", "status"],
+    )
+    agent_sched_task_skips_total = prometheus_client.Counter(
+        "agent_sched_task_skips_total",
+        "Total scheduled task skips due to previous run still in progress.",
+        ["name"],
     )
 

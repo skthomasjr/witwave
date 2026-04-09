@@ -286,6 +286,8 @@ class AgentExecutor(A2AAgentExecutor):
             return self._routing.heartbeat
         if kind.startswith("job") and self._routing.job:
             return self._routing.job
+        if kind.startswith("task") and self._routing.task:
+            return self._routing.task
         return None
 
     def _mcp_watchers(self):

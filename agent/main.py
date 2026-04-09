@@ -16,6 +16,7 @@ from a2a.types import (
     AgentSkill,
 )
 from jobs import JobRunner
+from tasks import TaskRunner
 from bus import MessageBus
 from executor import AgentExecutor
 from heartbeat import heartbeat_runner
@@ -319,6 +320,7 @@ async def main():
     server = uvicorn.Server(config)
 
     job_runner = JobRunner(bus)
+    task_runner = TaskRunner(bus)
 
     # Start MCP watcher tasks as tracked background tasks so backends_watcher
     # can cancel and replace them when backends are hot-reloaded.
@@ -336,6 +338,7 @@ async def main():
         _guarded(bus_worker, bus, executor, critical=True),
         _guarded(heartbeat_runner, bus),
         _guarded(job_runner.run),
+        _guarded(task_runner.run),
         _guarded(_event_loop_monitor),
         _guarded(executor.backends_watcher),
         _set_ready_when_started(server),

@@ -12,3 +12,4 @@ routing:
   a2a: claude
   heartbeat: claude
   job: claude
+  task: claude

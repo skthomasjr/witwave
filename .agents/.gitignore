@@ -1,4 +1,5 @@
 **/.nyx/jobs/.checkpoints/
+**/.nyx/tasks/.checkpoints/
 **/.claude/backups/
 **/.claude/memory/
 **/.claude/plans/
