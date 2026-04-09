@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 class Message:
     prompt: str
     session_id: str | None = None
-    kind: str = "a2a"  # "a2a", "heartbeat", "job:<name>"
+    kind: str = "a2a"  # "a2a", "heartbeat", "job:<name>", "task:<name>", "trigger:<endpoint>"
+    # TODO(#71): Bus fairness — if triggers ever need to be serialized with scheduled work, consider per-kind queue lanes.
     model: str | None = None
     enqueued_at: float = 0.0
     result: asyncio.Future | None = field(default=None)

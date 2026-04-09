@@ -13,3 +13,4 @@ routing:
   heartbeat: claude
   job: claude
   task: claude
+  trigger: claude

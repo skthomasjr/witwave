@@ -51,7 +51,9 @@ Each named agent runs a containerized instance of the `nyx-agent` image. nyx-age
   backend.
 - **Task scheduler** — reads `tasks/*.md` files with calendar frontmatter (days, time window, date range); dispatches
   triggered items to the configured backend.
-- **Router** — reads `backends.yaml` to decide which named backend handles each concern (a2a, heartbeat, job, task).
+- **Trigger handler** — serves `POST /triggers/{endpoint}` HTTP endpoints defined in `triggers/*.md` files; dispatches
+  the request payload as a prompt to the configured backend and returns 202 immediately.
+- **Router** — reads `backends.yaml` to decide which named backend handles each concern (a2a, heartbeat, job, task, trigger).
 
 nyx-agent retains no LLM of its own. All conversation state, session continuity, memory, and conversation logging
 live in the backend container.
@@ -99,6 +101,7 @@ routing:
   heartbeat: iris-a2-claude  # handles heartbeat-triggered work
   job: iris-a2-claude        # handles job execution
   task: iris-a2-claude       # handles task execution
+  trigger: iris-a2-claude    # handles inbound HTTP trigger requests
 ```
 
 The `url` field can be overridden at deploy time via the environment variable
@@ -117,7 +120,8 @@ Agent identity and behavior are file-based — nothing is baked into images.
 │   ├── backends.yaml        # Backend selection and routing
 │   ├── HEARTBEAT.md         # Proactive heartbeat schedule and prompt
 │   ├── jobs/                # Scheduled job definitions (*.md with cron frontmatter)
-│   └── tasks/               # Scheduled task definitions (*.md with calendar frontmatter)
+│   ├── tasks/               # Scheduled task definitions (*.md with calendar frontmatter)
+│   └── triggers/            # Inbound HTTP trigger definitions (*.md with endpoint frontmatter)
 ├── .claude/                 # Claude backend config (mounted into a2-claude)
 │   ├── mcp.json             # MCP server configuration
 │   └── settings.json        # Claude Code settings
@@ -158,6 +162,7 @@ agent/                       # nyx-agent source (router/scheduler)
 ├── heartbeat.py             # Heartbeat scheduler
 ├── jobs.py                  # Job scheduler
 ├── tasks.py                 # Task scheduler
+├── triggers.py              # Inbound HTTP trigger handler
 ├── metrics.py               # Prometheus metrics definitions
 ├── utils.py                 # Shared utilities (frontmatter parser, etc.)
 └── backends/

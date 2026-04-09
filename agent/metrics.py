@@ -87,6 +87,10 @@ agent_sched_task_reloads_total: prometheus_client.Counter | None = None
 agent_sched_task_running_items: prometheus_client.Gauge | None = None
 agent_sched_task_runs_total: prometheus_client.Counter | None = None
 agent_sched_task_skips_total: prometheus_client.Counter | None = None
+agent_triggers_requests_total: prometheus_client.Counter | None = None
+agent_triggers_parse_errors_total: prometheus_client.Counter | None = None
+agent_triggers_reloads_total: prometheus_client.Counter | None = None
+agent_triggers_items_registered: prometheus_client.Gauge | None = None
 
 
 if _enabled:
@@ -442,5 +446,22 @@ if _enabled:
         "agent_sched_task_skips_total",
         "Total scheduled task skips due to previous run still in progress.",
         ["name"],
+    )
+    agent_triggers_requests_total = prometheus_client.Counter(
+        "agent_triggers_requests_total",
+        "Trigger endpoint HTTP requests by method and response code.",
+        ["method", "code"],
+    )
+    agent_triggers_parse_errors_total = prometheus_client.Counter(
+        "agent_triggers_parse_errors_total",
+        "Total trigger file parse failures.",
+    )
+    agent_triggers_reloads_total = prometheus_client.Counter(
+        "agent_triggers_reloads_total",
+        "Total trigger file-change reload events.",
+    )
+    agent_triggers_items_registered = prometheus_client.Gauge(
+        "agent_triggers_items_registered",
+        "Number of currently registered trigger endpoints.",
     )
 

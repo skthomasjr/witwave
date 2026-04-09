@@ -1,7 +1,10 @@
 import asyncio
+import hashlib
+import hmac as hmac_mod
 import logging
 import os
 import time
+import uuid
 from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import datetime, timezone
 
@@ -17,8 +20,9 @@ from a2a.types import (
 )
 from jobs import JobRunner
 from tasks import TaskRunner
+from triggers import TriggerItem, TriggerRunner
 from bus import MessageBus
-from executor import AgentExecutor
+from executor import AgentExecutor, run as executor_run
 from heartbeat import heartbeat_runner
 from metrics import (
     agent_bus_consumer_idle_seconds,
@@ -33,6 +37,7 @@ from metrics import (
     agent_info,
     agent_startup_duration_seconds,
     agent_task_restarts_total,
+    agent_triggers_requests_total,
     agent_up,
     agent_uptime_seconds,
 )
@@ -58,6 +63,27 @@ WORKER_MAX_RESTARTS = int(os.environ.get("WORKER_MAX_RESTARTS", "5"))
 _ready: bool = False
 _startup_mono: float = 0.0
 start_time: datetime = datetime.now(timezone.utc)
+
+
+def _check_trigger_auth(request: Request, item: TriggerItem, body_bytes: bytes) -> bool:
+    """Validate trigger request auth. HMAC takes priority over Bearer token."""
+    if item.secret_env_var:
+        secret = os.environ.get(item.secret_env_var, "")
+        if not secret:
+            logger.warning(
+                f"Trigger '{item.name}': 'secret-env-var' is set to {item.secret_env_var!r} "
+                "but the environment variable is absent or empty — request rejected."
+            )
+            return False
+        expected = "sha256=" + hmac_mod.new(secret.encode(), body_bytes, hashlib.sha256).hexdigest()
+        return hmac_mod.compare_digest(expected, request.headers.get("X-Hub-Signature-256", ""))
+
+    auth_token = os.environ.get("TRIGGERS_AUTH_TOKEN", "")
+    if auth_token:
+        header = request.headers.get("Authorization", "")
+        return hmac_mod.compare_digest(f"Bearer {auth_token}", header)
+
+    return True
 
 
 def load_agent_description() -> str:
@@ -285,10 +311,146 @@ async def main():
         metrics_asgi = prometheus_client.make_asgi_app()
         logger.info("Prometheus metrics enabled at /metrics")
 
+    trigger_runner = TriggerRunner()
+
+    async def triggers_discovery(request: Request) -> JSONResponse:
+        items = trigger_runner.items_by_endpoint()
+        payload = [
+            {
+                "endpoint": item.endpoint,
+                "name": item.name,
+                "description": item.description,
+                "methods": ["POST"],
+                "session_id": item.session_id,
+            }
+            for item in items.values()
+        ]
+        return JSONResponse(payload)
+
+    async def trigger_handler(request: Request) -> JSONResponse:
+        endpoint = request.path_params["endpoint"]
+        # TODO(#71): HEAD /triggers/{endpoint} returns 405 (Starlette default). Should it return 200 with metadata?
+
+        items = trigger_runner.items_by_endpoint()
+        item = items.get(endpoint)
+        if item is None:
+            if agent_triggers_requests_total is not None:
+                agent_triggers_requests_total.labels(method=request.method, code="404").inc()
+            return JSONResponse({"error": "not found", "endpoint": endpoint}, status_code=404)
+
+        if endpoint in trigger_runner._running:
+            if agent_triggers_requests_total is not None:
+                agent_triggers_requests_total.labels(method=request.method, code="409").inc()
+            return JSONResponse({"error": "already running", "endpoint": endpoint}, status_code=409)
+
+        # Claim the slot before any await to prevent concurrent requests from
+        # both passing the 409 check above.
+        trigger_runner._running.add(endpoint)
+        try:
+            body_bytes = await request.body()
+        except Exception:
+            trigger_runner._running.discard(endpoint)
+            if agent_triggers_requests_total is not None:
+                agent_triggers_requests_total.labels(method=request.method, code="500").inc()
+            raise
+
+        if not _check_trigger_auth(request, item, body_bytes):
+            trigger_runner._running.discard(endpoint)
+            if agent_triggers_requests_total is not None:
+                agent_triggers_requests_total.labels(method=request.method, code="401").inc()
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+        # Build prompt from request
+        filtered_headers = "\n".join(
+            f"{k}: {v}"
+            for k, v in request.headers.items()
+            if k.lower() not in ("authorization", "x-hub-signature-256", "cookie")
+        )
+        try:
+            body_text = body_bytes[:262144].decode("utf-8")
+        except (UnicodeDecodeError, ValueError):
+            body_text = body_bytes[:4096].hex()
+
+        prompt = (
+            f"Trigger: {item.name}\n\n"
+            f"Request:\n"
+            f"{request.method} {request.url.path}\n"
+            f"{filtered_headers}\n\n"
+            f"{body_text}\n\n"
+            f"---\n\n"
+            f"{item.content}"
+        )
+
+        delivery_id = str(uuid.uuid4())
+
+        async def _fire() -> None:
+            _fire_start = time.monotonic()
+            _response = ""
+            _success = False
+            _error: str | None = None
+            try:
+                backend_id = executor._backend_id_for_kind(f"trigger:{endpoint}") or None
+                _response = await executor_run(
+                    prompt,
+                    item.session_id,
+                    executor._sessions,
+                    executor._backends,
+                    executor._default_backend_id,
+                    backend_id=backend_id,
+                    model=item.model,
+                )
+                _success = True
+            except Exception as exc:
+                _error = repr(exc)
+                logger.error(f"Trigger '{item.name}' execution error: {exc!r}")
+            finally:
+                trigger_runner._running.discard(endpoint)
+                _opc_task = asyncio.create_task(executor.on_prompt_completed(
+                    source="trigger",
+                    kind=f"trigger:{endpoint}",
+                    session_id=item.session_id,
+                    success=_success,
+                    response=_response,
+                    duration_seconds=time.monotonic() - _fire_start,
+                    error=_error,
+                ))
+                executor._background_tasks.add(_opc_task)
+                _opc_task.add_done_callback(executor._background_tasks.discard)
+                _opc_task.add_done_callback(
+                    lambda t: logger.error(f"on_prompt_completed error: {t.exception()}")
+                    if not t.cancelled() and t.exception() is not None
+                    else None
+                )
+
+        try:
+            _task = asyncio.ensure_future(_fire())
+            executor._background_tasks.add(_task)
+            _task.add_done_callback(executor._background_tasks.discard)
+            _task.add_done_callback(
+                lambda t: logger.error(f"Trigger '{item.name}' task exited unexpectedly: {t.exception()!r}")
+                if not t.cancelled() and t.exception() is not None
+                else None
+            )
+        except Exception as exc:
+            trigger_runner._running.discard(endpoint)
+            logger.error(f"Trigger '{item.name}': failed to schedule background task: {exc!r}")
+            if agent_triggers_requests_total is not None:
+                agent_triggers_requests_total.labels(method=request.method, code="500").inc()
+            return JSONResponse({"error": "internal error"}, status_code=500)
+
+        if agent_triggers_requests_total is not None:
+            agent_triggers_requests_total.labels(method=request.method, code="202").inc()
+        return JSONResponse(
+            {"delivery_id": delivery_id, "session_id": item.session_id, "endpoint": endpoint},
+            status_code=202,
+        )
+
     _routes = [
         Route("/health/start", health_start),
         Route("/health/live", health_live),
         Route("/health/ready", health_ready),
+        Route("/.well-known/agent-triggers.json", triggers_discovery, methods=["GET"]),
+        Route("/triggers/{endpoint}", trigger_handler, methods=["POST"]),
     ]
     if metrics_enabled:
         _routes.append(Mount("/metrics", app=metrics_asgi))
@@ -339,6 +501,7 @@ async def main():
         _guarded(heartbeat_runner, bus),
         _guarded(job_runner.run),
         _guarded(task_runner.run),
+        _guarded(trigger_runner.run),
         _guarded(_event_loop_monitor),
         _guarded(executor.backends_watcher),
         _set_ready_when_started(server),

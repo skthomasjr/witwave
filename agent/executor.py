@@ -288,6 +288,8 @@ class AgentExecutor(A2AAgentExecutor):
             return self._routing.job
         if kind.startswith("task") and self._routing.task:
             return self._routing.task
+        if kind.startswith("trigger") and self._routing.trigger:
+            return self._routing.trigger
         return None
 
     def _mcp_watchers(self):
