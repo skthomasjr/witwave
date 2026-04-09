@@ -21,7 +21,7 @@ RUN python3 -m venv .venv
 ENV PATH="/home/agent/.venv/bin:$PATH"
 
 RUN pip install --no-cache-dir \
-    a2a-sdk==0.3.25 \
+    "a2a-sdk[http-server]==0.3.25" \
     croniter==6.2.2 \
     prometheus-client==0.24.1 \
     uvicorn==0.43.0 \

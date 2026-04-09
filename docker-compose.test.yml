@@ -11,7 +11,6 @@ services:
       GH_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
     volumes:
       - ./.agents/test/bob/.nyx:/home/agent/.nyx
-      - ./.agents/test/manifest.json:/home/agent/.nyx/manifest.json:ro
       - ./.agents/test/bob/logs:/home/agent/logs
 
   bob-a2-claude:
