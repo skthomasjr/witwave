@@ -49,7 +49,9 @@ Each named agent runs a containerized instance of the `nyx-agent` image. nyx-age
   configured backend.
 - **Job scheduler** — reads `jobs/*.md` files with cron frontmatter; dispatches triggered items to the configured
   backend.
-- **Router** — reads `backends.yaml` to decide which named backend handles each concern (a2a, heartbeat, job).
+- **Task scheduler** — reads `tasks/*.md` files with calendar frontmatter (days, time window, date range); dispatches
+  triggered items to the configured backend.
+- **Router** — reads `backends.yaml` to decide which named backend handles each concern (a2a, heartbeat, job, task).
 
 nyx-agent retains no LLM of its own. All conversation state, session continuity, memory, and conversation logging
 live in the backend container.
@@ -96,6 +98,7 @@ routing:
   a2a: iris-a2-claude        # handles incoming A2A requests
   heartbeat: iris-a2-claude  # handles heartbeat-triggered work
   job: iris-a2-claude        # handles job execution
+  task: iris-a2-claude       # handles task execution
 ```
 
 The `url` field can be overridden at deploy time via the environment variable
@@ -113,7 +116,8 @@ Agent identity and behavior are file-based — nothing is baked into images.
 │   ├── agent-card.md        # A2A identity description text
 │   ├── backends.yaml        # Backend selection and routing
 │   ├── HEARTBEAT.md         # Proactive heartbeat schedule and prompt
-│   └── jobs/                # Scheduled job definitions (*.md with cron frontmatter)
+│   ├── jobs/                # Scheduled job definitions (*.md with cron frontmatter)
+│   └── tasks/               # Scheduled task definitions (*.md with calendar frontmatter)
 ├── .claude/                 # Claude backend config (mounted into a2-claude)
 │   ├── mcp.json             # MCP server configuration
 │   └── settings.json        # Claude Code settings
@@ -153,6 +157,7 @@ agent/                       # nyx-agent source (router/scheduler)
 ├── bus.py                   # Internal async message bus
 ├── heartbeat.py             # Heartbeat scheduler
 ├── jobs.py                  # Job scheduler
+├── tasks.py                 # Task scheduler
 ├── metrics.py               # Prometheus metrics definitions
 ├── utils.py                 # Shared utilities (frontmatter parser, etc.)
 └── backends/
