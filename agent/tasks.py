@@ -30,7 +30,7 @@ from metrics import (
     agent_file_watcher_restarts_total,
     agent_watcher_events_total,
 )
-from utils import parse_frontmatter
+from utils import parse_frontmatter, parse_duration
 from watchfiles import awatch
 
 logger = logging.getLogger(__name__)
@@ -44,23 +44,6 @@ _DAY_ABBREVS = {
     "sun": "0", "mon": "1", "tue": "2", "wed": "3",
     "thu": "4", "fri": "5", "sat": "6",
 }
-
-
-def parse_duration(value: str) -> float:
-    """Parse a human-readable duration string into total seconds.
-
-    Supports: 30s, 15m, 1h, 1h30m, 1h30m45s (and combinations thereof).
-    Raises ValueError if the format is unrecognized.
-    """
-    value = value.strip()
-    pattern = re.compile(r"^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$")
-    m = pattern.match(value)
-    if not m or not any(m.groups()):
-        raise ValueError(f"Unrecognized duration format: {value!r}. Expected e.g. '30s', '15m', '1h', '1h30m'.")
-    hours = int(m.group(1) or 0)
-    minutes = int(m.group(2) or 0)
-    seconds = int(m.group(3) or 0)
-    return hours * 3600 + minutes * 60 + seconds
 
 
 def _translate_day_abbrevs(expr: str) -> str:

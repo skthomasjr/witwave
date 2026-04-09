@@ -20,6 +20,7 @@ Example backends.yaml:
       job: claude
       task: claude
       trigger: claude
+      continuation: claude
 
 Supported backend types:
     a2a  → A2A HTTP/JSON-RPC backend
@@ -125,6 +126,7 @@ class RoutingConfig:
     job: Optional[str] = None
     task: Optional[str] = None
     trigger: Optional[str] = None
+    continuation: Optional[str] = None
 
 
 def load_routing_config() -> RoutingConfig:
@@ -162,4 +164,5 @@ def load_routing_config() -> RoutingConfig:
         job=routing_raw.get("job") or None,
         task=routing_raw.get("task") or None,
         trigger=routing_raw.get("trigger") or None,
+        continuation=routing_raw.get("continuation") or None,
     )

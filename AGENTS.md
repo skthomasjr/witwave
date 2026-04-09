@@ -53,7 +53,9 @@ Each named agent runs a containerized instance of the `nyx-agent` image. nyx-age
   triggered items to the configured backend.
 - **Trigger handler** — serves `POST /triggers/{endpoint}` HTTP endpoints defined in `triggers/*.md` files; dispatches
   the request payload as a prompt to the configured backend and returns 202 immediately.
-- **Router** — reads `backends.yaml` to decide which named backend handles each concern (a2a, heartbeat, job, task, trigger).
+- **Continuation runner** — reads `continuations/*.md` files; fires a follow-up prompt whenever a named upstream
+  (job, task, trigger, a2a, or another continuation) completes, enabling prompt chaining without hardcoded sequences.
+- **Router** — reads `backends.yaml` to decide which named backend handles each concern (a2a, heartbeat, job, task, trigger, continuation).
 
 nyx-agent retains no LLM of its own. All conversation state, session continuity, memory, and conversation logging
 live in the backend container.
@@ -102,6 +104,7 @@ routing:
   job: iris-a2-claude        # handles job execution
   task: iris-a2-claude       # handles task execution
   trigger: iris-a2-claude    # handles inbound HTTP trigger requests
+  continuation: iris-a2-claude  # handles continuation-fired prompts
 ```
 
 The `url` field can be overridden at deploy time via the environment variable
@@ -121,7 +124,8 @@ Agent identity and behavior are file-based — nothing is baked into images.
 │   ├── HEARTBEAT.md         # Proactive heartbeat schedule and prompt
 │   ├── jobs/                # Scheduled job definitions (*.md with cron frontmatter)
 │   ├── tasks/               # Scheduled task definitions (*.md with calendar frontmatter)
-│   └── triggers/            # Inbound HTTP trigger definitions (*.md with endpoint frontmatter)
+│   ├── triggers/            # Inbound HTTP trigger definitions (*.md with endpoint frontmatter)
+│   └── continuations/       # Continuation definitions (*.md with continues-after frontmatter)
 ├── .claude/                 # Claude backend config (mounted into a2-claude)
 │   ├── mcp.json             # MCP server configuration
 │   └── settings.json        # Claude Code settings
@@ -163,8 +167,9 @@ agent/                       # nyx-agent source (router/scheduler)
 ├── jobs.py                  # Job scheduler
 ├── tasks.py                 # Task scheduler
 ├── triggers.py              # Inbound HTTP trigger handler
+├── continuations.py         # Continuation runner (fires on upstream completion)
 ├── metrics.py               # Prometheus metrics definitions
-├── utils.py                 # Shared utilities (frontmatter parser, etc.)
+├── utils.py                 # Shared utilities (frontmatter parser, duration parser, etc.)
 └── backends/
     ├── base.py              # AgentBackend abstract base class
     ├── a2a.py               # A2ABackend — forwards requests to remote A2A backend

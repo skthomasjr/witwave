@@ -4,6 +4,24 @@ import re
 
 import yaml
 
+_DURATION_RE = re.compile(r"^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$")
+
+
+def parse_duration(value: str) -> float:
+    """Parse a human-readable duration string into total seconds.
+
+    Supports: 30s, 15m, 1h, 1h30m, 1h30m45s (and combinations thereof).
+    Raises ValueError if the format is unrecognized.
+    """
+    value = value.strip()
+    m = _DURATION_RE.match(value)
+    if not m or not any(m.groups()):
+        raise ValueError(f"Unrecognized duration format: {value!r}. Expected e.g. '30s', '15m', '1h', '1h30m'.")
+    hours = int(m.group(1) or 0)
+    minutes = int(m.group(2) or 0)
+    seconds = int(m.group(3) or 0)
+    return hours * 3600 + minutes * 60 + seconds
+
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?(.*)", re.DOTALL)
 
 

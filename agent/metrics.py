@@ -91,6 +91,11 @@ agent_triggers_requests_total: prometheus_client.Counter | None = None
 agent_triggers_parse_errors_total: prometheus_client.Counter | None = None
 agent_triggers_reloads_total: prometheus_client.Counter | None = None
 agent_triggers_items_registered: prometheus_client.Gauge | None = None
+agent_continuation_parse_errors_total: prometheus_client.Counter | None = None
+agent_continuation_reloads_total: prometheus_client.Counter | None = None
+agent_continuation_items_registered: prometheus_client.Gauge | None = None
+agent_continuation_runs_total: prometheus_client.Counter | None = None
+agent_continuation_fires_total: prometheus_client.Counter | None = None
 
 
 if _enabled:
@@ -463,5 +468,27 @@ if _enabled:
     agent_triggers_items_registered = prometheus_client.Gauge(
         "agent_triggers_items_registered",
         "Number of currently registered trigger endpoints.",
+    )
+    agent_continuation_parse_errors_total = prometheus_client.Counter(
+        "agent_continuation_parse_errors_total",
+        "Total continuation file parse failures.",
+    )
+    agent_continuation_reloads_total = prometheus_client.Counter(
+        "agent_continuation_reloads_total",
+        "Total continuation file-change reload events.",
+    )
+    agent_continuation_items_registered = prometheus_client.Gauge(
+        "agent_continuation_items_registered",
+        "Number of currently registered continuations.",
+    )
+    agent_continuation_runs_total = prometheus_client.Counter(
+        "agent_continuation_runs_total",
+        "Total continuation executions by name and outcome.",
+        ["name", "status"],
+    )
+    agent_continuation_fires_total = prometheus_client.Counter(
+        "agent_continuation_fires_total",
+        "Total continuation firings by upstream kind.",
+        ["upstream_kind"],
     )
 

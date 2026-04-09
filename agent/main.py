@@ -18,6 +18,7 @@ from a2a.types import (
     AgentCard,
     AgentSkill,
 )
+from continuations import ContinuationRunner
 from jobs import JobRunner
 from tasks import TaskRunner
 from triggers import TriggerItem, TriggerRunner
@@ -483,6 +484,8 @@ async def main():
 
     job_runner = JobRunner(bus)
     task_runner = TaskRunner(bus)
+    continuation_runner = ContinuationRunner()
+    executor.set_continuation_runner(continuation_runner, bus)
 
     # Start MCP watcher tasks as tracked background tasks so backends_watcher
     # can cancel and replace them when backends are hot-reloaded.
@@ -502,6 +505,7 @@ async def main():
         _guarded(job_runner.run),
         _guarded(task_runner.run),
         _guarded(trigger_runner.run),
+        _guarded(continuation_runner.run),
         _guarded(_event_loop_monitor),
         _guarded(executor.backends_watcher),
         _set_ready_when_started(server),

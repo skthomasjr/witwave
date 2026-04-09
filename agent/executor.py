@@ -13,7 +13,7 @@ from a2a.server.events import EventQueue
 from a2a.utils import new_agent_text_message
 from backends.a2a import A2ABackend
 from backends.config import BackendConfig, RoutingConfig, load_backends_config, load_routing_config
-from bus import Message
+from bus import Message, MessageBus
 from metrics import (
     agent_a2a_last_request_timestamp_seconds,
     agent_a2a_request_duration_seconds,
@@ -273,6 +273,12 @@ class AgentExecutor(A2AAgentExecutor):
         self._routing: RoutingConfig = load_routing()
         self._mcp_watcher_tasks: list[asyncio.Task] = []
         self._background_tasks: set[asyncio.Task] = set()
+        self._continuation_runner = None
+        self._bus = None
+
+    def set_continuation_runner(self, runner: "ContinuationRunner", bus: MessageBus) -> None:
+        self._continuation_runner = runner
+        self._bus = bus
 
     def _backend_id_for_kind(self, kind: str) -> str | None:
         """Return the routing-configured backend id for the given message kind.
@@ -290,6 +296,8 @@ class AgentExecutor(A2AAgentExecutor):
             return self._routing.task
         if kind.startswith("trigger") and self._routing.trigger:
             return self._routing.trigger
+        if kind.startswith("continuation") and self._routing.continuation:
+            return self._routing.continuation
         return None
 
     def _mcp_watchers(self):
@@ -311,7 +319,8 @@ class AgentExecutor(A2AAgentExecutor):
         duration_seconds: float,
         error: str | None = None,
     ) -> None:
-        pass
+        if self._continuation_runner is not None:
+            self._continuation_runner.notify(kind, session_id, success, response or "", self._bus)
 
     async def backends_watcher(self) -> None:
         """Watch BACKENDS_CONFIG_PATH and reload backends on file change."""
