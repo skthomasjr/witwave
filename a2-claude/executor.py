@@ -540,8 +540,15 @@ class AgentExecutor(A2AAgentExecutor):
         _exec_start = time.monotonic()
         prompt = context.get_user_input()
         metadata = context.message.metadata or {}
-        _raw_sid = "".join(c for c in str(metadata.get("session_id") or "").strip()[:256] if c >= " ")
-        session_id = _raw_sid or str(uuid.uuid4())
+        _raw_sid = "".join(c for c in str(context.context_id or metadata.get("session_id") or "").strip()[:256] if c >= " ")
+        if not _raw_sid:
+            session_id = str(uuid.uuid4())
+        else:
+            try:
+                uuid.UUID(_raw_sid)
+                session_id = _raw_sid
+            except ValueError:
+                session_id = str(uuid.uuid5(uuid.NAMESPACE_URL, _raw_sid))
         model = metadata.get("model") or None
         task_id = context.task_id
 

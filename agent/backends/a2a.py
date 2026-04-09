@@ -52,14 +52,14 @@ class A2ABackend:
             "params": {
                 "message": {
                     "messageId": message_id,
+                    "contextId": session_id,
                     "role": "user",
-                    "metadata": {"session_id": session_id},
                     "parts": [{"kind": "text", "text": prompt}],
                 }
             },
         }
         if model:
-            payload["params"]["message"]["metadata"]["model"] = model
+            payload["params"]["message"]["metadata"] = {"model": model}
 
         body = json.dumps(payload).encode()
 

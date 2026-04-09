@@ -30,6 +30,7 @@ Examples:
 3. **Build the run list.**
    - If the target set is **empty**: the run list is all discovered tests in order.
    - If the target set is **non-empty**: the run list is `000-init.md`, then each test whose 3-digit prefix matches a value in the target set (in filename order), then `900-cleanup.md`. Tests not in the target set are recorded as `SKIP — not selected` and included in the report but not executed.
+   - **Group rule:** Tests that share the same 3-digit prefix but have a part suffix (e.g. `003.a-session-init.md` and `003.b-session-continuity.md`) are treated as a group. If any part of a group is in the target set, **all** parts of that group are automatically included. It is not valid to run only some parts of a group. If a user requests only one part (e.g. `3`), include all parts with prefix `003` in filename order.
 
 4. **Run each test in the run list in order.** For each test file:
    - Read the file. The `description` frontmatter field describes what the test does. The body is the test instruction.

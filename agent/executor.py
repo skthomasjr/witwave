@@ -357,7 +357,7 @@ class AgentExecutor(A2AAgentExecutor):
         _exec_start = time.monotonic()
         prompt = context.get_user_input()
         metadata = context.message.metadata or {}
-        _raw_sid = "".join(c for c in str(metadata.get("session_id") or "").strip()[:256] if c >= " ")
+        _raw_sid = "".join(c for c in str(context.context_id or metadata.get("session_id") or "").strip()[:256] if c >= " ")
         session_id = _raw_sid or str(uuid.uuid4())
         # Explicit backend_id in metadata takes priority; otherwise use routing config.
         backend_id = metadata.get("backend_id") or self._backend_id_for_kind("a2a") or None
