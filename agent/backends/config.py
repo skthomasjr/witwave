@@ -17,7 +17,7 @@ Example backends.yaml:
       default: claude
       a2a: claude
       heartbeat: claude
-      agenda: claude
+      job: claude
 
 Supported backend types:
     a2a  → A2A HTTP/JSON-RPC backend
@@ -120,7 +120,7 @@ class RoutingConfig:
     default: Optional[str] = None
     a2a: Optional[str] = None
     heartbeat: Optional[str] = None
-    agenda: Optional[str] = None
+    job: Optional[str] = None
 
 
 def load_routing_config() -> RoutingConfig:
@@ -155,5 +155,5 @@ def load_routing_config() -> RoutingConfig:
         default=routing_raw.get("default") or None,
         a2a=routing_raw.get("a2a") or None,
         heartbeat=routing_raw.get("heartbeat") or None,
-        agenda=routing_raw.get("agenda") or None,
+        job=routing_raw.get("job") or None,
     )

@@ -11,4 +11,4 @@ routing:
   default: claude
   a2a: claude
   heartbeat: claude
-  agenda: claude
+  job: claude

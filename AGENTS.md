@@ -29,7 +29,7 @@ or otherwise), `AGENT_NAME` is not set — in that case, `<agent-name>` is `loca
 
 autonomous-agent is a multi-container autonomous agent platform. Each named agent (iris, nova, kira, …) consists of:
 
-- A **nyx-agent** container — the infrastructure layer (A2A relay, heartbeat scheduler, agenda scheduler). It owns
+- A **nyx-agent** container — the infrastructure layer (A2A relay, heartbeat scheduler, job scheduler). It owns
   no LLM itself; it forwards all work to a backend.
 - One or more **backend** containers (`a2-claude`, `a2-codex`, `a2-gemini`) — the LLM execution layer. Each backend is a full A2A
   server that manages its own sessions, memory, conversation logs, and Prometheus metrics.
@@ -47,9 +47,9 @@ Each named agent runs a containerized instance of the `nyx-agent` image. nyx-age
   response verbatim.
 - **Heartbeat scheduler** — fires on the schedule defined in `HEARTBEAT.md`; dispatches the heartbeat prompt to the
   configured backend.
-- **Agenda scheduler** — reads `agenda/*.md` files with cron frontmatter; dispatches triggered items to the configured
+- **Job scheduler** — reads `jobs/*.md` files with cron frontmatter; dispatches triggered items to the configured
   backend.
-- **Router** — reads `backends.yaml` to decide which named backend handles each concern (a2a, heartbeat, agenda).
+- **Router** — reads `backends.yaml` to decide which named backend handles each concern (a2a, heartbeat, job).
 
 nyx-agent retains no LLM of its own. All conversation state, session continuity, memory, and conversation logging
 live in the backend container.
@@ -95,7 +95,7 @@ routing:
   default: iris-a2-claude    # fallback backend when no per-concern override matches
   a2a: iris-a2-claude        # handles incoming A2A requests
   heartbeat: iris-a2-claude  # handles heartbeat-triggered work
-  agenda: iris-a2-claude     # handles agenda task execution
+  job: iris-a2-claude        # handles job execution
 ```
 
 The `url` field can be overridden at deploy time via the environment variable
@@ -113,7 +113,7 @@ Agent identity and behavior are file-based — nothing is baked into images.
 │   ├── agent-card.md        # A2A identity description text
 │   ├── backends.yaml        # Backend selection and routing
 │   ├── HEARTBEAT.md         # Proactive heartbeat schedule and prompt
-│   └── agenda/              # Scheduled work items (*.md with cron frontmatter)
+│   └── jobs/                # Scheduled job definitions (*.md with cron frontmatter)
 ├── .claude/                 # Claude backend config (mounted into a2-claude)
 │   ├── mcp.json             # MCP server configuration
 │   └── settings.json        # Claude Code settings
@@ -152,7 +152,7 @@ agent/                       # nyx-agent source (router/scheduler)
 ├── executor.py              # Routes A2A requests to configured backend
 ├── bus.py                   # Internal async message bus
 ├── heartbeat.py             # Heartbeat scheduler
-├── agenda.py                # Agenda scheduler
+├── jobs.py                  # Job scheduler
 ├── metrics.py               # Prometheus metrics definitions
 ├── utils.py                 # Shared utilities (frontmatter parser, etc.)
 └── backends/

@@ -14,7 +14,7 @@ and shipping — closing the loop without a human in the hot path.
 ---
 
 Built on the [A2A protocol](https://a2a-protocol.org). Each named agent is a set of containers: a **nyx-agent**
-infrastructure layer (A2A relay, heartbeat scheduler, agenda scheduler) and one or more **backend** containers that do
+infrastructure layer (A2A relay, heartbeat scheduler, job scheduler) and one or more **backend** containers that do
 the actual LLM work (Claude Agent SDK via `a2-claude`, OpenAI Agents SDK via `a2-codex`, Google Gemini SDK via `a2-gemini`).
 
 Multiple agents can collaborate as a team, but the named agent (nyx + its backends) is the deployable unit.
@@ -23,7 +23,7 @@ Multiple agents can collaborate as a team, but the named agent (nyx + its backen
 
 Each agent:
 
-- Runs as a nyx-agent container that receives A2A requests, fires heartbeats, and runs agenda items
+- Runs as a nyx-agent container that receives A2A requests, fires heartbeats, and runs jobs
 - Forwards all LLM work to a dedicated backend container (`a2-claude`, `a2-codex`, or `a2-gemini`)
 - Exposes an [A2A (Agent-to-Agent)](https://a2a-protocol.org) interface for communication
 - Has its own identity, memory, and configuration — none baked into the image
@@ -104,7 +104,7 @@ Each agent directory contains:
 
 ```text
 <agent>/
-├── .nyx/              # Runtime config (agent-card.md, backends.yaml, HEARTBEAT.md, agenda/)
+├── .nyx/              # Runtime config (agent-card.md, backends.yaml, HEARTBEAT.md, jobs/)
 ├── .claude/           # Claude Code config (settings.json, mcp.json)
 ├── .codex/            # Codex config (config.toml)
 ├── .gemini/           # Gemini backend config (no extra config required)
@@ -146,7 +146,7 @@ routing:
   default: iris-a2-claude    # fallback backend when no per-concern override matches
   a2a: iris-a2-claude        # handles incoming A2A requests
   heartbeat: iris-a2-claude  # handles heartbeat-triggered work
-  agenda: iris-a2-claude     # handles agenda task execution
+  job: iris-a2-claude        # handles job execution
 ```
 
 ## Adding an Agent
@@ -229,4 +229,4 @@ Each backend agent manages its own memory at `.agents/<env>/<name>/<backend>/mem
 When `METRICS_ENABLED` is set, Prometheus metrics are served at `/metrics` on both nyx-agent and backend containers.
 
 Backend containers (`a2-claude`, `a2-codex`, `a2-gemini`) expose `a2_*`-prefixed metrics. `a2-claude` exposes a superset that includes tool call, context window, and MCP metrics; `a2-codex` and `a2-gemini` expose the common `a2_*` set.
-nyx-agent exposes `agent_*`-prefixed infrastructure metrics (bus, heartbeat, agenda, sessions, etc.).
+nyx-agent exposes `agent_*`-prefixed infrastructure metrics (bus, heartbeat, job, sessions, etc.).

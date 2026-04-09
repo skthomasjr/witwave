@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class Message:
     prompt: str
     session_id: str | None = None
-    kind: str = "a2a"  # "a2a", "heartbeat", "agenda"
+    kind: str = "a2a"  # "a2a", "heartbeat", "job:<name>"
     model: str | None = None
     enqueued_at: float = 0.0
     result: asyncio.Future | None = field(default=None)
