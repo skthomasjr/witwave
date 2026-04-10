@@ -12,7 +12,7 @@ from a2a.server.agent_execution import RequestContext
 from a2a.server.events import EventQueue
 from a2a.utils import new_agent_text_message
 from backends.a2a import A2ABackend
-from backends.config import BackendConfig, RoutingConfig, load_backends_config, load_routing_config
+from backends.config import BackendConfig, RoutingConfig, RoutingEntry, load_backends_config, load_routing_config
 from bus import Message, MessageBus
 from metrics import (
     agent_a2a_last_request_timestamp_seconds,
@@ -113,9 +113,7 @@ def log_trace(text: str) -> None:
 
 
 def _build_backend(config: BackendConfig):
-    if config.type == "a2a":
-        return A2ABackend(config=config)
-    raise ValueError(f"Unknown backend type: {config.type!r}")
+    return A2ABackend(config=config)
 
 
 def load_backends():
@@ -123,9 +121,9 @@ def load_backends():
     backends = {c.id: _build_backend(c) for c in configs}
     routing = load_routing_config()
     if routing.default:
-        if routing.default not in backends:
-            raise ValueError(f"routing.default '{routing.default}' does not match any configured backend id.")
-        default_id = routing.default
+        if routing.default.agent not in backends:
+            raise ValueError(f"routing.default agent '{routing.default.agent}' does not match any configured backend id.")
+        default_id = routing.default.agent
     else:
         default_id = configs[0].id
         logger.info(f"No routing.default specified — using first backend: '{default_id}'")
@@ -280,24 +278,31 @@ class AgentExecutor(A2AAgentExecutor):
         self._continuation_runner = runner
         self._bus = bus
 
-    def _backend_id_for_kind(self, kind: str) -> str | None:
-        """Return the routing-configured backend id for the given message kind.
-
-        Returns None when no routing override is configured for the kind,
-        in which case the caller should fall back to the default backend.
-        """
-        if kind == "a2a" and self._routing.a2a:
+    def _routing_entry_for_kind(self, kind: str) -> RoutingEntry | None:
+        """Return the RoutingEntry for the given message kind, or None to use the default."""
+        if kind == "a2a":
             return self._routing.a2a
-        if kind == "heartbeat" and self._routing.heartbeat:
+        if kind == "heartbeat":
             return self._routing.heartbeat
-        if kind.startswith("job") and self._routing.job:
+        if kind.startswith("job"):
             return self._routing.job
-        if kind.startswith("task") and self._routing.task:
+        if kind.startswith("task"):
             return self._routing.task
-        if kind.startswith("trigger") and self._routing.trigger:
+        if kind.startswith("trigger"):
             return self._routing.trigger
-        if kind.startswith("continuation") and self._routing.continuation:
+        if kind.startswith("continuation"):
             return self._routing.continuation
+        return None
+
+    def _resolve_model(self, message_model: str | None, routing_entry: RoutingEntry | None, backend_id: str) -> str | None:
+        """Resolve the model to use: per-message → routing entry → per-backend config."""
+        if message_model:
+            return message_model
+        if routing_entry and routing_entry.model:
+            return routing_entry.model
+        backend = self._backends.get(backend_id)
+        if backend is not None and backend.config.model:
+            return backend.config.model
         return None
 
     def _mcp_watchers(self):
@@ -323,12 +328,12 @@ class AgentExecutor(A2AAgentExecutor):
             self._continuation_runner.notify(kind, session_id, success, response or "", self._bus)
 
     async def backends_watcher(self) -> None:
-        """Watch BACKENDS_CONFIG_PATH and reload backends on file change."""
-        from backends.config import BACKENDS_CONFIG_PATH
+        """Watch BACKEND_CONFIG_PATH and reload backends on file change."""
+        from backends.config import BACKEND_CONFIG_PATH
         from watchfiles import awatch
 
-        watch_dir = os.path.dirname(os.path.abspath(BACKENDS_CONFIG_PATH))
-        logger.info(f"Backends watcher watching {BACKENDS_CONFIG_PATH}")
+        watch_dir = os.path.dirname(os.path.abspath(BACKEND_CONFIG_PATH))
+        logger.info(f"Backends watcher watching {BACKEND_CONFIG_PATH}")
         while True:
             if not os.path.isdir(watch_dir):
                 logger.info("Backends config directory not found — retrying in 10s.")
@@ -336,8 +341,8 @@ class AgentExecutor(A2AAgentExecutor):
                 continue
             async for changes in awatch(watch_dir):
                 for _, path in changes:
-                    if os.path.abspath(path) == os.path.abspath(BACKENDS_CONFIG_PATH):
-                        logger.info("backends.yaml changed — reloading.")
+                    if os.path.abspath(path) == os.path.abspath(BACKEND_CONFIG_PATH):
+                        logger.info("backend.yaml changed — reloading.")
                         try:
                             new_backends, new_default_id = load_backends()
                             self._backends = new_backends
@@ -369,8 +374,12 @@ class AgentExecutor(A2AAgentExecutor):
         _raw_sid = "".join(c for c in str(context.context_id or metadata.get("session_id") or "").strip()[:256] if c >= " ")
         session_id = _raw_sid or str(uuid.uuid4())
         # Explicit backend_id in metadata takes priority; otherwise use routing config.
-        backend_id = metadata.get("backend_id") or self._backend_id_for_kind("a2a") or None
+        _a2a_entry = self._routing_entry_for_kind("a2a")
+        backend_id = metadata.get("backend_id") or (_a2a_entry.agent if _a2a_entry else None)
         model = metadata.get("model") or None
+        if not model:
+            _resolved_backend_id = backend_id or self._default_backend_id
+            model = self._resolve_model(None, _a2a_entry, _resolved_backend_id)
         task_id = context.task_id
 
         if task_id:
@@ -442,8 +451,11 @@ class AgentExecutor(A2AAgentExecutor):
         _response = ""
         _success = False
         _error: str | None = None
-        # Use routing config to select the backend for this message kind.
-        _routed_backend_id = self._backend_id_for_kind(message.kind)
+        # Use per-item backend_id override, then routing config, then default.
+        _entry = self._routing_entry_for_kind(message.kind)
+        _routed_backend_id = message.backend_id or (_entry.agent if _entry else None)
+        _resolved_id = _routed_backend_id or self._default_backend_id
+        _model = self._resolve_model(message.model, _entry, _resolved_id)
         try:
             _response = await run(
                 message.prompt,
@@ -452,7 +464,7 @@ class AgentExecutor(A2AAgentExecutor):
                 self._backends,
                 self._default_backend_id,
                 backend_id=_routed_backend_id,
-                model=message.model,
+                model=_model,
             )
             _success = True
             if message.result is not None and not message.result.done():

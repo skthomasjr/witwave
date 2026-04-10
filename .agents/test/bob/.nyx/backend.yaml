@@ -1,0 +1,32 @@
+backend:
+  agents:
+    - id: claude
+      url: http://bob-a2-claude:8080
+      model: claude-opus-4-6
+
+    - id: codex
+      url: http://bob-a2-codex:8080
+      model: gpt-5.1-codex
+
+  routing:
+    default:
+      agent: codex
+      model: gpt-5.1-codex
+    a2a:
+      agent: codex
+      model: gpt-5.1-codex
+    heartbeat:
+      agent: codex
+      model: gpt-5.1-codex
+    job:
+      agent: codex
+      model: gpt-5.1-codex
+    task:
+      agent: codex
+      model: gpt-5.1-codex
+    trigger:
+      agent: codex
+      model: gpt-5.1-codex
+    continuation:
+      agent: codex
+      model: gpt-5.1-codex

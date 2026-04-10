@@ -1,29 +1,44 @@
 """Backend configuration loader.
 
-Reads backends.yaml from BACKENDS_CONFIG_PATH (default: /home/agent/.nyx/backends.yaml).
+Reads backend.yaml from BACKEND_CONFIG_PATH (default: /home/agent/.nyx/backend.yaml).
 
-Example backends.yaml:
+Example backend.yaml:
 
-    backends:
-      - id: claude
-        type: a2a
-        url: http://claude-code-agent:8000
+    backend:
+      agents:
+        - id: claude
+          url: http://claude-code-agent:8000
+          model: claude-opus-4-6
 
-      - id: codex
-        type: a2a
-        url: http://codex-agent:8000
+        - id: codex
+          url: http://codex-agent:8000
+          model: gpt-5.1-codex
 
-    routing:
-      default: claude
-      a2a: claude
-      heartbeat: claude
-      job: claude
-      task: claude
-      trigger: claude
-      continuation: claude
+      routing:
+        default:
+          agent: claude
+          model: claude-opus-4-6
+        a2a:
+          agent: claude
+          model: claude-opus-4-6
+        heartbeat:
+          agent: claude
+          model: claude-opus-4-6
+        job:
+          agent: claude
+          model: claude-opus-4-6
+        task:
+          agent: claude
+          model: claude-opus-4-6
+        trigger:
+          agent: claude
+          model: claude-opus-4-6
+        continuation:
+          agent: claude
+          model: claude-opus-4-6
 
-Supported backend types:
-    a2a  → A2A HTTP/JSON-RPC backend
+Each routing value may also be a plain string (agent id), which is equivalent to
+specifying only the agent with no model override.
 """
 
 from __future__ import annotations
@@ -37,15 +52,12 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-BACKENDS_CONFIG_PATH = os.environ.get("BACKENDS_CONFIG_PATH", "/home/agent/.nyx/backends.yaml")
-
-VALID_TYPES = {"a2a"}
+BACKEND_CONFIG_PATH = os.environ.get("BACKEND_CONFIG_PATH", "/home/agent/.nyx/backend.yaml")
 
 
 @dataclass
 class BackendConfig:
     id: str
-    type: str
     model: str | None = None
     auth_env: str | None = None
     url: str | None = None
@@ -58,18 +70,18 @@ def load_backends_config() -> list[BackendConfig]:
     Raises FileNotFoundError if no config file exists.
     Raises ValueError if the config is malformed or contains no valid backends.
     """
-    if not os.path.exists(BACKENDS_CONFIG_PATH):
-        raise FileNotFoundError(f"backends.yaml not found at {BACKENDS_CONFIG_PATH}")
+    if not os.path.exists(BACKEND_CONFIG_PATH):
+        raise FileNotFoundError(f"backend.yaml not found at {BACKEND_CONFIG_PATH}")
 
-    with open(BACKENDS_CONFIG_PATH) as f:
+    with open(BACKEND_CONFIG_PATH) as f:
         raw = yaml.safe_load(f)
 
-    if not isinstance(raw, dict) or "backends" not in raw:
-        raise ValueError(f"backends.yaml must contain a top-level 'backends' list.")
+    if not isinstance(raw, dict) or "backend" not in raw or not isinstance(raw["backend"], dict) or "agents" not in raw["backend"]:
+        raise ValueError(f"backend.yaml must contain a top-level 'backend' mapping with an 'agents' list.")
 
-    entries = raw["backends"]
+    entries = raw["backend"]["agents"]
     if not isinstance(entries, list) or not entries:
-        raise ValueError("backends.yaml 'backends' must be a non-empty list.")
+        raise ValueError("backend.yaml 'backend.agents' must be a non-empty list.")
 
     configs: list[BackendConfig] = []
     for entry in entries:
@@ -77,25 +89,15 @@ def load_backends_config() -> list[BackendConfig]:
             raise ValueError(f"Each backend entry must be a mapping, got: {entry!r}")
 
         backend_id = entry.get("id")
-        backend_type = entry.get("type")
-
         if not backend_id:
             raise ValueError(f"Backend entry missing required 'id' field: {entry!r}")
-        if not backend_type:
-            raise ValueError(f"Backend '{backend_id}' missing required 'type' field.")
-        if backend_type not in VALID_TYPES:
-            raise ValueError(
-                f"Backend '{backend_id}' has unknown type '{backend_type}'. "
-                f"Valid types: {sorted(VALID_TYPES)}"
-            )
 
-        known = {"id", "type", "model", "auth-env", "url"}
+        known = {"id", "model", "auth-env", "url"}
         extra = {k: v for k, v in entry.items() if k not in known}
 
         configs.append(
             BackendConfig(
                 id=backend_id,
-                type=backend_type,
                 model=entry.get("model") or None,
                 auth_env=entry.get("auth-env") or None,
                 url=entry.get("url") or None,
@@ -105,32 +107,56 @@ def load_backends_config() -> list[BackendConfig]:
 
     ids = [c.id for c in configs]
     if len(ids) != len(set(ids)):
-        raise ValueError(f"Duplicate backend ids in backends.yaml: {ids}")
+        raise ValueError(f"Duplicate backend ids in backend.yaml: {ids}")
 
     for c in configs:
-        logger.info(f"Backend configured: {c.id} (type={c.type}, url={c.url or 'NOT SET'})")
+        logger.info(f"Backend configured: {c.id} (url={c.url or 'NOT SET'})")
 
     return configs
 
 
 @dataclass
-class RoutingConfig:
-    """Named backend routing overrides read from the 'routing:' block in backends.yaml.
+class RoutingEntry:
+    """A single routing target: an agent id and an optional model override."""
+    agent: str
+    model: str | None = None
 
-    Each field names the backend id to use for that concern.
-    If a per-concern field is None, the caller falls back to the default backend.
+
+def _parse_routing_entry(value) -> RoutingEntry | None:
+    """Parse a routing value into a RoutingEntry.
+
+    Accepts:
+      - a plain string → RoutingEntry(agent=value)
+      - a dict with 'agent' key → RoutingEntry(agent=..., model=...)
+      - None / missing → None
     """
-    default: Optional[str] = None
-    a2a: Optional[str] = None
-    heartbeat: Optional[str] = None
-    job: Optional[str] = None
-    task: Optional[str] = None
-    trigger: Optional[str] = None
-    continuation: Optional[str] = None
+    if not value:
+        return None
+    if isinstance(value, str):
+        return RoutingEntry(agent=value)
+    if isinstance(value, dict) and value.get("agent"):
+        return RoutingEntry(agent=value["agent"], model=value.get("model") or None)
+    return None
+
+
+@dataclass
+class RoutingConfig:
+    """Named backend routing overrides read from the 'routing:' block in backend.yaml.
+
+    Each field is a RoutingEntry (agent id + optional model) or None to fall back
+    to the default.
+    """
+    default: Optional[RoutingEntry] = None
+    a2a: Optional[RoutingEntry] = None
+    heartbeat: Optional[RoutingEntry] = None
+    job: Optional[RoutingEntry] = None
+    task: Optional[RoutingEntry] = None
+    trigger: Optional[RoutingEntry] = None
+    continuation: Optional[RoutingEntry] = None
 
 
 def load_routing_config() -> RoutingConfig:
-    """Load the optional 'routing:' block from backends.yaml.
+    """Load the optional 'routing:' block from backend.yaml.
 
     Returns a RoutingConfig with all fields set to None if:
     - the config file does not exist,
@@ -140,29 +166,29 @@ def load_routing_config() -> RoutingConfig:
     This preserves the existing default-backend fallback behavior for callers
     that check for None.
     """
-    if not os.path.exists(BACKENDS_CONFIG_PATH):
+    if not os.path.exists(BACKEND_CONFIG_PATH):
         return RoutingConfig()
 
     try:
-        with open(BACKENDS_CONFIG_PATH) as f:
+        with open(BACKEND_CONFIG_PATH) as f:
             raw = yaml.safe_load(f)
     except Exception as e:
-        logger.warning(f"Failed to read {BACKENDS_CONFIG_PATH} for routing config: {e}")
+        logger.warning(f"Failed to read {BACKEND_CONFIG_PATH} for routing config: {e}")
         return RoutingConfig()
 
-    if not isinstance(raw, dict):
+    if not isinstance(raw, dict) or not isinstance(raw.get("backend"), dict):
         return RoutingConfig()
 
-    routing_raw = raw.get("routing")
+    routing_raw = raw["backend"].get("routing")
     if not isinstance(routing_raw, dict):
         return RoutingConfig()
 
     return RoutingConfig(
-        default=routing_raw.get("default") or None,
-        a2a=routing_raw.get("a2a") or None,
-        heartbeat=routing_raw.get("heartbeat") or None,
-        job=routing_raw.get("job") or None,
-        task=routing_raw.get("task") or None,
-        trigger=routing_raw.get("trigger") or None,
-        continuation=routing_raw.get("continuation") or None,
+        default=_parse_routing_entry(routing_raw.get("default")),
+        a2a=_parse_routing_entry(routing_raw.get("a2a")),
+        heartbeat=_parse_routing_entry(routing_raw.get("heartbeat")),
+        job=_parse_routing_entry(routing_raw.get("job")),
+        task=_parse_routing_entry(routing_raw.get("task")),
+        trigger=_parse_routing_entry(routing_raw.get("trigger")),
+        continuation=_parse_routing_entry(routing_raw.get("continuation")),
     )

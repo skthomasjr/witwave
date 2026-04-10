@@ -195,33 +195,33 @@ Each backend agent manages its own memory at `.agents/<env>/<name>/<backend>/mem
 
 ## Authentication
 
-| Service    | Method             | Environment variable                                         |
-|------------|--------------------|--------------------------------------------------------------|
-| a2-claude  | Claude Max (OAuth) | `CLAUDE_CODE_OAUTH_TOKEN`                                    |
-| a2-claude  | Anthropic API key  | `ANTHROPIC_API_KEY`                                          |
-| a2-codex   | OpenAI API key     | `OPENAI_API_KEY`                                             |
-| a2-gemini  | Gemini API key     | `GEMINI_API_KEY` or `GOOGLE_API_KEY`                         |
+| Service   | Method             | Environment variable                 |
+| --------- | ------------------ | ------------------------------------ |
+| a2-claude | Claude Max (OAuth) | `CLAUDE_CODE_OAUTH_TOKEN`            |
+| a2-claude | Anthropic API key  | `ANTHROPIC_API_KEY`                  |
+| a2-codex  | OpenAI API key     | `OPENAI_API_KEY`                     |
+| a2-gemini | Gemini API key     | `GEMINI_API_KEY` or `GOOGLE_API_KEY` |
 
 ## Configuration
 
 ### nyx-agent environment variables
 
-| Variable               | Default    | Description                                              |
-|------------------------|------------|----------------------------------------------------------|
-| `AGENT_NAME`           | `nyx-agent`| Agent display name (e.g. `iris`)                         |
-| `AGENT_PORT`           | `8000`     | HTTP port the nyx agent listens on                       |
-| `BACKENDS_CONFIG_PATH` | `/home/agent/.nyx/backends.yaml` | Path to the backends config file     |
-| `METRICS_ENABLED`      | _(unset)_  | Set to any non-empty value to expose `/metrics`          |
+| Variable               | Default                          | Description                                     |
+| ---------------------- | -------------------------------- | ----------------------------------------------- |
+| `AGENT_NAME`           | `nyx-agent`                      | Agent display name (e.g. `iris`)                |
+| `AGENT_PORT`           | `8000`                           | HTTP port the nyx agent listens on              |
+| `BACKENDS_CONFIG_PATH` | `/home/agent/.nyx/backends.yaml` | Path to the backends config file                |
+| `METRICS_ENABLED`      | _(unset)_                        | Set to any non-empty value to expose `/metrics` |
 
 ### Backend (a2-claude / a2-codex / a2-gemini) environment variables
 
-| Variable          | Default               | Description                                             |
-|-------------------|-----------------------|---------------------------------------------------------|
-| `AGENT_NAME`      | `a2-claude`/`a2-codex`/`a2-gemini`| Backend instance name (e.g. `iris-a2-claude`)  |
-| `AGENT_URL`       | `http://localhost:8080/` | Public A2A endpoint URL for the agent card            |
-| `AGENT_MD`        | `/home/agent/agent.md`| Path to the identity file mounted into the container    |
-| `BACKEND_PORT`    | `8080`                | HTTP port the backend listens on (internal)             |
-| `METRICS_ENABLED` | _(unset)_             | Set to any non-empty value to expose `/metrics`         |
+| Variable          | Default                            | Description                                          |
+| ----------------- | ---------------------------------- | ---------------------------------------------------- |
+| `AGENT_NAME`      | `a2-claude`/`a2-codex`/`a2-gemini` | Backend instance name (e.g. `iris-a2-claude`)        |
+| `AGENT_URL`       | `http://localhost:8080/`           | Public A2A endpoint URL for the agent card           |
+| `AGENT_MD`        | `/home/agent/agent.md`             | Path to the identity file mounted into the container |
+| `BACKEND_PORT`    | `8080`                             | HTTP port the backend listens on (internal)          |
+| `METRICS_ENABLED` | _(unset)_                          | Set to any non-empty value to expose `/metrics`      |
 
 ## Metrics
 

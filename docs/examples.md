@@ -34,11 +34,11 @@ Do not start new work while a prior run is still in progress. Report what you di
 
 Frontmatter fields:
 
-| Field         | Required | Description                              |
-| ------------- | -------- | ---------------------------------------- |
-| `description` | No       | Human-readable summary                   |
-| `schedule`    | Yes      | Cron expression (UTC)                    |
-| `enabled`     | Yes      | `true` to activate, `false` to disable   |
+| Field         | Required | Description                            |
+| ------------- | -------- | -------------------------------------- |
+| `description` | No       | Human-readable summary                 |
+| `schedule`    | Yes      | Cron expression (UTC)                  |
+| `enabled`     | Yes      | `true` to activate, `false` to disable |
 
 ---
 
@@ -130,13 +130,13 @@ Steps:
 
 Frontmatter fields:
 
-| Field         | Required | Description                                                    |
-| ------------- | -------- | -------------------------------------------------------------- |
-| `name`        | No       | Display name used in logs and metrics; defaults to filename    |
-| `description` | No       | Human-readable summary                                         |
-| `schedule`    | Yes      | Cron expression (UTC)                                          |
-| `enabled`     | No       | `true` (default) to activate, `false` to disable              |
-| `session`     | No       | Session ID override; defaults to a deterministic UUID          |
+| Field         | Required | Description                                                       |
+| ------------- | -------- | ----------------------------------------------------------------- |
+| `name`        | No       | Display name used in logs and metrics; defaults to filename       |
+| `description` | No       | Human-readable summary                                            |
+| `schedule`    | Yes      | Cron expression (UTC)                                             |
+| `enabled`     | No       | `true` (default) to activate, `false` to disable                  |
+| `session`     | No       | Session ID override; defaults to a deterministic UUID             |
 | `model`       | No       | Model override passed to the backend; defaults to backend default |
 
 ---
@@ -182,21 +182,21 @@ the highest-priority item for today. When done, respond with STANDUP_DONE.
 
 Frontmatter fields:
 
-| Field             | Required | Description |
-| ----------------- | -------- | ----------- |
-| `name`            | No       | Display name used in logs and metrics. Defaults to filename stem. |
-| `description`     | No       | Human-readable summary. |
-| `start`           | No       | Earliest date the task is eligible to run (inclusive, `YYYY-MM-DD`). Omit for no lower bound. |
-| `end`             | No       | Last date the task is eligible to run (inclusive, `YYYY-MM-DD`). Omit for no expiry. |
+| Field             | Required | Description                                                                                                              |
+| ----------------- | -------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `name`            | No       | Display name used in logs and metrics. Defaults to filename stem.                                                        |
+| `description`     | No       | Human-readable summary.                                                                                                  |
+| `start`           | No       | Earliest date the task is eligible to run (inclusive, `YYYY-MM-DD`). Omit for no lower bound.                            |
+| `end`             | No       | Last date the task is eligible to run (inclusive, `YYYY-MM-DD`). Omit for no expiry.                                     |
 | `days`            | No       | Cron weekday expression — numeric (`1-5`, `1,3,5`) or abbreviation (`Mon-Fri`, `Mon,Wed,Fri`). Default: `*` (every day). |
-| `timezone`        | No       | IANA time zone (e.g. `America/New_York`). Applied to `window-start`. Default: `UTC`. |
-| `window-start`    | Yes      | Start of the daily run window (`HH:MM` in the task's time zone). |
-| `window-duration` | No       | Duration of the run window from `window-start`. Format: `30m`, `4h`, `1h30m`. Required to enable looping. |
-| `loop`            | No       | If `true`, re-run within the window after each completion. Requires `window-duration`. Default: `false`. |
-| `loop-gap`        | No       | Pause after a run completes before the next iteration. Format: `30s`, `15m`, `1h`, `1h30m`. Default: no pause. |
-| `done-when`       | No       | Stop looping for the day if the backend response contains this string. |
-| `model`           | No       | Model override passed to the backend. |
-| `enabled`         | No       | `false` disables without deleting. Default: `true`. |
+| `timezone`        | No       | IANA time zone (e.g. `America/New_York`). Applied to `window-start`. Default: `UTC`.                                     |
+| `window-start`    | Yes      | Start of the daily run window (`HH:MM` in the task's time zone).                                                         |
+| `window-duration` | No       | Duration of the run window from `window-start`. Format: `30m`, `4h`, `1h30m`. Required to enable looping.                |
+| `loop`            | No       | If `true`, re-run within the window after each completion. Requires `window-duration`. Default: `false`.                 |
+| `loop-gap`        | No       | Pause after a run completes before the next iteration. Format: `30s`, `15m`, `1h`, `1h30m`. Default: no pause.           |
+| `done-when`       | No       | Stop looping for the day if the backend response contains this string.                                                   |
+| `model`           | No       | Model override passed to the backend.                                                                                    |
+| `enabled`         | No       | `false` disables without deleting. Default: `true`.                                                                      |
 
 ---
 
@@ -254,15 +254,15 @@ If the body is not JSON, describe the raw payload.
 
 Frontmatter fields:
 
-| Field             | Required | Description |
-| ----------------- | -------- | ----------- |
-| `endpoint`        | Yes      | URL-safe slug served at `POST /triggers/{endpoint}`. Must match `^[a-z0-9][a-z0-9-]*$`. |
-| `name`            | No       | Display name used in logs and discovery. Defaults to the filename stem. |
-| `description`     | No       | Human-readable summary. Included in the discovery endpoint response. |
-| `enabled`         | No       | `false` disables without deleting. Default: `true`. |
-| `secret-env-var`  | No       | Name of an environment variable holding an HMAC-SHA256 secret. When set and the env var is non-empty, nyx-agent validates `X-Hub-Signature-256` (GitHub-compatible format). |
-| `session`         | No       | Session ID override. Defaults to a deterministic UUID derived from `AGENT_NAME` and `endpoint`. |
-| `model`           | No       | Model override passed to the backend. |
+| Field            | Required | Description                                                                                                                                                                 |
+| ---------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `endpoint`       | Yes      | URL-safe slug served at `POST /triggers/{endpoint}`. Must match `^[a-z0-9][a-z0-9-]*$`.                                                                                     |
+| `name`           | No       | Display name used in logs and discovery. Defaults to the filename stem.                                                                                                     |
+| `description`    | No       | Human-readable summary. Included in the discovery endpoint response.                                                                                                        |
+| `enabled`        | No       | `false` disables without deleting. Default: `true`.                                                                                                                         |
+| `secret-env-var` | No       | Name of an environment variable holding an HMAC-SHA256 secret. When set and the env var is non-empty, nyx-agent validates `X-Hub-Signature-256` (GitHub-compatible format). |
+| `session`        | No       | Session ID override. Defaults to a deterministic UUID derived from `AGENT_NAME` and `endpoint`.                                                                             |
+| `model`          | No       | Model override passed to the backend.                                                                                                                                       |
 
 **Auth fallback order:**
 
@@ -322,18 +322,18 @@ Generate a final end-to-end report covering the review, build, and deployment st
 
 Frontmatter fields:
 
-| Field             | Required | Description |
-| ----------------- | -------- | ----------- |
-| `name`            | No       | Display name used in logs and metrics. Defaults to filename stem. |
-| `description`     | No       | Human-readable summary. |
+| Field             | Required | Description                                                                                        |
+| ----------------- | -------- | -------------------------------------------------------------------------------------------------- |
+| `name`            | No       | Display name used in logs and metrics. Defaults to filename stem.                                  |
+| `description`     | No       | Human-readable summary.                                                                            |
 | `continues-after` | Yes      | Upstream kind to watch: `job:<name>`, `task:<name>`, `a2a`, `continuation:<name>`, or `*` for any. |
-| `on-success`      | No       | Fire when upstream succeeds. Default: `true`. |
-| `on-error`        | No       | Fire when upstream errors. Default: `false`. |
-| `trigger-when`    | No       | Only fire if the upstream response contains this string. |
-| `delay`           | No       | Pause before firing. Format: `30s`, `5m`, `1h`, `1h30m`. Default: no delay. |
-| `session`         | No       | Session ID override. Default: inherit upstream session. |
-| `model`           | No       | Model override passed to the backend. |
-| `enabled`         | No       | `false` disables without deleting. Default: `true`. |
+| `on-success`      | No       | Fire when upstream succeeds. Default: `true`.                                                      |
+| `on-error`        | No       | Fire when upstream errors. Default: `false`.                                                       |
+| `trigger-when`    | No       | Only fire if the upstream response contains this string.                                           |
+| `delay`           | No       | Pause before firing. Format: `30s`, `5m`, `1h`, `1h30m`. Default: no delay.                        |
+| `session`         | No       | Session ID override. Default: inherit upstream session.                                            |
+| `model`           | No       | Model override passed to the backend.                                                              |
+| `enabled`         | No       | `false` disables without deleting. Default: `true`.                                                |
 
 ---
 

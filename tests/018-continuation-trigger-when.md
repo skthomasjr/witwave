@@ -52,7 +52,7 @@ Verify the response is 202.
 
 ## Poll
 
-Poll the conversation log at `.agents/test/bob/a2-claude/logs/conversation.log` every 2 seconds for up to 60 seconds.
+Poll the conversation log at `.agents/test/bob/a2-codex/logs/conversation.log` every 2 seconds for up to 60 seconds.
 
 ## Cleanup
 

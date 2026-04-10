@@ -34,6 +34,7 @@ class ContinuationItem:
     delay: float | None = None        # seconds to wait before firing
     session_id: str | None = None     # if None, inherit upstream session_id at fire time
     model: str | None = None
+    backend_id: str | None = None
     description: str | None = None
 
 
@@ -78,6 +79,7 @@ def parse_continuation_file(path: str) -> ContinuationItem | None:
 
         session_id = fields.get("session") or None
         model = fields.get("model") or None
+        backend_id = fields.get("agent") or None
         description = fields.get("description") or None
 
         return ContinuationItem(
@@ -91,6 +93,7 @@ def parse_continuation_file(path: str) -> ContinuationItem | None:
             delay=delay,
             session_id=session_id,
             model=model,
+            backend_id=backend_id,
             description=description,
         )
 
@@ -112,6 +115,7 @@ async def _fire(item: ContinuationItem, session_id: str, bus: MessageBus) -> Non
             session_id=resolved_session,
             kind=f"continuation:{item.name}",
             model=item.model,
+            backend_id=item.backend_id,
         ))
         if agent_continuation_runs_total is not None:
             agent_continuation_runs_total.labels(name=item.name, status="success").inc()

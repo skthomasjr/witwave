@@ -20,6 +20,7 @@ class Message:
     kind: str = "a2a"  # "a2a", "heartbeat", "job:<name>", "task:<name>", "trigger:<endpoint>", "continuation:<name>"
     # TODO(#71): Bus fairness — if triggers ever need to be serialized with scheduled work, consider per-kind queue lanes.
     model: str | None = None
+    backend_id: str | None = None
     enqueued_at: float = 0.0
     result: asyncio.Future | None = field(default=None)
     metadata: dict[str, Any] = field(default_factory=dict)

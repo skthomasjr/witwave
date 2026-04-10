@@ -43,21 +43,26 @@ Examples:
 
 5. **Always run cleanup.** `900-cleanup.md` runs regardless of failures or the `--continue-on-failure` flag — even if an earlier test caused an early stop.
 
-6. **Report results.** After all tests have run, print a summary table:
+6. **Report results.** After all tests have run, print a summary as a markdown table:
 
-```
-Test Results
-────────────────────────────────────────
- PASS  000 Init
- PASS  004 Trigger Fires
- FAIL  005 Trigger Payload     — response did not contain PAYLOAD_TEST_7x9q
- SKIP  001 Heartbeat Fires     — not selected
- PASS  900 Cleanup
-────────────────────────────────────────
-Passed: 3  Failed: 1  Skipped: 1  Total: 5
-```
+| Status | #   | Test            | Notes                                      |
+| :----: | --- | --------------- | ------------------------------------------ |
+| ✅     | 000 | Init            |                                            |
+| ✅     | 004 | Trigger Fires   |                                            |
+| ❌     | 005 | Trigger Payload | response did not contain PAYLOAD_TEST_7x9q |
+| ⏭️    | 001 | Heartbeat Fires | not selected                               |
+| ✅     | 900 | Cleanup         |                                            |
 
-Use `PASS`, `FAIL`, or `SKIP` as the status. In the summary, show executed tests first (in run order), then skipped tests. Skipped tests are ones that were not run due to an earlier failure without `--continue-on-failure`, because `enabled: false` is set in their frontmatter, or because they were not in the target set.
+Use these status indicators:
+- ✅ for PASS
+- ❌ for FAIL
+- ⏭️ for SKIP
 
-If all tests passed, end with: **All tests passed.**
-If any tests failed, end with: **X test(s) failed.**
+Show executed tests first (in run order), then skipped tests. Skipped tests are ones that were not run due to an earlier failure without `--continue-on-failure`, because `enabled: false` is set in their frontmatter, or because they were not in the target set. Leave the Notes column blank for passing tests.
+
+Follow the table with a bold summary line:
+
+**Passed: 3 &nbsp;|&nbsp; Failed: 1 &nbsp;|&nbsp; Skipped: 1 &nbsp;|&nbsp; Total: 5**
+
+If all tests passed, end with: **✅ All tests passed.**
+If any tests failed, end with: **❌ X test(s) failed.**

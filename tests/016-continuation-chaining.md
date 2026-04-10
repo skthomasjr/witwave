@@ -48,7 +48,7 @@ Verify the response is 202 before proceeding.
 
 ## Poll for both chain steps
 
-Poll the conversation log at `.agents/test/bob/a2-claude/logs/conversation.log` every 2 seconds for up to 60 seconds until both `CHAIN_STEP_1_OK` and `CHAIN_STEP_2_OK` appear.
+Poll the conversation log at `.agents/test/bob/a2-codex/logs/conversation.log` every 2 seconds for up to 60 seconds until both `CHAIN_STEP_1_OK` and `CHAIN_STEP_2_OK` appear.
 
 ## Cleanup
 

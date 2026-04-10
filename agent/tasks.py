@@ -59,7 +59,7 @@ class TaskItem:
     name: str
     days_expr: str
     tz: ZoneInfo
-    window_start: dtime
+    window_start: dtime | None        # None = run-once mode (fire immediately, no schedule)
     window_end: dtime | None          # close time derived from window_start + window_duration
     loop: bool
     loop_gap: float | None            # seconds
@@ -68,6 +68,7 @@ class TaskItem:
     start: date | None = None
     end: date | None = None
     model: str | None = None
+    backend_id: str | None = None
     task: asyncio.Task | None = field(default=None, compare=False)
     running: bool = False
 
@@ -109,21 +110,18 @@ def parse_task_file(path: str) -> TaskItem | None:
                 agent_sched_task_parse_errors_total.inc()
             return None
 
-        # window-start (required)
+        # window-start (optional — omitting enables run-once mode)
         ws_raw = fields.get("window-start") or fields.get("window_start")
-        if not ws_raw:
-            logger.warning(f"Task file {path}: missing 'window-start', skipping.")
-            if agent_sched_task_parse_errors_total is not None:
-                agent_sched_task_parse_errors_total.inc()
-            return None
-        try:
-            h, m = str(ws_raw).split(":")
-            window_start = dtime(int(h), int(m), tzinfo=None)
-        except Exception:
-            logger.warning(f"Task file {path}: invalid 'window-start' {ws_raw!r}, skipping.")
-            if agent_sched_task_parse_errors_total is not None:
-                agent_sched_task_parse_errors_total.inc()
-            return None
+        window_start: dtime | None = None
+        if ws_raw:
+            try:
+                h, m = str(ws_raw).split(":")
+                window_start = dtime(int(h), int(m), tzinfo=None)
+            except Exception:
+                logger.warning(f"Task file {path}: invalid 'window-start' {ws_raw!r}, skipping.")
+                if agent_sched_task_parse_errors_total is not None:
+                    agent_sched_task_parse_errors_total.inc()
+                return None
 
         # window-duration
         wd_raw = fields.get("window-duration") or fields.get("window_duration")
@@ -178,6 +176,9 @@ def parse_task_file(path: str) -> TaskItem | None:
         # model
         model = fields.get("model") or None
 
+        # backend
+        backend_id = fields.get("agent") or None
+
         return TaskItem(
             path=path,
             name=name,
@@ -192,6 +193,7 @@ def parse_task_file(path: str) -> TaskItem | None:
             start=start,
             end=end,
             model=model,
+            backend_id=backend_id,
         )
 
     except Exception as e:
@@ -271,6 +273,56 @@ def _inside_window(item: TaskItem) -> bool:
 async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore | None = None) -> None:
     filename = Path(item.path).stem
     checkpoint_path = os.path.join(CHECKPOINT_DIR, filename + ".running.json")
+
+    # --- Run-once mode: no window-start, fire immediately and exit ---
+    if item.window_start is None:
+        logger.info(f"Task '{item.name}' run-once: firing immediately.")
+        _semaphore_acquired = False
+        if semaphore is not None:
+            await semaphore.acquire()
+            _semaphore_acquired = True
+        item.running = True
+        if agent_sched_task_running_items is not None:
+            agent_sched_task_running_items.inc()
+        session_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{AGENT_NAME}.{filename}"))
+        try:
+            prompt = f"Task: {item.name}\n\n{item.content}"
+            _task_start = time.monotonic()
+            if agent_sched_task_item_last_run_timestamp_seconds is not None:
+                agent_sched_task_item_last_run_timestamp_seconds.labels(name=item.name).set(time.time())
+            message = Message(prompt=prompt, session_id=session_id, kind=f"task:{item.name}", model=item.model, backend_id=item.backend_id)
+            _send_task = asyncio.ensure_future(bus.send(message))
+
+            def _log_send_result(t: asyncio.Task, _name: str = item.name) -> None:
+                exc = t.exception() if not t.cancelled() else None
+                if exc is not None:
+                    logger.error(f"Task '{_name}' background bus.send failed: {exc}")
+
+            _send_task.add_done_callback(_log_send_result)
+            await asyncio.shield(_send_task)
+            if agent_sched_task_duration_seconds is not None:
+                agent_sched_task_duration_seconds.labels(name=item.name).observe(time.monotonic() - _task_start)
+            if agent_sched_task_runs_total is not None:
+                agent_sched_task_runs_total.labels(name=item.name, status="success").inc()
+            if agent_sched_task_item_last_success_timestamp_seconds is not None:
+                agent_sched_task_item_last_success_timestamp_seconds.labels(name=item.name).set(time.time())
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.error(f"Task '{item.name}' error: {e}")
+            if agent_sched_task_runs_total is not None:
+                agent_sched_task_runs_total.labels(name=item.name, status="error").inc()
+            if agent_sched_task_error_duration_seconds is not None:
+                agent_sched_task_error_duration_seconds.labels(name=item.name).observe(time.monotonic() - _task_start)
+            if agent_sched_task_item_last_error_timestamp_seconds is not None:
+                agent_sched_task_item_last_error_timestamp_seconds.labels(name=item.name).set(time.time())
+        finally:
+            item.running = False
+            if agent_sched_task_running_items is not None:
+                agent_sched_task_running_items.dec()
+            if semaphore is not None and _semaphore_acquired:
+                semaphore.release()
+        return
 
     # --- Startup: handle restart-within-window logic ---
     stale_checkpoint = os.path.exists(checkpoint_path)
@@ -371,6 +423,7 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
                         session_id=session_id,
                         kind=f"task:{item.name}",
                         model=item.model,
+                        backend_id=item.backend_id,
                     )
                     _send_task = asyncio.ensure_future(bus.send(message))
 
@@ -484,7 +537,10 @@ class TaskRunner:
         self._items[path] = item
         if agent_sched_task_items_registered is not None:
             agent_sched_task_items_registered.set(len(self._items))
-        logger.info(f"Task '{item.name}' registered.")
+        if item.window_start is not None:
+            logger.info(f"Task '{item.name}' registered. Window: {item.window_start.strftime('%H:%M')}")
+        else:
+            logger.info(f"Task '{item.name}' registered. Mode: run-once")
 
     def _unregister(self, path: str) -> asyncio.Task | None:
         existing = self._items.pop(path, None)

@@ -38,6 +38,7 @@ class TriggerItem:
     enabled: bool = True
     secret_env_var: str | None = None
     model: str | None = None
+    backend_id: str | None = None
     description: str | None = None
 
 
@@ -76,6 +77,7 @@ def parse_trigger_file(path: str) -> TriggerItem | object | None:
         session_id = fields.get("session") or str(uuid.uuid5(uuid.NAMESPACE_URL, f"{AGENT_NAME}.{endpoint}"))
         secret_env_var = fields.get("secret-env-var") or fields.get("secret_env_var") or None
         model = fields.get("model") or None
+        backend_id = fields.get("agent") or None
         description = fields.get("description") or None
 
         return TriggerItem(
@@ -87,6 +89,7 @@ def parse_trigger_file(path: str) -> TriggerItem | object | None:
             enabled=enabled,
             secret_env_var=secret_env_var,
             model=model,
+            backend_id=backend_id,
             description=description,
         )
 

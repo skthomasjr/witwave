@@ -1,0 +1,32 @@
+backend:
+  agents:
+    - id: claude
+      url: http://nova-a2-claude:8080
+      model: claude-opus-4-6
+
+    - id: codex
+      url: http://nova-a2-codex:8080
+      model: gpt-5.1-codex
+
+  routing:
+    default:
+      agent: claude
+      model: claude-opus-4-6
+    a2a:
+      agent: claude
+      model: claude-opus-4-6
+    heartbeat:
+      agent: claude
+      model: claude-opus-4-6
+    job:
+      agent: claude
+      model: claude-opus-4-6
+    task:
+      agent: claude
+      model: claude-opus-4-6
+    trigger:
+      agent: claude
+      model: claude-opus-4-6
+    continuation:
+      agent: claude
+      model: claude-opus-4-6

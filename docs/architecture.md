@@ -220,23 +220,23 @@ Agent identity and behavior are entirely file-based. No identity is baked into a
 
 ### nyx-agent config files
 
-| File            | Location          | Purpose                                               |
-|-----------------|-------------------|-------------------------------------------------------|
-| `AGENTS.md`     | `.nyx/`           | Behavioral guidance (served as CLAUDE.md and AGENTS.md in container) |
-| `agent-card.md` | `.nyx/`           | A2A identity — description text served in agent card  |
-| `backends.yaml` | `.nyx/`           | Backend definitions and routing                       |
-| `HEARTBEAT.md`  | `.nyx/`           | Heartbeat schedule and prompt                         |
-| `agenda/*.md`   | `.nyx/agenda/`    | Scheduled work items with cron frontmatter            |
-| `skills/`       | `.nyx/skills/`    | Agent-local skill documents                           |
+| File            | Location       | Purpose                                                              |
+| --------------- | -------------- | -------------------------------------------------------------------- |
+| `AGENTS.md`     | `.nyx/`        | Behavioral guidance (served as CLAUDE.md and AGENTS.md in container) |
+| `agent-card.md` | `.nyx/`        | A2A identity — description text served in agent card                 |
+| `backends.yaml` | `.nyx/`        | Backend definitions and routing                                      |
+| `HEARTBEAT.md`  | `.nyx/`        | Heartbeat schedule and prompt                                        |
+| `agenda/*.md`   | `.nyx/agenda/` | Scheduled work items with cron frontmatter                           |
+| `skills/`       | `.nyx/skills/` | Agent-local skill documents                                          |
 
 ### Backend config files
 
-| File       | Location            | Purpose                                                    |
-|------------|---------------------|------------------------------------------------------------|
-| `agent.md` | `<name>/a2-claude/` | Identity injected into the Claude backend at startup       |
-| `agent.md` | `<name>/a2-codex/`  | Identity injected into the Codex backend at startup        |
-| `memory/`  | `<name>/a2-claude/memory/` | Persistent markdown memory files for Claude backend |
-| `memory/`  | `<name>/a2-codex/memory/`  | Persistent markdown memory files for Codex backend  |
+| File       | Location                   | Purpose                                              |
+| ---------- | -------------------------- | ---------------------------------------------------- |
+| `agent.md` | `<name>/a2-claude/`        | Identity injected into the Claude backend at startup |
+| `agent.md` | `<name>/a2-codex/`         | Identity injected into the Codex backend at startup  |
+| `memory/`  | `<name>/a2-claude/memory/` | Persistent markdown memory files for Claude backend  |
+| `memory/`  | `<name>/a2-codex/memory/`  | Persistent markdown memory files for Codex backend   |
 
 ### backends.yaml schema
 
@@ -257,23 +257,23 @@ routing:
 
 **nyx-agent:**
 
-| Variable               | Default                            | Description                              |
-|------------------------|------------------------------------|------------------------------------------|
-| `AGENT_NAME`           | `nyx-agent`                        | Agent display name (e.g. `iris`)         |
-| `AGENT_PORT`           | `8000`                             | HTTP port                                |
-| `BACKENDS_CONFIG_PATH` | `/home/agent/.nyx/backends.yaml`   | Path to backends config                  |
-| `METRICS_ENABLED`      | _(unset)_                          | Enable Prometheus `/metrics`             |
-| `A2A_URL_<ID>`         | _(unset)_                          | Per-backend URL override (e.g. `A2A_URL_IRIS_A2_CLAUDE`) |
+| Variable               | Default                          | Description                                              |
+| ---------------------- | -------------------------------- | -------------------------------------------------------- |
+| `AGENT_NAME`           | `nyx-agent`                      | Agent display name (e.g. `iris`)                         |
+| `AGENT_PORT`           | `8000`                           | HTTP port                                                |
+| `BACKENDS_CONFIG_PATH` | `/home/agent/.nyx/backends.yaml` | Path to backends config                                  |
+| `METRICS_ENABLED`      | _(unset)_                        | Enable Prometheus `/metrics`                             |
+| `A2A_URL_<ID>`         | _(unset)_                        | Per-backend URL override (e.g. `A2A_URL_IRIS_A2_CLAUDE`) |
 
 **Backends (a2-claude / a2-codex):**
 
-| Variable          | Default                    | Description                                            |
-|-------------------|----------------------------|--------------------------------------------------------|
-| `AGENT_NAME`      | `a2-claude` / `a2-codex`   | Backend instance name (e.g. `iris-a2-claude`)          |
-| `AGENT_URL`       | `http://localhost:8080/`   | Public A2A endpoint URL reported in agent card         |
-| `AGENT_MD`        | `/home/agent/agent.md`     | Path to mounted identity file                          |
-| `BACKEND_PORT`    | `8080`                     | HTTP port the backend listens on (internal)            |
-| `METRICS_ENABLED` | _(unset)_                  | Enable Prometheus `/metrics`                           |
+| Variable          | Default                  | Description                                    |
+| ----------------- | ------------------------ | ---------------------------------------------- |
+| `AGENT_NAME`      | `a2-claude` / `a2-codex` | Backend instance name (e.g. `iris-a2-claude`)  |
+| `AGENT_URL`       | `http://localhost:8080/` | Public A2A endpoint URL reported in agent card |
+| `AGENT_MD`        | `/home/agent/agent.md`   | Path to mounted identity file                  |
+| `BACKEND_PORT`    | `8080`                   | HTTP port the backend listens on (internal)    |
+| `METRICS_ENABLED` | _(unset)_                | Enable Prometheus `/metrics`                   |
 
 ---
 
@@ -306,15 +306,15 @@ backend calls from the same nyx-agent process.
 
 ## Port Assignments
 
-| Agent | nyx-agent | a2-claude | a2-codex |
-|-------|-----------|-----------|----------|
-| iris  | 8000      | 8010      | 8011     |
-| nova  | 8001      | 8020      | 8021     |
-| kira  | 8002      | 8030      | 8031     |
-| bob   | 8099      | 8090      | 8091     |
-| tom   | 8098      | 8088      | 8089     |
-| ui (active) | 3002 | —       | —        |
-| ui (test)   | 3001 | —       | —        |
+| Agent       | nyx-agent | a2-claude | a2-codex |
+| ----------- | --------- | --------- | -------- |
+| iris        | 8000      | 8010      | 8011     |
+| nova        | 8001      | 8020      | 8021     |
+| kira        | 8002      | 8030      | 8031     |
+| bob         | 8099      | 8090      | 8091     |
+| tom         | 8098      | 8088      | 8089     |
+| ui (active) | 3002      | —         | —        |
+| ui (test)   | 3001      | —         | —        |
 
 Backend containers all listen on port 8080 internally; host port mappings are as above.
 
@@ -324,16 +324,16 @@ Backend containers all listen on port 8080 internally; host port mappings are as
 
 ### GitHub Issue Taxonomy
 
-| Label               | Created by          | Worked by       | Purpose                                             |
-|---------------------|---------------------|-----------------|-----------------------------------------------------|
-| `feature`           | `plan-features`     | —               | Broad feature proposal; never implemented directly  |
-| `type/feature`      | `evaluate-features` | `work-features` | Feature implementation slice (theme/slice scoped)   |
-| `type/bug`          | `evaluate-bugs`     | `work-bugs`     | Defect in source code                               |
-| `type/reliability`  | `evaluate-risks`    | `work-risks`    | Reliability or operational risk                     |
-| `type/code-quality` | `evaluate-risks`    | `work-risks`    | Code quality or maintainability risk                |
-| `type/enhancement`  | `evaluate-gaps`     | `work-gaps`     | Missing capability or improvement opportunity       |
-| `type/skill`        | `evaluate-skills`   | `work-skills`   | Bug in a skill document                             |
-| `type/task`         | humans / agents     | varies          | General task                                        |
+| Label               | Created by          | Worked by       | Purpose                                            |
+| ------------------- | ------------------- | --------------- | -------------------------------------------------- |
+| `feature`           | `plan-features`     | —               | Broad feature proposal; never implemented directly |
+| `type/feature`      | `evaluate-features` | `work-features` | Feature implementation slice (theme/slice scoped)  |
+| `type/bug`          | `evaluate-bugs`     | `work-bugs`     | Defect in source code                              |
+| `type/reliability`  | `evaluate-risks`    | `work-risks`    | Reliability or operational risk                    |
+| `type/code-quality` | `evaluate-risks`    | `work-risks`    | Code quality or maintainability risk               |
+| `type/enhancement`  | `evaluate-gaps`     | `work-gaps`     | Missing capability or improvement opportunity      |
+| `type/skill`        | `evaluate-skills`   | `work-skills`   | Bug in a skill document                            |
+| `type/task`         | humans / agents     | varies          | General task                                       |
 
 ### Feature Pipeline
 
@@ -461,9 +461,9 @@ Slack messages, Jira tickets) without cron schedules.
 
 ## Relationship to Other Docs
 
-| Document                                              | Purpose                                               |
-|-------------------------------------------------------|-------------------------------------------------------|
-| [product-vision.md](product-vision.md)                | Target audience, design principles, deployment roadmap |
-| [competitive-landscape.md](competitive-landscape.md)  | Competitor research, gap analysis, research themes    |
-| `README.md`                                           | Quickstart and technical reference                    |
-| `AGENTS.md`                                           | Canonical repo instructions for all coding agents     |
+| Document                                             | Purpose                                                |
+| ---------------------------------------------------- | ------------------------------------------------------ |
+| [product-vision.md](product-vision.md)               | Target audience, design principles, deployment roadmap |
+| [competitive-landscape.md](competitive-landscape.md) | Competitor research, gap analysis, research themes     |
+| `README.md`                                          | Quickstart and technical reference                     |
+| `AGENTS.md`                                          | Canonical repo instructions for all coding agents      |

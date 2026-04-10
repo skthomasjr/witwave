@@ -3,6 +3,12 @@ description: Builds all images, deploys the test environment via docker-compose,
 enabled: true
 ---
 
+Tear down any existing test environment before starting fresh:
+
+```
+docker compose -f docker-compose.test.yml down
+```
+
 Clear all test agent logs so tests start with a clean slate:
 
 ```

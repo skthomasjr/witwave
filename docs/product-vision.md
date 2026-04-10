@@ -43,11 +43,11 @@ compatibility:
 
 ### Deployment Roadmap
 
-| Artifact             | Status      | Description                                     |
-| -------------------- | ----------- | ----------------------------------------------- |
+| Artifact                    | Status      | Description                                     |
+| --------------------------- | ----------- | ----------------------------------------------- |
 | `docker-compose.active.yml` | Shipped     | Local development and single-host deployment    |
-| Helm chart           | Planned     | Parameterized Kubernetes deployment for teams   |
-| Kubernetes Operator  | Considering | Declarative agent lifecycle management via CRDs |
+| Helm chart                  | Planned     | Parameterized Kubernetes deployment for teams   |
+| Kubernetes Operator         | Considering | Declarative agent lifecycle management via CRDs |
 
 ---
 

@@ -28,7 +28,7 @@ Wait 5 seconds for the file watcher to reload the heartbeat.
 
 ## Poll for two firings with the same session ID
 
-Poll the conversation log at `.agents/test/bob/a2-claude/logs/conversation.log` every 5 seconds for up to 150 seconds until the session ID `9f058a6c-e2cf-5618-8e86-dd403353bbcf` appears at least twice.
+Poll the conversation log at `.agents/test/bob/a2-codex/logs/conversation.log` every 5 seconds for up to 150 seconds until the session ID `9f058a6c-e2cf-5618-8e86-dd403353bbcf` appears at least twice.
 
 ## Restore original heartbeat
 

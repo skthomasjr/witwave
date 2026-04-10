@@ -390,7 +390,10 @@ async def main():
             _success = False
             _error: str | None = None
             try:
-                backend_id = executor._backend_id_for_kind(f"trigger:{endpoint}") or None
+                _entry = executor._routing_entry_for_kind(f"trigger:{endpoint}")
+                backend_id = item.backend_id or (_entry.agent if _entry else None)
+                _resolved_id = backend_id or executor._default_backend_id
+                _model = executor._resolve_model(item.model, _entry, _resolved_id)
                 _response = await executor_run(
                     prompt,
                     item.session_id,
@@ -398,7 +401,7 @@ async def main():
                     executor._backends,
                     executor._default_backend_id,
                     backend_id=backend_id,
-                    model=item.model,
+                    model=_model,
                 )
                 _success = True
             except Exception as exc:

@@ -19,7 +19,7 @@ The trigger returns 202 immediately. After the trigger backend completes, the co
 Step 2 — poll the conversation log at:
 
 ```
-.agents/test/bob/a2-claude/logs/conversation.log
+.agents/test/bob/a2-codex/logs/conversation.log
 ```
 
 Poll every 2 seconds for up to 60 seconds until `CONTINUATION_TRIGGER_OK` appears.
