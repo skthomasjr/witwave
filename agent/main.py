@@ -9,6 +9,7 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import datetime, timezone
 
 import prometheus_client
+import prometheus_client.exposition
 import uvicorn
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
@@ -42,9 +43,10 @@ from metrics import (
     agent_up,
     agent_uptime_seconds,
 )
+from metrics_proxy import fetch_backend_metrics
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 from starlette.routing import Mount, Route
 
 logging.basicConfig(
@@ -172,11 +174,11 @@ async def _sub_app_lifespan(app):
     async def _run() -> None:
         try:
             await app({"type": "lifespan", "asgi": {"version": "3.0"}}, receive, send)
-        except Exception as exc:
+        except Exception:
             if not startup.done():
-                startup.set_exception(exc)
+                startup.set_result(False)
             if not shutdown.done():
-                shutdown.set_exception(exc)
+                shutdown.set_result(None)
         finally:
             # App exited without sending startup.complete → no lifespan support.
             if not startup.done():
@@ -301,7 +303,6 @@ async def main():
     )
     a2a_built = a2a_app.build()
 
-    metrics_asgi = None
     if metrics_enabled:
         if agent_up is not None:
             agent_up.labels(agent=AGENT_NAME).set(1.0)
@@ -309,8 +310,22 @@ async def main():
             agent_info.info({"version": AGENT_VERSION, "agent": AGENT_NAME})
         if agent_uptime_seconds is not None:
             agent_uptime_seconds.set_function(lambda: (datetime.now(timezone.utc) - start_time).total_seconds())
-        metrics_asgi = prometheus_client.make_asgi_app()
         logger.info("Prometheus metrics enabled at /metrics")
+
+    async def metrics_handler(request: Request) -> Response:
+        """Return nyx-agent metrics plus relabelled metrics from all reachable backends."""
+        from backends.config import load_backends_config
+        nyx_output = prometheus_client.exposition.generate_latest().decode("utf-8")
+        try:
+            backend_configs = load_backends_config()
+        except Exception:
+            backend_configs = []
+        backend_output = await fetch_backend_metrics(backend_configs)
+        body = nyx_output + backend_output
+        return Response(
+            content=body,
+            media_type=prometheus_client.exposition.CONTENT_TYPE_LATEST,
+        )
 
     trigger_runner = TriggerRunner()
 
@@ -457,7 +472,7 @@ async def main():
         Route("/triggers/{endpoint}", trigger_handler, methods=["POST"]),
     ]
     if metrics_enabled:
-        _routes.append(Mount("/metrics", app=metrics_asgi))
+        _routes.append(Route("/metrics", metrics_handler, methods=["GET"]))
     _routes.append(Mount("/", app=a2a_built))
 
     @asynccontextmanager

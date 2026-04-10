@@ -60,9 +60,9 @@ Use these status indicators:
 
 Show executed tests first (in run order), then skipped tests. Skipped tests are ones that were not run due to an earlier failure without `--continue-on-failure`, because `enabled: false` is set in their frontmatter, or because they were not in the target set. Leave the Notes column blank for passing tests.
 
-Follow the table with a bold summary line:
+Follow the table with a plain summary line:
 
-**Passed: 3 &nbsp;|&nbsp; Failed: 1 &nbsp;|&nbsp; Skipped: 1 &nbsp;|&nbsp; Total: 5**
+Passed: 3 | Failed: 1 | Skipped: 1 | Total: 5
 
 If all tests passed, end with: **✅ All tests passed.**
 If any tests failed, end with: **❌ X test(s) failed.**

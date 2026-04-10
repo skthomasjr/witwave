@@ -9,6 +9,7 @@ services:
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
       GH_REPO: skthomasjr/autonomous-agent
       GH_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
+      METRICS_ENABLED: "true"
     volumes:
       - ./.agents/test/bob/.nyx:/home/agent/.nyx
       - ./.agents/test/bob/logs:/home/agent/logs
@@ -27,6 +28,7 @@ services:
       AGENT_MD: /home/agent/agent.md
       BACKEND_PORT: 8080
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+      METRICS_ENABLED: "true"
     volumes:
       - ./.agents/test/bob/a2-claude/agent.md:/home/agent/agent.md:ro
       - ./.agents/test/bob/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
@@ -51,6 +53,7 @@ services:
       AGENT_MD: /home/agent/agent.md
       BACKEND_PORT: 8080
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+      METRICS_ENABLED: "true"
     volumes:
       - ./.agents/test/bob/a2-codex/agent.md:/home/agent/agent.md:ro
       - ./.agents/test/bob/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
@@ -74,6 +77,7 @@ services:
       AGENT_MD: /home/agent/agent.md
       BACKEND_PORT: 8080
       GEMINI_API_KEY: ${GEMINI_API_KEY}
+      METRICS_ENABLED: "true"
     volumes:
       - ./.agents/test/bob/a2-gemini/agent.md:/home/agent/agent.md:ro
       - ./.agents/test/bob/.nyx/AGENTS.md:/home/agent/.gemini/AGENTS.md:ro

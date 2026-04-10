@@ -27,7 +27,7 @@ from metrics import (
 )
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 from starlette.routing import Mount, Route
 
 logging.basicConfig(
@@ -113,11 +113,11 @@ async def _sub_app_lifespan(app):
     async def _run() -> None:
         try:
             await app({"type": "lifespan", "asgi": {"version": "3.0"}}, receive, send)
-        except Exception as exc:
+        except Exception:
             if not startup.done():
-                startup.set_exception(exc)
+                startup.set_result(False)
             if not shutdown.done():
-                shutdown.set_exception(exc)
+                shutdown.set_result(None)
         finally:
             if not startup.done():
                 startup.set_result(False)
@@ -207,7 +207,6 @@ async def main():
     )
     a2a_built = a2a_app.build()
 
-    metrics_asgi = None
     if metrics_enabled:
         if a2_up is not None:
             a2_up.labels(agent=AGENT_NAME).set(1.0)
@@ -215,21 +214,24 @@ async def main():
             a2_info.info({"version": AGENT_VERSION, "agent": AGENT_NAME})
         if a2_uptime_seconds is not None:
             a2_uptime_seconds.set_function(lambda: (datetime.now(timezone.utc) - start_time).total_seconds())
-        metrics_asgi = prometheus_client.make_asgi_app()
         logger.info("Prometheus metrics enabled at /metrics")
+
+    async def metrics_handler(request: Request) -> Response:
+        body = prometheus_client.exposition.generate_latest()
+        return Response(content=body, media_type=prometheus_client.exposition.CONTENT_TYPE_LATEST)
 
     _routes = [
         Route("/health", health),
     ]
     if metrics_enabled:
-        _routes.append(Mount("/metrics", app=metrics_asgi))
+        _routes.append(Route("/metrics", metrics_handler))
     _routes.append(Mount("/", app=a2a_built))
 
     @asynccontextmanager
     async def lifespan(_app: Starlette):
         async with AsyncExitStack() as stack:
             for route in _routes:
-                if isinstance(route, Mount):
+                if isinstance(route, Mount) and route.path == "/":
                     await stack.enter_async_context(_sub_app_lifespan(route.app))
             yield
 

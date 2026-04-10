@@ -23,6 +23,7 @@ ENV PATH="/home/agent/.venv/bin:$PATH"
 RUN pip install --no-cache-dir \
     "a2a-sdk[http-server]==0.3.25" \
     croniter==6.2.2 \
+    httpx==0.28.1 \
     prometheus-client==0.24.1 \
     uvicorn==0.43.0 \
     watchfiles==1.1.1 \
