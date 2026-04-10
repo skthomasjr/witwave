@@ -11,6 +11,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       GH_REPO: skthomasjr/autonomous-agent
       GH_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
+      METRICS_ENABLED: "true"
     volumes:
       - ./.agents/active/iris/.nyx:/home/agent/.nyx
       - ./.agents/active/manifest.json:/home/agent/.nyx/manifest.json:ro
@@ -30,6 +31,7 @@ services:
       AGENT_MD: /home/agent/agent.md
       BACKEND_PORT: 8080
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+      METRICS_ENABLED: "true"
     volumes:
       - ./.agents/active/iris/a2-claude/agent.md:/home/agent/agent.md:ro
       - ./.agents/active/iris/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
@@ -54,6 +56,7 @@ services:
       AGENT_MD: /home/agent/agent.md
       BACKEND_PORT: 8080
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+      METRICS_ENABLED: "true"
     volumes:
       - ./.agents/active/iris/a2-codex/agent.md:/home/agent/agent.md:ro
       - ./.agents/active/iris/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
@@ -77,6 +80,7 @@ services:
       AGENT_MD: /home/agent/agent.md
       BACKEND_PORT: 8080
       GEMINI_API_KEY: ${GEMINI_API_KEY}
+      METRICS_ENABLED: "true"
     volumes:
       - ./.agents/active/iris/a2-gemini/agent.md:/home/agent/agent.md:ro
       - ./.agents/active/iris/.nyx/AGENTS.md:/home/agent/.gemini/AGENTS.md:ro
@@ -96,6 +100,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       GH_REPO: skthomasjr/autonomous-agent
       GH_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
+      METRICS_ENABLED: "true"
     volumes:
       - ./.agents/active/nova/.nyx:/home/agent/.nyx
       - ./.agents/active/manifest.json:/home/agent/.nyx/manifest.json:ro
@@ -115,6 +120,7 @@ services:
       AGENT_MD: /home/agent/agent.md
       BACKEND_PORT: 8080
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+      METRICS_ENABLED: "true"
     volumes:
       - ./.agents/active/nova/a2-claude/agent.md:/home/agent/agent.md:ro
       - ./.agents/active/nova/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
@@ -139,6 +145,7 @@ services:
       AGENT_MD: /home/agent/agent.md
       BACKEND_PORT: 8080
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+      METRICS_ENABLED: "true"
     volumes:
       - ./.agents/active/nova/a2-codex/agent.md:/home/agent/agent.md:ro
       - ./.agents/active/nova/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
@@ -162,6 +169,7 @@ services:
       AGENT_MD: /home/agent/agent.md
       BACKEND_PORT: 8080
       GEMINI_API_KEY: ${GEMINI_API_KEY}
+      METRICS_ENABLED: "true"
     volumes:
       - ./.agents/active/nova/a2-gemini/agent.md:/home/agent/agent.md:ro
       - ./.agents/active/nova/.nyx/AGENTS.md:/home/agent/.gemini/AGENTS.md:ro
@@ -181,6 +189,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       GH_REPO: skthomasjr/autonomous-agent
       GH_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
+      METRICS_ENABLED: "true"
     volumes:
       - ./.agents/active/kira/.nyx:/home/agent/.nyx
       - ./.agents/active/manifest.json:/home/agent/.nyx/manifest.json:ro
@@ -200,6 +209,7 @@ services:
       AGENT_MD: /home/agent/agent.md
       BACKEND_PORT: 8080
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+      METRICS_ENABLED: "true"
     volumes:
       - ./.agents/active/kira/a2-claude/agent.md:/home/agent/agent.md:ro
       - ./.agents/active/kira/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
@@ -224,6 +234,7 @@ services:
       AGENT_MD: /home/agent/agent.md
       BACKEND_PORT: 8080
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+      METRICS_ENABLED: "true"
     volumes:
       - ./.agents/active/kira/a2-codex/agent.md:/home/agent/agent.md:ro
       - ./.agents/active/kira/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
@@ -247,6 +258,7 @@ services:
       AGENT_MD: /home/agent/agent.md
       BACKEND_PORT: 8080
       GEMINI_API_KEY: ${GEMINI_API_KEY}
+      METRICS_ENABLED: "true"
     volumes:
       - ./.agents/active/kira/a2-gemini/agent.md:/home/agent/agent.md:ro
       - ./.agents/active/kira/.nyx/AGENTS.md:/home/agent/.gemini/AGENTS.md:ro

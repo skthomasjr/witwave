@@ -8,6 +8,9 @@ backend:
       url: http://bob-a2-codex:8080
       model: gpt-5.1-codex
 
+    - id: gemini
+      url: http://bob-a2-gemini:8080
+
   routing:
     default:
       agent: codex
