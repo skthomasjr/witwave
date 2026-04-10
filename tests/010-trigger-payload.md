@@ -16,7 +16,7 @@ The trigger is asynchronous — it returns 202 immediately and the backend proce
 Wait up to 30 seconds for the backend to complete by polling the conversation log at:
 
 ```
-.agents/test/bob/a2-codex/logs/conversation.log
+.agents/test/bob/logs/conversation.jsonl
 ```
 
 Poll every 2 seconds until the string `PAYLOAD_TEST_7x9q` appears in the log, or until 30 seconds have elapsed.

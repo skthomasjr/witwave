@@ -38,7 +38,7 @@ protocol layer, a shift in deployment model — it should be discussed here firs
 │   │   ├── logs/              # nyx-agent logs
 │   │   ├── a2-claude/         # Claude backend instance
 │   │   │   ├── agent.md       # Backend identity (mounted at startup)
-│   │   │   ├── logs/          # conversation.log, trace.jsonl
+│   │   │   ├── logs/          # conversation.jsonl, trace.jsonl
 │   │   │   └── memory/        # Persistent markdown memory files
 │   │   └── a2-codex/          # Codex backend instance
 │   │       ├── agent.md
@@ -104,7 +104,15 @@ ui/                            # Web UI
 docs/
 ├── architecture.md            # This document
 ├── competitive-landscape.md   # Competitor research and gap analysis
-└── product-vision.md          # Target audience, design principles, deployment roadmap
+├── product-vision.md          # Target audience, design principles, deployment roadmap
+└── prompts/                   # Prompt type reference (one file per type)
+    ├── README.md              # Index and overview
+    ├── heartbeat.md
+    ├── jobs.md
+    ├── tasks.md
+    ├── triggers.md
+    ├── continuations.md
+    └── webhooks.md
 
 .github/
 └── ISSUE_TEMPLATE/
@@ -207,7 +215,7 @@ Both backends share identical structure and API surface; they differ only in the
 `/.well-known/agent.json`, `/` (A2A), `/health`, and `/metrics`.
 
 **`executor.py`** — Implements the A2A `AgentExecutor` interface. Manages session continuity using the session ID
-passed in the A2A request metadata. Writes `conversation.log` and `trace.jsonl` to the mounted logs directory.
+passed in the A2A request metadata. Writes `conversation.jsonl` and `trace.jsonl` to the mounted logs directory.
 
 **`metrics.py`** — Prometheus metric definitions with `a2_*` prefix. Metric names and labels are kept at parity
 across `a2-claude` and `a2-codex`.
@@ -459,11 +467,74 @@ Slack messages, Jira tickets) without cron schedules.
 
 ---
 
+## backend.yaml Reference
+
+`backend.yaml` lives in `.nyx/` and controls which backend handles each concern. It has a top-level `backend:` key containing an `agents:` list and a `routing:` block.
+
+**Minimal single-backend config:**
+
+```yaml
+backend:
+  agents:
+    - id: claude
+      url: http://iris-a2-claude:8080
+
+  routing:
+    default: claude
+```
+
+**Multi-backend config with per-concern routing and model overrides:**
+
+```yaml
+backend:
+  agents:
+    - id: claude
+      url: http://iris-a2-claude:8080
+      model: claude-opus-4-6
+
+    - id: codex
+      url: http://iris-a2-codex:8080
+      model: gpt-5.1-codex
+
+    - id: gemini
+      url: http://iris-a2-gemini:8080
+
+  routing:
+    default:
+      agent: claude
+      model: claude-opus-4-6
+    a2a:
+      agent: claude
+      model: claude-opus-4-6
+    heartbeat:
+      agent: claude
+      model: claude-opus-4-6
+    job:
+      agent: claude
+      model: claude-opus-4-6
+    task:
+      agent: claude
+      model: claude-opus-4-6
+    trigger:
+      agent: claude
+      model: claude-opus-4-6
+    continuation:
+      agent: claude
+      model: claude-opus-4-6
+```
+
+Routing values can be a plain agent ID string (`default: claude`) or an object with `agent:` and optional `model:` fields. Model resolution order: per-message override → routing entry model → per-backend config model.
+
+The `url` for any backend can be overridden at deploy time via an environment variable named `A2A_URL_<ID_UPPERCASED_WITH_UNDERSCORES>` — for example, `A2A_URL_IRIS_A2_CLAUDE`. This lets the same `backend.yaml` work across Docker Compose, Kubernetes, and local sidecar deployments without modification.
+
+---
+
 ## Relationship to Other Docs
 
 | Document                                             | Purpose                                                |
 | ---------------------------------------------------- | ------------------------------------------------------ |
 | [product-vision.md](product-vision.md)               | Target audience, design principles, deployment roadmap |
 | [competitive-landscape.md](competitive-landscape.md) | Competitor research, gap analysis, research themes     |
+| [prompts/README.md](prompts/README.md)               | Prompt type reference (heartbeat, jobs, tasks, etc.)   |
 | `README.md`                                          | Quickstart and technical reference                     |
 | `AGENTS.md`                                          | Canonical repo instructions for all coding agents      |

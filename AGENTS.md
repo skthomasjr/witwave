@@ -74,7 +74,7 @@ Each backend:
 - Exposes `/` as the A2A JSON-RPC task endpoint
 - Exposes `/health` for health checks
 - Exposes `/metrics` for Prometheus scraping (when `METRICS_ENABLED` is set)
-- Manages its own session state, conversation log (`conversation.log`), and memory (`/memory/`)
+- Manages its own session state, conversation log (`conversation.jsonl`), and memory (`/memory/`)
 - Receives identity via a mounted `agent.md` file (equivalent to `CLAUDE.md`)
 
 Each named agent has its own dedicated backend instances. For example, iris has `iris-a2-claude`, `iris-a2-codex`, and `iris-a2-gemini`.
@@ -87,26 +87,42 @@ Each named agent has its own dedicated backend instances. For example, iris has 
 backend:
   agents:
     - id: iris-a2-claude
-      type: a2a
       url: http://iris-a2-claude:8080
+      model: claude-opus-4-6
 
     - id: iris-a2-codex
-      type: a2a
       url: http://iris-a2-codex:8080
+      model: gpt-5.1-codex
 
     - id: iris-a2-gemini
-      type: a2a
       url: http://iris-a2-gemini:8080
 
   routing:
-    default: iris-a2-claude    # fallback backend when no per-concern override matches
-    a2a: iris-a2-claude        # handles incoming A2A requests
-    heartbeat: iris-a2-claude  # handles heartbeat-triggered work
-    job: iris-a2-claude        # handles job execution
-    task: iris-a2-claude       # handles task execution
-    trigger: iris-a2-claude    # handles inbound HTTP trigger requests
-    continuation: iris-a2-claude  # handles continuation-fired prompts
+    default:
+      agent: iris-a2-claude
+      model: claude-opus-4-6
+    a2a:
+      agent: iris-a2-claude
+      model: claude-opus-4-6
+    heartbeat:
+      agent: iris-a2-claude
+      model: claude-opus-4-6
+    job:
+      agent: iris-a2-claude
+      model: claude-opus-4-6
+    task:
+      agent: iris-a2-claude
+      model: claude-opus-4-6
+    trigger:
+      agent: iris-a2-claude
+      model: claude-opus-4-6
+    continuation:
+      agent: iris-a2-claude
+      model: claude-opus-4-6
 ```
+
+Routing values can be a plain agent ID string or an object with `agent:` and optional `model:` fields.
+Model resolution order: per-message override → routing entry model → per-backend config model.
 
 The `url` field can be overridden at deploy time via the environment variable
 `A2A_URL_<ID_UPPERCASED_WITH_UNDERSCORES>` (e.g. `A2A_URL_IRIS_A2_CLAUDE`). This enables the same config file to
@@ -126,7 +142,8 @@ Agent identity and behavior are file-based — nothing is baked into images.
 │   ├── jobs/                # Scheduled job definitions (*.md with cron frontmatter)
 │   ├── tasks/               # Scheduled task definitions (*.md with calendar frontmatter)
 │   ├── triggers/            # Inbound HTTP trigger definitions (*.md with endpoint frontmatter)
-│   └── continuations/       # Continuation definitions (*.md with continues-after frontmatter)
+│   ├── continuations/       # Continuation definitions (*.md with continues-after frontmatter)
+│   └── webhooks/            # Outbound webhook subscriptions (*.md with url frontmatter)
 ├── .claude/                 # Claude backend config (mounted into a2-claude)
 │   ├── mcp.json             # MCP server configuration
 │   └── settings.json        # Claude Code settings

@@ -1,4 +1,5 @@
 import asyncio
+import fcntl
 import json
 import logging
 import os
@@ -52,7 +53,7 @@ from metrics import (
 logger = logging.getLogger(__name__)
 
 AGENT_NAME = os.environ.get("AGENT_NAME", "a2-codex")
-CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.log")
+CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
 TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/trace.jsonl")
 AGENT_MD = os.environ.get("AGENT_MD", "/home/agent/agent.md")
 CODEX_SESSION_DB = os.environ.get("CODEX_SESSION_DB", "/home/agent/logs/codex_sessions.db")
@@ -79,44 +80,35 @@ def _load_agent_md() -> str:
         return ""
 
 
-def get_conversation_logger() -> logging.Logger:
-    conv_logger = logging.getLogger("conversation")
-    if not conv_logger.handlers:
-        log_dir = os.path.dirname(CONVERSATION_LOG)
-        if log_dir:
-            os.makedirs(log_dir, exist_ok=True)
-        handler = RotatingFileHandler(CONVERSATION_LOG, maxBytes=MAX_LOG_BYTES, backupCount=MAX_LOG_BACKUP_COUNT)
-        handler.setFormatter(logging.Formatter("%(message)s"))
-        conv_logger.addHandler(handler)
-        conv_logger.setLevel(logging.INFO)
-        conv_logger.propagate = False
-    return conv_logger
+def _append_log(path: str, line: str) -> None:
+    """Append a single line to a log file using fcntl locking for multi-process safety."""
+    log_dir = os.path.dirname(path)
+    if log_dir:
+        os.makedirs(log_dir, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            f.write(line + "\n")
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
 
 
-def get_trace_logger() -> logging.Logger:
-    trace_logger = logging.getLogger("trace")
-    if not trace_logger.handlers:
-        trace_dir = os.path.dirname(TRACE_LOG)
-        if trace_dir:
-            os.makedirs(trace_dir, exist_ok=True)
-        handler = RotatingFileHandler(TRACE_LOG, maxBytes=MAX_LOG_BYTES, backupCount=MAX_LOG_BACKUP_COUNT)
-        handler.setFormatter(logging.Formatter("%(message)s"))
-        trace_logger.addHandler(handler)
-        trace_logger.setLevel(logging.INFO)
-        trace_logger.propagate = False
-    return trace_logger
-
-
-def log_entry(role: str, text: str, session_id: str, suffix: str = "") -> None:
+def log_entry(role: str, text: str, session_id: str, model: str | None = None) -> None:
     try:
-        ts = datetime.now(timezone.utc).isoformat()
-        conv = get_conversation_logger()
-        _formatted = f"[{ts}] [{session_id}] [{role.upper()}]{suffix}\n{text}\n{'-' * 80}"
-        conv.info(_formatted)
+        entry = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "agent": AGENT_NAME,
+            "session_id": session_id,
+            "role": role,
+            "model": model,
+            "text": text,
+        }
+        _line = json.dumps(entry)
+        _append_log(CONVERSATION_LOG, _line)
         if a2_log_entries_total is not None:
             a2_log_entries_total.labels(logger="conversation").inc()
         if a2_log_bytes_total is not None:
-            a2_log_bytes_total.labels(logger="conversation").inc(len(_formatted.encode()))
+            a2_log_bytes_total.labels(logger="conversation").inc(len(_line.encode()))
     except Exception as e:
         if a2_log_write_errors_total is not None:
             a2_log_write_errors_total.inc()
@@ -125,8 +117,7 @@ def log_entry(role: str, text: str, session_id: str, suffix: str = "") -> None:
 
 def log_trace(text: str) -> None:
     try:
-        trace = get_trace_logger()
-        trace.info(text)
+        _append_log(TRACE_LOG, text)
         if a2_log_entries_total is not None:
             a2_log_entries_total.labels(logger="trace").inc()
         if a2_log_bytes_total is not None:
@@ -226,7 +217,7 @@ async def run_query(
 
     full_response = "".join(collected)
     if full_response:
-        log_entry("agent", full_response, session_id)
+        log_entry("agent", full_response, session_id, model=resolved_model)
 
     if a2_sdk_query_duration_seconds is not None:
         a2_sdk_query_duration_seconds.labels(backend=_BACKEND_ID).observe(time.monotonic() - _query_start)
@@ -288,7 +279,7 @@ async def _run_inner(
         a2_session_starts_total.labels(type="new" if is_new else "resumed").inc()
 
     logger.info(f"Session {session_id} ({'new' if is_new else 'existing'}) — prompt: {prompt!r}")
-    log_entry("user", prompt, session_id)
+    log_entry("user", prompt, session_id, model=resolved_model)
 
     if a2_prompt_length_bytes is not None:
         a2_prompt_length_bytes.observe(len(prompt.encode()))

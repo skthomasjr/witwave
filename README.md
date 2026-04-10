@@ -103,7 +103,7 @@ Each agent directory contains:
 
 ```text
 <agent>/
-├── .nyx/              # Runtime config (agent-card.md, backends.yaml, HEARTBEAT.md, jobs/)
+├── .nyx/              # Runtime config (agent-card.md, backend.yaml, HEARTBEAT.md, jobs/)
 ├── .claude/           # Claude Code config (settings.json, mcp.json)
 ├── .codex/            # Codex config (config.toml)
 ├── .gemini/           # Gemini backend config (no extra config required)
@@ -125,28 +125,31 @@ Each agent directory contains:
 
 ## Routing Configuration
 
-Each agent's `backends.yaml` (under `.nyx/`) controls where nyx routes each type of work:
+Each agent's `backend.yaml` (under `.nyx/`) controls where nyx routes each type of work:
 
 ```yaml
-backends:
-  - id: iris-a2-claude
-    type: a2a
-    url: http://iris-a2-claude:8080
+backend:
+  agents:
+    - id: iris-a2-claude
+      url: http://iris-a2-claude:8080
 
-  - id: iris-a2-codex
-    type: a2a
-    url: http://iris-a2-codex:8080
+    - id: iris-a2-codex
+      url: http://iris-a2-codex:8080
 
-  - id: iris-a2-gemini
-    type: a2a
-    url: http://iris-a2-gemini:8080
+    - id: iris-a2-gemini
+      url: http://iris-a2-gemini:8080
 
-routing:
-  default: iris-a2-claude    # fallback backend when no per-concern override matches
-  a2a: iris-a2-claude        # handles incoming A2A requests
-  heartbeat: iris-a2-claude  # handles heartbeat-triggered work
-  job: iris-a2-claude        # handles job execution
+  routing:
+    default: iris-a2-claude    # fallback backend when no per-concern override matches
+    a2a: iris-a2-claude        # handles incoming A2A requests
+    heartbeat: iris-a2-claude  # handles heartbeat-triggered work
+    job: iris-a2-claude        # handles job execution
+    task: iris-a2-claude       # handles task execution
+    trigger: iris-a2-claude    # handles inbound HTTP trigger requests
+    continuation: iris-a2-claude  # handles continuation-fired prompts
 ```
+
+Routing values can be a plain agent ID string or an object with `agent:` and optional `model:` fields. Model resolution order: per-message override → routing entry `model:` → per-backend config `model:`.
 
 ## Adding an Agent
 
@@ -160,7 +163,7 @@ routing:
 
 3. Update `.agents/active/<name>/a2-claude/agent.md` (and `a2-codex/agent.md` and `a2-gemini/agent.md`) with backend identity
 
-4. Update `.agents/active/<name>/.nyx/backends.yaml` with the new agent's backend service names and URLs
+4. Update `.agents/active/<name>/.nyx/backend.yaml` with the new agent's backend service names and URLs
 
 5. Add the agent and its backends to `docker-compose.active.yml` using the next available ports
 
@@ -210,7 +213,7 @@ Each backend agent manages its own memory at `.agents/<env>/<name>/<backend>/mem
 | ---------------------- | -------------------------------- | ----------------------------------------------- |
 | `AGENT_NAME`           | `nyx-agent`                      | Agent display name (e.g. `iris`)                |
 | `AGENT_PORT`           | `8000`                           | HTTP port the nyx agent listens on              |
-| `BACKENDS_CONFIG_PATH` | `/home/agent/.nyx/backends.yaml` | Path to the backends config file                |
+| `BACKEND_CONFIG_PATH`  | `/home/agent/.nyx/backend.yaml`  | Path to the backend routing config file         |
 | `METRICS_ENABLED`      | _(unset)_                        | Set to any non-empty value to expose `/metrics` |
 
 ### Backend (a2-claude / a2-codex / a2-gemini) environment variables
@@ -228,4 +231,34 @@ Each backend agent manages its own memory at `.agents/<env>/<name>/<backend>/mem
 When `METRICS_ENABLED` is set, Prometheus metrics are served at `/metrics` on both nyx-agent and backend containers.
 
 Backend containers (`a2-claude`, `a2-codex`, `a2-gemini`) expose `a2_*`-prefixed metrics. `a2-claude` exposes a superset that includes tool call, context window, and MCP metrics; `a2-codex` and `a2-gemini` expose the common `a2_*` set.
-nyx-agent exposes `agent_*`-prefixed infrastructure metrics (bus, heartbeat, job, sessions, etc.).
+nyx-agent exposes `agent_*`-prefixed infrastructure metrics (bus, heartbeat, job, sessions, webhooks, etc.). The nyx-agent `/metrics` endpoint also aggregates all backend `/metrics` endpoints, injecting a `backend="<id>"` label on each sample so a single scrape target captures the full deployment.
+
+## Outbound Webhooks
+
+Webhooks fire after a prompt completes. Each webhook subscription is a markdown file under `.nyx/webhooks/` with frontmatter fields:
+
+| Field                | Required | Description                                                                    |
+| -------------------- | -------- | ------------------------------------------------------------------------------ |
+| `name`               | yes      | Subscription name (used in metrics labels)                                     |
+| `url`                | yes*     | POST target URL                                                                |
+| `url-env-var`        | yes*     | Environment variable holding the URL (alternative to `url`)                   |
+| `notify-when`        | no       | `always`, `on_success` (default), or `on_error`                               |
+| `notify-on-kind`     | no       | Glob list of prompt kinds to match (e.g. `a2a`, `job:*`, `heartbeat`); default `*` |
+| `notify-on-response` | no       | Glob list of patterns matched against the response text; default `*`           |
+| `secret`             | no       | HMAC secret — adds `X-Hub-Signature-256` header when set                      |
+| `content-type`       | no       | `Content-Type` header; default `application/json`                              |
+
+\* Either `url` or `url-env-var` is required.
+
+The markdown body is the POST payload. Use `{{variable}}` placeholders for substitution:
+
+| Variable             | Value                                          |
+| -------------------- | ---------------------------------------------- |
+| `{{kind}}`           | Prompt kind (`a2a`, `heartbeat`, `job:<name>`) |
+| `{{session_id}}`     | Session/context ID                             |
+| `{{source}}`         | Source name (job name, trigger endpoint, etc.) |
+| `{{model}}`          | Model used for the prompt                      |
+| `{{response_preview}}` | First 2048 chars of the response text        |
+| `{{duration_seconds}}` | Prompt execution time in seconds             |
+
+If the body is empty, a default JSON envelope is sent.

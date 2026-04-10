@@ -82,7 +82,7 @@ The disabled trigger must return 404.
 
 Wait a further 70 seconds (long enough for the disabled job's `* * * * *` schedule to fire if it were enabled).
 
-Check the conversation log at `.agents/test/bob/a2-codex/logs/conversation.log` for any of these strings:
+Check the conversation log at `.agents/test/bob/logs/conversation.jsonl` for any of these strings:
 - `DISABLED_JOB_FIRED`
 - `DISABLED_TRIGGER_FIRED`
 - `DISABLED_CONTINUATION_FIRED`

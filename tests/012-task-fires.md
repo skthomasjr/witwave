@@ -21,7 +21,7 @@ Wait 5 seconds for the file watcher to register the task.
 
 ## Verification
 
-Poll the conversation log at `.agents/test/bob/a2-codex/logs/conversation.log` every 2 seconds for up to 60 seconds until `TASK_SMOKE_OK` appears.
+Poll the conversation log at `.agents/test/bob/logs/conversation.jsonl` every 2 seconds for up to 60 seconds until `TASK_SMOKE_OK` appears.
 
 ## Cleanup
 

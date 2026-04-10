@@ -10,6 +10,8 @@ services:
       GH_REPO: skthomasjr/autonomous-agent
       GH_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
       METRICS_ENABLED: "true"
+      WEBHOOK_TEST_HOST: "bob:8000"
+      WEBHOOK_TEST_TOKEN: "test-token-abc123"
     volumes:
       - ./.agents/test/bob/.nyx:/home/agent/.nyx
       - ./.agents/test/bob/logs:/home/agent/logs
@@ -35,7 +37,7 @@ services:
       - ./.agents/test/bob/.claude/mcp.json:/home/agent/.claude/mcp.json
       - ./.agents/test/bob/.claude/settings.json:/home/agent/.claude/settings.json
       - ./.claude/skills:/home/agent/.claude/skills
-      - ./.agents/test/bob/a2-claude/logs:/home/agent/logs
+      - ./.agents/test/bob/logs:/home/agent/logs
       - ./.agents/test/bob/a2-claude/memory:/home/agent/memory
       - .:/home/agent/workspace
 
@@ -59,7 +61,7 @@ services:
       - ./.agents/test/bob/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
       - ./.agents/test/bob/.codex/config.toml:/home/agent/.codex/config.toml
       - ./.claude/skills:/home/agent/.codex/skills
-      - ./.agents/test/bob/a2-codex/logs:/home/agent/logs
+      - ./.agents/test/bob/logs:/home/agent/logs
       - ./.agents/test/bob/a2-codex/memory:/home/agent/memory
       - .:/home/agent/workspace
 
@@ -81,7 +83,7 @@ services:
     volumes:
       - ./.agents/test/bob/a2-gemini/agent.md:/home/agent/agent.md:ro
       - ./.agents/test/bob/.nyx/AGENTS.md:/home/agent/.gemini/AGENTS.md:ro
-      - ./.agents/test/bob/a2-gemini/logs:/home/agent/logs
+      - ./.agents/test/bob/logs:/home/agent/logs
       - ./.agents/test/bob/a2-gemini/memory:/home/agent/memory
       - .:/home/agent/workspace
 

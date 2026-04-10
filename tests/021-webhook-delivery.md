@@ -25,7 +25,7 @@ Wait for the A2A response to contain `WEBHOOK_FIRE` (poll the response or wait u
 After `WEBHOOK_FIRE` appears in the response, the webhook runner will fire asynchronously. Poll the a2-codex conversation log until `WEBHOOK_CHAIN_OK` appears, or until 30 seconds have elapsed:
 
 ```
-.agents/test/bob/a2-codex/logs/conversation.log
+.agents/test/bob/logs/conversation.jsonl
 ```
 
 ## Pass/Fail Criteria

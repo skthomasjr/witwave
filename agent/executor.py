@@ -1,4 +1,6 @@
 import asyncio
+import fcntl
+import json
 import logging
 import os
 import time
@@ -45,7 +47,7 @@ from metrics import (
 logger = logging.getLogger(__name__)
 
 AGENT_NAME = os.environ.get("AGENT_NAME", "nyx-agent")
-CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.log")
+CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
 TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/trace.jsonl")
 
 MAX_LOG_BYTES = int(os.environ.get("MAX_LOG_BYTES", str(10 * 1024 * 1024)))
@@ -54,44 +56,36 @@ MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "10000"))
 TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
 
 
-def get_conversation_logger() -> logging.Logger:
-    conv_logger = logging.getLogger("conversation")
-    if not conv_logger.handlers:
-        log_dir = os.path.dirname(CONVERSATION_LOG)
-        if log_dir:
-            os.makedirs(log_dir, exist_ok=True)
-        handler = RotatingFileHandler(CONVERSATION_LOG, maxBytes=MAX_LOG_BYTES, backupCount=MAX_LOG_BACKUP_COUNT)
-        handler.setFormatter(logging.Formatter("%(message)s"))
-        conv_logger.addHandler(handler)
-        conv_logger.setLevel(logging.INFO)
-        conv_logger.propagate = False
-    return conv_logger
+def _append_log(path: str, line: str) -> None:
+    """Append a single line to a log file using fcntl locking for multi-process safety."""
+    log_dir = os.path.dirname(path)
+    if log_dir:
+        os.makedirs(log_dir, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            f.write(line + "\n")
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
 
 
-def get_trace_logger() -> logging.Logger:
-    trace_logger = logging.getLogger("trace")
-    if not trace_logger.handlers:
-        trace_dir = os.path.dirname(TRACE_LOG)
-        if trace_dir:
-            os.makedirs(trace_dir, exist_ok=True)
-        handler = RotatingFileHandler(TRACE_LOG, maxBytes=MAX_LOG_BYTES, backupCount=MAX_LOG_BACKUP_COUNT)
-        handler.setFormatter(logging.Formatter("%(message)s"))
-        trace_logger.addHandler(handler)
-        trace_logger.setLevel(logging.INFO)
-        trace_logger.propagate = False
-    return trace_logger
-
-
-def log_entry(role: str, text: str, session_id: str, suffix: str = "") -> None:
+def log_entry(role: str, text: str, session_id: str, model: str | None = None, backend: str | None = None) -> None:
     try:
-        ts = datetime.now(timezone.utc).isoformat()
-        conv = get_conversation_logger()
-        _formatted = f"[{ts}] [{session_id}] [{role.upper()}]{suffix}\n{text}\n{'-' * 80}"
-        conv.info(_formatted)
+        entry = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "agent": AGENT_NAME,
+            "session_id": session_id,
+            "role": role,
+            "model": model,
+            "backend": backend,
+            "text": text,
+        }
+        _line = json.dumps(entry)
+        _append_log(CONVERSATION_LOG, _line)
         if agent_log_entries_total is not None:
             agent_log_entries_total.labels(logger="conversation").inc()
         if agent_log_bytes_total is not None:
-            agent_log_bytes_total.labels(logger="conversation").inc(len(_formatted.encode()))
+            agent_log_bytes_total.labels(logger="conversation").inc(len(_line.encode()))
     except Exception as e:
         if agent_log_write_errors_total is not None:
             agent_log_write_errors_total.inc()
@@ -100,8 +94,7 @@ def log_entry(role: str, text: str, session_id: str, suffix: str = "") -> None:
 
 def log_trace(text: str) -> None:
     try:
-        trace = get_trace_logger()
-        trace.info(text)
+        _append_log(TRACE_LOG, text)
         if agent_log_entries_total is not None:
             agent_log_entries_total.labels(logger="trace").inc()
         if agent_log_bytes_total is not None:
@@ -200,7 +193,7 @@ async def _run_inner(
 
     logger.info(f"Session {session_id} ({'new' if is_new else 'existing'}) backend={resolved_id} — prompt: {prompt!r}")
     if not isinstance(backend, A2ABackend):
-        log_entry("user", prompt, session_id, suffix=f" [backend: {resolved_id}]")
+        log_entry("user", prompt, session_id, model=model, backend=resolved_id)
 
     if agent_prompt_length_bytes is not None:
         agent_prompt_length_bytes.observe(len(prompt.encode()))
@@ -281,6 +274,7 @@ class AgentExecutor(A2AAgentExecutor):
 
     def set_webhook_runner(self, runner: "WebhookRunner") -> None:
         self._webhook_runner = runner
+        runner.set_backends(self._backends, self._default_backend_id)
 
     def _routing_entry_for_kind(self, kind: str) -> RoutingEntry | None:
         """Return the RoutingEntry for the given message kind, or None to use the default."""
@@ -364,6 +358,8 @@ class AgentExecutor(A2AAgentExecutor):
                             self._backends = new_backends
                             self._default_backend_id = new_default_id
                             self._routing = load_routing()
+                            if self._webhook_runner is not None:
+                                self._webhook_runner.set_backends(new_backends, new_default_id)
                             logger.info(f"Backends reloaded: {list(new_backends.keys())} (default: {new_default_id})")
                             # Cancel old MCP watcher tasks and start new ones for the reloaded backends.
                             for t in self._mcp_watcher_tasks:
