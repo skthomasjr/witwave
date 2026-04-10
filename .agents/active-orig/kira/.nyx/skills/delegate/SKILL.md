@@ -55,7 +55,7 @@ clearly.
 To ask nova to summarise the latest entries in a log file:
 
 ```bash
-/delegate nova Summarise the last 20 lines of ~/logs/conversation.log and tell me the most recent topic discussed.
+/delegate nova Summarise the last 20 lines of ~/logs/conversation.jsonl and tell me the most recent topic discussed.
 ```
 
 Nova's reply will be extracted and returned as the result of the delegation.
