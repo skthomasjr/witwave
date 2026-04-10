@@ -44,8 +44,11 @@ from metrics import (
     agent_up,
     agent_uptime_seconds,
 )
+from conversations_proxy import fetch_backend_conversations
 from metrics_proxy import fetch_backend_metrics
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Mount, Route
@@ -328,6 +331,21 @@ async def main():
             media_type=prometheus_client.exposition.CONTENT_TYPE_LATEST,
         )
 
+    async def conversations_handler(request: Request) -> JSONResponse:
+        since = request.query_params.get("since")
+        limit = request.query_params.get("limit")
+        try:
+            limit_n = int(limit) if limit else None
+        except ValueError:
+            return JSONResponse({"error": "invalid limit"}, status_code=400)
+        from backends.config import load_backends_config
+        try:
+            backend_configs = load_backends_config()
+        except Exception:
+            backend_configs = []
+        entries = await fetch_backend_conversations(backend_configs, since=since, limit=limit_n)
+        return JSONResponse(entries)
+
     trigger_runner = TriggerRunner()
 
     async def triggers_discovery(request: Request) -> JSONResponse:
@@ -472,6 +490,7 @@ async def main():
         Route("/health/ready", health_ready),
         Route("/.well-known/agent-triggers.json", triggers_discovery, methods=["GET"]),
         Route("/triggers/{endpoint}", trigger_handler, methods=["POST"]),
+        Route("/conversations", conversations_handler, methods=["GET"]),
     ]
     if metrics_enabled:
         _routes.append(Route("/metrics", metrics_handler, methods=["GET"]))
@@ -496,7 +515,13 @@ async def main():
                     await stack.enter_async_context(_sub_app_lifespan(route.app))
             yield
 
-    full_app = Starlette(routes=_routes, lifespan=lifespan)
+    full_app = Starlette(
+        routes=_routes,
+        lifespan=lifespan,
+        middleware=[
+            Middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET", "POST", "OPTIONS"], allow_headers=["*"]),
+        ],
+    )
 
     logger.info(f"Starting {AGENT_NAME} on {AGENT_HOST}:{AGENT_PORT}")
     config = uvicorn.Config(full_app, host=AGENT_HOST, port=AGENT_PORT)

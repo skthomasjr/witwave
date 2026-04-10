@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import time
@@ -42,6 +43,7 @@ BACKEND_PORT = int(os.environ.get("BACKEND_PORT", "8080"))
 AGENT_URL = os.environ.get("AGENT_URL", f"http://localhost:{BACKEND_PORT}/")
 AGENT_VERSION = os.environ.get("AGENT_VERSION", "0.1.0")
 AGENT_MD = os.environ.get("AGENT_MD", "/home/agent/agent.md")
+CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
 metrics_enabled = bool(os.environ.get("METRICS_ENABLED"))
 WORKER_MAX_RESTARTS = int(os.environ.get("WORKER_MAX_RESTARTS", "5"))
 
@@ -220,8 +222,36 @@ async def main():
         body = prometheus_client.exposition.generate_latest()
         return Response(content=body, media_type=prometheus_client.exposition.CONTENT_TYPE_LATEST)
 
+    async def conversations_handler(request: Request) -> JSONResponse:
+        since = request.query_params.get("since")
+        limit = request.query_params.get("limit")
+        try:
+            limit_n = int(limit) if limit else None
+        except ValueError:
+            return JSONResponse({"error": "invalid limit"}, status_code=400)
+        entries = []
+        try:
+            with open(CONVERSATION_LOG) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if since and entry.get("ts", "") < since:
+                        continue
+                    entries.append(entry)
+        except FileNotFoundError:
+            pass
+        if limit_n is not None:
+            entries = entries[-limit_n:]
+        return JSONResponse(entries)
+
     _routes = [
         Route("/health", health),
+        Route("/conversations", conversations_handler, methods=["GET"]),
     ]
     if metrics_enabled:
         _routes.append(Route("/metrics", metrics_handler))

@@ -4,37 +4,794 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>nyx</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
-    body {
-      margin: 0;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #0d0d0d;
-      color: #e0e0e0;
-      font-family: monospace;
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0d0d0d;
+      --surface:  #161616;
+      --border:   #262626;
+      --muted:    #444;
+      --dim:      #888;
+      --text:     #d4d4d4;
+      --bright:   #f0f0f0;
+      --accent:   #7c6af7;
+      --accent2:  #3ecfcf;
+      --green:    #4ade80;
+      --yellow:   #fbbf24;
+      --red:      #f87171;
+      --radius:   6px;
+      --font:     'SF Mono', 'Fira Code', 'Menlo', monospace;
     }
-    .container {
-      text-align: center;
+
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 13px; }
+
+    /* ── Layout ────────────────────────────────────────────── */
+    #app { display: flex; flex-direction: column; height: 100vh; }
+
+    header {
+      display: flex; align-items: center; gap: 20px;
+      padding: 0 20px; height: 48px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
     }
-    h1 {
-      font-size: 3rem;
-      margin: 0 0 0.5rem;
-      letter-spacing: 0.2em;
-      color: #fff;
+    header h1 { font-size: 1.1rem; letter-spacing: 0.25em; color: var(--bright); }
+    header .sep { flex: 1; }
+    header .status { font-size: 11px; color: var(--dim); }
+    header .status span { color: var(--green); }
+
+    nav { display: flex; gap: 2px; }
+    nav button {
+      background: none; border: none; cursor: pointer;
+      padding: 6px 14px; border-radius: var(--radius);
+      color: var(--dim); font-family: var(--font); font-size: 12px;
+      letter-spacing: 0.05em; transition: color 0.15s, background 0.15s;
     }
-    p {
-      color: #555;
-      font-size: 0.9rem;
-      margin: 0;
+    nav button:hover { color: var(--text); background: var(--surface); }
+    nav button.active { color: var(--bright); background: var(--surface); }
+
+    main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+
+    .view { display: none; flex: 1; overflow: hidden; }
+    .view.active { display: flex; flex-direction: column; }
+
+    /* ── Metrics view ──────────────────────────────────────── */
+    #metrics-view {
+      overflow-y: auto; padding: 20px;
+      gap: 20px;
     }
+
+    .metrics-toolbar {
+      display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+    }
+    .metrics-toolbar label { color: var(--dim); font-size: 11px; }
+    .metrics-toolbar select {
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); font-family: var(--font); font-size: 12px;
+      padding: 4px 8px; border-radius: var(--radius); cursor: pointer;
+    }
+    .metrics-toolbar .refresh-btn {
+      margin-left: auto;
+      background: none; border: 1px solid var(--border); color: var(--dim);
+      font-family: var(--font); font-size: 11px; padding: 4px 10px;
+      border-radius: var(--radius); cursor: pointer;
+    }
+    .metrics-toolbar .refresh-btn:hover { color: var(--text); border-color: var(--muted); }
+    .last-updated { font-size: 11px; color: var(--dim); }
+
+    .stat-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
+    }
+    .stat-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px 16px;
+    }
+    .stat-card .label { font-size: 10px; color: var(--dim); letter-spacing: 0.08em; text-transform: uppercase; }
+    .stat-card .value { font-size: 1.5rem; color: var(--bright); margin-top: 4px; }
+    .stat-card .sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+    .chart-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+      gap: 16px;
+    }
+    .chart-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px;
+    }
+    .chart-card h3 {
+      font-size: 11px; color: var(--dim); letter-spacing: 0.08em;
+      text-transform: uppercase; margin-bottom: 12px;
+    }
+    .chart-card canvas { max-height: 180px; }
+
+    .no-metrics {
+      color: var(--muted); font-size: 12px; padding: 40px 0; text-align: center;
+    }
+
+    /* ── Calendar view ─────────────────────────────────────── */
+    #calendar-view { display: flex; flex-direction: row; overflow: hidden; }
+
+    .cal-left {
+      width: 320px; flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .cal-right {
+      flex: 1; display: flex; flex-direction: column; overflow: hidden;
+    }
+
+    .cal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .cal-header h2 { font-size: 12px; color: var(--bright); letter-spacing: 0.05em; }
+    .cal-header button {
+      background: none; border: none; color: var(--dim); cursor: pointer;
+      font-size: 14px; padding: 2px 6px; border-radius: 4px;
+    }
+    .cal-header button:hover { color: var(--text); }
+
+    .cal-grid {
+      display: grid; grid-template-columns: repeat(7, 1fr);
+      gap: 2px; padding: 12px; flex-shrink: 0;
+    }
+    .cal-day-label { text-align: center; font-size: 10px; color: var(--muted); padding-bottom: 4px; }
+    .cal-cell {
+      aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+      border-radius: 4px; cursor: pointer; font-size: 11px; color: var(--dim);
+      position: relative; transition: background 0.1s;
+    }
+    .cal-cell:hover { background: var(--border); color: var(--text); }
+    .cal-cell.other-month { color: var(--muted); opacity: 0.4; }
+    .cal-cell.today { color: var(--accent); font-weight: bold; }
+    .cal-cell.has-data::after {
+      content: ''; position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%);
+      width: 4px; height: 4px; border-radius: 50%; background: var(--accent2);
+    }
+    .cal-cell.selected { background: var(--accent); color: #fff; }
+    .cal-cell.selected::after { background: #fff; }
+
+    .session-list {
+      flex: 1; overflow-y: auto; padding: 8px 0;
+    }
+    .session-item {
+      padding: 10px 16px; cursor: pointer; border-left: 2px solid transparent;
+      transition: background 0.1s, border-color 0.1s;
+    }
+    .session-item:hover { background: var(--surface); }
+    .session-item.active { background: var(--surface); border-left-color: var(--accent); }
+    .session-item .s-agent { font-size: 10px; color: var(--accent2); }
+    .session-item .s-time { font-size: 10px; color: var(--dim); float: right; }
+    .session-item .s-preview { font-size: 11px; color: var(--text); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .session-item .s-count { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+    .empty-state {
+      padding: 40px 16px; text-align: center; color: var(--muted); font-size: 12px;
+    }
+
+    .conv-panel {
+      flex: 1; display: flex; flex-direction: column; overflow: hidden;
+    }
+    .conv-header {
+      padding: 12px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .conv-header .session-id { font-size: 10px; color: var(--dim); }
+    .conv-header .session-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    .conv-messages {
+      flex: 1; overflow-y: auto; padding: 16px 20px;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+
+    .msg {
+      display: flex; flex-direction: column; gap: 4px;
+      max-width: 85%;
+    }
+    .msg.user { align-self: flex-end; align-items: flex-end; }
+    .msg.agent { align-self: flex-start; }
+
+    .msg .msg-meta {
+      font-size: 10px; color: var(--muted);
+      display: flex; gap: 8px; align-items: center;
+    }
+    .msg .msg-meta .m-agent { color: var(--accent2); }
+    .msg .msg-meta .m-model { color: var(--dim); }
+
+    .msg .bubble {
+      padding: 10px 14px; border-radius: var(--radius);
+      font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+    }
+    .msg.user .bubble { background: var(--accent); color: #fff; }
+    .msg.agent .bubble { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+
+    .conv-placeholder {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      color: var(--muted); font-size: 12px;
+    }
+
+    /* ── Scrollbar ─────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
   </style>
 </head>
 <body>
-  <div class="container">
+<div id="app">
+  <header>
     <h1>nyx</h1>
-    <p>ui placeholder</p>
-  </div>
+    <nav>
+      <button class="active" data-view="metrics">metrics</button>
+      <button data-view="calendar">conversations</button>
+    </nav>
+    <div class="sep"></div>
+    <div class="status" id="status-text">connecting…</div>
+  </header>
+
+  <main>
+    <!-- ── Metrics View ── -->
+    <div id="metrics-view" class="view active">
+      <div class="metrics-toolbar">
+        <label>agent</label>
+        <select id="agent-select">
+          <option value="">— all —</option>
+        </select>
+        <span class="last-updated" id="last-updated"></span>
+        <button class="refresh-btn" id="refresh-btn">↺ refresh</button>
+      </div>
+
+      <div class="stat-row" id="stat-row"></div>
+
+      <div class="chart-grid" id="chart-grid">
+        <div class="no-metrics" id="no-metrics">Loading metrics…</div>
+      </div>
+    </div>
+
+    <!-- ── Calendar View ── -->
+    <div id="calendar-view" class="view">
+      <div class="cal-left">
+        <div class="cal-header">
+          <button id="cal-prev">‹</button>
+          <h2 id="cal-month-label"></h2>
+          <button id="cal-next">›</button>
+        </div>
+        <div class="cal-grid" id="cal-grid"></div>
+        <div class="session-list" id="session-list">
+          <div class="empty-state">Select a day to view conversations.</div>
+        </div>
+      </div>
+      <div class="cal-right">
+        <div class="conv-panel" id="conv-panel">
+          <div class="conv-placeholder">Select a session to read the conversation.</div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+// ── Config ──────────────────────────────────────────────────────────────────
+// The UI is served by nginx alongside the agent. In the test stack, bob is on
+// port 8099 (same host as the browser). We detect the agent URL from a data
+// attribute or fall back to same-origin on port 8099 in the test stack, or
+// 8000 in active. Override by setting window.NYX_AGENT_URL before this script.
+const AGENT_BASE = (() => {
+  if (window.NYX_AGENT_URL) return window.NYX_AGENT_URL.replace(/\/$/, '');
+  // nginx config can inject a base URL; fall back to same host, port 8099 (test) or 8000
+  const port = window.location.port;
+  const testPort = port === '3001' ? '8099' : '8000';
+  return `${window.location.protocol}//${window.location.hostname}:${testPort}`;
+})();
+
+const METRICS_INTERVAL_MS = 15_000;
+
+// ── Navigation ──────────────────────────────────────────────────────────────
+const views = { metrics: document.getElementById('metrics-view'), calendar: document.getElementById('calendar-view') };
+document.querySelectorAll('nav button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    Object.values(views).forEach(v => v.classList.remove('active'));
+    views[btn.dataset.view].classList.add('active');
+    if (btn.dataset.view === 'calendar' && !calState.loaded) loadConversations();
+  });
+});
+
+// ── Status ───────────────────────────────────────────────────────────────────
+function setStatus(text, ok = true) {
+  const el = document.getElementById('status-text');
+  el.innerHTML = ok ? `<span>${text}</span>` : text;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// METRICS
+// ════════════════════════════════════════════════════════════════════════════
+
+// Prometheus text parser — returns Map<metricName, {help, type, samples: [{labels, value, ts}]}>
+function parsePrometheus(text) {
+  const metrics = new Map();
+  let current = null;
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (line.startsWith('# HELP ')) {
+      const m = line.match(/^# HELP (\S+) (.*)$/);
+      if (m) { current = m[1]; metrics.set(current, { help: m[2], type: '', samples: [] }); }
+    } else if (line.startsWith('# TYPE ')) {
+      const m = line.match(/^# TYPE (\S+) (.*)$/);
+      if (m && metrics.has(m[1])) metrics.get(m[1]).type = m[2];
+    } else if (!line.startsWith('#')) {
+      const m = line.match(/^([a-zA-Z_:][a-zA-Z0-9_:]*)(\{[^}]*\})?\s+([^\s]+)(?:\s+(\S+))?/);
+      if (!m) continue;
+      const name = m[1], labelStr = m[2] || '', value = parseFloat(m[3]);
+      if (isNaN(value)) continue;
+      const labels = {};
+      for (const lm of labelStr.matchAll(/(\w+)="([^"]*)"/g)) labels[lm[1]] = lm[2];
+      // find metric family (strip _total/_sum/_count/_bucket/_created suffixes for lookup)
+      let family = name;
+      for (const suf of ['_total', '_sum', '_count', '_bucket', '_created']) {
+        if (name.endsWith(suf)) { family = name.slice(0, -suf.length); break; }
+      }
+      if (!metrics.has(family)) metrics.set(family, { help: '', type: '', samples: [] });
+      metrics.get(family).samples.push({ name, labels, value });
+    }
+  }
+  return metrics;
+}
+
+// Collect distinct agents from all samples
+function agentsFromMetrics(metrics) {
+  const agents = new Set();
+  for (const { samples } of metrics.values()) {
+    for (const s of samples) if (s.labels.agent) agents.add(s.labels.agent);
+  }
+  return [...agents].sort();
+}
+
+// Filter samples by selected agent
+function filterSamples(samples, agent) {
+  if (!agent) return samples;
+  return samples.filter(s => !s.labels.agent || s.labels.agent === agent);
+}
+
+// Sum counter values across label sets
+function sumCounter(samples, agent) {
+  return filterSamples(samples, agent)
+    .filter(s => s.name.endsWith('_total') || !s.name.includes('_'))
+    .reduce((acc, s) => acc + s.value, 0);
+}
+
+// Get gauge value (last sample, optionally filtered)
+function gaugeValue(samples, agent) {
+  const filtered = filterSamples(samples, agent);
+  return filtered.length ? filtered[filtered.length - 1].value : null;
+}
+
+// Get histogram _sum and _count for average
+function histAvg(samples, agent) {
+  const fs = filterSamples(samples, agent);
+  const sum = fs.filter(s => s.name.endsWith('_sum')).reduce((a, s) => a + s.value, 0);
+  const count = fs.filter(s => s.name.endsWith('_count')).reduce((a, s) => a + s.value, 0);
+  return count > 0 ? sum / count : null;
+}
+
+// Chart.js defaults
+Chart.defaults.color = '#888';
+Chart.defaults.borderColor = '#262626';
+Chart.defaults.font.family = "'SF Mono', 'Fira Code', monospace";
+Chart.defaults.font.size = 11;
+
+const PALETTE = ['#7c6af7', '#3ecfcf', '#4ade80', '#fbbf24', '#f87171', '#fb923c', '#a78bfa', '#34d399'];
+
+const metricsState = { charts: {}, raw: null, agentFilter: '' };
+
+function fmt(n) {
+  if (n === null || n === undefined || isNaN(n)) return '—';
+  if (Math.abs(n) >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (Math.abs(n) >= 1e3) return (n / 1e3).toFixed(1) + 'k';
+  if (Math.abs(n) >= 10) return n.toFixed(1);
+  return n.toFixed(3);
+}
+function fmtMs(n) { return n === null ? '—' : (n * 1000).toFixed(0) + ' ms'; }
+function fmtPct(n) { return n === null ? '—' : n.toFixed(1) + '%'; }
+
+function renderMetrics(metrics, agentFilter) {
+  const agent = agentFilter;
+
+  // ── Stat cards ──────────────────────────────────────────────────────────
+  const statsConfig = [
+    { label: 'Tasks', key: 'a2_tasks', fmt: n => fmt(sumCounter(n?.samples || [], agent)) },
+    { label: 'Active Sessions', key: 'a2_active_sessions', fmt: n => fmt(gaugeValue(n?.samples || [], agent)) },
+    { label: 'Avg Query', key: 'a2_sdk_query_duration_seconds', fmt: n => fmtMs(histAvg(n?.samples || [], agent)) },
+    { label: 'Tool Calls', key: 'a2_sdk_tool_calls', fmt: n => fmt(sumCounter(n?.samples || [], agent)) },
+    { label: 'Running Tasks', key: 'a2_running_tasks', fmt: n => fmt(gaugeValue(n?.samples || [], agent)) },
+    { label: 'Errors', key: 'a2_sdk_query_error_duration_seconds', fmt: n => fmt(n?.samples?.filter(s => s.name.endsWith('_count')).reduce((a, s) => a + s.value, 0) || 0) },
+  ];
+
+  const statRow = document.getElementById('stat-row');
+  statRow.innerHTML = statsConfig.map(c => {
+    const m = metrics.get(c.key);
+    const val = c.fmt(m);
+    return `<div class="stat-card"><div class="label">${c.label}</div><div class="value">${val}</div></div>`;
+  }).join('');
+
+  // ── Charts ───────────────────────────────────────────────────────────────
+  const noMetrics = document.getElementById('no-metrics');
+  noMetrics.style.display = 'none';
+
+  // Chart specs: [id, title, metricKey, valueExtractor, yLabel]
+  const chartSpecs = [
+    ['tasks-by-status', 'Tasks by Status', 'a2_tasks', (m, ag) => {
+      const statuses = {};
+      for (const s of filterSamples(m?.samples || [], ag)) {
+        if (s.name.endsWith('_total') && s.labels.status) {
+          statuses[s.labels.status] = (statuses[s.labels.status] || 0) + s.value;
+        }
+      }
+      return { labels: Object.keys(statuses), data: Object.values(statuses), type: 'bar' };
+    }],
+    ['query-duration', 'Avg Query Duration (ms)', 'a2_sdk_query_duration_seconds', (m, ag) => {
+      const byAgent = {};
+      for (const s of (m?.samples || [])) {
+        if (!s.labels.agent) continue;
+        if (ag && s.labels.agent !== ag) continue;
+        byAgent[s.labels.agent] = byAgent[s.labels.agent] || { sum: 0, count: 0 };
+        if (s.name.endsWith('_sum')) byAgent[s.labels.agent].sum += s.value;
+        if (s.name.endsWith('_count')) byAgent[s.labels.agent].count += s.value;
+      }
+      const labels = Object.keys(byAgent);
+      const data = labels.map(a => byAgent[a].count > 0 ? (byAgent[a].sum / byAgent[a].count) * 1000 : 0);
+      return { labels, data, type: 'bar', suffix: ' ms' };
+    }],
+    ['active-sessions', 'Active Sessions', 'a2_active_sessions', (m, ag) => {
+      const byAgent = {};
+      for (const s of filterSamples(m?.samples || [], ag)) {
+        const a = s.labels.agent || 'unknown';
+        byAgent[a] = s.value;
+      }
+      const labels = Object.keys(byAgent);
+      return { labels, data: labels.map(a => byAgent[a]), type: 'doughnut' };
+    }],
+    ['tokens-per-query', 'Avg Tokens / Query', 'a2_sdk_tokens_per_query', (m, ag) => {
+      const byModel = {};
+      for (const s of filterSamples(m?.samples || [], ag)) {
+        const key = s.labels.model || s.labels.agent || 'unknown';
+        byModel[key] = byModel[key] || { sum: 0, count: 0 };
+        if (s.name.endsWith('_sum')) byModel[key].sum += s.value;
+        if (s.name.endsWith('_count')) byModel[key].count += s.value;
+      }
+      const labels = Object.keys(byModel);
+      const data = labels.map(k => byModel[k].count > 0 ? byModel[k].sum / byModel[k].count : 0);
+      return { labels, data, type: 'bar' };
+    }],
+    ['tool-calls', 'Tool Calls by Tool', 'a2_sdk_tool_calls', (m, ag) => {
+      const byTool = {};
+      for (const s of filterSamples(m?.samples || [], ag)) {
+        if (s.name.endsWith('_total') && s.labels.tool) {
+          byTool[s.labels.tool] = (byTool[s.labels.tool] || 0) + s.value;
+        }
+      }
+      const sorted = Object.entries(byTool).sort((a, b) => b[1] - a[1]).slice(0, 10);
+      return { labels: sorted.map(e => e[0]), data: sorted.map(e => e[1]), type: 'bar' };
+    }],
+    ['context-usage', 'Context Usage %', 'a2_context_usage_percent', (m, ag) => {
+      const byAgent = {};
+      for (const s of filterSamples(m?.samples || [], ag)) {
+        const a = s.labels.agent || 'unknown';
+        byAgent[a] = byAgent[a] || { sum: 0, count: 0 };
+        if (s.name.endsWith('_sum')) byAgent[a].sum += s.value;
+        if (s.name.endsWith('_count')) byAgent[a].count += s.value;
+      }
+      const labels = Object.keys(byAgent);
+      const data = labels.map(a => byAgent[a].count > 0 ? byAgent[a].sum / byAgent[a].count : 0);
+      return { labels, data, type: 'bar', suffix: '%' };
+    }],
+    ['uptime', 'Uptime (s)', 'a2_uptime_seconds', (m, ag) => {
+      const byAgent = {};
+      for (const s of filterSamples(m?.samples || [], ag)) {
+        const a = s.labels.agent || 'unknown';
+        byAgent[a] = s.value;
+      }
+      const labels = Object.keys(byAgent);
+      return { labels, data: labels.map(a => byAgent[a]), type: 'bar', suffix: ' s' };
+    }],
+    ['log-bytes', 'Log Bytes Written', 'a2_log_bytes', (m, ag) => {
+      const byAgent = {};
+      for (const s of filterSamples(m?.samples || [], ag)) {
+        if (s.name.endsWith('_total')) {
+          const a = s.labels.agent || 'unknown';
+          byAgent[a] = (byAgent[a] || 0) + s.value;
+        }
+      }
+      const labels = Object.keys(byAgent);
+      return { labels, data: labels.map(a => byAgent[a]), type: 'bar' };
+    }],
+  ];
+
+  const grid = document.getElementById('chart-grid');
+  // Ensure cards exist
+  for (const [id, title] of chartSpecs) {
+    if (!document.getElementById('card-' + id)) {
+      const card = document.createElement('div');
+      card.className = 'chart-card';
+      card.id = 'card-' + id;
+      card.innerHTML = `<h3>${title}</h3><canvas id="chart-${id}"></canvas>`;
+      grid.appendChild(card);
+    }
+  }
+
+  for (const [id, , metricKey, extractor] of chartSpecs) {
+    const m = metrics.get(metricKey);
+    const { labels, data, type } = extractor(m, agent);
+    if (!labels.length) { document.getElementById('card-' + id).style.display = 'none'; continue; }
+    document.getElementById('card-' + id).style.display = '';
+
+    const ctx = document.getElementById('chart-' + id).getContext('2d');
+    if (metricsState.charts[id]) {
+      const ch = metricsState.charts[id];
+      ch.data.labels = labels;
+      ch.data.datasets[0].data = data;
+      ch.update('none');
+    } else {
+      const colors = labels.map((_, i) => PALETTE[i % PALETTE.length]);
+      metricsState.charts[id] = new Chart(ctx, {
+        type,
+        data: {
+          labels,
+          datasets: [{
+            data,
+            backgroundColor: type === 'doughnut' ? colors : colors.map(c => c + 'cc'),
+            borderColor: type === 'doughnut' ? colors : colors,
+            borderWidth: type === 'doughnut' ? 0 : 1,
+            borderRadius: type === 'bar' ? 3 : 0,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          plugins: { legend: { display: type === 'doughnut', position: 'right', labels: { boxWidth: 10, padding: 10 } } },
+          scales: type !== 'doughnut' ? {
+            x: { grid: { color: '#1e1e1e' }, ticks: { maxRotation: 35 } },
+            y: { grid: { color: '#1e1e1e' }, beginAtZero: true }
+          } : undefined,
+        }
+      });
+    }
+  }
+}
+
+async function loadMetrics() {
+  try {
+    const resp = await fetch(`${AGENT_BASE}/metrics`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const text = await resp.text();
+    metricsState.raw = parsePrometheus(text);
+
+    // Populate agent filter
+    const agents = agentsFromMetrics(metricsState.raw);
+    const sel = document.getElementById('agent-select');
+    const current = sel.value;
+    sel.innerHTML = '<option value="">— all —</option>' +
+      agents.map(a => `<option value="${a}"${a === current ? ' selected' : ''}>${a}</option>`).join('');
+
+    renderMetrics(metricsState.raw, sel.value);
+    document.getElementById('last-updated').textContent = 'updated ' + new Date().toLocaleTimeString();
+    setStatus('connected');
+  } catch (e) {
+    setStatus('metrics unavailable', false);
+    document.getElementById('no-metrics').style.display = 'block';
+    document.getElementById('no-metrics').textContent = 'Could not reach ' + AGENT_BASE + '/metrics';
+  }
+}
+
+document.getElementById('agent-select').addEventListener('change', e => {
+  metricsState.agentFilter = e.target.value;
+  if (metricsState.raw) renderMetrics(metricsState.raw, e.target.value);
+});
+document.getElementById('refresh-btn').addEventListener('click', loadMetrics);
+
+// Auto-refresh metrics every 15s
+loadMetrics();
+setInterval(loadMetrics, METRICS_INTERVAL_MS);
+
+// ════════════════════════════════════════════════════════════════════════════
+// CALENDAR / CONVERSATIONS
+// ════════════════════════════════════════════════════════════════════════════
+
+const calState = {
+  loaded: false,
+  allEntries: [],   // raw JSONL entries sorted by ts
+  sessions: {},     // sessionId → [entries]
+  dayMap: {},       // "YYYY-MM-DD" → [sessionId, …]
+  year: new Date().getFullYear(),
+  month: new Date().getMonth(),
+  selectedDay: null,
+  selectedSession: null,
+};
+
+async function loadConversations() {
+  calState.loaded = true;
+  try {
+    const resp = await fetch(`${AGENT_BASE}/conversations`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const entries = await resp.json();
+    processConversations(entries);
+  } catch (e) {
+    document.getElementById('session-list').innerHTML =
+      `<div class="empty-state">Could not load conversations.<br>${e.message}</div>`;
+  }
+}
+
+function processConversations(entries) {
+  calState.allEntries = entries;
+  calState.sessions = {};
+  calState.dayMap = {};
+
+  for (const e of entries) {
+    const sid = e.session_id || 'unknown';
+    if (!calState.sessions[sid]) calState.sessions[sid] = [];
+    calState.sessions[sid].push(e);
+
+    const day = e.ts ? e.ts.slice(0, 10) : null;
+    if (day) {
+      if (!calState.dayMap[day]) calState.dayMap[day] = new Set();
+      calState.dayMap[day].add(sid);
+    }
+  }
+
+  renderCalendar();
+}
+
+const DAY_NAMES = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function renderCalendar() {
+  const { year, month, selectedDay, dayMap } = calState;
+  const label = document.getElementById('cal-month-label');
+  label.textContent = `${MONTH_NAMES[month]} ${year}`;
+
+  const grid = document.getElementById('cal-grid');
+  grid.innerHTML = DAY_NAMES.map(d => `<div class="cal-day-label">${d}</div>`).join('');
+
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+  // Pad start
+  for (let i = 0; i < firstDay; i++) {
+    const prevMonthDays = new Date(year, month, 0).getDate();
+    const day = prevMonthDays - firstDay + i + 1;
+    grid.innerHTML += `<div class="cal-cell other-month">${day}</div>`;
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dayStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const hasData = dayMap[dayStr]?.size > 0;
+    const isToday = dayStr === todayStr;
+    const isSelected = dayStr === selectedDay;
+    const cls = ['cal-cell', hasData && 'has-data', isToday && 'today', isSelected && 'selected'].filter(Boolean).join(' ');
+    grid.innerHTML += `<div class="${cls}" data-day="${dayStr}">${d}</div>`;
+  }
+
+  grid.querySelectorAll('.cal-cell[data-day]').forEach(el => {
+    el.addEventListener('click', () => selectDay(el.dataset.day));
+  });
+}
+
+function selectDay(day) {
+  calState.selectedDay = day;
+  calState.selectedSession = null;
+  renderCalendar();
+  renderSessionList(day);
+  document.getElementById('conv-panel').innerHTML = '<div class="conv-placeholder">Select a session to read the conversation.</div>';
+}
+
+function renderSessionList(day) {
+  const list = document.getElementById('session-list');
+  const sessionIds = calState.dayMap[day] ? [...calState.dayMap[day]] : [];
+  if (!sessionIds.length) {
+    list.innerHTML = '<div class="empty-state">No conversations on this day.</div>';
+    return;
+  }
+
+  // Sort sessions by first message time
+  sessionIds.sort((a, b) => {
+    const ta = calState.sessions[a]?.[0]?.ts || '';
+    const tb = calState.sessions[b]?.[0]?.ts || '';
+    return ta.localeCompare(tb);
+  });
+
+  list.innerHTML = sessionIds.map(sid => {
+    const msgs = calState.sessions[sid] || [];
+    const first = msgs[0];
+    const agent = first?.agent || '?';
+    const time = first?.ts ? new Date(first.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    const preview = msgs.find(m => m.role === 'user')?.text?.slice(0, 80) || '(no user message)';
+    const shortId = sid.slice(0, 8);
+    return `<div class="session-item" data-sid="${sid}">
+      <span class="s-agent">${agent}</span><span class="s-time">${time}</span>
+      <div class="s-preview">${escHtml(preview)}</div>
+      <div class="s-count">${msgs.length} messages · ${shortId}</div>
+    </div>`;
+  }).join('');
+
+  list.querySelectorAll('.session-item').forEach(el => {
+    el.addEventListener('click', () => selectSession(el.dataset.sid));
+  });
+}
+
+function selectSession(sid) {
+  calState.selectedSession = sid;
+  document.querySelectorAll('.session-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.sid === sid);
+  });
+  renderConversation(sid);
+}
+
+function renderConversation(sid) {
+  const msgs = calState.sessions[sid] || [];
+  const panel = document.getElementById('conv-panel');
+  const first = msgs[0];
+  const agent = first?.agent || sid;
+  const timeRange = msgs.length > 1
+    ? `${fmtTime(msgs[0].ts)} – ${fmtTime(msgs[msgs.length-1].ts)}`
+    : fmtTime(msgs[0]?.ts);
+
+  panel.innerHTML = `
+    <div class="conv-header">
+      <div class="session-id">session · ${sid}</div>
+      <div class="session-meta">${agent} · ${timeRange} · ${msgs.length} messages</div>
+    </div>
+    <div class="conv-messages" id="conv-messages">
+      ${msgs.map(m => renderMessage(m)).join('')}
+    </div>`;
+}
+
+function renderMessage(m) {
+  const role = m.role === 'user' ? 'user' : 'agent';
+  const time = fmtTime(m.ts);
+  const model = m.model ? `<span class="m-model">${escHtml(m.model)}</span>` : '';
+  const agentSpan = `<span class="m-agent">${escHtml(m.agent || '')}</span>`;
+  return `<div class="msg ${role}">
+    <div class="msg-meta">${role === 'agent' ? agentSpan : ''} ${model} <span>${time}</span></div>
+    <div class="bubble">${escHtml(m.text || '')}</div>
+  </div>`;
+}
+
+function fmtTime(ts) {
+  if (!ts) return '';
+  try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
+  catch { return ts; }
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+document.getElementById('cal-prev').addEventListener('click', () => {
+  calState.month--;
+  if (calState.month < 0) { calState.month = 11; calState.year--; }
+  calState.selectedDay = null;
+  renderCalendar();
+  document.getElementById('session-list').innerHTML = '<div class="empty-state">Select a day to view conversations.</div>';
+  document.getElementById('conv-panel').innerHTML = '<div class="conv-placeholder">Select a session to read the conversation.</div>';
+});
+document.getElementById('cal-next').addEventListener('click', () => {
+  calState.month++;
+  if (calState.month > 11) { calState.month = 0; calState.year++; }
+  calState.selectedDay = null;
+  renderCalendar();
+  document.getElementById('session-list').innerHTML = '<div class="empty-state">Select a day to view conversations.</div>';
+  document.getElementById('conv-panel').innerHTML = '<div class="conv-placeholder">Select a session to read the conversation.</div>';
+});
+
+// Initial calendar render (no data yet — shows skeleton)
+renderCalendar();
+</script>
 </body>
 </html>
