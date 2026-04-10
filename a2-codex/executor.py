@@ -53,6 +53,8 @@ from metrics import (
 logger = logging.getLogger(__name__)
 
 AGENT_NAME = os.environ.get("AGENT_NAME", "a2-codex")
+AGENT_OWNER = os.environ.get("AGENT_OWNER", AGENT_NAME)
+AGENT_ID = os.environ.get("AGENT_ID", "codex")
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
 TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/trace.jsonl")
 AGENT_MD = os.environ.get("AGENT_MD", "/home/agent/agent.md")
@@ -70,6 +72,7 @@ CODEX_MODEL = os.environ.get("CODEX_MODEL") or "gpt-5.1-codex"
 OPENAI_API_KEY: str | None = os.environ.get("OPENAI_API_KEY") or None
 
 _BACKEND_ID = "codex"
+_LABELS = {"agent": AGENT_OWNER, "agent_id": AGENT_ID, "backend": _BACKEND_ID}
 
 
 def _load_agent_md() -> str:
@@ -106,12 +109,12 @@ def log_entry(role: str, text: str, session_id: str, model: str | None = None) -
         _line = json.dumps(entry)
         _append_log(CONVERSATION_LOG, _line)
         if a2_log_entries_total is not None:
-            a2_log_entries_total.labels(logger="conversation").inc()
+            a2_log_entries_total.labels(**_LABELS, logger="conversation").inc()
         if a2_log_bytes_total is not None:
-            a2_log_bytes_total.labels(logger="conversation").inc(len(_line.encode()))
+            a2_log_bytes_total.labels(**_LABELS, logger="conversation").inc(len(_line.encode()))
     except Exception as e:
         if a2_log_write_errors_total is not None:
-            a2_log_write_errors_total.inc()
+            a2_log_write_errors_total.labels(**_LABELS).inc()
         logger.error(f"log_entry error: {e}")
 
 
@@ -119,12 +122,12 @@ def log_trace(text: str) -> None:
     try:
         _append_log(TRACE_LOG, text)
         if a2_log_entries_total is not None:
-            a2_log_entries_total.labels(logger="trace").inc()
+            a2_log_entries_total.labels(**_LABELS, logger="trace").inc()
         if a2_log_bytes_total is not None:
-            a2_log_bytes_total.labels(logger="trace").inc(len(text.encode()))
+            a2_log_bytes_total.labels(**_LABELS, logger="trace").inc(len(text.encode()))
     except Exception as e:
         if a2_log_write_errors_total is not None:
-            a2_log_write_errors_total.inc()
+            a2_log_write_errors_total.labels(**_LABELS).inc()
         logger.error(f"log_trace error: {e}")
 
 
@@ -136,14 +139,14 @@ def _track_session(sessions: OrderedDict[str, float], session_id: str) -> None:
     if len(sessions) >= MAX_SESSIONS:
         _evicted_id, last_used_at = sessions.popitem(last=False)
         if a2_session_evictions_total is not None:
-            a2_session_evictions_total.inc()
+            a2_session_evictions_total.labels(**_LABELS).inc()
         if a2_session_age_seconds is not None:
-            a2_session_age_seconds.observe(time.monotonic() - last_used_at)
+            a2_session_age_seconds.labels(**_LABELS).observe(time.monotonic() - last_used_at)
     sessions[session_id] = time.monotonic()
     if a2_active_sessions is not None:
-        a2_active_sessions.set(len(sessions))
+        a2_active_sessions.labels(**_LABELS).set(len(sessions))
     if a2_lru_cache_utilization_percent is not None:
-        a2_lru_cache_utilization_percent.set(len(sessions) / MAX_SESSIONS * 100)
+        a2_lru_cache_utilization_percent.labels(**_LABELS).set(len(sessions) / MAX_SESSIONS * 100)
 
 
 async def run_query(
@@ -188,7 +191,7 @@ async def run_query(
                     if _first_chunk_at is None:
                         _first_chunk_at = time.monotonic()
                         if a2_sdk_time_to_first_message_seconds is not None:
-                            a2_sdk_time_to_first_message_seconds.labels(backend=_BACKEND_ID).observe(
+                            a2_sdk_time_to_first_message_seconds.labels(**_LABELS, model=resolved_model).observe(
                                 _first_chunk_at - _query_start
                             )
                     collected.append(delta.text)
@@ -196,17 +199,17 @@ async def run_query(
                 _turn_count += 1
     except Exception:
         if a2_sdk_query_error_duration_seconds is not None:
-            a2_sdk_query_error_duration_seconds.labels(backend=_BACKEND_ID).observe(
+            a2_sdk_query_error_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
                 time.monotonic() - _query_start
             )
         if a2_sdk_session_duration_seconds is not None:
-            a2_sdk_session_duration_seconds.labels(backend=_BACKEND_ID).observe(
+            a2_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
                 time.monotonic() - _session_start
             )
         raise
 
     if a2_sdk_session_duration_seconds is not None:
-        a2_sdk_session_duration_seconds.labels(backend=_BACKEND_ID).observe(
+        a2_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
             time.monotonic() - _session_start
         )
 
@@ -220,13 +223,13 @@ async def run_query(
         log_entry("agent", full_response, session_id, model=resolved_model)
 
     if a2_sdk_query_duration_seconds is not None:
-        a2_sdk_query_duration_seconds.labels(backend=_BACKEND_ID).observe(time.monotonic() - _query_start)
+        a2_sdk_query_duration_seconds.labels(**_LABELS, model=resolved_model).observe(time.monotonic() - _query_start)
     if a2_sdk_messages_per_query is not None:
-        a2_sdk_messages_per_query.labels(backend=_BACKEND_ID).observe(_message_count)
+        a2_sdk_messages_per_query.labels(**_LABELS, model=resolved_model).observe(_message_count)
     if a2_sdk_turns_per_query is not None:
-        a2_sdk_turns_per_query.labels(backend=_BACKEND_ID).observe(_turn_count)
+        a2_sdk_turns_per_query.labels(**_LABELS, model=resolved_model).observe(_turn_count)
     if a2_text_blocks_per_query is not None:
-        a2_text_blocks_per_query.observe(len(collected))
+        a2_text_blocks_per_query.labels(**_LABELS, model=resolved_model).observe(len(collected))
 
     # Log a trace entry for the completed turn
     try:
@@ -253,12 +256,12 @@ async def run(
     model: str | None = None,
 ) -> str:
     if a2_concurrent_queries is not None:
-        a2_concurrent_queries.inc()
+        a2_concurrent_queries.labels(**_LABELS).inc()
     try:
         return await _run_inner(prompt, session_id, sessions, agent_md_content, model)
     finally:
         if a2_concurrent_queries is not None:
-            a2_concurrent_queries.dec()
+            a2_concurrent_queries.labels(**_LABELS).dec()
 
 
 async def _run_inner(
@@ -270,19 +273,19 @@ async def _run_inner(
 ) -> str:
     resolved_model = model or CODEX_MODEL
     if a2_model_requests_total is not None:
-        a2_model_requests_total.labels(model=resolved_model).inc()
+        a2_model_requests_total.labels(**_LABELS, model=resolved_model).inc()
 
     is_new = session_id not in sessions
     if not is_new and a2_session_idle_seconds is not None:
-        a2_session_idle_seconds.observe(time.monotonic() - sessions[session_id])
+        a2_session_idle_seconds.labels(**_LABELS).observe(time.monotonic() - sessions[session_id])
     if a2_session_starts_total is not None:
-        a2_session_starts_total.labels(type="new" if is_new else "resumed").inc()
+        a2_session_starts_total.labels(**_LABELS, type="new" if is_new else "resumed").inc()
 
     logger.info(f"Session {session_id} ({'new' if is_new else 'existing'}) — prompt: {prompt!r}")
     log_entry("user", prompt, session_id, model=resolved_model)
 
     if a2_prompt_length_bytes is not None:
-        a2_prompt_length_bytes.observe(len(prompt.encode()))
+        a2_prompt_length_bytes.labels(**_LABELS).observe(len(prompt.encode()))
 
     _start = time.monotonic()
     try:
@@ -294,36 +297,36 @@ async def _run_inner(
     except asyncio.TimeoutError:
         logger.error(f"Session {session_id!r}: timed out after {TASK_TIMEOUT_SECONDS}s.")
         if a2_tasks_total is not None:
-            a2_tasks_total.labels(status="timeout").inc()
+            a2_tasks_total.labels(**_LABELS, status="timeout").inc()
         if a2_task_error_duration_seconds is not None:
-            a2_task_error_duration_seconds.observe(time.monotonic() - _start)
+            a2_task_error_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _start)
         if a2_task_last_error_timestamp_seconds is not None:
-            a2_task_last_error_timestamp_seconds.set(time.time())
+            a2_task_last_error_timestamp_seconds.labels(**_LABELS).set(time.time())
         raise
     except Exception:
         if a2_tasks_total is not None:
-            a2_tasks_total.labels(status="error").inc()
+            a2_tasks_total.labels(**_LABELS, status="error").inc()
         if a2_task_error_duration_seconds is not None:
-            a2_task_error_duration_seconds.observe(time.monotonic() - _start)
+            a2_task_error_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _start)
         if a2_task_last_error_timestamp_seconds is not None:
-            a2_task_last_error_timestamp_seconds.set(time.time())
+            a2_task_last_error_timestamp_seconds.labels(**_LABELS).set(time.time())
         raise
 
     if a2_tasks_total is not None:
-        a2_tasks_total.labels(status="success").inc()
+        a2_tasks_total.labels(**_LABELS, status="success").inc()
     if a2_task_last_success_timestamp_seconds is not None:
-        a2_task_last_success_timestamp_seconds.set(time.time())
+        a2_task_last_success_timestamp_seconds.labels(**_LABELS).set(time.time())
     if a2_task_duration_seconds is not None:
-        a2_task_duration_seconds.observe(time.monotonic() - _start)
+        a2_task_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _start)
     if a2_task_timeout_headroom_seconds is not None:
-        a2_task_timeout_headroom_seconds.observe(TASK_TIMEOUT_SECONDS - (time.monotonic() - _start))
+        a2_task_timeout_headroom_seconds.labels(**_LABELS).observe(TASK_TIMEOUT_SECONDS - (time.monotonic() - _start))
 
     response = "".join(collected) if collected else ""
     if not response:
         if a2_empty_responses_total is not None:
-            a2_empty_responses_total.inc()
+            a2_empty_responses_total.labels(**_LABELS).inc()
     elif a2_response_length_bytes is not None:
-        a2_response_length_bytes.observe(len(response.encode()))
+        a2_response_length_bytes.labels(**_LABELS).observe(len(response.encode()))
     return response
 
 
@@ -359,7 +362,7 @@ class AgentExecutor(A2AAgentExecutor):
             if current:
                 self._running_tasks[task_id] = current
                 if a2_running_tasks is not None:
-                    a2_running_tasks.inc()
+                    a2_running_tasks.labels(**_LABELS).inc()
         _response = ""
         _success = False
         _error: str | None = None
@@ -375,25 +378,25 @@ class AgentExecutor(A2AAgentExecutor):
             if _response:
                 await event_queue.enqueue_event(new_agent_text_message(_response))
             if a2_a2a_requests_total is not None:
-                a2_a2a_requests_total.labels(status="success").inc()
+                a2_a2a_requests_total.labels(**_LABELS, status="success").inc()
         except Exception as _exc:
             _error = repr(_exc)
             if a2_a2a_requests_total is not None:
-                a2_a2a_requests_total.labels(status="error").inc()
+                a2_a2a_requests_total.labels(**_LABELS, status="error").inc()
             raise
         finally:
             if a2_a2a_request_duration_seconds is not None:
-                a2_a2a_request_duration_seconds.observe(time.monotonic() - _exec_start)
+                a2_a2a_request_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _exec_start)
             if a2_a2a_last_request_timestamp_seconds is not None:
-                a2_a2a_last_request_timestamp_seconds.set(time.time())
+                a2_a2a_last_request_timestamp_seconds.labels(**_LABELS).set(time.time())
             if task_id and task_id in self._running_tasks:
                 self._running_tasks.pop(task_id)
                 if a2_running_tasks is not None:
-                    a2_running_tasks.dec()
+                    a2_running_tasks.labels(**_LABELS).dec()
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         if a2_task_cancellations_total is not None:
-            a2_task_cancellations_total.inc()
+            a2_task_cancellations_total.labels(**_LABELS).inc()
         task_id = context.task_id
         task = self._running_tasks.get(task_id) if task_id else None
         if task:

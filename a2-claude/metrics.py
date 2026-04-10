@@ -95,312 +95,346 @@ a2_watcher_events_total: prometheus_client.Counter | None = None
 a2_file_watcher_restarts_total: prometheus_client.Counter | None = None
 
 if _enabled:
-    a2_up = prometheus_client.Gauge("a2_up", "Backend agent is running", ["agent"])
+    a2_up = prometheus_client.Gauge("a2_up", "Backend agent is running", ["agent", "agent_id", "backend"])
     a2_info = prometheus_client.Info("a2", "Static backend agent metadata.")
     a2_uptime_seconds = prometheus_client.Gauge(
         "a2_uptime_seconds",
         "Backend agent uptime in seconds, computed on each Prometheus scrape.",
+        ["agent", "agent_id", "backend"],
     )
     a2_startup_duration_seconds = prometheus_client.Gauge(
         "a2_startup_duration_seconds",
         "Time from process start to ready state in seconds.",
+        ["agent", "agent_id", "backend"],
     )
     a2_event_loop_lag_seconds = prometheus_client.Histogram(
         "a2_event_loop_lag_seconds",
         "Excess delay beyond expected sleep duration, measuring asyncio event loop congestion.",
+        ["agent", "agent_id", "backend"],
     )
     a2_health_checks_total = prometheus_client.Counter(
         "a2_health_checks_total",
         "Total HTTP health endpoint hits by probe type.",
-        ["probe"],
+        ["agent", "agent_id", "backend", "probe"],
     )
     a2_task_restarts_total = prometheus_client.Counter(
         "a2_task_restarts_total",
         "Total worker restarts by the _guarded() loop after an unexpected exception.",
-        ["task"],
+        ["agent", "agent_id", "backend", "task"],
     )
 
     # A2A
     a2_a2a_requests_total = prometheus_client.Counter(
         "a2_a2a_requests_total",
         "Total A2A HTTP requests by outcome.",
-        ["status"],
+        ["agent", "agent_id", "backend", "status"],
     )
     a2_a2a_request_duration_seconds = prometheus_client.Histogram(
         "a2_a2a_request_duration_seconds",
         "Wall-clock duration of each A2A execute() call.",
+        ["agent", "agent_id", "backend"],
     )
     a2_a2a_last_request_timestamp_seconds = prometheus_client.Gauge(
         "a2_a2a_last_request_timestamp_seconds",
         "Unix epoch of the most recent A2A request received.",
+        ["agent", "agent_id", "backend"],
     )
 
     # Tasks
     a2_tasks_total = prometheus_client.Counter(
         "a2_tasks_total",
         "Total agent tasks processed by outcome.",
-        ["status"],
+        ["agent", "agent_id", "backend", "status"],
     )
     a2_task_duration_seconds = prometheus_client.Histogram(
         "a2_task_duration_seconds",
         "Duration of agent tasks in seconds.",
+        ["agent", "agent_id", "backend"],
     )
     a2_task_error_duration_seconds = prometheus_client.Histogram(
         "a2_task_error_duration_seconds",
         "Wall-clock seconds for tasks that end in error or timeout.",
+        ["agent", "agent_id", "backend"],
     )
     a2_task_last_success_timestamp_seconds = prometheus_client.Gauge(
         "a2_task_last_success_timestamp_seconds",
         "Unix epoch of the most recent successful task execution.",
+        ["agent", "agent_id", "backend"],
     )
     a2_task_last_error_timestamp_seconds = prometheus_client.Gauge(
         "a2_task_last_error_timestamp_seconds",
         "Unix epoch of the most recent failed task execution.",
+        ["agent", "agent_id", "backend"],
     )
     a2_task_timeout_headroom_seconds = prometheus_client.Histogram(
         "a2_task_timeout_headroom_seconds",
         "Remaining timeout budget when a task completes successfully.",
+        ["agent", "agent_id", "backend"],
     )
     a2_task_cancellations_total = prometheus_client.Counter(
         "a2_task_cancellations_total",
         "Total task cancellation requests.",
+        ["agent", "agent_id", "backend"],
     )
     a2_running_tasks = prometheus_client.Gauge(
         "a2_running_tasks",
         "Number of currently in-progress tasks.",
+        ["agent", "agent_id", "backend"],
     )
     a2_concurrent_queries = prometheus_client.Gauge(
         "a2_concurrent_queries",
         "Number of run() calls currently in flight.",
+        ["agent", "agent_id", "backend"],
     )
 
     # Sessions
     a2_active_sessions = prometheus_client.Gauge(
         "a2_active_sessions",
         "Number of active sessions tracked in the LRU cache.",
+        ["agent", "agent_id", "backend"],
     )
     a2_session_starts_total = prometheus_client.Counter(
         "a2_session_starts_total",
         "Total session starts by type.",
-        ["type"],
+        ["agent", "agent_id", "backend", "type"],
     )
     a2_session_evictions_total = prometheus_client.Counter(
         "a2_session_evictions_total",
         "Total session evictions due to LRU cap.",
+        ["agent", "agent_id", "backend"],
     )
     a2_session_age_seconds = prometheus_client.Histogram(
         "a2_session_age_seconds",
         "Seconds since last use when a session is evicted from the LRU cache.",
+        ["agent", "agent_id", "backend"],
         buckets=(60, 300, 900, 1800, 3600, 7200, 14400, 28800, 86400),
     )
     a2_session_idle_seconds = prometheus_client.Histogram(
         "a2_session_idle_seconds",
         "Seconds a session was idle before being resumed.",
+        ["agent", "agent_id", "backend"],
         buckets=(60, 300, 900, 1800, 3600, 7200, 14400, 28800, 86400),
     )
     a2_lru_cache_utilization_percent = prometheus_client.Gauge(
         "a2_lru_cache_utilization_percent",
         "LRU session cache utilization as a percentage of MAX_SESSIONS.",
+        ["agent", "agent_id", "backend"],
     )
 
     # Prompt / response
     a2_prompt_length_bytes = prometheus_client.Histogram(
         "a2_prompt_length_bytes",
         "Byte length of incoming prompts passed to run().",
+        ["agent", "agent_id", "backend"],
     )
     a2_response_length_bytes = prometheus_client.Histogram(
         "a2_response_length_bytes",
         "Byte length of responses returned by run().",
+        ["agent", "agent_id", "backend"],
     )
     a2_empty_responses_total = prometheus_client.Counter(
         "a2_empty_responses_total",
         "Total tasks that produced no text output.",
+        ["agent", "agent_id", "backend"],
     )
 
     # Model routing
     a2_model_requests_total = prometheus_client.Counter(
         "a2_model_requests_total",
         "Total requests per resolved model.",
-        ["model"],
+        ["agent", "agent_id", "backend", "model"],
     )
 
     # Logging
     a2_log_bytes_total = prometheus_client.Counter(
         "a2_log_bytes_total",
         "Total bytes written by the logging subsystem.",
-        ["logger"],
+        ["agent", "agent_id", "backend", "logger"],
     )
     a2_log_entries_total = prometheus_client.Counter(
         "a2_log_entries_total",
         "Total log entries written by logger type.",
-        ["logger"],
+        ["agent", "agent_id", "backend", "logger"],
     )
     a2_log_write_errors_total = prometheus_client.Counter(
         "a2_log_write_errors_total",
         "Total I/O failures in the conversation/trace logging subsystem.",
+        ["agent", "agent_id", "backend"],
     )
 
     # SDK / subprocess
     a2_sdk_subprocess_spawn_duration_seconds = prometheus_client.Histogram(
         "a2_sdk_subprocess_spawn_duration_seconds",
         "Time to initialize the backend client/subprocess.",
-        ["backend"],
+        ["agent", "agent_id", "backend", "model"],
     )
     a2_sdk_query_duration_seconds = prometheus_client.Histogram(
         "a2_sdk_query_duration_seconds",
         "Raw backend query time in seconds inside run_query().",
-        ["backend"],
+        ["agent", "agent_id", "backend", "model"],
     )
     a2_sdk_query_error_duration_seconds = prometheus_client.Histogram(
         "a2_sdk_query_error_duration_seconds",
         "Wall-clock seconds for run_query() calls that end in error.",
-        ["backend"],
+        ["agent", "agent_id", "backend", "model"],
     )
     a2_sdk_time_to_first_message_seconds = prometheus_client.Histogram(
         "a2_sdk_time_to_first_message_seconds",
         "Seconds from query submission to the first response message.",
-        ["backend"],
+        ["agent", "agent_id", "backend", "model"],
     )
     a2_sdk_session_duration_seconds = prometheus_client.Histogram(
         "a2_sdk_session_duration_seconds",
         "Backend session/connection lifetime in seconds.",
-        ["backend"],
+        ["agent", "agent_id", "backend", "model"],
     )
     a2_sdk_messages_per_query = prometheus_client.Histogram(
         "a2_sdk_messages_per_query",
         "Number of backend messages received per run_query() call.",
-        ["backend"],
+        ["agent", "agent_id", "backend", "model"],
         buckets=(1, 2, 5, 10, 20, 50, 100, 200),
     )
     a2_sdk_turns_per_query = prometheus_client.Histogram(
         "a2_sdk_turns_per_query",
         "Number of assistant turns per run_query() invocation.",
-        ["backend"],
+        ["agent", "agent_id", "backend", "model"],
         buckets=(1, 2, 3, 5, 10, 20, 50, 100),
     )
     a2_sdk_tokens_per_query = prometheus_client.Histogram(
         "a2_sdk_tokens_per_query",
         "Aggregate token count per run_query() invocation.",
-        ["backend"],
+        ["agent", "agent_id", "backend", "model"],
     )
     a2_sdk_errors_total = prometheus_client.Counter(
         "a2_sdk_errors_total",
         "Total stderr/error lines emitted by the backend subprocess.",
-        ["backend"],
+        ["agent", "agent_id", "backend"],
     )
     a2_sdk_result_errors_total = prometheus_client.Counter(
         "a2_sdk_result_errors_total",
         "Total backend result errors returned during run_query().",
-        ["backend"],
+        ["agent", "agent_id", "backend"],
     )
     a2_sdk_client_errors_total = prometheus_client.Counter(
         "a2_sdk_client_errors_total",
         "Total backend client connection-level failures (setup/teardown).",
-        ["backend"],
+        ["agent", "agent_id", "backend"],
     )
     a2_sdk_context_fetch_errors_total = prometheus_client.Counter(
         "a2_sdk_context_fetch_errors_total",
         "Total context usage fetch failures.",
-        ["backend"],
+        ["agent", "agent_id", "backend"],
     )
 
     # Tools
     a2_sdk_tool_calls_total = prometheus_client.Counter(
         "a2_sdk_tool_calls_total",
         "Total tool calls by tool name.",
-        ["backend", "tool"],
+        ["agent", "agent_id", "backend", "tool"],
     )
     a2_sdk_tool_calls_per_query = prometheus_client.Histogram(
         "a2_sdk_tool_calls_per_query",
         "Number of tool calls per run_query() invocation.",
-        ["backend"],
+        ["agent", "agent_id", "backend", "model"],
         buckets=(0, 1, 2, 5, 10, 20, 50, 100, 200),
     )
     a2_sdk_tool_duration_seconds = prometheus_client.Histogram(
         "a2_sdk_tool_duration_seconds",
         "Wall-clock seconds per tool call.",
-        ["backend", "tool"],
+        ["agent", "agent_id", "backend", "tool"],
     )
     a2_sdk_tool_errors_total = prometheus_client.Counter(
         "a2_sdk_tool_errors_total",
         "Total tool execution errors by tool name.",
-        ["backend", "tool"],
+        ["agent", "agent_id", "backend", "tool"],
     )
     a2_sdk_tool_call_input_size_bytes = prometheus_client.Histogram(
         "a2_sdk_tool_call_input_size_bytes",
         "Byte length of each tool call input payload by tool name.",
-        ["backend", "tool"],
+        ["agent", "agent_id", "backend", "tool"],
     )
     a2_sdk_tool_result_size_bytes = prometheus_client.Histogram(
         "a2_sdk_tool_result_size_bytes",
         "Byte length of each tool result by tool name.",
-        ["backend", "tool"],
+        ["agent", "agent_id", "backend", "tool"],
     )
     a2_text_blocks_per_query = prometheus_client.Histogram(
         "a2_text_blocks_per_query",
         "Number of text blocks returned per run_query() invocation.",
+        ["agent", "agent_id", "backend", "model"],
         buckets=(0, 1, 2, 5, 10, 20, 50, 100),
     )
     a2_stderr_lines_per_task = prometheus_client.Histogram(
         "a2_stderr_lines_per_task",
         "Number of SDK stderr lines captured per run() invocation.",
+        ["agent", "agent_id", "backend"],
         buckets=(0, 1, 2, 5, 10, 20, 50, 100),
     )
     a2_tasks_with_stderr_total = prometheus_client.Counter(
         "a2_tasks_with_stderr_total",
         "Total task executions that produced any SDK stderr output.",
+        ["agent", "agent_id", "backend"],
     )
     a2_task_retries_total = prometheus_client.Counter(
         "a2_task_retries_total",
         "Total task retries due to session already in use.",
+        ["agent", "agent_id", "backend"],
     )
 
     # Context window
     a2_context_tokens = prometheus_client.Histogram(
         "a2_context_tokens",
         "Absolute token count from get_context_usage() per SDK turn.",
+        ["agent", "agent_id", "backend"],
     )
     a2_context_tokens_remaining = prometheus_client.Histogram(
         "a2_context_tokens_remaining",
         "Remaining token budget (maxTokens - totalTokens) per get_context_usage() call.",
+        ["agent", "agent_id", "backend"],
         buckets=(1000, 5000, 10000, 25000, 50000, 100000, 150000),
     )
     a2_context_usage_percent = prometheus_client.Histogram(
         "a2_context_usage_percent",
         "Context window utilization percentage per SDK turn.",
+        ["agent", "agent_id", "backend"],
         buckets=(50, 70, 80, 90, 95, 99, 100),
     )
     a2_context_exhaustion_total = prometheus_client.Counter(
         "a2_context_exhaustion_total",
         "Total context window exhaustion events (usage >= 100%).",
+        ["agent", "agent_id", "backend"],
     )
     a2_context_warnings_total = prometheus_client.Counter(
         "a2_context_warnings_total",
         "Total context usage threshold warnings.",
+        ["agent", "agent_id", "backend"],
     )
 
     # MCP
     a2_mcp_config_errors_total = prometheus_client.Counter(
         "a2_mcp_config_errors_total",
         "Total MCP config file parse/load failures.",
+        ["agent", "agent_id", "backend"],
     )
     a2_mcp_config_reloads_total = prometheus_client.Counter(
         "a2_mcp_config_reloads_total",
         "Total MCP config file reload events.",
+        ["agent", "agent_id", "backend"],
     )
     a2_mcp_servers_active = prometheus_client.Gauge(
         "a2_mcp_servers_active",
         "Number of currently loaded MCP servers.",
+        ["agent", "agent_id", "backend"],
     )
 
     # File watchers
     a2_watcher_events_total = prometheus_client.Counter(
         "a2_watcher_events_total",
         "Total raw file-system change events detected by each watcher.",
-        ["watcher"],
+        ["agent", "agent_id", "backend", "watcher"],
     )
     a2_file_watcher_restarts_total = prometheus_client.Counter(
         "a2_file_watcher_restarts_total",
         "Total file watcher restart events due to missing or deleted directory.",
-        ["watcher"],
+        ["agent", "agent_id", "backend", "watcher"],
     )

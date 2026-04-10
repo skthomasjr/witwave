@@ -27,6 +27,8 @@ services:
       - "8010:8080"
     environment:
       AGENT_NAME: iris-a2-claude
+      AGENT_OWNER: iris
+      AGENT_ID: claude
       AGENT_URL: http://iris-a2-claude:8080
       AGENT_MD: /home/agent/agent.md
       BACKEND_PORT: 8080
@@ -52,6 +54,8 @@ services:
       - "8011:8080"
     environment:
       AGENT_NAME: iris-a2-codex
+      AGENT_OWNER: iris
+      AGENT_ID: codex
       AGENT_URL: http://iris-a2-codex:8080
       AGENT_MD: /home/agent/agent.md
       BACKEND_PORT: 8080
@@ -76,6 +80,8 @@ services:
       - "8012:8080"
     environment:
       AGENT_NAME: iris-a2-gemini
+      AGENT_OWNER: iris
+      AGENT_ID: gemini
       AGENT_URL: http://iris-a2-gemini:8080
       AGENT_MD: /home/agent/agent.md
       BACKEND_PORT: 8080
@@ -116,6 +122,8 @@ services:
       - "8020:8080"
     environment:
       AGENT_NAME: nova-a2-claude
+      AGENT_OWNER: nova
+      AGENT_ID: claude
       AGENT_URL: http://nova-a2-claude:8080
       AGENT_MD: /home/agent/agent.md
       BACKEND_PORT: 8080
@@ -141,6 +149,8 @@ services:
       - "8021:8080"
     environment:
       AGENT_NAME: nova-a2-codex
+      AGENT_OWNER: nova
+      AGENT_ID: codex
       AGENT_URL: http://nova-a2-codex:8080
       AGENT_MD: /home/agent/agent.md
       BACKEND_PORT: 8080
@@ -165,6 +175,8 @@ services:
       - "8022:8080"
     environment:
       AGENT_NAME: nova-a2-gemini
+      AGENT_OWNER: nova
+      AGENT_ID: gemini
       AGENT_URL: http://nova-a2-gemini:8080
       AGENT_MD: /home/agent/agent.md
       BACKEND_PORT: 8080
@@ -205,6 +217,8 @@ services:
       - "8030:8080"
     environment:
       AGENT_NAME: kira-a2-claude
+      AGENT_OWNER: kira
+      AGENT_ID: claude
       AGENT_URL: http://kira-a2-claude:8080
       AGENT_MD: /home/agent/agent.md
       BACKEND_PORT: 8080
@@ -230,6 +244,8 @@ services:
       - "8031:8080"
     environment:
       AGENT_NAME: kira-a2-codex
+      AGENT_OWNER: kira
+      AGENT_ID: codex
       AGENT_URL: http://kira-a2-codex:8080
       AGENT_MD: /home/agent/agent.md
       BACKEND_PORT: 8080
@@ -254,6 +270,8 @@ services:
       - "8032:8080"
     environment:
       AGENT_NAME: kira-a2-gemini
+      AGENT_OWNER: kira
+      AGENT_ID: gemini
       AGENT_URL: http://kira-a2-gemini:8080
       AGENT_MD: /home/agent/agent.md
       BACKEND_PORT: 8080
