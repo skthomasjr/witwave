@@ -272,11 +272,15 @@ class AgentExecutor(A2AAgentExecutor):
         self._mcp_watcher_tasks: list[asyncio.Task] = []
         self._background_tasks: set[asyncio.Task] = set()
         self._continuation_runner = None
+        self._webhook_runner = None
         self._bus = None
 
     def set_continuation_runner(self, runner: "ContinuationRunner", bus: MessageBus) -> None:
         self._continuation_runner = runner
         self._bus = bus
+
+    def set_webhook_runner(self, runner: "WebhookRunner") -> None:
+        self._webhook_runner = runner
 
     def _routing_entry_for_kind(self, kind: str) -> RoutingEntry | None:
         """Return the RoutingEntry for the given message kind, or None to use the default."""
@@ -323,9 +327,21 @@ class AgentExecutor(A2AAgentExecutor):
         response: str,
         duration_seconds: float,
         error: str | None = None,
+        model: str | None = None,
     ) -> None:
         if self._continuation_runner is not None:
             self._continuation_runner.notify(kind, session_id, success, response or "", self._bus)
+        if self._webhook_runner is not None:
+            self._webhook_runner.fire(
+                source=source,
+                kind=kind,
+                session_id=session_id,
+                success=success,
+                response=response or "",
+                duration_seconds=duration_seconds,
+                error=error,
+                model=model,
+            )
 
     async def backends_watcher(self) -> None:
         """Watch BACKEND_CONFIG_PATH and reload backends on file change."""
@@ -417,6 +433,7 @@ class AgentExecutor(A2AAgentExecutor):
                 response=_response,
                 duration_seconds=time.monotonic() - _exec_start,
                 error=_error,
+                model=model,
             ))
             self._background_tasks.add(_opc_task)
             _opc_task.add_done_callback(self._background_tasks.discard)
@@ -483,6 +500,7 @@ class AgentExecutor(A2AAgentExecutor):
                 response=_response,
                 duration_seconds=time.monotonic() - _bus_start,
                 error=_error,
+                model=_model,
             ))
             self._background_tasks.add(_opc_task)
             _opc_task.add_done_callback(self._background_tasks.discard)

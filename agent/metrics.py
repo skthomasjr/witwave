@@ -96,6 +96,10 @@ agent_continuation_reloads_total: prometheus_client.Counter | None = None
 agent_continuation_items_registered: prometheus_client.Gauge | None = None
 agent_continuation_runs_total: prometheus_client.Counter | None = None
 agent_continuation_fires_total: prometheus_client.Counter | None = None
+agent_webhooks_delivery_total: prometheus_client.Counter | None = None
+agent_webhooks_parse_errors_total: prometheus_client.Counter | None = None
+agent_webhooks_reloads_total: prometheus_client.Counter | None = None
+agent_webhooks_items_registered: prometheus_client.Gauge | None = None
 
 
 if _enabled:
@@ -490,5 +494,22 @@ if _enabled:
         "agent_continuation_fires_total",
         "Total continuation firings by upstream kind.",
         ["upstream_kind"],
+    )
+    agent_webhooks_delivery_total = prometheus_client.Counter(
+        "agent_webhooks_delivery_total",
+        "Outbound webhook delivery attempts by result and subscription name.",
+        ["result", "subscription"],
+    )
+    agent_webhooks_parse_errors_total = prometheus_client.Counter(
+        "agent_webhooks_parse_errors_total",
+        "Total webhook file parse failures.",
+    )
+    agent_webhooks_reloads_total = prometheus_client.Counter(
+        "agent_webhooks_reloads_total",
+        "Total webhook file-change reload events.",
+    )
+    agent_webhooks_items_registered = prometheus_client.Gauge(
+        "agent_webhooks_items_registered",
+        "Number of currently registered webhook subscriptions.",
     )
 

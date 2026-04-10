@@ -23,6 +23,7 @@ from continuations import ContinuationRunner
 from jobs import JobRunner
 from tasks import TaskRunner
 from triggers import TriggerItem, TriggerRunner
+from webhooks import WebhookRunner
 from bus import MessageBus
 from executor import AgentExecutor, run as executor_run
 from heartbeat import heartbeat_runner
@@ -432,6 +433,7 @@ async def main():
                     response=_response,
                     duration_seconds=time.monotonic() - _fire_start,
                     error=_error,
+                    model=_model,
                 ))
                 executor._background_tasks.add(_opc_task)
                 _opc_task.add_done_callback(executor._background_tasks.discard)
@@ -504,6 +506,8 @@ async def main():
     task_runner = TaskRunner(bus)
     continuation_runner = ContinuationRunner()
     executor.set_continuation_runner(continuation_runner, bus)
+    webhook_runner = WebhookRunner()
+    executor.set_webhook_runner(webhook_runner)
 
     # Start MCP watcher tasks as tracked background tasks so backends_watcher
     # can cancel and replace them when backends are hot-reloaded.
@@ -524,6 +528,7 @@ async def main():
         _guarded(task_runner.run),
         _guarded(trigger_runner.run),
         _guarded(continuation_runner.run),
+        _guarded(webhook_runner.run),
         _guarded(_event_loop_monitor),
         _guarded(executor.backends_watcher),
         _set_ready_when_started(server),
