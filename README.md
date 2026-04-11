@@ -19,6 +19,20 @@ the actual LLM work (Claude Agent SDK via `a2-claude`, OpenAI Agents SDK via `a2
 
 Multiple agents can collaborate as a team, but the named agent (nyx + its backends) is the deployable unit.
 
+## Components
+
+The platform has five components, each with its own source directory:
+
+| Component | Directory | Type | Description |
+|-----------|-----------|------|-------------|
+| **Orchestrator** | `agent/` | Orchestrator agent | nyx-agent: the infrastructure and routing layer. Owns scheduling, triggering, chaining, and A2A relay. No LLM of its own. |
+| **Claude backend** | `a2-claude/` | Backend agent | Executes prompts via the Claude Agent SDK. Manages sessions, memory, conversation logs, and metrics. |
+| **Codex backend** | `a2-codex/` | Backend agent | Executes prompts via the OpenAI Agents SDK. Supports web search and headless browser via Playwright. |
+| **Gemini backend** | `a2-gemini/` | Backend agent | Executes prompts via the Google Gemini SDK. Manages sessions and conversation history. |
+| **UI** | `ui/` | Web interface | Single-page app for monitoring metrics, browsing agents, viewing conversations, and chatting with agents. |
+
+Each backend agent is a full A2A server. The orchestrator routes work to backends but does no LLM execution itself. The UI provides visibility only — it does not participate in agent workflows.
+
 ## How It Works
 
 Each agent:
