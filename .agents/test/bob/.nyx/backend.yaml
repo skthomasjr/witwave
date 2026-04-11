@@ -6,7 +6,7 @@ backend:
 
     - id: codex
       url: http://bob-a2-codex:8080
-      model: gpt-5.1-codex
+      model: gpt-5.1-codex-max
 
     - id: gemini
       url: http://bob-a2-gemini:8080
@@ -14,22 +14,22 @@ backend:
   routing:
     default:
       agent: codex
-      model: gpt-5.1-codex
+      model: gpt-5.1-codex-max
     a2a:
       agent: codex
-      model: gpt-5.1-codex
+      model: gpt-5.1-codex-max
     heartbeat:
       agent: codex
-      model: gpt-5.1-codex
+      model: gpt-5.1-codex-max
     job:
       agent: codex
-      model: gpt-5.1-codex
+      model: gpt-5.1-codex-max
     task:
       agent: codex
-      model: gpt-5.1-codex
+      model: gpt-5.1-codex-max
     trigger:
       agent: codex
-      model: gpt-5.1-codex
+      model: gpt-5.1-codex-max
     continuation:
       agent: codex
-      model: gpt-5.1-codex
+      model: gpt-5.1-codex-max

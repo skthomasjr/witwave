@@ -398,7 +398,7 @@ async def main():
         import httpx
         agent_name = request.path_params["agent_name"]
         backend_id = request.query_params.get("backend")
-        manifest_path = os.environ.get("MANIFEST_PATH", "/home/agent/.nyx/manifest.json")
+        manifest_path = os.environ.get("MANIFEST_PATH", "/home/agent/manifest.json")
         try:
             with open(manifest_path) as f:
                 manifest = _json.load(f)
@@ -442,7 +442,7 @@ async def main():
         backend_id = request.query_params.get("backend")
         since = request.query_params.get("since")
         limit = request.query_params.get("limit", "200")
-        manifest_path = os.environ.get("MANIFEST_PATH", "/home/agent/.nyx/manifest.json")
+        manifest_path = os.environ.get("MANIFEST_PATH", "/home/agent/manifest.json")
         try:
             with open(manifest_path) as f:
                 manifest = _json.load(f)
@@ -478,7 +478,7 @@ async def main():
         """Return agent cards for all team members by reading manifest.json and fanning out to /agents."""
         import json as _json
         import httpx
-        manifest_path = os.environ.get("MANIFEST_PATH", "/home/agent/.nyx/manifest.json")
+        manifest_path = os.environ.get("MANIFEST_PATH", "/home/agent/manifest.json")
         try:
             with open(manifest_path) as f:
                 manifest = _json.load(f)

@@ -1280,6 +1280,7 @@ function _buildAgentPanel(agentName, backends, right) {
         <span class="ct-label">model</span>
         <input type="text" id="chat-model-input" value="${escHtml(defaultModel)}" placeholder="default" />
       </div>
+      <button class="icon-btn" id="chat-clear-btn" style="margin-left:auto">clear</button>
     </div>
     <div class="agent-chat-thread"><div class="empty-chat">Send a message to start.</div></div>
     <div class="agent-chat-input">
@@ -1291,6 +1292,13 @@ function _buildAgentPanel(agentName, backends, right) {
   _chatThread = right.querySelector('.agent-chat-thread');
   _chatInput = right.querySelector('.agent-chat-input input');
   _chatSendBtn = right.querySelector('.agent-chat-input button');
+
+  const clearBtn = right.querySelector('#chat-clear-btn');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      if (_chatThread) _chatThread.innerHTML = '<div class="empty-chat">Send a message to start.</div>';
+    });
+  }
 
   const backendSel = right.querySelector('#chat-backend-select');
   if (backendSel) {
@@ -1367,7 +1375,7 @@ async function a2aSend(agentName, text, backendId, model, sessionId) {
       parts: [{ kind: 'text', text }],
     }
   };
-  if (model) params.configuration = { model };
+  if (model) params.message.metadata = { model };
 
   const body = { jsonrpc: '2.0', id: 1, method: 'message/send', params };
   const qs = backendId ? `?backend=${encodeURIComponent(backendId)}` : '';

@@ -14,7 +14,7 @@ services:
       METRICS_ENABLED: "true"
     volumes:
       - ./.agents/active/iris/.nyx:/home/agent/.nyx
-      - ./.agents/active/manifest.json:/home/agent/.nyx/manifest.json:ro
+      - ./.agents/active/manifest.json:/home/agent/manifest.json:ro
       - ./.agents/active/iris/logs/conversation.jsonl:/home/agent/logs/conversation.jsonl
       - ./.agents/active/iris/logs/trace.jsonl:/home/agent/logs/trace.jsonl
 
@@ -113,7 +113,7 @@ services:
       METRICS_ENABLED: "true"
     volumes:
       - ./.agents/active/nova/.nyx:/home/agent/.nyx
-      - ./.agents/active/manifest.json:/home/agent/.nyx/manifest.json:ro
+      - ./.agents/active/manifest.json:/home/agent/manifest.json:ro
       - ./.agents/active/nova/logs/conversation.jsonl:/home/agent/logs/conversation.jsonl
       - ./.agents/active/nova/logs/trace.jsonl:/home/agent/logs/trace.jsonl
 
@@ -212,7 +212,7 @@ services:
       METRICS_ENABLED: "true"
     volumes:
       - ./.agents/active/kira/.nyx:/home/agent/.nyx
-      - ./.agents/active/manifest.json:/home/agent/.nyx/manifest.json:ro
+      - ./.agents/active/manifest.json:/home/agent/manifest.json:ro
       - ./.agents/active/kira/logs/conversation.jsonl:/home/agent/logs/conversation.jsonl
       - ./.agents/active/kira/logs/trace.jsonl:/home/agent/logs/trace.jsonl
 

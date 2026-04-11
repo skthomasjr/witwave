@@ -14,6 +14,7 @@ services:
       WEBHOOK_TEST_TOKEN: "test-token-abc123"
     volumes:
       - .:/home/agent/workspace
+      - ./.agents/test/manifest.json:/home/agent/manifest.json:ro
       - ./.agents/test/bob/.nyx:/home/agent/.nyx
       - ./.agents/test/bob/logs/conversation.jsonl:/home/agent/logs/conversation.jsonl
       - ./.agents/test/bob/logs/trace.jsonl:/home/agent/logs/trace.jsonl
@@ -107,6 +108,7 @@ services:
       METRICS_ENABLED: "true"
     volumes:
       - .:/home/agent/workspace
+      - ./.agents/test/manifest.json:/home/agent/manifest.json:ro
       - ./.agents/test/fred/.nyx:/home/agent/.nyx
       - ./.agents/test/fred/logs/conversation.jsonl:/home/agent/logs/conversation.jsonl
       - ./.agents/test/fred/logs/trace.jsonl:/home/agent/logs/trace.jsonl
