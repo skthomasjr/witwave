@@ -3,6 +3,7 @@ import fcntl
 import json
 import logging
 import os
+import subprocess
 import time
 import uuid
 from collections import OrderedDict
@@ -13,7 +14,9 @@ from a2a.server.agent_execution import AgentExecutor as A2AAgentExecutor
 from a2a.server.agent_execution import RequestContext
 from a2a.server.events import EventQueue
 from a2a.utils import new_agent_text_message
-from agents import Agent, Runner, RunConfig, SQLiteSession
+from agents import Agent, ComputerTool, LocalShellCommandRequest, LocalShellTool, Runner, RunConfig, SQLiteSession, WebSearchTool
+from agents.items import ToolCallItem, ToolCallOutputItem
+from computer import PlaywrightComputer
 from agents.models.multi_provider import MultiProvider
 from metrics import (
     a2_a2a_last_request_timestamp_seconds,
@@ -60,8 +63,7 @@ TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/trace.jsonl")
 AGENT_MD = os.environ.get("AGENT_MD", "/home/agent/agent.md")
 CODEX_SESSION_DB = os.environ.get("CODEX_SESSION_DB", "/home/agent/logs/codex_sessions.db")
 
-_DEFAULT_TOOLS = "Read,Write,Edit,Bash,Glob,Grep,WebSearch,WebFetch"
-ALLOWED_TOOLS: list[str] = [t.strip() for t in os.environ.get("ALLOWED_TOOLS", _DEFAULT_TOOLS).split(",") if t.strip()]
+CODEX_CONFIG_TOML = os.environ.get("CODEX_CONFIG_TOML", "/home/agent/.codex/config.toml")
 
 MAX_LOG_BYTES = int(os.environ.get("MAX_LOG_BYTES", str(10 * 1024 * 1024)))
 MAX_LOG_BACKUP_COUNT = int(os.environ.get("MAX_LOG_BACKUP_COUNT", "1"))
@@ -73,6 +75,72 @@ OPENAI_API_KEY: str | None = os.environ.get("OPENAI_API_KEY") or None
 
 _BACKEND_ID = "codex"
 _LABELS = {"agent": AGENT_OWNER, "agent_id": AGENT_ID, "backend": _BACKEND_ID}
+
+
+async def _shell_executor(req: LocalShellCommandRequest) -> str:
+    cmd = req.data.action.command
+    cwd = req.data.action.working_directory or None
+    env_extra = req.data.action.env or {}
+    env = {**os.environ, **env_extra}
+    timeout_ms = req.data.action.timeout_ms
+    timeout_s = (timeout_ms / 1000.0) if timeout_ms else 30.0
+    try:
+        result = await asyncio.to_thread(
+            subprocess.run,
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+            cwd=cwd,
+            env=env,
+        )
+        out = result.stdout
+        if result.returncode != 0 and result.stderr:
+            out += result.stderr
+        return out
+    except subprocess.TimeoutExpired:
+        return f"Command timed out after {timeout_s}s"
+    except Exception as exc:
+        return f"Shell error: {exc}"
+
+
+def _load_tool_config() -> dict:
+    """Read [tools] table from config.toml. Returns empty dict if file absent or unparseable."""
+    try:
+        import tomllib
+    except ImportError:
+        try:
+            import tomli as tomllib  # type: ignore
+        except ImportError:
+            return {}
+    try:
+        with open(CODEX_CONFIG_TOML, "rb") as f:
+            data = tomllib.load(f)
+        return data.get("tools", {})
+    except Exception as exc:
+        logger.warning("Could not read tool config from %s: %s", CODEX_CONFIG_TOML, exc)
+        return {}
+
+
+_computer: PlaywrightComputer | None = None
+
+# Models known to support computer_use_preview
+_COMPUTER_SUPPORTED_MODELS = {"computer-use-preview"}
+
+
+def _build_tools(model: str) -> list:
+    global _computer
+    cfg = _load_tool_config()
+    tools = []
+    if cfg.get("shell", False):
+        tools.append(LocalShellTool(executor=_shell_executor))
+    if cfg.get("web_search", False):
+        tools.append(WebSearchTool())
+    if cfg.get("computer", False) and model in _COMPUTER_SUPPORTED_MODELS:
+        if _computer is None:
+            _computer = PlaywrightComputer()
+        tools.append(ComputerTool(computer=_computer))
+    return tools
 
 
 def _load_agent_md() -> str:
@@ -168,6 +236,7 @@ async def run_query(
         name=AGENT_NAME,
         instructions=instructions,
         model=resolved_model,
+        tools=_build_tools(resolved_model),
     )
 
     session = SQLiteSession(session_id, CODEX_SESSION_DB)
@@ -180,6 +249,7 @@ async def run_query(
     _first_chunk_at: float | None = None
     _turn_count = 0
     _message_count = 0
+    _tool_call_names: dict[str, str] = {}  # call_id -> tool name
 
     try:
         result = Runner.run_streamed(codex_agent, prompt, session=session, run_config=run_config)
@@ -197,6 +267,66 @@ async def run_query(
                     collected.append(delta.text)
             elif event.type == "agent_updated_stream_event":
                 _turn_count += 1
+            elif event.type == "run_item_stream_event":
+                item = event.item
+                if isinstance(item, ToolCallItem):
+                    raw = item.raw_item
+                    call_id = getattr(raw, "call_id", None) or getattr(raw, "id", None) or ""
+                    name = getattr(raw, "name", None) or getattr(raw, "type", "unknown")
+                    # For local_shell, extract command as input
+                    if hasattr(raw, "action") and hasattr(raw.action, "command"):
+                        tool_input = {"command": raw.action.command}
+                    else:
+                        args_str = getattr(raw, "arguments", None)
+                        if args_str:
+                            try:
+                                tool_input = json.loads(args_str)
+                            except Exception:
+                                tool_input = {"arguments": args_str}
+                        else:
+                            tool_input = {}
+                    _tool_call_names[call_id] = name
+                    try:
+                        ts = datetime.now(timezone.utc).isoformat()
+                        entry = {
+                            "ts": ts,
+                            "agent": AGENT_NAME, "agent_id": AGENT_ID,
+                            "session_id": session_id,
+                            "event_type": "tool_use",
+                            "model": resolved_model,
+                            "id": call_id,
+                            "name": name,
+                            "input": tool_input,
+                        }
+                        log_trace(json.dumps(entry))
+                    except Exception as e:
+                        logger.error(f"log_trace tool_use error: {e}")
+                elif isinstance(item, ToolCallOutputItem):
+                    raw = item.raw_item
+                    call_id = raw.get("call_id", "") if isinstance(raw, dict) else getattr(raw, "call_id", "")
+                    tool_name = _tool_call_names.get(call_id, "unknown")
+                    output = item.output
+                    is_error = False
+                    if isinstance(raw, dict) and raw.get("type") == "function_call_output":
+                        content = str(output)
+                    else:
+                        content = str(output)
+                    try:
+                        ts = datetime.now(timezone.utc).isoformat()
+                        entry = {
+                            "ts": ts,
+                            "agent": AGENT_NAME, "agent_id": AGENT_ID,
+                            "session_id": session_id,
+                            "event_type": "tool_result",
+                            "model": resolved_model,
+                            "tool_use_id": call_id,
+                            "name": tool_name,
+                            "content": content,
+                            "is_error": is_error,
+                        }
+                        log_trace(json.dumps(entry))
+                    except Exception as e:
+                        logger.error(f"log_trace tool_result error: {e}")
     except Exception:
         if a2_sdk_query_error_duration_seconds is not None:
             a2_sdk_query_error_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
@@ -236,6 +366,7 @@ async def run_query(
         ts = datetime.now(timezone.utc).isoformat()
         entry = {
             "ts": ts,
+            "agent": AGENT_NAME, "agent_id": AGENT_ID,
             "session_id": session_id,
             "event_type": "response",
             "model": resolved_model,
@@ -277,7 +408,9 @@ async def _run_inner(
 
     is_new = session_id not in sessions
     if not is_new and a2_session_idle_seconds is not None:
-        a2_session_idle_seconds.labels(**_LABELS).observe(time.monotonic() - sessions[session_id])
+        _last_used = sessions.get(session_id)
+        if _last_used is not None:
+            a2_session_idle_seconds.labels(**_LABELS).observe(time.monotonic() - _last_used)
     if a2_session_starts_total is not None:
         a2_session_starts_total.labels(**_LABELS, type="new" if is_new else "resumed").inc()
 

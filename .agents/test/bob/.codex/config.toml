@@ -1,2 +1,4 @@
-# MCP server configuration for Codex
-# See: https://developers.openai.com/codex/mcp
+[tools]
+shell = true
+web_search = true
+computer = true

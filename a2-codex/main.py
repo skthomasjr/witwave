@@ -44,6 +44,10 @@ AGENT_URL = os.environ.get("AGENT_URL", f"http://localhost:{BACKEND_PORT}/")
 AGENT_VERSION = os.environ.get("AGENT_VERSION", "0.1.0")
 AGENT_MD = os.environ.get("AGENT_MD", "/home/agent/agent.md")
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
+TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/trace.jsonl")
+AGENT_OWNER = os.environ.get("AGENT_OWNER", AGENT_NAME)
+AGENT_ID = os.environ.get("AGENT_ID", "codex")
+_BACKEND_ID = "codex"
 metrics_enabled = bool(os.environ.get("METRICS_ENABLED"))
 WORKER_MAX_RESTARTS = int(os.environ.get("WORKER_MAX_RESTARTS", "5"))
 
@@ -82,7 +86,7 @@ def build_agent_card() -> AgentCard:
 
 async def health(request: Request) -> JSONResponse:
     if a2_health_checks_total is not None:
-        a2_health_checks_total.labels(probe="health").inc()
+        a2_health_checks_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="health").inc()
     if _ready:
         elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
         return JSONResponse({"status": "ok", "agent": AGENT_NAME, "uptime_seconds": elapsed})
@@ -164,7 +168,7 @@ async def _guarded(coro_fn, *args, restart_delay: float = 5.0, critical: bool = 
             consecutive_restarts += 1
             logger.error(f"Task {coro_fn.__name__!r} crashed: {exc!r} — restarting in {restart_delay}s (consecutive restart #{consecutive_restarts})")
             if a2_task_restarts_total is not None:
-                a2_task_restarts_total.labels(task=coro_fn.__name__).inc()
+                a2_task_restarts_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, task=coro_fn.__name__).inc()
             if critical and consecutive_restarts >= WORKER_MAX_RESTARTS:
                 logger.error(f"Task {coro_fn.__name__!r} has crashed {consecutive_restarts} consecutive times — marking agent not ready")
                 _ready = False
@@ -178,7 +182,7 @@ async def _event_loop_monitor() -> None:
         await asyncio.sleep(_interval)
         lag = time.monotonic() - _before - _interval
         if lag > 0 and a2_event_loop_lag_seconds is not None:
-            a2_event_loop_lag_seconds.observe(lag)
+            a2_event_loop_lag_seconds.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).observe(lag)
 
 
 async def _set_ready_when_started(server: uvicorn.Server) -> None:
@@ -187,7 +191,7 @@ async def _set_ready_when_started(server: uvicorn.Server) -> None:
     global _ready
     _ready = True
     if a2_startup_duration_seconds is not None:
-        a2_startup_duration_seconds.set(time.monotonic() - _startup_mono)
+        a2_startup_duration_seconds.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).set(time.monotonic() - _startup_mono)
     logger.info(f"Backend agent {AGENT_NAME} is ready")
 
 
@@ -211,11 +215,11 @@ async def main():
 
     if metrics_enabled:
         if a2_up is not None:
-            a2_up.labels(agent=AGENT_NAME).set(1.0)
+            a2_up.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).set(1.0)
         if a2_info is not None:
-            a2_info.info({"version": AGENT_VERSION, "agent": AGENT_NAME})
+            a2_info.info({"version": AGENT_VERSION, "agent": AGENT_OWNER, "agent_id": AGENT_ID, "backend": _BACKEND_ID})
         if a2_uptime_seconds is not None:
-            a2_uptime_seconds.set_function(lambda: (datetime.now(timezone.utc) - start_time).total_seconds())
+            a2_uptime_seconds.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).set_function(lambda: (datetime.now(timezone.utc) - start_time).total_seconds())
         logger.info("Prometheus metrics enabled at /metrics")
 
     async def metrics_handler(request: Request) -> Response:
@@ -249,9 +253,37 @@ async def main():
             entries = entries[-limit_n:]
         return JSONResponse(entries)
 
+    async def trace_handler(request: Request) -> JSONResponse:
+        since = request.query_params.get("since")
+        limit = request.query_params.get("limit")
+        try:
+            limit_n = int(limit) if limit else None
+        except ValueError:
+            return JSONResponse({"error": "invalid limit"}, status_code=400)
+        entries = []
+        try:
+            with open(TRACE_LOG) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if since and entry.get("ts", "") < since:
+                        continue
+                    entries.append(entry)
+        except FileNotFoundError:
+            pass
+        if limit_n is not None:
+            entries = entries[-limit_n:]
+        return JSONResponse(entries)
+
     _routes = [
         Route("/health", health),
         Route("/conversations", conversations_handler, methods=["GET"]),
+        Route("/trace", trace_handler, methods=["GET"]),
     ]
     if metrics_enabled:
         _routes.append(Route("/metrics", metrics_handler))

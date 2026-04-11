@@ -13,8 +13,10 @@ services:
       WEBHOOK_TEST_HOST: "bob:8000"
       WEBHOOK_TEST_TOKEN: "test-token-abc123"
     volumes:
+      - .:/home/agent/workspace
       - ./.agents/test/bob/.nyx:/home/agent/.nyx
-      - ./.agents/test/bob/logs:/home/agent/logs
+      - ./.agents/test/bob/logs/conversation.jsonl:/home/agent/logs/conversation.jsonl
+      - ./.agents/test/bob/logs/trace.jsonl:/home/agent/logs/trace.jsonl
 
   bob-a2-claude:
     build:
@@ -32,16 +34,17 @@ services:
       AGENT_MD: /home/agent/agent.md
       BACKEND_PORT: 8080
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+      CLAUDE_CONFIG_DIR: /home/agent/memory
       METRICS_ENABLED: "true"
     volumes:
-      - ./.agents/test/bob/a2-claude/agent.md:/home/agent/agent.md:ro
-      - ./.agents/test/bob/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
+      - .:/home/agent/workspace
       - ./.agents/test/bob/.claude/mcp.json:/home/agent/.claude/mcp.json
       - ./.agents/test/bob/.claude/settings.json:/home/agent/.claude/settings.json
+      - ./.agents/test/bob/.nyx/agent-card.md:/home/agent/agent.md:ro
+      - ./.agents/test/bob/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
+      - ./.agents/test/bob/logs/conversation.jsonl:/home/agent/logs/conversation.jsonl
+      - ./.agents/test/bob/logs/trace.jsonl:/home/agent/logs/trace.jsonl
       - ./.claude/skills:/home/agent/.claude/skills
-      - ./.agents/test/bob/logs:/home/agent/logs
-      - ./.agents/test/bob/a2-claude/memory:/home/agent/memory
-      - .:/home/agent/workspace
 
   bob-a2-codex:
     build:
@@ -61,13 +64,13 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       METRICS_ENABLED: "true"
     volumes:
-      - ./.agents/test/bob/a2-codex/agent.md:/home/agent/agent.md:ro
-      - ./.agents/test/bob/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
-      - ./.agents/test/bob/.codex/config.toml:/home/agent/.codex/config.toml
-      - ./.claude/skills:/home/agent/.codex/skills
-      - ./.agents/test/bob/logs:/home/agent/logs
-      - ./.agents/test/bob/a2-codex/memory:/home/agent/memory
       - .:/home/agent/workspace
+      - ./.agents/test/bob/.codex/config.toml:/home/agent/.codex/config.toml
+      - ./.agents/test/bob/.nyx/agent-card.md:/home/agent/agent.md:ro
+      - ./.agents/test/bob/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
+      - ./.agents/test/bob/logs/conversation.jsonl:/home/agent/logs/conversation.jsonl
+      - ./.agents/test/bob/logs/trace.jsonl:/home/agent/logs/trace.jsonl
+      - ./.claude/skills:/home/agent/.codex/skills
 
   bob-a2-gemini:
     build:
@@ -87,11 +90,51 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       METRICS_ENABLED: "true"
     volumes:
-      - ./.agents/test/bob/a2-gemini/agent.md:/home/agent/agent.md:ro
-      - ./.agents/test/bob/.nyx/AGENTS.md:/home/agent/.gemini/AGENTS.md:ro
-      - ./.agents/test/bob/logs:/home/agent/logs
-      - ./.agents/test/bob/a2-gemini/memory:/home/agent/memory
       - .:/home/agent/workspace
+      - ./.agents/test/bob/.nyx/agent-card.md:/home/agent/agent.md:ro
+      - ./.agents/test/bob/.nyx/AGENTS.md:/home/agent/.gemini/AGENTS.md:ro
+      - ./.agents/test/bob/logs/conversation.jsonl:/home/agent/logs/conversation.jsonl
+      - ./.agents/test/bob/logs/trace.jsonl:/home/agent/logs/trace.jsonl
+
+  fred:
+    image: nyx-agent:latest
+    restart: "no"
+    ports:
+      - "8096:8000"
+    environment:
+      AGENT_NAME: fred
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+      METRICS_ENABLED: "true"
+    volumes:
+      - .:/home/agent/workspace
+      - ./.agents/test/fred/.nyx:/home/agent/.nyx
+      - ./.agents/test/fred/logs/conversation.jsonl:/home/agent/logs/conversation.jsonl
+      - ./.agents/test/fred/logs/trace.jsonl:/home/agent/logs/trace.jsonl
+
+  fred-a2-claude:
+    image: a2-claude:latest
+    restart: "no"
+    ports:
+      - "8086:8080"
+    environment:
+      AGENT_NAME: fred-a2-claude
+      AGENT_OWNER: fred
+      AGENT_ID: claude
+      AGENT_URL: http://fred-a2-claude:8080
+      AGENT_MD: /home/agent/agent.md
+      BACKEND_PORT: 8080
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
+      CLAUDE_CONFIG_DIR: /home/agent/memory
+      METRICS_ENABLED: "true"
+    volumes:
+      - .:/home/agent/workspace
+      - ./.agents/test/fred/.claude/mcp.json:/home/agent/.claude/mcp.json
+      - ./.agents/test/fred/.claude/settings.json:/home/agent/.claude/settings.json
+      - ./.agents/test/fred/.nyx/agent-card.md:/home/agent/agent.md:ro
+      - ./.agents/test/fred/.nyx/AGENTS.md:/home/agent/.claude/CLAUDE.md:ro
+      - ./.agents/test/fred/logs/conversation.jsonl:/home/agent/logs/conversation.jsonl
+      - ./.agents/test/fred/logs/trace.jsonl:/home/agent/logs/trace.jsonl
+      - ./.claude/skills:/home/agent/.claude/skills
 
   ui:
     build:

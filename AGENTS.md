@@ -191,7 +191,7 @@ agent/                       # nyx-agent source (router/scheduler)
 └── backends/
     ├── base.py              # AgentBackend abstract base class
     ├── a2a.py               # A2ABackend — forwards requests to remote A2A backend
-    └── config.py            # Backend config loader (supports type: a2a)
+    └── config.py            # Backend config loader (backend.yaml)
 
 a2-claude/                   # Claude backend source
 ├── Dockerfile

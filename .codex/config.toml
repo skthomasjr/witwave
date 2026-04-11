@@ -8,5 +8,10 @@ model_reasoning_effort = "high"
 model_reasoning_summary = "auto"
 plan_mode_reasoning_effort = "high"
 
+[tools]
+shell = true
+web_search = true
+computer = true
+
 # Repo-scoped Codex config (takes precedence over ~/.codex/config.toml in this repo)
 # Add more settings as needed. Reference: https://developers.openai.com/codex/config-reference

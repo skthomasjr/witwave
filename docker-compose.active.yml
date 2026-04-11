@@ -15,7 +15,8 @@ services:
     volumes:
       - ./.agents/active/iris/.nyx:/home/agent/.nyx
       - ./.agents/active/manifest.json:/home/agent/.nyx/manifest.json:ro
-      - ./.agents/active/iris/logs:/home/agent/logs
+      - ./.agents/active/iris/logs/conversation.jsonl:/home/agent/logs/conversation.jsonl
+      - ./.agents/active/iris/logs/trace.jsonl:/home/agent/logs/trace.jsonl
 
   iris-a2-claude:
     build:
@@ -40,7 +41,8 @@ services:
       - ./.agents/active/iris/.claude/mcp.json:/home/agent/.claude/mcp.json
       - ./.agents/active/iris/.claude/settings.json:/home/agent/.claude/settings.json
       - ./.claude/skills:/home/agent/.claude/skills
-      - ./.agents/active/iris/logs:/home/agent/logs
+      - ./.agents/active/iris/logs/conversation.jsonl:/home/agent/logs/conversation.jsonl
+      - ./.agents/active/iris/logs/trace.jsonl:/home/agent/logs/trace.jsonl
       - ./.agents/active/iris/a2-claude/memory:/home/agent/memory
       - .:/home/agent/workspace
 
@@ -66,7 +68,8 @@ services:
       - ./.agents/active/iris/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
       - ./.agents/active/iris/.codex/config.toml:/home/agent/.codex/config.toml
       - ./.claude/skills:/home/agent/.codex/skills
-      - ./.agents/active/iris/logs:/home/agent/logs
+      - ./.agents/active/iris/logs/conversation.jsonl:/home/agent/logs/conversation.jsonl
+      - ./.agents/active/iris/logs/trace.jsonl:/home/agent/logs/trace.jsonl
       - ./.agents/active/iris/a2-codex/memory:/home/agent/memory
       - .:/home/agent/workspace
 
@@ -90,7 +93,8 @@ services:
     volumes:
       - ./.agents/active/iris/a2-gemini/agent.md:/home/agent/agent.md:ro
       - ./.agents/active/iris/.nyx/AGENTS.md:/home/agent/.gemini/AGENTS.md:ro
-      - ./.agents/active/iris/logs:/home/agent/logs
+      - ./.agents/active/iris/logs/conversation.jsonl:/home/agent/logs/conversation.jsonl
+      - ./.agents/active/iris/logs/trace.jsonl:/home/agent/logs/trace.jsonl
       - ./.agents/active/iris/a2-gemini/memory:/home/agent/memory
       - .:/home/agent/workspace
 
@@ -110,7 +114,8 @@ services:
     volumes:
       - ./.agents/active/nova/.nyx:/home/agent/.nyx
       - ./.agents/active/manifest.json:/home/agent/.nyx/manifest.json:ro
-      - ./.agents/active/nova/logs:/home/agent/logs
+      - ./.agents/active/nova/logs/conversation.jsonl:/home/agent/logs/conversation.jsonl
+      - ./.agents/active/nova/logs/trace.jsonl:/home/agent/logs/trace.jsonl
 
   nova-a2-claude:
     build:
@@ -135,7 +140,8 @@ services:
       - ./.agents/active/nova/.claude/mcp.json:/home/agent/.claude/mcp.json
       - ./.agents/active/nova/.claude/settings.json:/home/agent/.claude/settings.json
       - ./.claude/skills:/home/agent/.claude/skills
-      - ./.agents/active/nova/logs:/home/agent/logs
+      - ./.agents/active/nova/logs/conversation.jsonl:/home/agent/logs/conversation.jsonl
+      - ./.agents/active/nova/logs/trace.jsonl:/home/agent/logs/trace.jsonl
       - ./.agents/active/nova/a2-claude/memory:/home/agent/memory
       - .:/home/agent/workspace
 
@@ -161,7 +167,8 @@ services:
       - ./.agents/active/nova/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
       - ./.agents/active/nova/.codex/config.toml:/home/agent/.codex/config.toml
       - ./.claude/skills:/home/agent/.codex/skills
-      - ./.agents/active/nova/logs:/home/agent/logs
+      - ./.agents/active/nova/logs/conversation.jsonl:/home/agent/logs/conversation.jsonl
+      - ./.agents/active/nova/logs/trace.jsonl:/home/agent/logs/trace.jsonl
       - ./.agents/active/nova/a2-codex/memory:/home/agent/memory
       - .:/home/agent/workspace
 
@@ -185,7 +192,8 @@ services:
     volumes:
       - ./.agents/active/nova/a2-gemini/agent.md:/home/agent/agent.md:ro
       - ./.agents/active/nova/.nyx/AGENTS.md:/home/agent/.gemini/AGENTS.md:ro
-      - ./.agents/active/nova/logs:/home/agent/logs
+      - ./.agents/active/nova/logs/conversation.jsonl:/home/agent/logs/conversation.jsonl
+      - ./.agents/active/nova/logs/trace.jsonl:/home/agent/logs/trace.jsonl
       - ./.agents/active/nova/a2-gemini/memory:/home/agent/memory
       - .:/home/agent/workspace
 
@@ -205,7 +213,8 @@ services:
     volumes:
       - ./.agents/active/kira/.nyx:/home/agent/.nyx
       - ./.agents/active/manifest.json:/home/agent/.nyx/manifest.json:ro
-      - ./.agents/active/kira/logs:/home/agent/logs
+      - ./.agents/active/kira/logs/conversation.jsonl:/home/agent/logs/conversation.jsonl
+      - ./.agents/active/kira/logs/trace.jsonl:/home/agent/logs/trace.jsonl
 
   kira-a2-claude:
     build:
@@ -230,7 +239,8 @@ services:
       - ./.agents/active/kira/.claude/mcp.json:/home/agent/.claude/mcp.json
       - ./.agents/active/kira/.claude/settings.json:/home/agent/.claude/settings.json
       - ./.claude/skills:/home/agent/.claude/skills
-      - ./.agents/active/kira/logs:/home/agent/logs
+      - ./.agents/active/kira/logs/conversation.jsonl:/home/agent/logs/conversation.jsonl
+      - ./.agents/active/kira/logs/trace.jsonl:/home/agent/logs/trace.jsonl
       - ./.agents/active/kira/a2-claude/memory:/home/agent/memory
       - .:/home/agent/workspace
 
@@ -256,7 +266,8 @@ services:
       - ./.agents/active/kira/.nyx/AGENTS.md:/home/agent/.codex/AGENTS.md:ro
       - ./.agents/active/kira/.codex/config.toml:/home/agent/.codex/config.toml
       - ./.claude/skills:/home/agent/.codex/skills
-      - ./.agents/active/kira/logs:/home/agent/logs
+      - ./.agents/active/kira/logs/conversation.jsonl:/home/agent/logs/conversation.jsonl
+      - ./.agents/active/kira/logs/trace.jsonl:/home/agent/logs/trace.jsonl
       - ./.agents/active/kira/a2-codex/memory:/home/agent/memory
       - .:/home/agent/workspace
 
@@ -280,7 +291,8 @@ services:
     volumes:
       - ./.agents/active/kira/a2-gemini/agent.md:/home/agent/agent.md:ro
       - ./.agents/active/kira/.nyx/AGENTS.md:/home/agent/.gemini/AGENTS.md:ro
-      - ./.agents/active/kira/logs:/home/agent/logs
+      - ./.agents/active/kira/logs/conversation.jsonl:/home/agent/logs/conversation.jsonl
+      - ./.agents/active/kira/logs/trace.jsonl:/home/agent/logs/trace.jsonl
       - ./.agents/active/kira/a2-gemini/memory:/home/agent/memory
       - .:/home/agent/workspace
 

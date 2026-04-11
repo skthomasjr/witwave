@@ -78,6 +78,25 @@ from watchfiles import awatch
 
 logger = logging.getLogger(__name__)
 
+
+def _session_file_exists(session_id: str) -> bool:
+    """Check whether a Claude session file exists on disk for this session_id."""
+    import pathlib
+    try:
+        from claude_agent_sdk._internal.sessions import _get_claude_config_home_dir, _sanitize_path
+        cwd = pathlib.Path(os.getcwd())
+        sessions_dir = _get_claude_config_home_dir() / "projects" / _sanitize_path(str(cwd))
+        if (sessions_dir / f"{session_id}.jsonl").exists():
+            return True
+        # Also check CLAUDE_CONFIG_DIR directly if set
+        config_dir = os.environ.get("CLAUDE_CONFIG_DIR")
+        if config_dir:
+            alt_dir = pathlib.Path(config_dir) / "projects" / _sanitize_path(str(cwd))
+            return (alt_dir / f"{session_id}.jsonl").exists()
+        return False
+    except Exception:
+        return False
+
 AGENT_NAME = os.environ.get("AGENT_NAME", "a2-claude")
 AGENT_OWNER = os.environ.get("AGENT_OWNER", AGENT_NAME)
 AGENT_ID = os.environ.get("AGENT_ID", "claude")
@@ -172,12 +191,14 @@ def _log_tool_event(event_type: str, block, session_id: str, model: str | None =
         ts = datetime.now(timezone.utc).isoformat()
         if event_type == "tool_use":
             entry = {
-                "ts": ts, "session_id": session_id, "event_type": event_type,
+                "ts": ts, "agent": AGENT_NAME, "agent_id": AGENT_ID,
+                "session_id": session_id, "event_type": event_type,
                 "model": model, "id": block.id, "name": block.name, "input": block.input,
             }
         else:
             entry = {
-                "ts": ts, "session_id": session_id, "event_type": event_type,
+                "ts": ts, "agent": AGENT_NAME, "agent_id": AGENT_ID,
+                "session_id": session_id, "event_type": event_type,
                 "model": model, "tool_use_id": block.tool_use_id,
                 "content": block.content, "is_error": block.is_error,
             }
@@ -237,7 +258,7 @@ def _make_options(
         allowed_tools=ALLOWED_TOOLS,
         system_prompt=system_prompt,
         resume=session_id if resume else None,
-        session_id=None if resume else session_id,
+        session_id=session_id if not resume else None,
         stderr=stderr_fn,
         mcp_servers=mcp_servers,
         model=model or CLAUDE_MODEL,
@@ -436,9 +457,11 @@ async def _run_inner(
     if a2_model_requests_total is not None:
         a2_model_requests_total.labels(**_LABELS, model=resolved_model).inc()
 
-    is_new = session_id not in sessions
+    is_new = session_id not in sessions and not _session_file_exists(session_id)
     if not is_new and a2_session_idle_seconds is not None:
-        a2_session_idle_seconds.labels(**_LABELS).observe(time.monotonic() - sessions[session_id])
+        _last_used = sessions.get(session_id)
+        if _last_used is not None:
+            a2_session_idle_seconds.labels(**_LABELS).observe(time.monotonic() - _last_used)
     if a2_session_starts_total is not None:
         a2_session_starts_total.labels(**_LABELS, type="new" if is_new else "resumed").inc()
 

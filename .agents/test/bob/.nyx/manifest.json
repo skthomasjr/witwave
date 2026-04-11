@@ -3,6 +3,10 @@
     {
       "name": "bob",
       "url": "http://bob:8000"
+    },
+    {
+      "name": "fred",
+      "url": "http://fred:8000"
     }
   ]
 }

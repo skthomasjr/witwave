@@ -288,6 +288,7 @@ async def run_query(
         ts = datetime.now(timezone.utc).isoformat()
         entry = {
             "ts": ts,
+            "agent": AGENT_NAME, "agent_id": AGENT_ID,
             "session_id": session_id,
             "event_type": "response",
             "model": resolved_model,
@@ -329,7 +330,9 @@ async def _run_inner(
 
     is_new = session_id not in sessions
     if not is_new and a2_session_idle_seconds is not None:
-        a2_session_idle_seconds.labels(**_LABELS).observe(time.monotonic() - sessions[session_id])
+        _last_used = sessions.get(session_id)
+        if _last_used is not None:
+            a2_session_idle_seconds.labels(**_LABELS).observe(time.monotonic() - _last_used)
     if a2_session_starts_total is not None:
         a2_session_starts_total.labels(**_LABELS, type="new" if is_new else "resumed").inc()
 

@@ -44,7 +44,7 @@ from metrics import (
     agent_up,
     agent_uptime_seconds,
 )
-from conversations_proxy import fetch_backend_conversations
+from conversations_proxy import fetch_backend_conversations, fetch_backend_trace
 from metrics_proxy import fetch_backend_metrics
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
@@ -331,6 +331,37 @@ async def main():
             media_type=prometheus_client.exposition.CONTENT_TYPE_LATEST,
         )
 
+    async def agents_handler(request: Request) -> JSONResponse:
+        from backends.config import load_backends_config
+        try:
+            backend_configs = load_backends_config()
+        except Exception:
+            backend_configs = []
+        agents = []
+        # Own card
+        own_card = build_agent_card()
+        agents.append({
+            "id": AGENT_NAME,
+            "url": AGENT_URL,
+            "role": "nyx",
+            "card": own_card.model_dump() if hasattr(own_card, "model_dump") else vars(own_card),
+        })
+        # Backend cards
+        import httpx
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            for backend in backend_configs:
+                if not backend.url:
+                    continue
+                entry = {"id": backend.id, "url": backend.url, "role": "backend", "model": backend.model, "card": None}
+                try:
+                    resp = await client.get(backend.url.rstrip("/") + "/.well-known/agent.json")
+                    if resp.status_code == 200:
+                        entry["card"] = resp.json()
+                except Exception as exc:
+                    logger.debug(f"Backend {backend.id!r} agent card unreachable: {exc!r}")
+                agents.append(entry)
+        return JSONResponse(agents)
+
     async def conversations_handler(request: Request) -> JSONResponse:
         since = request.query_params.get("since")
         limit = request.query_params.get("limit")
@@ -345,6 +376,131 @@ async def main():
             backend_configs = []
         entries = await fetch_backend_conversations(backend_configs, since=since, limit=limit_n)
         return JSONResponse(entries)
+
+    async def trace_handler(request: Request) -> JSONResponse:
+        since = request.query_params.get("since")
+        limit = request.query_params.get("limit")
+        try:
+            limit_n = int(limit) if limit else None
+        except ValueError:
+            return JSONResponse({"error": "invalid limit"}, status_code=400)
+        from backends.config import load_backends_config
+        try:
+            backend_configs = load_backends_config()
+        except Exception:
+            backend_configs = []
+        entries = await fetch_backend_trace(backend_configs, since=since, limit=limit_n)
+        return JSONResponse(entries)
+
+    async def proxy_handler(request: Request) -> Response:
+        """Proxy an A2A JSON-RPC request to a named team member, optionally targeting a specific backend."""
+        import json as _json
+        import httpx
+        agent_name = request.path_params["agent_name"]
+        backend_id = request.query_params.get("backend")
+        manifest_path = os.environ.get("MANIFEST_PATH", "/home/agent/.nyx/manifest.json")
+        try:
+            with open(manifest_path) as f:
+                manifest = _json.load(f)
+            team = manifest.get("team", [])
+        except Exception:
+            team = []
+        target_url = next((m.get("url") for m in team if m.get("name") == agent_name), None)
+        if not target_url:
+            return JSONResponse({"error": f"agent {agent_name!r} not found"}, status_code=404)
+        # If a specific backend is requested, resolve its URL from backend.yaml of the target agent
+        if backend_id:
+            try:
+                from backends.config import load_backends_config as _lbc
+                # We can only load our own backend.yaml; for other agents fan out via their /agents endpoint
+                async with httpx.AsyncClient(timeout=5.0) as _c:
+                    _r = await _c.get(target_url.rstrip("/") + "/agents")
+                    if _r.status_code == 200:
+                        _agents = _r.json()
+                        _b = next((a for a in _agents if a.get("role") == "backend" and a.get("id") == backend_id), None)
+                        if _b and _b.get("url"):
+                            target_url = _b["url"]
+            except Exception:
+                pass
+        body = await request.body()
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            try:
+                resp = await client.post(
+                    target_url.rstrip("/") + "/",
+                    content=body,
+                    headers={"Content-Type": "application/json"},
+                )
+                return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
+            except Exception as exc:
+                return JSONResponse({"error": str(exc)}, status_code=502)
+
+    async def conversations_proxy_handler(request: Request) -> JSONResponse:
+        """Proxy /conversations from a named team member's backend, optionally filtered by backend id."""
+        import json as _json
+        import httpx
+        agent_name = request.path_params["agent_name"]
+        backend_id = request.query_params.get("backend")
+        since = request.query_params.get("since")
+        limit = request.query_params.get("limit", "200")
+        manifest_path = os.environ.get("MANIFEST_PATH", "/home/agent/.nyx/manifest.json")
+        try:
+            with open(manifest_path) as f:
+                manifest = _json.load(f)
+            team = manifest.get("team", [])
+        except Exception:
+            team = []
+        target_url = next((m.get("url") for m in team if m.get("name") == agent_name), None)
+        if not target_url:
+            return JSONResponse({"error": f"agent {agent_name!r} not found"}, status_code=404)
+        # Resolve specific backend URL if requested
+        if backend_id:
+            try:
+                async with httpx.AsyncClient(timeout=5.0) as _c:
+                    _r = await _c.get(target_url.rstrip("/") + "/agents")
+                    if _r.status_code == 200:
+                        _agents = _r.json()
+                        _b = next((a for a in _agents if a.get("role") == "backend" and a.get("id") == backend_id), None)
+                        if _b and _b.get("url"):
+                            target_url = _b["url"]
+            except Exception:
+                pass
+        params: dict = {"limit": limit}
+        if since:
+            params["since"] = since
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                resp = await client.get(target_url.rstrip("/") + "/conversations", params=params)
+                return JSONResponse(resp.json(), status_code=resp.status_code)
+            except Exception as exc:
+                return JSONResponse({"error": str(exc)}, status_code=502)
+
+    async def team_handler(request: Request) -> JSONResponse:
+        """Return agent cards for all team members by reading manifest.json and fanning out to /agents."""
+        import json as _json
+        import httpx
+        manifest_path = os.environ.get("MANIFEST_PATH", "/home/agent/.nyx/manifest.json")
+        try:
+            with open(manifest_path) as f:
+                manifest = _json.load(f)
+            team = manifest.get("team", [])
+        except Exception:
+            team = [{"name": AGENT_NAME, "url": AGENT_URL}]
+        result = []
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            for member in team:
+                url = member.get("url", "").rstrip("/")
+                if not url:
+                    continue
+                try:
+                    resp = await client.get(f"{url}/agents")
+                    if resp.status_code == 200:
+                        agents = resp.json()
+                        result.append({"name": member.get("name"), "url": url, "agents": agents})
+                    else:
+                        result.append({"name": member.get("name"), "url": url, "agents": [], "error": f"HTTP {resp.status_code}"})
+                except Exception as exc:
+                    result.append({"name": member.get("name"), "url": url, "agents": [], "error": str(exc)})
+        return JSONResponse(result)
 
     trigger_runner = TriggerRunner()
 
@@ -490,7 +646,12 @@ async def main():
         Route("/health/ready", health_ready),
         Route("/.well-known/agent-triggers.json", triggers_discovery, methods=["GET"]),
         Route("/triggers/{endpoint}", trigger_handler, methods=["POST"]),
+        Route("/agents", agents_handler, methods=["GET"]),
+        Route("/team", team_handler, methods=["GET"]),
+        Route("/proxy/{agent_name}", proxy_handler, methods=["POST"]),
         Route("/conversations", conversations_handler, methods=["GET"]),
+        Route("/conversations/{agent_name}", conversations_proxy_handler, methods=["GET"]),
+        Route("/trace", trace_handler, methods=["GET"]),
     ]
     if metrics_enabled:
         _routes.append(Route("/metrics", metrics_handler, methods=["GET"]))

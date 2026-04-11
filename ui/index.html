@@ -5,216 +5,529 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>nyx</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:       #0d0d0d;
-      --surface:  #161616;
-      --border:   #262626;
-      --muted:    #444;
-      --dim:      #888;
-      --text:     #d4d4d4;
-      --bright:   #f0f0f0;
-      --accent:   #7c6af7;
-      --accent2:  #3ecfcf;
-      --green:    #4ade80;
-      --yellow:   #fbbf24;
-      --red:      #f87171;
-      --radius:   6px;
-      --font:     'SF Mono', 'Fira Code', 'Menlo', monospace;
+      --bg:      #0d0d0d;
+      --surface: #161616;
+      --border:  #262626;
+      --muted:   #444;
+      --dim:     #777;
+      --text:    #d4d4d4;
+      --bright:  #f0f0f0;
+      --accent:  #7c6af7;
+      --teal:    #3ecfcf;
+      --green:   #4ade80;
+      --yellow:  #fbbf24;
+      --red:     #f87171;
+      --radius:  6px;
+      --mono:    'SF Mono','Fira Code','Menlo',monospace;
     }
 
-    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 13px; }
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 13px; }
 
-    /* ── Layout ────────────────────────────────────────────── */
-    #app { display: flex; flex-direction: column; height: 100vh; }
+    #app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 
+    /* ── Header ── */
     header {
-      display: flex; align-items: center; gap: 20px;
-      padding: 0 20px; height: 48px;
+      display: flex; align-items: center; gap: 16px;
+      padding: 0 18px; height: 46px; flex-shrink: 0;
       border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
     }
-    header h1 { font-size: 1.1rem; letter-spacing: 0.25em; color: var(--bright); }
-    header .sep { flex: 1; }
-    header .status { font-size: 11px; color: var(--dim); }
-    header .status span { color: var(--green); }
+    header h1 { font-size: 1rem; letter-spacing: .25em; color: var(--bright); }
+    .spacer { flex: 1; }
+    #hdr-status { font-size: 11px; color: var(--dim); }
+    #hdr-status.ok::before { content: '● '; color: var(--green); }
+    #hdr-status.err::before { content: '● '; color: var(--red); }
 
     nav { display: flex; gap: 2px; }
     nav button {
       background: none; border: none; cursor: pointer;
-      padding: 6px 14px; border-radius: var(--radius);
-      color: var(--dim); font-family: var(--font); font-size: 12px;
-      letter-spacing: 0.05em; transition: color 0.15s, background 0.15s;
+      padding: 5px 13px; border-radius: var(--radius);
+      color: var(--dim); font-family: var(--mono); font-size: 12px;
+      letter-spacing: .04em; transition: color .12s, background .12s;
     }
     nav button:hover { color: var(--text); background: var(--surface); }
     nav button.active { color: var(--bright); background: var(--surface); }
 
-    main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
-
-    .view { display: none; flex: 1; overflow: hidden; }
+    /* ── Views ── */
+    main { flex: 1; overflow: hidden; }
+    .view { display: none; height: 100%; overflow: hidden; }
     .view.active { display: flex; flex-direction: column; }
 
-    /* ── Metrics view ──────────────────────────────────────── */
-    #metrics-view {
-      overflow-y: auto; padding: 20px;
-      gap: 20px;
-    }
+    /* ════════════════════════════════════
+       METRICS VIEW
+    ════════════════════════════════════ */
+    #metrics-view { overflow-y: auto; padding: 18px; gap: 18px; }
 
-    .metrics-toolbar {
-      display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+    .toolbar {
+      display: flex; align-items: center; gap: 10px; flex-shrink: 0;
     }
-    .metrics-toolbar label { color: var(--dim); font-size: 11px; }
-    .metrics-toolbar select {
+    .toolbar label { font-size: 11px; color: var(--dim); }
+    .toolbar .ts { font-size: 11px; color: var(--dim); margin-left: auto; }
+    .toolbar select {
       background: var(--surface); border: 1px solid var(--border);
-      color: var(--text); font-family: var(--font); font-size: 12px;
+      color: var(--text); font-family: var(--mono); font-size: 11px;
       padding: 4px 8px; border-radius: var(--radius); cursor: pointer;
     }
-    .metrics-toolbar .refresh-btn {
-      margin-left: auto;
+    .toolbar select:focus { outline: none; border-color: var(--accent); }
+    .icon-btn {
       background: none; border: 1px solid var(--border); color: var(--dim);
-      font-family: var(--font); font-size: 11px; padding: 4px 10px;
+      font-family: var(--mono); font-size: 11px; padding: 4px 10px;
       border-radius: var(--radius); cursor: pointer;
     }
-    .metrics-toolbar .refresh-btn:hover { color: var(--text); border-color: var(--muted); }
-    .last-updated { font-size: 11px; color: var(--dim); }
+    .icon-btn:hover { color: var(--text); border-color: var(--muted); }
 
+    /* Stat cards */
     .stat-row {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-      gap: 12px;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 10px;
     }
-    .stat-card {
+    .stat {
       background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 14px 16px;
+      border-radius: var(--radius); padding: 13px 15px;
     }
-    .stat-card .label { font-size: 10px; color: var(--dim); letter-spacing: 0.08em; text-transform: uppercase; }
-    .stat-card .value { font-size: 1.5rem; color: var(--bright); margin-top: 4px; }
-    .stat-card .sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+    .stat .lbl { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: .07em; }
+    .stat .val { font-size: 1.45rem; color: var(--bright); margin-top: 5px; line-height: 1; }
+    .stat .sub { font-size: 10px; color: var(--muted); margin-top: 3px; }
 
+    /* Chart grid */
     .chart-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
-      gap: 16px;
+      grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+      gap: 14px;
     }
     .chart-card {
       background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 16px;
+      border-radius: var(--radius); padding: 15px;
     }
     .chart-card h3 {
-      font-size: 11px; color: var(--dim); letter-spacing: 0.08em;
-      text-transform: uppercase; margin-bottom: 12px;
+      font-size: 10px; color: var(--dim); text-transform: uppercase;
+      letter-spacing: .07em; margin-bottom: 12px;
     }
-    .chart-card canvas { max-height: 180px; }
+    .chart-card canvas { max-height: 170px; }
 
-    .no-metrics {
-      color: var(--muted); font-size: 12px; padding: 40px 0; text-align: center;
+    .placeholder-msg {
+      color: var(--muted); font-size: 12px;
+      padding: 30px; text-align: center;
+      grid-column: 1 / -1;
     }
 
-    /* ── Calendar view ─────────────────────────────────────── */
-    #calendar-view { display: flex; flex-direction: row; overflow: hidden; }
+    /* ════════════════════════════════════
+       AGENTS VIEW
+    ════════════════════════════════════ */
+    #agents-view { flex-direction: row; overflow: hidden; }
 
-    .cal-left {
-      width: 320px; flex-shrink: 0;
+    /* Left: scrollable agent cards */
+    .agents-left {
+      flex: 1; min-width: 0;
       border-right: 1px solid var(--border);
       display: flex; flex-direction: column; overflow: hidden;
     }
-    .cal-right {
+    .agents-left-scroll {
+      flex: 1; overflow-y: auto;
+      padding: 14px 12px; display: flex; flex-direction: column; gap: 16px;
+    }
+    .agents-placeholder { color: var(--muted); font-size: 11px; padding: 20px 10px; text-align: center; }
+    .agents-footer {
+      flex-shrink: 0; padding: 5px 14px;
+      border-top: 1px solid var(--border);
+      font-size: 10px; color: #333; letter-spacing: .03em;
+      user-select: none;
+    }
+
+    /* Named agent group — clickable to select */
+    .named-agent {
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .named-agent.selected > .nyx-card { border-color: var(--accent); }
+
+    .nyx-card { cursor: pointer; }
+
+    /* Right: conversation panel */
+    .agents-right {
       flex: 1; display: flex; flex-direction: column; overflow: hidden;
     }
-
-    .cal-header {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 12px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0;
-    }
-    .cal-header h2 { font-size: 12px; color: var(--bright); letter-spacing: 0.05em; }
-    .cal-header button {
-      background: none; border: none; color: var(--dim); cursor: pointer;
-      font-size: 14px; padding: 2px 6px; border-radius: 4px;
-    }
-    .cal-header button:hover { color: var(--text); }
-
-    .cal-grid {
-      display: grid; grid-template-columns: repeat(7, 1fr);
-      gap: 2px; padding: 12px; flex-shrink: 0;
-    }
-    .cal-day-label { text-align: center; font-size: 10px; color: var(--muted); padding-bottom: 4px; }
-    .cal-cell {
-      aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
-      border-radius: 4px; cursor: pointer; font-size: 11px; color: var(--dim);
-      position: relative; transition: background 0.1s;
-    }
-    .cal-cell:hover { background: var(--border); color: var(--text); }
-    .cal-cell.other-month { color: var(--muted); opacity: 0.4; }
-    .cal-cell.today { color: var(--accent); font-weight: bold; }
-    .cal-cell.has-data::after {
-      content: ''; position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%);
-      width: 4px; height: 4px; border-radius: 50%; background: var(--accent2);
-    }
-    .cal-cell.selected { background: var(--accent); color: #fff; }
-    .cal-cell.selected::after { background: #fff; }
-
-    .session-list {
-      flex: 1; overflow-y: auto; padding: 8px 0;
-    }
-    .session-item {
-      padding: 10px 16px; cursor: pointer; border-left: 2px solid transparent;
-      transition: background 0.1s, border-color 0.1s;
-    }
-    .session-item:hover { background: var(--surface); }
-    .session-item.active { background: var(--surface); border-left-color: var(--accent); }
-    .session-item .s-agent { font-size: 10px; color: var(--accent2); }
-    .session-item .s-time { font-size: 10px; color: var(--dim); float: right; }
-    .session-item .s-preview { font-size: 11px; color: var(--text); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .session-item .s-count { font-size: 10px; color: var(--muted); margin-top: 2px; }
-
-    .empty-state {
-      padding: 40px 16px; text-align: center; color: var(--muted); font-size: 12px;
-    }
-
-    .conv-panel {
-      flex: 1; display: flex; flex-direction: column; overflow: hidden;
-    }
-    .conv-header {
-      padding: 12px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0;
-    }
-    .conv-header .session-id { font-size: 10px; color: var(--dim); }
-    .conv-header .session-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
-
-    .conv-messages {
-      flex: 1; overflow-y: auto; padding: 16px 20px;
-      display: flex; flex-direction: column; gap: 12px;
-    }
-
-    .msg {
-      display: flex; flex-direction: column; gap: 4px;
-      max-width: 85%;
-    }
-    .msg.user { align-self: flex-end; align-items: flex-end; }
-    .msg.agent { align-self: flex-start; }
-
-    .msg .msg-meta {
-      font-size: 10px; color: var(--muted);
-      display: flex; gap: 8px; align-items: center;
-    }
-    .msg .msg-meta .m-agent { color: var(--accent2); }
-    .msg .msg-meta .m-model { color: var(--dim); }
-
-    .msg .bubble {
-      padding: 10px 14px; border-radius: var(--radius);
-      font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
-    }
-    .msg.user .bubble { background: var(--accent); color: #fff; }
-    .msg.agent .bubble { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
-
-    .conv-placeholder {
+    .agents-right-placeholder {
       flex: 1; display: flex; align-items: center; justify-content: center;
-      color: var(--muted); font-size: 12px;
+      color: var(--muted); font-size: 11px;
     }
 
-    /* ── Scrollbar ─────────────────────────────────────────── */
-    ::-webkit-scrollbar { width: 6px; }
+    /* Nyx card */
+    .nyx-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-top: 2px solid var(--accent);
+      border-radius: var(--radius); padding: 14px;
+      display: flex; flex-direction: column; gap: 10px;
+      position: relative;
+    }
+    .nyx-status-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--muted); flex-shrink: 0; display: inline-block;
+    }
+    .nyx-status-dot.up { background: var(--green); }
+    .nyx-status-dot.down { background: var(--red); }
+    .nyx-status-dot.starting { background: var(--yellow); }
+    .ac-badge.nyx { display: inline-flex; align-items: center; gap: 5px; }
+
+    .backends-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+
+    /* Backend bubble */
+    .backend-bubble {
+      cursor: pointer;
+    }
+    .backend-bubble.active-backend { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .backend-bubble {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 10px; border-radius: 20px;
+      font-size: 11px; border: 1px solid transparent;
+    }
+    .backend-bubble .bb-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--muted); }
+    .backend-bubble .bb-dot.up { background: var(--green) !important; }
+    .backend-bubble .bb-dot.down { background: var(--red) !important; }
+    .backend-bubble .bb-label { color: var(--bright); white-space: nowrap; }
+    .backend-bubble .bb-id { opacity: .55; font-size: 10px; }
+
+    /* Per-type colors — brand accurate */
+    .backend-bubble.claude {
+      background: color-mix(in srgb, #DA7756 12%, transparent);
+      border-color: color-mix(in srgb, #DA7756 35%, transparent);
+    }
+    .backend-bubble.claude .bb-dot.up { background: var(--green) !important; }
+    .backend-bubble.claude .bb-dot.down { background: var(--red) !important; }
+    .backend-bubble.codex {
+      background: color-mix(in srgb, #74AA9C 12%, transparent);
+      border-color: color-mix(in srgb, #74AA9C 35%, transparent);
+    }
+    .backend-bubble.codex .bb-dot.up { background: var(--green) !important; }
+    .backend-bubble.codex .bb-dot.down { background: var(--red) !important; }
+    .backend-bubble.gemini {
+      background: color-mix(in srgb, #8E44EC 12%, transparent);
+      border-color: color-mix(in srgb, #8E44EC 35%, transparent);
+    }
+    .backend-bubble.gemini .bb-dot.up { background: var(--green) !important; }
+    .backend-bubble.gemini .bb-dot.down { background: var(--red) !important; }
+    .backend-bubble.unknown {
+      background: color-mix(in srgb, var(--muted) 12%, transparent);
+      border-color: color-mix(in srgb, var(--muted) 35%, transparent);
+    }
+
+    .ac-header { display: flex; align-items: flex-start; justify-content: flex-end; gap: 10px; }
+    .ac-name { font-size: .95rem; color: var(--bright); letter-spacing: .04em; }
+    .ac-name.sm { font-size: .82rem; }
+    .ac-badge {
+      font-size: 10px; padding: 2px 7px; border-radius: 10px;
+      background: var(--border); color: var(--dim); flex-shrink: 0;
+    }
+    .ac-badge.nyx { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); }
+    .ac-badge.backend { background: color-mix(in srgb, var(--teal) 15%, transparent); color: var(--teal); }
+    .ac-desc { font-size: 11px; color: var(--dim); line-height: 1.6; }
+    .ac-desc p { margin: 0 0 6px; }
+    .ac-desc p:last-child { margin-bottom: 0; }
+    .ac-desc h1, .ac-desc h2, .ac-desc h3 { font-size: 11px; color: var(--text); margin: 6px 0 3px; }
+    .ac-desc ul, .ac-desc ol { padding-left: 16px; margin: 4px 0; }
+    .ac-desc li { margin: 2px 0; }
+    .ac-desc code { background: var(--border); border-radius: 3px; padding: 1px 4px; font-size: 10px; }
+    .ac-desc a { color: var(--accent); text-decoration: none; }
+    .ac-meta { display: flex; flex-direction: column; gap: 3px; }
+    .ac-row { display: flex; gap: 8px; align-items: baseline; }
+    .ac-label { font-size: 10px; color: var(--muted); width: 56px; flex-shrink: 0; }
+    .ac-value { font-size: 11px; color: var(--text); word-break: break-all; }
+    .ac-skills { display: flex; flex-wrap: wrap; gap: 4px; }
+    .ac-skill { font-size: 10px; padding: 2px 6px; border-radius: 10px; background: var(--border); color: var(--dim); }
+    .ac-status { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--muted); }
+    .ac-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+    .ac-dot.up { background: var(--green); }
+    .ac-dot.down { background: var(--red); }
+
+    /* Chat toolbar */
+    .chat-toolbar {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      padding: 8px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .chat-toolbar .ct-group { display: flex; align-items: center; gap: 5px; }
+    .chat-toolbar .ct-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; white-space: nowrap; }
+    .chat-toolbar select, .chat-toolbar input[type="text"] {
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); font-family: var(--mono); font-size: 11px;
+      padding: 4px 8px; border-radius: var(--radius); outline: none;
+    }
+    .chat-toolbar select:focus, .chat-toolbar input[type="text"]:focus { border-color: var(--accent); }
+    .chat-toolbar select { cursor: pointer; }
+    .chat-toolbar input[type="text"] { width: 160px; }
+    .chat-toolbar input[type="text"].session-input { width: 120px; }
+
+    /* A2A chat panel */
+    .agent-chat { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+    .agent-chat-thread {
+      flex: 1; overflow-y: auto; padding: 12px 20px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .agent-chat-thread .cm { display: flex; flex-direction: column; gap: 2px; }
+    .agent-chat-thread .cm.user { align-items: flex-end; }
+    .agent-chat-thread .cm.agent { align-items: flex-start; }
+    .agent-chat-thread .cm .role {
+      font-size: 9px; color: var(--muted); letter-spacing: .05em;
+      text-transform: uppercase; padding: 0 4px;
+    }
+    .agent-chat-thread .cm .bbl {
+      font-size: 11px; line-height: 1.55; white-space: pre-wrap; word-break: break-word;
+      padding: 7px 11px; border-radius: var(--radius); max-width: 75%;
+    }
+    .agent-chat-thread .cm.user .bbl { background: var(--accent); color: #fff; }
+    .agent-chat-thread .cm.agent .bbl { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+    .agent-chat-thread .cm.thinking .bbl { color: var(--muted); font-style: italic; }
+    .agent-chat-thread .cm.error { align-items: flex-start; }
+    .agent-chat-thread .cm.error .bbl { background: color-mix(in srgb, var(--red) 8%, transparent); border: 1px solid color-mix(in srgb, var(--red) 30%, transparent); color: var(--text); }
+    .agent-chat-thread .cm.error .err-msg { font-size: 11px; color: var(--red); margin-bottom: 6px; }
+    .agent-chat-thread .cm.error .err-detail { margin-top: 6px; border-top: 1px solid color-mix(in srgb, var(--red) 20%, transparent); padding-top: 6px; }
+    .agent-chat-thread .cm.error .err-detail summary { font-size: 10px; color: var(--dim); cursor: pointer; letter-spacing: .04em; }
+    .agent-chat-thread .cm.error .err-detail summary:hover { color: var(--text); }
+    .agent-chat-thread .cm.error pre { font-family: var(--mono); font-size: 10px; color: var(--dim); white-space: pre-wrap; word-break: break-all; margin-top: 6px; }
+    .agent-chat-thread .empty-chat { color: var(--muted); font-size: 11px; text-align: center; padding: 24px 0; }
+    .agent-chat-input {
+      display: flex; gap: 8px; padding: 10px 20px;
+      border-top: 1px solid var(--border); flex-shrink: 0;
+    }
+    .agent-chat-input input {
+      flex: 1; background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); font-family: var(--mono); font-size: 12px;
+      padding: 7px 11px; border-radius: var(--radius); outline: none;
+    }
+    .agent-chat-input input:focus { border-color: var(--accent); }
+    .agent-chat-input button {
+      background: var(--accent); border: none; color: #fff;
+      font-family: var(--mono); font-size: 11px; padding: 7px 16px;
+      border-radius: var(--radius); cursor: pointer; flex-shrink: 0;
+    }
+    .agent-chat-input button:disabled { opacity: .45; cursor: default; }
+
+    /* ════════════════════════════════════
+       CONVERSATIONS VIEW
+    ════════════════════════════════════ */
+    #conversations-view { flex-direction: column; overflow: hidden; }
+
+    .conv-toolbar {
+      display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+      padding: 8px 16px; border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .conv-toolbar input, .conv-toolbar select {
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); font-family: var(--mono); font-size: 11px;
+      padding: 4px 8px; border-radius: var(--radius); outline: none;
+    }
+    .conv-toolbar input { width: 180px; }
+    .conv-toolbar input::placeholder { color: var(--muted); }
+    .conv-toolbar input:focus, .conv-toolbar select:focus { border-color: var(--accent); }
+    .conv-toolbar select { cursor: pointer; }
+    .conv-toolbar .ct-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; }
+    .conv-count { font-size: 10px; color: var(--dim); margin-left: auto; }
+
+    .empty { padding: 30px 14px; text-align: center; color: var(--muted); font-size: 11px; }
+
+    /* Unified feed */
+    .conv-feed {
+      flex: 1; overflow-y: auto; padding: 12px 20px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+
+    /* Session divider */
+    .conv-session-divider {
+      display: flex; align-items: center; gap: 10px;
+      margin: 12px 0 6px;
+    }
+    .conv-session-divider .div-line { flex: 1; height: 1px; background: var(--border); }
+    .conv-session-divider .div-label {
+      font-size: 10px; color: var(--muted); white-space: nowrap; letter-spacing: .04em;
+    }
+
+    /* Messages — same style as agents chat thread */
+    .conv-feed .cm { display: flex; flex-direction: column; gap: 2px; }
+    .conv-feed .cm.user { align-items: flex-end; }
+    .conv-feed .cm.agent { align-items: flex-start; }
+    .conv-feed .cm .role {
+      font-size: 9px; color: var(--muted); letter-spacing: .05em;
+      text-transform: uppercase; padding: 0 4px;
+    }
+    .conv-feed .cm .bbl {
+      font-size: 11px; line-height: 1.55; white-space: pre-wrap; word-break: break-word;
+      padding: 7px 11px; border-radius: var(--radius); max-width: 75%;
+    }
+    .conv-feed .cm.user .bbl { background: var(--accent); color: #fff; }
+    .conv-feed .cm.agent .bbl { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+
+    /* Tool trace rows — inline, same side as agent bubbles */
+    .tool-row {
+      display: flex; flex-direction: column; gap: 2px; align-items: flex-start;
+    }
+    .tool-row .role {
+      font-size: 9px; color: var(--muted); letter-spacing: .05em;
+      text-transform: uppercase; padding: 0 4px;
+    }
+    .tool-row .bbl {
+      font-size: 11px; line-height: 1.55; white-space: pre-wrap; word-break: break-word;
+      padding: 7px 11px; border-radius: var(--radius); max-width: 75%;
+      background: var(--surface); border: 1px solid color-mix(in srgb, var(--teal) 35%, transparent);
+      color: var(--dim);
+    }
+    .tool-row .tool-name {
+      font-family: var(--mono); color: var(--teal); font-weight: 600;
+    }
+    .tool-row .tool-args {
+      margin-top: 4px; font-size: 10px; color: var(--muted);
+      white-space: pre-wrap; word-break: break-all;
+    }
+    .tool-row.tool-result .bbl {
+      border-color: color-mix(in srgb, var(--green) 35%, transparent);
+    }
+    .tool-row.tool-result .tool-name { color: var(--green); }
+    .tool-row.tool-error .bbl {
+      border-color: color-mix(in srgb, var(--red) 35%, transparent);
+    }
+    .tool-row.tool-error .tool-name { color: var(--red); }
+
+    /* ════════════════════════════════════
+       CALENDAR VIEW
+    ════════════════════════════════════ */
+    #calendar-view { flex-direction: column; overflow: hidden; }
+
+    .cal-toolbar {
+      display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+      padding: 8px 16px; border-bottom: 1px solid var(--border);
+    }
+    .cal-toolbar .cal-title {
+      font-size: 13px; color: var(--bright); font-weight: 600;
+      min-width: 160px; text-align: center;
+    }
+    .cal-nav-btn {
+      background: none; border: 1px solid var(--border); color: var(--dim);
+      font-family: var(--mono); font-size: 12px; padding: 4px 9px;
+      border-radius: var(--radius); cursor: pointer;
+    }
+    .cal-nav-btn:hover { color: var(--text); border-color: var(--muted); }
+    .cal-today-btn {
+      background: none; border: 1px solid var(--border); color: var(--dim);
+      font-family: var(--mono); font-size: 11px; padding: 4px 10px;
+      border-radius: var(--radius); cursor: pointer; margin-right: 4px;
+    }
+    .cal-today-btn:hover { color: var(--text); border-color: var(--muted); }
+    .cal-mode-group {
+      display: flex; margin-left: auto;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 2px; gap: 2px;
+    }
+    .cal-mode-btn {
+      background: none; border: none; color: var(--dim);
+      font-family: var(--mono); font-size: 11px; padding: 3px 11px;
+      border-radius: calc(var(--radius) - 1px); cursor: pointer;
+      transition: color .12s;
+    }
+    .cal-mode-btn.active { background: var(--accent); color: #fff; }
+    .cal-mode-btn:hover:not(.active) { color: var(--text); }
+
+    /* Month grid */
+    .cal-month { flex: 1; display: flex; flex-direction: column; overflow: hidden; padding: 0; }
+    .cal-month-head {
+      display: grid; grid-template-columns: repeat(7, 1fr);
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .cal-dow {
+      padding: 6px 0; text-align: center;
+      font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em;
+    }
+    .cal-month-body {
+      flex: 1; display: grid;
+      grid-template-rows: repeat(6, 1fr);
+      grid-template-columns: repeat(7, 1fr);
+      overflow: hidden;
+    }
+    .cal-day {
+      border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
+      padding: 5px 7px; position: relative; min-height: 0;
+    }
+    .cal-day:nth-child(7n) { border-right: none; }
+    .cal-day.other-month .cal-day-num { color: var(--muted); }
+    .cal-day.today {
+      background: color-mix(in srgb, var(--accent) 8%, transparent);
+      border-top: 2px solid var(--accent);
+    }
+    .cal-day.today .cal-day-num {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 22px; height: 22px; border-radius: 50%;
+      background: var(--accent); color: #fff; font-weight: 600;
+    }
+    .cal-day-num { font-size: 11px; color: var(--dim); }
+
+    /* Week / Day grid */
+    .cal-timed { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .cal-timed-head {
+      display: flex; flex-shrink: 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .cal-timed-gutter { width: 54px; flex-shrink: 0; border-right: 1px solid var(--border); }
+    .cal-timed-cols { flex: 1; display: flex; }
+    .cal-timed-col-hdr {
+      flex: 1; text-align: center; padding: 5px 0;
+      font-size: 10px; color: var(--dim); border-right: 1px solid var(--border);
+    }
+    .cal-timed-col-hdr:last-child { border-right: none; }
+    .cal-timed-col-hdr .col-dow { text-transform: uppercase; letter-spacing: .05em; }
+    .cal-timed-col-hdr .col-num {
+      font-size: 18px; color: var(--text); line-height: 1.1; margin-top: 2px;
+    }
+    .cal-timed-col-hdr .col-num.today {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 32px; height: 32px; border-radius: 50%;
+      background: var(--accent); color: #fff;
+    }
+    .cal-timed-body { flex: 1; display: flex; overflow-y: auto; position: relative; }
+    .cal-timed-hours {
+      width: 54px; flex-shrink: 0; position: relative;
+      border-right: 1px solid var(--border);
+      min-height: 1152px;
+    }
+    .cal-hour-label {
+      height: 48px; display: flex; align-items: flex-start; justify-content: flex-end;
+      padding: 0 6px 0 0; padding-top: 1px;
+      font-size: 9px; color: var(--muted); letter-spacing: .03em;
+    }
+    .cal-timed-events { flex: 1; display: flex; position: relative; }
+    .cal-timed-event-col {
+      flex: 1; position: relative; border-right: 1px solid var(--border);
+      min-height: 1152px; /* 24 × 48px — ensures lines cover full scroll area */
+      /* Hour line at bottom of each 48px slot, half-hour line at 24px.
+         Using a tiled linear-gradient: stops must be in px matching background-size. */
+      background-image: linear-gradient(
+        to bottom,
+        transparent 0px,
+        transparent 23px,
+        color-mix(in srgb, var(--border) 60%, transparent) 23px,
+        color-mix(in srgb, var(--border) 60%, transparent) 24px,
+        transparent 24px,
+        transparent 47px,
+        var(--border) 47px,
+        var(--border) 48px
+      );
+      background-size: 100% 48px;
+      background-repeat: repeat-y;
+    }
+    .cal-timed-event-col:last-child { border-right: none; }
+    /* Current time indicator */
+    .cal-now-line {
+      position: absolute; left: 0; right: 0; height: 2px;
+      background: var(--red); z-index: 10; pointer-events: none;
+    }
+    .cal-now-line::before {
+      content: ''; position: absolute; left: 6px; top: -4px;
+      width: 10px; height: 10px; border-radius: 50%; background: var(--red);
+    }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar { width: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
@@ -225,573 +538,1472 @@
   <header>
     <h1>nyx</h1>
     <nav>
-      <button class="active" data-view="metrics">metrics</button>
-      <button data-view="calendar">conversations</button>
+      <button class="active" data-view="agents">agents</button>
+      <button data-view="conversations">conversations</button>
+      <button data-view="calendar">calendar</button>
+      <button data-view="metrics">metrics</button>
     </nav>
-    <div class="sep"></div>
-    <div class="status" id="status-text">connecting…</div>
+    <div class="spacer"></div>
+    <span id="hdr-status">connecting…</span>
   </header>
 
   <main>
-    <!-- ── Metrics View ── -->
-    <div id="metrics-view" class="view active">
-      <div class="metrics-toolbar">
-        <label>agent</label>
-        <select id="agent-select">
-          <option value="">— all —</option>
-        </select>
-        <span class="last-updated" id="last-updated"></span>
-        <button class="refresh-btn" id="refresh-btn">↺ refresh</button>
+    <!-- Agents -->
+    <div id="agents-view" class="view active">
+      <div class="agents-left">
+        <div class="agents-left-scroll" id="agents-left">
+          <div class="agents-placeholder" id="agents-placeholder">Loading agents…</div>
+        </div>
+        <div class="agents-footer" id="agents-footer"></div>
       </div>
-
-      <div class="stat-row" id="stat-row"></div>
-
-      <div class="chart-grid" id="chart-grid">
-        <div class="no-metrics" id="no-metrics">Loading metrics…</div>
+      <div class="agents-right" id="agents-right">
+        <div class="agents-right-placeholder">Select an agent to start a conversation.</div>
       </div>
     </div>
 
-    <!-- ── Calendar View ── -->
+    <!-- Calendar -->
     <div id="calendar-view" class="view">
-      <div class="cal-left">
-        <div class="cal-header">
-          <button id="cal-prev">‹</button>
-          <h2 id="cal-month-label"></h2>
-          <button id="cal-next">›</button>
-        </div>
-        <div class="cal-grid" id="cal-grid"></div>
-        <div class="session-list" id="session-list">
-          <div class="empty-state">Select a day to view conversations.</div>
+      <div class="cal-toolbar">
+        <button class="cal-nav-btn" id="cal-prev">&#8249;</button>
+        <span class="cal-title" id="cal-title"></span>
+        <button class="cal-nav-btn" id="cal-next">&#8250;</button>
+        <button class="cal-today-btn" id="cal-today">today</button>
+        <div class="cal-mode-group">
+          <button class="cal-mode-btn active" data-cal-mode="month">month</button>
+          <button class="cal-mode-btn" data-cal-mode="week">week</button>
+          <button class="cal-mode-btn" data-cal-mode="day">day</button>
         </div>
       </div>
-      <div class="cal-right">
-        <div class="conv-panel" id="conv-panel">
-          <div class="conv-placeholder">Select a session to read the conversation.</div>
-        </div>
+      <div id="cal-body" style="flex:1;display:flex;flex-direction:column;overflow:hidden;"></div>
+    </div>
+
+    <!-- Metrics -->
+    <div id="metrics-view" class="view">
+      <div class="toolbar">
+        <label for="refresh-interval">refresh</label>
+        <select id="refresh-interval">
+          <option value="0">off</option>
+          <option value="10000">10s</option>
+          <option value="30000" selected>30s</option>
+          <option value="60000">1m</option>
+          <option value="300000">5m</option>
+        </select>
+        <span id="metrics-ts" class="ts"></span>
+        <button class="icon-btn" id="refresh-btn">↺ now</button>
+      </div>
+      <div class="stat-row" id="stat-row"></div>
+      <div class="chart-grid" id="chart-grid">
+        <div class="placeholder-msg" id="chart-placeholder">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Conversations -->
+    <div id="conversations-view" class="view">
+      <div class="conv-toolbar">
+        <span class="ct-label">search</span>
+        <input id="conv-search" type="text" placeholder="filter messages…" />
+        <span class="ct-label">agent</span>
+        <select id="conv-agent-filter"><option value="">all</option></select>
+        <span class="ct-label">role</span>
+        <select id="conv-role-filter">
+          <option value="">all</option>
+          <option value="user">user</option>
+          <option value="agent">agent</option>
+        </select>
+        <span class="ct-label">tools</span>
+        <select id="conv-tool-filter">
+          <option value="show">show</option>
+          <option value="hide">hide</option>
+        </select>
+        <span class="conv-count" id="conv-count"></span>
+      </div>
+      <div class="conv-feed" id="conv-feed">
+        <div class="empty">Loading…</div>
       </div>
     </div>
   </main>
 </div>
 
 <script>
-// ── Config ──────────────────────────────────────────────────────────────────
-// The UI is served by nginx alongside the agent. In the test stack, bob is on
-// port 8099 (same host as the browser). We detect the agent URL from a data
-// attribute or fall back to same-origin on port 8099 in the test stack, or
-// 8000 in active. Override by setting window.NYX_AGENT_URL before this script.
+// ── Agent URL ────────────────────────────────────────────────────────────────
+// UI on port 3001 → bob (test) on 8099
+// UI on port 3000 → active on 8000
+// Override with window.NYX_AGENT_URL if needed
 const AGENT_BASE = (() => {
   if (window.NYX_AGENT_URL) return window.NYX_AGENT_URL.replace(/\/$/, '');
-  // nginx config can inject a base URL; fall back to same host, port 8099 (test) or 8000
-  const port = window.location.port;
-  const testPort = port === '3001' ? '8099' : '8000';
-  return `${window.location.protocol}//${window.location.hostname}:${testPort}`;
+  const h = window.location.hostname;
+  const p = window.location.port;
+  const agentPort = p === '3001' ? '8099' : '8000';
+  return `${window.location.protocol}//${h}:${agentPort}`;
 })();
 
-const METRICS_INTERVAL_MS = 15_000;
+// ── Nav ──────────────────────────────────────────────────────────────────────
+const viewEls = {
+  agents: document.getElementById('agents-view'),
+  conversations: document.getElementById('conversations-view'),
+  calendar: document.getElementById('calendar-view'),
+  metrics: document.getElementById('metrics-view'),
+};
+function switchView(name) {
+  const btn = document.querySelector(`nav button[data-view="${name}"]`);
+  if (!btn || !viewEls[name]) return;
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  Object.values(viewEls).forEach(v => v.classList.remove('active'));
+  viewEls[name].classList.add('active');
+  localStorage.setItem('nyx-active-view', name);
+  if (name === 'conversations' && !conv.loaded) loadConversations();
+  if (name === 'calendar') renderCalendar();
+  if (name === 'metrics' && !_metricsLoaded) {
+    _metricsLoaded = true;
+    loadMetrics();
+    setRefreshInterval(30_000);
+  }
+  if (name !== 'metrics') {
+    if (_refreshTimer) { clearInterval(_refreshTimer); _refreshTimer = null; }
+  }
+}
 
-// ── Navigation ──────────────────────────────────────────────────────────────
-const views = { metrics: document.getElementById('metrics-view'), calendar: document.getElementById('calendar-view') };
 document.querySelectorAll('nav button').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    Object.values(views).forEach(v => v.classList.remove('active'));
-    views[btn.dataset.view].classList.add('active');
-    if (btn.dataset.view === 'calendar' && !calState.loaded) loadConversations();
-  });
+  btn.addEventListener('click', () => switchView(btn.dataset.view));
 });
 
-// ── Status ───────────────────────────────────────────────────────────────────
-function setStatus(text, ok = true) {
-  const el = document.getElementById('status-text');
-  el.innerHTML = ok ? `<span>${text}</span>` : text;
+
+function setStatus(msg, ok) {
+  const el = document.getElementById('hdr-status');
+  el.textContent = msg;
+  el.className = ok === true ? 'ok' : ok === false ? 'err' : '';
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// METRICS
+// Prometheus text parser
 // ════════════════════════════════════════════════════════════════════════════
-
-// Prometheus text parser — returns Map<metricName, {help, type, samples: [{labels, value, ts}]}>
 function parsePrometheus(text) {
-  const metrics = new Map();
-  let current = null;
-  for (const rawLine of text.split('\n')) {
-    const line = rawLine.trim();
-    if (!line) continue;
-    if (line.startsWith('# HELP ')) {
-      const m = line.match(/^# HELP (\S+) (.*)$/);
-      if (m) { current = m[1]; metrics.set(current, { help: m[2], type: '', samples: [] }); }
-    } else if (line.startsWith('# TYPE ')) {
-      const m = line.match(/^# TYPE (\S+) (.*)$/);
-      if (m && metrics.has(m[1])) metrics.get(m[1]).type = m[2];
-    } else if (!line.startsWith('#')) {
-      const m = line.match(/^([a-zA-Z_:][a-zA-Z0-9_:]*)(\{[^}]*\})?\s+([^\s]+)(?:\s+(\S+))?/);
-      if (!m) continue;
-      const name = m[1], labelStr = m[2] || '', value = parseFloat(m[3]);
-      if (isNaN(value)) continue;
-      const labels = {};
-      for (const lm of labelStr.matchAll(/(\w+)="([^"]*)"/g)) labels[lm[1]] = lm[2];
-      // find metric family (strip _total/_sum/_count/_bucket/_created suffixes for lookup)
-      let family = name;
-      for (const suf of ['_total', '_sum', '_count', '_bucket', '_created']) {
-        if (name.endsWith(suf)) { family = name.slice(0, -suf.length); break; }
+  // Returns Map<familyName, {help, type, samples: [{name, labels, value}]}>
+  const out = new Map();
+  const SUFFIXES = ['_bucket','_count','_sum','_total','_created','_info'];
+
+  function family(name) {
+    for (const s of SUFFIXES) if (name.endsWith(s)) return name.slice(0, -s.length);
+    return name;
+  }
+
+  for (const line of text.split('\n')) {
+    const t = line.trim();
+    if (!t) continue;
+    if (t.startsWith('# HELP ')) {
+      const m = t.match(/^# HELP (\S+) (.*)$/);
+      if (m) {
+        const f = family(m[1]);
+        if (!out.has(f)) out.set(f, { help: m[2], type: '', samples: [] });
+        else if (!out.get(f).help) out.get(f).help = m[2];
       }
-      if (!metrics.has(family)) metrics.set(family, { help: '', type: '', samples: [] });
-      metrics.get(family).samples.push({ name, labels, value });
+    } else if (t.startsWith('# TYPE ')) {
+      const m = t.match(/^# TYPE (\S+) (\S+)$/);
+      if (m) {
+        const f = family(m[1]);
+        if (!out.has(f)) out.set(f, { help: '', type: m[2], samples: [] });
+        else out.get(f).type = m[2];
+      }
+    } else if (!t.startsWith('#')) {
+      const m = t.match(/^([a-zA-Z_:][a-zA-Z0-9_:]*)(\{[^}]*\})?\s+(-?[0-9.+eEinfa]+)/);
+      if (!m) continue;
+      const name = m[1], lblStr = m[2] || '', val = parseFloat(m[3]);
+      if (isNaN(val)) continue;
+      const labels = {};
+      for (const lm of lblStr.matchAll(/(\w+)="([^"]*)"/g)) labels[lm[1]] = lm[2];
+      const f = family(name);
+      if (!out.has(f)) out.set(f, { help: '', type: '', samples: [] });
+      out.get(f).samples.push({ name, labels, value: val });
     }
   }
-  return metrics;
+  return out;
 }
 
-// Collect distinct agents from all samples
-function agentsFromMetrics(metrics) {
-  const agents = new Set();
-  for (const { samples } of metrics.values()) {
-    for (const s of samples) if (s.labels.agent) agents.add(s.labels.agent);
+// ── Metric helpers ───────────────────────────────────────────────────────────
+function scalarGauge(metrics, key) {
+  // Single gauge without labels (or pick first sample)
+  const s = metrics.get(key)?.samples || [];
+  return s.length ? s[0].value : null;
+}
+
+function sumTotal(metrics, key) {
+  // Sum all _total samples
+  return (metrics.get(key)?.samples || [])
+    .filter(s => s.name.endsWith('_total'))
+    .reduce((a, s) => a + s.value, 0);
+}
+
+function histAvg(metrics, key) {
+  const samples = metrics.get(key)?.samples || [];
+  const sum = samples.filter(s => s.name.endsWith('_sum')).reduce((a, s) => a + s.value, 0);
+  const cnt = samples.filter(s => s.name.endsWith('_count')).reduce((a, s) => a + s.value, 0);
+  return cnt > 0 ? sum / cnt : null;
+}
+
+function breakdownByLabel(metrics, key, labelName, onlySuffix = '_total') {
+  // Returns {labelValue: summedValue}
+  const result = {};
+  for (const s of (metrics.get(key)?.samples || [])) {
+    if (onlySuffix && !s.name.endsWith(onlySuffix)) continue;
+    const lv = s.labels[labelName] || '(none)';
+    result[lv] = (result[lv] || 0) + s.value;
   }
-  return [...agents].sort();
+  return result;
 }
 
-// Filter samples by selected agent
-function filterSamples(samples, agent) {
-  if (!agent) return samples;
-  return samples.filter(s => !s.labels.agent || s.labels.agent === agent);
-}
-
-// Sum counter values across label sets
-function sumCounter(samples, agent) {
-  return filterSamples(samples, agent)
-    .filter(s => s.name.endsWith('_total') || !s.name.includes('_'))
-    .reduce((acc, s) => acc + s.value, 0);
-}
-
-// Get gauge value (last sample, optionally filtered)
-function gaugeValue(samples, agent) {
-  const filtered = filterSamples(samples, agent);
-  return filtered.length ? filtered[filtered.length - 1].value : null;
-}
-
-// Get histogram _sum and _count for average
-function histAvg(samples, agent) {
-  const fs = filterSamples(samples, agent);
-  const sum = fs.filter(s => s.name.endsWith('_sum')).reduce((a, s) => a + s.value, 0);
-  const count = fs.filter(s => s.name.endsWith('_count')).reduce((a, s) => a + s.value, 0);
-  return count > 0 ? sum / count : null;
-}
-
-// Chart.js defaults
-Chart.defaults.color = '#888';
-Chart.defaults.borderColor = '#262626';
-Chart.defaults.font.family = "'SF Mono', 'Fira Code', monospace";
-Chart.defaults.font.size = 11;
-
-const PALETTE = ['#7c6af7', '#3ecfcf', '#4ade80', '#fbbf24', '#f87171', '#fb923c', '#a78bfa', '#34d399'];
-
-const metricsState = { charts: {}, raw: null, agentFilter: '' };
-
-function fmt(n) {
+// ── Formatting ────────────────────────────────────────────────────────────────
+function fmtNum(n) {
   if (n === null || n === undefined || isNaN(n)) return '—';
   if (Math.abs(n) >= 1e6) return (n / 1e6).toFixed(1) + 'M';
   if (Math.abs(n) >= 1e3) return (n / 1e3).toFixed(1) + 'k';
-  if (Math.abs(n) >= 10) return n.toFixed(1);
-  return n.toFixed(3);
+  if (n === Math.floor(n)) return String(n);
+  return n.toFixed(2);
 }
-function fmtMs(n) { return n === null ? '—' : (n * 1000).toFixed(0) + ' ms'; }
-function fmtPct(n) { return n === null ? '—' : n.toFixed(1) + '%'; }
+function fmtMs(n) { return n === null ? '—' : Math.round(n * 1000) + ' ms'; }
+function fmtSec(n) { return n === null ? '—' : Math.round(n) + ' s'; }
 
-function renderMetrics(metrics, agentFilter) {
-  const agent = agentFilter;
+// ── Chart.js defaults ─────────────────────────────────────────────────────────
+Chart.defaults.color = '#777';
+Chart.defaults.borderColor = '#262626';
+Chart.defaults.font.family = "'SF Mono','Fira Code',monospace";
+Chart.defaults.font.size = 11;
 
-  // ── Stat cards ──────────────────────────────────────────────────────────
-  const statsConfig = [
-    { label: 'Tasks', key: 'a2_tasks', fmt: n => fmt(sumCounter(n?.samples || [], agent)) },
-    { label: 'Active Sessions', key: 'a2_active_sessions', fmt: n => fmt(gaugeValue(n?.samples || [], agent)) },
-    { label: 'Avg Query', key: 'a2_sdk_query_duration_seconds', fmt: n => fmtMs(histAvg(n?.samples || [], agent)) },
-    { label: 'Tool Calls', key: 'a2_sdk_tool_calls', fmt: n => fmt(sumCounter(n?.samples || [], agent)) },
-    { label: 'Running Tasks', key: 'a2_running_tasks', fmt: n => fmt(gaugeValue(n?.samples || [], agent)) },
-    { label: 'Errors', key: 'a2_sdk_query_error_duration_seconds', fmt: n => fmt(n?.samples?.filter(s => s.name.endsWith('_count')).reduce((a, s) => a + s.value, 0) || 0) },
-  ];
+const PALETTE = ['#7c6af7','#3ecfcf','#4ade80','#fbbf24','#f87171','#fb923c','#a78bfa','#34d399'];
+const charts = {};
 
-  const statRow = document.getElementById('stat-row');
-  statRow.innerHTML = statsConfig.map(c => {
-    const m = metrics.get(c.key);
-    const val = c.fmt(m);
-    return `<div class="stat-card"><div class="label">${c.label}</div><div class="value">${val}</div></div>`;
-  }).join('');
-
-  // ── Charts ───────────────────────────────────────────────────────────────
-  const noMetrics = document.getElementById('no-metrics');
-  noMetrics.style.display = 'none';
-
-  // Chart specs: [id, title, metricKey, valueExtractor, yLabel]
-  const chartSpecs = [
-    ['tasks-by-status', 'Tasks by Status', 'a2_tasks', (m, ag) => {
-      const statuses = {};
-      for (const s of filterSamples(m?.samples || [], ag)) {
-        if (s.name.endsWith('_total') && s.labels.status) {
-          statuses[s.labels.status] = (statuses[s.labels.status] || 0) + s.value;
-        }
-      }
-      return { labels: Object.keys(statuses), data: Object.values(statuses), type: 'bar' };
-    }],
-    ['query-duration', 'Avg Query Duration (ms)', 'a2_sdk_query_duration_seconds', (m, ag) => {
-      const byAgent = {};
-      for (const s of (m?.samples || [])) {
-        if (!s.labels.agent) continue;
-        if (ag && s.labels.agent !== ag) continue;
-        byAgent[s.labels.agent] = byAgent[s.labels.agent] || { sum: 0, count: 0 };
-        if (s.name.endsWith('_sum')) byAgent[s.labels.agent].sum += s.value;
-        if (s.name.endsWith('_count')) byAgent[s.labels.agent].count += s.value;
-      }
-      const labels = Object.keys(byAgent);
-      const data = labels.map(a => byAgent[a].count > 0 ? (byAgent[a].sum / byAgent[a].count) * 1000 : 0);
-      return { labels, data, type: 'bar', suffix: ' ms' };
-    }],
-    ['active-sessions', 'Active Sessions', 'a2_active_sessions', (m, ag) => {
-      const byAgent = {};
-      for (const s of filterSamples(m?.samples || [], ag)) {
-        const a = s.labels.agent || 'unknown';
-        byAgent[a] = s.value;
-      }
-      const labels = Object.keys(byAgent);
-      return { labels, data: labels.map(a => byAgent[a]), type: 'doughnut' };
-    }],
-    ['tokens-per-query', 'Avg Tokens / Query', 'a2_sdk_tokens_per_query', (m, ag) => {
-      const byModel = {};
-      for (const s of filterSamples(m?.samples || [], ag)) {
-        const key = s.labels.model || s.labels.agent || 'unknown';
-        byModel[key] = byModel[key] || { sum: 0, count: 0 };
-        if (s.name.endsWith('_sum')) byModel[key].sum += s.value;
-        if (s.name.endsWith('_count')) byModel[key].count += s.value;
-      }
-      const labels = Object.keys(byModel);
-      const data = labels.map(k => byModel[k].count > 0 ? byModel[k].sum / byModel[k].count : 0);
-      return { labels, data, type: 'bar' };
-    }],
-    ['tool-calls', 'Tool Calls by Tool', 'a2_sdk_tool_calls', (m, ag) => {
-      const byTool = {};
-      for (const s of filterSamples(m?.samples || [], ag)) {
-        if (s.name.endsWith('_total') && s.labels.tool) {
-          byTool[s.labels.tool] = (byTool[s.labels.tool] || 0) + s.value;
-        }
-      }
-      const sorted = Object.entries(byTool).sort((a, b) => b[1] - a[1]).slice(0, 10);
-      return { labels: sorted.map(e => e[0]), data: sorted.map(e => e[1]), type: 'bar' };
-    }],
-    ['context-usage', 'Context Usage %', 'a2_context_usage_percent', (m, ag) => {
-      const byAgent = {};
-      for (const s of filterSamples(m?.samples || [], ag)) {
-        const a = s.labels.agent || 'unknown';
-        byAgent[a] = byAgent[a] || { sum: 0, count: 0 };
-        if (s.name.endsWith('_sum')) byAgent[a].sum += s.value;
-        if (s.name.endsWith('_count')) byAgent[a].count += s.value;
-      }
-      const labels = Object.keys(byAgent);
-      const data = labels.map(a => byAgent[a].count > 0 ? byAgent[a].sum / byAgent[a].count : 0);
-      return { labels, data, type: 'bar', suffix: '%' };
-    }],
-    ['uptime', 'Uptime (s)', 'a2_uptime_seconds', (m, ag) => {
-      const byAgent = {};
-      for (const s of filterSamples(m?.samples || [], ag)) {
-        const a = s.labels.agent || 'unknown';
-        byAgent[a] = s.value;
-      }
-      const labels = Object.keys(byAgent);
-      return { labels, data: labels.map(a => byAgent[a]), type: 'bar', suffix: ' s' };
-    }],
-    ['log-bytes', 'Log Bytes Written', 'a2_log_bytes', (m, ag) => {
-      const byAgent = {};
-      for (const s of filterSamples(m?.samples || [], ag)) {
-        if (s.name.endsWith('_total')) {
-          const a = s.labels.agent || 'unknown';
-          byAgent[a] = (byAgent[a] || 0) + s.value;
-        }
-      }
-      const labels = Object.keys(byAgent);
-      return { labels, data: labels.map(a => byAgent[a]), type: 'bar' };
-    }],
-  ];
-
-  const grid = document.getElementById('chart-grid');
-  // Ensure cards exist
-  for (const [id, title] of chartSpecs) {
-    if (!document.getElementById('card-' + id)) {
-      const card = document.createElement('div');
-      card.className = 'chart-card';
-      card.id = 'card-' + id;
-      card.innerHTML = `<h3>${title}</h3><canvas id="chart-${id}"></canvas>`;
-      grid.appendChild(card);
+function upsertChart(id, type, labels, data, opts = {}) {
+  const canvas = document.getElementById('chart-' + id);
+  if (!canvas) return;
+  if (charts[id]) {
+    charts[id].data.labels = labels;
+    charts[id].data.datasets[0].data = data;
+    charts[id].update('none');
+    return;
+  }
+  const colors = labels.map((_, i) => PALETTE[i % PALETTE.length]);
+  charts[id] = new Chart(canvas.getContext('2d'), {
+    type,
+    data: {
+      labels,
+      datasets: [{
+        data,
+        backgroundColor: type === 'doughnut' ? colors : colors.map(c => c + 'bb'),
+        borderColor: type === 'doughnut' ? colors : colors,
+        borderWidth: type === 'doughnut' ? 0 : 1,
+        borderRadius: type === 'bar' ? 3 : 0,
+        ...opts.dataset,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true, animation: false,
+      plugins: {
+        legend: { display: type === 'doughnut', position: 'right', labels: { boxWidth: 10, padding: 8, font: { size: 11 } } },
+        tooltip: { callbacks: { label: ctx => ` ${fmtNum(ctx.raw)}` } },
+      },
+      scales: type !== 'doughnut' ? {
+        x: { grid: { color: '#1a1a1a' }, ticks: { maxRotation: 40, minRotation: 0 } },
+        y: { grid: { color: '#1a1a1a' }, beginAtZero: true },
+      } : undefined,
+      ...opts.chart,
     }
-  }
-
-  for (const [id, , metricKey, extractor] of chartSpecs) {
-    const m = metrics.get(metricKey);
-    const { labels, data, type } = extractor(m, agent);
-    if (!labels.length) { document.getElementById('card-' + id).style.display = 'none'; continue; }
-    document.getElementById('card-' + id).style.display = '';
-
-    const ctx = document.getElementById('chart-' + id).getContext('2d');
-    if (metricsState.charts[id]) {
-      const ch = metricsState.charts[id];
-      ch.data.labels = labels;
-      ch.data.datasets[0].data = data;
-      ch.update('none');
-    } else {
-      const colors = labels.map((_, i) => PALETTE[i % PALETTE.length]);
-      metricsState.charts[id] = new Chart(ctx, {
-        type,
-        data: {
-          labels,
-          datasets: [{
-            data,
-            backgroundColor: type === 'doughnut' ? colors : colors.map(c => c + 'cc'),
-            borderColor: type === 'doughnut' ? colors : colors,
-            borderWidth: type === 'doughnut' ? 0 : 1,
-            borderRadius: type === 'bar' ? 3 : 0,
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: true,
-          plugins: { legend: { display: type === 'doughnut', position: 'right', labels: { boxWidth: 10, padding: 10 } } },
-          scales: type !== 'doughnut' ? {
-            x: { grid: { color: '#1e1e1e' }, ticks: { maxRotation: 35 } },
-            y: { grid: { color: '#1e1e1e' }, beginAtZero: true }
-          } : undefined,
-        }
-      });
-    }
-  }
-}
-
-async function loadMetrics() {
-  try {
-    const resp = await fetch(`${AGENT_BASE}/metrics`);
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const text = await resp.text();
-    metricsState.raw = parsePrometheus(text);
-
-    // Populate agent filter
-    const agents = agentsFromMetrics(metricsState.raw);
-    const sel = document.getElementById('agent-select');
-    const current = sel.value;
-    sel.innerHTML = '<option value="">— all —</option>' +
-      agents.map(a => `<option value="${a}"${a === current ? ' selected' : ''}>${a}</option>`).join('');
-
-    renderMetrics(metricsState.raw, sel.value);
-    document.getElementById('last-updated').textContent = 'updated ' + new Date().toLocaleTimeString();
-    setStatus('connected');
-  } catch (e) {
-    setStatus('metrics unavailable', false);
-    document.getElementById('no-metrics').style.display = 'block';
-    document.getElementById('no-metrics').textContent = 'Could not reach ' + AGENT_BASE + '/metrics';
-  }
-}
-
-document.getElementById('agent-select').addEventListener('change', e => {
-  metricsState.agentFilter = e.target.value;
-  if (metricsState.raw) renderMetrics(metricsState.raw, e.target.value);
-});
-document.getElementById('refresh-btn').addEventListener('click', loadMetrics);
-
-// Auto-refresh metrics every 15s
-loadMetrics();
-setInterval(loadMetrics, METRICS_INTERVAL_MS);
-
-// ════════════════════════════════════════════════════════════════════════════
-// CALENDAR / CONVERSATIONS
-// ════════════════════════════════════════════════════════════════════════════
-
-const calState = {
-  loaded: false,
-  allEntries: [],   // raw JSONL entries sorted by ts
-  sessions: {},     // sessionId → [entries]
-  dayMap: {},       // "YYYY-MM-DD" → [sessionId, …]
-  year: new Date().getFullYear(),
-  month: new Date().getMonth(),
-  selectedDay: null,
-  selectedSession: null,
-};
-
-async function loadConversations() {
-  calState.loaded = true;
-  try {
-    const resp = await fetch(`${AGENT_BASE}/conversations`);
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const entries = await resp.json();
-    processConversations(entries);
-  } catch (e) {
-    document.getElementById('session-list').innerHTML =
-      `<div class="empty-state">Could not load conversations.<br>${e.message}</div>`;
-  }
-}
-
-function processConversations(entries) {
-  calState.allEntries = entries;
-  calState.sessions = {};
-  calState.dayMap = {};
-
-  for (const e of entries) {
-    const sid = e.session_id || 'unknown';
-    if (!calState.sessions[sid]) calState.sessions[sid] = [];
-    calState.sessions[sid].push(e);
-
-    const day = e.ts ? e.ts.slice(0, 10) : null;
-    if (day) {
-      if (!calState.dayMap[day]) calState.dayMap[day] = new Set();
-      calState.dayMap[day].add(sid);
-    }
-  }
-
-  renderCalendar();
-}
-
-const DAY_NAMES = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
-const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-
-function renderCalendar() {
-  const { year, month, selectedDay, dayMap } = calState;
-  const label = document.getElementById('cal-month-label');
-  label.textContent = `${MONTH_NAMES[month]} ${year}`;
-
-  const grid = document.getElementById('cal-grid');
-  grid.innerHTML = DAY_NAMES.map(d => `<div class="cal-day-label">${d}</div>`).join('');
-
-  const firstDay = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const today = new Date();
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
-
-  // Pad start
-  for (let i = 0; i < firstDay; i++) {
-    const prevMonthDays = new Date(year, month, 0).getDate();
-    const day = prevMonthDays - firstDay + i + 1;
-    grid.innerHTML += `<div class="cal-cell other-month">${day}</div>`;
-  }
-
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dayStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const hasData = dayMap[dayStr]?.size > 0;
-    const isToday = dayStr === todayStr;
-    const isSelected = dayStr === selectedDay;
-    const cls = ['cal-cell', hasData && 'has-data', isToday && 'today', isSelected && 'selected'].filter(Boolean).join(' ');
-    grid.innerHTML += `<div class="${cls}" data-day="${dayStr}">${d}</div>`;
-  }
-
-  grid.querySelectorAll('.cal-cell[data-day]').forEach(el => {
-    el.addEventListener('click', () => selectDay(el.dataset.day));
   });
 }
 
-function selectDay(day) {
-  calState.selectedDay = day;
-  calState.selectedSession = null;
-  renderCalendar();
-  renderSessionList(day);
-  document.getElementById('conv-panel').innerHTML = '<div class="conv-placeholder">Select a session to read the conversation.</div>';
+function ensureCard(id, title) {
+  if (document.getElementById('card-' + id)) return;
+  const grid = document.getElementById('chart-grid');
+  const card = document.createElement('div');
+  card.className = 'chart-card'; card.id = 'card-' + id;
+  card.innerHTML = `<h3>${title}</h3><canvas id="chart-${id}"></canvas>`;
+  grid.appendChild(card);
 }
 
-function renderSessionList(day) {
-  const list = document.getElementById('session-list');
-  const sessionIds = calState.dayMap[day] ? [...calState.dayMap[day]] : [];
-  if (!sessionIds.length) {
-    list.innerHTML = '<div class="empty-state">No conversations on this day.</div>';
+// ── Render metrics ────────────────────────────────────────────────────────────
+function renderMetrics(m) {
+  // ── Stat cards ──────────────────────────────────────────────────────────
+  const uptime = scalarGauge(m, 'agent_uptime_seconds');
+  const activeSessions = scalarGauge(m, 'agent_active_sessions');
+  const runningTasks = scalarGauge(m, 'agent_running_tasks');
+  const tasksTotal = sumTotal(m, 'agent_tasks');
+  const a2aReqs = sumTotal(m, 'agent_a2a_requests');
+  const heartbeatRuns = sumTotal(m, 'agent_heartbeat_runs');
+  const jobRuns = sumTotal(m, 'agent_job_runs');
+  const busMessages = sumTotal(m, 'agent_bus_messages');
+
+  const statDefs = [
+    { label: 'Uptime',          val: fmtSec(uptime) },
+    { label: 'Active Sessions', val: fmtNum(activeSessions) },
+    { label: 'Running Tasks',   val: fmtNum(runningTasks) },
+    { label: 'Tasks Total',     val: fmtNum(tasksTotal) },
+    { label: 'A2A Requests',    val: fmtNum(a2aReqs) },
+    { label: 'Heartbeats',      val: fmtNum(heartbeatRuns) },
+    { label: 'Job Runs',        val: fmtNum(jobRuns) },
+    { label: 'Bus Messages',    val: fmtNum(busMessages) },
+  ];
+
+  document.getElementById('stat-row').innerHTML = statDefs.map(s =>
+    `<div class="stat"><div class="lbl">${s.label}</div><div class="val">${s.val}</div></div>`
+  ).join('');
+
+  // ── Charts ───────────────────────────────────────────────────────────────
+  document.getElementById('chart-placeholder').style.display = 'none';
+
+  // Tasks by outcome
+  (() => {
+    const bd = breakdownByLabel(m, 'agent_tasks', 'status');
+    const labels = Object.keys(bd), data = Object.values(bd);
+    if (!labels.length) return;
+    ensureCard('tasks-outcome', 'Tasks by Outcome');
+    upsertChart('tasks-outcome', 'bar', labels, data);
+  })();
+
+  // A2A requests by outcome
+  (() => {
+    const bd = breakdownByLabel(m, 'agent_a2a_requests', 'outcome');
+    const labels = Object.keys(bd), data = Object.values(bd);
+    if (!labels.length) return;
+    ensureCard('a2a-outcome', 'A2A Requests by Outcome');
+    upsertChart('a2a-outcome', 'bar', labels, data);
+  })();
+
+  // Heartbeat runs by outcome
+  (() => {
+    const bd = breakdownByLabel(m, 'agent_heartbeat_runs', 'outcome');
+    const labels = Object.keys(bd), data = Object.values(bd);
+    if (!labels.length) return;
+    ensureCard('hb-outcome', 'Heartbeat Runs by Outcome');
+    upsertChart('hb-outcome', 'bar', labels, data);
+  })();
+
+  // Job runs by name
+  (() => {
+    const bd = breakdownByLabel(m, 'agent_job_runs', 'name');
+    const labels = Object.keys(bd), data = Object.values(bd);
+    if (!labels.length) return;
+    ensureCard('job-runs', 'Job Runs by Name');
+    upsertChart('job-runs', 'bar', labels, data);
+  })();
+
+  // Bus messages by kind
+  (() => {
+    const bd = breakdownByLabel(m, 'agent_bus_messages', 'kind');
+    const labels = Object.keys(bd), data = Object.values(bd);
+    if (!labels.length) return;
+    ensureCard('bus-kind', 'Bus Messages by Kind');
+    upsertChart('bus-kind', 'doughnut', labels, data);
+  })();
+
+  // A2A request duration avg
+  (() => {
+    const avg = histAvg(m, 'agent_a2a_request_duration_seconds');
+    if (avg === null) return;
+    ensureCard('a2a-dur', 'A2A Avg Request Duration');
+    document.getElementById('card-a2a-dur').querySelector('h3').textContent =
+      `A2A Avg Request Duration: ${fmtMs(avg)}`;
+    // Show histogram buckets as bar chart
+    const samples = (m.get('agent_a2a_request_duration_seconds')?.samples || [])
+      .filter(s => s.name.endsWith('_bucket') && s.labels.le !== '+Inf');
+    if (!samples.length) return;
+    const labels = samples.map(s => s.labels.le + 's');
+    const data = samples.map(s => s.value);
+    upsertChart('a2a-dur', 'bar', labels, data);
+  })();
+
+  // Model requests
+  (() => {
+    const bd = breakdownByLabel(m, 'agent_model_requests', 'model');
+    const labels = Object.keys(bd), data = Object.values(bd);
+    if (!labels.length) return;
+    ensureCard('model-reqs', 'Requests by Model');
+    upsertChart('model-reqs', 'doughnut', labels, data);
+  })();
+
+  // Trigger requests by endpoint
+  (() => {
+    const bd = breakdownByLabel(m, 'agent_triggers_requests', 'code');
+    const labels = Object.keys(bd), data = Object.values(bd);
+    if (!labels.length) return;
+    ensureCard('trigger-codes', 'Trigger Requests by Response Code');
+    upsertChart('trigger-codes', 'bar', labels, data);
+  })();
+
+  // Webhook deliveries
+  (() => {
+    const bd = breakdownByLabel(m, 'agent_webhooks_delivery', 'result');
+    const labels = Object.keys(bd), data = Object.values(bd);
+    if (!labels.length) return;
+    ensureCard('webhooks', 'Webhook Deliveries by Result');
+    upsertChart('webhooks', 'bar', labels, data);
+  })();
+
+  // Continuation runs
+  (() => {
+    const bd = breakdownByLabel(m, 'agent_continuation_runs', 'outcome');
+    const labels = Object.keys(bd), data = Object.values(bd);
+    if (!labels.length) return;
+    ensureCard('cont-runs', 'Continuation Runs by Outcome');
+    upsertChart('cont-runs', 'bar', labels, data);
+  })();
+
+  // --- a2_ backend metrics (if backends have been called) ---
+
+  // Backend task duration avg
+  (() => {
+    const avg = histAvg(m, 'a2_task_duration_seconds');
+    if (avg === null) return;
+    ensureCard('a2-task-dur', `Backend Avg Task Duration: ${fmtMs(avg)}`);
+    const samples = (m.get('a2_task_duration_seconds')?.samples || [])
+      .filter(s => s.name.endsWith('_bucket') && s.labels.le !== '+Inf');
+    if (!samples.length) return;
+    upsertChart('a2-task-dur', 'bar', samples.map(s => s.labels.le + 's'), samples.map(s => s.value));
+  })();
+
+  // Backend query duration by backend
+  (() => {
+    const samples = m.get('a2_sdk_query_duration_seconds')?.samples || [];
+    const byBackend = {};
+    for (const s of samples) {
+      const k = s.labels.backend || s.labels.agent_id || 'unknown';
+      byBackend[k] = byBackend[k] || { sum: 0, cnt: 0 };
+      if (s.name.endsWith('_sum')) byBackend[k].sum += s.value;
+      if (s.name.endsWith('_count')) byBackend[k].cnt += s.value;
+    }
+    const labels = Object.keys(byBackend);
+    if (!labels.length) return;
+    const data = labels.map(k => byBackend[k].cnt > 0 ? (byBackend[k].sum / byBackend[k].cnt) * 1000 : 0);
+    ensureCard('a2-query-dur', 'Backend Avg Query Duration (ms)');
+    upsertChart('a2-query-dur', 'bar', labels, data);
+  })();
+
+  // Tool calls
+  (() => {
+    const bd = breakdownByLabel(m, 'a2_sdk_tool_calls', 'tool');
+    const sorted = Object.entries(bd).sort((a, b) => b[1] - a[1]).slice(0, 12);
+    if (!sorted.length) return;
+    ensureCard('tool-calls', 'Tool Calls by Tool (top 12)');
+    upsertChart('tool-calls', 'bar', sorted.map(e => e[0]), sorted.map(e => e[1]));
+  })();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// AGENTS
+// ════════════════════════════════════════════════════════════════════════════
+
+let _agentTeam = [];
+let _selectedAgent = null;
+let _chatThread = null;
+let _chatInput = null;
+let _chatSendBtn = null;
+
+async function loadAgents(isRefresh = false) {
+  try {
+    const r = await fetch(`${AGENT_BASE}/team`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const team = await r.json();
+    if (isRefresh && _agentTeam) {
+      refreshAgentCards(team);
+    } else {
+      _agentTeam = team;
+      renderAgentCards(_agentTeam);
+      // Restore previously selected agent after initial load
+      const saved = _savedAgentSelection();
+      if (saved && saved.agentName) {
+        const member = team.find(m => m.name === saved.agentName);
+        if (member) {
+          const left = document.getElementById('agents-left');
+          left.querySelectorAll('.named-agent').forEach((g, i) => {
+            if (team[i] && team[i].name === saved.agentName) g.classList.add('selected');
+          });
+          selectAgent(member);
+          // Restore backend selection after panel is built
+          if (saved.backendId) {
+            const sel = document.getElementById('chat-backend-select');
+            if (sel) { sel.value = saved.backendId; sel.dispatchEvent(new Event('change')); }
+          }
+        }
+      }
+    }
+    _agentTeam = team;
+    const footer = document.getElementById('agents-footer');
+    if (footer) footer.textContent = 'updated ' + new Date().toLocaleTimeString();
+  } catch (e) {
+    if (!isRefresh) {
+      document.getElementById('agents-placeholder').textContent =
+        `Could not load: ${e.message}`;
+    }
+  }
+}
+
+function refreshAgentCards(team) {
+  const left = document.getElementById('agents-left');
+  team.forEach((member, i) => {
+    const group = left.querySelector(`.named-agent[data-idx="${i}"]`);
+    if (!group) return; // new agent appeared — will be handled on next full render
+
+    const agents = member.agents || [];
+    const nyx = agents.find(a => a.role === 'nyx');
+    const backends = agents.filter(a => a.role === 'backend');
+    const reachable = nyx && !!nyx.card;
+
+    // Update nyx status dot
+    const nyxDot = group.querySelector('.nyx-status-dot');
+    if (nyxDot) {
+      nyxDot.className = `nyx-status-dot ${reachable ? 'up' : 'down'}`;
+      nyxDot.title = reachable ? 'online' : 'offline';
+    }
+
+    // Update description if changed
+    const f = nyx ? agentCardFields(nyx) : null;
+    if (f && f.desc) {
+      const descEl = group.querySelector('.ac-desc');
+      const newDesc = marked.parse(f.desc);
+      if (descEl && descEl.innerHTML !== newDesc) descEl.innerHTML = newDesc;
+    }
+
+    // Update backend bubble dots
+    backends.forEach(b => {
+      const bubble = group.querySelector(`.backend-bubble[title="${CSS.escape(b.url || '')}"] .bb-dot, .backend-bubble .bb-dot`);
+      // match by label text instead
+      group.querySelectorAll('.backend-bubble').forEach(el => {
+        const label = el.querySelector('.bb-label');
+        if (label && label.textContent === b.id) {
+          const dot = el.querySelector('.bb-dot');
+          if (dot) dot.className = `bb-dot ${!!b.card ? 'up' : 'down'}`;
+        }
+      });
+    });
+
+    // If this member is currently selected, refresh the backend dropdown model if models changed
+    if (_selectedAgent && _selectedAgent.name === member.name) {
+      _selectedAgent = member;
+    }
+  });
+
+  // If team size changed, do a full re-render
+  if (team.length !== left.querySelectorAll('.named-agent').length) {
+    _agentTeam = team;
+    renderAgentCards(team);
+  }
+}
+
+function agentCardFields(a) {
+  const card = a.card || {};
+  return {
+    name: card.name || a.id,
+    desc: (card.description || '').trim(),
+    version: card.version || '',
+    url: card.url || a.url || '',
+    proto: card.protocolVersion || '',
+    skills: card.skills || [],
+    caps: Object.entries(card.capabilities || {}).filter(([, v]) => v === true).map(([k]) => k),
+    reachable: !!a.card,
+  };
+}
+
+function renderMeta(fields, compact = false) {
+  const { url, version, proto, caps, skills, reachable } = fields;
+  const capsStr = caps.join(', ');
+  return `
+    <div class="ac-meta">
+      ${url ? `<div class="ac-row"><span class="ac-label">url</span><span class="ac-value">${escHtml(url)}</span></div>` : ''}
+      ${version ? `<div class="ac-row"><span class="ac-label">version</span><span class="ac-value">${escHtml(version)}</span></div>` : ''}
+      ${!compact && proto ? `<div class="ac-row"><span class="ac-label">protocol</span><span class="ac-value">${escHtml(proto)}</span></div>` : ''}
+      ${!compact && capsStr ? `<div class="ac-row"><span class="ac-label">caps</span><span class="ac-value">${escHtml(capsStr)}</span></div>` : ''}
+    </div>
+  `;
+}
+
+function backendType(id) {
+  const s = (id || '').toLowerCase();
+  if (s.includes('claude')) return 'claude';
+  if (s.includes('codex') || s.includes('openai') || s.includes('gpt')) return 'codex';
+  if (s.includes('gemini') || s.includes('google')) return 'gemini';
+  return 'unknown';
+}
+
+// ── Left: agent cards ─────────────────────────────────────────────────────────
+
+function renderAgentCards(team) {
+  const left = document.getElementById('agents-left');
+  document.getElementById('agents-placeholder').style.display = 'none';
+
+  if (!team.length) {
+    left.innerHTML = '<div class="agents-placeholder">No agents found.</div>';
     return;
   }
 
-  // Sort sessions by first message time
-  sessionIds.sort((a, b) => {
-    const ta = calState.sessions[a]?.[0]?.ts || '';
-    const tb = calState.sessions[b]?.[0]?.ts || '';
-    return ta.localeCompare(tb);
-  });
+  left.innerHTML = '';
+  team.forEach((member, i) => {
+    const agents = member.agents || [];
+    const nyx = agents.find(a => a.role === 'nyx');
+    const backends = agents.filter(a => a.role === 'backend');
+    const reachable = nyx && !!nyx.card;
 
-  list.innerHTML = sessionIds.map(sid => {
-    const msgs = calState.sessions[sid] || [];
-    const first = msgs[0];
-    const agent = first?.agent || '?';
-    const time = first?.ts ? new Date(first.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-    const preview = msgs.find(m => m.role === 'user')?.text?.slice(0, 80) || '(no user message)';
-    const shortId = sid.slice(0, 8);
-    return `<div class="session-item" data-sid="${sid}">
-      <span class="s-agent">${agent}</span><span class="s-time">${time}</span>
-      <div class="s-preview">${escHtml(preview)}</div>
-      <div class="s-count">${msgs.length} messages · ${shortId}</div>
-    </div>`;
+    const group = document.createElement('div');
+    group.className = 'named-agent';
+    group.dataset.idx = i;
+
+    let backendsHtml = '';
+    if (backends.length) {
+      backendsHtml = `<div class="backends-row">`;
+      for (const b of backends) {
+        const type = backendType(b.id);
+        const reachableB = !!b.card;
+        const agentName = (b.card && b.card.name) ? b.card.name : b.id;
+        backendsHtml += `<div class="backend-bubble ${type}" data-backend-id="${escHtml(b.id)}" title="${escHtml(b.url || '')}">
+          <div class="bb-dot ${reachableB ? 'up' : 'down'}"></div>
+          <span class="bb-label">${escHtml(b.id)}</span>
+          <span class="bb-id">/ ${escHtml(agentName)}</span>
+        </div>`;
+      }
+      backendsHtml += `</div>`;
+    }
+
+    let html = '';
+    if (!reachable && member.error) {
+      html = `<div class="nyx-card">
+        <div class="ac-header">
+          <div class="ac-name">${escHtml(member.name || member.url)}</div>
+          <span class="ac-badge nyx">nyx</span>
+        </div>
+        <div class="ac-status"><div class="ac-dot down"></div><span>unreachable</span></div>
+      </div>`;
+    } else if (nyx) {
+      const f = agentCardFields(nyx);
+      html = `<div class="nyx-card">
+        <div class="ac-header">
+          <span class="ac-badge nyx"><div class="nyx-status-dot ${reachable ? 'up' : 'down'}" title="${reachable ? 'online' : 'offline'}"></div>${escHtml(member.name || f.name)}</span>
+        </div>
+        ${f.desc ? `<div class="ac-desc">${marked.parse(f.desc)}</div>` : ''}
+        ${backendsHtml}
+      </div>`;
+    }
+
+    group.innerHTML = html;
+
+    group.querySelector('.nyx-card').addEventListener('click', () => {
+      left.querySelectorAll('.named-agent').forEach(g => g.classList.remove('selected'));
+      group.classList.add('selected');
+      selectAgent(member);
+    });
+
+    // Backend bubble clicks: select agent (if not already) then sync the dropdown
+    group.querySelectorAll('.backend-bubble[data-backend-id]').forEach(bubble => {
+      bubble.addEventListener('click', e => {
+        e.stopPropagation();
+        const bid = bubble.dataset.backendId;
+        const alreadySelected = group.classList.contains('selected');
+        left.querySelectorAll('.named-agent').forEach(g => g.classList.remove('selected'));
+        group.classList.add('selected');
+        if (!alreadySelected) selectAgent(member);
+        // Sync dropdown to this backend
+        const sel = document.getElementById('chat-backend-select');
+        if (sel && sel.value !== bid) {
+          sel.value = bid;
+          sel.dispatchEvent(new Event('change'));
+        }
+      });
+    });
+
+    left.appendChild(group);
+  });
+}
+
+// ── Right: conversation panel ─────────────────────────────────────────────────
+
+let _selectedBackendId = null;
+let _chatSessionId = null;
+const _sessionMap = {};   // "agentName|backendId" → sessionId
+const _panelCache = {};   // agentName → { threadHtml, backendId }
+
+function _sessionKey(agentName, backendId) {
+  return `${agentName}|${backendId}`;
+}
+
+function _getOrCreateSession(agentName, backendId) {
+  const key = _sessionKey(agentName, backendId);
+  if (!_sessionMap[key]) _sessionMap[key] = a2aTaskId();
+  return _sessionMap[key];
+}
+
+// ── localStorage persistence ──────────────────────────────────────────────────
+function _saveAgentState() {
+  try {
+    localStorage.setItem('nyx-agent-selection', JSON.stringify({
+      agentName: _selectedAgent ? _selectedAgent.name : null,
+      backendId: _selectedBackendId,
+    }));
+    localStorage.setItem('nyx-panel-cache', JSON.stringify(_panelCache));
+    localStorage.setItem('nyx-session-map', JSON.stringify(_sessionMap));
+  } catch (e) { /* localStorage full or unavailable */ }
+}
+
+function _loadAgentState() {
+  try {
+    const cache = localStorage.getItem('nyx-panel-cache');
+    if (cache) Object.assign(_panelCache, JSON.parse(cache));
+    const sessions = localStorage.getItem('nyx-session-map');
+    if (sessions) Object.assign(_sessionMap, JSON.parse(sessions));
+  } catch (e) {}
+}
+
+function _savedAgentSelection() {
+  try {
+    const s = localStorage.getItem('nyx-agent-selection');
+    return s ? JSON.parse(s) : null;
+  } catch (e) { return null; }
+}
+
+function syncBubbleHighlight(bid) {
+  const left = document.getElementById('agents-left');
+  left.querySelectorAll('.backend-bubble').forEach(el => el.classList.remove('active-backend'));
+  left.querySelectorAll('.named-agent.selected .backend-bubble').forEach(el => {
+    el.classList.toggle('active-backend', el.dataset.backendId === bid);
+  });
+}
+
+function _buildAgentPanel(agentName, backends, right) {
+  const defaultModel = backends.length ? (backends[0].model || '') : '';
+  const backendOptions = backends.map((b, i) => {
+    const label = b.id + ' / ' + ((b.card && b.card.name) ? b.card.name : b.id);
+    return `<option value="${escHtml(b.id)}" ${i === 0 ? 'selected' : ''}>${escHtml(label)}</option>`;
   }).join('');
 
-  list.querySelectorAll('.session-item').forEach(el => {
-    el.addEventListener('click', () => selectSession(el.dataset.sid));
-  });
-}
-
-function selectSession(sid) {
-  calState.selectedSession = sid;
-  document.querySelectorAll('.session-item').forEach(el => {
-    el.classList.toggle('active', el.dataset.sid === sid);
-  });
-  renderConversation(sid);
-}
-
-function renderConversation(sid) {
-  const msgs = calState.sessions[sid] || [];
-  const panel = document.getElementById('conv-panel');
-  const first = msgs[0];
-  const agent = first?.agent || sid;
-  const timeRange = msgs.length > 1
-    ? `${fmtTime(msgs[0].ts)} – ${fmtTime(msgs[msgs.length-1].ts)}`
-    : fmtTime(msgs[0]?.ts);
-
-  panel.innerHTML = `
-    <div class="conv-header">
-      <div class="session-id">session · ${sid}</div>
-      <div class="session-meta">${agent} · ${timeRange} · ${msgs.length} messages</div>
+  right.innerHTML = `<div class="agent-chat" style="flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0;">
+    <div class="chat-toolbar">
+      <div class="ct-group">
+        <span class="ct-label">backend agent</span>
+        <select id="chat-backend-select">${backendOptions}</select>
+      </div>
+      <div class="ct-group">
+        <span class="ct-label">model</span>
+        <input type="text" id="chat-model-input" value="${escHtml(defaultModel)}" placeholder="default" />
+      </div>
     </div>
-    <div class="conv-messages" id="conv-messages">
-      ${msgs.map(m => renderMessage(m)).join('')}
-    </div>`;
+    <div class="agent-chat-thread"><div class="empty-chat">Send a message to start.</div></div>
+    <div class="agent-chat-input">
+      <input type="text" placeholder="Message ${escHtml(agentName || 'agent')}…" />
+      <button>send</button>
+    </div>
+  </div>`;
+
+  _chatThread = right.querySelector('.agent-chat-thread');
+  _chatInput = right.querySelector('.agent-chat-input input');
+  _chatSendBtn = right.querySelector('.agent-chat-input button');
+
+  const backendSel = right.querySelector('#chat-backend-select');
+  if (backendSel) {
+    backendSel.addEventListener('change', () => {
+      _selectedBackendId = backendSel.value;
+      _chatSessionId = _getOrCreateSession(agentName, _selectedBackendId);
+      const b = backends.find(x => x.id === _selectedBackendId);
+      const modelInput = right.querySelector('#chat-model-input');
+      if (modelInput && b) modelInput.value = b.model || '';
+      syncBubbleHighlight(_selectedBackendId);
+    });
+  }
+
+  _chatSendBtn.addEventListener('click', () => doSend(agentName));
+  _chatInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend(agentName); }
+  });
 }
 
-function renderMessage(m) {
+function selectAgent(member) {
+  const agentName = member.name;
+  const backends = (member.agents || []).filter(a => a.role === 'backend');
+  const right = document.getElementById('agents-right');
+  const prevName = _selectedAgent ? _selectedAgent.name : null;
+
+  // Save current panel into cache before switching away
+  if (prevName && prevName !== agentName && right.firstElementChild) {
+    const liveThread = right.querySelector('.agent-chat-thread');
+    _panelCache[prevName] = {
+      threadHtml: liveThread ? liveThread.innerHTML : '',
+      backendId: _selectedBackendId,
+    };
+    _saveAgentState();
+  }
+
+  _selectedAgent = member;
+  _selectedBackendId = backends.length ? backends[0].id : null;
+
+  if (_panelCache[agentName]) {
+    // Restore cached panel
+    const cache = _panelCache[agentName];
+    _buildAgentPanel(agentName, backends, right);
+    // Restore the backend selection
+    const backendSel = right.querySelector('#chat-backend-select');
+    if (backendSel && cache.backendId) backendSel.value = cache.backendId;
+    _selectedBackendId = cache.backendId || _selectedBackendId;
+    // Restore conversation thread
+    if (_chatThread && cache.threadHtml) _chatThread.innerHTML = cache.threadHtml;
+  } else {
+    _buildAgentPanel(agentName, backends, right);
+  }
+
+  _chatSessionId = _getOrCreateSession(agentName, _selectedBackendId);
+  syncBubbleHighlight(_selectedBackendId);
+  if (_chatInput) _chatInput.focus();
+  _saveAgentState();
+}
+
+// ── A2A helpers ───────────────────────────────────────────────────────────────
+
+function a2aTaskId() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
+async function a2aSend(agentName, text, backendId, model, sessionId) {
+  const params = {
+    message: {
+      messageId: a2aTaskId(),
+      contextId: sessionId || undefined,
+      role: 'user',
+      parts: [{ kind: 'text', text }],
+    }
+  };
+  if (model) params.configuration = { model };
+
+  const body = { jsonrpc: '2.0', id: 1, method: 'message/send', params };
+  const qs = backendId ? `?backend=${encodeURIComponent(backendId)}` : '';
+  const r = await fetch(`${AGENT_BASE}/proxy/${encodeURIComponent(agentName)}${qs}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return await r.json();
+}
+
+async function loadAgentConversations(nyxUrl, thread) {
+  try {
+    const r = await fetch(nyxUrl.replace(/\/$/, '') + '/conversations?limit=50');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const entries = await r.json();
+    renderChatThread(thread, entries);
+  } catch (e) {
+    thread.innerHTML = `<div class="empty-chat">Could not load conversation: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderChatThread(thread, entries) {
+  if (!entries.length) {
+    thread.innerHTML = '<div class="empty-chat">No messages yet. Say something!</div>';
+    return;
+  }
+  thread.innerHTML = entries.map(e => {
+    const role = e.role === 'user' ? 'user' : 'agent';
+    return `<div class="cm ${role}">
+      <div class="role">${escHtml(e.agent || role)}</div>
+      <div class="bbl">${escHtml(e.text || '')}</div>
+    </div>`;
+  }).join('');
+  thread.scrollTop = thread.scrollHeight;
+}
+
+function appendChatMessage(thread, role, text, label) {
+  const empty = thread.querySelector('.empty-chat');
+  if (empty) empty.remove();
+  const div = document.createElement('div');
+  div.className = `cm ${role}`;
+  div.innerHTML = `<div class="role">${escHtml(label || role)}</div><div class="bbl">${escHtml(text)}</div>`;
+  thread.appendChild(div);
+  thread.scrollTop = thread.scrollHeight;
+}
+
+function appendChatError(thread, message, detail) {
+  const empty = thread.querySelector('.empty-chat');
+  if (empty) empty.remove();
+  const div = document.createElement('div');
+  div.className = 'cm error';
+  let detailHtml = '';
+  if (detail) {
+    const pretty = typeof detail === 'string' ? detail : JSON.stringify(detail, null, 2);
+    detailHtml = `<details class="err-detail"><summary>details</summary><pre>${escHtml(pretty)}</pre></details>`;
+  }
+  div.innerHTML = `<div class="role">error</div><div class="bbl"><span class="err-msg">${escHtml(message)}</span>${detailHtml}</div>`;
+  thread.appendChild(div);
+  thread.scrollTop = thread.scrollHeight;
+}
+
+async function doSend(agentName) {
+  const text = _chatInput.value.trim();
+  if (!text || !_chatThread) return;
+
+  // Snapshot all mutable globals now — before any await — so the response
+  // always lands in the thread it was sent from, even if the user switches agents.
+  const thread = _chatThread;
+  const sendBtn = _chatSendBtn;
+  const inputEl = _chatInput;
+  const backendSel = document.getElementById('chat-backend-select');
+  const modelInput = document.getElementById('chat-model-input');
+  const backendId = backendSel ? backendSel.value : _selectedBackendId;
+  const model = modelInput ? modelInput.value.trim() || null : null;
+  const sessionId = _chatSessionId;
+  const member = _selectedAgent;
+
+  inputEl.value = '';
+  sendBtn.disabled = true;
+  appendChatMessage(thread, 'user', text, 'you');
+  const thinking = document.createElement('div');
+  thinking.className = 'cm thinking';
+  thinking.innerHTML = '<div class="bbl">…</div>';
+  thread.appendChild(thinking);
+  thread.scrollTop = thread.scrollHeight;
+  // After the await, the user may have switched agents. Check if this thread
+  // is still live in the DOM; if not, write into the cache so it appears on return.
+  function commitToThread(fn) {
+    fn(thread);
+    // Always update cache so localStorage stays current
+    _panelCache[agentName] = Object.assign(_panelCache[agentName] || {}, {
+      threadHtml: thread.innerHTML,
+      backendId,
+    });
+    _saveAgentState();
+  }
+
+  try {
+    const result = await a2aSend(agentName, text, backendId, model, sessionId);
+    thinking.remove();
+    const parts = result?.result?.parts || result?.result?.status?.message?.parts || [];
+    const replyText = parts.filter(p => p.kind === 'text').map(p => p.text).join('');
+    if (replyText) {
+      const bInfo = backendId && member ? (member.agents || []).find(a => a.id === backendId) : null;
+      const bFullName = (bInfo && bInfo.card && bInfo.card.name) ? bInfo.card.name : backendId;
+      const bType = bFullName ? backendType(bFullName) : '';
+      const bTypeLabel = bType ? bType.charAt(0).toUpperCase() + bType.slice(1) : '';
+      const replyLabel = backendId ? `${agentName} (${bTypeLabel} / ${bFullName})` : agentName;
+      commitToThread(t => appendChatMessage(t, 'agent', replyText, replyLabel));
+    } else if (result?.error) {
+      commitToThread(t => appendChatError(t, result.error.message || 'The agent returned an error.', result.error));
+    } else {
+      commitToThread(t => appendChatError(t, 'Received an unexpected response.', result?.result || result));
+    }
+  } catch (e) {
+    thinking.remove();
+    commitToThread(t => appendChatError(t, e.message || 'Something went wrong.'));
+  }
+  sendBtn.disabled = false;
+  if (document.contains(inputEl)) inputEl.focus();
+}
+
+_loadAgentState();
+loadAgents();
+setInterval(() => loadAgents(true), 30000);
+
+// ── Fetch & refresh ───────────────────────────────────────────────────────────
+async function loadMetrics() {
+  try {
+    const r = await fetch(`${AGENT_BASE}/metrics`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const text = await r.text();
+    const m = parsePrometheus(text);
+    renderMetrics(m);
+    document.getElementById('metrics-ts').textContent = 'updated ' + new Date().toLocaleTimeString();
+    setStatus('connected', true);
+  } catch (e) {
+    setStatus('unreachable — ' + AGENT_BASE, false);
+    document.getElementById('chart-placeholder').style.display = 'block';
+    document.getElementById('chart-placeholder').textContent =
+      `Cannot reach ${AGENT_BASE}/metrics`;
+  }
+}
+
+let _refreshTimer = null;
+
+function setRefreshInterval(ms) {
+  if (_refreshTimer) { clearInterval(_refreshTimer); _refreshTimer = null; }
+  if (ms > 0) _refreshTimer = setInterval(loadMetrics, ms);
+}
+
+let _metricsLoaded = false;
+
+document.getElementById('refresh-btn').addEventListener('click', loadMetrics);
+document.getElementById('refresh-interval').addEventListener('change', e => {
+  setRefreshInterval(Number(e.target.value));
+});
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// CONVERSATIONS
+// ════════════════════════════════════════════════════════════════════════════
+const conv = {
+  loaded: false,
+  entries: [],      // all conversation entries, sorted oldest→newest
+  traceEntries: [], // all tool trace entries, sorted oldest→newest
+  agents: new Set(),
+  filterAgent: '',
+  filterRole: '',
+  filterSearch: '',
+  filterTools: 'show',
+};
+
+function _saveConvState() {
+  try {
+    localStorage.setItem('nyx-conv-state', JSON.stringify({
+      filterAgent:  conv.filterAgent,
+      filterRole:   conv.filterRole,
+      filterSearch: conv.filterSearch,
+      filterTools:  conv.filterTools,
+    }));
+  } catch (e) {}
+}
+
+function _restoreConvState() {
+  try {
+    const s = localStorage.getItem('nyx-conv-state');
+    if (!s) return;
+    const saved = JSON.parse(s);
+    conv.filterAgent  = saved.filterAgent  || '';
+    conv.filterRole   = saved.filterRole   || '';
+    conv.filterSearch = saved.filterSearch || '';
+    conv.filterTools  = saved.filterTools  || 'show';
+    document.getElementById('conv-search').value       = conv.filterSearch;
+    document.getElementById('conv-agent-filter').value = conv.filterAgent;
+    document.getElementById('conv-role-filter').value  = conv.filterRole;
+    document.getElementById('conv-tool-filter').value  = conv.filterTools;
+  } catch (e) {}
+}
+
+async function loadConversations() {
+  conv.loaded = true;
+  const feed = document.getElementById('conv-feed');
+  try {
+    const [convResp, traceResp] = await Promise.all([
+      fetch(`${AGENT_BASE}/conversations`),
+      fetch(`${AGENT_BASE}/trace`),
+    ]);
+    conv.entries = convResp.ok ? await convResp.json() : [];
+    conv.traceEntries = traceResp.ok ? await traceResp.json() : [];
+    conv.agents = new Set(conv.entries.map(e => e.agent).filter(Boolean));
+    populateConvAgentFilter();
+    _restoreConvState();
+    renderConvFeed();
+  } catch (e) {
+    feed.innerHTML = `<div class="empty">Could not load conversations.<br>${escHtml(e.message)}</div>`;
+  }
+}
+
+function populateConvAgentFilter() {
+  const sel = document.getElementById('conv-agent-filter');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">all</option>' +
+    [...conv.agents].sort().map(a =>
+      `<option value="${escHtml(a)}"${a === current ? ' selected' : ''}>${escHtml(a)}</option>`
+    ).join('');
+}
+
+function renderConvFeed() {
+  const feed = document.getElementById('conv-feed');
+  const { filterAgent, filterRole, filterSearch, filterTools } = conv;
+  const search = filterSearch.toLowerCase();
+  const showTools = filterTools !== 'hide';
+
+  // Filter conversation entries
+  let entries = conv.entries.filter(e => {
+    if (filterAgent && e.agent !== filterAgent) return false;
+    if (filterRole && e.role !== filterRole) return false;
+    if (search && !(e.text || '').toLowerCase().includes(search)) return false;
+    return true;
+  });
+
+  // Build a set of session IDs present after filtering
+  const visibleSids = new Set(entries.map(e => e.session_id));
+
+  // Build trace map: session_id → sorted tool events (with result names resolved)
+  const traceMap = {};
+  if (showTools) {
+    for (const t of conv.traceEntries) {
+      const sid = t.session_id;
+      if (!visibleSids.has(sid)) continue;
+      if (!traceMap[sid]) traceMap[sid] = [];
+      traceMap[sid].push({ ...t });
+    }
+  }
+
+  if (!entries.length) {
+    feed.innerHTML = '<div class="empty">No messages match filters.</div>';
+    document.getElementById('conv-count').textContent = '';
+    return;
+  }
+
+  document.getElementById('conv-count').textContent =
+    `${entries.length} message${entries.length !== 1 ? 's' : ''} · ${visibleSids.size} session${visibleSids.size !== 1 ? 's' : ''}`;
+
+  // Merge conversation entries and trace events per session, grouped by session in order
+  // Sessions ordered by their first message timestamp (oldest first)
+  const sessionOrder = [];
+  const sessionMap = {};
+  for (const e of entries) {
+    const sid = e.session_id || 'unknown';
+    if (!sessionMap[sid]) { sessionMap[sid] = []; sessionOrder.push(sid); }
+    sessionMap[sid].push({ ...e, _kind: 'msg' });
+  }
+
+  const html = [];
+  for (const sid of sessionOrder) {
+    const msgs = sessionMap[sid];
+    const first = msgs[0];
+    const agentLabel = first?.agent || '?';
+    const date = first?.ts ? new Date(first.ts).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+    const sidShort = sid.slice(0, 8);
+
+
+    // Merge messages and trace events, sorted by ts
+    const traceEvents = (traceMap[sid] || []).map(t => ({ ...t, _kind: 'tool' }));
+    const combined = [...msgs, ...traceEvents].sort((a, b) => (a.ts || '').localeCompare(b.ts || ''));
+
+    for (const item of combined) {
+      if (item._kind === 'msg') {
+        html.push(renderConvMsg(item));
+      } else {
+        html.push(renderToolRow(item));
+      }
+    }
+  }
+
+  feed.innerHTML = html.join('');
+  // Scroll to bottom (latest)
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function renderConvMsg(m) {
   const role = m.role === 'user' ? 'user' : 'agent';
-  const time = fmtTime(m.ts);
-  const model = m.model ? `<span class="m-model">${escHtml(m.model)}</span>` : '';
-  const agentSpan = `<span class="m-agent">${escHtml(m.agent || '')}</span>`;
-  return `<div class="msg ${role}">
-    <div class="msg-meta">${role === 'agent' ? agentSpan : ''} ${model} <span>${time}</span></div>
-    <div class="bubble">${escHtml(m.text || '')}</div>
+  const sid = m.session_id ? ' · ' + escHtml(m.session_id) : '';
+  const label = role === 'agent'
+    ? `${escHtml(m.agent || 'agent')}${m.model ? ' · ' + escHtml(m.model) : ''} · ${fmtTime(m.ts)}${sid}`
+    : `you · ${fmtTime(m.ts)}${sid}`;
+  return `<div class="cm ${role}">
+    <div class="role">${label}</div>
+    <div class="bbl">${escHtml(m.text || '')}</div>
   </div>`;
 }
 
-function fmtTime(ts) {
-  if (!ts) return '';
-  try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
-  catch { return ts; }
+function renderToolRow(t) {
+  const et = t.event_type || '';
+  const isUse    = et === 'tool_use';
+  const isResult = et === 'tool_result';
+  const isError  = isResult && t.is_error;
+
+  let cls = '';
+  let label = '';
+  let args = '';
+
+  if (isUse) {
+    label = `tool_use · ${t.name || 'tool'}`;
+    if (t.input && typeof t.input === 'object') {
+      args = Object.entries(t.input)
+        .map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`)
+        .join('\n');
+    }
+  } else if (isResult) {
+    cls = isError ? 'tool-error' : 'tool-result';
+    label = `tool_result · ${t.name || t._callName || 'tool'}`;
+    args = Array.isArray(t.content)
+      ? t.content.map(c => c.text ?? JSON.stringify(c)).join('\n')
+      : (typeof t.content === 'string' ? t.content : JSON.stringify(t.content, null, 2));
+  } else {
+    // Other event types (response, context_usage, etc.) — show as info row
+    label = et || 'event';
+    const { ts, session_id, event_type, agent, agent_id, model, chunks, _kind, ...rest } = t;
+    if (Object.keys(rest).length) {
+      args = Object.entries(rest)
+        .filter(([, v]) => v !== null && v !== undefined && v !== '')
+        .map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`)
+        .join('\n');
+    }
+  }
+
+  const isResponse = et === 'response';
+  const argsHtml = args ? `<div class="tool-args">${escHtml(args)}</div>` : '';
+  const roleParts = [];
+  if (t.agent) roleParts.push(escHtml(t.agent));
+  if (t.model) roleParts.push(escHtml(t.model));
+  roleParts.push(fmtTime(t.ts));
+  if (t.session_id) roleParts.push(escHtml(t.session_id));
+  return `<div class="tool-row ${cls}">
+    <div class="role">${roleParts.join(' · ')}</div>
+    <div class="bbl">${label ? `<span class="tool-name">${escHtml(label)}</span>` : ''}${argsHtml}</div>
+  </div>`;
 }
 
+document.getElementById('conv-agent-filter').addEventListener('change', e => {
+  conv.filterAgent = e.target.value; renderConvFeed(); _saveConvState();
+});
+document.getElementById('conv-role-filter').addEventListener('change', e => {
+  conv.filterRole = e.target.value; renderConvFeed(); _saveConvState();
+});
+document.getElementById('conv-tool-filter').addEventListener('change', e => {
+  conv.filterTools = e.target.value; renderConvFeed(); _saveConvState();
+});
+let _searchDebounce;
+document.getElementById('conv-search').addEventListener('input', e => {
+  clearTimeout(_searchDebounce);
+  _searchDebounce = setTimeout(() => { conv.filterSearch = e.target.value; renderConvFeed(); _saveConvState(); }, 200);
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// CALENDAR
+// ════════════════════════════════════════════════════════════════════════════
+const cal = {
+  date: new Date(),   // anchor: current month/week/day being shown
+  mode: 'month',      // 'month' | 'week' | 'day'
+};
+
+const DAYS_SHORT  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const MONTHS_LONG = ['January','February','March','April','May','June',
+                     'July','August','September','October','November','December'];
+
+function calToday() {
+  const d = new Date();
+  return { y: d.getFullYear(), m: d.getMonth(), d: d.getDate() };
+}
+
+function isSameDay(a, b) {
+  return a.getFullYear() === b.getFullYear() &&
+         a.getMonth() === b.getMonth() &&
+         a.getDate() === b.getDate();
+}
+
+// ── Title string ──────────────────────────────────────────────────────────────
+function calTitle() {
+  const d = cal.date;
+  if (cal.mode === 'month') return MONTHS_LONG[d.getMonth()] + ' ' + d.getFullYear();
+  if (cal.mode === 'week') {
+    const sun = new Date(d); sun.setDate(d.getDate() - d.getDay());
+    const sat = new Date(sun); sat.setDate(sun.getDate() + 6);
+    const ms = MONTHS_LONG[sun.getMonth()].slice(0,3);
+    const me = MONTHS_LONG[sat.getMonth()].slice(0,3);
+    if (sun.getMonth() === sat.getMonth())
+      return `${ms} ${sun.getDate()} – ${sat.getDate()}, ${sun.getFullYear()}`;
+    return `${ms} ${sun.getDate()} – ${me} ${sat.getDate()}, ${sat.getFullYear()}`;
+  }
+  // day
+  return DAYS_SHORT[d.getDay()] + ', ' + MONTHS_LONG[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+}
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+function calNavigate(dir) {
+  const d = cal.date;
+  if (cal.mode === 'month') {
+    cal.date = new Date(d.getFullYear(), d.getMonth() + dir, 1);
+  } else if (cal.mode === 'week') {
+    const next = new Date(d);
+    next.setDate(d.getDate() + dir * 7);
+    cal.date = next;
+  } else {
+    const next = new Date(d);
+    next.setDate(d.getDate() + dir);
+    cal.date = next;
+  }
+  renderCalendar();
+}
+
+function calGoToday() {
+  cal.date = new Date();
+  renderCalendar();
+}
+
+// ── Hour grid helper ──────────────────────────────────────────────────────────
+function buildHourLabels() {
+  let html = '';
+  for (let h = 0; h < 24; h++) {
+    const label = h === 0 ? '' : (h < 12 ? `${h} am` : h === 12 ? '12 pm' : `${h-12} pm`);
+    html += `<div class="cal-hour-label">${label}</div>`;
+  }
+  return html;
+}
+
+function buildEventColInner(nowLine = '') {
+  // 24 hours × 48px = 1152px total. The inner div drives scroll height;
+  // the now-line sits inside it so z-index stacks correctly against the gradient.
+  return `<div style="height:${24*48}px;position:relative;">${nowLine}</div>`;
+}
+
+function nowLineTop() {
+  const now = new Date();
+  return (now.getHours() * 60 + now.getMinutes()) / (24 * 60) * (24 * 48);
+}
+
+// ── Month view ────────────────────────────────────────────────────────────────
+function renderMonth() {
+  const today = calToday();
+  const year = cal.date.getFullYear(), month = cal.date.getMonth();
+  const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const daysInPrev  = new Date(year, month, 0).getDate();
+
+  // We always render 6 rows × 7 cols = 42 cells
+  const cells = [];
+  for (let i = 0; i < firstDay; i++)
+    cells.push({ d: daysInPrev - firstDay + 1 + i, other: true });
+  for (let d = 1; d <= daysInMonth; d++)
+    cells.push({ d, other: false, year, month });
+  let nextD = 1;
+  while (cells.length < 42) cells.push({ d: nextD++, other: true });
+
+  const dowHtml = DAYS_SHORT.map(s => `<div class="cal-dow">${s}</div>`).join('');
+  const cellsHtml = cells.map(c => {
+    const isToday = !c.other && c.year === today.y && c.month === today.m && c.d === today.d;
+    const cls = ['cal-day', c.other ? 'other-month' : '', isToday ? 'today' : ''].filter(Boolean).join(' ');
+    const numHtml = `<span class="cal-day-num">${c.d}</span>`;
+    return `<div class="${cls}">${numHtml}</div>`;
+  }).join('');
+
+  return `<div class="cal-month">
+    <div class="cal-month-head">${dowHtml}</div>
+    <div class="cal-month-body">${cellsHtml}</div>
+  </div>`;
+}
+
+// ── Week view ─────────────────────────────────────────────────────────────────
+function renderWeek() {
+  const today = new Date();
+  const anchor = cal.date;
+  const sun = new Date(anchor); sun.setDate(anchor.getDate() - anchor.getDay());
+
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(sun); d.setDate(sun.getDate() + i);
+    return d;
+  });
+
+  const colHdrs = days.map(d => {
+    const isToday = isSameDay(d, today);
+    const numHtml = isToday
+      ? `<div class="col-num today">${d.getDate()}</div>`
+      : `<div class="col-num">${d.getDate()}</div>`;
+    return `<div class="cal-timed-col-hdr"><div class="col-dow">${DAYS_SHORT[d.getDay()]}</div>${numHtml}</div>`;
+  }).join('');
+
+  const eventCols = days.map(d => {
+    const isToday = isSameDay(d, today);
+    const nowLine = isToday ? `<div class="cal-now-line" id="cal-now-line" style="top:${nowLineTop()}px;"></div>` : '';
+    return `<div class="cal-timed-event-col">${buildEventColInner(nowLine)}</div>`;
+  }).join('');
+
+  return `<div class="cal-timed">
+    <div class="cal-timed-head">
+      <div class="cal-timed-gutter"></div>
+      <div class="cal-timed-cols">${colHdrs}</div>
+    </div>
+    <div class="cal-timed-body">
+      <div class="cal-timed-hours">${buildHourLabels()}</div>
+      <div class="cal-timed-events">${eventCols}</div>
+    </div>
+  </div>`;
+}
+
+// ── Day view ──────────────────────────────────────────────────────────────────
+function renderDay() {
+  const today = new Date();
+  const d = cal.date;
+  const isToday = isSameDay(d, today);
+  const numHtml = isToday
+    ? `<div class="col-num today">${d.getDate()}</div>`
+    : `<div class="col-num">${d.getDate()}</div>`;
+  const nowLine = isToday ? `<div class="cal-now-line" id="cal-now-line" style="top:${nowLineTop()}px;"></div>` : '';
+
+  return `<div class="cal-timed">
+    <div class="cal-timed-head">
+      <div class="cal-timed-gutter"></div>
+      <div class="cal-timed-cols">
+        <div class="cal-timed-col-hdr"><div class="col-dow">${DAYS_SHORT[d.getDay()]}</div>${numHtml}</div>
+      </div>
+    </div>
+    <div class="cal-timed-body">
+      <div class="cal-timed-hours">${buildHourLabels()}</div>
+      <div class="cal-timed-events">
+        <div class="cal-timed-event-col">${buildEventColInner(nowLine)}</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+let _calNowTimer = null;
+
+function renderCalendar() {
+  document.getElementById('cal-title').textContent = calTitle();
+
+  if (_calNowTimer) { clearInterval(_calNowTimer); _calNowTimer = null; }
+
+  const body = document.getElementById('cal-body');
+  if (cal.mode === 'month')      body.innerHTML = renderMonth();
+  else if (cal.mode === 'week')  body.innerHTML = renderWeek();
+  else                           body.innerHTML = renderDay();
+
+  // Scroll timed views to ~8am
+  if (cal.mode !== 'month') {
+    const timedBody = body.querySelector('.cal-timed-body');
+    if (timedBody) timedBody.scrollTop = 8 * 48;
+
+    // Keep now-line current
+    _calNowTimer = setInterval(() => {
+      const line = document.getElementById('cal-now-line');
+      if (line) line.style.top = nowLineTop() + 'px';
+    }, 60_000);
+  }
+}
+
+// ── Wire up controls ──────────────────────────────────────────────────────────
+document.getElementById('cal-prev').addEventListener('click',  () => calNavigate(-1));
+document.getElementById('cal-next').addEventListener('click',  () => calNavigate(+1));
+document.getElementById('cal-today').addEventListener('click', () => calGoToday());
+
+// Restore saved calendar mode
+const _savedCalMode = localStorage.getItem('nyx-cal-mode');
+if (_savedCalMode && ['month','week','day'].includes(_savedCalMode)) {
+  cal.mode = _savedCalMode;
+  document.querySelectorAll('.cal-mode-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.calMode === _savedCalMode);
+  });
+}
+
+document.querySelectorAll('.cal-mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.cal-mode-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    cal.mode = btn.dataset.calMode;
+    localStorage.setItem('nyx-cal-mode', cal.mode);
+    renderCalendar();
+  });
+});
+
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+function pad(n) { return String(n).padStart(2, '0'); }
+function fmtTime(ts) {
+  if (!ts) return '';
+  try {
+    const d = new Date(ts);
+    const h = String(d.getHours() % 12 || 12).padStart(2, '0');
+    const m = String(d.getMinutes()).padStart(2, '0');
+    const s = String(d.getSeconds()).padStart(2, '0');
+    const ms = String(d.getMilliseconds()).padStart(3, '0');
+    const ampm = d.getHours() < 12 ? 'AM' : 'PM';
+    return `${h}:${m}:${s}.${ms} ${ampm}`;
+  }
+  catch { return ts; }
+}
+function fmtDateTime(ts) {
+  if (!ts) return '';
+  try {
+    const d = new Date(ts);
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
+      d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch { return ts; }
+}
 
-document.getElementById('cal-prev').addEventListener('click', () => {
-  calState.month--;
-  if (calState.month < 0) { calState.month = 11; calState.year--; }
-  calState.selectedDay = null;
-  renderCalendar();
-  document.getElementById('session-list').innerHTML = '<div class="empty-state">Select a day to view conversations.</div>';
-  document.getElementById('conv-panel').innerHTML = '<div class="conv-placeholder">Select a session to read the conversation.</div>';
-});
-document.getElementById('cal-next').addEventListener('click', () => {
-  calState.month++;
-  if (calState.month > 11) { calState.month = 0; calState.year++; }
-  calState.selectedDay = null;
-  renderCalendar();
-  document.getElementById('session-list').innerHTML = '<div class="empty-state">Select a day to view conversations.</div>';
-  document.getElementById('conv-panel').innerHTML = '<div class="conv-placeholder">Select a session to read the conversation.</div>';
-});
-
-// Initial calendar render (no data yet — shows skeleton)
-renderCalendar();
+// Restore last active view — must run after all functions are defined
+switchView(localStorage.getItem('nyx-active-view') || 'agents');
 </script>
 </body>
 </html>
