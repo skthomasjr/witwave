@@ -81,7 +81,8 @@ async def _shell_executor(req: LocalShellCommandRequest) -> str:
     cmd = req.data.action.command
     cwd = req.data.action.working_directory or None
     env_extra = req.data.action.env or {}
-    env = {**os.environ, **env_extra}
+    _base_env = {k: os.environ[k] for k in ("PATH", "HOME", "USER", "TMPDIR", "LANG", "LC_ALL") if k in os.environ}
+    env = {**_base_env, **env_extra}
     timeout_ms = req.data.action.timeout_ms
     timeout_s = (timeout_ms / 1000.0) if timeout_ms else 30.0
     try:
