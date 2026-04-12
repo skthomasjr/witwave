@@ -103,6 +103,11 @@ def parse_trigger_file(path: str) -> TriggerItem | object | None:
 class TriggerRunner:
     def __init__(self):
         self._items: dict[str, TriggerItem] = {}
+        # Endpoints currently executing. Safe as a plain set because asyncio
+        # runs on a single thread — the check-then-add in the request handler
+        # has no await between them, so no concurrent coroutine can interleave.
+        # If multi-worker (multi-threaded) uvicorn is ever used, replace with a
+        # thread-safe structure (e.g. threading.Lock + set).
         self._running: set[str] = set()
 
     def _register(self, path: str, *, count_reload: bool = False) -> None:
