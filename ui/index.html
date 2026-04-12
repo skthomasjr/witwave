@@ -1714,7 +1714,7 @@ function renderConvMsg(m) {
     : `you · ${fmtTime(m.ts)}${sid}`;
   return `<div class="cm ${role}">
     <div class="role">${label}</div>
-    <div class="bbl">${escHtml(m.text || '')}</div>
+    <div class="bbl">${role === 'agent' ? DOMPurify.sanitize(marked.parse(m.text || '')) : escHtml(m.text || '')}</div>
   </div>`;
 }
 
