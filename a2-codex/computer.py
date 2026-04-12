@@ -72,7 +72,7 @@ class PlaywrightComputer(AsyncComputer):
     async def scroll(self, x: int, y: int, scroll_x: int, scroll_y: int) -> None:
         await self._ensure_page()
         await self._page.mouse.move(x, y)
-        await self._page.evaluate(f"window.scrollBy({scroll_x * 100}, {scroll_y * 100})")
+        await self._page.evaluate(f"window.scrollBy({scroll_x}, {scroll_y})")
 
     async def type(self, text: str) -> None:
         await self._ensure_page()
