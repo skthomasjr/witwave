@@ -661,6 +661,9 @@ function switchView(name) {
   } else {
     if (_refreshTimer) { clearInterval(_refreshTimer); _refreshTimer = null; }
   }
+  if (name !== 'calendar') {
+    if (_calNowTimer) { clearInterval(_calNowTimer); _calNowTimer = null; }
+  }
 }
 
 document.querySelectorAll('nav button').forEach(btn => {
@@ -775,8 +778,11 @@ function upsertChart(id, type, labels, data, opts = {}) {
   const canvas = document.getElementById('chart-' + id);
   if (!canvas) return;
   if (charts[id]) {
+    const colors = labels.map((_, i) => PALETTE[i % PALETTE.length]);
     charts[id].data.labels = labels;
     charts[id].data.datasets[0].data = data;
+    charts[id].data.datasets[0].backgroundColor = type === 'doughnut' ? colors : colors.map(c => c + 'bb');
+    charts[id].data.datasets[0].borderColor = type === 'doughnut' ? colors : colors;
     charts[id].update('none');
     return;
   }
@@ -1343,7 +1349,10 @@ function selectAgent(member) {
     _buildAgentPanel(agentName, backends, right);
     // Restore the backend selection
     const backendSel = right.querySelector('#chat-backend-select');
-    if (backendSel && cache.backendId) backendSel.value = cache.backendId;
+    if (backendSel && cache.backendId) {
+      backendSel.value = cache.backendId;
+      backendSel.dispatchEvent(new Event('change'));
+    }
     _selectedBackendId = cache.backendId || _selectedBackendId;
     // Restore conversation thread
     if (_chatThread && cache.threadHtml) _chatThread.innerHTML = cache.threadHtml;
@@ -1579,7 +1588,6 @@ function _restoreConvState() {
 }
 
 async function loadConversations() {
-  conv.loaded = true;
   const feed = document.getElementById('conv-feed');
   try {
     const [convResp, traceResp] = await Promise.all([
@@ -1592,7 +1600,9 @@ async function loadConversations() {
     populateConvAgentFilter();
     _restoreConvState();
     renderConvFeed();
+    conv.loaded = true;
   } catch (e) {
+    conv.loaded = false;
     feed.innerHTML = `<div class="empty">Could not load conversations.<br>${escHtml(e.message)}</div>`;
   }
 }
