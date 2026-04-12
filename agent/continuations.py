@@ -129,6 +129,7 @@ async def _fire(item: ContinuationItem, session_id: str, bus: MessageBus) -> Non
 class ContinuationRunner:
     def __init__(self):
         self._items: dict[str, ContinuationItem] = {}
+        self._active_fires: set[asyncio.Task] = set()
 
     def _register(self, path: str) -> None:
         item = parse_continuation_file(path)
@@ -168,7 +169,9 @@ class ContinuationRunner:
             if upstream_matches and outcome_matches and content_matches:
                 if agent_continuation_fires_total is not None:
                     agent_continuation_fires_total.labels(upstream_kind=kind).inc()
-                asyncio.ensure_future(_fire(item, session_id, bus))
+                _t = asyncio.ensure_future(_fire(item, session_id, bus))
+                self._active_fires.add(_t)
+                _t.add_done_callback(self._active_fires.discard)
 
     async def run(self) -> None:
         logger.info(f"Continuation runner watching {CONTINUATIONS_DIR}")
