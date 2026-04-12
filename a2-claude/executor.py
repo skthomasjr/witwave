@@ -151,7 +151,7 @@ def _append_log(path: str, line: str) -> None:
             fcntl.flock(f, fcntl.LOCK_UN)
 
 
-def log_entry(role: str, text: str, session_id: str, model: str | None = None) -> None:
+async def log_entry(role: str, text: str, session_id: str, model: str | None = None) -> None:
     try:
         entry = {
             "ts": datetime.now(timezone.utc).isoformat(),
@@ -162,7 +162,7 @@ def log_entry(role: str, text: str, session_id: str, model: str | None = None) -
             "text": text,
         }
         _line = json.dumps(entry)
-        _append_log(CONVERSATION_LOG, _line)
+        await asyncio.to_thread(_append_log, CONVERSATION_LOG, _line)
         if a2_log_entries_total is not None:
             a2_log_entries_total.labels(**_LABELS, logger="conversation").inc()
         if a2_log_bytes_total is not None:
@@ -173,9 +173,9 @@ def log_entry(role: str, text: str, session_id: str, model: str | None = None) -
         logger.error(f"log_entry error: {e}")
 
 
-def log_trace(text: str) -> None:
+async def log_trace(text: str) -> None:
     try:
-        _append_log(TRACE_LOG, text)
+        await asyncio.to_thread(_append_log, TRACE_LOG, text)
         if a2_log_entries_total is not None:
             a2_log_entries_total.labels(**_LABELS, logger="trace").inc()
         if a2_log_bytes_total is not None:
@@ -186,7 +186,7 @@ def log_trace(text: str) -> None:
         logger.error(f"log_trace error: {e}")
 
 
-def _log_tool_event(event_type: str, block, session_id: str, model: str | None = None) -> None:
+async def _log_tool_event(event_type: str, block, session_id: str, model: str | None = None) -> None:
     try:
         ts = datetime.now(timezone.utc).isoformat()
         if event_type == "tool_use":
@@ -202,7 +202,7 @@ def _log_tool_event(event_type: str, block, session_id: str, model: str | None =
                 "model": model, "tool_use_id": block.tool_use_id,
                 "content": block.content, "is_error": block.is_error,
             }
-        log_trace(json.dumps(entry))
+        await log_trace(json.dumps(entry))
     except Exception as e:
         logger.error(f"_log_tool_event error: {e}")
 
@@ -299,7 +299,7 @@ async def _run_query_inner(
                     for block in message.content:
                         if isinstance(block, TextBlock):
                             collected.append(block.text)
-                            log_entry("agent", block.text, session_id, model=effective_model)
+                            await log_entry("agent", block.text, session_id, model=effective_model)
                         elif isinstance(block, ToolUseBlock):
                             _tool_names[block.id] = block.name
                             _tool_start_times[block.id] = time.monotonic()
@@ -309,7 +309,7 @@ async def _run_query_inner(
                                 a2_sdk_tool_call_input_size_bytes.labels(**_LABELS, tool=block.name).observe(
                                     len(json.dumps(block.input).encode())
                                 )
-                            _log_tool_event("tool_use", block, session_id, model=effective_model)
+                            await _log_tool_event("tool_use", block, session_id, model=effective_model)
                         elif isinstance(block, ToolResultBlock):
                             tool_name = _tool_names.get(block.tool_use_id, "unknown")
                             if block.is_error and a2_sdk_tool_errors_total is not None:
@@ -323,7 +323,7 @@ async def _run_query_inner(
                                 a2_sdk_tool_result_size_bytes.labels(**_LABELS, tool=tool_name).observe(
                                     len(str(block.content).encode())
                                 )
-                            _log_tool_event("tool_result", block, session_id, model=effective_model)
+                            await _log_tool_event("tool_result", block, session_id, model=effective_model)
                     try:
                         usage = await client.get_context_usage()
                         pct = usage.get("percentage", 0.0)
@@ -457,7 +457,7 @@ async def _run_inner(
     if a2_model_requests_total is not None:
         a2_model_requests_total.labels(**_LABELS, model=resolved_model).inc()
 
-    is_new = session_id not in sessions and not _session_file_exists(session_id)
+    is_new = session_id not in sessions and not await asyncio.to_thread(_session_file_exists, session_id)
     if not is_new and a2_session_idle_seconds is not None:
         _last_used = sessions.get(session_id)
         if _last_used is not None:
@@ -466,7 +466,7 @@ async def _run_inner(
         a2_session_starts_total.labels(**_LABELS, type="new" if is_new else "resumed").inc()
 
     logger.info(f"Session {session_id} ({'new' if is_new else 'existing'}) — prompt: {prompt!r}")
-    log_entry("user", prompt, session_id, model=model)
+    await log_entry("user", prompt, session_id, model=model)
 
     if a2_prompt_length_bytes is not None:
         a2_prompt_length_bytes.labels(**_LABELS).observe(len(prompt.encode()))
@@ -527,7 +527,7 @@ class AgentExecutor(A2AAgentExecutor):
         return [self.mcp_config_watcher]
 
     async def mcp_config_watcher(self) -> None:
-        self._mcp_servers = _load_mcp_config()
+        self._mcp_servers = await asyncio.to_thread(_load_mcp_config)
         if a2_mcp_servers_active is not None:
             a2_mcp_servers_active.labels(**_LABELS).set(len(self._mcp_servers))
         if self._mcp_servers:
@@ -544,7 +544,7 @@ class AgentExecutor(A2AAgentExecutor):
                     a2_watcher_events_total.labels(**_LABELS, watcher="mcp").inc()
                 for _, path in changes:
                     if os.path.abspath(path) == os.path.abspath(MCP_CONFIG_PATH):
-                        self._mcp_servers = _load_mcp_config()
+                        self._mcp_servers = await asyncio.to_thread(_load_mcp_config)
                         if a2_mcp_servers_active is not None:
                             a2_mcp_servers_active.labels(**_LABELS).set(len(self._mcp_servers))
                         logger.info(f"MCP config reloaded: {list(self._mcp_servers.keys())}")
