@@ -3,6 +3,7 @@ import fcntl
 import json
 import logging
 import os
+import re
 import time
 import uuid
 from collections import OrderedDict
@@ -400,7 +401,7 @@ class AgentExecutor(A2AAgentExecutor):
         _exec_start = time.monotonic()
         prompt = context.get_user_input()
         metadata = context.message.metadata or {}
-        _raw_sid = "".join(c for c in str(metadata.get("session_id") or "").strip()[:256] if c >= " ")
+        _raw_sid = re.sub(r"[^a-zA-Z0-9_-]", "_", str(metadata.get("session_id") or "").strip()[:256])
         session_id = _raw_sid or str(uuid.uuid4())
         model = metadata.get("model") or None
         task_id = context.task_id
