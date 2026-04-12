@@ -51,10 +51,12 @@ Stage only the files changed for this bug. Write a commit message that describes
 
 **Step 6: Close the bug.**
 
-Add the `completed` label and update the bug status to `completed`. Then close the bug and leave a comment documenting:
+Leave a comment on the bug documenting:
 - What was changed and where (file and line)
 - Whether the fix followed the suggested approach or deviated, and why
 - Confirmation that the fix was verified
 - The name and version of this skill (bug-fix v1.0.0)
+
+Then close the bug.
 
 Return to Step 1.
