@@ -165,7 +165,7 @@ def _append_log(path: str, line: str) -> None:
             fcntl.flock(f, fcntl.LOCK_UN)
 
 
-def log_entry(role: str, text: str, session_id: str, model: str | None = None) -> None:
+async def log_entry(role: str, text: str, session_id: str, model: str | None = None) -> None:
     try:
         entry = {
             "ts": datetime.now(timezone.utc).isoformat(),
@@ -176,7 +176,7 @@ def log_entry(role: str, text: str, session_id: str, model: str | None = None) -
             "text": text,
         }
         _line = json.dumps(entry)
-        _append_log(CONVERSATION_LOG, _line)
+        await asyncio.to_thread(_append_log, CONVERSATION_LOG, _line)
         if a2_log_entries_total is not None:
             a2_log_entries_total.labels(**_LABELS, logger="conversation").inc()
         if a2_log_bytes_total is not None:
@@ -187,9 +187,9 @@ def log_entry(role: str, text: str, session_id: str, model: str | None = None) -
         logger.error(f"log_entry error: {e}")
 
 
-def log_trace(text: str) -> None:
+async def log_trace(text: str) -> None:
     try:
-        _append_log(TRACE_LOG, text)
+        await asyncio.to_thread(_append_log, TRACE_LOG, text)
         if a2_log_entries_total is not None:
             a2_log_entries_total.labels(**_LABELS, logger="trace").inc()
         if a2_log_bytes_total is not None:
@@ -299,7 +299,7 @@ async def run_query(
                             "name": name,
                             "input": tool_input,
                         }
-                        log_trace(json.dumps(entry))
+                        await log_trace(json.dumps(entry))
                     except Exception as e:
                         logger.error(f"log_trace tool_use error: {e}")
                 elif isinstance(item, ToolCallOutputItem):
@@ -325,7 +325,7 @@ async def run_query(
                             "content": content,
                             "is_error": is_error,
                         }
-                        log_trace(json.dumps(entry))
+                        await log_trace(json.dumps(entry))
                     except Exception as e:
                         logger.error(f"log_trace tool_result error: {e}")
     except Exception:
@@ -351,7 +351,7 @@ async def run_query(
 
     full_response = "".join(collected)
     if full_response:
-        log_entry("agent", full_response, session_id, model=resolved_model)
+        await log_entry("agent", full_response, session_id, model=resolved_model)
 
     if a2_sdk_query_duration_seconds is not None:
         a2_sdk_query_duration_seconds.labels(**_LABELS, model=resolved_model).observe(time.monotonic() - _query_start)
@@ -373,7 +373,7 @@ async def run_query(
             "model": resolved_model,
             "chunks": len(collected),
         }
-        log_trace(json.dumps(entry))
+        await log_trace(json.dumps(entry))
     except Exception as e:
         logger.error(f"log_trace error: {e}")
 
@@ -416,7 +416,7 @@ async def _run_inner(
         a2_session_starts_total.labels(**_LABELS, type="new" if is_new else "resumed").inc()
 
     logger.info(f"Session {session_id} ({'new' if is_new else 'existing'}) — prompt: {prompt!r}")
-    log_entry("user", prompt, session_id, model=resolved_model)
+    await log_entry("user", prompt, session_id, model=resolved_model)
 
     if a2_prompt_length_bytes is not None:
         a2_prompt_length_bytes.labels(**_LABELS).observe(len(prompt.encode()))
