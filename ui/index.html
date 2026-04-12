@@ -1183,7 +1183,8 @@ function renderAgentCards(team) {
 
     group.innerHTML = html;
 
-    group.querySelector('.nyx-card').addEventListener('click', () => {
+    const nyxCard = group.querySelector('.nyx-card');
+    if (nyxCard) nyxCard.addEventListener('click', () => {
       left.querySelectorAll('.named-agent').forEach(g => g.classList.remove('selected'));
       group.classList.add('selected');
       selectAgent(member);
