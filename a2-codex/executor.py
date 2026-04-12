@@ -417,7 +417,6 @@ async def _run_inner(
             a2_session_idle_seconds.labels(**_LABELS).observe(time.monotonic() - _last_used)
     if a2_session_starts_total is not None:
         a2_session_starts_total.labels(**_LABELS, type="new" if is_new else "resumed").inc()
-    _track_session(sessions, session_id)
 
     logger.info(f"Session {session_id} ({'new' if is_new else 'existing'}) — prompt: {prompt!r}")
     await log_entry("user", prompt, session_id, model=resolved_model)
@@ -449,6 +448,7 @@ async def _run_inner(
             a2_task_last_error_timestamp_seconds.labels(**_LABELS).set(time.time())
         raise
 
+    _track_session(sessions, session_id)
     if a2_tasks_total is not None:
         a2_tasks_total.labels(**_LABELS, status="success").inc()
     if a2_task_last_success_timestamp_seconds is not None:
