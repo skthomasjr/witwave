@@ -263,10 +263,16 @@ def _inside_window(item: TaskItem) -> bool:
         return False
     if not _day_matches(item, today):
         return False
-    if now.time() < item.window_start:
-        return False
-    if item.window_end and now.time() >= item.window_end:
-        return False
+    t = now.time()
+    if item.window_end and item.window_end < item.window_start:
+        # Midnight-spanning window: open if time >= start OR time < end
+        if not (t >= item.window_start or t < item.window_end):
+            return False
+    else:
+        if t < item.window_start:
+            return False
+        if item.window_end and t >= item.window_end:
+            return False
     return True
 
 
