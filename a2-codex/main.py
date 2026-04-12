@@ -167,9 +167,8 @@ async def _guarded(coro_fn, *args, restart_delay: float = 5.0, critical: bool = 
             raise
         except Exception as exc:
             if time.monotonic() - _attempt_start >= restart_delay:
-                consecutive_restarts = 1
-            else:
-                consecutive_restarts += 1
+                consecutive_restarts = 0
+            consecutive_restarts += 1
             logger.error(f"Task {coro_fn.__name__!r} crashed: {exc!r} — restarting in {restart_delay}s (consecutive restart #{consecutive_restarts})")
             if a2_task_restarts_total is not None:
                 a2_task_restarts_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, task=coro_fn.__name__).inc()
