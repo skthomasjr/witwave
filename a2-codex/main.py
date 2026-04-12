@@ -16,6 +16,7 @@ from a2a.types import (
     AgentCard,
     AgentSkill,
 )
+import executor as _executor_module
 from executor import AgentExecutor
 from metrics import (
     a2_event_loop_lag_seconds,
@@ -165,8 +166,9 @@ async def _guarded(coro_fn, *args, restart_delay: float = 5.0, critical: bool = 
             raise
         except Exception as exc:
             if time.monotonic() - _attempt_start >= restart_delay:
-                consecutive_restarts = 0
-            consecutive_restarts += 1
+                consecutive_restarts = 1
+            else:
+                consecutive_restarts += 1
             logger.error(f"Task {coro_fn.__name__!r} crashed: {exc!r} — restarting in {restart_delay}s (consecutive restart #{consecutive_restarts})")
             if a2_task_restarts_total is not None:
                 a2_task_restarts_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, task=coro_fn.__name__).inc()
@@ -296,7 +298,14 @@ async def main():
             for route in _routes:
                 if isinstance(route, Mount) and route.path == "/":
                     await stack.enter_async_context(_sub_app_lifespan(route.app))
-            yield
+            try:
+                yield
+            finally:
+                if _executor_module._computer is not None:
+                    try:
+                        await _executor_module._computer.close()
+                    except Exception as exc:
+                        logger.warning("PlaywrightComputer close error: %s", exc)
 
     full_app = Starlette(routes=_routes, lifespan=lifespan)
 

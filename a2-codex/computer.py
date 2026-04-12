@@ -28,6 +28,7 @@ class PlaywrightComputer(AsyncComputer):
         self._height = height
         self._playwright = None
         self._browser = None
+        self._context = None
         self._page = None
         self._lock = asyncio.Lock()
 
@@ -49,10 +50,10 @@ class PlaywrightComputer(AsyncComputer):
                 headless=True,
                 args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
             )
-            context = await self._browser.new_context(
+            self._context = await self._browser.new_context(
                 viewport={"width": self._width, "height": self._height},
             )
-            self._page = await context.new_page()
+            self._page = await self._context.new_page()
             logger.info("Playwright browser started (%dx%d)", self._width, self._height)
 
     async def screenshot(self) -> str:
@@ -101,10 +102,13 @@ class PlaywrightComputer(AsyncComputer):
         await self._page.mouse.up()
 
     async def close(self) -> None:
+        if self._context:
+            await self._context.close()
+            self._context = None
+            self._page = None
         if self._browser:
             await self._browser.close()
             self._browser = None
-            self._page = None
         if self._playwright:
             await self._playwright.stop()
             self._playwright = None
