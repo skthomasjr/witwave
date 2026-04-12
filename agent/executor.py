@@ -71,7 +71,7 @@ def _append_log(path: str, line: str) -> None:
             fcntl.flock(f, fcntl.LOCK_UN)
 
 
-def log_entry(role: str, text: str, session_id: str, model: str | None = None, backend: str | None = None) -> None:
+async def log_entry(role: str, text: str, session_id: str, model: str | None = None, backend: str | None = None) -> None:
     try:
         entry = {
             "ts": datetime.now(timezone.utc).isoformat(),
@@ -83,7 +83,7 @@ def log_entry(role: str, text: str, session_id: str, model: str | None = None, b
             "text": text,
         }
         _line = json.dumps(entry)
-        _append_log(CONVERSATION_LOG, _line)
+        await asyncio.to_thread(_append_log, CONVERSATION_LOG, _line)
         if agent_log_entries_total is not None:
             agent_log_entries_total.labels(logger="conversation").inc()
         if agent_log_bytes_total is not None:
@@ -94,9 +94,9 @@ def log_entry(role: str, text: str, session_id: str, model: str | None = None, b
         logger.error(f"log_entry error: {e}")
 
 
-def log_trace(text: str) -> None:
+async def log_trace(text: str) -> None:
     try:
-        _append_log(TRACE_LOG, text)
+        await asyncio.to_thread(_append_log, TRACE_LOG, text)
         if agent_log_entries_total is not None:
             agent_log_entries_total.labels(logger="trace").inc()
         if agent_log_bytes_total is not None:
@@ -193,7 +193,7 @@ async def _run_inner(
 
     logger.info(f"Session {session_id} ({'new' if is_new else 'existing'}) backend={resolved_id} — prompt: {prompt!r}")
     if not isinstance(backend, A2ABackend):
-        log_entry("user", prompt, session_id, model=model, backend=resolved_id)
+        await log_entry("user", prompt, session_id, model=model, backend=resolved_id)
 
     if agent_prompt_length_bytes is not None:
         agent_prompt_length_bytes.observe(len(prompt.encode()))
