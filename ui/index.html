@@ -865,7 +865,7 @@ function renderMetrics(m) {
 
   // A2A requests by outcome
   (() => {
-    const bd = breakdownByLabel(m, 'agent_a2a_requests', 'outcome');
+    const bd = breakdownByLabel(m, 'agent_a2a_requests', 'status');
     const labels = Object.keys(bd), data = Object.values(bd);
     if (!labels.length) return;
     ensureCard('a2a-outcome', 'A2A Requests by Outcome');
@@ -874,7 +874,7 @@ function renderMetrics(m) {
 
   // Heartbeat runs by outcome
   (() => {
-    const bd = breakdownByLabel(m, 'agent_heartbeat_runs', 'outcome');
+    const bd = breakdownByLabel(m, 'agent_heartbeat_runs', 'status');
     const labels = Object.keys(bd), data = Object.values(bd);
     if (!labels.length) return;
     ensureCard('hb-outcome', 'Heartbeat Runs by Outcome');
@@ -944,7 +944,7 @@ function renderMetrics(m) {
 
   // Continuation runs
   (() => {
-    const bd = breakdownByLabel(m, 'agent_continuation_runs', 'outcome');
+    const bd = breakdownByLabel(m, 'agent_continuation_runs', 'status');
     const labels = Object.keys(bd), data = Object.values(bd);
     if (!labels.length) return;
     ensureCard('cont-runs', 'Continuation Runs by Outcome');
