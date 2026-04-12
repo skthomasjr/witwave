@@ -98,7 +98,8 @@ The body is structured markdown. Edit only the fields that need to change. Commo
 
 - **Status** — replace `**Status:** <old>` with `**Status:** <new>`. Valid values: `pending`, `approved`, `in-progress`, `needs-more-info`, `implemented`, `wont-fix`.
 - **Priority** — replace `**Priority:** <old>` with `**Priority:** <new>`. Valid values: `high`, `medium`, `low`.
-- **Depends on** — replace `**Depends on:**` with `**Depends on:** #<number>` (comma-separate multiple).
+- **Claimed by** — replace `**Claimed by:** none` with `**Claimed by:** <agent-name>` when an agent picks up a bug; set back to `none` when the agent drops it.
+- **Depends on** — replace the `- none` entry (or existing entries) under `**Depends on:**` with one bullet per dependency: `- #<number> — <one sentence reason this must be fixed first>`. Use `- none` when there are no dependencies.
 - **Fix** — replace the `**Fix:**` block with the revised suggestion.
 - **Component** — replace `**Component:** <old>` with `**Component:** <new>`.
 
@@ -116,13 +117,13 @@ If Status or Priority changed, swap the old label for the new one:
 gh issue edit <number> --remove-label "<old-label>" --add-label "<new-label>"
 ```
 
-If a `**Depends on:**` field was populated, add the `blocked-by` label:
+If the `**Depends on:**` list contains any entry other than `- none`, add the `blocked-by` label:
 
 ```bash
 gh issue edit <number> --add-label "blocked-by"
 ```
 
-If the `**Depends on:**` field was cleared, remove `blocked-by`:
+If the `**Depends on:**` list is `- none`, remove `blocked-by`:
 
 ```bash
 gh issue edit <number> --remove-label "blocked-by"

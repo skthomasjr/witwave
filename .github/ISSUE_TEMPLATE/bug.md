@@ -11,6 +11,8 @@ about: A defect or unexpected behavior in a component
 
 **Created by:** <name>
 
+**Claimed by:** none
+
 **Skill:** <skill name> v<skill version>
 
 **Component:** agent | a2-claude | a2-codex | a2-gemini | ui | _(leave blank if cross-cutting or other)_
@@ -27,7 +29,8 @@ about: A defect or unexpected behavior in a component
 
 **Fix:** <suggested fix, or `unknown`>
 
-**Depends on:** _(issue numbers this must be fixed after, or leave blank)_
+**Depends on:**
+- none
 
 **Acceptance criteria:**
 
