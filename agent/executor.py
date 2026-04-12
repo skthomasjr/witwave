@@ -189,6 +189,7 @@ async def _run_inner(
         agent_session_idle_seconds.observe(time.monotonic() - sessions[session_id])
     if agent_session_starts_total is not None:
         agent_session_starts_total.labels(type="new" if is_new else "resumed").inc()
+    _track_session(sessions, session_id)
 
     logger.info(f"Session {session_id} ({'new' if is_new else 'existing'}) backend={resolved_id} — prompt: {prompt!r}")
     if not isinstance(backend, A2ABackend):
@@ -203,7 +204,6 @@ async def _run_inner(
             backend.run_query(prompt, session_id, is_new, model=model),
             timeout=TASK_TIMEOUT_SECONDS,
         )
-        _track_session(sessions, session_id)
     except asyncio.TimeoutError:
         logger.error(f"Session {session_id!r}: backend {resolved_id!r} timed out after {TASK_TIMEOUT_SECONDS}s.")
         if agent_tasks_total is not None:
