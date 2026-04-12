@@ -45,7 +45,7 @@ For each bug found, report:
 - Why it's a bug (what goes wrong)
 - A suggested fix
 
-For each bug found, record it as a tracked issue labeled `bug` and `pending`. Include the component, file and line number, what the bug is, what goes wrong at runtime, and the suggested fix. Do not fix the bug — only report and record it.
+For each bug found, record it as a tracked issue. Every issue **must** be filed with at minimum the labels `bug` and `pending`. Include the component, file and line number, what the bug is, what goes wrong at runtime, and the suggested fix. Do not fix the bug — only report and record it. An issue filed without labels is invalid — verify labels are present after filing.
 
 If a sufficiently similar bug already exists, do not file a duplicate. Instead, add a comment to the existing bug noting that it has been re-identified. The comment must include:
 - The agent of record that re-identified it
