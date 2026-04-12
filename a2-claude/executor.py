@@ -179,7 +179,7 @@ def log_trace(text: str) -> None:
         if a2_log_entries_total is not None:
             a2_log_entries_total.labels(**_LABELS, logger="trace").inc()
         if a2_log_bytes_total is not None:
-            a2_log_bytes_total.labels(**_LABELS, logger="trace").inc(len(_line.encode()))
+            a2_log_bytes_total.labels(**_LABELS, logger="trace").inc(len(text.encode()))
     except Exception as e:
         if a2_log_write_errors_total is not None:
             a2_log_write_errors_total.labels(**_LABELS).inc()
