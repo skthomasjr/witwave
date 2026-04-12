@@ -293,9 +293,9 @@ def _render_default_envelope(context: dict) -> str:
     return json.dumps(envelope)
 
 
-def _sign_body(body: str, secret: str) -> str:
-    """Compute X-Hub-Signature-256 over raw UTF-8 body bytes."""
-    mac = hmac.new(secret.encode(), body.encode("utf-8"), hashlib.sha256)
+def _sign_body(body_bytes: bytes, secret: str) -> str:
+    """Compute X-Hub-Signature-256 over raw body bytes."""
+    mac = hmac.new(secret.encode(), body_bytes, hashlib.sha256)
     return f"sha256={mac.hexdigest()}"
 
 
@@ -392,7 +392,7 @@ async def deliver(
     for k, v in sub.headers.items():
         headers[k] = _substitute(v, context)
     if sub.signing_secret:
-        headers["X-Hub-Signature-256"] = _sign_body(body_bytes.decode("utf-8", errors="replace"), sub.signing_secret)
+        headers["X-Hub-Signature-256"] = _sign_body(body_bytes, sub.signing_secret)
 
     # Deliver with retries
     result = "unknown"
