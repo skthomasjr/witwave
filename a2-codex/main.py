@@ -133,8 +133,9 @@ async def _sub_app_lifespan(app):
     task = asyncio.create_task(_run())
     supported = await startup
     if not supported:
-        yield
-        return
+        logger.critical("A2A sub-app lifespan startup failed — aborting server startup")
+        task.cancel()
+        raise RuntimeError("A2A sub-app lifespan startup failed")
 
     try:
         yield
