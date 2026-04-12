@@ -414,6 +414,7 @@ async def _run_inner(
             a2_session_idle_seconds.labels(**_LABELS).observe(time.monotonic() - _last_used)
     if a2_session_starts_total is not None:
         a2_session_starts_total.labels(**_LABELS, type="new" if is_new else "resumed").inc()
+    _track_session(sessions, session_id)
 
     logger.info(f"Session {session_id} ({'new' if is_new else 'existing'}) — prompt: {prompt!r}")
     await log_entry("user", prompt, session_id, model=resolved_model)
@@ -427,7 +428,6 @@ async def _run_inner(
             run_query(prompt, session_id, agent_md_content, model=model),
             timeout=TASK_TIMEOUT_SECONDS,
         )
-        _track_session(sessions, session_id)
     except asyncio.TimeoutError:
         logger.error(f"Session {session_id!r}: timed out after {TASK_TIMEOUT_SECONDS}s.")
         if a2_tasks_total is not None:
