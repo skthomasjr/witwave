@@ -589,6 +589,27 @@ class TaskRunner:
         return None
 
     async def _scan(self) -> None:
+        if os.path.isdir(CHECKPOINT_DIR):
+            try:
+                cp_filenames = os.listdir(CHECKPOINT_DIR)
+            except OSError:
+                cp_filenames = []
+            for cp_filename in cp_filenames:
+                if cp_filename.endswith(".running.json"):
+                    cp_path = os.path.join(CHECKPOINT_DIR, cp_filename)
+                    try:
+                        with open(cp_path) as f:
+                            data = json.load(f)
+                        name = data.get("name") or Path(cp_filename).stem
+                    except Exception:
+                        name = Path(cp_filename).stem
+                    logger.warning(f"Task '{name}': stale checkpoint at {cp_path} — run may have been interrupted")
+                    if agent_sched_task_checkpoint_stale_total is not None:
+                        agent_sched_task_checkpoint_stale_total.inc()
+                    try:
+                        os.remove(cp_path)
+                    except Exception as rm_err:
+                        logger.warning(f"Task '{name}': failed to remove stale checkpoint {cp_path}: {rm_err}")
         if not os.path.isdir(TASKS_DIR):
             return
         try:
