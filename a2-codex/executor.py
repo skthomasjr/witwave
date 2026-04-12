@@ -307,11 +307,11 @@ async def run_query(
                     call_id = raw.get("call_id", "") if isinstance(raw, dict) else getattr(raw, "call_id", "")
                     tool_name = _tool_call_names.get(call_id, "unknown")
                     output = item.output
-                    is_error = False
-                    if isinstance(raw, dict) and raw.get("type") == "function_call_output":
-                        content = str(output)
-                    else:
-                        content = str(output)
+                    content = str(output)
+                    is_error = bool(
+                        getattr(item, "is_error", None)
+                        or (isinstance(raw, dict) and raw.get("is_error"))
+                    )
                     try:
                         ts = datetime.now(timezone.utc).isoformat()
                         entry = {
