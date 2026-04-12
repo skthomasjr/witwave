@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import time
+from collections import deque
 from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import datetime, timezone
 
@@ -234,7 +235,13 @@ async def main():
             limit_n = int(limit) if limit else None
         except ValueError:
             return JSONResponse({"error": "invalid limit"}, status_code=400)
-        entries = []
+        since_dt: datetime | None = None
+        if since:
+            try:
+                since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
+            except ValueError:
+                return JSONResponse({"error": "invalid since"}, status_code=400)
+        entries: deque = deque(maxlen=limit_n)
         try:
             with open(CONVERSATION_LOG) as f:
                 for line in f:
@@ -245,14 +252,17 @@ async def main():
                         entry = json.loads(line)
                     except json.JSONDecodeError:
                         continue
-                    if since and entry.get("ts", "") < since:
-                        continue
+                    if since_dt:
+                        try:
+                            ts = datetime.fromisoformat(entry.get("ts", "").replace("Z", "+00:00"))
+                            if ts < since_dt:
+                                continue
+                        except ValueError:
+                            continue
                     entries.append(entry)
         except FileNotFoundError:
             pass
-        if limit_n is not None:
-            entries = entries[-limit_n:]
-        return JSONResponse(entries)
+        return JSONResponse(list(entries))
 
     async def trace_handler(request: Request) -> JSONResponse:
         since = request.query_params.get("since")
@@ -261,7 +271,13 @@ async def main():
             limit_n = int(limit) if limit else None
         except ValueError:
             return JSONResponse({"error": "invalid limit"}, status_code=400)
-        entries = []
+        since_dt: datetime | None = None
+        if since:
+            try:
+                since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
+            except ValueError:
+                return JSONResponse({"error": "invalid since"}, status_code=400)
+        entries: deque = deque(maxlen=limit_n)
         try:
             with open(TRACE_LOG) as f:
                 for line in f:
@@ -272,14 +288,17 @@ async def main():
                         entry = json.loads(line)
                     except json.JSONDecodeError:
                         continue
-                    if since and entry.get("ts", "") < since:
-                        continue
+                    if since_dt:
+                        try:
+                            ts = datetime.fromisoformat(entry.get("ts", "").replace("Z", "+00:00"))
+                            if ts < since_dt:
+                                continue
+                        except ValueError:
+                            continue
                     entries.append(entry)
         except FileNotFoundError:
             pass
-        if limit_n is not None:
-            entries = entries[-limit_n:]
-        return JSONResponse(entries)
+        return JSONResponse(list(entries))
 
     _routes = [
         Route("/health", health),
