@@ -135,7 +135,8 @@ def parse_task_file(path: str) -> TaskItem | None:
                 if agent_sched_task_parse_errors_total is not None:
                     agent_sched_task_parse_errors_total.inc()
                 return None
-            ws_dt = datetime.combine(date.today(), window_start)
+            _ref_date = datetime.now(tz).date()
+            ws_dt = datetime.combine(_ref_date, window_start)
             we_dt = ws_dt + timedelta(seconds=duration_secs)
             window_end = we_dt.time()
 

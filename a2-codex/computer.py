@@ -11,8 +11,6 @@ _BUTTON_MAP: dict[str, str] = {
     "left": "left",
     "right": "right",
     "wheel": "middle",
-    "back": "left",
-    "forward": "left",
 }
 
 
@@ -63,6 +61,12 @@ class PlaywrightComputer(AsyncComputer):
 
     async def click(self, x: int, y: int, button: Button) -> None:
         await self._ensure_page()
+        if button == "back":
+            await self._page.go_back()
+            return
+        if button == "forward":
+            await self._page.go_forward()
+            return
         pw_button = _BUTTON_MAP.get(button, "left")
         await self._page.mouse.click(x, y, button=pw_button)
 

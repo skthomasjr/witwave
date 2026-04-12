@@ -1032,11 +1032,13 @@ async function loadAgents(isRefresh = false) {
     _agentTeam = team;
     const footer = document.getElementById('agents-footer');
     if (footer) footer.textContent = 'updated ' + new Date().toLocaleTimeString();
+    setStatus('connected', true);
   } catch (e) {
     if (!isRefresh) {
       document.getElementById('agents-placeholder').textContent =
         `Could not load: ${e.message}`;
     }
+    setStatus(`unreachable — ${AGENT_BASE}`, false);
   }
 }
 
@@ -1089,6 +1091,12 @@ function refreshAgentCards(team) {
   if (team.length !== left.querySelectorAll('.named-agent').length) {
     _agentTeam = team;
     renderAgentCards(team);
+    // Re-apply selected highlight after full re-render
+    if (_selectedAgent) {
+      left.querySelectorAll('.named-agent').forEach((g, i) => {
+        if (team[i] && team[i].name === _selectedAgent.name) g.classList.add('selected');
+      });
+    }
   }
 }
 
@@ -1671,6 +1679,8 @@ function renderConvFeed() {
     const date = first?.ts ? new Date(first.ts).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '';
     const sidShort = sid.slice(0, 8);
 
+
+    html.push(`<div class="conv-session-divider"><div class="div-line"></div><div class="div-label">${escHtml(sidShort)} · ${escHtml(date)} · ${escHtml(agentLabel)}</div><div class="div-line"></div></div>`);
 
     // Merge messages and trace events, sorted by ts
     const traceEvents = (traceMap[sid] || []).map(t => ({ ...t, _kind: 'tool' }));
