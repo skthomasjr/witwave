@@ -498,8 +498,7 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
                     break
 
                 # window boundary check
-                now_local = _now_in_tz(item.tz)
-                if now_local.time() >= item.window_end:
+                if not _inside_window(item):
                     logger.info(f"Task '{item.name}': window closed — stopping for the day.")
                     break
 
@@ -509,8 +508,7 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
                     await asyncio.sleep(item.loop_gap)
 
                 # Re-check window after gap (gap may have pushed past window_end)
-                now_local = _now_in_tz(item.tz)
-                if item.window_end and now_local.time() >= item.window_end:
+                if item.window_end and not _inside_window(item):
                     logger.info(f"Task '{item.name}': window closed after loop-gap — stopping for the day.")
                     break
 
