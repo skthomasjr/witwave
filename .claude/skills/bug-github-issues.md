@@ -1,7 +1,7 @@
 ---
 name: bug-github-issues
 description: File a bug, close a bug, edit a bug, or look up a bug. Trigger when the user says "file a bug", "report a bug", "close the bug", "close bug #N", "update the bug", "edit bug #N", "look up a bug", "find bug #N", or "check if a bug exists".
-version: 1.0.7
+version: 1.0.8
 ---
 
 # bug-github-issues
@@ -33,12 +33,17 @@ Compare titles against the bug being filed. If a sufficiently similar issue alre
 
 **Step 3: File the bug.**
 
-Write a concise title (under 70 characters). Before composing the body, read `<repo-root>/.github/ISSUE_TEMPLATE/bug.md` and populate every field defined there. Set **Status** to `pending` for all new bugs. Set **Skill** to the name and version of this skill (e.g. `bug-github-issues v1.0.6`).
+Write a concise title (under 70 characters). Before composing the body, read `<repo-root>/.github/ISSUE_TEMPLATE/bug.md` and populate every field defined there. Set **Status** to `pending` for all new bugs. Set **Skill** to the name and version of this skill (see the frontmatter of this file).
 
-Once the body is ready, read the `**Priority:**`, `**Status:**`, and `**Component:**` fields from it to derive labels. Always apply `bug`. Apply the priority and status values as labels directly. Apply the component as a label only if it is a known component (`agent`, `a2-claude`, `a2-codex`, `a2-gemini`, `ui`); omit if cross-cutting or blank.
+Once the body is ready, derive labels from the body fields:
+
+- **Type** — always `bug` (required)
+- **Priority** — from `**Priority:**`; must be one of `critical`, `high`, `medium`, `low` (required; default to `medium` if not supplied)
+- **Status** — from `**Status:**`; must be one of `pending`, `approved`, `in-progress`, `needs-more-info`, `implemented`, `wont-fix` (required; default to `pending` if not supplied)
+- **Component** — from `**Component:**`; apply only if it is a known component (`agent`, `a2-claude`, `a2-codex`, `a2-gemini`, `ui`); omit if cross-cutting or blank (optional)
 
 ```bash
-gh issue create --title "<title>" --body "<body>" --label "bug" --label "<priority>" --label "<status>" --label "<component>"
+gh issue create --title "<title>" --body "<body>" --label "bug" --label "<priority>" --label "<status>" [--label "<component>"]
 ```
 
 **Step 4: Return the issue URL.**

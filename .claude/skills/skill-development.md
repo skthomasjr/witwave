@@ -1,7 +1,7 @@
 ---
 name: skill-development
 description: Guide the design and review of skills in this repository. Trigger when the user says "create a skill", "write a skill", "review a skill", "update a skill", or "help with a skill".
-version: 1.0.0
+version: 1.0.1
 ---
 
 # skill-development
@@ -21,6 +21,8 @@ gh repo view --json nameWithOwner -q .nameWithOwner
 This works in any clone without hardcoding an owner or repo name. Never use `--repo` with a literal value in a skill.
 
 **Repo root path** — use the `<repo-root>` placeholder (as defined in `AGENTS.md`) wherever a skill needs to reference a file by absolute path. Never hardcode a literal filesystem path such as `/Users/scott/...`.
+
+**Skill name and version** — when a skill needs to record or report its own name and version (e.g. in a GitHub issue body), always reference the frontmatter of the skill file itself. Never hardcode the name or version as a literal string. Write "see the frontmatter of this file" rather than `skill-name v1.0.0`.
 
 ## Conventions
 
