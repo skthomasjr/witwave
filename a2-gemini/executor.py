@@ -359,6 +359,8 @@ async def _run_inner(
             a2_task_error_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _start)
         if a2_task_last_error_timestamp_seconds is not None:
             a2_task_last_error_timestamp_seconds.labels(**_LABELS).set(time.time())
+        if session_id not in sessions:
+            _session_locks.pop(session_id, None)
         raise
     except Exception:
         if a2_tasks_total is not None:
@@ -367,6 +369,8 @@ async def _run_inner(
             a2_task_error_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _start)
         if a2_task_last_error_timestamp_seconds is not None:
             a2_task_last_error_timestamp_seconds.labels(**_LABELS).set(time.time())
+        if session_id not in sessions:
+            _session_locks.pop(session_id, None)
         raise
 
     if a2_tasks_total is not None:
