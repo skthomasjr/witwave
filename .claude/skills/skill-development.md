@@ -20,6 +20,8 @@ gh repo view --json nameWithOwner -q .nameWithOwner
 ```
 This works in any clone without hardcoding an owner or repo name. Never use `--repo` with a literal value in a skill.
 
+**Repo root path** — use the `<repo-root>` placeholder (as defined in `AGENTS.md`) wherever a skill needs to reference a file by absolute path. Never hardcode a literal filesystem path such as `/Users/scott/...`.
+
 ## Conventions
 
 **Use domain language, not tool language.**

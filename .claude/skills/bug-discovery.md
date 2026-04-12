@@ -10,15 +10,9 @@ Analyze a specific component of the autonomous-agent platform for bugs.
 
 ## Instructions
 
-The user will invoke this skill with a component name, e.g.:
-- `/bug-discovery claude backend`
-- `/bug-discovery orchestrator`
-- `/bug-discovery codex`
-- `/bug-discovery ui`
-
 **Step 1: Identify the component(s).**
 
-Read the Components table in `/Users/scott/Source/github.com/skthomasjr/autonomous-agent/README.md` to determine which directory corresponds to what the user said. Map natural language to the table — "Claude backend", "Claude agent", or just "Claude" all map to `a2-claude/`. "Orchestrator", "nyx", or "router" map to `agent/`. "UI", "interface", or "frontend" map to `ui/`.
+Read the Components table in `<repo-root>/README.md` to determine which directory corresponds to what the user said. Map natural language to the table — "Claude backend", "Claude agent", or just "Claude" all map to `a2-claude/`. "Orchestrator", "nyx", or "router" map to `agent/`. "UI", "interface", or "frontend" map to `ui/`.
 
 If the user specifies "all" or does not specify a component, run this skill against every component in the Components table in sequence. Complete all steps for each component before moving to the next.
 
