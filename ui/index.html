@@ -655,12 +655,10 @@ function switchView(name) {
   localStorage.setItem('nyx-active-view', name);
   if (name === 'conversations' && !conv.loaded) loadConversations();
   if (name === 'calendar') renderCalendar();
-  if (name === 'metrics' && !_metricsLoaded) {
-    _metricsLoaded = true;
-    loadMetrics();
-    setRefreshInterval(30_000);
-  }
-  if (name !== 'metrics') {
+  if (name === 'metrics') {
+    if (!_metricsLoaded) { _metricsLoaded = true; loadMetrics(); }
+    setRefreshInterval(Number(document.getElementById('refresh-interval').value) || 30_000);
+  } else {
     if (_refreshTimer) { clearInterval(_refreshTimer); _refreshTimer = null; }
   }
 }
