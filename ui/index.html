@@ -1423,9 +1423,12 @@ function renderChatThread(thread, entries) {
   }
   thread.innerHTML = entries.map(e => {
     const role = e.role === 'user' ? 'user' : 'agent';
+    const body = role === 'agent'
+      ? DOMPurify.sanitize(marked.parse(e.text || ''))
+      : escHtml(e.text || '');
     return `<div class="cm ${role}">
       <div class="role">${escHtml(e.agent || role)}</div>
-      <div class="bbl">${escHtml(e.text || '')}</div>
+      <div class="bbl">${body}</div>
     </div>`;
   }).join('');
   thread.scrollTop = thread.scrollHeight;
@@ -1436,7 +1439,10 @@ function appendChatMessage(thread, role, text, label) {
   if (empty) empty.remove();
   const div = document.createElement('div');
   div.className = `cm ${role}`;
-  div.innerHTML = `<div class="role">${escHtml(label || role)}</div><div class="bbl">${escHtml(text)}</div>`;
+  const body = role === 'agent'
+    ? DOMPurify.sanitize(marked.parse(text || ''))
+    : escHtml(text || '');
+  div.innerHTML = `<div class="role">${escHtml(label || role)}</div><div class="bbl">${body}</div>`;
   thread.appendChild(div);
   thread.scrollTop = thread.scrollHeight;
 }
