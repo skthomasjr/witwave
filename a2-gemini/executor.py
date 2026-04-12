@@ -166,8 +166,10 @@ def _save_history(session_id: str, history: list[types.Content]) -> None:
                     parts.append({"text": text})
             if parts:
                 raw.append({"role": content.role, "parts": parts})
-        with open(path, "w") as f:
+        tmp_path = path + ".tmp"
+        with open(tmp_path, "w") as f:
             json.dump(raw, f)
+        os.replace(tmp_path, path)
     except Exception as e:
         logger.warning(f"Failed to save session history for {session_id!r}: {e}")
 
