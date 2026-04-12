@@ -14,7 +14,7 @@ Repeat the following steps until all approved bugs have been processed.
 
 **Step 1: Select the next bug to fix.**
 
-First, check for any open bugs labeled `bug` and `in-progress`. If one exists, resume it — it was already selected and started in a previous run. Do not start a new bug until the in-progress one is resolved.
+First, check for any open bugs labeled `bug` and `approved` whose status is `in-progress`. If one exists, resume it — it was already selected and started in a previous run. Do not start a new bug until the in-progress one is resolved.
 
 If no in-progress bug exists, retrieve all open bugs labeled `bug` and `approved`. If none remain, stop — all approved bugs have been fixed.
 
@@ -24,7 +24,7 @@ From the approved bugs, select the one to fix next using this priority order:
 - Among equal priority: prefer the bug with the most isolated fix (lowest blast radius)
 - Among equal blast radius: prefer the bug whose suggested fix is most clearly correct
 
-Once selected, mark the bug as in-progress: add the `in-progress` label, remove the `approved` label, and update the bug status to `in-progress`.
+Once selected, remove the `approved` label and update the bug status to `in-progress`.
 
 **Step 2: Understand the affected code.**
 
@@ -51,7 +51,7 @@ Stage only the files changed for this bug. Write a commit message that describes
 
 **Step 6: Close the bug.**
 
-Close the bug (this removes the `in-progress` label automatically) and leave a comment documenting:
+Add the `completed` label and update the bug status to `completed`. Then close the bug and leave a comment documenting:
 - What was changed and where (file and line)
 - Whether the fix followed the suggested approach or deviated, and why
 - Confirmation that the fix was verified
