@@ -144,7 +144,7 @@ def _load_history(session_id: str) -> list[types.Content]:
             raw = json.load(f)
         history: list[types.Content] = []
         for entry in raw:
-            parts = [types.Part(text=p["text"]) for p in entry.get("parts", []) if "text" in p]
+            parts = [types.Part(**p) for p in entry.get("parts", []) if p]
             if parts:
                 history.append(types.Content(role=entry["role"], parts=parts))
         return history
@@ -159,11 +159,7 @@ def _save_history(session_id: str, history: list[types.Content]) -> None:
     try:
         raw = []
         for content in history:
-            parts = []
-            for part in content.parts or []:
-                text = getattr(part, "text", None)
-                if text:
-                    parts.append({"text": text})
+            parts = [p.model_dump(exclude_none=True) for p in (content.parts or []) if p]
             if parts:
                 raw.append({"role": content.role, "parts": parts})
         tmp_path = path + ".tmp"
