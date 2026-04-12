@@ -135,14 +135,14 @@ def _track_session(sessions: OrderedDict[str, float], session_id: str) -> None:
     if session_id in sessions:
         sessions.move_to_end(session_id)
         sessions[session_id] = time.monotonic()
-        return
-    if len(sessions) >= MAX_SESSIONS:
-        _evicted_id, last_used_at = sessions.popitem(last=False)
-        if agent_session_evictions_total is not None:
-            agent_session_evictions_total.inc()
-        if agent_session_age_seconds is not None:
-            agent_session_age_seconds.observe(time.monotonic() - last_used_at)
-    sessions[session_id] = time.monotonic()
+    else:
+        if len(sessions) >= MAX_SESSIONS:
+            _evicted_id, last_used_at = sessions.popitem(last=False)
+            if agent_session_evictions_total is not None:
+                agent_session_evictions_total.inc()
+            if agent_session_age_seconds is not None:
+                agent_session_age_seconds.observe(time.monotonic() - last_used_at)
+        sessions[session_id] = time.monotonic()
     if agent_active_sessions is not None:
         agent_active_sessions.set(len(sessions))
     if agent_lru_cache_utilization_percent is not None:
