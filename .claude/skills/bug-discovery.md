@@ -1,6 +1,6 @@
 ---
 name: bug-discovery
-description: Analyze one or all components of the autonomous-agent platform for bugs and record findings as tracked issues.
+description: Analyze one or all components of the autonomous-agent platform for bugs and record findings as tracked bugs. Trigger when the user says "find bugs", "discover bugs", "look for bugs", "scan for bugs", "search for bugs", or "run bug discovery" — with or without a component name.
 version: 1.0.0
 ---
 
@@ -32,7 +32,7 @@ Read all source files in the identified directory. Do not skip any file.
 
 **Step 4: Analyze for bugs.**
 
-Always perform a full, independent analysis of the source — do not assume that previously filed issues represent all known bugs. Every invocation of this skill is a fresh evaluation.
+Always perform a full, independent analysis of the source — do not assume that previously filed bugs represent all known bugs. Every invocation of this skill is a fresh evaluation.
 
 Focus exclusively on real bugs — not style, not improvements, not missing features. Look for:
 
@@ -51,9 +51,9 @@ For each bug found, report:
 - Why it's a bug (what goes wrong)
 - A suggested fix
 
-For each bug found, record it as a tracked issue. Include the component, file and line number, what the bug is, what goes wrong at runtime, and the suggested fix. Mark each issue as pending. Do not fix the bug — only report and record it.
+For each bug found, record it as a tracked issue labeled `bug` and `pending`. Include the component, file and line number, what the bug is, what goes wrong at runtime, and the suggested fix. Do not fix the bug — only report and record it.
 
-If a sufficiently similar issue already exists, do not file a duplicate. Instead, add a comment to the existing issue noting that the bug has been re-identified. The comment must include:
+If a sufficiently similar bug already exists, do not file a duplicate. Instead, add a comment to the existing bug noting that it has been re-identified. The comment must include:
 - The agent of record that re-identified it
 - The name and version of this skill (see the frontmatter of this file)
 

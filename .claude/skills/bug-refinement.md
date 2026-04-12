@@ -1,6 +1,6 @@
 ---
 name: bug-refinement
-description: Analyze all pending bugs holistically, identify dependencies and conflicts, update stale information, and produce an execution order for fixing.
+description: Analyze pending bugs holistically, identify dependencies and conflicts, update stale information, and produce an execution order for fixing. Optionally scoped to a specific component; if no component is specified, processes all components including cross-cutting bugs with no component assigned. Trigger when the user says "refine bugs", "run bug refinement", "analyze bugs", "clean up bugs", "prioritize bugs", or "order bugs for fixing".
 version: 1.0.0
 ---
 
@@ -12,7 +12,11 @@ Analyze approved bugs as a set — not individually — to identify dependencies
 
 **Step 1: Gather all pending bugs.**
 
-Retrieve all open bugs in the pending state. Read each one in full — component, file, line number, description, suggested fix, and any existing depends-on relationships.
+The user may optionally specify a component (e.g. "refine bugs for codex") or say "all" to process everything. If no component is specified, process all pending bugs across all components.
+
+Retrieve all open pending bugs, filtered by component if specified. Read each one in full — component, file, line number, description, suggested fix, and any existing depends-on relationships.
+
+Note: some bugs are cross-cutting and have no component assigned. When processing all components, always include cross-cutting bugs. When filtering to a specific component, exclude cross-cutting bugs unless the user explicitly asks to include them.
 
 **Step 2: Verify each bug against the current code.**
 
@@ -43,7 +47,7 @@ For every bug processed, add a comment documenting:
 - The name and version of this skill (see the frontmatter of this file)
 
 For bugs where relationships were found, also:
-- Populate the `Depends on` field with any issue numbers that must be resolved first
+- Populate the `Depends on` field with any bug numbers that must be resolved first
 - Apply the `blocked-by` label to any bug that has dependencies
 - Update the `Fix` field if the suggested fix needs revision based on current code or discovered relationships
 

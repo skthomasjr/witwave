@@ -1,6 +1,6 @@
 ---
 name: bug-approval
-description: Evaluate pending bugs against the codebase and approve or defer them based on fix confidence, risk, and priority.
+description: Evaluate pending bugs against the codebase and approve or defer them based on fix confidence, risk, and priority. Optionally scoped to a specific component; if no component is specified, processes all components including cross-cutting bugs with no component assigned. Trigger when the user says "approve bugs", "run bug approval", "evaluate bugs", "review bugs for approval", or "approve pending bugs".
 version: 1.0.0
 ---
 
@@ -14,11 +14,13 @@ Evaluate each pending bug by reading the actual code, assessing fix risk relativ
 
 The user may optionally specify a component (e.g. `approve bugs for <component>`) or say "all" to process everything. If no component is specified, process all pending bugs.
 
-Retrieve all open bugs in the pending state, filtered by component if specified. For each one, read the full bug record — component, file, line number, description, expected/actual behavior, and suggested fix.
+Retrieve all open pending bugs, filtered by component if specified. For each one, read the full bug record — component, file, line number, description, expected/actual behavior, and suggested fix.
+
+Note: some bugs are cross-cutting and have no component assigned. When processing all components, always include cross-cutting bugs. When filtering to a specific component, exclude cross-cutting bugs unless the user explicitly asks to include them.
 
 **Step 2: Read the affected code.**
 
-For each bug, read the specific file and surrounding context identified in the bug record. Do not rely solely on the bug description — verify the issue exists in the current code. Also check whether the fix may have already been applied (the bug description may still match the code superficially, but the actual defect may be gone). If the bug no longer exists, close the issue with a note explaining what changed and stop processing that bug.
+For each bug, read the specific file and surrounding context identified in the bug record. Do not rely solely on the bug description — verify the issue exists in the current code. Also check whether the fix may have already been applied (the bug description may still match the code superficially, but the actual defect may be gone). If the bug no longer exists, close the bug with a note explaining what changed and stop processing that bug.
 
 **Step 3: Analyze fix risk.**
 
