@@ -21,3 +21,7 @@ Refine bugs across all components, including cross-cutting bugs with no componen
 **Step 3: Approve bugs.**
 
 Approve bugs across all components, including cross-cutting bugs with no component assigned.
+
+**Step 4: Fix bugs.**
+
+Fix all approved bugs across all components, including cross-cutting bugs with no component assigned.
