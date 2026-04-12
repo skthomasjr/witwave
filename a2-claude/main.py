@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import time
+from collections import deque
 from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import datetime, timezone
 
@@ -234,7 +235,7 @@ async def main():
             limit_n = int(limit) if limit else None
         except ValueError:
             return JSONResponse({"error": "invalid limit"}, status_code=400)
-        entries = []
+        entries: deque = deque(maxlen=limit_n)
         try:
             with open(CONVERSATION_LOG) as f:
                 for line in f:
@@ -250,9 +251,7 @@ async def main():
                     entries.append(entry)
         except FileNotFoundError:
             pass
-        if limit_n is not None:
-            entries = entries[-limit_n:]
-        return JSONResponse(entries)
+        return JSONResponse(list(entries))
 
     async def trace_handler(request: Request) -> JSONResponse:
         since = request.query_params.get("since")
@@ -261,7 +260,7 @@ async def main():
             limit_n = int(limit) if limit else None
         except ValueError:
             return JSONResponse({"error": "invalid limit"}, status_code=400)
-        entries = []
+        entries: deque = deque(maxlen=limit_n)
         try:
             with open(TRACE_LOG) as f:
                 for line in f:
@@ -277,9 +276,7 @@ async def main():
                     entries.append(entry)
         except FileNotFoundError:
             pass
-        if limit_n is not None:
-            entries = entries[-limit_n:]
-        return JSONResponse(entries)
+        return JSONResponse(list(entries))
 
     _routes = [
         Route("/health", health),
