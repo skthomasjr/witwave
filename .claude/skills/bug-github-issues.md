@@ -1,7 +1,7 @@
 ---
 name: bug-github-issues
 description: File a bug, close a bug, edit a bug, or look up a bug. Trigger when the user says "file a bug", "report a bug", "close the bug", "close bug #N", "update the bug", "edit bug #N", "look up a bug", "find bug #N", or "check if a bug exists".
-version: 1.0.8
+version: 1.0.9
 ---
 
 # bug-github-issues
@@ -127,6 +127,35 @@ If the `**Depends on:**` list is `- none`, remove `blocked-by`:
 
 ```bash
 gh issue edit <number> --remove-label "blocked-by"
+```
+
+---
+
+## Commenting on a Bug
+
+Use this when adding a comment to an existing issue without editing its body — for example, noting a re-identification, recording an observation, or leaving a status update.
+
+**Step 1: Compose the comment.**
+
+Write the comment body in plain markdown.
+
+**Step 2: Append the signature.**
+
+Every comment posted by this skill must end with a signature block, separated from the comment body by a blank line:
+
+```
+— <agent-name> · <skill-name> v<skill-version>
+```
+
+- `<agent-name>` — the value of the `AGENT_NAME` environment variable; use `local-agent` if not set
+- `<skill-name>` and `<skill-version>` — from the frontmatter of this file
+
+**Step 3: Post the comment.**
+
+```bash
+gh issue comment <number> --body "<comment-body>
+
+— <agent-name> · <skill-name> v<skill-version>"
 ```
 
 ---
