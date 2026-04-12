@@ -5,6 +5,8 @@ import logging
 import os
 import time
 import uuid
+
+import yaml
 from collections import OrderedDict
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
@@ -14,7 +16,7 @@ from a2a.server.agent_execution import RequestContext
 from a2a.server.events import EventQueue
 from a2a.utils import new_agent_text_message
 from backends.a2a import A2ABackend
-from backends.config import BackendConfig, RoutingConfig, RoutingEntry, load_backends_config, load_routing_config
+from backends.config import BACKEND_CONFIG_PATH, BackendConfig, RoutingConfig, RoutingEntry, load_backends_config, load_routing_config
 from bus import Message, MessageBus
 from metrics import (
     agent_a2a_last_request_timestamp_seconds,
@@ -110,9 +112,14 @@ def _build_backend(config: BackendConfig):
 
 
 def load_backends():
-    configs = load_backends_config()
+    """Read backend.yaml once and return (backends dict, default_id, routing config)."""
+    if not os.path.exists(BACKEND_CONFIG_PATH):
+        raise FileNotFoundError(f"backend.yaml not found at {BACKEND_CONFIG_PATH}")
+    with open(BACKEND_CONFIG_PATH) as f:
+        raw = yaml.safe_load(f)
+    configs = load_backends_config(raw)
     backends = {c.id: _build_backend(c) for c in configs}
-    routing = load_routing_config()
+    routing = load_routing_config(raw)
     if routing.default:
         if routing.default.agent not in backends:
             raise ValueError(f"routing.default agent '{routing.default.agent}' does not match any configured backend id.")
@@ -121,15 +128,7 @@ def load_backends():
         default_id = configs[0].id
         logger.info(f"No routing.default specified — using first backend: '{default_id}'")
     logger.info(f"Default backend: '{default_id}'")
-    return backends, default_id
-
-
-def load_routing() -> RoutingConfig:
-    try:
-        return load_routing_config()
-    except Exception as e:
-        logger.warning(f"Failed to load routing config — using default backend for all concerns: {e}")
-        return RoutingConfig()
+    return backends, default_id, routing
 
 
 def _track_session(sessions: OrderedDict[str, float], session_id: str) -> None:
@@ -260,8 +259,7 @@ class AgentExecutor(A2AAgentExecutor):
     def __init__(self):
         self._sessions: OrderedDict[str, float] = OrderedDict()
         self._running_tasks: dict[str, asyncio.Task] = {}
-        self._backends, self._default_backend_id = load_backends()
-        self._routing: RoutingConfig = load_routing()
+        self._backends, self._default_backend_id, self._routing = load_backends()
         self._mcp_watcher_tasks: list[asyncio.Task] = []
         self._background_tasks: set[asyncio.Task] = set()
         self._continuation_runner = None
@@ -354,10 +352,10 @@ class AgentExecutor(A2AAgentExecutor):
                     if os.path.abspath(path) == os.path.abspath(BACKEND_CONFIG_PATH):
                         logger.info("backend.yaml changed — reloading.")
                         try:
-                            new_backends, new_default_id = load_backends()
+                            new_backends, new_default_id, new_routing = load_backends()
                             self._backends = new_backends
                             self._default_backend_id = new_default_id
-                            self._routing = load_routing()
+                            self._routing = new_routing
                             if self._webhook_runner is not None:
                                 self._webhook_runner.set_backends(new_backends, new_default_id)
                             logger.info(f"Backends reloaded: {list(new_backends.keys())} (default: {new_default_id})")

@@ -427,6 +427,7 @@ class WebhookRunner:
         self._items: dict[str, WebhookSubscription] = {}
         self._backends = backends
         self._default_backend_id = default_backend_id
+        self._active_deliveries: set[asyncio.Task] = set()
 
     def set_backends(self, backends: dict, default_backend_id: str) -> None:
         """Update the backend references (called when backends are reloaded)."""
@@ -484,7 +485,7 @@ class WebhookRunner:
         response_preview = response[:2048] if response else ""
         for sub in self._items.values():
             if _matches_filters(sub, success, kind, response_preview):
-                asyncio.create_task(deliver(
+                _t = asyncio.create_task(deliver(
                     sub=sub,
                     source=source,
                     kind=kind,
@@ -497,6 +498,8 @@ class WebhookRunner:
                     backends=self._backends,
                     default_backend_id=self._default_backend_id,
                 ))
+                self._active_deliveries.add(_t)
+                _t.add_done_callback(self._active_deliveries.discard)
 
     async def run(self) -> None:
         logger.info(f"Webhook runner watching {WEBHOOKS_DIR}")

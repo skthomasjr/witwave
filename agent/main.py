@@ -423,6 +423,8 @@ async def main():
             except Exception:
                 pass
         body = await request.body()
+        if len(body) > 1_048_576:
+            return JSONResponse({"error": "request body too large"}, status_code=413)
         async with httpx.AsyncClient(timeout=120.0) as client:
             try:
                 resp = await client.post(
@@ -579,6 +581,8 @@ async def main():
             _response = ""
             _success = False
             _error: str | None = None
+            _model = None
+            backend_id = None
             try:
                 _entry = executor._routing_entry_for_kind(f"trigger:{endpoint}")
                 backend_id = item.backend_id or (_entry.agent if _entry else None)

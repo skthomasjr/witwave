@@ -64,17 +64,19 @@ class BackendConfig:
     extra: dict = field(default_factory=dict)
 
 
-def load_backends_config() -> list[BackendConfig]:
+def load_backends_config(raw: dict | None = None) -> list[BackendConfig]:
     """Load and validate backends from config file.
 
     Raises FileNotFoundError if no config file exists.
     Raises ValueError if the config is malformed or contains no valid backends.
-    """
-    if not os.path.exists(BACKEND_CONFIG_PATH):
-        raise FileNotFoundError(f"backend.yaml not found at {BACKEND_CONFIG_PATH}")
 
-    with open(BACKEND_CONFIG_PATH) as f:
-        raw = yaml.safe_load(f)
+    Pass *raw* (a pre-parsed dict) to avoid re-reading the file.
+    """
+    if raw is None:
+        if not os.path.exists(BACKEND_CONFIG_PATH):
+            raise FileNotFoundError(f"backend.yaml not found at {BACKEND_CONFIG_PATH}")
+        with open(BACKEND_CONFIG_PATH) as f:
+            raw = yaml.safe_load(f)
 
     if not isinstance(raw, dict) or "backend" not in raw or not isinstance(raw["backend"], dict) or "agents" not in raw["backend"]:
         raise ValueError(f"backend.yaml must contain a top-level 'backend' mapping with an 'agents' list.")
@@ -155,7 +157,7 @@ class RoutingConfig:
     continuation: Optional[RoutingEntry] = None
 
 
-def load_routing_config() -> RoutingConfig:
+def load_routing_config(raw: dict | None = None) -> RoutingConfig:
     """Load the optional 'routing:' block from backend.yaml.
 
     Returns a RoutingConfig with all fields set to None if:
@@ -165,16 +167,18 @@ def load_routing_config() -> RoutingConfig:
 
     This preserves the existing default-backend fallback behavior for callers
     that check for None.
-    """
-    if not os.path.exists(BACKEND_CONFIG_PATH):
-        return RoutingConfig()
 
-    try:
-        with open(BACKEND_CONFIG_PATH) as f:
-            raw = yaml.safe_load(f)
-    except Exception as e:
-        logger.warning(f"Failed to read {BACKEND_CONFIG_PATH} for routing config: {e}")
-        return RoutingConfig()
+    Pass *raw* (a pre-parsed dict) to avoid re-reading the file.
+    """
+    if raw is None:
+        if not os.path.exists(BACKEND_CONFIG_PATH):
+            return RoutingConfig()
+        try:
+            with open(BACKEND_CONFIG_PATH) as f:
+                raw = yaml.safe_load(f)
+        except Exception as e:
+            logger.warning(f"Failed to read {BACKEND_CONFIG_PATH} for routing config: {e}")
+            return RoutingConfig()
 
     if not isinstance(raw, dict) or not isinstance(raw.get("backend"), dict):
         return RoutingConfig()
