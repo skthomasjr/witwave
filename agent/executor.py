@@ -39,6 +39,7 @@ from metrics import (
     agent_task_error_duration_seconds,
     agent_task_last_error_timestamp_seconds,
     agent_task_last_success_timestamp_seconds,
+    agent_task_restarts_total,
     agent_task_timeout_headroom_seconds,
     agent_tasks_total,
     agent_log_bytes_total,
