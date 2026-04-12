@@ -292,6 +292,24 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
         if agent_sched_task_running_items is not None:
             agent_sched_task_running_items.inc()
         session_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{AGENT_NAME}.{filename}"))
+
+        # Write checkpoint so an interrupted run can be detected on restart
+        try:
+            os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+            with open(checkpoint_path, "w") as f:
+                json.dump(
+                    {
+                        "started_at": datetime.now(timezone.utc).isoformat(),
+                        "name": item.name,
+                        "session_id": session_id,
+                    },
+                    f,
+                )
+        except Exception as e:
+            if agent_checkpoint_write_errors_total is not None:
+                agent_checkpoint_write_errors_total.inc()
+            logger.error(f"Task '{item.name}' checkpoint write failed: {e}")
+
         try:
             prompt = f"Task: {item.name}\n\n{item.content}"
             _task_start = time.monotonic()
@@ -329,6 +347,12 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
                 agent_sched_task_running_items.dec()
             if semaphore is not None and _semaphore_acquired:
                 semaphore.release()
+            try:
+                os.remove(checkpoint_path)
+            except FileNotFoundError:
+                pass
+            except Exception as e:
+                logger.warning(f"Task '{item.name}' checkpoint cleanup failed: {e}")
         return
 
     # --- Startup: handle restart-within-window logic ---
