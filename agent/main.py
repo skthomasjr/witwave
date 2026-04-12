@@ -178,9 +178,9 @@ async def _sub_app_lifespan(app):
     async def _run() -> None:
         try:
             await app({"type": "lifespan", "asgi": {"version": "3.0"}}, receive, send)
-        except Exception:
+        except Exception as exc:
             if not startup.done():
-                startup.set_result(False)
+                startup.set_exception(exc)
             if not shutdown.done():
                 shutdown.set_result(None)
         finally:
