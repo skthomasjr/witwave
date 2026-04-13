@@ -52,7 +52,7 @@ class ContinuationItem:
 def parse_continuation_file(path: str) -> "ContinuationItem | object | None":
     """Parse a continuation file. Returns:
     - ContinuationItem on success
-    - _DISABLED sentinel when enabled: false
+    - _DISABLED sentinel when enabled: false or continues-after is missing/empty
     - None on parse error (caller should preserve last known good registration)
     """
     try:
@@ -70,7 +70,7 @@ def parse_continuation_file(path: str) -> "ContinuationItem | object | None":
         continues_after = fields.get("continues-after") or ""
         if not continues_after.strip():
             logger.warning(f"Continuation file {path}: missing required 'continues-after' field, skipping.")
-            return None
+            return _DISABLED
 
         filename = Path(path).stem
         name = fields.get("name") or filename
