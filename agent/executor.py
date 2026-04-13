@@ -54,6 +54,9 @@ TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/trace.jsonl")
 
 MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "10000"))
 TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
+# Maximum number of bytes of prompt text included in INFO-level log messages.
+# Set to 0 to suppress prompt text from logs entirely; set higher for more context.
+LOG_PROMPT_MAX_BYTES = int(os.environ.get("LOG_PROMPT_MAX_BYTES", "200"))
 
 
 async def log_entry(role: str, text: str, session_id: str, model: str | None = None, backend: str | None = None) -> None:
@@ -176,7 +179,8 @@ async def _run_inner(
         agent_session_starts_total.labels(type="new" if is_new else "resumed").inc()
     _track_session(sessions, session_id)
 
-    logger.info(f"Session {session_id} ({'new' if is_new else 'existing'}) backend={resolved_id} — prompt: {prompt!r}")
+    _prompt_preview = prompt[:LOG_PROMPT_MAX_BYTES] + ("[truncated]" if len(prompt) > LOG_PROMPT_MAX_BYTES else "") if LOG_PROMPT_MAX_BYTES > 0 else "[redacted]"
+    logger.info(f"Session {session_id} ({'new' if is_new else 'existing'}) backend={resolved_id} — prompt: {_prompt_preview!r}")
     if not isinstance(backend, A2ABackend):
         await log_entry("user", prompt, session_id, model=model, backend=resolved_id)
 
