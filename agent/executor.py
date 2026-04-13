@@ -437,12 +437,18 @@ class AgentExecutor(A2AAgentExecutor):
                         logger.info("backend.yaml changed — reloading.")
                         try:
                             new_backends, new_default_id, new_routing = load_backends()
+                            old_backends = list(self._backends.values())
                             self._backends = new_backends
                             self._default_backend_id = new_default_id
                             self._routing = new_routing
                             if self._webhook_runner is not None:
                                 self._webhook_runner.set_backends(new_backends, new_default_id)
                             logger.info(f"Backends reloaded: {list(new_backends.keys())} (default: {new_default_id})")
+                            # Close old backend clients to release connection pool resources.
+                            await asyncio.gather(
+                                *[b.close() for b in old_backends if hasattr(b, "close")],
+                                return_exceptions=True,
+                            )
                             # Cancel old MCP watcher tasks and start new ones for the reloaded backends.
                             for t in self._mcp_watcher_tasks:
                                 t.cancel()
