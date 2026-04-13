@@ -633,6 +633,13 @@
           <option value="show">show</option>
           <option value="hide">hide</option>
         </select>
+        <span class="ct-label">limit</span>
+        <select id="conv-limit">
+          <option value="100">100</option>
+          <option value="500" selected>500</option>
+          <option value="1000">1000</option>
+          <option value="5000">5000</option>
+        </select>
         <span class="conv-count" id="conv-count"></span>
       </div>
       <div class="conv-feed" id="conv-feed">
@@ -1629,6 +1636,7 @@ const conv = {
   filterRole: '',
   filterSearch: '',
   filterTools: 'show',
+  convLimit: 500,
 };
 
 function _saveConvState() {
@@ -1638,6 +1646,7 @@ function _saveConvState() {
       filterRole:   conv.filterRole,
       filterSearch: conv.filterSearch,
       filterTools:  conv.filterTools,
+      convLimit:    conv.convLimit,
     }));
   } catch (e) {}
 }
@@ -1651,20 +1660,22 @@ function _restoreConvState() {
     conv.filterRole   = saved.filterRole   || '';
     conv.filterSearch = saved.filterSearch || '';
     conv.filterTools  = saved.filterTools  || 'show';
+    conv.convLimit    = saved.convLimit     || 500;
     document.getElementById('conv-search').value       = conv.filterSearch;
     document.getElementById('conv-agent-filter').value = conv.filterAgent;
     document.getElementById('conv-role-filter').value  = conv.filterRole;
     document.getElementById('conv-tool-filter').value  = conv.filterTools;
+    document.getElementById('conv-limit').value        = conv.convLimit;
   } catch (e) {}
 }
 
 async function loadConversations() {
   const feed = document.getElementById('conv-feed');
   try {
-    const CONV_LIMIT = 500;
+    const limit = conv.convLimit;
     const [convResp, traceResp] = await Promise.all([
-      fetch(`${AGENT_BASE}/conversations?limit=${CONV_LIMIT}`),
-      fetch(`${AGENT_BASE}/trace?limit=${CONV_LIMIT}`),
+      fetch(`${AGENT_BASE}/conversations?limit=${limit}`),
+      fetch(`${AGENT_BASE}/trace?limit=${limit}`),
     ]);
     conv.entries = convResp.ok ? await convResp.json() : [];
     conv.traceEntries = traceResp.ok ? await traceResp.json() : [];
@@ -1832,6 +1843,9 @@ document.getElementById('conv-role-filter').addEventListener('change', e => {
 });
 document.getElementById('conv-tool-filter').addEventListener('change', e => {
   conv.filterTools = e.target.value; renderConvFeed(); _saveConvState();
+});
+document.getElementById('conv-limit').addEventListener('change', e => {
+  conv.convLimit = Number(e.target.value); _saveConvState(); conv.loaded = false; loadConversations();
 });
 let _searchDebounce;
 document.getElementById('conv-search').addEventListener('input', e => {
