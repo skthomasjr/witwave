@@ -407,11 +407,14 @@ async def run_query(
                         await log_trace(json.dumps(entry))
                     except Exception as e:
                         logger.error(f"log_trace tool_result error: {e}")
-    except BudgetExceededError:
+    except BudgetExceededError as exc:
         if a2_sdk_session_duration_seconds is not None:
             a2_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
                 time.monotonic() - _session_start
             )
+        partial_response = "".join(exc.collected)
+        if partial_response:
+            await log_entry("agent", partial_response, session_id, model=resolved_model)
         raise
     except Exception:
         if a2_sdk_query_error_duration_seconds is not None:

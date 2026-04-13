@@ -327,10 +327,20 @@ async def run_query(
                             a2_budget_exceeded_total.labels(**_LABELS).inc()
                         raise BudgetExceededError(int(_token_count), max_tokens, list(collected))
             _turn_count = 1
-        except BudgetExceededError:
+        except BudgetExceededError as exc:
             if a2_sdk_session_duration_seconds is not None:
                 a2_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
                     time.monotonic() - _session_start
+                )
+            partial_response = "".join(exc.collected)
+            if partial_response:
+                await log_entry("agent", partial_response, session_id, model=resolved_model)
+            try:
+                await _save_history(session_id, chat.history)
+            except Exception as _save_exc:
+                logger.error(
+                    "Permanently failed to save session history for %r after budget exceeded: %s",
+                    session_id, _save_exc, exc_info=True,
                 )
             raise
         except Exception:
