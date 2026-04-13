@@ -377,11 +377,16 @@ The markdown body is the POST payload. Use `{{variable}}` placeholders for subst
 
 | Variable               | Value                                          |
 | ---------------------- | ---------------------------------------------- |
+| `{{agent}}`            | Agent name (e.g. `iris`)                       |
 | `{{kind}}`             | Prompt kind (`a2a`, `heartbeat`, `job:<name>`) |
 | `{{session_id}}`       | Session/context ID                             |
 | `{{source}}`           | Source name (job name, trigger endpoint, etc.) |
 | `{{model}}`            | Model used for the prompt                      |
+| `{{success}}`          | `True` or `False`                              |
+| `{{error}}`            | Error message, or empty string on success      |
 | `{{response_preview}}` | First 2048 chars of the response text          |
 | `{{duration_seconds}}` | Prompt execution time in seconds               |
+| `{{timestamp}}`        | ISO 8601 UTC timestamp of delivery             |
+| `{{delivery_id}}`      | UUID unique to this delivery attempt           |
 
 If the body is empty, a default JSON envelope is sent.

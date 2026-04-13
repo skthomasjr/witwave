@@ -84,9 +84,10 @@ optional date range, `consensus: true` (fan out to all backends). Body: the prom
 `agent`/`model` overrides, `consensus: true` (fan out to all backends). Body: system context prepended to the inbound
 payload.
 
-**`continuations/*.md`** — Frontmatter: `continues-after` (upstream kind), `on` (success/error/any), `trigger-when`
-(substring match), `delay`, `agent`/`model` overrides, `consensus: true` (fan out to all backends), `max-tokens`
-(per-dispatch token budget). Body: the follow-up prompt.
+**`continuations/*.md`** — Frontmatter: `continues-after` (upstream kind; supports `fnmatch` glob patterns, e.g. `job:*`
+to match any job), `on-success`/`on-error`, `trigger-when` (substring match on upstream response), `delay`,
+`agent`/`model` overrides, `consensus: true` (fan out to all backends), `max-tokens` (per-dispatch token budget),
+`max-concurrent-fires` (cap on simultaneous in-flight fires; default `5`). Body: the follow-up prompt.
 
 **`webhooks/*.md`** — Frontmatter: `url` or `url-env-var` (destination), `notify-on-kind` (glob filter),
 `signing-secret-env-var` (HMAC key), `extract` (prompt for LLM extraction pass). Body: webhook payload template.

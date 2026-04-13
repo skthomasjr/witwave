@@ -45,18 +45,19 @@ Generate a final end-to-end report covering the review, build, and deployment st
 
 ## Frontmatter Fields
 
-| Field             | Required | Description                                                                                        |
-| ----------------- | -------- | -------------------------------------------------------------------------------------------------- |
-| `name`            | No       | Display name used in logs and metrics. Defaults to filename stem.                                  |
-| `description`     | No       | Human-readable summary.                                                                            |
-| `continues-after` | Yes      | Upstream kind to watch: `job:<name>`, `task:<name>`, `a2a`, `continuation:<name>`, or `*` for any. |
-| `on-success`      | No       | Fire when upstream succeeds. Default: `true`.                                                      |
-| `on-error`        | No       | Fire when upstream errors. Default: `false`.                                                       |
-| `trigger-when`    | No       | Only fire if the upstream response contains this string.                                           |
-| `delay`           | No       | Pause before firing. Format: `30s`, `5m`, `1h`, `1h30m`. Default: no delay.                        |
-| `session`         | No       | Session ID override. Default: inherit upstream session.                                            |
-| `model`           | No       | Model override passed to the backend.                                                              |
-| `agent`           | No       | Backend ID override (e.g. `codex`); defaults to routing config.                                    |
-| `enabled`         | No       | `false` disables without deleting. Default: `true`.                                                |
-| `consensus`       | No       | `true` to fan out to all backends and aggregate; default `false`.                                  |
-| `max-tokens`      | No       | Token budget for this dispatch. Stop and return partial response when reached.                     |
+| Field                  | Required | Description                                                                                                                                |
+| ---------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `name`                 | No       | Display name used in logs and metrics. Defaults to filename stem.                                                                          |
+| `description`          | No       | Human-readable summary.                                                                                                                    |
+| `continues-after`      | Yes      | Upstream kind to watch. Supports `fnmatch` glob patterns: `job:<name>`, `task:<name>`, `job:*` (any job), `a2a`, `continuation:<name>`, or `*` for any kind. |
+| `on-success`           | No       | Fire when upstream succeeds. Default: `true`.                                                                                              |
+| `on-error`             | No       | Fire when upstream errors. Default: `false`.                                                                                               |
+| `trigger-when`         | No       | Only fire if the upstream response contains this string.                                                                                   |
+| `delay`                | No       | Pause before firing. Format: `30s`, `5m`, `1h`, `1h30m`. Default: no delay.                                                               |
+| `session`              | No       | Session ID override. Default: inherit upstream session.                                                                                    |
+| `model`                | No       | Model override passed to the backend.                                                                                                      |
+| `agent`                | No       | Backend ID override (e.g. `codex`); defaults to routing config.                                                                            |
+| `enabled`              | No       | `false` disables without deleting. Default: `true`.                                                                                        |
+| `consensus`            | No       | `true` to fan out to all backends and aggregate; default `false`.                                                                          |
+| `max-tokens`           | No       | Token budget for this dispatch. Stop and return partial response when reached.                                                             |
+| `max-concurrent-fires` | No       | Maximum number of in-flight fires for this continuation at any time. Fires beyond this cap are dropped and counted. Default: `5`.          |
