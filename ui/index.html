@@ -843,6 +843,7 @@ function renderMetrics(m) {
   const jobRuns = sumTotal(m, 'agent_job_runs');
   const busMessages = sumTotal(m, 'agent_bus_messages');
   const runningSchedTasks = scalarGauge(m, 'agent_sched_task_running_items');
+  const webhooksShed = sumTotal(m, 'agent_webhooks_delivery_shed');
 
   const statDefs = [
     { label: 'Uptime',               val: fmtSec(uptime) },
@@ -854,6 +855,7 @@ function renderMetrics(m) {
     { label: 'Heartbeats',           val: fmtNum(heartbeatRuns) },
     { label: 'Job Runs',             val: fmtNum(jobRuns) },
     { label: 'Bus Messages',         val: fmtNum(busMessages) },
+    { label: 'Webhooks Shed',        val: fmtNum(webhooksShed) },
   ];
 
   document.getElementById('stat-row').innerHTML = statDefs.map(s =>
@@ -969,6 +971,24 @@ function renderMetrics(m) {
     upsertChart('cont-runs', 'bar', labels, data);
   })();
 
+  // Task restarts (nyx-agent)
+  (() => {
+    const bd = breakdownByLabel(m, 'agent_task_restarts', 'task');
+    const labels = Object.keys(bd), data = Object.values(bd);
+    if (!labels.length) return;
+    ensureCard('task-restarts', 'Agent Task Restarts by Task');
+    upsertChart('task-restarts', 'bar', labels, data);
+  })();
+
+  // Webhook deliveries shed
+  (() => {
+    const bd = breakdownByLabel(m, 'agent_webhooks_delivery_shed', 'subscription');
+    const labels = Object.keys(bd), data = Object.values(bd);
+    if (!labels.length) return;
+    ensureCard('webhooks-shed', 'Webhook Deliveries Shed by Subscription');
+    upsertChart('webhooks-shed', 'bar', labels, data);
+  })();
+
   // --- a2_ backend metrics (if backends have been called) ---
 
   // Backend task duration avg
@@ -1006,6 +1026,15 @@ function renderMetrics(m) {
     if (!sorted.length) return;
     ensureCard('tool-calls', 'Tool Calls by Tool (top 12)');
     upsertChart('tool-calls', 'bar', sorted.map(e => e[0]), sorted.map(e => e[1]));
+  })();
+
+  // Backend task restarts
+  (() => {
+    const bd = breakdownByLabel(m, 'a2_task_restarts', 'task');
+    const labels = Object.keys(bd), data = Object.values(bd);
+    if (!labels.length) return;
+    ensureCard('a2-task-restarts', 'Backend Task Restarts by Task');
+    upsertChart('a2-task-restarts', 'bar', labels, data);
   })();
 }
 
