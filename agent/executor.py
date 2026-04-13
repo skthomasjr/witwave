@@ -434,9 +434,14 @@ class AgentExecutor(A2AAgentExecutor):
                                 *[b.close() for b in old_backends if hasattr(b, "close")],
                                 return_exceptions=True,
                             )
-                            # Cancel old MCP watcher tasks and start new ones for the reloaded backends.
-                            for t in self._mcp_watcher_tasks:
+                            # Cancel old MCP watcher tasks and await their completion
+                            # before starting new ones, so old and new watchers do not
+                            # briefly overlap and cause duplicate reloads (#369).
+                            _old_watcher_tasks = list(self._mcp_watcher_tasks)
+                            for t in _old_watcher_tasks:
                                 t.cancel()
+                            if _old_watcher_tasks:
+                                await asyncio.gather(*_old_watcher_tasks, return_exceptions=True)
                             self._mcp_watcher_tasks = []
                             for watcher in self._mcp_watchers():
                                 task = asyncio.create_task(_guarded_watcher(watcher))
