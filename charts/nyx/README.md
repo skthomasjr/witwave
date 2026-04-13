@@ -1,6 +1,6 @@
 # nyx
 
-Helm chart for the nyx autonomous agent platform — nyx orchestrator and backends (a2-claude, a2-codex, a2-gemini).
+Helm chart for the nyx platform — nyx orchestrator and backends (a2-claude, a2-codex, a2-gemini).
 
 > **Note:** This chart is a work in progress. Templates and values will be added as the chart is built out.
 
