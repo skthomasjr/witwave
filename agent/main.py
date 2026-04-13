@@ -596,9 +596,12 @@ async def main():
         params: dict = {"limit": limit}
         if since:
             params["since"] = since
+        _conv_headers: dict = {}
+        if _backend_conversations_auth_token:
+            _conv_headers["Authorization"] = f"Bearer {_backend_conversations_auth_token}"
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
-                resp = await client.get(target_url.rstrip("/") + "/conversations", params=params)
+                resp = await client.get(target_url.rstrip("/") + "/conversations", params=params, headers=_conv_headers)
                 return JSONResponse(resp.json(), status_code=resp.status_code)
             except Exception as exc:
                 return JSONResponse({"error": str(exc)}, status_code=502)
