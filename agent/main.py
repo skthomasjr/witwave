@@ -67,6 +67,7 @@ AGENT_URL = os.environ.get("AGENT_URL", f"http://localhost:{AGENT_PORT}/")
 AGENT_VERSION = os.environ.get("AGENT_VERSION", "0.1.0")
 metrics_enabled = bool(os.environ.get("METRICS_ENABLED"))
 WORKER_MAX_RESTARTS = int(os.environ.get("WORKER_MAX_RESTARTS", "5"))
+TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
 
 # CORS_ALLOW_ORIGINS: comma-separated list of allowed origins (e.g.
 # "http://localhost:3000,https://ui.example.com").  When unset the server
@@ -518,7 +519,8 @@ async def main():
         body = await request.body()
         if len(body) > 1_048_576:
             return JSONResponse({"error": "request body too large"}, status_code=413)
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        _proxy_timeout = TASK_TIMEOUT_SECONDS + 10
+        async with httpx.AsyncClient(timeout=_proxy_timeout) as client:
             try:
                 resp = await client.post(
                     target_url.rstrip("/") + "/",
