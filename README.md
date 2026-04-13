@@ -178,6 +178,30 @@ configured backend** in parallel, then aggregate the responses:
 
 Use consensus mode for high-stakes decisions where you want more than one model family's perspective.
 
+## Token Budget (max-tokens)
+
+Set `max-tokens` in a job, task, or trigger frontmatter to cap cumulative token usage for that dispatch. When the
+backend reports that usage has reached the limit, it stops processing and returns any partial response collected so far.
+A `system` entry is written to `conversation.jsonl` recording how many tokens were consumed and what the limit was.
+
+```yaml
+---
+name: daily-summary
+schedule: "0 8 * * *"
+max-tokens: 4000
+---
+Summarise the day's key events.
+```
+
+The value must be a positive integer. Invalid values are logged and ignored. The limit applies per-dispatch (not across
+sessions), so each job/task/trigger invocation gets a fresh budget. All three backend types enforce it:
+
+| Backend      | Token source                                     |
+| ------------ | ------------------------------------------------ |
+| `a2-claude`  | `get_context_usage()` after each assistant turn  |
+| `a2-codex`   | `event.data.usage.total_tokens` on response events |
+| `a2-gemini`  | `chunk.usage_metadata.total_token_count` per chunk |
+
 ## Adding an Agent
 
 1. Copy an existing agent directory:
