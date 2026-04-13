@@ -158,14 +158,18 @@ def _load_tool_config() -> dict:
 
 
 _computer: PlaywrightComputer | None = None
-_computer_lock = asyncio.Lock()
+# _computer_lock is initialized lazily on first use inside _build_tools() so that
+# it is always created within a running event loop.  A module-level asyncio.Lock()
+# created before asyncio.run() is entered causes a DeprecationWarning in Python
+# 3.10+ and may attach to the wrong event loop in Python 3.12+ (#378).
+_computer_lock: asyncio.Lock | None = None
 
 # Models known to support computer_use_preview
 _COMPUTER_SUPPORTED_MODELS = {"computer-use-preview"}
 
 
 async def _build_tools(model: str) -> list:
-    global _computer
+    global _computer, _computer_lock
     cfg = _load_tool_config()
     tools = []
     if cfg.get("shell", False):
@@ -173,6 +177,8 @@ async def _build_tools(model: str) -> list:
     if cfg.get("web_search", False):
         tools.append(WebSearchTool())
     if cfg.get("computer", False) and model in _COMPUTER_SUPPORTED_MODELS:
+        if _computer_lock is None:
+            _computer_lock = asyncio.Lock()
         async with _computer_lock:
             if _computer is None:
                 _computer = PlaywrightComputer()
