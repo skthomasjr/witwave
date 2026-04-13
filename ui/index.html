@@ -524,6 +524,16 @@
       background-repeat: repeat-y;
     }
     .cal-timed-event-col:last-child { border-right: none; }
+    /* Timed event blocks (week/day view) */
+    .cal-timed-item {
+      position: absolute; left: 2px; right: 2px;
+      border-radius: 3px; padding: 2px 4px;
+      font-size: 10px; overflow: hidden; cursor: default;
+      white-space: nowrap; text-overflow: ellipsis; z-index: 2;
+    }
+    .cal-timed-item.job-item  { background: color-mix(in srgb, var(--accent) 30%, transparent); color: var(--accent); border-left: 2px solid var(--accent); }
+    .cal-timed-item.task-item { background: color-mix(in srgb, #a78bfa 30%, transparent); color: #a78bfa; border-left: 2px solid #a78bfa; }
+
     /* Current time indicator */
     .cal-now-line {
       position: absolute; left: 0; right: 0; height: 2px;
@@ -1903,10 +1913,58 @@ function buildHourLabels() {
   return html;
 }
 
-function buildEventColInner(nowLine = '') {
+/** Parse "HH:MM" → { h, m } or null. */
+function parseHHMM(s) {
+  if (!s) return null;
+  const m = /^(\d{1,2}):(\d{2})/.exec(s);
+  if (!m) return null;
+  const h = parseInt(m[1], 10), min = parseInt(m[2], 10);
+  if (h < 0 || h > 23 || min < 0 || min > 59) return null;
+  return { h, m: min };
+}
+
+/** Extract the earliest concrete (non-*) hour and minute from a cron string. */
+function cronToHHMM(schedule) {
+  if (!schedule) return null;
+  const parts = schedule.trim().split(/\s+/);
+  if (parts.length < 2) return null;
+  const minPart = parts[0], hourPart = parts[1];
+  const minVal  = /^\d+$/.test(minPart)  ? parseInt(minPart, 10)  : 0;
+  const hourVal = /^\d+$/.test(hourPart) ? parseInt(hourPart, 10) : null;
+  if (hourVal === null) return null; // wildcard hour — can't place in timed view
+  return { h: hourVal, m: minVal };
+}
+
+/** Build absolute-positioned event blocks for a single day column. */
+function buildTimedEventsForDay(date, jobs, tasks) {
+  const PX_PER_MIN = 48 / 60;
+  const MIN_HEIGHT = 24; // px
+
+  let html = '';
+
+  for (const job of (jobs || [])) {
+    const t = cronToHHMM(job.schedule);
+    if (!t) continue;
+    const top = Math.round((t.h * 60 + t.m) * PX_PER_MIN);
+    const height = Math.max(MIN_HEIGHT, 48);
+    html += `<div class="cal-timed-item job-item" style="top:${top}px;height:${height}px;" title="Job: ${escHtml(job.name)} (${escHtml(job.schedule)})">${escHtml(job.name)}</div>`;
+  }
+
+  for (const task of (tasks || [])) {
+    const t = parseHHMM(task.window_start);
+    if (!t) continue;
+    const top = Math.round((t.h * 60 + t.m) * PX_PER_MIN);
+    const height = Math.max(MIN_HEIGHT, 48);
+    html += `<div class="cal-timed-item task-item" style="top:${top}px;height:${height}px;" title="Task: ${escHtml(task.name)} @ ${escHtml(task.window_start)}">${escHtml(task.name)}</div>`;
+  }
+
+  return html;
+}
+
+function buildEventColInner(nowLine = '', eventsHtml = '') {
   // 24 hours × 48px = 1152px total. The inner div drives scroll height;
   // the now-line sits inside it so z-index stacks correctly against the gradient.
-  return `<div style="height:${24*48}px;position:relative;">${nowLine}</div>`;
+  return `<div style="height:${24*48}px;position:relative;">${eventsHtml}${nowLine}</div>`;
 }
 
 function nowLineTop() {
@@ -1980,7 +2038,8 @@ function renderWeek() {
   const eventCols = days.map(d => {
     const isToday = isSameDay(d, today);
     const nowLine = isToday ? `<div class="cal-now-line" id="cal-now-line" style="top:${nowLineTop()}px;"></div>` : '';
-    return `<div class="cal-timed-event-col">${buildEventColInner(nowLine)}</div>`;
+    const eventsHtml = buildTimedEventsForDay(d, cal.jobs, cal.tasks);
+    return `<div class="cal-timed-event-col">${buildEventColInner(nowLine, eventsHtml)}</div>`;
   }).join('');
 
   return `<div class="cal-timed">
@@ -2004,6 +2063,7 @@ function renderDay() {
     ? `<div class="col-num today">${d.getDate()}</div>`
     : `<div class="col-num">${d.getDate()}</div>`;
   const nowLine = isToday ? `<div class="cal-now-line" id="cal-now-line" style="top:${nowLineTop()}px;"></div>` : '';
+  const eventsHtml = buildTimedEventsForDay(d, cal.jobs, cal.tasks);
 
   return `<div class="cal-timed">
     <div class="cal-timed-head">
@@ -2015,7 +2075,7 @@ function renderDay() {
     <div class="cal-timed-body">
       <div class="cal-timed-hours">${buildHourLabels()}</div>
       <div class="cal-timed-events">
-        <div class="cal-timed-event-col">${buildEventColInner(nowLine)}</div>
+        <div class="cal-timed-event-col">${buildEventColInner(nowLine, eventsHtml)}</div>
       </div>
     </div>
   </div>`;
