@@ -75,7 +75,7 @@ Each backend:
 - Exposes `/health` for health checks
 - Exposes `/metrics` for Prometheus scraping (when `METRICS_ENABLED` is set)
 - Manages its own session state, conversation log (`conversation.jsonl`), and memory (`/memory/`)
-- Receives identity via a mounted `agent.md` file (equivalent to `CLAUDE.md`)
+- Receives behavioral instructions via a mounted file (`CLAUDE.md` for a2-claude, `AGENTS.md` for a2-codex, `GEMINI.md` for a2-gemini) and A2A identity via a mounted `agent-card.md`
 
 Each named agent has its own dedicated backend instances. For example, iris has `iris-a2-claude`, `iris-a2-codex`, and `iris-a2-gemini`.
 
@@ -134,9 +134,8 @@ Agent identity and behavior are file-based — nothing is baked into images.
 
 ```text
 .agents/active/<name>/
+├── agent-card.md            # A2A identity description text (mounted into all containers at /home/agent/agent-card.md)
 ├── .nyx/                    # Runtime config (mounted into nyx-agent)
-│   ├── AGENTS.md            # Agent-specific behavioral guidance (mounted as CLAUDE.md and AGENTS.md in backends)
-│   ├── agent-card.md        # A2A identity description text
 │   ├── backend.yaml         # Backend selection and routing
 │   ├── HEARTBEAT.md         # Proactive heartbeat schedule and prompt
 │   ├── jobs/                # Scheduled job definitions (*.md with cron frontmatter)
@@ -145,22 +144,26 @@ Agent identity and behavior are file-based — nothing is baked into images.
 │   ├── continuations/       # Continuation definitions (*.md with continues-after frontmatter)
 │   └── webhooks/            # Outbound webhook subscriptions (*.md with url frontmatter)
 ├── .claude/                 # Claude backend config (mounted into a2-claude)
+│   ├── CLAUDE.md            # Behavioral instructions / system prompt
+│   ├── agent-card.md        # A2A identity description text
 │   ├── mcp.json             # MCP server configuration
-│   └── settings.json        # Claude Code settings
+│   ├── settings.json        # Claude Code settings
+│   └── skills/              # Skill definitions (*.md)
 ├── .codex/                  # Codex backend config (mounted into a2-codex)
+│   ├── AGENTS.md            # Behavioral instructions / system prompt
+│   ├── agent-card.md        # A2A identity description text
 │   └── config.toml
-├── .gemini/                 # Gemini backend config (mounted into a2-gemini; no extra config required)
+├── .gemini/                 # Gemini backend config (mounted into a2-gemini)
+│   ├── GEMINI.md            # Behavioral instructions / system prompt
+│   └── agent-card.md        # A2A identity description text
 ├── logs/                    # nyx-agent logs (runtime, not committed)
 ├── a2-claude/               # Claude backend instance for this agent
-│   ├── agent.md             # Backend identity (injected at startup)
 │   ├── logs/                # Backend conversation log (runtime, not committed)
 │   └── memory/              # Backend persistent memory (runtime, not committed)
 ├── a2-codex/                # Codex backend instance for this agent
-│   ├── agent.md
 │   ├── logs/
 │   └── memory/
 └── a2-gemini/               # Gemini backend instance for this agent
-    ├── agent.md
     ├── logs/
     └── memory/              # Includes sessions/ subdir for JSON session history
 ```

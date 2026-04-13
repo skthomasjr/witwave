@@ -45,7 +45,6 @@ AGENT_HOST = os.environ.get("AGENT_HOST", "0.0.0.0")
 BACKEND_PORT = int(os.environ.get("BACKEND_PORT", "8080"))
 AGENT_URL = os.environ.get("AGENT_URL", f"http://localhost:{BACKEND_PORT}/")
 AGENT_VERSION = os.environ.get("AGENT_VERSION", "0.1.0")
-AGENT_CARD_MD = os.environ.get("AGENT_CARD_MD", "/home/agent/agent-card.md")
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
 TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/trace.jsonl")
 AGENT_OWNER = os.environ.get("AGENT_OWNER", AGENT_NAME)
@@ -62,7 +61,7 @@ start_time: datetime = datetime.now(timezone.utc)
 
 def load_agent_description() -> str:
     try:
-        with open(AGENT_CARD_MD) as f:
+        with open("/home/agent/agent-card.md") as f:
             return f.read()
     except OSError:
         return os.environ.get("AGENT_DESCRIPTION", "A Codex backend agent.")

@@ -30,8 +30,8 @@ screenshot, click, scroll, type, keypress, and drag operations.
 **Model override** — The model for a given request can be set via `metadata.model` in the A2A message. Resolution order:
 per-message metadata → routing config model → `MODEL` environment variable.
 
-**Agent identity** — The system prompt is the contents of a mounted `agent.md` file. The agent's name and behavioral
-constraints live there. The file is hot-reloaded on change — updating `agent.md` takes effect for the next request
+**Agent identity** — The system prompt is loaded from `/home/agent/.codex/AGENTS.md`. The agent's name and behavioral
+constraints live there. The file is hot-reloaded on change — updating `AGENTS.md` takes effect for the next request
 without restarting the container.
 
 **Metrics** — Exposes the common `a2_*` Prometheus metrics: request count/latency, session starts/evictions, queue
@@ -86,14 +86,14 @@ backends:
 
 a2-codex mounts:
 
-- `agent.md` — agent identity (system prompt)
+- `AGENTS.md` — agent identity (system prompt), at `/home/agent/.codex/AGENTS.md`
 - `config.toml` — tool enablement flags (optional)
 - `logs/conversation.jsonl` — conversation log file (must pre-exist as a file)
 - `logs/trace.jsonl` — trace log file (must pre-exist as a file)
 - `memory/` — persistent memory directory
 
 Key environment variables: `AGENT_NAME` (instance name), `AGENT_OWNER` (named agent, e.g. `iris`), `AGENT_ID` (backend
-slot id, e.g. `codex`), `AGENT_URL`, `AGENT_MD`, `BACKEND_PORT`, `OPENAI_API_KEY`, `CODEX_MODEL` (model override,
+slot id, e.g. `codex`), `AGENT_URL`, `BACKEND_PORT`, `OPENAI_API_KEY`, `CODEX_MODEL` (model override,
 default `gpt-5.1-codex`), `METRICS_ENABLED`, `CONVERSATIONS_AUTH_TOKEN`, `TASK_STORE_PATH`, `WORKER_MAX_RESTARTS`,
 `COMPUTER_USE_ENABLED` (activates Playwright browser tool), `LOG_PROMPT_MAX_BYTES` (max bytes of prompt logged at INFO;
 default 200; set to 0 to suppress).

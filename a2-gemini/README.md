@@ -20,8 +20,8 @@ active sessions; when a session is evicted, its JSON file is deleted from disk s
 **Model override** — The model for a given request can be set via `metadata.model` in the A2A message. Resolution order:
 per-message metadata → routing config model → `MODEL` environment variable.
 
-**Agent identity** — The system prompt is the contents of a mounted `agent.md` file. The agent's name and behavioral
-constraints live there. The file is hot-reloaded on change — updating `agent.md` takes effect for the next request
+**Agent identity** — The system prompt is loaded from `/home/agent/.gemini/GEMINI.md`. The agent's name and behavioral
+constraints live there. The file is hot-reloaded on change — updating `GEMINI.md` takes effect for the next request
 without restarting the container.
 
 **Metrics** — Exposes the common `a2_*` Prometheus metrics: request count/latency, session starts/evictions, queue
@@ -76,13 +76,13 @@ backends:
 
 a2-gemini mounts:
 
-- `agent.md` — agent identity (system prompt)
+- `GEMINI.md` — agent identity (system prompt), at `/home/agent/.gemini/GEMINI.md`
 - `logs/conversation.jsonl` — conversation log file (must pre-exist as a file)
 - `logs/trace.jsonl` — trace log file (must pre-exist as a file)
 - `memory/` — persistent memory and session history directory (`memory/sessions/` for JSON session files)
 
 Key environment variables: `AGENT_NAME` (instance name), `AGENT_OWNER` (named agent, e.g. `iris`), `AGENT_ID` (backend
-slot id, e.g. `gemini`), `AGENT_URL`, `AGENT_MD`, `BACKEND_PORT`, `GEMINI_API_KEY` (or `GOOGLE_API_KEY`), `GEMINI_MODEL`
+slot id, e.g. `gemini`), `AGENT_URL`, `BACKEND_PORT`, `GEMINI_API_KEY` (or `GOOGLE_API_KEY`), `GEMINI_MODEL`
 (model override, default `gemini-2.5-pro`), `SESSION_STORE_DIR` (directory for session JSON files, default
 `/home/agent/memory/sessions`), `MAX_SESSIONS` (LRU cache size, default `10000`), `METRICS_ENABLED`,
 `CONVERSATIONS_AUTH_TOKEN`, `TASK_STORE_PATH`, `WORKER_MAX_RESTARTS`, `LOG_PROMPT_MAX_BYTES` (max bytes of prompt logged

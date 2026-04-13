@@ -26,9 +26,9 @@ alongside summary response events. This gives full visibility into what tools Cl
 **Model override** — The model used for a given request can be overridden via `metadata.model` in the A2A message.
 Resolution order: per-message metadata → routing config model → default model in `backend.yaml`.
 
-**Agent identity** — Claude's system prompt is the contents of a mounted `agent.md` file (equivalent to `CLAUDE.md`).
+**Agent identity** — Claude's system prompt is loaded from `/home/agent/.claude/CLAUDE.md`.
 The agent's name, personality, and behavioral constraints all live there. The file is hot-reloaded on change — updating
-`agent.md` takes effect for the next request without restarting the container.
+`CLAUDE.md` takes effect for the next request without restarting the container.
 
 **Metrics** — Exposes a superset of the common `a2_*` Prometheus metrics, plus Claude-specific metrics: context window
 token counts, context exhaustion events, tool call counts, MCP tool usage, and time-to-first-message.
@@ -82,13 +82,13 @@ backends:
 
 a2-claude mounts:
 
-- `agent.md` — agent identity (system prompt)
+- `CLAUDE.md` — agent identity (system prompt), at `/home/agent/.claude/CLAUDE.md`
 - `mcp.json` — MCP server configuration (optional)
 - `logs/conversation.jsonl` — conversation log file (must pre-exist as a file)
 - `logs/trace.jsonl` — trace log file (must pre-exist as a file)
 - `memory/` — persistent memory directory
 
 Key environment variables: `AGENT_NAME` (instance name), `AGENT_OWNER` (named agent, e.g. `iris`), `AGENT_ID` (backend
-slot id, e.g. `claude`), `AGENT_URL`, `AGENT_MD`, `BACKEND_PORT`, `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN` for
+slot id, e.g. `claude`), `AGENT_URL`, `BACKEND_PORT`, `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN` for
 Claude Max), `CLAUDE_MODEL` (model override), `METRICS_ENABLED`, `CONVERSATIONS_AUTH_TOKEN`, `TASK_STORE_PATH`,
 `WORKER_MAX_RESTARTS`, `LOG_PROMPT_MAX_BYTES` (max bytes of prompt logged at INFO; default 200; set to 0 to suppress).

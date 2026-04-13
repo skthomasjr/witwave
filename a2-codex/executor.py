@@ -66,7 +66,7 @@ AGENT_OWNER = os.environ.get("AGENT_OWNER", AGENT_NAME)
 AGENT_ID = os.environ.get("AGENT_ID", "codex")
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
 TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/trace.jsonl")
-AGENT_MD = os.environ.get("AGENT_MD", "/home/agent/.codex/AGENTS.md")
+AGENT_MD = "/home/agent/.codex/AGENTS.md"
 CODEX_SESSION_DB = os.environ.get("CODEX_SESSION_DB", "/home/agent/logs/codex_sessions.db")
 
 CODEX_CONFIG_TOML = os.environ.get("CODEX_CONFIG_TOML", "/home/agent/.codex/config.toml")
@@ -620,25 +620,25 @@ class AgentExecutor(A2AAgentExecutor):
         self._mcp_watcher_tasks: list[asyncio.Task] = []
 
     def _mcp_watchers(self):
-        """Return callables for agent.md watching (#371)."""
+        """Return callables for AGENTS.md watching (#371)."""
         return [self.agent_md_watcher]
 
     async def agent_md_watcher(self) -> None:
         """Watch AGENT_MD for changes and hot-reload agent identity / behavioral instructions (#371).
 
-        This ensures that updating agent.md does not require a container restart,
+        This ensures that updating AGENTS.md does not require a container restart,
         consistent with all other file-based configuration in the platform.
         """
         from watchfiles import awatch as _awatch
 
         # Perform an initial load so the watcher starts with current content.
         self._agent_md_content = _load_agent_md()
-        logger.info("agent.md loaded from %s", AGENT_MD)
+        logger.info("AGENTS.md loaded from %s", AGENT_MD)
 
         watch_dir = os.path.dirname(os.path.abspath(AGENT_MD))
         while True:
             if not os.path.isdir(watch_dir):
-                logger.info("agent.md directory not found — retrying in 10s.")
+                logger.info("AGENTS.md directory not found — retrying in 10s.")
                 await asyncio.sleep(10)
                 continue
             async for changes in _awatch(watch_dir):
@@ -647,9 +647,9 @@ class AgentExecutor(A2AAgentExecutor):
                 for _, path in changes:
                     if os.path.abspath(path) == os.path.abspath(AGENT_MD):
                         self._agent_md_content = _load_agent_md()
-                        logger.info("agent.md reloaded from %s", AGENT_MD)
+                        logger.info("AGENTS.md reloaded from %s", AGENT_MD)
                         break
-            logger.warning("agent.md directory watcher exited — retrying in 10s.")
+            logger.warning("AGENTS.md directory watcher exited — retrying in 10s.")
             if a2_file_watcher_restarts_total is not None:
                 a2_file_watcher_restarts_total.labels(**_LABELS, watcher="agent_md").inc()
             await asyncio.sleep(10)

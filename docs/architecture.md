@@ -41,15 +41,12 @@ protocol layer, a shift in deployment model — it should be discussed here firs
 │   │   ├── .gemini/           # Gemini backend config (no extra config required)
 │   │   ├── logs/              # nyx-agent logs
 │   │   ├── a2-claude/         # Claude backend instance
-│   │   │   ├── agent.md       # Backend identity (mounted at startup)
 │   │   │   ├── logs/          # conversation.jsonl
 │   │   │   └── memory/        # Persistent markdown memory files
 │   │   ├── a2-codex/          # Codex backend instance
-│   │   │   ├── agent.md
 │   │   │   ├── logs/
 │   │   │   └── memory/
 │   │   └── a2-gemini/         # Gemini backend instance
-│   │       ├── agent.md
 │   │       ├── logs/
 │   │       └── memory/        # Includes sessions/ subdir for JSON session history
 │   ├── nova/                  # Same structure as iris/
@@ -270,7 +267,7 @@ single scrape target for the full deployment.
 
 All three backends share identical structure and API surface; they differ only in their LLM SDK.
 
-**`main.py`** — Builds the A2A `AgentCard` from the mounted `agent.md` file (via `AGENT_MD` env var), wires the
+**`main.py`** — Builds the A2A `AgentCard` from the mounted `agent-card.md` file, wires the
 `AgentExecutor` and task store (`SqliteTaskStore` when `TASK_STORE_PATH` is set, `InMemoryTaskStore` otherwise), and
 serves the full Starlette application with routes for `/.well-known/agent.json`, `/` (A2A), `/health`, `/metrics`, and
 `/mcp` (MCP JSON-RPC server).
@@ -292,7 +289,6 @@ Agent identity and behavior are entirely file-based. No identity is baked into a
 | File                 | Location              | Purpose                                                             |
 | -------------------- | --------------------- | ------------------------------------------------------------------- |
 | `AGENTS.md`          | `.nyx/`               | Behavioral guidance (served as CLAUDE.md and AGENTS.md in backends) |
-| `agent-card.md`      | `.nyx/`               | A2A identity — description text served in agent card                |
 | `backend.yaml`       | `.nyx/`               | Backend definitions and routing                                     |
 | `HEARTBEAT.md`       | `.nyx/`               | Heartbeat schedule and prompt                                       |
 | `jobs/*.md`          | `.nyx/jobs/`          | Scheduled jobs — cron frontmatter                                   |
@@ -305,9 +301,10 @@ Agent identity and behavior are entirely file-based. No identity is baked into a
 
 | File       | Location                   | Purpose                                               |
 | ---------- | -------------------------- | ----------------------------------------------------- |
-| `agent.md` | `<name>/a2-claude/`        | Identity injected into the Claude backend at startup  |
-| `agent.md` | `<name>/a2-codex/`         | Identity injected into the Codex backend at startup   |
-| `agent.md` | `<name>/a2-gemini/`        | Identity injected into the Gemini backend at startup  |
+| `agent-card.md` | `/home/agent/`             | A2A identity (agent card description) for all backends                 |
+| `CLAUDE.md`     | `/home/agent/.claude/`     | Behavioral instructions injected into the Claude backend at startup    |
+| `AGENTS.md`     | `/home/agent/.codex/`      | Behavioral instructions injected into the Codex backend at startup     |
+| `GEMINI.md`     | `/home/agent/.gemini/`     | Behavioral instructions injected into the Gemini backend at startup    |
 | `memory/`  | `<name>/a2-claude/memory/` | Persistent markdown memory files for Claude backend   |
 | `memory/`  | `<name>/a2-codex/memory/`  | Persistent markdown memory files for Codex backend    |
 | `memory/`  | `<name>/a2-gemini/memory/` | JSON session history for Gemini backend (`sessions/`) |
@@ -343,7 +340,6 @@ Agent identity and behavior are entirely file-based. No identity is baked into a
 | `AGENT_OWNER`              | _(same as `AGENT_NAME`)_               | Named agent this backend belongs to (e.g. `iris`); used in metric labels     |
 | `AGENT_ID`                 | `claude` / `codex` / `gemini`          | Backend slot identifier; used in metric labels                               |
 | `AGENT_URL`                | `http://localhost:8080/`               | Public A2A endpoint URL reported in agent card                               |
-| `AGENT_MD`                 | `/home/agent/agent.md`                 | Path to mounted identity file                                                |
 | `BACKEND_PORT`             | `8080`                                 | HTTP port the backend listens on (internal)                                  |
 | `METRICS_ENABLED`          | _(unset)_                              | Enable Prometheus `/metrics`                                                 |
 | `CONVERSATIONS_AUTH_TOKEN` | _(unset)_                              | Bearer token required to access `/conversations` and `/trace`                |

@@ -46,7 +46,7 @@ Each agent:
 Backend containers:
 
 - Are standalone A2A servers with their own session state, memory, and conversation logs
-- Receive identity via a mounted `agent.md` file
+- Receive behavioral instructions via a backend-specific file (`CLAUDE.md` for a2-claude, `AGENTS.md` for a2-codex, `GEMINI.md` for a2-gemini) and A2A identity from a mounted `agent-card.md` file
 - Expose `/health` and `/metrics` in addition to the A2A endpoints
 
 ## Requirements
@@ -160,15 +160,12 @@ Each agent directory contains:
 ├── .gemini/           # Gemini backend config (no extra config required)
 ├── logs/              # nyx-agent logs (runtime, not committed)
 ├── a2-claude/         # Claude backend instance
-│   ├── agent.md       # Backend identity
 │   ├── logs/          # Conversation log (runtime, not committed)
 │   └── memory/        # Persistent memory (runtime, not committed)
 ├── a2-codex/          # Codex backend instance
-│   ├── agent.md
 │   ├── logs/
 │   └── memory/
 └── a2-gemini/         # Gemini backend instance
-    ├── agent.md
     ├── logs/
     └── memory/
         └── sessions/  # JSON conversation history per session
@@ -246,10 +243,11 @@ sessions), so each job/task/trigger invocation gets a fresh budget. All three ba
    cp -r .agents/active/iris .agents/active/<name>
    ```
 
-2. Update `.agents/active/<name>/.nyx/agent-card.md` with the agent's identity and role
+2. Update the agent's `agent-card.md` (mounted at `/home/agent/agent-card.md`) with the agent's identity and role
 
-3. Update `.agents/active/<name>/a2-claude/agent.md` (and `a2-codex/agent.md` and `a2-gemini/agent.md`) with backend
-   identity
+3. Update the backend instruction files: `CLAUDE.md` (at `/home/agent/.claude/CLAUDE.md`), `AGENTS.md` (at
+   `/home/agent/.codex/AGENTS.md`), and `GEMINI.md` (at `/home/agent/.gemini/GEMINI.md`) with backend-specific
+   behavioral instructions
 
 4. Update `.agents/active/<name>/.nyx/backend.yaml` with the new agent's backend service names and URLs
 
@@ -337,7 +335,6 @@ Memory files are not committed to source control. nyx-agent has no memory layer 
 | `AGENT_OWNER`              | _(same as `AGENT_NAME`)_           | Named agent this backend belongs to (e.g. `iris`); used in metric labels                 |
 | `AGENT_ID`                 | `claude`/`codex`/`gemini`          | Backend slot identifier (e.g. `claude`); used in metric labels                           |
 | `AGENT_URL`                | `http://localhost:8080/`           | Public A2A endpoint URL for the agent card                                               |
-| `AGENT_MD`                 | `/home/agent/agent.md`             | Path to the identity file mounted into the container                                     |
 | `BACKEND_PORT`             | `8080`                             | HTTP port the backend listens on (internal)                                              |
 | `METRICS_ENABLED`          | _(unset)_                          | Set to any non-empty value to expose `/metrics`                                          |
 | `CONVERSATIONS_AUTH_TOKEN` | _(unset)_                          | Bearer token required to access `/conversations` and `/trace`                            |

@@ -70,7 +70,7 @@ agents:
     #       ---
     #       What is the current status?
     #   - name: agent-card.md
-    #     mountPath: /home/agent/.nyx/agent-card.md
+    #     mountPath: /home/agent/agent-card.md
     #     content: |
     #       An autonomous agent.
 
