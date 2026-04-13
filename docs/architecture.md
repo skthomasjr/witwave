@@ -348,13 +348,7 @@ Backend containers all listen on port 8080 internally; host port mappings are as
 
 ### Feature Pipeline
 
-```
-plan-features      → creates `feature` proposals (status/pending)
-evaluate-features  → reads approved `feature` proposals
-                   → creates `type/feature` implementation slices (theme + slice scoped)
-                   → blocked until all current theme/slice issues are closed
-work-features      → implements `type/feature` issues
-```
+Features are a planned issue type. The feature skill family is not yet built out.
 
 ### Develop Loop
 
