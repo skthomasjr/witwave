@@ -1,7 +1,7 @@
 ---
 name: risk-approval
 description: Evaluate pending risks against the codebase and approve or defer them based on mitigation confidence, blast radius, and priority. Optionally scoped to a specific component; if no component is specified, processes all components including cross-cutting risks with no component assigned. Trigger when the user says "approve risks", "run risk approval", "evaluate risks", "review risks for approval", or "approve pending risks".
-version: 1.0.0
+version: 1.0.1
 ---
 
 # risk-approval
@@ -14,7 +14,7 @@ Evaluate each pending risk by reading the actual code, assessing mitigation comp
 
 The user may optionally specify a component (e.g. `approve risks for <component>`) or say "all" to process everything. If no component is specified, process all pending risks.
 
-Retrieve all open pending risks, filtered by component if specified. For each one, read the full risk record — component, file, line number, category, condition, impact, and suggested mitigation.
+Retrieve all open pending risks, filtered by component if specified. For each one, read the full risk record — component, file, line number, category, condition, impact, and suggested mitigation. Also read all comments on the issue; prior refinement runs may have noted relationships, grouping recommendations, updated mitigations, or caution areas that should inform the approval decision.
 
 Note: some risks are cross-cutting and have no component assigned. When processing all components, always include cross-cutting risks. When filtering to a specific component, exclude cross-cutting risks unless the user explicitly asks to include them.
 

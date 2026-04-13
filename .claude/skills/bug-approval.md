@@ -1,7 +1,7 @@
 ---
 name: bug-approval
 description: Evaluate pending bugs against the codebase and approve or defer them based on fix confidence, risk, and priority. Optionally scoped to a specific component; if no component is specified, processes all components including cross-cutting bugs with no component assigned. Trigger when the user says "approve bugs", "run bug approval", "evaluate bugs", "review bugs for approval", or "approve pending bugs".
-version: 1.0.0
+version: 1.0.1
 ---
 
 # bug-approval
@@ -14,7 +14,7 @@ Evaluate each pending bug by reading the actual code, assessing fix risk relativ
 
 The user may optionally specify a component (e.g. `approve bugs for <component>`) or say "all" to process everything. If no component is specified, process all pending bugs.
 
-Retrieve all open pending bugs, filtered by component if specified. For each one, read the full bug record — component, file, line number, description, expected/actual behavior, and suggested fix.
+Retrieve all open pending bugs, filtered by component if specified. For each one, read the full bug record — component, file, line number, description, expected/actual behavior, and suggested fix. Also read all comments on the issue; prior refinement runs may have noted relationships, grouping recommendations, updated fixes, or caution areas that should inform the approval decision.
 
 Note: some bugs are cross-cutting and have no component assigned. When processing all components, always include cross-cutting bugs. When filtering to a specific component, exclude cross-cutting bugs unless the user explicitly asks to include them.
 
