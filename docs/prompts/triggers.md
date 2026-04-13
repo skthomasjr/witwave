@@ -81,6 +81,7 @@ endpoint, description, session_id, backend_id, model, and whether the endpoint i
 | `model`          | No       | Model override passed to the backend.                                                                                                                                       |
 | `agent`          | No       | Backend ID override (e.g. `codex`); defaults to routing config.                                                                                                             |
 | `consensus`      | No       | `true` to fan out the prompt to all configured backends and aggregate responses (majority vote for binary; synthesis for freeform). Default: `false`.                       |
+| `max-tokens`     | No       | Token budget for this dispatch. Stop and return partial response when reached.                                                                                             |
 
 ## Auth Fallback Order
 

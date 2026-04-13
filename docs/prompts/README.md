@@ -15,4 +15,5 @@ differs only in how and when it is triggered — the body is always the prompt t
 | [Webhooks](webhooks.md)           | `.nyx/webhooks/*.md`      | Outbound HTTP after any prompt completes |
 
 All prompt files support `model:` and `agent:` frontmatter fields to override the default backend routing on a
-per-prompt basis.
+per-prompt basis. All prompt files also support `consensus: true` (fan out to all configured backends and aggregate
+responses) and `max-tokens:` (per-dispatch token budget; returns partial response when reached).

@@ -58,3 +58,5 @@ Generate a final end-to-end report covering the review, build, and deployment st
 | `model`           | No       | Model override passed to the backend.                                                              |
 | `agent`           | No       | Backend ID override (e.g. `codex`); defaults to routing config.                                    |
 | `enabled`         | No       | `false` disables without deleting. Default: `true`.                                                |
+| `consensus`       | No       | `true` to fan out to all backends and aggregate; default `false`.                                  |
+| `max-tokens`      | No       | Token budget for this dispatch. Stop and return partial response when reached.                     |

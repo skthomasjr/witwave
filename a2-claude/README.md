@@ -27,7 +27,8 @@ alongside summary response events. This gives full visibility into what tools Cl
 Resolution order: per-message metadata → routing config model → default model in `backend.yaml`.
 
 **Agent identity** — Claude's system prompt is the contents of a mounted `agent.md` file (equivalent to `CLAUDE.md`).
-The agent's name, personality, and behavioral constraints all live there.
+The agent's name, personality, and behavioral constraints all live there. The file is hot-reloaded on change — updating
+`agent.md` takes effect for the next request without restarting the container.
 
 **Metrics** — Exposes a superset of the common `a2_*` Prometheus metrics, plus Claude-specific metrics: context window
 token counts, context exhaustion events, tool call counts, MCP tool usage, and time-to-first-message.

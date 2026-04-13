@@ -31,7 +31,8 @@ screenshot, click, scroll, type, keypress, and drag operations.
 per-message metadata → routing config model → `MODEL` environment variable.
 
 **Agent identity** — The system prompt is the contents of a mounted `agent.md` file. The agent's name and behavioral
-constraints live there.
+constraints live there. The file is hot-reloaded on change — updating `agent.md` takes effect for the next request
+without restarting the container.
 
 **Metrics** — Exposes the common `a2_*` Prometheus metrics: request count/latency, session starts/evictions, queue
 depth, error counts, execution duration, and `a2_session_history_save_errors_total` (incremented when the SQLite session

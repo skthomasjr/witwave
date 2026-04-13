@@ -21,7 +21,8 @@ active sessions; when a session is evicted, its JSON file is deleted from disk s
 per-message metadata → routing config model → `MODEL` environment variable.
 
 **Agent identity** — The system prompt is the contents of a mounted `agent.md` file. The agent's name and behavioral
-constraints live there.
+constraints live there. The file is hot-reloaded on change — updating `agent.md` takes effect for the next request
+without restarting the container.
 
 **Metrics** — Exposes the common `a2_*` Prometheus metrics: request count/latency, session starts/evictions, queue
 depth, error counts, and execution duration.

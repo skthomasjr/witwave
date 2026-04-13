@@ -96,3 +96,4 @@ Steps:
 | `model`       | No       | Model override passed to the backend; defaults to backend default |
 | `agent`       | No       | Backend ID override (e.g. `codex`); defaults to routing config    |
 | `consensus`   | No       | `true` to fan out to all backends and aggregate; default `false`  |
+| `max-tokens`  | No       | Token budget for this dispatch. Stop and return partial response when reached. |
