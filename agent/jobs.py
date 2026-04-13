@@ -49,6 +49,7 @@ class JobItem:
     model: str | None = None
     backend_id: str | None = None
     consensus: bool = False
+    max_tokens: int | None = None
     task: asyncio.Task | None = field(default=None, compare=False)
     running: bool = False
 
@@ -67,6 +68,13 @@ def parse_job_file(path: str) -> JobItem | None:
         model = fields.get("model") or None
         backend_id = fields.get("agent") or None
         consensus = str(fields.get("consensus", "false")).lower() not in ("false", "")
+        max_tokens: int | None = None
+        max_tokens_raw = fields.get("max-tokens") or fields.get("max_tokens")
+        if max_tokens_raw is not None:
+            try:
+                max_tokens = max(1, int(max_tokens_raw))
+            except (ValueError, TypeError):
+                logger.warning(f"Job file {path}: invalid 'max-tokens' value {max_tokens_raw!r}, ignoring.")
         if "enabled" in fields:
             enabled = str(fields["enabled"]).lower() not in ("false", "")
 
@@ -84,7 +92,7 @@ def parse_job_file(path: str) -> JobItem | None:
             # Generate a deterministic UUID from the agent name and filename
             session_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{AGENT_NAME}.{filename}"))
 
-        return JobItem(path=path, name=name, schedule=schedule, session_id=session_id, content=content, model=model, backend_id=backend_id, consensus=consensus)
+        return JobItem(path=path, name=name, schedule=schedule, session_id=session_id, content=content, model=model, backend_id=backend_id, consensus=consensus, max_tokens=max_tokens)
 
     except Exception as e:
         if agent_job_parse_errors_total is not None:
@@ -125,7 +133,7 @@ async def _execute_job(item: JobItem, bus: MessageBus, semaphore: asyncio.Semaph
         prompt = f"Job: {item.name}\n\n{item.content}"
         logger.info(f"Job '{item.name}' firing.")
         _job_start = time.monotonic()
-        message = Message(prompt=prompt, session_id=item.session_id, kind=f"job:{item.name}", model=item.model, backend_id=item.backend_id, consensus=item.consensus)
+        message = Message(prompt=prompt, session_id=item.session_id, kind=f"job:{item.name}", model=item.model, backend_id=item.backend_id, consensus=item.consensus, max_tokens=item.max_tokens)
         if agent_job_item_last_run_timestamp_seconds is not None:
             agent_job_item_last_run_timestamp_seconds.labels(name=item.name).set(time.time())
         _send_task = asyncio.ensure_future(bus.send(message))
@@ -249,6 +257,7 @@ class JobRunner:
                 "backend_id": item.backend_id,
                 "model": item.model,
                 "consensus": item.consensus,
+                "max_tokens": item.max_tokens,
                 "running": item.running,
             })
         return result

@@ -41,6 +41,7 @@ class TriggerItem:
     backend_id: str | None = None
     description: str | None = None
     consensus: bool = False
+    max_tokens: int | None = None
 
 
 def parse_trigger_file(path: str) -> TriggerItem | object | None:
@@ -82,6 +83,14 @@ def parse_trigger_file(path: str) -> TriggerItem | object | None:
         description = fields.get("description") or None
         consensus = str(fields.get("consensus", "false")).lower() not in ("false", "")
 
+        max_tokens: int | None = None
+        max_tokens_raw = fields.get("max-tokens") or fields.get("max_tokens")
+        if max_tokens_raw is not None:
+            try:
+                max_tokens = max(1, int(max_tokens_raw))
+            except (ValueError, TypeError):
+                logger.warning(f"Trigger file {path}: invalid 'max-tokens' value {max_tokens_raw!r}, ignoring.")
+
         return TriggerItem(
             path=path,
             name=name,
@@ -94,6 +103,7 @@ def parse_trigger_file(path: str) -> TriggerItem | object | None:
             backend_id=backend_id,
             description=description,
             consensus=consensus,
+            max_tokens=max_tokens,
         )
 
     except Exception as e:
@@ -162,6 +172,7 @@ class TriggerRunner:
                 "backend_id": item.backend_id,
                 "model": item.model,
                 "consensus": item.consensus,
+                "max_tokens": item.max_tokens,
                 "running": item.endpoint in self._running,
             })
         return result

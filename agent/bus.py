@@ -22,6 +22,7 @@ class Message:
     model: str | None = None
     backend_id: str | None = None
     consensus: bool = False  # when True, nyx fans out to all backends and aggregates responses
+    max_tokens: int | None = None  # per-dispatch token budget; backends stop when exceeded
     enqueued_at: float = 0.0
     result: asyncio.Future | None = field(default=None)
     metadata: dict[str, Any] = field(default_factory=dict)

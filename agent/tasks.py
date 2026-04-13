@@ -70,6 +70,7 @@ class TaskItem:
     model: str | None = None
     backend_id: str | None = None
     consensus: bool = False
+    max_tokens: int | None = None
     task: asyncio.Task | None = field(default=None, compare=False)
     running: bool = False
 
@@ -189,6 +190,15 @@ def parse_task_file(path: str) -> TaskItem | None:
         # consensus
         consensus = str(fields.get("consensus", "false")).lower() not in ("false", "")
 
+        # max_tokens
+        max_tokens: int | None = None
+        max_tokens_raw = fields.get("max-tokens") or fields.get("max_tokens")
+        if max_tokens_raw is not None:
+            try:
+                max_tokens = max(1, int(max_tokens_raw))
+            except (ValueError, TypeError):
+                logger.warning(f"Task file {path}: invalid 'max-tokens' value {max_tokens_raw!r}, ignoring.")
+
         return TaskItem(
             path=path,
             name=name,
@@ -205,6 +215,7 @@ def parse_task_file(path: str) -> TaskItem | None:
             model=model,
             backend_id=backend_id,
             consensus=consensus,
+            max_tokens=max_tokens,
         )
 
     except Exception as e:
@@ -339,7 +350,7 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
             _task_start = time.monotonic()
             if agent_sched_task_item_last_run_timestamp_seconds is not None:
                 agent_sched_task_item_last_run_timestamp_seconds.labels(name=item.name).set(time.time())
-            message = Message(prompt=prompt, session_id=session_id, kind=f"task:{item.name}", model=item.model, backend_id=item.backend_id, consensus=item.consensus)
+            message = Message(prompt=prompt, session_id=session_id, kind=f"task:{item.name}", model=item.model, backend_id=item.backend_id, consensus=item.consensus, max_tokens=item.max_tokens)
             _send_task = asyncio.ensure_future(bus.send(message))
 
             def _log_send_result(t: asyncio.Task, _name: str = item.name) -> None:
@@ -480,6 +491,7 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
                         model=item.model,
                         backend_id=item.backend_id,
                         consensus=item.consensus,
+                        max_tokens=item.max_tokens,
                     )
                     _send_task = asyncio.ensure_future(bus.send(message))
 
@@ -611,6 +623,7 @@ class TaskRunner:
                 "backend_id": item.backend_id,
                 "model": item.model,
                 "consensus": item.consensus,
+                "max_tokens": item.max_tokens,
                 "start": item.start.isoformat() if item.start else None,
                 "end": item.end.isoformat() if item.end else None,
                 "running": item.running,

@@ -147,11 +147,12 @@ async def run(
     default_backend_id: str,
     backend_id: str | None = None,
     model: str | None = None,
+    max_tokens: int | None = None,
 ) -> str:
     if agent_concurrent_queries is not None:
         agent_concurrent_queries.inc()
     try:
-        return await _run_inner(prompt, session_id, sessions, backends, default_backend_id, backend_id, model)
+        return await _run_inner(prompt, session_id, sessions, backends, default_backend_id, backend_id, model, max_tokens)
     finally:
         if agent_concurrent_queries is not None:
             agent_concurrent_queries.dec()
@@ -165,6 +166,7 @@ async def _run_inner(
     default_backend_id: str,
     backend_id: str | None = None,
     model: str | None = None,
+    max_tokens: int | None = None,
 ) -> str:
     resolved_id = backend_id or default_backend_id
     backend = backends.get(resolved_id)
@@ -192,7 +194,7 @@ async def _run_inner(
     _start = time.monotonic()
     try:
         collected = await asyncio.wait_for(
-            backend.run_query(prompt, session_id, is_new, model=model),
+            backend.run_query(prompt, session_id, is_new, model=model, max_tokens=max_tokens),
             timeout=TASK_TIMEOUT_SECONDS,
         )
     except asyncio.TimeoutError:
@@ -252,6 +254,7 @@ async def run_consensus(
     backends: dict,
     default_backend_id: str,
     model: str | None = None,
+    max_tokens: int | None = None,
 ) -> str:
     """Fan out *prompt* to every configured backend concurrently and aggregate.
 
@@ -262,7 +265,7 @@ async def run_consensus(
 
     async def _call(bid: str) -> tuple[str, str | Exception]:
         try:
-            result = await _run_inner(prompt, session_id, sessions, backends, default_backend_id, backend_id=bid, model=model)
+            result = await _run_inner(prompt, session_id, sessions, backends, default_backend_id, backend_id=bid, model=model, max_tokens=max_tokens)
             return bid, result
         except Exception as exc:
             return bid, exc
@@ -309,7 +312,7 @@ async def run_consensus(
         f"Agent responses:\n{parts}"
     )
     try:
-        synthesised = await _run_inner(synthesis_prompt, session_id, sessions, backends, default_backend_id, backend_id=default_backend_id, model=model)
+        synthesised = await _run_inner(synthesis_prompt, session_id, sessions, backends, default_backend_id, backend_id=default_backend_id, model=model, max_tokens=max_tokens)
     except Exception as exc:
         logger.error(f"Consensus synthesis pass failed: {exc!r} — returning concatenated responses.")
         if agent_consensus_runs_total is not None:
@@ -557,6 +560,7 @@ class AgentExecutor(A2AAgentExecutor):
                     self._backends,
                     self._default_backend_id,
                     model=_model,
+                    max_tokens=message.max_tokens,
                 )
             else:
                 _response = await run(
@@ -567,6 +571,7 @@ class AgentExecutor(A2AAgentExecutor):
                     self._default_backend_id,
                     backend_id=_routed_backend_id,
                     model=_model,
+                    max_tokens=message.max_tokens,
                 )
             _success = True
             if message.result is not None and not message.result.done():

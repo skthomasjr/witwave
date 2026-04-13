@@ -751,6 +751,7 @@ async def main():
                         executor._backends,
                         executor._default_backend_id,
                         model=_model,
+                        max_tokens=item.max_tokens,
                     )
                 else:
                     _response = await executor_run(
@@ -761,6 +762,7 @@ async def main():
                         executor._default_backend_id,
                         backend_id=backend_id,
                         model=_model,
+                        max_tokens=item.max_tokens,
                     )
                 _success = True
             except Exception as exc:

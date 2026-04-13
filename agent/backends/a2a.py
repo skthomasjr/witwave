@@ -59,6 +59,7 @@ class A2ABackend:
         session_id: str,
         is_new: bool,
         model: str | None = None,
+        max_tokens: int | None = None,
     ) -> list[str]:
         """Forward the prompt to the remote A2A agent and return collected text chunks."""
         _start = time.monotonic()
@@ -77,8 +78,13 @@ class A2ABackend:
                 }
             },
         }
+        _metadata: dict = {}
         if model:
-            payload["params"]["message"]["metadata"] = {"model": model}
+            _metadata["model"] = model
+        if max_tokens is not None:
+            _metadata["max_tokens"] = max_tokens
+        if _metadata:
+            payload["params"]["message"]["metadata"] = _metadata
 
         body = json.dumps(payload).encode()
         response_text = await self._post_with_retry(self._url, body)
