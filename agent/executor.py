@@ -52,7 +52,6 @@ logger = logging.getLogger(__name__)
 
 AGENT_NAME = os.environ.get("AGENT_NAME", "nyx-agent")
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
-TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/trace.jsonl")
 
 MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "10000"))
 TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
@@ -82,19 +81,6 @@ async def log_entry(role: str, text: str, session_id: str, model: str | None = N
         if agent_log_write_errors_total is not None:
             agent_log_write_errors_total.inc()
         logger.error(f"log_entry error: {e}")
-
-
-async def log_trace(text: str) -> None:
-    try:
-        await asyncio.to_thread(_append_log, TRACE_LOG, text)
-        if agent_log_entries_total is not None:
-            agent_log_entries_total.labels(logger="trace").inc()
-        if agent_log_bytes_total is not None:
-            agent_log_bytes_total.labels(logger="trace").inc(len(text.encode()))
-    except Exception as e:
-        if agent_log_write_errors_total is not None:
-            agent_log_write_errors_total.inc()
-        logger.error(f"log_trace error: {e}")
 
 
 def _build_backend(config: BackendConfig):
