@@ -33,12 +33,12 @@ the response, and optional delay. Enables prompt chaining without hardcoded sequ
 **Webhook dispatcher** — Reads `webhooks/*.md` and delivers outbound HTTP notifications when work completes. Supports
 glob-based filtering, optional LLM extraction passes, HMAC signing, and retry with exponential backoff.
 
-**Proxy endpoints** — Exposes `/proxy/{agent_name}` and `/conversations/{agent_name}` so the UI can target any team
-member by name and have the request routed through nyx's team manifest.
+**Proxy endpoints** — Exposes `/proxy/{agent_name}`, `/conversations/{agent_name}`, and `/trace/{agent_name}` so the
+UI can target any team member by name and have the request routed through nyx's team manifest.
 
-**Scheduler discovery** — Exposes `GET /jobs`, `GET /tasks`, `GET /webhooks`, `GET /continuations`, and `GET /triggers`,
-each returning a structured snapshot of all currently registered items of that type (name, schedule/window/filters,
-backend, running or active-fire counts).
+**Scheduler discovery** — Exposes `GET /jobs`, `GET /tasks`, `GET /webhooks`, `GET /continuations`, `GET /triggers`,
+and `GET /heartbeat`, each returning a structured snapshot of all currently registered items of that type (name,
+schedule/window/filters, backend, running or active-fire counts).
 
 **Metrics** — Aggregates Prometheus metrics from all backends at `/metrics` and exposes its own scheduler/queue/routing
 metrics.
@@ -71,7 +71,8 @@ All configuration is file-based and hot-reloaded — no restart required for mos
 **`backend.yaml`** — Which backend handles each concern. Routing slots: `default`, `a2a`, `heartbeat`, `job`, `task`,
 `trigger`, `continuation`. Each slot can specify a backend ID and an optional model override.
 
-**`HEARTBEAT.md`** — Cron schedule + prompt body for the heartbeat.
+**`HEARTBEAT.md`** — Frontmatter: `schedule` (cron), `agent`/`model` overrides, `consensus: true` (fan out to all
+backends), `max-tokens` (per-dispatch token budget). Body: the heartbeat prompt.
 
 **`jobs/*.md`** — Frontmatter: `schedule` (cron), `session` (optional fixed ID), `agent`/`model` overrides,
 `consensus: true` (fan out to all backends). Body: the prompt.
@@ -84,7 +85,8 @@ optional date range, `consensus: true` (fan out to all backends). Body: the prom
 payload.
 
 **`continuations/*.md`** — Frontmatter: `continues-after` (upstream kind), `on` (success/error/any), `trigger-when`
-(substring match), `delay`. Body: the follow-up prompt.
+(substring match), `delay`, `agent`/`model` overrides, `consensus: true` (fan out to all backends), `max-tokens`
+(per-dispatch token budget). Body: the follow-up prompt.
 
 **`webhooks/*.md`** — Frontmatter: `url` or `url-env-var` (destination), `notify-on-kind` (glob filter),
 `signing-secret-env-var` (HMAC key), `extract` (prompt for LLM extraction pass). Body: webhook payload template.
