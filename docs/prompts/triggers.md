@@ -1,9 +1,9 @@
 # Triggers
 
-Triggers are HTTP-driven endpoints served directly by nyx-agent. Each trigger is defined as a `*.md` file in the
-agent's `.nyx/triggers/` directory. When nyx-agent receives a `POST /triggers/{endpoint}` request, it builds a prompt
-from the request payload and the trigger's markdown body, then dispatches the prompt to the configured backend as a
-background task and returns `202 Accepted` immediately.
+Triggers are HTTP-driven endpoints served directly by nyx-agent. Each trigger is defined as a `*.md` file in the agent's
+`.nyx/triggers/` directory. When nyx-agent receives a `POST /triggers/{endpoint}` request, it builds a prompt from the
+request payload and the trigger's markdown body, then dispatches the prompt to the configured backend as a background
+task and returns `202 Accepted` immediately.
 
 Triggers are analogous to inbound A2A requests — they run concurrently, bypass the message bus, and maintain session
 continuity via a deterministic session ID derived from the agent name and endpoint slug.
@@ -32,8 +32,25 @@ enabled: true
 secret-env-var: BOB_WEBHOOK_SECRET
 ---
 
-A webhook event has arrived. Parse the request body as JSON and summarize the event type and key fields.
-If the body is not JSON, describe the raw payload.
+A webhook event has arrived. Parse the request body as JSON and summarize the event type and key fields. If the body is
+not JSON, describe the raw payload.
+```
+
+**Snapshot endpoint** — `GET /triggers` returns a JSON array of all registered triggers with runtime state (name,
+endpoint, description, session_id, backend_id, model, and whether the endpoint is currently executing):
+
+```json
+[
+  {
+    "name": "Ping",
+    "endpoint": "ping",
+    "description": "Minimal unsigned trigger — verifies trigger routing and backend response.",
+    "session_id": "...",
+    "backend_id": null,
+    "model": null,
+    "running": false
+  }
+]
 ```
 
 **Discovery endpoint** — `GET /.well-known/agent-triggers.json` returns a JSON array of all enabled trigger descriptors:

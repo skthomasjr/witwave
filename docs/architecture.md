@@ -109,25 +109,33 @@ ui/                            # Web UI
 
 .claude/
 └── skills/                    # Local Claude Code skills (user-invokable slash commands)
-    ├── develop.md             # Full autonomous development cycle (bugs → risks → gaps)
-    ├── docs-refinement.md     # Review and update project documentation
+    ├── develop.md             # Full autonomous development cycle (bugs → risks → gaps → features → docs)
+    ├── docs-refine.md         # Review and update project documentation
     ├── docs-format.md         # Lint and format markdown documents (leaf skill)
     ├── skill-development.md   # Guide for creating and auditing skills
-    ├── bug-discovery.md       # Find bugs → file issues
-    ├── bug-refinement.md      # Analyze and order pending bugs
-    ├── bug-approval.md        # Approve or defer pending bugs
-    ├── bug-fix.md             # Fix approved bugs
+    ├── bug-discover.md        # Find bugs → file issues
+    ├── bug-refine.md          # Analyze and order pending bugs
+    ├── bug-approve.md         # Approve or defer pending bugs
+    ├── bug-implement.md       # Fix approved bugs
     ├── bug-github-issues.md   # GitHub issue operations for bugs (leaf skill)
-    ├── risk-discovery.md      # Find risks → file issues
-    ├── risk-refinement.md     # Analyze and order pending risks
-    ├── risk-approval.md       # Approve or defer pending risks
-    ├── risk-fix.md            # Mitigate approved risks
+    ├── risk-discover.md       # Find risks → file issues
+    ├── risk-refine.md         # Analyze and order pending risks
+    ├── risk-approve.md        # Approve or defer pending risks
+    ├── risk-implement.md      # Mitigate approved risks
     ├── risk-github-issues.md  # GitHub issue operations for risks (leaf skill)
-    ├── gap-discovery.md       # Find gaps → file issues
-    ├── gap-refinement.md      # Analyze and order pending gaps
-    ├── gap-approval.md        # Approve or defer pending gaps
-    ├── gap-fix.md             # Implement approved gaps
-    └── gap-github-issues.md   # GitHub issue operations for gaps (leaf skill)
+    ├── gap-discover.md        # Find gaps → file issues
+    ├── gap-refine.md          # Analyze and order pending gaps
+    ├── gap-approve.md         # Approve or defer pending gaps
+    ├── gap-implement.md       # Implement approved gaps
+    ├── gap-github-issues.md   # GitHub issue operations for gaps (leaf skill)
+    ├── feature-discover.md    # Derive features from ready requests
+    ├── feature-refine.md      # Analyze and order pending features
+    ├── feature-approve.md     # Approve or defer pending features
+    ├── feature-implement.md   # Implement approved features
+    ├── feature-github-issues.md # GitHub issue operations for features (leaf skill)
+    ├── request-dialog.md      # Conversational request intake
+    ├── request-discover.md    # Find open requests
+    └── request-github-issues.md # GitHub issue operations for requests (leaf skill)
 
 docs/
 ├── architecture.md            # This document
@@ -305,38 +313,40 @@ Agent identity and behavior are entirely file-based. No identity is baked into a
 
 **nyx-agent:**
 
-| Variable                   | Default                         | Description                                                                                 |
-| -------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------- |
-| `AGENT_NAME`               | `nyx-agent`                     | Agent display name (e.g. `iris`)                                                            |
-| `AGENT_HOST`               | `0.0.0.0`                       | Interface to bind                                                                           |
-| `AGENT_PORT`               | `8000`                          | HTTP port                                                                                   |
-| `BACKEND_CONFIG_PATH`      | `/home/agent/.nyx/backend.yaml` | Path to backend routing config                                                              |
-| `METRICS_ENABLED`          | _(unset)_                       | Enable Prometheus `/metrics`                                                                |
-| `METRICS_AUTH_TOKEN`       | _(unset)_                       | Bearer token required to access `/metrics`                                                  |
-| `METRICS_CACHE_TTL`        | `15`                            | Seconds to cache aggregated backend metrics between scrapes                                 |
-| `CONVERSATIONS_AUTH_TOKEN`         | _(unset)_                       | Bearer token required to access `/conversations` and `/trace` (inbound)                         |
+| Variable                           | Default                         | Description                                                                                              |
+| ---------------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `AGENT_NAME`                       | `nyx-agent`                     | Agent display name (e.g. `iris`)                                                                         |
+| `AGENT_HOST`                       | `0.0.0.0`                       | Interface to bind                                                                                        |
+| `AGENT_PORT`                       | `8000`                          | HTTP port                                                                                                |
+| `BACKEND_CONFIG_PATH`              | `/home/agent/.nyx/backend.yaml` | Path to backend routing config                                                                           |
+| `METRICS_ENABLED`                  | _(unset)_                       | Enable Prometheus `/metrics`                                                                             |
+| `METRICS_AUTH_TOKEN`               | _(unset)_                       | Bearer token required to access `/metrics`                                                               |
+| `METRICS_CACHE_TTL`                | `15`                            | Seconds to cache aggregated backend metrics between scrapes                                              |
+| `CONVERSATIONS_AUTH_TOKEN`         | _(unset)_                       | Bearer token required to access `/conversations` and `/trace` (inbound)                                  |
 | `BACKEND_CONVERSATIONS_AUTH_TOKEN` | _(unset)_                       | Bearer token forwarded to backend `/conversations` and `/trace` endpoints (set if backends require auth) |
-| `PROXY_AUTH_TOKEN`                 | _(unset)_                       | Bearer token required to access `/proxy/{agent_name}`                                           |
-| `TRIGGERS_AUTH_TOKEN`      | _(unset)_                       | Bearer token for inbound trigger requests (fallback when no per-trigger HMAC secret is set) |
-| `CORS_ALLOW_ORIGINS`       | `*`                             | Comma-separated allowed CORS origins; defaults to `*` (logs a warning)                      |
-| `TASK_STORE_PATH`          | _(unset)_                       | Path for SQLite A2A task store; defaults to in-memory                                       |
-| `WORKER_MAX_RESTARTS`      | `5`                             | Consecutive crash limit before a critical worker marks the agent not-ready                  |
-| `A2A_URL_<ID>`             | _(unset)_                       | Per-backend URL override (e.g. `A2A_URL_IRIS_A2_CLAUDE`)                                    |
+| `PROXY_AUTH_TOKEN`                 | _(unset)_                       | Bearer token required to access `/proxy/{agent_name}`                                                    |
+| `TRIGGERS_AUTH_TOKEN`              | _(unset)_                       | Bearer token for inbound trigger requests (fallback when no per-trigger HMAC secret is set)              |
+| `CORS_ALLOW_ORIGINS`               | `*`                             | Comma-separated allowed CORS origins; defaults to `*` (logs a warning)                                   |
+| `TASK_STORE_PATH`                  | _(unset)_                       | Path for SQLite A2A task store; defaults to in-memory                                                    |
+| `WORKER_MAX_RESTARTS`              | `5`                             | Consecutive crash limit before a critical worker marks the agent not-ready                               |
+| `LOG_PROMPT_MAX_BYTES`             | `200`                           | Maximum bytes of the prompt logged at INFO level; `0` suppresses prompt logging entirely                 |
+| `A2A_URL_<ID>`                     | _(unset)_                       | Per-backend URL override (e.g. `A2A_URL_IRIS_A2_CLAUDE`)                                                 |
 
 **Backends (a2-claude / a2-codex / a2-gemini):**
 
-| Variable                   | Default                                | Description                                                                  |
-| -------------------------- | -------------------------------------- | ---------------------------------------------------------------------------- |
-| `AGENT_NAME`               | `a2-claude` / `a2-codex` / `a2-gemini` | Backend instance name (e.g. `iris-a2-claude`)                                |
-| `AGENT_OWNER`              | _(same as `AGENT_NAME`)_               | Named agent this backend belongs to (e.g. `iris`); used in metric labels     |
-| `AGENT_ID`                 | `claude` / `codex` / `gemini`          | Backend slot identifier; used in metric labels                               |
-| `AGENT_URL`                | `http://localhost:8080/`               | Public A2A endpoint URL reported in agent card                               |
-| `AGENT_MD`                 | `/home/agent/agent.md`                 | Path to mounted identity file                                                |
-| `BACKEND_PORT`             | `8080`                                 | HTTP port the backend listens on (internal)                                  |
-| `METRICS_ENABLED`          | _(unset)_                              | Enable Prometheus `/metrics`                                                 |
-| `CONVERSATIONS_AUTH_TOKEN` | _(unset)_                              | Bearer token required to access `/conversations` and `/trace`                |
-| `TASK_STORE_PATH`          | _(unset)_                              | Path for SQLite A2A task store; defaults to in-memory                        |
-| `WORKER_MAX_RESTARTS`      | `5`                                    | Consecutive crash limit before a critical worker marks the backend not-ready |
+| Variable                   | Default                                | Description                                                                                 |
+| -------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `AGENT_NAME`               | `a2-claude` / `a2-codex` / `a2-gemini` | Backend instance name (e.g. `iris-a2-claude`)                                               |
+| `AGENT_OWNER`              | _(same as `AGENT_NAME`)_               | Named agent this backend belongs to (e.g. `iris`); used in metric labels                    |
+| `AGENT_ID`                 | `claude` / `codex` / `gemini`          | Backend slot identifier; used in metric labels                                              |
+| `AGENT_URL`                | `http://localhost:8080/`               | Public A2A endpoint URL reported in agent card                                              |
+| `AGENT_MD`                 | `/home/agent/agent.md`                 | Path to mounted identity file                                                               |
+| `BACKEND_PORT`             | `8080`                                 | HTTP port the backend listens on (internal)                                                 |
+| `METRICS_ENABLED`          | _(unset)_                              | Enable Prometheus `/metrics`                                                                |
+| `CONVERSATIONS_AUTH_TOKEN` | _(unset)_                              | Bearer token required to access `/conversations` and `/trace`                               |
+| `TASK_STORE_PATH`          | _(unset)_                              | Path for SQLite A2A task store; defaults to in-memory                                       |
+| `WORKER_MAX_RESTARTS`      | `5`                                    | Consecutive crash limit before a critical worker marks the backend not-ready                |
+| `LOG_PROMPT_MAX_BYTES`     | `200`                                  | (`a2-claude` only) Max bytes of the prompt logged at INFO level; `0` suppresses it entirely |
 
 ---
 
@@ -357,6 +367,7 @@ Each nyx-agent exposes:
 - `GET /tasks` — structured snapshot of registered scheduled tasks
 - `GET /webhooks` — structured snapshot of registered webhook subscriptions
 - `GET /continuations` — structured snapshot of registered continuation items
+- `GET /triggers` — structured snapshot of registered inbound trigger endpoints
 
 Each backend exposes the same A2A surface plus:
 
@@ -391,26 +402,23 @@ Backend containers all listen on port 8080 internally; host port mappings are as
 
 ### GitHub Issue Taxonomy
 
-| Label     | Created by       | Worked by  | Purpose                                                                    |
-| --------- | ---------------- | ---------- | -------------------------------------------------------------------------- |
-| `bug`     | `bug-discovery`  | `bug-fix`  | Defect — code that is broken or behaves incorrectly                        |
-| `risk`    | `risk-discovery` | `risk-fix` | Code quality issue — works today but fragile, insecure, or likely to break |
-| `gap`     | `gap-discovery`  | `gap-fix`  | Missing capability — functionality the system should have but does not     |
-| `feature` | humans / agents  | —          | Intentional enhancement requested by stakeholders                          |
-
-### Feature Pipeline
-
-Features are a planned issue type. The feature skill family is not yet built out.
+| Label     | Created by      | Worked by           | Purpose                                                                    |
+| --------- | --------------- | ------------------- | -------------------------------------------------------------------------- |
+| `bug`     | `bug-discover`  | `bug-implement`     | Defect — code that is broken or behaves incorrectly                        |
+| `risk`    | `risk-discover` | `risk-implement`    | Code quality issue — works today but fragile, insecure, or likely to break |
+| `gap`     | `gap-discover`  | `gap-implement`     | Missing capability — functionality the system should have but does not     |
+| `feature` | humans / agents | `feature-implement` | Intentional enhancement requested by stakeholders                          |
 
 ### Develop Loop
 
 The `develop` skill runs a continuous improvement cycle across all issue types:
 
 ```text
-Phase 1–4:   bug discovery → refinement → approval → fix
-Phase 5–8:   risk discovery → refinement → approval → fix
-Phase 9–12:  gap discovery → refinement → approval → fix
-Phase 13:    docs refinement
+Phase 1–4:   bug discovery → refinement → approval → implementation
+Phase 5–8:   risk discovery → refinement → approval → implementation
+Phase 9–12:  gap discovery → refinement → approval → implementation
+Phase 13–16: feature discovery → refinement → approval → implementation
+Phase 17:    docs refinement
 ```
 
 ---

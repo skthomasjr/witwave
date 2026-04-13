@@ -36,9 +36,9 @@ glob-based filtering, optional LLM extraction passes, HMAC signing, and retry wi
 **Proxy endpoints** — Exposes `/proxy/{agent_name}` and `/conversations/{agent_name}` so the UI can target any team
 member by name and have the request routed through nyx's team manifest.
 
-**Scheduler discovery** — Exposes `GET /jobs`, `GET /tasks`, `GET /webhooks`, and `GET /continuations`, each returning
-a structured snapshot of all currently registered items of that type (name, schedule/window/filters, backend, running or
-active-fire counts). Mirrors the pattern of `/.well-known/agent-triggers.json` for triggers.
+**Scheduler discovery** — Exposes `GET /jobs`, `GET /tasks`, `GET /webhooks`, `GET /continuations`, and `GET /triggers`,
+each returning a structured snapshot of all currently registered items of that type (name, schedule/window/filters,
+backend, running or active-fire counts).
 
 **Metrics** — Aggregates Prometheus metrics from all backends at `/metrics` and exposes its own scheduler/queue/routing
 metrics.
@@ -60,7 +60,7 @@ metrics.
 | `backends/a2a.py`        | Forwards requests to a remote A2A backend over HTTP/JSON-RPC                        |
 | `metrics.py`             | Prometheus metric definitions                                                       |
 | `metrics_proxy.py`       | Aggregates backend /metrics with backend= label injection                           |
-| `conversations_proxy.py` | Concurrently fetches and merges /conversations and /trace from all backends          |
+| `conversations_proxy.py` | Concurrently fetches and merges /conversations and /trace from all backends         |
 | `sqlite_task_store.py`   | SQLite-backed task store (used when TASK_STORE_PATH is set)                         |
 | `utils.py`               | Frontmatter parser, duration parser, shared helpers                                 |
 
