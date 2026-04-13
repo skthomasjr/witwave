@@ -1,56 +1,58 @@
 ---
-name: bug-github-issues
-description: File, close, edit, comment on, or look up a bug (not a risk, gap, or feature). Trigger when the user says "file a bug", "report a bug", "close the bug", "close bug #N", "update the bug", "edit bug #N", "look up a bug", "find bug #N", "check if a bug exists", "list bugs", "show all bugs", "comment on bug #N", or "add a comment to the bug".
-version: 1.1.0
+name: risk-github-issues
+description: File, close, edit, comment on, or look up a risk (not a bug, gap, or feature). Trigger when the user says "file a risk", "report a risk", "close the risk", "close risk #N", "update the risk", "edit risk #N", "look up a risk", "find risk #N", "check if a risk exists", "list risks", "show all risks", "comment on risk #N", or "add a comment to the risk".
+version: 1.0.1
 ---
 
-# bug-github-issues
+# risk-github-issues
 
-This is a leaf skill. It contains all the commands needed to file, close, edit, and look up bugs. Other skills delegate to it using plain English — "file the bug", "close the bug", "update the bug's status" — and this skill carries out the action.
+This is a leaf skill. It contains all the commands needed to file, close, edit, and look up risks. Other skills delegate to it using plain English — "file the risk", "close the risk", "update the risk's status" — and this skill carries out the action.
 
 **Repository:** derive at runtime with `gh repo view --json nameWithOwner -q .nameWithOwner`. Never hardcode.
 
 ---
 
-## Filing a Bug
+## Filing a Risk
 
 **Step 1: Gather details.**
 
 If the caller provided a description, use it. If vague, ask for:
 - Which component is affected (refer to the Components table in `<repo-root>/README.md` if needed)
-- What the expected behavior is
-- What the actual behavior is
+- What category of risk it is (security, reliability, maintainability, performance, observability)
+- What condition would cause it to manifest
+- What the impact would be
 
 **Step 2: Check for duplicates.**
 
-Search open bugs before filing:
+Search open risks before filing:
 
 ```bash
-gh issue list --label "bug" --state open
+gh issue list --label "risk" --state open
 ```
 
-Compare titles against the bug being filed. If a sufficiently similar issue already exists, report it and stop. If it is a partial match, note the related issue in the new filing.
+Compare titles against the risk being filed. If a sufficiently similar issue already exists, report it and stop. If it is a partial match, note the related issue in the new filing.
 
-**Step 3: File the bug.**
+**Step 3: File the risk.**
 
-Write a concise title (under 70 characters). Before composing the body, read `<repo-root>/.github/ISSUE_TEMPLATE/bug.md` and populate every field defined there. Set **Status** to `pending` for all new bugs. Set **Skill** to the name and version of this skill (see the frontmatter of this file).
+Write a concise title (under 70 characters). Before composing the body, read `<repo-root>/.github/ISSUE_TEMPLATE/risk.md` and populate every field defined there. Set **Status** to `pending` for all new risks. Set **Skill** to the name and version of this skill (see the frontmatter of this file).
 
 Once the body is ready, derive labels from the body fields:
 
-- **Type** — always `bug` (required)
+- **Type** — always `risk` (required)
 - **Priority** — from `**Priority:**`; must be one of `critical`, `high`, `medium`, `low` (required; default to `medium` if not supplied)
 - **Status** — from `**Status:**`; must be one of `pending`, `approved`, `in-progress`, `needs-more-info`, `implemented`, `wont-fix` (required; default to `pending` if not supplied)
+- **Category** — from `**Category:**`; must be one of `security`, `reliability`, `maintainability`, `performance`, `observability` (required)
 - **Component** — from `**Component:**`; apply only if it is a known component (`agent`, `a2-claude`, `a2-codex`, `a2-gemini`, `ui`); omit if cross-cutting or blank (optional)
 
 ```bash
-gh issue create --title "<title>" --body "<body>" --label "bug" --label "<priority>" --label "<status>" [--label "<component>"]
+gh issue create --title "<title>" --body "<body>" --label "risk" --label "<priority>" --label "<status>" --label "<category>" [--label "<component>"]
 ```
 
 **Step 4: Return the issue URL.**
 
 ---
 
-## Closing a Bug
+## Closing a Risk
 
 **Step 1: Read the current issue body.**
 
@@ -82,9 +84,9 @@ gh issue close <number>
 
 ---
 
-## Editing a Bug
+## Editing a Risk
 
-Use this when updating a bug's fields without closing it — for example, changing priority, updating the fix description, recording a dependency, or advancing the status mid-lifecycle.
+Use this when updating a risk's fields without closing it — for example, changing priority, updating the mitigation, recording a dependency, or advancing the status mid-lifecycle.
 
 **Step 1: Read the current issue body and labels.**
 
@@ -97,10 +99,11 @@ gh issue view <number> --json body,labels
 The body is structured markdown. Edit only the fields that need to change. Common edits:
 
 - **Status** — replace `**Status:** <old>` with `**Status:** <new>`. Valid values: `pending`, `approved`, `in-progress`, `needs-more-info`, `implemented`, `wont-fix`.
-- **Priority** — replace `**Priority:** <old>` with `**Priority:** <new>`. Valid values: `high`, `medium`, `low`.
-- **Claimed by** — replace `**Claimed by:** none` with `**Claimed by:** <agent-name>` when an agent picks up a bug; set back to `none` when the agent drops it.
-- **Depends on** — replace the `- none` entry (or existing entries) under `**Depends on:**` with one bullet per dependency: `- #<number> — <one sentence reason this must be fixed first>`. Use `- none` when there are no dependencies.
-- **Fix** — replace the `**Fix:**` block with the revised suggestion.
+- **Priority** — replace `**Priority:** <old>` with `**Priority:** <new>`. Valid values: `critical`, `high`, `medium`, `low`.
+- **Category** — replace `**Category:** <old>` with `**Category:** <new>`. Valid values: `security`, `reliability`, `maintainability`, `performance`, `observability`.
+- **Claimed by** — replace `**Claimed by:** none` with `**Claimed by:** <agent-name>` when an agent picks up a risk; set back to `none` when the agent drops it.
+- **Depends on** — replace the `- none` entry (or existing entries) under `**Depends on:**` with one bullet per dependency: `- #<number> — <one sentence reason this must be resolved first>`. Use `- none` when there are no dependencies.
+- **Mitigation** — replace the `**Mitigation:**` block with the revised suggestion.
 - **Component** — replace `**Component:** <old>` with `**Component:** <new>`.
 
 Write the updated body back:
@@ -111,7 +114,7 @@ gh issue edit <number> --body "<updated-body>"
 
 **Step 3: Sync labels to match the updated body.**
 
-If Status or Priority changed, swap the old label for the new one:
+If Status, Priority, or Category changed, swap the old label for the new one:
 
 ```bash
 gh issue edit <number> --remove-label "<old-label>" --add-label "<new-label>"
@@ -131,7 +134,7 @@ gh issue edit <number> --remove-label "blocked-by"
 
 ---
 
-## Commenting on a Bug
+## Commenting on a Risk
 
 Use this when adding a comment to an existing issue without editing its body — for example, noting a re-identification, recording an observation, or leaving a status update.
 
@@ -160,18 +163,18 @@ gh issue comment <number> --body "<comment-body>
 
 ---
 
-## Looking Up a Bug
+## Looking Up a Risk
 
-To find a specific bug by number:
+To find a specific risk by number:
 
 ```bash
 gh issue view <number> --json number,title,body,labels,state
 ```
 
-To list bugs by status (e.g. all approved bugs):
+To list risks by status (e.g. all approved risks):
 
 ```bash
-gh issue list --label "bug" --label "<status>" --state open --json number,title,labels
+gh issue list --label "risk" --label "<status>" --state open --json number,title,labels
 ```
 
 Valid status labels: `pending`, `approved`, `in-progress`, `needs-more-info`, `implemented`, `wont-fix`.

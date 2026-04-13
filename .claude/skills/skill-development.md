@@ -1,7 +1,7 @@
 ---
 name: skill-development
 description: Guide the design and review of skills in this repository. Trigger when the user says "create a skill", "write a skill", "review a skill", "update a skill", or "help with a skill".
-version: 1.0.1
+version: 1.1.0
 ---
 
 # skill-development
@@ -49,6 +49,21 @@ A skill should do one thing. If a skill is doing two unrelated things, split it.
 **Version every change.**
 
 Bump the version in the frontmatter whenever the skill's behavior changes. Use semantic versioning: patch for clarifications, minor for new steps or capabilities, major for breaking changes to the workflow.
+
+## Issue Type Taxonomy
+
+Skills in this repository are organized around four first-class issue types. Each type has its own family of skills (discovery, refinement, approval, fix, github-issues, etc.) and follows the same structural pattern as bugs.
+
+| Type | What it covers |
+|------|---------------|
+| **bugs** | Defects — code that is broken or behaves incorrectly at runtime |
+| **risks** | Code quality issues — code that works today but is fragile, insecure, hard to maintain, or likely to break under foreseeable conditions |
+| **gaps** | Missing behavior — functionality the system should have but does not |
+| **features** | Intentional enhancements — new capabilities requested by stakeholders |
+
+When creating or reviewing a skill for any of these types, treat the corresponding `bug-*` skill family as the reference implementation. Mirror its structure unless there is a specific reason to diverge, and document any divergences explicitly.
+
+**bugs** is fully built out. **risks** is next. **gaps** and **features** are planned.
 
 ## Instructions
 
