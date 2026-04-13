@@ -63,7 +63,7 @@ Skills in this repository are organized around four first-class issue types. Eac
 
 When creating or reviewing a skill for any of these types, treat the corresponding `bug-*` skill family as the reference implementation. Mirror its structure unless there is a specific reason to diverge, and document any divergences explicitly.
 
-**bugs** is fully built out. **risks** is next. **gaps** and **features** are planned.
+**bugs** and **risks** and **gaps** are fully built out. **features** is planned.
 
 ## Instructions
 

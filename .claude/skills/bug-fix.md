@@ -1,7 +1,7 @@
 ---
 name: bug-fix
 description: Fix all approved bugs one at a time, committing and pushing each fix. Trigger when the user says "fix bugs", "fix approved bugs", "run bug fix", or "start bug fixing".
-version: 1.0.1
+version: 1.0.2
 ---
 
 # bug-fix
@@ -30,13 +30,17 @@ Once selected, remove the `approved` label, add the `in-progress` label, and upd
 
 Read the full source file(s) identified in the bug record — not just the affected lines. Understand what calls the affected code and what it calls. If the bug touches shared utilities or cross-cutting logic, read those files too.
 
-**Step 3: Fix the bug.**
+**Step 3: Research if needed.**
+
+If the correct behavior or fix approach is unclear — for example, the bug involves an unfamiliar API, a subtle language or framework behavior, or a fix pattern you are not confident about — do a targeted web search before writing code. Search for the specific behavior, error, or pattern in question. If a search confirms the right approach, proceed. If the search reveals the fix is more complex than suggested, note what you found and adjust the approach accordingly.
+
+**Step 4: Fix the bug.**
 
 Apply the fix. Use the suggested fix from the bug record unless your code review reveals a better or more correct approach. If you deviate, note why.
 
 Do not fix more than one bug per commit. Do not make unrelated changes.
 
-**Step 4: Verify the fix.**
+**Step 5: Verify the fix.**
 
 Re-read the changed code. Confirm:
 - The bug condition is gone — the code now behaves correctly
@@ -45,11 +49,11 @@ Re-read the changed code. Confirm:
 
 If the fix is wrong or incomplete, revise it before continuing.
 
-**Step 5: Commit and push.**
+**Step 6: Commit and push.**
 
 Stage only the files changed for this bug. Write a commit message that describes what was fixed and why, referencing the bug number. Push the commit.
 
-**Step 6: Close the bug.**
+**Step 7: Close the bug.**
 
 Leave a comment on the bug documenting:
 - What was changed and where (file and line)

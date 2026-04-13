@@ -1,7 +1,7 @@
 ---
 name: risk-fix
 description: Mitigate all approved risks one at a time, committing and pushing each mitigation. Trigger when the user says "fix risks", "mitigate risks", "fix approved risks", "mitigate approved risks", "run risk fix", or "start risk mitigation".
-version: 1.0.1
+version: 1.0.2
 ---
 
 # risk-fix
@@ -30,13 +30,17 @@ Once selected, remove the `approved` label, add the `in-progress` label, and upd
 
 Read the full source file(s) identified in the risk record — not just the affected lines. Understand what calls the affected code and what it calls. If the risk touches shared utilities or cross-cutting logic, read those files too.
 
-**Step 3: Apply the mitigation.**
+**Step 3: Research if needed.**
+
+If the mitigation approach is unfamiliar or its correctness is uncertain — for example, the mitigation involves a security pattern, concurrency primitive, or library API you are not confident about — do a targeted web search before writing code. Search for the specific pattern or technique in question. If a search confirms the approach is sound and standard, proceed. If the search reveals a better or more correct mitigation, note what you found and adjust accordingly.
+
+**Step 4: Apply the mitigation.**
 
 Apply the mitigation. Use the suggested mitigation from the risk record unless your code review reveals a better or more correct approach. If you deviate, note why.
 
 Do not mitigate more than one risk per commit. Do not make unrelated changes.
 
-**Step 4: Verify the mitigation.**
+**Step 5: Verify the mitigation.**
 
 Re-read the changed code. Confirm:
 - The condition described in the risk record can no longer occur — or its impact has been reduced to an acceptable level
@@ -45,11 +49,11 @@ Re-read the changed code. Confirm:
 
 If the mitigation is wrong or incomplete, revise it before continuing.
 
-**Step 5: Commit and push.**
+**Step 6: Commit and push.**
 
 Stage only the files changed for this risk. Write a commit message that describes what was mitigated and why, referencing the risk number. Push the commit.
 
-**Step 6: Close the risk.**
+**Step 7: Close the risk.**
 
 Leave a comment on the risk documenting:
 - What was changed and where (file and line)
