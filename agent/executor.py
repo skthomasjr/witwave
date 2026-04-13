@@ -282,8 +282,8 @@ class AgentExecutor(A2AAgentExecutor):
         if routing_entry and routing_entry.model:
             return routing_entry.model
         backend = self._backends.get(backend_id)
-        if backend is not None and backend.config.model:
-            return backend.config.model
+        if backend is not None and backend._config.model:
+            return backend._config.model
         return None
 
     def _mcp_watchers(self):
