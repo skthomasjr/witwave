@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 import time
 import uuid
 
@@ -141,7 +142,7 @@ class A2ABackend:
                 raise
 
             if attempt < _MAX_RETRIES - 1:
-                delay = _RETRY_BACKOFF_BASE * (2 ** attempt)
+                delay = _RETRY_BACKOFF_BASE * (2 ** attempt) + random.uniform(0, _RETRY_BACKOFF_BASE)
                 await asyncio.sleep(delay)
 
         raise ConnectionError(
