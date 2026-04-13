@@ -602,6 +602,14 @@ class AgentExecutor(A2AAgentExecutor):
         """Return callables for MCP config watching."""
         return [self.mcp_config_watcher]
 
+    async def close(self) -> None:
+        """Cancel and drain all MCP watcher tasks."""
+        for task in self._mcp_watcher_tasks:
+            task.cancel()
+        if self._mcp_watcher_tasks:
+            await asyncio.gather(*self._mcp_watcher_tasks, return_exceptions=True)
+        self._mcp_watcher_tasks.clear()
+
     async def mcp_config_watcher(self) -> None:
         self._mcp_servers = await asyncio.to_thread(_load_mcp_config)
         if a2_mcp_servers_active is not None:
