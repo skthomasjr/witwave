@@ -434,6 +434,8 @@ class WebhookRunner:
         self._backends = backends
         self._default_backend_id = default_backend_id
         self._active_deliveries: set[asyncio.Task] = set()
+        # Per-subscription in-flight tasks, keyed by subscription name.
+        self._deliveries_by_name: dict[str, set[asyncio.Task]] = {}
 
     def set_backends(self, backends: dict, default_backend_id: str) -> None:
         """Update the backend references (called when backends are reloaded)."""
@@ -455,7 +457,7 @@ class WebhookRunner:
                 "retries": sub.retries,
                 "backend_id": sub.backend_id,
                 "model": sub.model,
-                "active_deliveries": len(self._active_deliveries),
+                "active_deliveries": len(self._deliveries_by_name.get(sub.name, set())),
             })
         return result
 
@@ -532,7 +534,12 @@ class WebhookRunner:
                     default_backend_id=self._default_backend_id,
                 ))
                 self._active_deliveries.add(_t)
-                _t.add_done_callback(self._active_deliveries.discard)
+                deliveries = self._deliveries_by_name.setdefault(sub.name, set())
+                deliveries.add(_t)
+                def _cleanup(t: asyncio.Task, _name: str = sub.name) -> None:
+                    self._active_deliveries.discard(t)
+                    self._deliveries_by_name.get(_name, set()).discard(t)
+                _t.add_done_callback(_cleanup)
 
     async def run(self) -> None:
         logger.info(f"Webhook runner watching {WEBHOOKS_DIR}")
