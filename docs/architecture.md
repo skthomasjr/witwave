@@ -462,7 +462,8 @@ All infrastructure decisions are evaluated against Kubernetes compatibility:
 - Stateless containers at the nyx-agent layer (all state lives in backends)
 - Standard HTTP endpoints suitable for `Service` and `Ingress`
 
-A Helm chart is planned. A Kubernetes Operator (declarative agent lifecycle via CRDs) is under consideration.
+A Helm chart is available at `charts/nyx/` and published to `oci://ghcr.io/skthomasjr/charts/nyx` on every release
+tag. A Kubernetes Operator (declarative agent lifecycle via CRDs) is under consideration.
 
 ---
 

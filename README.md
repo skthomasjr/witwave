@@ -57,9 +57,45 @@ Backend containers:
 - An OpenAI API key (for `a2-codex`)
 - A Gemini API key (for `a2-gemini`)
 
+## Container Images
+
+Published images are available on GitHub Container Registry. All five images are built and pushed automatically on
+every release tag.
+
+| Image       | Registry path                                    |
+| ----------- | ------------------------------------------------ |
+| `nyx-agent` | `ghcr.io/skthomasjr/images/nyx-agent:latest`    |
+| `a2-claude` | `ghcr.io/skthomasjr/images/a2-claude:latest`    |
+| `a2-codex`  | `ghcr.io/skthomasjr/images/a2-codex:latest`     |
+| `a2-gemini` | `ghcr.io/skthomasjr/images/a2-gemini:latest`    |
+| `ui`        | `ghcr.io/skthomasjr/images/ui:latest`           |
+
+Pull a specific version with a semver tag, e.g. `ghcr.io/skthomasjr/images/nyx-agent:0.1.0`.
+
+## Helm Chart
+
+A Helm chart for Kubernetes deployment is published to GHCR alongside the images:
+
+```bash
+helm install nyx oci://ghcr.io/skthomasjr/charts/nyx --version 0.1.0 --namespace nyx
+```
+
+See [charts/nyx/README.md](charts/nyx/README.md) for full installation instructions.
+
 ## Getting Started
 
-### 1. Build the images
+### 1. Pull or build the images
+
+Pull published images:
+
+```bash
+docker pull ghcr.io/skthomasjr/images/nyx-agent:latest
+docker pull ghcr.io/skthomasjr/images/a2-claude:latest
+docker pull ghcr.io/skthomasjr/images/a2-codex:latest
+docker pull ghcr.io/skthomasjr/images/a2-gemini:latest
+```
+
+Or build locally:
 
 ```bash
 docker build -f agent/Dockerfile -t nyx-agent:latest .
