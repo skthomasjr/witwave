@@ -1,0 +1,28 @@
+{{- $metricsService := $.Values.metrics.service | default dict }}
+{{- if and $.Values.metrics.service ($metricsService.enabled) }}
+{{- range .Values.agents }}
+{{- $agentMetricsEnabled := (.metrics).enabled | default $.Values.metrics.enabled }}
+{{- if $agentMetricsEnabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nyx-{{ .name }}-metrics
+  labels:
+    app.kubernetes.io/name: {{ .name }}
+    app.kubernetes.io/component: nyx-agent
+    app.kubernetes.io/part-of: nyx
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: {{ $metricsService.port | default 9090 | quote }}
+    prometheus.io/path: {{ $metricsService.path | default "/metrics" | quote }}
+spec:
+  selector:
+    app.kubernetes.io/name: {{ .name }}
+  ports:
+    - name: metrics
+      port: {{ $metricsService.port | default 9090 }}
+      targetPort: 8000
+{{- end }}
+{{- end }}
+{{- end }}

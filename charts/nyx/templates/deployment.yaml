@@ -28,7 +28,12 @@ spec:
         - name: nyx-agent
           image: {{ .image.repository }}:{{ .image.tag | default $.Chart.AppVersion }}
           ports:
-            - containerPort: 8000
+            - name: http
+              containerPort: 8000
+            {{- if ((.metrics).enabled | default $.Values.metrics.enabled) }}
+            - name: metrics
+              containerPort: 8000
+            {{- end }}
           env:
             - name: AGENT_NAME
               value: {{ .name }}

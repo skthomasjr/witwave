@@ -4,6 +4,16 @@ metrics:
   # Enable or disable metrics globally.
   enabled: false
 
+  # # Metrics Service for Prometheus scraping.
+  # # Created per agent when metrics.enabled is true and service.enabled is true.
+  # service:
+  #   # Enable the metrics Service.
+  #   enabled: false
+  #   # Port exposed on the Service (mapped to the nyx-agent container port).
+  #   port: 9090
+  #   # Scrape path annotated on the Service.
+  #   path: /metrics
+
 # Shared storage volume mounted into all agent pods and backend sidecars.
 sharedStorage:
   # Enable shared storage.
