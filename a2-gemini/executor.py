@@ -208,32 +208,33 @@ def _save_history(session_id: str, history: list[types.Content]) -> None:
     ) from last_exc
 
 
-_session_locks: dict[str, asyncio.Lock] = {}
+def _get_session_lock(session_id: str, session_locks: dict[str, asyncio.Lock]) -> asyncio.Lock:
+    if session_id not in session_locks:
+        session_locks[session_id] = asyncio.Lock()
+    return session_locks[session_id]
 
 
-def _get_session_lock(session_id: str) -> asyncio.Lock:
-    if session_id not in _session_locks:
-        _session_locks[session_id] = asyncio.Lock()
-    return _session_locks[session_id]
-
-
-def _track_session(sessions: OrderedDict[str, float], session_id: str) -> None:
+def _track_session(
+    sessions: OrderedDict[str, float],
+    session_id: str,
+    session_locks: dict[str, asyncio.Lock],
+) -> None:
     if session_id in sessions:
         sessions.move_to_end(session_id)
         sessions[session_id] = time.monotonic()
     else:
         if len(sessions) >= MAX_SESSIONS:
             _evicted_id, last_used_at = sessions.popitem(last=False)
-            _session_locks.pop(_evicted_id, None)
+            session_locks.pop(_evicted_id, None)
             if a2_session_evictions_total is not None:
                 a2_session_evictions_total.labels(**_LABELS).inc()
             if a2_session_age_seconds is not None:
                 a2_session_age_seconds.labels(**_LABELS).observe(time.monotonic() - last_used_at)
         sessions[session_id] = time.monotonic()
         # Prune any lock entries for sessions no longer tracked
-        stale = [sid for sid in _session_locks if sid not in sessions]
+        stale = [sid for sid in session_locks if sid not in sessions]
         for sid in stale:
-            _session_locks.pop(sid, None)
+            session_locks.pop(sid, None)
     if a2_active_sessions is not None:
         a2_active_sessions.labels(**_LABELS).set(len(sessions))
     if a2_lru_cache_utilization_percent is not None:
@@ -257,6 +258,7 @@ async def run_query(
     prompt: str,
     session_id: str,
     agent_md_content: str,
+    session_locks: dict[str, asyncio.Lock],
     model: str | None = None,
 ) -> list[str]:
     resolved_model = model or GEMINI_MODEL
@@ -265,7 +267,7 @@ async def run_query(
     if agent_md_content:
         instructions = f"{agent_md_content}\n\nYour session ID is {session_id}."
 
-    lock = _get_session_lock(session_id)
+    lock = _get_session_lock(session_id, session_locks)
     async with lock:
         history = await asyncio.to_thread(_load_history, session_id)
 
@@ -364,12 +366,13 @@ async def run(
     session_id: str,
     sessions: OrderedDict[str, float],
     agent_md_content: str,
+    session_locks: dict[str, asyncio.Lock],
     model: str | None = None,
 ) -> str:
     if a2_concurrent_queries is not None:
         a2_concurrent_queries.labels(**_LABELS).inc()
     try:
-        return await _run_inner(prompt, session_id, sessions, agent_md_content, model)
+        return await _run_inner(prompt, session_id, sessions, agent_md_content, session_locks, model)
     finally:
         if a2_concurrent_queries is not None:
             a2_concurrent_queries.labels(**_LABELS).dec()
@@ -380,6 +383,7 @@ async def _run_inner(
     session_id: str,
     sessions: OrderedDict[str, float],
     agent_md_content: str,
+    session_locks: dict[str, asyncio.Lock],
     model: str | None = None,
 ) -> str:
     resolved_model = model or GEMINI_MODEL
@@ -403,10 +407,10 @@ async def _run_inner(
     _start = time.monotonic()
     try:
         collected = await asyncio.wait_for(
-            run_query(prompt, session_id, agent_md_content, model=model),
+            run_query(prompt, session_id, agent_md_content, session_locks, model=model),
             timeout=TASK_TIMEOUT_SECONDS,
         )
-        _track_session(sessions, session_id)
+        _track_session(sessions, session_id, session_locks)
     except asyncio.TimeoutError:
         logger.error(f"Session {session_id!r}: timed out after {TASK_TIMEOUT_SECONDS}s.")
         if a2_tasks_total is not None:
@@ -416,7 +420,7 @@ async def _run_inner(
         if a2_task_last_error_timestamp_seconds is not None:
             a2_task_last_error_timestamp_seconds.labels(**_LABELS).set(time.time())
         if session_id not in sessions:
-            _session_locks.pop(session_id, None)
+            session_locks.pop(session_id, None)
         raise
     except Exception:
         if a2_tasks_total is not None:
@@ -426,7 +430,7 @@ async def _run_inner(
         if a2_task_last_error_timestamp_seconds is not None:
             a2_task_last_error_timestamp_seconds.labels(**_LABELS).set(time.time())
         if session_id not in sessions:
-            _session_locks.pop(session_id, None)
+            session_locks.pop(session_id, None)
         raise
 
     if a2_tasks_total is not None:
@@ -450,6 +454,7 @@ async def _run_inner(
 class AgentExecutor(A2AAgentExecutor):
     def __init__(self):
         self._sessions: OrderedDict[str, float] = OrderedDict()
+        self._session_locks: dict[str, asyncio.Lock] = {}
         self._running_tasks: dict[str, asyncio.Task] = {}
         self._agent_md_content: str = _load_agent_md()
         self._mcp_watcher_tasks: list[asyncio.Task] = []
@@ -489,6 +494,7 @@ class AgentExecutor(A2AAgentExecutor):
                 session_id,
                 self._sessions,
                 self._agent_md_content,
+                self._session_locks,
                 model=model,
             )
             _success = True
