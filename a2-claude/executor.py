@@ -58,6 +58,7 @@ from metrics import (
     a2_sdk_turns_per_query,
     a2_session_age_seconds,
     a2_session_evictions_total,
+    a2_session_history_save_errors_total,
     a2_session_idle_seconds,
     a2_session_starts_total,
     a2_stderr_lines_per_task,
@@ -143,6 +144,8 @@ def _session_file_exists(session_id: str) -> bool:
         sessions_dir = _config_home() / "projects" / _sanitize(cwd)
         return (sessions_dir / f"{session_id}.jsonl").exists()
     except Exception:
+        if a2_session_history_save_errors_total is not None:
+            a2_session_history_save_errors_total.labels(**_LABELS).inc()
         return False
 
 AGENT_NAME = os.environ.get("AGENT_NAME", "a2-claude")
