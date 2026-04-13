@@ -633,3 +633,11 @@ class AgentExecutor(A2AAgentExecutor):
             logger.info(f"Task {task_id!r} cancellation requested.")
         else:
             logger.info(f"Task {task_id!r} cancellation requested but no running task found.")
+
+    async def close(self) -> None:
+        """Cancel and drain all watcher tasks."""
+        for task in self._mcp_watcher_tasks:
+            task.cancel()
+        if self._mcp_watcher_tasks:
+            await asyncio.gather(*self._mcp_watcher_tasks, return_exceptions=True)
+        self._mcp_watcher_tasks.clear()

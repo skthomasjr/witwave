@@ -355,6 +355,7 @@ async def main():
                 if isinstance(route, Mount) and route.path == "/":
                     await stack.enter_async_context(_sub_app_lifespan(route.app))
             yield
+            await executor.close()
 
     full_app = Starlette(routes=_routes, lifespan=lifespan)
 
