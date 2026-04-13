@@ -1,7 +1,7 @@
 ---
 name: docs-refinement
 description: Review and update project documentation to ensure it is accurate, complete, and consistent with the current codebase. Trigger when the user says "refine docs", "update the docs", "review the docs", "check the documentation", "update documentation", or "run docs refinement" — with or without a specific document or component name.
-version: 1.0.0
+version: 1.1.0
 ---
 
 # docs-refinement
@@ -66,6 +66,10 @@ After updating each document, briefly note:
 
 If no changes were needed, say so clearly. Do not pad the output.
 
-**Step 7: Commit the changes.**
+**Step 7: Format the documents.**
 
-Once all documents have been reviewed and updated, stage all modified documentation files, commit them with a message that summarizes what was updated and why, and push. Do not commit or push unrelated files.
+Once all documents have been updated, format all modified documents. This ensures consistent prose wrapping, table column alignment, and lint compliance.
+
+**Step 8: Commit the changes.**
+
+Once all documents have been reviewed, updated, and formatted, stage all modified documentation files, commit them with a message that summarizes what was updated and why, and push. Do not commit or push unrelated files.
