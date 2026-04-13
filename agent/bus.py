@@ -73,6 +73,8 @@ class MessageBus:
         if message.kind in self._pending_kinds:
             if agent_bus_dedup_total is not None:
                 agent_bus_dedup_total.labels(kind=message.kind).inc()
+            if agent_bus_queue_depth is not None:
+                agent_bus_queue_depth.set(self._queue.qsize())
             return False
         if message.result is None:
             message.result = asyncio.get_running_loop().create_future()
