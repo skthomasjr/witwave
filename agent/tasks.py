@@ -251,8 +251,10 @@ def _now_in_tz(tz: ZoneInfo) -> datetime:
 def _next_window_open(item: TaskItem, after: datetime) -> datetime | None:
     """Return the next datetime (in item.tz) when the task window opens, starting after `after`.
 
-    Returns None if no future eligible day exists.
+    Returns None if no future eligible day exists, or if the item has no window_start (run-once mode).
     """
+    if item.window_start is None:
+        return None
     tz = item.tz
     # Normalise `after` to item's timezone
     after_local = after.astimezone(tz)
