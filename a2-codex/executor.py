@@ -3,7 +3,6 @@ import json
 import logging
 import os
 import subprocess
-import threading
 import time
 import uuid
 from collections import OrderedDict
@@ -156,13 +155,13 @@ def _load_tool_config() -> dict:
 
 
 _computer: PlaywrightComputer | None = None
-_computer_lock = threading.Lock()
+_computer_lock = asyncio.Lock()
 
 # Models known to support computer_use_preview
 _COMPUTER_SUPPORTED_MODELS = {"computer-use-preview"}
 
 
-def _build_tools(model: str) -> list:
+async def _build_tools(model: str) -> list:
     global _computer
     cfg = _load_tool_config()
     tools = []
@@ -171,7 +170,7 @@ def _build_tools(model: str) -> list:
     if cfg.get("web_search", False):
         tools.append(WebSearchTool())
     if cfg.get("computer", False) and model in _COMPUTER_SUPPORTED_MODELS:
-        with _computer_lock:
+        async with _computer_lock:
             if _computer is None:
                 _computer = PlaywrightComputer()
         tools.append(ComputerTool(computer=_computer))
@@ -258,7 +257,7 @@ async def run_query(
         name=AGENT_NAME,
         instructions=instructions,
         model=resolved_model,
-        tools=_build_tools(resolved_model),
+        tools=await _build_tools(resolved_model),
     )
 
     try:
