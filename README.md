@@ -167,6 +167,17 @@ backend:
 Routing values can be a plain agent ID string or an object with `agent:` and optional `model:` fields. Model resolution
 order: per-message override → routing entry `model:` → per-backend config `model:`.
 
+## Consensus Mode
+
+Setting `consensus: true` in a job, task, or trigger frontmatter causes nyx-agent to fan out the prompt to **every
+configured backend** in parallel, then aggregate the responses:
+
+- **Binary responses** (yes / no / agree / disagree variants): majority vote. The default backend breaks ties.
+- **Freeform responses**: a synthesis prompt is dispatched to the default backend, which merges the collected responses
+  into a single coherent answer.
+
+Use consensus mode for high-stakes decisions where you want more than one model family's perspective.
+
 ## Adding an Agent
 
 1. Copy an existing agent directory:
@@ -216,6 +227,8 @@ Each backend container additionally exposes:
 - `GET /health` — health check: 200/`{"status": "ok", "agent": ..., "uptime_seconds": ...}` or
   503/`{"status": "starting"}` while initializing
 - `GET /metrics` — Prometheus metrics (when `METRICS_ENABLED` is set)
+- `POST /mcp` — MCP JSON-RPC server (`initialize`, `tools/list`, `tools/call` with a single `ask_agent` tool); allows
+  MCP hosts (Claude Desktop, Cursor, VS Code extensions) to invoke the agent as a tool without going through nyx-agent
 
 ## Memory
 
@@ -257,19 +270,19 @@ Memory files are not committed to source control. nyx-agent has no memory layer 
 
 ### Backend (a2-claude / a2-codex / a2-gemini) environment variables
 
-| Variable                   | Default                            | Description                                                                                                 |
-| -------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `AGENT_NAME`               | `a2-claude`/`a2-codex`/`a2-gemini` | Backend instance name (e.g. `iris-a2-claude`)                                                               |
-| `AGENT_OWNER`              | _(same as `AGENT_NAME`)_           | Named agent this backend belongs to (e.g. `iris`); used in metric labels                                    |
-| `AGENT_ID`                 | `claude`/`codex`/`gemini`          | Backend slot identifier (e.g. `claude`); used in metric labels                                              |
-| `AGENT_URL`                | `http://localhost:8080/`           | Public A2A endpoint URL for the agent card                                                                  |
-| `AGENT_MD`                 | `/home/agent/agent.md`             | Path to the identity file mounted into the container                                                        |
-| `BACKEND_PORT`             | `8080`                             | HTTP port the backend listens on (internal)                                                                 |
-| `METRICS_ENABLED`          | _(unset)_                          | Set to any non-empty value to expose `/metrics`                                                             |
-| `CONVERSATIONS_AUTH_TOKEN` | _(unset)_                          | Bearer token required to access `/conversations` and `/trace`                                               |
-| `TASK_STORE_PATH`          | _(unset)_                          | Path for SQLite A2A task store; defaults to in-memory (state lost on restart)                               |
-| `WORKER_MAX_RESTARTS`      | `5`                                | Consecutive crash limit before a critical worker marks the backend not-ready                                |
-| `LOG_PROMPT_MAX_BYTES`     | `200`                              | (`a2-claude` only) Maximum bytes of the prompt logged at INFO level; `0` suppresses prompt logging entirely |
+| Variable                   | Default                            | Description                                                                              |
+| -------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------- |
+| `AGENT_NAME`               | `a2-claude`/`a2-codex`/`a2-gemini` | Backend instance name (e.g. `iris-a2-claude`)                                            |
+| `AGENT_OWNER`              | _(same as `AGENT_NAME`)_           | Named agent this backend belongs to (e.g. `iris`); used in metric labels                 |
+| `AGENT_ID`                 | `claude`/`codex`/`gemini`          | Backend slot identifier (e.g. `claude`); used in metric labels                           |
+| `AGENT_URL`                | `http://localhost:8080/`           | Public A2A endpoint URL for the agent card                                               |
+| `AGENT_MD`                 | `/home/agent/agent.md`             | Path to the identity file mounted into the container                                     |
+| `BACKEND_PORT`             | `8080`                             | HTTP port the backend listens on (internal)                                              |
+| `METRICS_ENABLED`          | _(unset)_                          | Set to any non-empty value to expose `/metrics`                                          |
+| `CONVERSATIONS_AUTH_TOKEN` | _(unset)_                          | Bearer token required to access `/conversations` and `/trace`                            |
+| `TASK_STORE_PATH`          | _(unset)_                          | Path for SQLite A2A task store; defaults to in-memory (state lost on restart)            |
+| `WORKER_MAX_RESTARTS`      | `5`                                | Consecutive crash limit before a critical worker marks the backend not-ready             |
+| `LOG_PROMPT_MAX_BYTES`     | `200`                              | Maximum bytes of the prompt logged at INFO level; `0` suppresses prompt logging entirely |
 
 ## Metrics
 

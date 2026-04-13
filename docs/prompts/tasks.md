@@ -1,16 +1,17 @@
 # Tasks
 
-Tasks are calendar-driven scheduled prompts. Unlike jobs (which repeat on a simple cron interval indefinitely),
-tasks are bounded by a daily time window, optional days-of-week selection, and optional start/end date bounds —
-modeled after recurring calendar events. Tasks can optionally loop within their window, pausing between iterations
-and stopping early when the agent signals completion.
+Tasks are calendar-driven scheduled prompts. Unlike jobs (which repeat on a simple cron interval indefinitely), tasks
+are bounded by a daily time window, optional days-of-week selection, and optional start/end date bounds — modeled after
+recurring calendar events. Tasks can optionally loop within their window, pausing between iterations and stopping early
+when the agent signals completion.
 
 **Minimal test task** (fires once daily at midnight UTC, no window close, no loop):
 
 ```markdown
 ---
 name: Task Ping
-description: Test task — verifies the task scheduler fires and the backend responds correctly. Fires once daily at midnight UTC.
+description:
+  Test task — verifies the task scheduler fires and the backend responds correctly. Fires once daily at midnight UTC.
 window-start: "00:00"
 enabled: true
 ---
@@ -33,8 +34,8 @@ loop-gap: 30m
 done-when: STANDUP_DONE
 ---
 
-Review all open GitHub Issues updated in the last 24 hours. Summarize progress, flag blockers, and identify
-the highest-priority item for today. When done, respond with STANDUP_DONE.
+Review all open GitHub Issues updated in the last 24 hours. Summarize progress, flag blockers, and identify the
+highest-priority item for today. When done, respond with STANDUP_DONE.
 ```
 
 ## Frontmatter Fields
@@ -55,3 +56,4 @@ the highest-priority item for today. When done, respond with STANDUP_DONE.
 | `model`           | No       | Model override passed to the backend.                                                                                    |
 | `agent`           | No       | Backend ID override (e.g. `codex`); defaults to routing config.                                                          |
 | `enabled`         | No       | `false` disables without deleting. Default: `true`.                                                                      |
+| `consensus`       | No       | `true` to fan out to all backends and aggregate; default `false`.                                                        |

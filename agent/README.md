@@ -73,14 +73,15 @@ All configuration is file-based and hot-reloaded — no restart required for mos
 
 **`HEARTBEAT.md`** — Cron schedule + prompt body for the heartbeat.
 
-**`jobs/*.md`** — Frontmatter: `schedule` (cron), `session` (optional fixed ID), `agent`/`model` overrides. Body: the
-prompt.
+**`jobs/*.md`** — Frontmatter: `schedule` (cron), `session` (optional fixed ID), `agent`/`model` overrides,
+`consensus: true` (fan out to all backends). Body: the prompt.
 
 **`tasks/*.md`** — Frontmatter: `days` (e.g. `mon-fri`), `start`/`end` time window, `loop`/`gap` for repeated firing,
-optional date range. Body: the prompt.
+optional date range, `consensus: true` (fan out to all backends). Body: the prompt.
 
 **`triggers/*.md`** — Frontmatter: `endpoint` (URL slug), `secret-env-var` (name of env var holding the HMAC key),
-`agent`/`model` overrides. Body: system context prepended to the inbound payload.
+`agent`/`model` overrides, `consensus: true` (fan out to all backends). Body: system context prepended to the inbound
+payload.
 
 **`continuations/*.md`** — Frontmatter: `continues-after` (upstream kind), `on` (success/error/any), `trigger-when`
 (substring match), `delay`. Body: the follow-up prompt.

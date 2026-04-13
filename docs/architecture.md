@@ -252,8 +252,10 @@ subscriptions against three filters (`notify-when`, `notify-on-kind`, `notify-on
 subscriptions as async fire-and-forget HTTP POST tasks.
 
 **`executor.py`** — Receives `BusMessage` objects from the bus, resolves the target backend from `routing.*`, and calls
-`backend.run_query(prompt, session_id, is_new)`. On completion, calls `on_prompt_completed()` which notifies the
-`ContinuationRunner` and `WebhookRunner`.
+`backend.run_query(prompt, session_id, is_new)`. When `message.consensus == True`, fans out to all configured backends
+in parallel and aggregates the responses (majority vote for binary yes/no answers; synthesis pass via the default
+backend for freeform responses). On completion, calls `on_prompt_completed()` which notifies the `ContinuationRunner`
+and `WebhookRunner`.
 
 **`backends/a2a.py`** — Implements `AgentBackend.run_query` by constructing an A2A `message/send` JSON-RPC payload and
 forwarding it to the backend URL. The backend URL can be overridden per-backend via an environment variable
@@ -270,7 +272,8 @@ All three backends share identical structure and API surface; they differ only i
 
 **`main.py`** — Builds the A2A `AgentCard` from the mounted `agent.md` file (via `AGENT_MD` env var), wires the
 `AgentExecutor` and task store (`SqliteTaskStore` when `TASK_STORE_PATH` is set, `InMemoryTaskStore` otherwise), and
-serves the full Starlette application with routes for `/.well-known/agent.json`, `/` (A2A), `/health`, and `/metrics`.
+serves the full Starlette application with routes for `/.well-known/agent.json`, `/` (A2A), `/health`, `/metrics`, and
+`/mcp` (MCP JSON-RPC server).
 
 **`executor.py`** — Implements the A2A `AgentExecutor` interface. Manages session continuity using the session ID passed
 in the A2A request metadata. Writes `conversation.jsonl` to the mounted logs directory.
@@ -334,19 +337,19 @@ Agent identity and behavior are entirely file-based. No identity is baked into a
 
 **Backends (a2-claude / a2-codex / a2-gemini):**
 
-| Variable                   | Default                                | Description                                                                                 |
-| -------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `AGENT_NAME`               | `a2-claude` / `a2-codex` / `a2-gemini` | Backend instance name (e.g. `iris-a2-claude`)                                               |
-| `AGENT_OWNER`              | _(same as `AGENT_NAME`)_               | Named agent this backend belongs to (e.g. `iris`); used in metric labels                    |
-| `AGENT_ID`                 | `claude` / `codex` / `gemini`          | Backend slot identifier; used in metric labels                                              |
-| `AGENT_URL`                | `http://localhost:8080/`               | Public A2A endpoint URL reported in agent card                                              |
-| `AGENT_MD`                 | `/home/agent/agent.md`                 | Path to mounted identity file                                                               |
-| `BACKEND_PORT`             | `8080`                                 | HTTP port the backend listens on (internal)                                                 |
-| `METRICS_ENABLED`          | _(unset)_                              | Enable Prometheus `/metrics`                                                                |
-| `CONVERSATIONS_AUTH_TOKEN` | _(unset)_                              | Bearer token required to access `/conversations` and `/trace`                               |
-| `TASK_STORE_PATH`          | _(unset)_                              | Path for SQLite A2A task store; defaults to in-memory                                       |
-| `WORKER_MAX_RESTARTS`      | `5`                                    | Consecutive crash limit before a critical worker marks the backend not-ready                |
-| `LOG_PROMPT_MAX_BYTES`     | `200`                                  | (`a2-claude` only) Max bytes of the prompt logged at INFO level; `0` suppresses it entirely |
+| Variable                   | Default                                | Description                                                                  |
+| -------------------------- | -------------------------------------- | ---------------------------------------------------------------------------- |
+| `AGENT_NAME`               | `a2-claude` / `a2-codex` / `a2-gemini` | Backend instance name (e.g. `iris-a2-claude`)                                |
+| `AGENT_OWNER`              | _(same as `AGENT_NAME`)_               | Named agent this backend belongs to (e.g. `iris`); used in metric labels     |
+| `AGENT_ID`                 | `claude` / `codex` / `gemini`          | Backend slot identifier; used in metric labels                               |
+| `AGENT_URL`                | `http://localhost:8080/`               | Public A2A endpoint URL reported in agent card                               |
+| `AGENT_MD`                 | `/home/agent/agent.md`                 | Path to mounted identity file                                                |
+| `BACKEND_PORT`             | `8080`                                 | HTTP port the backend listens on (internal)                                  |
+| `METRICS_ENABLED`          | _(unset)_                              | Enable Prometheus `/metrics`                                                 |
+| `CONVERSATIONS_AUTH_TOKEN` | _(unset)_                              | Bearer token required to access `/conversations` and `/trace`                |
+| `TASK_STORE_PATH`          | _(unset)_                              | Path for SQLite A2A task store; defaults to in-memory                        |
+| `WORKER_MAX_RESTARTS`      | `5`                                    | Consecutive crash limit before a critical worker marks the backend not-ready |
+| `LOG_PROMPT_MAX_BYTES`     | `200`                                  | Max bytes of the prompt logged at INFO level; `0` suppresses it entirely     |
 
 ---
 
@@ -373,6 +376,8 @@ Each backend exposes the same A2A surface plus:
 
 - `/health` — health check endpoint
 - `/metrics` — Prometheus metrics endpoint
+- `/mcp` — MCP JSON-RPC server (`initialize`, `tools/list`, `tools/call`) for MCP hosts (Claude Desktop, Cursor, VS Code
+  extensions, etc.)
 
 ### Internal Message Bus (nyx-agent)
 

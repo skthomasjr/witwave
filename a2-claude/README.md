@@ -34,14 +34,15 @@ token counts, context exhaustion events, tool call counts, MCP tool usage, and t
 
 ## Endpoints
 
-| Endpoint                      | Purpose                                                 |
-| ----------------------------- | ------------------------------------------------------- |
-| `POST /`                      | A2A JSON-RPC task endpoint                              |
-| `GET /.well-known/agent.json` | A2A agent discovery                                     |
-| `GET /health`                 | Health check                                            |
-| `GET /metrics`                | Prometheus metrics                                      |
-| `GET /conversations`          | Conversation log (JSONL, filterable by `since`/`limit`) |
-| `GET /trace`                  | Trace log (JSONL, filterable by `since`/`limit`)        |
+| Endpoint                      | Purpose                                                                                           |
+| ----------------------------- | ------------------------------------------------------------------------------------------------- |
+| `POST /`                      | A2A JSON-RPC task endpoint                                                                        |
+| `GET /.well-known/agent.json` | A2A agent discovery                                                                               |
+| `GET /health`                 | Health check                                                                                      |
+| `GET /metrics`                | Prometheus metrics                                                                                |
+| `GET /conversations`          | Conversation log (JSONL, filterable by `since`/`limit`)                                           |
+| `GET /trace`                  | Trace log (JSONL, filterable by `since`/`limit`)                                                  |
+| `POST /mcp`                   | MCP JSON-RPC server (`initialize`, `tools/list`, `tools/call`); exposes a single `ask_agent` tool |
 
 ## Key files
 

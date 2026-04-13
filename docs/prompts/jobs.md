@@ -71,8 +71,8 @@ enabled: true
 
 Resolve the highest-priority approved GitHub Issue.
 
-Priority order: type/bug → type/reliability → type/code-quality → type/enhancement.
-Within each type, work priority/p0 before priority/p1, and so on.
+Priority order: type/bug → type/reliability → type/code-quality → type/enhancement. Within each type, work priority/p0
+before priority/p1, and so on.
 
 Steps:
 
@@ -91,7 +91,8 @@ Steps:
 | `name`        | No       | Display name used in logs and metrics; defaults to filename       |
 | `description` | No       | Human-readable summary                                            |
 | `schedule`    | Yes      | Cron expression (UTC)                                             |
-| `enabled`     | No       | `true` (default) to activate, `false` to disable                 |
-| `session`     | No       | Session ID override; defaults to a deterministic UUID            |
+| `enabled`     | No       | `true` (default) to activate, `false` to disable                  |
+| `session`     | No       | Session ID override; defaults to a deterministic UUID             |
 | `model`       | No       | Model override passed to the backend; defaults to backend default |
-| `agent`       | No       | Backend ID override (e.g. `codex`); defaults to routing config   |
+| `agent`       | No       | Backend ID override (e.g. `codex`); defaults to routing config    |
+| `consensus`   | No       | `true` to fan out to all backends and aggregate; default `false`  |
