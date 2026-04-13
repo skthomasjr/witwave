@@ -316,11 +316,6 @@ async def _guarded(coro_fn, *args, restart_delay: float = 5.0, critical: bool = 
     global _ready
     consecutive_restarts = 0
     while True:
-        # Restore readiness if this critical worker has recovered: the consecutive crash
-        # counter is 0 (no recent rapid failures) and we are about to start a fresh run.
-        if critical and consecutive_restarts == 0 and not _ready:
-            logger.info(f"Task {coro_fn.__name__!r} recovered — marking agent ready")
-            _ready = True
         _attempt_start = time.monotonic()
         try:
             await coro_fn(*args)
@@ -330,6 +325,14 @@ async def _guarded(coro_fn, *args, restart_delay: float = 5.0, critical: bool = 
         except Exception as exc:
             if time.monotonic() - _attempt_start >= restart_delay:
                 consecutive_restarts = 0
+                # The worker ran long enough to be considered recovered — restore
+                # readiness immediately, before counting this crash against the new
+                # consecutive window.  The previous code checked consecutive_restarts == 0
+                # at the top of the loop, but by then the increment below had already
+                # raised it to 1, so the condition could never fire.
+                if critical and not _ready:
+                    logger.info(f"Task {coro_fn.__name__!r} recovered — marking agent ready")
+                    _ready = True
             consecutive_restarts += 1
             logger.error(f"Task {coro_fn.__name__!r} crashed: {exc!r} — restarting in {restart_delay}s (consecutive restart #{consecutive_restarts})")
             if agent_task_restarts_total is not None:
