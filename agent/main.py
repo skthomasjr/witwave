@@ -45,6 +45,7 @@ from metrics import (
     agent_up,
     agent_uptime_seconds,
 )
+from conversations import make_proxy_conversations_handler, make_proxy_trace_handler
 from conversations_proxy import fetch_backend_conversations, fetch_backend_trace
 from metrics_proxy import fetch_backend_metrics
 from starlette.applications import Starlette
@@ -317,6 +318,27 @@ async def main():
     start_time = datetime.now(timezone.utc)
     _startup_mono = time.monotonic()
 
+    # Startup manifest validation — surface misconfiguration early.
+    import json as _startup_json
+    _manifest_path_startup = os.environ.get("MANIFEST_PATH", "/home/agent/manifest.json")
+    try:
+        with open(_manifest_path_startup) as _mf:
+            _manifest_startup = _startup_json.load(_mf)
+        for _idx, _entry in enumerate(_manifest_startup.get("team", [])):
+            if not isinstance(_entry, dict):
+                logger.warning("manifest team[%d]: entry is not a dict (got %r) — check manifest.json", _idx, type(_entry).__name__)
+                continue
+            _name = _entry.get("name")
+            _url = _entry.get("url")
+            if not isinstance(_name, str) or not _name:
+                logger.warning("manifest team[%d]: missing or non-string 'name' field (got %r)", _idx, _name)
+            if not isinstance(_url, str) or not _url:
+                logger.warning("manifest team[%d]: missing or non-string 'url' field (got %r)", _idx, _url)
+    except FileNotFoundError:
+        logger.info("Manifest file not found at %s — team features will be unavailable", _manifest_path_startup)
+    except Exception as _manifest_exc:
+        logger.warning("Could not validate manifest at startup: %s", _manifest_exc)
+
     bus = MessageBus()
     agent_card = build_agent_card()
     executor = AgentExecutor()
@@ -421,44 +443,36 @@ async def main():
         return JSONResponse(agents)
 
     _conversations_auth_token = os.environ.get("CONVERSATIONS_AUTH_TOKEN", "")
+    _backend_conversations_auth_token = os.environ.get("BACKEND_CONVERSATIONS_AUTH_TOKEN", "")
 
-    async def conversations_handler(request: Request) -> JSONResponse:
-        if _conversations_auth_token:
-            header = request.headers.get("Authorization", "")
-            if not hmac_mod.compare_digest(f"Bearer {_conversations_auth_token}", header):
-                return JSONResponse({"error": "unauthorized"}, status_code=401)
-        since = request.query_params.get("since")
-        limit = request.query_params.get("limit")
-        try:
-            limit_n = int(limit) if limit else None
-        except ValueError:
-            return JSONResponse({"error": "invalid limit"}, status_code=400)
+    async def _fetch_conversations(since: str | None, limit: int | None) -> list[dict]:
         from backends.config import load_backends_config
         try:
             backend_configs = load_backends_config()
         except Exception:
             backend_configs = []
-        entries = await fetch_backend_conversations(backend_configs, since=since, limit=limit_n)
-        return JSONResponse(entries)
+        return await fetch_backend_conversations(
+            backend_configs,
+            since=since,
+            limit=limit,
+            auth_token=_backend_conversations_auth_token or None,
+        )
 
-    async def trace_handler(request: Request) -> JSONResponse:
-        if _conversations_auth_token:
-            header = request.headers.get("Authorization", "")
-            if not hmac_mod.compare_digest(f"Bearer {_conversations_auth_token}", header):
-                return JSONResponse({"error": "unauthorized"}, status_code=401)
-        since = request.query_params.get("since")
-        limit = request.query_params.get("limit")
-        try:
-            limit_n = int(limit) if limit else None
-        except ValueError:
-            return JSONResponse({"error": "invalid limit"}, status_code=400)
+    async def _fetch_trace(since: str | None, limit: int | None) -> list[dict]:
         from backends.config import load_backends_config
         try:
             backend_configs = load_backends_config()
         except Exception:
             backend_configs = []
-        entries = await fetch_backend_trace(backend_configs, since=since, limit=limit_n)
-        return JSONResponse(entries)
+        return await fetch_backend_trace(
+            backend_configs,
+            since=since,
+            limit=limit,
+            auth_token=_backend_conversations_auth_token or None,
+        )
+
+    conversations_handler = make_proxy_conversations_handler(_conversations_auth_token, _fetch_conversations)
+    trace_handler = make_proxy_trace_handler(_conversations_auth_token, _fetch_trace)
 
     _proxy_auth_token = os.environ.get("PROXY_AUTH_TOKEN", "")
 
@@ -480,7 +494,7 @@ async def main():
         try:
             with open(manifest_path) as f:
                 manifest = _json.load(f)
-            team = manifest.get("team", [])
+            team = [e for idx, e in enumerate(manifest.get("team", [])) if _validate_manifest_entry(idx, e)]
         except Exception:
             team = []
         target_url = next((m.get("url") for m in team if m.get("name") == agent_name), None)
@@ -543,7 +557,7 @@ async def main():
         try:
             with open(manifest_path) as f:
                 manifest = _json.load(f)
-            team = manifest.get("team", [])
+            team = [e for idx, e in enumerate(manifest.get("team", [])) if _validate_manifest_entry(idx, e)]
         except Exception:
             team = []
         target_url = next((m.get("url") for m in team if m.get("name") == agent_name), None)
@@ -595,7 +609,7 @@ async def main():
         try:
             with open(manifest_path) as f:
                 manifest = _json.load(f)
-            team = manifest.get("team", [])
+            team = [e for idx, e in enumerate(manifest.get("team", [])) if _validate_manifest_entry(idx, e)]
         except Exception:
             team = [{"name": AGENT_NAME, "url": AGENT_URL}]
         result = []
@@ -615,7 +629,28 @@ async def main():
                     result.append({"name": member.get("name"), "url": url, "agents": [], "error": str(exc)})
         return JSONResponse(result)
 
+    def _validate_manifest_entry(idx: int, entry: object) -> bool:
+        """Validate a manifest team entry has the required string fields.
+
+        Logs a WARNING for each invalid entry and returns False so callers can
+        filter out bad entries rather than silently propagating None values.
+        """
+        if not isinstance(entry, dict):
+            logger.warning("manifest team[%d]: entry is not a dict (got %r) — skipping", idx, type(entry).__name__)
+            return False
+        name = entry.get("name")
+        url = entry.get("url")
+        if not isinstance(name, str) or not name:
+            logger.warning("manifest team[%d]: missing or non-string 'name' field (got %r) — skipping", idx, name)
+            return False
+        if not isinstance(url, str) or not url:
+            logger.warning("manifest team[%d]: missing or non-string 'url' field (got %r) — skipping", idx, url)
+            return False
+        return True
+
     trigger_runner = TriggerRunner()
+    job_runner = JobRunner(bus)
+    task_runner = TaskRunner(bus)
 
     async def triggers_discovery(request: Request) -> JSONResponse:
         items = trigger_runner.items_by_endpoint()
@@ -757,6 +792,14 @@ async def main():
             status_code=202,
         )
 
+    async def jobs_handler(request: Request) -> JSONResponse:
+        """Return a snapshot of currently registered scheduled jobs."""
+        return JSONResponse(job_runner.items())
+
+    async def tasks_handler(request: Request) -> JSONResponse:
+        """Return a snapshot of currently registered scheduled tasks."""
+        return JSONResponse(task_runner.items())
+
     _routes = [
         Route("/health/start", health_start),
         Route("/health/live", health_live),
@@ -765,6 +808,8 @@ async def main():
         Route("/triggers/{endpoint}", trigger_handler, methods=["POST"]),
         Route("/agents", agents_handler, methods=["GET"]),
         Route("/team", team_handler, methods=["GET"]),
+        Route("/jobs", jobs_handler, methods=["GET"]),
+        Route("/tasks", tasks_handler, methods=["GET"]),
         Route("/proxy/{agent_name}", proxy_handler, methods=["POST"]),
         Route("/conversations", conversations_handler, methods=["GET"]),
         Route("/conversations/{agent_name}", conversations_proxy_handler, methods=["GET"]),
@@ -813,8 +858,6 @@ async def main():
     config = uvicorn.Config(full_app, host=AGENT_HOST, port=AGENT_PORT)
     server = uvicorn.Server(config)
 
-    job_runner = JobRunner(bus)
-    task_runner = TaskRunner(bus)
     continuation_runner = ContinuationRunner()
     executor.set_continuation_runner(continuation_runner, bus)
     webhook_runner = WebhookRunner()

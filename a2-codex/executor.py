@@ -48,6 +48,7 @@ from metrics import (
     a2_task_last_error_timestamp_seconds,
     a2_task_last_success_timestamp_seconds,
     a2_task_timeout_headroom_seconds,
+    a2_session_history_save_errors_total,
     a2_tasks_total,
     a2_text_blocks_per_query,
 )
@@ -257,7 +258,13 @@ async def run_query(
         tools=_build_tools(resolved_model),
     )
 
-    session = SQLiteSession(session_id, CODEX_SESSION_DB)
+    try:
+        session = SQLiteSession(session_id, CODEX_SESSION_DB)
+    except Exception as _sess_exc:
+        logger.error("Failed to initialise SQLiteSession for %r: %s", session_id, _sess_exc)
+        if a2_session_history_save_errors_total is not None:
+            a2_session_history_save_errors_total.labels(**_LABELS).inc()
+        session = None
 
     run_config = RunConfig(model_provider=MultiProvider(openai_api_key=OPENAI_API_KEY)) if OPENAI_API_KEY else None
 

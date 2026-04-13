@@ -576,6 +576,26 @@ class TaskRunner:
         else:
             logger.info(f"Task '{item.name}' registered. Mode: run-once")
 
+    def items(self) -> list[dict]:
+        """Return a serializable snapshot of currently registered task items."""
+        result = []
+        for item in self._items.values():
+            result.append({
+                "name": item.name,
+                "days_expr": item.days_expr,
+                "timezone": str(item.tz),
+                "window_start": item.window_start.strftime("%H:%M") if item.window_start else None,
+                "window_end": item.window_end.strftime("%H:%M") if item.window_end else None,
+                "loop": item.loop,
+                "session_id": None,  # per-day session IDs are generated at runtime
+                "backend_id": item.backend_id,
+                "model": item.model,
+                "start": item.start.isoformat() if item.start else None,
+                "end": item.end.isoformat() if item.end else None,
+                "running": item.running,
+            })
+        return result
+
     def _unregister(self, path: str) -> asyncio.Task | None:
         existing = self._items.pop(path, None)
         if existing and existing.task:

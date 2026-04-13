@@ -103,3 +103,70 @@ def make_trace_handler(
         return JSONResponse(entries)
 
     return trace_handler
+
+
+def make_proxy_conversations_handler(
+    auth_token: str,
+    fetch_fn,
+):
+    """Return an ASGI handler for GET /conversations backed by a fan-out fetch function.
+
+    fetch_fn is an async callable with the signature:
+        async def fetch_fn(since: str | None, limit: int | None) -> list[dict]
+
+    This variant is used by nyx-agent, which fans out to multiple backend agents
+    rather than reading a local JSONL file.
+    """
+
+    async def conversations_handler(request: Request) -> JSONResponse:
+        if auth_token:
+            header = request.headers.get("Authorization", "")
+            if not hmac_mod.compare_digest(f"Bearer {auth_token}", header):
+                return JSONResponse({"error": "unauthorized"}, status_code=401)
+        since = request.query_params.get("since")
+        limit = request.query_params.get("limit")
+        try:
+            limit_n = int(limit) if limit else None
+        except ValueError:
+            return JSONResponse({"error": "invalid limit"}, status_code=400)
+        if since:
+            try:
+                datetime.fromisoformat(since.replace("Z", "+00:00"))
+            except ValueError:
+                return JSONResponse({"error": "invalid since"}, status_code=400)
+        entries = await fetch_fn(since, limit_n)
+        return JSONResponse(entries)
+
+    return conversations_handler
+
+
+def make_proxy_trace_handler(
+    auth_token: str,
+    fetch_fn,
+):
+    """Return an ASGI handler for GET /trace backed by a fan-out fetch function.
+
+    fetch_fn is an async callable with the signature:
+        async def fetch_fn(since: str | None, limit: int | None) -> list[dict]
+    """
+
+    async def trace_handler(request: Request) -> JSONResponse:
+        if auth_token:
+            header = request.headers.get("Authorization", "")
+            if not hmac_mod.compare_digest(f"Bearer {auth_token}", header):
+                return JSONResponse({"error": "unauthorized"}, status_code=401)
+        since = request.query_params.get("since")
+        limit = request.query_params.get("limit")
+        try:
+            limit_n = int(limit) if limit else None
+        except ValueError:
+            return JSONResponse({"error": "invalid limit"}, status_code=400)
+        if since:
+            try:
+                datetime.fromisoformat(since.replace("Z", "+00:00"))
+            except ValueError:
+                return JSONResponse({"error": "invalid since"}, status_code=400)
+        entries = await fetch_fn(since, limit_n)
+        return JSONResponse(entries)
+
+    return trace_handler

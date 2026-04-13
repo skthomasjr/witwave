@@ -38,6 +38,7 @@ a2_session_evictions_total: prometheus_client.Counter | None = None
 a2_session_age_seconds: prometheus_client.Histogram | None = None
 a2_session_idle_seconds: prometheus_client.Histogram | None = None
 a2_lru_cache_utilization_percent: prometheus_client.Gauge | None = None
+a2_session_history_save_errors_total: prometheus_client.Counter | None = None
 
 # Prompt / response size metrics
 a2_prompt_length_bytes: prometheus_client.Histogram | None = None
@@ -185,6 +186,11 @@ if _enabled:
     a2_lru_cache_utilization_percent = prometheus_client.Gauge(
         "a2_lru_cache_utilization_percent",
         "LRU session cache utilization as a percentage of MAX_SESSIONS.",
+        ["agent", "agent_id", "backend"],
+    )
+    a2_session_history_save_errors_total = prometheus_client.Counter(
+        "a2_session_history_save_errors_total",
+        "Total failures to initialise or write the session SQLite store.",
         ["agent", "agent_id", "backend"],
     )
 

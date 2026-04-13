@@ -201,6 +201,13 @@ def _track_session(
                 a2_session_evictions_total.labels(**_LABELS).inc()
             if a2_session_age_seconds is not None:
                 a2_session_age_seconds.labels(**_LABELS).observe(time.monotonic() - last_used_at)
+            _evicted_path = os.path.join(SESSION_STORE_DIR, f"{_evicted_id}.json")
+            try:
+                os.remove(_evicted_path)
+            except FileNotFoundError:
+                pass
+            except OSError as e:
+                logger.warning("Could not remove evicted session file %s: %s", _evicted_path, e)
         sessions[session_id] = time.monotonic()
         # Prune any lock entries for sessions no longer tracked
         stale = [sid for sid in session_locks if sid not in sessions]

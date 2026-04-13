@@ -462,6 +462,13 @@
       background: var(--accent); color: #fff; font-weight: 600;
     }
     .cal-day-num { font-size: 11px; color: var(--dim); }
+    .cal-day-items { display: flex; flex-direction: column; gap: 2px; margin-top: 3px; overflow: hidden; }
+    .cal-item {
+      font-size: 10px; border-radius: 3px; padding: 1px 4px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default;
+    }
+    .job-item  { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); }
+    .task-item { background: color-mix(in srgb, #a78bfa 20%, transparent); color: #a78bfa; }
 
     /* Week / Day grid */
     .cal-timed { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
@@ -654,7 +661,7 @@ function switchView(name) {
   viewEls[name].classList.add('active');
   localStorage.setItem('nyx-active-view', name);
   if (name === 'conversations' && !conv.loaded) loadConversations();
-  if (name === 'calendar') renderCalendar();
+  if (name === 'calendar') loadCalendarData();
   if (name === 'metrics') {
     if (!_metricsLoaded) { _metricsLoaded = true; loadMetrics(); }
     setRefreshInterval(Number(document.getElementById('refresh-interval').value) || 30_000);
@@ -835,16 +842,18 @@ function renderMetrics(m) {
   const heartbeatRuns = sumTotal(m, 'agent_heartbeat_runs');
   const jobRuns = sumTotal(m, 'agent_job_runs');
   const busMessages = sumTotal(m, 'agent_bus_messages');
+  const runningSchedTasks = scalarGauge(m, 'agent_sched_task_running_items');
 
   const statDefs = [
-    { label: 'Uptime',          val: fmtSec(uptime) },
-    { label: 'Active Sessions', val: fmtNum(activeSessions) },
-    { label: 'Running Tasks',   val: fmtNum(runningTasks) },
-    { label: 'Tasks Total',     val: fmtNum(tasksTotal) },
-    { label: 'A2A Requests',    val: fmtNum(a2aReqs) },
-    { label: 'Heartbeats',      val: fmtNum(heartbeatRuns) },
-    { label: 'Job Runs',        val: fmtNum(jobRuns) },
-    { label: 'Bus Messages',    val: fmtNum(busMessages) },
+    { label: 'Uptime',               val: fmtSec(uptime) },
+    { label: 'Active Sessions',      val: fmtNum(activeSessions) },
+    { label: 'Running Tasks',        val: fmtNum(runningTasks) },
+    { label: 'Running Sched Tasks',  val: fmtNum(runningSchedTasks) },
+    { label: 'Tasks Total',          val: fmtNum(tasksTotal) },
+    { label: 'A2A Requests',         val: fmtNum(a2aReqs) },
+    { label: 'Heartbeats',           val: fmtNum(heartbeatRuns) },
+    { label: 'Job Runs',             val: fmtNum(jobRuns) },
+    { label: 'Bus Messages',         val: fmtNum(busMessages) },
   ];
 
   document.getElementById('stat-row').innerHTML = statDefs.map(s =>
@@ -888,6 +897,15 @@ function renderMetrics(m) {
     if (!labels.length) return;
     ensureCard('job-runs', 'Job Runs by Name');
     upsertChart('job-runs', 'bar', labels, data);
+  })();
+
+  // Task runs by name
+  (() => {
+    const bd = breakdownByLabel(m, 'agent_sched_task_runs', 'name');
+    const labels = Object.keys(bd), data = Object.values(bd);
+    if (!labels.length) return;
+    ensureCard('task-runs', 'Task Runs by Name');
+    upsertChart('task-runs', 'bar', labels, data);
   })();
 
   // Bus messages by kind
@@ -1604,9 +1622,10 @@ function _restoreConvState() {
 async function loadConversations() {
   const feed = document.getElementById('conv-feed');
   try {
+    const CONV_LIMIT = 500;
     const [convResp, traceResp] = await Promise.all([
-      fetch(`${AGENT_BASE}/conversations`),
-      fetch(`${AGENT_BASE}/trace`),
+      fetch(`${AGENT_BASE}/conversations?limit=${CONV_LIMIT}`),
+      fetch(`${AGENT_BASE}/trace?limit=${CONV_LIMIT}`),
     ]);
     conv.entries = convResp.ok ? await convResp.json() : [];
     conv.traceEntries = traceResp.ok ? await traceResp.json() : [];
@@ -1787,6 +1806,8 @@ document.getElementById('conv-search').addEventListener('input', e => {
 const cal = {
   date: new Date(),   // anchor: current month/week/day being shown
   mode: 'month',      // 'month' | 'week' | 'day'
+  jobs: [],           // [{name, schedule, running}] from GET /jobs
+  tasks: [],          // [{name, window_start, days_expr, running}] from GET /tasks
 };
 
 const DAYS_SHORT  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -1886,7 +1907,20 @@ function renderMonth() {
     const isToday = !c.other && c.year === today.y && c.month === today.m && c.d === today.d;
     const cls = ['cal-day', c.other ? 'other-month' : '', isToday ? 'today' : ''].filter(Boolean).join(' ');
     const numHtml = `<span class="cal-day-num">${c.d}</span>`;
-    return `<div class="${cls}">${numHtml}</div>`;
+    let itemsHtml = '';
+    if (!c.other && (cal.jobs.length || cal.tasks.length)) {
+      const cellDate = new Date(c.year, c.month, c.d);
+      const dow = cellDate.getDay(); // 0=Sun
+      const dots = [];
+      for (const job of cal.jobs) {
+        if (job.schedule) dots.push(`<span class="cal-item job-item" title="Job: ${escHtml(job.name)} (${escHtml(job.schedule)})">${escHtml(job.name)}</span>`);
+      }
+      for (const task of cal.tasks) {
+        if (task.window_start) dots.push(`<span class="cal-item task-item" title="Task: ${escHtml(task.name)} @ ${escHtml(task.window_start)}">${escHtml(task.name)}</span>`);
+      }
+      if (dots.length) itemsHtml = `<div class="cal-day-items">${dots.join('')}</div>`;
+    }
+    return `<div class="${cls}">${numHtml}${itemsHtml}</div>`;
   }).join('');
 
   return `<div class="cal-month">
@@ -1960,6 +1994,22 @@ function renderDay() {
 
 // ── Render ────────────────────────────────────────────────────────────────────
 let _calNowTimer = null;
+
+async function loadCalendarData() {
+  try {
+    const [jobsResp, tasksResp] = await Promise.all([
+      fetch(`${AGENT_BASE}/jobs`),
+      fetch(`${AGENT_BASE}/tasks`),
+    ]);
+    cal.jobs  = jobsResp.ok  ? await jobsResp.json()  : [];
+    cal.tasks = tasksResp.ok ? await tasksResp.json() : [];
+  } catch (_e) {
+    // /jobs and /tasks may not exist on older deployments — degrade gracefully
+    cal.jobs  = [];
+    cal.tasks = [];
+  }
+  renderCalendar();
+}
 
 function renderCalendar() {
   document.getElementById('cal-title').textContent = calTitle();

@@ -236,6 +236,20 @@ class JobRunner:
         else:
             logger.info(f"Job '{item.name}' registered. Mode: run-once")
 
+    def items(self) -> list[dict]:
+        """Return a serializable snapshot of currently registered job items."""
+        result = []
+        for item in self._items.values():
+            result.append({
+                "name": item.name,
+                "schedule": item.schedule,
+                "session_id": item.session_id,
+                "backend_id": item.backend_id,
+                "model": item.model,
+                "running": item.running,
+            })
+        return result
+
     def _unregister(self, path: str) -> asyncio.Task | None:
         existing = self._items.pop(path, None)
         if existing and existing.task:
