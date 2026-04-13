@@ -1,10 +1,10 @@
 ---
-name: gap-refinement
-description: Analyze pending gaps holistically, identify dependencies and conflicts, update stale information, and produce an execution order for implementation. Optionally scoped to a specific component; if no component is specified, processes all components including cross-cutting gaps with no component assigned. Trigger when the user says "refine gaps", "run gap refinement", "analyze gaps", "clean up gaps", "prioritize gaps", or "order gaps for implementation".
-version: 1.0.0
+name: gap-refine
+description: Analyze pending gaps holistically, identify dependencies and conflicts, update stale information, and produce an execution order for implementation. Optionally scoped to a specific component; if no component is specified, processes all components including cross-cutting gaps with no component assigned. Trigger when the user says "refine gaps", "run gap refine", "analyze gaps", "clean up gaps", "prioritize gaps", or "order gaps for implementation".
+version: 1.1.0
 ---
 
-# gap-refinement
+# gap-refine
 
 Analyze pending gaps as a set — not individually — to identify dependencies, conflicts, redundancies, and stale information. The output is a clean, ordered, dependency-aware work queue ready for implementation.
 

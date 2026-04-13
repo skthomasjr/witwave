@@ -1,10 +1,10 @@
 ---
-name: feature-refinement
-description: Analyze pending features holistically, identify dependencies and conflicts, update stale information, and produce an execution order for implementation. Trigger when the user says "refine features", "run feature refinement", "analyze features", "clean up features", "prioritize features", or "order features for implementation".
-version: 1.1.1
+name: feature-refine
+description: Analyze pending features holistically, identify dependencies and conflicts, update stale information, and produce an execution order for implementation. Trigger when the user says "refine features", "run feature refine", "analyze features", "clean up features", "prioritize features", or "order features for implementation".
+version: 1.2.0
 ---
 
-# feature-refinement
+# feature-refine
 
 Analyze pending features as a set — not individually — to identify dependencies, conflicts, redundancies, and stale information. The output is a clean, ordered, dependency-aware work queue ready for implementation.
 

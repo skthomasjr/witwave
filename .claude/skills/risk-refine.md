@@ -1,10 +1,10 @@
 ---
-name: risk-refinement
-description: Analyze pending risks holistically, identify dependencies and conflicts, update stale information, and produce an execution order for mitigating. Optionally scoped to a specific component; if no component is specified, processes all components including cross-cutting risks with no component assigned. Trigger when the user says "refine risks", "run risk refinement", "analyze risks", "clean up risks", "prioritize risks", or "order risks for mitigation".
-version: 1.1.0
+name: risk-refine
+description: Analyze pending risks holistically, identify dependencies and conflicts, update stale information, and produce an execution order for mitigating. Optionally scoped to a specific component; if no component is specified, processes all components including cross-cutting risks with no component assigned. Trigger when the user says "refine risks", "run risk refine", "analyze risks", "clean up risks", "prioritize risks", or "order risks for mitigation".
+version: 1.2.0
 ---
 
-# risk-refinement
+# risk-refine
 
 Analyze pending risks as a set — not individually — to identify dependencies, conflicts, redundancies, and stale information. The output is a clean, ordered, dependency-aware work queue ready for mitigation.
 
