@@ -7,7 +7,6 @@ import time
 import uuid
 from collections import OrderedDict
 from datetime import datetime, timezone
-from logging.handlers import RotatingFileHandler
 
 from a2a.server.agent_execution import AgentExecutor as A2AAgentExecutor
 from a2a.server.agent_execution import RequestContext
@@ -38,6 +37,7 @@ from metrics import (
     a2_sdk_turns_per_query,
     a2_session_age_seconds,
     a2_session_evictions_total,
+    a2_session_history_save_errors_total,
     a2_session_idle_seconds,
     a2_session_starts_total,
     a2_task_cancellations_total,
@@ -81,7 +81,11 @@ def _load_agent_md() -> str:
 
 
 def _append_log(path: str, line: str) -> None:
-    """Append a single line to a log file using fcntl locking for multi-process safety."""
+    """Append a single line to a log file using fcntl locking for multi-process safety.
+
+    After writing, rotates the file if it exceeds MAX_LOG_BYTES.  Keeps up to
+    MAX_LOG_BACKUP_COUNT numbered backups (<path>.1, <path>.2, …).
+    """
     log_dir = os.path.dirname(path)
     if log_dir:
         os.makedirs(log_dir, exist_ok=True)
@@ -89,6 +93,17 @@ def _append_log(path: str, line: str) -> None:
         fcntl.flock(f, fcntl.LOCK_EX)
         try:
             f.write(line + "\n")
+            f.flush()
+            if MAX_LOG_BACKUP_COUNT > 0 and os.path.getsize(path) >= MAX_LOG_BYTES:
+                # Rotate: <path>.N → <path>.N+1, …, <path> → <path>.1
+                for i in range(MAX_LOG_BACKUP_COUNT, 0, -1):
+                    src = f"{path}.{i - 1}" if i > 1 else path
+                    dst = f"{path}.{i}"
+                    if os.path.exists(src):
+                        if i == MAX_LOG_BACKUP_COUNT and os.path.exists(dst):
+                            os.remove(dst)
+                        os.rename(src, dst)
+                logger.debug("Rotated log file %s", path)
         finally:
             fcntl.flock(f, fcntl.LOCK_UN)
 
@@ -152,21 +167,45 @@ def _load_history(session_id: str) -> list[types.Content]:
         return []
 
 
+_SAVE_HISTORY_MAX_RETRIES = int(os.environ.get("GEMINI_SAVE_HISTORY_MAX_RETRIES", "3"))
+_SAVE_HISTORY_BACKOFF_BASE = float(os.environ.get("GEMINI_SAVE_HISTORY_BACKOFF", "0.5"))
+
+
 def _save_history(session_id: str, history: list[types.Content]) -> None:
-    """Persist conversation history for a session."""
+    """Persist conversation history for a session.
+
+    Retries up to _SAVE_HISTORY_MAX_RETRIES times with exponential backoff on
+    failure.  After all retries are exhausted, raises the exception so the
+    caller can log it at ERROR level rather than silently discarding it.
+    """
     path = _session_path(session_id)
-    try:
-        raw = []
-        for content in history:
-            parts = [p.model_dump(exclude_none=True) for p in (content.parts or []) if p]
-            if parts:
-                raw.append({"role": content.role, "parts": parts})
-        tmp_path = path + ".tmp"
-        with open(tmp_path, "w") as f:
-            json.dump(raw, f)
-        os.replace(tmp_path, path)
-    except Exception as e:
-        logger.warning(f"Failed to save session history for {session_id!r}: {e}")
+    raw = []
+    for content in history:
+        parts = [p.model_dump(exclude_none=True) for p in (content.parts or []) if p]
+        if parts:
+            raw.append({"role": content.role, "parts": parts})
+    tmp_path = path + ".tmp"
+    last_exc: Exception | None = None
+    for attempt in range(_SAVE_HISTORY_MAX_RETRIES):
+        try:
+            with open(tmp_path, "w") as f:
+                json.dump(raw, f)
+            os.replace(tmp_path, path)
+            return
+        except Exception as e:
+            last_exc = e
+            logger.warning(
+                f"Failed to save session history for {session_id!r} "
+                f"(attempt {attempt + 1}/{_SAVE_HISTORY_MAX_RETRIES}): {e}"
+            )
+            if attempt < _SAVE_HISTORY_MAX_RETRIES - 1:
+                time.sleep(_SAVE_HISTORY_BACKOFF_BASE * (2 ** attempt))
+    # All retries exhausted — raise so the asyncio.to_thread wrapper surfaces it
+    # at ERROR level in the caller rather than silently discarding it.
+    raise RuntimeError(
+        f"Permanently failed to save session history for {session_id!r} "
+        f"after {_SAVE_HISTORY_MAX_RETRIES} attempts"
+    ) from last_exc
 
 
 _session_locks: dict[str, asyncio.Lock] = {}
@@ -201,10 +240,17 @@ def _track_session(sessions: OrderedDict[str, float], session_id: str) -> None:
         a2_lru_cache_utilization_percent.labels(**_LABELS).set(len(sessions) / MAX_SESSIONS * 100)
 
 
-def _make_client() -> genai.Client:
-    if not GEMINI_API_KEY:
-        raise RuntimeError("No Gemini API key configured. Set GEMINI_API_KEY or GOOGLE_API_KEY.")
-    return genai.Client(api_key=GEMINI_API_KEY)
+_genai_client: genai.Client | None = None
+
+
+def _get_client() -> genai.Client:
+    """Return the module-level genai.Client singleton, creating it on first call."""
+    global _genai_client
+    if _genai_client is None:
+        if not GEMINI_API_KEY:
+            raise RuntimeError("No Gemini API key configured. Set GEMINI_API_KEY or GOOGLE_API_KEY.")
+        _genai_client = genai.Client(api_key=GEMINI_API_KEY)
+    return _genai_client
 
 
 async def run_query(
@@ -223,7 +269,7 @@ async def run_query(
     async with lock:
         history = await asyncio.to_thread(_load_history, session_id)
 
-        client = _make_client()
+        client = _get_client()
 
         # Create chat with persisted history and system instruction
         chat = client.aio.chats.create(
@@ -274,8 +320,18 @@ async def run_query(
         if full_response:
             await log_entry("agent", full_response, session_id, model=resolved_model)
 
-        # Persist updated history
-        await asyncio.to_thread(_save_history, session_id, chat.history)
+        # Persist updated history — log at ERROR on permanent failure so it is
+        # visible in monitoring, but do not propagate so the completed response
+        # is still returned to the caller.
+        try:
+            await asyncio.to_thread(_save_history, session_id, chat.history)
+        except Exception as _save_exc:
+            logger.error(
+                "Permanently failed to save session history for %r: %s",
+                session_id, _save_exc, exc_info=True,
+            )
+            if a2_session_history_save_errors_total is not None:
+                a2_session_history_save_errors_total.labels(**_LABELS).inc()
 
     if a2_sdk_query_duration_seconds is not None:
         a2_sdk_query_duration_seconds.labels(**_LABELS, model=resolved_model).observe(time.monotonic() - _query_start)

@@ -103,21 +103,24 @@ ui/                            # Web UI
 
 .claude/
 └── skills/                    # Local Claude Code skills (user-invokable slash commands)
-    ├── deploy/                # Build images and manage Docker Compose environments
-    ├── develop/               # Continuous improvement loop
-    ├── evaluate-bugs/         # Find bugs → file issues
-    ├── evaluate-features/     # Translate feature proposals → type/feature work items
-    ├── evaluate-gaps/         # Find enhancement opportunities → file issues
-    ├── evaluate-risks/        # Find risks → file issues
-    ├── evaluate-skills/       # Find skill bugs → file issues
-    ├── github-issue/          # GitHub Issue management (create, list, claim, close)
-    ├── plan-features/         # Research competitive landscape → file feature proposals
-    ├── remote/                # Send prompts to running agents via A2A
-    ├── work-bugs/             # Work type/bug issues
-    ├── work-features/         # Work type/feature issues
-    ├── work-gaps/             # Work type/enhancement issues
-    ├── work-risks/            # Work type/reliability and type/code-quality issues
-    └── work-skills/           # Work type/skill issues
+    ├── develop.md             # Full autonomous development cycle (bugs → risks → gaps)
+    ├── docs-refinement.md     # Review and update project documentation
+    ├── skill-development.md   # Guide for creating and auditing skills
+    ├── bug-discovery.md       # Find bugs → file issues
+    ├── bug-refinement.md      # Analyze and order pending bugs
+    ├── bug-approval.md        # Approve or defer pending bugs
+    ├── bug-fix.md             # Fix approved bugs
+    ├── bug-github-issues.md   # GitHub issue operations for bugs (leaf skill)
+    ├── risk-discovery.md      # Find risks → file issues
+    ├── risk-refinement.md     # Analyze and order pending risks
+    ├── risk-approval.md       # Approve or defer pending risks
+    ├── risk-fix.md            # Mitigate approved risks
+    ├── risk-github-issues.md  # GitHub issue operations for risks (leaf skill)
+    ├── gap-discovery.md       # Find gaps → file issues
+    ├── gap-refinement.md      # Analyze and order pending gaps
+    ├── gap-approval.md        # Approve or defer pending gaps
+    ├── gap-fix.md             # Implement approved gaps
+    └── gap-github-issues.md   # GitHub issue operations for gaps (leaf skill)
 
 docs/
 ├── architecture.md            # This document
@@ -134,8 +137,11 @@ docs/
 
 .github/
 └── ISSUE_TEMPLATE/
-    ├── feature.md             # Broad feature proposal template (label: feature)
-    ├── task.md                # Implementation task template (label: type/*)
+    ├── bug.md                 # Bug report template (label: bug)
+    ├── risk.md                # Risk template (label: risk)
+    ├── gap.md                 # Gap template (label: gap)
+    ├── feature.md             # Feature proposal template (label: feature)
+    ├── task.md                # General task template (label: task)
     └── question.md            # Question template
 
 docker-compose.active.yml      # Active environment (iris, nova, kira + backends + ui)
@@ -228,7 +234,7 @@ External A2A caller
 
 All three backends share identical structure and API surface; they differ only in their LLM SDK.
 
-**`main.py`** — Builds the A2A `AgentCard` from the mounted `agent.md` file (via `AGENT_MD` env var), wires the `AgentExecutor` and `InMemoryTaskStore`, and serves the full Starlette application with routes for `/.well-known/agent.json`, `/` (A2A), `/health`, and `/metrics`.
+**`main.py`** — Builds the A2A `AgentCard` from the mounted `agent.md` file (via `AGENT_MD` env var), wires the `AgentExecutor` and task store (`SqliteTaskStore` when `TASK_STORE_PATH` is set, `InMemoryTaskStore` otherwise), and serves the full Starlette application with routes for `/.well-known/agent.json`, `/` (A2A), `/health`, and `/metrics`.
 
 **`executor.py`** — Implements the A2A `AgentExecutor` interface. Manages session continuity using the session ID passed in the A2A request metadata. Writes `conversation.jsonl` to the mounted logs directory.
 
@@ -333,16 +339,12 @@ Backend containers all listen on port 8080 internally; host port mappings are as
 
 ### GitHub Issue Taxonomy
 
-| Label               | Created by          | Worked by       | Purpose                                            |
-| ------------------- | ------------------- | --------------- | -------------------------------------------------- |
-| `feature`           | `plan-features`     | —               | Broad feature proposal; never implemented directly |
-| `type/feature`      | `evaluate-features` | `work-features` | Feature implementation slice (theme/slice scoped)  |
-| `type/bug`          | `evaluate-bugs`     | `work-bugs`     | Defect in source code                              |
-| `type/reliability`  | `evaluate-risks`    | `work-risks`    | Reliability or operational risk                    |
-| `type/code-quality` | `evaluate-risks`    | `work-risks`    | Code quality or maintainability risk               |
-| `type/enhancement`  | `evaluate-gaps`     | `work-gaps`     | Missing capability or improvement opportunity      |
-| `type/skill`        | `evaluate-skills`   | `work-skills`   | Bug in a skill document                            |
-| `type/task`         | humans / agents     | varies          | General task                                       |
+| Label      | Created by        | Worked by     | Purpose                                            |
+| ---------- | ----------------- | ------------- | -------------------------------------------------- |
+| `bug`      | `bug-discovery`   | `bug-fix`     | Defect — code that is broken or behaves incorrectly |
+| `risk`     | `risk-discovery`  | `risk-fix`    | Code quality issue — works today but fragile, insecure, or likely to break |
+| `gap`      | `gap-discovery`   | `gap-fix`     | Missing capability — functionality the system should have but does not |
+| `feature`  | humans / agents   | —             | Intentional enhancement requested by stakeholders  |
 
 ### Feature Pipeline
 
@@ -356,15 +358,12 @@ work-features      → implements `type/feature` issues
 
 ### Develop Loop
 
-The `/develop` skill runs a continuous improvement loop:
+The `develop` skill runs a continuous improvement cycle across all issue types:
 
 ```
-1. work-skills  → evaluate-skills   (restart from 1 if new issues)
-2. work-bugs    → evaluate-bugs     (restart from 1 if new issues)
-3. work-risks   → evaluate-risks    (restart from 1 if new issues)
-4. evaluate-gaps → work-gaps        (once steps 1–3 clean)
-5. evaluate-features → work-features
-6. Report
+Phase 1–4:   bug discovery → refinement → approval → fix
+Phase 5–8:   risk discovery → refinement → approval → fix
+Phase 9–12:  gap discovery → refinement → approval → fix
 ```
 
 ---

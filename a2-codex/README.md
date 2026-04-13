@@ -29,7 +29,7 @@ Each named agent that uses Codex gets its own dedicated instance of this image (
 | Endpoint | Purpose |
 |----------|---------|
 | `POST /` | A2A JSON-RPC task endpoint |
-| `GET /.well-known/agent-card.json` | A2A agent discovery |
+| `GET /.well-known/agent.json` | A2A agent discovery |
 | `GET /health` | Health check |
 | `GET /metrics` | Prometheus metrics |
 | `GET /conversations` | Conversation log (JSONL, filterable by `since`/`limit`) |
@@ -43,6 +43,7 @@ Each named agent that uses Codex gets its own dedicated instance of this image (
 | `executor.py` | OpenAI Agents SDK executor; session management, streaming, logging |
 | `computer.py` | PlaywrightComputer — headless Chromium browser implementation |
 | `metrics.py` | Prometheus metric definitions |
+| `sqlite_task_store.py` | SQLite-backed task store (used when TASK_STORE_PATH is set) |
 | `requirements.txt` | Python dependencies |
 | `Dockerfile` | Container image definition |
 

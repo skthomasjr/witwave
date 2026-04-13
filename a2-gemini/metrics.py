@@ -52,6 +52,9 @@ a2_log_bytes_total: prometheus_client.Counter | None = None
 a2_log_entries_total: prometheus_client.Counter | None = None
 a2_log_write_errors_total: prometheus_client.Counter | None = None
 
+# Session persistence metrics
+a2_session_history_save_errors_total: prometheus_client.Counter | None = None
+
 # SDK metrics
 a2_sdk_query_duration_seconds: prometheus_client.Histogram | None = None
 a2_sdk_query_error_duration_seconds: prometheus_client.Histogram | None = None
@@ -226,6 +229,13 @@ if _enabled:
     a2_log_write_errors_total = prometheus_client.Counter(
         "a2_log_write_errors_total",
         "Total I/O failures in the conversation/trace logging subsystem.",
+        ["agent", "agent_id", "backend"],
+    )
+
+    # Session persistence
+    a2_session_history_save_errors_total = prometheus_client.Counter(
+        "a2_session_history_save_errors_total",
+        "Total permanent session history save failures after all retries are exhausted.",
         ["agent", "agent_id", "backend"],
     )
 

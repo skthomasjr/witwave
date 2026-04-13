@@ -88,7 +88,5 @@ running a personal project deserves the same quality of tooling as a team deploy
 | Document                                             | Purpose                                                              |
 | ---------------------------------------------------- | -------------------------------------------------------------------- |
 | [competitive-landscape.md](competitive-landscape.md) | Reference products and research themes that inform feature decisions |
-| [features-proposed.md](features-proposed.md)         | Active feature pipeline — proposed, approved, and promoted features  |
-| [features-completed.md](features-completed.md)       | Implemented features, for historical reference                       |
+| [architecture.md](architecture.md)                   | Runtime structure, configuration model, and issue/skill layer        |
 | `README.md`                                          | Quickstart and technical reference for running the project           |
-| `CLAUDE.md`                                          | Behavioral guidance for Claude Code working in this repo             |

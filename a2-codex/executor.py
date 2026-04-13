@@ -9,7 +9,6 @@ import time
 import uuid
 from collections import OrderedDict
 from datetime import datetime, timezone
-from logging.handlers import RotatingFileHandler
 
 from a2a.server.agent_execution import AgentExecutor as A2AAgentExecutor
 from a2a.server.agent_execution import RequestContext
@@ -78,12 +77,41 @@ _BACKEND_ID = "codex"
 _LABELS = {"agent": AGENT_OWNER, "agent_id": AGENT_ID, "backend": _BACKEND_ID}
 
 
+# Env var keys that must not be overridden by caller-supplied values because
+# they influence binary resolution or dynamic-linker / interpreter behavior
+# and could be used for privilege escalation or code injection.
+_SHELL_ENV_DENYLIST: frozenset[str] = frozenset({
+    "PATH",
+    "LD_PRELOAD",
+    "LD_LIBRARY_PATH",
+    "LD_AUDIT",
+    "LD_DEBUG",
+    "PYTHONPATH",
+    "PYTHONSTARTUP",
+    "PYTHONINSPECT",
+    "RUBYLIB",
+    "RUBYOPT",
+    "PERL5LIB",
+    "PERL5OPT",
+    "NODE_PATH",
+    "DYLD_INSERT_LIBRARIES",
+    "DYLD_LIBRARY_PATH",
+    "DYLD_FRAMEWORK_PATH",
+})
+
+
 async def _shell_executor(req: LocalShellCommandRequest) -> str:
     cmd = req.data.action.command
     cwd = req.data.action.working_directory or None
     env_extra = req.data.action.env or {}
+    # Strip keys that could be used to hijack binary resolution or loader
+    # behavior before merging caller-supplied values into the subprocess env.
+    sanitized_extra = {k: v for k, v in env_extra.items() if k not in _SHELL_ENV_DENYLIST}
+    rejected = set(env_extra) - set(sanitized_extra)
+    if rejected:
+        logger.warning("_shell_executor: stripped dangerous env vars from caller-supplied env: %s", sorted(rejected))
     _base_env = {k: os.environ[k] for k in ("PATH", "HOME", "USER", "TMPDIR", "LANG", "LC_ALL") if k in os.environ}
-    env = {**_base_env, **env_extra}
+    env = {**_base_env, **sanitized_extra}
     timeout_ms = req.data.action.timeout_ms
     timeout_s = (timeout_ms / 1000.0) if timeout_ms else 30.0
     try:
@@ -156,7 +184,11 @@ def _load_agent_md() -> str:
 
 
 def _append_log(path: str, line: str) -> None:
-    """Append a single line to a log file using fcntl locking for multi-process safety."""
+    """Append a single line to a log file using fcntl locking for multi-process safety.
+
+    After writing, rotates the file if it exceeds MAX_LOG_BYTES.  Keeps up to
+    MAX_LOG_BACKUP_COUNT numbered backups (<path>.1, <path>.2, …).
+    """
     log_dir = os.path.dirname(path)
     if log_dir:
         os.makedirs(log_dir, exist_ok=True)
@@ -164,6 +196,17 @@ def _append_log(path: str, line: str) -> None:
         fcntl.flock(f, fcntl.LOCK_EX)
         try:
             f.write(line + "\n")
+            f.flush()
+            if MAX_LOG_BACKUP_COUNT > 0 and os.path.getsize(path) >= MAX_LOG_BYTES:
+                # Rotate: <path>.N → <path>.N+1, …, <path> → <path>.1
+                for i in range(MAX_LOG_BACKUP_COUNT, 0, -1):
+                    src = f"{path}.{i - 1}" if i > 1 else path
+                    dst = f"{path}.{i}"
+                    if os.path.exists(src):
+                        if i == MAX_LOG_BACKUP_COUNT and os.path.exists(dst):
+                            os.remove(dst)
+                        os.rename(src, dst)
+                logger.debug("Rotated log file %s", path)
         finally:
             fcntl.flock(f, fcntl.LOCK_UN)
 

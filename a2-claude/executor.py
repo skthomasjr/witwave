@@ -7,7 +7,6 @@ import time
 import uuid
 from collections import OrderedDict
 from datetime import datetime, timezone
-from logging.handlers import RotatingFileHandler
 
 from a2a.server.agent_execution import AgentExecutor as A2AAgentExecutor
 from a2a.server.agent_execution import RequestContext
@@ -139,7 +138,11 @@ def _load_agent_md() -> str:
 
 
 def _append_log(path: str, line: str) -> None:
-    """Append a single line to a log file using fcntl locking for multi-process safety."""
+    """Append a single line to a log file using fcntl locking for multi-process safety.
+
+    After writing, rotates the file if it exceeds MAX_LOG_BYTES.  Keeps up to
+    MAX_LOG_BACKUP_COUNT numbered backups (<path>.1, <path>.2, …).
+    """
     log_dir = os.path.dirname(path)
     if log_dir:
         os.makedirs(log_dir, exist_ok=True)
@@ -147,6 +150,17 @@ def _append_log(path: str, line: str) -> None:
         fcntl.flock(f, fcntl.LOCK_EX)
         try:
             f.write(line + "\n")
+            f.flush()
+            if MAX_LOG_BACKUP_COUNT > 0 and os.path.getsize(path) >= MAX_LOG_BYTES:
+                # Rotate: <path>.N → <path>.N+1, …, <path> → <path>.1
+                for i in range(MAX_LOG_BACKUP_COUNT, 0, -1):
+                    src = f"{path}.{i - 1}" if i > 1 else path
+                    dst = f"{path}.{i}"
+                    if os.path.exists(src):
+                        if i == MAX_LOG_BACKUP_COUNT and os.path.exists(dst):
+                            os.remove(dst)
+                        os.rename(src, dst)
+                logger.debug("Rotated log file %s", path)
         finally:
             fcntl.flock(f, fcntl.LOCK_UN)
 
@@ -480,6 +494,11 @@ async def _run_inner(
         _track_session(sessions, session_id)
     except asyncio.TimeoutError:
         logger.error(f"Session {session_id!r}: timed out after {TASK_TIMEOUT_SECONDS}s.")
+        # Remove the session from the LRU cache on timeout. The SDK context
+        # manager is cancelled mid-stream, so the session state may be
+        # inconsistent. Evicting it ensures the next call starts a fresh
+        # session rather than trying to resume a potentially broken one.
+        sessions.pop(session_id, None)
         if a2_tasks_total is not None:
             a2_tasks_total.labels(**_LABELS, status="timeout").inc()
         if a2_task_error_duration_seconds is not None:

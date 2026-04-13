@@ -11,6 +11,7 @@ from metrics import (
     agent_continuation_parse_errors_total,
     agent_continuation_reloads_total,
     agent_continuation_runs_total,
+    agent_continuation_throttled_total,
     agent_file_watcher_restarts_total,
     agent_watcher_events_total,
 )
@@ -20,6 +21,10 @@ from watchfiles import awatch
 logger = logging.getLogger(__name__)
 
 CONTINUATIONS_DIR = os.environ.get("CONTINUATIONS_DIR", "/home/agent/.nyx/continuations")
+
+# Global default cap on concurrent in-flight fires per continuation.
+# Overridable per-continuation via the max-concurrent-fires frontmatter field.
+CONTINUATION_MAX_CONCURRENT_FIRES = int(os.environ.get("CONTINUATION_MAX_CONCURRENT_FIRES", "5"))
 
 
 @dataclass
@@ -36,6 +41,7 @@ class ContinuationItem:
     model: str | None = None
     backend_id: str | None = None
     description: str | None = None
+    max_concurrent_fires: int = CONTINUATION_MAX_CONCURRENT_FIRES
 
 
 def parse_continuation_file(path: str) -> ContinuationItem | None:
@@ -82,6 +88,17 @@ def parse_continuation_file(path: str) -> ContinuationItem | None:
         backend_id = fields.get("agent") or None
         description = fields.get("description") or None
 
+        max_concurrent_fires = CONTINUATION_MAX_CONCURRENT_FIRES
+        max_fires_raw = fields.get("max-concurrent-fires") or fields.get("max_concurrent_fires")
+        if max_fires_raw is not None:
+            try:
+                max_concurrent_fires = max(1, int(max_fires_raw))
+            except (ValueError, TypeError):
+                logger.warning(
+                    f"Continuation file {path}: invalid 'max-concurrent-fires' value {max_fires_raw!r}, "
+                    f"using default {CONTINUATION_MAX_CONCURRENT_FIRES}."
+                )
+
         return ContinuationItem(
             path=path,
             name=name,
@@ -95,6 +112,7 @@ def parse_continuation_file(path: str) -> ContinuationItem | None:
             model=model,
             backend_id=backend_id,
             description=description,
+            max_concurrent_fires=max_concurrent_fires,
         )
 
     except Exception as e:
@@ -130,6 +148,8 @@ class ContinuationRunner:
     def __init__(self):
         self._items: dict[str, ContinuationItem] = {}
         self._active_fires: set[asyncio.Task] = set()
+        # Per-continuation in-flight tasks, keyed by continuation name.
+        self._fires_by_name: dict[str, set[asyncio.Task]] = {}
 
     def _register(self, path: str) -> None:
         item = parse_continuation_file(path)
@@ -167,11 +187,26 @@ class ContinuationRunner:
             outcome_matches = (success and item.on_success) or (not success and item.on_error)
             content_matches = item.trigger_when is None or item.trigger_when in response
             if upstream_matches and outcome_matches and content_matches:
+                # Throttle: skip this fire if the per-continuation in-flight
+                # count already equals max_concurrent_fires.
+                fires = self._fires_by_name.setdefault(item.name, set())
+                if len(fires) >= item.max_concurrent_fires:
+                    logger.warning(
+                        f"Continuation '{item.name}': max_concurrent_fires ({item.max_concurrent_fires}) "
+                        f"reached — skipping fire for upstream '{kind}'."
+                    )
+                    if agent_continuation_throttled_total is not None:
+                        agent_continuation_throttled_total.labels(name=item.name).inc()
+                    continue
                 if agent_continuation_fires_total is not None:
                     agent_continuation_fires_total.labels(upstream_kind=kind).inc()
                 _t = asyncio.ensure_future(_fire(item, session_id, bus))
                 self._active_fires.add(_t)
-                _t.add_done_callback(self._active_fires.discard)
+                fires.add(_t)
+                def _cleanup(t: asyncio.Task, _name: str = item.name) -> None:
+                    self._active_fires.discard(t)
+                    self._fires_by_name.get(_name, set()).discard(t)
+                _t.add_done_callback(_cleanup)
 
     async def run(self) -> None:
         logger.info(f"Continuation runner watching {CONTINUATIONS_DIR}")

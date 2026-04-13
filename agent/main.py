@@ -14,6 +14,7 @@ import uvicorn
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
+from sqlite_task_store import SqliteTaskStore
 from a2a.types import (
     AgentCapabilities,
     AgentCard,
@@ -67,13 +68,31 @@ AGENT_VERSION = os.environ.get("AGENT_VERSION", "0.1.0")
 metrics_enabled = bool(os.environ.get("METRICS_ENABLED"))
 WORKER_MAX_RESTARTS = int(os.environ.get("WORKER_MAX_RESTARTS", "5"))
 
+# CORS_ALLOW_ORIGINS: comma-separated list of allowed origins (e.g.
+# "http://localhost:3000,https://ui.example.com").  When unset the server
+# falls back to the permissive wildcard and logs a warning at startup so
+# operators know it is not restricted to known origins.
+_cors_env = os.environ.get("CORS_ALLOW_ORIGINS", "")
+CORS_ALLOW_ORIGINS: list[str] = [o.strip() for o in _cors_env.split(",") if o.strip()] if _cors_env else ["*"]
+
 _ready: bool = False
 _startup_mono: float = 0.0
 start_time: datetime = datetime.now(timezone.utc)
 
+# How long (seconds) to cache aggregated backend metrics to avoid fan-out HTTP
+# calls on every Prometheus scrape.  Override via METRICS_CACHE_TTL env var.
+METRICS_CACHE_TTL = float(os.environ.get("METRICS_CACHE_TTL", "15"))
+_metrics_cache_body: str = ""
+_metrics_cache_expires: float = 0.0
+
 
 def _check_trigger_auth(request: Request, item: TriggerItem, body_bytes: bytes) -> bool:
-    """Validate trigger request auth. HMAC takes priority over Bearer token."""
+    """Validate trigger request auth. HMAC takes priority over Bearer token.
+
+    At least one auth mechanism must be configured (secret-env-var on the trigger
+    definition or TRIGGERS_AUTH_TOKEN in the environment).  When neither is present
+    the request is rejected so that unconfigured triggers are not open to any caller.
+    """
     if item.secret_env_var:
         secret = os.environ.get(item.secret_env_var, "")
         if not secret:
@@ -90,7 +109,11 @@ def _check_trigger_auth(request: Request, item: TriggerItem, body_bytes: bytes) 
         header = request.headers.get("Authorization", "")
         return hmac_mod.compare_digest(f"Bearer {auth_token}", header)
 
-    return True
+    logger.warning(
+        f"Trigger '{item.name}': no authentication is configured (set secret-env-var in the "
+        "trigger file or set TRIGGERS_AUTH_TOKEN) — request rejected."
+    )
+    return False
 
 
 def load_agent_description() -> str:
@@ -263,7 +286,7 @@ async def bus_worker(bus: MessageBus, executor: AgentExecutor) -> None:
         try:
             await executor.process_bus(message)
         except Exception as e:
-            logger.error(f"Bus worker error: {e}")
+            logger.error("Bus worker error processing message kind=%r: %s", message.kind, e, exc_info=True)
             if agent_bus_errors_total is not None:
                 agent_bus_errors_total.inc()
             if agent_bus_error_processing_duration_seconds is not None:
@@ -296,7 +319,18 @@ async def main():
     bus = MessageBus()
     agent_card = build_agent_card()
     executor = AgentExecutor()
-    task_store = InMemoryTaskStore()
+    _task_store_path = os.environ.get("TASK_STORE_PATH", "")
+    if _task_store_path:
+        logger.info("Using SqliteTaskStore at %s", _task_store_path)
+        task_store = SqliteTaskStore(_task_store_path)
+    else:
+        logger.warning(
+            "TASK_STORE_PATH is not set — using InMemoryTaskStore. "
+            "In-flight A2A task state will be lost on process restart. "
+            "Set TASK_STORE_PATH to a file path (e.g. /home/agent/logs/tasks.db) "
+            "to enable persistence."
+        )
+        task_store = InMemoryTaskStore()
     request_handler = DefaultRequestHandler(
         agent_executor=executor,
         task_store=task_store,
@@ -315,17 +349,40 @@ async def main():
         if agent_uptime_seconds is not None:
             agent_uptime_seconds.set_function(lambda: (datetime.now(timezone.utc) - start_time).total_seconds())
         logger.info("Prometheus metrics enabled at /metrics")
+    else:
+        logger.warning(
+            "METRICS_ENABLED is not set — Prometheus metrics are disabled. "
+            "Set METRICS_ENABLED=1 to enable /metrics and all instrumentation."
+        )
+
+    _metrics_auth_token = os.environ.get("METRICS_AUTH_TOKEN", "")
 
     async def metrics_handler(request: Request) -> Response:
-        """Return nyx-agent metrics plus relabelled metrics from all reachable backends."""
-        from backends.config import load_backends_config
+        """Return nyx-agent metrics plus relabelled metrics from all reachable backends.
+
+        Backend metrics are cached for METRICS_CACHE_TTL seconds to avoid
+        making N outbound HTTP calls on every Prometheus scrape.
+        """
+        global _metrics_cache_body, _metrics_cache_expires
+        if _metrics_auth_token:
+            header = request.headers.get("Authorization", "")
+            if not hmac_mod.compare_digest(f"Bearer {_metrics_auth_token}", header):
+                return Response(
+                    content="Unauthorized",
+                    status_code=401,
+                    headers={"WWW-Authenticate": 'Bearer realm="metrics"'},
+                )
         nyx_output = prometheus_client.exposition.generate_latest().decode("utf-8")
-        try:
-            backend_configs = load_backends_config()
-        except Exception:
-            backend_configs = []
-        backend_output = await fetch_backend_metrics(backend_configs)
-        body = nyx_output + backend_output
+        now = time.monotonic()
+        if now >= _metrics_cache_expires:
+            from backends.config import load_backends_config
+            try:
+                backend_configs = load_backends_config()
+            except Exception:
+                backend_configs = []
+            _metrics_cache_body = await fetch_backend_metrics(backend_configs)
+            _metrics_cache_expires = now + METRICS_CACHE_TTL
+        body = nyx_output + _metrics_cache_body
         return Response(
             content=body,
             media_type=prometheus_client.exposition.CONTENT_TYPE_LATEST,
@@ -362,7 +419,13 @@ async def main():
                 agents.append(entry)
         return JSONResponse(agents)
 
+    _conversations_auth_token = os.environ.get("CONVERSATIONS_AUTH_TOKEN", "")
+
     async def conversations_handler(request: Request) -> JSONResponse:
+        if _conversations_auth_token:
+            header = request.headers.get("Authorization", "")
+            if not hmac_mod.compare_digest(f"Bearer {_conversations_auth_token}", header):
+                return JSONResponse({"error": "unauthorized"}, status_code=401)
         since = request.query_params.get("since")
         limit = request.query_params.get("limit")
         try:
@@ -378,6 +441,10 @@ async def main():
         return JSONResponse(entries)
 
     async def trace_handler(request: Request) -> JSONResponse:
+        if _conversations_auth_token:
+            header = request.headers.get("Authorization", "")
+            if not hmac_mod.compare_digest(f"Bearer {_conversations_auth_token}", header):
+                return JSONResponse({"error": "unauthorized"}, status_code=401)
         since = request.query_params.get("since")
         limit = request.query_params.get("limit")
         try:
@@ -392,8 +459,18 @@ async def main():
         entries = await fetch_backend_trace(backend_configs, since=since, limit=limit_n)
         return JSONResponse(entries)
 
+    _proxy_auth_token = os.environ.get("PROXY_AUTH_TOKEN", "")
+
     async def proxy_handler(request: Request) -> Response:
         """Proxy an A2A JSON-RPC request to a named team member, optionally targeting a specific backend."""
+        if _proxy_auth_token:
+            header = request.headers.get("Authorization", "")
+            if not hmac_mod.compare_digest(f"Bearer {_proxy_auth_token}", header):
+                return Response(
+                    content="Unauthorized",
+                    status_code=401,
+                    headers={"WWW-Authenticate": 'Bearer realm="proxy"'},
+                )
         import json as _json
         import httpx
         agent_name = request.path_params["agent_name"]
@@ -420,8 +497,24 @@ async def main():
                         _b = next((a for a in _agents if a.get("role") == "backend" and a.get("id") == backend_id), None)
                         if _b and _b.get("url"):
                             target_url = _b["url"]
-            except Exception:
-                pass
+                        else:
+                            logger.warning(
+                                "proxy_handler: backend_id %r not found in /agents for agent %r — "
+                                "falling back to nyx URL %r",
+                                backend_id, agent_name, target_url,
+                            )
+                    else:
+                        logger.warning(
+                            "proxy_handler: /agents for agent %r returned HTTP %s — "
+                            "cannot resolve backend_id %r, falling back to nyx URL %r",
+                            agent_name, _r.status_code, backend_id, target_url,
+                        )
+            except Exception as exc:
+                logger.warning(
+                    "proxy_handler: failed to resolve backend_id %r for agent %r: %s — "
+                    "falling back to nyx URL %r",
+                    backend_id, agent_name, exc, target_url,
+                )
         body = await request.body()
         if len(body) > 1_048_576:
             return JSONResponse({"error": "request body too large"}, status_code=413)
@@ -464,8 +557,24 @@ async def main():
                         _b = next((a for a in _agents if a.get("role") == "backend" and a.get("id") == backend_id), None)
                         if _b and _b.get("url"):
                             target_url = _b["url"]
-            except Exception:
-                pass
+                        else:
+                            logger.warning(
+                                "conversations_proxy_handler: backend_id %r not found in /agents for "
+                                "agent %r — falling back to nyx URL %r",
+                                backend_id, agent_name, target_url,
+                            )
+                    else:
+                        logger.warning(
+                            "conversations_proxy_handler: /agents for agent %r returned HTTP %s — "
+                            "cannot resolve backend_id %r, falling back to nyx URL %r",
+                            agent_name, _r.status_code, backend_id, target_url,
+                        )
+            except Exception as exc:
+                logger.warning(
+                    "conversations_proxy_handler: failed to resolve backend_id %r for agent %r: %s — "
+                    "falling back to nyx URL %r",
+                    backend_id, agent_name, exc, target_url,
+                )
         params: dict = {"limit": limit}
         if since:
             params["since"] = since
@@ -680,11 +789,19 @@ async def main():
                     await stack.enter_async_context(_sub_app_lifespan(route.app))
             yield
 
+    if CORS_ALLOW_ORIGINS == ["*"]:
+        logger.warning(
+            "CORS is configured to allow all origins (CORS_ALLOW_ORIGINS is not set). "
+            "Set CORS_ALLOW_ORIGINS to a comma-separated list of trusted origins to restrict access."
+        )
+    else:
+        logger.info("CORS allowed origins: %s", CORS_ALLOW_ORIGINS)
+
     full_app = Starlette(
         routes=_routes,
         lifespan=lifespan,
         middleware=[
-            Middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET", "POST", "OPTIONS"], allow_headers=["*"]),
+            Middleware(CORSMiddleware, allow_origins=CORS_ALLOW_ORIGINS, allow_methods=["GET", "POST", "OPTIONS"], allow_headers=["*"]),
         ],
     )
 

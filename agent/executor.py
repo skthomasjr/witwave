@@ -9,7 +9,6 @@ import uuid
 import yaml
 from collections import OrderedDict
 from datetime import datetime, timezone
-from logging.handlers import RotatingFileHandler
 
 from a2a.server.agent_execution import AgentExecutor as A2AAgentExecutor
 from a2a.server.agent_execution import RequestContext
@@ -60,7 +59,11 @@ TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
 
 
 def _append_log(path: str, line: str) -> None:
-    """Append a single line to a log file using fcntl locking for multi-process safety."""
+    """Append a single line to a log file using fcntl locking for multi-process safety.
+
+    After writing, rotates the file if it exceeds MAX_LOG_BYTES.  Keeps up to
+    MAX_LOG_BACKUP_COUNT numbered backups (<path>.1, <path>.2, …).
+    """
     log_dir = os.path.dirname(path)
     if log_dir:
         os.makedirs(log_dir, exist_ok=True)
@@ -68,6 +71,17 @@ def _append_log(path: str, line: str) -> None:
         fcntl.flock(f, fcntl.LOCK_EX)
         try:
             f.write(line + "\n")
+            f.flush()
+            if MAX_LOG_BACKUP_COUNT > 0 and os.path.getsize(path) >= MAX_LOG_BYTES:
+                # Rotate: <path>.N → <path>.N+1, …, <path> → <path>.1
+                for i in range(MAX_LOG_BACKUP_COUNT, 0, -1):
+                    src = f"{path}.{i - 1}" if i > 1 else path
+                    dst = f"{path}.{i}"
+                    if os.path.exists(src):
+                        if i == MAX_LOG_BACKUP_COUNT and os.path.exists(dst):
+                            os.remove(dst)
+                        os.rename(src, dst)
+                logger.debug("Rotated log file %s", path)
         finally:
             fcntl.flock(f, fcntl.LOCK_UN)
 
@@ -373,7 +387,7 @@ class AgentExecutor(A2AAgentExecutor):
                                 )
                                 self._mcp_watcher_tasks.append(task)
                         except Exception as e:
-                            logger.error(f"Failed to reload backends — keeping previous config: {e}")
+                            logger.error("Failed to reload backends — keeping previous config: %s", e, exc_info=True)
                         break
             logger.warning("Backends watcher exited — retrying in 10s.")
             await asyncio.sleep(10)

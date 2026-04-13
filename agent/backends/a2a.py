@@ -7,18 +7,26 @@ import json
 import logging
 import os
 import time
-import urllib.request
 import uuid
-from urllib.error import URLError
+
+import httpx
 
 from backends.config import BackendConfig
 
 logger = logging.getLogger(__name__)
 
 TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
-# Inner urllib timeout must be shorter than the outer asyncio timeout so that
-# the thread always finishes before asyncio cancels it, preventing a thread leak.
+# Inner HTTP timeout must be shorter than the outer asyncio timeout so that
+# the client call finishes before asyncio cancels the outer coroutine,
+# preventing a dangling connection.
 _HTTP_TIMEOUT_SECONDS = max(TASK_TIMEOUT_SECONDS - 10, 10)
+
+# Retry configuration for transient network errors.
+_MAX_RETRIES = int(os.environ.get("A2A_BACKEND_MAX_RETRIES", "3"))
+_RETRY_BACKOFF_BASE = float(os.environ.get("A2A_BACKEND_RETRY_BACKOFF", "1.0"))
+
+# Transient status codes that are safe to retry.
+_RETRYABLE_STATUS_CODES: frozenset[int] = frozenset({429, 502, 503, 504})
 
 
 class A2ABackend:
@@ -33,6 +41,16 @@ class A2ABackend:
         self._url = os.environ.get(_env_var) or config.url or ""
         if not self._url:
             raise ValueError(f"A2A backend '{config.id}' has no url configured.")
+        # Shared AsyncClient with connection pooling; initialized lazily.
+        self._client: httpx.AsyncClient | None = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=httpx.Timeout(connect=10.0, read=_HTTP_TIMEOUT_SECONDS, write=30.0, pool=5.0),
+                limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
+            )
+        return self._client
 
     async def run_query(
         self,
@@ -62,17 +80,7 @@ class A2ABackend:
             payload["params"]["message"]["metadata"] = {"model": model}
 
         body = json.dumps(payload).encode()
-
-        try:
-            response_text = await asyncio.to_thread(
-                self._post, self._url, body
-            )
-        except URLError as exc:
-            logger.error(f"A2A backend '{self.id}' request failed: {exc}")
-            raise ConnectionError(f"A2A backend '{self.id}' unreachable at {self._url}: {exc}") from exc
-        except Exception as exc:
-            logger.error(f"A2A backend '{self.id}' unexpected error: {exc}")
-            raise
+        response_text = await self._post_with_retry(self._url, body)
 
         elapsed = time.monotonic() - _start
         logger.debug(f"A2A backend '{self.id}' responded in {elapsed:.2f}s")
@@ -89,16 +97,56 @@ class A2ABackend:
         result = data.get("result") or {}
         return self._extract_text(result)
 
-    @staticmethod
-    def _post(url: str, body: bytes) -> str:
-        req = urllib.request.Request(
-            url,
-            data=body,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_SECONDS) as resp:
-            return resp.read().decode()
+    async def _post_with_retry(self, url: str, body: bytes) -> str:
+        """POST body to url using the shared AsyncClient, retrying on transient errors."""
+        client = self._get_client()
+        last_exc: Exception | None = None
+        for attempt in range(_MAX_RETRIES):
+            try:
+                resp = await client.post(
+                    url,
+                    content=body,
+                    headers={"Content-Type": "application/json"},
+                )
+                if resp.status_code in _RETRYABLE_STATUS_CODES:
+                    logger.warning(
+                        f"A2A backend '{self.id}' returned HTTP {resp.status_code} "
+                        f"(attempt {attempt + 1}/{_MAX_RETRIES}) — retrying"
+                    )
+                    last_exc = ConnectionError(
+                        f"A2A backend '{self.id}' returned HTTP {resp.status_code}"
+                    )
+                else:
+                    resp.raise_for_status()
+                    return resp.text
+            except (httpx.ConnectError, httpx.ReadTimeout, httpx.WriteTimeout, httpx.PoolTimeout) as exc:
+                logger.warning(
+                    f"A2A backend '{self.id}' transient error on attempt {attempt + 1}/{_MAX_RETRIES}: {exc!r}"
+                )
+                last_exc = exc
+                # Recreate client after a connection-level error to ensure a clean state.
+                try:
+                    await self._client.aclose()
+                except Exception:
+                    pass
+                self._client = None
+            except httpx.HTTPStatusError as exc:
+                # Non-retryable HTTP error — surface immediately.
+                logger.error(f"A2A backend '{self.id}' HTTP error: {exc!r}")
+                raise ConnectionError(
+                    f"A2A backend '{self.id}' returned HTTP {exc.response.status_code}"
+                ) from exc
+            except Exception as exc:
+                logger.error(f"A2A backend '{self.id}' unexpected error: {exc!r}")
+                raise
+
+            if attempt < _MAX_RETRIES - 1:
+                delay = _RETRY_BACKOFF_BASE * (2 ** attempt)
+                await asyncio.sleep(delay)
+
+        raise ConnectionError(
+            f"A2A backend '{self.id}' unreachable at {url} after {_MAX_RETRIES} attempts"
+        ) from last_exc
 
     @staticmethod
     def _extract_text(result: dict) -> list[str]:
@@ -176,4 +224,6 @@ class A2ABackend:
         return texts
 
     async def close(self) -> None:
-        pass
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+            self._client = None

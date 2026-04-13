@@ -40,6 +40,9 @@ Every named agent (iris, nova, kira, …) runs one instance of this image alongs
 | `backends/config.py` | Loads and hot-reloads `backend.yaml` |
 | `backends/a2a.py` | Forwards requests to a remote A2A backend over HTTP/JSON-RPC |
 | `metrics.py` | Prometheus metric definitions |
+| `metrics_proxy.py` | Aggregates backend /metrics with backend= label injection |
+| `conversations_proxy.py` | Fetches and merges /conversations and /trace from all backends |
+| `sqlite_task_store.py` | SQLite-backed task store (used when TASK_STORE_PATH is set) |
 | `utils.py` | Frontmatter parser, duration parser, shared helpers |
 
 ## Configuration
