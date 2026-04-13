@@ -1,10 +1,10 @@
 ---
-name: bug-discovery
-description: Analyze one or all components of the autonomous-agent platform for bugs and record findings as tracked bugs. Trigger when the user says "find bugs", "discover bugs", "look for bugs", "scan for bugs", "search for bugs", or "run bug discovery" — with or without a component name.
-version: 1.0.0
+name: bug-discover
+description: Analyze one or all components of the autonomous-agent platform for bugs and record findings as tracked bugs. Trigger when the user says "find bugs", "discover bugs", "look for bugs", "scan for bugs", "search for bugs", or "run bug discover" — with or without a component name.
+version: 1.1.0
 ---
 
-# bug-discovery
+# bug-discover
 
 Analyze a specific component of the autonomous-agent platform for bugs.
 

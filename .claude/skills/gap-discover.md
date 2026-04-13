@@ -1,10 +1,10 @@
 ---
-name: gap-discovery
-description: Analyze one or all components of the autonomous-agent platform for gaps and record findings as tracked gaps. Trigger when the user says "find gaps", "discover gaps", "look for gaps", "scan for gaps", "search for gaps", or "run gap discovery" — with or without a component name.
-version: 1.0.0
+name: gap-discover
+description: Analyze one or all components of the autonomous-agent platform for gaps and record findings as tracked gaps. Trigger when the user says "find gaps", "discover gaps", "look for gaps", "scan for gaps", "search for gaps", or "run gap discover" — with or without a component name.
+version: 1.1.0
 ---
 
-# gap-discovery
+# gap-discover
 
 Analyze a specific component of the autonomous-agent platform for gaps.
 

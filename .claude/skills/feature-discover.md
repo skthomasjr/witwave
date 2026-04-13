@@ -1,10 +1,10 @@
 ---
-name: feature-discovery
-description: Analyze open ready requests and derive feature issues from them. Trigger when the user says "discover features", "find features", "run feature discovery", "derive features", or "generate features from requests".
-version: 1.1.0
+name: feature-discover
+description: Analyze open ready requests and derive feature issues from them. Trigger when the user says "discover features", "find features", "run feature discover", "derive features", or "generate features from requests".
+version: 1.2.0
 ---
 
-# feature-discovery
+# feature-discover
 
 Analyze each open request that has been marked as ready and derive one or more feature issues from it.
 

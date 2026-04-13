@@ -1,10 +1,10 @@
 ---
-name: risk-discovery
-description: Analyze one or all components of the autonomous-agent platform for risks and record findings as tracked risks. Trigger when the user says "find risks", "discover risks", "look for risks", "scan for risks", "search for risks", or "run risk discovery" — with or without a component name.
+name: risk-discover
+description: Analyze one or all components of the autonomous-agent platform for risks and record findings as tracked risks. Trigger when the user says "find risks", "discover risks", "look for risks", "scan for risks", "search for risks", or "run risk discover" — with or without a component name.
 version: 1.0.1
 ---
 
-# risk-discovery
+# risk-discover
 
 Analyze a specific component of the autonomous-agent platform for risks.
 
