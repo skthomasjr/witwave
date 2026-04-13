@@ -36,6 +36,32 @@ agents:
       - name: ghcr-credentials
 ```
 
+Create backend secrets for each agent. The required keys depend on which backends you are deploying — see the backend READMEs for details:
+
+- [a2-claude secrets](../../a2-claude/README.md#secrets) — `ANTHROPIC_API_KEY`
+- [a2-codex secrets](../../a2-codex/README.md#secrets) — `OPENAI_API_KEY`
+- [a2-gemini secrets](../../a2-gemini/README.md#secrets) — `GEMINI_API_KEY`
+
+Example for an agent named `adam` using the Claude backend:
+
+```bash
+kubectl create secret generic adam-claude-secrets \
+  --from-literal=ANTHROPIC_API_KEY=sk-ant-... \
+  --namespace nyx
+```
+
+Then reference the secret in your values:
+
+```yaml
+agents:
+  - name: adam
+    backends:
+      - name: claude
+        envFrom:
+          - secretRef:
+              name: adam-claude-secrets
+```
+
 Install the chart:
 
 ```bash

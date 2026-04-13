@@ -32,6 +32,10 @@ spec:
           env:
             - name: AGENT_NAME
               value: {{ .name }}
+          {{- if .envFrom }}
+          envFrom:
+            {{- toYaml .envFrom | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: backend-config
               mountPath: /home/agent/.nyx/backend.yaml

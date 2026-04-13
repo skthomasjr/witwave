@@ -50,6 +50,28 @@ depth, error counts, and execution duration.
 | `requirements.txt`     | Python dependencies                                         |
 | `Dockerfile`           | Container image definition                                  |
 
+## Secrets
+
+Create a Kubernetes secret with the required credentials before deploying:
+
+```bash
+kubectl create secret generic <agent>-gemini-secrets \
+  --from-literal=GEMINI_API_KEY=... \
+  --namespace nyx
+```
+
+`GOOGLE_API_KEY` is also accepted as an alternative to `GEMINI_API_KEY`.
+
+Reference the secret in your Helm values:
+
+```yaml
+backends:
+  - name: gemini
+    envFrom:
+      - secretRef:
+          name: <agent>-gemini-secrets
+```
+
 ## Runtime
 
 a2-gemini mounts:

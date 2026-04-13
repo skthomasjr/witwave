@@ -62,6 +62,26 @@ store fails to initialize).
 | `requirements.txt`     | Python dependencies                                                |
 | `Dockerfile`           | Container image definition                                         |
 
+## Secrets
+
+Create a Kubernetes secret with the required credentials before deploying:
+
+```bash
+kubectl create secret generic <agent>-codex-secrets \
+  --from-literal=OPENAI_API_KEY=sk-... \
+  --namespace nyx
+```
+
+Reference the secret in your Helm values:
+
+```yaml
+backends:
+  - name: codex
+    envFrom:
+      - secretRef:
+          name: <agent>-codex-secrets
+```
+
 ## Runtime
 
 a2-codex mounts:

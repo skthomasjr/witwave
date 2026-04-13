@@ -56,6 +56,28 @@ token counts, context exhaustion events, tool call counts, MCP tool usage, and t
 | `requirements.txt`     | Python dependencies                                          |
 | `Dockerfile`           | Container image definition                                   |
 
+## Secrets
+
+Create a Kubernetes secret with the required credentials before deploying:
+
+```bash
+kubectl create secret generic <agent>-claude-secrets \
+  --from-literal=ANTHROPIC_API_KEY=sk-ant-... \
+  --namespace nyx
+```
+
+For Claude Max (OAuth), use `CLAUDE_CODE_OAUTH_TOKEN` instead of `ANTHROPIC_API_KEY`.
+
+Reference the secret in your Helm values:
+
+```yaml
+backends:
+  - name: claude
+    envFrom:
+      - secretRef:
+          name: <agent>-claude-secrets
+```
+
 ## Runtime
 
 a2-claude mounts:
