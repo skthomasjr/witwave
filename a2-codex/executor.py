@@ -177,6 +177,35 @@ async def _build_tools(model: str) -> list:
     return tools
 
 
+def _sqlite_session_exists(session_id: str) -> bool:
+    """Check whether a session already has history in CODEX_SESSION_DB.
+
+    Uses a direct sqlite3 query against the agent_sessions table so that
+    after a process restart we correctly identify sessions that exist on disk
+    even though the in-memory LRU cache is empty.  Returns False if the
+    database file does not exist yet or if any error occurs.
+    """
+    import sqlite3
+    db_path = CODEX_SESSION_DB
+    if db_path == ":memory:" or not db_path:
+        return False
+    import os as _os
+    if not _os.path.exists(db_path):
+        return False
+    try:
+        conn = sqlite3.connect(db_path, check_same_thread=False)
+        try:
+            cursor = conn.execute(
+                "SELECT 1 FROM agent_sessions WHERE session_id = ? LIMIT 1",
+                (session_id,),
+            )
+            return cursor.fetchone() is not None
+        finally:
+            conn.close()
+    except Exception:
+        return False
+
+
 def _load_agent_md() -> str:
     try:
         with open(AGENT_MD) as f:
@@ -433,7 +462,7 @@ async def _run_inner(
     if a2_model_requests_total is not None:
         a2_model_requests_total.labels(**_LABELS, model=resolved_model).inc()
 
-    is_new = session_id not in sessions
+    is_new = session_id not in sessions and not await asyncio.to_thread(_sqlite_session_exists, session_id)
     if not is_new and a2_session_idle_seconds is not None:
         _last_used = sessions.get(session_id)
         if _last_used is not None:
