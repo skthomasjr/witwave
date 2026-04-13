@@ -185,8 +185,7 @@ async def _run_inner(
 
     _prompt_preview = prompt[:LOG_PROMPT_MAX_BYTES] + ("[truncated]" if len(prompt) > LOG_PROMPT_MAX_BYTES else "") if LOG_PROMPT_MAX_BYTES > 0 else "[redacted]"
     logger.info(f"Session {session_id} ({'new' if is_new else 'existing'}) backend={resolved_id} — prompt: {_prompt_preview!r}")
-    if not isinstance(backend, A2ABackend):
-        await log_entry("user", prompt, session_id, model=model, backend=resolved_id)
+    await log_entry("user", prompt, session_id, model=model, backend=resolved_id)
 
     if agent_prompt_length_bytes is not None:
         agent_prompt_length_bytes.observe(len(prompt.encode()))
