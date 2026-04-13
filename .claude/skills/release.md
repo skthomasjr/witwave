@@ -1,7 +1,7 @@
 ---
 name: release
-description: Create a new GitHub release with auto-generated notes from commits and closed issues. Trigger when the user says "create a release", "cut a release", "release a new version", "tag a release", "cut a beta", "release a beta", or "run release".
-version: 1.1.0
+description: Create a new GitHub release with auto-generated notes from commits and closed issues. Trigger when the user says "create a release", "cut a release", "release a new version", "tag a release", "run release", "cut a beta", "create a beta", "release a beta", "cut a patch release", "cut a minor release", or "cut a major release".
+version: 1.1.1
 ---
 
 # release
