@@ -16,7 +16,7 @@ data:
       agents:
 {{- range .backends }}
         - id: {{ .name }}
-          url: http://nyx-{{ $agent.name }}-{{ .name }}:{{ .port }}
+          url: http://localhost:{{ .port }}
 {{- if .model }}
           model: {{ .model }}
 {{- end }}

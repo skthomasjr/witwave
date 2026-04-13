@@ -54,7 +54,7 @@ spec:
             - name: AGENT_ID
               value: {{ .name }}
             - name: AGENT_URL
-              value: http://nyx-{{ $agentName }}-{{ .name }}:{{ .port }}
+              value: http://localhost:{{ .port }}
             - name: BACKEND_PORT
               value: {{ .port | quote }}
             {{- if .env }}
