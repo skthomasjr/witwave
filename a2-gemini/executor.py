@@ -247,10 +247,6 @@ def _track_session(
             except OSError as e:
                 logger.warning("Could not remove evicted session file %s: %s", _evicted_path, e)
         sessions[session_id] = time.monotonic()
-        # Prune any lock entries for sessions no longer tracked
-        stale = [sid for sid in session_locks if sid not in sessions]
-        for sid in stale:
-            session_locks.pop(sid, None)
     if a2_active_sessions is not None:
         a2_active_sessions.labels(**_LABELS).set(len(sessions))
     if a2_lru_cache_utilization_percent is not None:
