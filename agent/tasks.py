@@ -242,8 +242,22 @@ def _next_window_open(item: TaskItem, after: datetime) -> datetime | None:
     after_local = after.astimezone(tz)
     # Start checking from the next minute to avoid re-triggering the same moment
     check_date = after_local.date()
-    # If we're past window_start today, start from tomorrow
-    if after_local.time() >= item.window_start:
+    # Determine whether to advance past today's window_start.
+    # For midnight-spanning windows (window_end < window_start), times in the
+    # early-morning portion (t < window_end) belong to the window that opened
+    # the previous evening — window_start for *today* has not yet arrived, but
+    # the window is still active.  In this case we should advance check_date by
+    # 1 so that we schedule the next opening (tonight) rather than returning
+    # today's window_start (which is in the future but after the active window
+    # has already closed at window_end).
+    _t = after_local.time()
+    _midnight_spanning = item.window_end is not None and item.window_end < item.window_start
+    if _midnight_spanning and _t < item.window_end:
+        # We are inside the early-morning tail of yesterday's window.
+        # Advance past today so we find tonight's (or a future) window_start.
+        check_date += timedelta(days=1)
+    elif _t >= item.window_start:
+        # We are past window_start for today (normal case).
         check_date += timedelta(days=1)
 
     for _ in range(366 * 2):  # guard against infinite loop — max 2 years
