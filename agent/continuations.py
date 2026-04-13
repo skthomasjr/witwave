@@ -153,9 +153,10 @@ class ContinuationRunner:
 
     def _register(self, path: str) -> None:
         item = parse_continuation_file(path)
-        self._unregister(path)
         if item is None:
+            # Parse error — preserve the last known good registration.
             return
+        self._unregister(path)
         self._items[path] = item
         if agent_continuation_items_registered is not None:
             agent_continuation_items_registered.set(len(self._items))
