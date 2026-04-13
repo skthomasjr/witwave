@@ -309,18 +309,47 @@ async def run_consensus(
     return synthesised
 
 
-async def _guarded_watcher(coro_fn, restart_delay: float = 5.0) -> None:
-    """Restart a watcher coroutine on unexpected exceptions (mirrors main._guarded)."""
+async def _guarded(
+    coro_fn,
+    *args,
+    restart_delay: float = 5.0,
+    max_restarts: int = 5,
+    on_not_ready=None,
+    on_recovered=None,
+) -> None:
+    """Restart a coroutine function in a restart loop, catching unexpected exceptions.
+
+    Replaces the former _guarded_watcher (which was a diverged subset of this
+    implementation).  When on_not_ready / on_recovered callbacks are provided the
+    caller can react to consecutive-crash and recovery events — e.g. to update a
+    readiness flag (#363).
+
+    The consecutive restart counter resets whenever a run lasts at least
+    restart_delay seconds, so transient failures spread over time do not
+    accumulate toward the threshold.
+    """
+    consecutive_restarts = 0
     while True:
+        _attempt_start = time.monotonic()
         try:
-            await coro_fn()
-            return
+            await coro_fn(*args)
+            return  # clean exit — do not restart
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            logger.error(f"MCP watcher {coro_fn.__name__!r} crashed: {exc!r} — restarting in {restart_delay}s")
+            if time.monotonic() - _attempt_start >= restart_delay:
+                consecutive_restarts = 0
+                if on_recovered is not None:
+                    on_recovered()
+            consecutive_restarts += 1
+            logger.error(
+                f"Task {coro_fn.__name__!r} crashed: {exc!r} — "
+                f"restarting in {restart_delay}s (consecutive restart #{consecutive_restarts})"
+            )
             if agent_task_restarts_total is not None:
                 agent_task_restarts_total.labels(task=coro_fn.__name__).inc()
+            if on_not_ready is not None and consecutive_restarts >= max_restarts:
+                on_not_ready()
             await asyncio.sleep(restart_delay)
 
 
@@ -444,7 +473,7 @@ class AgentExecutor(A2AAgentExecutor):
                                 await asyncio.gather(*_old_watcher_tasks, return_exceptions=True)
                             self._mcp_watcher_tasks = []
                             for watcher in self._mcp_watchers():
-                                task = asyncio.create_task(_guarded_watcher(watcher))
+                                task = asyncio.create_task(_guarded(watcher))
                                 task.add_done_callback(
                                     lambda t, _w=watcher: logger.error(f"MCP watcher {_w.__name__!r} exited unexpectedly: {t.exception()!r}")
                                     if not t.cancelled() and t.exception() is not None

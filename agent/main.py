@@ -26,7 +26,7 @@ from tasks import TaskRunner
 from triggers import TriggerItem, TriggerRunner
 from webhooks import WebhookRunner
 from bus import MessageBus
-from executor import AgentExecutor, run as executor_run, run_consensus as executor_run_consensus
+from executor import AgentExecutor, _guarded as _guarded_from_executor, run as executor_run, run_consensus as executor_run_consensus
 from heartbeat import heartbeat_runner, load_heartbeat
 from metrics import (
     agent_bus_consumer_idle_seconds,
@@ -301,46 +301,35 @@ async def _sub_app_lifespan(app):
         await task
 
 
-async def _guarded(coro_fn, *args, restart_delay: float = 5.0, critical: bool = False) -> None:
-    """Run a coroutine function in a restart loop, catching unexpected exceptions.
+def _guarded(coro_fn, *args, restart_delay: float = 5.0, critical: bool = False):
+    """Thin wrapper around executor._guarded that wires up readiness callbacks.
 
-    If critical=True, sets _ready=False after WORKER_MAX_RESTARTS consecutive crashes,
-    signalling to Kubernetes that the pod can no longer serve traffic.  When the same
-    critical worker later runs without crashing long enough to reset the consecutive
-    counter, _ready is restored to True so readiness probes pass again without a pod
-    restart.
-
-    The consecutive restart counter resets whenever a run lasts at least restart_delay
-    seconds, so transient failures spread over time do not accumulate toward the threshold.
+    When critical=True, on_not_ready marks the agent not-ready after
+    WORKER_MAX_RESTARTS consecutive crashes; on_recovered restores readiness
+    once the worker runs long enough without crashing (#363).
     """
-    global _ready
-    consecutive_restarts = 0
-    while True:
-        _attempt_start = time.monotonic()
-        try:
-            await coro_fn(*args)
-            return  # clean exit — do not restart
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            if time.monotonic() - _attempt_start >= restart_delay:
-                consecutive_restarts = 0
-                # The worker ran long enough to be considered recovered — restore
-                # readiness immediately, before counting this crash against the new
-                # consecutive window.  The previous code checked consecutive_restarts == 0
-                # at the top of the loop, but by then the increment below had already
-                # raised it to 1, so the condition could never fire.
-                if critical and not _ready:
-                    logger.info(f"Task {coro_fn.__name__!r} recovered — marking agent ready")
-                    _ready = True
-            consecutive_restarts += 1
-            logger.error(f"Task {coro_fn.__name__!r} crashed: {exc!r} — restarting in {restart_delay}s (consecutive restart #{consecutive_restarts})")
-            if agent_task_restarts_total is not None:
-                agent_task_restarts_total.labels(task=coro_fn.__name__).inc()
-            if critical and consecutive_restarts >= WORKER_MAX_RESTARTS:
-                logger.error(f"Task {coro_fn.__name__!r} has crashed {consecutive_restarts} consecutive times — marking agent not ready")
-                _ready = False
-            await asyncio.sleep(restart_delay)
+    def _on_not_ready():
+        global _ready
+        logger.error(
+            f"Task {coro_fn.__name__!r} has crashed {WORKER_MAX_RESTARTS} "
+            "consecutive times — marking agent not ready"
+        )
+        _ready = False
+
+    def _on_recovered():
+        global _ready
+        if not _ready:
+            logger.info(f"Task {coro_fn.__name__!r} recovered — marking agent ready")
+            _ready = True
+
+    return _guarded_from_executor(
+        coro_fn,
+        *args,
+        restart_delay=restart_delay,
+        max_restarts=WORKER_MAX_RESTARTS,
+        on_not_ready=_on_not_ready if critical else None,
+        on_recovered=_on_recovered if critical else None,
+    )
 
 
 async def _event_loop_monitor() -> None:
