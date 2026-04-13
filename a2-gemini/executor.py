@@ -257,12 +257,24 @@ _genai_client: genai.Client | None = None
 
 
 def _get_client() -> genai.Client:
-    """Return the module-level genai.Client singleton, creating it on first call."""
+    """Return the module-level genai.Client singleton, creating it on first call.
+
+    The API key is read from the environment on each construction so that
+    setting _genai_client = None and calling _get_client() again (e.g., in
+    a future refresh path) will pick up the current key value rather than
+    the value captured at module import time.
+
+    Note: in standard deployments, API key changes require a process restart
+    since the container environment is not updated in-place. Setting
+    _genai_client = None alone is not sufficient unless the process environment
+    is also updated (e.g., via a secrets-manager sidecar that mutates os.environ).
+    """
     global _genai_client
     if _genai_client is None:
-        if not GEMINI_API_KEY:
+        key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or None
+        if not key:
             raise RuntimeError("No Gemini API key configured. Set GEMINI_API_KEY or GOOGLE_API_KEY.")
-        _genai_client = genai.Client(api_key=GEMINI_API_KEY)
+        _genai_client = genai.Client(api_key=key)
     return _genai_client
 
 
