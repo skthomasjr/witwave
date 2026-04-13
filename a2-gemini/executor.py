@@ -399,14 +399,18 @@ async def _run_inner(
         _track_session(sessions, session_id, session_locks)
     except asyncio.TimeoutError:
         logger.error(f"Session {session_id!r}: timed out after {TASK_TIMEOUT_SECONDS}s.")
+        # Evict the session from the LRU cache on timeout. The underlying
+        # ChatSession may be in an inconsistent state after a mid-stream
+        # cancellation; removing it ensures the next call for this session_id
+        # starts fresh rather than attempting to resume a broken session.
+        sessions.pop(session_id, None)
+        session_locks.pop(session_id, None)
         if a2_tasks_total is not None:
             a2_tasks_total.labels(**_LABELS, status="timeout").inc()
         if a2_task_error_duration_seconds is not None:
             a2_task_error_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _start)
         if a2_task_last_error_timestamp_seconds is not None:
             a2_task_last_error_timestamp_seconds.labels(**_LABELS).set(time.time())
-        if session_id not in sessions:
-            session_locks.pop(session_id, None)
         raise
     except Exception:
         if a2_tasks_total is not None:
