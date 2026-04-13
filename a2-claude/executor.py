@@ -76,17 +76,9 @@ from metrics import (
 )
 from watchfiles import awatch
 from log_utils import _append_log
+from exceptions import BudgetExceededError
 
 logger = logging.getLogger(__name__)
-
-
-class BudgetExceededError(Exception):
-    """Raised when cumulative token usage exceeds the per-dispatch max_tokens budget."""
-    def __init__(self, total: int, limit: int, collected: "list[str] | None" = None) -> None:
-        super().__init__(f"Token budget exceeded: {total} tokens used of {limit} limit.")
-        self.total = total
-        self.limit = limit
-        self.collected: list[str] = collected or []
 
 
 def _session_file_path(session_id: str) -> "pathlib.Path | None":

@@ -54,17 +54,9 @@ from metrics import (
 )
 
 from log_utils import _append_log
+from exceptions import BudgetExceededError
 
 logger = logging.getLogger(__name__)
-
-
-class BudgetExceededError(Exception):
-    """Raised when cumulative token usage exceeds the per-dispatch max_tokens budget."""
-    def __init__(self, total: int, limit: int, collected: "list[str] | None" = None) -> None:
-        super().__init__(f"Token budget exceeded: {total} tokens used of {limit} limit.")
-        self.total = total
-        self.limit = limit
-        self.collected: list[str] = collected or []
 
 
 AGENT_NAME = os.environ.get("AGENT_NAME", "a2-codex")
