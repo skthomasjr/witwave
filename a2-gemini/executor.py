@@ -129,6 +129,19 @@ def _session_path(session_id: str) -> str:
     return os.path.join(SESSION_STORE_DIR, f"{session_id}.json")
 
 
+def _session_file_exists(session_id: str) -> bool:
+    """Return True if a persisted session history file exists on disk for session_id.
+
+    Used to detect resumed sessions after a process restart, when the in-memory
+    LRU cache is empty but history exists on disk.  Always returns False if any
+    error occurs so it never prevents a prompt from being processed.
+    """
+    try:
+        return os.path.exists(_session_path(session_id))
+    except Exception:
+        return False
+
+
 def _load_history(session_id: str) -> list[types.Content]:
     """Load persisted conversation history for a session, or return empty list."""
     path = _session_path(session_id)
@@ -382,7 +395,7 @@ async def _run_inner(
     if a2_model_requests_total is not None:
         a2_model_requests_total.labels(**_LABELS, model=resolved_model).inc()
 
-    is_new = session_id not in sessions
+    is_new = session_id not in sessions and not await asyncio.to_thread(_session_file_exists, session_id)
     if not is_new and a2_session_idle_seconds is not None:
         _last_used = sessions.get(session_id)
         if _last_used is not None:
