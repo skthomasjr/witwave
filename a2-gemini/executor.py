@@ -142,7 +142,14 @@ _SAVE_HISTORY_MAX_RETRIES = int(os.environ.get("GEMINI_SAVE_HISTORY_MAX_RETRIES"
 _SAVE_HISTORY_BACKOFF_BASE = float(os.environ.get("GEMINI_SAVE_HISTORY_BACKOFF", "0.5"))
 
 
-def _save_history(session_id: str, history: list[types.Content]) -> None:
+def _write_history_to_disk(tmp_path: str, path: str, raw: list) -> None:
+    """Write serialized history to disk atomically (blocking I/O, run in a thread)."""
+    with open(tmp_path, "w") as f:
+        json.dump(raw, f)
+    os.replace(tmp_path, path)
+
+
+async def _save_history(session_id: str, history: list[types.Content]) -> None:
     """Persist conversation history for a session.
 
     Retries up to _SAVE_HISTORY_MAX_RETRIES times with exponential backoff on
@@ -159,9 +166,7 @@ def _save_history(session_id: str, history: list[types.Content]) -> None:
     last_exc: Exception | None = None
     for attempt in range(_SAVE_HISTORY_MAX_RETRIES):
         try:
-            with open(tmp_path, "w") as f:
-                json.dump(raw, f)
-            os.replace(tmp_path, path)
+            await asyncio.to_thread(_write_history_to_disk, tmp_path, path, raw)
             return
         except Exception as e:
             last_exc = e
@@ -170,9 +175,8 @@ def _save_history(session_id: str, history: list[types.Content]) -> None:
                 f"(attempt {attempt + 1}/{_SAVE_HISTORY_MAX_RETRIES}): {e}"
             )
             if attempt < _SAVE_HISTORY_MAX_RETRIES - 1:
-                time.sleep(_SAVE_HISTORY_BACKOFF_BASE * (2 ** attempt))
-    # All retries exhausted — raise so the asyncio.to_thread wrapper surfaces it
-    # at ERROR level in the caller rather than silently discarding it.
+                await asyncio.sleep(_SAVE_HISTORY_BACKOFF_BASE * (2 ** attempt))
+    # All retries exhausted — raise so the caller can log at ERROR level.
     raise RuntimeError(
         f"Permanently failed to save session history for {session_id!r} "
         f"after {_SAVE_HISTORY_MAX_RETRIES} attempts"
@@ -304,7 +308,7 @@ async def run_query(
         # visible in monitoring, but do not propagate so the completed response
         # is still returned to the caller.
         try:
-            await asyncio.to_thread(_save_history, session_id, chat.history)
+            await _save_history(session_id, chat.history)
         except Exception as _save_exc:
             logger.error(
                 "Permanently failed to save session history for %r: %s",
