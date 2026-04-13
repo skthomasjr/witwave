@@ -123,7 +123,9 @@ class A2ABackend:
                     last_exc = ConnectionError(
                         f"A2A backend '{self.id}' returned HTTP {resp.status_code}"
                     )
-                    continue
+                    # Fall through to the shared backoff block below so that
+                    # retryable HTTP codes (429, 502, 503, 504) wait the same
+                    # exponential delay as connection-level errors.
                 else:
                     resp.raise_for_status()
                     return resp.text
