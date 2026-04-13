@@ -1,4 +1,20 @@
 {{- range .Values.agents }}
+{{- if .config }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nyx-{{ .name }}-config
+  labels:
+    app.kubernetes.io/name: {{ .name }}
+    app.kubernetes.io/component: nyx-agent
+    app.kubernetes.io/part-of: nyx
+data:
+{{- range .config }}
+  {{ .name }}: |
+    {{- .content | nindent 4 }}
+{{- end }}
+{{- end }}
 {{- $agentName := .name }}
 {{- range .backends }}
 {{- if .config }}

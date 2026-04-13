@@ -49,6 +49,21 @@ agents:
     # metrics:
     #   enabled: true
 
+    # # Inline config files mounted into the nyx-agent container.
+    # # Each entry is added as a key in a ConfigMap and mounted at mountPath.
+    # config:
+    #   - name: HEARTBEAT.md
+    #     mountPath: /home/agent/.nyx/HEARTBEAT.md
+    #     content: |
+    #       ---
+    #       schedule: "0 * * * *"
+    #       ---
+    #       What is the current status?
+    #   - name: agent-card.md
+    #     mountPath: /home/agent/.nyx/agent-card.md
+    #     content: |
+    #       An autonomous agent.
+
     # Backend sidecars. Each entry deploys one backend container alongside nyx-agent.
     backends:
       - # Backend name. Used as the sidecar container name and backend ID in routing.
