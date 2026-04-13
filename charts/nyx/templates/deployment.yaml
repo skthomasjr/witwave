@@ -40,6 +40,31 @@ spec:
             - name: backend-config
               mountPath: /home/agent/.nyx/backend.yaml
               subPath: backend.yaml
+{{- $agentName := .name }}
+{{- range .backends }}
+        - name: {{ .name }}
+          image: {{ .image.repository }}:{{ .image.tag | default $.Chart.AppVersion }}
+          ports:
+            - containerPort: {{ .port }}
+          env:
+            - name: AGENT_NAME
+              value: {{ $agentName }}-{{ .name }}
+            - name: AGENT_OWNER
+              value: {{ $agentName }}
+            - name: AGENT_ID
+              value: {{ .name }}
+            - name: AGENT_URL
+              value: http://nyx-{{ $agentName }}-{{ .name }}:{{ .port }}
+            - name: BACKEND_PORT
+              value: {{ .port | quote }}
+            {{- if .env }}
+            {{- toYaml .env | nindent 12 }}
+            {{- end }}
+          {{- if .envFrom }}
+          envFrom:
+            {{- toYaml .envFrom | nindent 12 }}
+          {{- end }}
+{{- end }}
       volumes:
         - name: backend-config
           configMap:
