@@ -59,6 +59,31 @@ agents:
     # metrics:
     #   enabled: true
 
+    # # Git-sync sidecar. Clones a git repo into /git on the pod and keeps it
+    # # in sync. All containers in the pod share the /git volume (read-only for
+    # # agent containers). An init container performs the initial clone so the
+    # # repo is ready before the agent starts. Auth credentials are injected via
+    # # envFrom referencing a Secret (see git-sync docs for supported env vars,
+    # # e.g. GITSYNC_USERNAME / GITSYNC_PASSWORD for HTTPS, or mount an SSH key).
+    # gitSync:
+    #   # Enable the git-sync sidecar.
+    #   enabled: false
+    #   # Git repository URL (HTTPS or SSH).
+    #   repo: https://github.com/org/repo
+    #   # Branch, tag, or commit SHA to sync. Defaults to HEAD.
+    #   # ref: main
+    #   # Sync interval (e.g. 30s, 1m). Defaults to 60s.
+    #   # period: 60s
+    #   # Clone depth. 1 is sufficient for config-only repos.
+    #   # depth: 1
+    #   # git-sync image. Defaults to the upstream stable release.
+    #   # image: registry.k8s.io/git-sync/git-sync:v4.4.0
+    #   # # Secret containing auth credentials (GITSYNC_USERNAME, GITSYNC_PASSWORD,
+    #   # # or GITSYNC_SSH_KEY_FILE). See git-sync documentation for full options.
+    #   # envFrom:
+    #   #   - secretRef:
+    #   #       name: git-sync-credentials
+
     # # Inline config files mounted into the nyx-agent container.
     # # Each entry is added as a key in a ConfigMap and mounted at mountPath.
     # config:

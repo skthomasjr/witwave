@@ -24,7 +24,50 @@ spec:
       imagePullSecrets:
         {{- toYaml .imagePullSecrets | nindent 8 }}
       {{- end }}
+      {{- if (.gitSync).enabled }}
+      initContainers:
+        - name: git-sync-init
+          image: {{ (.gitSync).image | default "registry.k8s.io/git-sync/git-sync:v4.4.0" }}
+          args:
+            - --repo={{ (.gitSync).repo }}
+            - --root=/git
+            - --one-time
+            {{- if (.gitSync).ref }}
+            - --ref={{ (.gitSync).ref }}
+            {{- end }}
+            {{- if (.gitSync).depth }}
+            - --depth={{ (.gitSync).depth | toString }}
+            {{- end }}
+          {{- if (.gitSync).envFrom }}
+          envFrom:
+            {{- toYaml (.gitSync).envFrom | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: git-sync-data
+              mountPath: /git
+      {{- end }}
       containers:
+        {{- if (.gitSync).enabled }}
+        - name: git-sync
+          image: {{ (.gitSync).image | default "registry.k8s.io/git-sync/git-sync:v4.4.0" }}
+          args:
+            - --repo={{ (.gitSync).repo }}
+            - --root=/git
+            - --period={{ (.gitSync).period | default "60s" }}
+            {{- if (.gitSync).ref }}
+            - --ref={{ (.gitSync).ref }}
+            {{- end }}
+            {{- if (.gitSync).depth }}
+            - --depth={{ (.gitSync).depth | toString }}
+            {{- end }}
+          {{- if (.gitSync).envFrom }}
+          envFrom:
+            {{- toYaml (.gitSync).envFrom | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: git-sync-data
+              mountPath: /git
+        {{- end }}
         - name: nyx-agent
           image: {{ .image.repository }}:{{ .image.tag | default $.Chart.AppVersion }}
           ports:
@@ -47,6 +90,10 @@ spec:
             - name: backend-config
               mountPath: /home/agent/.nyx/backend.yaml
               subPath: backend.yaml
+            {{- if (.gitSync).enabled }}
+            - name: git-sync-data
+              mountPath: /git
+            {{- end }}
             {{- if .config }}
             {{- range .config }}
             - name: nyx-agent-config
@@ -60,6 +107,7 @@ spec:
             {{- end }}
 {{- $agentName := .name }}
 {{- $agentMetricsEnabled := (.metrics).enabled | default $.Values.metrics.enabled }}
+{{- $gitSyncEnabled := (.gitSync).enabled }}
 {{- range .backends }}
 {{- $storageEnabled := ((.storage).enabled) }}
         - name: {{ .name }}
@@ -95,6 +143,10 @@ spec:
               subPath: {{ .subPath }}
             {{- end }}
             {{- end }}
+            {{- if $gitSyncEnabled }}
+            - name: git-sync-data
+              mountPath: /git
+            {{- end }}
             {{- if $.Values.sharedStorage.enabled }}
             - name: nyx-shared
               mountPath: {{ $.Values.sharedStorage.mountPath }}
@@ -112,6 +164,10 @@ spec:
         - name: backend-config
           configMap:
             name: nyx-{{ .name }}-backend
+        {{- if (.gitSync).enabled }}
+        - name: git-sync-data
+          emptyDir: {}
+        {{- end }}
         {{- if .config }}
         - name: nyx-agent-config
           configMap:
