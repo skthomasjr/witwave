@@ -3,3 +3,4 @@ a2a-sdk[http-server]==0.3.25
 mcp>=1.0.0
 prometheus-client==0.24.1
 uvicorn==0.43.0
+watchfiles==1.1.1

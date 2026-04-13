@@ -627,8 +627,8 @@ class AgentExecutor(A2AAgentExecutor):
         self._mcp_watcher_tasks: list[asyncio.Task] = []
 
     def _mcp_watchers(self):
-        """Return callables for MCP config watching."""
-        return [self.mcp_config_watcher]
+        """Return callables for MCP config and agent.md watching."""
+        return [self.mcp_config_watcher, self.agent_md_watcher]
 
     async def close(self) -> None:
         """Cancel and drain all MCP watcher tasks."""
@@ -666,6 +666,35 @@ class AgentExecutor(A2AAgentExecutor):
             logger.warning("MCP config directory watcher exited — retrying in 10s.")
             if a2_file_watcher_restarts_total is not None:
                 a2_file_watcher_restarts_total.labels(**_LABELS, watcher="mcp").inc()
+            await asyncio.sleep(10)
+
+    async def agent_md_watcher(self) -> None:
+        """Watch AGENT_MD for changes and hot-reload agent identity / behavioral instructions (#371).
+
+        This ensures that updating agent.md does not require a container restart,
+        consistent with all other file-based configuration in the platform.
+        """
+        # Perform an initial load so the watcher starts with current content.
+        self._agent_md_content = _load_agent_md()
+        logger.info("agent.md loaded from %s", AGENT_MD)
+
+        watch_dir = os.path.dirname(os.path.abspath(AGENT_MD))
+        while True:
+            if not os.path.isdir(watch_dir):
+                logger.info("agent.md directory not found — retrying in 10s.")
+                await asyncio.sleep(10)
+                continue
+            async for changes in awatch(watch_dir):
+                if a2_watcher_events_total is not None:
+                    a2_watcher_events_total.labels(**_LABELS, watcher="agent_md").inc()
+                for _, path in changes:
+                    if os.path.abspath(path) == os.path.abspath(AGENT_MD):
+                        self._agent_md_content = _load_agent_md()
+                        logger.info("agent.md reloaded from %s", AGENT_MD)
+                        break
+            logger.warning("agent.md directory watcher exited — retrying in 10s.")
+            if a2_file_watcher_restarts_total is not None:
+                a2_file_watcher_restarts_total.labels(**_LABELS, watcher="agent_md").inc()
             await asyncio.sleep(10)
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
