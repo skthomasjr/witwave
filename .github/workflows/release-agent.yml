@@ -1,4 +1,4 @@
-name: Release — nyx-agent
+name: Release
 
 on:
   push:
@@ -11,6 +11,20 @@ jobs:
     permissions:
       contents: read
       packages: write
+
+    strategy:
+      matrix:
+        include:
+          - image: nyx-agent
+            file: agent/Dockerfile
+          - image: a2-claude
+            file: a2-claude/Dockerfile
+          - image: a2-codex
+            file: a2-codex/Dockerfile
+          - image: a2-gemini
+            file: a2-gemini/Dockerfile
+          - image: ui
+            file: ui/Dockerfile
 
     steps:
       - name: Checkout
@@ -27,17 +41,17 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/images/nyx-agent
+          images: ghcr.io/${{ github.repository_owner }}/images/${{ matrix.image }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest
 
-      - name: Build and push nyx-agent
+      - name: Build and push ${{ matrix.image }}
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: agent/Dockerfile
+          file: ${{ matrix.file }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
