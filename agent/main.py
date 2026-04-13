@@ -678,7 +678,9 @@ async def main():
             f"Request:\n"
             f"{request.method} {request.url.path}\n"
             f"{filtered_headers}\n\n"
-            f"{body_text}\n\n"
+            f"<untrusted-request-body>\n"
+            f"{body_text}\n"
+            f"</untrusted-request-body>\n\n"
             f"---\n\n"
             f"{item.content}"
         )
