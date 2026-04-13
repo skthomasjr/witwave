@@ -257,7 +257,12 @@ def _load_mcp_config() -> dict:
         return {}
     try:
         with open(MCP_CONFIG_PATH) as f:
-            return json.load(f)
+            data = json.load(f)
+        # mcp.json may be in Claude's native format {"mcpServers": {...}}.
+        # The SDK expects the inner servers dict directly, not the wrapper object.
+        if isinstance(data, dict) and "mcpServers" in data and isinstance(data["mcpServers"], dict):
+            return data["mcpServers"]
+        return data
     except Exception as e:
         if a2_mcp_config_errors_total is not None:
             a2_mcp_config_errors_total.labels(**_LABELS).inc()
