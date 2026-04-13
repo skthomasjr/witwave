@@ -89,20 +89,59 @@ class BudgetExceededError(Exception):
 
 
 def _session_file_exists(session_id: str) -> bool:
-    """Check whether a Claude session file exists on disk for this session_id."""
+    """Check whether a Claude session file exists on disk for this session_id.
+
+    Derives the session file path from documented conventions only — no
+    private SDK internals.  The Claude Agent SDK stores session files at:
+
+        <config_home>/projects/<sanitized_cwd>/<session_id>.jsonl
+
+    where config_home is $CLAUDE_CONFIG_DIR or ~/.claude, and sanitized_cwd
+    is the working directory with all non-alphanumeric characters replaced by
+    hyphens (truncated to 200 characters with a hash suffix if longer).
+    """
     import pathlib
-    try:
-        from claude_agent_sdk._internal.sessions import _get_claude_config_home_dir, _sanitize_path
-        cwd = pathlib.Path(os.getcwd())
-        sessions_dir = _get_claude_config_home_dir() / "projects" / _sanitize_path(str(cwd))
-        if (sessions_dir / f"{session_id}.jsonl").exists():
-            return True
-        # Also check CLAUDE_CONFIG_DIR directly if set
+    import re
+    import unicodedata
+
+    _SANITIZE_RE = re.compile(r"[^a-zA-Z0-9]")
+    _MAX_LEN = 200
+
+    def _simple_hash(s: str) -> str:
+        """32-bit JS-compatible hash to base36 — matches Claude CLI directory naming."""
+        h = 0
+        for ch in s:
+            h = (h << 5) - h + ord(ch)
+            h = h & 0xFFFFFFFF
+            if h >= 0x80000000:
+                h -= 0x100000000
+        h = abs(h)
+        if h == 0:
+            return "0"
+        digits = "0123456789abcdefghijklmnopqrstuvwxyz"
+        out: list[str] = []
+        n = h
+        while n > 0:
+            out.append(digits[n % 36])
+            n //= 36
+        return "".join(reversed(out))
+
+    def _sanitize(name: str) -> str:
+        sanitized = _SANITIZE_RE.sub("-", name)
+        if len(sanitized) <= _MAX_LEN:
+            return sanitized
+        return f"{sanitized[:_MAX_LEN]}-{_simple_hash(name)}"
+
+    def _config_home() -> pathlib.Path:
         config_dir = os.environ.get("CLAUDE_CONFIG_DIR")
         if config_dir:
-            alt_dir = pathlib.Path(config_dir) / "projects" / _sanitize_path(str(cwd))
-            return (alt_dir / f"{session_id}.jsonl").exists()
-        return False
+            return pathlib.Path(unicodedata.normalize("NFC", config_dir))
+        return pathlib.Path(unicodedata.normalize("NFC", str(pathlib.Path.home() / ".claude")))
+
+    try:
+        cwd = os.getcwd()
+        sessions_dir = _config_home() / "projects" / _sanitize(cwd)
+        return (sessions_dir / f"{session_id}.jsonl").exists()
     except Exception:
         return False
 
