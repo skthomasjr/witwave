@@ -414,8 +414,16 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
                 pass
             _fire_now = False
     else:
-        # No checkpoint: if currently inside window, run already completed cleanly — skip to next day
-        _fire_now = False
+        # No checkpoint and currently inside window: fire immediately. We cannot
+        # assume the task already ran cleanly — no checkpoint means it either
+        # hasn't run yet today, or ran on a prior deployment that didn't write a
+        # checkpoint. Firing is the safe default; idempotent tasks handle this
+        # correctly, and skipping silently causes missed runs on restart.
+        if _inside_window(item):
+            logger.info(f"Task '{item.name}': no checkpoint found inside window — firing immediately.")
+            _fire_now = True
+        else:
+            _fire_now = False
 
     while True:
         if not _fire_now:
