@@ -1,0 +1,23 @@
+{{- if and .Values.sharedStorage.enabled (eq .Values.sharedStorage.storageType "pvc") }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nyx-shared
+  labels:
+    app.kubernetes.io/component: shared-storage
+    app.kubernetes.io/part-of: nyx
+spec:
+  accessModes:
+    {{- if .Values.sharedStorage.accessModes }}
+    {{- toYaml .Values.sharedStorage.accessModes | nindent 4 }}
+    {{- else }}
+    - ReadWriteMany
+    {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.sharedStorage.size | default "1Gi" }}
+  {{- if .Values.sharedStorage.storageClassName }}
+  storageClassName: {{ .Values.sharedStorage.storageClassName }}
+  {{- end }}
+{{- end }}

@@ -1,3 +1,13 @@
+sharedStorage:
+  enabled: false
+  mountPath: /data/shared
+  storageType: pvc          # pvc or hostPath
+  size: 1Gi
+  # storageClassName: ""    # leave blank for cluster default; use a RWX-capable class in production
+  # accessModes:
+  #   - ReadWriteMany
+  # hostPath: /tmp/nyx-shared  # only used when storageType is hostPath
+
 agents:
   - name: adam
 

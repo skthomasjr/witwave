@@ -40,6 +40,10 @@ spec:
             - name: backend-config
               mountPath: /home/agent/.nyx/backend.yaml
               subPath: backend.yaml
+            {{- if $.Values.sharedStorage.enabled }}
+            - name: nyx-shared
+              mountPath: {{ $.Values.sharedStorage.mountPath }}
+            {{- end }}
 {{- $agentName := .name }}
 {{- range .backends }}
         - name: {{ .name }}
@@ -64,9 +68,25 @@ spec:
           envFrom:
             {{- toYaml .envFrom | nindent 12 }}
           {{- end }}
+          {{- if $.Values.sharedStorage.enabled }}
+          volumeMounts:
+            - name: nyx-shared
+              mountPath: {{ $.Values.sharedStorage.mountPath }}
+          {{- end }}
 {{- end }}
       volumes:
         - name: backend-config
           configMap:
             name: nyx-{{ .name }}-backend
+        {{- if $.Values.sharedStorage.enabled }}
+        - name: nyx-shared
+          {{- if eq $.Values.sharedStorage.storageType "hostPath" }}
+          hostPath:
+            path: {{ $.Values.sharedStorage.hostPath }}
+            type: DirectoryOrCreate
+          {{- else }}
+          persistentVolumeClaim:
+            claimName: nyx-shared
+          {{- end }}
+        {{- end }}
 {{- end }}
