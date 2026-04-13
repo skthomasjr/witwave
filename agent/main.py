@@ -26,7 +26,7 @@ from tasks import TaskRunner
 from triggers import TriggerItem, TriggerRunner
 from webhooks import WebhookRunner
 from bus import MessageBus
-from executor import AgentExecutor, run as executor_run
+from executor import AgentExecutor, run as executor_run, run_consensus as executor_run_consensus
 from heartbeat import heartbeat_runner
 from metrics import (
     agent_bus_consumer_idle_seconds,
@@ -740,15 +740,25 @@ async def main():
                 backend_id = item.backend_id or (_entry.agent if _entry else None)
                 _resolved_id = backend_id or executor._default_backend_id
                 _model = executor._resolve_model(item.model, _entry, _resolved_id)
-                _response = await executor_run(
-                    prompt,
-                    item.session_id,
-                    executor._sessions,
-                    executor._backends,
-                    executor._default_backend_id,
-                    backend_id=backend_id,
-                    model=_model,
-                )
+                if item.consensus:
+                    _response = await executor_run_consensus(
+                        prompt,
+                        item.session_id,
+                        executor._sessions,
+                        executor._backends,
+                        executor._default_backend_id,
+                        model=_model,
+                    )
+                else:
+                    _response = await executor_run(
+                        prompt,
+                        item.session_id,
+                        executor._sessions,
+                        executor._backends,
+                        executor._default_backend_id,
+                        backend_id=backend_id,
+                        model=_model,
+                    )
                 _success = True
             except Exception as exc:
                 _error = repr(exc)

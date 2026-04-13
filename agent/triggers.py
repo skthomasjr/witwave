@@ -40,6 +40,7 @@ class TriggerItem:
     model: str | None = None
     backend_id: str | None = None
     description: str | None = None
+    consensus: bool = False
 
 
 def parse_trigger_file(path: str) -> TriggerItem | object | None:
@@ -79,6 +80,7 @@ def parse_trigger_file(path: str) -> TriggerItem | object | None:
         model = fields.get("model") or None
         backend_id = fields.get("agent") or None
         description = fields.get("description") or None
+        consensus = str(fields.get("consensus", "false")).lower() not in ("false", "")
 
         return TriggerItem(
             path=path,
@@ -91,6 +93,7 @@ def parse_trigger_file(path: str) -> TriggerItem | object | None:
             model=model,
             backend_id=backend_id,
             description=description,
+            consensus=consensus,
         )
 
     except Exception as e:
@@ -158,6 +161,7 @@ class TriggerRunner:
                 "session_id": item.session_id,
                 "backend_id": item.backend_id,
                 "model": item.model,
+                "consensus": item.consensus,
                 "running": item.endpoint in self._running,
             })
         return result

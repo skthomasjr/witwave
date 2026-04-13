@@ -102,6 +102,8 @@ agent_webhooks_delivery_shed_total: prometheus_client.Counter | None = None
 agent_webhooks_parse_errors_total: prometheus_client.Counter | None = None
 agent_webhooks_reloads_total: prometheus_client.Counter | None = None
 agent_webhooks_items_registered: prometheus_client.Gauge | None = None
+agent_consensus_runs_total: prometheus_client.Counter | None = None
+agent_consensus_backend_errors_total: prometheus_client.Counter | None = None
 
 
 if _enabled:
@@ -523,5 +525,14 @@ if _enabled:
     agent_webhooks_items_registered = prometheus_client.Gauge(
         "agent_webhooks_items_registered",
         "Number of currently registered webhook subscriptions.",
+    )
+    agent_consensus_runs_total = prometheus_client.Counter(
+        "agent_consensus_runs_total",
+        "Total consensus-mode executions by mode and outcome.",
+        ["mode", "status"],
+    )
+    agent_consensus_backend_errors_total = prometheus_client.Counter(
+        "agent_consensus_backend_errors_total",
+        "Total backend failures during consensus fan-out.",
     )
 

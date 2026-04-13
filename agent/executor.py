@@ -23,6 +23,8 @@ from metrics import (
     agent_a2a_requests_total,
     agent_active_sessions,
     agent_concurrent_queries,
+    agent_consensus_backend_errors_total,
+    agent_consensus_runs_total,
     agent_empty_responses_total,
     agent_lru_cache_utilization_percent,
     agent_model_requests_total,
@@ -227,6 +229,96 @@ async def _run_inner(
     elif agent_response_length_bytes is not None:
         agent_response_length_bytes.observe(len(response.encode()))
     return response
+
+
+_BINARY_YES = frozenset({"yes", "true", "agree", "correct", "approved", "confirmed", "positive", "1"})
+_BINARY_NO = frozenset({"no", "false", "disagree", "incorrect", "rejected", "denied", "negative", "0"})
+
+
+def _classify_binary(text: str) -> str | None:
+    """Return 'yes', 'no', or None if the response cannot be classified as binary."""
+    normalised = text.strip().lower().rstrip(".")
+    if normalised in _BINARY_YES:
+        return "yes"
+    if normalised in _BINARY_NO:
+        return "no"
+    return None
+
+
+async def run_consensus(
+    prompt: str,
+    session_id: str,
+    sessions: OrderedDict[str, float],
+    backends: dict,
+    default_backend_id: str,
+    model: str | None = None,
+) -> str:
+    """Fan out *prompt* to every configured backend concurrently and aggregate.
+
+    Binary responses (yes/no variants): majority vote; default backend wins ties.
+    Freeform responses: a synthesis pass is sent to the default backend.
+    """
+    backend_ids = list(backends.keys())
+
+    async def _call(bid: str) -> tuple[str, str | Exception]:
+        try:
+            result = await _run_inner(prompt, session_id, sessions, backends, default_backend_id, backend_id=bid, model=model)
+            return bid, result
+        except Exception as exc:
+            return bid, exc
+
+    raw_results = await asyncio.gather(*[_call(bid) for bid in backend_ids])
+
+    responses: dict[str, str] = {}
+    for bid, outcome in raw_results:
+        if isinstance(outcome, Exception):
+            logger.error(f"Consensus backend {bid!r} failed: {outcome!r}")
+            if agent_consensus_backend_errors_total is not None:
+                agent_consensus_backend_errors_total.inc()
+        else:
+            responses[bid] = outcome
+
+    if not responses:
+        raise RuntimeError("Consensus: all backends failed — no responses to aggregate.")
+
+    # Attempt binary classification.
+    classifications = {bid: _classify_binary(text) for bid, text in responses.items()}
+    all_binary = all(v is not None for v in classifications.values())
+
+    if all_binary:
+        # Majority vote.
+        yes_count = sum(1 for v in classifications.values() if v == "yes")
+        no_count = sum(1 for v in classifications.values() if v == "no")
+        if yes_count != no_count:
+            winner = "yes" if yes_count > no_count else "no"
+        else:
+            # Tie — default backend wins.
+            winner = classifications.get(default_backend_id, "yes")
+        logger.info(f"Consensus (binary): yes={yes_count} no={no_count} → {winner}")
+        if agent_consensus_runs_total is not None:
+            agent_consensus_runs_total.labels(mode="binary", status="success").inc()
+        return winner
+
+    # Freeform: synthesis pass.
+    parts = "\n\n".join(f"[{bid}]: {text}" for bid, text in responses.items())
+    synthesis_prompt = (
+        "The following responses were collected from multiple AI agents for the same prompt. "
+        "Synthesise them into a single coherent, balanced answer, preserving the most important "
+        "insights and noting any significant disagreements.\n\n"
+        f"Original prompt: {prompt}\n\n"
+        f"Agent responses:\n{parts}"
+    )
+    try:
+        synthesised = await _run_inner(synthesis_prompt, session_id, sessions, backends, default_backend_id, backend_id=default_backend_id, model=model)
+    except Exception as exc:
+        logger.error(f"Consensus synthesis pass failed: {exc!r} — returning concatenated responses.")
+        if agent_consensus_runs_total is not None:
+            agent_consensus_runs_total.labels(mode="freeform", status="error").inc()
+        return parts
+    logger.info(f"Consensus (freeform): synthesised from {len(responses)} backend(s).")
+    if agent_consensus_runs_total is not None:
+        agent_consensus_runs_total.labels(mode="freeform", status="success").inc()
+    return synthesised
 
 
 async def _guarded_watcher(coro_fn, restart_delay: float = 5.0) -> None:
@@ -457,15 +549,25 @@ class AgentExecutor(A2AAgentExecutor):
         _resolved_id = _routed_backend_id or self._default_backend_id
         _model = self._resolve_model(message.model, _entry, _resolved_id)
         try:
-            _response = await run(
-                message.prompt,
-                _session_id,
-                self._sessions,
-                self._backends,
-                self._default_backend_id,
-                backend_id=_routed_backend_id,
-                model=_model,
-            )
+            if message.consensus:
+                _response = await run_consensus(
+                    message.prompt,
+                    _session_id,
+                    self._sessions,
+                    self._backends,
+                    self._default_backend_id,
+                    model=_model,
+                )
+            else:
+                _response = await run(
+                    message.prompt,
+                    _session_id,
+                    self._sessions,
+                    self._backends,
+                    self._default_backend_id,
+                    backend_id=_routed_backend_id,
+                    model=_model,
+                )
             _success = True
             if message.result is not None and not message.result.done():
                 message.result.set_result(_response)

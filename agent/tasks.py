@@ -69,6 +69,7 @@ class TaskItem:
     end: date | None = None
     model: str | None = None
     backend_id: str | None = None
+    consensus: bool = False
     task: asyncio.Task | None = field(default=None, compare=False)
     running: bool = False
 
@@ -185,6 +186,9 @@ def parse_task_file(path: str) -> TaskItem | None:
         # backend
         backend_id = fields.get("agent") or None
 
+        # consensus
+        consensus = str(fields.get("consensus", "false")).lower() not in ("false", "")
+
         return TaskItem(
             path=path,
             name=name,
@@ -200,6 +204,7 @@ def parse_task_file(path: str) -> TaskItem | None:
             end=end,
             model=model,
             backend_id=backend_id,
+            consensus=consensus,
         )
 
     except Exception as e:
@@ -334,7 +339,7 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
             _task_start = time.monotonic()
             if agent_sched_task_item_last_run_timestamp_seconds is not None:
                 agent_sched_task_item_last_run_timestamp_seconds.labels(name=item.name).set(time.time())
-            message = Message(prompt=prompt, session_id=session_id, kind=f"task:{item.name}", model=item.model, backend_id=item.backend_id)
+            message = Message(prompt=prompt, session_id=session_id, kind=f"task:{item.name}", model=item.model, backend_id=item.backend_id, consensus=item.consensus)
             _send_task = asyncio.ensure_future(bus.send(message))
 
             def _log_send_result(t: asyncio.Task, _name: str = item.name) -> None:
@@ -474,6 +479,7 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
                         kind=f"task:{item.name}",
                         model=item.model,
                         backend_id=item.backend_id,
+                        consensus=item.consensus,
                     )
                     _send_task = asyncio.ensure_future(bus.send(message))
 
@@ -604,6 +610,7 @@ class TaskRunner:
                 "session_id": None,  # per-day session IDs are generated at runtime
                 "backend_id": item.backend_id,
                 "model": item.model,
+                "consensus": item.consensus,
                 "start": item.start.isoformat() if item.start else None,
                 "end": item.end.isoformat() if item.end else None,
                 "running": item.running,
