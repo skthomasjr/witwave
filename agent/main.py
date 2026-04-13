@@ -495,29 +495,40 @@ async def main():
         # Use the live executor backends so this endpoint reflects the same state
         # as /metrics after a hot-reload (consistent with the fix in #288).
         backend_configs = [b._config for b in executor._backends.values()]
-        agents = []
         # Own card
         own_card = build_agent_card()
-        agents.append({
+        agents = [{
             "id": AGENT_NAME,
             "url": AGENT_URL,
             "role": "nyx",
             "card": own_card.model_dump() if hasattr(own_card, "model_dump") else vars(own_card),
-        })
-        # Backend cards
+        }]
+        # Fan out backend card fetches concurrently so that one slow or
+        # unreachable backend does not delay all others (#360).
         import httpx
+        reachable_backends = [b for b in backend_configs if b.url]
+
+        async def _fetch_card(backend, client) -> dict:
+            entry = {"id": backend.id, "url": backend.url, "role": "backend", "model": backend.model, "card": None}
+            try:
+                resp = await client.get(backend.url.rstrip("/") + "/.well-known/agent.json")
+                if resp.status_code == 200:
+                    entry["card"] = resp.json()
+            except Exception as exc:
+                logger.debug(f"Backend {backend.id!r} agent card unreachable: {exc!r}")
+            return entry
+
         async with httpx.AsyncClient(timeout=5.0) as client:
-            for backend in backend_configs:
-                if not backend.url:
-                    continue
-                entry = {"id": backend.id, "url": backend.url, "role": "backend", "model": backend.model, "card": None}
-                try:
-                    resp = await client.get(backend.url.rstrip("/") + "/.well-known/agent.json")
-                    if resp.status_code == 200:
-                        entry["card"] = resp.json()
-                except Exception as exc:
-                    logger.debug(f"Backend {backend.id!r} agent card unreachable: {exc!r}")
-                agents.append(entry)
+            backend_entries = await asyncio.gather(
+                *[_fetch_card(b, client) for b in reachable_backends],
+                return_exceptions=True,
+            )
+            for backend, result in zip(reachable_backends, backend_entries):
+                if isinstance(result, Exception):
+                    logger.debug(f"Backend {backend.id!r} agent card fetch raised: {result!r}")
+                    agents.append({"id": backend.id, "url": backend.url, "role": "backend", "model": backend.model, "card": None})
+                else:
+                    agents.append(result)
         return JSONResponse(agents)
 
     _conversations_auth_token = os.environ.get("CONVERSATIONS_AUTH_TOKEN", "")
@@ -722,21 +733,30 @@ async def main():
         import httpx
         manifest_path = os.environ.get("MANIFEST_PATH", "/home/agent/manifest.json")
         team = _load_manifest_cached(manifest_path) or [{"name": AGENT_NAME, "url": AGENT_URL}]
-        result = []
+        reachable = [(m, m.get("url", "").rstrip("/")) for m in team if m.get("url", "").rstrip("/")]
+
+        # Fan out /agents requests to all team members concurrently so that one
+        # slow or unreachable member does not delay all others (#360).
+        async def _fetch_member(member, url, client) -> dict:
+            try:
+                resp = await client.get(f"{url}/agents")
+                if resp.status_code == 200:
+                    return {"name": member.get("name"), "url": url, "agents": resp.json()}
+                return {"name": member.get("name"), "url": url, "agents": [], "error": f"HTTP {resp.status_code}"}
+            except Exception as exc:
+                return {"name": member.get("name"), "url": url, "agents": [], "error": str(exc)}
+
         async with httpx.AsyncClient(timeout=5.0) as client:
-            for member in team:
-                url = member.get("url", "").rstrip("/")
-                if not url:
-                    continue
-                try:
-                    resp = await client.get(f"{url}/agents")
-                    if resp.status_code == 200:
-                        agents = resp.json()
-                        result.append({"name": member.get("name"), "url": url, "agents": agents})
-                    else:
-                        result.append({"name": member.get("name"), "url": url, "agents": [], "error": f"HTTP {resp.status_code}"})
-                except Exception as exc:
-                    result.append({"name": member.get("name"), "url": url, "agents": [], "error": str(exc)})
+            results = await asyncio.gather(
+                *[_fetch_member(m, url, client) for m, url in reachable],
+                return_exceptions=True,
+            )
+        result = []
+        for (member, url), r in zip(reachable, results):
+            if isinstance(r, Exception):
+                result.append({"name": member.get("name"), "url": url, "agents": [], "error": str(r)})
+            else:
+                result.append(r)
         return JSONResponse(result)
 
     trigger_runner = TriggerRunner()
