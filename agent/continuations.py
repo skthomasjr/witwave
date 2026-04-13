@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 from dataclasses import dataclass
+from fnmatch import fnmatch
 from pathlib import Path
 
 from bus import Message, MessageBus
@@ -233,7 +234,7 @@ class ContinuationRunner:
         """Called by on_prompt_completed() when an upstream completes. Non-blocking."""
         for item in list(self._items.values()):
             # TODO: fan-in — single upstream only for now; fan-in deferred
-            upstream_matches = item.continues_after == "*" or item.continues_after == kind
+            upstream_matches = item.continues_after == "*" or fnmatch(kind, item.continues_after)
             outcome_matches = (success and item.on_success) or (not success and item.on_error)
             content_matches = item.trigger_when is None or item.trigger_when in response
             if upstream_matches and outcome_matches and content_matches:
