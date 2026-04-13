@@ -445,10 +445,23 @@ async def run_query(
             time.monotonic() - _session_start
         )
 
-    # Flush any final output not captured via streaming deltas
+    # Prefer final_output as the SDK's authoritative answer when it is available.
+    # Streaming deltas may represent intermediate or partial content during tool-call
+    # turns; final_output is always the completed response the SDK intends to return.
+    # Fall back to streamed collected content only when final_output is absent (#381).
     final = getattr(result, "final_output", None)
-    if final and isinstance(final, str) and not collected:
-        collected.append(final)
+    if final and isinstance(final, str):
+        if not collected:
+            collected.append(final)
+        else:
+            streamed = "".join(collected)
+            if final != streamed:
+                logger.debug(
+                    "final_output differs from streamed deltas — using streamed content "
+                    "(len streamed=%d, len final=%d)",
+                    len(streamed),
+                    len(final),
+                )
 
     full_response = "".join(collected)
     if full_response:
