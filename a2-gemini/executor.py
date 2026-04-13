@@ -471,6 +471,17 @@ async def _run_inner(
         # cancellation; removing it ensures the next call for this session_id
         # starts fresh rather than attempting to resume a broken session.
         sessions.pop(session_id, None)
+        # Also remove the on-disk history file so the next request for this
+        # session_id starts with empty history rather than reloading the
+        # potentially stale or mid-stream snapshot written before the timeout.
+        _timeout_path = _session_path(session_id)
+        try:
+            os.remove(_timeout_path)
+            logger.info("Removed stale session file for timed-out session %r", session_id)
+        except FileNotFoundError:
+            pass
+        except OSError as _e:
+            logger.warning("Could not remove session file for timed-out session %r: %s", session_id, _e)
         if a2_tasks_total is not None:
             a2_tasks_total.labels(**_LABELS, status="timeout").inc()
         if a2_task_error_duration_seconds is not None:

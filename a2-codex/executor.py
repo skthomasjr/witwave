@@ -526,6 +526,24 @@ async def _run_inner(
         # cancellation; removing it ensures the next call for this session_id
         # starts fresh rather than attempting to resume a broken session.
         sessions.pop(session_id, None)
+        # Also remove the SQLite history row so the next request for this
+        # session_id starts with empty history rather than reloading the
+        # potentially stale snapshot stored before the timeout.
+        _db_path = CODEX_SESSION_DB
+        if _db_path and _db_path != ":memory:":
+            try:
+                import sqlite3 as _sqlite3
+                _conn = _sqlite3.connect(_db_path, check_same_thread=False)
+                try:
+                    _conn.execute(
+                        "DELETE FROM agent_sessions WHERE session_id = ?", (session_id,)
+                    )
+                    _conn.commit()
+                    logger.info("Removed stale SQLite session for timed-out session %r", session_id)
+                finally:
+                    _conn.close()
+            except Exception as _e:
+                logger.warning("Could not remove SQLite session for timed-out session %r: %s", session_id, _e)
         if a2_tasks_total is not None:
             a2_tasks_total.labels(**_LABELS, status="timeout").inc()
         if a2_task_error_duration_seconds is not None:

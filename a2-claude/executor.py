@@ -89,8 +89,8 @@ class BudgetExceededError(Exception):
         self.collected: list[str] = collected or []
 
 
-def _session_file_exists(session_id: str) -> bool:
-    """Check whether a Claude session file exists on disk for this session_id.
+def _session_file_path(session_id: str) -> "pathlib.Path | None":
+    """Return the on-disk path for a Claude session file, or None on error.
 
     Derives the session file path from documented conventions only — no
     private SDK internals.  The Claude Agent SDK stores session files at:
@@ -142,7 +142,21 @@ def _session_file_exists(session_id: str) -> bool:
     try:
         cwd = os.getcwd()
         sessions_dir = _config_home() / "projects" / _sanitize(cwd)
-        return (sessions_dir / f"{session_id}.jsonl").exists()
+        return sessions_dir / f"{session_id}.jsonl"
+    except Exception:
+        return None
+
+
+def _session_file_exists(session_id: str) -> bool:
+    """Check whether a Claude session file exists on disk for this session_id.
+
+    Used to detect resumed sessions after a process restart, when the in-memory
+    LRU cache is empty but history exists on disk.  Always returns False if any
+    error occurs so it never prevents a prompt from being processed.
+    """
+    try:
+        path = _session_file_path(session_id)
+        return path is not None and path.exists()
     except Exception:
         if a2_session_history_save_errors_total is not None:
             a2_session_history_save_errors_total.labels(**_LABELS).inc()
@@ -548,6 +562,16 @@ async def _run_inner(
         # inconsistent. Evicting it ensures the next call starts a fresh
         # session rather than trying to resume a potentially broken one.
         sessions.pop(session_id, None)
+        # Also remove the on-disk session file so the next request for this
+        # session_id starts with empty history rather than reloading the
+        # potentially stale or mid-stream snapshot written before the timeout.
+        _timeout_path = _session_file_path(session_id)
+        if _timeout_path is not None:
+            try:
+                _timeout_path.unlink(missing_ok=True)
+                logger.info("Removed stale session file for timed-out session %r", session_id)
+            except OSError as _e:
+                logger.warning("Could not remove session file for timed-out session %r: %s", session_id, _e)
         if a2_tasks_total is not None:
             a2_tasks_total.labels(**_LABELS, status="timeout").inc()
         if a2_task_error_duration_seconds is not None:
