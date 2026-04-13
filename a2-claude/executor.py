@@ -1,5 +1,4 @@
 import asyncio
-import fcntl
 import json
 import logging
 import os
@@ -74,6 +73,7 @@ from metrics import (
     a2_watcher_events_total,
 )
 from watchfiles import awatch
+from log_utils import _append_log
 
 logger = logging.getLogger(__name__)
 
@@ -108,8 +108,6 @@ _DEFAULT_TOOLS = "Read,Write,Edit,Bash,Glob,Grep,WebSearch,WebFetch"
 ALLOWED_TOOLS: list[str] = [t.strip() for t in os.environ.get("ALLOWED_TOOLS", _DEFAULT_TOOLS).split(",") if t.strip()]
 
 CONTEXT_USAGE_WARN_THRESHOLD = float(os.environ.get("CONTEXT_USAGE_WARN_THRESHOLD", "0.9"))
-MAX_LOG_BYTES = int(os.environ.get("MAX_LOG_BYTES", str(10 * 1024 * 1024)))
-MAX_LOG_BACKUP_COUNT = int(os.environ.get("MAX_LOG_BACKUP_COUNT", "1"))
 MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "10000"))
 TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
 
@@ -135,34 +133,6 @@ def _load_agent_md() -> str:
             return f.read()
     except OSError:
         return ""
-
-
-def _append_log(path: str, line: str) -> None:
-    """Append a single line to a log file using fcntl locking for multi-process safety.
-
-    After writing, rotates the file if it exceeds MAX_LOG_BYTES.  Keeps up to
-    MAX_LOG_BACKUP_COUNT numbered backups (<path>.1, <path>.2, …).
-    """
-    log_dir = os.path.dirname(path)
-    if log_dir:
-        os.makedirs(log_dir, exist_ok=True)
-    with open(path, "a", encoding="utf-8") as f:
-        fcntl.flock(f, fcntl.LOCK_EX)
-        try:
-            f.write(line + "\n")
-            f.flush()
-            if MAX_LOG_BACKUP_COUNT > 0 and os.path.getsize(path) >= MAX_LOG_BYTES:
-                # Rotate: <path>.N → <path>.N+1, …, <path> → <path>.1
-                for i in range(MAX_LOG_BACKUP_COUNT, 0, -1):
-                    src = f"{path}.{i - 1}" if i > 1 else path
-                    dst = f"{path}.{i}"
-                    if os.path.exists(src):
-                        if i == MAX_LOG_BACKUP_COUNT and os.path.exists(dst):
-                            os.remove(dst)
-                        os.rename(src, dst)
-                logger.debug("Rotated log file %s", path)
-        finally:
-            fcntl.flock(f, fcntl.LOCK_UN)
 
 
 async def log_entry(role: str, text: str, session_id: str, model: str | None = None) -> None:

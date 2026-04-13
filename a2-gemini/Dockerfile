@@ -31,6 +31,9 @@ COPY --chown=agent:agent a2-gemini/requirements.txt /home/agent/a2-gemini/requir
 RUN pip install --no-cache-dir -r /home/agent/a2-gemini/requirements.txt
 
 COPY --chown=agent:agent a2-gemini/ /home/agent/a2-gemini/
+COPY --chown=agent:agent shared/ /home/agent/shared/
+
+ENV PYTHONPATH="/home/agent/shared"
 
 RUN mkdir -p /home/agent/logs /home/agent/memory
 WORKDIR /home/agent/workspace

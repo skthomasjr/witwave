@@ -1,5 +1,4 @@
 import asyncio
-import fcntl
 import json
 import logging
 import os
@@ -17,6 +16,7 @@ from a2a.utils import new_agent_text_message
 from backends.a2a import A2ABackend
 from backends.config import BACKEND_CONFIG_PATH, BackendConfig, RoutingConfig, RoutingEntry, load_backends_config, load_routing_config
 from bus import Message, MessageBus
+from log_utils import _append_log
 from metrics import (
     agent_a2a_last_request_timestamp_seconds,
     agent_a2a_request_duration_seconds,
@@ -52,38 +52,8 @@ AGENT_NAME = os.environ.get("AGENT_NAME", "nyx-agent")
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
 TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/trace.jsonl")
 
-MAX_LOG_BYTES = int(os.environ.get("MAX_LOG_BYTES", str(10 * 1024 * 1024)))
-MAX_LOG_BACKUP_COUNT = int(os.environ.get("MAX_LOG_BACKUP_COUNT", "1"))
 MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "10000"))
 TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
-
-
-def _append_log(path: str, line: str) -> None:
-    """Append a single line to a log file using fcntl locking for multi-process safety.
-
-    After writing, rotates the file if it exceeds MAX_LOG_BYTES.  Keeps up to
-    MAX_LOG_BACKUP_COUNT numbered backups (<path>.1, <path>.2, …).
-    """
-    log_dir = os.path.dirname(path)
-    if log_dir:
-        os.makedirs(log_dir, exist_ok=True)
-    with open(path, "a", encoding="utf-8") as f:
-        fcntl.flock(f, fcntl.LOCK_EX)
-        try:
-            f.write(line + "\n")
-            f.flush()
-            if MAX_LOG_BACKUP_COUNT > 0 and os.path.getsize(path) >= MAX_LOG_BYTES:
-                # Rotate: <path>.N → <path>.N+1, …, <path> → <path>.1
-                for i in range(MAX_LOG_BACKUP_COUNT, 0, -1):
-                    src = f"{path}.{i - 1}" if i > 1 else path
-                    dst = f"{path}.{i}"
-                    if os.path.exists(src):
-                        if i == MAX_LOG_BACKUP_COUNT and os.path.exists(dst):
-                            os.remove(dst)
-                        os.rename(src, dst)
-                logger.debug("Rotated log file %s", path)
-        finally:
-            fcntl.flock(f, fcntl.LOCK_UN)
 
 
 async def log_entry(role: str, text: str, session_id: str, model: str | None = None, backend: str | None = None) -> None:

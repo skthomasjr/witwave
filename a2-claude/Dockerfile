@@ -39,6 +39,9 @@ COPY --chown=agent:agent a2-claude/requirements.txt /home/agent/a2-claude/requir
 RUN pip install --no-cache-dir -r /home/agent/a2-claude/requirements.txt
 
 COPY --chown=agent:agent a2-claude/ /home/agent/a2-claude/
+COPY --chown=agent:agent shared/ /home/agent/shared/
+
+ENV PYTHONPATH="/home/agent/shared"
 
 RUN mkdir -p /home/agent/logs /home/agent/memory
 WORKDIR /home/agent/workspace

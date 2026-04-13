@@ -30,6 +30,9 @@ RUN pip install --no-cache-dir \
     pyyaml==6.0.2
 
 COPY --chown=agent:agent agent/ /home/agent/agent/
+COPY --chown=agent:agent shared/ /home/agent/shared/
+
+ENV PYTHONPATH="/home/agent/shared"
 
 RUN mkdir -p /home/agent/.nyx /home/agent/workspace
 WORKDIR /home/agent/workspace
