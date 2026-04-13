@@ -459,7 +459,6 @@ async def _run_inner(
         # cancellation; removing it ensures the next call for this session_id
         # starts fresh rather than attempting to resume a broken session.
         sessions.pop(session_id, None)
-        session_locks.pop(session_id, None)
         if a2_tasks_total is not None:
             a2_tasks_total.labels(**_LABELS, status="timeout").inc()
         if a2_task_error_duration_seconds is not None:
@@ -485,8 +484,6 @@ async def _run_inner(
             a2_task_error_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _start)
         if a2_task_last_error_timestamp_seconds is not None:
             a2_task_last_error_timestamp_seconds.labels(**_LABELS).set(time.time())
-        if session_id not in sessions:
-            session_locks.pop(session_id, None)
         raise
 
     if a2_tasks_total is not None:
