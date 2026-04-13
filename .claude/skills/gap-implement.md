@@ -1,10 +1,10 @@
 ---
-name: gap-fix
-description: Implement all approved gaps one at a time, committing and pushing each implementation. Trigger when the user says "fix gaps", "implement gaps", "fix approved gaps", "implement approved gaps", "run gap fix", or "start gap implementation".
-version: 1.0.1
+name: gap-implement
+description: Implement all approved gaps one at a time, committing and pushing each implementation. Trigger when the user says "implement gaps", "fix gaps", "implement approved gaps", "fix approved gaps", "run gap implement", or "start gap implementation".
+version: 1.1.0
 ---
 
-# gap-fix
+# gap-implement
 
 Implement all approved gaps, one at a time. Each gap is fully implemented, verified, committed, and pushed before moving to the next.
 

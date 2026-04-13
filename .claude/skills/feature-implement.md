@@ -1,10 +1,10 @@
 ---
-name: feature-fix
-description: Implement all approved features one at a time, committing and pushing each implementation. Trigger when the user says "implement features", "fix features", "implement approved features", "run feature fix", or "start feature implementation".
-version: 1.1.1
+name: feature-implement
+description: Implement all approved features one at a time, committing and pushing each implementation. Trigger when the user says "implement features", "fix features", "implement approved features", "fix approved features", "run feature implement", or "start feature implementation".
+version: 1.2.0
 ---
 
-# feature-fix
+# feature-implement
 
 Implement all approved features, one at a time. Each feature is fully implemented, verified, committed, and pushed before moving to the next.
 

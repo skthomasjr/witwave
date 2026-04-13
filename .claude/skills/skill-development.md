@@ -1,7 +1,7 @@
 ---
 name: skill-development
 description: Guide the design and review of skills in this repository. Trigger when the user says "create a skill", "write a skill", "review a skill", "update a skill", "help with a skill", "audit skills", or "audit the skill families".
-version: 1.3.1
+version: 1.4.0
 ---
 
 # skill-development
@@ -104,7 +104,7 @@ When the user asks to audit skills or skill families, check all built-out issue 
 
 If the user specifies a type (e.g. "audit the gap skills"), audit only that family. Otherwise audit all built-out families: **bugs**, **risks**, **gaps**, and any others marked as fully built out in the taxonomy table above.
 
-For each family, the expected skills are: `<type>-discovery`, `<type>-refinement`, `<type>-approval`, `<type>-fix`, and `<type>-github-issues`.
+For each family, the expected skills are: `<type>-discovery`, `<type>-refinement`, `<type>-approval`, `<type>-implement`, and `<type>-github-issues`.
 
 **Step 2: Read every skill in each family.**
 
@@ -129,7 +129,7 @@ Compare the families against each other and against the `bug-*` reference implem
 - Are divergences from the bug reference intentional and type-appropriate? Flag any that appear accidental.
 - Are trigger phrases consistent in style and coverage across families?
 - Do all `-github-issues` leaf skills handle the same set of operations (file, close, edit, comment, look up)?
-- Do all `-fix` skills include the research step for web search?
+- Do all `-implement` skills include the research step for web search?
 
 **Step 5: Report findings and fix issues.**
 

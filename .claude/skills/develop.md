@@ -1,7 +1,7 @@
 ---
 name: develop
-description: Run the full autonomous development cycle — discover, refine, approve, and fix bugs, risks, and gaps across all components, then derive, refine, approve, and implement features from ready requests. Trigger when the user says "run the development cycle", "run the dev cycle", "start the development loop", "start the dev loop", or "run develop".
-version: 2.3.0
+description: Run the full autonomous development cycle — discover, refine, approve, and implement bugs, risks, and gaps across all components, then derive, refine, approve, and implement features from ready requests. Trigger when the user says "run the development cycle", "run the dev cycle", "start the development loop", "start the dev loop", or "run develop".
+version: 2.4.0
 ---
 
 # develop
@@ -24,9 +24,9 @@ Refine bugs across all components, including cross-cutting bugs with no componen
 
 Approve bugs across all components, including cross-cutting bugs with no component assigned.
 
-**Phase 4: Fix bugs.**
+**Phase 4: Implement bugs.**
 
-Fix all approved bugs across all components, including cross-cutting bugs with no component assigned.
+Implement all approved bugs across all components, including cross-cutting bugs with no component assigned.
 
 **Phase 5: Find risks.**
 
@@ -40,9 +40,9 @@ Refine risks across all components, including cross-cutting risks with no compon
 
 Approve risks across all components, including cross-cutting risks with no component assigned.
 
-**Phase 8: Fix risks.**
+**Phase 8: Implement risks.**
 
-Fix all approved risks across all components, including cross-cutting risks with no component assigned.
+Implement all approved risks across all components, including cross-cutting risks with no component assigned.
 
 **Phase 9: Find gaps.**
 
@@ -56,9 +56,9 @@ Refine gaps across all components, including cross-cutting gaps with no componen
 
 Approve gaps across all components, including cross-cutting gaps with no component assigned.
 
-**Phase 12: Fix gaps.**
+**Phase 12: Implement gaps.**
 
-Fix all approved gaps across all components, including cross-cutting gaps with no component assigned.
+Implement all approved gaps across all components, including cross-cutting gaps with no component assigned.
 
 **Phase 13: Discover features.**
 

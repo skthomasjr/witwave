@@ -1,10 +1,10 @@
 ---
-name: risk-fix
-description: Mitigate all approved risks one at a time, committing and pushing each mitigation. Trigger when the user says "fix risks", "mitigate risks", "fix approved risks", "mitigate approved risks", "run risk fix", or "start risk mitigation".
-version: 1.0.2
+name: risk-implement
+description: Mitigate all approved risks one at a time, committing and pushing each mitigation. Trigger when the user says "implement risks", "fix risks", "mitigate risks", "implement approved risks", "fix approved risks", "mitigate approved risks", "run risk implement", or "start risk mitigation".
+version: 1.1.0
 ---
 
-# risk-fix
+# risk-implement
 
 Mitigate all approved risks, one at a time. Each risk is fully mitigated, verified, committed, and pushed before moving to the next.
 
