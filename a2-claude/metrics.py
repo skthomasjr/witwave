@@ -85,6 +85,9 @@ a2_context_usage_percent: prometheus_client.Histogram | None = None
 a2_context_exhaustion_total: prometheus_client.Counter | None = None
 a2_context_warnings_total: prometheus_client.Counter | None = None
 
+# Token budget metrics
+a2_budget_exceeded_total: prometheus_client.Counter | None = None
+
 # MCP metrics
 a2_mcp_config_errors_total: prometheus_client.Counter | None = None
 a2_mcp_config_reloads_total: prometheus_client.Counter | None = None
@@ -407,6 +410,13 @@ if _enabled:
     a2_context_warnings_total = prometheus_client.Counter(
         "a2_context_warnings_total",
         "Total context usage threshold warnings.",
+        ["agent", "agent_id", "backend"],
+    )
+
+    # Token budget
+    a2_budget_exceeded_total = prometheus_client.Counter(
+        "a2_budget_exceeded_total",
+        "Total token budget exceeded events (max_tokens limit hit during execution).",
         ["agent", "agent_id", "backend"],
     )
 

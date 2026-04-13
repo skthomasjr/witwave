@@ -21,6 +21,7 @@ from metrics import (
     a2_a2a_request_duration_seconds,
     a2_a2a_requests_total,
     a2_active_sessions,
+    a2_budget_exceeded_total,
     a2_concurrent_queries,
     a2_empty_responses_total,
     a2_log_bytes_total,
@@ -55,6 +56,16 @@ from metrics import (
 from log_utils import _append_log
 
 logger = logging.getLogger(__name__)
+
+
+class BudgetExceededError(Exception):
+    """Raised when cumulative token usage exceeds the per-dispatch max_tokens budget."""
+    def __init__(self, total: int, limit: int, collected: "list[str] | None" = None) -> None:
+        super().__init__(f"Token budget exceeded: {total} tokens used of {limit} limit.")
+        self.total = total
+        self.limit = limit
+        self.collected: list[str] = collected or []
+
 
 AGENT_NAME = os.environ.get("AGENT_NAME", "a2-codex")
 AGENT_OWNER = os.environ.get("AGENT_OWNER", AGENT_NAME)
@@ -272,6 +283,7 @@ async def run_query(
     session_id: str,
     agent_md_content: str,
     model: str | None = None,
+    max_tokens: int | None = None,
 ) -> list[str]:
     resolved_model = model or CODEX_MODEL
     log_dir = os.path.dirname(CODEX_SESSION_DB)
@@ -306,13 +318,15 @@ async def run_query(
     _turn_count = 0
     _message_count = 0
     _tool_call_names: dict[str, str] = {}  # call_id -> tool name
+    _total_tokens = 0
 
     try:
         result = Runner.run_streamed(codex_agent, prompt, session=session, run_config=run_config)
         async for event in result.stream_events():
             _message_count += 1
             if event.type == "raw_response_event":
-                delta = getattr(getattr(event, "data", None), "delta", None)
+                data = getattr(event, "data", None)
+                delta = getattr(data, "delta", None)
                 if delta and hasattr(delta, "text") and delta.text:
                     if _first_chunk_at is None:
                         _first_chunk_at = time.monotonic()
@@ -321,6 +335,16 @@ async def run_query(
                                 _first_chunk_at - _query_start
                             )
                     collected.append(delta.text)
+                # Check usage on response events (final chunk carries usage object)
+                _usage = getattr(data, "usage", None)
+                if _usage is not None:
+                    _candidate = getattr(_usage, "total_tokens", None)
+                    if _candidate is not None:
+                        _total_tokens = max(_total_tokens, int(_candidate))
+                        if max_tokens is not None and _total_tokens >= max_tokens:
+                            if a2_budget_exceeded_total is not None:
+                                a2_budget_exceeded_total.labels(**_LABELS).inc()
+                            raise BudgetExceededError(_total_tokens, max_tokens, list(collected))
             elif event.type == "agent_updated_stream_event":
                 _turn_count += 1
             elif event.type == "run_item_stream_event":
@@ -383,6 +407,12 @@ async def run_query(
                         await log_trace(json.dumps(entry))
                     except Exception as e:
                         logger.error(f"log_trace tool_result error: {e}")
+    except BudgetExceededError:
+        if a2_sdk_session_duration_seconds is not None:
+            a2_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
+                time.monotonic() - _session_start
+            )
+        raise
     except Exception:
         if a2_sdk_query_error_duration_seconds is not None:
             a2_sdk_query_error_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
@@ -441,11 +471,12 @@ async def run(
     sessions: OrderedDict[str, float],
     agent_md_content: str,
     model: str | None = None,
+    max_tokens: int | None = None,
 ) -> str:
     if a2_concurrent_queries is not None:
         a2_concurrent_queries.labels(**_LABELS).inc()
     try:
-        return await _run_inner(prompt, session_id, sessions, agent_md_content, model)
+        return await _run_inner(prompt, session_id, sessions, agent_md_content, model, max_tokens)
     finally:
         if a2_concurrent_queries is not None:
             a2_concurrent_queries.labels(**_LABELS).dec()
@@ -457,6 +488,7 @@ async def _run_inner(
     sessions: OrderedDict[str, float],
     agent_md_content: str,
     model: str | None = None,
+    max_tokens: int | None = None,
 ) -> str:
     resolved_model = model or CODEX_MODEL
     if a2_model_requests_total is not None:
@@ -478,9 +510,10 @@ async def _run_inner(
         a2_prompt_length_bytes.labels(**_LABELS).observe(len(prompt.encode()))
 
     _start = time.monotonic()
+    _budget_exceeded = False
     try:
         collected = await asyncio.wait_for(
-            run_query(prompt, session_id, agent_md_content, model=model),
+            run_query(prompt, session_id, agent_md_content, model=model, max_tokens=max_tokens),
             timeout=TASK_TIMEOUT_SECONDS,
         )
     except asyncio.TimeoutError:
@@ -497,6 +530,17 @@ async def _run_inner(
         if a2_task_last_error_timestamp_seconds is not None:
             a2_task_last_error_timestamp_seconds.labels(**_LABELS).set(time.time())
         raise
+    except BudgetExceededError as _bexc:
+        _budget_exceeded = True
+        logger.warning(f"Session {session_id!r}: {_bexc} — returning partial response.")
+        await log_entry(
+            "system",
+            f"Budget exceeded: {_bexc.total} tokens used of {_bexc.limit} limit.",
+            session_id,
+            model=resolved_model,
+        )
+        collected = _bexc.collected
+        _track_session(sessions, session_id)
     except Exception:
         if a2_tasks_total is not None:
             a2_tasks_total.labels(**_LABELS, status="error").inc()
@@ -506,9 +550,10 @@ async def _run_inner(
             a2_task_last_error_timestamp_seconds.labels(**_LABELS).set(time.time())
         raise
 
-    _track_session(sessions, session_id)
+    if not _budget_exceeded:
+        _track_session(sessions, session_id)
     if a2_tasks_total is not None:
-        a2_tasks_total.labels(**_LABELS, status="success").inc()
+        a2_tasks_total.labels(**_LABELS, status="budget_exceeded" if _budget_exceeded else "success").inc()
     if a2_task_last_success_timestamp_seconds is not None:
         a2_task_last_success_timestamp_seconds.labels(**_LABELS).set(time.time())
     if a2_task_duration_seconds is not None:
@@ -550,6 +595,13 @@ class AgentExecutor(A2AAgentExecutor):
             except ValueError:
                 session_id = str(uuid.uuid5(uuid.NAMESPACE_URL, _raw_sid))
         model = metadata.get("model") or None
+        _max_tokens_raw = metadata.get("max_tokens")
+        max_tokens: int | None = None
+        if _max_tokens_raw is not None:
+            try:
+                max_tokens = int(_max_tokens_raw)
+            except (ValueError, TypeError):
+                logger.warning(f"Session {session_id!r}: invalid max_tokens in metadata {_max_tokens_raw!r}, ignoring.")
         task_id = context.task_id
 
         if task_id:
@@ -568,6 +620,7 @@ class AgentExecutor(A2AAgentExecutor):
                 self._sessions,
                 self._agent_md_content,
                 model=model,
+                max_tokens=max_tokens,
             )
             _success = True
             if _response:
