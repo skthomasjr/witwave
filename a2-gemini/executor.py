@@ -63,7 +63,7 @@ AGENT_OWNER = os.environ.get("AGENT_OWNER", AGENT_NAME)
 AGENT_ID = os.environ.get("AGENT_ID", "gemini")
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
 TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/trace.jsonl")
-AGENT_MD = os.environ.get("AGENT_MD", "/home/agent/agent.md")
+AGENT_MD = os.environ.get("AGENT_MD", "/home/agent/.gemini/GEMINI.md")
 SESSION_STORE_DIR = os.environ.get("SESSION_STORE_DIR", "/home/agent/memory/sessions")
 
 # Ensure the sessions directory exists once at module load time rather than

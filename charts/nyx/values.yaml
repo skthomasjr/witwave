@@ -108,6 +108,24 @@ agents:
         # # Inline config files mounted into the backend container.
         # # Each entry is added as a key in a ConfigMap and mounted at mountPath.
         # config:
+        #   - name: agent-card.md
+        #     mountPath: /home/agent/agent-card.md
+        #     content: |
+        #       An autonomous agent named adam.
+        #   - name: CLAUDE.md
+        #     mountPath: /home/agent/.claude/CLAUDE.md
+        #     content: |
+        #       # adam
+        #       You are adam, an autonomous agent.
+        #   - name: hello.md
+        #     mountPath: /home/agent/.claude/skills/hello.md
+        #     content: |
+        #       ---
+        #       name: hello
+        #       description: A dummy skill.
+        #       version: 1.0.0
+        #       ---
+        #       Say hello.
         #   - name: mcp.json
         #     mountPath: /home/agent/.claude/mcp.json
         #     content: |
@@ -118,8 +136,3 @@ agents:
         #     mountPath: /home/agent/.claude/settings.json
         #     content: |
         #       {}
-        #   - name: AGENTS.md
-        #     mountPath: /home/agent/agent.md
-        #     content: |
-        #       # adam
-        #       You are adam, an autonomous agent.

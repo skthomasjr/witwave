@@ -160,7 +160,7 @@ AGENT_ID = os.environ.get("AGENT_ID", "claude")
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
 TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/trace.jsonl")
 MCP_CONFIG_PATH = os.environ.get("MCP_CONFIG_PATH", "/home/agent/.claude/mcp.json")
-AGENT_MD = os.environ.get("AGENT_MD", "/home/agent/agent.md")
+AGENT_MD = os.environ.get("AGENT_MD", "/home/agent/.claude/CLAUDE.md")
 
 _DEFAULT_TOOLS = "Read,Write,Edit,Bash,Glob,Grep,WebSearch,WebFetch"
 ALLOWED_TOOLS: list[str] = [t.strip() for t in os.environ.get("ALLOWED_TOOLS", _DEFAULT_TOOLS).split(",") if t.strip()]
