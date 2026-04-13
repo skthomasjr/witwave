@@ -22,7 +22,7 @@ spec:
     spec:
       containers:
         - name: nyx-agent
-          image: ghcr.io/skthomasjr/images/nyx-agent:{{ $.Chart.AppVersion }}
+          image: {{ .image.repository }}:{{ .image.tag | default $.Chart.AppVersion }}
           ports:
             - containerPort: 8000
           env:

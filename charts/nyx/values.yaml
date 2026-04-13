@@ -1,2 +1,77 @@
 agents:
   - name: adam
+
+    image:
+      repository: ghcr.io/skthomasjr/images/nyx-agent
+      # tag: ""        # defaults to .Chart.AppVersion
+      # pullPolicy: IfNotPresent
+
+    # imagePullSecrets:
+    #   - name: ghcr-credentials
+
+    # replicas: 1
+
+    # resources:
+    #   requests:
+    #     cpu: 100m
+    #     memory: 128Mi
+    #   limits:
+    #     cpu: 500m
+    #     memory: 512Mi
+
+    # service:
+    #   type: ClusterIP
+    #   port: 8000
+
+    # env:
+    #   - name: AGENT_PORT
+    #     value: "8000"
+    #   - name: LOG_LEVEL
+    #     value: INFO
+
+    # envFrom:
+    #   - secretRef:
+    #       name: adam-secrets
+
+    # volumeMounts:
+    #   - name: config
+    #     mountPath: /home/agent/.nyx
+
+    # volumes:
+    #   - name: config
+    #     configMap:
+    #       name: adam-config
+
+    backends:
+      - name: claude
+        image:
+          repository: ghcr.io/skthomasjr/images/a2-claude
+          # tag: ""      # defaults to .Chart.AppVersion
+          # pullPolicy: IfNotPresent
+        port: 8080
+
+        # resources:
+        #   requests:
+        #     cpu: 200m
+        #     memory: 256Mi
+        #   limits:
+        #     cpu: 1000m
+        #     memory: 1Gi
+
+        # env:
+        #   - name: CLAUDE_MODEL
+        #     value: claude-opus-4-6
+
+        # envFrom:
+        #   - secretRef:
+        #       name: adam-claude-secrets
+
+        # volumeMounts:
+        #   - name: agent-md
+        #     mountPath: /home/agent/agent.md
+        #     subPath: agent.md
+
+        # volumes:
+        #   - name: agent-md
+        #     configMap:
+        #       name: adam-agent-md
