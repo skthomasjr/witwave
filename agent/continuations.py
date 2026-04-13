@@ -46,6 +46,8 @@ class ContinuationItem:
     model: str | None = None
     backend_id: str | None = None
     description: str | None = None
+    consensus: bool = False
+    max_tokens: int | None = None
     max_concurrent_fires: int = CONTINUATION_MAX_CONCURRENT_FIRES
 
 
@@ -97,6 +99,14 @@ def parse_continuation_file(path: str) -> "ContinuationItem | object | None":
         model = fields.get("model") or None
         backend_id = fields.get("agent") or None
         description = fields.get("description") or None
+        consensus = str(fields.get("consensus", "false")).lower() not in ("false", "")
+        max_tokens: int | None = None
+        max_tokens_raw = fields.get("max-tokens") or fields.get("max_tokens")
+        if max_tokens_raw is not None:
+            try:
+                max_tokens = max(1, int(max_tokens_raw))
+            except (ValueError, TypeError):
+                logger.warning(f"Continuation file {path}: invalid 'max-tokens' value {max_tokens_raw!r}, ignoring.")
 
         max_concurrent_fires = CONTINUATION_MAX_CONCURRENT_FIRES
         max_fires_raw = fields.get("max-concurrent-fires") or fields.get("max_concurrent_fires")
@@ -122,6 +132,8 @@ def parse_continuation_file(path: str) -> "ContinuationItem | object | None":
             model=model,
             backend_id=backend_id,
             description=description,
+            consensus=consensus,
+            max_tokens=max_tokens,
             max_concurrent_fires=max_concurrent_fires,
         )
 
@@ -144,6 +156,8 @@ async def _fire(item: ContinuationItem, session_id: str, bus: MessageBus) -> Non
             kind=f"continuation:{item.name}",
             model=item.model,
             backend_id=item.backend_id,
+            consensus=item.consensus,
+            max_tokens=item.max_tokens,
         ))
         if agent_continuation_runs_total is not None:
             agent_continuation_runs_total.labels(name=item.name, status="success").inc()
@@ -208,6 +222,8 @@ class ContinuationRunner:
                 "description": item.description,
                 "backend_id": item.backend_id,
                 "model": item.model,
+                "consensus": item.consensus,
+                "max_tokens": item.max_tokens,
                 "max_concurrent_fires": item.max_concurrent_fires,
                 "active_fires": len(self._fires_by_name.get(item.name, set())),
             })
