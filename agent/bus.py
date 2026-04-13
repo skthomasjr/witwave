@@ -47,6 +47,10 @@ class MessageBus:
                     agent_bus_pending_kinds.set(len(self._pending_kinds))
                 logger.error(f"Bus send timed out after {BUS_SEND_TIMEOUT}s — queue full (depth={self._queue.qsize()})")
                 raise asyncio.QueueFull()
+            # Update queue depth unconditionally after put() succeeds. Placing
+            # this update here (before awaiting result) ensures the gauge is
+            # correct regardless of whether the awaiting coroutine is cancelled
+            # or raises — the message is physically in the queue from this point.
             if agent_bus_queue_depth is not None:
                 agent_bus_queue_depth.set(self._queue.qsize())
             try:
