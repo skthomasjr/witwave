@@ -1,90 +1,88 @@
+# Enable Prometheus metrics for all agents and their backends.
+# Override per agent with agents[].metrics.enabled.
 metrics:
-  enabled: false            # enable Prometheus metrics across all agents; override per-agent with agents[].metrics.enabled
-
-sharedStorage:
+  # Enable or disable metrics globally.
   enabled: false
+
+# Shared storage volume mounted into all agent pods and backend sidecars.
+sharedStorage:
+  # Enable shared storage.
+  enabled: false
+  # Mount path inside each container.
   mountPath: /data/shared
-  storageType: pvc          # pvc or hostPath
+  # Storage type: pvc or hostPath.
+  # Use hostPath for single-node clusters (e.g. Docker Desktop).
+  # Use pvc with a ReadWriteMany-capable storage class for multi-node clusters.
+  storageType: pvc
+  # PVC storage request size.
   size: 1Gi
-  # storageClassName: ""    # leave blank for cluster default; use a RWX-capable class in production
+  # # Storage class name. Leave empty to use the cluster default.
+  # storageClassName: ""
+  # # PVC access modes.
   # accessModes:
   #   - ReadWriteMany
-  # existingClaim: ""       # use a pre-existing PVC instead of creating one
-  # hostPath: /tmp/nyx-shared  # only used when storageType is hostPath
+  # # Name of a pre-existing PVC to use instead of creating one.
+  # existingClaim: ""
+  # # Host path on the node. Only used when storageType is hostPath.
+  # hostPath: /tmp/nyx-shared
 
+# List of agents to deploy. Each agent runs as a single pod containing
+# the nyx-agent orchestrator and one or more backend sidecars.
 agents:
-  - name: adam
+  - # Agent name. Used as the pod name prefix, service name, and AGENT_NAME env var.
+    name: adam
 
+    # nyx-agent orchestrator image.
     image:
+      # Image repository.
       repository: ghcr.io/skthomasjr/images/nyx-agent
-      # tag: ""        # defaults to .Chart.AppVersion
+      # # Image tag. Defaults to .Chart.AppVersion when omitted.
+      # tag: ""
+      # # Image pull policy.
       # pullPolicy: IfNotPresent
 
+    # # Image pull secrets for private registries.
     # imagePullSecrets:
     #   - name: ghcr-credentials
 
+    # # Per-agent metrics override. Takes precedence over global metrics.enabled.
     # metrics:
-    #   enabled: true     # overrides global metrics.enabled for this agent and its backends
+    #   enabled: true
 
-    # replicas: 1
-
-    # resources:
-    #   requests:
-    #     cpu: 100m
-    #     memory: 128Mi
-    #   limits:
-    #     cpu: 500m
-    #     memory: 512Mi
-
-    # service:
-    #   type: ClusterIP
-    #   port: 8000
-
-    # env:
-    #   - name: AGENT_PORT
-    #     value: "8000"
-    #   - name: LOG_LEVEL
-    #     value: INFO
-
-    # envFrom:
-    #   - secretRef:
-    #       name: adam-secrets
-
-    # volumeMounts:
-    #   - name: config
-    #     mountPath: /home/agent/.nyx
-
-    # volumes:
-    #   - name: config
-    #     configMap:
-    #       name: adam-config
-
+    # Backend sidecars. Each entry deploys one backend container alongside nyx-agent.
     backends:
-      - name: claude
+      - # Backend name. Used as the sidecar container name and backend ID in routing.
+        name: claude
+
+        # Backend container image.
         image:
+          # Image repository.
           repository: ghcr.io/skthomasjr/images/a2-claude
-          # tag: ""      # defaults to .Chart.AppVersion
+          # # Image tag. Defaults to .Chart.AppVersion when omitted.
+          # tag: ""
+          # # Image pull policy.
           # pullPolicy: IfNotPresent
+
+        # Port the backend listens on.
         port: 8080
+
+        # Default model for this backend.
         model: claude-opus-4-6
 
-        # resources:
-        #   requests:
-        #     cpu: 200m
-        #     memory: 256Mi
-        #   limits:
-        #     cpu: 1000m
-        #     memory: 1Gi
-
+        # # Additional environment variables injected into the backend container.
         # env:
         #   - name: CLAUDE_MODEL
         #     value: claude-opus-4-6
 
+        # # Environment variables sourced from Secrets or ConfigMaps.
+        # # See the backend README for required secret keys.
         # envFrom:
         #   - secretRef:
         #       name: adam-claude-secrets
 
-        # config:                      # inline config files mounted into the backend container
+        # # Inline config files mounted into the backend container.
+        # # Each entry is added as a key in a ConfigMap and mounted at mountPath.
+        # config:
         #   - name: mcp.json
         #     mountPath: /home/agent/.claude/mcp.json
         #     content: |
@@ -100,13 +98,3 @@ agents:
         #     content: |
         #       # adam
         #       You are adam, an autonomous agent.
-
-        # volumeMounts:
-        #   - name: agent-md
-        #     mountPath: /home/agent/agent.md
-        #     subPath: agent.md
-
-        # volumes:
-        #   - name: agent-md
-        #     configMap:
-        #       name: adam-agent-md
