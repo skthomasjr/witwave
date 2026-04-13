@@ -487,7 +487,8 @@ async def main():
             with open(manifest_path) as f:
                 manifest = _json.load(f)
             team = [e for idx, e in enumerate(manifest.get("team", [])) if _validate_manifest_entry(idx, e)]
-        except Exception:
+        except Exception as _manifest_exc:
+            logger.warning("proxy_handler: failed to load manifest at %s: %s", manifest_path, _manifest_exc)
             team = []
         target_url = next((m.get("url") for m in team if m.get("name") == agent_name), None)
         if not target_url:
@@ -550,7 +551,8 @@ async def main():
             with open(manifest_path) as f:
                 manifest = _json.load(f)
             team = [e for idx, e in enumerate(manifest.get("team", [])) if _validate_manifest_entry(idx, e)]
-        except Exception:
+        except Exception as _manifest_exc:
+            logger.warning("conversations_proxy_handler: failed to load manifest at %s: %s", manifest_path, _manifest_exc)
             team = []
         target_url = next((m.get("url") for m in team if m.get("name") == agent_name), None)
         if not target_url:
