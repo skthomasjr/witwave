@@ -59,6 +59,11 @@ AGENT_NAME = os.environ.get("AGENT_NAME", "nyx-agent")
 # Override via WEBHOOK_MAX_CONCURRENT_DELIVERIES env var.
 WEBHOOK_MAX_CONCURRENT_DELIVERIES = int(os.environ.get("WEBHOOK_MAX_CONCURRENT_DELIVERIES", "50"))
 
+# Default per-subscription cap on in-flight delivery tasks.  Each subscription
+# may override this via the max-concurrent-deliveries frontmatter field.
+# Override the global default via WEBHOOK_MAX_CONCURRENT_DELIVERIES_PER_SUB env var.
+WEBHOOK_MAX_CONCURRENT_DELIVERIES_PER_SUB = int(os.environ.get("WEBHOOK_MAX_CONCURRENT_DELIVERIES_PER_SUB", "10"))
+
 # Maximum seconds to wait for a single LLM extraction call inside deliver().
 # Prevents a slow or unresponsive backend from holding a delivery slot
 # indefinitely.  Override via WEBHOOK_EXTRACTION_TIMEOUT env var.
@@ -92,6 +97,7 @@ class WebhookSubscription:
     context_template: str | None = None       # markdown body — context for LLM extractions
     backend_id: str | None = None
     model: str | None = None
+    max_concurrent_deliveries: int = WEBHOOK_MAX_CONCURRENT_DELIVERIES_PER_SUB
 
 
 def _resolve_env_vars(text: str) -> str:
@@ -198,6 +204,15 @@ def parse_webhook_file(path: str) -> "WebhookSubscription | object | None":
         backend_id = fields.get("agent") or None
         model = fields.get("model") or None
 
+        # per-subscription concurrent delivery cap
+        max_concurrent_deliveries = WEBHOOK_MAX_CONCURRENT_DELIVERIES_PER_SUB
+        raw_max_del = parsed_yaml.get("max-concurrent-deliveries") or parsed_yaml.get("max_concurrent_deliveries")
+        if raw_max_del is not None:
+            try:
+                max_concurrent_deliveries = max(1, int(raw_max_del))
+            except (ValueError, TypeError):
+                logger.warning(f"Webhook file {path}: invalid 'max-concurrent-deliveries' {raw_max_del!r} — using default {WEBHOOK_MAX_CONCURRENT_DELIVERIES_PER_SUB}.")
+
         filename = Path(path).stem
         name = fields.get("name") or filename
         description = fields.get("description") or None
@@ -221,6 +236,7 @@ def parse_webhook_file(path: str) -> "WebhookSubscription | object | None":
             context_template=context_body if context_body else None,
             backend_id=backend_id,
             model=model,
+            max_concurrent_deliveries=max_concurrent_deliveries,
         )
 
     except Exception as e:
@@ -472,6 +488,7 @@ class WebhookRunner:
                 "backend_id": sub.backend_id,
                 "model": sub.model,
                 "active_deliveries": len(self._deliveries_by_name.get(sub.name, set())),
+                "max_concurrent_deliveries": sub.max_concurrent_deliveries,
             })
         return result
 
@@ -526,9 +543,21 @@ class WebhookRunner:
         response_preview = response[:2048] if response else ""
         for sub in self._items.values():
             if _matches_filters(sub, success, kind, response_preview):
+                # Per-subscription cap: prevents a single high-volume or slow
+                # subscription from consuming all global capacity and starving others.
+                sub_deliveries = self._deliveries_by_name.get(sub.name, set())
+                if len(sub_deliveries) >= sub.max_concurrent_deliveries:
+                    logger.warning(
+                        f"Webhook '{sub.name}': per-subscription max concurrent deliveries "
+                        f"({sub.max_concurrent_deliveries}) reached — shedding delivery for kind {kind!r}."
+                    )
+                    if agent_webhooks_delivery_shed_total is not None:
+                        agent_webhooks_delivery_shed_total.labels(subscription=sub.name).inc()
+                    continue
+                # Global safety net: absolute cap across all subscriptions.
                 if len(self._active_deliveries) >= WEBHOOK_MAX_CONCURRENT_DELIVERIES:
                     logger.warning(
-                        f"Webhook '{sub.name}': max concurrent deliveries "
+                        f"Webhook '{sub.name}': global max concurrent deliveries "
                         f"({WEBHOOK_MAX_CONCURRENT_DELIVERIES}) reached — shedding delivery for kind {kind!r}."
                     )
                     if agent_webhooks_delivery_shed_total is not None:
