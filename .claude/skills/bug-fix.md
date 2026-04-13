@@ -1,7 +1,7 @@
 ---
 name: bug-fix
 description: Fix all approved bugs one at a time, committing and pushing each fix. Trigger when the user says "fix bugs", "fix approved bugs", "run bug fix", or "start bug fixing".
-version: 1.0.2
+version: 1.0.3
 ---
 
 # bug-fix
@@ -59,7 +59,7 @@ Leave a comment on the bug documenting:
 - What was changed and where (file and line)
 - Whether the fix followed the suggested approach or deviated, and why
 - Confirmation that the fix was verified
-- The name and version of this skill (bug-fix v1.0.0)
+- The name and version of this skill (see the frontmatter of this file)
 
 Then close the bug.
 

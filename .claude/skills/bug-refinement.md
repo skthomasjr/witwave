@@ -1,12 +1,12 @@
 ---
 name: bug-refinement
 description: Analyze pending bugs holistically, identify dependencies and conflicts, update stale information, and produce an execution order for fixing. Optionally scoped to a specific component; if no component is specified, processes all components including cross-cutting bugs with no component assigned. Trigger when the user says "refine bugs", "run bug refinement", "analyze bugs", "clean up bugs", "prioritize bugs", or "order bugs for fixing".
-version: 1.0.0
+version: 1.0.1
 ---
 
 # bug-refinement
 
-Analyze approved bugs as a set — not individually — to identify dependencies, conflicts, redundancies, and stale information. The output is a clean, ordered, dependency-aware work queue ready for fixing.
+Analyze pending bugs as a set — not individually — to identify dependencies, conflicts, redundancies, and stale information. The output is a clean, ordered, dependency-aware work queue ready for fixing.
 
 ## Instructions
 

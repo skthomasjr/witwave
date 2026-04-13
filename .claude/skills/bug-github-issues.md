@@ -1,7 +1,7 @@
 ---
 name: bug-github-issues
 description: File, close, edit, comment on, or look up a bug (not a risk, gap, or feature). Trigger when the user says "file a bug", "report a bug", "close the bug", "close bug #N", "update the bug", "edit bug #N", "look up a bug", "find bug #N", "check if a bug exists", "list bugs", "show all bugs", "comment on bug #N", or "add a comment to the bug".
-version: 1.1.0
+version: 1.1.1
 ---
 
 # bug-github-issues
@@ -97,7 +97,7 @@ gh issue view <number> --json body,labels
 The body is structured markdown. Edit only the fields that need to change. Common edits:
 
 - **Status** — replace `**Status:** <old>` with `**Status:** <new>`. Valid values: `pending`, `approved`, `in-progress`, `needs-more-info`, `implemented`, `wont-fix`.
-- **Priority** — replace `**Priority:** <old>` with `**Priority:** <new>`. Valid values: `high`, `medium`, `low`.
+- **Priority** — replace `**Priority:** <old>` with `**Priority:** <new>`. Valid values: `critical`, `high`, `medium`, `low`.
 - **Claimed by** — replace `**Claimed by:** none` with `**Claimed by:** <agent-name>` when an agent picks up a bug; set back to `none` when the agent drops it.
 - **Depends on** — replace the `- none` entry (or existing entries) under `**Depends on:**` with one bullet per dependency: `- #<number> — <one sentence reason this must be fixed first>`. Use `- none` when there are no dependencies.
 - **Fix** — replace the `**Fix:**` block with the revised suggestion.
