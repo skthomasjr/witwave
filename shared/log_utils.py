@@ -19,15 +19,22 @@ def _append_log(path: str, line: str) -> None:
 
     After writing, rotates the file if it exceeds MAX_LOG_BYTES.  Keeps up to
     MAX_LOG_BACKUP_COUNT numbered backups (<path>.1, <path>.2, …).
+
+    A separate lock file (<path>.lock) is used so that the exclusive lock is
+    held on a stable inode that is never renamed during rotation.  All writers
+    must acquire this lock before opening <path>, ensuring that post-rotation
+    opens are serialized and never race with a concurrent write.
     """
     log_dir = os.path.dirname(path)
     if log_dir:
         os.makedirs(log_dir, exist_ok=True)
-    with open(path, "a", encoding="utf-8") as f:
-        fcntl.flock(f, fcntl.LOCK_EX)
+    lock_path = path + ".lock"
+    with open(lock_path, "a") as lock_f:
+        fcntl.flock(lock_f, fcntl.LOCK_EX)
         try:
-            f.write(line + "\n")
-            f.flush()
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+                f.flush()
             if MAX_LOG_BACKUP_COUNT > 0 and os.path.getsize(path) >= MAX_LOG_BYTES:
                 # Rotate: <path>.N → <path>.N+1, …, <path> → <path>.1
                 for i in range(MAX_LOG_BACKUP_COUNT, 0, -1):
@@ -39,4 +46,4 @@ def _append_log(path: str, line: str) -> None:
                         os.rename(src, dst)
                 logger.debug("Rotated log file %s", path)
         finally:
-            fcntl.flock(f, fcntl.LOCK_UN)
+            fcntl.flock(lock_f, fcntl.LOCK_UN)
