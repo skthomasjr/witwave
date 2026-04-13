@@ -495,6 +495,10 @@ async def deliver(
         logger.warning(f"Webhook '{sub.name}' attempt 1 failed: {exc!r}")
 
     if result != "success" and sub.retries > 0:
+        # Record the initial failure before dispatching the retry chain so that
+        # the first attempt's outcome is always visible in metrics (#375/#382).
+        if agent_webhooks_delivery_total is not None:
+            agent_webhooks_delivery_total.labels(result=result, subscription=sub.name).inc()
         # Schedule retry as a new independent task so this task can exit now,
         # freeing its slot before the backoff delay begins.
         _retry_task = asyncio.ensure_future(
@@ -511,7 +515,6 @@ async def deliver(
         # retry task in its concurrency-tracking structures (#376).
         if on_retry_task is not None:
             on_retry_task(_retry_task)
-        # Do not count this as a terminal result — the retry task will record it.
         return
 
     if agent_webhooks_delivery_total is not None:
