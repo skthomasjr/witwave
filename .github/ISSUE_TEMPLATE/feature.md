@@ -1,26 +1,41 @@
 ---
 name: Feature
-about: A feature request or idea
+about: A new capability derived from an approved request
 ---
 
 **Type:** feature
 
-**Priority:** priority/p0 | priority/p1 | priority/p2 | priority/p3
+**Priority:** critical | high | medium | low
 
-**Status:** status/pending | status/approved | status/needs-more-info | status/implemented
+**Status:** pending | approved | in-progress | needs-more-info | implemented | wont-fix
 
 **Created by:** <name>
 
-**Confidence:** high | medium | low — <one sentence justification>
+**Claimed by:** none
 
-**Value:** <why this matters, what problem it solves, evidence of user demand, which audience it serves>
+**Skill:** <skill name> v<skill version>
 
-**Implementation:** <which files change, what new components are added, what the operator-facing interface looks like>
+**Component:** agent | a2-claude | a2-codex | a2-gemini | ui | _(leave blank if cross-cutting or other)_
 
-**Risk:** Low | Medium | High — <one sentence justification>
+**Request:** #<request issue number>
 
-**Questions:** <specific unresolved questions, or `none`>
+**Description:** <what the feature does and what capability it adds>
+
+**Value:** <why this is worth building — what problem it solves or what it enables>
+
+**Design:** <suggested implementation approach, or `unknown`>
+
+**Breaking changes:** <does this alter existing behavior in a way that could break current workflows? yes | no — if yes, describe the impact>
+
+**User communication:** <does this require documentation, help text updates, or notification to users or agents? yes | no — if yes, describe what>
+
+**Depends on:**
+- none
 
 **Acceptance criteria:**
 
-- [ ] <what done looks like>
+- [ ] Feature is implemented and working as described
+- [ ] New and modified code paths are covered by tests
+- [ ] No regressions introduced in adjacent code paths
+- [ ] Relevant documentation updated (README, AGENTS.md, component docs)
+- [ ] Breaking changes and user communication addressed (if applicable)

@@ -1,7 +1,7 @@
 ---
 name: develop
-description: Run the full autonomous development cycle — discover, refine, approve, and fix bugs, risks, and gaps across all components. Trigger when the user says "run the development cycle", "run the dev cycle", "start the development loop", "start the dev loop", or "run develop".
-version: 2.2.0
+description: Run the full autonomous development cycle — discover, refine, approve, and fix bugs, risks, and gaps across all components, then derive, refine, approve, and implement features from ready requests. Trigger when the user says "run the development cycle", "run the dev cycle", "start the development loop", "start the dev loop", or "run develop".
+version: 2.3.0
 ---
 
 # develop
@@ -60,6 +60,22 @@ Approve gaps across all components, including cross-cutting gaps with no compone
 
 Fix all approved gaps across all components, including cross-cutting gaps with no component assigned.
 
-**Phase 13: Refine the docs.**
+**Phase 13: Discover features.**
+
+Derive features from all open requests marked as ready.
+
+**Phase 14: Refine features.**
+
+Refine all pending features.
+
+**Phase 15: Approve features.**
+
+Approve all pending features.
+
+**Phase 16: Implement features.**
+
+Implement all approved features.
+
+**Phase 17: Refine the docs.**
 
 Review and update the project documentation to reflect any changes made during this cycle.
