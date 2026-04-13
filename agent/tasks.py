@@ -128,6 +128,11 @@ def parse_task_file(path: str) -> TaskItem | None:
         window_end: dtime | None = None
 
         if wd_raw:
+            if window_start is None:
+                logger.warning(f"Task file {path}: 'window-duration' requires 'window-start' — skipping.")
+                if agent_sched_task_parse_errors_total is not None:
+                    agent_sched_task_parse_errors_total.inc()
+                return None
             try:
                 duration_secs = parse_duration(str(wd_raw))
             except ValueError as e:
