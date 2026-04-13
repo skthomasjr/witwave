@@ -463,6 +463,7 @@ async def _run_inner(
         # cancellation; removing it ensures the next call for this session_id
         # starts fresh rather than attempting to resume a broken session.
         sessions.pop(session_id, None)
+        session_locks.pop(session_id, None)  # avoid orphaned lock entry (#379)
         # Also remove the on-disk history file so the next request for this
         # session_id starts with empty history rather than reloading the
         # potentially stale or mid-stream snapshot written before the timeout.
