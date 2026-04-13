@@ -266,6 +266,7 @@ Memory files are not committed to source control. nyx-agent has no memory layer 
 | `TASK_STORE_PATH`                   | _(unset)_                       | Path for SQLite A2A task store; defaults to in-memory (state lost on restart)                            |
 | `WORKER_MAX_RESTARTS`               | `5`                             | Consecutive crash limit before a critical worker marks the agent not-ready                               |
 | `WEBHOOK_MAX_CONCURRENT_DELIVERIES` | `50`                            | Maximum number of in-flight webhook delivery tasks; deliveries beyond this cap are shed and counted      |
+| `WEBHOOK_EXTRACTION_TIMEOUT`        | `120`                           | Maximum seconds to wait for a single LLM extraction call inside a webhook delivery; prevents a slow backend from holding a delivery slot indefinitely |
 | `LOG_PROMPT_MAX_BYTES`              | `200`                           | Maximum bytes of the prompt logged at INFO level; set to `0` to suppress prompt logging entirely         |
 
 ### Backend (a2-claude / a2-codex / a2-gemini) environment variables

@@ -59,6 +59,11 @@ AGENT_NAME = os.environ.get("AGENT_NAME", "nyx-agent")
 # Override via WEBHOOK_MAX_CONCURRENT_DELIVERIES env var.
 WEBHOOK_MAX_CONCURRENT_DELIVERIES = int(os.environ.get("WEBHOOK_MAX_CONCURRENT_DELIVERIES", "50"))
 
+# Maximum seconds to wait for a single LLM extraction call inside deliver().
+# Prevents a slow or unresponsive backend from holding a delivery slot
+# indefinitely.  Override via WEBHOOK_EXTRACTION_TIMEOUT env var.
+WEBHOOK_EXTRACTION_TIMEOUT = float(os.environ.get("WEBHOOK_EXTRACTION_TIMEOUT", "120"))
+
 _VALID_NOTIFY_WHEN = ("always", "on_success", "on_error")
 
 _DISABLED = object()
@@ -363,15 +368,24 @@ async def deliver(
         for var_name, extraction_prompt in sub.extract.items():
             full_prompt = f"{context_text}\n\n{extraction_prompt}" if context_text else extraction_prompt
             try:
-                result = await _run_extraction(
-                    prompt=full_prompt,
-                    backends=backends,
-                    default_backend_id=default_backend_id,
-                    backend_id=sub.backend_id,
-                    model=sub.model or model,
-                    session_id=extraction_session_id,
+                result = await asyncio.wait_for(
+                    _run_extraction(
+                        prompt=full_prompt,
+                        backends=backends,
+                        default_backend_id=default_backend_id,
+                        backend_id=sub.backend_id,
+                        model=sub.model or model,
+                        session_id=extraction_session_id,
+                    ),
+                    timeout=WEBHOOK_EXTRACTION_TIMEOUT,
                 )
                 context[var_name] = result
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"Webhook '{sub.name}': extraction '{var_name}' timed out after "
+                    f"{WEBHOOK_EXTRACTION_TIMEOUT}s. Using empty string."
+                )
+                context[var_name] = ""
             except Exception as exc:
                 logger.warning(f"Webhook '{sub.name}': extraction '{var_name}' failed — {exc!r}. Using empty string.")
                 context[var_name] = ""
