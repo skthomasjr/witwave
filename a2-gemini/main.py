@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import time
+import uuid
 from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import datetime, timezone
 
@@ -249,10 +250,99 @@ async def main():
     conversations_handler = make_conversations_handler(CONVERSATIONS_AUTH_TOKEN, CONVERSATION_LOG)
     trace_handler = make_trace_handler(CONVERSATIONS_AUTH_TOKEN, TRACE_LOG)
 
+    _agent_description = load_agent_description()
+
+    async def mcp_handler(request: Request) -> JSONResponse:
+        """Minimal MCP JSON-RPC server: initialize / tools/list / tools/call."""
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}, status_code=400)
+        rpc_id = body.get("id")
+        method = body.get("method", "")
+        params = body.get("params") or {}
+
+        if method == "initialize":
+            return JSONResponse({
+                "jsonrpc": "2.0",
+                "id": rpc_id,
+                "result": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {"tools": {}},
+                    "serverInfo": {"name": AGENT_NAME, "version": AGENT_VERSION},
+                },
+            })
+
+        if method == "tools/list":
+            return JSONResponse({
+                "jsonrpc": "2.0",
+                "id": rpc_id,
+                "result": {
+                    "tools": [
+                        {
+                            "name": "ask_agent",
+                            "description": _agent_description,
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {"prompt": {"type": "string", "description": "The prompt to send to the agent."}},
+                                "required": ["prompt"],
+                            },
+                        }
+                    ]
+                },
+            })
+
+        if method == "tools/call":
+            tool_name = params.get("name", "")
+            if tool_name != "ask_agent":
+                return JSONResponse({
+                    "jsonrpc": "2.0",
+                    "id": rpc_id,
+                    "error": {"code": -32602, "message": f"Unknown tool: {tool_name!r}"},
+                })
+            arguments = params.get("arguments") or {}
+            prompt = arguments.get("prompt", "")
+            if not prompt:
+                return JSONResponse({
+                    "jsonrpc": "2.0",
+                    "id": rpc_id,
+                    "error": {"code": -32602, "message": "Missing required argument: prompt"},
+                })
+            session_id = str(uuid.uuid4())
+            try:
+                from executor import run as _run_for_mcp
+                response = await _run_for_mcp(
+                    prompt,
+                    session_id,
+                    executor._sessions,
+                    executor._agent_md_content,
+                    executor._session_locks,
+                    model=None,
+                )
+            except Exception as exc:
+                logger.error(f"MCP tools/call error: {exc!r}")
+                return JSONResponse({
+                    "jsonrpc": "2.0",
+                    "id": rpc_id,
+                    "error": {"code": -32603, "message": f"Internal error: {exc}"},
+                })
+            return JSONResponse({
+                "jsonrpc": "2.0",
+                "id": rpc_id,
+                "result": {"content": [{"type": "text", "text": response}]},
+            })
+
+        return JSONResponse({
+            "jsonrpc": "2.0",
+            "id": rpc_id,
+            "error": {"code": -32601, "message": f"Method not found: {method!r}"},
+        })
+
     _routes = [
         Route("/health", health),
         Route("/conversations", conversations_handler, methods=["GET"]),
         Route("/trace", trace_handler, methods=["GET"]),
+        Route("/mcp", mcp_handler, methods=["GET", "POST"]),
     ]
     if metrics_enabled:
         _routes.append(Route("/metrics", metrics_handler))
