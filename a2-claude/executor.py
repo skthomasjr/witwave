@@ -276,6 +276,15 @@ def _track_session(sessions: OrderedDict[str, float], session_id: str) -> None:
                 a2_session_evictions_total.labels(**_LABELS).inc()
             if a2_session_age_seconds is not None:
                 a2_session_age_seconds.labels(**_LABELS).observe(time.monotonic() - last_used_at)
+            # Remove the on-disk session file for the evicted session so that
+            # disk space is reclaimed and a future request for the same session
+            # ID starts with a clean slate rather than stale history (#368).
+            _evicted_path = _session_file_path(_evicted_id)
+            if _evicted_path is not None:
+                try:
+                    _evicted_path.unlink(missing_ok=True)
+                except OSError as _e:
+                    logger.warning("Failed to remove evicted session file %r: %s", _evicted_path, _e)
         sessions[session_id] = time.monotonic()
     if a2_active_sessions is not None:
         a2_active_sessions.labels(**_LABELS).set(len(sessions))
