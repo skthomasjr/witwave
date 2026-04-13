@@ -123,6 +123,7 @@ class A2ABackend:
                     last_exc = ConnectionError(
                         f"A2A backend '{self.id}' returned HTTP {resp.status_code}"
                     )
+                    continue
                 else:
                     resp.raise_for_status()
                     return resp.text
