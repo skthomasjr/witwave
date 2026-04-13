@@ -423,7 +423,15 @@ async def run_query(
             effective_model=effective_model,
         )
     except Exception:
-        if is_new and any("already in use" in line.lower() for line in stderr_lines):
+        _collision_lines = [
+            line for line in stderr_lines
+            if "session" in line.lower() and "already in use" in line.lower()
+        ]
+        if is_new and _collision_lines:
+            logger.warning(
+                f"Session {session_id!r}: session-ID collision detected on new session "
+                f"(stderr: {_collision_lines[0]!r}) — retrying as resume."
+            )
             if a2_task_retries_total is not None:
                 a2_task_retries_total.labels(**_LABELS).inc()
             if a2_sdk_query_error_duration_seconds is not None:
