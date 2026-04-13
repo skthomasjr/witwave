@@ -12,6 +12,7 @@ services:
       METRICS_ENABLED: "true"
       WEBHOOK_TEST_HOST: "bob:8000"
       WEBHOOK_TEST_TOKEN: "test-token-abc123"
+      CORS_ALLOW_ORIGINS: "http://localhost:3001"
     volumes:
       - .:/home/agent/workspace
       - ./.agents/test/manifest.json:/home/agent/manifest.json:ro
@@ -106,6 +107,7 @@ services:
       AGENT_NAME: fred
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}
       METRICS_ENABLED: "true"
+      CORS_ALLOW_ORIGINS: "http://localhost:3001"
     volumes:
       - .:/home/agent/workspace
       - ./.agents/test/manifest.json:/home/agent/manifest.json:ro

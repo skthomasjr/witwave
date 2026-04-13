@@ -12,6 +12,7 @@ services:
       GH_REPO: skthomasjr/autonomous-agent
       GH_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
       METRICS_ENABLED: "true"
+      CORS_ALLOW_ORIGINS: "http://localhost:3002"
     volumes:
       - ./.agents/active/iris/.nyx:/home/agent/.nyx
       - ./.agents/active/manifest.json:/home/agent/manifest.json:ro
@@ -111,6 +112,7 @@ services:
       GH_REPO: skthomasjr/autonomous-agent
       GH_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
       METRICS_ENABLED: "true"
+      CORS_ALLOW_ORIGINS: "http://localhost:3002"
     volumes:
       - ./.agents/active/nova/.nyx:/home/agent/.nyx
       - ./.agents/active/manifest.json:/home/agent/manifest.json:ro
@@ -210,6 +212,7 @@ services:
       GH_REPO: skthomasjr/autonomous-agent
       GH_TOKEN: ${GITHUB_TOKEN_AUTONOMOUS_AGENT}
       METRICS_ENABLED: "true"
+      CORS_ALLOW_ORIGINS: "http://localhost:3002"
     volumes:
       - ./.agents/active/kira/.nyx:/home/agent/.nyx
       - ./.agents/active/manifest.json:/home/agent/manifest.json:ro

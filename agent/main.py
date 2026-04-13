@@ -75,7 +75,7 @@ TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
 # falls back to the permissive wildcard and logs a warning at startup so
 # operators know it is not restricted to known origins.
 _cors_env = os.environ.get("CORS_ALLOW_ORIGINS", "")
-CORS_ALLOW_ORIGINS: list[str] = [o.strip() for o in _cors_env.split(",") if o.strip()] if _cors_env else ["*"]
+CORS_ALLOW_ORIGINS: list[str] = [o.strip() for o in _cors_env.split(",") if o.strip()] if _cors_env else []
 
 _ready: bool = False
 _startup_mono: float = 0.0
@@ -882,10 +882,16 @@ async def main():
                     await stack.enter_async_context(_sub_app_lifespan(route.app))
             yield
 
-    if CORS_ALLOW_ORIGINS == ["*"]:
+    if not CORS_ALLOW_ORIGINS:
         logger.warning(
-            "CORS is configured to allow all origins (CORS_ALLOW_ORIGINS is not set). "
-            "Set CORS_ALLOW_ORIGINS to a comma-separated list of trusted origins to restrict access."
+            "CORS_ALLOW_ORIGINS is not set — cross-origin browser requests to this agent will be denied. "
+            "Set CORS_ALLOW_ORIGINS to a comma-separated list of allowed origins "
+            "(e.g. 'http://localhost:3002') to permit browser access."
+        )
+    elif CORS_ALLOW_ORIGINS == ["*"]:
+        logger.warning(
+            "CORS is configured to allow all origins (CORS_ALLOW_ORIGINS=*). "
+            "Set CORS_ALLOW_ORIGINS to specific trusted origins to restrict access."
         )
     else:
         logger.info("CORS allowed origins: %s", CORS_ALLOW_ORIGINS)
