@@ -534,6 +534,14 @@ class AgentExecutor(A2AAgentExecutor):
                 if agent_running_tasks is not None:
                     agent_running_tasks.dec()
 
+    async def close(self) -> None:
+        """Cancel and drain all MCP watcher tasks."""
+        for task in self._mcp_watcher_tasks:
+            task.cancel()
+        if self._mcp_watcher_tasks:
+            await asyncio.gather(*self._mcp_watcher_tasks, return_exceptions=True)
+        self._mcp_watcher_tasks.clear()
+
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         if agent_task_cancellations_total is not None:
             agent_task_cancellations_total.inc()

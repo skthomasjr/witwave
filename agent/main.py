@@ -880,7 +880,10 @@ async def main():
             for route in _routes:
                 if isinstance(route, Mount):
                     await stack.enter_async_context(_sub_app_lifespan(route.app))
-            yield
+            try:
+                yield
+            finally:
+                await executor.close()
 
     if not CORS_ALLOW_ORIGINS:
         logger.warning(
