@@ -147,9 +147,9 @@ async def _sub_app_lifespan(app):
             pass
         raise
     if not supported:
-        logger.critical("A2A sub-app lifespan startup failed — aborting server startup")
-        task.cancel()
-        raise RuntimeError("A2A sub-app lifespan startup failed")
+        # App does not implement lifespan — proceed normally, matching agent/main.py behaviour.
+        yield
+        return
 
     try:
         yield
