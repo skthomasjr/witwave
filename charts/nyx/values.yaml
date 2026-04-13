@@ -85,17 +85,17 @@ agents:
         #       name: adam-claude-secrets
 
         # config:                      # inline config files mounted into the backend container
-        #   mcp.json:
+        #   - name: mcp.json
         #     mountPath: /home/agent/.claude/mcp.json
         #     content: |
         #       {
         #         "mcpServers": {}
         #       }
-        #   settings.json:
+        #   - name: settings.json
         #     mountPath: /home/agent/.claude/settings.json
         #     content: |
         #       {}
-        #   AGENTS.md:
+        #   - name: AGENTS.md
         #     mountPath: /home/agent/agent.md
         #     content: |
         #       # adam

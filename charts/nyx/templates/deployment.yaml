@@ -81,10 +81,10 @@ spec:
             {{- end }}
             {{- if .config }}
             {{- $backendName := .name }}
-            {{- range $filename, $file := .config }}
+            {{- range .config }}
             - name: {{ $backendName }}-config
-              mountPath: {{ $file.mountPath }}
-              subPath: {{ $filename }}
+              mountPath: {{ .mountPath }}
+              subPath: {{ .name }}
             {{- end }}
             {{- end }}
           {{- end }}

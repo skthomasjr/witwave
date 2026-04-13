@@ -12,9 +12,9 @@ metadata:
     app.kubernetes.io/component: {{ .name }}-backend
     app.kubernetes.io/part-of: nyx
 data:
-{{- range $filename, $file := .config }}
-  {{ $filename }}: |
-    {{- $file.content | nindent 4 }}
+{{- range .config }}
+  {{ .name }}: |
+    {{- .content | nindent 4 }}
 {{- end }}
 {{- end }}
 {{- end }}
