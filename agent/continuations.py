@@ -22,6 +22,11 @@ logger = logging.getLogger(__name__)
 
 CONTINUATIONS_DIR = os.environ.get("CONTINUATIONS_DIR", "/home/agent/.nyx/continuations")
 
+# Sentinel returned by parse_continuation_file() when the file is explicitly
+# disabled (enabled: false).  Distinct from None (parse error) so that
+# _register() can unregister a disabled continuation rather than preserving it.
+_DISABLED = object()
+
 # Global default cap on concurrent in-flight fires per continuation.
 # Overridable per-continuation via the max-concurrent-fires frontmatter field.
 CONTINUATION_MAX_CONCURRENT_FIRES = int(os.environ.get("CONTINUATION_MAX_CONCURRENT_FIRES", "5"))
@@ -44,7 +49,12 @@ class ContinuationItem:
     max_concurrent_fires: int = CONTINUATION_MAX_CONCURRENT_FIRES
 
 
-def parse_continuation_file(path: str) -> ContinuationItem | None:
+def parse_continuation_file(path: str) -> "ContinuationItem | object | None":
+    """Parse a continuation file. Returns:
+    - ContinuationItem on success
+    - _DISABLED sentinel when enabled: false
+    - None on parse error (caller should preserve last known good registration)
+    """
     try:
         with open(path) as f:
             raw = f.read()
@@ -55,7 +65,7 @@ def parse_continuation_file(path: str) -> ContinuationItem | None:
             enabled = str(fields["enabled"]).lower() not in ("false", "")
             if not enabled:
                 logger.info(f"Continuation file {path}: disabled, skipping.")
-                return None
+                return _DISABLED
 
         continues_after = fields.get("continues-after") or ""
         if not continues_after.strip():
@@ -152,10 +162,14 @@ class ContinuationRunner:
         self._fires_by_name: dict[str, set[asyncio.Task]] = {}
 
     def _register(self, path: str) -> None:
-        item = parse_continuation_file(path)
-        if item is None:
+        result = parse_continuation_file(path)
+        if result is _DISABLED:
+            self._unregister(path)
+            return
+        if result is None:
             # Parse error — preserve the last known good registration.
             return
+        item = result
         self._unregister(path)
         self._items[path] = item
         if agent_continuation_items_registered is not None:
