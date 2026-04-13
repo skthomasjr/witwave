@@ -68,16 +68,33 @@ spec:
           envFrom:
             {{- toYaml .envFrom | nindent 12 }}
           {{- end }}
-          {{- if $.Values.sharedStorage.enabled }}
+          {{- if or $.Values.sharedStorage.enabled .config }}
           volumeMounts:
+            {{- if $.Values.sharedStorage.enabled }}
             - name: nyx-shared
               mountPath: {{ $.Values.sharedStorage.mountPath }}
+            {{- end }}
+            {{- if .config }}
+            {{- $backendName := .name }}
+            {{- range $filename, $file := .config }}
+            - name: {{ $backendName }}-config
+              mountPath: {{ $file.mountPath }}
+              subPath: {{ $filename }}
+            {{- end }}
+            {{- end }}
           {{- end }}
 {{- end }}
       volumes:
         - name: backend-config
           configMap:
             name: nyx-{{ .name }}-backend
+        {{- range .backends }}
+        {{- if .config }}
+        - name: {{ .name }}-config
+          configMap:
+            name: nyx-{{ $agentName }}-{{ .name }}-config
+        {{- end }}
+        {{- end }}
         {{- if $.Values.sharedStorage.enabled }}
         - name: nyx-shared
           {{- if eq $.Values.sharedStorage.storageType "hostPath" }}

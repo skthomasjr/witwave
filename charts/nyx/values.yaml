@@ -78,6 +78,23 @@ agents:
         #   - secretRef:
         #       name: adam-claude-secrets
 
+        # config:                      # inline config files mounted into the backend container
+        #   mcp.json:
+        #     mountPath: /home/agent/.claude/mcp.json
+        #     content: |
+        #       {
+        #         "mcpServers": {}
+        #       }
+        #   settings.json:
+        #     mountPath: /home/agent/.claude/settings.json
+        #     content: |
+        #       {}
+        #   AGENTS.md:
+        #     mountPath: /home/agent/agent.md
+        #     content: |
+        #       # adam
+        #       You are adam, an autonomous agent.
+
         # volumeMounts:
         #   - name: agent-md
         #     mountPath: /home/agent/agent.md
