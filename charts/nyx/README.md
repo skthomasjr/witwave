@@ -37,4 +37,16 @@ helm uninstall nyx --namespace nyx
 
 ## Values
 
-No values are currently defined. See [values.yaml](values.yaml).
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `agents` | List of agents to deploy, each as a nyx-agent pod | `[{name: adam}]` |
+| `agents[].name` | Agent name — used for pod name, service name, and `AGENT_NAME` env var | `adam` |
+
+To deploy multiple agents:
+
+```yaml
+agents:
+  - name: iris
+  - name: nova
+  - name: kira
+```
