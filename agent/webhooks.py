@@ -39,6 +39,7 @@ import yaml
 
 from metrics import (
     agent_file_watcher_restarts_total,
+    agent_webhooks_delivery_shed_total,
     agent_webhooks_delivery_total,
     agent_webhooks_items_registered,
     agent_webhooks_parse_errors_total,
@@ -52,6 +53,11 @@ logger = logging.getLogger(__name__)
 
 WEBHOOKS_DIR = os.environ.get("WEBHOOKS_DIR", "/home/agent/.nyx/webhooks")
 AGENT_NAME = os.environ.get("AGENT_NAME", "nyx-agent")
+
+# Global cap on total in-flight webhook delivery tasks across all subscriptions.
+# When the cap is reached, new deliveries are shed (logged and counted).
+# Override via WEBHOOK_MAX_CONCURRENT_DELIVERIES env var.
+WEBHOOK_MAX_CONCURRENT_DELIVERIES = int(os.environ.get("WEBHOOK_MAX_CONCURRENT_DELIVERIES", "50"))
 
 _VALID_NOTIFY_WHEN = ("always", "on_success", "on_error")
 
@@ -485,6 +491,14 @@ class WebhookRunner:
         response_preview = response[:2048] if response else ""
         for sub in self._items.values():
             if _matches_filters(sub, success, kind, response_preview):
+                if len(self._active_deliveries) >= WEBHOOK_MAX_CONCURRENT_DELIVERIES:
+                    logger.warning(
+                        f"Webhook '{sub.name}': max concurrent deliveries "
+                        f"({WEBHOOK_MAX_CONCURRENT_DELIVERIES}) reached — shedding delivery for kind {kind!r}."
+                    )
+                    if agent_webhooks_delivery_shed_total is not None:
+                        agent_webhooks_delivery_shed_total.labels(subscription=sub.name).inc()
+                    continue
                 _t = asyncio.create_task(deliver(
                     sub=sub,
                     source=source,
