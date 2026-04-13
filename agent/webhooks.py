@@ -343,6 +343,44 @@ async def _run_extraction(
     return "\n\n".join(chunks).strip() if chunks else ""
 
 
+async def _retry_deliver(
+    sub: WebhookSubscription,
+    url: str,
+    body_bytes: bytes,
+    headers: dict,
+    attempt: int,
+    max_attempts: int,
+) -> None:
+    """Continue delivery for a subscription after the first attempt failed.
+
+    Called as a new independent background task so the original delivery task
+    can exit immediately, releasing its concurrency slot before the backoff
+    sleep.  This prevents sleeping retries from holding capacity and starving
+    new deliveries during a downstream outage (#362).
+    """
+    result = "unknown"
+    while attempt < max_attempts:
+        backoff = 2 ** (attempt - 1)  # 1s, 2s, 4s, ...
+        await asyncio.sleep(backoff)
+        attempt += 1
+        try:
+            async with httpx.AsyncClient(timeout=sub.timeout_seconds, follow_redirects=False) as client:
+                resp = await client.post(url, content=body_bytes, headers=headers)
+            if resp.status_code < 400:
+                result = "success"
+                logger.info(f"Webhook '{sub.name}' delivered to {url} — {resp.status_code} (attempt {attempt})")
+                break
+            else:
+                result = f"http_{resp.status_code}"
+                logger.warning(f"Webhook '{sub.name}' attempt {attempt} got {resp.status_code}")
+        except Exception as exc:
+            result = "error"
+            logger.warning(f"Webhook '{sub.name}' attempt {attempt} failed: {exc!r}")
+
+    if agent_webhooks_delivery_total is not None:
+        agent_webhooks_delivery_total.labels(result=result, subscription=sub.name).inc()
+
+
 async def deliver(
     sub: WebhookSubscription,
     source: str,
@@ -430,29 +468,41 @@ async def deliver(
     if sub.signing_secret:
         headers["X-Hub-Signature-256"] = _sign_body(body_bytes, sub.signing_secret)
 
-    # Deliver with retries
+    # First delivery attempt — make one HTTP POST without holding a retry slot.
+    # If it fails and retries are configured, schedule the next attempt as a
+    # new background task after the backoff delay so the current task exits
+    # immediately and releases its concurrency slot.  This prevents sleeping
+    # retries from exhausting the per-subscription and global caps and starving
+    # new deliveries during a downstream outage (#362).
     result = "unknown"
-    attempt = 0
-    max_attempts = 1 + sub.retries
-    while attempt < max_attempts:
-        attempt += 1
-        try:
-            async with httpx.AsyncClient(timeout=sub.timeout_seconds, follow_redirects=False) as client:
-                resp = await client.post(url, content=body_bytes, headers=headers)
-            if resp.status_code < 400:
-                result = "success"
-                logger.info(f"Webhook '{sub.name}' delivered to {url} — {resp.status_code} (attempt {attempt})")
-                break
-            else:
-                result = f"http_{resp.status_code}"
-                logger.warning(f"Webhook '{sub.name}' attempt {attempt} got {resp.status_code}")
-        except Exception as exc:
-            result = "error"
-            logger.warning(f"Webhook '{sub.name}' attempt {attempt} failed: {exc!r}")
+    try:
+        async with httpx.AsyncClient(timeout=sub.timeout_seconds, follow_redirects=False) as client:
+            resp = await client.post(url, content=body_bytes, headers=headers)
+        if resp.status_code < 400:
+            result = "success"
+            logger.info(f"Webhook '{sub.name}' delivered to {url} — {resp.status_code}")
+        else:
+            result = f"http_{resp.status_code}"
+            logger.warning(f"Webhook '{sub.name}' attempt 1 got {resp.status_code}")
+    except Exception as exc:
+        result = "error"
+        logger.warning(f"Webhook '{sub.name}' attempt 1 failed: {exc!r}")
 
-        if attempt < max_attempts:
-            backoff = 2 ** (attempt - 1)  # 1s, 2s, 4s, ...
-            await asyncio.sleep(backoff)
+    if result != "success" and sub.retries > 0:
+        # Schedule retry as a new independent task so this task can exit now,
+        # freeing its slot before the backoff delay begins.
+        asyncio.ensure_future(
+            _retry_deliver(
+                sub=sub,
+                url=url,
+                body_bytes=body_bytes,
+                headers=headers,
+                attempt=1,
+                max_attempts=1 + sub.retries,
+            )
+        )
+        # Do not count this as a terminal result — the retry task will record it.
+        return
 
     if agent_webhooks_delivery_total is not None:
         agent_webhooks_delivery_total.labels(result=result, subscription=sub.name).inc()
