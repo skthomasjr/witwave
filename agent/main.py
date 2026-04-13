@@ -412,11 +412,9 @@ async def main():
         )
 
     async def agents_handler(request: Request) -> JSONResponse:
-        from backends.config import load_backends_config
-        try:
-            backend_configs = load_backends_config()
-        except Exception:
-            backend_configs = []
+        # Use the live executor backends so this endpoint reflects the same state
+        # as /metrics after a hot-reload (consistent with the fix in #288).
+        backend_configs = [b._config for b in executor._backends.values()]
         agents = []
         # Own card
         own_card = build_agent_card()
@@ -446,11 +444,8 @@ async def main():
     _backend_conversations_auth_token = os.environ.get("BACKEND_CONVERSATIONS_AUTH_TOKEN", "")
 
     async def _fetch_conversations(since: str | None, limit: int | None) -> list[dict]:
-        from backends.config import load_backends_config
-        try:
-            backend_configs = load_backends_config()
-        except Exception:
-            backend_configs = []
+        # Use the live executor backends (consistent with metrics_handler, fixed in #288).
+        backend_configs = [b._config for b in executor._backends.values()]
         return await fetch_backend_conversations(
             backend_configs,
             since=since,
@@ -459,11 +454,8 @@ async def main():
         )
 
     async def _fetch_trace(since: str | None, limit: int | None) -> list[dict]:
-        from backends.config import load_backends_config
-        try:
-            backend_configs = load_backends_config()
-        except Exception:
-            backend_configs = []
+        # Use the live executor backends (consistent with metrics_handler, fixed in #288).
+        backend_configs = [b._config for b in executor._backends.values()]
         return await fetch_backend_trace(
             backend_configs,
             since=since,
