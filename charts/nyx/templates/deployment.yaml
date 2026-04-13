@@ -32,6 +32,8 @@ spec:
           env:
             - name: AGENT_NAME
               value: {{ .name }}
+            - name: METRICS_ENABLED
+              value: {{ (.metrics).enabled | default $.Values.metrics.enabled | toString | quote }}
           {{- if .envFrom }}
           envFrom:
             {{- toYaml .envFrom | nindent 12 }}
@@ -45,6 +47,7 @@ spec:
               mountPath: {{ $.Values.sharedStorage.mountPath }}
             {{- end }}
 {{- $agentName := .name }}
+{{- $agentMetricsEnabled := (.metrics).enabled | default $.Values.metrics.enabled }}
 {{- range .backends }}
         - name: {{ .name }}
           image: {{ .image.repository }}:{{ .image.tag | default $.Chart.AppVersion }}
@@ -61,6 +64,8 @@ spec:
               value: http://localhost:{{ .port }}
             - name: BACKEND_PORT
               value: {{ .port | quote }}
+            - name: METRICS_ENABLED
+              value: {{ $agentMetricsEnabled | toString | quote }}
             {{- if .env }}
             {{- toYaml .env | nindent 12 }}
             {{- end }}

@@ -1,3 +1,6 @@
+metrics:
+  enabled: false            # enable Prometheus metrics across all agents; override per-agent with agents[].metrics.enabled
+
 sharedStorage:
   enabled: false
   mountPath: /data/shared
@@ -19,6 +22,9 @@ agents:
 
     # imagePullSecrets:
     #   - name: ghcr-credentials
+
+    # metrics:
+    #   enabled: true     # overrides global metrics.enabled for this agent and its backends
 
     # replicas: 1
 
