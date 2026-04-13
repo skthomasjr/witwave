@@ -632,7 +632,13 @@ class TaskRunner:
                 await asyncio.sleep(10)
                 continue
 
-            asyncio.ensure_future(self._scan())
+            _scan_task = asyncio.ensure_future(self._scan())
+
+            def _scan_done(t: asyncio.Task) -> None:
+                if not t.cancelled() and t.exception() is not None:
+                    logger.error("Task runner _scan crashed: %r", t.exception())
+
+            _scan_task.add_done_callback(_scan_done)
             async for changes in awatch(TASKS_DIR):
                 if agent_watcher_events_total is not None:
                     agent_watcher_events_total.labels(watcher="tasks").inc()

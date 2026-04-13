@@ -298,7 +298,13 @@ class JobRunner:
             # between watch registration and scan completion are already tracked
             # by the watcher. _scan() + _register() are idempotent so duplicate
             # events from both the scan and the watcher are safe.
-            asyncio.ensure_future(self._scan())
+            _scan_task = asyncio.ensure_future(self._scan())
+
+            def _scan_done(t: asyncio.Task) -> None:
+                if not t.cancelled() and t.exception() is not None:
+                    logger.error("Job runner _scan crashed: %r", t.exception())
+
+            _scan_task.add_done_callback(_scan_done)
             async for changes in awatch(JOBS_DIR):
                 if agent_watcher_events_total is not None:
                     agent_watcher_events_total.labels(watcher="jobs").inc()
