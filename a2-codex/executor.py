@@ -457,6 +457,11 @@ async def _run_inner(
         )
     except asyncio.TimeoutError:
         logger.error(f"Session {session_id!r}: timed out after {TASK_TIMEOUT_SECONDS}s.")
+        # Evict the session from the LRU cache on timeout. The underlying
+        # SQLiteSession may be in an inconsistent state after a mid-stream
+        # cancellation; removing it ensures the next call for this session_id
+        # starts fresh rather than attempting to resume a broken session.
+        sessions.pop(session_id, None)
         if a2_tasks_total is not None:
             a2_tasks_total.labels(**_LABELS, status="timeout").inc()
         if a2_task_error_duration_seconds is not None:
