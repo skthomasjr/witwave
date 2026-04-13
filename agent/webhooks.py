@@ -382,10 +382,10 @@ async def deliver(
     else:
         body = _render_default_envelope(context)
 
-    # Cap at 256 KiB
+    # Cap at 256 KiB — decode back after slicing to avoid splitting multi-byte sequences
     body_bytes = body.encode("utf-8")
     if len(body_bytes) > 256 * 1024:
-        body_bytes = body_bytes[: 256 * 1024]
+        body_bytes = body_bytes[: 256 * 1024].decode("utf-8", errors="ignore").encode("utf-8")
 
     # Build headers — resolve {{env.VAR}} and context variables
     headers = {"Content-Type": sub.content_type}
