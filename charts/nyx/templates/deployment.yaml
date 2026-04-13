@@ -61,6 +61,7 @@ spec:
 {{- $agentName := .name }}
 {{- $agentMetricsEnabled := (.metrics).enabled | default $.Values.metrics.enabled }}
 {{- range .backends }}
+{{- $storageEnabled := ((.storage).enabled) }}
         - name: {{ .name }}
           image: {{ .image.repository }}:{{ .image.tag | default $.Chart.AppVersion }}
           ports:
@@ -86,8 +87,14 @@ spec:
             {{- toYaml .envFrom | nindent 12 }}
           {{- end }}
           volumeMounts:
-            - name: {{ .name }}-session-data
-              mountPath: /home/agent/.claude/projects
+            {{- if $storageEnabled }}
+            {{- $backendNameForStorage := .name }}
+            {{- range (.storage).mounts }}
+            - name: {{ $agentName }}-{{ $backendNameForStorage }}-storage
+              mountPath: {{ .mountPath }}
+              subPath: {{ .subPath }}
+            {{- end }}
+            {{- end }}
             {{- if $.Values.sharedStorage.enabled }}
             - name: nyx-shared
               mountPath: {{ $.Values.sharedStorage.mountPath }}
@@ -111,8 +118,11 @@ spec:
             name: nyx-{{ .name }}-config
         {{- end }}
         {{- range .backends }}
-        - name: {{ .name }}-session-data
-          emptyDir: {}
+        {{- if (.storage).enabled }}
+        - name: {{ $agentName }}-{{ .name }}-storage
+          persistentVolumeClaim:
+            claimName: {{ (.storage).existingClaim | default (printf "nyx-%s-%s-data" $agentName .name) }}
+        {{- end }}
         {{- if .config }}
         - name: {{ .name }}-config
           configMap:

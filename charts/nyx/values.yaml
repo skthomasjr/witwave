@@ -105,6 +105,29 @@ agents:
         #   - secretRef:
         #       name: adam-claude-secrets
 
+        # # Persistent storage for this backend. A PVC named nyx-<agent>-<backend>-data
+        # # is created automatically unless existingClaim is set.
+        # storage:
+        #   # Enable persistent storage for this backend.
+        #   enabled: false
+        #   # PVC storage request size.
+        #   size: 1Gi
+        #   # # Storage class name. Leave empty to use the cluster default.
+        #   # storageClassName: ""
+        #   # # Name of a pre-existing PVC to use instead of creating one.
+        #   # existingClaim: ""
+        #   # Subdirectory mounts from the PVC into the container.
+        #   # Each entry maps a subPath within the PVC to a container mountPath.
+        #   mounts:
+        #     - subPath: claude-projects
+        #       mountPath: /home/agent/.claude/projects
+        #     - subPath: claude-sessions
+        #       mountPath: /home/agent/.claude/sessions
+        #     - subPath: claude-backups
+        #       mountPath: /home/agent/.claude/backups
+        #     - subPath: memory
+        #       mountPath: /home/agent/memory
+
         # # Inline config files mounted into the backend container.
         # # Each entry is added as a key in a ConfigMap and mounted at mountPath.
         # config:

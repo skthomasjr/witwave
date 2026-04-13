@@ -21,3 +21,28 @@ spec:
   storageClassName: {{ .Values.sharedStorage.storageClassName }}
   {{- end }}
 {{- end }}
+{{- range .Values.agents }}
+{{- $agentName := .name }}
+{{- range .backends }}
+{{- if and (.storage).enabled (not (.storage).existingClaim) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nyx-{{ $agentName }}-{{ .name }}-data
+  labels:
+    app.kubernetes.io/name: {{ $agentName }}
+    app.kubernetes.io/component: backend-storage
+    app.kubernetes.io/part-of: nyx
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ (.storage).size | default "1Gi" }}
+  {{- if (.storage).storageClassName }}
+  storageClassName: {{ (.storage).storageClassName }}
+  {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
