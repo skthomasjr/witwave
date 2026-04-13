@@ -342,6 +342,8 @@ async def run_query(
                     "Permanently failed to save session history for %r after budget exceeded: %s",
                     session_id, _save_exc, exc_info=True,
                 )
+                if a2_session_history_save_errors_total is not None:
+                    a2_session_history_save_errors_total.labels(**_LABELS).inc()
             raise
         except Exception:
             if a2_sdk_query_error_duration_seconds is not None:
