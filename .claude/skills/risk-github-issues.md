@@ -1,7 +1,7 @@
 ---
 name: risk-github-issues
 description: File, close, edit, comment on, or look up a risk (not a bug, gap, or feature). Trigger when the user says "file a risk", "report a risk", "close the risk", "close risk #N", "update the risk", "edit risk #N", "look up a risk", "find risk #N", "check if a risk exists", "list risks", "show all risks", "comment on risk #N", or "add a comment to the risk".
-version: 1.0.1
+version: 1.0.2
 ---
 
 # risk-github-issues
@@ -70,10 +70,10 @@ gh issue edit <number> --body "<updated-body>"
 
 **Step 3: Swap the status label.**
 
-Remove any existing status label (`pending`, `approved`, `in-progress`, `needs-more-info`, `implemented`, `wont-fix`) and add `implemented`:
+Remove all status labels that may be present and add `implemented`. Remove each one that exists — do not assume only one is set:
 
 ```bash
-gh issue edit <number> --remove-label "<old-status>" --add-label "implemented"
+gh issue edit <number> --remove-label "pending" --remove-label "approved" --remove-label "in-progress" --remove-label "needs-more-info" --add-label "implemented"
 ```
 
 **Step 4: Close the issue.**

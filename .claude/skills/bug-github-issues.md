@@ -68,10 +68,10 @@ gh issue edit <number> --body "<updated-body>"
 
 **Step 3: Swap the status label.**
 
-Remove any existing status label (`pending`, `approved`, `in-progress`, `needs-more-info`, `implemented`, `wont-fix`) and add `implemented`:
+Remove all status labels that may be present and add `implemented`. Remove each one that exists — do not assume only one is set:
 
 ```bash
-gh issue edit <number> --remove-label "<old-status>" --add-label "implemented"
+gh issue edit <number> --remove-label "pending" --remove-label "approved" --remove-label "in-progress" --remove-label "needs-more-info" --add-label "implemented"
 ```
 
 **Step 4: Close the issue.**
