@@ -1,0 +1,60 @@
+{{- range .Values.agents }}
+{{- $agent := . }}
+{{- $firstBackend := index .backends 0 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nyx-{{ .name }}-backend
+  labels:
+    app.kubernetes.io/name: {{ .name }}
+    app.kubernetes.io/component: nyx-agent
+    app.kubernetes.io/part-of: nyx
+data:
+  backend.yaml: |
+    backend:
+      agents:
+{{- range .backends }}
+        - id: {{ .name }}
+          url: http://nyx-{{ $agent.name }}-{{ .name }}:{{ .port }}
+{{- if .model }}
+          model: {{ .model }}
+{{- end }}
+{{- end }}
+      routing:
+        default:
+          agent: {{ $firstBackend.name }}
+{{- if $firstBackend.model }}
+          model: {{ $firstBackend.model }}
+{{- end }}
+        a2a:
+          agent: {{ $firstBackend.name }}
+{{- if $firstBackend.model }}
+          model: {{ $firstBackend.model }}
+{{- end }}
+        heartbeat:
+          agent: {{ $firstBackend.name }}
+{{- if $firstBackend.model }}
+          model: {{ $firstBackend.model }}
+{{- end }}
+        job:
+          agent: {{ $firstBackend.name }}
+{{- if $firstBackend.model }}
+          model: {{ $firstBackend.model }}
+{{- end }}
+        task:
+          agent: {{ $firstBackend.name }}
+{{- if $firstBackend.model }}
+          model: {{ $firstBackend.model }}
+{{- end }}
+        trigger:
+          agent: {{ $firstBackend.name }}
+{{- if $firstBackend.model }}
+          model: {{ $firstBackend.model }}
+{{- end }}
+        continuation:
+          agent: {{ $firstBackend.name }}
+{{- if $firstBackend.model }}
+          model: {{ $firstBackend.model }}
+{{- end }}
+{{- end }}

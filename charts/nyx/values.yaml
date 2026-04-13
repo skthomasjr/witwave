@@ -49,6 +49,7 @@ agents:
           # tag: ""      # defaults to .Chart.AppVersion
           # pullPolicy: IfNotPresent
         port: 8080
+        model: claude-opus-4-6
 
         # resources:
         #   requests:

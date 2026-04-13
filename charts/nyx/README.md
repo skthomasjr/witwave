@@ -17,6 +17,25 @@ Create the namespace:
 kubectl create namespace nyx
 ```
 
+If your images are in a private registry (e.g. GHCR), create an image pull secret:
+
+```bash
+kubectl create secret docker-registry ghcr-credentials \
+  --docker-server=ghcr.io \
+  --docker-username=<github-username> \
+  --docker-password=<github-token> \
+  --namespace nyx
+```
+
+Then reference it in your values:
+
+```yaml
+agents:
+  - name: adam
+    imagePullSecrets:
+      - name: ghcr-credentials
+```
+
 Install the chart:
 
 ```bash
@@ -41,6 +60,7 @@ helm uninstall nyx --namespace nyx
 |-----------|-------------|---------|
 | `agents` | List of agents to deploy, each as a nyx-agent pod | `[{name: adam}]` |
 | `agents[].name` | Agent name — used for pod name, service name, and `AGENT_NAME` env var | `adam` |
+| `agents[].imagePullSecrets` | Image pull secrets for the agent pod | `[]` |
 
 To deploy multiple agents:
 

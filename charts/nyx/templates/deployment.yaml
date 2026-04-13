@@ -3,7 +3,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .name }}
+  name: nyx-{{ .name }}
   labels:
     app.kubernetes.io/name: {{ .name }}
     app.kubernetes.io/component: nyx-agent
@@ -20,6 +20,10 @@ spec:
         app.kubernetes.io/component: nyx-agent
         app.kubernetes.io/part-of: nyx
     spec:
+      {{- if .imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml .imagePullSecrets | nindent 8 }}
+      {{- end }}
       containers:
         - name: nyx-agent
           image: {{ .image.repository }}:{{ .image.tag | default $.Chart.AppVersion }}
@@ -28,4 +32,12 @@ spec:
           env:
             - name: AGENT_NAME
               value: {{ .name }}
+          volumeMounts:
+            - name: backend-config
+              mountPath: /home/agent/.nyx/backend.yaml
+              subPath: backend.yaml
+      volumes:
+        - name: backend-config
+          configMap:
+            name: nyx-{{ .name }}-backend
 {{- end }}
