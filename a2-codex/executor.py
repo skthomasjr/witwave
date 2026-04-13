@@ -51,6 +51,8 @@ from metrics import (
     a2_session_history_save_errors_total,
     a2_tasks_total,
     a2_text_blocks_per_query,
+    a2_watcher_events_total,
+    a2_file_watcher_restarts_total,
 )
 
 from log_utils import _append_log
@@ -640,12 +642,16 @@ class AgentExecutor(A2AAgentExecutor):
                 await asyncio.sleep(10)
                 continue
             async for changes in _awatch(watch_dir):
+                if a2_watcher_events_total is not None:
+                    a2_watcher_events_total.labels(**_LABELS, watcher="agent_md").inc()
                 for _, path in changes:
                     if os.path.abspath(path) == os.path.abspath(AGENT_MD):
                         self._agent_md_content = _load_agent_md()
                         logger.info("agent.md reloaded from %s", AGENT_MD)
                         break
             logger.warning("agent.md directory watcher exited — retrying in 10s.")
+            if a2_file_watcher_restarts_total is not None:
+                a2_file_watcher_restarts_total.labels(**_LABELS, watcher="agent_md").inc()
             await asyncio.sleep(10)
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:

@@ -64,6 +64,10 @@ a2_sdk_messages_per_query: prometheus_client.Histogram | None = None
 a2_sdk_turns_per_query: prometheus_client.Histogram | None = None
 a2_text_blocks_per_query: prometheus_client.Histogram | None = None
 
+# File watcher metrics
+a2_watcher_events_total: prometheus_client.Counter | None = None
+a2_file_watcher_restarts_total: prometheus_client.Counter | None = None
+
 # Token budget metrics
 a2_budget_exceeded_total: prometheus_client.Counter | None = None
 
@@ -280,6 +284,18 @@ if _enabled:
         "Number of text blocks returned per run_query() invocation.",
         ["agent", "agent_id", "backend", "model"],
         buckets=(0, 1, 2, 5, 10, 20, 50, 100),
+    )
+
+    # File watchers
+    a2_watcher_events_total = prometheus_client.Counter(
+        "a2_watcher_events_total",
+        "Total file watcher change events observed by backend watchers.",
+        ["agent", "agent_id", "backend", "watcher"],
+    )
+    a2_file_watcher_restarts_total = prometheus_client.Counter(
+        "a2_file_watcher_restarts_total",
+        "Total file watcher restarts after watcher exits unexpectedly.",
+        ["agent", "agent_id", "backend", "watcher"],
     )
 
     # Token budget
