@@ -18,8 +18,8 @@ The unit of deployment is a container. The unit of identity is an agent. The uni
 
 Developers, researchers, and hobbyists who want autonomous agents running a project — whether that is a software
 development project, a research workflow, a content pipeline, or any other goal-directed work that benefits from
-persistent, self-directed automation. The barrier to entry should be low: clone the repo, configure an agent, run
-`docker compose up`.
+persistent, self-directed automation. The barrier to entry should be low: clone the repo, configure an agent, deploy
+with Helm.
 
 ### Enterprise Teams
 
@@ -43,11 +43,10 @@ compatibility:
 
 ### Deployment Roadmap
 
-| Artifact                    | Status      | Description                                     |
-| --------------------------- | ----------- | ----------------------------------------------- |
-| `docker-compose.active.yml` | Shipped     | Local development and single-host deployment    |
-| Helm chart                  | Planned     | Parameterized Kubernetes deployment for teams   |
-| Kubernetes Operator         | Considering | Declarative agent lifecycle management via CRDs |
+| Artifact            | Status      | Description                                         |
+| ------------------- | ----------- | --------------------------------------------------- |
+| Helm chart          | Shipped     | Parameterized Kubernetes deployment                 |
+| Kubernetes Operator | Considering | Declarative agent lifecycle management via CRDs     |
 
 ---
 
@@ -75,7 +74,7 @@ in. A new agent is a new directory, not a new image.
 **Standard protocols.** A2A for inter-agent communication, Prometheus for metrics, OpenTelemetry for tracing, Kubernetes
 probes for health — this project should feel native to the infrastructure it runs on.
 
-**Complexity is opt-in.** A single agent running `docker compose up` should work out of the box. MCP servers,
+**Complexity is opt-in.** A single agent deployed with Helm should work out of the box. MCP servers,
 guardrails, metrics, and HITL approval gates are all available but never required.
 
 **Professional quality for everyone.** Enterprise features should not require an enterprise deployment. The individual

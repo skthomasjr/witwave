@@ -156,8 +156,8 @@ docs/
     ├── task.md                # General task template (label: task)
     └── question.md            # Question template
 
-docker-compose.active.yml      # Active environment (iris, nova, kira + backends + ui)
-docker-compose.test.yml        # Test environment (bob, fred + backends + ui)
+charts/                        # Helm charts
+└── nyx/                       # nyx Helm chart (deploys agents to Kubernetes)
 AGENTS.md                      # Canonical repo instructions for all coding agents
 CLAUDE.md                      # Claude Code compatibility shim → AGENTS.md
 ```
@@ -428,14 +428,14 @@ Phase 17:    docs refinement
 
 ### Local
 
-Build all four images and bring up the active environment:
+Build all four images and deploy with Helm:
 
 ```bash
 docker build -f agent/Dockerfile -t nyx-agent:latest .
 docker build -f a2-claude/Dockerfile -t a2-claude:latest .
 docker build -f a2-codex/Dockerfile -t a2-codex:latest .
 docker build -f a2-gemini/Dockerfile -t a2-gemini:latest .
-docker compose -f docker-compose.active.yml up -d
+helm upgrade --install nyx ./charts/nyx -f ./charts/nyx/values-local.yaml -n nyx --create-namespace
 ```
 
 Port assignments per agent:

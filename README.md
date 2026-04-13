@@ -115,7 +115,7 @@ export GEMINI_API_KEY=your-key-here
 ### 3. Start the agents
 
 ```bash
-docker compose -f docker-compose.active.yml up -d
+helm upgrade --install nyx ./charts/nyx -f ./charts/nyx/values-local.yaml -n nyx --create-namespace
 ```
 
 ### 4. Verify
@@ -251,16 +251,14 @@ sessions), so each job/task/trigger invocation gets a fresh budget. All three ba
 
 4. Update `.agents/active/<name>/.nyx/backend.yaml` with the new agent's backend service names and URLs
 
-5. Add the agent and its backends to `docker-compose.active.yml` using the next available ports
+5. Add the agent to `charts/nyx/values-local.yaml` with its backends, config, and storage
 
 6. Register the agent in `.agents/active/manifest.json`
 
-7. Update the port table in `AGENTS.md` and `README.md`
-
-8. Start the agent and its backends:
+7. Deploy:
 
    ```bash
-   docker compose -f docker-compose.active.yml up -d <name> <name>-a2-claude <name>-a2-codex <name>-a2-gemini
+   helm upgrade --install nyx ./charts/nyx -f ./charts/nyx/values-local.yaml -n nyx
    ```
 
 ## Communication

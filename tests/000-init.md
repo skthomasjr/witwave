@@ -1,12 +1,12 @@
 ---
-description: Builds all images, deploys the test environment via docker-compose, and verifies all services are ready before any tests run.
+description: Builds all images, deploys the test environment via Helm, and verifies all services are ready before any tests run.
 enabled: true
 ---
 
 Tear down any existing test environment before starting fresh:
 
 ```
-docker compose -f docker-compose.test.yml down
+helm uninstall nyx-test -n nyx-test 2>/dev/null || true
 ```
 
 Clear all test agent logs so tests start with a clean slate:
@@ -24,7 +24,7 @@ docker build -f agent/Dockerfile -t nyx-agent:latest . \
   && docker build -f a2-claude/Dockerfile -t a2-claude:latest . \
   && docker build -f a2-codex/Dockerfile -t a2-codex:latest . \
   && docker build -f a2-gemini/Dockerfile -t a2-gemini:latest . \
-  && docker compose -f docker-compose.test.yml up -d
+  && helm upgrade --install nyx-test ./charts/nyx -f ./charts/nyx/values-test.yaml -n nyx-test --create-namespace
 ```
 
 If any step fails, do your best to diagnose and fix the issue — for example, a missing dependency in a Dockerfile, a stale image, or a broken compose mount. Fixing infrastructure issues to get the environment running is expected and encouraged.

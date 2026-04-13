@@ -218,8 +218,8 @@ a2-gemini/                   # Gemini backend source
 └── requirements.txt
 
 ui/                          # Web UI
-docker-compose.active.yml    # Active environment (iris, nova, kira + backends + ui)
-docker-compose.test.yml      # Test environment (bob + backends + ui)
+charts/                      # Helm charts
+└── nyx/                     # nyx Helm chart (deploys agents to Kubernetes)
 ```
 
 ## Building Images
@@ -245,7 +245,7 @@ docker build -f agent/Dockerfile -t nyx-agent:latest . \
   && docker build -f a2-claude/Dockerfile -t a2-claude:latest . \
   && docker build -f a2-codex/Dockerfile -t a2-codex:latest . \
   && docker build -f a2-gemini/Dockerfile -t a2-gemini:latest . \
-  && docker compose -f docker-compose.active.yml up -d
+  && helm upgrade --install nyx ./charts/nyx -f ./charts/nyx/values-local.yaml -n nyx --create-namespace
 ```
 
 ## Interacting with Agents
