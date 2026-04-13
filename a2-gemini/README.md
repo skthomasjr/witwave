@@ -48,4 +48,4 @@ a2-gemini mounts:
 - `logs/trace.jsonl` — trace log file (must pre-exist as a file)
 - `memory/` — persistent memory and session history directory (`memory/sessions/` for JSON session files)
 
-The `AGENT_NAME`, `AGENT_ID`, `GEMINI_API_KEY`, and `MODEL` environment variables configure identity and credentials. `METRICS_ENABLED=true` activates the Prometheus endpoint.
+Key environment variables: `AGENT_NAME` (instance name), `AGENT_OWNER` (named agent, e.g. `iris`), `AGENT_ID` (backend slot id, e.g. `gemini`), `AGENT_URL`, `AGENT_MD`, `BACKEND_PORT`, `GEMINI_API_KEY` (or `GOOGLE_API_KEY`), `GEMINI_MODEL` (model override, default `gemini-2.5-pro`), `METRICS_ENABLED`, `CONVERSATIONS_AUTH_TOKEN`, `TASK_STORE_PATH`, `WORKER_MAX_RESTARTS`.

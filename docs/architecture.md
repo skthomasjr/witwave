@@ -1,6 +1,6 @@
 # Architecture
 
-_Last updated: 2026-04-10_
+_Last updated: 2026-04-12_
 
 ---
 
@@ -57,7 +57,7 @@ protocol layer, a shift in deployment model — it should be discussed here firs
 └── test/                      # Test agents
     ├── manifest.json
     ├── bob/                   # Same structure as active agents
-    └── tom/
+    └── fred/
 
 agent/                         # nyx-agent source (router/scheduler)
 ├── Dockerfile
@@ -72,6 +72,8 @@ agent/                         # nyx-agent source (router/scheduler)
 ├── webhooks.py                # Outbound webhook runner — POSTs to subscribed URLs after prompt completion
 ├── metrics.py                 # Prometheus metric definitions (agent_* prefix)
 ├── metrics_proxy.py           # Aggregates backend /metrics with backend= label injection
+├── conversations_proxy.py     # Fetches and merges /conversations and /trace from all backends
+├── sqlite_task_store.py       # SQLite-backed A2A task store (used when TASK_STORE_PATH is set)
 ├── utils.py                   # Shared utilities (frontmatter parser, duration parser, etc.)
 └── backends/
     ├── base.py                # AgentBackend abstract base class
@@ -83,13 +85,16 @@ a2-claude/                     # Claude backend source
 ├── main.py                    # A2A server entrypoint
 ├── executor.py                # Claude Agent SDK executor; owns session state and logging
 ├── metrics.py                 # Prometheus metric definitions (a2_* prefix; superset with tool/MCP metrics)
+├── sqlite_task_store.py       # SQLite-backed A2A task store (used when TASK_STORE_PATH is set)
 └── requirements.txt
 
 a2-codex/                      # Codex backend source
 ├── Dockerfile
 ├── main.py                    # A2A server entrypoint
 ├── executor.py                # OpenAI Agents SDK executor; owns session state and logging
+├── computer.py                # PlaywrightComputer — headless Chromium browser implementation
 ├── metrics.py                 # Prometheus metric definitions (a2_* prefix)
+├── sqlite_task_store.py       # SQLite-backed A2A task store (used when TASK_STORE_PATH is set)
 └── requirements.txt
 
 a2-gemini/                     # Gemini backend source
@@ -97,6 +102,7 @@ a2-gemini/                     # Gemini backend source
 ├── main.py                    # A2A server entrypoint
 ├── executor.py                # google-genai SDK executor; owns session state and logging
 ├── metrics.py                 # Prometheus metric definitions (a2_* prefix)
+├── sqlite_task_store.py       # SQLite-backed A2A task store (used when TASK_STORE_PATH is set)
 └── requirements.txt
 
 ui/                            # Web UI
@@ -145,7 +151,7 @@ docs/
     └── question.md            # Question template
 
 docker-compose.active.yml      # Active environment (iris, nova, kira + backends + ui)
-docker-compose.test.yml        # Test environment (bob, tom + backends + ui)
+docker-compose.test.yml        # Test environment (bob, fred + backends + ui)
 AGENTS.md                      # Canonical repo instructions for all coding agents
 CLAUDE.md                      # Claude Code compatibility shim → AGENTS.md
 ```
@@ -275,23 +281,36 @@ Agent identity and behavior are entirely file-based. No identity is baked into a
 
 **nyx-agent:**
 
-| Variable              | Default                         | Description                                              |
-| --------------------- | ------------------------------- | -------------------------------------------------------- |
-| `AGENT_NAME`          | `nyx-agent`                     | Agent display name (e.g. `iris`)                         |
-| `AGENT_PORT`          | `8000`                          | HTTP port                                                |
-| `BACKEND_CONFIG_PATH` | `/home/agent/.nyx/backend.yaml` | Path to backend routing config                           |
-| `METRICS_ENABLED`     | _(unset)_                       | Enable Prometheus `/metrics`                             |
-| `A2A_URL_<ID>`        | _(unset)_                       | Per-backend URL override (e.g. `A2A_URL_IRIS_A2_CLAUDE`) |
+| Variable                   | Default                         | Description                                                                             |
+| -------------------------- | ------------------------------- | --------------------------------------------------------------------------------------- |
+| `AGENT_NAME`               | `nyx-agent`                     | Agent display name (e.g. `iris`)                                                        |
+| `AGENT_HOST`               | `0.0.0.0`                       | Interface to bind                                                                       |
+| `AGENT_PORT`               | `8000`                          | HTTP port                                                                               |
+| `BACKEND_CONFIG_PATH`      | `/home/agent/.nyx/backend.yaml` | Path to backend routing config                                                          |
+| `METRICS_ENABLED`          | _(unset)_                       | Enable Prometheus `/metrics`                                                            |
+| `METRICS_AUTH_TOKEN`       | _(unset)_                       | Bearer token required to access `/metrics`                                              |
+| `METRICS_CACHE_TTL`        | `15`                            | Seconds to cache aggregated backend metrics between scrapes                             |
+| `CONVERSATIONS_AUTH_TOKEN` | _(unset)_                       | Bearer token required to access `/conversations` and `/trace`                           |
+| `PROXY_AUTH_TOKEN`         | _(unset)_                       | Bearer token required to access `/proxy/{agent_name}`                                   |
+| `CORS_ALLOW_ORIGINS`       | `*`                             | Comma-separated allowed CORS origins; defaults to `*` (logs a warning)                 |
+| `TASK_STORE_PATH`          | _(unset)_                       | Path for SQLite A2A task store; defaults to in-memory                                   |
+| `WORKER_MAX_RESTARTS`      | `5`                             | Consecutive crash limit before a critical worker marks the agent not-ready              |
+| `A2A_URL_<ID>`             | _(unset)_                       | Per-backend URL override (e.g. `A2A_URL_IRIS_A2_CLAUDE`)                                |
 
 **Backends (a2-claude / a2-codex / a2-gemini):**
 
-| Variable          | Default                              | Description                                    |
-| ----------------- | ------------------------------------ | ---------------------------------------------- |
-| `AGENT_NAME`      | `a2-claude` / `a2-codex` / `a2-gemini` | Backend instance name (e.g. `iris-a2-claude`)  |
-| `AGENT_URL`       | `http://localhost:8080/`             | Public A2A endpoint URL reported in agent card |
-| `AGENT_MD`        | `/home/agent/agent.md`               | Path to mounted identity file                  |
-| `BACKEND_PORT`    | `8080`                               | HTTP port the backend listens on (internal)    |
-| `METRICS_ENABLED` | _(unset)_                            | Enable Prometheus `/metrics`                   |
+| Variable                   | Default                              | Description                                                                           |
+| -------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------- |
+| `AGENT_NAME`               | `a2-claude` / `a2-codex` / `a2-gemini` | Backend instance name (e.g. `iris-a2-claude`)                                       |
+| `AGENT_OWNER`              | _(same as `AGENT_NAME`)_             | Named agent this backend belongs to (e.g. `iris`); used in metric labels              |
+| `AGENT_ID`                 | `claude` / `codex` / `gemini`        | Backend slot identifier; used in metric labels                                        |
+| `AGENT_URL`                | `http://localhost:8080/`             | Public A2A endpoint URL reported in agent card                                        |
+| `AGENT_MD`                 | `/home/agent/agent.md`               | Path to mounted identity file                                                         |
+| `BACKEND_PORT`             | `8080`                               | HTTP port the backend listens on (internal)                                           |
+| `METRICS_ENABLED`          | _(unset)_                            | Enable Prometheus `/metrics`                                                          |
+| `CONVERSATIONS_AUTH_TOKEN` | _(unset)_                            | Bearer token required to access `/conversations` and `/trace`                         |
+| `TASK_STORE_PATH`          | _(unset)_                            | Path for SQLite A2A task store; defaults to in-memory                                 |
+| `WORKER_MAX_RESTARTS`      | `5`                                  | Consecutive crash limit before a critical worker marks the backend not-ready          |
 
 ---
 
@@ -328,6 +347,7 @@ All internal work — heartbeat ticks, job/task fires, trigger dispatches, conti
 | nova        | 8001      | 8020      | 8021     | 8022      |
 | kira        | 8002      | 8030      | 8031     | 8032      |
 | bob         | 8099      | 8090      | 8091     | 8092      |
+| fred        | 8096      | 8086      | —        | —         |
 | ui (active) | 3002      | —         | —        | —         |
 | ui (test)   | 3001      | —         | —        | —         |
 

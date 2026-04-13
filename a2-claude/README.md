@@ -53,4 +53,4 @@ a2-claude mounts:
 - `logs/trace.jsonl` — trace log file (must pre-exist as a file)
 - `memory/` — persistent memory directory
 
-The `AGENT_NAME`, `AGENT_ID`, `ANTHROPIC_API_KEY`, and `MODEL` environment variables configure identity and credentials. `METRICS_ENABLED=true` activates the Prometheus endpoint.
+Key environment variables: `AGENT_NAME` (instance name), `AGENT_OWNER` (named agent, e.g. `iris`), `AGENT_ID` (backend slot id, e.g. `claude`), `AGENT_URL`, `AGENT_MD`, `BACKEND_PORT`, `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN` for Claude Max), `CLAUDE_MODEL` (model override), `METRICS_ENABLED`, `CONVERSATIONS_AUTH_TOKEN`, `TASK_STORE_PATH`, `WORKER_MAX_RESTARTS`.

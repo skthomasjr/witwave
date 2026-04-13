@@ -67,7 +67,7 @@ If the body is not JSON, describe the raw payload.
 
 1. If `secret-env-var` is set and the env var is non-empty → validate `X-Hub-Signature-256` (HMAC-SHA256).
 2. Else if `TRIGGERS_AUTH_TOKEN` env var is non-empty → require `Authorization: Bearer <token>`.
-3. Else → allow unsigned (suitable for trusted internal networks).
+3. Else → reject with `401 Unauthorized`. At least one auth mechanism must be configured.
 
 **In-flight deduplication:** if a `POST` arrives while the same endpoint is already processing a prior request,
 nyx-agent returns `409 Conflict` and does not enqueue a second run.

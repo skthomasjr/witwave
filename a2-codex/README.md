@@ -56,4 +56,4 @@ a2-codex mounts:
 - `logs/trace.jsonl` — trace log file (must pre-exist as a file)
 - `memory/` — persistent memory directory
 
-The `AGENT_NAME`, `AGENT_ID`, `OPENAI_API_KEY`, and `MODEL` environment variables configure identity and credentials. `METRICS_ENABLED=true` activates the Prometheus endpoint. `COMPUTER_USE_ENABLED=true` activates the Playwright browser tool.
+Key environment variables: `AGENT_NAME` (instance name), `AGENT_OWNER` (named agent, e.g. `iris`), `AGENT_ID` (backend slot id, e.g. `codex`), `AGENT_URL`, `AGENT_MD`, `BACKEND_PORT`, `OPENAI_API_KEY`, `CODEX_MODEL` (model override, default `gpt-5.1-codex`), `METRICS_ENABLED`, `CONVERSATIONS_AUTH_TOKEN`, `TASK_STORE_PATH`, `WORKER_MAX_RESTARTS`, `COMPUTER_USE_ENABLED` (activates Playwright browser tool).

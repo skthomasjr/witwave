@@ -223,22 +223,35 @@ Each backend agent manages its own memory at `.agents/<env>/<name>/<backend>/mem
 
 ### nyx-agent environment variables
 
-| Variable               | Default                          | Description                                     |
-| ---------------------- | -------------------------------- | ----------------------------------------------- |
-| `AGENT_NAME`           | `nyx-agent`                      | Agent display name (e.g. `iris`)                |
-| `AGENT_PORT`           | `8000`                           | HTTP port the nyx agent listens on              |
-| `BACKEND_CONFIG_PATH`  | `/home/agent/.nyx/backend.yaml`  | Path to the backend routing config file         |
-| `METRICS_ENABLED`      | _(unset)_                        | Set to any non-empty value to expose `/metrics` |
+| Variable                   | Default                          | Description                                                                            |
+| -------------------------- | -------------------------------- | -------------------------------------------------------------------------------------- |
+| `AGENT_NAME`               | `nyx-agent`                      | Agent display name (e.g. `iris`)                                                       |
+| `AGENT_HOST`               | `0.0.0.0`                        | Interface to bind                                                                      |
+| `AGENT_PORT`               | `8000`                           | HTTP port the nyx agent listens on                                                     |
+| `BACKEND_CONFIG_PATH`      | `/home/agent/.nyx/backend.yaml`  | Path to the backend routing config file                                                |
+| `METRICS_ENABLED`          | _(unset)_                        | Set to any non-empty value to expose `/metrics`                                        |
+| `METRICS_AUTH_TOKEN`       | _(unset)_                        | Bearer token required to access `/metrics` (recommended in production)                 |
+| `METRICS_CACHE_TTL`        | `15`                             | Seconds to cache aggregated backend metrics between scrapes                            |
+| `CONVERSATIONS_AUTH_TOKEN` | _(unset)_                        | Bearer token required to access `/conversations` and `/trace`                          |
+| `PROXY_AUTH_TOKEN`         | _(unset)_                        | Bearer token required to access `/proxy/{agent_name}`                                  |
+| `CORS_ALLOW_ORIGINS`       | `*`                              | Comma-separated list of allowed CORS origins; defaults to `*` (logs a warning)         |
+| `TASK_STORE_PATH`          | _(unset)_                        | Path for SQLite A2A task store; defaults to in-memory (state lost on restart)          |
+| `WORKER_MAX_RESTARTS`      | `5`                              | Consecutive crash limit before a critical worker marks the agent not-ready             |
 
 ### Backend (a2-claude / a2-codex / a2-gemini) environment variables
 
-| Variable          | Default                            | Description                                          |
-| ----------------- | ---------------------------------- | ---------------------------------------------------- |
-| `AGENT_NAME`      | `a2-claude`/`a2-codex`/`a2-gemini` | Backend instance name (e.g. `iris-a2-claude`)        |
-| `AGENT_URL`       | `http://localhost:8080/`           | Public A2A endpoint URL for the agent card           |
-| `AGENT_MD`        | `/home/agent/agent.md`             | Path to the identity file mounted into the container |
-| `BACKEND_PORT`    | `8080`                             | HTTP port the backend listens on (internal)          |
-| `METRICS_ENABLED` | _(unset)_                          | Set to any non-empty value to expose `/metrics`      |
+| Variable                   | Default                            | Description                                                                           |
+| -------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------- |
+| `AGENT_NAME`               | `a2-claude`/`a2-codex`/`a2-gemini` | Backend instance name (e.g. `iris-a2-claude`)                                         |
+| `AGENT_OWNER`              | _(same as `AGENT_NAME`)_           | Named agent this backend belongs to (e.g. `iris`); used in metric labels              |
+| `AGENT_ID`                 | `claude`/`codex`/`gemini`          | Backend slot identifier (e.g. `claude`); used in metric labels                        |
+| `AGENT_URL`                | `http://localhost:8080/`           | Public A2A endpoint URL for the agent card                                            |
+| `AGENT_MD`                 | `/home/agent/agent.md`             | Path to the identity file mounted into the container                                  |
+| `BACKEND_PORT`             | `8080`                             | HTTP port the backend listens on (internal)                                           |
+| `METRICS_ENABLED`          | _(unset)_                          | Set to any non-empty value to expose `/metrics`                                       |
+| `CONVERSATIONS_AUTH_TOKEN` | _(unset)_                          | Bearer token required to access `/conversations` and `/trace`                         |
+| `TASK_STORE_PATH`          | _(unset)_                          | Path for SQLite A2A task store; defaults to in-memory (state lost on restart)         |
+| `WORKER_MAX_RESTARTS`      | `5`                                | Consecutive crash limit before a critical worker marks the backend not-ready          |
 
 ## Metrics
 
