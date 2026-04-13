@@ -87,6 +87,65 @@ METRICS_CACHE_TTL = float(os.environ.get("METRICS_CACHE_TTL", "15"))
 _metrics_cache_body: str = ""
 _metrics_cache_expires: float = 0.0
 
+# Manifest cache: avoid re-reading manifest.json on every proxy/team request.
+# Invalidated automatically when the file's mtime changes on disk.
+_manifest_cache_team: list = []
+_manifest_cache_mtime: float = -1.0
+_manifest_cache_path: str = ""
+
+
+def _validate_manifest_entry(idx: int, entry: object) -> bool:
+    """Validate a manifest team entry has the required string fields.
+
+    Logs a WARNING for each invalid entry and returns False so callers can
+    filter out bad entries rather than silently propagating None values.
+    """
+    if not isinstance(entry, dict):
+        logger.warning("manifest team[%d]: entry is not a dict (got %r) — skipping", idx, type(entry).__name__)
+        return False
+    name = entry.get("name")
+    url = entry.get("url")
+    if not isinstance(name, str) or not name:
+        logger.warning("manifest team[%d]: missing or non-string 'name' field (got %r) — skipping", idx, name)
+        return False
+    if not isinstance(url, str) or not url:
+        logger.warning("manifest team[%d]: missing or non-string 'url' field (got %r) — skipping", idx, url)
+        return False
+    return True
+
+
+def _load_manifest_cached(path: str) -> list:
+    """Return the validated team list from manifest.json, using a cached copy when the file is unchanged.
+
+    The cache is keyed on the file path and invalidated whenever the file's mtime changes on disk.
+    On any read error the previously cached list (which may be empty) is returned so callers degrade
+    gracefully rather than raising.
+    """
+    import json as _json
+
+    global _manifest_cache_team, _manifest_cache_mtime, _manifest_cache_path  # noqa: PLW0603
+
+    try:
+        current_mtime = os.stat(path).st_mtime
+    except OSError:
+        # File not accessible — return whatever was last successfully loaded.
+        return _manifest_cache_team
+
+    if path == _manifest_cache_path and current_mtime == _manifest_cache_mtime:
+        return _manifest_cache_team
+
+    try:
+        with open(path) as _f:
+            _manifest = _json.load(_f)
+        _team = [e for idx, e in enumerate(_manifest.get("team", [])) if _validate_manifest_entry(idx, e)]
+        _manifest_cache_team = _team
+        _manifest_cache_mtime = current_mtime
+        _manifest_cache_path = path
+        return _manifest_cache_team
+    except Exception as exc:
+        logger.warning("_load_manifest_cached: failed to load manifest at %s: %s", path, exc)
+        return _manifest_cache_team
+
 
 def _check_trigger_auth(request: Request, item: TriggerItem, body_bytes: bytes) -> bool:
     """Validate trigger request auth. HMAC takes priority over Bearer token.
@@ -496,18 +555,11 @@ async def main():
                     status_code=401,
                     headers={"WWW-Authenticate": 'Bearer realm="proxy"'},
                 )
-        import json as _json
         import httpx
         agent_name = request.path_params["agent_name"]
         backend_id = request.query_params.get("backend")
         manifest_path = os.environ.get("MANIFEST_PATH", "/home/agent/manifest.json")
-        try:
-            with open(manifest_path) as f:
-                manifest = _json.load(f)
-            team = [e for idx, e in enumerate(manifest.get("team", [])) if _validate_manifest_entry(idx, e)]
-        except Exception as _manifest_exc:
-            logger.warning("proxy_handler: failed to load manifest at %s: %s", manifest_path, _manifest_exc)
-            team = []
+        team = _load_manifest_cached(manifest_path)
         target_url = next((m.get("url") for m in team if m.get("name") == agent_name), None)
         if not target_url:
             return JSONResponse({"error": f"agent {agent_name!r} not found"}, status_code=404)
@@ -558,20 +610,13 @@ async def main():
 
     async def conversations_proxy_handler(request: Request) -> JSONResponse:
         """Proxy /conversations from a named team member's backend, optionally filtered by backend id."""
-        import json as _json
         import httpx
         agent_name = request.path_params["agent_name"]
         backend_id = request.query_params.get("backend")
         since = request.query_params.get("since")
         limit = request.query_params.get("limit", "200")
         manifest_path = os.environ.get("MANIFEST_PATH", "/home/agent/manifest.json")
-        try:
-            with open(manifest_path) as f:
-                manifest = _json.load(f)
-            team = [e for idx, e in enumerate(manifest.get("team", [])) if _validate_manifest_entry(idx, e)]
-        except Exception as _manifest_exc:
-            logger.warning("conversations_proxy_handler: failed to load manifest at %s: %s", manifest_path, _manifest_exc)
-            team = []
+        team = _load_manifest_cached(manifest_path)
         target_url = next((m.get("url") for m in team if m.get("name") == agent_name), None)
         if not target_url:
             return JSONResponse({"error": f"agent {agent_name!r} not found"}, status_code=404)
@@ -618,15 +663,9 @@ async def main():
 
     async def team_handler(request: Request) -> JSONResponse:
         """Return agent cards for all team members by reading manifest.json and fanning out to /agents."""
-        import json as _json
         import httpx
         manifest_path = os.environ.get("MANIFEST_PATH", "/home/agent/manifest.json")
-        try:
-            with open(manifest_path) as f:
-                manifest = _json.load(f)
-            team = [e for idx, e in enumerate(manifest.get("team", [])) if _validate_manifest_entry(idx, e)]
-        except Exception:
-            team = [{"name": AGENT_NAME, "url": AGENT_URL}]
+        team = _load_manifest_cached(manifest_path) or [{"name": AGENT_NAME, "url": AGENT_URL}]
         result = []
         async with httpx.AsyncClient(timeout=5.0) as client:
             for member in team:
@@ -643,25 +682,6 @@ async def main():
                 except Exception as exc:
                     result.append({"name": member.get("name"), "url": url, "agents": [], "error": str(exc)})
         return JSONResponse(result)
-
-    def _validate_manifest_entry(idx: int, entry: object) -> bool:
-        """Validate a manifest team entry has the required string fields.
-
-        Logs a WARNING for each invalid entry and returns False so callers can
-        filter out bad entries rather than silently propagating None values.
-        """
-        if not isinstance(entry, dict):
-            logger.warning("manifest team[%d]: entry is not a dict (got %r) — skipping", idx, type(entry).__name__)
-            return False
-        name = entry.get("name")
-        url = entry.get("url")
-        if not isinstance(name, str) or not name:
-            logger.warning("manifest team[%d]: missing or non-string 'name' field (got %r) — skipping", idx, name)
-            return False
-        if not isinstance(url, str) or not url:
-            logger.warning("manifest team[%d]: missing or non-string 'url' field (got %r) — skipping", idx, url)
-            return False
-        return True
 
     trigger_runner = TriggerRunner()
     job_runner = JobRunner(bus)
