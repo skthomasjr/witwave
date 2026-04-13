@@ -86,7 +86,7 @@ spec:
             type: DirectoryOrCreate
           {{- else }}
           persistentVolumeClaim:
-            claimName: nyx-shared
+            claimName: {{ $.Values.sharedStorage.existingClaim | default "nyx-shared" }}
           {{- end }}
         {{- end }}
 {{- end }}

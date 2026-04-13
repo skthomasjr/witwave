@@ -87,6 +87,14 @@ helm uninstall nyx --namespace nyx
 | `agents` | List of agents to deploy, each as a nyx-agent pod | `[{name: adam}]` |
 | `agents[].name` | Agent name — used for pod name, service name, and `AGENT_NAME` env var | `adam` |
 | `agents[].imagePullSecrets` | Image pull secrets for the agent pod | `[]` |
+| `sharedStorage.enabled` | Mount a shared volume into all agent pods and sidecars | `false` |
+| `sharedStorage.mountPath` | Mount path inside containers | `/data/shared` |
+| `sharedStorage.storageType` | `pvc` or `hostPath` | `pvc` |
+| `sharedStorage.size` | PVC storage request | `1Gi` |
+| `sharedStorage.storageClassName` | Storage class for PVC (leave blank for cluster default) | `""` |
+| `sharedStorage.accessModes` | PVC access modes | `[ReadWriteMany]` |
+| `sharedStorage.existingClaim` | Use a pre-existing PVC instead of creating one | `""` |
+| `sharedStorage.hostPath` | Host path when `storageType: hostPath` | `""` |
 
 To deploy multiple agents:
 

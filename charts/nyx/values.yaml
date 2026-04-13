@@ -6,6 +6,7 @@ sharedStorage:
   # storageClassName: ""    # leave blank for cluster default; use a RWX-capable class in production
   # accessModes:
   #   - ReadWriteMany
+  # existingClaim: ""       # use a pre-existing PVC instead of creating one
   # hostPath: /tmp/nyx-shared  # only used when storageType is hostPath
 
 agents:

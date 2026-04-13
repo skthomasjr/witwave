@@ -1,4 +1,4 @@
-{{- if and .Values.sharedStorage.enabled (eq .Values.sharedStorage.storageType "pvc") }}
+{{- if and .Values.sharedStorage.enabled (eq .Values.sharedStorage.storageType "pvc") (not .Values.sharedStorage.existingClaim) }}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
