@@ -236,7 +236,10 @@ async def _guarded(coro_fn, *args, restart_delay: float = 5.0, critical: bool = 
     """Run a coroutine function in a restart loop, catching unexpected exceptions.
 
     If critical=True, sets _ready=False after WORKER_MAX_RESTARTS consecutive crashes,
-    signalling to Kubernetes that the pod can no longer serve traffic.
+    signalling to Kubernetes that the pod can no longer serve traffic.  When the same
+    critical worker later runs without crashing long enough to reset the consecutive
+    counter, _ready is restored to True so readiness probes pass again without a pod
+    restart.
 
     The consecutive restart counter resets whenever a run lasts at least restart_delay
     seconds, so transient failures spread over time do not accumulate toward the threshold.
@@ -244,6 +247,11 @@ async def _guarded(coro_fn, *args, restart_delay: float = 5.0, critical: bool = 
     global _ready
     consecutive_restarts = 0
     while True:
+        # Restore readiness if this critical worker has recovered: the consecutive crash
+        # counter is 0 (no recent rapid failures) and we are about to start a fresh run.
+        if critical and consecutive_restarts == 0 and not _ready:
+            logger.info(f"Task {coro_fn.__name__!r} recovered — marking agent ready")
+            _ready = True
         _attempt_start = time.monotonic()
         try:
             await coro_fn(*args)
