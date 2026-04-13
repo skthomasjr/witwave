@@ -7,15 +7,15 @@ The primary use case is autonomous software development: agents that can triage 
 evaluate their own work, and iterate — continuously and without human intervention. The same platform can be pointed at
 any software project, not just this one.
 
-Agents are currently bootstrapped manually using AI CLI tools (Claude Code, Codex). The long-term goal is for the
-agents to take over their own development cycle: evaluating the codebase, proposing improvements, implementing them,
-and shipping — closing the loop without a human in the hot path.
+Agents are currently bootstrapped manually using AI CLI tools (Claude Code, Codex). The long-term goal is for the agents
+to take over their own development cycle: evaluating the codebase, proposing improvements, implementing them, and
+shipping — closing the loop without a human in the hot path.
 
 ---
 
 Built on the [A2A protocol](https://a2a-protocol.org). Each named agent is a set of containers: a **nyx-agent**
-infrastructure layer (A2A relay, heartbeat scheduler, job scheduler) and one or more **backend** containers that do
-the actual LLM work (Claude Agent SDK via `a2-claude`, OpenAI Agents SDK via `a2-codex`, Google Gemini SDK via `a2-gemini`).
+infrastructure layer (A2A relay, heartbeat scheduler, job scheduler) and one or more **backend** containers that do the
+actual LLM work (Claude Agent SDK via `a2-claude`, OpenAI Agents SDK via `a2-codex`, Google Gemini SDK via `a2-gemini`).
 
 Multiple agents can collaborate as a team, but the named agent (nyx + its backends) is the deployable unit.
 
@@ -23,15 +23,16 @@ Multiple agents can collaborate as a team, but the named agent (nyx + its backen
 
 The platform has five components, each with its own source directory:
 
-| Component | Directory | Type | Description |
-|-----------|-----------|------|-------------|
-| **Orchestrator** | `agent/` | Orchestrator agent | nyx-agent: the infrastructure and routing layer. Owns scheduling, triggering, chaining, and A2A relay. No LLM of its own. |
-| **Claude backend** | `a2-claude/` | Backend agent | Executes prompts via the Claude Agent SDK. Manages sessions, memory, conversation logs, and metrics. |
-| **Codex backend** | `a2-codex/` | Backend agent | Executes prompts via the OpenAI Agents SDK. Supports web search and headless browser via Playwright. |
-| **Gemini backend** | `a2-gemini/` | Backend agent | Executes prompts via the Google Gemini SDK. Manages sessions and conversation history. |
-| **UI** | `ui/` | Web interface | Single-page app for monitoring metrics, browsing agents, viewing conversations, and chatting with agents. |
+| Component          | Directory    | Type               | Description                                                                                                               |
+| ------------------ | ------------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| **Orchestrator**   | `agent/`     | Orchestrator agent | nyx-agent: the infrastructure and routing layer. Owns scheduling, triggering, chaining, and A2A relay. No LLM of its own. |
+| **Claude backend** | `a2-claude/` | Backend agent      | Executes prompts via the Claude Agent SDK. Manages sessions, memory, conversation logs, and metrics.                      |
+| **Codex backend**  | `a2-codex/`  | Backend agent      | Executes prompts via the OpenAI Agents SDK. Supports web search and headless browser via Playwright.                      |
+| **Gemini backend** | `a2-gemini/` | Backend agent      | Executes prompts via the Google Gemini SDK. Manages sessions and conversation history.                                    |
+| **UI**             | `ui/`        | Web interface      | Single-page app for monitoring metrics, browsing agents, viewing conversations, and chatting with agents.                 |
 
-Each backend agent is a full A2A server. The orchestrator routes work to backends but does no LLM execution itself. The UI provides visibility only — it does not participate in agent workflows.
+Each backend agent is a full A2A server. The orchestrator routes work to backends but does no LLM execution itself. The
+UI provides visibility only — it does not participate in agent workflows.
 
 ## How It Works
 
@@ -100,8 +101,8 @@ curl http://localhost:8012/health
 
 ## Agent Structure
 
-Active agents are defined under `.agents/active/`. Each named agent has its own directory containing nyx config,
-backend instances, logs, and memory.
+Active agents are defined under `.agents/active/`. Each named agent has its own directory containing nyx config, backend
+instances, logs, and memory.
 
 ```text
 .agents/
@@ -154,16 +155,17 @@ backend:
       url: http://iris-a2-gemini:8080
 
   routing:
-    default: iris-a2-claude    # fallback backend when no per-concern override matches
-    a2a: iris-a2-claude        # handles incoming A2A requests
-    heartbeat: iris-a2-claude  # handles heartbeat-triggered work
-    job: iris-a2-claude        # handles job execution
-    task: iris-a2-claude       # handles task execution
-    trigger: iris-a2-claude    # handles inbound HTTP trigger requests
-    continuation: iris-a2-claude  # handles continuation-fired prompts
+    default: iris-a2-claude # fallback backend when no per-concern override matches
+    a2a: iris-a2-claude # handles incoming A2A requests
+    heartbeat: iris-a2-claude # handles heartbeat-triggered work
+    job: iris-a2-claude # handles job execution
+    task: iris-a2-claude # handles task execution
+    trigger: iris-a2-claude # handles inbound HTTP trigger requests
+    continuation: iris-a2-claude # handles continuation-fired prompts
 ```
 
-Routing values can be a plain agent ID string or an object with `agent:` and optional `model:` fields. Model resolution order: per-message override → routing entry `model:` → per-backend config `model:`.
+Routing values can be a plain agent ID string or an object with `agent:` and optional `model:` fields. Model resolution
+order: per-message override → routing entry `model:` → per-backend config `model:`.
 
 ## Adding an Agent
 
@@ -175,7 +177,8 @@ Routing values can be a plain agent ID string or an object with `agent:` and opt
 
 2. Update `.agents/active/<name>/.nyx/agent-card.md` with the agent's identity and role
 
-3. Update `.agents/active/<name>/a2-claude/agent.md` (and `a2-codex/agent.md` and `a2-gemini/agent.md`) with backend identity
+3. Update `.agents/active/<name>/a2-claude/agent.md` (and `a2-codex/agent.md` and `a2-gemini/agent.md`) with backend
+   identity
 
 4. Update `.agents/active/<name>/.nyx/backend.yaml` with the new agent's backend service names and URLs
 
@@ -203,12 +206,15 @@ Agents communicate over the [A2A protocol](https://a2a-protocol.org) via JSON-RP
 
 Each backend container additionally exposes:
 
-- `GET /health` — health check: 200/`{"status": "ok", "agent": ..., "uptime_seconds": ...}` or 503/`{"status": "starting"}` while initializing
+- `GET /health` — health check: 200/`{"status": "ok", "agent": ..., "uptime_seconds": ...}` or
+  503/`{"status": "starting"}` while initializing
 - `GET /metrics` — Prometheus metrics (when `METRICS_ENABLED` is set)
 
 ## Memory
 
-Each backend agent manages its own memory at `.agents/<env>/<name>/<backend>/memory/`. For `a2-claude` and `a2-codex`, memory files are markdown documents. For `a2-gemini`, conversation history is stored as JSON in `memory/sessions/`. Memory files are not committed to source control. nyx-agent has no memory layer of its own.
+Each backend agent manages its own memory at `.agents/<env>/<name>/<backend>/memory/`. For `a2-claude` and `a2-codex`,
+memory files are markdown documents. For `a2-gemini`, conversation history is stored as JSON in `memory/sessions/`.
+Memory files are not committed to source control. nyx-agent has no memory layer of its own.
 
 ## Authentication
 
@@ -223,69 +229,74 @@ Each backend agent manages its own memory at `.agents/<env>/<name>/<backend>/mem
 
 ### nyx-agent environment variables
 
-| Variable                   | Default                          | Description                                                                            |
-| -------------------------- | -------------------------------- | -------------------------------------------------------------------------------------- |
-| `AGENT_NAME`               | `nyx-agent`                      | Agent display name (e.g. `iris`)                                                       |
-| `AGENT_HOST`               | `0.0.0.0`                        | Interface to bind                                                                      |
-| `AGENT_PORT`               | `8000`                           | HTTP port the nyx agent listens on                                                     |
-| `BACKEND_CONFIG_PATH`      | `/home/agent/.nyx/backend.yaml`  | Path to the backend routing config file                                                |
-| `METRICS_ENABLED`          | _(unset)_                        | Set to any non-empty value to expose `/metrics`                                        |
-| `METRICS_AUTH_TOKEN`       | _(unset)_                        | Bearer token required to access `/metrics` (recommended in production)                 |
-| `METRICS_CACHE_TTL`        | `15`                             | Seconds to cache aggregated backend metrics between scrapes                            |
-| `CONVERSATIONS_AUTH_TOKEN` | _(unset)_                        | Bearer token required to access `/conversations` and `/trace`                          |
-| `PROXY_AUTH_TOKEN`         | _(unset)_                        | Bearer token required to access `/proxy/{agent_name}`                                  |
-| `CORS_ALLOW_ORIGINS`       | `*`                              | Comma-separated list of allowed CORS origins; defaults to `*` (logs a warning)         |
-| `TASK_STORE_PATH`          | _(unset)_                        | Path for SQLite A2A task store; defaults to in-memory (state lost on restart)          |
-| `WORKER_MAX_RESTARTS`      | `5`                              | Consecutive crash limit before a critical worker marks the agent not-ready             |
+| Variable                   | Default                         | Description                                                                                          |
+| -------------------------- | ------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `AGENT_NAME`               | `nyx-agent`                     | Agent display name (e.g. `iris`)                                                                     |
+| `AGENT_HOST`               | `0.0.0.0`                       | Interface to bind                                                                                    |
+| `AGENT_PORT`               | `8000`                          | HTTP port the nyx agent listens on                                                                   |
+| `BACKEND_CONFIG_PATH`      | `/home/agent/.nyx/backend.yaml` | Path to the backend routing config file                                                              |
+| `METRICS_ENABLED`          | _(unset)_                       | Set to any non-empty value to expose `/metrics`                                                      |
+| `METRICS_AUTH_TOKEN`       | _(unset)_                       | Bearer token required to access `/metrics` (recommended in production)                               |
+| `METRICS_CACHE_TTL`        | `15`                            | Seconds to cache aggregated backend metrics between scrapes                                          |
+| `CONVERSATIONS_AUTH_TOKEN` | _(unset)_                       | Bearer token required to access `/conversations` and `/trace`                                        |
+| `PROXY_AUTH_TOKEN`         | _(unset)_                       | Bearer token required to access `/proxy/{agent_name}`                                                |
+| `TRIGGERS_AUTH_TOKEN`      | _(unset)_                       | Bearer token required for inbound trigger requests (fallback when no per-trigger HMAC secret is set) |
+| `CORS_ALLOW_ORIGINS`       | `*`                             | Comma-separated list of allowed CORS origins; defaults to `*` (logs a warning)                       |
+| `TASK_STORE_PATH`          | _(unset)_                       | Path for SQLite A2A task store; defaults to in-memory (state lost on restart)                        |
+| `WORKER_MAX_RESTARTS`      | `5`                             | Consecutive crash limit before a critical worker marks the agent not-ready                           |
 
 ### Backend (a2-claude / a2-codex / a2-gemini) environment variables
 
-| Variable                   | Default                            | Description                                                                           |
-| -------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------- |
-| `AGENT_NAME`               | `a2-claude`/`a2-codex`/`a2-gemini` | Backend instance name (e.g. `iris-a2-claude`)                                         |
-| `AGENT_OWNER`              | _(same as `AGENT_NAME`)_           | Named agent this backend belongs to (e.g. `iris`); used in metric labels              |
-| `AGENT_ID`                 | `claude`/`codex`/`gemini`          | Backend slot identifier (e.g. `claude`); used in metric labels                        |
-| `AGENT_URL`                | `http://localhost:8080/`           | Public A2A endpoint URL for the agent card                                            |
-| `AGENT_MD`                 | `/home/agent/agent.md`             | Path to the identity file mounted into the container                                  |
-| `BACKEND_PORT`             | `8080`                             | HTTP port the backend listens on (internal)                                           |
-| `METRICS_ENABLED`          | _(unset)_                          | Set to any non-empty value to expose `/metrics`                                       |
-| `CONVERSATIONS_AUTH_TOKEN` | _(unset)_                          | Bearer token required to access `/conversations` and `/trace`                         |
-| `TASK_STORE_PATH`          | _(unset)_                          | Path for SQLite A2A task store; defaults to in-memory (state lost on restart)         |
-| `WORKER_MAX_RESTARTS`      | `5`                                | Consecutive crash limit before a critical worker marks the backend not-ready          |
+| Variable                   | Default                            | Description                                                                   |
+| -------------------------- | ---------------------------------- | ----------------------------------------------------------------------------- |
+| `AGENT_NAME`               | `a2-claude`/`a2-codex`/`a2-gemini` | Backend instance name (e.g. `iris-a2-claude`)                                 |
+| `AGENT_OWNER`              | _(same as `AGENT_NAME`)_           | Named agent this backend belongs to (e.g. `iris`); used in metric labels      |
+| `AGENT_ID`                 | `claude`/`codex`/`gemini`          | Backend slot identifier (e.g. `claude`); used in metric labels                |
+| `AGENT_URL`                | `http://localhost:8080/`           | Public A2A endpoint URL for the agent card                                    |
+| `AGENT_MD`                 | `/home/agent/agent.md`             | Path to the identity file mounted into the container                          |
+| `BACKEND_PORT`             | `8080`                             | HTTP port the backend listens on (internal)                                   |
+| `METRICS_ENABLED`          | _(unset)_                          | Set to any non-empty value to expose `/metrics`                               |
+| `CONVERSATIONS_AUTH_TOKEN` | _(unset)_                          | Bearer token required to access `/conversations` and `/trace`                 |
+| `TASK_STORE_PATH`          | _(unset)_                          | Path for SQLite A2A task store; defaults to in-memory (state lost on restart) |
+| `WORKER_MAX_RESTARTS`      | `5`                                | Consecutive crash limit before a critical worker marks the backend not-ready  |
 
 ## Metrics
 
 When `METRICS_ENABLED` is set, Prometheus metrics are served at `/metrics` on both nyx-agent and backend containers.
 
-Backend containers (`a2-claude`, `a2-codex`, `a2-gemini`) expose `a2_*`-prefixed metrics. `a2-claude` exposes a superset that includes tool call, context window, and MCP metrics; `a2-codex` and `a2-gemini` expose the common `a2_*` set.
-nyx-agent exposes `agent_*`-prefixed infrastructure metrics (bus, heartbeat, job, sessions, webhooks, etc.). The nyx-agent `/metrics` endpoint also aggregates all backend `/metrics` endpoints, injecting a `backend="<id>"` label on each sample so a single scrape target captures the full deployment.
+Backend containers (`a2-claude`, `a2-codex`, `a2-gemini`) expose `a2_*`-prefixed metrics. `a2-claude` exposes a superset
+that includes tool call, context window, and MCP metrics; `a2-codex` and `a2-gemini` expose the common `a2_*` set.
+nyx-agent exposes `agent_*`-prefixed infrastructure metrics (bus, heartbeat, job, sessions, webhooks, etc.). The
+nyx-agent `/metrics` endpoint also aggregates all backend `/metrics` endpoints, injecting a `backend="<id>"` label on
+each sample so a single scrape target captures the full deployment.
 
 ## Outbound Webhooks
 
-Webhooks fire after a prompt completes. Each webhook subscription is a markdown file under `.nyx/webhooks/` with frontmatter fields:
+Webhooks fire after a prompt completes. Each webhook subscription is a markdown file under `.nyx/webhooks/` with
+frontmatter fields:
 
-| Field                | Required | Description                                                                    |
-| -------------------- | -------- | ------------------------------------------------------------------------------ |
-| `name`               | yes      | Subscription name (used in metrics labels)                                     |
-| `url`                | yes*     | POST target URL                                                                |
-| `url-env-var`        | yes*     | Environment variable holding the URL (alternative to `url`)                   |
-| `notify-when`        | no       | `always`, `on_success` (default), or `on_error`                               |
+| Field                | Required | Description                                                                        |
+| -------------------- | -------- | ---------------------------------------------------------------------------------- |
+| `name`               | yes      | Subscription name (used in metrics labels)                                         |
+| `url`                | yes\*    | POST target URL                                                                    |
+| `url-env-var`        | yes\*    | Environment variable holding the URL (alternative to `url`)                        |
+| `notify-when`        | no       | `always`, `on_success` (default), or `on_error`                                    |
 | `notify-on-kind`     | no       | Glob list of prompt kinds to match (e.g. `a2a`, `job:*`, `heartbeat`); default `*` |
-| `notify-on-response` | no       | Glob list of patterns matched against the response text; default `*`           |
-| `secret`             | no       | HMAC secret — adds `X-Hub-Signature-256` header when set                      |
-| `content-type`       | no       | `Content-Type` header; default `application/json`                              |
+| `notify-on-response` | no       | Glob list of patterns matched against the response text; default `*`               |
+| `secret`             | no       | HMAC secret — adds `X-Hub-Signature-256` header when set                           |
+| `content-type`       | no       | `Content-Type` header; default `application/json`                                  |
 
 \* Either `url` or `url-env-var` is required.
 
 The markdown body is the POST payload. Use `{{variable}}` placeholders for substitution:
 
-| Variable             | Value                                          |
-| -------------------- | ---------------------------------------------- |
-| `{{kind}}`           | Prompt kind (`a2a`, `heartbeat`, `job:<name>`) |
-| `{{session_id}}`     | Session/context ID                             |
-| `{{source}}`         | Source name (job name, trigger endpoint, etc.) |
-| `{{model}}`          | Model used for the prompt                      |
-| `{{response_preview}}` | First 2048 chars of the response text        |
-| `{{duration_seconds}}` | Prompt execution time in seconds             |
+| Variable               | Value                                          |
+| ---------------------- | ---------------------------------------------- |
+| `{{kind}}`             | Prompt kind (`a2a`, `heartbeat`, `job:<name>`) |
+| `{{session_id}}`       | Session/context ID                             |
+| `{{source}}`           | Source name (job name, trigger endpoint, etc.) |
+| `{{model}}`            | Model used for the prompt                      |
+| `{{response_preview}}` | First 2048 chars of the response text          |
+| `{{duration_seconds}}` | Prompt execution time in seconds               |
 
 If the body is empty, a default JSON envelope is sent.
