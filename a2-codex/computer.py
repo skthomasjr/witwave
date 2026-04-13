@@ -43,16 +43,22 @@ class PlaywrightComputer(AsyncComputer):
             if self._page is not None:
                 return
             from playwright.async_api import async_playwright
-            self._playwright = await async_playwright().start()
-            self._browser = await self._playwright.chromium.launch(
-                headless=True,
-                args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-            )
-            self._context = await self._browser.new_context(
-                viewport={"width": self._width, "height": self._height},
-            )
-            self._page = await self._context.new_page()
-            logger.info("Playwright browser started (%dx%d)", self._width, self._height)
+            try:
+                self._playwright = await async_playwright().start()
+                self._browser = await self._playwright.chromium.launch(
+                    headless=True,
+                    args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+                )
+                self._context = await self._browser.new_context(
+                    viewport={"width": self._width, "height": self._height},
+                )
+                self._page = await self._context.new_page()
+                logger.info("Playwright browser started (%dx%d)", self._width, self._height)
+            except Exception:
+                # Clean up any partially-initialized resources so the next call
+                # can retry from a clean state without leaking Playwright processes.
+                await self.close()
+                raise
 
     async def screenshot(self) -> str:
         await self._ensure_page()
