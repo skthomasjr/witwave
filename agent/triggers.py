@@ -147,6 +147,21 @@ class TriggerRunner:
             if filename.endswith(".md"):
                 self._register(os.path.join(TRIGGERS_DIR, filename))
 
+    def items(self) -> list[dict]:
+        """Return a serializable snapshot of currently registered trigger items."""
+        result = []
+        for item in self._items.values():
+            result.append({
+                "name": item.name,
+                "endpoint": item.endpoint,
+                "description": item.description,
+                "session_id": item.session_id,
+                "backend_id": item.backend_id,
+                "model": item.model,
+                "running": item.endpoint in self._running,
+            })
+        return result
+
     def items_by_endpoint(self) -> dict[str, TriggerItem]:
         return {item.endpoint: item for item in self._items.values()}
 

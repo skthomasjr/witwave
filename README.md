@@ -207,6 +207,7 @@ Agents communicate over the [A2A protocol](https://a2a-protocol.org) via JSON-RP
 - `GET /tasks` — structured snapshot of all registered scheduled tasks (name, days, window, running state)
 - `GET /webhooks` — structured snapshot of all registered webhook subscriptions (name, url, filters, active deliveries)
 - `GET /continuations` — structured snapshot of all registered continuation items (name, continues-after, filters, active fires)
+- `GET /triggers` — structured snapshot of all registered inbound trigger endpoints (name, endpoint, description, session, backend, running state)
 
 Each backend container additionally exposes:
 

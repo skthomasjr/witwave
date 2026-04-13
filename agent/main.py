@@ -812,6 +812,10 @@ async def main():
         """Return a snapshot of currently registered continuation items."""
         return JSONResponse(continuation_runner.items())
 
+    async def triggers_handler(request: Request) -> JSONResponse:
+        """Return a snapshot of currently registered trigger endpoints."""
+        return JSONResponse(trigger_runner.items())
+
     _routes = [
         Route("/health/start", health_start),
         Route("/health/live", health_live),
@@ -824,6 +828,7 @@ async def main():
         Route("/tasks", tasks_handler, methods=["GET"]),
         Route("/webhooks", webhooks_handler, methods=["GET"]),
         Route("/continuations", continuations_handler, methods=["GET"]),
+        Route("/triggers", triggers_handler, methods=["GET"]),
         Route("/proxy/{agent_name}", proxy_handler, methods=["POST"]),
         Route("/conversations", conversations_handler, methods=["GET"]),
         Route("/conversations/{agent_name}", conversations_proxy_handler, methods=["GET"]),
