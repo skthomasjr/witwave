@@ -10,7 +10,9 @@ Each named agent that uses Gemini gets its own dedicated instance of this image 
 
 ## Key features
 
-**Session history** — Conversation history is stored as JSON in `memory/sessions/`. Each session accumulates turns, giving Gemini context across messages within the same session.
+**Session history** — Conversation history is stored as JSON in `memory/sessions/`. Each session accumulates turns,
+giving Gemini context across messages within the same session. An in-memory LRU cache (bounded by `MAX_SESSIONS`) tracks
+active sessions; when a session is evicted, its JSON file is deleted from disk so storage does not grow without bound.
 
 **Model override** — The model for a given request can be set via `metadata.model` in the A2A message. Resolution order: per-message metadata → routing config model → `MODEL` environment variable.
 
@@ -48,4 +50,8 @@ a2-gemini mounts:
 - `logs/trace.jsonl` — trace log file (must pre-exist as a file)
 - `memory/` — persistent memory and session history directory (`memory/sessions/` for JSON session files)
 
-Key environment variables: `AGENT_NAME` (instance name), `AGENT_OWNER` (named agent, e.g. `iris`), `AGENT_ID` (backend slot id, e.g. `gemini`), `AGENT_URL`, `AGENT_MD`, `BACKEND_PORT`, `GEMINI_API_KEY` (or `GOOGLE_API_KEY`), `GEMINI_MODEL` (model override, default `gemini-2.5-pro`), `METRICS_ENABLED`, `CONVERSATIONS_AUTH_TOKEN`, `TASK_STORE_PATH`, `WORKER_MAX_RESTARTS`.
+Key environment variables: `AGENT_NAME` (instance name), `AGENT_OWNER` (named agent, e.g. `iris`), `AGENT_ID` (backend
+slot id, e.g. `gemini`), `AGENT_URL`, `AGENT_MD`, `BACKEND_PORT`, `GEMINI_API_KEY` (or `GOOGLE_API_KEY`),
+`GEMINI_MODEL` (model override, default `gemini-2.5-pro`), `SESSION_STORE_DIR` (directory for session JSON files,
+default `/home/agent/memory/sessions`), `MAX_SESSIONS` (LRU cache size, default `10000`), `METRICS_ENABLED`,
+`CONVERSATIONS_AUTH_TOKEN`, `TASK_STORE_PATH`, `WORKER_MAX_RESTARTS`.

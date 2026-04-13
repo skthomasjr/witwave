@@ -314,8 +314,9 @@ Agent identity and behavior are entirely file-based. No identity is baked into a
 | `METRICS_ENABLED`          | _(unset)_                       | Enable Prometheus `/metrics`                                                                |
 | `METRICS_AUTH_TOKEN`       | _(unset)_                       | Bearer token required to access `/metrics`                                                  |
 | `METRICS_CACHE_TTL`        | `15`                            | Seconds to cache aggregated backend metrics between scrapes                                 |
-| `CONVERSATIONS_AUTH_TOKEN` | _(unset)_                       | Bearer token required to access `/conversations` and `/trace`                               |
-| `PROXY_AUTH_TOKEN`         | _(unset)_                       | Bearer token required to access `/proxy/{agent_name}`                                       |
+| `CONVERSATIONS_AUTH_TOKEN`         | _(unset)_                       | Bearer token required to access `/conversations` and `/trace` (inbound)                         |
+| `BACKEND_CONVERSATIONS_AUTH_TOKEN` | _(unset)_                       | Bearer token forwarded to backend `/conversations` and `/trace` endpoints (set if backends require auth) |
+| `PROXY_AUTH_TOKEN`                 | _(unset)_                       | Bearer token required to access `/proxy/{agent_name}`                                           |
 | `TRIGGERS_AUTH_TOKEN`      | _(unset)_                       | Bearer token for inbound trigger requests (fallback when no per-trigger HMAC secret is set) |
 | `CORS_ALLOW_ORIGINS`       | `*`                             | Comma-separated allowed CORS origins; defaults to `*` (logs a warning)                      |
 | `TASK_STORE_PATH`          | _(unset)_                       | Path for SQLite A2A task store; defaults to in-memory                                       |
@@ -352,6 +353,8 @@ Each nyx-agent exposes:
 
 - `/.well-known/agent.json` — agent card for discovery
 - `/` — task execution endpoint (`message/send`)
+- `GET /jobs` — structured snapshot of registered scheduled jobs
+- `GET /tasks` — structured snapshot of registered scheduled tasks
 
 Each backend exposes the same A2A surface plus:
 
@@ -405,6 +408,7 @@ The `develop` skill runs a continuous improvement cycle across all issue types:
 Phase 1–4:   bug discovery → refinement → approval → fix
 Phase 5–8:   risk discovery → refinement → approval → fix
 Phase 9–12:  gap discovery → refinement → approval → fix
+Phase 13:    docs refinement
 ```
 
 ---

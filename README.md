@@ -203,6 +203,8 @@ Agents communicate over the [A2A protocol](https://a2a-protocol.org) via JSON-RP
 - `GET /health/start` — startup probe: 200 once ready, 503 while initializing
 - `GET /health/live` — liveness probe: always 200 with `{"status": "ok", "agent": ..., "uptime_seconds": ...}`
 - `GET /health/ready` — readiness probe: 200/`{"status": "ready"}` or 503/`{"status": "starting"}`
+- `GET /jobs` — structured snapshot of all registered scheduled jobs (name, cron, backend, running state)
+- `GET /tasks` — structured snapshot of all registered scheduled tasks (name, days, window, running state)
 
 Each backend container additionally exposes:
 
@@ -238,8 +240,9 @@ Memory files are not committed to source control. nyx-agent has no memory layer 
 | `METRICS_ENABLED`          | _(unset)_                       | Set to any non-empty value to expose `/metrics`                                                      |
 | `METRICS_AUTH_TOKEN`       | _(unset)_                       | Bearer token required to access `/metrics` (recommended in production)                               |
 | `METRICS_CACHE_TTL`        | `15`                            | Seconds to cache aggregated backend metrics between scrapes                                          |
-| `CONVERSATIONS_AUTH_TOKEN` | _(unset)_                       | Bearer token required to access `/conversations` and `/trace`                                        |
-| `PROXY_AUTH_TOKEN`         | _(unset)_                       | Bearer token required to access `/proxy/{agent_name}`                                                |
+| `CONVERSATIONS_AUTH_TOKEN`         | _(unset)_                       | Bearer token required to access `/conversations` and `/trace` (inbound)                              |
+| `BACKEND_CONVERSATIONS_AUTH_TOKEN` | _(unset)_                       | Bearer token forwarded to backend `/conversations` and `/trace` endpoints (set if backends require auth) |
+| `PROXY_AUTH_TOKEN`                 | _(unset)_                       | Bearer token required to access `/proxy/{agent_name}`                                                |
 | `TRIGGERS_AUTH_TOKEN`      | _(unset)_                       | Bearer token required for inbound trigger requests (fallback when no per-trigger HMAC secret is set) |
 | `CORS_ALLOW_ORIGINS`       | `*`                             | Comma-separated list of allowed CORS origins; defaults to `*` (logs a warning)                       |
 | `TASK_STORE_PATH`          | _(unset)_                       | Path for SQLite A2A task store; defaults to in-memory (state lost on restart)                        |

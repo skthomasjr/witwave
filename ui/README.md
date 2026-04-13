@@ -10,9 +10,14 @@ The UI provides four views into the running agent system:
 
 **Agents** — Team browser and interactive chat. The left sidebar shows every agent in the team manifest with their backend status indicators (claude/codex/gemini availability). Clicking an agent opens a chat panel on the right where you can send A2A messages directly, select which backend handles the request, and override the model. Responses stream back into the thread in real time, with tool calls and results rendered inline.
 
-**Conversations** — Merged conversation feed from all running backends. Shows user and agent turns interleaved with tool trace events (tool_use, tool_result). Each row shows the agent, model, timestamp, and session ID. Supports filtering by agent and auto-refresh.
+**Conversations** — Merged conversation feed from all running backends. Shows user and agent turns interleaved with tool
+trace events (tool_use, tool_result). Each row shows the agent, model, timestamp, and session ID. Loads the most recent
+500 entries by default (via `?limit=500`). Supports filtering by agent and auto-refresh.
 
-**Calendar** — Visual schedule of all configured jobs, tasks, and heartbeats. Renders in month, week, and day views. Each event is color-coded by type. Clicking an event shows the frontmatter and prompt body.
+**Calendar** — Visual schedule of configured jobs and tasks. Renders in month, week, and day views. On activation, the
+calendar fetches `GET /jobs` and `GET /tasks` from the agent and renders registered items as labeled entries in the
+month view. Job items are shown in purple-accent; task items in violet. The view degrades gracefully if the endpoints
+are unavailable.
 
 ## Key features
 

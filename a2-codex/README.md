@@ -22,7 +22,9 @@ Each named agent that uses Codex gets its own dedicated instance of this image (
 
 **Agent identity** — The system prompt is the contents of a mounted `agent.md` file. The agent's name and behavioral constraints live there.
 
-**Metrics** — Exposes the common `a2_*` Prometheus metrics: request count/latency, session starts/evictions, queue depth, error counts, and execution duration.
+**Metrics** — Exposes the common `a2_*` Prometheus metrics: request count/latency, session starts/evictions, queue
+depth, error counts, execution duration, and `a2_session_history_save_errors_total` (incremented when the SQLite session
+store fails to initialize).
 
 ## Endpoints
 
