@@ -1,7 +1,7 @@
 ---
 name: request-discover
-description: Research the platform, competitive landscape, and product vision to surface compelling new requests. Trigger when the user says "discover requests", "find requests", "generate requests", "run request discover", or "surface new requests".
-version: 1.0.0
+description: Research the platform, competitive landscape, and product vision to surface compelling new requests. Trigger when the user says "discover requests", "find requests", "generate requests", "run request discover", "surface new requests", "discover requests for features", "find requests for features", or "generate requests for features".
+version: 1.1.0
 ---
 
 # request-discover
