@@ -29,6 +29,10 @@ class PlaywrightComputer(AsyncComputer):
         self._context = None
         self._page = None
         self._lock = asyncio.Lock()
+        # Serializes page operations across concurrent callers.  All public
+        # methods that interact with self._page must be called while holding
+        # this lock so that concurrent sessions do not interleave page actions.
+        self._op_lock = asyncio.Lock()
 
     @property
     def environment(self):
@@ -61,55 +65,63 @@ class PlaywrightComputer(AsyncComputer):
                 raise
 
     async def screenshot(self) -> str:
-        await self._ensure_page()
-        png = await self._page.screenshot(type="png")
-        return base64.b64encode(png).decode()
+        async with self._op_lock:
+            await self._ensure_page()
+            png = await self._page.screenshot(type="png")
+            return base64.b64encode(png).decode()
 
     async def click(self, x: int, y: int, button: Button) -> None:
-        await self._ensure_page()
-        if button == "back":
-            await self._page.go_back()
-            return
-        if button == "forward":
-            await self._page.go_forward()
-            return
-        pw_button = _BUTTON_MAP.get(button, "left")
-        await self._page.mouse.click(x, y, button=pw_button)
+        async with self._op_lock:
+            await self._ensure_page()
+            if button == "back":
+                await self._page.go_back()
+                return
+            if button == "forward":
+                await self._page.go_forward()
+                return
+            pw_button = _BUTTON_MAP.get(button, "left")
+            await self._page.mouse.click(x, y, button=pw_button)
 
     async def double_click(self, x: int, y: int) -> None:
-        await self._ensure_page()
-        await self._page.mouse.dblclick(x, y)
+        async with self._op_lock:
+            await self._ensure_page()
+            await self._page.mouse.dblclick(x, y)
 
     async def scroll(self, x: int, y: int, scroll_x: int, scroll_y: int) -> None:
-        await self._ensure_page()
-        await self._page.mouse.move(x, y)
-        await self._page.evaluate(f"window.scrollBy({scroll_x}, {scroll_y})")
+        async with self._op_lock:
+            await self._ensure_page()
+            await self._page.mouse.move(x, y)
+            await self._page.evaluate(f"window.scrollBy({scroll_x}, {scroll_y})")
 
     async def type(self, text: str) -> None:
-        await self._ensure_page()
-        await self._page.keyboard.type(text)
+        async with self._op_lock:
+            await self._ensure_page()
+            await self._page.keyboard.type(text)
 
     async def wait(self) -> None:
         await asyncio.sleep(1.0)
 
     async def move(self, x: int, y: int) -> None:
-        await self._ensure_page()
-        await self._page.mouse.move(x, y)
+        async with self._op_lock:
+            await self._ensure_page()
+            await self._page.mouse.move(x, y)
 
     async def keypress(self, keys: list[str]) -> None:
-        await self._ensure_page()
-        for key in keys:
-            await self._page.keyboard.press(key)
+        async with self._op_lock:
+            await self._ensure_page()
+            for key in keys:
+                await self._page.keyboard.press(key)
 
     async def drag(self, path: list[tuple[int, int]]) -> None:
-        await self._ensure_page()
-        if not path:
-            return
-        await self._page.mouse.move(path[0][0], path[0][1])
-        await self._page.mouse.down()
-        for x, y in path[1:]:
-            await self._page.mouse.move(x, y)
-        await self._page.mouse.up()
+        async with self._op_lock:
+            await self._ensure_page()
+            if not path:
+                return
+            await self._page.mouse.move(path[0][0], path[0][1])
+            await self._page.mouse.down()
+            for x, y in path[1:]:
+                await self._page.mouse.move(x, y)
+            await self._page.mouse.up()
 
     async def close(self) -> None:
         if self._context:
