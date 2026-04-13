@@ -21,9 +21,14 @@ async def fetch_backend_conversations(
     Backends that are unreachable or return non-200 are silently skipped.
     When auth_token is provided, it is forwarded as a Bearer Authorization header.
     """
+    # Pass limit to each backend so the per-backend response is bounded.
+    # This caps the merged deduplication set to O(n_backends × limit) entries
+    # rather than allowing unlimited accumulation (#365).
     params: dict = {}
     if since:
         params["since"] = since
+    if limit is not None:
+        params["limit"] = limit
     headers: dict = {}
     if auth_token:
         headers["Authorization"] = f"Bearer {auth_token}"
@@ -78,9 +83,14 @@ async def fetch_backend_trace(
     Backends that are unreachable or return non-200 are silently skipped.
     When auth_token is provided, it is forwarded as a Bearer Authorization header.
     """
+    # Pass limit to each backend so the per-backend response is bounded.
+    # This caps the merged deduplication set to O(n_backends × limit) entries
+    # rather than allowing unlimited accumulation (#365).
     params: dict = {}
     if since:
         params["since"] = since
+    if limit is not None:
+        params["limit"] = limit
     headers: dict = {}
     if auth_token:
         headers["Authorization"] = f"Bearer {auth_token}"
