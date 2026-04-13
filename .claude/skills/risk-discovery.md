@@ -1,7 +1,7 @@
 ---
 name: risk-discovery
 description: Analyze one or all components of the autonomous-agent platform for risks and record findings as tracked risks. Trigger when the user says "find risks", "discover risks", "look for risks", "scan for risks", "search for risks", or "run risk discovery" — with or without a component name.
-version: 1.0.0
+version: 1.0.1
 ---
 
 # risk-discovery
@@ -36,7 +36,17 @@ Focus exclusively on real risks — not bugs, not missing features, not style pr
 - **Performance** — unbounded growth (memory, queues, log files); blocking calls in async paths; operations that scale poorly with load
 - **Observability** — silent failures with no logging or metrics; error paths that swallow context; conditions that would be impossible to diagnose in production
 
-**Step 5: Report findings.**
+**Step 5: Validate uncertain findings.**
+
+Before reporting, identify any findings where you are not confident the risk is real or where the mitigation is non-obvious. For those, do a web search to check whether the risk is a recognized problem in the industry and whether the proposed mitigation is standard practice. A finding is uncertain if any of the following apply:
+
+- It involves an operational or configuration choice (e.g., "should X be secured by default?") rather than a clear code defect
+- It would require significant effort to mitigate but the payoff is unclear
+- You are not sure whether it applies to this architecture specifically
+
+If a search confirms the finding is real and well-understood, proceed to file it. If the search shows it is not standard practice or does not apply, drop the finding. Briefly note what you searched for and what you found in the risk write-up when this step influenced the decision.
+
+**Step 6: Report findings.**
 
 For each risk found, report:
 - File and line number

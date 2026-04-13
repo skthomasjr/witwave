@@ -1,7 +1,7 @@
 ---
 name: bug-fix
 description: Fix all approved bugs one at a time, committing and pushing each fix. Trigger when the user says "fix bugs", "fix approved bugs", "run bug fix", or "start bug fixing".
-version: 1.0.0
+version: 1.0.1
 ---
 
 # bug-fix
@@ -24,7 +24,7 @@ From the approved bugs, select the one to fix next using this priority order:
 - Among equal priority: prefer the bug with the most isolated fix (lowest blast radius)
 - Among equal blast radius: prefer the bug whose suggested fix is most clearly correct
 
-Once selected, remove the `approved` label and update the bug status to `in-progress`.
+Once selected, remove the `approved` label, add the `in-progress` label, and update the bug status to `in-progress`.
 
 **Step 2: Understand the affected code.**
 
