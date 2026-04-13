@@ -78,6 +78,8 @@ spec:
               value: {{ .port | quote }}
             - name: METRICS_ENABLED
               value: {{ $agentMetricsEnabled | toString | quote }}
+            - name: CLAUDE_CONFIG_DIR
+              value: /home/agent/.claude-data
             {{- if .env }}
             {{- toYaml .env | nindent 12 }}
             {{- end }}
@@ -85,8 +87,9 @@ spec:
           envFrom:
             {{- toYaml .envFrom | nindent 12 }}
           {{- end }}
-          {{- if or $.Values.sharedStorage.enabled .config }}
           volumeMounts:
+            - name: {{ .name }}-session-data
+              mountPath: /home/agent/.claude-data
             {{- if $.Values.sharedStorage.enabled }}
             - name: nyx-shared
               mountPath: {{ $.Values.sharedStorage.mountPath }}
@@ -99,7 +102,6 @@ spec:
               subPath: {{ .name }}
             {{- end }}
             {{- end }}
-          {{- end }}
 {{- end }}
       volumes:
         - name: backend-config
@@ -111,6 +113,8 @@ spec:
             name: nyx-{{ .name }}-config
         {{- end }}
         {{- range .backends }}
+        - name: {{ .name }}-session-data
+          emptyDir: {}
         {{- if .config }}
         - name: {{ .name }}-config
           configMap:
