@@ -179,6 +179,25 @@ class ContinuationRunner:
             if filename.endswith(".md"):
                 self._register(os.path.join(CONTINUATIONS_DIR, filename))
 
+    def items(self) -> list[dict]:
+        """Return a serializable snapshot of currently registered continuation items."""
+        result = []
+        for item in self._items.values():
+            result.append({
+                "name": item.name,
+                "continues_after": item.continues_after,
+                "on_success": item.on_success,
+                "on_error": item.on_error,
+                "trigger_when": item.trigger_when,
+                "delay": item.delay,
+                "description": item.description,
+                "backend_id": item.backend_id,
+                "model": item.model,
+                "max_concurrent_fires": item.max_concurrent_fires,
+                "active_fires": len(self._fires_by_name.get(item.name, set())),
+            })
+        return result
+
     def notify(self, kind: str, session_id: str, success: bool, response: str, bus: MessageBus) -> None:
         """Called by on_prompt_completed() when an upstream completes. Non-blocking."""
         for item in list(self._items.values()):

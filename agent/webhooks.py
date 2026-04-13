@@ -440,6 +440,25 @@ class WebhookRunner:
         self._backends = backends
         self._default_backend_id = default_backend_id
 
+    def items(self) -> list[dict]:
+        """Return a serializable snapshot of currently registered webhook subscriptions."""
+        result = []
+        for sub in self._items.values():
+            result.append({
+                "name": sub.name,
+                "url": sub.url_template,
+                "notify_when": sub.notify_when,
+                "notify_on_kind": sub.notify_on_kind,
+                "notify_on_response": sub.notify_on_response,
+                "description": sub.description,
+                "enabled": sub.enabled,
+                "retries": sub.retries,
+                "backend_id": sub.backend_id,
+                "model": sub.model,
+                "active_deliveries": len(self._active_deliveries),
+            })
+        return result
+
     def _register(self, path: str, *, count_reload: bool = False) -> None:
         result = parse_webhook_file(path)
         if result is _DISABLED:

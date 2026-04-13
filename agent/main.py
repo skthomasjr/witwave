@@ -643,6 +643,8 @@ async def main():
     trigger_runner = TriggerRunner()
     job_runner = JobRunner(bus)
     task_runner = TaskRunner(bus)
+    webhook_runner = WebhookRunner()
+    continuation_runner = ContinuationRunner()
 
     async def triggers_discovery(request: Request) -> JSONResponse:
         items = trigger_runner.items_by_endpoint()
@@ -792,6 +794,14 @@ async def main():
         """Return a snapshot of currently registered scheduled tasks."""
         return JSONResponse(task_runner.items())
 
+    async def webhooks_handler(request: Request) -> JSONResponse:
+        """Return a snapshot of currently registered webhook subscriptions."""
+        return JSONResponse(webhook_runner.items())
+
+    async def continuations_handler(request: Request) -> JSONResponse:
+        """Return a snapshot of currently registered continuation items."""
+        return JSONResponse(continuation_runner.items())
+
     _routes = [
         Route("/health/start", health_start),
         Route("/health/live", health_live),
@@ -802,6 +812,8 @@ async def main():
         Route("/team", team_handler, methods=["GET"]),
         Route("/jobs", jobs_handler, methods=["GET"]),
         Route("/tasks", tasks_handler, methods=["GET"]),
+        Route("/webhooks", webhooks_handler, methods=["GET"]),
+        Route("/continuations", continuations_handler, methods=["GET"]),
         Route("/proxy/{agent_name}", proxy_handler, methods=["POST"]),
         Route("/conversations", conversations_handler, methods=["GET"]),
         Route("/conversations/{agent_name}", conversations_proxy_handler, methods=["GET"]),
@@ -850,9 +862,7 @@ async def main():
     config = uvicorn.Config(full_app, host=AGENT_HOST, port=AGENT_PORT)
     server = uvicorn.Server(config)
 
-    continuation_runner = ContinuationRunner()
     executor.set_continuation_runner(continuation_runner, bus)
-    webhook_runner = WebhookRunner()
     executor.set_webhook_runner(webhook_runner)
 
     # Start MCP watcher tasks as tracked background tasks so backends_watcher
