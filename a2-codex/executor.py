@@ -209,6 +209,21 @@ def _sqlite_session_exists(session_id: str) -> bool:
         return False
 
 
+def _delete_sqlite_session(session_id: str, db_path: str) -> None:
+    """Delete a session row from the SQLite session database (blocking I/O).
+
+    Intended to be called via asyncio.to_thread() so the event loop is not
+    stalled by SQLite I/O during timeout cleanup (#361).
+    """
+    import sqlite3 as _sqlite3
+    conn = _sqlite3.connect(db_path, check_same_thread=False)
+    try:
+        conn.execute("DELETE FROM agent_sessions WHERE session_id = ?", (session_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _load_agent_md() -> str:
     try:
         with open(AGENT_MD) as f:
@@ -521,19 +536,12 @@ async def _run_inner(
         # Also remove the SQLite history row so the next request for this
         # session_id starts with empty history rather than reloading the
         # potentially stale snapshot stored before the timeout.
+        # Run in a thread to avoid blocking the event loop with SQLite I/O (#361).
         _db_path = CODEX_SESSION_DB
         if _db_path and _db_path != ":memory:":
             try:
-                import sqlite3 as _sqlite3
-                _conn = _sqlite3.connect(_db_path, check_same_thread=False)
-                try:
-                    _conn.execute(
-                        "DELETE FROM agent_sessions WHERE session_id = ?", (session_id,)
-                    )
-                    _conn.commit()
-                    logger.info("Removed stale SQLite session for timed-out session %r", session_id)
-                finally:
-                    _conn.close()
+                await asyncio.to_thread(_delete_sqlite_session, session_id, _db_path)
+                logger.info("Removed stale SQLite session for timed-out session %r", session_id)
             except Exception as _e:
                 logger.warning("Could not remove SQLite session for timed-out session %r: %s", session_id, _e)
         if a2_tasks_total is not None:
