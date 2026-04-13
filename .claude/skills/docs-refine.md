@@ -1,10 +1,10 @@
 ---
-name: docs-refinement
-description: Review and update project documentation to ensure it is accurate, complete, and consistent with the current codebase. Trigger when the user says "refine docs", "update the docs", "review the docs", "check the documentation", "update documentation", or "run docs refinement" — with or without a specific document or component name.
-version: 1.1.0
+name: docs-refine
+description: Review and update project documentation to ensure it is accurate, complete, and consistent with the current codebase. Trigger when the user says "refine docs", "update the docs", "review the docs", "check the documentation", "update documentation", or "run docs refine" — with or without a specific document or component name.
+version: 1.2.0
 ---
 
-# docs-refinement
+# docs-refine
 
 Review project documentation against the current codebase and update it in place. This skill edits documents directly — it does not file issues.
 
