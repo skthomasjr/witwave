@@ -355,6 +355,8 @@ Each nyx-agent exposes:
 - `/` — task execution endpoint (`message/send`)
 - `GET /jobs` — structured snapshot of registered scheduled jobs
 - `GET /tasks` — structured snapshot of registered scheduled tasks
+- `GET /webhooks` — structured snapshot of registered webhook subscriptions
+- `GET /continuations` — structured snapshot of registered continuation items
 
 Each backend exposes the same A2A surface plus:
 

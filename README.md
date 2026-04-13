@@ -205,6 +205,8 @@ Agents communicate over the [A2A protocol](https://a2a-protocol.org) via JSON-RP
 - `GET /health/ready` — readiness probe: 200/`{"status": "ready"}` or 503/`{"status": "starting"}`
 - `GET /jobs` — structured snapshot of all registered scheduled jobs (name, cron, backend, running state)
 - `GET /tasks` — structured snapshot of all registered scheduled tasks (name, days, window, running state)
+- `GET /webhooks` — structured snapshot of all registered webhook subscriptions (name, url, filters, active deliveries)
+- `GET /continuations` — structured snapshot of all registered continuation items (name, continues-after, filters, active fires)
 
 Each backend container additionally exposes:
 
@@ -246,7 +248,8 @@ Memory files are not committed to source control. nyx-agent has no memory layer 
 | `TRIGGERS_AUTH_TOKEN`      | _(unset)_                       | Bearer token required for inbound trigger requests (fallback when no per-trigger HMAC secret is set) |
 | `CORS_ALLOW_ORIGINS`       | `*`                             | Comma-separated list of allowed CORS origins; defaults to `*` (logs a warning)                       |
 | `TASK_STORE_PATH`          | _(unset)_                       | Path for SQLite A2A task store; defaults to in-memory (state lost on restart)                        |
-| `WORKER_MAX_RESTARTS`      | `5`                             | Consecutive crash limit before a critical worker marks the agent not-ready                           |
+| `WORKER_MAX_RESTARTS`              | `5`                             | Consecutive crash limit before a critical worker marks the agent not-ready                           |
+| `WEBHOOK_MAX_CONCURRENT_DELIVERIES` | `50`                            | Maximum number of in-flight webhook delivery tasks; deliveries beyond this cap are shed and counted  |
 
 ### Backend (a2-claude / a2-codex / a2-gemini) environment variables
 

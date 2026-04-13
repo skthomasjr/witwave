@@ -36,9 +36,9 @@ glob-based filtering, optional LLM extraction passes, HMAC signing, and retry wi
 **Proxy endpoints** — Exposes `/proxy/{agent_name}` and `/conversations/{agent_name}` so the UI can target any team
 member by name and have the request routed through nyx's team manifest.
 
-**Scheduler discovery** — Exposes `GET /jobs` and `GET /tasks` returning structured snapshots of all currently
-registered scheduled items (name, schedule/window, backend, running state). Mirrors the pattern of
-`/.well-known/agent-triggers.json` for triggers.
+**Scheduler discovery** — Exposes `GET /jobs`, `GET /tasks`, `GET /webhooks`, and `GET /continuations`, each returning
+a structured snapshot of all currently registered items of that type (name, schedule/window/filters, backend, running or
+active-fire counts). Mirrors the pattern of `/.well-known/agent-triggers.json` for triggers.
 
 **Metrics** — Aggregates Prometheus metrics from all backends at `/metrics` and exposes its own scheduler/queue/routing
 metrics.
