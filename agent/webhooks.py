@@ -393,8 +393,14 @@ async def deliver(
     model: str | None,
     backends: dict | None = None,
     default_backend_id: str | None = None,
+    on_retry_task=None,
 ) -> None:
-    """Deliver one webhook POST. Called as a fire-and-forget background task."""
+    """Deliver one webhook POST. Called as a fire-and-forget background task.
+
+    If a retry is needed and retries are configured, the retry task is created
+    and passed to on_retry_task(task) (if provided) so that the caller can
+    register it in its concurrency-tracking structures.
+    """
     delivery_id = str(uuid.uuid4())
     timestamp = datetime.now(timezone.utc).isoformat()
     response_preview = response[:2048] if response else ""
@@ -491,7 +497,7 @@ async def deliver(
     if result != "success" and sub.retries > 0:
         # Schedule retry as a new independent task so this task can exit now,
         # freeing its slot before the backoff delay begins.
-        asyncio.ensure_future(
+        _retry_task = asyncio.ensure_future(
             _retry_deliver(
                 sub=sub,
                 url=url,
@@ -501,6 +507,10 @@ async def deliver(
                 max_attempts=1 + sub.retries,
             )
         )
+        # Notify the caller (e.g. WebhookRunner.fire) so it can register the
+        # retry task in its concurrency-tracking structures (#376).
+        if on_retry_task is not None:
+            on_retry_task(_retry_task)
         # Do not count this as a terminal result — the retry task will record it.
         return
 
@@ -613,6 +623,21 @@ class WebhookRunner:
                     if agent_webhooks_delivery_shed_total is not None:
                         agent_webhooks_delivery_shed_total.labels(subscription=sub.name).inc()
                     continue
+                def _make_on_retry_task(
+                    _sub_name: str = sub.name,
+                ) -> "callable":
+                    """Return a callback that registers a retry task in the tracking sets."""
+                    def _on_retry_task(retry_t: asyncio.Task) -> None:
+                        self._active_deliveries.add(retry_t)
+                        self._deliveries_by_name.setdefault(_sub_name, set()).add(retry_t)
+                        retry_t.add_done_callback(
+                            lambda t, _n=_sub_name: (
+                                self._active_deliveries.discard(t),
+                                self._deliveries_by_name.get(_n, set()).discard(t),
+                            )
+                        )
+                    return _on_retry_task
+
                 _t = asyncio.create_task(deliver(
                     sub=sub,
                     source=source,
@@ -625,6 +650,7 @@ class WebhookRunner:
                     model=model,
                     backends=self._backends,
                     default_backend_id=self._default_backend_id,
+                    on_retry_task=_make_on_retry_task(),
                 ))
                 self._active_deliveries.add(_t)
                 deliveries = self._deliveries_by_name.setdefault(sub.name, set())
