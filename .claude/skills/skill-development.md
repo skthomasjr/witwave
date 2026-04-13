@@ -1,7 +1,7 @@
 ---
 name: skill-development
 description: Guide the design and review of skills in this repository. Trigger when the user says "create a skill", "write a skill", "review a skill", "update a skill", "help with a skill", "audit skills", or "audit the skill families".
-version: 1.4.0
+version: 1.5.0
 ---
 
 # skill-development

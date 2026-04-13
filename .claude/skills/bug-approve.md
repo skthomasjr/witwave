@@ -1,10 +1,10 @@
 ---
-name: bug-approval
-description: Evaluate pending bugs against the codebase and approve or defer them based on fix confidence, risk, and priority. Optionally scoped to a specific component; if no component is specified, processes all components including cross-cutting bugs with no component assigned. Trigger when the user says "approve bugs", "run bug approval", "evaluate bugs", "review bugs for approval", or "approve pending bugs".
-version: 1.0.1
+name: bug-approve
+description: Evaluate pending bugs against the codebase and approve or defer them based on fix confidence, risk, and priority. Optionally scoped to a specific component; if no component is specified, processes all components including cross-cutting bugs with no component assigned. Trigger when the user says "approve bugs", "run bug approve", "evaluate bugs", "review bugs for approval", or "approve pending bugs".
+version: 1.1.0
 ---
 
-# bug-approval
+# bug-approve
 
 Evaluate each pending bug by reading the actual code, assessing fix risk relative to priority, and approving only those where there is high confidence the fix can be made safely.
 

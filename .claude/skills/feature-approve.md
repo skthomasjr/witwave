@@ -1,10 +1,10 @@
 ---
-name: feature-approval
-description: Evaluate pending features against the codebase and approve or defer them based on implementation confidence, scope, and priority. Trigger when the user says "approve features", "run feature approval", "evaluate features", "review features for approval", or "approve pending features".
-version: 1.1.0
+name: feature-approve
+description: Evaluate pending features against the codebase and approve or defer them based on implementation confidence, scope, and priority. Trigger when the user says "approve features", "run feature approve", "evaluate features", "review features for approval", or "approve pending features".
+version: 1.2.0
 ---
 
-# feature-approval
+# feature-approve
 
 Evaluate each pending feature by reading the actual codebase, confirming the capability is still missing and well-scoped, and approving only those where there is high confidence the feature is needed and the implementation approach is actionable.
 

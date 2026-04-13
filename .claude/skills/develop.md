@@ -1,7 +1,7 @@
 ---
 name: develop
 description: Run the full autonomous development cycle — discover, refine, approve, and implement bugs, risks, and gaps across all components, then derive, refine, approve, and implement features from ready requests. Trigger when the user says "run the development cycle", "run the dev cycle", "start the development loop", "start the dev loop", or "run develop".
-version: 2.4.0
+version: 2.5.0
 ---
 
 # develop

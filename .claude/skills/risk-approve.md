@@ -1,10 +1,10 @@
 ---
-name: risk-approval
-description: Evaluate pending risks against the codebase and approve or defer them based on mitigation confidence, blast radius, and priority. Optionally scoped to a specific component; if no component is specified, processes all components including cross-cutting risks with no component assigned. Trigger when the user says "approve risks", "run risk approval", "evaluate risks", "review risks for approval", or "approve pending risks".
-version: 1.0.1
+name: risk-approve
+description: Evaluate pending risks against the codebase and approve or defer them based on mitigation confidence, blast radius, and priority. Optionally scoped to a specific component; if no component is specified, processes all components including cross-cutting risks with no component assigned. Trigger when the user says "approve risks", "run risk approve", "evaluate risks", "review risks for approval", or "approve pending risks".
+version: 1.1.0
 ---
 
-# risk-approval
+# risk-approve
 
 Evaluate each pending risk by reading the actual code, assessing mitigation complexity relative to priority and category, and approving only those where there is high confidence the risk is real and the mitigation is actionable.
 

@@ -1,10 +1,10 @@
 ---
-name: gap-approval
-description: Evaluate pending gaps against the codebase and approve or defer them based on implementation confidence, scope, and priority. Optionally scoped to a specific component; if no component is specified, processes all components including cross-cutting gaps with no component assigned. Trigger when the user says "approve gaps", "run gap approval", "evaluate gaps", "review gaps for approval", or "approve pending gaps".
-version: 1.0.0
+name: gap-approve
+description: Evaluate pending gaps against the codebase and approve or defer them based on implementation confidence, scope, and priority. Optionally scoped to a specific component; if no component is specified, processes all components including cross-cutting gaps with no component assigned. Trigger when the user says "approve gaps", "run gap approve", "evaluate gaps", "review gaps for approval", or "approve pending gaps".
+version: 1.1.0
 ---
 
-# gap-approval
+# gap-approve
 
 Evaluate each pending gap by reading the actual code, confirming the gap is real and well-scoped, and approving only those where there is high confidence the gap exists and the implementation approach is actionable.
 
