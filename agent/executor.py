@@ -465,6 +465,13 @@ class AgentExecutor(A2AAgentExecutor):
         if not model:
             _resolved_backend_id = backend_id or self._default_backend_id
             model = self._resolve_model(None, _a2a_entry, _resolved_backend_id)
+        _max_tokens_raw = metadata.get("max_tokens")
+        max_tokens: int | None = None
+        if _max_tokens_raw is not None:
+            try:
+                max_tokens = int(_max_tokens_raw)
+            except (ValueError, TypeError):
+                logger.warning(f"Session {session_id!r}: invalid max_tokens in metadata {_max_tokens_raw!r}, ignoring.")
         task_id = context.task_id
 
         if task_id:
@@ -482,6 +489,7 @@ class AgentExecutor(A2AAgentExecutor):
                 self._backends, self._default_backend_id,
                 backend_id=backend_id,
                 model=model,
+                max_tokens=max_tokens,
             )
             _success = True
             if _response:
