@@ -63,6 +63,9 @@ SESSION_STORE_DIR = os.environ.get("SESSION_STORE_DIR", "/home/agent/memory/sess
 
 MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "10000"))
 TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
+# Maximum number of bytes of prompt text included in INFO-level log messages.
+# Set to 0 to suppress prompt text from logs entirely; set higher for more context.
+LOG_PROMPT_MAX_BYTES = int(os.environ.get("LOG_PROMPT_MAX_BYTES", "200"))
 
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL") or "gemini-2.5-pro"
 GEMINI_API_KEY: str | None = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or None
@@ -380,7 +383,8 @@ async def _run_inner(
     if a2_session_starts_total is not None:
         a2_session_starts_total.labels(**_LABELS, type="new" if is_new else "resumed").inc()
 
-    logger.info(f"Session {session_id} ({'new' if is_new else 'existing'}) — prompt: {prompt!r}")
+    _prompt_preview = prompt[:LOG_PROMPT_MAX_BYTES] + ("[truncated]" if len(prompt) > LOG_PROMPT_MAX_BYTES else "") if LOG_PROMPT_MAX_BYTES > 0 else "[redacted]"
+    logger.info(f"Session {session_id} ({'new' if is_new else 'existing'}) — prompt: {_prompt_preview!r}")
     await log_entry("user", prompt, session_id, model=resolved_model)
 
     if a2_prompt_length_bytes is not None:
