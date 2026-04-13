@@ -35,7 +35,7 @@ HEARTBEAT_SESSION = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{AGENT_NAME}.heartbeat"
 HEARTBEAT_OK = "HEARTBEAT_OK"
 
 
-def load_heartbeat() -> tuple[str, str, str | None, str | None] | None:
+def load_heartbeat() -> tuple[str, str, str | None, str | None, bool, int | None] | None:
     if not os.path.exists(HEARTBEAT_PATH):
         return None
     with open(HEARTBEAT_PATH) as f:
@@ -51,6 +51,14 @@ def load_heartbeat() -> tuple[str, str, str | None, str | None] | None:
         enabled = str(fields["enabled"]).lower() not in ("false", "")
     model = fields.get("model") or None
     backend_id = fields.get("agent") or None
+    consensus = str(fields.get("consensus", "false")).lower() not in ("false", "")
+    max_tokens: int | None = None
+    max_tokens_raw = fields.get("max-tokens") or fields.get("max_tokens")
+    if max_tokens_raw is not None:
+        try:
+            max_tokens = max(1, int(max_tokens_raw))
+        except (ValueError, TypeError):
+            logger.warning(f"HEARTBEAT.md: invalid 'max-tokens' value {max_tokens_raw!r}, ignoring.")
 
     if not enabled:
         return None
@@ -62,11 +70,18 @@ def load_heartbeat() -> tuple[str, str, str | None, str | None] | None:
         logger.warning(f"HEARTBEAT.md has invalid cron expression '{schedule}', using default.")
         schedule = DEFAULT_SCHEDULE
 
-    return schedule, content, model, backend_id
+    return schedule, content, model, backend_id, consensus, max_tokens
 
 
 async def _run_loop(
-    bus: MessageBus, schedule: str, content: str, stop_event: asyncio.Event, model: str | None = None, backend_id: str | None = None
+    bus: MessageBus,
+    schedule: str,
+    content: str,
+    stop_event: asyncio.Event,
+    model: str | None = None,
+    backend_id: str | None = None,
+    consensus: bool = False,
+    max_tokens: int | None = None,
 ) -> None:
     cron = croniter(schedule, datetime.now(timezone.utc))
     stop_waiter = asyncio.create_task(stop_event.wait())
@@ -100,11 +115,11 @@ async def _run_loop(
             if not loaded:
                 logger.info("Heartbeat skipped — HEARTBEAT.md disabled or empty.")
                 continue
-            _, content, model, backend_id = loaded
+            _, content, model, backend_id, consensus, max_tokens = loaded
 
             prompt = f"Heartbeat check. Follow these instructions:\n\n{content}"
             _hb_start = time.monotonic()
-            message = Message(prompt=prompt, session_id=HEARTBEAT_SESSION, kind="heartbeat", model=model, backend_id=backend_id)
+            message = Message(prompt=prompt, session_id=HEARTBEAT_SESSION, kind="heartbeat", model=model, backend_id=backend_id, consensus=consensus, max_tokens=max_tokens)
             if not bus.try_send(message):
                 logger.info("Heartbeat skipped — previous heartbeat still pending.")
                 if agent_heartbeat_skips_total is not None:
@@ -155,14 +170,14 @@ async def heartbeat_runner(bus: MessageBus) -> None:
     if not loaded:
         logger.info("Heartbeat idle — HEARTBEAT.md not found, disabled, or empty.")
     else:
-        schedule, content, model, backend_id = loaded
+        schedule, content, model, backend_id, consensus, max_tokens = loaded
         logger.info(f"Heartbeat runner started. Schedule: {schedule}")
 
     stop_event = asyncio.Event()
     loop_task: asyncio.Task | None = None
 
     if loaded:
-        loop_task = asyncio.create_task(_run_loop(bus, schedule, content, stop_event, model=model, backend_id=backend_id))
+        loop_task = asyncio.create_task(_run_loop(bus, schedule, content, stop_event, model=model, backend_id=backend_id, consensus=consensus, max_tokens=max_tokens))
         loop_task.add_done_callback(_loop_task_done_callback)
 
     while True:
@@ -198,9 +213,9 @@ async def heartbeat_runner(bus: MessageBus) -> None:
                     logger.info("Heartbeat disabled or empty after reload.")
                     loop_task = None
                 else:
-                    schedule, content, model, backend_id = loaded
+                    schedule, content, model, backend_id, consensus, max_tokens = loaded
                     logger.info(f"Heartbeat reloaded. Schedule: {schedule}")
-                    loop_task = asyncio.create_task(_run_loop(bus, schedule, content, stop_event, model=model, backend_id=backend_id))
+                    loop_task = asyncio.create_task(_run_loop(bus, schedule, content, stop_event, model=model, backend_id=backend_id, consensus=consensus, max_tokens=max_tokens))
                     loop_task.add_done_callback(_loop_task_done_callback)
 
         logger.warning("Heartbeat directory watcher exited — directory deleted or unavailable. Retrying in 10s.")
@@ -218,8 +233,8 @@ async def heartbeat_runner(bus: MessageBus) -> None:
             logger.warning(f"Heartbeat reload error after watcher restart — skipping: {e}")
             loaded = None
         if loaded:
-            schedule, content, model, backend_id = loaded
-            loop_task = asyncio.create_task(_run_loop(bus, schedule, content, stop_event, model=model, backend_id=backend_id))
+            schedule, content, model, backend_id, consensus, max_tokens = loaded
+            loop_task = asyncio.create_task(_run_loop(bus, schedule, content, stop_event, model=model, backend_id=backend_id, consensus=consensus, max_tokens=max_tokens))
             loop_task.add_done_callback(_loop_task_done_callback)
         else:
             loop_task = None

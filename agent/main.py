@@ -27,7 +27,7 @@ from triggers import TriggerItem, TriggerRunner
 from webhooks import WebhookRunner
 from bus import MessageBus
 from executor import AgentExecutor, run as executor_run, run_consensus as executor_run_consensus
-from heartbeat import heartbeat_runner
+from heartbeat import heartbeat_runner, load_heartbeat
 from metrics import (
     agent_bus_consumer_idle_seconds,
     agent_bus_error_processing_duration_seconds,
@@ -661,6 +661,59 @@ async def main():
             except Exception as exc:
                 return JSONResponse({"error": str(exc)}, status_code=502)
 
+    async def trace_proxy_handler(request: Request) -> JSONResponse:
+        """Proxy /trace from a named team member's backend, optionally filtered by backend id."""
+        import httpx
+        agent_name = request.path_params["agent_name"]
+        backend_id = request.query_params.get("backend")
+        since = request.query_params.get("since")
+        limit = request.query_params.get("limit", "200")
+        manifest_path = os.environ.get("MANIFEST_PATH", "/home/agent/manifest.json")
+        team = _load_manifest_cached(manifest_path)
+        target_url = next((m.get("url") for m in team if m.get("name") == agent_name), None)
+        if not target_url:
+            return JSONResponse({"error": f"agent {agent_name!r} not found"}, status_code=404)
+        # Resolve specific backend URL if requested
+        if backend_id:
+            try:
+                async with httpx.AsyncClient(timeout=5.0) as _c:
+                    _r = await _c.get(target_url.rstrip("/") + "/agents")
+                    if _r.status_code == 200:
+                        _agents = _r.json()
+                        _b = next((a for a in _agents if a.get("role") == "backend" and a.get("id") == backend_id), None)
+                        if _b and _b.get("url"):
+                            target_url = _b["url"]
+                        else:
+                            logger.warning(
+                                "trace_proxy_handler: backend_id %r not found in /agents for "
+                                "agent %r — falling back to nyx URL %r",
+                                backend_id, agent_name, target_url,
+                            )
+                    else:
+                        logger.warning(
+                            "trace_proxy_handler: /agents for agent %r returned HTTP %s — "
+                            "cannot resolve backend_id %r, falling back to nyx URL %r",
+                            agent_name, _r.status_code, backend_id, target_url,
+                        )
+            except Exception as exc:
+                logger.warning(
+                    "trace_proxy_handler: failed to resolve backend_id %r for agent %r: %s — "
+                    "falling back to nyx URL %r",
+                    backend_id, agent_name, exc, target_url,
+                )
+        params: dict = {"limit": limit}
+        if since:
+            params["since"] = since
+        _trace_headers: dict = {}
+        if _backend_conversations_auth_token:
+            _trace_headers["Authorization"] = f"Bearer {_backend_conversations_auth_token}"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                resp = await client.get(target_url.rstrip("/") + "/trace", params=params, headers=_trace_headers)
+                return JSONResponse(resp.json(), status_code=resp.status_code)
+            except Exception as exc:
+                return JSONResponse({"error": str(exc)}, status_code=502)
+
     async def team_handler(request: Request) -> JSONResponse:
         """Return agent cards for all team members by reading manifest.json and fanning out to /agents."""
         import httpx
@@ -857,6 +910,18 @@ async def main():
         """Return a snapshot of currently registered continuation items."""
         return JSONResponse(continuation_runner.items())
 
+    async def heartbeat_handler(request: Request) -> JSONResponse:
+        """Return the current heartbeat configuration from HEARTBEAT.md."""
+        try:
+            loaded = load_heartbeat()
+        except Exception as exc:
+            logger.warning("heartbeat_handler: failed to load HEARTBEAT.md: %s", exc)
+            loaded = None
+        if not loaded:
+            return JSONResponse({"enabled": False, "schedule": None, "model": None, "backend_id": None, "consensus": False, "max_tokens": None})
+        schedule, _content, model, backend_id, consensus, max_tokens = loaded
+        return JSONResponse({"enabled": True, "schedule": schedule, "model": model, "backend_id": backend_id, "consensus": consensus, "max_tokens": max_tokens})
+
     async def triggers_handler(request: Request) -> JSONResponse:
         """Return a snapshot of currently registered trigger endpoints."""
         return JSONResponse(trigger_runner.items())
@@ -873,11 +938,13 @@ async def main():
         Route("/tasks", tasks_handler, methods=["GET"]),
         Route("/webhooks", webhooks_handler, methods=["GET"]),
         Route("/continuations", continuations_handler, methods=["GET"]),
+        Route("/heartbeat", heartbeat_handler, methods=["GET"]),
         Route("/triggers", triggers_handler, methods=["GET"]),
         Route("/proxy/{agent_name}", proxy_handler, methods=["POST"]),
         Route("/conversations", conversations_handler, methods=["GET"]),
         Route("/conversations/{agent_name}", conversations_proxy_handler, methods=["GET"]),
         Route("/trace", trace_handler, methods=["GET"]),
+        Route("/trace/{agent_name}", trace_proxy_handler, methods=["GET"]),
     ]
     if metrics_enabled:
         _routes.append(Route("/metrics", metrics_handler, methods=["GET"]))
