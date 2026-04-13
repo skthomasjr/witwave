@@ -1,10 +1,7 @@
 import asyncio
-import hmac as hmac_mod
-import json
 import logging
 import os
 import time
-from collections import deque
 from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import datetime, timezone
 
@@ -19,6 +16,7 @@ from a2a.types import (
     AgentCard,
     AgentSkill,
 )
+from conversations import make_conversations_handler, make_trace_handler
 import executor as _executor_module
 from executor import AgentExecutor
 from metrics import (
@@ -59,36 +57,6 @@ CONVERSATIONS_AUTH_TOKEN = os.environ.get("CONVERSATIONS_AUTH_TOKEN", "")
 _ready: bool = False
 _startup_mono: float = 0.0
 start_time: datetime = datetime.now(timezone.utc)
-
-
-def _read_jsonl(path: str, since_dt: datetime | None, limit_n: int | None) -> list:
-    """Read a JSONL log file, optionally filtering by timestamp and limiting results.
-
-    Designed to be called via asyncio.to_thread to avoid blocking the event loop.
-    Uses deque(maxlen=limit_n) so only the last limit_n entries are kept in memory.
-    """
-    entries: deque = deque(maxlen=limit_n)
-    try:
-        with open(path) as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    entry = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if since_dt:
-                    try:
-                        ts = datetime.fromisoformat(entry.get("ts", "").replace("Z", "+00:00"))
-                        if ts < since_dt:
-                            continue
-                    except ValueError:
-                        continue
-                entries.append(entry)
-    except FileNotFoundError:
-        pass
-    return list(entries)
 
 
 def load_agent_description() -> str:
@@ -279,45 +247,8 @@ async def main():
         body = prometheus_client.exposition.generate_latest()
         return Response(content=body, media_type=prometheus_client.exposition.CONTENT_TYPE_LATEST)
 
-    async def conversations_handler(request: Request) -> JSONResponse:
-        if CONVERSATIONS_AUTH_TOKEN:
-            header = request.headers.get("Authorization", "")
-            if not hmac_mod.compare_digest(f"Bearer {CONVERSATIONS_AUTH_TOKEN}", header):
-                return JSONResponse({"error": "unauthorized"}, status_code=401)
-        since = request.query_params.get("since")
-        limit = request.query_params.get("limit")
-        try:
-            limit_n = int(limit) if limit else None
-        except ValueError:
-            return JSONResponse({"error": "invalid limit"}, status_code=400)
-        since_dt: datetime | None = None
-        if since:
-            try:
-                since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
-            except ValueError:
-                return JSONResponse({"error": "invalid since"}, status_code=400)
-        entries = await asyncio.to_thread(_read_jsonl, CONVERSATION_LOG, since_dt, limit_n)
-        return JSONResponse(entries)
-
-    async def trace_handler(request: Request) -> JSONResponse:
-        if CONVERSATIONS_AUTH_TOKEN:
-            header = request.headers.get("Authorization", "")
-            if not hmac_mod.compare_digest(f"Bearer {CONVERSATIONS_AUTH_TOKEN}", header):
-                return JSONResponse({"error": "unauthorized"}, status_code=401)
-        since = request.query_params.get("since")
-        limit = request.query_params.get("limit")
-        try:
-            limit_n = int(limit) if limit else None
-        except ValueError:
-            return JSONResponse({"error": "invalid limit"}, status_code=400)
-        since_dt: datetime | None = None
-        if since:
-            try:
-                since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
-            except ValueError:
-                return JSONResponse({"error": "invalid since"}, status_code=400)
-        entries = await asyncio.to_thread(_read_jsonl, TRACE_LOG, since_dt, limit_n)
-        return JSONResponse(entries)
+    conversations_handler = make_conversations_handler(CONVERSATIONS_AUTH_TOKEN, CONVERSATION_LOG)
+    trace_handler = make_trace_handler(CONVERSATIONS_AUTH_TOKEN, TRACE_LOG)
 
     _routes = [
         Route("/health", health),
