@@ -61,6 +61,14 @@ TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/trace.jsonl")
 AGENT_MD = os.environ.get("AGENT_MD", "/home/agent/agent.md")
 SESSION_STORE_DIR = os.environ.get("SESSION_STORE_DIR", "/home/agent/memory/sessions")
 
+# Ensure the sessions directory exists once at module load time rather than
+# on every _session_path() call.  This eliminates a redundant os.makedirs
+# syscall on the hot path for every prompt (see #320).
+try:
+    os.makedirs(SESSION_STORE_DIR, exist_ok=True)
+except OSError:
+    pass  # read-only or not yet mounted — will fail naturally on first write
+
 MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "10000"))
 TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
 # Maximum number of bytes of prompt text included in INFO-level log messages.
@@ -118,7 +126,6 @@ async def log_trace(text: str) -> None:
 
 
 def _session_path(session_id: str) -> str:
-    os.makedirs(SESSION_STORE_DIR, exist_ok=True)
     return os.path.join(SESSION_STORE_DIR, f"{session_id}.json")
 
 
