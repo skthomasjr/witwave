@@ -16,6 +16,11 @@ spec:
       labels:
         {{- include "nyx.agentLabels" .name | nindent 8 }}
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
       {{- if .imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml .imagePullSecrets | nindent 8 }}
@@ -87,6 +92,10 @@ spec:
         {{- end }}
         - name: nyx-agent
           image: {{ .image.repository }}:{{ .image.tag | default $.Chart.AppVersion }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           ports:
             - name: http
               containerPort: {{ .port | default 8000 }}
@@ -149,6 +158,10 @@ spec:
 {{- $storageEnabled := ((.storage).enabled) }}
         - name: {{ .name }}
           image: {{ .image.repository }}:{{ .image.tag | default $.Chart.AppVersion }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           ports:
             - containerPort: {{ .port }}
           livenessProbe:
