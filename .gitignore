@@ -35,5 +35,3 @@ node_modules/
 .claude/projects/
 .claude/plans/
 .claude/backups/
-charts/**/values-dev.yaml
-charts/**/values-test.yaml

@@ -1,0 +1,101 @@
+sharedStorage:
+  enabled: true
+  storageType: pvc
+  mountPath: /data/shared
+  existingClaim: nyx-shared
+
+metrics:
+  enabled: false
+
+agents:
+  - name: adam
+    image:
+      repository: ghcr.io/skthomasjr/images/nyx-agent
+      tag: "0.1.1-beta.6"
+    imagePullSecrets:
+      - name: ghcr-credentials
+    gitSyncs:
+      - name: autonomous-agent
+        repo: https://github.com/skthomasjr/autonomous-agent
+        ref: main
+        depth: 1
+        period: 60s
+        envFrom:
+          - secretRef:
+              name: git-sync-credentials
+    gitMappings:
+      - gitSync: autonomous-agent
+        src: .agents/dev/adam/.nyx/
+        dest: /home/agent/.nyx/
+
+    backends:
+      - name: claude
+        image:
+          repository: ghcr.io/skthomasjr/images/a2-claude
+          tag: "0.1.1-beta.6"
+        port: 8080
+        model: claude-opus-4-6
+        envFrom:
+          - secretRef:
+              name: adam-claude-secrets
+        gitMappings:
+          - gitSync: autonomous-agent
+            src: .agents/dev/adam/.claude/
+            dest: /home/agent/.claude/
+        storage:
+          enabled: true
+          mounts:
+            - subPath: claude-projects
+              mountPath: /home/agent/.claude/projects
+            - subPath: claude-sessions
+              mountPath: /home/agent/.claude/sessions
+            - subPath: claude-backups
+              mountPath: /home/agent/.claude/backups
+            - subPath: memory
+              mountPath: /home/agent/memory
+
+  - name: eve
+    image:
+      repository: ghcr.io/skthomasjr/images/nyx-agent
+      tag: "0.1.1-beta.6"
+    imagePullSecrets:
+      - name: ghcr-credentials
+    gitSyncs:
+      - name: autonomous-agent
+        repo: https://github.com/skthomasjr/autonomous-agent
+        ref: main
+        depth: 1
+        period: 60s
+        envFrom:
+          - secretRef:
+              name: git-sync-credentials
+    gitMappings:
+      - gitSync: autonomous-agent
+        src: .agents/dev/eve/.nyx/
+        dest: /home/agent/.nyx/
+
+    backends:
+      - name: claude
+        image:
+          repository: ghcr.io/skthomasjr/images/a2-claude
+          tag: "0.1.1-beta.6"
+        port: 8080
+        model: claude-opus-4-6
+        envFrom:
+          - secretRef:
+              name: eve-claude-secrets
+        gitMappings:
+          - gitSync: autonomous-agent
+            src: .agents/dev/eve/.claude/
+            dest: /home/agent/.claude/
+        storage:
+          enabled: true
+          mounts:
+            - subPath: claude-projects
+              mountPath: /home/agent/.claude/projects
+            - subPath: claude-sessions
+              mountPath: /home/agent/.claude/sessions
+            - subPath: claude-backups
+              mountPath: /home/agent/.claude/backups
+            - subPath: memory
+              mountPath: /home/agent/memory
