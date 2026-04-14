@@ -25,7 +25,7 @@ Generate a git-mapping emptyDir volume name from agent, context, and dest path.
 Usage: {{- include "nyx.gmVolumeName" (dict "agentName" $agentName "context" "agent" "dest" .dest) }}
 */}}
 {{- define "nyx.gmVolumeName" -}}
-gm-{{ .agentName }}-{{ .context }}-{{ .dest | trimPrefix "/home/agent/" | replace "/" "-" | replace "." "" | trimSuffix "-" }}
+gm-{{ .agentName }}-{{ .context }}-{{ .dest | trimPrefix "/home/agent/" | trimPrefix "." | replace "/" "-" | replace "." "-" | trimSuffix "-" }}
 {{- end }}
 
 {{/*
