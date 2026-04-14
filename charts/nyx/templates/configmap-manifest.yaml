@@ -1,0 +1,22 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-manifest
+  labels:
+    app.kubernetes.io/component: nyx-manifest
+    app.kubernetes.io/part-of: nyx
+    app.kubernetes.io/managed-by: helm
+data:
+  manifest.json: |
+    {
+      "team": [
+        {{- $agents := .Values.agents }}
+        {{- range $i, $agent := $agents }}
+        {
+          "name": {{ $agent.name | quote }},
+          "url": "http://{{ $.Release.Name }}-{{ $agent.name }}:8000"
+        }{{ if lt $i (sub (len $agents) 1) }},{{ end }}
+        {{- end }}
+      ]
+    }

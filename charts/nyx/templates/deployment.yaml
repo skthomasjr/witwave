@@ -104,6 +104,9 @@ spec:
             {{- toYaml .envFrom | nindent 12 }}
           {{- end }}
           volumeMounts:
+            - name: manifest
+              mountPath: /home/agent/manifest.json
+              subPath: manifest.json
             - name: backend-config
               mountPath: /home/agent/.nyx/backend.yaml
               subPath: backend.yaml
@@ -184,6 +187,9 @@ spec:
             {{- end }}
 {{- end }}
       volumes:
+        - name: manifest
+          configMap:
+            name: {{ $.Release.Name }}-manifest
         - name: backend-config
           configMap:
             name: {{ $.Release.Name }}-{{ .name }}-backend
