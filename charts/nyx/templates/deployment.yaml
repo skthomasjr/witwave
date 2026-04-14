@@ -24,49 +24,53 @@ spec:
       imagePullSecrets:
         {{- toYaml .imagePullSecrets | nindent 8 }}
       {{- end }}
-      {{- if (.gitSync).enabled }}
+      {{- if .gitSyncs }}
       initContainers:
-        - name: git-sync-init
-          image: {{ (.gitSync).image | default "registry.k8s.io/git-sync/git-sync:v4.4.0" }}
+        {{- range .gitSyncs }}
+        - name: git-sync-init-{{ .name }}
+          image: {{ .image | default "registry.k8s.io/git-sync/git-sync:v4.4.0" }}
           args:
-            - --repo={{ (.gitSync).repo }}
+            - --repo={{ .repo }}
             - --root=/git
             - --one-time
-            {{- if (.gitSync).ref }}
-            - --ref={{ (.gitSync).ref }}
+            {{- if .ref }}
+            - --ref={{ .ref }}
             {{- end }}
-            {{- if (.gitSync).depth }}
-            - --depth={{ (.gitSync).depth | toString }}
+            {{- if .depth }}
+            - --depth={{ .depth | toString }}
             {{- end }}
-          {{- if (.gitSync).envFrom }}
+          {{- if .envFrom }}
           envFrom:
-            {{- toYaml (.gitSync).envFrom | nindent 12 }}
+            {{- toYaml .envFrom | nindent 12 }}
           {{- end }}
           volumeMounts:
             - name: git-sync-data
               mountPath: /git
+        {{- end }}
       {{- end }}
       containers:
-        {{- if (.gitSync).enabled }}
-        - name: git-sync
-          image: {{ (.gitSync).image | default "registry.k8s.io/git-sync/git-sync:v4.4.0" }}
+        {{- if .gitSyncs }}
+        {{- range .gitSyncs }}
+        - name: git-sync-{{ .name }}
+          image: {{ .image | default "registry.k8s.io/git-sync/git-sync:v4.4.0" }}
           args:
-            - --repo={{ (.gitSync).repo }}
+            - --repo={{ .repo }}
             - --root=/git
-            - --period={{ (.gitSync).period | default "60s" }}
-            {{- if (.gitSync).ref }}
-            - --ref={{ (.gitSync).ref }}
+            - --period={{ .period | default "60s" }}
+            {{- if .ref }}
+            - --ref={{ .ref }}
             {{- end }}
-            {{- if (.gitSync).depth }}
-            - --depth={{ (.gitSync).depth | toString }}
+            {{- if .depth }}
+            - --depth={{ .depth | toString }}
             {{- end }}
-          {{- if (.gitSync).envFrom }}
+          {{- if .envFrom }}
           envFrom:
-            {{- toYaml (.gitSync).envFrom | nindent 12 }}
+            {{- toYaml .envFrom | nindent 12 }}
           {{- end }}
           volumeMounts:
             - name: git-sync-data
               mountPath: /git
+        {{- end }}
         {{- end }}
         - name: nyx-agent
           image: {{ .image.repository }}:{{ .image.tag | default $.Chart.AppVersion }}
@@ -90,7 +94,7 @@ spec:
             - name: backend-config
               mountPath: /home/agent/.nyx/backend.yaml
               subPath: backend.yaml
-            {{- if (.gitSync).enabled }}
+            {{- if .gitSyncs }}
             - name: git-sync-data
               mountPath: /git
             {{- end }}
@@ -107,7 +111,7 @@ spec:
             {{- end }}
 {{- $agentName := .name }}
 {{- $agentMetricsEnabled := (.metrics).enabled | default $.Values.metrics.enabled }}
-{{- $gitSyncEnabled := (.gitSync).enabled }}
+{{- $hasGitSyncs := .gitSyncs }}
 {{- range .backends }}
 {{- $storageEnabled := ((.storage).enabled) }}
         - name: {{ .name }}
@@ -143,7 +147,7 @@ spec:
               subPath: {{ .subPath }}
             {{- end }}
             {{- end }}
-            {{- if $gitSyncEnabled }}
+            {{- if $hasGitSyncs }}
             - name: git-sync-data
               mountPath: /git
             {{- end }}
@@ -164,7 +168,7 @@ spec:
         - name: backend-config
           configMap:
             name: nyx-{{ .name }}-backend
-        {{- if (.gitSync).enabled }}
+        {{- if .gitSyncs }}
         - name: git-sync-data
           emptyDir: {}
         {{- end }}
