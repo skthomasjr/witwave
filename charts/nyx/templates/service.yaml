@@ -5,9 +5,7 @@ kind: Service
 metadata:
   name: nyx-{{ .name }}
   labels:
-    app.kubernetes.io/name: {{ .name }}
-    app.kubernetes.io/component: nyx-agent
-    app.kubernetes.io/part-of: nyx
+    {{- include "nyx.agentLabels" .name | nindent 4 }}
 spec:
   selector:
     app.kubernetes.io/name: {{ .name }}

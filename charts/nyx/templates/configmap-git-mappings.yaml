@@ -14,6 +14,7 @@ metadata:
   labels:
     app.kubernetes.io/component: nyx-git-sync
     app.kubernetes.io/part-of: nyx
+    app.kubernetes.io/managed-by: helm
 data:
   git-sync.sh: |
     #!/bin/sh
@@ -65,9 +66,7 @@ kind: ConfigMap
 metadata:
   name: nyx-{{ $agentName }}-git-mappings
   labels:
-    app.kubernetes.io/name: {{ $agentName }}
-    app.kubernetes.io/component: nyx-agent
-    app.kubernetes.io/part-of: nyx
+    {{- include "nyx.agentLabels" $agentName | nindent 4 }}
 data:
   mappings.yaml: |
     {{- range .gitMappings }}
@@ -83,9 +82,7 @@ kind: ConfigMap
 metadata:
   name: nyx-{{ $agentName }}-{{ .name }}-git-mappings
   labels:
-    app.kubernetes.io/name: {{ $agentName }}
-    app.kubernetes.io/component: {{ .name }}-backend
-    app.kubernetes.io/part-of: nyx
+    {{- include "nyx.backendLabels" (dict "agentName" $agentName "backendName" .name) | nindent 4 }}
 data:
   mappings.yaml: |
     {{- range .gitMappings }}

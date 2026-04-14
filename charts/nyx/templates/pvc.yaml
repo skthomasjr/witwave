@@ -31,9 +31,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: nyx-{{ $agentName }}-{{ .name }}-data
   labels:
-    app.kubernetes.io/name: {{ $agentName }}
-    app.kubernetes.io/component: backend-storage
-    app.kubernetes.io/part-of: nyx
+    {{- include "nyx.backendLabels" (dict "agentName" $agentName "backendName" .name) | nindent 4 }}
 spec:
   accessModes:
     - ReadWriteOnce

@@ -5,9 +5,7 @@ kind: Deployment
 metadata:
   name: nyx-{{ .name }}
   labels:
-    app.kubernetes.io/name: {{ .name }}
-    app.kubernetes.io/component: nyx-agent
-    app.kubernetes.io/part-of: nyx
+    {{- include "nyx.agentLabels" .name | nindent 4 }}
 spec:
   replicas: 1
   selector:
@@ -16,19 +14,14 @@ spec:
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: {{ .name }}
-        app.kubernetes.io/component: nyx-agent
-        app.kubernetes.io/part-of: nyx
+        {{- include "nyx.agentLabels" .name | nindent 8 }}
     spec:
       {{- if .imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml .imagePullSecrets | nindent 8 }}
       {{- end }}
       {{- if .gitSyncs }}
-      {{- $agentForInit := . }}
-      {{- $hasMappingsForInit := false }}
-      {{- if .gitMappings }}{{- $hasMappingsForInit = true }}{{- end }}
-      {{- range .backends }}{{- if .gitMappings }}{{- $hasMappingsForInit = true }}{{- end }}{{- end }}
+      {{- $agent := . }}
       initContainers:
         {{- range .gitSyncs }}
         - name: git-sync-init-{{ .name }}
@@ -51,39 +44,19 @@ spec:
             - name: git-sync-data
               mountPath: /git
         {{- end }}
-        {{- if $hasMappingsForInit }}
+        {{- if include "nyx.hasMappings" $agent }}
         - name: git-map-init
           image: debian:bookworm-slim
           command: ["/bin/sh", "/nyx-scripts/git-sync.sh"]
           volumeMounts:
             - name: git-sync-data
               mountPath: /git
-            - name: nyx-git-sync-script
-              mountPath: /nyx-scripts
-            {{- if $agentForInit.gitMappings }}
-            - name: nyx-{{ $agentForInit.name }}-git-mappings
-              mountPath: /nyx-mappings/agent
-            {{- range $agentForInit.gitMappings }}
-            - name: gm-{{ $agentForInit.name }}-agent-{{ .dest | trimPrefix "/home/agent/" | replace "/" "-" | replace "." "" | trimSuffix "-" }}
-              mountPath: {{ .dest }}
-            {{- end }}
-            {{- end }}
-            {{- range $agentForInit.backends }}
-            {{- if .gitMappings }}
-            - name: nyx-{{ $agentForInit.name }}-{{ .name }}-git-mappings
-              mountPath: /nyx-mappings/{{ .name }}
-            {{- $backendName := .name }}
-            {{- range .gitMappings }}
-            - name: gm-{{ $agentForInit.name }}-{{ $backendName }}-{{ .dest | trimPrefix "/home/agent/" | replace "/" "-" | replace "." "" | trimSuffix "-" }}
-              mountPath: {{ .dest }}
-            {{- end }}
-            {{- end }}
-            {{- end }}
+            {{- include "nyx.gitMappingMounts" $agent | nindent 12 }}
         {{- end }}
       {{- end }}
       containers:
         {{- if .gitSyncs }}
-        {{- $agentForGitSync := . }}
+        {{- $agent := . }}
         {{- range .gitSyncs }}
         - name: git-sync-{{ .name }}
           image: {{ .image | default "registry.k8s.io/git-sync/git-sync:v4.4.0" }}
@@ -97,10 +70,7 @@ spec:
             {{- if .depth }}
             - --depth={{ .depth | toString }}
             {{- end }}
-            {{- $hasMappings := false }}
-            {{- if $agentForGitSync.gitMappings }}{{- $hasMappings = true }}{{- end }}
-            {{- range $agentForGitSync.backends }}{{- if .gitMappings }}{{- $hasMappings = true }}{{- end }}{{- end }}
-            {{- if $hasMappings }}
+            {{- if include "nyx.hasMappings" $agent }}
             - --exechook-command=/bin/sh /nyx-scripts/git-sync.sh
             {{- end }}
           {{- if .envFrom }}
@@ -110,31 +80,8 @@ spec:
           volumeMounts:
             - name: git-sync-data
               mountPath: /git
-            {{- $hasMappings := false }}
-            {{- if $agentForGitSync.gitMappings }}{{- $hasMappings = true }}{{- end }}
-            {{- range $agentForGitSync.backends }}{{- if .gitMappings }}{{- $hasMappings = true }}{{- end }}{{- end }}
-            {{- if $hasMappings }}
-            - name: nyx-git-sync-script
-              mountPath: /nyx-scripts
-            {{- if $agentForGitSync.gitMappings }}
-            - name: nyx-{{ $agentForGitSync.name }}-git-mappings
-              mountPath: /nyx-mappings/agent
-            {{- range $agentForGitSync.gitMappings }}
-            - name: gm-{{ $agentForGitSync.name }}-agent-{{ .dest | trimPrefix "/home/agent/" | replace "/" "-" | replace "." "" | trimSuffix "-" }}
-              mountPath: {{ .dest }}
-            {{- end }}
-            {{- end }}
-            {{- range $agentForGitSync.backends }}
-            {{- if .gitMappings }}
-            - name: nyx-{{ $agentForGitSync.name }}-{{ .name }}-git-mappings
-              mountPath: /nyx-mappings/{{ .name }}
-            {{- $backendName := .name }}
-            {{- range .gitMappings }}
-            - name: gm-{{ $agentForGitSync.name }}-{{ $backendName }}-{{ .dest | trimPrefix "/home/agent/" | replace "/" "-" | replace "." "" | trimSuffix "-" }}
-              mountPath: {{ .dest }}
-            {{- end }}
-            {{- end }}
-            {{- end }}
+            {{- if include "nyx.hasMappings" $agent }}
+            {{- include "nyx.gitMappingMounts" $agent | nindent 12 }}
             {{- end }}
         {{- end }}
         {{- end }}
@@ -164,19 +111,15 @@ spec:
             - name: git-sync-data
               mountPath: /git
             {{- end }}
-            {{- if .gitMappings }}
-            {{- $agentNameForMount := .name }}
+            {{- $agentNameForGM := .name }}
             {{- range .gitMappings }}
-            - name: gm-{{ $agentNameForMount }}-agent-{{ .dest | trimPrefix "/home/agent/" | replace "/" "-" | replace "." "" | trimSuffix "-" }}
+            - name: {{ include "nyx.gmVolumeName" (dict "agentName" $agentNameForGM "context" "agent" "dest" .dest) }}
               mountPath: {{ .dest }}
             {{- end }}
-            {{- end }}
-            {{- if .config }}
             {{- range .config }}
             - name: nyx-agent-config
               mountPath: {{ .mountPath }}
               subPath: {{ .name }}
-            {{- end }}
             {{- end }}
             {{- if $.Values.sharedStorage.enabled }}
             - name: nyx-shared
@@ -185,7 +128,6 @@ spec:
 {{- $agentName := .name }}
 {{- $agentMetricsEnabled := (.metrics).enabled | default $.Values.metrics.enabled }}
 {{- $hasGitSyncs := .gitSyncs }}
-{{- $agentGitMappings := .gitMappings }}
 {{- range .backends }}
 {{- $storageEnabled := ((.storage).enabled) }}
         - name: {{ .name }}
@@ -225,24 +167,20 @@ spec:
             - name: git-sync-data
               mountPath: /git
             {{- end }}
-            {{- if .gitMappings }}
             {{- $backendName := .name }}
             {{- range .gitMappings }}
-            - name: gm-{{ $agentName }}-{{ $backendName }}-{{ .dest | trimPrefix "/home/agent/" | replace "/" "-" | replace "." "" | trimSuffix "-" }}
+            - name: {{ include "nyx.gmVolumeName" (dict "agentName" $agentName "context" $backendName "dest" .dest) }}
               mountPath: {{ .dest }}
-            {{- end }}
             {{- end }}
             {{- if $.Values.sharedStorage.enabled }}
             - name: nyx-shared
               mountPath: {{ $.Values.sharedStorage.mountPath }}
             {{- end }}
-            {{- if .config }}
             {{- $backendName := .name }}
             {{- range .config }}
             - name: {{ $backendName }}-config
               mountPath: {{ .mountPath }}
               subPath: {{ .name }}
-            {{- end }}
             {{- end }}
 {{- end }}
       volumes:
@@ -281,33 +219,7 @@ spec:
             claimName: {{ $.Values.sharedStorage.existingClaim | default "nyx-shared" }}
           {{- end }}
         {{- end }}
-        {{- $hasMappings := false }}
-        {{- if .gitMappings }}{{- $hasMappings = true }}{{- end }}
-        {{- range .backends }}{{- if .gitMappings }}{{- $hasMappings = true }}{{- end }}{{- end }}
-        {{- if $hasMappings }}
-        - name: nyx-git-sync-script
-          configMap:
-            name: nyx-git-sync-script
-        {{- if .gitMappings }}
-        - name: nyx-{{ .name }}-git-mappings
-          configMap:
-            name: nyx-{{ .name }}-git-mappings
-        {{- range .gitMappings }}
-        - name: gm-{{ $agentName }}-agent-{{ .dest | trimPrefix "/home/agent/" | replace "/" "-" | replace "." "" | trimSuffix "-" }}
-          emptyDir: {}
-        {{- end }}
-        {{- end }}
-        {{- range .backends }}
-        {{- if .gitMappings }}
-        - name: nyx-{{ $agentName }}-{{ .name }}-git-mappings
-          configMap:
-            name: nyx-{{ $agentName }}-{{ .name }}-git-mappings
-        {{- $backendName := .name }}
-        {{- range .gitMappings }}
-        - name: gm-{{ $agentName }}-{{ $backendName }}-{{ .dest | trimPrefix "/home/agent/" | replace "/" "-" | replace "." "" | trimSuffix "-" }}
-          emptyDir: {}
-        {{- end }}
-        {{- end }}
-        {{- end }}
+        {{- if include "nyx.hasMappings" . }}
+        {{- include "nyx.gitMappingVolumes" . | nindent 8 }}
         {{- end }}
 {{- end }}

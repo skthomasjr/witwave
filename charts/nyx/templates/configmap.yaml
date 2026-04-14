@@ -7,9 +7,7 @@ kind: ConfigMap
 metadata:
   name: nyx-{{ .name }}-backend
   labels:
-    app.kubernetes.io/name: {{ .name }}
-    app.kubernetes.io/component: nyx-agent
-    app.kubernetes.io/part-of: nyx
+    {{- include "nyx.agentLabels" .name | nindent 4 }}
 data:
   backend.yaml: |
     backend:
