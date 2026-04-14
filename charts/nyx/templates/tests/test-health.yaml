@@ -20,10 +20,10 @@ spec:
         - |
           set -e
           echo "Testing nyx-agent health/ready for {{ .name }}..."
-          curl -sf http://{{ $.Release.Name }}-{{ .name }}:8000/health/ready
+          curl -sf http://{{ $.Release.Name }}-{{ .name }}:{{ .port | default 8000 }}/health/ready
           echo ""
           echo "Testing A2A discovery for {{ .name }}..."
-          curl -sf http://{{ $.Release.Name }}-{{ .name }}:8000/.well-known/agent.json
+          curl -sf http://{{ $.Release.Name }}-{{ .name }}:{{ .port | default 8000 }}/.well-known/agent.json
           echo ""
           echo "All checks passed for {{ .name }}."
 {{- end }}

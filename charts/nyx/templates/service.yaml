@@ -9,7 +9,7 @@ metadata:
   {{- if ((.metrics).enabled | default $.Values.metrics.enabled) }}
   annotations:
     prometheus.io/scrape: "true"
-    prometheus.io/port: "8000"
+    prometheus.io/port: {{ .port | default 8000 | quote }}
     prometheus.io/path: "/metrics"
   {{- end }}
 spec:
@@ -17,6 +17,6 @@ spec:
     app.kubernetes.io/name: {{ .name }}
   ports:
     - name: http
-      port: 8000
-      targetPort: 8000
+      port: {{ .port | default 8000 }}
+      targetPort: {{ .port | default 8000 }}
 {{- end }}

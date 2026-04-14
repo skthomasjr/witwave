@@ -15,7 +15,7 @@ data:
         {{- range $i, $agent := $agents }}
         {
           "name": {{ $agent.name | quote }},
-          "url": "http://{{ $.Release.Name }}-{{ $agent.name }}:8000"
+          "url": "http://{{ $.Release.Name }}-{{ $agent.name }}:{{ $agent.port | default 8000 }}"
         }{{ if lt $i (sub (len $agents) 1) }},{{ end }}
         {{- end }}
       ]

@@ -42,6 +42,10 @@ agents:
   - # Agent name. Used as the pod name prefix, service name, and AGENT_NAME env var.
     name: adam
 
+    # Port the nyx-agent listens on. Also used for the Service and health probes.
+    # Must be unique per agent when multiple agents share a namespace with hostPort.
+    port: 8000
+
     # nyx-agent orchestrator image.
     image:
       # Image repository.

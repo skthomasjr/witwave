@@ -89,17 +89,17 @@ spec:
           image: {{ .image.repository }}:{{ .image.tag | default $.Chart.AppVersion }}
           ports:
             - name: http
-              containerPort: 8000
+              containerPort: {{ .port | default 8000 }}
           livenessProbe:
             httpGet:
               path: /health/live
-              port: 8000
+              port: {{ .port | default 8000 }}
             initialDelaySeconds: 10
             periodSeconds: 30
           readinessProbe:
             httpGet:
               path: /health/ready
-              port: 8000
+              port: {{ .port | default 8000 }}
             initialDelaySeconds: 5
             periodSeconds: 10
           {{- if .resources }}
@@ -109,6 +109,8 @@ spec:
           env:
             - name: AGENT_NAME
               value: {{ .name }}
+            - name: AGENT_PORT
+              value: {{ .port | default 8000 | quote }}
             - name: METRICS_ENABLED
               value: {{ (.metrics).enabled | default $.Values.metrics.enabled | toString | quote }}
           {{- if .envFrom }}
