@@ -389,10 +389,16 @@ class AgentExecutor(A2AAgentExecutor):
         return None
 
     def _resolve_model(self, message_model: str | None, routing_entry: RoutingEntry | None, backend_id: str) -> str | None:
-        """Resolve the model to use: per-message → routing entry → per-backend config."""
+        """Resolve the model to use: per-message → routing entry → per-backend config.
+
+        The routing entry model is only applied when the routing entry's agent matches
+        the resolved backend. If a per-item agent override redirects to a different
+        backend, the routing entry model is irrelevant and we fall through to the
+        per-backend config model instead.
+        """
         if message_model:
             return message_model
-        if routing_entry and routing_entry.model:
+        if routing_entry and routing_entry.model and (routing_entry.agent is None or routing_entry.agent == backend_id):
             return routing_entry.model
         backend = self._backends.get(backend_id)
         if backend is not None and backend._config.model:

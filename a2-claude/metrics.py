@@ -321,22 +321,22 @@ if _enabled:
     a2_sdk_errors_total = prometheus_client.Counter(
         "a2_sdk_errors_total",
         "Total stderr/error lines emitted by the backend subprocess.",
-        ["agent", "agent_id", "backend"],
+        ["agent", "agent_id", "backend", "model"],
     )
     a2_sdk_result_errors_total = prometheus_client.Counter(
         "a2_sdk_result_errors_total",
         "Total backend result errors returned during run_query().",
-        ["agent", "agent_id", "backend"],
+        ["agent", "agent_id", "backend", "model"],
     )
     a2_sdk_client_errors_total = prometheus_client.Counter(
         "a2_sdk_client_errors_total",
         "Total backend client connection-level failures (setup/teardown).",
-        ["agent", "agent_id", "backend"],
+        ["agent", "agent_id", "backend", "model"],
     )
     a2_sdk_context_fetch_errors_total = prometheus_client.Counter(
         "a2_sdk_context_fetch_errors_total",
         "Total context usage fetch failures.",
-        ["agent", "agent_id", "backend"],
+        ["agent", "agent_id", "backend", "model"],
     )
 
     # Tools
