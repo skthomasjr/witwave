@@ -55,6 +55,16 @@ agents:
     # imagePullSecrets:
     #   - name: ghcr-credentials
 
+    # # Resource requests and limits for the nyx-agent orchestrator container.
+    # # nyx-agent is lightweight (pure Python, no LLM) — CPU and memory needs are low.
+    # resources:
+    #   requests:
+    #     cpu: 50m
+    #     memory: 128Mi
+    #   limits:
+    #     cpu: 250m
+    #     memory: 256Mi
+
     # # Per-agent metrics override. Takes precedence over global metrics.enabled.
     # metrics:
     #   enabled: true
@@ -118,6 +128,18 @@ agents:
 
         # Default model for this backend.
         model: claude-opus-4-6
+
+        # # Resource requests and limits for this backend container.
+        # # Claude backends spawn a Claude Code subprocess per session — memory usage
+        # # scales with concurrent sessions and context window size. CPU is bursty
+        # # during active queries but mostly idle between them.
+        # resources:
+        #   requests:
+        #     cpu: 100m
+        #     memory: 512Mi
+        #   limits:
+        #     cpu: 2000m
+        #     memory: 2Gi
 
         # # Additional environment variables injected into the backend container.
         # env:

@@ -1,4 +1,5 @@
 {{- range .Values.agents }}
+{{- if .backends }}
 {{- $agent := . }}
 {{- $firstBackend := index .backends 0 }}
 ---
@@ -54,5 +55,6 @@ data:
           agent: {{ $firstBackend.name }}
 {{- if $firstBackend.model }}
           model: {{ $firstBackend.model }}
+{{- end }}
 {{- end }}
 {{- end }}
