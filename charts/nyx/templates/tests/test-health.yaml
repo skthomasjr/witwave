@@ -35,7 +35,12 @@ spec:
           curl -sf http://{{ $.Release.Name }}-{{ .name }}:{{ .port | default 8000 }}/.well-known/agent.json
           echo ""
           echo "Testing backend connectivity for {{ .name }}..."
-          curl -sf http://{{ $.Release.Name }}-{{ .name }}:{{ .port | default 8000 }}/agents
+          agents=$(curl -sf http://{{ $.Release.Name }}-{{ .name }}:{{ .port | default 8000 }}/agents)
+          echo "$agents"
+          {{- range .backends }}
+          echo "$agents" | grep -q '"id":"{{ .name }}"' || { echo "ERROR: backend {{ .name }} not found in /agents response" >&2; exit 1; }
+          echo "$agents" | grep -q '"id":"{{ .name }}".*"card":{' || { echo "ERROR: backend {{ .name }} card is null — backend may be unreachable" >&2; exit 1; }
+          {{- end }}
           echo ""
           echo "All checks passed for {{ .name }}."
 {{- end }}
