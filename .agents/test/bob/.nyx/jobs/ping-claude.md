@@ -1,0 +1,9 @@
+---
+name: Ping Claude
+description: Periodic ping to verify the Claude backend is responsive.
+agent: claude
+schedule: "*/5 * * * *"
+enabled: true
+---
+
+Respond with PING_OK.
