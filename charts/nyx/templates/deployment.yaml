@@ -25,6 +25,10 @@ spec:
         {{- toYaml .imagePullSecrets | nindent 8 }}
       {{- end }}
       {{- if .gitSyncs }}
+      {{- $agentForInit := . }}
+      {{- $hasMappingsForInit := false }}
+      {{- if .gitMappings }}{{- $hasMappingsForInit = true }}{{- end }}
+      {{- range .backends }}{{- if .gitMappings }}{{- $hasMappingsForInit = true }}{{- end }}{{- end }}
       initContainers:
         {{- range .gitSyncs }}
         - name: git-sync-init-{{ .name }}
@@ -46,6 +50,35 @@ spec:
           volumeMounts:
             - name: git-sync-data
               mountPath: /git
+        {{- end }}
+        {{- if $hasMappingsForInit }}
+        - name: git-map-init
+          image: debian:bookworm-slim
+          command: ["/bin/sh", "/nyx-scripts/git-sync.sh"]
+          volumeMounts:
+            - name: git-sync-data
+              mountPath: /git
+            - name: nyx-git-sync-script
+              mountPath: /nyx-scripts
+            {{- if $agentForInit.gitMappings }}
+            - name: nyx-{{ $agentForInit.name }}-git-mappings
+              mountPath: /nyx-mappings/agent
+            {{- range $agentForInit.gitMappings }}
+            - name: gm-{{ $agentForInit.name }}-agent-{{ .dest | trimPrefix "/home/agent/" | replace "/" "-" | replace "." "" | trimSuffix "-" }}
+              mountPath: {{ .dest }}
+            {{- end }}
+            {{- end }}
+            {{- range $agentForInit.backends }}
+            {{- if .gitMappings }}
+            - name: nyx-{{ $agentForInit.name }}-{{ .name }}-git-mappings
+              mountPath: /nyx-mappings/{{ .name }}
+            {{- $backendName := .name }}
+            {{- range .gitMappings }}
+            - name: gm-{{ $agentForInit.name }}-{{ $backendName }}-{{ .dest | trimPrefix "/home/agent/" | replace "/" "-" | replace "." "" | trimSuffix "-" }}
+              mountPath: {{ .dest }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
         {{- end }}
       {{- end }}
       containers:
