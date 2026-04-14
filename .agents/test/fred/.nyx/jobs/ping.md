@@ -1,5 +1,5 @@
 ---
-name: Heartbeat Check
+name: Ping
 description: Test job — verifies the job scheduler fires and the backend responds correctly.
 schedule: "*/5 * * * *"
 enabled: true
