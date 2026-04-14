@@ -1,7 +1,7 @@
 backend:
   agents:
     - id: claude
-      url: http://fred-a2-claude:8080
+      url: http://localhost:8089
       model: claude-opus-4-6
 
   routing:
