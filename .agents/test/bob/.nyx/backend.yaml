@@ -1,15 +1,15 @@
 backend:
   agents:
     - id: claude
-      url: http://bob-a2-claude:8080
+      url: http://localhost:8090
       model: claude-opus-4-6
 
     - id: codex
-      url: http://bob-a2-codex:8080
+      url: http://localhost:8091
       model: gpt-5.1-codex-max
 
     - id: gemini
-      url: http://bob-a2-gemini:8080
+      url: http://localhost:8092
 
   routing:
     default:
