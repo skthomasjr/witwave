@@ -20,6 +20,7 @@ data:
     #!/bin/sh
     set -e
     MAPPINGS_DIR="${1:-/nyx-mappings}"
+    failed=0
     apply_mappings() {
       MAPPINGS_FILE="$1"
       src=""
@@ -35,13 +36,17 @@ data:
               case "$src" in
                 */)
                   echo "Syncing dir  $src -> $dest"
-                  mkdir -p "$dest"
-                  cp -r "${src}." "$dest"
+                  if ! mkdir -p "$dest" || ! cp -r "${src}." "$dest"; then
+                    echo "ERROR: failed to sync dir $src -> $dest" >&2
+                    failed=1
+                  fi
                   ;;
                 *)
                   echo "Syncing file $src -> $dest"
-                  mkdir -p "$(dirname "$dest")"
-                  cp "$src" "$dest"
+                  if ! mkdir -p "$(dirname "$dest")" || ! cp "$src" "$dest"; then
+                    echo "ERROR: failed to sync file $src -> $dest" >&2
+                    failed=1
+                  fi
                   ;;
               esac
               src=""
@@ -56,6 +61,10 @@ data:
       echo "Applying mappings from $f"
       apply_mappings "$f"
     done
+    if [ "$failed" -ne 0 ]; then
+      echo "ERROR: one or more mappings failed" >&2
+      exit 1
+    fi
 {{- end }}
 {{- range .Values.agents }}
 {{- $agentName := .name }}
