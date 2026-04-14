@@ -6,6 +6,12 @@ metadata:
   name: {{ $.Release.Name }}-{{ .name }}
   labels:
     {{- include "nyx.agentLabels" .name | nindent 4 }}
+  {{- if ((.metrics).enabled | default $.Values.metrics.enabled) }}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8000"
+    prometheus.io/path: "/metrics"
+  {{- end }}
 spec:
   selector:
     app.kubernetes.io/name: {{ .name }}
