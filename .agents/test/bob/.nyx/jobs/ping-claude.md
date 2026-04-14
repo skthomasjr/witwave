@@ -2,7 +2,7 @@
 name: Ping Claude
 description: Periodic ping to verify the Claude backend is responsive.
 agent: claude
-schedule: "*/5 * * * *"
+schedule: "*/30 * * * *"
 enabled: true
 ---
 

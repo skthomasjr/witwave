@@ -2,7 +2,7 @@
 name: Ping Codex
 description: Periodic ping to verify the Codex backend is responsive.
 agent: codex
-schedule: "*/5 * * * *"
+schedule: "*/30 * * * *"
 enabled: true
 ---
 
