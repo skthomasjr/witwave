@@ -71,7 +71,7 @@ metadata:
 data:
   mappings.yaml: |
     {{- range .gitMappings }}
-    - src: /git/autonomous-agent/{{ .src }}
+    - src: /git/{{ .gitSync }}/{{ .src }}
       dest: {{ .dest }}
     {{- end }}
 {{- end }}
@@ -89,7 +89,7 @@ metadata:
 data:
   mappings.yaml: |
     {{- range .gitMappings }}
-    - src: /git/autonomous-agent/{{ .src }}
+    - src: /git/{{ .gitSync }}/{{ .src }}
       dest: {{ .dest }}
     {{- end }}
 {{- end }}
