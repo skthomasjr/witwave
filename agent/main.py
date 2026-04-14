@@ -223,9 +223,23 @@ async def health_live(request: Request) -> JSONResponse:
 async def health_ready(request: Request) -> JSONResponse:
     if agent_health_checks_total is not None:
         agent_health_checks_total.labels(probe="ready").inc()
-    if _ready:
-        return JSONResponse({"status": "ready"})
-    return JSONResponse({"status": "starting"}, status_code=503)
+    if not _ready:
+        return JSONResponse({"status": "starting"}, status_code=503)
+    import httpx
+    backend_configs = [b._config for b in executor._backends.values() if b._config.url]
+    if backend_configs:
+        async def _probe(backend, client) -> bool:
+            try:
+                resp = await client.get(backend.url.rstrip("/") + "/health")
+                return resp.status_code == 200
+            except Exception:
+                return False
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            results = await asyncio.gather(*[_probe(b, client) for b in backend_configs])
+        if not all(results):
+            unhealthy = [b.id for b, ok in zip(backend_configs, results) if not ok]
+            return JSONResponse({"status": "degraded", "unhealthy_backends": unhealthy}, status_code=503)
+    return JSONResponse({"status": "ready"})
 
 
 @asynccontextmanager
