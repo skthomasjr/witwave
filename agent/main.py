@@ -78,6 +78,7 @@ _cors_env = os.environ.get("CORS_ALLOW_ORIGINS", "")
 CORS_ALLOW_ORIGINS: list[str] = [o.strip() for o in _cors_env.split(",") if o.strip()] if _cors_env else []
 
 _ready: bool = False
+_executor: "AgentExecutor | None" = None
 _startup_mono: float = 0.0
 start_time: datetime = datetime.now(timezone.utc)
 
@@ -226,7 +227,7 @@ async def health_ready(request: Request) -> JSONResponse:
     if not _ready:
         return JSONResponse({"status": "starting"}, status_code=503)
     import httpx
-    backend_configs = [b._config for b in executor._backends.values() if b._config.url]
+    backend_configs = [b._config for b in _executor._backends.values() if b._config.url] if _executor else []
     if backend_configs:
         async def _probe(backend, client) -> bool:
             try:
@@ -424,6 +425,8 @@ async def main():
     bus = MessageBus()
     agent_card = build_agent_card()
     executor = AgentExecutor()
+    global _executor
+    _executor = executor
     _task_store_path = os.environ.get("TASK_STORE_PATH", "")
     if _task_store_path:
         logger.info("Using SqliteTaskStore at %s", _task_store_path)
