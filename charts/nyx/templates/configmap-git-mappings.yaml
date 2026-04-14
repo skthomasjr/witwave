@@ -1,0 +1,97 @@
+{{- $hasAnyMappings := false }}
+{{- range .Values.agents }}
+{{- if .gitMappings }}{{- $hasAnyMappings = true }}{{- end }}
+{{- range .backends }}
+{{- if .gitMappings }}{{- $hasAnyMappings = true }}{{- end }}
+{{- end }}
+{{- end }}
+{{- if $hasAnyMappings }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nyx-git-sync-script
+  labels:
+    app.kubernetes.io/component: nyx-git-sync
+    app.kubernetes.io/part-of: nyx
+data:
+  git-sync.sh: |
+    #!/bin/sh
+    set -e
+    MAPPINGS_DIR="${1:-/nyx-mappings}"
+    apply_mappings() {
+      MAPPINGS_FILE="$1"
+      src=""
+      dest=""
+      while IFS= read -r line; do
+        case "$line" in
+          *"src:"*)
+            src=$(echo "$line" | sed 's/.*src:[[:space:]]*//')
+            ;;
+          *"dest:"*)
+            dest=$(echo "$line" | sed 's/.*dest:[[:space:]]*//')
+            if [ -n "$src" ] && [ -n "$dest" ]; then
+              case "$src" in
+                */)
+                  echo "Syncing dir  $src -> $dest"
+                  mkdir -p "$dest"
+                  cp -r "${src}." "$dest"
+                  ;;
+                *)
+                  echo "Syncing file $src -> $dest"
+                  mkdir -p "$(dirname "$dest")"
+                  cp "$src" "$dest"
+                  ;;
+              esac
+              src=""
+              dest=""
+            fi
+            ;;
+        esac
+      done < "$MAPPINGS_FILE"
+    }
+    for f in "$MAPPINGS_DIR"/*/mappings.yaml; do
+      [ -f "$f" ] || continue
+      echo "Applying mappings from $f"
+      apply_mappings "$f"
+    done
+{{- end }}
+{{- range .Values.agents }}
+{{- $agentName := .name }}
+{{- if .gitMappings }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nyx-{{ $agentName }}-git-mappings
+  labels:
+    app.kubernetes.io/name: {{ $agentName }}
+    app.kubernetes.io/component: nyx-agent
+    app.kubernetes.io/part-of: nyx
+data:
+  mappings.yaml: |
+    {{- range .gitMappings }}
+    - src: /git/autonomous-agent/{{ .src }}
+      dest: {{ .dest }}
+    {{- end }}
+{{- end }}
+{{- range .backends }}
+{{- if .gitMappings }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nyx-{{ $agentName }}-{{ .name }}-git-mappings
+  labels:
+    app.kubernetes.io/name: {{ $agentName }}
+    app.kubernetes.io/component: {{ .name }}-backend
+    app.kubernetes.io/part-of: nyx
+data:
+  mappings.yaml: |
+    {{- range .gitMappings }}
+    - src: /git/autonomous-agent/{{ .src }}
+      dest: {{ .dest }}
+    {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

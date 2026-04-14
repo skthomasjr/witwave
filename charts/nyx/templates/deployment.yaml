@@ -50,6 +50,7 @@ spec:
       {{- end }}
       containers:
         {{- if .gitSyncs }}
+        {{- $agentForGitSync := . }}
         {{- range .gitSyncs }}
         - name: git-sync-{{ .name }}
           image: {{ .image | default "registry.k8s.io/git-sync/git-sync:v4.4.0" }}
@@ -63,6 +64,12 @@ spec:
             {{- if .depth }}
             - --depth={{ .depth | toString }}
             {{- end }}
+            {{- $hasMappings := false }}
+            {{- if $agentForGitSync.gitMappings }}{{- $hasMappings = true }}{{- end }}
+            {{- range $agentForGitSync.backends }}{{- if .gitMappings }}{{- $hasMappings = true }}{{- end }}{{- end }}
+            {{- if $hasMappings }}
+            - --exechook-command=/bin/sh /nyx-scripts/git-sync.sh
+            {{- end }}
           {{- if .envFrom }}
           envFrom:
             {{- toYaml .envFrom | nindent 12 }}
@@ -70,6 +77,23 @@ spec:
           volumeMounts:
             - name: git-sync-data
               mountPath: /git
+            {{- $hasMappings := false }}
+            {{- if $agentForGitSync.gitMappings }}{{- $hasMappings = true }}{{- end }}
+            {{- range $agentForGitSync.backends }}{{- if .gitMappings }}{{- $hasMappings = true }}{{- end }}{{- end }}
+            {{- if $hasMappings }}
+            - name: nyx-git-sync-script
+              mountPath: /nyx-scripts
+            {{- if $agentForGitSync.gitMappings }}
+            - name: nyx-{{ $agentForGitSync.name }}-git-mappings
+              mountPath: /nyx-mappings/agent
+            {{- end }}
+            {{- range $agentForGitSync.backends }}
+            {{- if .gitMappings }}
+            - name: nyx-{{ $agentForGitSync.name }}-{{ .name }}-git-mappings
+              mountPath: /nyx-mappings/{{ .name }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
         {{- end }}
         {{- end }}
         - name: nyx-agent
@@ -199,5 +223,25 @@ spec:
           persistentVolumeClaim:
             claimName: {{ $.Values.sharedStorage.existingClaim | default "nyx-shared" }}
           {{- end }}
+        {{- end }}
+        {{- $hasMappings := false }}
+        {{- if .gitMappings }}{{- $hasMappings = true }}{{- end }}
+        {{- range .backends }}{{- if .gitMappings }}{{- $hasMappings = true }}{{- end }}{{- end }}
+        {{- if $hasMappings }}
+        - name: nyx-git-sync-script
+          configMap:
+            name: nyx-git-sync-script
+        {{- if .gitMappings }}
+        - name: nyx-{{ .name }}-git-mappings
+          configMap:
+            name: nyx-{{ .name }}-git-mappings
+        {{- end }}
+        {{- range .backends }}
+        {{- if .gitMappings }}
+        - name: nyx-{{ $agentName }}-{{ .name }}-git-mappings
+          configMap:
+            name: nyx-{{ $agentName }}-{{ .name }}-git-mappings
+        {{- end }}
+        {{- end }}
         {{- end }}
 {{- end }}
