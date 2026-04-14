@@ -656,7 +656,7 @@ class AgentExecutor(A2AAgentExecutor):
                 logger.info("MCP config directory not found — retrying in 10s.")
                 await asyncio.sleep(10)
                 continue
-            async for changes in awatch(watch_dir):
+            async for changes in awatch(watch_dir, recursive=False):
                 if a2_watcher_events_total is not None:
                     a2_watcher_events_total.labels(**_LABELS, watcher="mcp").inc()
                 for _, path in changes:
@@ -689,7 +689,7 @@ class AgentExecutor(A2AAgentExecutor):
                 logger.info("CLAUDE.md directory not found — retrying in 10s.")
                 await asyncio.sleep(10)
                 continue
-            async for changes in awatch(watch_dir):
+            async for changes in awatch(watch_dir, recursive=False):
                 if a2_watcher_events_total is not None:
                     a2_watcher_events_total.labels(**_LABELS, watcher="agent_md").inc()
                 for _, path in changes:
