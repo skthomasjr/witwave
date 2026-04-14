@@ -137,9 +137,6 @@ spec:
             - name: manifest
               mountPath: /home/agent/manifest.json
               subPath: manifest.json
-            - name: backend-config
-              mountPath: /home/agent/.nyx/backend.yaml
-              subPath: backend.yaml
             {{- if .gitSyncs }}
             - name: git-sync-data
               mountPath: /git
@@ -245,9 +242,6 @@ spec:
         - name: manifest
           configMap:
             name: {{ $.Release.Name }}-manifest
-        - name: backend-config
-          configMap:
-            name: {{ $.Release.Name }}-{{ .name }}-backend
         {{- if .gitSyncs }}
         - name: git-sync-data
           emptyDir: {}
