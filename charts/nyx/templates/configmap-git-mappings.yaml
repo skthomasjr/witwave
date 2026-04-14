@@ -36,7 +36,7 @@ data:
               case "$src" in
                 */)
                   echo "Syncing dir  $src -> $dest"
-                  if ! mkdir -p "$dest" || ! cp -r "${src}." "$dest"; then
+                  if ! rm -rf "$dest" || ! mkdir -p "$dest" || ! cp -r "${src}." "$dest"; then
                     echo "ERROR: failed to sync dir $src -> $dest" >&2
                     failed=1
                   fi
