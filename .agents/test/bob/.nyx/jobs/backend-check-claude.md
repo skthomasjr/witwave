@@ -1,7 +1,6 @@
 ---
 name: Backend Check Claude
 description: Verifies the Claude backend is reachable and self-aware.
-schedule: "*/5 * * * *"
 agent: claude
 enabled: true
 ---

@@ -1,7 +1,6 @@
 ---
 name: Backend Check Codex
 description: Verifies the Codex backend is reachable and self-aware.
-schedule: "*/5 * * * *"
 agent: codex
 enabled: true
 ---
