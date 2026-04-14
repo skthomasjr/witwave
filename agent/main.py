@@ -179,7 +179,7 @@ def _check_trigger_auth(request: Request, item: TriggerItem, body_bytes: bytes) 
 
 def load_agent_description() -> str:
     try:
-        with open("/home/agent/agent-card.md") as f:
+        with open("/home/agent/.nyx/agent-card.md") as f:
             return f.read()
     except OSError:
         return os.environ.get("AGENT_DESCRIPTION", "A Claude Code agent.")

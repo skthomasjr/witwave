@@ -86,11 +86,20 @@ spec:
             {{- if $agentForGitSync.gitMappings }}
             - name: nyx-{{ $agentForGitSync.name }}-git-mappings
               mountPath: /nyx-mappings/agent
+            {{- range $agentForGitSync.gitMappings }}
+            - name: gm-{{ $agentForGitSync.name }}-agent-{{ .dest | trimPrefix "/home/agent/" | replace "/" "-" | replace "." "" | trimSuffix "-" }}
+              mountPath: {{ .dest }}
+            {{- end }}
             {{- end }}
             {{- range $agentForGitSync.backends }}
             {{- if .gitMappings }}
             - name: nyx-{{ $agentForGitSync.name }}-{{ .name }}-git-mappings
               mountPath: /nyx-mappings/{{ .name }}
+            {{- $backendName := .name }}
+            {{- range .gitMappings }}
+            - name: gm-{{ $agentForGitSync.name }}-{{ $backendName }}-{{ .dest | trimPrefix "/home/agent/" | replace "/" "-" | replace "." "" | trimSuffix "-" }}
+              mountPath: {{ .dest }}
+            {{- end }}
             {{- end }}
             {{- end }}
             {{- end }}
@@ -122,6 +131,13 @@ spec:
             - name: git-sync-data
               mountPath: /git
             {{- end }}
+            {{- if .gitMappings }}
+            {{- $agentNameForMount := .name }}
+            {{- range .gitMappings }}
+            - name: gm-{{ $agentNameForMount }}-agent-{{ .dest | trimPrefix "/home/agent/" | replace "/" "-" | replace "." "" | trimSuffix "-" }}
+              mountPath: {{ .dest }}
+            {{- end }}
+            {{- end }}
             {{- if .config }}
             {{- range .config }}
             - name: nyx-agent-config
@@ -136,6 +152,7 @@ spec:
 {{- $agentName := .name }}
 {{- $agentMetricsEnabled := (.metrics).enabled | default $.Values.metrics.enabled }}
 {{- $hasGitSyncs := .gitSyncs }}
+{{- $agentGitMappings := .gitMappings }}
 {{- range .backends }}
 {{- $storageEnabled := ((.storage).enabled) }}
         - name: {{ .name }}
@@ -174,6 +191,13 @@ spec:
             {{- if $hasGitSyncs }}
             - name: git-sync-data
               mountPath: /git
+            {{- end }}
+            {{- if .gitMappings }}
+            {{- $backendName := .name }}
+            {{- range .gitMappings }}
+            - name: gm-{{ $agentName }}-{{ $backendName }}-{{ .dest | trimPrefix "/home/agent/" | replace "/" "-" | replace "." "" | trimSuffix "-" }}
+              mountPath: {{ .dest }}
+            {{- end }}
             {{- end }}
             {{- if $.Values.sharedStorage.enabled }}
             - name: nyx-shared
@@ -235,12 +259,21 @@ spec:
         - name: nyx-{{ .name }}-git-mappings
           configMap:
             name: nyx-{{ .name }}-git-mappings
+        {{- range .gitMappings }}
+        - name: gm-{{ $agentName }}-agent-{{ .dest | trimPrefix "/home/agent/" | replace "/" "-" | replace "." "" | trimSuffix "-" }}
+          emptyDir: {}
+        {{- end }}
         {{- end }}
         {{- range .backends }}
         {{- if .gitMappings }}
         - name: nyx-{{ $agentName }}-{{ .name }}-git-mappings
           configMap:
             name: nyx-{{ $agentName }}-{{ .name }}-git-mappings
+        {{- $backendName := .name }}
+        {{- range .gitMappings }}
+        - name: gm-{{ $agentName }}-{{ $backendName }}-{{ .dest | trimPrefix "/home/agent/" | replace "/" "-" | replace "." "" | trimSuffix "-" }}
+          emptyDir: {}
+        {{- end }}
         {{- end }}
         {{- end }}
         {{- end }}
