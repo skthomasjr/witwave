@@ -80,6 +80,7 @@ Usage: {{- include "nyx.gitMappingVolumes" (dict "agent" . "release" $.Release.N
 - name: {{ $release }}-git-sync-script
   configMap:
     name: {{ $release }}-git-sync-script
+    defaultMode: 0755
 {{- if .agent.gitMappings }}
 - name: {{ $release }}-{{ $agentName }}-git-mappings
   configMap:

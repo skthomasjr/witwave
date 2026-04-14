@@ -78,7 +78,7 @@ spec:
             - --depth={{ .depth | toString }}
             {{- end }}
             {{- if include "nyx.hasMappings" $agent }}
-            - --exechook-command=/bin/sh /nyx-scripts/git-sync.sh
+            - --exechook-command=/nyx-scripts/git-sync.sh
             {{- end }}
           {{- if .envFrom }}
           envFrom:
