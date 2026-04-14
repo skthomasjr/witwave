@@ -5,7 +5,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: nyx-{{ .name }}-backend
+  name: {{ $.Release.Name }}-{{ .name }}-backend
   labels:
     {{- include "nyx.agentLabels" .name | nindent 4 }}
 data:

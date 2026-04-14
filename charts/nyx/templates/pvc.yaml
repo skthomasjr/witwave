@@ -3,7 +3,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: nyx-shared
+  name: {{ .Release.Name }}-shared
   labels:
     app.kubernetes.io/component: shared-storage
     app.kubernetes.io/part-of: nyx
@@ -29,7 +29,7 @@ spec:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: nyx-{{ $agentName }}-{{ .name }}-data
+  name: {{ $.Release.Name }}-{{ $agentName }}-{{ .name }}-data
   labels:
     {{- include "nyx.backendLabels" (dict "agentName" $agentName "backendName" .name) | nindent 4 }}
 spec:

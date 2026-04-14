@@ -10,7 +10,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: nyx-git-sync-script
+  name: {{ $.Release.Name }}-git-sync-script
   labels:
     app.kubernetes.io/component: nyx-git-sync
     app.kubernetes.io/part-of: nyx
@@ -64,7 +64,7 @@ data:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: nyx-{{ $agentName }}-git-mappings
+  name: {{ $.Release.Name }}-{{ $agentName }}-git-mappings
   labels:
     {{- include "nyx.agentLabels" $agentName | nindent 4 }}
 data:
@@ -80,7 +80,7 @@ data:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: nyx-{{ $agentName }}-{{ .name }}-git-mappings
+  name: {{ $.Release.Name }}-{{ $agentName }}-{{ .name }}-git-mappings
   labels:
     {{- include "nyx.backendLabels" (dict "agentName" $agentName "backendName" .name) | nindent 4 }}
 data:

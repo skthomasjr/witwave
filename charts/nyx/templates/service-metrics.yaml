@@ -7,7 +7,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: nyx-{{ .name }}-metrics
+  name: {{ $.Release.Name }}-{{ .name }}-metrics
   labels:
     {{- include "nyx.agentLabels" .name | nindent 4 }}
   annotations:

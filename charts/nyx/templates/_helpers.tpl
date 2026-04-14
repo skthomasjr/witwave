@@ -1,14 +1,4 @@
 {{/*
-Common labels applied to all nyx resources.
-Usage: {{- include "nyx.labels" .name | nindent 4 }}
-*/}}
-{{- define "nyx.labels" -}}
-app.kubernetes.io/name: {{ . }}
-app.kubernetes.io/part-of: nyx
-app.kubernetes.io/managed-by: helm
-{{- end }}
-
-{{/*
 Agent component labels (nyx-agent).
 Usage: {{- include "nyx.agentLabels" .name | nindent 4 }}
 */}}
@@ -52,24 +42,24 @@ Usage: {{- if include "nyx.hasMappings" . }}
 {{/*
 Git-mapping volume mounts for a given agent — mounts script, mappings ConfigMaps,
 and emptyDir destinations. Rendered into git-sync sidecar and git-map-init containers.
-Usage: {{- include "nyx.gitMappingMounts" . | nindent 12 }}
-where . is the agent object.
+Usage: {{- include "nyx.gitMappingMounts" (dict "agent" $agent "release" .Release.Name) | nindent 12 }}
 */}}
 {{- define "nyx.gitMappingMounts" -}}
-{{- $agentName := .name -}}
-- name: nyx-git-sync-script
+{{- $agentName := .agent.name -}}
+{{- $release := .release -}}
+- name: {{ $release }}-git-sync-script
   mountPath: /nyx-scripts
-{{- if .gitMappings }}
-- name: nyx-{{ $agentName }}-git-mappings
+{{- if .agent.gitMappings }}
+- name: {{ $release }}-{{ $agentName }}-git-mappings
   mountPath: /nyx-mappings/agent
-{{- range .gitMappings }}
+{{- range .agent.gitMappings }}
 - name: {{ include "nyx.gmVolumeName" (dict "agentName" $agentName "context" "agent" "dest" .dest) }}
   mountPath: {{ .dest }}
 {{- end }}
 {{- end }}
-{{- range .backends }}
+{{- range .agent.backends }}
 {{- if .gitMappings }}
-- name: nyx-{{ $agentName }}-{{ .name }}-git-mappings
+- name: {{ $release }}-{{ $agentName }}-{{ .name }}-git-mappings
   mountPath: /nyx-mappings/{{ .name }}
 {{- $backendName := .name }}
 {{- range .gitMappings }}
@@ -82,28 +72,28 @@ where . is the agent object.
 
 {{/*
 Git-mapping emptyDir volumes for an agent — one per unique mapped destination.
-Usage: {{- include "nyx.gitMappingVolumes" . | nindent 8 }}
-where . is the agent object.
+Usage: {{- include "nyx.gitMappingVolumes" (dict "agent" . "release" $.Release.Name) | nindent 8 }}
 */}}
 {{- define "nyx.gitMappingVolumes" -}}
-{{- $agentName := .name -}}
-- name: nyx-git-sync-script
+{{- $agentName := .agent.name -}}
+{{- $release := .release -}}
+- name: {{ $release }}-git-sync-script
   configMap:
-    name: nyx-git-sync-script
-{{- if .gitMappings }}
-- name: nyx-{{ $agentName }}-git-mappings
+    name: {{ $release }}-git-sync-script
+{{- if .agent.gitMappings }}
+- name: {{ $release }}-{{ $agentName }}-git-mappings
   configMap:
-    name: nyx-{{ $agentName }}-git-mappings
-{{- range .gitMappings }}
+    name: {{ $release }}-{{ $agentName }}-git-mappings
+{{- range .agent.gitMappings }}
 - name: {{ include "nyx.gmVolumeName" (dict "agentName" $agentName "context" "agent" "dest" .dest) }}
   emptyDir: {}
 {{- end }}
 {{- end }}
-{{- range .backends }}
+{{- range .agent.backends }}
 {{- if .gitMappings }}
-- name: nyx-{{ $agentName }}-{{ .name }}-git-mappings
+- name: {{ $release }}-{{ $agentName }}-{{ .name }}-git-mappings
   configMap:
-    name: nyx-{{ $agentName }}-{{ .name }}-git-mappings
+    name: {{ $release }}-{{ $agentName }}-{{ .name }}-git-mappings
 {{- $backendName := .name }}
 {{- range .gitMappings }}
 - name: {{ include "nyx.gmVolumeName" (dict "agentName" $agentName "context" $backendName "dest" .dest) }}

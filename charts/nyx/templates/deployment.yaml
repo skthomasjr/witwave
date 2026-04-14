@@ -3,7 +3,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nyx-{{ .name }}
+  name: {{ $.Release.Name }}-{{ .name }}
   labels:
     {{- include "nyx.agentLabels" .name | nindent 4 }}
 spec:
@@ -51,7 +51,7 @@ spec:
           volumeMounts:
             - name: git-sync-data
               mountPath: /git
-            {{- include "nyx.gitMappingMounts" $agent | nindent 12 }}
+            {{- include "nyx.gitMappingMounts" (dict "agent" $agent "release" $.Release.Name) | nindent 12 }}
         {{- end }}
       {{- end }}
       containers:
@@ -81,7 +81,7 @@ spec:
             - name: git-sync-data
               mountPath: /git
             {{- if include "nyx.hasMappings" $agent }}
-            {{- include "nyx.gitMappingMounts" $agent | nindent 12 }}
+            {{- include "nyx.gitMappingMounts" (dict "agent" $agent "release" $.Release.Name) | nindent 12 }}
             {{- end }}
         {{- end }}
         {{- end }}
@@ -186,7 +186,7 @@ spec:
       volumes:
         - name: backend-config
           configMap:
-            name: nyx-{{ .name }}-backend
+            name: {{ $.Release.Name }}-{{ .name }}-backend
         {{- if .gitSyncs }}
         - name: git-sync-data
           emptyDir: {}
@@ -194,18 +194,18 @@ spec:
         {{- if .config }}
         - name: nyx-agent-config
           configMap:
-            name: nyx-{{ .name }}-config
+            name: {{ $.Release.Name }}-{{ .name }}-config
         {{- end }}
         {{- range .backends }}
         {{- if (.storage).enabled }}
         - name: {{ $agentName }}-{{ .name }}-storage
           persistentVolumeClaim:
-            claimName: {{ (.storage).existingClaim | default (printf "nyx-%s-%s-data" $agentName .name) }}
+            claimName: {{ (.storage).existingClaim | default (printf "%s-%s-%s-data" $.Release.Name $agentName .name) }}
         {{- end }}
         {{- if .config }}
         - name: {{ .name }}-config
           configMap:
-            name: nyx-{{ $agentName }}-{{ .name }}-config
+            name: {{ $.Release.Name }}-{{ $agentName }}-{{ .name }}-config
         {{- end }}
         {{- end }}
         {{- if $.Values.sharedStorage.enabled }}
@@ -216,10 +216,10 @@ spec:
             type: DirectoryOrCreate
           {{- else }}
           persistentVolumeClaim:
-            claimName: {{ $.Values.sharedStorage.existingClaim | default "nyx-shared" }}
+            claimName: {{ $.Values.sharedStorage.existingClaim | default (printf "%s-shared" $.Release.Name) }}
           {{- end }}
         {{- end }}
         {{- if include "nyx.hasMappings" . }}
-        {{- include "nyx.gitMappingVolumes" . | nindent 8 }}
+        {{- include "nyx.gitMappingVolumes" (dict "agent" . "release" $.Release.Name) | nindent 8 }}
         {{- end }}
 {{- end }}
