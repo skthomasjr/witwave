@@ -5,7 +5,7 @@ sharedStorage:
   existingClaim: nyx-shared
 
 metrics:
-  enabled: false
+  enabled: true
 
 agents:
   - name: adam
