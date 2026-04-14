@@ -1,18 +1,10 @@
 # Enable Prometheus metrics for all agents and their backends.
+# When enabled, prometheus.io scrape annotations are added to each agent Service
+# and the /metrics endpoint is activated on both nyx-agent and backend containers.
 # Override per agent with agents[].metrics.enabled.
 metrics:
   # Enable or disable metrics globally.
   enabled: false
-
-  # # Metrics Service for Prometheus scraping.
-  # # Created per agent when metrics.enabled is true and service.enabled is true.
-  # service:
-  #   # Enable the metrics Service.
-  #   enabled: false
-  #   # Port exposed on the Service (mapped to the nyx-agent container port).
-  #   port: 9090
-  #   # Scrape path annotated on the Service.
-  #   path: /metrics
 
 # Shared storage volume mounted into all agent pods and backend sidecars.
 sharedStorage:
@@ -98,6 +90,24 @@ agents:
     #     #   - secretRef:
     #     #       name: git-sync-credentials
 
+    # # Git mappings. After each git-sync, copies files or directories from the
+    # # synced repo into the container. Runs once at pod startup via an init
+    # # container, then again after every subsequent sync via exechook.
+    # # gitSync must match a name in gitSyncs above.
+    # gitMappings:
+    #   - # Name of the gitSync entry to source from.
+    #     gitSync: autonomous-agent
+    #     # Source path within the repo (trailing / = directory copy).
+    #     src: .agents/dev/adam/.nyx/
+    #     # Destination path inside the container.
+    #     dest: /home/agent/.nyx/
+
+    # # Environment variables sourced from Secrets or ConfigMaps, injected into
+    # # the nyx-agent container.
+    # envFrom:
+    #   - secretRef:
+    #       name: adam-secrets
+
     # # Inline config files mounted into the nyx-agent container.
     # # Each entry is added as a key in a ConfigMap and mounted at mountPath.
     # config:
@@ -109,7 +119,7 @@ agents:
     #       ---
     #       What is the current status?
     #   - name: agent-card.md
-    #     mountPath: /home/agent/agent-card.md
+    #     mountPath: /home/agent/.nyx/agent-card.md
     #     content: |
     #       An autonomous agent.
 
@@ -144,6 +154,13 @@ agents:
         #   limits:
         #     cpu: 2000m
         #     memory: 2Gi
+
+        # # Git mappings for this backend. Same semantics as agent-level gitMappings
+        # # but scoped to this backend container.
+        # gitMappings:
+        #   - gitSync: autonomous-agent
+        #     src: .agents/dev/adam/.claude/
+        #     dest: /home/agent/.claude/
 
         # # Additional environment variables injected into the backend container.
         # env:
@@ -183,7 +200,7 @@ agents:
         # # Each entry is added as a key in a ConfigMap and mounted at mountPath.
         # config:
         #   - name: agent-card.md
-        #     mountPath: /home/agent/agent-card.md
+        #     mountPath: /home/agent/.claude/agent-card.md
         #     content: |
         #       An autonomous agent named adam.
         #   - name: CLAUDE.md
