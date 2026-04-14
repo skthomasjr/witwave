@@ -7,10 +7,11 @@ metrics:
   enabled: true
 
 agents:
-  - name: adam
+  - name: bob
+    port: 8099
     image:
       repository: ghcr.io/skthomasjr/images/nyx-agent
-      tag: "0.1.1-beta.6"
+      tag: "0.1.1-beta.12"
     imagePullSecrets:
       - name: ghcr-credentials
     gitSyncs:
@@ -24,22 +25,22 @@ agents:
               name: git-sync-credentials
     gitMappings:
       - gitSync: autonomous-agent
-        src: .agents/dev/adam/.nyx/
+        src: .agents/test/bob/.nyx/
         dest: /home/agent/.nyx/
 
     backends:
       - name: claude
         image:
           repository: ghcr.io/skthomasjr/images/a2-claude
-          tag: "0.1.1-beta.6"
-        port: 8080
+          tag: "0.1.1-beta.12"
+        port: 8090
         model: claude-opus-4-6
         envFrom:
           - secretRef:
-              name: adam-claude-secrets
+              name: bob-claude-secrets
         gitMappings:
           - gitSync: autonomous-agent
-            src: .agents/dev/adam/.claude/
+            src: .agents/test/bob/.claude/
             dest: /home/agent/.claude/
         storage:
           enabled: true
@@ -53,10 +54,48 @@ agents:
             - subPath: memory
               mountPath: /home/agent/memory
 
-  - name: eve
+      - name: codex
+        image:
+          repository: ghcr.io/skthomasjr/images/a2-codex
+          tag: "0.1.1-beta.12"
+        port: 8091
+        model: gpt-5.1-codex-max
+        envFrom:
+          - secretRef:
+              name: bob-codex-secrets
+        gitMappings:
+          - gitSync: autonomous-agent
+            src: .agents/test/bob/.codex/
+            dest: /home/agent/.codex/
+        storage:
+          enabled: true
+          mounts:
+            - subPath: memory
+              mountPath: /home/agent/memory
+
+      - name: gemini
+        image:
+          repository: ghcr.io/skthomasjr/images/a2-gemini
+          tag: "0.1.1-beta.12"
+        port: 8092
+        envFrom:
+          - secretRef:
+              name: bob-gemini-secrets
+        gitMappings:
+          - gitSync: autonomous-agent
+            src: .agents/test/bob/.gemini/
+            dest: /home/agent/.gemini/
+        storage:
+          enabled: true
+          mounts:
+            - subPath: memory
+              mountPath: /home/agent/memory
+
+  - name: fred
+    port: 8098
     image:
       repository: ghcr.io/skthomasjr/images/nyx-agent
-      tag: "0.1.1-beta.6"
+      tag: "0.1.1-beta.12"
     imagePullSecrets:
       - name: ghcr-credentials
     gitSyncs:
@@ -70,22 +109,22 @@ agents:
               name: git-sync-credentials
     gitMappings:
       - gitSync: autonomous-agent
-        src: .agents/dev/eve/.nyx/
+        src: .agents/test/fred/.nyx/
         dest: /home/agent/.nyx/
 
     backends:
       - name: claude
         image:
           repository: ghcr.io/skthomasjr/images/a2-claude
-          tag: "0.1.1-beta.6"
-        port: 8080
+          tag: "0.1.1-beta.12"
+        port: 8089
         model: claude-opus-4-6
         envFrom:
           - secretRef:
-              name: eve-claude-secrets
+              name: fred-claude-secrets
         gitMappings:
           - gitSync: autonomous-agent
-            src: .agents/dev/eve/.claude/
+            src: .agents/test/fred/.claude/
             dest: /home/agent/.claude/
         storage:
           enabled: true
