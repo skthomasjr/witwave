@@ -435,7 +435,7 @@ docker build -f agent/Dockerfile -t nyx-agent:latest .
 docker build -f a2-claude/Dockerfile -t a2-claude:latest .
 docker build -f a2-codex/Dockerfile -t a2-codex:latest .
 docker build -f a2-gemini/Dockerfile -t a2-gemini:latest .
-helm upgrade --install nyx ./charts/nyx -f ./charts/nyx/values-local.yaml -n nyx --create-namespace
+helm upgrade --install nyx ./charts/nyx -f ./charts/nyx/values-dev.yaml -n nyx --create-namespace
 ```
 
 Port assignments per agent:
