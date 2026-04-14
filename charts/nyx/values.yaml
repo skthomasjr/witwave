@@ -137,7 +137,7 @@ agents:
           # # Image pull policy.
           # pullPolicy: IfNotPresent
 
-        # Port the backend listens on.
+        # Port the backend listens on. Must be unique across all backends in the same agent.
         port: 8080
 
         # Default model for this backend.
