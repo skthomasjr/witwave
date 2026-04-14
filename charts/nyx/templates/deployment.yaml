@@ -272,6 +272,9 @@ spec:
         {{- if $.Values.sharedStorage.enabled }}
         - name: nyx-shared
           {{- if eq $.Values.sharedStorage.storageType "hostPath" }}
+          {{- if not $.Values.sharedStorage.hostPath }}
+          {{- fail "sharedStorage.hostPath must be set when storageType is hostPath" }}
+          {{- end }}
           hostPath:
             path: {{ $.Values.sharedStorage.hostPath }}
             type: DirectoryOrCreate

@@ -1,4 +1,5 @@
 {{- range .Values.agents }}
+{{- $agent := . }}
 ---
 apiVersion: v1
 kind: Pod
@@ -32,6 +33,9 @@ spec:
           echo ""
           echo "Testing A2A discovery for {{ .name }}..."
           curl -sf http://{{ $.Release.Name }}-{{ .name }}:{{ .port | default 8000 }}/.well-known/agent.json
+          echo ""
+          echo "Testing backend connectivity for {{ .name }}..."
+          curl -sf http://{{ $.Release.Name }}-{{ .name }}:{{ .port | default 8000 }}/agents
           echo ""
           echo "All checks passed for {{ .name }}."
 {{- end }}

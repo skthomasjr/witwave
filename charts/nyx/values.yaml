@@ -26,6 +26,7 @@ sharedStorage:
   # # Name of a pre-existing PVC to use instead of creating one.
   # existingClaim: ""
   # # Host path on the node. Only used when storageType is hostPath.
+  # # Required when storageType is hostPath — must be a non-empty absolute path.
   # hostPath: /tmp/nyx-shared
 
 # List of agents to deploy. Each agent runs as a single pod containing

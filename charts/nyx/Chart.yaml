@@ -4,3 +4,15 @@ description: nyx autonomous agent platform — nyx orchestrator and backends
 type: application
 version: 0.1.0
 appVersion: "0.1.0"
+kubeVersion: ">=1.25.0"
+keywords:
+  - autonomous-agent
+  - ai
+  - llm
+  - a2a
+home: https://github.com/skthomasjr/autonomous-agent
+sources:
+  - https://github.com/skthomasjr/autonomous-agent
+maintainers:
+  - name: Scott Thomas
+    url: https://github.com/skthomasjr
