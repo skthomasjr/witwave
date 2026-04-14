@@ -16,6 +16,8 @@ spec:
       labels:
         {{- include "nyx.agentLabels" .name | nindent 8 }}
     spec:
+      terminationGracePeriodSeconds: 60
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -92,6 +94,7 @@ spec:
         {{- end }}
         - name: nyx-agent
           image: {{ .image.repository }}:{{ .image.tag | default $.Chart.AppVersion }}
+          imagePullPolicy: {{ .image.pullPolicy | default "IfNotPresent" }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -105,12 +108,16 @@ spec:
               port: {{ .port | default 8000 }}
             initialDelaySeconds: 10
             periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /health/ready
               port: {{ .port | default 8000 }}
             initialDelaySeconds: 5
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           {{- if .resources }}
           resources:
             {{- toYaml .resources | nindent 12 }}
@@ -158,6 +165,7 @@ spec:
 {{- $storageEnabled := ((.storage).enabled) }}
         - name: {{ .name }}
           image: {{ .image.repository }}:{{ .image.tag | default $.Chart.AppVersion }}
+          imagePullPolicy: {{ .image.pullPolicy | default "IfNotPresent" }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -170,12 +178,16 @@ spec:
               port: {{ .port }}
             initialDelaySeconds: 10
             periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /health
               port: {{ .port }}
             initialDelaySeconds: 5
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           {{- if .resources }}
           resources:
             {{- toYaml .resources | nindent 12 }}

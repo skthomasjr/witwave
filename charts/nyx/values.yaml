@@ -44,7 +44,7 @@ agents:
       repository: ghcr.io/skthomasjr/images/nyx-agent
       # # Image tag. Defaults to .Chart.AppVersion when omitted.
       # tag: ""
-      # # Image pull policy.
+      # Image pull policy. Use Always for mutable tags (e.g. latest, beta).
       # pullPolicy: IfNotPresent
 
     # # Image pull secrets for private registries.

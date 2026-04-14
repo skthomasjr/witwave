@@ -1,0 +1,51 @@
+nyx has been deployed successfully.
+
+Release: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+
+AGENTS
+------
+{{- range .Values.agents }}
+  • {{ $.Release.Name }}-{{ .name }}  →  port {{ .port | default 8000 }}
+    Backends: {{ range .backends }}{{ .name }}({{ .port }}) {{ end }}
+{{- end }}
+
+VERIFY
+------
+Check pod status:
+  kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/part-of=nyx
+
+Run health tests:
+  helm test {{ .Release.Name }} -n {{ .Release.Namespace }}
+
+View logs for an agent:
+  kubectl logs -n {{ .Release.Namespace }} deploy/{{ .Release.Name }}-<agent-name> -c nyx-agent
+
+REQUIRED SECRETS
+----------------
+Each backend requires a secret with API credentials. Example for a Claude backend:
+  kubectl create secret generic <agent>-claude-secrets \
+    --from-literal=ANTHROPIC_API_KEY=<key> \
+    -n {{ .Release.Namespace }}
+
+If using git-sync, create the git credentials secret:
+  kubectl create secret generic git-sync-credentials \
+    --from-literal=GITSYNC_USERNAME=<user> \
+    --from-literal=GITSYNC_PASSWORD=<token> \
+    -n {{ .Release.Namespace }}
+
+If pulling images from a private registry:
+  kubectl create secret docker-registry ghcr-credentials \
+    --docker-server=ghcr.io \
+    --docker-username=<user> \
+    --docker-password=<token> \
+    -n {{ .Release.Namespace }}
+
+METRICS
+-------
+{{- if .Values.metrics.enabled }}
+Metrics are enabled. Each agent service has Prometheus scrape annotations on port {{ (index .Values.agents 0).port | default 8000 }}.
+{{- else }}
+Metrics are disabled. Enable with:
+  helm upgrade {{ .Release.Name }} nyx --set metrics.enabled=true -n {{ .Release.Namespace }}
+{{- end }}
