@@ -36,10 +36,20 @@ data:
               case "$src" in
                 */)
                   echo "Syncing dir  $src -> $dest"
-                  if ! rm -rf "${dest:?}/"* 2>/dev/null; then true; fi
-                  if ! mkdir -p "$dest" || ! cp -r "${src}." "$dest"; then
-                    echo "ERROR: failed to sync dir $src -> $dest" >&2
+                  if ! mkdir -p "$dest"; then
+                    echo "ERROR: failed to create dir $dest" >&2
                     failed=1
+                  else
+                    for f in "$dest"/*; do
+                      [ -e "$f" ] || continue
+                      name=$(basename "$f")
+                      case "$name" in *.checkpoint) continue ;; esac
+                      [ -e "${src}${name}" ] || rm -rf "$f"
+                    done
+                    if ! cp -r "${src}." "$dest"; then
+                      echo "ERROR: failed to sync dir $src -> $dest" >&2
+                      failed=1
+                    fi
                   fi
                   ;;
                 *)
