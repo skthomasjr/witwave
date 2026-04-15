@@ -83,8 +83,8 @@ agents:
     #     # period: 60s
     #     # Clone depth. 1 is sufficient for config-only repos.
     #     # depth: 1
-    #     # git-sync image. Defaults to the upstream stable release.
-    #     # image: registry.k8s.io/git-sync/git-sync:v4.4.0
+    #     # git-sync image. Defaults to the internal image (upstream git-sync + rsync).
+    #     # image: ghcr.io/skthomasjr/images/git-sync:latest
     #     # Secret containing auth credentials (GITSYNC_USERNAME, GITSYNC_PASSWORD,
     #     # or GITSYNC_SSH_KEY_FILE). See git-sync documentation for full options.
     #     # envFrom:

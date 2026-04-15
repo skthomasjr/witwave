@@ -34,6 +34,9 @@ jobs:
           - image: nyx-operator
             file: operator/Dockerfile
             context: operator
+          - image: git-sync
+            file: git-sync/Dockerfile
+            context: git-sync
 
     steps:
       - name: Checkout
