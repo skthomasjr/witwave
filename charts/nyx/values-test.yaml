@@ -2,7 +2,7 @@ ui:
   enabled: true
   image:
     repository: ghcr.io/skthomasjr/images/ui
-    tag: "0.2.0-beta.11"
+    tag: "0.2.0-beta.12"
   imagePullSecrets:
     - name: ghcr-credentials
 
