@@ -250,35 +250,41 @@ async def run_consensus(
     Freeform responses: a synthesis pass is sent to the default backend.
     """
     import fnmatch
-    # Resolve entries to (backend_id, model) pairs, expanding glob patterns.
-    resolved: dict[str, str | None] = {}  # backend_id → model (last entry wins for a given id)
+    # Resolve entries to (call_key, backend_id, model) tuples, expanding glob patterns.
+    # The same backend may appear multiple times with different models.
+    # call_key = "bid:model" when model is set, else "bid" — used as the response label.
+    resolved: list[tuple[str, str, str | None]] = []
+    seen: set[tuple[str, str | None]] = set()
     for entry in consensus_entries:
         matched = [bid for bid in backends if fnmatch.fnmatch(bid, entry.backend)]
         for bid in matched:
             backend_model = entry.model or (backends[bid]._config.model if hasattr(backends[bid], "_config") else None)
-            resolved[bid] = backend_model
+            pair = (bid, backend_model)
+            if pair not in seen:
+                seen.add(pair)
+                call_key = f"{bid}:{backend_model}" if backend_model else bid
+                resolved.append((call_key, bid, backend_model))
     if not resolved:
-        logger.warning(f"Consensus: no backends matched — falling back to default.")
-        resolved = {default_backend_id: None}
-    backend_ids = list(resolved.keys())
+        logger.warning("Consensus: no backends matched — falling back to default.")
+        resolved = [(default_backend_id, default_backend_id, None)]
 
-    async def _call(bid: str) -> tuple[str, str | Exception]:
+    async def _call(call_key: str, bid: str, model: str | None) -> tuple[str, str | Exception]:
         try:
-            result = await _run_inner(prompt, session_id, sessions, backends, default_backend_id, backend_id=bid, model=resolved[bid], max_tokens=max_tokens)
-            return bid, result
+            result = await _run_inner(prompt, session_id, sessions, backends, default_backend_id, backend_id=bid, model=model, max_tokens=max_tokens)
+            return call_key, result
         except Exception as exc:
-            return bid, exc
+            return call_key, exc
 
-    raw_results = await asyncio.gather(*[_call(bid) for bid in backend_ids])
+    raw_results = await asyncio.gather(*[_call(k, bid, m) for k, bid, m in resolved])
 
     responses: dict[str, str] = {}
-    for bid, outcome in raw_results:
+    for call_key, outcome in raw_results:
         if isinstance(outcome, Exception):
-            logger.error(f"Consensus backend {bid!r} failed: {outcome!r}")
+            logger.error(f"Consensus backend {call_key!r} failed: {outcome!r}")
             if agent_consensus_backend_errors_total is not None:
                 agent_consensus_backend_errors_total.inc()
         else:
-            responses[bid] = outcome
+            responses[call_key] = outcome
 
     if not responses:
         raise RuntimeError("Consensus: all backends failed — no responses to aggregate.")
@@ -294,8 +300,9 @@ async def run_consensus(
         if yes_count != no_count:
             winner = "yes" if yes_count > no_count else "no"
         else:
-            # Tie — default backend wins.
-            winner = classifications.get(default_backend_id, "yes")
+            # Tie — default backend wins (use first matching call_key).
+            default_key = next((k for k, bid, _ in resolved if bid == default_backend_id), default_backend_id)
+            winner = classifications.get(default_key, "yes")
         logger.info(f"Consensus (binary): yes={yes_count} no={no_count} → {winner}")
         if agent_consensus_runs_total is not None:
             agent_consensus_runs_total.labels(mode="binary", status="success").inc()
