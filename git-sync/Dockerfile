@@ -4,5 +4,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 COPY --from=gitsync /git-sync /git-sync
 COPY --from=gitsync /etc/passwd /etc/passwd
 COPY --from=gitsync /etc/group /etc/group
+ENV HOME=/tmp
 USER 65533
 ENTRYPOINT ["/git-sync"]
