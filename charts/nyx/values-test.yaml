@@ -14,7 +14,7 @@ agents:
     port: 8099
     image:
       repository: ghcr.io/skthomasjr/images/nyx-harness
-      tag: "0.2.0-beta.1"
+      tag: "0.2.0-beta.6"
     imagePullSecrets:
       - name: ghcr-credentials
     gitSyncs:
@@ -35,7 +35,7 @@ agents:
       - name: claude
         image:
           repository: ghcr.io/skthomasjr/images/a2-claude
-          tag: "0.2.0-beta.1"
+          tag: "0.2.0-beta.6"
         port: 8090
         model: claude-opus-4-6
         envFrom:
@@ -60,7 +60,7 @@ agents:
       - name: codex
         image:
           repository: ghcr.io/skthomasjr/images/a2-codex
-          tag: "0.2.0-beta.1"
+          tag: "0.2.0-beta.6"
         port: 8091
         model: gpt-5.1-codex-max
         envFrom:
@@ -79,7 +79,7 @@ agents:
       - name: gemini
         image:
           repository: ghcr.io/skthomasjr/images/a2-gemini
-          tag: "0.2.0-beta.1"
+          tag: "0.2.0-beta.6"
         port: 8092
         envFrom:
           - secretRef:
@@ -98,7 +98,7 @@ agents:
     port: 8098
     image:
       repository: ghcr.io/skthomasjr/images/nyx-harness
-      tag: "0.2.0-beta.1"
+      tag: "0.2.0-beta.6"
     imagePullSecrets:
       - name: ghcr-credentials
     gitSyncs:
@@ -119,7 +119,7 @@ agents:
       - name: claude
         image:
           repository: ghcr.io/skthomasjr/images/a2-claude
-          tag: "0.2.0-beta.1"
+          tag: "0.2.0-beta.6"
         port: 8089
         model: claude-opus-4-6
         envFrom:
