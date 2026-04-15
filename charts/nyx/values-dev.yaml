@@ -6,11 +6,14 @@ sharedStorage:
 metrics:
   enabled: true
 
+gitSync:
+  image: ghcr.io/skthomasjr/images/git-sync:0.2.0-beta.5
+
 agents:
   - name: adam
     image:
       repository: ghcr.io/skthomasjr/images/nyx-harness
-      tag: "0.1.1-beta.6"
+      tag: "0.2.0-beta.5"
     imagePullSecrets:
       - name: ghcr-credentials
     gitSyncs:
@@ -31,7 +34,7 @@ agents:
       - name: claude
         image:
           repository: ghcr.io/skthomasjr/images/a2-claude
-          tag: "0.1.1-beta.6"
+          tag: "0.2.0-beta.5"
         port: 8080
         model: claude-opus-4-6
         envFrom:
@@ -56,7 +59,7 @@ agents:
   - name: eve
     image:
       repository: ghcr.io/skthomasjr/images/nyx-harness
-      tag: "0.1.1-beta.6"
+      tag: "0.2.0-beta.5"
     imagePullSecrets:
       - name: ghcr-credentials
     gitSyncs:
@@ -77,7 +80,7 @@ agents:
       - name: claude
         image:
           repository: ghcr.io/skthomasjr/images/a2-claude
-          tag: "0.1.1-beta.6"
+          tag: "0.2.0-beta.5"
         port: 8080
         model: claude-opus-4-6
         envFrom:

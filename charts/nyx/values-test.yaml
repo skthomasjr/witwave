@@ -6,6 +6,9 @@ sharedStorage:
 metrics:
   enabled: true
 
+gitSync:
+  image: ghcr.io/skthomasjr/images/git-sync:0.2.0-beta.5
+
 agents:
   - name: bob
     port: 8099

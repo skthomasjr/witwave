@@ -1,3 +1,7 @@
+# Default git-sync image used by all gitSyncs entries unless overridden per-entry.
+gitSync:
+  image: ghcr.io/skthomasjr/images/git-sync:latest
+
 # Enable Prometheus metrics for all agents and their backends.
 # When enabled, prometheus.io scrape annotations are added to each agent Service
 # and the /metrics endpoint is activated on both nyx-harness and backend containers.
