@@ -1042,17 +1042,19 @@ async def main():
         )
         executor._mcp_watcher_tasks.append(_mcp_task)
 
-    _backends_ready_timeout = float(os.environ.get("BACKENDS_READY_TIMEOUT", "120"))
+    _backends_ready_warn_after = float(os.environ.get("BACKENDS_READY_WARN_AFTER", "120"))
 
     async def _wait_for_backends() -> None:
         """Poll backend /health endpoints until all pass, then set backends_ready.
 
-        Falls back to releasing jobs/tasks after BACKENDS_READY_TIMEOUT seconds
-        so a permanently-unhealthy backend does not block run-once work forever.
+        Logs a warning after BACKENDS_READY_WARN_AFTER seconds if backends are
+        still not healthy, but continues polling indefinitely so that slow-starting
+        backends (e.g. large image pulls on first run) are not prematurely released.
         """
         import httpx
         logger.info("Waiting for all backends to become healthy before firing run-once jobs/tasks.")
-        deadline = time.monotonic() + _backends_ready_timeout
+        warn_deadline = time.monotonic() + _backends_ready_warn_after
+        _warned = False
         while True:
             backend_configs = [b._config for b in executor._backends.values() if b._config.url]
             if not backend_configs:
@@ -1072,13 +1074,17 @@ async def main():
                 logger.info("All backends healthy — releasing run-once jobs/tasks.")
                 backends_ready.set()
                 return
-            if time.monotonic() >= deadline:
+            if not _warned and time.monotonic() >= warn_deadline:
+                _warned = True
+                unhealthy = [
+                    b.id for b, r in zip(backend_configs, results)
+                    if isinstance(r, Exception) or r.status_code != 200
+                ]
                 logger.warning(
-                    "BACKENDS_READY_TIMEOUT (%.0fs) reached — releasing run-once jobs/tasks anyway.",
-                    _backends_ready_timeout,
+                    "Backends not healthy after %.0fs — still waiting. Unhealthy: %s",
+                    _backends_ready_warn_after,
+                    unhealthy,
                 )
-                backends_ready.set()
-                return
             await asyncio.sleep(2)
 
     await asyncio.gather(
