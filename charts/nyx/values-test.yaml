@@ -25,6 +25,9 @@ agents:
       tag: "0.2.0-beta.6"
     imagePullSecrets:
       - name: ghcr-credentials
+    env:
+      - name: CORS_ALLOW_ORIGINS
+        value: "*"
     gitSyncs:
       - name: autonomous-agent
         repo: https://github.com/skthomasjr/autonomous-agent
@@ -109,6 +112,9 @@ agents:
       tag: "0.2.0-beta.6"
     imagePullSecrets:
       - name: ghcr-credentials
+    env:
+      - name: CORS_ALLOW_ORIGINS
+        value: "*"
     gitSyncs:
       - name: autonomous-agent
         repo: https://github.com/skthomasjr/autonomous-agent

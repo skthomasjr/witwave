@@ -129,6 +129,9 @@ spec:
               value: {{ .port | default 8000 | quote }}
             - name: METRICS_ENABLED
               value: {{ (.metrics).enabled | default $.Values.metrics.enabled | toString | quote }}
+            {{- if .env }}
+            {{- toYaml .env | nindent 12 }}
+            {{- end }}
           {{- if .envFrom }}
           envFrom:
             {{- toYaml .envFrom | nindent 12 }}
