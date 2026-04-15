@@ -25,19 +25,16 @@ def parse_duration(value: str) -> float:
 def parse_consensus(value) -> list[str]:
     """Parse the ``consensus`` frontmatter field into a list of glob patterns.
 
-    Accepted forms:
-      - Absent / ``false`` / ``""``  → ``[]``  (disabled)
-      - ``true``                      → ``["*"]`` (all backends)
-      - ``"*"`` or any string        → ``[value]``
-      - YAML list e.g. ``["claude", "codex*"]`` → that list
+    Only a YAML list is accepted. Absent or empty list means disabled.
+    Any non-list value is ignored with an empty list returned.
+
+      consensus: []                    # disabled (default)
+      consensus: ["*"]                 # all backends
+      consensus: ["claude", "codex*"]  # specific backends (glob supported)
     """
-    if value is None or value is False or value == "" or str(value).lower() == "false":
-        return []
-    if value is True or str(value).lower() == "true":
-        return ["*"]
     if isinstance(value, list):
         return [str(p) for p in value if p]
-    return [str(value)]
+    return []
 
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?(.*)", re.DOTALL)
