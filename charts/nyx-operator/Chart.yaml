@@ -1,0 +1,18 @@
+apiVersion: v2
+name: nyx-operator
+description: Helm chart for the nyx operator — deploys the nyx-operator controller manager and CRDs.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.25.0"
+keywords:
+  - autonomous-agent
+  - ai
+  - llm
+  - operator
+home: https://github.com/nyx-ai/nyx-operator
+sources:
+  - https://github.com/skthomasjr/autonomous-agent
+maintainers:
+  - name: Scott Thomas
+    url: https://github.com/skthomasjr

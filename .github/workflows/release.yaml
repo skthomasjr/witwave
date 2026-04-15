@@ -18,14 +18,22 @@ jobs:
         include:
           - image: nyx-harness
             file: harness/Dockerfile
+            context: .
           - image: a2-claude
             file: a2-claude/Dockerfile
+            context: .
           - image: a2-codex
             file: a2-codex/Dockerfile
+            context: .
           - image: a2-gemini
             file: a2-gemini/Dockerfile
+            context: .
           - image: ui
             file: ui/Dockerfile
+            context: .
+          - image: nyx-operator
+            file: operator/Dockerfile
+            context: operator
 
     steps:
       - name: Checkout
@@ -51,7 +59,7 @@ jobs:
       - name: Build and push ${{ matrix.image }}
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ${{ matrix.context }}
           file: ${{ matrix.file }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
