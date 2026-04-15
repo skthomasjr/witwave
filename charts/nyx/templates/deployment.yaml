@@ -53,7 +53,7 @@ spec:
         {{- end }}
         {{- if include "nyx.hasMappings" $agent }}
         - name: git-map-init
-          image: debian:bookworm-slim
+          image: {{ $.Values.gitSync.image }}
           command: ["/bin/sh", "/nyx-scripts/git-sync.sh"]
           volumeMounts:
             - name: git-sync-data

@@ -7,7 +7,7 @@ metrics:
   enabled: true
 
 gitSync:
-  image: ghcr.io/skthomasjr/images/git-sync:0.2.0-beta.7
+  image: ghcr.io/skthomasjr/images/git-sync:0.2.0-beta.11
 
 agents:
   - name: bob
