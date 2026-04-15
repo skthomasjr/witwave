@@ -184,10 +184,11 @@ async def _execute_job(item: JobItem, bus: MessageBus, semaphore: asyncio.Semaph
 
 
 async def run_job(item: JobItem, bus: MessageBus, semaphore: asyncio.Semaphore | None = None, backends_ready: asyncio.Event | None = None) -> None:
+    if backends_ready is not None:
+        await backends_ready.wait()
+
     if item.schedule is None:
-        # Run-once mode: wait for backends to be healthy, then fire once and exit.
-        if backends_ready is not None:
-            await backends_ready.wait()
+        # Run-once mode: fire once and exit.
         logger.info(f"Job '{item.name}' run-once: firing immediately.")
         await _execute_job(item, bus, semaphore)
         return

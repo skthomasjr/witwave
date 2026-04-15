@@ -315,13 +315,14 @@ def _inside_window(item: TaskItem) -> bool:
 
 
 async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore | None = None, backends_ready: asyncio.Event | None = None) -> None:
+    if backends_ready is not None:
+        await backends_ready.wait()
+
     filename = Path(item.path).stem
     checkpoint_path = os.path.join(CHECKPOINT_DIR, filename + ".running.json")
 
     # --- Run-once mode: no window-start, fire immediately and exit ---
     if item.window_start is None:
-        if backends_ready is not None:
-            await backends_ready.wait()
         logger.info(f"Task '{item.name}' run-once: firing immediately.")
         _semaphore_acquired = False
         if semaphore is not None:
