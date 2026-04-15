@@ -1958,7 +1958,7 @@ function cronToHHMM(schedule) {
  *   single digit — e.g. "1" matches Monday (dow === 1); "7" also maps to Sunday
  *   comma list  — e.g. "1,3,5" matches Mon, Wed, Fri
  *   range       — e.g. "1-5" matches Mon–Fri
- *   step        — e.g. "*/2" degrades to show on all days (uncommon in practice)
+ *   step        — e.g. "*\/2" degrades to show on all days (uncommon in practice)
  *
  * Degrades gracefully: any pattern not recognised returns true (show on all days)
  * so an imperfect parse never hides a real event.
