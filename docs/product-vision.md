@@ -46,7 +46,7 @@ compatibility:
 | Artifact            | Status      | Description                                         |
 | ------------------- | ----------- | --------------------------------------------------- |
 | Helm chart          | Shipped     | Parameterized Kubernetes deployment                 |
-| Kubernetes Operator | Considering | Declarative agent lifecycle management via CRDs     |
+| Kubernetes Operator | In Development | Declarative agent lifecycle management via CRDs     |
 
 ---
 

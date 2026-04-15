@@ -307,7 +307,7 @@ Memory files are not committed to source control. nyx-harness has no memory laye
 
 | Variable                            | Default                         | Description                                                                                              |
 | ----------------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `AGENT_NAME`                        | `nyx-harness`                     | Agent display name (e.g. `iris`)                                                                         |
+| `AGENT_NAME`                        | `nyx`                             | Agent display name (e.g. `iris`)                                                                         |
 | `AGENT_HOST`                        | `0.0.0.0`                       | Interface to bind                                                                                        |
 | `AGENT_PORT`                        | `8000`                          | HTTP port the nyx agent listens on                                                                       |
 | `BACKEND_CONFIG_PATH`               | `/home/agent/.nyx/backend.yaml` | Path to the backend routing config file                                                                  |

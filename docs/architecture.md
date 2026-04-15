@@ -104,6 +104,11 @@ a2-gemini/                     # Gemini backend source
 
 ui/                            # Web UI
 
+operator/                      # Go/Kubebuilder Kubernetes operator
+
+git-sync/                      # Internal git-sync image (upstream git-sync + rsync for correct incremental sync)
+└── Dockerfile                 # Adds rsync to the upstream git-sync image
+
 .claude/
 └── skills/                    # Local Claude Code skills (user-invokable slash commands)
     ├── develop.md             # Full autonomous development cycle (bugs → risks → gaps → features → docs)
@@ -157,7 +162,8 @@ docs/
     └── question.md            # Question template
 
 charts/                        # Helm charts
-└── nyx/                       # nyx Helm chart (deploys agents to Kubernetes)
+├── nyx/                       # nyx Helm chart (deploys agents to Kubernetes)
+└── nyx-operator/              # Helm chart for the Kubernetes operator
 AGENTS.md                      # Canonical repo instructions for all coding agents
 CLAUDE.md                      # Claude Code compatibility shim → AGENTS.md
 ```
@@ -315,7 +321,7 @@ Agent identity and behavior are entirely file-based. No identity is baked into a
 
 | Variable                           | Default                         | Description                                                                                              |
 | ---------------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `AGENT_NAME`                       | `nyx-harness`                     | Agent display name (e.g. `iris`)                                                                         |
+| `AGENT_NAME`                       | `nyx`                             | Agent display name (e.g. `iris`)                                                                         |
 | `AGENT_HOST`                       | `0.0.0.0`                       | Interface to bind                                                                                        |
 | `AGENT_PORT`                       | `8000`                          | HTTP port                                                                                                |
 | `BACKEND_CONFIG_PATH`              | `/home/agent/.nyx/backend.yaml` | Path to backend routing config                                                                           |
@@ -459,7 +465,15 @@ All infrastructure decisions are evaluated against Kubernetes compatibility:
 - Standard HTTP endpoints suitable for `Service` and `Ingress`
 
 A Helm chart is available at `charts/nyx/` and published to `oci://ghcr.io/skthomasjr/charts/nyx` on every release
-tag. A Kubernetes Operator (declarative agent lifecycle via CRDs) is under consideration.
+tag. A Kubernetes Operator (declarative agent lifecycle via CRDs) is in development; its chart lives at `charts/nyx-operator/`.
+
+### git-sync Image
+
+The Helm chart uses an internal git-sync image (`ghcr.io/skthomasjr/images/git-sync`) built from `git-sync/Dockerfile`.
+This image adds `rsync` to the upstream git-sync base image, enabling `rsync --delete` for correct incremental directory
+sync. Without rsync, upstream git-sync copies only changed files — deletions and deep directory removes are not
+propagated. With rsync, the sync is fully correct: files and directories are added, modified, and deleted at all depths
+to match the source exactly.
 
 ---
 
