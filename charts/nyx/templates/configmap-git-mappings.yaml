@@ -39,14 +39,14 @@ data:
                   if ! mkdir -p "$dest"; then
                     echo "ERROR: failed to create dir $dest" >&2
                     failed=1
-                  elif ! rsync -a --delete --exclude='*.checkpoint' "$src" "$dest"; then
+                  elif ! rsync -a --omit-dir-times --no-perms --delete --exclude='*.checkpoint' "$src" "$dest"; then
                     echo "ERROR: failed to sync dir $src -> $dest" >&2
                     failed=1
                   fi
                   ;;
                 *)
                   echo "Syncing file $src -> $dest"
-                  if ! mkdir -p "$(dirname "$dest")" || ! rsync -a "$src" "$dest"; then
+                  if ! mkdir -p "$(dirname "$dest")" || ! rsync -a --omit-dir-times --no-perms "$src" "$dest"; then
                     echo "ERROR: failed to sync file $src -> $dest" >&2
                     failed=1
                   fi
