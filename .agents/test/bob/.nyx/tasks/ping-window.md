@@ -1,5 +1,5 @@
 ---
-name: Task Ping Window
+name: task-ping-window
 description: Test task — verifies time zone and window-duration handling. Fires once daily within a 2-hour Chicago window.
 timezone: America/Chicago
 window-start: "08:00"

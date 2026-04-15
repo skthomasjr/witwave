@@ -1,5 +1,5 @@
 ---
-name: Backend Check Claude
+name: backend-check-claude
 description: Verifies the Claude backend is reachable and self-aware.
 agent: claude
 enabled: true

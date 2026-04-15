@@ -1,5 +1,5 @@
 ---
-name: Backend Check Codex
+name: backend-check-codex
 description: Verifies the Codex backend is reachable and self-aware.
 agent: codex
 enabled: true

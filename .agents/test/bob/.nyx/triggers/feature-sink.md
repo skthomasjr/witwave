@@ -1,5 +1,5 @@
 ---
-name: Feature Sink
+name: feature-sink
 description: Receives webhook deliveries from new-feature tests and echoes back the JSON body.
 endpoint: feature-sink
 enabled: true

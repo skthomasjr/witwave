@@ -1,6 +1,7 @@
 ---
-name: Consensus Test
-description: Multi-model consensus test — three backends answer the same question independently, then synthesize.
+name: consensus-test-claude
+description: Multi-model consensus test — three backends answer independently, Claude synthesizes the result.
+agent: claude
 consensus:
   - backend: "codex"
     model: "gpt-5.1-codex-max"

@@ -1,5 +1,5 @@
 ---
-name: Webhook
+name: webhook
 description: HMAC-authenticated webhook trigger — validates X-Hub-Signature-256 using BOB_WEBHOOK_SECRET.
 endpoint: webhook
 enabled: true

@@ -1,5 +1,5 @@
 ---
-name: Task Ping Full
+name: task-ping-full
 description: Test task — exercises all task scheduler fields in combination.
 start: 2026-01-01
 days: "1-5"

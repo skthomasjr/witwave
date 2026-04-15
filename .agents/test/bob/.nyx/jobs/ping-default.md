@@ -1,5 +1,5 @@
 ---
-name: Ping Default
+name: ping-default
 description: Periodic ping to verify the default backend is responsive.
 schedule: "*/10 * * * *"
 enabled: true

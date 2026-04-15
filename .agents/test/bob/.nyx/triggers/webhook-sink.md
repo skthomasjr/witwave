@@ -1,5 +1,5 @@
 ---
-name: Webhook Sink
+name: webhook-sink
 description: Receives outbound webhook deliveries from the webhook runner and confirms receipt.
 endpoint: webhook-sink
 enabled: true

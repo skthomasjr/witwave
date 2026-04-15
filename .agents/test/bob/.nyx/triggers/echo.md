@@ -1,5 +1,5 @@
 ---
-name: Echo
+name: echo
 description: Payload inspection trigger — reads the JSON body and echoes back the value of the "token" field.
 endpoint: echo
 enabled: true

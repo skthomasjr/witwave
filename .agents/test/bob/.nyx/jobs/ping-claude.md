@@ -1,5 +1,5 @@
 ---
-name: Ping Claude
+name: ping-claude
 description: Periodic ping to verify the Claude backend is responsive.
 agent: claude
 schedule: "*/30 * * * *"
