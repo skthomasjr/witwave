@@ -2,7 +2,7 @@ ui:
   enabled: true
   image:
     repository: ghcr.io/skthomasjr/images/ui
-    tag: "0.2.0-beta.5"
+    tag: "0.2.0-beta.14"
   imagePullSecrets:
     - name: ghcr-credentials
 
@@ -15,15 +15,18 @@ metrics:
   enabled: true
 
 gitSync:
-  image: ghcr.io/skthomasjr/images/git-sync:0.2.0-beta.5
+  image: ghcr.io/skthomasjr/images/git-sync:0.2.0-beta.14
 
 agents:
   - name: adam
     image:
       repository: ghcr.io/skthomasjr/images/nyx-harness
-      tag: "0.2.0-beta.5"
+      tag: "0.2.0-beta.14"
     imagePullSecrets:
       - name: ghcr-credentials
+    env:
+      - name: CORS_ALLOW_ORIGINS
+        value: "*"
     gitSyncs:
       - name: autonomous-agent
         repo: https://github.com/skthomasjr/autonomous-agent
@@ -42,7 +45,7 @@ agents:
       - name: claude
         image:
           repository: ghcr.io/skthomasjr/images/a2-claude
-          tag: "0.2.0-beta.5"
+          tag: "0.2.0-beta.14"
         port: 8080
         model: claude-opus-4-6
         envFrom:
@@ -67,9 +70,12 @@ agents:
   - name: eve
     image:
       repository: ghcr.io/skthomasjr/images/nyx-harness
-      tag: "0.2.0-beta.5"
+      tag: "0.2.0-beta.14"
     imagePullSecrets:
       - name: ghcr-credentials
+    env:
+      - name: CORS_ALLOW_ORIGINS
+        value: "*"
     gitSyncs:
       - name: autonomous-agent
         repo: https://github.com/skthomasjr/autonomous-agent
@@ -88,7 +94,7 @@ agents:
       - name: claude
         image:
           repository: ghcr.io/skthomasjr/images/a2-claude
-          tag: "0.2.0-beta.5"
+          tag: "0.2.0-beta.14"
         port: 8080
         model: claude-opus-4-6
         envFrom:
