@@ -50,7 +50,7 @@ from metrics import (
 
 logger = logging.getLogger(__name__)
 
-AGENT_NAME = os.environ.get("AGENT_NAME", "nyx-harness")
+AGENT_NAME = os.environ.get("AGENT_NAME", "nyx")
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
 
 MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "10000"))
