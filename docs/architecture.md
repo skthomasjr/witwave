@@ -255,10 +255,11 @@ subscriptions against three filters (`notify-when`, `notify-on-kind`, `notify-on
 subscriptions as async fire-and-forget HTTP POST tasks.
 
 **`executor.py`** — Receives `BusMessage` objects from the bus, resolves the target backend from `routing.*`, and calls
-`backend.run_query(prompt, session_id, is_new)`. When `message.consensus == True`, fans out to all configured backends
-in parallel and aggregates the responses (majority vote for binary yes/no answers; synthesis pass via the default
-backend for freeform responses). On completion, calls `on_prompt_completed()` which notifies the `ContinuationRunner`
-and `WebhookRunner`.
+`backend.run_query(prompt, session_id, is_new)`. When `message.consensus` is a non-empty list of `ConsensusEntry`
+objects, fans out to each matched `(backend, model)` pair in parallel and aggregates the responses (majority vote for
+binary yes/no answers; synthesis pass via the default backend for freeform responses). The same backend can be targeted
+twice with different models — each `(backend, model)` pair is a distinct call. On completion, calls
+`on_prompt_completed()` which notifies the `ContinuationRunner` and `WebhookRunner`.
 
 **`backends/a2a.py`** — Implements `AgentBackend.run_query` by constructing an A2A `message/send` JSON-RPC payload and
 forwarding it to the backend URL. The backend URL can be overridden per-backend via an environment variable

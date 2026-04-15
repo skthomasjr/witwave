@@ -948,7 +948,7 @@ async def main():
             logger.warning("heartbeat_handler: failed to load HEARTBEAT.md: %s", exc)
             loaded = None
         if not loaded:
-            return JSONResponse({"enabled": False, "schedule": None, "model": None, "backend_id": None, "consensus": False, "max_tokens": None})
+            return JSONResponse({"enabled": False, "schedule": None, "model": None, "backend_id": None, "consensus": [], "max_tokens": None})
         schedule, _content, model, backend_id, consensus, max_tokens = loaded
         return JSONResponse({"enabled": True, "schedule": schedule, "model": model, "backend_id": backend_id, "consensus": consensus, "max_tokens": max_tokens})
 

@@ -71,23 +71,24 @@ All configuration is file-based and hot-reloaded — no restart required for mos
 **`backend.yaml`** — Which backend handles each concern. Routing slots: `default`, `a2a`, `heartbeat`, `job`, `task`,
 `trigger`, `continuation`. Each slot can specify a backend ID and an optional model override.
 
-**`HEARTBEAT.md`** — Frontmatter: `schedule` (cron), `agent`/`model` overrides, `consensus: true` (fan out to all
-backends), `max-tokens` (per-dispatch token budget). Body: the heartbeat prompt.
+**`HEARTBEAT.md`** — Frontmatter: `schedule` (cron), `agent`/`model` overrides, `consensus` (list of `{backend, model?}`
+entries to fan out to; empty list disables), `max-tokens` (per-dispatch token budget). Body: the heartbeat prompt.
 
 **`jobs/*.md`** — Frontmatter: `schedule` (cron), `session` (optional fixed ID), `agent`/`model` overrides,
-`consensus: true` (fan out to all backends). Body: the prompt.
+`consensus` (list of `{backend, model?}` entries; supports glob patterns). Body: the prompt.
 
 **`tasks/*.md`** — Frontmatter: `days` (e.g. `mon-fri`), `start`/`end` time window, `loop`/`gap` for repeated firing,
-optional date range, `consensus: true` (fan out to all backends). Body: the prompt.
+optional date range, `consensus` (list of `{backend, model?}` entries; supports glob patterns). Body: the prompt.
 
 **`triggers/*.md`** — Frontmatter: `endpoint` (URL slug), `secret-env-var` (name of env var holding the HMAC key),
-`agent`/`model` overrides, `consensus: true` (fan out to all backends). Body: system context prepended to the inbound
-payload.
+`agent`/`model` overrides, `consensus` (list of `{backend, model?}` entries; supports glob patterns). Body: system
+context prepended to the inbound payload.
 
 **`continuations/*.md`** — Frontmatter: `continues-after` (upstream kind; supports `fnmatch` glob patterns, e.g. `job:*`
 to match any job), `on-success`/`on-error`, `trigger-when` (substring match on upstream response), `delay`,
-`agent`/`model` overrides, `consensus: true` (fan out to all backends), `max-tokens` (per-dispatch token budget),
-`max-concurrent-fires` (cap on simultaneous in-flight fires; default `5`). Body: the follow-up prompt.
+`agent`/`model` overrides, `consensus` (list of `{backend, model?}` entries; supports glob patterns),
+`max-tokens` (per-dispatch token budget), `max-concurrent-fires` (cap on simultaneous in-flight fires; default `5`).
+Body: the follow-up prompt.
 
 **`webhooks/*.md`** — Frontmatter: `url` or `url-env-var` (destination), `notify-on-kind` (glob filter),
 `signing-secret-env-var` (HMAC key), `extract` (prompt for LLM extraction pass). Body: webhook payload template.

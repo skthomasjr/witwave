@@ -35,7 +35,7 @@ HEARTBEAT_SESSION = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{AGENT_NAME}.heartbeat"
 HEARTBEAT_OK = "HEARTBEAT_OK"
 
 
-def load_heartbeat() -> tuple[str, str, str | None, str | None, bool, int | None] | None:
+def load_heartbeat() -> tuple[str, str, str | None, str | None, list[ConsensusEntry], int | None] | None:
     if not os.path.exists(HEARTBEAT_PATH):
         return None
     with open(HEARTBEAT_PATH) as f:

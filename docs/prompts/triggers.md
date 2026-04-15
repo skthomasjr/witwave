@@ -48,7 +48,7 @@ endpoint, description, session_id, backend_id, model, and whether the endpoint i
     "session_id": "...",
     "backend_id": null,
     "model": null,
-    "consensus": false,
+    "consensus": [],
     "running": false
   }
 ]
@@ -80,7 +80,7 @@ endpoint, description, session_id, backend_id, model, and whether the endpoint i
 | `session`        | No       | Session ID override. Defaults to a deterministic UUID derived from `AGENT_NAME` and `endpoint`.                                                                             |
 | `model`          | No       | Model override passed to the backend.                                                                                                                                       |
 | `agent`          | No       | Backend ID override (e.g. `codex`); defaults to routing config.                                                                                                             |
-| `consensus`      | No       | `true` to fan out the prompt to all configured backends and aggregate responses (majority vote for binary; synthesis for freeform). Default: `false`.                       |
+| `consensus`      | No       | List of `{backend, model?}` entries to fan out to; empty list (default) disables consensus. Supports glob patterns in `backend`.                                           |
 | `max-tokens`     | No       | Token budget for this dispatch. Stop and return partial response when reached.                                                                                             |
 
 ## Auth Fallback Order

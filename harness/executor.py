@@ -16,6 +16,7 @@ from a2a.utils import new_agent_text_message
 from backends.a2a import A2ABackend
 from backends.config import BACKEND_CONFIG_PATH, BackendConfig, RoutingConfig, RoutingEntry, load_backends_config, load_routing_config
 from bus import Message, MessageBus
+from utils import ConsensusEntry
 from log_utils import _append_log
 from metrics import (
     agent_a2a_last_request_timestamp_seconds,
@@ -238,7 +239,7 @@ async def run_consensus(
     sessions: OrderedDict[str, float],
     backends: dict,
     default_backend_id: str,
-    consensus_entries: list,
+    consensus_entries: list[ConsensusEntry],
     max_tokens: int | None = None,
 ) -> str:
     """Fan out *prompt* to matching backends concurrently and aggregate.

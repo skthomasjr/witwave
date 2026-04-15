@@ -202,12 +202,25 @@ order: per-message override → routing entry `model:` → per-backend config `m
 
 ## Consensus Mode
 
-Setting `consensus: true` in a job, task, or trigger frontmatter causes nyx-harness to fan out the prompt to **every
-configured backend** in parallel, then aggregate the responses:
+Set `consensus:` in any prompt file's frontmatter to a list of backend entries. Each entry specifies a `backend` glob
+pattern and an optional `model` override. The prompt is dispatched to every matched `(backend, model)` pair in
+parallel, then the responses are aggregated:
 
 - **Binary responses** (yes / no / agree / disagree variants): majority vote. The default backend breaks ties.
 - **Freeform responses**: a synthesis prompt is dispatched to the default backend, which merges the collected responses
   into a single coherent answer.
+
+```yaml
+consensus:
+  - backend: "iris-a2-claude"
+    model: "claude-opus-4-6"
+  - backend: "iris-a2-codex*"          # glob — matches all codex backends
+  - backend: "iris-a2-claude"
+    model: "claude-haiku-4-5"           # same backend, different model = two parallel calls
+```
+
+An empty list (the default when `consensus:` is omitted) disables consensus — the prompt is dispatched to the single
+routing target. The same backend can appear twice with different models to compare outputs from different model sizes.
 
 Use consensus mode for high-stakes decisions where you want more than one model family's perspective.
 
