@@ -21,7 +21,7 @@ from metrics import (
     agent_heartbeat_skips_total,
     agent_watcher_events_total,
 )
-from utils import parse_consensus, parse_frontmatter, parse_frontmatter_raw
+from utils import ConsensusEntry, parse_consensus, parse_frontmatter, parse_frontmatter_raw
 from watchfiles import awatch
 
 logger = logging.getLogger(__name__)
@@ -81,7 +81,7 @@ async def _run_loop(
     stop_event: asyncio.Event,
     model: str | None = None,
     backend_id: str | None = None,
-    consensus: list[str] | None = None,
+    consensus: list[ConsensusEntry] | None = None,
     max_tokens: int | None = None,
 ) -> None:
     cron = croniter(schedule, datetime.now(timezone.utc))

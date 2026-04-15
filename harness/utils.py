@@ -22,19 +22,38 @@ def parse_duration(value: str) -> float:
     seconds = int(m.group(3) or 0)
     return hours * 3600 + minutes * 60 + seconds
 
-def parse_consensus(value) -> list[str]:
-    """Parse the ``consensus`` frontmatter field into a list of glob patterns.
+from dataclasses import dataclass
 
-    Only a YAML list is accepted. Absent or empty list means disabled.
-    Any non-list value is ignored with an empty list returned.
 
-      consensus: []                    # disabled (default)
-      consensus: ["*"]                 # all backends
-      consensus: ["claude", "codex*"]  # specific backends (glob supported)
+@dataclass
+class ConsensusEntry:
+    """One participant in a consensus fan-out."""
+    backend: str
+    model: str | None = None
+
+
+def parse_consensus(value) -> list[ConsensusEntry]:
+    """Parse the ``consensus`` frontmatter field into a list of ConsensusEntry objects.
+
+    Only a YAML list of objects is accepted. Absent or empty list means disabled.
+
+      consensus: []                                  # disabled (default)
+      consensus:
+        - backend: "*"                               # all backends, default model
+        - backend: "claude"
+          model: "claude-opus-4-6"
+        - backend: "codex*"                          # glob — matches codex, codex-fast, etc.
     """
-    if isinstance(value, list):
-        return [str(p) for p in value if p]
-    return []
+    if not isinstance(value, list):
+        return []
+    entries = []
+    for item in value:
+        if isinstance(item, dict) and item.get("backend"):
+            entries.append(ConsensusEntry(
+                backend=str(item["backend"]),
+                model=str(item["model"]) if item.get("model") else None,
+            ))
+    return entries
 
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?(.*)", re.DOTALL)

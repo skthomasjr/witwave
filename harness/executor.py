@@ -238,28 +238,33 @@ async def run_consensus(
     sessions: OrderedDict[str, float],
     backends: dict,
     default_backend_id: str,
-    consensus_patterns: list[str],
-    model: str | None = None,
+    consensus_entries: list,
     max_tokens: int | None = None,
 ) -> str:
     """Fan out *prompt* to matching backends concurrently and aggregate.
 
-    *consensus_patterns* is a list of glob patterns (e.g. ["*"], ["claude", "codex*"]).
+    *consensus_entries* is a list of ConsensusEntry (backend glob pattern + optional model).
+    Each entry's backend pattern is matched against configured backend IDs via fnmatch.
+    Model resolution per backend: entry model → BackendConfig.model → None.
     Binary responses (yes/no variants): majority vote; default backend wins ties.
     Freeform responses: a synthesis pass is sent to the default backend.
     """
     import fnmatch
-    backend_ids = [
-        bid for bid in backends
-        if any(fnmatch.fnmatch(bid, pat) for pat in consensus_patterns)
-    ]
-    if not backend_ids:
-        logger.warning(f"Consensus: no backends matched patterns {consensus_patterns!r} — falling back to default.")
-        backend_ids = [default_backend_id]
+    # Resolve entries to (backend_id, model) pairs, expanding glob patterns.
+    resolved: dict[str, str | None] = {}  # backend_id → model (last entry wins for a given id)
+    for entry in consensus_entries:
+        matched = [bid for bid in backends if fnmatch.fnmatch(bid, entry.backend)]
+        for bid in matched:
+            backend_model = entry.model or (backends[bid]._config.model if hasattr(backends[bid], "_config") else None)
+            resolved[bid] = backend_model
+    if not resolved:
+        logger.warning(f"Consensus: no backends matched — falling back to default.")
+        resolved = {default_backend_id: None}
+    backend_ids = list(resolved.keys())
 
     async def _call(bid: str) -> tuple[str, str | Exception]:
         try:
-            result = await _run_inner(prompt, session_id, sessions, backends, default_backend_id, backend_id=bid, model=model, max_tokens=max_tokens)
+            result = await _run_inner(prompt, session_id, sessions, backends, default_backend_id, backend_id=bid, model=resolved[bid], max_tokens=max_tokens)
             return bid, result
         except Exception as exc:
             return bid, exc
@@ -615,8 +620,7 @@ class AgentExecutor(A2AAgentExecutor):
                     self._sessions,
                     self._backends,
                     self._default_backend_id,
-                    consensus_patterns=message.consensus,
-                    model=_model,
+                    consensus_entries=message.consensus,
                     max_tokens=message.max_tokens,
                 )
             else:

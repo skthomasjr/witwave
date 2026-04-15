@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from metrics import agent_bus_dedup_total, agent_bus_pending_kinds, agent_bus_queue_depth
+from utils import ConsensusEntry
 
 BUS_MAX_QUEUE_DEPTH = int(os.environ.get("BUS_MAX_QUEUE_DEPTH", "100"))
 BUS_SEND_TIMEOUT = float(os.environ.get("BUS_SEND_TIMEOUT", "30.0"))
@@ -21,7 +22,7 @@ class Message:
     # TODO(#71): Bus fairness — if triggers ever need to be serialized with scheduled work, consider per-kind queue lanes.
     model: str | None = None
     backend_id: str | None = None
-    consensus: list[str] = field(default_factory=list)  # glob patterns; non-empty = fan-out to matching backends
+    consensus: list[ConsensusEntry] = field(default_factory=list)  # non-empty = fan-out to matching backends
     max_tokens: int | None = None  # per-dispatch token budget; backends stop when exceeded
     enqueued_at: float = 0.0
     result: asyncio.Future | None = field(default=None)

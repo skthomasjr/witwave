@@ -863,8 +863,7 @@ async def main():
                         executor._sessions,
                         executor._backends,
                         executor._default_backend_id,
-                        consensus_patterns=item.consensus,
-                        model=_model,
+                        consensus_entries=item.consensus,
                         max_tokens=item.max_tokens,
                     )
                 else:

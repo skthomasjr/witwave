@@ -13,7 +13,7 @@ from metrics import (
     agent_triggers_reloads_total,
     agent_watcher_events_total,
 )
-from utils import parse_consensus, parse_frontmatter, parse_frontmatter_raw
+from utils import ConsensusEntry, parse_consensus, parse_frontmatter, parse_frontmatter_raw
 from watchfiles import awatch
 
 logger = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ class TriggerItem:
     model: str | None = None
     backend_id: str | None = None
     description: str | None = None
-    consensus: list[str] = field(default_factory=list)
+    consensus: list[ConsensusEntry] = field(default_factory=list)
     max_tokens: int | None = None
 
 
