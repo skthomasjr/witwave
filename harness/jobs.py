@@ -28,7 +28,7 @@ from metrics import (
     agent_file_watcher_restarts_total,
     agent_watcher_events_total,
 )
-from utils import parse_frontmatter
+from utils import parse_consensus, parse_frontmatter, parse_frontmatter_raw
 from watchfiles import awatch
 
 logger = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ class JobItem:
     content: str
     model: str | None = None
     backend_id: str | None = None
-    consensus: bool = False
+    consensus: list[str] = field(default_factory=list)
     max_tokens: int | None = None
     task: asyncio.Task | None = field(default=None, compare=False)
     running: bool = False
@@ -62,12 +62,13 @@ def parse_job_file(path: str) -> JobItem | None:
         enabled = True
 
         fields, content = parse_frontmatter(raw)
+        raw_fields, _ = parse_frontmatter_raw(raw)
         name = fields.get("name") or None
         schedule = fields.get("schedule") or None
         session_id = fields.get("session") or None
         model = fields.get("model") or None
         backend_id = fields.get("agent") or None
-        consensus = str(fields.get("consensus", "false")).lower() not in ("false", "")
+        consensus = parse_consensus(raw_fields.get("consensus"))
         max_tokens: int | None = None
         max_tokens_raw = fields.get("max-tokens") or fields.get("max_tokens")
         if max_tokens_raw is not None:

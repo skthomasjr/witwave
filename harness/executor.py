@@ -238,15 +238,24 @@ async def run_consensus(
     sessions: OrderedDict[str, float],
     backends: dict,
     default_backend_id: str,
+    consensus_patterns: list[str],
     model: str | None = None,
     max_tokens: int | None = None,
 ) -> str:
-    """Fan out *prompt* to every configured backend concurrently and aggregate.
+    """Fan out *prompt* to matching backends concurrently and aggregate.
 
+    *consensus_patterns* is a list of glob patterns (e.g. ["*"], ["claude", "codex*"]).
     Binary responses (yes/no variants): majority vote; default backend wins ties.
     Freeform responses: a synthesis pass is sent to the default backend.
     """
-    backend_ids = list(backends.keys())
+    import fnmatch
+    backend_ids = [
+        bid for bid in backends
+        if any(fnmatch.fnmatch(bid, pat) for pat in consensus_patterns)
+    ]
+    if not backend_ids:
+        logger.warning(f"Consensus: no backends matched patterns {consensus_patterns!r} — falling back to default.")
+        backend_ids = [default_backend_id]
 
     async def _call(bid: str) -> tuple[str, str | Exception]:
         try:
@@ -606,6 +615,7 @@ class AgentExecutor(A2AAgentExecutor):
                     self._sessions,
                     self._backends,
                     self._default_backend_id,
+                    consensus_patterns=message.consensus,
                     model=_model,
                     max_tokens=message.max_tokens,
                 )

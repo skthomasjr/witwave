@@ -30,7 +30,7 @@ from metrics import (
     agent_file_watcher_restarts_total,
     agent_watcher_events_total,
 )
-from utils import parse_frontmatter, parse_duration
+from utils import parse_consensus, parse_duration, parse_frontmatter, parse_frontmatter_raw
 from watchfiles import awatch
 
 logger = logging.getLogger(__name__)
@@ -69,7 +69,7 @@ class TaskItem:
     end: date | None = None
     model: str | None = None
     backend_id: str | None = None
-    consensus: bool = False
+    consensus: list[str] = field(default_factory=list)
     max_tokens: int | None = None
     task: asyncio.Task | None = field(default=None, compare=False)
     running: bool = False
@@ -81,6 +81,7 @@ def parse_task_file(path: str) -> TaskItem | None:
             raw = f.read()
 
         fields, content = parse_frontmatter(raw)
+        raw_fields, _ = parse_frontmatter_raw(raw)
 
         enabled = True
         if "enabled" in fields:
@@ -188,7 +189,7 @@ def parse_task_file(path: str) -> TaskItem | None:
         backend_id = fields.get("agent") or None
 
         # consensus
-        consensus = str(fields.get("consensus", "false")).lower() not in ("false", "")
+        consensus = parse_consensus(raw_fields.get("consensus"))
 
         # max_tokens
         max_tokens: int | None = None

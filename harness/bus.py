@@ -21,7 +21,7 @@ class Message:
     # TODO(#71): Bus fairness — if triggers ever need to be serialized with scheduled work, consider per-kind queue lanes.
     model: str | None = None
     backend_id: str | None = None
-    consensus: bool = False  # when True, nyx fans out to all backends and aggregates responses
+    consensus: list[str] = field(default_factory=list)  # glob patterns; non-empty = fan-out to matching backends
     max_tokens: int | None = None  # per-dispatch token budget; backends stop when exceeded
     enqueued_at: float = 0.0
     result: asyncio.Future | None = field(default=None)

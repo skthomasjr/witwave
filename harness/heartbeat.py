@@ -21,7 +21,7 @@ from metrics import (
     agent_heartbeat_skips_total,
     agent_watcher_events_total,
 )
-from utils import parse_frontmatter
+from utils import parse_consensus, parse_frontmatter, parse_frontmatter_raw
 from watchfiles import awatch
 
 logger = logging.getLogger(__name__)
@@ -45,13 +45,14 @@ def load_heartbeat() -> tuple[str, str, str | None, str | None, bool, int | None
     enabled = True
 
     fields, content = parse_frontmatter(raw)
+    raw_fields, _ = parse_frontmatter_raw(raw)
     if "schedule" in fields:
         schedule = fields["schedule"]
     if "enabled" in fields:
         enabled = str(fields["enabled"]).lower() not in ("false", "")
     model = fields.get("model") or None
     backend_id = fields.get("agent") or None
-    consensus = str(fields.get("consensus", "false")).lower() not in ("false", "")
+    consensus = parse_consensus(raw_fields.get("consensus"))
     max_tokens: int | None = None
     max_tokens_raw = fields.get("max-tokens") or fields.get("max_tokens")
     if max_tokens_raw is not None:
@@ -80,7 +81,7 @@ async def _run_loop(
     stop_event: asyncio.Event,
     model: str | None = None,
     backend_id: str | None = None,
-    consensus: bool = False,
+    consensus: list[str] | None = None,
     max_tokens: int | None = None,
 ) -> None:
     cron = croniter(schedule, datetime.now(timezone.utc))

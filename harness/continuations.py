@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from pathlib import Path
 
@@ -16,7 +16,7 @@ from metrics import (
     agent_file_watcher_restarts_total,
     agent_watcher_events_total,
 )
-from utils import parse_duration, parse_frontmatter
+from utils import parse_consensus, parse_duration, parse_frontmatter, parse_frontmatter_raw
 from watchfiles import awatch
 
 logger = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ class ContinuationItem:
     model: str | None = None
     backend_id: str | None = None
     description: str | None = None
-    consensus: bool = False
+    consensus: list[str] = field(default_factory=list)
     max_tokens: int | None = None
     max_concurrent_fires: int = CONTINUATION_MAX_CONCURRENT_FIRES
 
@@ -63,6 +63,7 @@ def parse_continuation_file(path: str) -> "ContinuationItem | object | None":
             raw = f.read()
 
         fields, content = parse_frontmatter(raw)
+        raw_fields, _ = parse_frontmatter_raw(raw)
 
         if "enabled" in fields:
             enabled = str(fields["enabled"]).lower() not in ("false", "")
@@ -100,7 +101,7 @@ def parse_continuation_file(path: str) -> "ContinuationItem | object | None":
         model = fields.get("model") or None
         backend_id = fields.get("agent") or None
         description = fields.get("description") or None
-        consensus = str(fields.get("consensus", "false")).lower() not in ("false", "")
+        consensus = parse_consensus(raw_fields.get("consensus"))
         max_tokens: int | None = None
         max_tokens_raw = fields.get("max-tokens") or fields.get("max_tokens")
         if max_tokens_raw is not None:
