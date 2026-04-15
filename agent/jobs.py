@@ -183,9 +183,11 @@ async def _execute_job(item: JobItem, bus: MessageBus, semaphore: asyncio.Semaph
                 logger.warning(f"Job '{item.name}' checkpoint delete failed: {e}")
 
 
-async def run_job(item: JobItem, bus: MessageBus, semaphore: asyncio.Semaphore | None = None) -> None:
+async def run_job(item: JobItem, bus: MessageBus, semaphore: asyncio.Semaphore | None = None, backends_ready: asyncio.Event | None = None) -> None:
     if item.schedule is None:
-        # Run-once mode: fire immediately on startup, then exit
+        # Run-once mode: wait for backends to be healthy, then fire once and exit.
+        if backends_ready is not None:
+            await backends_ready.wait()
         logger.info(f"Job '{item.name}' run-once: firing immediately.")
         await _execute_job(item, bus, semaphore)
         return
@@ -212,8 +214,9 @@ async def run_job(item: JobItem, bus: MessageBus, semaphore: asyncio.Semaphore |
 
 
 class JobRunner:
-    def __init__(self, bus: MessageBus):
+    def __init__(self, bus: MessageBus, backends_ready: asyncio.Event | None = None):
         self._bus = bus
+        self._backends_ready = backends_ready
         self._items: dict[str, JobItem] = {}
         self._semaphore: asyncio.Semaphore | None = (
             asyncio.Semaphore(_JOBS_MAX_CONCURRENT) if _JOBS_MAX_CONCURRENT > 0 else None
@@ -228,7 +231,7 @@ class JobRunner:
         cancelled = self._unregister(path)
         if cancelled is not None:
             await asyncio.gather(cancelled, return_exceptions=True)
-        task = asyncio.create_task(run_job(item, self._bus, self._semaphore))
+        task = asyncio.create_task(run_job(item, self._bus, self._semaphore, self._backends_ready))
 
         def _task_done_callback(t: asyncio.Task, _name: str = item.name) -> None:
             if not t.cancelled() and t.exception() is not None:

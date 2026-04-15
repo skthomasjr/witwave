@@ -314,12 +314,14 @@ def _inside_window(item: TaskItem) -> bool:
     return True
 
 
-async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore | None = None) -> None:
+async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore | None = None, backends_ready: asyncio.Event | None = None) -> None:
     filename = Path(item.path).stem
     checkpoint_path = os.path.join(CHECKPOINT_DIR, filename + ".running.json")
 
     # --- Run-once mode: no window-start, fire immediately and exit ---
     if item.window_start is None:
+        if backends_ready is not None:
+            await backends_ready.wait()
         logger.info(f"Task '{item.name}' run-once: firing immediately.")
         _semaphore_acquired = False
         if semaphore is not None:
@@ -584,8 +586,9 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
 
 
 class TaskRunner:
-    def __init__(self, bus: MessageBus):
+    def __init__(self, bus: MessageBus, backends_ready: asyncio.Event | None = None):
         self._bus = bus
+        self._backends_ready = backends_ready
         self._items: dict[str, TaskItem] = {}
         self._semaphore: asyncio.Semaphore | None = (
             asyncio.Semaphore(_TASKS_MAX_CONCURRENT) if _TASKS_MAX_CONCURRENT > 0 else None
@@ -600,7 +603,7 @@ class TaskRunner:
         cancelled = self._unregister(path)
         if cancelled is not None:
             await asyncio.gather(cancelled, return_exceptions=True)
-        task = asyncio.create_task(run_task(item, self._bus, self._semaphore))
+        task = asyncio.create_task(run_task(item, self._bus, self._semaphore, self._backends_ready))
 
         def _task_done_callback(t: asyncio.Task, _name: str = item.name) -> None:
             if not t.cancelled() and t.exception() is not None:

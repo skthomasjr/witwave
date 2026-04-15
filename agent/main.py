@@ -764,9 +764,11 @@ async def main():
                 result.append(r)
         return JSONResponse(result)
 
+    backends_ready = asyncio.Event()
+
     trigger_runner = TriggerRunner()
-    job_runner = JobRunner(bus)
-    task_runner = TaskRunner(bus)
+    job_runner = JobRunner(bus, backends_ready)
+    task_runner = TaskRunner(bus, backends_ready)
     webhook_runner = WebhookRunner()
     continuation_runner = ContinuationRunner()
 
@@ -1040,6 +1042,45 @@ async def main():
         )
         executor._mcp_watcher_tasks.append(_mcp_task)
 
+    _backends_ready_timeout = float(os.environ.get("BACKENDS_READY_TIMEOUT", "120"))
+
+    async def _wait_for_backends() -> None:
+        """Poll backend /health endpoints until all pass, then set backends_ready.
+
+        Falls back to releasing jobs/tasks after BACKENDS_READY_TIMEOUT seconds
+        so a permanently-unhealthy backend does not block run-once work forever.
+        """
+        import httpx
+        logger.info("Waiting for all backends to become healthy before firing run-once jobs/tasks.")
+        deadline = time.monotonic() + _backends_ready_timeout
+        while True:
+            backend_configs = [b._config for b in executor._backends.values() if b._config.url]
+            if not backend_configs:
+                # No backends configured yet — wait for backends_watcher to load them.
+                await asyncio.sleep(1)
+                continue
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                results = await asyncio.gather(
+                    *[client.get(b.url.rstrip("/") + "/health") for b in backend_configs],
+                    return_exceptions=True,
+                )
+            all_ok = all(
+                not isinstance(r, Exception) and r.status_code == 200
+                for r in results
+            )
+            if all_ok:
+                logger.info("All backends healthy — releasing run-once jobs/tasks.")
+                backends_ready.set()
+                return
+            if time.monotonic() >= deadline:
+                logger.warning(
+                    "BACKENDS_READY_TIMEOUT (%.0fs) reached — releasing run-once jobs/tasks anyway.",
+                    _backends_ready_timeout,
+                )
+                backends_ready.set()
+                return
+            await asyncio.sleep(2)
+
     await asyncio.gather(
         server.serve(),
         _guarded(bus_worker, bus, executor, critical=True),
@@ -1052,6 +1093,7 @@ async def main():
         _guarded(_event_loop_monitor),
         _guarded(executor.backends_watcher),
         _set_ready_when_started(server),
+        _wait_for_backends(),
     )
 
 
