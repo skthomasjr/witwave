@@ -1,6 +1,6 @@
 apiVersion: v2
 name: nyx
-description: nyx autonomous agent platform — nyx orchestrator and backends
+description: nyx autonomous agent platform — nyx harness and backend agents
 type: application
 version: 0.1.0
 appVersion: "0.1.0"

@@ -114,7 +114,7 @@ def make_proxy_conversations_handler(
     fetch_fn is an async callable with the signature:
         async def fetch_fn(since: str | None, limit: int | None) -> list[dict]
 
-    This variant is used by nyx-agent, which fans out to multiple backend agents
+    This variant is used by nyx-harness, which fans out to multiple backend agents
     rather than reading a local JSONL file.
     """
 

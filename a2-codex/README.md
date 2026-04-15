@@ -5,7 +5,7 @@ OpenAI Agents SDK, managing its own sessions, conversation logs, trace logs, and
 
 ## What it does
 
-a2-codex receives A2A JSON-RPC requests (forwarded by nyx-agent), runs them through an OpenAI model via the Agents SDK
+a2-codex receives A2A JSON-RPC requests (forwarded by nyx-harness), runs them through an OpenAI model via the Agents SDK
 with streaming, and logs everything to JSONL files.
 
 Each named agent that uses Codex gets its own dedicated instance of this image (e.g. `iris-a2-codex`, `bob-a2-codex`).

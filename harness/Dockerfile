@@ -29,7 +29,7 @@ RUN pip install --no-cache-dir \
     watchfiles==1.1.1 \
     pyyaml==6.0.2
 
-COPY --chown=agent:agent agent/ /home/agent/agent/
+COPY --chown=agent:agent harness/ /home/agent/harness/
 COPY --chown=agent:agent shared/ /home/agent/shared/
 
 ENV PYTHONPATH="/home/agent/shared"
@@ -42,4 +42,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 EXPOSE 8000
 
-CMD ["python3", "/home/agent/agent/main.py"]
+CMD ["python3", "/home/agent/harness/main.py"]

@@ -19,7 +19,7 @@ Run health tests:
   helm test {{ .Release.Name }} -n {{ .Release.Namespace }}
 
 View logs for an agent:
-  kubectl logs -n {{ .Release.Namespace }} deploy/{{ .Release.Name }}-<agent-name> -c nyx-agent
+  kubectl logs -n {{ .Release.Namespace }} deploy/{{ .Release.Name }}-<agent-name> -c nyx-harness
 
 REQUIRED SECRETS
 ----------------

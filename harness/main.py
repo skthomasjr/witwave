@@ -61,7 +61,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-AGENT_NAME = os.environ.get("AGENT_NAME", "nyx-agent")
+AGENT_NAME = os.environ.get("AGENT_NAME", "nyx-harness")
 AGENT_HOST = os.environ.get("AGENT_HOST", "0.0.0.0")
 AGENT_PORT = int(os.environ.get("AGENT_PORT", "8000"))
 AGENT_URL = os.environ.get("AGENT_URL", f"http://localhost:{AGENT_PORT}/")
@@ -466,7 +466,7 @@ async def main():
     _metrics_auth_token = os.environ.get("METRICS_AUTH_TOKEN", "")
 
     async def metrics_handler(request: Request) -> Response:
-        """Return nyx-agent metrics plus relabelled metrics from all reachable backends.
+        """Return nyx-harness metrics plus relabelled metrics from all reachable backends.
 
         Backend metrics are cached for METRICS_CACHE_TTL seconds to avoid
         making N outbound HTTP calls on every Prometheus scrape.

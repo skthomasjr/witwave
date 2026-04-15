@@ -1,7 +1,7 @@
 # Triggers
 
-Triggers are HTTP-driven endpoints served directly by nyx-agent. Each trigger is defined as a `*.md` file in the agent's
-`.nyx/triggers/` directory. When nyx-agent receives a `POST /triggers/{endpoint}` request, it builds a prompt from the
+Triggers are HTTP-driven endpoints served directly by nyx-harness. Each trigger is defined as a `*.md` file in the agent's
+`.nyx/triggers/` directory. When nyx-harness receives a `POST /triggers/{endpoint}` request, it builds a prompt from the
 request payload and the trigger's markdown body, then dispatches the prompt to the configured backend as a background
 task and returns `202 Accepted` immediately.
 
@@ -76,7 +76,7 @@ endpoint, description, session_id, backend_id, model, and whether the endpoint i
 | `name`           | No       | Display name used in logs and discovery. Defaults to the filename stem.                                                                                                     |
 | `description`    | No       | Human-readable summary. Included in the discovery endpoint response.                                                                                                        |
 | `enabled`        | No       | `false` disables without deleting. Default: `true`.                                                                                                                         |
-| `secret-env-var` | No       | Name of an environment variable holding an HMAC-SHA256 secret. When set and the env var is non-empty, nyx-agent validates `X-Hub-Signature-256` (GitHub-compatible format). |
+| `secret-env-var` | No       | Name of an environment variable holding an HMAC-SHA256 secret. When set and the env var is non-empty, nyx-harness validates `X-Hub-Signature-256` (GitHub-compatible format). |
 | `session`        | No       | Session ID override. Defaults to a deterministic UUID derived from `AGENT_NAME` and `endpoint`.                                                                             |
 | `model`          | No       | Model override passed to the backend.                                                                                                                                       |
 | `agent`          | No       | Backend ID override (e.g. `codex`); defaults to routing config.                                                                                                             |
@@ -90,4 +90,4 @@ endpoint, description, session_id, backend_id, model, and whether the endpoint i
 3. Else → reject with `401 Unauthorized`. At least one auth mechanism must be configured.
 
 **In-flight deduplication:** if a `POST` arrives while the same endpoint is already processing a prior request,
-nyx-agent returns `409 Conflict` and does not enqueue a second run.
+nyx-harness returns `409 Conflict` and does not enqueue a second run.

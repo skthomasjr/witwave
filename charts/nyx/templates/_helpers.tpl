@@ -1,10 +1,10 @@
 {{/*
-Agent component labels (nyx-agent).
+Agent component labels (nyx-harness).
 Usage: {{- include "nyx.agentLabels" .name | nindent 4 }}
 */}}
 {{- define "nyx.agentLabels" -}}
 app.kubernetes.io/name: {{ . }}
-app.kubernetes.io/component: nyx-agent
+app.kubernetes.io/component: nyx-harness
 app.kubernetes.io/part-of: nyx
 app.kubernetes.io/managed-by: helm
 {{- end }}

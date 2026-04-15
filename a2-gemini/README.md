@@ -5,7 +5,7 @@ Google `google-genai` SDK, managing its own sessions, conversation logs, trace l
 
 ## What it does
 
-a2-gemini receives A2A JSON-RPC requests (forwarded by nyx-agent), runs them through a Gemini model via the
+a2-gemini receives A2A JSON-RPC requests (forwarded by nyx-harness), runs them through a Gemini model via the
 `google-genai` SDK, and logs everything to JSONL files.
 
 Each named agent that uses Gemini gets its own dedicated instance of this image (e.g. `iris-a2-gemini`,

@@ -23,7 +23,7 @@ protocol layer, a shift in deployment model — it should be discussed here firs
 ├── active/                    # Live autonomous agents
 │   ├── manifest.json          # Registry of all agents in this deployment
 │   ├── iris/
-│   │   ├── .nyx/              # Runtime config (mounted into nyx-agent)
+│   │   ├── .nyx/              # Runtime config (mounted into nyx-harness)
 │   │   │   ├── AGENTS.md      # Agent-specific behavioral guidance
 │   │   │   ├── agent-card.md  # A2A identity description
 │   │   │   ├── backend.yaml   # Backend routing config
@@ -39,7 +39,7 @@ protocol layer, a shift in deployment model — it should be discussed here firs
 │   │   ├── .codex/            # Codex config
 │   │   │   └── config.toml
 │   │   ├── .gemini/           # Gemini backend config (no extra config required)
-│   │   ├── logs/              # nyx-agent logs
+│   │   ├── logs/              # nyx-harness logs
 │   │   ├── a2-claude/         # Claude backend instance
 │   │   │   ├── logs/          # conversation.jsonl
 │   │   │   └── memory/        # Persistent markdown memory files
@@ -56,7 +56,7 @@ protocol layer, a shift in deployment model — it should be discussed here firs
     ├── bob/                   # Same structure as active agents
     └── fred/
 
-agent/                         # nyx-agent source (router/scheduler)
+harness/                       # nyx-harness source (router/scheduler)
 ├── Dockerfile
 ├── main.py                    # Entrypoint — wires all components and runs the event loop
 ├── executor.py                # Routes A2A requests to the configured backend; fires webhooks/continuations
@@ -170,7 +170,7 @@ CLAUDE.md                      # Claude Code compatibility shim → AGENTS.md
 
 Each named agent is a cluster of containers:
 
-1. **nyx-agent** — the infrastructure layer. Receives external A2A requests, fires heartbeats, runs jobs/tasks, handles
+1. **nyx-harness** — the infrastructure layer. Receives external A2A requests, fires heartbeats, runs jobs/tasks, handles
    inbound triggers, fires outbound webhooks, and dispatches continuations. Owns no LLM itself.
 2. **a2-claude** (per agent) — a standalone A2A server backed by the Claude Agent SDK. Owns session state, memory, and
    conversation logging.
@@ -182,7 +182,7 @@ External A2A caller
         │
         ▼
 ┌───────────────────────────────────────────┐
-│               nyx-agent container          │
+│               nyx-harness container          │
 │                                           │
 │  ┌──────────┐  ┌──────────┐  ┌─────────┐ │
 │  │Heartbeat │  │  Agenda  │  │  A2A    │ │
@@ -218,7 +218,7 @@ External A2A caller
    └──────────────────┘  └──────────────────┘
 ```
 
-### nyx-agent Components
+### nyx-harness Components
 
 **`main.py`** — The entrypoint. Constructs the `MessageBus`, `AgentExecutor`, `HeartbeatRunner`, `JobRunner`,
 `TaskRunner`, `TriggerRunner`, `ContinuationRunner`, `WebhookRunner`, and A2A HTTP server, then runs all of them
@@ -260,7 +260,7 @@ forwarding it to the backend URL. The backend URL can be overridden per-backend 
 file changes.
 
 **`metrics_proxy.py`** — Fetches `/metrics` from each configured backend and injects a `backend="<id>"` label on every
-Prometheus sample line. The nyx-agent `/metrics` endpoint merges its own metrics with all backend metrics, providing a
+Prometheus sample line. The nyx-harness `/metrics` endpoint merges its own metrics with all backend metrics, providing a
 single scrape target for the full deployment.
 
 ### Backend Components (a2-claude, a2-codex, a2-gemini)
@@ -284,7 +284,7 @@ context window, and MCP metrics; `a2-codex` and `a2-gemini` expose the common `a
 
 Agent identity and behavior are entirely file-based. No identity is baked into any image.
 
-### nyx-agent config files
+### nyx-harness config files
 
 | File                 | Location              | Purpose                                                             |
 | -------------------- | --------------------- | ------------------------------------------------------------------- |
@@ -311,11 +311,11 @@ Agent identity and behavior are entirely file-based. No identity is baked into a
 
 ### Key environment variables
 
-**nyx-agent:**
+**nyx-harness:**
 
 | Variable                           | Default                         | Description                                                                                              |
 | ---------------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `AGENT_NAME`                       | `nyx-agent`                     | Agent display name (e.g. `iris`)                                                                         |
+| `AGENT_NAME`                       | `nyx-harness`                     | Agent display name (e.g. `iris`)                                                                         |
 | `AGENT_HOST`                       | `0.0.0.0`                       | Interface to bind                                                                                        |
 | `AGENT_PORT`                       | `8000`                          | HTTP port                                                                                                |
 | `BACKEND_CONFIG_PATH`              | `/home/agent/.nyx/backend.yaml` | Path to backend routing config                                                                           |
@@ -358,7 +358,7 @@ hostname/port. nyx reads the `routing.a2a` entry from `backend.yaml` and forward
 configured backend. The backend session ID matches the session ID provided by the external caller, preserving
 conversation continuity across turns.
 
-Each nyx-agent exposes:
+Each nyx-harness exposes:
 
 - `/.well-known/agent.json` — agent card for discovery
 - `/` — task execution endpoint (`message/send`)
@@ -375,17 +375,17 @@ Each backend exposes the same A2A surface plus:
 - `/mcp` — MCP JSON-RPC server (`initialize`, `tools/list`, `tools/call`) for MCP hosts (Claude Desktop, Cursor, VS Code
   extensions, etc.)
 
-### Internal Message Bus (nyx-agent)
+### Internal Message Bus (nyx-harness)
 
 All internal work — heartbeat ticks, job/task fires, trigger dispatches, continuation fires, and A2A-inbound tasks —
 flows through the `MessageBus`. The bus serializes execution: one message processed at a time, deduplicated by kind.
-This prevents concurrent outbound backend calls from the same nyx-agent process.
+This prevents concurrent outbound backend calls from the same nyx-harness process.
 
 ---
 
 ## Port Assignments
 
-| Agent       | nyx-agent | a2-claude | a2-codex | a2-gemini |
+| Agent       | nyx-harness | a2-claude | a2-codex | a2-gemini |
 | ----------- | --------- | --------- | -------- | --------- |
 | iris        | 8000      | 8010      | 8011     | 8012      |
 | nova        | 8001      | 8020      | 8021     | 8022      |
@@ -431,7 +431,7 @@ Phase 17:    docs refinement
 Build all four images and deploy with Helm:
 
 ```bash
-docker build -f agent/Dockerfile -t nyx-agent:latest .
+docker build -f harness/Dockerfile -t nyx-harness:latest .
 docker build -f a2-claude/Dockerfile -t a2-claude:latest .
 docker build -f a2-codex/Dockerfile -t a2-codex:latest .
 docker build -f a2-gemini/Dockerfile -t a2-gemini:latest .
@@ -440,7 +440,7 @@ helm upgrade --install nyx ./charts/nyx -f ./charts/nyx/values-dev.yaml -n nyx -
 
 Port assignments per agent:
 
-| Agent | nyx-agent | a2-claude | a2-codex | a2-gemini |
+| Agent | nyx-harness | a2-claude | a2-codex | a2-gemini |
 | ----- | --------- | --------- | -------- | --------- |
 | iris  | 8000      | 8010      | 8011     | 8012      |
 | nova  | 8001      | 8020      | 8021     | 8022      |
@@ -450,12 +450,12 @@ Port assignments per agent:
 
 All infrastructure decisions are evaluated against Kubernetes compatibility:
 
-- Health probes follow the three-probe model (`/health/start`, `/health/live`, `/health/ready`) for nyx-agent; `/health`
+- Health probes follow the three-probe model (`/health/start`, `/health/live`, `/health/ready`) for nyx-harness; `/health`
   for backend containers
 - Configuration injected via env vars and mounted `ConfigMap`/`Secret` volumes
 - Backend URL configurable via `A2A_URL_<ID>` env var — supports sidecar (`http://localhost:8080`), separate pod
   (`http://a2-claude-svc:8080`), or Compose service DNS (`http://iris-a2-claude:8080`) without config file changes
-- Stateless containers at the nyx-agent layer (all state lives in backends)
+- Stateless containers at the nyx-harness layer (all state lives in backends)
 - Standard HTTP endpoints suitable for `Service` and `Ingress`
 
 A Helm chart is available at `charts/nyx/` and published to `oci://ghcr.io/skthomasjr/charts/nyx` on every release
@@ -467,7 +467,7 @@ tag. A Kubernetes Operator (declarative agent lifecycle via CRDs) is under consi
 
 ### Patterns in Use
 
-**nyx as pure infrastructure.** nyx-agent owns the scheduling and relay layer; LLM execution is the sole responsibility
+**nyx as pure infrastructure.** nyx-harness owns the scheduling and relay layer; LLM execution is the sole responsibility
 of backend containers. This separation allows each layer to evolve independently and enables swapping LLM backends
 without touching the scheduler.
 
@@ -480,12 +480,12 @@ continuation) to a named backend id. Routing is deterministic and explicit — n
 **Per-backend URL override.** The `A2A_URL_<ID>` env var allows the same `backend.yaml` config file to work across
 Docker Compose, Kubernetes sidecars, and separate pod deployments.
 
-**Message bus serialization.** All work flows through a single async queue per nyx-agent process. Prevents concurrent
+**Message bus serialization.** All work flows through a single async queue per nyx-harness process. Prevents concurrent
 outbound backend calls, enforces deduplication, and provides a single instrumentation point for latency and throughput.
 
 **Guarded restart loop.** Every background task (heartbeat, jobs, tasks, triggers, continuations, webhooks, bus worker)
 runs inside `_guarded()` — a crash-restart wrapper that logs the failure, increments a metric, and restarts after a
-delay. No task can take down the nyx-agent process.
+delay. No task can take down the nyx-harness process.
 
 **Skill documents as workflow.** Agent behavior is expressed in markdown skill files, not hardcoded logic. Skills are
 hot-swappable without rebuilding the image or restarting the container.
@@ -520,7 +520,7 @@ loop from execution to capability accumulation.
 **Declarative policy engine.** A file-based policy DSL (JSON/YAML) evaluated before every tool call would add guardrails
 without requiring Python code changes.
 
-**Webhook-to-trigger chaining.** Outbound webhooks can POST directly to a nyx-agent trigger endpoint, enabling
+**Webhook-to-trigger chaining.** Outbound webhooks can POST directly to a nyx-harness trigger endpoint, enabling
 self-contained prompt chains without external infrastructure. A completed job response can fire a webhook that triggers
 a second prompt on the same or a different agent.
 

@@ -29,7 +29,7 @@ or otherwise), `AGENT_NAME` is not set — in that case, `<agent-name>` is `loca
 
 autonomous-agent is a multi-container autonomous agent platform. Each named agent (iris, nova, kira, …) consists of:
 
-- A **nyx-agent** container — the infrastructure layer (A2A relay, heartbeat scheduler, job scheduler). It owns
+- A **nyx-harness** container — the infrastructure layer (A2A relay, heartbeat scheduler, job scheduler). It owns
   no LLM itself; it forwards all work to a backend.
 - One or more **backend** containers (`a2-claude`, `a2-codex`, `a2-gemini`) — the LLM execution layer. Each backend is a full A2A
   server that manages its own sessions, memory, conversation logs, and Prometheus metrics.
@@ -39,9 +39,9 @@ deployable unit.
 
 ## Architecture
 
-### nyx-agent (router / scheduler)
+### nyx-harness (router / scheduler)
 
-Each named agent runs a containerized instance of the `nyx-agent` image. nyx-agent is the infrastructure layer:
+Each named agent runs a containerized instance of the `nyx-harness` image. nyx-harness is the infrastructure layer:
 
 - **A2A relay** — receives external A2A requests and forwards them to the configured backend; returns the backend
   response verbatim.
@@ -57,7 +57,7 @@ Each named agent runs a containerized instance of the `nyx-agent` image. nyx-age
   (job, task, trigger, a2a, or another continuation) completes, enabling prompt chaining without hardcoded sequences.
 - **Router** — reads `backend.yaml` to decide which named backend handles each concern (a2a, heartbeat, job, task, trigger, continuation).
 
-nyx-agent retains no LLM of its own. All conversation state, session continuity, memory, and conversation logging
+nyx-harness retains no LLM of its own. All conversation state, session continuity, memory, and conversation logging
 live in the backend container.
 
 ### Backend containers
@@ -135,7 +135,7 @@ Agent identity and behavior are file-based — nothing is baked into images.
 ```text
 .agents/active/<name>/
 ├── agent-card.md            # A2A identity description text (mounted into all containers at /home/agent/agent-card.md)
-├── .nyx/                    # Runtime config (mounted into nyx-agent)
+├── .nyx/                    # Runtime config (mounted into nyx-harness)
 │   ├── backend.yaml         # Backend selection and routing
 │   ├── HEARTBEAT.md         # Proactive heartbeat schedule and prompt
 │   ├── jobs/                # Scheduled job definitions (*.md with cron frontmatter)
@@ -156,7 +156,7 @@ Agent identity and behavior are file-based — nothing is baked into images.
 ├── .gemini/                 # Gemini backend config (mounted into a2-gemini)
 │   ├── GEMINI.md            # Behavioral instructions / system prompt
 │   └── agent-card.md        # A2A identity description text
-├── logs/                    # nyx-agent logs (runtime, not committed)
+├── logs/                    # nyx-harness logs (runtime, not committed)
 ├── a2-claude/               # Claude backend instance for this agent
 │   ├── logs/                # Backend conversation log (runtime, not committed)
 │   └── memory/              # Backend persistent memory (runtime, not committed)
@@ -179,7 +179,7 @@ Agent identity and behavior are file-based — nothing is baked into images.
     ├── manifest.json
     └── <name>/
 
-agent/                       # nyx-agent source (router/scheduler)
+harness/                     # nyx-harness source (router/scheduler)
 ├── Dockerfile
 ├── main.py                  # A2A server entrypoint
 ├── executor.py              # Routes A2A requests to configured backend
@@ -225,8 +225,8 @@ charts/                      # Helm charts
 ## Building Images
 
 ```bash
-# nyx-agent (router/scheduler)
-docker build -f agent/Dockerfile -t nyx-agent:latest .
+# nyx-harness (router/scheduler)
+docker build -f harness/Dockerfile -t nyx-harness:latest .
 
 # Claude backend
 docker build -f a2-claude/Dockerfile -t a2-claude:latest .
@@ -241,7 +241,7 @@ docker build -f a2-gemini/Dockerfile -t a2-gemini:latest .
 ## Running Locally
 
 ```bash
-docker build -f agent/Dockerfile -t nyx-agent:latest . \
+docker build -f harness/Dockerfile -t nyx-harness:latest . \
   && docker build -f a2-claude/Dockerfile -t a2-claude:latest . \
   && docker build -f a2-codex/Dockerfile -t a2-codex:latest . \
   && docker build -f a2-gemini/Dockerfile -t a2-gemini:latest . \
@@ -266,4 +266,4 @@ when you need to target a specific session.
 ## Memory
 
 Each backend manages its own memory under `.agents/<env>/<name>/<backend>/memory/` (e.g.
-`.agents/active/iris/a2-claude/memory/`). For `a2-claude` and `a2-codex`, memory files are markdown documents. For `a2-gemini`, conversation history is stored as JSON in `memory/sessions/`. Memory files are not committed to source control. nyx-agent has no memory layer of its own.
+`.agents/active/iris/a2-claude/memory/`). For `a2-claude` and `a2-codex`, memory files are markdown documents. For `a2-gemini`, conversation history is stored as JSON in `memory/sessions/`. Memory files are not committed to source control. nyx-harness has no memory layer of its own.

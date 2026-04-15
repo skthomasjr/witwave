@@ -1,12 +1,12 @@
-# nyx-agent
+# nyx-harness
 
-nyx-agent is the orchestration layer for the autonomous agent platform. It owns no LLM of its own — its job is to
+nyx-harness is the orchestration layer for the autonomous agent platform. It owns no LLM of its own — its job is to
 receive work, route it to the right backend, and coordinate everything around that: scheduling, triggering, chaining,
 webhooks, and observability.
 
 ## What it does
 
-Every named agent (iris, nova, kira, …) runs one instance of this image alongside its backend containers. nyx-agent acts
+Every named agent (iris, nova, kira, …) runs one instance of this image alongside its backend containers. nyx-harness acts
 as the single entry point for all inbound requests and all scheduled work.
 
 **A2A relay** — Receives A2A JSON-RPC requests and forwards them to the backend configured for the `a2a` routing slot.
@@ -94,6 +94,6 @@ to match any job), `on-success`/`on-error`, `trigger-when` (substring match on u
 
 ## Runtime
 
-nyx-agent is a Docker container. It mounts the agent's `.nyx/` directory for configuration and writes conversation and
+nyx-harness is a Docker container. It mounts the agent's `.nyx/` directory for configuration and writes conversation and
 trace logs to individual files under `logs/`. The `MANIFEST_PATH` environment variable points to the team manifest
 (`manifest.json`), which lists all agents in the deployment by name and URL.

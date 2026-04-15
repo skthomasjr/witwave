@@ -16,8 +16,8 @@ jobs:
     strategy:
       matrix:
         include:
-          - image: nyx-agent
-            file: agent/Dockerfile
+          - image: nyx-harness
+            file: harness/Dockerfile
           - image: a2-claude
             file: a2-claude/Dockerfile
           - image: a2-codex

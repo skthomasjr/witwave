@@ -28,7 +28,7 @@ spec:
         - -c
         - |
           set -e
-          echo "Testing nyx-agent health/ready for {{ .name }}..."
+          echo "Testing nyx-harness health/ready for {{ .name }}..."
           curl -sf http://{{ $.Release.Name }}-{{ .name }}:{{ .port | default 8000 }}/health/ready
           echo ""
           echo "Testing A2A discovery for {{ .name }}..."

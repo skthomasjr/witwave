@@ -988,7 +988,7 @@ function renderMetrics(m) {
     upsertChart('cont-runs', 'bar', labels, data);
   })();
 
-  // Task restarts (nyx-agent)
+  // Task restarts (nyx-harness)
   (() => {
     const bd = breakdownByLabel(m, 'agent_task_restarts', 'task');
     const labels = Object.keys(bd), data = Object.values(bd);
@@ -1308,7 +1308,7 @@ function _getOrCreateSession(agentName, backendId) {
 // ── localStorage persistence ──────────────────────────────────────────────────
 function _saveAgentState() {
   try {
-    localStorage.setItem('nyx-agent-selection', JSON.stringify({
+    localStorage.setItem('nyx-harness-selection', JSON.stringify({
       agentName: _selectedAgent ? _selectedAgent.name : null,
       backendId: _selectedBackendId,
     }));
@@ -1328,7 +1328,7 @@ function _loadAgentState() {
 
 function _savedAgentSelection() {
   try {
-    const s = localStorage.getItem('nyx-agent-selection');
+    const s = localStorage.getItem('nyx-harness-selection');
     return s ? JSON.parse(s) : null;
   } catch (e) { return null; }
 }

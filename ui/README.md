@@ -1,6 +1,6 @@
 # nyx UI
 
-The nyx UI is a single-page web application for monitoring and interacting with the autonomous agent platform. It is served by nginx from a Docker container and communicates with agents via their nyx-agent HTTP APIs.
+The nyx UI is a single-page web application for monitoring and interacting with the autonomous agent platform. It is served by nginx from a Docker container and communicates with agents via their nyx-harness HTTP APIs.
 
 ## What it does
 
@@ -42,6 +42,6 @@ are unavailable.
 
 The UI container is stateless. It serves `index.html` over HTTP on port 80 and proxies nothing — all API calls go directly from the browser to the agent ports exposed by the Docker Compose network.
 
-The `AGENT_BASE` constant at the top of `index.html` sets the base URL for all API calls. By default it points to the local nyx-agent port. Update this if the agent is running on a different host or port.
+The `AGENT_BASE` constant at the top of `index.html` sets the base URL for all API calls. By default it points to the local nyx-harness port. Update this if the agent is running on a different host or port.
 
 The nginx config sets permissive CORS headers so the UI can be opened from any origin during development.

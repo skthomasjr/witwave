@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 JOBS_DIR = os.environ.get("JOBS_DIR", "/home/agent/.nyx/jobs")
 CHECKPOINT_DIR = os.path.join(JOBS_DIR, ".checkpoints")
-AGENT_NAME = os.environ.get("AGENT_NAME", "nyx-agent")
+AGENT_NAME = os.environ.get("AGENT_NAME", "nyx-harness")
 _JOBS_MAX_CONCURRENT = int(os.environ.get("JOBS_MAX_CONCURRENT", "0"))
 
 

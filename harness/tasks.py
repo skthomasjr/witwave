@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 TASKS_DIR = os.environ.get("TASKS_DIR", "/home/agent/.nyx/tasks")
 CHECKPOINT_DIR = os.path.join(TASKS_DIR, ".checkpoints")
-AGENT_NAME = os.environ.get("AGENT_NAME", "nyx-agent")
+AGENT_NAME = os.environ.get("AGENT_NAME", "nyx-harness")
 _TASKS_MAX_CONCURRENT = int(os.environ.get("TASKS_MAX_CONCURRENT", "0"))
 
 _DAY_ABBREVS = {

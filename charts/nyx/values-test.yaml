@@ -10,7 +10,7 @@ agents:
   - name: bob
     port: 8099
     image:
-      repository: ghcr.io/skthomasjr/images/nyx-agent
+      repository: ghcr.io/skthomasjr/images/nyx-harness
       tag: "0.1.1-beta.19"
     imagePullSecrets:
       - name: ghcr-credentials
@@ -94,7 +94,7 @@ agents:
   - name: fred
     port: 8098
     image:
-      repository: ghcr.io/skthomasjr/images/nyx-agent
+      repository: ghcr.io/skthomasjr/images/nyx-harness
       tag: "0.1.1-beta.19"
     imagePullSecrets:
       - name: ghcr-credentials

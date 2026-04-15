@@ -19,7 +19,7 @@ from watchfiles import awatch
 logger = logging.getLogger(__name__)
 
 TRIGGERS_DIR = os.environ.get("TRIGGERS_DIR", "/home/agent/.nyx/triggers")
-AGENT_NAME = os.environ.get("AGENT_NAME", "nyx-agent")
+AGENT_NAME = os.environ.get("AGENT_NAME", "nyx-harness")
 
 _ENDPOINT_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 

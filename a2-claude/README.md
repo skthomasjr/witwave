@@ -5,7 +5,7 @@ Agent SDK, managing its own sessions, conversation logs, trace logs, and Prometh
 
 ## What it does
 
-a2-claude receives A2A JSON-RPC requests (forwarded by nyx-agent), runs them through Claude via the Claude Agent SDK
+a2-claude receives A2A JSON-RPC requests (forwarded by nyx-harness), runs them through Claude via the Claude Agent SDK
 CLI, streams back the response, and logs everything to JSONL files.
 
 Each named agent that uses Claude gets its own dedicated instance of this image (e.g. `iris-a2-claude`,

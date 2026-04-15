@@ -1,6 +1,6 @@
 # Enable Prometheus metrics for all agents and their backends.
 # When enabled, prometheus.io scrape annotations are added to each agent Service
-# and the /metrics endpoint is activated on both nyx-agent and backend containers.
+# and the /metrics endpoint is activated on both nyx-harness and backend containers.
 # Override per agent with agents[].metrics.enabled.
 metrics:
   # Enable or disable metrics globally.
@@ -30,19 +30,19 @@ sharedStorage:
   # hostPath: /tmp/nyx-shared
 
 # List of agents to deploy. Each agent runs as a single pod containing
-# the nyx-agent orchestrator and one or more backend sidecars.
+# the nyx-harness orchestrator and one or more backend sidecars.
 agents:
   - # Agent name. Used as the pod name prefix, service name, and AGENT_NAME env var.
     name: adam
 
-    # Port the nyx-agent listens on. Also used for the Service and health probes.
+    # Port the nyx-harness listens on. Also used for the Service and health probes.
     # Must be unique per agent when multiple agents share a namespace with hostPort.
     port: 8000
 
-    # nyx-agent orchestrator image.
+    # nyx-harness orchestrator image.
     image:
       # Image repository.
-      repository: ghcr.io/skthomasjr/images/nyx-agent
+      repository: ghcr.io/skthomasjr/images/nyx-harness
       # # Image tag. Defaults to .Chart.AppVersion when omitted.
       # tag: ""
       # Image pull policy. Use Always for mutable tags (e.g. latest, beta).
@@ -52,8 +52,8 @@ agents:
     # imagePullSecrets:
     #   - name: ghcr-credentials
 
-    # # Resource requests and limits for the nyx-agent orchestrator container.
-    # # nyx-agent is lightweight (pure Python, no LLM) — CPU and memory needs are low.
+    # # Resource requests and limits for the nyx-harness orchestrator container.
+    # # nyx-harness is lightweight (pure Python, no LLM) — CPU and memory needs are low.
     # resources:
     #   requests:
     #     cpu: 50m
@@ -104,12 +104,12 @@ agents:
     #     dest: /home/agent/.nyx/
 
     # # Environment variables sourced from Secrets or ConfigMaps, injected into
-    # # the nyx-agent container.
+    # # the nyx-harness container.
     # envFrom:
     #   - secretRef:
     #       name: adam-secrets
 
-    # # Inline config files mounted into the nyx-agent container.
+    # # Inline config files mounted into the nyx-harness container.
     # # Each entry is added as a key in a ConfigMap and mounted at mountPath.
     # config:
     #   - name: HEARTBEAT.md
@@ -124,7 +124,7 @@ agents:
     #     content: |
     #       An autonomous agent.
 
-    # Backend sidecars. Each entry deploys one backend container alongside nyx-agent.
+    # Backend sidecars. Each entry deploys one backend container alongside nyx-harness.
     backends:
       - # Backend name. Used as the sidecar container name and backend ID in routing.
         name: claude

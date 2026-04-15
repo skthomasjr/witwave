@@ -52,7 +52,7 @@ from watchfiles import awatch
 logger = logging.getLogger(__name__)
 
 WEBHOOKS_DIR = os.environ.get("WEBHOOKS_DIR", "/home/agent/.nyx/webhooks")
-AGENT_NAME = os.environ.get("AGENT_NAME", "nyx-agent")
+AGENT_NAME = os.environ.get("AGENT_NAME", "nyx-harness")
 
 # Global cap on total in-flight webhook delivery tasks across all subscriptions.
 # When the cap is reached, new deliveries are shed (logged and counted).

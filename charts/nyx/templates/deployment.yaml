@@ -92,7 +92,7 @@ spec:
             {{- end }}
         {{- end }}
         {{- end }}
-        - name: nyx-agent
+        - name: nyx-harness
           image: {{ .image.repository }}:{{ .image.tag | default $.Chart.AppVersion }}
           imagePullPolicy: {{ .image.pullPolicy | default "IfNotPresent" }}
           securityContext:
@@ -147,7 +147,7 @@ spec:
               mountPath: {{ .dest }}
             {{- end }}
             {{- range .config }}
-            - name: nyx-agent-config
+            - name: nyx-harness-config
               mountPath: {{ .mountPath }}
               subPath: {{ .name }}
             {{- end }}
@@ -247,7 +247,7 @@ spec:
           emptyDir: {}
         {{- end }}
         {{- if .config }}
-        - name: nyx-agent-config
+        - name: nyx-harness-config
           configMap:
             name: {{ $.Release.Name }}-{{ .name }}-config
         {{- end }}

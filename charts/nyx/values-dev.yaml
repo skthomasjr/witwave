@@ -9,7 +9,7 @@ metrics:
 agents:
   - name: adam
     image:
-      repository: ghcr.io/skthomasjr/images/nyx-agent
+      repository: ghcr.io/skthomasjr/images/nyx-harness
       tag: "0.1.1-beta.6"
     imagePullSecrets:
       - name: ghcr-credentials
@@ -55,7 +55,7 @@ agents:
 
   - name: eve
     image:
-      repository: ghcr.io/skthomasjr/images/nyx-agent
+      repository: ghcr.io/skthomasjr/images/nyx-harness
       tag: "0.1.1-beta.6"
     imagePullSecrets:
       - name: ghcr-credentials

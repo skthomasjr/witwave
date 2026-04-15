@@ -13,7 +13,7 @@ shipping — closing the loop without a human in the hot path.
 
 ---
 
-Built on the [A2A protocol](https://a2a-protocol.org). Each named agent is a set of containers: a **nyx-agent**
+Built on the [A2A protocol](https://a2a-protocol.org). Each named agent is a set of containers: a **nyx-harness**
 infrastructure layer (A2A relay, heartbeat scheduler, job scheduler) and one or more **backend** containers that do the
 actual LLM work (Claude Agent SDK via `a2-claude`, OpenAI Agents SDK via `a2-codex`, Google Gemini SDK via `a2-gemini`).
 
@@ -25,7 +25,7 @@ The platform has five components, each with its own source directory:
 
 | Component          | Directory    | Type               | Description                                                                                                               |
 | ------------------ | ------------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| **Orchestrator**   | `agent/`     | Orchestrator agent | nyx-agent: the infrastructure and routing layer. Owns scheduling, triggering, chaining, and A2A relay. No LLM of its own. |
+| **Orchestrator**   | `harness/`   | Orchestrator agent | nyx-harness: the infrastructure and routing layer. Owns scheduling, triggering, chaining, and A2A relay. No LLM of its own. |
 | **Claude backend** | `a2-claude/` | Backend agent      | Executes prompts via the Claude Agent SDK. Manages sessions, memory, conversation logs, and metrics.                      |
 | **Codex backend**  | `a2-codex/`  | Backend agent      | Executes prompts via the OpenAI Agents SDK. Supports web search and headless browser via Playwright.                      |
 | **Gemini backend** | `a2-gemini/` | Backend agent      | Executes prompts via the Google Gemini SDK. Manages sessions and conversation history.                                    |
@@ -38,7 +38,7 @@ UI provides visibility only — it does not participate in agent workflows.
 
 Each agent:
 
-- Runs as a nyx-agent container that receives A2A requests, fires heartbeats, and runs jobs
+- Runs as a nyx-harness container that receives A2A requests, fires heartbeats, and runs jobs
 - Forwards all LLM work to a dedicated backend container (`a2-claude`, `a2-codex`, or `a2-gemini`)
 - Exposes an [A2A (Agent-to-Agent)](https://a2a-protocol.org) interface for communication
 - Has its own identity, memory, and configuration — none baked into the image
@@ -64,13 +64,13 @@ every release tag.
 
 | Image       | Registry path                                    |
 | ----------- | ------------------------------------------------ |
-| `nyx-agent` | `ghcr.io/skthomasjr/images/nyx-agent:latest`    |
+| `nyx-harness` | `ghcr.io/skthomasjr/images/nyx-harness:latest`    |
 | `a2-claude` | `ghcr.io/skthomasjr/images/a2-claude:latest`    |
 | `a2-codex`  | `ghcr.io/skthomasjr/images/a2-codex:latest`     |
 | `a2-gemini` | `ghcr.io/skthomasjr/images/a2-gemini:latest`    |
 | `ui`        | `ghcr.io/skthomasjr/images/ui:latest`           |
 
-Pull a specific version with a semver tag, e.g. `ghcr.io/skthomasjr/images/nyx-agent:0.1.0`.
+Pull a specific version with a semver tag, e.g. `ghcr.io/skthomasjr/images/nyx-harness:0.1.0`.
 
 ## Helm Chart
 
@@ -89,7 +89,7 @@ See [charts/nyx/README.md](charts/nyx/README.md) for full installation instructi
 Pull published images:
 
 ```bash
-docker pull ghcr.io/skthomasjr/images/nyx-agent:latest
+docker pull ghcr.io/skthomasjr/images/nyx-harness:latest
 docker pull ghcr.io/skthomasjr/images/a2-claude:latest
 docker pull ghcr.io/skthomasjr/images/a2-codex:latest
 docker pull ghcr.io/skthomasjr/images/a2-gemini:latest
@@ -98,7 +98,7 @@ docker pull ghcr.io/skthomasjr/images/a2-gemini:latest
 Or build locally:
 
 ```bash
-docker build -f agent/Dockerfile -t nyx-agent:latest .
+docker build -f harness/Dockerfile -t nyx-harness:latest .
 docker build -f a2-claude/Dockerfile -t a2-claude:latest .
 docker build -f a2-codex/Dockerfile -t a2-codex:latest .
 docker build -f a2-gemini/Dockerfile -t a2-gemini:latest .
@@ -121,7 +121,7 @@ helm upgrade --install nyx ./charts/nyx -f ./charts/nyx/values-dev.yaml -n nyx -
 ### 4. Verify
 
 ```bash
-# nyx-agent (router layer)
+# nyx-harness (router layer)
 curl http://localhost:8000/.well-known/agent.json
 
 # Claude backend for iris
@@ -158,7 +158,7 @@ Each agent directory contains:
 ├── .claude/           # Claude Code config (settings.json, mcp.json)
 ├── .codex/            # Codex config (config.toml)
 ├── .gemini/           # Gemini backend config (no extra config required)
-├── logs/              # nyx-agent logs (runtime, not committed)
+├── logs/              # nyx-harness logs (runtime, not committed)
 ├── a2-claude/         # Claude backend instance
 │   ├── logs/          # Conversation log (runtime, not committed)
 │   └── memory/        # Persistent memory (runtime, not committed)
@@ -202,7 +202,7 @@ order: per-message override → routing entry `model:` → per-backend config `m
 
 ## Consensus Mode
 
-Setting `consensus: true` in a job, task, or trigger frontmatter causes nyx-agent to fan out the prompt to **every
+Setting `consensus: true` in a job, task, or trigger frontmatter causes nyx-harness to fan out the prompt to **every
 configured backend** in parallel, then aggregate the responses:
 
 - **Binary responses** (yes / no / agree / disagree variants): majority vote. The default backend breaks ties.
@@ -284,13 +284,13 @@ Each backend container additionally exposes:
   503/`{"status": "starting"}` while initializing
 - `GET /metrics` — Prometheus metrics (when `METRICS_ENABLED` is set)
 - `POST /mcp` — MCP JSON-RPC server (`initialize`, `tools/list`, `tools/call` with a single `ask_agent` tool); allows
-  MCP hosts (Claude Desktop, Cursor, VS Code extensions) to invoke the agent as a tool without going through nyx-agent
+  MCP hosts (Claude Desktop, Cursor, VS Code extensions) to invoke the agent as a tool without going through nyx-harness
 
 ## Memory
 
 Each backend agent manages its own memory at `.agents/<env>/<name>/<backend>/memory/`. For `a2-claude` and `a2-codex`,
 memory files are markdown documents. For `a2-gemini`, conversation history is stored as JSON in `memory/sessions/`.
-Memory files are not committed to source control. nyx-agent has no memory layer of its own.
+Memory files are not committed to source control. nyx-harness has no memory layer of its own.
 
 ## Authentication
 
@@ -303,11 +303,11 @@ Memory files are not committed to source control. nyx-agent has no memory layer 
 
 ## Configuration
 
-### nyx-agent environment variables
+### nyx-harness environment variables
 
 | Variable                            | Default                         | Description                                                                                              |
 | ----------------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `AGENT_NAME`                        | `nyx-agent`                     | Agent display name (e.g. `iris`)                                                                         |
+| `AGENT_NAME`                        | `nyx-harness`                     | Agent display name (e.g. `iris`)                                                                         |
 | `AGENT_HOST`                        | `0.0.0.0`                       | Interface to bind                                                                                        |
 | `AGENT_PORT`                        | `8000`                          | HTTP port the nyx agent listens on                                                                       |
 | `BACKEND_CONFIG_PATH`               | `/home/agent/.nyx/backend.yaml` | Path to the backend routing config file                                                                  |
@@ -342,12 +342,12 @@ Memory files are not committed to source control. nyx-agent has no memory layer 
 
 ## Metrics
 
-When `METRICS_ENABLED` is set, Prometheus metrics are served at `/metrics` on both nyx-agent and backend containers.
+When `METRICS_ENABLED` is set, Prometheus metrics are served at `/metrics` on both nyx-harness and backend containers.
 
 Backend containers (`a2-claude`, `a2-codex`, `a2-gemini`) expose `a2_*`-prefixed metrics. `a2-claude` exposes a superset
 that includes tool call, context window, and MCP metrics; `a2-codex` and `a2-gemini` expose the common `a2_*` set.
-nyx-agent exposes `agent_*`-prefixed infrastructure metrics (bus, heartbeat, job, sessions, webhooks, etc.). The
-nyx-agent `/metrics` endpoint also aggregates all backend `/metrics` endpoints, injecting a `backend="<id>"` label on
+nyx-harness exposes `agent_*`-prefixed infrastructure metrics (bus, heartbeat, job, sessions, webhooks, etc.). The
+nyx-harness `/metrics` endpoint also aggregates all backend `/metrics` endpoints, injecting a `backend="<id>"` label on
 each sample so a single scrape target captures the full deployment.
 
 ## Outbound Webhooks

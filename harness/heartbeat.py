@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 HEARTBEAT_PATH = os.environ.get("HEARTBEAT_PATH", "/home/agent/.nyx/HEARTBEAT.md")
 DEFAULT_SCHEDULE = "*/30 * * * *"
 HEARTBEAT_DIR = os.path.dirname(HEARTBEAT_PATH)
-AGENT_NAME = os.environ.get("AGENT_NAME", "nyx-agent")
+AGENT_NAME = os.environ.get("AGENT_NAME", "nyx-harness")
 HEARTBEAT_SESSION = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{AGENT_NAME}.heartbeat"))
 # Sentinel token: heartbeat prompts should include this string to suppress response logging.
 HEARTBEAT_OK = "HEARTBEAT_OK"
