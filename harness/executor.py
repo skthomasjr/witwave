@@ -240,6 +240,7 @@ async def run_consensus(
     backends: dict,
     default_backend_id: str,
     consensus_entries: list[ConsensusEntry],
+    synthesis_backend_id: str | None = None,
     synthesis_model: str | None = None,
     max_tokens: int | None = None,
 ) -> str:
@@ -320,7 +321,7 @@ async def run_consensus(
         f"Agent responses:\n{parts}"
     )
     try:
-        synthesised = await _run_inner(synthesis_prompt, session_id, sessions, backends, default_backend_id, backend_id=default_backend_id, model=synthesis_model, max_tokens=max_tokens)
+        synthesised = await _run_inner(synthesis_prompt, session_id, sessions, backends, default_backend_id, backend_id=synthesis_backend_id or default_backend_id, model=synthesis_model, max_tokens=max_tokens)
     except Exception as exc:
         logger.error(f"Consensus synthesis pass failed: {exc!r} — returning concatenated responses.")
         if agent_consensus_runs_total is not None:
@@ -630,6 +631,7 @@ class AgentExecutor(A2AAgentExecutor):
                     self._backends,
                     self._default_backend_id,
                     consensus_entries=message.consensus,
+                    synthesis_backend_id=_resolved_id,
                     synthesis_model=_model,
                     max_tokens=message.max_tokens,
                 )
