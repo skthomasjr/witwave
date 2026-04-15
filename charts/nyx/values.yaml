@@ -1,3 +1,32 @@
+# UI deployment. Serves the nyx web interface.
+ui:
+  # Enable the UI deployment and service.
+  enabled: false
+  # UI image.
+  image:
+    repository: ghcr.io/skthomasjr/images/ui
+    # # Image tag. Defaults to .Chart.AppVersion when omitted.
+    # tag: ""
+    # # Image pull policy.
+    # pullPolicy: IfNotPresent
+  # Service port.
+  port: 80
+  # Number of replicas.
+  # replicas: 1
+  # CORS allowed origin for static asset responses. Defaults to "*".
+  # corsAllowOrigin: "https://ui.example.com"
+  # # Image pull secrets for private registries.
+  # imagePullSecrets:
+  #   - name: ghcr-credentials
+  # # Resource requests and limits.
+  # resources:
+  #   requests:
+  #     cpu: 50m
+  #     memory: 64Mi
+  #   limits:
+  #     cpu: 250m
+  #     memory: 128Mi
+
 # Default git-sync image used by all gitSyncs entries unless overridden per-entry.
 gitSync:
   image: ghcr.io/skthomasjr/images/git-sync:latest
