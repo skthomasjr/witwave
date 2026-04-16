@@ -174,6 +174,7 @@ Agent identity and behavior are file-based — nothing is baked into images.
 │   ├── CLAUDE.md            # Behavioral instructions / system prompt
 │   ├── agent-card.md        # A2A identity description text
 │   ├── mcp.json             # MCP server configuration
+│   ├── hooks.yaml           # Optional PreToolUse/PostToolUse extension rules (#467)
 │   ├── settings.json        # Claude Code settings
 │   └── skills/              # Skill definitions (*.md)
 ├── .codex/                  # Codex backend config (mounted into a2-codex)
@@ -185,7 +186,7 @@ Agent identity and behavior are file-based — nothing is baked into images.
 │   └── agent-card.md        # A2A identity description text
 ├── logs/                    # nyx-harness logs (runtime, not committed)
 ├── a2-claude/               # Claude backend instance for this agent
-│   ├── logs/                # Backend conversation log (runtime, not committed)
+│   ├── logs/                # Backend conversation log + trace.jsonl + tool-audit.jsonl (runtime, not committed)
 │   └── memory/              # Backend persistent memory (runtime, not committed)
 ├── a2-codex/                # Codex backend instance for this agent
 │   ├── logs/
@@ -210,12 +211,14 @@ harness/                     # nyx-harness source (router/scheduler)
 ├── Dockerfile
 ├── main.py                  # A2A server entrypoint
 ├── executor.py              # Routes A2A requests to configured backend
-├── bus.py                   # Internal async message bus
+├── bus.py                   # Internal async message bus (carries trace_context)
 ├── heartbeat.py             # Heartbeat scheduler
 ├── jobs.py                  # Job scheduler
 ├── tasks.py                 # Task scheduler
 ├── triggers.py              # Inbound HTTP trigger handler
 ├── continuations.py         # Continuation runner (fires on upstream completion)
+├── webhooks.py              # Outbound webhook delivery (stamps traceparent + OTel span)
+├── tracing.py               # W3C trace-context helpers + OTel re-exports (#468, #469)
 ├── metrics.py               # Prometheus metrics definitions
 ├── utils.py                 # Shared utilities (frontmatter parser, duration parser, etc.)
 └── backends/
@@ -226,8 +229,9 @@ harness/                     # nyx-harness source (router/scheduler)
 a2-claude/                   # Claude backend source
 ├── Dockerfile
 ├── main.py                  # A2A server entrypoint
-├── executor.py              # Claude Agent SDK executor; owns sessions and logging
-├── metrics.py               # Prometheus metrics (superset of a2-codex/a2-gemini; adds tool, context, MCP metrics)
+├── executor.py              # Claude Agent SDK executor; owns sessions, logging, hooks (#467)
+├── hooks.py                 # PreToolUse/PostToolUse policy engine + baseline deny rules (#467)
+├── metrics.py               # Prometheus metrics (superset of a2-codex/a2-gemini; adds tool, context, MCP, hooks metrics)
 └── requirements.txt
 
 a2-codex/                    # Codex backend source
@@ -254,9 +258,16 @@ tools/                       # MCP components (one directory per server)
     ├── server.py
     └── requirements.txt
 
-ui/                          # Web UI
+ui/                          # Web UI — legacy single-file app (currently primary)
+dashboard/                   # Vue 3 + Vite + PrimeVue dashboard — future replacement for ui/ (#470)
 charts/                      # Helm charts
-└── nyx/                     # nyx Helm chart (deploys agents to Kubernetes)
+├── nyx/                     # nyx Helm chart (deploys agents to Kubernetes)
+└── nyx-operator/            # nyx-operator Helm chart (deploys the NyxAgent controller)
+operator/                    # Kubernetes operator (Go) — reconciles NyxAgent CRDs
+shared/                      # Shared Python modules mounted into harness + backends
+                             #   otel.py      — OpenTelemetry bootstrap and helpers (#469)
+                             #   log_utils.py — structured log append helpers
+                             #   exceptions.py, conversations.py
 ```
 
 ## Building Images
@@ -279,6 +290,9 @@ docker build -f tools/kubernetes/Dockerfile -t mcp-kubernetes:latest .
 
 # Helm MCP tool
 docker build -f tools/helm/Dockerfile -t mcp-helm:latest .
+
+# Dashboard — future UI, coexists with ui/ (#470). Optional; only needed when dashboard.enabled=true.
+docker build -f dashboard/Dockerfile -t dashboard:latest .
 ```
 
 ## Running Locally
@@ -290,7 +304,7 @@ docker build -f harness/Dockerfile -t nyx-harness:latest . \
   && docker build -f a2-gemini/Dockerfile -t a2-gemini:latest . \
   && docker build -f tools/kubernetes/Dockerfile -t mcp-kubernetes:latest . \
   && docker build -f tools/helm/Dockerfile -t mcp-helm:latest . \
-  && helm upgrade --install nyx ./charts/nyx -f ./charts/nyx/values-dev.yaml -n nyx --create-namespace
+  && helm upgrade --install nyx ./charts/nyx -f ./charts/nyx/values-test.yaml -n nyx --create-namespace
 ```
 
 ## Interacting with Agents

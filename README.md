@@ -74,6 +74,7 @@ every release tag.
 | `a2-codex`     | `ghcr.io/skthomasjr/images/a2-codex:latest`     |
 | `a2-gemini`    | `ghcr.io/skthomasjr/images/a2-gemini:latest`    |
 | `ui`           | `ghcr.io/skthomasjr/images/ui:latest`           |
+| `dashboard`    | `ghcr.io/skthomasjr/images/dashboard:latest`    |
 | `nyx-operator` | `ghcr.io/skthomasjr/images/nyx-operator:latest` |
 | `git-sync`     | `ghcr.io/skthomasjr/images/git-sync:latest`     |
 
@@ -127,7 +128,7 @@ export GEMINI_API_KEY=your-key-here
 ### 3. Start the agents
 
 ```bash
-helm upgrade --install nyx ./charts/nyx -f ./charts/nyx/values-dev.yaml -n nyx --create-namespace
+helm upgrade --install nyx ./charts/nyx -f ./charts/nyx/values-test.yaml -n nyx --create-namespace
 ```
 
 ### 4. Verify
@@ -278,14 +279,14 @@ sessions), so each job/task/trigger invocation gets a fresh budget. All three ba
 
 4. Update `.agents/active/<name>/.nyx/backend.yaml` with the new agent's backend service names and URLs
 
-5. Add the agent to `charts/nyx/values-dev.yaml` with its backends, config, and storage
+5. Add the agent to `charts/nyx/values-test.yaml` (or your own overrides file) with its backends, config, and storage
 
 6. Register the agent in `.agents/active/manifest.json`
 
 7. Deploy:
 
    ```bash
-   helm upgrade --install nyx ./charts/nyx -f ./charts/nyx/values-dev.yaml -n nyx
+   helm upgrade --install nyx ./charts/nyx -f ./charts/nyx/values-test.yaml -n nyx
    ```
 
 ## Communication
