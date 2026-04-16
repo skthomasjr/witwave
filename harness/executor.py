@@ -97,9 +97,23 @@ def load_backends():
     configs = load_backends_config(raw)
     backends = {c.id: _build_backend(c) for c in configs}
     routing = load_routing_config(raw)
+    # Validate all routing entries reference known backend IDs.
+    _routing_fields = {
+        "default": routing.default,
+        "a2a": routing.a2a,
+        "heartbeat": routing.heartbeat,
+        "job": routing.job,
+        "task": routing.task,
+        "trigger": routing.trigger,
+        "continuation": routing.continuation,
+    }
+    for _field, _entry in _routing_fields.items():
+        if _entry is not None and _entry.agent not in backends:
+            raise ValueError(
+                f"routing.{_field} agent '{_entry.agent}' does not match any configured backend id. "
+                f"Known ids: {list(backends)}"
+            )
     if routing.default:
-        if routing.default.agent not in backends:
-            raise ValueError(f"routing.default agent '{routing.default.agent}' does not match any configured backend id.")
         default_id = routing.default.agent
     else:
         default_id = configs[0].id
