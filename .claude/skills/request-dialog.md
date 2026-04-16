@@ -44,6 +44,7 @@ Skip this issue (no comment, no edit) if:
 Proceed if:
 - The issue has no comments yet (initial engagement).
 - A human has commented since the agent's last comment.
+- The request is marked as ready, the comment thread contains a delivery summary confirming all derived features are closed/implemented, and the issue has not yet been closed — proceed to **Closing Out** instead of Steps 4–7.
 
 ---
 
@@ -143,3 +144,35 @@ gh issue edit <number> --add-label "ready"
 Confirm to the requester that the request has been marked ready and will be picked up for feature planning.
 
 The request dialog is now complete. Leave the issue open — a separate skill will handle feature creation.
+
+---
+
+## Closing Out
+
+When a request is marked `Ready: true` and all derived features confirmed implemented (a delivery summary comment exists showing all feature issues closed), close the request.
+
+**Step 1: Check for outstanding work.**
+
+Review the comment thread. If any derived feature issue is still open, or the requester has raised additional concerns, do not close — ask the next clarifying question or wait.
+
+**Step 2: Ask the originator to confirm.**
+
+If no confirmation comment has been posted yet, post a comment summarizing what was delivered (referencing the feature issues) and ask the originator explicitly: "All derived features have been implemented. Is this request complete, or is there further work needed?"
+
+Then **wait**. Do not close until the originator replies with explicit confirmation (e.g. "yes", "complete", "close it", "looks good").
+
+If the originator has already replied with explicit confirmation in a prior comment, proceed to Step 3.
+
+```bash
+gh issue comment <number> --body "<delivery summary and confirmation request>
+
+— <agent-name> · request-dialog v<skill-version>"
+```
+
+**Step 3: Close the issue.**
+
+Only after explicit originator confirmation:
+
+```bash
+gh issue close <number> --comment "Closing — confirmed complete by originator. All derived features implemented and delivered."
+```
