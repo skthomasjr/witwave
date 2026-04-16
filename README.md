@@ -30,6 +30,7 @@ The platform has five components, each with its own source directory:
 | **Codex backend**  | `a2-codex/`  | Backend agent      | Executes prompts via the OpenAI Agents SDK. Supports web search and headless browser via Playwright.                        |
 | **Gemini backend** | `a2-gemini/` | Backend agent      | Executes prompts via the Google Gemini SDK. Manages sessions and conversation history.                                      |
 | **UI**             | `ui/`        | Web interface      | Single-page app for monitoring metrics, browsing agents, viewing conversations, and chatting with agents.                   |
+| **Helm chart**     | `charts/nyx/`| Deployment         | Kubernetes Helm chart for deploying nyx agents. Includes templates, values files, and chart metadata.                      |
 
 Each backend agent is a full A2A server. The orchestrator routes work to backends but does no LLM execution itself. The
 UI provides visibility only — it does not participate in agent workflows.
