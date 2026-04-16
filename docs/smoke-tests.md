@@ -197,3 +197,31 @@ After deploying, confirm in order:
 10. Fan-in: `fanin-a` and `fanin-b` both appear; `continuation-fanin-test` fires exactly once after both, with `FANIN_OK`
 11. Budget: `budget-exceeded-claude` produces a `system` log entry matching `Budget exceeded: N tokens used of 10 limit.`
 12. Heartbeat: `HEARTBEAT_OK` appears in the conversation log within ~1 minute of each hour boundary
+
+---
+
+## Future smoke tests
+
+Planned additions. Kept here so the intent stays visible without cluttering the active tables above. Promoted to a real test (and a row in the tables) when the required plumbing exists and the test can stay inside the prompt-in / conversation-log-out verification pattern.
+
+### Medium complexity — fits the pattern but needs coordinated fixtures
+
+| Test | What it would verify | Why deferred |
+|---|---|---|
+| **Prompt-kind filter on webhooks** | `notify-on-kind` glob filter — a webhook subscribed to `job:*` fires on job responses but not on trigger responses (or vice versa) | Needs two webhook configs plus matching chain-sink triggers; moderate new fixture surface |
+| **Concurrent load ordering** | Multiple jobs firing at the same cron tick all complete without scheduler interleaving bugs | Needs 3+ jobs with identical `schedule:` plus log-ordering assertions the doc can explain clearly |
+| **Session persistence across pod restart** | Session ID and memory survive a pod restart (PVC persistence works end-to-end) | Requires manual deploy-time choreography — seed session, restart pod, verify memory — not a single-file change |
+| **Per-message `model` override via A2A metadata** | `metadata.model` on an inbound A2A request overrides the routing default and lands in the log | Triggers don't yet propagate `metadata.model` from the HTTP payload to the dispatch; needs trigger-side plumbing before a smoke test fits |
+| **Gemini backend parity** | `backend-check-gemini`, `model-check-gemini-*`, `animal-memory-gemini`, `ping-gemini` | Gemini backend is not supported yet (no account); add once supported |
+
+### Not a fit for this document
+
+These are real things worth testing but don't fit the prompt-in / conversation-log-out pattern. They should live in a separate integration / e2e test suite (for example `operator/test/e2e/` or a dedicated shell-based suite), not here.
+
+| Test | Why it doesn't fit |
+|---|---|
+| Metrics endpoint smoke (`/metrics` scrape asserts specific counters move) | Verification is regex over Prometheus text output, not conversation log |
+| Trigger trace / header propagation (e.g. `X-Trace-Id` round-trips) | Verification is on HTTP headers, not conversation log |
+| UI read-only endpoints (`/conversations`, `/team`, `/triggers`) return well-formed responses | curl-and-assert-on-JSON, not conversation log |
+| Agent-card hot-reload (`/.well-known/agent.json` updates after editing mounted `agent-card.md`) | Verification is on the agent-card JSON response, not the conversation log; also requires mutating a ConfigMap-mounted file mid-test |
+| Strict token-count assertion (`tokens` field always non-null for Claude and Codex) | Not a separate dispatched test — an invariant check on fields of existing log entries; lives better as a log-shape linter |
