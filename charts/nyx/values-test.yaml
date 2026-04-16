@@ -2,7 +2,7 @@ ui:
   enabled: true
   image:
     repository: ghcr.io/skthomasjr/images/ui
-    tag: "0.2.0-beta.34"
+    tag: "0.2.0-beta.35"
   imagePullSecrets:
     - name: ghcr-credentials
 
@@ -10,7 +10,7 @@ dashboard:
   enabled: true
   image:
     repository: ghcr.io/skthomasjr/images/dashboard
-    tag: "0.2.0-beta.34"
+    tag: "0.2.0-beta.35"
   imagePullSecrets:
     - name: ghcr-credentials
 
@@ -21,18 +21,22 @@ sharedStorage:
 
 metrics:
   enabled: true
+  # Opt the test stack into both Service and Pod scrape annotations so we
+  # validate the new podAnnotations toggle (#472) end-to-end.
+  serviceAnnotations: true
+  podAnnotations: true
 
 gitSync:
   image:
     repository: ghcr.io/skthomasjr/images/git-sync
-    tag: 0.2.0-beta.34
+    tag: 0.2.0-beta.35
 
 agents:
   - name: bob
     port: 8099
     image:
       repository: ghcr.io/skthomasjr/images/nyx-harness
-      tag: "0.2.0-beta.34"
+      tag: "0.2.0-beta.35"
     imagePullSecrets:
       - name: ghcr-credentials
     env:
@@ -72,7 +76,7 @@ agents:
       - name: claude
         image:
           repository: ghcr.io/skthomasjr/images/a2-claude
-          tag: "0.2.0-beta.34"
+          tag: "0.2.0-beta.35"
         port: 8090
         model: claude-opus-4-6
         envFrom:
@@ -97,7 +101,7 @@ agents:
       - name: codex
         image:
           repository: ghcr.io/skthomasjr/images/a2-codex
-          tag: "0.2.0-beta.34"
+          tag: "0.2.0-beta.35"
         port: 8091
         model: gpt-5.1-codex-max
         envFrom:
@@ -121,7 +125,7 @@ agents:
         enabled: false
         image:
           repository: ghcr.io/skthomasjr/images/a2-gemini
-          tag: "0.2.0-beta.34"
+          tag: "0.2.0-beta.35"
         port: 8092
         env:
           - name: GEMINI_MAX_HISTORY_TURNS
@@ -143,7 +147,7 @@ agents:
     port: 8098
     image:
       repository: ghcr.io/skthomasjr/images/nyx-harness
-      tag: "0.2.0-beta.34"
+      tag: "0.2.0-beta.35"
     imagePullSecrets:
       - name: ghcr-credentials
     env:
@@ -167,7 +171,7 @@ agents:
       - name: claude
         image:
           repository: ghcr.io/skthomasjr/images/a2-claude
-          tag: "0.2.0-beta.34"
+          tag: "0.2.0-beta.35"
         port: 8089
         model: claude-opus-4-6
         envFrom:
