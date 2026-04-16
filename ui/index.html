@@ -694,7 +694,7 @@ function switchView(name) {
     if (!_metricsLoaded) { _metricsLoaded = true; loadMetrics(); }
     setRefreshInterval(Number(document.getElementById('refresh-interval').value) || 30_000);
   } else {
-    if (_refreshTimer) { clearInterval(_refreshTimer); _refreshTimer = null; }
+    if (_refreshTimer) { clearTimeout(_refreshTimer); _refreshTimer = null; }
   }
   if (name !== 'calendar') {
     if (_calNowTimer) { clearInterval(_calNowTimer); _calNowTimer = null; }
@@ -1078,7 +1078,7 @@ let _chatSendBtn = null;
 
 async function loadAgents(isRefresh = false) {
   try {
-    const r = await fetch(`${AGENT_BASE}/team`);
+    const r = await fetchWithTimeout(`${AGENT_BASE}/team`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const team = await r.json();
     if (isRefresh && _agentTeam) {
@@ -1108,12 +1108,14 @@ async function loadAgents(isRefresh = false) {
     const footer = document.getElementById('agents-footer');
     if (footer) footer.textContent = 'updated ' + new Date().toLocaleTimeString();
     setStatus('connected', true);
+    return true;
   } catch (e) {
     if (!isRefresh) {
       document.getElementById('agents-placeholder').textContent =
         `Could not load: ${e.message}`;
     }
     setStatus(`unreachable — ${AGENT_BASE}`, false);
+    return false;
   }
 }
 
@@ -1452,6 +1454,20 @@ function selectAgent(member) {
   _saveAgentState();
 }
 
+// ── Fetch helpers ─────────────────────────────────────────────────────────────
+
+const _FETCH_TIMEOUT_MS = 10000;
+
+async function fetchWithTimeout(url, timeoutMs = _FETCH_TIMEOUT_MS, opts = {}) {
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...opts, signal: ctrl.signal });
+  } finally {
+    clearTimeout(tid);
+  }
+}
+
 // ── A2A helpers ───────────────────────────────────────────────────────────────
 
 function a2aTaskId() {
@@ -1471,7 +1487,7 @@ async function a2aSend(agentName, text, backendId, model, sessionId) {
 
   const body = { jsonrpc: '2.0', id: 1, method: 'message/send', params };
   const qs = backendId ? `?backend=${encodeURIComponent(backendId)}` : '';
-  const r = await fetch(`${AGENT_BASE}/proxy/${encodeURIComponent(agentName)}${qs}`, {
+  const r = await fetchWithTimeout(`${AGENT_BASE}/proxy/${encodeURIComponent(agentName)}${qs}`, 60000, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -1482,7 +1498,7 @@ async function a2aSend(agentName, text, backendId, model, sessionId) {
 
 async function loadAgentConversations(nyxUrl, thread) {
   try {
-    const r = await fetch(nyxUrl.replace(/\/$/, '') + '/conversations?limit=50');
+    const r = await fetchWithTimeout(nyxUrl.replace(/\/$/, '') + '/conversations?limit=50');
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const entries = await r.json();
     renderChatThread(thread, entries);
@@ -1600,31 +1616,60 @@ async function doSend(agentName) {
 
 _loadAgentState();
 loadAgents();
-setInterval(() => loadAgents(true), 30000);
+
+// Self-scheduling poll with exponential backoff on failure (#408).
+// Normal interval: 30s. On fetch failure, doubles up to 5 min, then resets on success.
+(function _scheduleAgentRefresh(failures = 0) {
+  const BASE_MS = 30000, MAX_MS = 300000;
+  const delay = failures === 0 ? BASE_MS : Math.min(BASE_MS * Math.pow(2, failures), MAX_MS);
+  setTimeout(async () => {
+    const ok = await loadAgents(true);
+    _scheduleAgentRefresh(ok ? 0 : failures + 1);
+  }, delay);
+})();
 
 // ── Fetch & refresh ───────────────────────────────────────────────────────────
 async function loadMetrics() {
   try {
-    const r = await fetch(`${AGENT_BASE}/metrics`);
+    const r = await fetchWithTimeout(`${AGENT_BASE}/metrics`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const text = await r.text();
     const m = parsePrometheus(text);
     renderMetrics(m);
     document.getElementById('metrics-ts').textContent = 'updated ' + new Date().toLocaleTimeString();
     setStatus('connected', true);
+    return true;
   } catch (e) {
     setStatus('unreachable — ' + AGENT_BASE, false);
     document.getElementById('chart-placeholder').style.display = 'block';
     document.getElementById('chart-placeholder').textContent =
       `Cannot reach ${AGENT_BASE}/metrics`;
+    return false;
   }
 }
 
 let _refreshTimer = null;
+let _refreshBaseMs = 0;
+let _refreshFailures = 0;
 
 function setRefreshInterval(ms) {
-  if (_refreshTimer) { clearInterval(_refreshTimer); _refreshTimer = null; }
-  if (ms > 0) _refreshTimer = setInterval(loadMetrics, ms);
+  if (_refreshTimer) { clearTimeout(_refreshTimer); _refreshTimer = null; }
+  _refreshBaseMs = ms;
+  _refreshFailures = 0;
+  if (ms > 0) _scheduleMetricsRefresh();
+}
+
+function _scheduleMetricsRefresh() {
+  if (_refreshBaseMs <= 0) return;
+  const MAX_MS = 300000;
+  const delay = _refreshFailures === 0
+    ? _refreshBaseMs
+    : Math.min(_refreshBaseMs * Math.pow(2, _refreshFailures), MAX_MS);
+  _refreshTimer = setTimeout(async () => {
+    const ok = await loadMetrics();
+    _refreshFailures = ok ? 0 : _refreshFailures + 1;
+    _scheduleMetricsRefresh();
+  }, delay);
 }
 
 let _metricsLoaded = false;
@@ -1685,8 +1730,8 @@ async function loadConversations() {
   try {
     const limit = conv.convLimit;
     const [convResp, traceResp] = await Promise.all([
-      fetch(`${AGENT_BASE}/conversations?limit=${limit}`),
-      fetch(`${AGENT_BASE}/trace?limit=${limit}`),
+      fetchWithTimeout(`${AGENT_BASE}/conversations?limit=${limit}`),
+      fetchWithTimeout(`${AGENT_BASE}/trace?limit=${limit}`),
     ]);
     conv.entries = convResp.ok ? await convResp.json() : [];
     conv.traceEntries = traceResp.ok ? await traceResp.json() : [];
@@ -2160,8 +2205,8 @@ let _calNowTimer = null;
 async function loadCalendarData() {
   try {
     const [jobsResp, tasksResp] = await Promise.all([
-      fetch(`${AGENT_BASE}/jobs`),
-      fetch(`${AGENT_BASE}/tasks`),
+      fetchWithTimeout(`${AGENT_BASE}/jobs`),
+      fetchWithTimeout(`${AGENT_BASE}/tasks`),
     ]);
     cal.jobs  = jobsResp.ok  ? await jobsResp.json()  : [];
     cal.tasks = tasksResp.ok ? await tasksResp.json() : [];
