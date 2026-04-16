@@ -74,6 +74,11 @@ kubectl delete crd nyxagents.nyx.ai
 | `metrics.enabled`            | Expose controller-runtime metrics and create a ClusterIP Service for them                    | `false`                                     |
 | `metrics.port`               | Metrics port                                                                                 | `8443`                                      |
 | `metrics.secure`             | Serve metrics over HTTPS (self-signed unless cert-manager is wired in)                       | `true`                                      |
+| `serviceMonitor.enabled`     | Create a Prometheus Operator `ServiceMonitor` for metrics auto-discovery (requires `metrics.enabled=true` and the Prometheus Operator CRDs installed in the cluster) | `false` |
+| `serviceMonitor.scrapeInterval` | Scrape interval for the ServiceMonitor endpoint                                            | `30s`                                      |
+| `serviceMonitor.scrapeTimeout`  | Scrape timeout for the ServiceMonitor endpoint                                             | `10s`                                      |
+| `serviceMonitor.labels`         | Extra labels merged into the ServiceMonitor (e.g. `release: kube-prometheus-stack` for Prometheus Operator's selector)                                          | `{}`                                       |
+| `serviceMonitor.tlsConfig`      | TLS config for the scrape (used only when `metrics.secure=true`); defaults to `insecureSkipVerify: true` for the manager's self-signed cert                    | see `values.yaml`                          |
 | `probes.port`                | Health/liveness probe bind address port                                                      | `8081`                                      |
 | `serviceAccount.create`      | Create a ServiceAccount for the controller                                                   | `true`                                      |
 | `serviceAccount.automount`   | Automount the SA token                                                                       | `true`                                      |

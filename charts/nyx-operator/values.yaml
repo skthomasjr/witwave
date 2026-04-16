@@ -42,6 +42,27 @@ metrics:
   port: 8443
   secure: true
 
+# ServiceMonitor for the Prometheus Operator (#446). Off by default so the
+# chart never references monitoring.coreos.com CRDs unless the user opts in.
+# Requires metrics.enabled=true to do anything; the template is gated on both.
+# When enabled, Prometheus auto-discovers the operator's metrics endpoint
+# without manual scrape configuration.
+serviceMonitor:
+  enabled: false
+  # scrapeInterval and scrapeTimeout are forwarded to the ServiceMonitor
+  # endpoints[]; defaults align with kubebuilder's manifests/monitor.yaml.
+  scrapeInterval: 30s
+  scrapeTimeout: 10s
+  # Extra labels merged into the ServiceMonitor metadata. Useful when the
+  # cluster's Prometheus has a label selector requiring a specific tenancy
+  # label (e.g. release: kube-prometheus-stack).
+  labels: {}
+  # When metrics.secure is true the endpoint scheme is HTTPS and the
+  # ServiceMonitor needs to know how to verify the manager's self-signed
+  # certificate. Override below when wiring cert-manager or your own CA.
+  tlsConfig:
+    insecureSkipVerify: true
+
 # Health/liveness probe endpoint. Matches the --health-probe-bind-address
 # flag passed to the manager.
 probes:

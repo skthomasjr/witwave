@@ -1,0 +1,39 @@
+{{- if and .Values.metrics.enabled .Values.serviceMonitor.enabled }}
+---
+# ServiceMonitor for the Prometheus Operator (#446). Gated on both
+# metrics.enabled and serviceMonitor.enabled so this chart does not
+# reference monitoring.coreos.com CRDs unless the user opts in — clusters
+# without the Prometheus Operator installed should leave serviceMonitor
+# disabled to avoid CRD-not-found errors at install time.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "nyx-operator.fullname" . }}-metrics
+  labels:
+    {{- include "nyx-operator.labels" . | nindent 4 }}
+    control-plane: controller-manager
+    {{- with .Values.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "nyx-operator.selectorLabels" . | nindent 6 }}
+      control-plane: controller-manager
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  endpoints:
+    # Reference the metrics Service port by name so the scheme follows
+    # metrics.secure automatically (port name is "https" or "http", set in
+    # service-metrics.yaml).
+    - port: {{ ternary "https" "http" .Values.metrics.secure }}
+      scheme: {{ ternary "https" "http" .Values.metrics.secure }}
+      path: /metrics
+      interval: {{ .Values.serviceMonitor.scrapeInterval }}
+      scrapeTimeout: {{ .Values.serviceMonitor.scrapeTimeout }}
+      {{- if .Values.metrics.secure }}
+      tlsConfig:
+        {{- toYaml .Values.serviceMonitor.tlsConfig | nindent 8 }}
+      {{- end }}
+{{- end }}
