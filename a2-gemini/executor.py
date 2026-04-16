@@ -469,6 +469,7 @@ async def _run_inner(
             timeout=TASK_TIMEOUT_SECONDS,
         )
         _track_session(sessions, session_id, session_locks)
+        session_locks.pop(session_id, None)  # avoid orphaned lock entry on success path (#401)
     except asyncio.TimeoutError:
         logger.error(f"Session {session_id!r}: timed out after {TASK_TIMEOUT_SECONDS}s.")
         # Evict the session from the LRU cache on timeout. The underlying
@@ -506,6 +507,7 @@ async def _run_inner(
         )
         collected = _bexc.collected
         _track_session(sessions, session_id, session_locks)
+        session_locks.pop(session_id, None)  # avoid orphaned lock entry on budget-exceeded path (#401)
     except Exception:
         session_locks.pop(session_id, None)  # avoid orphaned lock entry on error path (#394)
         if a2_tasks_total is not None:
