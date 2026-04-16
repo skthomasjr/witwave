@@ -15,6 +15,11 @@ ui:
   # replicas: 1
   # CORS allowed origin for static asset responses. Defaults to "*".
   # corsAllowOrigin: "https://ui.example.com"
+  # # CSP connect-src directive — controls which origins the UI's browser-side
+  # # JavaScript may contact (fetch/XHR/WebSocket). Defaults to "*" for
+  # # backward compatibility; tighten for defence-in-depth (#429).
+  # # Example: "'self' https://nyx.example.com"
+  # connectSrc: "'self' https://nyx.example.com"
   # # Image pull secrets for private registries.
   # imagePullSecrets:
   #   - name: ghcr-credentials
@@ -26,6 +31,17 @@ ui:
   #   limits:
   #     cpu: 250m
   #     memory: 128Mi
+  # # Pod-level securityContext for the UI deployment (#427). Leave unset to
+  # # preserve backward compatibility with the stock nginx:alpine image (which
+  # # binds port 80 as root). To harden for clusters enforcing the Pod Security
+  # # Standards "restricted" profile, supply a securityContext here matching the
+  # # pattern used by agent deployments — and use a UI image that runs as a
+  # # non-root user and binds an unprivileged port.
+  # securityContext:
+  #   runAsNonRoot: true
+  #   runAsUser: 1000
+  #   runAsGroup: 1000
+  #   fsGroup: 1000
 
 # Ingress for the UI. Disabled by default — enable to expose the UI externally (#424).
 ingress:
@@ -45,6 +61,26 @@ ingress:
   #   - secretName: nyx-tls
   #     hosts:
   #       - nyx.example.com
+
+# Horizontal autoscaling for agent Deployments. Disabled by default — enable
+# per-agent via agents[].autoscaling to override these defaults. When enabled,
+# the Deployment's replicas field is omitted so the HPA owns replica count
+# (#434).
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+  # # Optional: memory target (requires container resources to be set).
+  # targetMemoryUtilizationPercentage: 80
+
+# PodDisruptionBudget for agent Deployments. Disabled by default — enable to
+# limit voluntary disruption during node drain and cluster upgrades (#435).
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+  # # Alternative: cap unavailable pods instead of guaranteeing available.
+  # maxUnavailable: 1
 
 # Liveness and readiness probe timing for all containers.
 # Defaults match the values previously hardcoded in templates (#425).

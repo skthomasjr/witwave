@@ -1,4 +1,10 @@
 {{- range .Values.agents }}
+{{- $agentAutoscaling := dict }}
+{{- if .autoscaling }}
+{{- $agentAutoscaling = .autoscaling }}
+{{- else if $.Values.autoscaling }}
+{{- $agentAutoscaling = $.Values.autoscaling }}
+{{- end }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -7,7 +13,9 @@ metadata:
   labels:
     {{- include "nyx.agentLabels" .name | nindent 4 }}
 spec:
+  {{- if not $agentAutoscaling.enabled }}
   replicas: 1
+  {{- end }}
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ .name }}
@@ -33,6 +41,10 @@ spec:
         {{- range .gitSyncs }}
         - name: git-sync-init-{{ .name }}
           image: {{ .image | default $.Values.gitSync.image }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           args:
             - --repo={{ .repo }}
             - --root=/git
@@ -54,6 +66,10 @@ spec:
         {{- if include "nyx.hasMappings" $agent }}
         - name: git-map-init
           image: {{ $.Values.gitSync.image }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           command: ["/bin/sh", "/nyx-scripts/git-sync.sh"]
           volumeMounts:
             - name: git-sync-data

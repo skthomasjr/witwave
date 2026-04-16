@@ -1,0 +1,41 @@
+{{- range $agent := .Values.agents }}
+{{- $auto := dict }}
+{{- if $agent.autoscaling }}
+{{- $auto = $agent.autoscaling }}
+{{- else if $.Values.autoscaling }}
+{{- $auto = $.Values.autoscaling }}
+{{- end }}
+{{- if $auto.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $.Release.Name }}-{{ $agent.name }}
+  labels:
+    {{- include "nyx.agentLabels" $agent.name | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $.Release.Name }}-{{ $agent.name }}
+  minReplicas: {{ $auto.minReplicas | default 1 }}
+  maxReplicas: {{ $auto.maxReplicas | default 3 }}
+  metrics:
+    {{- if $auto.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $auto.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if $auto.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ $auto.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}
+{{- end }}

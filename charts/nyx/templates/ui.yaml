@@ -23,6 +23,10 @@ spec:
         app.kubernetes.io/managed-by: helm
     spec:
       automountServiceAccountToken: false
+      {{- with .Values.ui.securityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- if .Values.ui.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml .Values.ui.imagePullSecrets | nindent 8 }}
@@ -63,6 +67,8 @@ spec:
           env:
             - name: UI_CORS_ALLOW_ORIGIN
               value: {{ .Values.ui.corsAllowOrigin | default "*" | quote }}
+            - name: UI_CONNECT_SRC
+              value: {{ .Values.ui.connectSrc | default "*" | quote }}
 ---
 apiVersion: v1
 kind: Service
