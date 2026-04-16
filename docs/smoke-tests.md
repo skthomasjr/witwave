@@ -123,6 +123,49 @@ Fred runs a single Claude backend. Simpler test surface — used to verify multi
 
 ---
 
+## Fresh deploy (wipe history)
+
+To get a clean conversation log — no leftover data from a previous deploy — delete the PVCs before upgrading. The chart recreates them automatically on next install.
+
+```bash
+# Scale down first so PVCs are released
+helm uninstall nyx-test -n nyx
+
+# Delete all PVCs for the test release
+kubectl delete pvc -n nyx \
+  nyx-test-bob-claude-data \
+  nyx-test-bob-codex-data \
+  nyx-test-bob-gemini-data \
+  nyx-test-fred-claude-data \
+  nyx-test-shared
+
+# Redeploy — PVCs are recreated and run-once jobs fire fresh
+helm upgrade --install nyx-test ./charts/nyx \
+  -f ./charts/nyx/values-test.yaml \
+  -n nyx --create-namespace
+```
+
+---
+
+## Viewing the conversation (UI)
+
+The test stack deploys a web UI at `nyx-test-ui`. Port-forward it locally:
+
+```bash
+kubectl port-forward svc/nyx-test-ui 8080:80 -n nyx
+```
+
+Then open http://localhost:8080 in your browser. Select **bob** or **fred** from the agent dropdown to see the conversation log. Agent messages show `agent · model · N tok · timestamp · session_id` in the subdued label line.
+
+To bring up both the agent API and the UI at the same time:
+
+```bash
+kubectl port-forward svc/nyx-test-bob 8099:8099 -n nyx &
+kubectl port-forward svc/nyx-test-ui 8080:80 -n nyx &
+```
+
+---
+
 ## Quick checklist
 
 After deploying, confirm in order:
@@ -131,7 +174,8 @@ After deploying, confirm in order:
 2. `GET /health/ready` returns `{"status":"ready"}` on both agents
 3. Run-once jobs appear near the top of the bob conversation log
 4. Model check logs show correct `model` fields (authoritative — ignore self-reported text)
-5. Animal memory chain: hamsters → turtles → recall with both animals, on both Claude and Codex
-6. Consensus fan-out: three simultaneous prompts, three responses, one synthesis — correct synthesizer per job
-7. `ping` job fires every 5 min with `continuation-ping` immediately after
-8. Fred's `ping` job and `continuation-ping` appear in fred's conversation log
+5. Agent messages show a token count in the conversation log (`tokens` field non-null for Claude and Codex)
+6. Animal memory chain: hamsters → turtles → recall with both animals, on both Claude and Codex
+7. Consensus fan-out: three simultaneous prompts, three responses, one synthesis — correct synthesizer per job
+8. `ping` job fires every 5 min with `continuation-ping` immediately after
+9. Fred's `ping` job and `continuation-ping` appear in fred's conversation log
