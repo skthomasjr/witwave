@@ -115,6 +115,14 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
+          {{- if $.Values.preStop.enabled }}
+          lifecycle:
+            preStop:
+              exec:
+                # Sleep before SIGTERM to give in-flight A2A requests, jobs,
+                # and webhook deliveries a coordinated drain window (#447).
+                command: ["/bin/sh", "-c", "sleep {{ $.Values.preStop.delaySeconds | default 30 }}"]
+          {{- end }}
           ports:
             - name: http
               containerPort: {{ .port | default 8000 }}
@@ -186,6 +194,14 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
+          {{- if $.Values.preStop.enabled }}
+          lifecycle:
+            preStop:
+              exec:
+                # Sleep before SIGTERM to give in-flight backend queries a
+                # coordinated drain window (#447).
+                command: ["/bin/sh", "-c", "sleep {{ $.Values.preStop.delaySeconds | default 30 }}"]
+          {{- end }}
           ports:
             - containerPort: {{ .port }}
           livenessProbe:

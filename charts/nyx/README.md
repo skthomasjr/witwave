@@ -106,6 +106,8 @@ helm uninstall nyx --namespace nyx
 | `podDisruptionBudget.enabled` | Deploy a PodDisruptionBudget per agent | `false` |
 | `podDisruptionBudget.minAvailable` | Minimum available replicas during voluntary disruption | `1` |
 | `podDisruptionBudget.maxUnavailable` | Alternative to `minAvailable` — max unavailable replicas | unset |
+| `preStop.enabled` | Add a `lifecycle.preStop` sleep on every container so in-flight A2A requests, jobs, and webhook deliveries get a coordinated drain window before SIGTERM (#447) | `false` |
+| `preStop.delaySeconds` | preStop sleep duration in seconds (must be less than `terminationGracePeriodSeconds`) | `30` |
 | `probes.liveness.initialDelaySeconds` | Liveness probe initial delay | `10` |
 | `probes.liveness.periodSeconds` | Liveness probe period | `30` |
 | `probes.liveness.timeoutSeconds` | Liveness probe timeout | `5` |

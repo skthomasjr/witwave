@@ -82,6 +82,15 @@ podDisruptionBudget:
   # # Alternative: cap unavailable pods instead of guaranteeing available.
   # maxUnavailable: 1
 
+# preStop lifecycle hook for graceful drain on pod termination. When enabled,
+# every container in the agent pod sleeps for delaySeconds before SIGTERM
+# arrives, giving in-flight A2A requests, scheduled jobs, and webhook
+# deliveries a coordinated drain window (#447). Off by default — opt in for
+# production deployments where graceful shutdown matters.
+preStop:
+  enabled: false
+  delaySeconds: 30
+
 # Liveness and readiness probe timing for all containers.
 # Defaults match the values previously hardcoded in templates (#425).
 probes:

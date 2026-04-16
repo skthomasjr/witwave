@@ -16,3 +16,10 @@ sources:
 maintainers:
   - name: Scott Thomas
     url: https://github.com/skthomasjr
+annotations:
+  artifacthub.io/category: AI
+  artifacthub.io/licenses: Apache-2.0
+  artifacthub.io/prerelease: "true"
+  artifacthub.io/links: |
+    - name: source
+      url: https://github.com/skthomasjr/autonomous-agent

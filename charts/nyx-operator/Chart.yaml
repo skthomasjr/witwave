@@ -16,3 +16,18 @@ sources:
 maintainers:
   - name: Scott Thomas
     url: https://github.com/skthomasjr
+annotations:
+  artifacthub.io/category: AI
+  artifacthub.io/licenses: Apache-2.0
+  artifacthub.io/prerelease: "true"
+  artifacthub.io/operator: "true"
+  artifacthub.io/operatorCapabilities: Basic Install
+  artifacthub.io/links: |
+    - name: source
+      url: https://github.com/skthomasjr/autonomous-agent
+  artifacthub.io/crds: |
+    - kind: NyxAgent
+      version: v1alpha1
+      name: nyxagents.nyx.ai
+      displayName: Nyx Agent
+      description: A nyx agent — orchestrator plus backend sidecars.
