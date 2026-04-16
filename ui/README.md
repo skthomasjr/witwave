@@ -4,7 +4,7 @@ The nyx UI is a single-page web application for monitoring and interacting with 
 
 ## What it does
 
-The UI provides four views into the running agent system:
+The UI provides five views into the running agent system:
 
 **Metrics** — Real-time operational dashboard. Displays stat cards (uptime, active sessions, queue depth, error counts) and time-series charts powered by Chart.js. Data is polled from each agent's Prometheus `/metrics` endpoint on a configurable interval. Filterable by agent and backend.
 
@@ -19,6 +19,10 @@ controls the number of entries loaded (100, 500, 1000, or 5000; defaults to 500)
 calendar fetches `GET /jobs` and `GET /tasks` from the agent and renders registered items as labeled entries in the
 month view. Job items are shown in purple-accent; task items in violet. The view degrades gracefully if the endpoints
 are unavailable.
+
+**Triggers** — List of inbound HTTP trigger endpoints registered on the agent. Fetches `GET /triggers` on activation and
+renders each trigger's endpoint, description, running state, assigned backend/model, and session ID. Supports text search
+filtering and manual refresh.
 
 ## Key features
 
@@ -44,4 +48,13 @@ The UI container is stateless. It serves `index.html` over HTTP on port 80 and p
 
 The `AGENT_BASE` constant at the top of `index.html` sets the base URL for all API calls. By default it points to the local nyx-harness port. Update this if the agent is running on a different host or port.
 
-The nginx config sets permissive CORS headers so the UI can be opened from any origin during development.
+The nginx config sets permissive CORS headers by default so the UI can be opened from any origin during development.
+Two environment variables let deployments tighten this for production:
+
+- `UI_CORS_ALLOW_ORIGIN` — sets the `Access-Control-Allow-Origin` header on static-asset responses (default `"*"`).
+- `UI_CONNECT_SRC` — scopes the CSP `connect-src` directive, restricting which origins the UI's browser-side JavaScript
+  may contact via `fetch`/`XHR`/`WebSocket` (default `"*"`; tighten to e.g. `"'self' https://nyx.example.com"`).
+
+The nginx config also emits `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, and
+`Referrer-Policy: strict-origin-when-cross-origin` on every response as defence-in-depth against clickjacking, MIME
+sniffing, and referrer leakage.
