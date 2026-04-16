@@ -316,6 +316,7 @@ async def main():
                     executor._sessions,
                     executor._agent_md_content,
                     executor._session_locks,
+                    history_save_failed=executor._history_save_failed,
                     model=None,
                 )
             except Exception as exc:

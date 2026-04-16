@@ -284,6 +284,7 @@ async def run_query(
     session_id: str,
     agent_md_content: str,
     session_locks: dict[str, asyncio.Lock],
+    history_save_failed: set[str] | None = None,
     model: str | None = None,
     max_tokens: int | None = None,
 ) -> list[str]:
@@ -378,9 +379,12 @@ async def run_query(
 
         # Persist updated history — log at ERROR on permanent failure so it is
         # visible in monitoring, but do not propagate so the completed response
-        # is still returned to the caller.
+        # is still returned to the caller.  Mark the session in history_save_failed
+        # so the next request starts fresh rather than resuming inconsistent state (#409).
         try:
             await _save_history(session_id, chat.history)
+            if history_save_failed is not None:
+                history_save_failed.discard(session_id)
         except Exception as _save_exc:
             logger.error(
                 "Permanently failed to save session history for %r: %s",
@@ -388,6 +392,8 @@ async def run_query(
             )
             if a2_session_history_save_errors_total is not None:
                 a2_session_history_save_errors_total.labels(**_LABELS).inc()
+            if history_save_failed is not None:
+                history_save_failed.add(session_id)
 
     if a2_sdk_query_duration_seconds is not None:
         a2_sdk_query_duration_seconds.labels(**_LABELS, model=resolved_model).observe(time.monotonic() - _query_start)
@@ -421,13 +427,14 @@ async def run(
     sessions: OrderedDict[str, float],
     agent_md_content: str,
     session_locks: dict[str, asyncio.Lock],
+    history_save_failed: set[str] | None = None,
     model: str | None = None,
     max_tokens: int | None = None,
 ) -> str:
     if a2_concurrent_queries is not None:
         a2_concurrent_queries.labels(**_LABELS).inc()
     try:
-        return await _run_inner(prompt, session_id, sessions, agent_md_content, session_locks, model, max_tokens)
+        return await _run_inner(prompt, session_id, sessions, agent_md_content, session_locks, history_save_failed, model, max_tokens)
     finally:
         if a2_concurrent_queries is not None:
             a2_concurrent_queries.labels(**_LABELS).dec()
@@ -439,6 +446,7 @@ async def _run_inner(
     sessions: OrderedDict[str, float],
     agent_md_content: str,
     session_locks: dict[str, asyncio.Lock],
+    history_save_failed: set[str] | None = None,
     model: str | None = None,
     max_tokens: int | None = None,
 ) -> str:
@@ -446,7 +454,10 @@ async def _run_inner(
     if a2_model_requests_total is not None:
         a2_model_requests_total.labels(**_LABELS, model=resolved_model).inc()
 
-    is_new = session_id not in sessions and not await asyncio.to_thread(_session_file_exists, session_id)
+    # Treat sessions whose history failed to persist as new — resuming from a
+    # partially-written or missing history file could produce incorrect context (#409).
+    _save_failed = history_save_failed is not None and session_id in history_save_failed
+    is_new = _save_failed or (session_id not in sessions and not await asyncio.to_thread(_session_file_exists, session_id))
     if not is_new and a2_session_idle_seconds is not None:
         _last_used = sessions.get(session_id)
         if _last_used is not None:
@@ -465,7 +476,7 @@ async def _run_inner(
     _budget_exceeded = False
     try:
         collected = await asyncio.wait_for(
-            run_query(prompt, session_id, agent_md_content, session_locks, model=model, max_tokens=max_tokens),
+            run_query(prompt, session_id, agent_md_content, session_locks, history_save_failed, model=model, max_tokens=max_tokens),
             timeout=TASK_TIMEOUT_SECONDS,
         )
         _track_session(sessions, session_id, session_locks)
@@ -543,6 +554,10 @@ class AgentExecutor(A2AAgentExecutor):
         self._running_tasks: dict[str, asyncio.Task] = {}
         self._agent_md_content: str = _load_agent_md()
         self._mcp_watcher_tasks: list[asyncio.Task] = []
+        # Session IDs whose history could not be persisted. On next request,
+        # these sessions are treated as new rather than resuming potentially
+        # inconsistent state (#409).
+        self._history_save_failed: set[str] = set()
 
     def _mcp_watchers(self):
         """Return callables for GEMINI.md watching (#371)."""
@@ -618,6 +633,7 @@ class AgentExecutor(A2AAgentExecutor):
                 self._sessions,
                 self._agent_md_content,
                 self._session_locks,
+                history_save_failed=self._history_save_failed,
                 model=model,
                 max_tokens=max_tokens,
             )
