@@ -27,6 +27,39 @@ ui:
   #     cpu: 250m
   #     memory: 128Mi
 
+# Ingress for the UI. Disabled by default — enable to expose the UI externally (#424).
+ingress:
+  enabled: false
+  # # Ingress class name (e.g. nginx, traefik).
+  # className: nginx
+  # # Annotations to add to the Ingress resource.
+  # annotations:
+  #   nginx.ingress.kubernetes.io/rewrite-target: /
+  # # Hostnames and paths.
+  # hosts:
+  #   - host: nyx.example.com
+  #     path: /
+  #     pathType: Prefix
+  # # TLS configuration.
+  # tls:
+  #   - secretName: nyx-tls
+  #     hosts:
+  #       - nyx.example.com
+
+# Liveness and readiness probe timing for all containers.
+# Defaults match the values previously hardcoded in templates (#425).
+probes:
+  liveness:
+    initialDelaySeconds: 10
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readiness:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
 # Default git-sync image used by all gitSyncs entries unless overridden per-entry.
 gitSync:
   image: ghcr.io/skthomasjr/images/git-sync:latest

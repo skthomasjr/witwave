@@ -34,22 +34,28 @@ spec:
           ports:
             - name: http
               containerPort: 80
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
           livenessProbe:
             httpGet:
               path: /
               port: 80
-            initialDelaySeconds: 5
-            periodSeconds: 30
-            timeoutSeconds: 5
-            failureThreshold: 3
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
           readinessProbe:
             httpGet:
               path: /
               port: 80
-            initialDelaySeconds: 3
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
           {{- if .Values.ui.resources }}
           resources:
             {{- toYaml .Values.ui.resources | nindent 12 }}
