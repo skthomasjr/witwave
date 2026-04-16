@@ -1,10 +1,14 @@
-FROM nginx:alpine
+FROM nginxinc/nginx-unprivileged:1.27-alpine
+# nginx-unprivileged runs as uid 101 (nginx) and listens on 8080, so the pod
+# can run with runAsNonRoot: true without capability tricks. Writeable runtime
+# paths (/tmp, /var/cache/nginx) are already owned by the nginx user in the
+# base image.
 COPY ui/nginx.conf /etc/nginx/templates/default.conf.template
 COPY ui/index.html /usr/share/nginx/html/index.html
 
 # UI_CORS_ALLOW_ORIGIN controls the Access-Control-Allow-Origin value for
-# static-asset responses.  The nginx:alpine image automatically applies
-# envsubst to files in /etc/nginx/templates/ at container startup.
+# static-asset responses.  The nginx image automatically applies envsubst
+# to files in /etc/nginx/templates/ at container startup.
 #
 # Override at deploy time to restrict to a known origin, e.g.:
 #   UI_CORS_ALLOW_ORIGIN=https://ui.example.com

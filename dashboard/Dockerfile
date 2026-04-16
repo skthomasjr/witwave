@@ -11,12 +11,12 @@ RUN npm install --no-audit --no-fund --ignore-scripts
 COPY dashboard/ ./
 RUN npm run build
 
-FROM nginx:1.27-bookworm
-COPY dashboard/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /build/dist /usr/share/nginx/html
+FROM nginxinc/nginx-unprivileged:1.27-bookworm
+# nginx-unprivileged runs as uid 101 (nginx) and binds on 8080 by default,
+# so the pod runs with runAsNonRoot: true without capability tricks.
+# Writeable runtime paths (/tmp, /var/cache/nginx) are already owned by
+# the nginx user in the base image.
+COPY --chown=nginx:nginx dashboard/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build --chown=nginx:nginx /build/dist /usr/share/nginx/html
 EXPOSE 8080
-# The nginx image runs as root by default but drops privileges to the
-# `nginx` user for worker processes. Binding to 8080 (not 80) avoids needing
-# NET_BIND_SERVICE capabilities when the pod's securityContext runs the
-# container as a non-root UID.
 CMD ["nginx", "-g", "daemon off;"]
