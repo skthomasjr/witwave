@@ -12,8 +12,17 @@ from a2a.server.agent_execution import AgentExecutor as A2AAgentExecutor
 from a2a.server.agent_execution import RequestContext
 from a2a.server.events import EventQueue
 from a2a.utils import new_agent_text_message
-from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
+from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, HookMatcher
 from claude_agent_sdk.types import AssistantMessage, ResultMessage, TextBlock, ToolResultBlock, ToolUseBlock
+from hooks import (
+    BASELINE_RULES,
+    DECISION_ALLOW,
+    DECISION_DENY,
+    DECISION_WARN,
+    HookState,
+    evaluate_pre_tool_use,
+    load_extension_rules,
+)
 from metrics import (
     a2_a2a_last_request_timestamp_seconds,
     a2_a2a_request_duration_seconds,
@@ -21,6 +30,11 @@ from metrics import (
     a2_active_sessions,
     a2_budget_exceeded_total,
     a2_concurrent_queries,
+    a2_hooks_active_rules,
+    a2_hooks_blocked_total,
+    a2_hooks_config_reloads_total,
+    a2_hooks_warnings_total,
+    a2_tool_audit_entries_total,
     a2_context_exhaustion_total,
     a2_context_tokens,
     a2_context_tokens_remaining,
@@ -163,6 +177,9 @@ CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversa
 TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/trace.jsonl")
 MCP_CONFIG_PATH = os.environ.get("MCP_CONFIG_PATH", "/home/agent/.claude/mcp.json")
 AGENT_MD = "/home/agent/.claude/CLAUDE.md"
+HOOKS_CONFIG_PATH = os.environ.get("HOOKS_CONFIG_PATH", "/home/agent/.claude/hooks.yaml")
+HOOKS_BASELINE_ENABLED = os.environ.get("HOOKS_BASELINE_ENABLED", "true").lower() not in ("0", "false", "no", "off")
+TOOL_AUDIT_LOG = os.environ.get("TOOL_AUDIT_LOG", "/home/agent/logs/tool-audit.jsonl")
 
 _DEFAULT_TOOLS = "Read,Write,Edit,Bash,Glob,Grep,WebSearch,WebFetch"
 ALLOWED_TOOLS: list[str] = [t.strip() for t in os.environ.get("ALLOWED_TOOLS", _DEFAULT_TOOLS).split(",") if t.strip()]
@@ -232,6 +249,120 @@ async def log_trace(text: str) -> None:
         if a2_log_write_errors_total is not None:
             a2_log_write_errors_total.labels(**_LABELS).inc()
         logger.error(f"log_trace error: {e}")
+
+
+async def log_tool_audit(entry: dict) -> None:
+    """Append one audit row to ``tool-audit.jsonl`` (#467).
+
+    Separate log file so security-sensitive readers (SIEM / forensic tools)
+    can tail a compact JSONL of tool calls without parsing the full trace
+    log. Errors are logged but never raised — audit failure must not break
+    the agent's primary response path.
+    """
+    try:
+        line = json.dumps(entry, default=str)
+        await asyncio.to_thread(_append_log, TOOL_AUDIT_LOG, line)
+        if a2_tool_audit_entries_total is not None:
+            _tool = entry.get("tool_name") or "unknown"
+            a2_tool_audit_entries_total.labels(**_LABELS, tool=_tool).inc()
+        if a2_log_entries_total is not None:
+            a2_log_entries_total.labels(**_LABELS, logger="tool_audit").inc()
+        if a2_log_bytes_total is not None:
+            a2_log_bytes_total.labels(**_LABELS, logger="tool_audit").inc(len(line.encode()))
+    except Exception as e:
+        if a2_log_write_errors_total is not None:
+            a2_log_write_errors_total.labels(**_LABELS).inc()
+        logger.error(f"log_tool_audit error: {e}")
+
+
+def _make_pre_tool_use_hook(state: HookState):
+    """Build the PreToolUse hook callable bound to *state*.
+
+    The callable is closed over *state* so it always sees the latest rule
+    set, even after ``hooks.yaml`` hot-reload mutates ``state.extensions``.
+    """
+
+    async def _hook(input_data: dict, tool_use_id: str | None, context) -> dict:
+        tool_name = input_data.get("tool_name", "")
+        tool_input = input_data.get("tool_input") or {}
+        rules = state.active_rules()
+        decision, matched = evaluate_pre_tool_use(tool_name, tool_input, rules)
+
+        if decision == DECISION_DENY and matched is not None:
+            if a2_hooks_blocked_total is not None:
+                a2_hooks_blocked_total.labels(
+                    **_LABELS, tool=tool_name or "unknown",
+                    source=matched.source, rule=matched.name,
+                ).inc()
+            logger.warning(
+                "PreToolUse DENY: tool=%r rule=%r source=%r reason=%r",
+                tool_name, matched.name, matched.source, matched.reason,
+            )
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": matched.reason,
+                }
+            }
+
+        if decision == DECISION_WARN and matched is not None:
+            if a2_hooks_warnings_total is not None:
+                a2_hooks_warnings_total.labels(
+                    **_LABELS, tool=tool_name or "unknown",
+                    source=matched.source, rule=matched.name,
+                ).inc()
+            logger.info(
+                "PreToolUse WARN: tool=%r rule=%r source=%r reason=%r",
+                tool_name, matched.name, matched.source, matched.reason,
+            )
+
+        return {}
+
+    return _hook
+
+
+def _make_post_tool_use_hook(session_id_ref: dict, model_ref: dict):
+    """Build the PostToolUse hook callable.
+
+    Always emits one audit entry per tool call. The ``*_ref`` dicts are
+    single-slot mutable containers (``{"value": ...}``) so the executor's
+    outer call site can stamp the current session/model into each audit row
+    without rebuilding ClaudeAgentOptions per call.
+    """
+
+    async def _hook(input_data: dict, tool_use_id: str | None, context) -> dict:
+        try:
+            # ``tool_response`` can be large — capture only a preview so the
+            # audit log stays compact. Operators who need the full payload
+            # can read trace.jsonl.
+            _resp = input_data.get("tool_response")
+            if isinstance(_resp, (dict, list)):
+                _resp_preview = json.dumps(_resp, default=str)[:2048]
+            else:
+                _resp_preview = str(_resp)[:2048] if _resp is not None else ""
+            entry = {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "agent": AGENT_NAME,
+                "agent_id": AGENT_ID,
+                "session_id": session_id_ref.get("value") or input_data.get("session_id") or "",
+                "model": model_ref.get("value") or "",
+                "tool_use_id": tool_use_id or "",
+                "tool_name": input_data.get("tool_name") or "",
+                "tool_input": input_data.get("tool_input") or {},
+                "tool_response_preview": _resp_preview,
+            }
+            await log_tool_audit(entry)
+        except Exception as exc:
+            logger.error("PostToolUse audit error: %r", exc)
+        return {}
+
+    return _hook
+
+
+def _load_hooks_config_sync() -> list:
+    """Synchronous wrapper around ``load_extension_rules`` for ``asyncio.to_thread``."""
+    return load_extension_rules(HOOKS_CONFIG_PATH)
 
 
 async def _log_tool_event(event_type: str, block, session_id: str, model: str | None = None) -> None:
@@ -309,6 +440,7 @@ def _make_options(
     mcp_servers: dict,
     model: str | None = None,
     agent_md_content: str = "",
+    hook_state: HookState | None = None,
 ) -> ClaudeAgentOptions:
     env: dict | None = None
     if CLAUDE_CREDENTIAL and CLAUDE_AUTH_ENV:
@@ -318,6 +450,27 @@ def _make_options(
     if agent_md_content:
         system_prompt = f"{agent_md_content}\n\nYour session ID is {session_id}."
 
+    # Build PreToolUse/PostToolUse matchers if a hook state was supplied.
+    # PostToolUse is always wired — it only writes an audit row, never
+    # blocks — so operators cannot accidentally turn off the forensic
+    # trail. PreToolUse is only wired when at least one rule is active,
+    # to avoid the per-call SDK round-trip when the baseline has been
+    # disabled and no extensions have loaded (#467).
+    hooks_cfg: dict | None = None
+    if hook_state is not None:
+        _active = hook_state.active_rules()
+        _session_ref = {"value": session_id}
+        _model_ref = {"value": model or CLAUDE_MODEL or ""}
+        hooks_cfg = {
+            "PostToolUse": [
+                HookMatcher(matcher="*", hooks=[_make_post_tool_use_hook(_session_ref, _model_ref)]),
+            ],
+        }
+        if _active:
+            hooks_cfg["PreToolUse"] = [
+                HookMatcher(matcher="*", hooks=[_make_pre_tool_use_hook(hook_state)]),
+            ]
+
     return ClaudeAgentOptions(
         allowed_tools=ALLOWED_TOOLS,
         system_prompt=system_prompt,
@@ -326,6 +479,7 @@ def _make_options(
         stderr=stderr_fn,
         mcp_servers=mcp_servers,
         model=model or CLAUDE_MODEL,
+        **({"hooks": hooks_cfg} if hooks_cfg else {}),
         **({"env": env} if env else {}),
     )
 
@@ -485,6 +639,7 @@ async def run_query(
     model: str | None = None,
     max_tokens: int | None = None,
     on_chunk: Callable[[str], Awaitable[None]] | None = None,
+    hook_state: HookState | None = None,
 ) -> list[str]:
     stderr_lines: list[str] = []
     _query_start = time.monotonic()
@@ -499,7 +654,7 @@ async def run_query(
     try:
         return await _run_query_inner(
             prompt,
-            _make_options(session_id, resume=not is_new, stderr_fn=capture_stderr, mcp_servers=mcp_servers, model=model, agent_md_content=agent_md_content),
+            _make_options(session_id, resume=not is_new, stderr_fn=capture_stderr, mcp_servers=mcp_servers, model=model, agent_md_content=agent_md_content, hook_state=hook_state),
             session_id,
             effective_model=effective_model,
             max_tokens=max_tokens,
@@ -523,7 +678,7 @@ async def run_query(
                 a2_sdk_query_error_duration_seconds.labels(**_LABELS, model=effective_model or "").observe(time.monotonic() - _query_start)
             return await _run_query_inner(
                 prompt,
-                _make_options(session_id, resume=True, stderr_fn=capture_stderr, mcp_servers=mcp_servers, model=model, agent_md_content=agent_md_content),
+                _make_options(session_id, resume=True, stderr_fn=capture_stderr, mcp_servers=mcp_servers, model=model, agent_md_content=agent_md_content, hook_state=hook_state),
                 session_id,
                 effective_model=effective_model,
                 max_tokens=max_tokens,
@@ -546,6 +701,7 @@ async def run(
     model: str | None = None,
     max_tokens: int | None = None,
     on_chunk: Callable[[str], Awaitable[None]] | None = None,
+    hook_state: "HookState | None" = None,
 ) -> str:
     if a2_concurrent_queries is not None:
         a2_concurrent_queries.labels(**_LABELS).inc()
@@ -589,7 +745,7 @@ async def _run_inner(
     _budget_exceeded = False
     try:
         collected = await asyncio.wait_for(
-            run_query(prompt, session_id, is_new, mcp_servers, agent_md_content, model=model, max_tokens=max_tokens, on_chunk=on_chunk),
+            run_query(prompt, session_id, is_new, mcp_servers, agent_md_content, model=model, max_tokens=max_tokens, on_chunk=on_chunk, hook_state=hook_state),
             timeout=TASK_TIMEOUT_SECONDS,
         )
         await _track_session(sessions, session_id)
@@ -664,10 +820,21 @@ class AgentExecutor(A2AAgentExecutor):
         self._mcp_servers: dict = {}
         self._agent_md_content: str = _load_agent_md()
         self._mcp_watcher_tasks: list[asyncio.Task] = []
+        # Hook policy state (#467). The baseline is loaded eagerly; the
+        # hooks_config_watcher populates `extensions` and keeps it in sync
+        # with hooks.yaml on disk.
+        self._hook_state: HookState = HookState(
+            baseline_enabled=HOOKS_BASELINE_ENABLED,
+            baseline=list(BASELINE_RULES) if HOOKS_BASELINE_ENABLED else [],
+            extensions=[],
+        )
+        if a2_hooks_active_rules is not None:
+            a2_hooks_active_rules.labels(**_LABELS, source="baseline").set(len(self._hook_state.baseline))
+            a2_hooks_active_rules.labels(**_LABELS, source="extension").set(0)
 
     def _mcp_watchers(self):
-        """Return callables for MCP config and CLAUDE.md watching."""
-        return [self.mcp_config_watcher, self.agent_md_watcher]
+        """Return callables for MCP config, CLAUDE.md, and hooks.yaml watching."""
+        return [self.mcp_config_watcher, self.agent_md_watcher, self.hooks_config_watcher]
 
     async def close(self) -> None:
         """Cancel and drain all MCP watcher tasks."""
@@ -736,10 +903,61 @@ class AgentExecutor(A2AAgentExecutor):
                 a2_file_watcher_restarts_total.labels(**_LABELS, watcher="agent_md").inc()
             await asyncio.sleep(10)
 
+    async def hooks_config_watcher(self) -> None:
+        """Watch hooks.yaml and hot-reload extension rules (#467).
+
+        Mirrors ``mcp_config_watcher`` — initial load, then awatch over the
+        containing directory, re-parsing on every change to the target file.
+        Failures during reload keep the previous rule set in place so a
+        malformed edit cannot accidentally disable the policy.
+        """
+        self._hook_state.extensions = await asyncio.to_thread(_load_hooks_config_sync)
+        if a2_hooks_active_rules is not None:
+            a2_hooks_active_rules.labels(**_LABELS, source="extension").set(len(self._hook_state.extensions))
+        logger.info(
+            "Hooks config loaded: baseline=%s (rules=%d) extensions=%d",
+            self._hook_state.baseline_enabled,
+            len(self._hook_state.baseline),
+            len(self._hook_state.extensions),
+        )
+
+        watch_dir = os.path.dirname(os.path.abspath(HOOKS_CONFIG_PATH))
+        while True:
+            if not os.path.isdir(watch_dir):
+                logger.info("hooks.yaml directory not found — retrying in 10s.")
+                await asyncio.sleep(10)
+                continue
+            async for changes in awatch(watch_dir, recursive=False):
+                if a2_watcher_events_total is not None:
+                    a2_watcher_events_total.labels(**_LABELS, watcher="hooks").inc()
+                for _, path in changes:
+                    if os.path.abspath(path) == os.path.abspath(HOOKS_CONFIG_PATH):
+                        try:
+                            new_rules = await asyncio.to_thread(_load_hooks_config_sync)
+                            self._hook_state.extensions = new_rules
+                            if a2_hooks_active_rules is not None:
+                                a2_hooks_active_rules.labels(**_LABELS, source="extension").set(len(new_rules))
+                            if a2_hooks_config_reloads_total is not None:
+                                a2_hooks_config_reloads_total.labels(**_LABELS).inc()
+                            logger.info("hooks.yaml reloaded: extensions=%d", len(new_rules))
+                        except Exception as exc:
+                            logger.warning("hooks.yaml reload failed — keeping previous rules: %s", exc)
+                        break
+            logger.warning("hooks.yaml directory watcher exited — retrying in 10s.")
+            if a2_file_watcher_restarts_total is not None:
+                a2_file_watcher_restarts_total.labels(**_LABELS, watcher="hooks").inc()
+            await asyncio.sleep(10)
+
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         _exec_start = time.monotonic()
         prompt = context.get_user_input()
         metadata = context.message.metadata or {}
+        # OTel server span continuation (#469). Upstream harness echoes the
+        # traceparent into metadata; when OTel is on we use it as the parent
+        # context so the backend span joins the end-to-end trace.
+        from otel import extract_otel_context as _extract_ctx
+        _tp = metadata.get("traceparent") if isinstance(metadata.get("traceparent"), str) else None
+        _otel_parent = _extract_ctx({"traceparent": _tp}) if _tp else None
         _raw_sid = "".join(c for c in str(context.context_id or metadata.get("session_id") or "").strip()[:256] if c >= " ")
         if not _raw_sid:
             session_id = str(uuid.uuid4())
@@ -793,30 +1011,45 @@ class AgentExecutor(A2AAgentExecutor):
             # so the per-chunk await cost is negligible.
             await event_queue.enqueue_event(new_agent_text_message(text))
 
+        from otel import start_span as _start_span, set_span_error as _set_span_error
         try:
-            _response = await run(
-                prompt,
-                session_id,
-                self._sessions,
-                self._mcp_servers,
-                self._agent_md_content,
-                model=model,
-                max_tokens=max_tokens,
-                on_chunk=_emit_chunk,
-            )
-            _success = True
-            # Only emit the final aggregated event if we did NOT stream chunks
-            # (e.g. tool-only turn that produced no text). Otherwise the chunks
-            # already delivered the content and a final enqueue would duplicate.
-            if _response and _chunks_emitted == 0:
-                await event_queue.enqueue_event(new_agent_text_message(_response))
-            if a2_a2a_requests_total is not None:
-                a2_a2a_requests_total.labels(**_LABELS, status="success").inc()
-        except Exception as _exc:
-            _error = repr(_exc)
-            if a2_a2a_requests_total is not None:
-                a2_a2a_requests_total.labels(**_LABELS, status="error").inc()
-            raise
+            with _start_span(
+                "a2-claude.execute",
+                kind="server",
+                parent_context=_otel_parent,
+                attributes={
+                    "a2.session_id": session_id,
+                    "a2.model": model or CLAUDE_MODEL or "",
+                    "a2.agent": AGENT_NAME,
+                    "a2.agent_id": AGENT_ID,
+                },
+            ) as _otel_span:
+                try:
+                    _response = await run(
+                        prompt,
+                        session_id,
+                        self._sessions,
+                        self._mcp_servers,
+                        self._agent_md_content,
+                        model=model,
+                        max_tokens=max_tokens,
+                        on_chunk=_emit_chunk,
+                        hook_state=self._hook_state,
+                    )
+                    _success = True
+                    # Only emit the final aggregated event if we did NOT stream chunks
+                    # (e.g. tool-only turn that produced no text). Otherwise the chunks
+                    # already delivered the content and a final enqueue would duplicate.
+                    if _response and _chunks_emitted == 0:
+                        await event_queue.enqueue_event(new_agent_text_message(_response))
+                    if a2_a2a_requests_total is not None:
+                        a2_a2a_requests_total.labels(**_LABELS, status="success").inc()
+                except Exception as _exc:
+                    _error = repr(_exc)
+                    if a2_a2a_requests_total is not None:
+                        a2_a2a_requests_total.labels(**_LABELS, status="error").inc()
+                    _set_span_error(_otel_span, _exc)
+                    raise
         finally:
             if a2_a2a_request_duration_seconds is not None:
                 a2_a2a_request_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _exec_start)

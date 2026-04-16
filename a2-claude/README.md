@@ -33,6 +33,13 @@ The agent's name, personality, and behavioral constraints all live there. The fi
 **Metrics** — Exposes a superset of the common `a2_*` Prometheus metrics, plus Claude-specific metrics: context window
 token counts, context exhaustion events, tool call counts, MCP tool usage, and time-to-first-message.
 
+**Hooks (PreToolUse / PostToolUse)** — A two-layer policy engine wraps every tool call the SDK makes. A conservative
+**baseline** of deny rules ships with the executor and blocks the most obvious-dangerous shell patterns (`rm -rf /`,
+`git push --force main`, `curl | sh`, `chmod 777`, `dd of=/dev/sdX`). Per-agent **extensions** layered on top live in a
+`hooks.yaml` file mounted at `/home/agent/.claude/hooks.yaml` and are hot-reloaded. PostToolUse is always wired and
+writes one JSONL row per tool call to `logs/tool-audit.jsonl` for a forensic trail. See [Hook configuration](#hook-configuration)
+below.
+
 ## Endpoints
 
 | Endpoint                      | Purpose                                                                                           |
@@ -51,6 +58,7 @@ token counts, context exhaustion events, tool call counts, MCP tool usage, and t
 | ---------------------- | ------------------------------------------------------------ |
 | `main.py`              | A2A server entrypoint; registers routes and starts uvicorn   |
 | `executor.py`          | Claude Agent SDK executor; session cache, streaming, logging |
+| `hooks.py`             | PreToolUse/PostToolUse policy engine and baseline deny rules |
 | `metrics.py`           | Prometheus metric definitions                                |
 | `sqlite_task_store.py` | SQLite-backed task store (used when TASK_STORE_PATH is set)  |
 | `requirements.txt`     | Python dependencies                                          |
@@ -91,4 +99,54 @@ a2-claude mounts:
 Key environment variables: `AGENT_NAME` (instance name), `AGENT_OWNER` (named agent, e.g. `iris`), `AGENT_ID` (backend
 slot id, e.g. `claude`), `AGENT_URL`, `BACKEND_PORT`, `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN` for
 Claude Max), `CLAUDE_MODEL` (model override), `METRICS_ENABLED`, `CONVERSATIONS_AUTH_TOKEN`, `TASK_STORE_PATH`,
-`WORKER_MAX_RESTARTS`, `LOG_PROMPT_MAX_BYTES` (max bytes of prompt logged at INFO; default 200; set to 0 to suppress).
+`WORKER_MAX_RESTARTS`, `LOG_PROMPT_MAX_BYTES` (max bytes of prompt logged at INFO; default 200; set to 0 to suppress),
+`HOOKS_CONFIG_PATH` (path to `hooks.yaml`; default `/home/agent/.claude/hooks.yaml`), `HOOKS_BASELINE_ENABLED`
+(default `true`; set to `false` to disable the baseline deny rules), `TOOL_AUDIT_LOG` (path to the PostToolUse audit
+JSONL; default `/home/agent/logs/tool-audit.jsonl`).
+
+## Hook configuration
+
+The executor wraps every Claude tool call with PreToolUse (policy) and PostToolUse (audit) hooks (#467).
+
+**Baseline.** A fixed set of deny rules ships in `hooks.py` — see `BASELINE_RULES`. They match against the
+JSON-serialised `tool_input` payload and reject obvious-dangerous shell patterns. The list is intentionally small and
+narrow to minimise false positives; operators who want a stricter sandbox should add extensions. Set
+`HOOKS_BASELINE_ENABLED=false` to turn the baseline off entirely (e.g. during bring-up of a permissive-by-design
+agent).
+
+**Extensions.** Per-agent opt-in rules are loaded from `/home/agent/.claude/hooks.yaml`. The file is optional; when
+present it is hot-reloaded whenever it changes:
+
+```yaml
+extensions:
+  - name: block-private-key-writes
+    tool: "Write"                   # exact tool name; omit or "*" for any tool
+    deny_if_match: "BEGIN PRIVATE KEY"
+    reason: "refusing to write private keys"
+
+  - name: warn-on-webfetch
+    tool: "WebFetch"
+    warn_if_match: ".*"
+    reason: "network call"
+```
+
+Each rule must have a `name` and exactly one of `deny_if_match` or `warn_if_match` (regex, applied to the JSON
+serialisation of `tool_input`). Invalid rules are skipped with a warning; malformed YAML keeps the previous ruleset in
+place so an editing mistake cannot accidentally disable policy.
+
+**Audit log.** PostToolUse always writes one JSONL row per tool call to `TOOL_AUDIT_LOG` (default
+`/home/agent/logs/tool-audit.jsonl`) with fields: `ts`, `agent`, `agent_id`, `session_id`, `model`, `tool_use_id`,
+`tool_name`, `tool_input`, `tool_response_preview` (capped at 2 KiB). PostToolUse is not opt-outable — transparency
+is a guarantee, not a policy choice.
+
+**Metrics.** `a2_hooks_blocked_total{tool,source,rule}`, `a2_hooks_warnings_total{tool,source,rule}`,
+`a2_tool_audit_entries_total{tool}`, `a2_hooks_config_reloads_total`, and `a2_hooks_active_rules{source}`.
+
+## Tracing (OpenTelemetry)
+
+When `OTEL_ENABLED=true` is set, a2-claude emits a server span for every `execute()` call and continues any trace
+propagated by nyx-harness via the `metadata.traceparent` field (#469). The OTLP/HTTP exporter reads the standard
+`OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_SERVICE_NAME` / `OTEL_TRACES_SAMPLER` env vars. Resource attributes
+(`service.name`, `agent`, `agent_id`, `backend`) are populated automatically. When `OTEL_ENABLED` is falsy
+(default) the OTel call sites are no-ops. The bootstrap lives in `shared/otel.py` and is shared with the other
+backends and the harness.

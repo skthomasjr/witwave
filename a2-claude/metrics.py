@@ -101,6 +101,13 @@ a2_mcp_servers_active: prometheus_client.Gauge | None = None
 a2_watcher_events_total: prometheus_client.Counter | None = None
 a2_file_watcher_restarts_total: prometheus_client.Counter | None = None
 
+# Hooks / tool-audit metrics (#467)
+a2_hooks_blocked_total: prometheus_client.Counter | None = None
+a2_hooks_warnings_total: prometheus_client.Counter | None = None
+a2_tool_audit_entries_total: prometheus_client.Counter | None = None
+a2_hooks_config_reloads_total: prometheus_client.Counter | None = None
+a2_hooks_active_rules: prometheus_client.Gauge | None = None
+
 if _enabled:
     a2_up = prometheus_client.Gauge("a2_up", "Backend agent is running", ["agent", "agent_id", "backend"])
     a2_info = prometheus_client.Info("a2", "Static backend agent metadata.")
@@ -465,4 +472,32 @@ if _enabled:
         "a2_file_watcher_restarts_total",
         "Total file watcher restart events due to missing or deleted directory.",
         ["agent", "agent_id", "backend", "watcher"],
+    )
+
+    # Hooks / tool-audit (#467)
+    a2_hooks_blocked_total = prometheus_client.Counter(
+        "a2_hooks_blocked_total",
+        "Total tool calls denied by a PreToolUse hook, labelled by tool name, "
+        "rule source (baseline|extension), and the rule name that matched.",
+        ["agent", "agent_id", "backend", "tool", "source", "rule"],
+    )
+    a2_hooks_warnings_total = prometheus_client.Counter(
+        "a2_hooks_warnings_total",
+        "Total tool calls flagged (but not denied) by a PreToolUse hook.",
+        ["agent", "agent_id", "backend", "tool", "source", "rule"],
+    )
+    a2_tool_audit_entries_total = prometheus_client.Counter(
+        "a2_tool_audit_entries_total",
+        "Total rows written to tool-audit.jsonl by the PostToolUse hook.",
+        ["agent", "agent_id", "backend", "tool"],
+    )
+    a2_hooks_config_reloads_total = prometheus_client.Counter(
+        "a2_hooks_config_reloads_total",
+        "Total reloads of hooks.yaml by the hooks config watcher.",
+        ["agent", "agent_id", "backend"],
+    )
+    a2_hooks_active_rules = prometheus_client.Gauge(
+        "a2_hooks_active_rules",
+        "Number of currently active hook rules, by rule source.",
+        ["agent", "agent_id", "backend", "source"],
     )
