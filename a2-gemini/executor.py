@@ -636,7 +636,13 @@ class AgentExecutor(A2AAgentExecutor):
         max_tokens: int | None = None
         if _max_tokens_raw is not None:
             try:
-                max_tokens = int(_max_tokens_raw)
+                _parsed = int(_max_tokens_raw)
+                if _parsed <= 0:
+                    logger.warning(
+                        f"Session {session_id!r}: max_tokens={_parsed} is non-positive; ignoring (#428)."
+                    )
+                else:
+                    max_tokens = _parsed
             except (ValueError, TypeError):
                 logger.warning(f"Session {session_id!r}: invalid max_tokens in metadata {_max_tokens_raw!r}, ignoring.")
         task_id = context.task_id
