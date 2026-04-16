@@ -20,6 +20,11 @@ from metrics import (
     a2_active_sessions,
     a2_budget_exceeded_total,
     a2_concurrent_queries,
+    a2_context_exhaustion_total,
+    a2_context_tokens,
+    a2_context_tokens_remaining,
+    a2_context_usage_percent,
+    a2_context_warnings_total,
     a2_empty_responses_total,
     a2_log_bytes_total,
     a2_log_entries_total,
@@ -403,6 +408,18 @@ async def run_query(
         a2_sdk_turns_per_query.labels(**_LABELS, model=resolved_model).observe(_turn_count)
     if a2_text_blocks_per_query is not None:
         a2_text_blocks_per_query.labels(**_LABELS, model=resolved_model).observe(len(collected))
+    if _total_tokens and max_tokens:
+        if a2_context_tokens is not None:
+            a2_context_tokens.labels(**_LABELS).observe(_total_tokens)
+        if a2_context_tokens_remaining is not None:
+            a2_context_tokens_remaining.labels(**_LABELS).observe(max(0, max_tokens - _total_tokens))
+        _pct = _total_tokens / max_tokens * 100
+        if a2_context_usage_percent is not None:
+            a2_context_usage_percent.labels(**_LABELS).observe(_pct)
+        if _pct >= 100 and a2_context_exhaustion_total is not None:
+            a2_context_exhaustion_total.labels(**_LABELS).inc()
+        elif _pct >= 80 and a2_context_warnings_total is not None:
+            a2_context_warnings_total.labels(**_LABELS).inc()
 
     try:
         ts = datetime.now(timezone.utc).isoformat()
@@ -549,6 +566,13 @@ async def _run_inner(
 
 class AgentExecutor(A2AAgentExecutor):
     def __init__(self):
+        # Validate API key at startup so missing credentials surface immediately
+        # rather than on the first request (#417).
+        _key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or None
+        if not _key:
+            raise RuntimeError(
+                "No Gemini API key configured. Set GEMINI_API_KEY or GOOGLE_API_KEY before starting."
+            )
         self._sessions: OrderedDict[str, float] = OrderedDict()
         self._session_locks: dict[str, asyncio.Lock] = {}
         self._running_tasks: dict[str, asyncio.Task] = {}
