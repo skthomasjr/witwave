@@ -169,6 +169,10 @@ def _load_history(session_id: str) -> list[types.Content]:
 
 _SAVE_HISTORY_MAX_RETRIES = int(os.environ.get("GEMINI_SAVE_HISTORY_MAX_RETRIES", "3"))
 _SAVE_HISTORY_BACKOFF_BASE = float(os.environ.get("GEMINI_SAVE_HISTORY_BACKOFF", "0.5"))
+# Maximum number of turns to persist per session. Older turns are dropped so that
+# per-turn save cost and file size stay bounded even for very long sessions (#349).
+# Set to 0 to disable truncation (keep full history).
+_SAVE_HISTORY_MAX_TURNS = int(os.environ.get("GEMINI_MAX_HISTORY_TURNS", "100"))
 
 
 def _write_history_to_disk(tmp_path: str, path: str, raw: list) -> None:
@@ -191,6 +195,8 @@ async def _save_history(session_id: str, history: list[types.Content]) -> None:
         parts = [p.model_dump(exclude_none=True) for p in (content.parts or []) if p]
         if parts:
             raw.append({"role": content.role, "parts": parts})
+    if _SAVE_HISTORY_MAX_TURNS > 0 and len(raw) > _SAVE_HISTORY_MAX_TURNS:
+        raw = raw[-_SAVE_HISTORY_MAX_TURNS:]
     tmp_path = path + ".tmp"
     last_exc: Exception | None = None
     for attempt in range(_SAVE_HISTORY_MAX_RETRIES):
@@ -501,6 +507,7 @@ async def _run_inner(
         collected = _bexc.collected
         _track_session(sessions, session_id, session_locks)
     except Exception:
+        session_locks.pop(session_id, None)  # avoid orphaned lock entry on error path (#394)
         if a2_tasks_total is not None:
             a2_tasks_total.labels(**_LABELS, status="error").inc()
         if a2_task_error_duration_seconds is not None:
