@@ -105,6 +105,7 @@ agent_webhooks_items_registered: prometheus_client.Gauge | None = None
 agent_consensus_runs_total: prometheus_client.Counter | None = None
 agent_consensus_backend_errors_total: prometheus_client.Counter | None = None
 agent_metrics_backend_fetch_errors_total: prometheus_client.Counter | None = None
+agent_background_tasks: prometheus_client.Gauge | None = None
 
 
 if _enabled:
@@ -540,5 +541,9 @@ if _enabled:
         "agent_metrics_backend_fetch_errors_total",
         "Total failures when fetching /metrics from a backend during aggregation.",
         ["backend"],
+    )
+    agent_background_tasks = prometheus_client.Gauge(
+        "agent_background_tasks",
+        "Number of background asyncio tasks currently in flight (webhooks, continuations, etc.).",
     )
 

@@ -47,6 +47,7 @@ from metrics import (
     agent_log_bytes_total,
     agent_log_entries_total,
     agent_log_write_errors_total,
+    agent_background_tasks,
 )
 
 logger = logging.getLogger(__name__)
@@ -591,7 +592,13 @@ class AgentExecutor(A2AAgentExecutor):
                 model=model,
             ))
             self._background_tasks.add(_opc_task)
-            _opc_task.add_done_callback(self._background_tasks.discard)
+            if agent_background_tasks is not None:
+                agent_background_tasks.set(len(self._background_tasks))
+            def _discard_and_update_exec(t, _tasks=self._background_tasks):
+                _tasks.discard(t)
+                if agent_background_tasks is not None:
+                    agent_background_tasks.set(len(_tasks))
+            _opc_task.add_done_callback(_discard_and_update_exec)
             _opc_task.add_done_callback(
                 lambda t: logger.error(f"on_prompt_completed error: {t.exception()}")
                 if not t.cancelled() and t.exception() is not None
@@ -680,7 +687,13 @@ class AgentExecutor(A2AAgentExecutor):
                 model=_model,
             ))
             self._background_tasks.add(_opc_task)
-            _opc_task.add_done_callback(self._background_tasks.discard)
+            if agent_background_tasks is not None:
+                agent_background_tasks.set(len(self._background_tasks))
+            def _discard_and_update_bus(t, _tasks=self._background_tasks):
+                _tasks.discard(t)
+                if agent_background_tasks is not None:
+                    agent_background_tasks.set(len(_tasks))
+            _opc_task.add_done_callback(_discard_and_update_bus)
             _opc_task.add_done_callback(
                 lambda t: logger.error(f"on_prompt_completed error: {t.exception()}")
                 if not t.cancelled() and t.exception() is not None
