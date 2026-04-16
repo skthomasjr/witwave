@@ -197,9 +197,15 @@ agents:
         #     dest: /home/agent/.claude/
 
         # # Additional environment variables injected into the backend container.
+        # # Common backend env vars:
+        # #   a2-gemini: GEMINI_MAX_HISTORY_TURNS (max turns persisted per session; default 100; 0 = unlimited)
+        # #              SESSION_STORE_DIR (session JSON directory; default /home/agent/memory/sessions)
+        # #              MAX_SESSIONS (LRU cache size; default 10000)
+        # #   a2-claude: LOG_PROMPT_MAX_BYTES (max bytes of prompt logged at INFO; default 200; 0 = suppress)
+        # #   a2-codex:  CODEX_MODEL (model override; default gpt-5.1-codex)
         # env:
-        #   - name: CLAUDE_MODEL
-        #     value: claude-opus-4-6
+        #   - name: GEMINI_MAX_HISTORY_TURNS
+        #     value: "100"
 
         # # Environment variables sourced from Secrets or ConfigMaps.
         # # See the backend README for required secret keys.

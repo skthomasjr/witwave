@@ -92,6 +92,9 @@ agents:
           repository: ghcr.io/skthomasjr/images/a2-gemini
           tag: "0.2.0-beta.25"
         port: 8092
+        env:
+          - name: GEMINI_MAX_HISTORY_TURNS
+            value: "100"
         envFrom:
           - secretRef:
               name: bob-gemini-secrets
