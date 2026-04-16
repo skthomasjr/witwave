@@ -1729,12 +1729,16 @@ async function loadConversations() {
   const feed = document.getElementById('conv-feed');
   try {
     const limit = conv.convLimit;
-    const [convResp, traceResp] = await Promise.all([
+    const [convResult, traceResult] = await Promise.allSettled([
       fetchWithTimeout(`${AGENT_BASE}/conversations?limit=${limit}`),
       fetchWithTimeout(`${AGENT_BASE}/trace?limit=${limit}`),
     ]);
-    conv.entries = convResp.ok ? await convResp.json() : [];
-    conv.traceEntries = traceResp.ok ? await traceResp.json() : [];
+    const convResp = convResult.status === 'fulfilled' ? convResult.value : null;
+    const traceResp = traceResult.status === 'fulfilled' ? traceResult.value : null;
+    if (convResult.status === 'rejected') console.warn('conversations fetch failed:', convResult.reason);
+    if (traceResult.status === 'rejected') console.warn('trace fetch failed:', traceResult.reason);
+    conv.entries = convResp?.ok ? await convResp.json() : [];
+    conv.traceEntries = traceResp?.ok ? await traceResp.json() : [];
     conv.agents = new Set(conv.entries.map(e => e.agent).filter(Boolean));
     populateConvAgentFilter();
     _restoreConvState();
@@ -2204,12 +2208,14 @@ let _calNowTimer = null;
 
 async function loadCalendarData() {
   try {
-    const [jobsResp, tasksResp] = await Promise.all([
+    const [jobsResult, tasksResult] = await Promise.allSettled([
       fetchWithTimeout(`${AGENT_BASE}/jobs`),
       fetchWithTimeout(`${AGENT_BASE}/tasks`),
     ]);
-    cal.jobs  = jobsResp.ok  ? await jobsResp.json()  : [];
-    cal.tasks = tasksResp.ok ? await tasksResp.json() : [];
+    const jobsResp  = jobsResult.status  === 'fulfilled' ? jobsResult.value  : null;
+    const tasksResp = tasksResult.status === 'fulfilled' ? tasksResult.value : null;
+    cal.jobs  = jobsResp?.ok  ? await jobsResp.json()  : [];
+    cal.tasks = tasksResp?.ok ? await tasksResp.json() : [];
   } catch (_e) {
     // /jobs and /tasks may not exist on older deployments — degrade gracefully
     cal.jobs  = [];
