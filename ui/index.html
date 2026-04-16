@@ -1492,8 +1492,11 @@ function selectAgent(member) {
     // the select options, in which case the browser silently ignores the assignment
     // above and the select stays at its default — don't persist the stale id (#403).
     _selectedBackendId = (backendSel && backendSel.value) ? backendSel.value : _selectedBackendId;
-    // Restore conversation thread
-    if (_chatThread && cache.threadHtml) _chatThread.innerHTML = cache.threadHtml;
+    // Restore conversation thread. Sanitize via DOMPurify because the value
+    // round-trips through localStorage, where it can be tampered with by
+    // browser extensions or shared-origin XSS in another app — never trust
+    // persisted HTML on a restore boundary (#439).
+    if (_chatThread && cache.threadHtml) _chatThread.innerHTML = DOMPurify.sanitize(cache.threadHtml);
   } else {
     _buildAgentPanel(agentName, backends, right);
   }
