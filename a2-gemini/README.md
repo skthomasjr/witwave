@@ -84,6 +84,8 @@ a2-gemini mounts:
 Key environment variables: `AGENT_NAME` (instance name), `AGENT_OWNER` (named agent, e.g. `iris`), `AGENT_ID` (backend
 slot id, e.g. `gemini`), `AGENT_URL`, `BACKEND_PORT`, `GEMINI_API_KEY` (or `GOOGLE_API_KEY`), `GEMINI_MODEL`
 (model override, default `gemini-2.5-pro`), `SESSION_STORE_DIR` (directory for session JSON files, default
-`/home/agent/memory/sessions`), `MAX_SESSIONS` (LRU cache size, default `10000`), `METRICS_ENABLED`,
+`/home/agent/memory/sessions`), `MAX_SESSIONS` (LRU cache size, default `10000`), `GEMINI_MAX_HISTORY_TURNS`
+(maximum number of conversation turns to persist per session; older turns are dropped to keep file sizes bounded;
+default `100`; set to `0` to disable truncation and keep full history), `METRICS_ENABLED`,
 `CONVERSATIONS_AUTH_TOKEN`, `TASK_STORE_PATH`, `WORKER_MAX_RESTARTS`, `LOG_PROMPT_MAX_BYTES` (max bytes of prompt logged
 at INFO; default 200; set to 0 to suppress).
