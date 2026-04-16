@@ -1,0 +1,220 @@
+"""Kubernetes MCP tool server.
+
+Targets the cluster where this container is deployed. Loads in-cluster config
+by default and falls back to the local kubeconfig for development.
+
+All operations go through the Kubernetes API via the official Python client.
+The dynamic client is used for kind-agnostic operations so we can reach any
+resource the ServiceAccount has RBAC for.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+import yaml
+from kubernetes import client, config, dynamic
+from kubernetes.client.rest import ApiException
+from mcp.server.fastmcp import FastMCP
+
+log = logging.getLogger("tools.kubernetes")
+
+mcp = FastMCP("kubernetes")
+
+FIELD_MANAGER = "nyx-mcp-kubernetes"
+
+_api_client: client.ApiClient | None = None
+_dyn_client: dynamic.DynamicClient | None = None
+
+
+def _load_kube_config() -> None:
+    try:
+        config.load_incluster_config()
+        log.info("loaded in-cluster kube config")
+    except config.ConfigException:
+        config.load_kube_config()
+        log.info("loaded local kube config")
+
+
+def _api() -> client.ApiClient:
+    global _api_client
+    if _api_client is None:
+        _api_client = client.ApiClient()
+    return _api_client
+
+
+def _dyn() -> dynamic.DynamicClient:
+    global _dyn_client
+    if _dyn_client is None:
+        _dyn_client = dynamic.DynamicClient(_api())
+    return _dyn_client
+
+
+def _resolve(kind: str, api_version: str | None = None):
+    """Resolve a Kubernetes resource by kind, optionally disambiguated by apiVersion."""
+    if api_version:
+        return _dyn().resources.get(api_version=api_version, kind=kind)
+    return _dyn().resources.get(kind=kind)
+
+
+def _to_dict(obj: Any) -> Any:
+    if hasattr(obj, "to_dict"):
+        return obj.to_dict()
+    return obj
+
+
+@mcp.tool()
+def list_namespaces() -> list[str]:
+    """List namespaces visible to the ServiceAccount."""
+    core = client.CoreV1Api(_api())
+    resp = core.list_namespace()
+    return [ns.metadata.name for ns in resp.items]
+
+
+@mcp.tool()
+def list_resources(
+    kind: str,
+    namespace: str | None = None,
+    api_version: str | None = None,
+    label_selector: str | None = None,
+    field_selector: str | None = None,
+) -> list[dict]:
+    """List resources of a given kind, optionally scoped to a namespace.
+
+    api_version disambiguates kinds served by multiple groups (e.g. Ingress).
+    """
+    resource = _resolve(kind, api_version)
+    kwargs: dict[str, Any] = {}
+    if namespace:
+        kwargs["namespace"] = namespace
+    if label_selector:
+        kwargs["label_selector"] = label_selector
+    if field_selector:
+        kwargs["field_selector"] = field_selector
+    result = resource.get(**kwargs)
+    items = getattr(result, "items", None) or []
+    return [_to_dict(item) for item in items]
+
+
+@mcp.tool()
+def get_resource(
+    kind: str,
+    name: str,
+    namespace: str | None = None,
+    api_version: str | None = None,
+) -> dict:
+    """Fetch a single resource by kind / namespace / name."""
+    resource = _resolve(kind, api_version)
+    kwargs: dict[str, Any] = {"name": name}
+    if namespace:
+        kwargs["namespace"] = namespace
+    return _to_dict(resource.get(**kwargs))
+
+
+@mcp.tool()
+def describe(
+    kind: str,
+    name: str,
+    namespace: str | None = None,
+    api_version: str | None = None,
+) -> dict:
+    """Return a describe-equivalent view: the resource plus related events.
+
+    Not a byte-for-byte match for `kubectl describe` (which has kind-specific
+    formatters). This returns structured data that is easier for an agent to
+    reason over.
+    """
+    resource = _resolve(kind, api_version)
+    kwargs: dict[str, Any] = {"name": name}
+    if namespace:
+        kwargs["namespace"] = namespace
+    obj = _to_dict(resource.get(**kwargs))
+
+    events: list[dict] = []
+    try:
+        core = client.CoreV1Api(_api())
+        selector = f"involvedObject.name={name},involvedObject.kind={kind}"
+        if namespace:
+            ev_resp = core.list_namespaced_event(namespace=namespace, field_selector=selector)
+        else:
+            ev_resp = core.list_event_for_all_namespaces(field_selector=selector)
+        events = [ev.to_dict() for ev in ev_resp.items]
+    except ApiException as e:
+        log.warning("failed to fetch events for %s/%s: %s", kind, name, e)
+
+    return {"object": obj, "events": events}
+
+
+@mcp.tool()
+def logs(
+    pod: str,
+    namespace: str,
+    container: str | None = None,
+    tail_lines: int | None = 200,
+    since_seconds: int | None = None,
+    previous: bool = False,
+) -> str:
+    """Return pod logs."""
+    core = client.CoreV1Api(_api())
+    kwargs: dict[str, Any] = {"name": pod, "namespace": namespace, "previous": previous}
+    if container:
+        kwargs["container"] = container
+    if tail_lines is not None:
+        kwargs["tail_lines"] = tail_lines
+    if since_seconds is not None:
+        kwargs["since_seconds"] = since_seconds
+    return core.read_namespaced_pod_log(**kwargs)
+
+
+@mcp.tool()
+def apply(manifest: str) -> list[dict]:
+    """Server-side apply a YAML or JSON manifest (supports multi-doc YAML)."""
+    docs = [d for d in yaml.safe_load_all(manifest) if d]
+    results: list[dict] = []
+    for doc in docs:
+        api_version = doc.get("apiVersion")
+        kind = doc.get("kind")
+        if not api_version or not kind:
+            raise ValueError("manifest document missing apiVersion or kind")
+        meta = doc.get("metadata") or {}
+        name = meta.get("name")
+        ns = meta.get("namespace")
+        if not name:
+            raise ValueError(f"{kind} manifest missing metadata.name")
+
+        resource = _resolve(kind, api_version)
+        patch_kwargs: dict[str, Any] = {
+            "body": doc,
+            "name": name,
+            "content_type": "application/apply-patch+yaml",
+            "field_manager": FIELD_MANAGER,
+        }
+        if ns:
+            patch_kwargs["namespace"] = ns
+        applied = resource.patch(**patch_kwargs)
+        results.append(_to_dict(applied))
+    return results
+
+
+@mcp.tool()
+def delete(
+    kind: str,
+    name: str,
+    namespace: str | None = None,
+    api_version: str | None = None,
+    propagation_policy: str = "Background",
+) -> dict:
+    """Delete a resource by kind / namespace / name."""
+    resource = _resolve(kind, api_version)
+    body = client.V1DeleteOptions(propagation_policy=propagation_policy)
+    kwargs: dict[str, Any] = {"name": name, "body": body}
+    if namespace:
+        kwargs["namespace"] = namespace
+    return _to_dict(resource.delete(**kwargs))
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    _load_kube_config()
+    mcp.run()

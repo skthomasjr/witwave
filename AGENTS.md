@@ -236,6 +236,12 @@ docker build -f a2-codex/Dockerfile -t a2-codex:latest .
 
 # Gemini backend
 docker build -f a2-gemini/Dockerfile -t a2-gemini:latest .
+
+# Kubernetes MCP tool
+docker build -f tools/kubernetes/Dockerfile -t mcp-kubernetes:latest .
+
+# Helm MCP tool
+docker build -f tools/helm/Dockerfile -t mcp-helm:latest .
 ```
 
 ## Running Locally
@@ -245,6 +251,8 @@ docker build -f harness/Dockerfile -t nyx-harness:latest . \
   && docker build -f a2-claude/Dockerfile -t a2-claude:latest . \
   && docker build -f a2-codex/Dockerfile -t a2-codex:latest . \
   && docker build -f a2-gemini/Dockerfile -t a2-gemini:latest . \
+  && docker build -f tools/kubernetes/Dockerfile -t mcp-kubernetes:latest . \
+  && docker build -f tools/helm/Dockerfile -t mcp-helm:latest . \
   && helm upgrade --install nyx ./charts/nyx -f ./charts/nyx/values-dev.yaml -n nyx --create-namespace
 ```
 
