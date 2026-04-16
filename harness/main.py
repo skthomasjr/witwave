@@ -964,7 +964,8 @@ async def main():
         if not loaded:
             return JSONResponse({"enabled": False, "schedule": None, "model": None, "backend_id": None, "consensus": [], "max_tokens": None})
         schedule, _content, model, backend_id, consensus, max_tokens = loaded
-        return JSONResponse({"enabled": True, "schedule": schedule, "model": model, "backend_id": backend_id, "consensus": consensus, "max_tokens": max_tokens})
+        from dataclasses import asdict
+        return JSONResponse({"enabled": True, "schedule": schedule, "model": model, "backend_id": backend_id, "consensus": [asdict(e) for e in consensus], "max_tokens": max_tokens})
 
     async def triggers_handler(request: Request) -> JSONResponse:
         """Return a snapshot of currently registered trigger endpoints."""

@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from fnmatch import fnmatch
 from pathlib import Path
 
@@ -241,7 +241,7 @@ class ContinuationRunner:
                 "description": item.description,
                 "backend_id": item.backend_id,
                 "model": item.model,
-                "consensus": item.consensus,
+                "consensus": [asdict(e) for e in item.consensus],
                 "max_tokens": item.max_tokens,
                 "max_concurrent_fires": item.max_concurrent_fires,
                 "active_fires": len(self._fires_by_name.get(item.name, set())),

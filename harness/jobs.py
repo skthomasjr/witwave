@@ -4,7 +4,7 @@ import logging
 import os
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -261,7 +261,7 @@ class JobRunner:
                 "session_id": item.session_id,
                 "backend_id": item.backend_id,
                 "model": item.model,
-                "consensus": item.consensus,
+                "consensus": [asdict(e) for e in item.consensus],
                 "max_tokens": item.max_tokens,
                 "running": item.running,
             })

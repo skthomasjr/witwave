@@ -5,7 +5,7 @@ import os
 import re
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, time as dtime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -637,7 +637,7 @@ class TaskRunner:
                 "session_id": None,  # per-day session IDs are generated at runtime
                 "backend_id": item.backend_id,
                 "model": item.model,
-                "consensus": item.consensus,
+                "consensus": [asdict(e) for e in item.consensus],
                 "max_tokens": item.max_tokens,
                 "start": item.start.isoformat() if item.start else None,
                 "end": item.end.isoformat() if item.end else None,

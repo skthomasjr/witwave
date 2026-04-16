@@ -3,7 +3,7 @@ import logging
 import os
 import re
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from metrics import (
@@ -172,7 +172,7 @@ class TriggerRunner:
                 "session_id": item.session_id,
                 "backend_id": item.backend_id,
                 "model": item.model,
-                "consensus": item.consensus,
+                "consensus": [asdict(e) for e in item.consensus],
                 "max_tokens": item.max_tokens,
                 "running": item.endpoint in self._running,
                 # Expose enabled and HMAC-signed status so the UI can render
