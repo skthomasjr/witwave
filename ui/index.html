@@ -1778,8 +1778,9 @@ function renderConvFeed() {
 function renderConvMsg(m) {
   const role = m.role === 'user' ? 'user' : 'agent';
   const sid = m.session_id ? ' · ' + escHtml(m.session_id) : '';
+  const tok = (role === 'agent' && m.tokens) ? ' · ' + m.tokens.toLocaleString() + ' tok' : '';
   const label = role === 'agent'
-    ? `${escHtml(m.agent || 'agent')}${m.model ? ' · ' + escHtml(m.model) : ''} · ${fmtTime(m.ts)}${sid}`
+    ? `${escHtml(m.agent || 'agent')}${m.model ? ' · ' + escHtml(m.model) : ''}${tok} · ${fmtTime(m.ts)}${sid}`
     : `you · ${fmtTime(m.ts)}${sid}`;
   return `<div class="cm ${role}">
     <div class="role">${label}</div>

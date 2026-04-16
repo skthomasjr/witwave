@@ -196,7 +196,7 @@ def _load_agent_md() -> str:
         return ""
 
 
-async def log_entry(role: str, text: str, session_id: str, model: str | None = None) -> None:
+async def log_entry(role: str, text: str, session_id: str, model: str | None = None, tokens: int | None = None) -> None:
     try:
         entry = {
             "ts": datetime.now(timezone.utc).isoformat(),
@@ -204,6 +204,7 @@ async def log_entry(role: str, text: str, session_id: str, model: str | None = N
             "session_id": session_id,
             "role": role,
             "model": model,
+            "tokens": tokens,
             "text": text,
         }
         _line = json.dumps(entry)
@@ -356,10 +357,11 @@ async def _run_query_inner(
                         if a2_sdk_time_to_first_message_seconds is not None:
                             a2_sdk_time_to_first_message_seconds.labels(**_sdk_labels).observe(time.monotonic() - _query_sent_at)
                     _assistant_turn_count += 1
+                    _text_blocks: list[str] = []
                     for block in message.content:
                         if isinstance(block, TextBlock):
                             collected.append(block.text)
-                            await log_entry("agent", block.text, session_id, model=effective_model)
+                            _text_blocks.append(block.text)
                         elif isinstance(block, ToolUseBlock):
                             _tool_names[block.id] = block.name
                             _tool_start_times[block.id] = time.monotonic()
@@ -415,6 +417,8 @@ async def _run_query_inner(
                         if a2_sdk_context_fetch_errors_total is not None:
                             a2_sdk_context_fetch_errors_total.labels(**_sdk_labels).inc()
                         logger.warning(f"Session {session_id!r}: get_context_usage failed: {e}")
+                    for _text in _text_blocks:
+                        await log_entry("agent", _text, session_id, model=effective_model, tokens=_last_total_tokens or None)
                 elif isinstance(message, ResultMessage) and message.is_error:
                     if a2_sdk_result_errors_total is not None:
                         a2_sdk_result_errors_total.labels(**_sdk_labels).inc()

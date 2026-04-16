@@ -240,7 +240,7 @@ def _load_agent_md() -> str:
         return ""
 
 
-async def log_entry(role: str, text: str, session_id: str, model: str | None = None) -> None:
+async def log_entry(role: str, text: str, session_id: str, model: str | None = None, tokens: int | None = None) -> None:
     try:
         entry = {
             "ts": datetime.now(timezone.utc).isoformat(),
@@ -248,6 +248,7 @@ async def log_entry(role: str, text: str, session_id: str, model: str | None = N
             "session_id": session_id,
             "role": role,
             "model": model,
+            "tokens": tokens,
             "text": text,
         }
         _line = json.dumps(entry)
@@ -429,7 +430,7 @@ async def run_query(
             )
         partial_response = "".join(exc.collected)
         if partial_response:
-            await log_entry("agent", partial_response, session_id, model=resolved_model)
+            await log_entry("agent", partial_response, session_id, model=resolved_model, tokens=_total_tokens or None)
         raise
     except Exception:
         if a2_sdk_query_error_duration_seconds is not None:
@@ -467,7 +468,7 @@ async def run_query(
 
     full_response = "".join(collected)
     if full_response:
-        await log_entry("agent", full_response, session_id, model=resolved_model)
+        await log_entry("agent", full_response, session_id, model=resolved_model, tokens=_total_tokens or None)
 
     if a2_sdk_query_duration_seconds is not None:
         a2_sdk_query_duration_seconds.labels(**_LABELS, model=resolved_model).observe(time.monotonic() - _query_start)

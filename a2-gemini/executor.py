@@ -95,7 +95,7 @@ def _load_agent_md() -> str:
         return ""
 
 
-async def log_entry(role: str, text: str, session_id: str, model: str | None = None) -> None:
+async def log_entry(role: str, text: str, session_id: str, model: str | None = None, tokens: int | None = None) -> None:
     try:
         entry = {
             "ts": datetime.now(timezone.utc).isoformat(),
@@ -103,6 +103,7 @@ async def log_entry(role: str, text: str, session_id: str, model: str | None = N
             "session_id": session_id,
             "role": role,
             "model": model,
+            "tokens": tokens,
             "text": text,
         }
         _line = json.dumps(entry)
@@ -307,6 +308,7 @@ async def run_query(
         _first_chunk_at: float | None = None
         _turn_count = 0
         _message_count = 0
+        _total_tokens = 0
 
         try:
             async for chunk in await chat.send_message_stream(prompt):
@@ -320,14 +322,15 @@ async def run_query(
                                 _first_chunk_at - _query_start
                             )
                     collected.append(text)
-                # Check token budget using usage_metadata on each chunk
-                if max_tokens is not None:
-                    _usage_meta = getattr(chunk, "usage_metadata", None)
-                    _token_count = getattr(_usage_meta, "total_token_count", None)
-                    if _token_count is not None and int(_token_count) >= max_tokens:
-                        if a2_budget_exceeded_total is not None:
-                            a2_budget_exceeded_total.labels(**_LABELS).inc()
-                        raise BudgetExceededError(int(_token_count), max_tokens, list(collected))
+                # Track token count and check budget on each chunk
+                _usage_meta = getattr(chunk, "usage_metadata", None)
+                _token_count = getattr(_usage_meta, "total_token_count", None)
+                if _token_count is not None:
+                    _total_tokens = int(_token_count)
+                if max_tokens is not None and _token_count is not None and _total_tokens >= max_tokens:
+                    if a2_budget_exceeded_total is not None:
+                        a2_budget_exceeded_total.labels(**_LABELS).inc()
+                    raise BudgetExceededError(_total_tokens, max_tokens, list(collected))
             _turn_count = 1
         except BudgetExceededError as exc:
             if a2_sdk_session_duration_seconds is not None:
@@ -336,7 +339,7 @@ async def run_query(
                 )
             partial_response = "".join(exc.collected)
             if partial_response:
-                await log_entry("agent", partial_response, session_id, model=resolved_model)
+                await log_entry("agent", partial_response, session_id, model=resolved_model, tokens=_total_tokens or None)
             try:
                 await _save_history(session_id, chat.history)
             except Exception as _save_exc:
@@ -365,7 +368,7 @@ async def run_query(
 
         full_response = "".join(collected)
         if full_response:
-            await log_entry("agent", full_response, session_id, model=resolved_model)
+            await log_entry("agent", full_response, session_id, model=resolved_model, tokens=_total_tokens or None)
 
         # Persist updated history — log at ERROR on permanent failure so it is
         # visible in monitoring, but do not propagate so the completed response
