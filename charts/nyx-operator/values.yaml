@@ -1,33 +1,92 @@
+# nyx-operator controller manager image.
 image:
   repository: ghcr.io/skthomasjr/images/nyx-operator
-  pullPolicy: IfNotPresent
+  # Image tag. Defaults to .Chart.AppVersion when empty.
   tag: ""
+  pullPolicy: IfNotPresent
 
+# Image pull secrets for private registries.
 imagePullSecrets: []
+
+# Override the chart name derived inside _helpers.tpl.
 nameOverride: ""
 fullnameOverride: ""
 
+# Number of controller-manager replicas. 1 is typical; >1 requires leader
+# election (enabled by default) to elect a single active instance.
 replicaCount: 1
 
+# Install the NyxAgent CRD alongside the operator. Disable if CRDs are
+# managed out-of-band (e.g. via argocd sync waves or a separate release).
+# When disabled, the operator still runs but will fail to reconcile any
+# NyxAgent until its CRD is present in the cluster.
+installCRDs: true
+
+# RBAC — when false the chart skips ClusterRole/ClusterRoleBinding/Role
+# creation. Operators deployed into multi-tenant clusters may want to
+# manage RBAC separately.
+rbac:
+  create: true
+
+# Leader election — required when replicaCount > 1 to ensure a single
+# active controller. Harmless for replicaCount=1.
+leaderElection:
+  enabled: true
+
+# Prometheus metrics endpoint (controller-runtime metrics).
+# When enabled, a ClusterIP Service is created on metrics.port routing to
+# the manager pod. secure=true serves HTTPS with a self-signed cert by
+# default; flip to false only in development.
+metrics:
+  enabled: false
+  port: 8443
+  secure: true
+
+# Health/liveness probe endpoint. Matches the --health-probe-bind-address
+# flag passed to the manager.
+probes:
+  port: 8081
+
+# ServiceAccount used by the manager pod.
 serviceAccount:
   create: true
   automount: true
   annotations: {}
+  # Use a specific existing SA name; leave empty to auto-derive from release.
   name: ""
 
 podAnnotations: {}
 podLabels: {}
 
+# Pod-level security context. Defaults satisfy the Pod Security Standards
+# "restricted" profile.
 podSecurityContext:
   runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
 
+# Container-level security context.
 securityContext:
   allowPrivilegeEscalation: false
   capabilities:
     drop:
       - ALL
 
-resources: {}
+# Resource requests and limits for the controller-manager container.
+# Defaults match kubebuilder's recommended baseline for small clusters.
+resources:
+  limits:
+    cpu: 500m
+    memory: 128Mi
+  requests:
+    cpu: 10m
+    memory: 64Mi
+
+# Additional command-line flags passed to /manager. Useful for experimental
+# flags that are not yet first-class values above.
+extraArgs: []
+# extraArgs:
+#   - --zap-log-level=debug
 
 nodeSelector: {}
 tolerations: []

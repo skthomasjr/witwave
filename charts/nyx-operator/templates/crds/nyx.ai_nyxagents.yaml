@@ -1,0 +1,884 @@
+{{- if .Values.installCRDs }}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.18.0
+    # Keep the CRD around across helm uninstall/upgrade so that live NyxAgent
+    # resources are not orphaned and CRD field additions don't break during
+    # rolling chart upgrades.
+    helm.sh/resource-policy: keep
+  name: nyxagents.nyx.ai
+spec:
+  group: nyx.ai
+  names:
+    kind: NyxAgent
+    listKind: NyxAgentList
+    plural: nyxagents
+    shortNames:
+    - nyxa
+    singular: nyxagent
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.readyReplicas
+      name: Ready
+      type: integer
+    - jsonPath: .spec.backends[*].name
+      name: Backends
+      priority: 1
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: NyxAgent is the Schema for the nyxagents API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: NyxAgentSpec defines the desired state of NyxAgent.
+            properties:
+              autoscaling:
+                description: Autoscaling optionally creates an HPA for the agent Deployment.
+                properties:
+                  enabled:
+                    description: |-
+                      Enabled creates an HPA for the agent's Deployment.
+                      When true, the Deployment's replicas field is omitted so the HPA owns it.
+                    type: boolean
+                  maxReplicas:
+                    default: 3
+                    format: int32
+                    type: integer
+                  minReplicas:
+                    default: 1
+                    format: int32
+                    type: integer
+                  targetCPUUtilizationPercentage:
+                    format: int32
+                    type: integer
+                  targetMemoryUtilizationPercentage:
+                    format: int32
+                    type: integer
+                type: object
+              backends:
+                description: Backends lists the backend sidecars (a2-claude, a2-codex,
+                  a2-gemini, …).
+                items:
+                  description: BackendSpec defines one backend sidecar container.
+                  properties:
+                    config:
+                      description: Config mounts inline config files into the backend
+                        container.
+                      items:
+                        description: |-
+                          ConfigFile represents a single inline config file mounted into a container.
+                          The file is materialised as one key in a ConfigMap owned by the NyxAgent.
+                        properties:
+                          content:
+                            description: Content is the literal file contents.
+                            type: string
+                          mountPath:
+                            description: MountPath is the absolute path inside the
+                              container.
+                            type: string
+                          name:
+                            description: Name is the ConfigMap key and the filename
+                              inside the container.
+                            type: string
+                        required:
+                        - content
+                        - mountPath
+                        - name
+                        type: object
+                      type: array
+                    env:
+                      description: Env adds environment variables directly.
+                      items:
+                        description: EnvVar represents an environment variable present
+                          in a Container.
+                        properties:
+                          name:
+                            description: Name of the environment variable. Must be
+                              a C_IDENTIFIER.
+                            type: string
+                          value:
+                            description: |-
+                              Variable references $(VAR_NAME) are expanded
+                              using the previously defined environment variables in the container and
+                              any service environment variables. If a variable cannot be resolved,
+                              the reference in the input string will be unchanged. Double $$ are reduced
+                              to a single $, which allows for escaping the $(VAR_NAME) syntax: i.e.
+                              "$$(VAR_NAME)" will produce the string literal "$(VAR_NAME)".
+                              Escaped references will never be expanded, regardless of whether the variable
+                              exists or not.
+                              Defaults to "".
+                            type: string
+                          valueFrom:
+                            description: Source for the environment variable's value.
+                              Cannot be used if value is not empty.
+                            properties:
+                              configMapKeyRef:
+                                description: Selects a key of a ConfigMap.
+                                properties:
+                                  key:
+                                    description: The key to select.
+                                    type: string
+                                  name:
+                                    default: ""
+                                    description: |-
+                                      Name of the referent.
+                                      This field is effectively required, but due to backwards compatibility is
+                                      allowed to be empty. Instances of this type with an empty value here are
+                                      almost certainly wrong.
+                                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                    type: string
+                                  optional:
+                                    description: Specify whether the ConfigMap or
+                                      its key must be defined
+                                    type: boolean
+                                required:
+                                - key
+                                type: object
+                                x-kubernetes-map-type: atomic
+                              fieldRef:
+                                description: |-
+                                  Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels['<KEY>']`, `metadata.annotations['<KEY>']`,
+                                  spec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs.
+                                properties:
+                                  apiVersion:
+                                    description: Version of the schema the FieldPath
+                                      is written in terms of, defaults to "v1".
+                                    type: string
+                                  fieldPath:
+                                    description: Path of the field to select in the
+                                      specified API version.
+                                    type: string
+                                required:
+                                - fieldPath
+                                type: object
+                                x-kubernetes-map-type: atomic
+                              resourceFieldRef:
+                                description: |-
+                                  Selects a resource of the container: only resources limits and requests
+                                  (limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported.
+                                properties:
+                                  containerName:
+                                    description: 'Container name: required for volumes,
+                                      optional for env vars'
+                                    type: string
+                                  divisor:
+                                    anyOf:
+                                    - type: integer
+                                    - type: string
+                                    description: Specifies the output format of the
+                                      exposed resources, defaults to "1"
+                                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                    x-kubernetes-int-or-string: true
+                                  resource:
+                                    description: 'Required: resource to select'
+                                    type: string
+                                required:
+                                - resource
+                                type: object
+                                x-kubernetes-map-type: atomic
+                              secretKeyRef:
+                                description: Selects a key of a secret in the pod's
+                                  namespace
+                                properties:
+                                  key:
+                                    description: The key of the secret to select from.  Must
+                                      be a valid secret key.
+                                    type: string
+                                  name:
+                                    default: ""
+                                    description: |-
+                                      Name of the referent.
+                                      This field is effectively required, but due to backwards compatibility is
+                                      allowed to be empty. Instances of this type with an empty value here are
+                                      almost certainly wrong.
+                                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                    type: string
+                                  optional:
+                                    description: Specify whether the Secret or its
+                                      key must be defined
+                                    type: boolean
+                                required:
+                                - key
+                                type: object
+                                x-kubernetes-map-type: atomic
+                            type: object
+                        required:
+                        - name
+                        type: object
+                      type: array
+                    envFrom:
+                      description: EnvFrom sources env vars from Secrets or ConfigMaps.
+                      items:
+                        description: EnvFromSource represents the source of a set
+                          of ConfigMaps or Secrets
+                        properties:
+                          configMapRef:
+                            description: The ConfigMap to select from
+                            properties:
+                              name:
+                                default: ""
+                                description: |-
+                                  Name of the referent.
+                                  This field is effectively required, but due to backwards compatibility is
+                                  allowed to be empty. Instances of this type with an empty value here are
+                                  almost certainly wrong.
+                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                type: string
+                              optional:
+                                description: Specify whether the ConfigMap must be
+                                  defined
+                                type: boolean
+                            type: object
+                            x-kubernetes-map-type: atomic
+                          prefix:
+                            description: Optional text to prepend to the name of each
+                              environment variable. Must be a C_IDENTIFIER.
+                            type: string
+                          secretRef:
+                            description: The Secret to select from
+                            properties:
+                              name:
+                                default: ""
+                                description: |-
+                                  Name of the referent.
+                                  This field is effectively required, but due to backwards compatibility is
+                                  allowed to be empty. Instances of this type with an empty value here are
+                                  almost certainly wrong.
+                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                type: string
+                              optional:
+                                description: Specify whether the Secret must be defined
+                                type: boolean
+                            type: object
+                            x-kubernetes-map-type: atomic
+                        type: object
+                      type: array
+                    image:
+                      description: Image is the backend container image.
+                      properties:
+                        pullPolicy:
+                          description: PullPolicy controls when the image is pulled.
+                          enum:
+                          - Always
+                          - IfNotPresent
+                          - Never
+                          type: string
+                        repository:
+                          description: Repository is the image repository without
+                            tag or digest.
+                          type: string
+                        tag:
+                          description: Tag is the image tag. If empty, the operator
+                            may fill in a default.
+                          type: string
+                      required:
+                      - repository
+                      type: object
+                    model:
+                      description: Model is the default model string passed to the
+                        backend.
+                      type: string
+                    name:
+                      description: |-
+                        Name identifies the backend (e.g. claude, codex, gemini). Used as the
+                        container name and the backend ID in routing.
+                      pattern: ^[a-z0-9][a-z0-9-]*$
+                      type: string
+                    port:
+                      default: 8080
+                      description: Port is the HTTP port the backend listens on inside
+                        the pod.
+                      format: int32
+                      type: integer
+                    resources:
+                      description: Resources are the CPU/memory requests and limits
+                        for this backend.
+                      properties:
+                        claims:
+                          description: |-
+                            Claims lists the names of resources, defined in spec.resourceClaims,
+                            that are used by this container.
+
+                            This is an alpha field and requires enabling the
+                            DynamicResourceAllocation feature gate.
+
+                            This field is immutable. It can only be set for containers.
+                          items:
+                            description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                            properties:
+                              name:
+                                description: |-
+                                  Name must match the name of one entry in pod.spec.resourceClaims of
+                                  the Pod where this field is used. It makes that resource available
+                                  inside a container.
+                                type: string
+                              request:
+                                description: |-
+                                  Request is the name chosen for a request in the referenced claim.
+                                  If empty, everything from the claim is made available, otherwise
+                                  only the result of this request.
+                                type: string
+                            required:
+                            - name
+                            type: object
+                          type: array
+                          x-kubernetes-list-map-keys:
+                          - name
+                          x-kubernetes-list-type: map
+                        limits:
+                          additionalProperties:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          description: |-
+                            Limits describes the maximum amount of compute resources allowed.
+                            More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                          type: object
+                        requests:
+                          additionalProperties:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          description: |-
+                            Requests describes the minimum amount of compute resources required.
+                            If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                            otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                            More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                          type: object
+                      type: object
+                    storage:
+                      description: Storage provisions or references a PVC for backend
+                        persistence.
+                      properties:
+                        enabled:
+                          type: boolean
+                        existingClaim:
+                          type: string
+                        mounts:
+                          items:
+                            description: BackendStorageMount maps a sub-path of a
+                              backend's PVC to a mount path.
+                            properties:
+                              mountPath:
+                                type: string
+                              subPath:
+                                type: string
+                            required:
+                            - mountPath
+                            - subPath
+                            type: object
+                          type: array
+                        size:
+                          type: string
+                        storageClassName:
+                          type: string
+                      type: object
+                  required:
+                  - image
+                  - name
+                  type: object
+                minItems: 1
+                type: array
+              config:
+                description: Config mounts inline config files into the nyx-harness
+                  container.
+                items:
+                  description: |-
+                    ConfigFile represents a single inline config file mounted into a container.
+                    The file is materialised as one key in a ConfigMap owned by the NyxAgent.
+                  properties:
+                    content:
+                      description: Content is the literal file contents.
+                      type: string
+                    mountPath:
+                      description: MountPath is the absolute path inside the container.
+                      type: string
+                    name:
+                      description: Name is the ConfigMap key and the filename inside
+                        the container.
+                      type: string
+                  required:
+                  - content
+                  - mountPath
+                  - name
+                  type: object
+                type: array
+              env:
+                description: Env adds environment variables to the nyx-harness container.
+                items:
+                  description: EnvVar represents an environment variable present in
+                    a Container.
+                  properties:
+                    name:
+                      description: Name of the environment variable. Must be a C_IDENTIFIER.
+                      type: string
+                    value:
+                      description: |-
+                        Variable references $(VAR_NAME) are expanded
+                        using the previously defined environment variables in the container and
+                        any service environment variables. If a variable cannot be resolved,
+                        the reference in the input string will be unchanged. Double $$ are reduced
+                        to a single $, which allows for escaping the $(VAR_NAME) syntax: i.e.
+                        "$$(VAR_NAME)" will produce the string literal "$(VAR_NAME)".
+                        Escaped references will never be expanded, regardless of whether the variable
+                        exists or not.
+                        Defaults to "".
+                      type: string
+                    valueFrom:
+                      description: Source for the environment variable's value. Cannot
+                        be used if value is not empty.
+                      properties:
+                        configMapKeyRef:
+                          description: Selects a key of a ConfigMap.
+                          properties:
+                            key:
+                              description: The key to select.
+                              type: string
+                            name:
+                              default: ""
+                              description: |-
+                                Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
+                                More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                              type: string
+                            optional:
+                              description: Specify whether the ConfigMap or its key
+                                must be defined
+                              type: boolean
+                          required:
+                          - key
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        fieldRef:
+                          description: |-
+                            Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels['<KEY>']`, `metadata.annotations['<KEY>']`,
+                            spec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs.
+                          properties:
+                            apiVersion:
+                              description: Version of the schema the FieldPath is
+                                written in terms of, defaults to "v1".
+                              type: string
+                            fieldPath:
+                              description: Path of the field to select in the specified
+                                API version.
+                              type: string
+                          required:
+                          - fieldPath
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        resourceFieldRef:
+                          description: |-
+                            Selects a resource of the container: only resources limits and requests
+                            (limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported.
+                          properties:
+                            containerName:
+                              description: 'Container name: required for volumes,
+                                optional for env vars'
+                              type: string
+                            divisor:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              description: Specifies the output format of the exposed
+                                resources, defaults to "1"
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            resource:
+                              description: 'Required: resource to select'
+                              type: string
+                          required:
+                          - resource
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        secretKeyRef:
+                          description: Selects a key of a secret in the pod's namespace
+                          properties:
+                            key:
+                              description: The key of the secret to select from.  Must
+                                be a valid secret key.
+                              type: string
+                            name:
+                              default: ""
+                              description: |-
+                                Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
+                                More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                              type: string
+                            optional:
+                              description: Specify whether the Secret or its key must
+                                be defined
+                              type: boolean
+                          required:
+                          - key
+                          type: object
+                          x-kubernetes-map-type: atomic
+                      type: object
+                  required:
+                  - name
+                  type: object
+                type: array
+              envFrom:
+                description: |-
+                  EnvFrom sources env vars from Secrets or ConfigMaps for the
+                  nyx-harness container.
+                items:
+                  description: EnvFromSource represents the source of a set of ConfigMaps
+                    or Secrets
+                  properties:
+                    configMapRef:
+                      description: The ConfigMap to select from
+                      properties:
+                        name:
+                          default: ""
+                          description: |-
+                            Name of the referent.
+                            This field is effectively required, but due to backwards compatibility is
+                            allowed to be empty. Instances of this type with an empty value here are
+                            almost certainly wrong.
+                            More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                          type: string
+                        optional:
+                          description: Specify whether the ConfigMap must be defined
+                          type: boolean
+                      type: object
+                      x-kubernetes-map-type: atomic
+                    prefix:
+                      description: Optional text to prepend to the name of each environment
+                        variable. Must be a C_IDENTIFIER.
+                      type: string
+                    secretRef:
+                      description: The Secret to select from
+                      properties:
+                        name:
+                          default: ""
+                          description: |-
+                            Name of the referent.
+                            This field is effectively required, but due to backwards compatibility is
+                            allowed to be empty. Instances of this type with an empty value here are
+                            almost certainly wrong.
+                            More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                          type: string
+                        optional:
+                          description: Specify whether the Secret must be defined
+                          type: boolean
+                      type: object
+                      x-kubernetes-map-type: atomic
+                  type: object
+                type: array
+              image:
+                description: Image is the nyx-harness orchestrator image.
+                properties:
+                  pullPolicy:
+                    description: PullPolicy controls when the image is pulled.
+                    enum:
+                    - Always
+                    - IfNotPresent
+                    - Never
+                    type: string
+                  repository:
+                    description: Repository is the image repository without tag or
+                      digest.
+                    type: string
+                  tag:
+                    description: Tag is the image tag. If empty, the operator may
+                      fill in a default.
+                    type: string
+                required:
+                - repository
+                type: object
+              imagePullSecrets:
+                description: ImagePullSecrets used by the agent pod.
+                items:
+                  description: |-
+                    LocalObjectReference contains enough information to let you locate the
+                    referenced object inside the same namespace.
+                  properties:
+                    name:
+                      default: ""
+                      description: |-
+                        Name of the referent.
+                        This field is effectively required, but due to backwards compatibility is
+                        allowed to be empty. Instances of this type with an empty value here are
+                        almost certainly wrong.
+                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                      type: string
+                  type: object
+                  x-kubernetes-map-type: atomic
+                type: array
+              metrics:
+                description: Metrics toggles Prometheus scrape annotations on the
+                  Service.
+                properties:
+                  enabled:
+                    type: boolean
+                type: object
+              podDisruptionBudget:
+                description: PodDisruptionBudget optionally creates a PDB for the
+                  agent Deployment.
+                properties:
+                  enabled:
+                    description: Enabled creates a PodDisruptionBudget for the agent's
+                      Deployment.
+                    type: boolean
+                  maxUnavailable:
+                    format: int32
+                    type: integer
+                  minAvailable:
+                    format: int32
+                    type: integer
+                type: object
+              port:
+                default: 8000
+                description: Port is the HTTP port nyx-harness listens on (Service
+                  + probe target).
+                format: int32
+                type: integer
+              probes:
+                description: Probes overrides liveness/readiness probe timing.
+                properties:
+                  liveness:
+                    description: |-
+                      ProbeSpec describes a single probe's timing parameters.
+                      Defaults match the Helm chart's probes.* defaults.
+                    properties:
+                      failureThreshold:
+                        default: 3
+                        format: int32
+                        type: integer
+                      initialDelaySeconds:
+                        default: 10
+                        format: int32
+                        type: integer
+                      periodSeconds:
+                        default: 30
+                        format: int32
+                        type: integer
+                      timeoutSeconds:
+                        default: 5
+                        format: int32
+                        type: integer
+                    type: object
+                  readiness:
+                    description: |-
+                      ProbeSpec describes a single probe's timing parameters.
+                      Defaults match the Helm chart's probes.* defaults.
+                    properties:
+                      failureThreshold:
+                        default: 3
+                        format: int32
+                        type: integer
+                      initialDelaySeconds:
+                        default: 10
+                        format: int32
+                        type: integer
+                      periodSeconds:
+                        default: 30
+                        format: int32
+                        type: integer
+                      timeoutSeconds:
+                        default: 5
+                        format: int32
+                        type: integer
+                    type: object
+                type: object
+              resources:
+                description: Resources are CPU/memory requests and limits for the
+                  nyx-harness container.
+                properties:
+                  claims:
+                    description: |-
+                      Claims lists the names of resources, defined in spec.resourceClaims,
+                      that are used by this container.
+
+                      This is an alpha field and requires enabling the
+                      DynamicResourceAllocation feature gate.
+
+                      This field is immutable. It can only be set for containers.
+                    items:
+                      description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                      properties:
+                        name:
+                          description: |-
+                            Name must match the name of one entry in pod.spec.resourceClaims of
+                            the Pod where this field is used. It makes that resource available
+                            inside a container.
+                          type: string
+                        request:
+                          description: |-
+                            Request is the name chosen for a request in the referenced claim.
+                            If empty, everything from the claim is made available, otherwise
+                            only the result of this request.
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
+                  limits:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    description: |-
+                      Limits describes the maximum amount of compute resources allowed.
+                      More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                    type: object
+                  requests:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    description: |-
+                      Requests describes the minimum amount of compute resources required.
+                      If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                      otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                      More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                    type: object
+                type: object
+              sharedStorage:
+                description: SharedStorage optionally mounts a pre-existing PVC into
+                  every container.
+                properties:
+                  claimName:
+                    description: ClaimName is the name of the existing PersistentVolumeClaim.
+                    type: string
+                  mountPath:
+                    default: /data/shared
+                    description: MountPath is the absolute path inside each container.
+                    type: string
+                required:
+                - claimName
+                type: object
+            required:
+            - backends
+            - image
+            type: object
+          status:
+            description: NyxAgentStatus defines the observed state of NyxAgent.
+            properties:
+              conditions:
+                description: Conditions follow the standard Kubernetes condition convention.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              observedGeneration:
+                description: ObservedGeneration is the generation of the spec most
+                  recently reconciled.
+                format: int64
+                type: integer
+              phase:
+                description: Phase is a coarse-grained lifecycle indicator.
+                enum:
+                - Pending
+                - Ready
+                - Degraded
+                - Error
+                type: string
+              readyReplicas:
+                description: ReadyReplicas mirrors the agent Deployment's status.readyReplicas.
+                format: int32
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+{{- end }}

@@ -1,0 +1,19 @@
+{{- if .Values.metrics.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nyx-operator.fullname" . }}-metrics
+  labels:
+    {{- include "nyx-operator.labels" . | nindent 4 }}
+    control-plane: controller-manager
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "nyx-operator.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: {{ ternary "https" "http" .Values.metrics.secure }}
+      port: {{ .Values.metrics.port }}
+      targetPort: metrics
+      protocol: TCP
+{{- end }}
