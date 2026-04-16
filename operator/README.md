@@ -68,15 +68,16 @@ and `api/v1alpha1/nyxagent_types.go` for the full schema.
 
 Owned resources per `NyxAgent`:
 
-| Resource                  | When                                                     |
-| ------------------------- | -------------------------------------------------------- |
-| `Deployment`              | always                                                   |
-| `Service` (ClusterIP)     | always                                                   |
-| `ConfigMap` (agent)       | when `spec.config` is non-empty                          |
-| `ConfigMap` (per backend) | when a backend's `config` is non-empty                   |
-| `PersistentVolumeClaim`   | when a backend's `storage.enabled` is true               |
-| `HorizontalPodAutoscaler` | when `spec.autoscaling.enabled` is true                  |
-| `PodDisruptionBudget`     | when `spec.podDisruptionBudget.enabled` is true          |
+| Resource                    | When                                                     |
+| --------------------------- | -------------------------------------------------------- |
+| `Deployment`                | always                                                   |
+| `Service` (ClusterIP)       | always                                                   |
+| `ConfigMap` (agent)         | when `spec.config` is non-empty                          |
+| `ConfigMap` (per backend)   | when a backend's `config` is non-empty                   |
+| `PersistentVolumeClaim`     | when a backend's `storage.enabled` is true               |
+| `HorizontalPodAutoscaler`   | when `spec.autoscaling.enabled` is true                  |
+| `PodDisruptionBudget`       | when `spec.podDisruptionBudget.enabled` is true          |
+| Dashboard `Deployment`/`Service` | when `spec.dashboard.enabled` is true (#470)        |
 
 All owned resources carry `ownerReferences` pointing at the `NyxAgent`,
 so deleting the CR cascades their deletion.

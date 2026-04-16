@@ -214,6 +214,15 @@ type NyxAgentSpec struct {
 	// +optional
 	Port int32 `json:"port,omitempty"`
 
+	// TerminationGracePeriodSeconds overrides the pod's grace window between
+	// SIGTERM and SIGKILL. Defaults to 60s, matching the chart-managed
+	// agent pods. Increase for workloads with long-running per-request work
+	// (multi-minute jobs, slow webhook deliveries) that need more drain
+	// time during voluntary disruption (#458).
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	TerminationGracePeriodSeconds *int64 `json:"terminationGracePeriodSeconds,omitempty"`
+
 	// Image is the nyx-harness orchestrator image.
 	Image ImageSpec `json:"image"`
 
@@ -261,6 +270,49 @@ type NyxAgentSpec struct {
 	// SharedStorage optionally mounts a pre-existing PVC into every container.
 	// +optional
 	SharedStorage *SharedStorageRef `json:"sharedStorage,omitempty"`
+
+	// Dashboard optionally deploys the Vue 3 dashboard (#470) alongside the
+	// agent. The dashboard is the future replacement for the existing `ui`
+	// surface; both run side-by-side until dashboard reaches feature parity
+	// with `ui/`. Disabled by default — the current UI remains primary until
+	// explicitly flipped.
+	// +optional
+	Dashboard *DashboardSpec `json:"dashboard,omitempty"`
+}
+
+// DashboardSpec configures an optional dashboard Deployment + Service per
+// agent. The operator renders one Deployment and one Service scoped to the
+// NyxAgent, so an agent can have its own dashboard instance independent of
+// any release-level dashboard deployed via Helm (#470).
+type DashboardSpec struct {
+	// Enabled toggles creation of the dashboard Deployment + Service.
+	Enabled bool `json:"enabled"`
+
+	// Image is the dashboard container image.
+	// +optional
+	Image *ImageSpec `json:"image,omitempty"`
+
+	// Replicas for the dashboard Deployment. Defaults to 1.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	Replicas *int32 `json:"replicas,omitempty"`
+
+	// Port is the Service port (the container always listens on 8080).
+	// +kubebuilder:default=80
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	// +optional
+	Port int32 `json:"port,omitempty"`
+
+	// HarnessURL overrides the origin the dashboard's nginx /api/* proxy
+	// forwards to. Defaults to "http://<agent>-harness:<port>" derived from
+	// the parent NyxAgent.
+	// +optional
+	HarnessURL string `json:"harnessUrl,omitempty"`
+
+	// Resources for the dashboard container.
+	// +optional
+	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 }
 
 // MetricsSpec toggles Prometheus scrape behaviour for the agent Service.

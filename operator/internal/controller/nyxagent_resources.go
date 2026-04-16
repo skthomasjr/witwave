@@ -381,7 +381,12 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 	}
 
 	podSpec := corev1.PodSpec{
-		TerminationGracePeriodSeconds: int64Ptr(60),
+		TerminationGracePeriodSeconds: func() *int64 {
+			if agent.Spec.TerminationGracePeriodSeconds != nil {
+				return agent.Spec.TerminationGracePeriodSeconds
+			}
+			return int64Ptr(60)
+		}(),
 		AutomountServiceAccountToken:  boolPtr(false),
 		SecurityContext: &corev1.PodSecurityContext{
 			RunAsNonRoot: boolPtr(true),
@@ -549,10 +554,26 @@ func buildPDB(agent *nyxv1alpha1.NyxAgent) *policyv1.PodDisruptionBudget {
 	return pdb
 }
 
+// PVCBuildError describes a backend PVC entry that could not be built.
+// Surfaced to the controller so it can log + emit events; previously these
+// were silently dropped (#454).
+type PVCBuildError struct {
+	BackendName string
+	Size        string
+	Err         error
+}
+
+func (e *PVCBuildError) Error() string {
+	return fmt.Sprintf("backend %q: invalid storage.size %q: %v", e.BackendName, e.Size, e.Err)
+}
+
 // buildBackendPVCs returns the PVCs the operator should create for each
 // backend whose Storage.Enabled is true and whose ExistingClaim is empty.
-func buildBackendPVCs(agent *nyxv1alpha1.NyxAgent) []*corev1.PersistentVolumeClaim {
+// The second return value lists per-backend size-parse failures so the
+// caller can surface them as logs + events instead of silent drops (#454).
+func buildBackendPVCs(agent *nyxv1alpha1.NyxAgent) ([]*corev1.PersistentVolumeClaim, []*PVCBuildError) {
 	var out []*corev1.PersistentVolumeClaim
+	var errs []*PVCBuildError
 	for _, b := range agent.Spec.Backends {
 		if b.Storage == nil || !b.Storage.Enabled || b.Storage.ExistingClaim != "" {
 			continue
@@ -563,7 +584,7 @@ func buildBackendPVCs(agent *nyxv1alpha1.NyxAgent) []*corev1.PersistentVolumeCla
 		}
 		qty, err := resource.ParseQuantity(size)
 		if err != nil {
-			// Skip malformed entries; validation will surface this elsewhere.
+			errs = append(errs, &PVCBuildError{BackendName: b.Name, Size: size, Err: err})
 			continue
 		}
 		pvc := &corev1.PersistentVolumeClaim{
@@ -584,7 +605,7 @@ func buildBackendPVCs(agent *nyxv1alpha1.NyxAgent) []*corev1.PersistentVolumeCla
 		}
 		out = append(out, pvc)
 	}
-	return out
+	return out, errs
 }
 
 // ── small helpers ─────────────────────────────────────────────────────────────
@@ -592,3 +613,138 @@ func buildBackendPVCs(agent *nyxv1alpha1.NyxAgent) []*corev1.PersistentVolumeCla
 func boolPtr(b bool) *bool    { return &b }
 func int32Ptr(i int32) *int32 { return &i }
 func int64Ptr(i int64) *int64 { return &i }
+
+// dashboardLabels returns the label set for the per-agent dashboard
+// Deployment + Service. The "component=dashboard" label distinguishes
+// them from the agent's own pods so selectors stay unambiguous (#470).
+func dashboardLabels(agent *nyxv1alpha1.NyxAgent) map[string]string {
+	return map[string]string{
+		labelName:      agent.Name + "-dashboard",
+		labelComponent: "dashboard",
+		labelPartOf:    partOf,
+		labelManagedBy: managedBy,
+	}
+}
+
+func dashboardSelectorLabels(agent *nyxv1alpha1.NyxAgent) map[string]string {
+	return map[string]string{
+		labelName: agent.Name + "-dashboard",
+	}
+}
+
+// buildDashboardDeployment returns the Deployment for the per-agent Vue 3
+// dashboard, or nil when the dashboard is disabled. The dashboard container
+// always listens on 8080; the Service port is controlled separately via
+// DashboardSpec.Port. HARNESS_URL is derived from the parent NyxAgent so the
+// nginx /api/* reverse proxy inside the dashboard image finds the right
+// harness without extra config (#470).
+func buildDashboardDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Deployment {
+	d := agent.Spec.Dashboard
+	if d == nil || !d.Enabled {
+		return nil
+	}
+
+	replicas := int32(1)
+	if d.Replicas != nil {
+		replicas = *d.Replicas
+	}
+
+	// Image — fall back to the conventional ghcr image when the caller
+	// didn't specify one, so the simplest NyxAgent with
+	// `dashboard.enabled: true` still produces a deployable pod.
+	img := nyxv1alpha1.ImageSpec{
+		Repository: "ghcr.io/skthomasjr/images/dashboard",
+	}
+	if d.Image != nil {
+		img = *d.Image
+	}
+
+	agentPort := agent.Spec.Port
+	if agentPort == 0 {
+		agentPort = 8000
+	}
+	harnessURL := d.HarnessURL
+	if harnessURL == "" {
+		harnessURL = fmt.Sprintf("http://%s:%d", agent.Name, agentPort)
+	}
+
+	probeSpec := nyxv1alpha1.ProbeSpec{}
+	containerPort := int32(8080)
+
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      agent.Name + "-dashboard",
+			Namespace: agent.Namespace,
+			Labels:    dashboardLabels(agent),
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: int32Ptr(replicas),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: dashboardSelectorLabels(agent),
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: dashboardLabels(agent),
+				},
+				Spec: corev1.PodSpec{
+					AutomountServiceAccountToken: boolPtr(false),
+					ImagePullSecrets:             agent.Spec.ImagePullSecrets,
+					Containers: []corev1.Container{{
+						Name:            "dashboard",
+						Image:           imageRef(img, appVersion),
+						ImagePullPolicy: img.PullPolicy,
+						Ports: []corev1.ContainerPort{{
+							Name:          "http",
+							ContainerPort: containerPort,
+							Protocol:      corev1.ProtocolTCP,
+						}},
+						Env: []corev1.EnvVar{{
+							Name:  "HARNESS_URL",
+							Value: harnessURL,
+						}},
+						SecurityContext: &corev1.SecurityContext{
+							AllowPrivilegeEscalation: boolPtr(false),
+							Capabilities: &corev1.Capabilities{
+								Drop: []corev1.Capability{"ALL"},
+							},
+							RunAsNonRoot: boolPtr(true),
+						},
+						LivenessProbe:  httpProbe(containerPort, "/health", probeDefaults(&probeSpec, true)),
+						ReadinessProbe: httpProbe(containerPort, "/health", probeDefaults(&probeSpec, false)),
+						Resources:      d.Resources,
+					}},
+				},
+			},
+		},
+	}
+}
+
+// buildDashboardService returns the ClusterIP Service for the dashboard,
+// or nil when disabled. The Service port defaults to 80 (what users expect
+// to hit in-cluster); targetPort is always 8080 to match the nginx listen.
+func buildDashboardService(agent *nyxv1alpha1.NyxAgent) *corev1.Service {
+	d := agent.Spec.Dashboard
+	if d == nil || !d.Enabled {
+		return nil
+	}
+	port := d.Port
+	if port == 0 {
+		port = 80
+	}
+	return &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      agent.Name + "-dashboard",
+			Namespace: agent.Namespace,
+			Labels:    dashboardLabels(agent),
+		},
+		Spec: corev1.ServiceSpec{
+			Type:     corev1.ServiceTypeClusterIP,
+			Selector: dashboardSelectorLabels(agent),
+			Ports: []corev1.ServicePort{{
+				Name:       "http",
+				Port:       port,
+				TargetPort: intstr.FromInt(8080),
+			}},
+		},
+	}
+}

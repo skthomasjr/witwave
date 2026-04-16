@@ -43,6 +43,46 @@ ui:
   #   runAsGroup: 1000
   #   fsGroup: 1000
 
+# Vue 3 dashboard — future replacement for the `ui` single-file app (#470).
+# Disabled by default; enable to deploy the dashboard side-by-side with the
+# current UI. The two components coexist until the dashboard reaches parity,
+# at which point UI flips from "primary" to "fallback". Both surfaces can
+# stay enabled together — they run as independent Deployments + Services.
+dashboard:
+  enabled: false
+  image:
+    repository: ghcr.io/skthomasjr/images/dashboard
+    # # Image tag. Defaults to .Chart.AppVersion when omitted.
+    # tag: ""
+    # # Image pull policy.
+    # pullPolicy: IfNotPresent
+  # Service port (the container always listens on 8080; this is the Service port).
+  port: 80
+  # Number of replicas.
+  # replicas: 1
+  # Override the harness origin used by the nginx /api/* reverse proxy inside
+  # the dashboard container. Defaults to http://<release>-harness:8000.
+  # harnessUrl: "http://my-harness:8000"
+  # # Image pull secrets for private registries.
+  # imagePullSecrets:
+  #   - name: ghcr-credentials
+  # # Resource requests and limits.
+  # resources:
+  #   requests:
+  #     cpu: 50m
+  #     memory: 64Mi
+  #   limits:
+  #     cpu: 250m
+  #     memory: 128Mi
+  # # Pod-level securityContext (the dashboard image runs as non-root and
+  # # binds port 8080, so the Pod Security Standards "restricted" profile is
+  # # applicable out of the box when you supply a matching context here).
+  # securityContext:
+  #   runAsNonRoot: true
+  #   runAsUser: 1000
+  #   runAsGroup: 1000
+  #   fsGroup: 1000
+
 # Ingress for the UI. Disabled by default — enable to expose the UI externally (#424).
 ingress:
   enabled: false
@@ -107,7 +147,14 @@ probes:
 
 # Default git-sync image used by all gitSyncs entries unless overridden per-entry.
 gitSync:
-  image: ghcr.io/skthomasjr/images/git-sync:latest
+  # Default git-sync image used by all gitSyncs entries that don't override
+  # via .gitSyncs[].image. Tracks .Chart.AppVersion the same way every other
+  # image in this chart does, so beta installs get pinned bits instead of
+  # silently following ":latest" (#457). Override per-entry for sticky pins.
+  image:
+    repository: ghcr.io/skthomasjr/images/git-sync
+    # tag defaults to .Chart.AppVersion when empty
+    tag: ""
 
 # Enable Prometheus metrics for all agents and their backends.
 # When enabled, prometheus.io scrape annotations are added to each agent Service
@@ -227,7 +274,7 @@ agents:
     #   - # Name of the gitSync entry to source from.
     #     gitSync: autonomous-agent
     #     # Source path within the repo (trailing / = directory copy).
-    #     src: .agents/dev/adam/.nyx/
+    #     src: .agents/active/iris/.nyx/
     #     # Destination path inside the container.
     #     dest: /home/agent/.nyx/
 
@@ -288,7 +335,7 @@ agents:
         # # but scoped to this backend container.
         # gitMappings:
         #   - gitSync: autonomous-agent
-        #     src: .agents/dev/adam/.claude/
+        #     src: .agents/active/iris/.claude/
         #     dest: /home/agent/.claude/
 
         # # Additional environment variables injected into the backend container.

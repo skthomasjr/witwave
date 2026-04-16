@@ -2,9 +2,15 @@
 
 The nyx UI is a single-page web application for monitoring and interacting with the autonomous agent platform. It is served by nginx from a Docker container and communicates with agents via their nyx-harness HTTP APIs.
 
+> **Note on coexistence.** This `ui/` is the **primary** monitoring surface today. A Vue 3 + Vite + PrimeVue
+> rewrite lives under [`dashboard/`](../dashboard/README.md) (#470) and runs side-by-side when enabled. The two
+> will coexist until the dashboard reaches feature parity with the checklist in `dashboard/README.md`; at that
+> point dashboard becomes primary and `ui/` continues as the fallback. Neither blocks the other — each has its own
+> chart toggle (`ui.enabled` vs. `dashboard.enabled`) and its own image.
+
 ## What it does
 
-The UI provides eight views into the running agent system:
+The UI provides ten views into the running agent system:
 
 **Metrics** — Real-time operational dashboard. Displays stat cards (uptime, active sessions, queue depth, error counts) and time-series charts powered by Chart.js. Data is polled from each agent's Prometheus `/metrics` endpoint on a configurable interval. Filterable by agent and backend.
 
@@ -20,9 +26,17 @@ calendar fetches `GET /jobs` and `GET /tasks` from the agent and renders registe
 month view. Job items are shown in purple-accent; task items in violet. The view degrades gracefully if the endpoints
 are unavailable.
 
+**Jobs** — List of cron-scheduled jobs registered on the agent. Fetches `GET /jobs` on activation and renders each job's
+name, schedule (cron), description, session ID, backend/model, max-tokens cap, consensus config, and running state.
+Complements the calendar view (which is visual-only). Supports text search and manual refresh.
+
+**Tasks** — List of window-scheduled tasks registered on the agent. Fetches `GET /tasks` on activation and renders each
+task's name, description, day expression, window start + duration, timezone, optional loop interval, session ID,
+backend/model, max-tokens cap, consensus config, and running state. Supports text search and manual refresh.
+
 **Triggers** — List of inbound HTTP trigger endpoints registered on the agent. Fetches `GET /triggers` on activation and
-renders each trigger's endpoint, description, running state, assigned backend/model, and session ID. Supports text search
-filtering and manual refresh.
+renders each trigger's endpoint, description, enabled / running / signed (HMAC) state, assigned backend/model, and
+session ID. Supports text search filtering and manual refresh.
 
 **Webhooks** — List of outbound webhook subscriptions registered on the agent. Fetches `GET /webhooks` on activation and
 renders each subscription's name, URL template, enable state, notify-when / notify-on-kind / notify-on-response filters,

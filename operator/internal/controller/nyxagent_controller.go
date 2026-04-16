@@ -114,6 +114,13 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	if err := r.reconcilePDB(ctx, agent); err != nil && reconcileErr == nil {
 		reconcileErr = err
 	}
+	// Dashboard is opt-in per agent (#470). reconcileDashboard handles
+	// both the create/update path when enabled and the delete path when
+	// the field is removed or toggled off, so the cluster converges
+	// cleanly in either direction.
+	if err := r.reconcileDashboard(ctx, agent); err != nil && reconcileErr == nil {
+		reconcileErr = err
+	}
 
 	// Observe Deployment status and update our own status subresource.
 	if err := r.updateStatus(ctx, agent, reconcileErr); err != nil {
@@ -252,7 +259,21 @@ func (r *NyxAgentReconciler) applyConfigMap(ctx context.Context, agent *nyxv1alp
 }
 
 func (r *NyxAgentReconciler) applyBackendPVCs(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
-	for _, desired := range buildBackendPVCs(agent) {
+	pvcs, buildErrs := buildBackendPVCs(agent)
+	// Surface size-parse failures so they don't get silently dropped (#454).
+	// We log via the reconciler's logger and emit a Warning Event per bad
+	// entry. This is non-fatal — other backends still get their PVCs.
+	if len(buildErrs) > 0 {
+		log := logf.FromContext(ctx)
+		for _, be := range buildErrs {
+			log.Error(be.Err, "skipping backend PVC", "backend", be.BackendName, "size", be.Size)
+			if r.Recorder != nil {
+				r.Recorder.Eventf(agent, corev1.EventTypeWarning, "InvalidStorageSize",
+					"backend %q: invalid storage.size %q (%v)", be.BackendName, be.Size, be.Err)
+			}
+		}
+	}
+	for _, desired := range pvcs {
 		if err := controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
 			return fmt.Errorf("set owner on PVC %s: %w", desired.Name, err)
 		}
@@ -348,6 +369,94 @@ func (r *NyxAgentReconciler) reconcilePDB(ctx context.Context, agent *nyxv1alpha
 	return r.Update(ctx, existing)
 }
 
+// reconcileDashboard creates, updates, or deletes the per-agent dashboard
+// Deployment + Service to match NyxAgent.spec.dashboard (#470). The
+// dashboard is opt-in and coexists with the legacy release-level `ui`
+// Deployment — the two are independent resources and neither blocks the
+// other.
+func (r *NyxAgentReconciler) reconcileDashboard(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
+	desiredDep := buildDashboardDeployment(agent, DefaultImageTag)
+	desiredSvc := buildDashboardService(agent)
+
+	// Key used for both Deployment and Service — buildDashboardDeployment
+	// and buildDashboardService agree on the "<agent>-dashboard" name.
+	key := client.ObjectKey{Namespace: agent.Namespace, Name: agent.Name + "-dashboard"}
+
+	// Delete path: the spec was toggled off or removed. Only remove
+	// resources we actually own to avoid clobbering something the
+	// operator didn't create.
+	if desiredDep == nil {
+		existingDep := &appsv1.Deployment{}
+		if err := r.Get(ctx, key, existingDep); err == nil {
+			if metav1.IsControlledBy(existingDep, agent) {
+				if err := r.Delete(ctx, existingDep); err != nil && !apierrors.IsNotFound(err) {
+					return err
+				}
+			}
+		} else if !apierrors.IsNotFound(err) {
+			return err
+		}
+		existingSvc := &corev1.Service{}
+		if err := r.Get(ctx, key, existingSvc); err == nil {
+			if metav1.IsControlledBy(existingSvc, agent) {
+				if err := r.Delete(ctx, existingSvc); err != nil && !apierrors.IsNotFound(err) {
+					return err
+				}
+			}
+		} else if !apierrors.IsNotFound(err) {
+			return err
+		}
+		return nil
+	}
+
+	// Apply Deployment.
+	if err := controllerutil.SetControllerReference(agent, desiredDep, r.Scheme); err != nil {
+		return fmt.Errorf("set owner on dashboard Deployment: %w", err)
+	}
+	existingDep := &appsv1.Deployment{}
+	if err := r.Get(ctx, key, existingDep); err != nil {
+		if apierrors.IsNotFound(err) {
+			if err := r.Create(ctx, desiredDep); err != nil {
+				return fmt.Errorf("create dashboard Deployment: %w", err)
+			}
+		} else {
+			return err
+		}
+	} else {
+		existingDep.Spec = desiredDep.Spec
+		existingDep.Labels = desiredDep.Labels
+		if err := r.Update(ctx, existingDep); err != nil {
+			return fmt.Errorf("update dashboard Deployment: %w", err)
+		}
+	}
+
+	// Apply Service.
+	if desiredSvc != nil {
+		if err := controllerutil.SetControllerReference(agent, desiredSvc, r.Scheme); err != nil {
+			return fmt.Errorf("set owner on dashboard Service: %w", err)
+		}
+		existingSvc := &corev1.Service{}
+		if err := r.Get(ctx, key, existingSvc); err != nil {
+			if apierrors.IsNotFound(err) {
+				if err := r.Create(ctx, desiredSvc); err != nil {
+					return fmt.Errorf("create dashboard Service: %w", err)
+				}
+			} else {
+				return err
+			}
+		} else {
+			// Preserve ClusterIP (immutable) while patching the rest.
+			desiredSvc.Spec.ClusterIP = existingSvc.Spec.ClusterIP
+			existingSvc.Spec = desiredSvc.Spec
+			existingSvc.Labels = desiredSvc.Labels
+			if err := r.Update(ctx, existingSvc); err != nil {
+				return fmt.Errorf("update dashboard Service: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
 // ── Status ────────────────────────────────────────────────────────────────────
 
 func (r *NyxAgentReconciler) updateStatus(ctx context.Context, agent *nyxv1alpha1.NyxAgent, reconcileErr error) error {
@@ -394,6 +503,11 @@ func (r *NyxAgentReconciler) updateStatus(ctx context.Context, agent *nyxv1alpha
 		ObservedGeneration: agent.Generation,
 	}
 
+	// desired is only meaningful when the Deployment exists; default to 0 in
+	// the missing/error cases so phase-transition Event messages don't show
+	// stale numbers (#451). Populated in the default branch below.
+	var desired int32
+
 	switch {
 	case apierrors.IsNotFound(depErr):
 		newStatus.ReadyReplicas = 0
@@ -414,7 +528,7 @@ func (r *NyxAgentReconciler) updateStatus(ctx context.Context, agent *nyxv1alpha
 		progCond.Message = depErr.Error()
 	default:
 		newStatus.ReadyReplicas = dep.Status.ReadyReplicas
-		desired := int32(1)
+		desired = int32(1)
 		if dep.Spec.Replicas != nil {
 			desired = *dep.Spec.Replicas
 		}
@@ -462,7 +576,7 @@ func (r *NyxAgentReconciler) updateStatus(ctx context.Context, agent *nyxv1alpha
 	// the empty→Pending bootstrap and on every no-op reconcile thanks to the
 	// previousPhase comparison and the statusEqual short-circuit above.
 	if r.Recorder != nil && newStatus.Phase != previousPhase && previousPhase != "" {
-		r.recordPhaseTransitionEvent(agent, previousPhase, newStatus.Phase, reconcileErr)
+		r.recordPhaseTransitionEvent(agent, previousPhase, newStatus.Phase, desired, reconcileErr)
 	}
 	return nil
 }
@@ -475,17 +589,18 @@ func (r *NyxAgentReconciler) updateStatus(ctx context.Context, agent *nyxv1alpha
 func (r *NyxAgentReconciler) recordPhaseTransitionEvent(
 	agent *nyxv1alpha1.NyxAgent,
 	from, to nyxv1alpha1.NyxAgentPhase,
+	desiredReplicas int32,
 	reconcileErr error,
 ) {
 	switch to {
 	case nyxv1alpha1.NyxAgentPhaseReady:
 		r.Recorder.Eventf(agent, corev1.EventTypeNormal, "Ready",
 			"NyxAgent transitioned %s → Ready (%d/%d replicas)",
-			from, agent.Status.ReadyReplicas, agent.Status.ReadyReplicas)
+			from, agent.Status.ReadyReplicas, desiredReplicas)
 	case nyxv1alpha1.NyxAgentPhaseDegraded:
 		r.Recorder.Eventf(agent, corev1.EventTypeWarning, "Degraded",
-			"NyxAgent transitioned %s → Degraded (%d replicas ready)",
-			from, agent.Status.ReadyReplicas)
+			"NyxAgent transitioned %s → Degraded (%d/%d replicas ready)",
+			from, agent.Status.ReadyReplicas, desiredReplicas)
 	case nyxv1alpha1.NyxAgentPhaseError:
 		msg := "reconcile failed"
 		if reconcileErr != nil {

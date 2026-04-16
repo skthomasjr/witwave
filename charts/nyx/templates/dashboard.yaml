@@ -1,0 +1,91 @@
+{{- if .Values.dashboard.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $.Release.Name }}-dashboard
+  labels:
+    app.kubernetes.io/name: {{ $.Release.Name }}-dashboard
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/part-of: nyx
+    app.kubernetes.io/managed-by: helm
+spec:
+  replicas: {{ .Values.dashboard.replicas | default 1 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $.Release.Name }}-dashboard
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ $.Release.Name }}-dashboard
+        app.kubernetes.io/component: dashboard
+        app.kubernetes.io/part-of: nyx
+        app.kubernetes.io/managed-by: helm
+    spec:
+      automountServiceAccountToken: false
+      {{- with .Values.dashboard.securityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.dashboard.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml .Values.dashboard.imagePullSecrets | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: dashboard
+          image: {{ .Values.dashboard.image.repository }}:{{ .Values.dashboard.image.tag | default $.Chart.AppVersion }}
+          imagePullPolicy: {{ .Values.dashboard.image.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          {{- if .Values.dashboard.resources }}
+          resources:
+            {{- toYaml .Values.dashboard.resources | nindent 12 }}
+          {{- end }}
+          env:
+            # Drives the /api/* reverse proxy inside the nginx layer. Defaults to
+            # the conventional release-level harness service; override if the
+            # dashboard lives in a different namespace or fronts a bespoke
+            # harness endpoint.
+            - name: HARNESS_URL
+              value: {{ .Values.dashboard.harnessUrl | default (printf "http://%s-harness:8000" $.Release.Name) | quote }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $.Release.Name }}-dashboard
+  labels:
+    app.kubernetes.io/name: {{ $.Release.Name }}-dashboard
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/part-of: nyx
+    app.kubernetes.io/managed-by: helm
+spec:
+  selector:
+    app.kubernetes.io/name: {{ $.Release.Name }}-dashboard
+  ports:
+    - name: http
+      port: {{ .Values.dashboard.port | default 80 }}
+      targetPort: 8080
+{{- end }}
