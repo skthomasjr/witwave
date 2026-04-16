@@ -578,6 +578,9 @@
       <button data-view="conversations">conversations</button>
       <button data-view="calendar">calendar</button>
       <button data-view="triggers">triggers</button>
+      <button data-view="webhooks">webhooks</button>
+      <button data-view="continuations">continuations</button>
+      <button data-view="heartbeat">heartbeat</button>
       <button data-view="metrics">metrics</button>
     </nav>
     <div class="spacer"></div>
@@ -623,6 +626,42 @@
         <button class="icon-btn" id="triggers-refresh" style="margin-left:auto">↺ now</button>
       </div>
       <div class="conv-feed" id="triggers-feed">
+        <div class="empty">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Webhooks -->
+    <div id="webhooks-view" class="view">
+      <div class="conv-toolbar">
+        <span class="ct-label">search</span>
+        <input id="webhooks-search" type="text" placeholder="filter by name, url, or description…" />
+        <span class="conv-count" id="webhooks-count"></span>
+        <button class="icon-btn" id="webhooks-refresh" style="margin-left:auto">↺ now</button>
+      </div>
+      <div class="conv-feed" id="webhooks-feed">
+        <div class="empty">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Continuations -->
+    <div id="continuations-view" class="view">
+      <div class="conv-toolbar">
+        <span class="ct-label">search</span>
+        <input id="continuations-search" type="text" placeholder="filter by name, upstream, or description…" />
+        <span class="conv-count" id="continuations-count"></span>
+        <button class="icon-btn" id="continuations-refresh" style="margin-left:auto">↺ now</button>
+      </div>
+      <div class="conv-feed" id="continuations-feed">
+        <div class="empty">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Heartbeat -->
+    <div id="heartbeat-view" class="view">
+      <div class="conv-toolbar">
+        <button class="icon-btn" id="heartbeat-refresh" style="margin-left:auto">↺ now</button>
+      </div>
+      <div class="conv-feed" id="heartbeat-feed">
         <div class="empty">Loading…</div>
       </div>
     </div>
@@ -700,6 +739,9 @@ const viewEls = {
   conversations: document.getElementById('conversations-view'),
   calendar: document.getElementById('calendar-view'),
   triggers: document.getElementById('triggers-view'),
+  webhooks: document.getElementById('webhooks-view'),
+  continuations: document.getElementById('continuations-view'),
+  heartbeat: document.getElementById('heartbeat-view'),
   metrics: document.getElementById('metrics-view'),
 };
 function switchView(name) {
@@ -713,6 +755,9 @@ function switchView(name) {
   if (name === 'conversations' && !conv.loaded) loadConversations();
   if (name === 'calendar') loadCalendarData();
   if (name === 'triggers') loadTriggers();
+  if (name === 'webhooks') loadWebhooks();
+  if (name === 'continuations') loadContinuations();
+  if (name === 'heartbeat') loadHeartbeat();
   if (name === 'metrics') {
     if (!_metricsLoaded) { _metricsLoaded = true; loadMetrics(); }
     setRefreshInterval(Number(document.getElementById('refresh-interval').value) || 30_000);
@@ -2316,6 +2361,189 @@ document.addEventListener('DOMContentLoaded', () => {
   if (searchEl) searchEl.addEventListener('input', renderTriggers);
   const refreshEl = document.getElementById('triggers-refresh');
   if (refreshEl) refreshEl.addEventListener('click', loadTriggers);
+});
+
+// ── Webhooks view (#421) ──────────────────────────────────────────────────────
+let _webhooksData = [];
+
+async function loadWebhooks() {
+  const countEl = document.getElementById('webhooks-count');
+  try {
+    const resp = await fetchWithTimeout(`${AGENT_BASE}/webhooks`);
+    _webhooksData = resp?.ok ? await resp.json() : [];
+  } catch (_e) {
+    _webhooksData = [];
+  }
+  if (!Array.isArray(_webhooksData)) _webhooksData = [];
+  renderWebhooks();
+  if (countEl) countEl.textContent = `${_webhooksData.length} webhook${_webhooksData.length === 1 ? '' : 's'}`;
+}
+
+function renderWebhooks() {
+  const feed = document.getElementById('webhooks-feed');
+  const search = (document.getElementById('webhooks-search')?.value || '').trim().toLowerCase();
+  const list = search
+    ? _webhooksData.filter(w =>
+        (w.name || '').toLowerCase().includes(search) ||
+        (w.url || '').toLowerCase().includes(search) ||
+        (w.description || '').toLowerCase().includes(search))
+    : _webhooksData;
+  if (!list.length) {
+    feed.innerHTML = '<div class="empty">No webhooks configured.</div>';
+    return;
+  }
+  const rows = list.map(w => {
+    const name = escHtml(w.name || '(unnamed)');
+    const url = escHtml(w.url || '(no url)');
+    const desc = w.description ? escHtml(w.description) : '<span class="muted">(no description)</span>';
+    const enabledHtml = w.enabled === false ? '<span class="muted">disabled</span>' : '<span class="ok">enabled</span>';
+    const notifyWhen = escHtml(w.notify_when || 'on_success');
+    const notifyOnKind = Array.isArray(w.notify_on_kind) && w.notify_on_kind.length
+      ? escHtml(w.notify_on_kind.join(', ')) : '*';
+    const notifyOnResp = Array.isArray(w.notify_on_response) && w.notify_on_response.length
+      ? escHtml(w.notify_on_response.join(', ')) : '*';
+    const retries = w.retries != null ? escHtml(String(w.retries)) : '<span class="muted">default</span>';
+    const active = w.active_deliveries != null ? escHtml(String(w.active_deliveries)) : '0';
+    const cap = w.max_concurrent_deliveries != null ? escHtml(String(w.max_concurrent_deliveries)) : '<span class="muted">default</span>';
+    return `<div class="conv-msg">
+      <div><strong>${name}</strong> &nbsp; ${enabledHtml}</div>
+      <div class="muted" style="margin-top:4px">${desc}</div>
+      <div class="muted" style="margin-top:4px;font-size:11px">
+        url: <code>${url}</code>
+      </div>
+      <div class="muted" style="margin-top:4px;font-size:11px">
+        notify-when: ${notifyWhen} · on-kind: ${notifyOnKind} · on-response: ${notifyOnResp}
+      </div>
+      <div class="muted" style="margin-top:4px;font-size:11px">
+        retries: ${retries} · active: ${active}/${cap}
+      </div>
+    </div>`;
+  }).join('');
+  feed.innerHTML = rows;
+}
+
+// ── Continuations view (#421) ─────────────────────────────────────────────────
+let _continuationsData = [];
+
+async function loadContinuations() {
+  const countEl = document.getElementById('continuations-count');
+  try {
+    const resp = await fetchWithTimeout(`${AGENT_BASE}/continuations`);
+    _continuationsData = resp?.ok ? await resp.json() : [];
+  } catch (_e) {
+    _continuationsData = [];
+  }
+  if (!Array.isArray(_continuationsData)) _continuationsData = [];
+  renderContinuations();
+  if (countEl) countEl.textContent = `${_continuationsData.length} continuation${_continuationsData.length === 1 ? '' : 's'}`;
+}
+
+function renderContinuations() {
+  const feed = document.getElementById('continuations-feed');
+  const search = (document.getElementById('continuations-search')?.value || '').trim().toLowerCase();
+  // continues_after is a string OR list depending on fan-in shape; normalise for search/render.
+  const upstreamStr = c => Array.isArray(c.continues_after)
+    ? c.continues_after.join(', ')
+    : (c.continues_after || '');
+  const list = search
+    ? _continuationsData.filter(c =>
+        (c.name || '').toLowerCase().includes(search) ||
+        upstreamStr(c).toLowerCase().includes(search) ||
+        (c.description || '').toLowerCase().includes(search))
+    : _continuationsData;
+  if (!list.length) {
+    feed.innerHTML = '<div class="empty">No continuations configured.</div>';
+    return;
+  }
+  const rows = list.map(c => {
+    const name = escHtml(c.name || '(unnamed)');
+    const desc = c.description ? escHtml(c.description) : '<span class="muted">(no description)</span>';
+    const upstream = escHtml(upstreamStr(c) || '(none)');
+    const onSuccess = c.on_success ? '<span class="ok">on-success</span>' : '<span class="muted">on-success: no</span>';
+    const onError = c.on_error ? '<span class="ok">on-error</span>' : '<span class="muted">on-error: no</span>';
+    const triggerWhen = c.trigger_when ? escHtml(c.trigger_when) : '<span class="muted">always</span>';
+    const delay = c.delay != null ? escHtml(String(c.delay)) : '<span class="muted">none</span>';
+    const backend = c.backend_id ? escHtml(c.backend_id) : '<span class="muted">default</span>';
+    const model = c.model ? escHtml(c.model) : '<span class="muted">default</span>';
+    const active = c.active_fires != null ? escHtml(String(c.active_fires)) : '0';
+    const cap = c.max_concurrent_fires != null ? escHtml(String(c.max_concurrent_fires)) : '<span class="muted">default</span>';
+    const consensus = Array.isArray(c.consensus) && c.consensus.length
+      ? `<div class="muted" style="margin-top:4px;font-size:11px">consensus: ${escHtml(JSON.stringify(c.consensus))}</div>`
+      : '';
+    return `<div class="conv-msg">
+      <div><strong>${name}</strong> &nbsp; ${onSuccess} ${onError}</div>
+      <div class="muted" style="margin-top:4px">${desc}</div>
+      <div class="muted" style="margin-top:4px;font-size:11px">
+        continues-after: <code>${upstream}</code>
+      </div>
+      <div class="muted" style="margin-top:4px;font-size:11px">
+        trigger-when: ${triggerWhen} · delay: ${delay} · backend: ${backend} · model: ${model}
+      </div>
+      <div class="muted" style="margin-top:4px;font-size:11px">
+        active: ${active}/${cap}
+      </div>
+      ${consensus}
+    </div>`;
+  }).join('');
+  feed.innerHTML = rows;
+}
+
+// ── Heartbeat view (#421) ─────────────────────────────────────────────────────
+let _heartbeatData = null;
+
+async function loadHeartbeat() {
+  try {
+    const resp = await fetchWithTimeout(`${AGENT_BASE}/heartbeat`);
+    _heartbeatData = resp?.ok ? await resp.json() : null;
+  } catch (_e) {
+    _heartbeatData = null;
+  }
+  renderHeartbeat();
+}
+
+function renderHeartbeat() {
+  const feed = document.getElementById('heartbeat-feed');
+  if (!_heartbeatData) {
+    feed.innerHTML = '<div class="empty">Heartbeat configuration unavailable.</div>';
+    return;
+  }
+  const h = _heartbeatData;
+  const enabled = h.enabled
+    ? '<span class="ok">enabled</span>'
+    : '<span class="muted">disabled (no HEARTBEAT.md or empty schedule)</span>';
+  const schedule = h.schedule ? `<code>${escHtml(h.schedule)}</code>` : '<span class="muted">none</span>';
+  const model = h.model ? escHtml(h.model) : '<span class="muted">default</span>';
+  const backend = h.backend_id ? escHtml(h.backend_id) : '<span class="muted">default</span>';
+  const maxTokens = h.max_tokens != null ? escHtml(String(h.max_tokens)) : '<span class="muted">unset</span>';
+  const consensus = Array.isArray(h.consensus) && h.consensus.length
+    ? `<div class="muted" style="margin-top:8px;font-size:11px">consensus: ${escHtml(JSON.stringify(h.consensus))}</div>`
+    : '';
+  feed.innerHTML = `<div class="conv-msg">
+    <div><strong>heartbeat</strong> &nbsp; ${enabled}</div>
+    <div class="muted" style="margin-top:8px">
+      schedule: ${schedule}
+    </div>
+    <div class="muted" style="margin-top:4px;font-size:11px">
+      backend: ${backend} · model: ${model} · max-tokens: ${maxTokens}
+    </div>
+    ${consensus}
+  </div>`;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Webhooks
+  const wSearch = document.getElementById('webhooks-search');
+  if (wSearch) wSearch.addEventListener('input', renderWebhooks);
+  const wRefresh = document.getElementById('webhooks-refresh');
+  if (wRefresh) wRefresh.addEventListener('click', loadWebhooks);
+  // Continuations
+  const cSearch = document.getElementById('continuations-search');
+  if (cSearch) cSearch.addEventListener('input', renderContinuations);
+  const cRefresh = document.getElementById('continuations-refresh');
+  if (cRefresh) cRefresh.addEventListener('click', loadContinuations);
+  // Heartbeat
+  const hRefresh = document.getElementById('heartbeat-refresh');
+  if (hRefresh) hRefresh.addEventListener('click', loadHeartbeat);
 });
 
 async function loadCalendarData() {

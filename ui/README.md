@@ -4,7 +4,7 @@ The nyx UI is a single-page web application for monitoring and interacting with 
 
 ## What it does
 
-The UI provides five views into the running agent system:
+The UI provides eight views into the running agent system:
 
 **Metrics** — Real-time operational dashboard. Displays stat cards (uptime, active sessions, queue depth, error counts) and time-series charts powered by Chart.js. Data is polled from each agent's Prometheus `/metrics` endpoint on a configurable interval. Filterable by agent and backend.
 
@@ -23,6 +23,18 @@ are unavailable.
 **Triggers** — List of inbound HTTP trigger endpoints registered on the agent. Fetches `GET /triggers` on activation and
 renders each trigger's endpoint, description, running state, assigned backend/model, and session ID. Supports text search
 filtering and manual refresh.
+
+**Webhooks** — List of outbound webhook subscriptions registered on the agent. Fetches `GET /webhooks` on activation and
+renders each subscription's name, URL template, enable state, notify-when / notify-on-kind / notify-on-response filters,
+retry count, and active vs. concurrent-delivery cap. Supports text search and manual refresh.
+
+**Continuations** — List of continuation chains registered on the agent. Fetches `GET /continuations` on activation and
+renders each continuation's name, upstream `continues-after` pattern (string or array for fan-in), `on_success`/`on_error`
+toggles, optional `trigger_when` filter, delay, backend/model overrides, consensus config, and active vs. concurrent-fire
+cap. Supports text search and manual refresh.
+
+**Heartbeat** — Current heartbeat configuration loaded from `HEARTBEAT.md`. Fetches `GET /heartbeat` on activation and
+renders enable state, cron schedule, assigned backend/model, max-tokens cap, and consensus config. Manual refresh.
 
 ## Key features
 
