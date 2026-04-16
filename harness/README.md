@@ -61,7 +61,7 @@ metrics.
 | `continuations.py`       | Conditional follow-up chaining after upstream completion                            |
 | `webhooks.py`            | Outbound notification delivery                                                      |
 | `backends/config.py`     | Loads and hot-reloads `backend.yaml`                                                |
-| `backends/a2a.py`        | Forwards requests to a remote A2A backend over HTTP/JSON-RPC                        |
+| `backends/a2a.py`        | Forwards requests to a remote A2A backend over HTTP/JSON-RPC with retry on transient errors |
 | `metrics.py`             | Prometheus metric definitions                                                       |
 | `metrics_proxy.py`       | Aggregates backend /metrics with backend= label injection                           |
 | `conversations_proxy.py` | Concurrently fetches and merges /conversations and /trace from all backends         |

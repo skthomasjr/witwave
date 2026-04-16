@@ -20,12 +20,18 @@ active sessions; when a session is evicted, its JSON file is deleted from disk s
 **Model override** — The model for a given request can be set via `metadata.model` in the A2A message. Resolution order:
 per-message metadata → routing config model → `MODEL` environment variable.
 
+**Startup validation** — The Gemini API key (`GEMINI_API_KEY` or `GOOGLE_API_KEY`) is validated at startup in
+`AgentExecutor.__init__`. If neither is set, the container fails to start immediately rather than surfacing the error
+on the first request.
+
 **Agent identity** — The system prompt is loaded from `/home/agent/.gemini/GEMINI.md`. The agent's name and behavioral
 constraints live there. The file is hot-reloaded on change — updating `GEMINI.md` takes effect for the next request
 without restarting the container.
 
 **Metrics** — Exposes the common `a2_*` Prometheus metrics: request count/latency, session starts/evictions, queue
-depth, error counts, and execution duration.
+depth, error counts, and execution duration. Also includes context-window metrics (`a2_context_tokens`,
+`a2_context_usage_percent`, `a2_context_exhaustion_total`, etc.) tracked via `usage_metadata.total_token_count` on
+each response chunk.
 
 ## Endpoints
 

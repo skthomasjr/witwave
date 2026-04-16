@@ -357,6 +357,8 @@ Memory files are not committed to source control. nyx-harness has no memory laye
 | `MANIFEST_PATH`                             | `/home/agent/manifest.json`     | Path to the team manifest file listing all agents by name and URL                                                                                     |
 | `BACKENDS_READY_WARN_AFTER`                 | `120`                           | Seconds to wait before logging a warning that backends have not become healthy                                                                        |
 | `LOG_PROMPT_MAX_BYTES`                      | `200`                           | Maximum bytes of the prompt logged at INFO level; set to `0` to suppress prompt logging entirely                                                      |
+| `A2A_BACKEND_MAX_RETRIES`                   | `3`                             | Maximum retry attempts for transient backend errors (429, 502, 503, 504, connection errors); must be >= 1                                             |
+| `A2A_BACKEND_RETRY_BACKOFF`                 | `1.0`                           | Base backoff in seconds for retry delay (exponential with jitter); multiplied by 2^attempt                                                            |
 
 ### Backend (a2-claude / a2-codex / a2-gemini) environment variables
 
@@ -378,7 +380,8 @@ Memory files are not committed to source control. nyx-harness has no memory laye
 When `METRICS_ENABLED` is set, Prometheus metrics are served at `/metrics` on both nyx-harness and backend containers.
 
 Backend containers (`a2-claude`, `a2-codex`, `a2-gemini`) expose `a2_*`-prefixed metrics. `a2-claude` exposes a superset
-that includes tool call, context window, and MCP metrics; `a2-codex` and `a2-gemini` expose the common `a2_*` set.
+that includes tool call, context window, and MCP metrics; `a2-codex` also exposes tool-call and context-window metrics;
+`a2-gemini` exposes context-window metrics. All three share the common `a2_*` baseline set.
 nyx-harness exposes `agent_*`-prefixed infrastructure metrics (bus, heartbeat, job, sessions, webhooks, etc.). The
 nyx-harness `/metrics` endpoint also aggregates all backend `/metrics` endpoints, injecting a `backend="<id>"` label on
 each sample so a single scrape target captures the full deployment.

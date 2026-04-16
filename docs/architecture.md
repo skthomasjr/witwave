@@ -1,6 +1,6 @@
 # Architecture
 
-Last updated: 2026-04-12
+Last updated: 2026-04-16
 
 ---
 
@@ -267,9 +267,10 @@ twice with different models — each `(backend, model)` pair is a distinct call.
 `on_prompt_completed()` which notifies the `ContinuationRunner` and `WebhookRunner`.
 
 **`backends/a2a.py`** — Implements `AgentBackend.run_query` by constructing an A2A `message/send` JSON-RPC payload and
-forwarding it to the backend URL. The backend URL can be overridden per-backend via an environment variable
-(`A2A_URL_<ID_UPPERCASED>`), enabling Kubernetes sidecar, separate pod, or Docker Compose deployments without config
-file changes.
+forwarding it to the backend URL. Retries transient errors (HTTP 429/502/503/504 and connection failures) up to
+`A2A_BACKEND_MAX_RETRIES` times (default 3, must be >= 1) with exponential backoff. The backend URL can be overridden
+per-backend via an environment variable (`A2A_URL_<ID_UPPERCASED>`), enabling Kubernetes sidecar, separate pod, or
+Docker Compose deployments without config file changes.
 
 **`metrics_proxy.py`** — Fetches `/metrics` from each configured backend and injects a `backend="<id>"` label on every
 Prometheus sample line. The nyx-harness `/metrics` endpoint merges its own metrics with all backend metrics, providing a
@@ -288,7 +289,8 @@ server).
 in the A2A request metadata. Writes `conversation.jsonl` to the mounted logs directory.
 
 **`metrics.py`** — Prometheus metric definitions with `a2_*` prefix. `a2-claude` exposes a superset including tool call,
-context window, and MCP metrics; `a2-codex` and `a2-gemini` expose the common `a2_*` set.
+context window, and MCP metrics; `a2-codex` also exposes tool-call and context-window metrics; `a2-gemini` exposes
+context-window metrics. All three share the common `a2_*` baseline set.
 
 ---
 
@@ -352,6 +354,8 @@ Agent identity and behavior are entirely file-based. No identity is baked into a
 | `MANIFEST_PATH`                             | `/home/agent/manifest.json`     | Path to the team manifest file listing all agents by name and URL                                                              |
 | `BACKENDS_READY_WARN_AFTER`                 | `120`                           | Seconds to wait before logging a warning that backends have not become healthy                                                 |
 | `LOG_PROMPT_MAX_BYTES`                      | `200`                           | Maximum bytes of the prompt logged at INFO level; `0` suppresses prompt logging entirely                                       |
+| `A2A_BACKEND_MAX_RETRIES`                   | `3`                             | Maximum retry attempts for transient backend errors (429, 502, 503, 504, connection errors); must be >= 1                     |
+| `A2A_BACKEND_RETRY_BACKOFF`                 | `1.0`                           | Base backoff in seconds for retry delay (exponential with jitter)                                                             |
 | `A2A_URL_<ID>`                              | _(unset)_                       | Per-backend URL override (e.g. `A2A_URL_IRIS_A2_CLAUDE`)                                                                       |
 
 **Backends (a2-claude / a2-codex / a2-gemini):**

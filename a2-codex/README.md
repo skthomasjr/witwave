@@ -35,8 +35,11 @@ constraints live there. The file is hot-reloaded on change — updating `AGENTS.
 without restarting the container.
 
 **Metrics** — Exposes the common `a2_*` Prometheus metrics: request count/latency, session starts/evictions, queue
-depth, error counts, execution duration, and `a2_session_history_save_errors_total` (incremented when the SQLite session
-store fails to initialize).
+depth, error counts, and execution duration. Also includes tool-call metrics (`a2_sdk_tool_calls_total`,
+`a2_sdk_tool_duration_seconds`, `a2_sdk_tool_errors_total`, `a2_sdk_tool_calls_per_query`, input/output size
+histograms) and context-window metrics (`a2_context_tokens`, `a2_context_usage_percent`,
+`a2_context_exhaustion_total`, etc.). `a2_session_history_save_errors_total` is incremented when the SQLite session
+store fails to initialize or when LRU eviction cleanup fails.
 
 ## Endpoints
 

@@ -87,6 +87,23 @@ helm uninstall nyx --namespace nyx
 | `agents` | List of agents to deploy, each as a nyx-harness pod | `[{name: adam}]` |
 | `agents[].name` | Agent name — used for pod name, service name, and `AGENT_NAME` env var | `adam` |
 | `agents[].imagePullSecrets` | Image pull secrets for the agent pod | `[]` |
+| `ui.enabled` | Deploy the nyx web UI | `false` |
+| `ui.image.repository` | UI image repository | `ghcr.io/skthomasjr/images/ui` |
+| `ui.port` | UI service port | `80` |
+| `ingress.enabled` | Deploy a Kubernetes Ingress for the UI | `false` |
+| `ingress.className` | Ingress class name (e.g. `nginx`, `traefik`) | `""` |
+| `ingress.annotations` | Annotations to add to the Ingress resource | `{}` |
+| `ingress.hosts` | Hostnames and paths for the Ingress | `[]` |
+| `ingress.tls` | TLS configuration for the Ingress | `[]` |
+| `probes.liveness.initialDelaySeconds` | Liveness probe initial delay | `10` |
+| `probes.liveness.periodSeconds` | Liveness probe period | `30` |
+| `probes.liveness.timeoutSeconds` | Liveness probe timeout | `5` |
+| `probes.liveness.failureThreshold` | Liveness probe failure threshold | `3` |
+| `probes.readiness.initialDelaySeconds` | Readiness probe initial delay | `5` |
+| `probes.readiness.periodSeconds` | Readiness probe period | `10` |
+| `probes.readiness.timeoutSeconds` | Readiness probe timeout | `5` |
+| `probes.readiness.failureThreshold` | Readiness probe failure threshold | `3` |
+| `metrics.enabled` | Enable Prometheus metrics globally | `false` |
 | `sharedStorage.enabled` | Mount a shared volume into all agent pods and sidecars | `false` |
 | `sharedStorage.mountPath` | Mount path inside containers | `/data/shared` |
 | `sharedStorage.storageType` | `pvc` or `hostPath` | `pvc` |
