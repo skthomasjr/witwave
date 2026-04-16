@@ -15,7 +15,7 @@ about: A code quality issue that works today but is fragile, insecure, hard to m
 
 **Skill:** <skill name> v<skill version>
 
-**Component:** agent | a2-claude | a2-codex | a2-gemini | ui | _(leave blank if cross-cutting or other)_
+**Component:** harness | a2-claude | a2-codex | a2-gemini | ui | operator | charts | _(leave blank if cross-cutting or other)_
 
 **Category:** security | reliability | maintainability | performance | observability
 

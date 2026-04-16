@@ -15,7 +15,7 @@ about: A new capability derived from an approved request
 
 **Skill:** <skill name> v<skill version>
 
-**Component:** agent | a2-claude | a2-codex | a2-gemini | ui | _(leave blank if cross-cutting or other)_
+**Component:** harness | a2-claude | a2-codex | a2-gemini | ui | operator | charts | _(leave blank if cross-cutting or other)_
 
 **Request:** #<request issue number>
 
