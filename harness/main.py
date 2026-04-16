@@ -3,6 +3,7 @@ import hashlib
 import hmac as hmac_mod
 import logging
 import os
+import random
 import time
 import uuid
 from contextlib import AsyncExitStack, asynccontextmanager
@@ -1061,6 +1062,9 @@ async def main():
         logger.info("Waiting for all backends to become healthy before firing run-once jobs/tasks.")
         warn_deadline = time.monotonic() + _backends_ready_warn_after
         _warned = False
+        _attempt = 0
+        _BACKOFF_BASE = 2.0
+        _BACKOFF_MAX = 30.0
         while True:
             backend_configs = [b._config for b in executor._backends.values() if b._config.url]
             if not backend_configs:
@@ -1091,7 +1095,10 @@ async def main():
                     _backends_ready_warn_after,
                     unhealthy,
                 )
-            await asyncio.sleep(2)
+            delay = min(_BACKOFF_BASE * (2 ** _attempt), _BACKOFF_MAX)
+            delay += random.uniform(0, delay * 0.1)
+            _attempt += 1
+            await asyncio.sleep(delay)
 
     await asyncio.gather(
         server.serve(),
