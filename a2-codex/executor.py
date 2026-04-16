@@ -352,8 +352,8 @@ async def run_query(
                             )
                     collected.append(delta.text)
                 # Check usage on response events — response.completed carries usage
-                # in event.data.data (ResponseCompletedEvent.data = Response)
-                _usage = getattr(data, "usage", None) or getattr(getattr(data, "data", None), "usage", None)
+                # in event.data.response (ResponseCompletedEvent.response = Response)
+                _usage = getattr(data, "usage", None) or getattr(getattr(data, "response", None), "usage", None)
                 if _usage is not None:
                     _candidate = getattr(_usage, "total_tokens", None) or getattr(_usage, "output_tokens", None)
                     if _candidate is not None:
