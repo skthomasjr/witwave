@@ -33,9 +33,13 @@ autonomous-agent is a multi-container autonomous agent platform. Each named agen
   no LLM itself; it forwards all work to a backend.
 - One or more **backend** containers (`a2-claude`, `a2-codex`, `a2-gemini`) — the LLM execution layer. Each backend is a full A2A
   server that manages its own sessions, memory, conversation logs, and Prometheus metrics.
+- Zero or more **MCP** containers (`mcp-kubernetes`, `mcp-helm`, …) — the tool layer. Each MCP server exposes a
+  focused set of cluster- or system-level capabilities to backends over the Model Context Protocol. All entries
+  under `tools/` are equal MCP components; backends opt into them via their own MCP configuration.
 
 Multiple named agents can collaborate as a team via the A2A protocol, but the named agent (nyx + its backends) is the
-deployable unit.
+deployable unit. MCP components are shared infrastructure — one deployment typically serves every agent in the
+cluster rather than being replicated per agent.
 
 ## Architecture
 
@@ -78,6 +82,29 @@ Each backend:
 - Receives behavioral instructions via a mounted file (`CLAUDE.md` for a2-claude, `AGENTS.md` for a2-codex, `GEMINI.md` for a2-gemini) and A2A identity via a mounted `agent-card.md`
 
 Each named agent has its own dedicated backend instances. For example, iris has `iris-a2-claude`, `iris-a2-codex`, and `iris-a2-gemini`.
+
+### MCP components
+
+Tool capabilities are delivered as MCP servers. Every subdirectory under `tools/` is an MCP component and is
+treated equally regardless of what it wraps. Current MCP components:
+
+- **`mcp-kubernetes`** — Kubernetes API access via the official Python client. Source in `tools/kubernetes/`.
+  Image: `mcp-kubernetes:latest`.
+- **`mcp-helm`** — Helm release management via the `helm` CLI (Helm has no Python/REST API). Source in
+  `tools/helm/`. Image: `mcp-helm:latest`.
+
+Each MCP component:
+
+- Speaks the Model Context Protocol (not A2A) and is consumed by backends via their MCP configuration
+  (`mcp.json` for a2-claude, `config.toml` for a2-codex, equivalent for a2-gemini).
+- Targets only the cluster where it is deployed; auth is in-cluster ServiceAccount + RBAC, not arbitrary
+  kubeconfigs.
+- Is independently deployable and typically **shared across all agents** in a cluster rather than replicated
+  per-agent. Agents opt into an MCP component by referencing it from their backend config.
+
+Add a new MCP component by creating `tools/<name>/` with a `Dockerfile`, `server.py`, and `requirements.txt`,
+then register a `mcp-<name>:latest` build in the [Building Images](#building-images) section. Tag related
+issues/PRs with the `mcp` GitHub label.
 
 ### Routing configuration
 
@@ -216,6 +243,16 @@ a2-gemini/                   # Gemini backend source
 ├── executor.py              # google-genai SDK executor; owns sessions and logging
 ├── metrics.py               # Prometheus metrics (common a2_* set; subset of a2-claude)
 └── requirements.txt
+
+tools/                       # MCP components (one directory per server)
+├── kubernetes/              # mcp-kubernetes — Kubernetes API via Python client
+│   ├── Dockerfile
+│   ├── server.py
+│   └── requirements.txt
+└── helm/                    # mcp-helm — Helm release management via the CLI
+    ├── Dockerfile
+    ├── server.py
+    └── requirements.txt
 
 ui/                          # Web UI
 charts/                      # Helm charts
