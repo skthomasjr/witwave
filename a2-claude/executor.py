@@ -271,7 +271,7 @@ def _load_mcp_config() -> dict:
         return {}
 
 
-def _track_session(sessions: OrderedDict[str, float], session_id: str) -> None:
+async def _track_session(sessions: OrderedDict[str, float], session_id: str) -> None:
     if session_id in sessions:
         sessions.move_to_end(session_id)
         sessions[session_id] = time.monotonic()
@@ -285,10 +285,12 @@ def _track_session(sessions: OrderedDict[str, float], session_id: str) -> None:
             # Remove the on-disk session file for the evicted session so that
             # disk space is reclaimed and a future request for the same session
             # ID starts with a clean slate rather than stale history (#368).
+            # Run the unlink in a thread pool so the event loop is not blocked
+            # on slow/remote filesystems (#426).
             _evicted_path = _session_file_path(_evicted_id)
             if _evicted_path is not None:
                 try:
-                    _evicted_path.unlink(missing_ok=True)
+                    await asyncio.to_thread(_evicted_path.unlink, missing_ok=True)
                 except OSError as _e:
                     logger.warning("Failed to remove evicted session file %r: %s", _evicted_path, _e)
         sessions[session_id] = time.monotonic()
@@ -564,7 +566,7 @@ async def _run_inner(
             run_query(prompt, session_id, is_new, mcp_servers, agent_md_content, model=model, max_tokens=max_tokens),
             timeout=TASK_TIMEOUT_SECONDS,
         )
-        _track_session(sessions, session_id)
+        await _track_session(sessions, session_id)
     except asyncio.TimeoutError:
         logger.error(f"Session {session_id!r}: timed out after {TASK_TIMEOUT_SECONDS}s.")
         # Remove the session from the LRU cache on timeout. The SDK context
@@ -575,10 +577,12 @@ async def _run_inner(
         # Also remove the on-disk session file so the next request for this
         # session_id starts with empty history rather than reloading the
         # potentially stale or mid-stream snapshot written before the timeout.
+        # Run the unlink in a thread pool to avoid blocking the event loop on
+        # slow/remote filesystems (#426).
         _timeout_path = _session_file_path(session_id)
         if _timeout_path is not None:
             try:
-                _timeout_path.unlink(missing_ok=True)
+                await asyncio.to_thread(_timeout_path.unlink, missing_ok=True)
                 logger.info("Removed stale session file for timed-out session %r", session_id)
             except OSError as _e:
                 logger.warning("Could not remove session file for timed-out session %r: %s", session_id, _e)
@@ -599,7 +603,7 @@ async def _run_inner(
             model=model,
         )
         collected = _bexc.collected
-        _track_session(sessions, session_id)
+        await _track_session(sessions, session_id)
     except Exception:
         if a2_tasks_total is not None:
             a2_tasks_total.labels(**_LABELS, status="error").inc()
@@ -724,7 +728,13 @@ class AgentExecutor(A2AAgentExecutor):
         max_tokens: int | None = None
         if _max_tokens_raw is not None:
             try:
-                max_tokens = int(_max_tokens_raw)
+                _parsed = int(_max_tokens_raw)
+                if _parsed <= 0:
+                    logger.warning(
+                        f"Session {session_id!r}: max_tokens={_parsed} is non-positive; ignoring (#428)."
+                    )
+                else:
+                    max_tokens = _parsed
             except (ValueError, TypeError):
                 logger.warning(f"Session {session_id!r}: invalid max_tokens in metadata {_max_tokens_raw!r}, ignoring.")
         task_id = context.task_id
