@@ -66,6 +66,21 @@ a2_text_blocks_per_query: prometheus_client.Histogram | None = None
 a2_watcher_events_total: prometheus_client.Counter | None = None
 a2_file_watcher_restarts_total: prometheus_client.Counter | None = None
 
+# Context window metrics
+a2_context_tokens: prometheus_client.Histogram | None = None
+a2_context_tokens_remaining: prometheus_client.Histogram | None = None
+a2_context_usage_percent: prometheus_client.Histogram | None = None
+a2_context_exhaustion_total: prometheus_client.Counter | None = None
+a2_context_warnings_total: prometheus_client.Counter | None = None
+
+# Tool-call metrics
+a2_sdk_tool_calls_total: prometheus_client.Counter | None = None
+a2_sdk_tool_calls_per_query: prometheus_client.Histogram | None = None
+a2_sdk_tool_duration_seconds: prometheus_client.Histogram | None = None
+a2_sdk_tool_errors_total: prometheus_client.Counter | None = None
+a2_sdk_tool_call_input_size_bytes: prometheus_client.Histogram | None = None
+a2_sdk_tool_result_size_bytes: prometheus_client.Histogram | None = None
+
 # Token budget metrics
 a2_budget_exceeded_total: prometheus_client.Counter | None = None
 
@@ -292,6 +307,68 @@ if _enabled:
         "a2_file_watcher_restarts_total",
         "Total file watcher restarts after watcher exits unexpectedly.",
         ["agent", "agent_id", "backend", "watcher"],
+    )
+
+    # Context window
+    a2_context_tokens = prometheus_client.Histogram(
+        "a2_context_tokens",
+        "Token count used per query (from SDK usage response).",
+        ["agent", "agent_id", "backend"],
+    )
+    a2_context_tokens_remaining = prometheus_client.Histogram(
+        "a2_context_tokens_remaining",
+        "Remaining token budget (max_tokens - used) per query.",
+        ["agent", "agent_id", "backend"],
+        buckets=(1000, 5000, 10000, 25000, 50000, 100000, 150000),
+    )
+    a2_context_usage_percent = prometheus_client.Histogram(
+        "a2_context_usage_percent",
+        "Context window utilization percentage per query.",
+        ["agent", "agent_id", "backend"],
+        buckets=(50, 70, 80, 90, 95, 99, 100),
+    )
+    a2_context_exhaustion_total = prometheus_client.Counter(
+        "a2_context_exhaustion_total",
+        "Total context window exhaustion events (usage >= 100%).",
+        ["agent", "agent_id", "backend"],
+    )
+    a2_context_warnings_total = prometheus_client.Counter(
+        "a2_context_warnings_total",
+        "Total context usage threshold warnings (usage >= 80%).",
+        ["agent", "agent_id", "backend"],
+    )
+
+    # Tool calls
+    a2_sdk_tool_calls_total = prometheus_client.Counter(
+        "a2_sdk_tool_calls_total",
+        "Total tool calls by tool name.",
+        ["agent", "agent_id", "backend", "tool"],
+    )
+    a2_sdk_tool_calls_per_query = prometheus_client.Histogram(
+        "a2_sdk_tool_calls_per_query",
+        "Number of tool calls per run_query() invocation.",
+        ["agent", "agent_id", "backend"],
+        buckets=(0, 1, 2, 5, 10, 20, 50),
+    )
+    a2_sdk_tool_duration_seconds = prometheus_client.Histogram(
+        "a2_sdk_tool_duration_seconds",
+        "Duration of individual tool calls in seconds.",
+        ["agent", "agent_id", "backend", "tool"],
+    )
+    a2_sdk_tool_errors_total = prometheus_client.Counter(
+        "a2_sdk_tool_errors_total",
+        "Total tool call errors by tool name.",
+        ["agent", "agent_id", "backend", "tool"],
+    )
+    a2_sdk_tool_call_input_size_bytes = prometheus_client.Histogram(
+        "a2_sdk_tool_call_input_size_bytes",
+        "Byte size of tool call input arguments.",
+        ["agent", "agent_id", "backend", "tool"],
+    )
+    a2_sdk_tool_result_size_bytes = prometheus_client.Histogram(
+        "a2_sdk_tool_result_size_bytes",
+        "Byte size of tool call result output.",
+        ["agent", "agent_id", "backend", "tool"],
     )
 
     # Token budget
