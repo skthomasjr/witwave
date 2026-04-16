@@ -42,11 +42,16 @@ class A2ABackend:
         self._url = os.environ.get(_env_var) or config.url or ""
         if not self._url:
             raise ValueError(f"A2A backend '{config.id}' has no url configured.")
-        # Shared AsyncClient with connection pooling; initialized lazily.
-        self._client: httpx.AsyncClient | None = None
+        # Shared AsyncClient with connection pooling; initialized eagerly so that
+        # concurrent run_query calls all share the same client without racing on
+        # a lazy None-check (#398).
+        self._client: httpx.AsyncClient = httpx.AsyncClient(
+            timeout=httpx.Timeout(connect=10.0, read=_HTTP_TIMEOUT_SECONDS, write=30.0, pool=5.0),
+            limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
+        )
 
     def _get_client(self) -> httpx.AsyncClient:
-        if self._client is None or self._client.is_closed:
+        if self._client.is_closed:
             self._client = httpx.AsyncClient(
                 timeout=httpx.Timeout(connect=10.0, read=_HTTP_TIMEOUT_SECONDS, write=30.0, pool=5.0),
                 limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
@@ -106,9 +111,9 @@ class A2ABackend:
 
     async def _post_with_retry(self, url: str, body: bytes) -> str:
         """POST body to url using the shared AsyncClient, retrying on transient errors."""
-        client = self._get_client()
         last_exc: Exception | None = None
         for attempt in range(_MAX_RETRIES):
+            client = self._get_client()
             try:
                 resp = await client.post(
                     url,
@@ -134,12 +139,12 @@ class A2ABackend:
                     f"A2A backend '{self.id}' transient error on attempt {attempt + 1}/{_MAX_RETRIES}: {exc!r}"
                 )
                 last_exc = exc
-                # Recreate client after a connection-level error to ensure a clean state.
+                # Close client after a connection-level error; _get_client() will
+                # recreate it on the next attempt.
                 try:
                     await self._client.aclose()
                 except Exception:
                     pass
-                self._client = None
             except httpx.HTTPStatusError as exc:
                 # Non-retryable HTTP error — surface immediately.
                 logger.error(f"A2A backend '{self.id}' HTTP error: {exc!r}")
@@ -236,6 +241,5 @@ class A2ABackend:
         return texts
 
     async def close(self) -> None:
-        if self._client and not self._client.is_closed:
+        if not self._client.is_closed:
             await self._client.aclose()
-            self._client = None
