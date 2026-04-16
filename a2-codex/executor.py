@@ -718,12 +718,19 @@ class AgentExecutor(A2AAgentExecutor):
                     a2_running_tasks.labels(**_LABELS).dec()
 
     async def close(self) -> None:
-        """Cancel and drain all MCP watcher tasks."""
+        """Cancel and drain all MCP watcher tasks and close the Playwright computer."""
         for task in self._mcp_watcher_tasks:
             task.cancel()
         if self._mcp_watcher_tasks:
             await asyncio.gather(*self._mcp_watcher_tasks, return_exceptions=True)
         self._mcp_watcher_tasks.clear()
+        global _computer
+        if _computer is not None:
+            try:
+                await _computer.close()
+            except Exception as _e:
+                logger.warning("Failed to close PlaywrightComputer on shutdown: %s", _e)
+            _computer = None
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         if a2_task_cancellations_total is not None:
