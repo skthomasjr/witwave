@@ -340,6 +340,7 @@ async def main():
                     executor._sessions,
                     executor._agent_md_content,
                     model=None,
+                    mcp_config=executor._mcp_config,
                 )
             except Exception as exc:
                 logger.error(f"MCP tools/call error: {exc!r}")

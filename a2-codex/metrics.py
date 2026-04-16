@@ -63,6 +63,11 @@ a2_sdk_turns_per_query: prometheus_client.Histogram | None = None
 a2_text_blocks_per_query: prometheus_client.Histogram | None = None
 a2_streaming_events_emitted_total: prometheus_client.Counter | None = None
 
+# MCP config metrics (parity with a2-claude — #432)
+a2_mcp_config_errors_total: prometheus_client.Counter | None = None
+a2_mcp_config_reloads_total: prometheus_client.Counter | None = None
+a2_mcp_servers_active: prometheus_client.Gauge | None = None
+
 # SDK error classification metrics (parity with a2-claude — #431)
 a2_sdk_errors_total: prometheus_client.Counter | None = None
 a2_sdk_result_errors_total: prometheus_client.Counter | None = None
@@ -308,6 +313,25 @@ if _enabled:
         "Equals the number of text deltas the executor pushed to the A2A "
         "event_queue mid-stream (#430).",
         ["agent", "agent_id", "backend", "model"],
+    )
+
+    # MCP config (parity with a2-claude — #432)
+    a2_mcp_config_errors_total = prometheus_client.Counter(
+        "a2_mcp_config_errors_total",
+        "Total errors loading the MCP config file (mcp.json). Counts both "
+        "missing-file silently-ignored cases (no increment) and parse / "
+        "I/O failures (incremented).",
+        ["agent", "agent_id", "backend"],
+    )
+    a2_mcp_config_reloads_total = prometheus_client.Counter(
+        "a2_mcp_config_reloads_total",
+        "Total successful reloads of mcp.json triggered by the file watcher.",
+        ["agent", "agent_id", "backend"],
+    )
+    a2_mcp_servers_active = prometheus_client.Gauge(
+        "a2_mcp_servers_active",
+        "Number of MCP servers currently loaded from mcp.json (gauge).",
+        ["agent", "agent_id", "backend"],
     )
 
     # SDK error classification (parity with a2-claude — #431)

@@ -34,14 +34,22 @@ per-message metadata → routing config model → `MODEL` environment variable.
 constraints live there. The file is hot-reloaded on change — updating `AGENTS.md` takes effect for the next request
 without restarting the container.
 
+**MCP servers** — External tools can be wired in via `/home/agent/.codex/mcp.json` (override path with
+`MCP_CONFIG_PATH`). Same wire format as the a2-claude `mcp.json` — entries with a `command` field become
+`MCPServerStdio` instances, entries with a `url` field become `MCPServerStreamableHttp` instances. Servers are
+entered via `AsyncExitStack` per request and passed to `Agent(mcp_servers=[...])`, so MCP-provided tools coexist
+with the built-in shell / web search / Playwright computer tools. The file is hot-reloaded on change. Three
+metrics track config state: `a2_mcp_config_errors_total`, `a2_mcp_config_reloads_total`, `a2_mcp_servers_active`.
+
 **Metrics** — Exposes the common `a2_*` Prometheus metrics: request count/latency, session starts/evictions, queue
 depth, error counts, and execution duration. Also includes tool-call metrics (`a2_sdk_tool_calls_total`,
 `a2_sdk_tool_duration_seconds`, `a2_sdk_tool_errors_total`, `a2_sdk_tool_calls_per_query`, input/output size
 histograms), context-window metrics (`a2_context_tokens`, `a2_context_usage_percent`,
-`a2_context_exhaustion_total`, etc.), and SDK error classification metrics (`a2_sdk_errors_total`,
+`a2_context_exhaustion_total`, etc.), SDK error classification metrics (`a2_sdk_errors_total`,
 `a2_sdk_result_errors_total`, `a2_sdk_client_errors_total`) that distinguish connection-level failures from
-result-level errors and catch-all exceptions. `a2_session_history_save_errors_total` is incremented when the SQLite
-session store fails to initialize or when LRU eviction cleanup fails.
+result-level errors and catch-all exceptions, and MCP config metrics (`a2_mcp_config_errors_total`,
+`a2_mcp_config_reloads_total`, `a2_mcp_servers_active`). `a2_session_history_save_errors_total` is incremented
+when the SQLite session store fails to initialize or when LRU eviction cleanup fails.
 
 ## Endpoints
 
