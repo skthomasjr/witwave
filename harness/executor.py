@@ -362,9 +362,9 @@ async def _guarded(
             raise
         except Exception as exc:
             if time.monotonic() - _attempt_start >= restart_delay:
-                consecutive_restarts = 0
-                if on_recovered is not None:
+                if consecutive_restarts > 0 and on_recovered is not None:
                     on_recovered()
+                consecutive_restarts = 0
             consecutive_restarts += 1
             logger.error(
                 f"Task {coro_fn.__name__!r} crashed: {exc!r} — "
