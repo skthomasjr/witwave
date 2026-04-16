@@ -47,6 +47,14 @@ These fire once and trigger continuation chains. Check that all steps appear in 
 | `ping-codex` | every 30 min | `JOB_OK` under `bob-codex` |
 | `ping-default` | every 10 min | `JOB_OK` under default backend (`bob-codex`) |
 
+### Heartbeat
+
+The heartbeat is configured in `HEARTBEAT.md` with its own cron schedule and dispatches a prompt through the heartbeat scheduler (distinct from the job scheduler). Verifying it catches whole-heartbeat-subsystem outages that a job smoke test cannot.
+
+| Dispatcher | Schedule | What to check |
+|---|---|---|
+| heartbeat | every hour (top of the hour) | `HEARTBEAT_OK` appears in the conversation log within ~1 minute of each hour boundary |
+
 ### Consensus — run-once on deploy
 
 Two jobs fan out to three backends (Codex Max, Claude Sonnet, Claude Haiku) independently, then synthesize. Check that:
@@ -188,3 +196,4 @@ After deploying, confirm in order:
 9. Fred's `ping` job and `continuation-ping` appear in fred's conversation log
 10. Fan-in: `fanin-a` and `fanin-b` both appear; `continuation-fanin-test` fires exactly once after both, with `FANIN_OK`
 11. Budget: `budget-exceeded-claude` produces a `system` log entry matching `Budget exceeded: N tokens used of 10 limit.`
+12. Heartbeat: `HEARTBEAT_OK` appears in the conversation log within ~1 minute of each hour boundary
