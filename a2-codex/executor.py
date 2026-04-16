@@ -351,10 +351,11 @@ async def run_query(
                                 _first_chunk_at - _query_start
                             )
                     collected.append(delta.text)
-                # Check usage on response events (final chunk carries usage object)
-                _usage = getattr(data, "usage", None)
+                # Check usage on response events — response.completed carries usage
+                # in event.data.data (ResponseCompletedEvent.data = Response)
+                _usage = getattr(data, "usage", None) or getattr(getattr(data, "data", None), "usage", None)
                 if _usage is not None:
-                    _candidate = getattr(_usage, "total_tokens", None)
+                    _candidate = getattr(_usage, "total_tokens", None) or getattr(_usage, "output_tokens", None)
                     if _candidate is not None:
                         _total_tokens = max(_total_tokens, int(_candidate))
                         if max_tokens is not None and _total_tokens >= max_tokens:
