@@ -28,6 +28,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -52,7 +53,8 @@ const DefaultImageTagSentinel = "unset"
 // NyxAgentReconciler reconciles a NyxAgent object.
 type NyxAgentReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme   *runtime.Scheme
+	Recorder record.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=nyx.ai,resources=nyxagents,verbs=get;list;watch;create;update;patch;delete
@@ -62,6 +64,7 @@ type NyxAgentReconciler struct {
 // +kubebuilder:rbac:groups=core,resources=services;configmaps;persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=autoscaling,resources=horizontalpodautoscalers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 
 // Reconcile is the control loop's entry point. It brings owned resources into
 // alignment with the NyxAgent spec and writes status.
@@ -324,6 +327,10 @@ func (r *NyxAgentReconciler) updateStatus(ctx context.Context, agent *nyxv1alpha
 	depKey := client.ObjectKey{Namespace: agent.Namespace, Name: agent.Name}
 	depErr := r.Get(ctx, depKey, dep)
 
+	// Capture the previous phase so we only emit Events on actual transitions
+	// rather than on every reconcile (#442).
+	previousPhase := agent.Status.Phase
+
 	newStatus := agent.Status.DeepCopy()
 	newStatus.ObservedGeneration = agent.Generation
 
@@ -418,7 +425,49 @@ func (r *NyxAgentReconciler) updateStatus(ctx context.Context, agent *nyxv1alpha
 		return nil
 	}
 	agent.Status = *newStatus
-	return r.Status().Update(ctx, agent)
+	if err := r.Status().Update(ctx, agent); err != nil {
+		return err
+	}
+
+	// Emit a Kubernetes Event on actual phase transitions (#442). Skipped on
+	// the empty→Pending bootstrap and on every no-op reconcile thanks to the
+	// previousPhase comparison and the statusEqual short-circuit above.
+	if r.Recorder != nil && newStatus.Phase != previousPhase && previousPhase != "" {
+		r.recordPhaseTransitionEvent(agent, previousPhase, newStatus.Phase, reconcileErr)
+	}
+	return nil
+}
+
+// recordPhaseTransitionEvent maps a phase transition to a Kubernetes Event.
+// Reasons follow the convention used by mainstream operators (PhaseChanged,
+// Ready, Degraded, ReconcileError). Eventtype is Warning for Degraded/Error
+// transitions so kube-state-metrics and event-driven alerting can surface
+// them as actionable signals.
+func (r *NyxAgentReconciler) recordPhaseTransitionEvent(
+	agent *nyxv1alpha1.NyxAgent,
+	from, to nyxv1alpha1.NyxAgentPhase,
+	reconcileErr error,
+) {
+	switch to {
+	case nyxv1alpha1.NyxAgentPhaseReady:
+		r.Recorder.Eventf(agent, corev1.EventTypeNormal, "Ready",
+			"NyxAgent transitioned %s → Ready (%d/%d replicas)",
+			from, agent.Status.ReadyReplicas, agent.Status.ReadyReplicas)
+	case nyxv1alpha1.NyxAgentPhaseDegraded:
+		r.Recorder.Eventf(agent, corev1.EventTypeWarning, "Degraded",
+			"NyxAgent transitioned %s → Degraded (%d replicas ready)",
+			from, agent.Status.ReadyReplicas)
+	case nyxv1alpha1.NyxAgentPhaseError:
+		msg := "reconcile failed"
+		if reconcileErr != nil {
+			msg = reconcileErr.Error()
+		}
+		r.Recorder.Eventf(agent, corev1.EventTypeWarning, "ReconcileError",
+			"NyxAgent transitioned %s → Error: %s", from, msg)
+	case nyxv1alpha1.NyxAgentPhasePending:
+		r.Recorder.Eventf(agent, corev1.EventTypeNormal, "Pending",
+			"NyxAgent transitioned %s → Pending", from)
+	}
 }
 
 // setCondition upserts a condition by type, preserving LastTransitionTime

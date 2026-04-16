@@ -16,6 +16,12 @@ rules:
       - persistentvolumeclaims
       - services
     verbs: [create, delete, get, list, patch, update, watch]
+  - apiGroups: [""]
+    resources: [events]
+    # NyxAgent CRs may live in any namespace; the leader-election Role only
+    # grants events in the operator's own namespace, so the manager
+    # ClusterRole needs cluster-wide events:create/patch for #442.
+    verbs: [create, patch]
   - apiGroups: [apps]
     resources: [deployments]
     verbs: [create, delete, get, list, patch, update, watch]
