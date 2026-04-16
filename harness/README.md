@@ -6,8 +6,8 @@ webhooks, and observability.
 
 ## What it does
 
-Every named agent (iris, nova, kira, …) runs one instance of this image alongside its backend containers. nyx-harness acts
-as the single entry point for all inbound requests and all scheduled work.
+Every named agent (iris, nova, kira, …) runs one instance of this image alongside its backend containers. nyx-harness
+acts as the single entry point for all inbound requests and all scheduled work.
 
 **A2A relay** — Receives A2A JSON-RPC requests and forwards them to the backend configured for the `a2a` routing slot.
 Returns the response verbatim. External callers always target nyx; they never talk to backends directly.
@@ -33,11 +33,15 @@ the response, and optional delay. Enables prompt chaining without hardcoded sequ
 **Webhook dispatcher** — Reads `webhooks/*.md` and delivers outbound HTTP notifications when work completes. Supports
 glob-based filtering, optional LLM extraction passes, HMAC signing, and retry with exponential backoff.
 
-**Proxy endpoints** — Exposes `/proxy/{agent_name}`, `/conversations/{agent_name}`, and `/trace/{agent_name}` so the
-UI can target any team member by name and have the request routed through nyx's team manifest.
+**Proxy endpoints** — Exposes `/proxy/{agent_name}`, `/conversations/{agent_name}`, and `/trace/{agent_name}` so the UI
+can target any team member by name and have the request routed through nyx's team manifest.
 
-**Scheduler discovery** — Exposes `GET /jobs`, `GET /tasks`, `GET /webhooks`, `GET /continuations`, `GET /triggers`,
-and `GET /heartbeat`, each returning a structured snapshot of all currently registered items of that type (name,
+**Agent and team discovery** — Exposes `GET /agents` (own card + all backend cards) and `GET /team` (cards for all team
+members from `manifest.json`). Also exposes `GET /.well-known/agent-triggers.json` (array of all enabled trigger
+descriptors with endpoint, name, description, and session ID).
+
+**Scheduler discovery** — Exposes `GET /jobs`, `GET /tasks`, `GET /webhooks`, `GET /continuations`, `GET /triggers`, and
+`GET /heartbeat`, each returning a structured snapshot of all currently registered items of that type (name,
 schedule/window/filters, backend, running or active-fire counts).
 
 **Metrics** — Aggregates Prometheus metrics from all backends at `/metrics` and exposes its own scheduler/queue/routing
@@ -74,8 +78,8 @@ All configuration is file-based and hot-reloaded — no restart required for mos
 **`HEARTBEAT.md`** — Frontmatter: `schedule` (cron), `agent`/`model` overrides, `consensus` (list of `{backend, model?}`
 entries to fan out to; empty list disables), `max-tokens` (per-dispatch token budget). Body: the heartbeat prompt.
 
-**`jobs/*.md`** — Frontmatter: `schedule` (cron), `session` (optional fixed ID), `agent`/`model` overrides,
-`consensus` (list of `{backend, model?}` entries; supports glob patterns). Body: the prompt.
+**`jobs/*.md`** — Frontmatter: `schedule` (cron), `session` (optional fixed ID), `agent`/`model` overrides, `consensus`
+(list of `{backend, model?}` entries; supports glob patterns). Body: the prompt.
 
 **`tasks/*.md`** — Frontmatter: `days` (e.g. `mon-fri`), `start`/`end` time window, `loop`/`gap` for repeated firing,
 optional date range, `consensus` (list of `{backend, model?}` entries; supports glob patterns). Body: the prompt.
@@ -86,9 +90,9 @@ context prepended to the inbound payload.
 
 **`continuations/*.md`** — Frontmatter: `continues-after` (upstream kind; supports `fnmatch` glob patterns, e.g. `job:*`
 to match any job), `on-success`/`on-error`, `trigger-when` (substring match on upstream response), `delay`,
-`agent`/`model` overrides, `consensus` (list of `{backend, model?}` entries; supports glob patterns),
-`max-tokens` (per-dispatch token budget), `max-concurrent-fires` (cap on simultaneous in-flight fires; default `5`).
-Body: the follow-up prompt.
+`agent`/`model` overrides, `consensus` (list of `{backend, model?}` entries; supports glob patterns), `max-tokens`
+(per-dispatch token budget), `max-concurrent-fires` (cap on simultaneous in-flight fires; default `5`). Body: the
+follow-up prompt.
 
 **`webhooks/*.md`** — Frontmatter: `url` or `url-env-var` (destination), `notify-on-kind` (glob filter),
 `signing-secret-env-var` (HMAC key), `extract` (prompt for LLM extraction pass). Body: webhook payload template.

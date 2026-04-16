@@ -23,13 +23,13 @@ Multiple agents can collaborate as a team, but the named agent (nyx + its backen
 
 The platform has five components, each with its own source directory:
 
-| Component          | Directory    | Type               | Description                                                                                                               |
-| ------------------ | ------------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| Component          | Directory    | Type               | Description                                                                                                                 |
+| ------------------ | ------------ | ------------------ | --------------------------------------------------------------------------------------------------------------------------- |
 | **Orchestrator**   | `harness/`   | Orchestrator agent | nyx-harness: the infrastructure and routing layer. Owns scheduling, triggering, chaining, and A2A relay. No LLM of its own. |
-| **Claude backend** | `a2-claude/` | Backend agent      | Executes prompts via the Claude Agent SDK. Manages sessions, memory, conversation logs, and metrics.                      |
-| **Codex backend**  | `a2-codex/`  | Backend agent      | Executes prompts via the OpenAI Agents SDK. Supports web search and headless browser via Playwright.                      |
-| **Gemini backend** | `a2-gemini/` | Backend agent      | Executes prompts via the Google Gemini SDK. Manages sessions and conversation history.                                    |
-| **UI**             | `ui/`        | Web interface      | Single-page app for monitoring metrics, browsing agents, viewing conversations, and chatting with agents.                 |
+| **Claude backend** | `a2-claude/` | Backend agent      | Executes prompts via the Claude Agent SDK. Manages sessions, memory, conversation logs, and metrics.                        |
+| **Codex backend**  | `a2-codex/`  | Backend agent      | Executes prompts via the OpenAI Agents SDK. Supports web search and headless browser via Playwright.                        |
+| **Gemini backend** | `a2-gemini/` | Backend agent      | Executes prompts via the Google Gemini SDK. Manages sessions and conversation history.                                      |
+| **UI**             | `ui/`        | Web interface      | Single-page app for monitoring metrics, browsing agents, viewing conversations, and chatting with agents.                   |
 
 Each backend agent is a full A2A server. The orchestrator routes work to backends but does no LLM execution itself. The
 UI provides visibility only — it does not participate in agent workflows.
@@ -46,7 +46,8 @@ Each agent:
 Backend containers:
 
 - Are standalone A2A servers with their own session state, memory, and conversation logs
-- Receive behavioral instructions via a backend-specific file (`CLAUDE.md` for a2-claude, `AGENTS.md` for a2-codex, `GEMINI.md` for a2-gemini) and A2A identity from a mounted `agent-card.md` file
+- Receive behavioral instructions via a backend-specific file (`CLAUDE.md` for a2-claude, `AGENTS.md` for a2-codex,
+  `GEMINI.md` for a2-gemini) and A2A identity from a mounted `agent-card.md` file
 - Expose `/health` and `/metrics` in addition to the A2A endpoints
 
 ## Requirements
@@ -59,16 +60,16 @@ Backend containers:
 
 ## Container Images
 
-Published images are available on GitHub Container Registry. All five images are built and pushed automatically on
-every release tag.
+Published images are available on GitHub Container Registry. All five images are built and pushed automatically on every
+release tag.
 
-| Image       | Registry path                                    |
-| ----------- | ------------------------------------------------ |
-| `nyx-harness` | `ghcr.io/skthomasjr/images/nyx-harness:latest`    |
-| `a2-claude` | `ghcr.io/skthomasjr/images/a2-claude:latest`    |
-| `a2-codex`  | `ghcr.io/skthomasjr/images/a2-codex:latest`     |
-| `a2-gemini` | `ghcr.io/skthomasjr/images/a2-gemini:latest`    |
-| `ui`        | `ghcr.io/skthomasjr/images/ui:latest`           |
+| Image         | Registry path                                  |
+| ------------- | ---------------------------------------------- |
+| `nyx-harness` | `ghcr.io/skthomasjr/images/nyx-harness:latest` |
+| `a2-claude`   | `ghcr.io/skthomasjr/images/a2-claude:latest`   |
+| `a2-codex`    | `ghcr.io/skthomasjr/images/a2-codex:latest`    |
+| `a2-gemini`   | `ghcr.io/skthomasjr/images/a2-gemini:latest`   |
+| `ui`          | `ghcr.io/skthomasjr/images/ui:latest`          |
 
 Pull a specific version with a semver tag, e.g. `ghcr.io/skthomasjr/images/nyx-harness:0.1.0`.
 
@@ -155,9 +156,9 @@ Each agent directory contains:
 ```text
 <agent>/
 ├── .nyx/              # Runtime config (agent-card.md, backend.yaml, HEARTBEAT.md, jobs/)
-├── .claude/           # Claude Code config (settings.json, mcp.json)
-├── .codex/            # Codex config (config.toml)
-├── .gemini/           # Gemini backend config (no extra config required)
+├── .claude/           # Claude backend config (CLAUDE.md, agent-card.md, mcp.json, settings.json)
+├── .codex/            # Codex backend config (AGENTS.md, agent-card.md, config.toml)
+├── .gemini/           # Gemini backend config (GEMINI.md, agent-card.md)
 ├── logs/              # nyx-harness logs (runtime, not committed)
 ├── a2-claude/         # Claude backend instance
 │   ├── logs/          # Conversation log (runtime, not committed)
@@ -203,8 +204,8 @@ order: per-message override → routing entry `model:` → per-backend config `m
 ## Consensus Mode
 
 Set `consensus:` in any prompt file's frontmatter to a list of backend entries. Each entry specifies a `backend` glob
-pattern and an optional `model` override. The prompt is dispatched to every matched `(backend, model)` pair in
-parallel, then the responses are aggregated:
+pattern and an optional `model` override. The prompt is dispatched to every matched `(backend, model)` pair in parallel,
+then the responses are aggregated:
 
 - **Binary responses** (yes / no / agree / disagree variants): majority vote. The default backend breaks ties.
 - **Freeform responses**: a synthesis prompt is dispatched to the default backend, which merges the collected responses
@@ -214,9 +215,9 @@ parallel, then the responses are aggregated:
 consensus:
   - backend: "iris-a2-claude"
     model: "claude-opus-4-6"
-  - backend: "iris-a2-codex*"          # glob — matches all codex backends
+  - backend: "iris-a2-codex*" # glob — matches all codex backends
   - backend: "iris-a2-claude"
-    model: "claude-haiku-4-5"           # same backend, different model = two parallel calls
+    model: "claude-haiku-4-5" # same backend, different model = two parallel calls
 ```
 
 An empty list (the default when `consensus:` is omitted) disables consensus — the prompt is dispatched to the single
@@ -242,11 +243,11 @@ Summarise the day's key events.
 The value must be a positive integer. Invalid values are logged and ignored. The limit applies per-dispatch (not across
 sessions), so each job/task/trigger invocation gets a fresh budget. All three backend types enforce it:
 
-| Backend      | Token source                                     |
-| ------------ | ------------------------------------------------ |
-| `a2-claude`  | `get_context_usage()` after each assistant turn  |
-| `a2-codex`   | `event.data.usage.total_tokens` on response events |
-| `a2-gemini`  | `chunk.usage_metadata.total_token_count` per chunk |
+| Backend     | Token source                                       |
+| ----------- | -------------------------------------------------- |
+| `a2-claude` | `get_context_usage()` after each assistant turn    |
+| `a2-codex`  | `event.data.usage.total_tokens` on response events |
+| `a2-gemini` | `chunk.usage_metadata.total_token_count` per chunk |
 
 ## Adding an Agent
 
@@ -256,7 +257,9 @@ sessions), so each job/task/trigger invocation gets a fresh budget. All three ba
    cp -r .agents/active/iris .agents/active/<name>
    ```
 
-2. Update the agent's `agent-card.md` (mounted at `/home/agent/agent-card.md`) with the agent's identity and role
+2. Update the agent's `agent-card.md` in `.nyx/` (mounted at `/home/agent/.nyx/agent-card.md`) with the agent's identity
+   and role; update each backend's `agent-card.md` in `.claude/`, `.codex/`, and `.gemini/` if those directories are
+   used
 
 3. Update the backend instruction files: `CLAUDE.md` (at `/home/agent/.claude/CLAUDE.md`), `AGENTS.md` (at
    `/home/agent/.codex/AGENTS.md`), and `GEMINI.md` (at `/home/agent/.gemini/GEMINI.md`) with backend-specific
@@ -282,7 +285,10 @@ Agents communicate over the [A2A protocol](https://a2a-protocol.org) via JSON-RP
 - `/` — A2A JSON-RPC endpoint (`message/send`)
 - `GET /health/start` — startup probe: 200 once ready, 503 while initializing
 - `GET /health/live` — liveness probe: always 200 with `{"status": "ok", "agent": ..., "uptime_seconds": ...}`
-- `GET /health/ready` — readiness probe: 200/`{"status": "ready"}` or 503/`{"status": "starting"}`
+- `GET /health/ready` — readiness probe: 200/`{"status": "ready"}`; 503/`{"status": "starting"}` while initializing;
+  503/`{"status": "degraded"}` when a backend is unhealthy
+- `GET /agents` — own agent card plus agent cards from all configured backends
+- `GET /team` — agent cards for all team members from the manifest
 - `GET /jobs` — structured snapshot of all registered scheduled jobs (name, cron, backend, running state)
 - `GET /tasks` — structured snapshot of all registered scheduled tasks (name, days, window, running state)
 - `GET /webhooks` — structured snapshot of all registered webhook subscriptions (name, url, filters, active deliveries)
@@ -290,6 +296,13 @@ Agents communicate over the [A2A protocol](https://a2a-protocol.org) via JSON-RP
   active fires)
 - `GET /triggers` — structured snapshot of all registered inbound trigger endpoints (name, endpoint, description,
   session, backend, running state)
+- `GET /heartbeat` — current heartbeat configuration from `HEARTBEAT.md`
+- `GET /conversations` — merged conversation log from all backends
+- `GET /conversations/{agent_name}` — conversation log proxied from a named team member
+- `GET /trace` — merged trace log from all backends
+- `GET /trace/{agent_name}` — trace log proxied from a named team member
+- `POST /proxy/{agent_name}` — forward an A2A request to a named team member
+- `GET /.well-known/agent-triggers.json` — discovery array of all enabled trigger descriptors
 
 Each backend container additionally exposes:
 
@@ -318,25 +331,31 @@ Memory files are not committed to source control. nyx-harness has no memory laye
 
 ### nyx-harness environment variables
 
-| Variable                            | Default                         | Description                                                                                              |
-| ----------------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `AGENT_NAME`                        | `nyx`                             | Agent display name (e.g. `iris`)                                                                         |
-| `AGENT_HOST`                        | `0.0.0.0`                       | Interface to bind                                                                                        |
-| `AGENT_PORT`                        | `8000`                          | HTTP port the nyx agent listens on                                                                       |
-| `BACKEND_CONFIG_PATH`               | `/home/agent/.nyx/backend.yaml` | Path to the backend routing config file                                                                  |
-| `METRICS_ENABLED`                   | _(unset)_                       | Set to any non-empty value to expose `/metrics`                                                          |
-| `METRICS_AUTH_TOKEN`                | _(unset)_                       | Bearer token required to access `/metrics` (recommended in production)                                   |
-| `METRICS_CACHE_TTL`                 | `15`                            | Seconds to cache aggregated backend metrics between scrapes                                              |
-| `CONVERSATIONS_AUTH_TOKEN`          | _(unset)_                       | Bearer token required to access `/conversations` and `/trace` (inbound)                                  |
-| `BACKEND_CONVERSATIONS_AUTH_TOKEN`  | _(unset)_                       | Bearer token forwarded to backend `/conversations` and `/trace` endpoints (set if backends require auth) |
-| `PROXY_AUTH_TOKEN`                  | _(unset)_                       | Bearer token required to access `/proxy/{agent_name}`                                                    |
-| `TRIGGERS_AUTH_TOKEN`               | _(unset)_                       | Bearer token required for inbound trigger requests (fallback when no per-trigger HMAC secret is set)     |
-| `CORS_ALLOW_ORIGINS`                | `*`                             | Comma-separated list of allowed CORS origins; defaults to `*` (logs a warning)                           |
-| `TASK_STORE_PATH`                   | _(unset)_                       | Path for SQLite A2A task store; defaults to in-memory (state lost on restart)                            |
-| `WORKER_MAX_RESTARTS`               | `5`                             | Consecutive crash limit before a critical worker marks the agent not-ready                               |
-| `WEBHOOK_MAX_CONCURRENT_DELIVERIES` | `50`                            | Maximum number of in-flight webhook delivery tasks; deliveries beyond this cap are shed and counted      |
-| `WEBHOOK_EXTRACTION_TIMEOUT`        | `120`                           | Maximum seconds to wait for a single LLM extraction call inside a webhook delivery; prevents a slow backend from holding a delivery slot indefinitely |
-| `LOG_PROMPT_MAX_BYTES`              | `200`                           | Maximum bytes of the prompt logged at INFO level; set to `0` to suppress prompt logging entirely         |
+| Variable                                    | Default                         | Description                                                                                                                                           |
+| ------------------------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AGENT_NAME`                                | `nyx`                           | Agent display name (e.g. `iris`)                                                                                                                      |
+| `AGENT_HOST`                                | `0.0.0.0`                       | Interface to bind                                                                                                                                     |
+| `AGENT_PORT`                                | `8000`                          | HTTP port the nyx agent listens on                                                                                                                    |
+| `BACKEND_CONFIG_PATH`                       | `/home/agent/.nyx/backend.yaml` | Path to the backend routing config file                                                                                                               |
+| `METRICS_ENABLED`                           | _(unset)_                       | Set to any non-empty value to expose `/metrics`                                                                                                       |
+| `METRICS_AUTH_TOKEN`                        | _(unset)_                       | Bearer token required to access `/metrics` (recommended in production)                                                                                |
+| `METRICS_CACHE_TTL`                         | `15`                            | Seconds to cache aggregated backend metrics between scrapes                                                                                           |
+| `CONVERSATIONS_AUTH_TOKEN`                  | _(unset)_                       | Bearer token required to access `/conversations` and `/trace` (inbound)                                                                               |
+| `BACKEND_CONVERSATIONS_AUTH_TOKEN`          | _(unset)_                       | Bearer token forwarded to backend `/conversations` and `/trace` endpoints (set if backends require auth)                                              |
+| `PROXY_AUTH_TOKEN`                          | _(unset)_                       | Bearer token required to access `/proxy/{agent_name}`                                                                                                 |
+| `TRIGGERS_AUTH_TOKEN`                       | _(unset)_                       | Bearer token required for inbound trigger requests (fallback when no per-trigger HMAC secret is set)                                                  |
+| `CORS_ALLOW_ORIGINS`                        | _(unset)_                       | Comma-separated list of allowed CORS origins; when unset, all cross-origin requests are denied (logs a warning)                                       |
+| `TASK_STORE_PATH`                           | _(unset)_                       | Path for SQLite A2A task store; defaults to in-memory (state lost on restart)                                                                         |
+| `WORKER_MAX_RESTARTS`                       | `5`                             | Consecutive crash limit before a critical worker marks the agent not-ready                                                                            |
+| `WEBHOOK_MAX_CONCURRENT_DELIVERIES`         | `50`                            | Maximum number of in-flight webhook delivery tasks across all subscriptions; deliveries beyond this cap are shed and counted                          |
+| `WEBHOOK_MAX_CONCURRENT_DELIVERIES_PER_SUB` | `10`                            | Per-subscription cap on concurrent in-flight deliveries; also settable per webhook via `max-concurrent-deliveries` frontmatter                        |
+| `WEBHOOK_EXTRACTION_TIMEOUT`                | `120`                           | Maximum seconds to wait for a single LLM extraction call inside a webhook delivery; prevents a slow backend from holding a delivery slot indefinitely |
+| `JOBS_MAX_CONCURRENT`                       | `0` (unlimited)                 | Maximum number of jobs that may run concurrently; `0` disables the limit                                                                              |
+| `TASKS_MAX_CONCURRENT`                      | `0` (unlimited)                 | Maximum number of tasks that may run concurrently; `0` disables the limit                                                                             |
+| `TASK_TIMEOUT_SECONDS`                      | `300`                           | Timeout in seconds for proxy requests forwarded via `/proxy/{agent_name}`                                                                             |
+| `MANIFEST_PATH`                             | `/home/agent/manifest.json`     | Path to the team manifest file listing all agents by name and URL                                                                                     |
+| `BACKENDS_READY_WARN_AFTER`                 | `120`                           | Seconds to wait before logging a warning that backends have not become healthy                                                                        |
+| `LOG_PROMPT_MAX_BYTES`                      | `200`                           | Maximum bytes of the prompt logged at INFO level; set to `0` to suppress prompt logging entirely                                                      |
 
 ### Backend (a2-claude / a2-codex / a2-gemini) environment variables
 
