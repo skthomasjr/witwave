@@ -21,19 +21,22 @@ Multiple agents can collaborate as a team, but the named agent (nyx + its backen
 
 ## Components
 
-The platform has five components, each with its own source directory:
+The platform has eight components, each with its own source directory:
 
-| Component          | Directory    | Type               | Description                                                                                                                 |
-| ------------------ | ------------ | ------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| **Orchestrator**   | `harness/`   | Orchestrator agent | nyx-harness: the infrastructure and routing layer. Owns scheduling, triggering, chaining, and A2A relay. No LLM of its own. |
-| **Claude backend** | `a2-claude/` | Backend agent      | Executes prompts via the Claude Agent SDK. Manages sessions, memory, conversation logs, and metrics.                        |
-| **Codex backend**  | `a2-codex/`  | Backend agent      | Executes prompts via the OpenAI Agents SDK. Supports web search and headless browser via Playwright.                        |
-| **Gemini backend** | `a2-gemini/` | Backend agent      | Executes prompts via the Google Gemini SDK. Manages sessions and conversation history.                                      |
-| **UI**             | `ui/`        | Web interface      | Single-page app for monitoring metrics, browsing agents, viewing conversations, and chatting with agents.                   |
-| **Helm chart**     | `charts/nyx/`| Deployment         | Kubernetes Helm chart for deploying nyx agents. Includes templates, values files, and chart metadata.                      |
+| Component          | Directory              | Type               | Description                                                                                                                 |
+| ------------------ | ---------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| **Orchestrator**   | `harness/`             | Orchestrator agent | nyx-harness: the infrastructure and routing layer. Owns scheduling, triggering, chaining, and A2A relay. No LLM of its own. |
+| **Claude backend** | `a2-claude/`           | Backend agent      | Executes prompts via the Claude Agent SDK. Manages sessions, memory, conversation logs, and metrics.                        |
+| **Codex backend**  | `a2-codex/`            | Backend agent      | Executes prompts via the OpenAI Agents SDK. Supports web search and headless browser via Playwright.                        |
+| **Gemini backend** | `a2-gemini/`           | Backend agent      | Executes prompts via the Google Gemini SDK. Manages sessions and conversation history.                                      |
+| **UI**             | `ui/`                  | Web interface      | Single-page app for monitoring metrics, browsing agents, viewing conversations, and chatting with agents.                   |
+| **Operator**       | `operator/`            | Kubernetes operator| Go controller (Operator SDK) that reconciles `NyxAgent` custom resources into the same workloads the Helm chart renders.     |
+| **Agent chart**    | `charts/nyx/`          | Deployment         | Kubernetes Helm chart for deploying nyx agents via templated manifests (no CRDs).                                            |
+| **Operator chart** | `charts/nyx-operator/` | Deployment         | Kubernetes Helm chart that installs the operator and the `NyxAgent` CRD.                                                     |
 
 Each backend agent is a full A2A server. The orchestrator routes work to backends but does no LLM execution itself. The
-UI provides visibility only — it does not participate in agent workflows.
+UI provides visibility only — it does not participate in agent workflows. The operator and its chart are an alternative
+install path to the agent chart; both target the same per-agent deployment shape.
 
 ## How It Works
 
@@ -61,28 +64,35 @@ Backend containers:
 
 ## Container Images
 
-Published images are available on GitHub Container Registry. All five images are built and pushed automatically on every
-release tag.
+Published images are available on GitHub Container Registry. All seven images are built and pushed automatically on
+every release tag.
 
-| Image         | Registry path                                  |
-| ------------- | ---------------------------------------------- |
-| `nyx-harness` | `ghcr.io/skthomasjr/images/nyx-harness:latest` |
-| `a2-claude`   | `ghcr.io/skthomasjr/images/a2-claude:latest`   |
-| `a2-codex`    | `ghcr.io/skthomasjr/images/a2-codex:latest`    |
-| `a2-gemini`   | `ghcr.io/skthomasjr/images/a2-gemini:latest`   |
-| `ui`          | `ghcr.io/skthomasjr/images/ui:latest`          |
+| Image          | Registry path                                   |
+| -------------- | ----------------------------------------------- |
+| `nyx-harness`  | `ghcr.io/skthomasjr/images/nyx-harness:latest`  |
+| `a2-claude`    | `ghcr.io/skthomasjr/images/a2-claude:latest`    |
+| `a2-codex`     | `ghcr.io/skthomasjr/images/a2-codex:latest`     |
+| `a2-gemini`    | `ghcr.io/skthomasjr/images/a2-gemini:latest`    |
+| `ui`           | `ghcr.io/skthomasjr/images/ui:latest`           |
+| `nyx-operator` | `ghcr.io/skthomasjr/images/nyx-operator:latest` |
+| `git-sync`     | `ghcr.io/skthomasjr/images/git-sync:latest`     |
 
 Pull a specific version with a semver tag, e.g. `ghcr.io/skthomasjr/images/nyx-harness:0.1.0`.
 
-## Helm Chart
+## Helm Charts
 
-A Helm chart for Kubernetes deployment is published to GHCR alongside the images:
+Two Helm charts are published to GHCR alongside the images on every release tag:
 
 ```bash
+# Agent chart — deploys nyx agents directly via templated manifests.
 helm install nyx oci://ghcr.io/skthomasjr/charts/nyx --version 0.1.0 --namespace nyx
+
+# Operator chart — installs the nyx-operator controller and the NyxAgent CRD.
+helm install nyx-operator oci://ghcr.io/skthomasjr/charts/nyx-operator --version 0.1.0 --namespace nyx
 ```
 
-See [charts/nyx/README.md](charts/nyx/README.md) for full installation instructions.
+See [charts/nyx/README.md](charts/nyx/README.md) and
+[charts/nyx-operator/README.md](charts/nyx-operator/README.md) for full installation instructions.
 
 ## Getting Started
 
