@@ -8,8 +8,9 @@ backend:
       url: http://localhost:8091
       model: gpt-5.1-codex-max
 
-    - id: gemini
-      url: http://localhost:8092
+    # gemini intentionally omitted — disabled in values-test.yaml because no
+    # API key is provisioned. Restore both this entry and the values-test
+    # backend block to re-enable.
 
   routing:
     default:
