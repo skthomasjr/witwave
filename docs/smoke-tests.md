@@ -25,6 +25,8 @@ These fire immediately when the stack comes up. Look for them near the top of th
 | `model-check-codex-gpt-5-1-codex` | bob-codex | `model` field = `gpt-5.1-codex` |
 | `animal-memory-claude` | bob-claude | Response acknowledges hamsters; seeds session memory |
 | `animal-memory-codex` | bob-codex | Response acknowledges hamsters; seeds session memory |
+| `fanin-a` | default | `FANIN_A_OK` response; first leg of fan-in continuation test |
+| `fanin-b` | default | `FANIN_B_OK` response; second leg of fan-in continuation test |
 
 ### Jobs — run-once, continuation chains
 
@@ -98,6 +100,7 @@ Continuations are triggered by the jobs and tasks above. They should not need to
 | `animal-memory-claude-recall` | `continuation:animal-memory-claude-turtles` | Fires after turtles; response names both hamsters and turtles |
 | `animal-memory-codex-turtles` | `job:animal-memory-codex` | Same chain on Codex |
 | `animal-memory-codex-recall` | `continuation:animal-memory-codex-turtles` | Response names both hamsters and turtles on Codex |
+| `continuation-fanin-test` | `job:fanin-a` + `job:fanin-b` | Fires only after **both** fanin jobs complete; `FANIN_OK` response; verifies fan-in state tracking |
 
 ### Webhooks
 
@@ -182,3 +185,4 @@ After deploying, confirm in order:
 7. Consensus fan-out: three simultaneous prompts, three responses, one synthesis — correct synthesizer per job
 8. `ping` job fires every 5 min with `continuation-ping` immediately after
 9. Fred's `ping` job and `continuation-ping` appear in fred's conversation log
+10. Fan-in: `fanin-a` and `fanin-b` both appear; `continuation-fanin-test` fires exactly once after both, with `FANIN_OK`

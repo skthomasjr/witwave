@@ -37,7 +37,7 @@ CONTINUATION_MAX_CONCURRENT_FIRES = int(os.environ.get("CONTINUATION_MAX_CONCURR
 class ContinuationItem:
     path: str
     name: str
-    continues_after: str      # e.g. "job:code-review", "task:standup", "a2a", "continuation:foo", "*"
+    continues_after: list[str]  # one or more upstream kind patterns (fnmatch); all must complete (fan-in)
     content: str              # prompt body
     on_success: bool = True   # fire on successful upstream completion
     on_error: bool = False    # fire on upstream error
@@ -71,8 +71,18 @@ def parse_continuation_file(path: str) -> "ContinuationItem | object | None":
                 logger.info(f"Continuation file {path}: disabled, skipping.")
                 return _DISABLED
 
-        continues_after = fields.get("continues-after") or ""
-        if not continues_after.strip():
+        continues_after_raw = fields.get("continues-after") or ""
+        # Accepts a single string or a YAML list.  A comma-separated string is
+        # also accepted as a convenience shorthand (e.g. "job:a, job:b").
+        if isinstance(continues_after_raw, list):
+            continues_after = [p.strip() for p in continues_after_raw if str(p).strip()]
+        else:
+            text = str(continues_after_raw).strip()
+            if not text:
+                logger.warning(f"Continuation file {path}: missing required 'continues-after' field, skipping.")
+                return _DISABLED
+            continues_after = [p.strip() for p in text.split(",") if p.strip()]
+        if not continues_after:
             logger.warning(f"Continuation file {path}: missing required 'continues-after' field, skipping.")
             return _DISABLED
 
@@ -176,6 +186,9 @@ class ContinuationRunner:
         self._active_fires: set[asyncio.Task] = set()
         # Per-continuation in-flight tasks, keyed by continuation name.
         self._fires_by_name: dict[str, set[asyncio.Task]] = {}
+        # Fan-in state: maps (continuation_name, session_id) -> set of upstream
+        # kind patterns that have been satisfied so far.  Cleared on each fire.
+        self._fanin_state: dict[tuple[str, str], set[str]] = {}
 
     def _register(self, path: str) -> None:
         result = parse_continuation_file(path)
@@ -196,6 +209,10 @@ class ContinuationRunner:
         existing = self._items.pop(path, None)
         if existing is not None:
             logger.info(f"Continuation '{existing.name}' unregistered.")
+            # Drop any in-progress fan-in state for this continuation.
+            stale = [k for k in self._fanin_state if k[0] == existing.name]
+            for k in stale:
+                del self._fanin_state[k]
         if agent_continuation_items_registered is not None:
             agent_continuation_items_registered.set(len(self._items))
 
@@ -216,7 +233,7 @@ class ContinuationRunner:
         for item in self._items.values():
             result.append({
                 "name": item.name,
-                "continues_after": item.continues_after,
+                "continues_after": item.continues_after if len(item.continues_after) > 1 else item.continues_after[0],
                 "on_success": item.on_success,
                 "on_error": item.on_error,
                 "trigger_when": item.trigger_when,
@@ -234,31 +251,59 @@ class ContinuationRunner:
     def notify(self, kind: str, session_id: str, success: bool, response: str, bus: MessageBus) -> None:
         """Called by on_prompt_completed() when an upstream completes. Non-blocking."""
         for item in list(self._items.values()):
-            # TODO: fan-in — single upstream only for now; fan-in deferred
-            upstream_matches = item.continues_after == "*" or fnmatch(kind, item.continues_after)
             outcome_matches = (success and item.on_success) or (not success and item.on_error)
             content_matches = item.trigger_when is None or item.trigger_when in response
-            if upstream_matches and outcome_matches and content_matches:
-                # Throttle: skip this fire if the per-continuation in-flight
-                # count already equals max_concurrent_fires.
-                fires = self._fires_by_name.setdefault(item.name, set())
-                if len(fires) >= item.max_concurrent_fires:
-                    logger.warning(
-                        f"Continuation '{item.name}': max_concurrent_fires ({item.max_concurrent_fires}) "
-                        f"reached — skipping fire for upstream '{kind}'."
-                    )
-                    if agent_continuation_throttled_total is not None:
-                        agent_continuation_throttled_total.labels(name=item.name).inc()
-                    continue
-                if agent_continuation_fires_total is not None:
-                    agent_continuation_fires_total.labels(upstream_kind=kind).inc()
-                _t = asyncio.ensure_future(_fire(item, session_id, bus))
-                self._active_fires.add(_t)
-                fires.add(_t)
-                def _cleanup(t: asyncio.Task, _name: str = item.name) -> None:
-                    self._active_fires.discard(t)
-                    self._fires_by_name.get(_name, set()).discard(t)
-                _t.add_done_callback(_cleanup)
+
+            # Find which pattern(s) in continues_after this upstream kind satisfies.
+            matched_patterns = [
+                p for p in item.continues_after
+                if p == "*" or fnmatch(kind, p)
+            ]
+            if not matched_patterns or not outcome_matches or not content_matches:
+                continue
+
+            if len(item.continues_after) == 1:
+                # Single-upstream fast path — fire immediately (original behaviour).
+                ready = True
+            else:
+                # Fan-in: record which patterns have been satisfied for this session
+                # and fire only once all required patterns have been seen.
+                key = (item.name, session_id)
+                seen = self._fanin_state.setdefault(key, set())
+                seen.update(matched_patterns)
+                # Check whether every required pattern has been satisfied by at
+                # least one upstream completion in this session.
+                ready = all(
+                    any(p2 == "*" or fnmatch(p2, p) or p == p2 for p2 in seen)
+                    for p in item.continues_after
+                )
+                if ready:
+                    # Clear state so the fan-in can fire again on the next cycle.
+                    del self._fanin_state[key]
+
+            if not ready:
+                continue
+
+            # Throttle: skip this fire if the per-continuation in-flight
+            # count already equals max_concurrent_fires.
+            fires = self._fires_by_name.setdefault(item.name, set())
+            if len(fires) >= item.max_concurrent_fires:
+                logger.warning(
+                    f"Continuation '{item.name}': max_concurrent_fires ({item.max_concurrent_fires}) "
+                    f"reached — skipping fire for upstream '{kind}'."
+                )
+                if agent_continuation_throttled_total is not None:
+                    agent_continuation_throttled_total.labels(name=item.name).inc()
+                continue
+            if agent_continuation_fires_total is not None:
+                agent_continuation_fires_total.labels(upstream_kind=kind).inc()
+            _t = asyncio.ensure_future(_fire(item, session_id, bus))
+            self._active_fires.add(_t)
+            fires.add(_t)
+            def _cleanup(t: asyncio.Task, _name: str = item.name) -> None:
+                self._active_fires.discard(t)
+                self._fires_by_name.get(_name, set()).discard(t)
+            _t.add_done_callback(_cleanup)
 
     async def run(self) -> None:
         logger.info(f"Continuation runner watching {CONTINUATIONS_DIR}")
