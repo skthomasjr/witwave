@@ -24,6 +24,7 @@ import (
 // ImageSpec describes a container image used by an agent or backend.
 type ImageSpec struct {
 	// Repository is the image repository without tag or digest.
+	// +kubebuilder:validation:MinLength=1
 	Repository string `json:"repository"`
 
 	// Tag is the image tag. If empty, the operator may fill in a default.
@@ -40,12 +41,16 @@ type ImageSpec struct {
 // The file is materialised as one key in a ConfigMap owned by the NyxAgent.
 type ConfigFile struct {
 	// Name is the ConfigMap key and the filename inside the container.
+	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
 
 	// MountPath is the absolute path inside the container.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern=`^/.*`
 	MountPath string `json:"mountPath"`
 
 	// Content is the literal file contents.
+	// +kubebuilder:validation:MinLength=1
 	Content string `json:"content"`
 }
 
@@ -116,7 +121,10 @@ type PodDisruptionBudgetSpec struct {
 
 // BackendStorageMount maps a sub-path of a backend's PVC to a mount path.
 type BackendStorageMount struct {
-	SubPath   string `json:"subPath"`
+	// +kubebuilder:validation:MinLength=1
+	SubPath string `json:"subPath"`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern=`^/.*`
 	MountPath string `json:"mountPath"`
 }
 
@@ -153,6 +161,8 @@ type BackendSpec struct {
 
 	// Port is the HTTP port the backend listens on inside the pod.
 	// +kubebuilder:default=8080
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
 	// +optional
 	Port int32 `json:"port,omitempty"`
 
@@ -186,6 +196,7 @@ type BackendSpec struct {
 // before the NyxAgent is reconciled.
 type SharedStorageRef struct {
 	// ClaimName is the name of the existing PersistentVolumeClaim.
+	// +kubebuilder:validation:MinLength=1
 	ClaimName string `json:"claimName"`
 
 	// MountPath is the absolute path inside each container.
@@ -198,6 +209,8 @@ type SharedStorageRef struct {
 type NyxAgentSpec struct {
 	// Port is the HTTP port nyx-harness listens on (Service + probe target).
 	// +kubebuilder:default=8000
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
 	// +optional
 	Port int32 `json:"port,omitempty"`
 
@@ -300,7 +313,7 @@ const (
 // +kubebuilder:resource:shortName=nyxa
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Ready",type=integer,JSONPath=`.status.readyReplicas`
-// +kubebuilder:printcolumn:name="Backends",type=integer,JSONPath=`.spec.backends[*].name`,priority=1
+// +kubebuilder:printcolumn:name="Backends",type=string,JSONPath=`.spec.backends[*].name`,priority=1
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // NyxAgent is the Schema for the nyxagents API.

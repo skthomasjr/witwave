@@ -26,7 +26,7 @@ spec:
     - jsonPath: .spec.backends[*].name
       name: Backends
       priority: 1
-      type: integer
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -94,14 +94,18 @@ spec:
                         properties:
                           content:
                             description: Content is the literal file contents.
+                            minLength: 1
                             type: string
                           mountPath:
                             description: MountPath is the absolute path inside the
                               container.
+                            minLength: 1
+                            pattern: ^/.*
                             type: string
                           name:
                             description: Name is the ConfigMap key and the filename
                               inside the container.
+                            minLength: 1
                             type: string
                         required:
                         - content
@@ -289,6 +293,7 @@ spec:
                         repository:
                           description: Repository is the image repository without
                             tag or digest.
+                          minLength: 1
                           type: string
                         tag:
                           description: Tag is the image tag. If empty, the operator
@@ -312,6 +317,8 @@ spec:
                       description: Port is the HTTP port the backend listens on inside
                         the pod.
                       format: int32
+                      maximum: 65535
+                      minimum: 1
                       type: integer
                     resources:
                       description: Resources are the CPU/memory requests and limits
@@ -387,8 +394,11 @@ spec:
                               backend's PVC to a mount path.
                             properties:
                               mountPath:
+                                minLength: 1
+                                pattern: ^/.*
                                 type: string
                               subPath:
+                                minLength: 1
                                 type: string
                             required:
                             - mountPath
@@ -416,13 +426,17 @@ spec:
                   properties:
                     content:
                       description: Content is the literal file contents.
+                      minLength: 1
                       type: string
                     mountPath:
                       description: MountPath is the absolute path inside the container.
+                      minLength: 1
+                      pattern: ^/.*
                       type: string
                     name:
                       description: Name is the ConfigMap key and the filename inside
                         the container.
+                      minLength: 1
                       type: string
                   required:
                   - content
@@ -609,6 +623,7 @@ spec:
                   repository:
                     description: Repository is the image repository without tag or
                       digest.
+                    minLength: 1
                     type: string
                   tag:
                     description: Tag is the image tag. If empty, the operator may
@@ -663,6 +678,8 @@ spec:
                 description: Port is the HTTP port nyx-harness listens on (Service
                   + probe target).
                 format: int32
+                maximum: 65535
+                minimum: 1
                 type: integer
               probes:
                 description: Probes overrides liveness/readiness probe timing.
@@ -778,6 +795,7 @@ spec:
                 properties:
                   claimName:
                     description: ClaimName is the name of the existing PersistentVolumeClaim.
+                    minLength: 1
                     type: string
                   mountPath:
                     default: /data/shared
