@@ -1,0 +1,35 @@
+{{- if .Values.serviceMonitor.enabled }}
+{{- range .Values.agents }}
+{{- $agentMetricsEnabled := (.metrics).enabled | default $.Values.metrics.enabled }}
+{{- if $agentMetricsEnabled }}
+---
+# ServiceMonitor for the Prometheus Operator (#449). One per agent, gated on
+# both .Values.serviceMonitor.enabled and the agent's metrics flag (global or
+# per-agent override) so disabled agents render nothing. The chart references
+# monitoring.coreos.com CRDs only when the user opts in.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $.Release.Name }}-{{ .name }}
+  labels:
+    {{- include "nyx.agentLabels" .name | nindent 4 }}
+    {{- with $.Values.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .name }}
+  namespaceSelector:
+    matchNames:
+      - {{ $.Release.Namespace }}
+  endpoints:
+    # Reference the Service port by name so changes to .port flow through
+    # automatically (the Service template emits a port named "http").
+    - port: http
+      path: /metrics
+      interval: {{ $.Values.serviceMonitor.scrapeInterval }}
+      scrapeTimeout: {{ $.Values.serviceMonitor.scrapeTimeout }}
+{{- end }}
+{{- end }}
+{{- end }}

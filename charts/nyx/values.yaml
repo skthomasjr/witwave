@@ -117,6 +117,23 @@ metrics:
   # Enable or disable metrics globally.
   enabled: false
 
+# ServiceMonitor for the Prometheus Operator (#449). Off by default so the
+# chart never references monitoring.coreos.com CRDs unless the user opts in
+# (clusters without the Prometheus Operator installed should leave this off).
+# When enabled, one ServiceMonitor is rendered per agent that has metrics
+# enabled — symmetric with the nyx-operator chart but adapted for the nyx
+# chart's per-agent Service layout.
+serviceMonitor:
+  enabled: false
+  # Forwarded to each ServiceMonitor's endpoints[]; defaults align with the
+  # nyx-operator chart and kubebuilder conventions.
+  scrapeInterval: 30s
+  scrapeTimeout: 10s
+  # Extra labels merged into every ServiceMonitor's metadata. Useful when
+  # the cluster's Prometheus selects ServiceMonitors by a tenancy label
+  # (e.g. release: kube-prometheus-stack).
+  labels: {}
+
 # Shared storage volume mounted into all agent pods and backend sidecars.
 sharedStorage:
   # Enable shared storage.

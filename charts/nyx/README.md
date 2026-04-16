@@ -117,6 +117,10 @@ helm uninstall nyx --namespace nyx
 | `probes.readiness.timeoutSeconds` | Readiness probe timeout | `5` |
 | `probes.readiness.failureThreshold` | Readiness probe failure threshold | `3` |
 | `metrics.enabled` | Enable Prometheus metrics globally | `false` |
+| `serviceMonitor.enabled` | Create one Prometheus Operator `ServiceMonitor` per agent for metrics auto-discovery (requires `metrics.enabled=true` for that agent and the Prometheus Operator CRDs installed in the cluster) | `false` |
+| `serviceMonitor.scrapeInterval` | Scrape interval for each ServiceMonitor endpoint | `30s` |
+| `serviceMonitor.scrapeTimeout` | Scrape timeout for each ServiceMonitor endpoint | `10s` |
+| `serviceMonitor.labels` | Extra labels merged into every ServiceMonitor (e.g. `release: kube-prometheus-stack` for Prometheus Operator's selector) | `{}` |
 | `sharedStorage.enabled` | Mount a shared volume into all agent pods and sidecars | `false` |
 | `sharedStorage.mountPath` | Mount path inside containers | `/data/shared` |
 | `sharedStorage.storageType` | `pvc` or `hostPath` | `pvc` |
