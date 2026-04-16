@@ -38,8 +38,11 @@ from metrics import (
     a2_response_length_bytes,
     a2_running_tasks,
     a2_sdk_messages_per_query,
+    a2_sdk_client_errors_total,
+    a2_sdk_errors_total,
     a2_sdk_query_duration_seconds,
     a2_sdk_query_error_duration_seconds,
+    a2_sdk_result_errors_total,
     a2_sdk_session_duration_seconds,
     a2_sdk_time_to_first_message_seconds,
     a2_sdk_tool_call_input_size_bytes,
@@ -469,7 +472,7 @@ async def run_query(
         if partial_response:
             await log_entry("agent", partial_response, session_id, model=resolved_model, tokens=_total_tokens or None)
         raise
-    except Exception:
+    except Exception as _run_exc:
         if a2_sdk_query_error_duration_seconds is not None:
             a2_sdk_query_error_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
                 time.monotonic() - _query_start
@@ -478,6 +481,23 @@ async def run_query(
             a2_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
                 time.monotonic() - _session_start
             )
+        # Classify by exception type to match a2-claude's error metric surface
+        # (#431). Best-effort — unknown exception types fall through to the
+        # generic a2_sdk_errors_total counter.
+        try:
+            import openai as _openai
+            if isinstance(_run_exc, _openai.APIConnectionError):
+                if a2_sdk_client_errors_total is not None:
+                    a2_sdk_client_errors_total.labels(**_LABELS, model=resolved_model).inc()
+            elif isinstance(_run_exc, _openai.APIError):
+                if a2_sdk_result_errors_total is not None:
+                    a2_sdk_result_errors_total.labels(**_LABELS, model=resolved_model).inc()
+            else:
+                if a2_sdk_errors_total is not None:
+                    a2_sdk_errors_total.labels(**_LABELS, model=resolved_model).inc()
+        except Exception:
+            if a2_sdk_errors_total is not None:
+                a2_sdk_errors_total.labels(**_LABELS, model=resolved_model).inc()
         raise
 
     if a2_sdk_session_duration_seconds is not None:
@@ -724,7 +744,13 @@ class AgentExecutor(A2AAgentExecutor):
         max_tokens: int | None = None
         if _max_tokens_raw is not None:
             try:
-                max_tokens = int(_max_tokens_raw)
+                _parsed = int(_max_tokens_raw)
+                if _parsed <= 0:
+                    logger.warning(
+                        f"Session {session_id!r}: max_tokens={_parsed} is non-positive; ignoring (#428)."
+                    )
+                else:
+                    max_tokens = _parsed
             except (ValueError, TypeError):
                 logger.warning(f"Session {session_id!r}: invalid max_tokens in metadata {_max_tokens_raw!r}, ignoring.")
         task_id = context.task_id

@@ -62,6 +62,11 @@ a2_sdk_messages_per_query: prometheus_client.Histogram | None = None
 a2_sdk_turns_per_query: prometheus_client.Histogram | None = None
 a2_text_blocks_per_query: prometheus_client.Histogram | None = None
 
+# SDK error classification metrics (parity with a2-claude — #431)
+a2_sdk_errors_total: prometheus_client.Counter | None = None
+a2_sdk_result_errors_total: prometheus_client.Counter | None = None
+a2_sdk_client_errors_total: prometheus_client.Counter | None = None
+
 # File watcher metrics
 a2_watcher_events_total: prometheus_client.Counter | None = None
 a2_file_watcher_restarts_total: prometheus_client.Counter | None = None
@@ -295,6 +300,23 @@ if _enabled:
         "Number of text blocks returned per run_query() invocation.",
         ["agent", "agent_id", "backend", "model"],
         buckets=(0, 1, 2, 5, 10, 20, 50, 100),
+    )
+
+    # SDK error classification (parity with a2-claude — #431)
+    a2_sdk_errors_total = prometheus_client.Counter(
+        "a2_sdk_errors_total",
+        "Total stderr/error lines emitted by the backend subprocess.",
+        ["agent", "agent_id", "backend", "model"],
+    )
+    a2_sdk_result_errors_total = prometheus_client.Counter(
+        "a2_sdk_result_errors_total",
+        "Total backend result errors returned during run_query().",
+        ["agent", "agent_id", "backend", "model"],
+    )
+    a2_sdk_client_errors_total = prometheus_client.Counter(
+        "a2_sdk_client_errors_total",
+        "Total backend client connection-level failures (setup/teardown).",
+        ["agent", "agent_id", "backend", "model"],
     )
 
     # File watchers
