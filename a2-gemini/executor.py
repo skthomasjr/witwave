@@ -6,6 +6,7 @@ import time
 import uuid
 from collections import OrderedDict
 from datetime import datetime, timezone
+from typing import Callable
 
 from a2a.server.agent_execution import AgentExecutor as A2AAgentExecutor
 from a2a.server.agent_execution import RequestContext
@@ -55,6 +56,7 @@ from metrics import (
     a2_task_last_success_timestamp_seconds,
     a2_task_timeout_headroom_seconds,
     a2_tasks_total,
+    a2_streaming_events_emitted_total,
     a2_text_blocks_per_query,
     a2_watcher_events_total,
     a2_file_watcher_restarts_total,
@@ -295,6 +297,7 @@ async def run_query(
     history_save_failed: set[str] | None = None,
     model: str | None = None,
     max_tokens: int | None = None,
+    on_chunk: Callable[[str], None] | None = None,
 ) -> list[str]:
     resolved_model = model or GEMINI_MODEL
 
@@ -337,6 +340,14 @@ async def run_query(
                                 _first_chunk_at - _query_start
                             )
                     collected.append(text)
+                    # Stream the chunk to the A2A event_queue (#430). Set by
+                    # execute(); None for non-streaming callers (e.g. /mcp).
+                    # Errors swallowed so SDK iteration is never aborted.
+                    if on_chunk is not None:
+                        try:
+                            on_chunk(text)
+                        except Exception as _e:
+                            logger.warning("Session %r: on_chunk callback raised: %s", session_id, _e)
                 # Track token count and check budget on each chunk
                 _usage_meta = getattr(chunk, "usage_metadata", None)
                 _token_count = getattr(_usage_meta, "total_token_count", None)
@@ -473,11 +484,12 @@ async def run(
     history_save_failed: set[str] | None = None,
     model: str | None = None,
     max_tokens: int | None = None,
+    on_chunk: Callable[[str], None] | None = None,
 ) -> str:
     if a2_concurrent_queries is not None:
         a2_concurrent_queries.labels(**_LABELS).inc()
     try:
-        return await _run_inner(prompt, session_id, sessions, agent_md_content, session_locks, history_save_failed, model, max_tokens)
+        return await _run_inner(prompt, session_id, sessions, agent_md_content, session_locks, history_save_failed, model, max_tokens, on_chunk=on_chunk)
     finally:
         if a2_concurrent_queries is not None:
             a2_concurrent_queries.labels(**_LABELS).dec()
@@ -492,6 +504,7 @@ async def _run_inner(
     history_save_failed: set[str] | None = None,
     model: str | None = None,
     max_tokens: int | None = None,
+    on_chunk: Callable[[str], None] | None = None,
 ) -> str:
     resolved_model = model or GEMINI_MODEL
     if a2_model_requests_total is not None:
@@ -519,7 +532,7 @@ async def _run_inner(
     _budget_exceeded = False
     try:
         collected = await asyncio.wait_for(
-            run_query(prompt, session_id, agent_md_content, session_locks, history_save_failed, model=model, max_tokens=max_tokens),
+            run_query(prompt, session_id, agent_md_content, session_locks, history_save_failed, model=model, max_tokens=max_tokens, on_chunk=on_chunk),
             timeout=TASK_TIMEOUT_SECONDS,
         )
         _track_session(sessions, session_id, session_locks)
@@ -682,6 +695,20 @@ class AgentExecutor(A2AAgentExecutor):
         _response = ""
         _success = False
         _error: str | None = None
+        # Streaming bridge (#430): forward each chunk text to the A2A
+        # event_queue as it arrives. Tracks emission count so the
+        # post-completion aggregated enqueue can be skipped when chunks were
+        # already delivered.
+        _chunks_emitted = 0
+        _streaming_label_model = model or GEMINI_MODEL or ""
+
+        def _emit_chunk(text: str) -> None:
+            nonlocal _chunks_emitted
+            _chunks_emitted += 1
+            if a2_streaming_events_emitted_total is not None:
+                a2_streaming_events_emitted_total.labels(**_LABELS, model=_streaming_label_model).inc()
+            asyncio.create_task(event_queue.enqueue_event(new_agent_text_message(text)))
+
         try:
             _response = await run(
                 prompt,
@@ -692,9 +719,12 @@ class AgentExecutor(A2AAgentExecutor):
                 history_save_failed=self._history_save_failed,
                 model=model,
                 max_tokens=max_tokens,
+                on_chunk=_emit_chunk,
             )
             _success = True
-            if _response:
+            # Skip the final aggregated event when chunks were streamed —
+            # they already delivered the content.
+            if _response and _chunks_emitted == 0:
                 await event_queue.enqueue_event(new_agent_text_message(_response))
             if a2_a2a_requests_total is not None:
                 a2_a2a_requests_total.labels(**_LABELS, status="success").inc()

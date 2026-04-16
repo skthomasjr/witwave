@@ -69,6 +69,9 @@ a2_sdk_errors_total: prometheus_client.Counter | None = None
 a2_sdk_result_errors_total: prometheus_client.Counter | None = None
 a2_sdk_client_errors_total: prometheus_client.Counter | None = None
 
+# Streaming events emitted (parity with a2-claude / a2-codex — #430)
+a2_streaming_events_emitted_total: prometheus_client.Counter | None = None
+
 # File watcher metrics
 a2_watcher_events_total: prometheus_client.Counter | None = None
 a2_file_watcher_restarts_total: prometheus_client.Counter | None = None
@@ -312,6 +315,15 @@ if _enabled:
     a2_sdk_client_errors_total = prometheus_client.Counter(
         "a2_sdk_client_errors_total",
         "Total backend client connection-level failures (setup/teardown).",
+        ["agent", "agent_id", "backend", "model"],
+    )
+
+    # Streaming events emitted (parity with a2-claude / a2-codex — #430)
+    a2_streaming_events_emitted_total = prometheus_client.Counter(
+        "a2_streaming_events_emitted_total",
+        "Total partial agent_text_message events enqueued during streaming. "
+        "Equals the number of chunks the executor pushed to the A2A "
+        "event_queue mid-stream (#430).",
         ["agent", "agent_id", "backend", "model"],
     )
 

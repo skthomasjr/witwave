@@ -61,6 +61,7 @@ a2_sdk_session_duration_seconds: prometheus_client.Histogram | None = None
 a2_sdk_messages_per_query: prometheus_client.Histogram | None = None
 a2_sdk_turns_per_query: prometheus_client.Histogram | None = None
 a2_text_blocks_per_query: prometheus_client.Histogram | None = None
+a2_streaming_events_emitted_total: prometheus_client.Counter | None = None
 
 # SDK error classification metrics (parity with a2-claude — #431)
 a2_sdk_errors_total: prometheus_client.Counter | None = None
@@ -300,6 +301,13 @@ if _enabled:
         "Number of text blocks returned per run_query() invocation.",
         ["agent", "agent_id", "backend", "model"],
         buckets=(0, 1, 2, 5, 10, 20, 50, 100),
+    )
+    a2_streaming_events_emitted_total = prometheus_client.Counter(
+        "a2_streaming_events_emitted_total",
+        "Total partial agent_text_message events enqueued during streaming. "
+        "Equals the number of text deltas the executor pushed to the A2A "
+        "event_queue mid-stream (#430).",
+        ["agent", "agent_id", "backend", "model"],
     )
 
     # SDK error classification (parity with a2-claude — #431)

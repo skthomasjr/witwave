@@ -77,6 +77,7 @@ a2_sdk_tool_errors_total: prometheus_client.Counter | None = None
 a2_sdk_tool_call_input_size_bytes: prometheus_client.Histogram | None = None
 a2_sdk_tool_result_size_bytes: prometheus_client.Histogram | None = None
 a2_text_blocks_per_query: prometheus_client.Histogram | None = None
+a2_streaming_events_emitted_total: prometheus_client.Counter | None = None
 a2_stderr_lines_per_task: prometheus_client.Histogram | None = None
 a2_tasks_with_stderr_total: prometheus_client.Counter | None = None
 a2_task_retries_total: prometheus_client.Counter | None = None
@@ -376,6 +377,13 @@ if _enabled:
         "Number of text blocks returned per run_query() invocation.",
         ["agent", "agent_id", "backend", "model"],
         buckets=(0, 1, 2, 5, 10, 20, 50, 100),
+    )
+    a2_streaming_events_emitted_total = prometheus_client.Counter(
+        "a2_streaming_events_emitted_total",
+        "Total partial agent_text_message events enqueued during streaming. "
+        "Equals the number of TextBlocks/chunks the executor pushed to the "
+        "A2A event_queue mid-stream — see #430.",
+        ["agent", "agent_id", "backend", "model"],
     )
     a2_stderr_lines_per_task = prometheus_client.Histogram(
         "a2_stderr_lines_per_task",

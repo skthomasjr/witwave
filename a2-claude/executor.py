@@ -6,6 +6,7 @@ import time
 import uuid
 from collections import OrderedDict
 from datetime import datetime, timezone
+from typing import Callable
 
 from a2a.server.agent_execution import AgentExecutor as A2AAgentExecutor
 from a2a.server.agent_execution import RequestContext
@@ -71,6 +72,7 @@ from metrics import (
     a2_task_timeout_headroom_seconds,
     a2_tasks_total,
     a2_tasks_with_stderr_total,
+    a2_streaming_events_emitted_total,
     a2_text_blocks_per_query,
     a2_watcher_events_total,
 )
@@ -334,6 +336,7 @@ async def _run_query_inner(
     session_id: str,
     effective_model: str | None = None,
     max_tokens: int | None = None,
+    on_chunk: Callable[[str], None] | None = None,
 ) -> list[str]:
     _sdk_labels = {**_LABELS, "model": effective_model or ""}
     collected: list[str] = []
@@ -364,6 +367,21 @@ async def _run_query_inner(
                         if isinstance(block, TextBlock):
                             collected.append(block.text)
                             _text_blocks.append(block.text)
+                            # Stream the chunk to the A2A event_queue (#430).
+                            # The on_chunk callback is set by execute(); when None
+                            # (e.g. MCP /mcp endpoint or non-streaming caller),
+                            # we just buffer and the caller gets the full text
+                            # at the end as before.
+                            if on_chunk is not None and block.text:
+                                try:
+                                    on_chunk(block.text)
+                                except Exception as _e:
+                                    # Never let a streaming-side error abort the
+                                    # SDK iteration; log and continue buffering.
+                                    logger.warning(
+                                        "Session %r: on_chunk callback raised: %s",
+                                        session_id, _e,
+                                    )
                         elif isinstance(block, ToolUseBlock):
                             _tool_names[block.id] = block.name
                             _tool_start_times[block.id] = time.monotonic()
@@ -463,6 +481,7 @@ async def run_query(
     agent_md_content: str,
     model: str | None = None,
     max_tokens: int | None = None,
+    on_chunk: Callable[[str], None] | None = None,
 ) -> list[str]:
     stderr_lines: list[str] = []
     _query_start = time.monotonic()
@@ -481,6 +500,7 @@ async def run_query(
             session_id,
             effective_model=effective_model,
             max_tokens=max_tokens,
+            on_chunk=on_chunk,
         )
     except BudgetExceededError:
         raise
@@ -504,6 +524,7 @@ async def run_query(
                 session_id,
                 effective_model=effective_model,
                 max_tokens=max_tokens,
+                on_chunk=on_chunk,
             )
         raise
     finally:
@@ -521,11 +542,12 @@ async def run(
     agent_md_content: str,
     model: str | None = None,
     max_tokens: int | None = None,
+    on_chunk: Callable[[str], None] | None = None,
 ) -> str:
     if a2_concurrent_queries is not None:
         a2_concurrent_queries.labels(**_LABELS).inc()
     try:
-        return await _run_inner(prompt, session_id, sessions, mcp_servers, agent_md_content, model, max_tokens)
+        return await _run_inner(prompt, session_id, sessions, mcp_servers, agent_md_content, model, max_tokens, on_chunk=on_chunk)
     finally:
         if a2_concurrent_queries is not None:
             a2_concurrent_queries.labels(**_LABELS).dec()
@@ -539,6 +561,7 @@ async def _run_inner(
     agent_md_content: str,
     model: str | None = None,
     max_tokens: int | None = None,
+    on_chunk: Callable[[str], None] | None = None,
 ) -> str:
     resolved_model = model or CLAUDE_MODEL or "default"
     if a2_model_requests_total is not None:
@@ -563,7 +586,7 @@ async def _run_inner(
     _budget_exceeded = False
     try:
         collected = await asyncio.wait_for(
-            run_query(prompt, session_id, is_new, mcp_servers, agent_md_content, model=model, max_tokens=max_tokens),
+            run_query(prompt, session_id, is_new, mcp_servers, agent_md_content, model=model, max_tokens=max_tokens, on_chunk=on_chunk),
             timeout=TASK_TIMEOUT_SECONDS,
         )
         await _track_session(sessions, session_id)
@@ -748,6 +771,23 @@ class AgentExecutor(A2AAgentExecutor):
         _response = ""
         _success = False
         _error: str | None = None
+        # Streaming bridge (#430): forward each TextBlock to the A2A event_queue
+        # as it arrives. Tracks emission count so the post-completion aggregated
+        # enqueue can be skipped when chunks were already delivered (avoids
+        # duplicate text on the wire).
+        _chunks_emitted = 0
+        _streaming_label_model = model or CLAUDE_MODEL or ""
+
+        def _emit_chunk(text: str) -> None:
+            nonlocal _chunks_emitted
+            _chunks_emitted += 1
+            if a2_streaming_events_emitted_total is not None:
+                a2_streaming_events_emitted_total.labels(**_LABELS, model=_streaming_label_model).inc()
+            # enqueue_event is async; schedule it without awaiting so the SDK
+            # iteration loop doesn't have to await per-chunk. The event_queue
+            # is a thread-safe asyncio queue; create_task queues the put.
+            asyncio.create_task(event_queue.enqueue_event(new_agent_text_message(text)))
+
         try:
             _response = await run(
                 prompt,
@@ -757,9 +797,13 @@ class AgentExecutor(A2AAgentExecutor):
                 self._agent_md_content,
                 model=model,
                 max_tokens=max_tokens,
+                on_chunk=_emit_chunk,
             )
             _success = True
-            if _response:
+            # Only emit the final aggregated event if we did NOT stream chunks
+            # (e.g. tool-only turn that produced no text). Otherwise the chunks
+            # already delivered the content and a final enqueue would duplicate.
+            if _response and _chunks_emitted == 0:
                 await event_queue.enqueue_event(new_agent_text_message(_response))
             if a2_a2a_requests_total is not None:
                 a2_a2a_requests_total.labels(**_LABELS, status="success").inc()
