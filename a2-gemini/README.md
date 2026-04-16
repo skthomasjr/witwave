@@ -97,3 +97,10 @@ slot id, e.g. `gemini`), `AGENT_URL`, `BACKEND_PORT`, `GEMINI_API_KEY` (or `GOOG
 default `100`; set to `0` to disable truncation and keep full history), `METRICS_ENABLED`,
 `CONVERSATIONS_AUTH_TOKEN`, `TASK_STORE_PATH`, `WORKER_MAX_RESTARTS`, `LOG_PROMPT_MAX_BYTES` (max bytes of prompt logged
 at INFO; default 200; set to 0 to suppress).
+
+## Tracing (OpenTelemetry)
+
+When `OTEL_ENABLED=true` is set, a2-gemini emits a server span for every `execute()` call and continues any trace
+propagated by nyx-harness via the `metadata.traceparent` field (#469). The OTLP/HTTP exporter reads the standard
+`OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_SERVICE_NAME` / `OTEL_TRACES_SAMPLER` env vars. When `OTEL_ENABLED` is falsy
+(default) the OTel call sites are no-ops. Bootstrap in `shared/otel.py` is shared with the harness and other backends.

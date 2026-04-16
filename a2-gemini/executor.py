@@ -447,7 +447,7 @@ async def run_query(
         a2_sdk_turns_per_query.labels(**_LABELS, model=resolved_model).observe(_turn_count)
     if a2_text_blocks_per_query is not None:
         a2_text_blocks_per_query.labels(**_LABELS, model=resolved_model).observe(len(collected))
-    if _total_tokens and max_tokens:
+    if _total_tokens is not None and max_tokens is not None:
         if a2_context_tokens is not None:
             a2_context_tokens.labels(**_LABELS).observe(_total_tokens)
         if a2_context_tokens_remaining is not None:
@@ -663,6 +663,10 @@ class AgentExecutor(A2AAgentExecutor):
         _exec_start = time.monotonic()
         prompt = context.get_user_input()
         metadata = context.message.metadata or {}
+        # OTel server span continuation (#469).
+        from otel import extract_otel_context as _extract_ctx
+        _tp = metadata.get("traceparent") if isinstance(metadata.get("traceparent"), str) else None
+        _otel_parent = _extract_ctx({"traceparent": _tp}) if _tp else None
         _raw_sid = "".join(c for c in str(context.context_id or metadata.get("session_id") or "").strip()[:256] if c >= " ")
         if not _raw_sid:
             session_id = str(uuid.uuid4())
@@ -713,27 +717,41 @@ class AgentExecutor(A2AAgentExecutor):
             # rationale (event ordering + exception surfacing).
             await event_queue.enqueue_event(new_agent_text_message(text))
 
+        from otel import start_span as _start_span, set_span_error as _set_span_error
+        _otel_span = None
         try:
-            _response = await run(
-                prompt,
-                session_id,
-                self._sessions,
-                self._agent_md_content,
-                self._session_locks,
-                history_save_failed=self._history_save_failed,
-                model=model,
-                max_tokens=max_tokens,
-                on_chunk=_emit_chunk,
-            )
-            _success = True
-            # Skip the final aggregated event when chunks were streamed —
-            # they already delivered the content.
-            if _response and _chunks_emitted == 0:
-                await event_queue.enqueue_event(new_agent_text_message(_response))
-            if a2_a2a_requests_total is not None:
-                a2_a2a_requests_total.labels(**_LABELS, status="success").inc()
+            with _start_span(
+                "a2-gemini.execute",
+                kind="server",
+                parent_context=_otel_parent,
+                attributes={
+                    "a2.session_id": session_id,
+                    "a2.model": model or GEMINI_MODEL or "",
+                    "a2.agent": AGENT_NAME,
+                    "a2.agent_id": AGENT_ID,
+                },
+            ) as _otel_span:
+                _response = await run(
+                    prompt,
+                    session_id,
+                    self._sessions,
+                    self._agent_md_content,
+                    self._session_locks,
+                    history_save_failed=self._history_save_failed,
+                    model=model,
+                    max_tokens=max_tokens,
+                    on_chunk=_emit_chunk,
+                )
+                _success = True
+                # Skip the final aggregated event when chunks were streamed —
+                # they already delivered the content.
+                if _response and _chunks_emitted == 0:
+                    await event_queue.enqueue_event(new_agent_text_message(_response))
+                if a2_a2a_requests_total is not None:
+                    a2_a2a_requests_total.labels(**_LABELS, status="success").inc()
         except Exception as _exc:
             _error = repr(_exc)
+            _set_span_error(_otel_span, _exc)
             if a2_a2a_requests_total is not None:
                 a2_a2a_requests_total.labels(**_LABELS, status="error").inc()
             raise

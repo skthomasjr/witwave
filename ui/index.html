@@ -577,6 +577,8 @@
       <button class="active" data-view="agents">agents</button>
       <button data-view="conversations">conversations</button>
       <button data-view="calendar">calendar</button>
+      <button data-view="jobs">jobs</button>
+      <button data-view="tasks">tasks</button>
       <button data-view="triggers">triggers</button>
       <button data-view="webhooks">webhooks</button>
       <button data-view="continuations">continuations</button>
@@ -615,6 +617,32 @@
         </div>
       </div>
       <div id="cal-body" style="flex:1;display:flex;flex-direction:column;overflow:hidden;"></div>
+    </div>
+
+    <!-- Jobs -->
+    <div id="jobs-view" class="view">
+      <div class="conv-toolbar">
+        <span class="ct-label">search</span>
+        <input id="jobs-search" type="text" placeholder="filter by name, schedule, or description…" />
+        <span class="conv-count" id="jobs-count"></span>
+        <button class="icon-btn" id="jobs-refresh" style="margin-left:auto">↺ now</button>
+      </div>
+      <div class="conv-feed" id="jobs-feed">
+        <div class="empty">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Tasks -->
+    <div id="tasks-view" class="view">
+      <div class="conv-toolbar">
+        <span class="ct-label">search</span>
+        <input id="tasks-search" type="text" placeholder="filter by name or description…" />
+        <span class="conv-count" id="tasks-count"></span>
+        <button class="icon-btn" id="tasks-refresh" style="margin-left:auto">↺ now</button>
+      </div>
+      <div class="conv-feed" id="tasks-feed">
+        <div class="empty">Loading…</div>
+      </div>
     </div>
 
     <!-- Triggers -->
@@ -738,6 +766,8 @@ const viewEls = {
   agents: document.getElementById('agents-view'),
   conversations: document.getElementById('conversations-view'),
   calendar: document.getElementById('calendar-view'),
+  jobs: document.getElementById('jobs-view'),
+  tasks: document.getElementById('tasks-view'),
   triggers: document.getElementById('triggers-view'),
   webhooks: document.getElementById('webhooks-view'),
   continuations: document.getElementById('continuations-view'),
@@ -754,6 +784,8 @@ function switchView(name) {
   localStorage.setItem('nyx-active-view', name);
   if (name === 'conversations' && !conv.loaded) loadConversations();
   if (name === 'calendar') loadCalendarData();
+  if (name === 'jobs') loadJobsList();
+  if (name === 'tasks') loadTasksList();
   if (name === 'triggers') loadTriggers();
   if (name === 'webhooks') loadWebhooks();
   if (name === 'continuations') loadContinuations();
@@ -1421,12 +1453,26 @@ function _saveAgentState() {
   } catch (e) { /* localStorage full or unavailable */ }
 }
 
+// _safeAssignFromJSON merges a JSON-parsed object into a target while filtering
+// the prototype-pollution attack surface (__proto__, constructor, prototype).
+// localStorage is a leaky trust boundary — a browser extension or shared-origin
+// XSS can plant a malicious payload there (#456). Without filtering, a
+// __proto__ key would land on Object.prototype and affect every object in the
+// page's lifetime.
+function _safeAssignFromJSON(target, parsed) {
+  if (!parsed || typeof parsed !== 'object') return;
+  for (const k of Object.keys(parsed)) {
+    if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+    target[k] = parsed[k];
+  }
+}
+
 function _loadAgentState() {
   try {
     const cache = localStorage.getItem('nyx-panel-cache');
-    if (cache) Object.assign(_panelCache, JSON.parse(cache));
+    if (cache) _safeAssignFromJSON(_panelCache, JSON.parse(cache));
     const sessions = localStorage.getItem('nyx-session-map');
-    if (sessions) Object.assign(_sessionMap, JSON.parse(sessions));
+    if (sessions) _safeAssignFromJSON(_sessionMap, JSON.parse(sessions));
     // Seed the LRU order so restored entries are subject to eviction (#406).
     for (const _name of Object.keys(_panelCache)) _panelCacheTouch(_name);
   } catch (e) {}
@@ -2308,6 +2354,122 @@ function renderDay() {
 // ── Render ────────────────────────────────────────────────────────────────────
 let _calNowTimer = null;
 
+// ── Jobs view (#462) ─────────────────────────────────────────────────────────
+let _jobsListData = [];
+
+async function loadJobsList() {
+  const countEl = document.getElementById('jobs-count');
+  try {
+    const resp = await fetchWithTimeout(`${AGENT_BASE}/jobs`);
+    _jobsListData = resp?.ok ? await resp.json() : [];
+  } catch (_e) {
+    _jobsListData = [];
+  }
+  if (!Array.isArray(_jobsListData)) _jobsListData = [];
+  renderJobsList();
+  if (countEl) countEl.textContent = `${_jobsListData.length} job${_jobsListData.length === 1 ? '' : 's'}`;
+}
+
+function renderJobsList() {
+  const feed = document.getElementById('jobs-feed');
+  if (!feed) return;
+  const search = (document.getElementById('jobs-search')?.value || '').trim().toLowerCase();
+  const list = search
+    ? _jobsListData.filter(j =>
+        (j.name || '').toLowerCase().includes(search) ||
+        (j.schedule || '').toLowerCase().includes(search) ||
+        (j.description || '').toLowerCase().includes(search))
+    : _jobsListData;
+  if (!list.length) {
+    feed.innerHTML = '<div class="empty">No jobs configured.</div>';
+    return;
+  }
+  const rows = list.map(j => {
+    const name = escHtml(j.name || '(unnamed)');
+    const desc = j.description ? escHtml(j.description) : '<span class="muted">(no description)</span>';
+    const schedule = j.schedule ? `<code>${escHtml(j.schedule)}</code>` : '<span class="muted">none</span>';
+    const session = j.session_id ? escHtml(j.session_id) : '<span class="muted">—</span>';
+    const backend = j.backend_id ? escHtml(j.backend_id) : '<span class="muted">default</span>';
+    const model = j.model ? escHtml(j.model) : '<span class="muted">default</span>';
+    const maxTokens = j.max_tokens != null ? escHtml(String(j.max_tokens)) : '<span class="muted">unset</span>';
+    const runningHtml = j.running ? '<span class="ok">running</span>' : '<span class="muted">idle</span>';
+    const consensus = Array.isArray(j.consensus) && j.consensus.length
+      ? `<div class="muted" style="margin-top:4px;font-size:11px">consensus: ${escHtml(JSON.stringify(j.consensus))}</div>`
+      : '';
+    return `<div class="conv-msg">
+      <div><strong>${name}</strong> &nbsp; ${runningHtml}</div>
+      <div class="muted" style="margin-top:4px">${desc}</div>
+      <div class="muted" style="margin-top:4px;font-size:11px">
+        schedule: ${schedule} · session: ${session}
+      </div>
+      <div class="muted" style="margin-top:4px;font-size:11px">
+        backend: ${backend} · model: ${model} · max-tokens: ${maxTokens}
+      </div>
+      ${consensus}
+    </div>`;
+  }).join('');
+  feed.innerHTML = rows;
+}
+
+// ── Tasks view (#462) ────────────────────────────────────────────────────────
+let _tasksListData = [];
+
+async function loadTasksList() {
+  const countEl = document.getElementById('tasks-count');
+  try {
+    const resp = await fetchWithTimeout(`${AGENT_BASE}/tasks`);
+    _tasksListData = resp?.ok ? await resp.json() : [];
+  } catch (_e) {
+    _tasksListData = [];
+  }
+  if (!Array.isArray(_tasksListData)) _tasksListData = [];
+  renderTasksList();
+  if (countEl) countEl.textContent = `${_tasksListData.length} task${_tasksListData.length === 1 ? '' : 's'}`;
+}
+
+function renderTasksList() {
+  const feed = document.getElementById('tasks-feed');
+  if (!feed) return;
+  const search = (document.getElementById('tasks-search')?.value || '').trim().toLowerCase();
+  const list = search
+    ? _tasksListData.filter(t =>
+        (t.name || '').toLowerCase().includes(search) ||
+        (t.description || '').toLowerCase().includes(search))
+    : _tasksListData;
+  if (!list.length) {
+    feed.innerHTML = '<div class="empty">No tasks configured.</div>';
+    return;
+  }
+  const rows = list.map(t => {
+    const name = escHtml(t.name || '(unnamed)');
+    const desc = t.description ? escHtml(t.description) : '<span class="muted">(no description)</span>';
+    const days = t.days_expr ? `<code>${escHtml(t.days_expr)}</code>` : '<span class="muted">*</span>';
+    const window = t.window_start ? escHtml(`${t.window_start}${t.window_duration ? ' (' + t.window_duration + ')' : ''}`) : '<span class="muted">none</span>';
+    const tz = t.timezone ? escHtml(t.timezone) : '<span class="muted">UTC</span>';
+    const loop = t.loop_interval ? escHtml(t.loop_interval) : '<span class="muted">no loop</span>';
+    const session = t.session_id ? escHtml(t.session_id) : '<span class="muted">—</span>';
+    const backend = t.backend_id ? escHtml(t.backend_id) : '<span class="muted">default</span>';
+    const model = t.model ? escHtml(t.model) : '<span class="muted">default</span>';
+    const maxTokens = t.max_tokens != null ? escHtml(String(t.max_tokens)) : '<span class="muted">unset</span>';
+    const runningHtml = t.running ? '<span class="ok">running</span>' : '<span class="muted">idle</span>';
+    const consensus = Array.isArray(t.consensus) && t.consensus.length
+      ? `<div class="muted" style="margin-top:4px;font-size:11px">consensus: ${escHtml(JSON.stringify(t.consensus))}</div>`
+      : '';
+    return `<div class="conv-msg">
+      <div><strong>${name}</strong> &nbsp; ${runningHtml}</div>
+      <div class="muted" style="margin-top:4px">${desc}</div>
+      <div class="muted" style="margin-top:4px;font-size:11px">
+        days: ${days} · window: ${window} · tz: ${tz} · loop: ${loop}
+      </div>
+      <div class="muted" style="margin-top:4px;font-size:11px">
+        session: ${session} · backend: ${backend} · model: ${model} · max-tokens: ${maxTokens}
+      </div>
+      ${consensus}
+    </div>`;
+  }).join('');
+  feed.innerHTML = rows;
+}
+
 // ── Triggers view (#433) ──────────────────────────────────────────────────────
 let _triggersData = [];
 
@@ -2327,6 +2489,7 @@ async function loadTriggers() {
 
 function renderTriggers() {
   const feed = document.getElementById('triggers-feed');
+  if (!feed) return;
   const search = (document.getElementById('triggers-search')?.value || '').trim().toLowerCase();
   const list = search
     ? _triggersData.filter(t =>
@@ -2345,8 +2508,13 @@ function renderTriggers() {
     const backend = t.backend_id ? escHtml(t.backend_id) : '<span class="muted">default</span>';
     const model = t.model ? escHtml(t.model) : '<span class="muted">default</span>';
     const runningHtml = t.running ? '<span class="ok">running</span>' : '<span class="muted">idle</span>';
+    // enabled / signed indicators added in #461. enabled defaults to true if
+    // the field is missing (older harness versions); signed only renders when
+    // truthy so the common open-trigger case stays clutter-free.
+    const enabledHtml = t.enabled === false ? '<span class="muted">disabled</span>' : '<span class="ok">enabled</span>';
+    const signedHtml = t.signed ? ' &nbsp; <span class="ok">signed</span>' : '';
     return `<div class="conv-msg">
-      <div><strong>${endpoint}</strong> &nbsp; ${runningHtml}</div>
+      <div><strong>${endpoint}</strong> &nbsp; ${enabledHtml} &nbsp; ${runningHtml}${signedHtml}</div>
       <div class="muted" style="margin-top:4px">${desc}</div>
       <div class="muted" style="margin-top:4px;font-size:11px">
         backend: ${backend} · model: ${model} · session: ${session}
@@ -2361,6 +2529,16 @@ document.addEventListener('DOMContentLoaded', () => {
   if (searchEl) searchEl.addEventListener('input', renderTriggers);
   const refreshEl = document.getElementById('triggers-refresh');
   if (refreshEl) refreshEl.addEventListener('click', loadTriggers);
+  // Jobs (#462)
+  const jSearch = document.getElementById('jobs-search');
+  if (jSearch) jSearch.addEventListener('input', renderJobsList);
+  const jRefresh = document.getElementById('jobs-refresh');
+  if (jRefresh) jRefresh.addEventListener('click', loadJobsList);
+  // Tasks (#462)
+  const tSearch = document.getElementById('tasks-search');
+  if (tSearch) tSearch.addEventListener('input', renderTasksList);
+  const tRefresh = document.getElementById('tasks-refresh');
+  if (tRefresh) tRefresh.addEventListener('click', loadTasksList);
 });
 
 // ── Webhooks view (#421) ──────────────────────────────────────────────────────
@@ -2381,6 +2559,7 @@ async function loadWebhooks() {
 
 function renderWebhooks() {
   const feed = document.getElementById('webhooks-feed');
+  if (!feed) return;
   const search = (document.getElementById('webhooks-search')?.value || '').trim().toLowerCase();
   const list = search
     ? _webhooksData.filter(w =>
@@ -2440,6 +2619,7 @@ async function loadContinuations() {
 
 function renderContinuations() {
   const feed = document.getElementById('continuations-feed');
+  if (!feed) return;
   const search = (document.getElementById('continuations-search')?.value || '').trim().toLowerCase();
   // continues_after is a string OR list depending on fan-in shape; normalise for search/render.
   const upstreamStr = c => Array.isArray(c.continues_after)
@@ -2503,6 +2683,7 @@ async function loadHeartbeat() {
 
 function renderHeartbeat() {
   const feed = document.getElementById('heartbeat-feed');
+  if (!feed) return;
   if (!_heartbeatData) {
     feed.innerHTML = '<div class="empty">Heartbeat configuration unavailable.</div>';
     return;

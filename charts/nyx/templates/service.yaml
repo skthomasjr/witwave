@@ -13,6 +13,7 @@ metadata:
     prometheus.io/path: "/metrics"
   {{- end }}
 spec:
+  type: {{ ((.service).type) | default "ClusterIP" }}
   selector:
     app.kubernetes.io/name: {{ .name }}
   ports:

@@ -23,6 +23,10 @@ spec:
     metadata:
       labels:
         {{- include "nyx.agentLabels" .name | nindent 8 }}
+      {{- with .podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
     spec:
       terminationGracePeriodSeconds: 60
       automountServiceAccountToken: false
@@ -40,7 +44,7 @@ spec:
       initContainers:
         {{- range .gitSyncs }}
         - name: git-sync-init-{{ .name }}
-          image: {{ .image | default $.Values.gitSync.image }}
+          image: {{ .image | default (include "nyx.gitSyncImage" $) }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -65,7 +69,7 @@ spec:
         {{- end }}
         {{- if include "nyx.hasMappings" $agent }}
         - name: git-map-init
-          image: {{ $.Values.gitSync.image }}
+          image: {{ include "nyx.gitSyncImage" $ }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -82,7 +86,7 @@ spec:
         {{- $agent := . }}
         {{- range .gitSyncs }}
         - name: git-sync-{{ .name }}
-          image: {{ .image | default $.Values.gitSync.image }}
+          image: {{ .image | default (include "nyx.gitSyncImage" $) }}
           args:
             - --repo={{ .repo }}
             - --root=/git

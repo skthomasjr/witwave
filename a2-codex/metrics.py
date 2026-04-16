@@ -61,6 +61,7 @@ a2_sdk_session_duration_seconds: prometheus_client.Histogram | None = None
 a2_sdk_messages_per_query: prometheus_client.Histogram | None = None
 a2_sdk_turns_per_query: prometheus_client.Histogram | None = None
 a2_text_blocks_per_query: prometheus_client.Histogram | None = None
+a2_sdk_tokens_per_query: prometheus_client.Histogram | None = None
 a2_streaming_events_emitted_total: prometheus_client.Counter | None = None
 
 # MCP config metrics (parity with a2-claude — #432)
@@ -306,6 +307,11 @@ if _enabled:
         "Number of text blocks returned per run_query() invocation.",
         ["agent", "agent_id", "backend", "model"],
         buckets=(0, 1, 2, 5, 10, 20, 50, 100),
+    )
+    a2_sdk_tokens_per_query = prometheus_client.Histogram(
+        "a2_sdk_tokens_per_query",
+        "Total tokens consumed per run_query() invocation (parity with a2-claude — #459).",
+        ["agent", "agent_id", "backend", "model"],
     )
     a2_streaming_events_emitted_total = prometheus_client.Counter(
         "a2_streaming_events_emitted_total",

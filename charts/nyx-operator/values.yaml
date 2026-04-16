@@ -68,6 +68,23 @@ serviceMonitor:
 probes:
   port: 8081
 
+# Optional PodDisruptionBudget for the manager pod (#464). Default off; set
+# enabled: true to protect the operator from voluntary disruption (node drain,
+# cluster upgrade). minAvailable: 1 is sensible for replicaCount: 1 with
+# leader election; supply maxUnavailable instead for replicaCount > 1.
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+  # maxUnavailable: 1   # mutually exclusive with minAvailable
+
+# Optional preStop lifecycle sleep on the manager container (#465). Gives a
+# coordinated drain window for in-flight reconciliations before SIGTERM.
+# Default off; the operator's Reconcile cycles are short so 10s is usually
+# plenty when enabled.
+preStop:
+  enabled: false
+  delaySeconds: 10
+
 # ServiceAccount used by the manager pod.
 serviceAccount:
   create: true

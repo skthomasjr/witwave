@@ -70,6 +70,7 @@ from metrics import (
     a2_mcp_config_reloads_total,
     a2_mcp_servers_active,
     a2_streaming_events_emitted_total,
+    a2_sdk_tokens_per_query,
     a2_text_blocks_per_query,
     a2_watcher_events_total,
     a2_file_watcher_restarts_total,
@@ -97,6 +98,10 @@ MCP_CONFIG_PATH = os.environ.get("MCP_CONFIG_PATH", "/home/agent/.codex/mcp.json
 
 MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "10000"))
 TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
+# Percent of max_tokens at which a context-window warning metric is incremented.
+# Tunable via env so operators can dial sensitivity without patching the
+# binary. Matches the a2-claude knob (#459).
+CONTEXT_USAGE_WARN_THRESHOLD = float(os.environ.get("CONTEXT_USAGE_WARN_THRESHOLD", "0.8"))
 # Maximum number of bytes of prompt text included in INFO-level log messages.
 # Set to 0 to suppress prompt text from logs entirely; set higher for more context.
 LOG_PROMPT_MAX_BYTES = int(os.environ.get("LOG_PROMPT_MAX_BYTES", "200"))
@@ -378,7 +383,7 @@ async def log_trace(text: str) -> None:
         logger.error(f"log_trace error: {e}")
 
 
-def _track_session(sessions: OrderedDict[str, float], session_id: str) -> None:
+async def _track_session(sessions: OrderedDict[str, float], session_id: str) -> None:
     if session_id in sessions:
         sessions.move_to_end(session_id)
         sessions[session_id] = time.monotonic()
@@ -391,10 +396,13 @@ def _track_session(sessions: OrderedDict[str, float], session_id: str) -> None:
                 a2_session_age_seconds.labels(**_LABELS).observe(time.monotonic() - last_used_at)
             # Clean up the evicted session's SQLite record so the database does not
             # grow unboundedly as sessions cycle through the LRU cache (#415).
+            # Run the delete in a thread pool so the event loop is not blocked
+            # on slow/remote filesystems — same pattern the timeout-cleanup
+            # path at line 766 uses, and consistent with a2-claude #426 (#450).
             _db = CODEX_SESSION_DB
             if _db and _db != ":memory:":
                 try:
-                    _delete_sqlite_session(_evicted_id, _db)
+                    await asyncio.to_thread(_delete_sqlite_session, _evicted_id, _db)
                 except Exception as _del_exc:
                     logger.warning("Could not delete evicted session %r from DB: %s", _evicted_id, _del_exc)
         sessions[session_id] = time.monotonic()
@@ -661,6 +669,8 @@ async def run_query(
         a2_sdk_turns_per_query.labels(**_LABELS, model=resolved_model).observe(_turn_count)
     if a2_text_blocks_per_query is not None:
         a2_text_blocks_per_query.labels(**_LABELS, model=resolved_model).observe(len(collected))
+    if a2_sdk_tokens_per_query is not None:
+        a2_sdk_tokens_per_query.labels(**_LABELS, model=resolved_model).observe(_total_tokens)
     if a2_sdk_tool_calls_per_query is not None:
         a2_sdk_tool_calls_per_query.labels(**_LABELS).observe(_tool_call_count)
     if _total_tokens and max_tokens:
@@ -673,7 +683,7 @@ async def run_query(
             a2_context_usage_percent.labels(**_LABELS).observe(_pct)
         if _pct >= 100 and a2_context_exhaustion_total is not None:
             a2_context_exhaustion_total.labels(**_LABELS).inc()
-        elif _pct >= 80 and a2_context_warnings_total is not None:
+        elif _pct >= CONTEXT_USAGE_WARN_THRESHOLD * 100 and a2_context_warnings_total is not None:
             a2_context_warnings_total.labels(**_LABELS).inc()
 
     # Log a trace entry for the completed turn
@@ -784,7 +794,7 @@ async def _run_inner(
             model=resolved_model,
         )
         collected = _bexc.collected
-        _track_session(sessions, session_id)
+        await _track_session(sessions, session_id)
     except Exception:
         if a2_tasks_total is not None:
             a2_tasks_total.labels(**_LABELS, status="error").inc()
@@ -795,7 +805,7 @@ async def _run_inner(
         raise
 
     if not _budget_exceeded:
-        _track_session(sessions, session_id)
+        await _track_session(sessions, session_id)
     if a2_tasks_total is not None:
         a2_tasks_total.labels(**_LABELS, status="budget_exceeded" if _budget_exceeded else "success").inc()
     if a2_task_last_success_timestamp_seconds is not None:
@@ -903,6 +913,10 @@ class AgentExecutor(A2AAgentExecutor):
         _exec_start = time.monotonic()
         prompt = context.get_user_input()
         metadata = context.message.metadata or {}
+        # OTel server span continuation (#469).
+        from otel import extract_otel_context as _extract_ctx
+        _tp = metadata.get("traceparent") if isinstance(metadata.get("traceparent"), str) else None
+        _otel_parent = _extract_ctx({"traceparent": _tp}) if _tp else None
         _raw_sid = "".join(c for c in str(context.context_id or metadata.get("session_id") or "").strip()[:256] if c >= " ")
         if not _raw_sid:
             session_id = str(uuid.uuid4())
@@ -953,27 +967,41 @@ class AgentExecutor(A2AAgentExecutor):
             # rationale (event ordering + exception surfacing).
             await event_queue.enqueue_event(new_agent_text_message(text))
 
+        from otel import start_span as _start_span, set_span_error as _set_span_error
+        _otel_span = None
         try:
-            _response = await run(
-                prompt,
-                session_id,
-                self._sessions,
-                self._agent_md_content,
-                model=model,
-                max_tokens=max_tokens,
-                on_chunk=_emit_chunk,
-                mcp_config=self._mcp_config,
-            )
-            _success = True
-            # Skip the final aggregated event when chunks were streamed —
-            # they already delivered the content. Keep it as a fallback for
-            # tool-only or non-streamed runs.
-            if _response and _chunks_emitted == 0:
-                await event_queue.enqueue_event(new_agent_text_message(_response))
-            if a2_a2a_requests_total is not None:
-                a2_a2a_requests_total.labels(**_LABELS, status="success").inc()
+            with _start_span(
+                "a2-codex.execute",
+                kind="server",
+                parent_context=_otel_parent,
+                attributes={
+                    "a2.session_id": session_id,
+                    "a2.model": model or CODEX_MODEL or "",
+                    "a2.agent": AGENT_NAME,
+                    "a2.agent_id": AGENT_ID,
+                },
+            ) as _otel_span:
+                _response = await run(
+                    prompt,
+                    session_id,
+                    self._sessions,
+                    self._agent_md_content,
+                    model=model,
+                    max_tokens=max_tokens,
+                    on_chunk=_emit_chunk,
+                    mcp_config=self._mcp_config,
+                )
+                _success = True
+                # Skip the final aggregated event when chunks were streamed —
+                # they already delivered the content. Keep it as a fallback for
+                # tool-only or non-streamed runs.
+                if _response and _chunks_emitted == 0:
+                    await event_queue.enqueue_event(new_agent_text_message(_response))
+                if a2_a2a_requests_total is not None:
+                    a2_a2a_requests_total.labels(**_LABELS, status="success").inc()
         except Exception as _exc:
             _error = repr(_exc)
+            _set_span_error(_otel_span, _exc)
             if a2_a2a_requests_total is not None:
                 a2_a2a_requests_total.labels(**_LABELS, status="error").inc()
             raise

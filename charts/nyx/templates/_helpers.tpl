@@ -1,4 +1,20 @@
 {{/*
+Default git-sync image, resolved as repository:tag where tag falls back to
+.Chart.AppVersion (matching every other image in this chart). Per-entry
+.gitSyncs[].image overrides still take precedence and accept any string.
+Backwards-compat: if a user still has the legacy `gitSync.image: <string>`
+shape, the string is returned verbatim.
+Usage: {{ include "nyx.gitSyncImage" . }}
+*/}}
+{{- define "nyx.gitSyncImage" -}}
+{{- if kindIs "string" .Values.gitSync.image -}}
+{{ .Values.gitSync.image }}
+{{- else -}}
+{{ .Values.gitSync.image.repository }}:{{ .Values.gitSync.image.tag | default .Chart.AppVersion }}
+{{- end -}}
+{{- end }}
+
+{{/*
 Agent component labels (nyx-harness).
 Usage: {{- include "nyx.agentLabels" .name | nindent 4 }}
 */}}

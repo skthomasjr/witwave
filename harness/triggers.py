@@ -175,6 +175,10 @@ class TriggerRunner:
                 "consensus": item.consensus,
                 "max_tokens": item.max_tokens,
                 "running": item.endpoint in self._running,
+                # Expose enabled and HMAC-signed status so the UI can render
+                # them — previously dropped between model and wire (#461).
+                "enabled": item.enabled,
+                "signed": bool(item.secret_env_var),
             })
         return result
 
