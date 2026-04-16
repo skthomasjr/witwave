@@ -706,7 +706,7 @@ async def run(
     if a2_concurrent_queries is not None:
         a2_concurrent_queries.labels(**_LABELS).inc()
     try:
-        return await _run_inner(prompt, session_id, sessions, mcp_servers, agent_md_content, model, max_tokens, on_chunk=on_chunk)
+        return await _run_inner(prompt, session_id, sessions, mcp_servers, agent_md_content, model, max_tokens, on_chunk=on_chunk, hook_state=hook_state)
     finally:
         if a2_concurrent_queries is not None:
             a2_concurrent_queries.labels(**_LABELS).dec()
@@ -721,6 +721,7 @@ async def _run_inner(
     model: str | None = None,
     max_tokens: int | None = None,
     on_chunk: Callable[[str], Awaitable[None]] | None = None,
+    hook_state: "HookState | None" = None,
 ) -> str:
     resolved_model = model or CLAUDE_MODEL or "default"
     if a2_model_requests_total is not None:
