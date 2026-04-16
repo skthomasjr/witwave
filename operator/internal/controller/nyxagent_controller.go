@@ -36,10 +36,18 @@ import (
 	nyxv1alpha1 "github.com/nyx-ai/nyx-operator/api/v1alpha1"
 )
 
-// DefaultImageTag is used when an ImageSpec omits Tag. Overridden at build
-// time via -ldflags. Tracking the operator version rather than the app
-// version keeps first-pass wiring simple — users can always pin tags per-CR.
-var DefaultImageTag = "latest"
+// DefaultImageTag is used when an ImageSpec omits Tag. The release pipeline
+// overrides this at link time via:
+//
+//	-ldflags "-X github.com/nyx-ai/nyx-operator/internal/controller.DefaultImageTag=<version>"
+//
+// The "unset" sentinel makes uninjected builds detectable so cmd/main.go can
+// warn at startup; users can always pin tags explicitly per-NyxAgent (#440).
+var DefaultImageTag = "unset"
+
+// DefaultImageTagSentinel is the value that indicates the build did not
+// inject a real version via ldflags.
+const DefaultImageTagSentinel = "unset"
 
 // NyxAgentReconciler reconciles a NyxAgent object.
 type NyxAgentReconciler struct {

@@ -67,6 +67,12 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # VERSION is consumed by Dockerfiles that need to embed the release
+          # version into the binary at build time — currently the operator
+          # uses it for ldflags injection of DefaultImageTag (#440). Other
+          # images ignore the build-arg, which is harmless.
+          build-args: |
+            VERSION=${{ github.ref_name }}
 
   publish-charts:
     runs-on: ubuntu-latest

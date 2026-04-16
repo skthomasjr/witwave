@@ -89,6 +89,21 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
+	// Surface uninjected DefaultImageTag at boot so misconfigured release
+	// builds are loud rather than silently pulling whatever "latest" resolves
+	// to on each pod restart (#440). Local development with `go run` or
+	// `go build` (no ldflags) intentionally trips this warning.
+	if controller.DefaultImageTag == controller.DefaultImageTagSentinel {
+		setupLog.Info(
+			"WARNING: DefaultImageTag was not injected at build time — "+
+				"NyxAgent specs that omit spec.image.tag (and per-backend image.tag) "+
+				"will fail to render valid image references; "+
+				"set explicit image tags per NyxAgent or rebuild with "+
+				"-ldflags \"-X github.com/nyx-ai/nyx-operator/internal/controller.DefaultImageTag=<version>\"",
+			"defaultImageTag", controller.DefaultImageTag,
+		)
+	}
+
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
 	// prevent from being vulnerable to the HTTP/2 Stream Cancellation and
