@@ -44,6 +44,7 @@ Wait 5 seconds for watchers to register the files.
 ```
 curl -s -o /dev/null -w "%{http_code}" \
   -X POST http://localhost:8099/triggers/ping \
+  -H "Authorization: Bearer ${TRIGGERS_AUTH_TOKEN:-smoke-test-token}" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```

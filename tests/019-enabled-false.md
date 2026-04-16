@@ -73,6 +73,7 @@ Then verify the disabled trigger endpoint is not reachable (returns 404):
 ```
 CODE=$(curl -s -o /dev/null -w "%{http_code}" \
   -X POST http://localhost:8099/triggers/disabled-test \
+  -H "Authorization: Bearer ${TRIGGERS_AUTH_TOKEN:-smoke-test-token}" \
   -H "Content-Type: application/json" \
   -d '{}')
 echo "Disabled trigger status: $CODE"

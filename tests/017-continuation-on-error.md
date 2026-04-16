@@ -61,6 +61,7 @@ Wait 5 seconds for watchers to register the new files.
 ```
 curl -s -o /dev/null -w "%{http_code}" \
   -X POST http://localhost:8099/triggers/error-test-trigger \
+  -H "Authorization: Bearer ${TRIGGERS_AUTH_TOKEN:-smoke-test-token}" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```

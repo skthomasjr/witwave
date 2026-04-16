@@ -7,6 +7,7 @@ Send a POST request to bob's echo trigger with a JSON payload containing a uniqu
 
 ```
 curl -s -X POST http://localhost:8099/triggers/echo \
+  -H "Authorization: Bearer ${TRIGGERS_AUTH_TOKEN:-smoke-test-token}" \
   -H "Content-Type: application/json" \
   -d '{"token": "PAYLOAD_TEST_7x9q"}'
 ```

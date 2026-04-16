@@ -38,6 +38,8 @@ Once the stack is up, poll each service until it reports ready or until 60 secon
 
 If any service fails to become ready within 60 seconds, fail immediately with a clear message identifying which service failed. Do not proceed with the remaining tests.
 
+**Trigger auth.** The harness rejects every trigger POST that lacks either a per-trigger HMAC secret or a Bearer token matching `TRIGGERS_AUTH_TOKEN` (security-by-default since 2026-04-12). The test stack ships `TRIGGERS_AUTH_TOKEN=smoke-test-token` in bob's environment via `charts/nyx/values-test.yaml`. Smoke tests use `Authorization: Bearer ${TRIGGERS_AUTH_TOKEN:-smoke-test-token}` in their curl examples — set the env var if you've overridden it, otherwise the default works.
+
 If all services are healthy, respond with INIT_OK.
 
 **If you encounter code bugs in the system under test, do not fix them — mark this test as failed and report the issue. Only fix infrastructure and tooling problems that prevent the test environment from starting.**
