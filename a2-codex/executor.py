@@ -8,7 +8,7 @@ import uuid
 from collections import OrderedDict
 from contextlib import AsyncExitStack
 from datetime import datetime, timezone
-from typing import Callable
+from typing import Awaitable, Callable
 
 from a2a.server.agent_execution import AgentExecutor as A2AAgentExecutor
 from a2a.server.agent_execution import RequestContext
@@ -410,7 +410,7 @@ async def run_query(
     agent_md_content: str,
     model: str | None = None,
     max_tokens: int | None = None,
-    on_chunk: Callable[[str], None] | None = None,
+    on_chunk: Callable[[str], Awaitable[None]] | None = None,
     mcp_config: dict | None = None,
 ) -> list[str]:
     resolved_model = model or CODEX_MODEL
@@ -491,11 +491,12 @@ async def run_query(
                         collected.append(delta.text)
                         # Stream the chunk to the A2A event_queue (#430). Set by
                         # execute(); None when MCP /mcp endpoint or non-streaming
-                        # caller. Errors in the callback are logged and swallowed
-                        # so SDK iteration is never aborted.
+                        # caller. Awaited directly so chunk events stay ordered
+                        # on the wire and exceptions surface here. Errors are
+                        # logged and swallowed so SDK iteration is never aborted.
                         if on_chunk is not None:
                             try:
-                                on_chunk(delta.text)
+                                await on_chunk(delta.text)
                             except Exception as _e:
                                 logger.warning("Session %r: on_chunk callback raised: %s", session_id, _e)
                     # Check usage on response events — response.completed carries usage
@@ -700,7 +701,7 @@ async def run(
     agent_md_content: str,
     model: str | None = None,
     max_tokens: int | None = None,
-    on_chunk: Callable[[str], None] | None = None,
+    on_chunk: Callable[[str], Awaitable[None]] | None = None,
     mcp_config: dict | None = None,
 ) -> str:
     if a2_concurrent_queries is not None:
@@ -719,7 +720,7 @@ async def _run_inner(
     agent_md_content: str,
     model: str | None = None,
     max_tokens: int | None = None,
-    on_chunk: Callable[[str], None] | None = None,
+    on_chunk: Callable[[str], Awaitable[None]] | None = None,
     mcp_config: dict | None = None,
 ) -> str:
     resolved_model = model or CODEX_MODEL
@@ -943,12 +944,14 @@ class AgentExecutor(A2AAgentExecutor):
         _chunks_emitted = 0
         _streaming_label_model = model or CODEX_MODEL or ""
 
-        def _emit_chunk(text: str) -> None:
+        async def _emit_chunk(text: str) -> None:
             nonlocal _chunks_emitted
             _chunks_emitted += 1
             if a2_streaming_events_emitted_total is not None:
                 a2_streaming_events_emitted_total.labels(**_LABELS, model=_streaming_label_model).inc()
-            asyncio.create_task(event_queue.enqueue_event(new_agent_text_message(text)))
+            # Await directly — see a2-claude/executor.py _emit_chunk for the
+            # rationale (event ordering + exception surfacing).
+            await event_queue.enqueue_event(new_agent_text_message(text))
 
         try:
             _response = await run(

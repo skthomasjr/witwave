@@ -6,7 +6,7 @@ import time
 import uuid
 from collections import OrderedDict
 from datetime import datetime, timezone
-from typing import Callable
+from typing import Awaitable, Callable
 
 from a2a.server.agent_execution import AgentExecutor as A2AAgentExecutor
 from a2a.server.agent_execution import RequestContext
@@ -336,7 +336,7 @@ async def _run_query_inner(
     session_id: str,
     effective_model: str | None = None,
     max_tokens: int | None = None,
-    on_chunk: Callable[[str], None] | None = None,
+    on_chunk: Callable[[str], Awaitable[None]] | None = None,
 ) -> list[str]:
     _sdk_labels = {**_LABELS, "model": effective_model or ""}
     collected: list[str] = []
@@ -368,13 +368,16 @@ async def _run_query_inner(
                             collected.append(block.text)
                             _text_blocks.append(block.text)
                             # Stream the chunk to the A2A event_queue (#430).
-                            # The on_chunk callback is set by execute(); when None
-                            # (e.g. MCP /mcp endpoint or non-streaming caller),
-                            # we just buffer and the caller gets the full text
-                            # at the end as before.
+                            # The on_chunk coroutine is set by execute(); when
+                            # None (e.g. MCP /mcp endpoint or non-streaming
+                            # caller), we just buffer and the caller gets the
+                            # full text at the end as before. Awaited directly
+                            # so events stay ordered and exceptions surface
+                            # rather than being swallowed by a fire-and-forget
+                            # task object.
                             if on_chunk is not None and block.text:
                                 try:
-                                    on_chunk(block.text)
+                                    await on_chunk(block.text)
                                 except Exception as _e:
                                     # Never let a streaming-side error abort the
                                     # SDK iteration; log and continue buffering.
@@ -481,7 +484,7 @@ async def run_query(
     agent_md_content: str,
     model: str | None = None,
     max_tokens: int | None = None,
-    on_chunk: Callable[[str], None] | None = None,
+    on_chunk: Callable[[str], Awaitable[None]] | None = None,
 ) -> list[str]:
     stderr_lines: list[str] = []
     _query_start = time.monotonic()
@@ -542,7 +545,7 @@ async def run(
     agent_md_content: str,
     model: str | None = None,
     max_tokens: int | None = None,
-    on_chunk: Callable[[str], None] | None = None,
+    on_chunk: Callable[[str], Awaitable[None]] | None = None,
 ) -> str:
     if a2_concurrent_queries is not None:
         a2_concurrent_queries.labels(**_LABELS).inc()
@@ -561,7 +564,7 @@ async def _run_inner(
     agent_md_content: str,
     model: str | None = None,
     max_tokens: int | None = None,
-    on_chunk: Callable[[str], None] | None = None,
+    on_chunk: Callable[[str], Awaitable[None]] | None = None,
 ) -> str:
     resolved_model = model or CLAUDE_MODEL or "default"
     if a2_model_requests_total is not None:
@@ -778,15 +781,17 @@ class AgentExecutor(A2AAgentExecutor):
         _chunks_emitted = 0
         _streaming_label_model = model or CLAUDE_MODEL or ""
 
-        def _emit_chunk(text: str) -> None:
+        async def _emit_chunk(text: str) -> None:
             nonlocal _chunks_emitted
             _chunks_emitted += 1
             if a2_streaming_events_emitted_total is not None:
                 a2_streaming_events_emitted_total.labels(**_LABELS, model=_streaming_label_model).inc()
-            # enqueue_event is async; schedule it without awaiting so the SDK
-            # iteration loop doesn't have to await per-chunk. The event_queue
-            # is a thread-safe asyncio queue; create_task queues the put.
-            asyncio.create_task(event_queue.enqueue_event(new_agent_text_message(text)))
+            # Await directly so chunk events stay ordered on the wire and any
+            # exception surfaces to the SDK loop's wrapping try/except instead
+            # of being silently retained on a fire-and-forget task object.
+            # enqueue_event is a non-blocking asyncio.Queue.put under the hood,
+            # so the per-chunk await cost is negligible.
+            await event_queue.enqueue_event(new_agent_text_message(text))
 
         try:
             _response = await run(
