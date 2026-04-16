@@ -23,6 +23,11 @@ from metrics import (
     a2_active_sessions,
     a2_budget_exceeded_total,
     a2_concurrent_queries,
+    a2_context_exhaustion_total,
+    a2_context_tokens,
+    a2_context_tokens_remaining,
+    a2_context_usage_percent,
+    a2_context_warnings_total,
     a2_empty_responses_total,
     a2_log_bytes_total,
     a2_log_entries_total,
@@ -37,6 +42,12 @@ from metrics import (
     a2_sdk_query_error_duration_seconds,
     a2_sdk_session_duration_seconds,
     a2_sdk_time_to_first_message_seconds,
+    a2_sdk_tool_call_input_size_bytes,
+    a2_sdk_tool_calls_per_query,
+    a2_sdk_tool_calls_total,
+    a2_sdk_tool_duration_seconds,
+    a2_sdk_tool_errors_total,
+    a2_sdk_tool_result_size_bytes,
     a2_sdk_turns_per_query,
     a2_session_age_seconds,
     a2_session_evictions_total,
@@ -285,6 +296,14 @@ def _track_session(sessions: OrderedDict[str, float], session_id: str) -> None:
                 a2_session_evictions_total.labels(**_LABELS).inc()
             if a2_session_age_seconds is not None:
                 a2_session_age_seconds.labels(**_LABELS).observe(time.monotonic() - last_used_at)
+            # Clean up the evicted session's SQLite record so the database does not
+            # grow unboundedly as sessions cycle through the LRU cache (#415).
+            _db = CODEX_SESSION_DB
+            if _db and _db != ":memory:":
+                try:
+                    _delete_sqlite_session(_evicted_id, _db)
+                except Exception as _del_exc:
+                    logger.warning("Could not delete evicted session %r from DB: %s", _evicted_id, _del_exc)
         sessions[session_id] = time.monotonic()
     if a2_active_sessions is not None:
         a2_active_sessions.labels(**_LABELS).set(len(sessions))
@@ -332,6 +351,8 @@ async def run_query(
     _turn_count = 0
     _message_count = 0
     _tool_call_names: dict[str, str] = {}  # call_id -> tool name
+    _tool_start_times: dict[str, float] = {}  # call_id -> monotonic start time
+    _tool_call_count = 0
     _total_tokens = 0
 
     try:
@@ -381,6 +402,16 @@ async def run_query(
                         else:
                             tool_input = {}
                     _tool_call_names[call_id] = name
+                    _tool_start_times[call_id] = time.monotonic()
+                    _tool_call_count += 1
+                    if a2_sdk_tool_calls_total is not None:
+                        a2_sdk_tool_calls_total.labels(**_LABELS, tool=name).inc()
+                    if a2_sdk_tool_call_input_size_bytes is not None:
+                        try:
+                            _input_bytes = len(json.dumps(tool_input).encode())
+                            a2_sdk_tool_call_input_size_bytes.labels(**_LABELS, tool=name).observe(_input_bytes)
+                        except Exception:
+                            pass
                     try:
                         ts = datetime.now(timezone.utc).isoformat()
                         entry = {
@@ -422,6 +453,13 @@ async def run_query(
                         await log_trace(json.dumps(entry))
                     except Exception as e:
                         logger.error(f"log_trace tool_result error: {e}")
+                    _tool_elapsed = time.monotonic() - _tool_start_times.pop(call_id, time.monotonic())
+                    if a2_sdk_tool_duration_seconds is not None:
+                        a2_sdk_tool_duration_seconds.labels(**_LABELS, tool=tool_name).observe(_tool_elapsed)
+                    if is_error and a2_sdk_tool_errors_total is not None:
+                        a2_sdk_tool_errors_total.labels(**_LABELS, tool=tool_name).inc()
+                    if a2_sdk_tool_result_size_bytes is not None:
+                        a2_sdk_tool_result_size_bytes.labels(**_LABELS, tool=tool_name).observe(len(content.encode()))
     except BudgetExceededError as exc:
         if a2_sdk_session_duration_seconds is not None:
             a2_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
@@ -477,6 +515,20 @@ async def run_query(
         a2_sdk_turns_per_query.labels(**_LABELS, model=resolved_model).observe(_turn_count)
     if a2_text_blocks_per_query is not None:
         a2_text_blocks_per_query.labels(**_LABELS, model=resolved_model).observe(len(collected))
+    if a2_sdk_tool_calls_per_query is not None:
+        a2_sdk_tool_calls_per_query.labels(**_LABELS).observe(_tool_call_count)
+    if _total_tokens and max_tokens:
+        if a2_context_tokens is not None:
+            a2_context_tokens.labels(**_LABELS).observe(_total_tokens)
+        if a2_context_tokens_remaining is not None:
+            a2_context_tokens_remaining.labels(**_LABELS).observe(max(0, max_tokens - _total_tokens))
+        _pct = _total_tokens / max_tokens * 100
+        if a2_context_usage_percent is not None:
+            a2_context_usage_percent.labels(**_LABELS).observe(_pct)
+        if _pct >= 100 and a2_context_exhaustion_total is not None:
+            a2_context_exhaustion_total.labels(**_LABELS).inc()
+        elif _pct >= 80 and a2_context_warnings_total is not None:
+            a2_context_warnings_total.labels(**_LABELS).inc()
 
     # Log a trace entry for the completed turn
     try:
