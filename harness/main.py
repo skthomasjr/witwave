@@ -813,6 +813,12 @@ async def main():
                 agent_triggers_requests_total.labels(method=request.method, code="500").inc()
             raise
 
+        if len(body_bytes) > 1_048_576:
+            trigger_runner._running.discard(endpoint)
+            if agent_triggers_requests_total is not None:
+                agent_triggers_requests_total.labels(method=request.method, code="413").inc()
+            return JSONResponse({"error": "request body too large"}, status_code=413)
+
         if not _check_trigger_auth(request, item, body_bytes):
             trigger_runner._running.discard(endpoint)
             if agent_triggers_requests_total is not None:
