@@ -353,6 +353,10 @@
     .conv-feed .cm .role {
       font-size: 9px; color: var(--muted); letter-spacing: .05em;
       text-transform: uppercase; padding: 0 4px;
+      transition: color .15s, font-size .15s;
+    }
+    .conv-feed .cm:hover .role {
+      color: var(--text); font-size: 10px;
     }
     .conv-feed .cm .bbl {
       font-size: 11px; line-height: 1.55; white-space: pre-wrap; word-break: break-word;
@@ -1784,7 +1788,7 @@ function renderConvMsg(m) {
     : `you · ${fmtTime(m.ts)}${sid}`;
   return `<div class="cm ${role}">
     <div class="role">${label}</div>
-    <div class="bbl">${role === 'agent' ? DOMPurify.sanitize(marked.parse(m.text || '')) : escHtml(m.text || '')}</div>
+    <div class="bbl">${role === 'agent' ? DOMPurify.sanitize(marked.parse((m.text || '').trim())) : escHtml(m.text || '')}</div>
   </div>`;
 }
 
