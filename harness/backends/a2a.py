@@ -24,6 +24,10 @@ _HTTP_TIMEOUT_SECONDS = max(TASK_TIMEOUT_SECONDS - 10, 10)
 
 # Retry configuration for transient network errors.
 _MAX_RETRIES = int(os.environ.get("A2A_BACKEND_MAX_RETRIES", "3"))
+if _MAX_RETRIES < 1:
+    raise ValueError(f"A2A_BACKEND_MAX_RETRIES must be >= 1, got {_MAX_RETRIES}")
+if _MAX_RETRIES > 10:
+    logging.getLogger(__name__).warning("A2A_BACKEND_MAX_RETRIES=%d is unusually high", _MAX_RETRIES)
 _RETRY_BACKOFF_BASE = float(os.environ.get("A2A_BACKEND_RETRY_BACKOFF", "1.0"))
 
 # Transient status codes that are safe to retry.

@@ -275,6 +275,8 @@ async def run_consensus(
     seen: set[tuple[str, str | None]] = set()
     for entry in consensus_entries:
         matched = [bid for bid in backends if fnmatch.fnmatch(bid, entry.backend)]
+        if not matched:
+            logger.warning("Consensus: pattern %r matched no backends (known: %s)", entry.backend, list(backends))
         for bid in matched:
             backend_model = entry.model or (backends[bid]._config.model if hasattr(backends[bid], "_config") else None)
             pair = (bid, backend_model)
@@ -414,18 +416,21 @@ class AgentExecutor(A2AAgentExecutor):
     def _routing_entry_for_kind(self, kind: str) -> RoutingEntry | None:
         """Return the RoutingEntry for the given message kind, or None to use the default."""
         if kind == "a2a":
-            return self._routing.a2a
-        if kind == "heartbeat":
-            return self._routing.heartbeat
-        if kind.startswith("job"):
-            return self._routing.job
-        if kind.startswith("task"):
-            return self._routing.task
-        if kind.startswith("trigger"):
-            return self._routing.trigger
-        if kind.startswith("continuation"):
-            return self._routing.continuation
-        return None
+            entry = self._routing.a2a
+        elif kind == "heartbeat":
+            entry = self._routing.heartbeat
+        elif kind.startswith("job"):
+            entry = self._routing.job
+        elif kind.startswith("task"):
+            entry = self._routing.task
+        elif kind.startswith("trigger"):
+            entry = self._routing.trigger
+        elif kind.startswith("continuation"):
+            entry = self._routing.continuation
+        else:
+            entry = None
+        logger.debug("routing kind=%r → entry agent=%r model=%r", kind, entry.agent if entry else None, entry.model if entry else None)
+        return entry
 
     def _resolve_model(self, message_model: str | None, routing_entry: RoutingEntry | None, backend_id: str) -> str | None:
         """Resolve the model to use: per-message → routing entry → per-backend config.
@@ -436,12 +441,16 @@ class AgentExecutor(A2AAgentExecutor):
         per-backend config model instead.
         """
         if message_model:
+            logger.debug("model resolution: using per-message override %r", message_model)
             return message_model
         if routing_entry and routing_entry.model and (routing_entry.agent is None or routing_entry.agent == backend_id):
+            logger.debug("model resolution: using routing entry model %r", routing_entry.model)
             return routing_entry.model
         backend = self._backends.get(backend_id)
         if backend is not None and backend._config.model:
+            logger.debug("model resolution: using backend config model %r for %r", backend._config.model, backend_id)
             return backend._config.model
+        logger.debug("model resolution: no model configured for backend %r — sending without override", backend_id)
         return None
 
     def _mcp_watchers(self):
