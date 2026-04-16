@@ -7,7 +7,13 @@ metadata:
   name: {{ $.Release.Name }}-{{ .name }}
   labels:
     {{- include "nyx.agentLabels" .name | nindent 4 }}
-  {{- if ((.metrics).enabled | default $.Values.metrics.enabled) }}
+  {{- /* serviceAnnotations defaults to true, so use hasKey to detect an explicit
+        per-agent `false` override — sprig's `default` would return the global
+        true and ignore the override (#472). */}}
+  {{- $metricsOn := ((.metrics).enabled | default $.Values.metrics.enabled) }}
+  {{- $svcAnnOn := $.Values.metrics.serviceAnnotations }}
+  {{- if (.metrics) }}{{- if hasKey .metrics "serviceAnnotations" }}{{- $svcAnnOn = .metrics.serviceAnnotations }}{{- end }}{{- end }}
+  {{- if and $metricsOn $svcAnnOn }}
   annotations:
     prometheus.io/scrape: "true"
     prometheus.io/port: {{ .port | default 8000 | quote }}

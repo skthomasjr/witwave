@@ -161,8 +161,23 @@ gitSync:
 # and the /metrics endpoint is activated on both nyx-harness and backend containers.
 # Override per agent with agents[].metrics.enabled.
 metrics:
-  # Enable or disable metrics globally.
+  # Master toggle for Prometheus metrics. When false, the harness still
+  # exposes /metrics but no scrape annotations / ServiceMonitor are
+  # rendered.
   enabled: false
+
+  # Where Prometheus scrape annotations land. Both can be true at the
+  # same time — Prometheus configs that use both `kubernetes_sd_configs.
+  # role: service` and `role: pod` will discover both targets and need
+  # standard relabel rules to dedupe (kube-prometheus-stack defaults
+  # already do this). Both default to backward-compatible behaviour:
+  # serviceAnnotations on, podAnnotations off (#472).
+  #
+  # Per-agent overrides:
+  #   agents[].metrics.serviceAnnotations: false
+  #   agents[].metrics.podAnnotations:     true
+  serviceAnnotations: true
+  podAnnotations: false
 
 # ServiceMonitor for the Prometheus Operator (#449). Off by default so the
 # chart never references monitoring.coreos.com CRDs unless the user opts in

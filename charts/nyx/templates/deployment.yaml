@@ -24,9 +24,23 @@ spec:
     metadata:
       labels:
         {{- include "nyx.agentLabels" .name | nindent 8 }}
-      {{- with .podAnnotations }}
+      {{- /* Resolve metrics + podAnnotations toggles. hasKey is required
+            because sprig's `default` treats `false` as empty, so the
+            obvious `((.metrics).podAnnotations | default $.Values.metrics.podAnnotations)`
+            pattern fails when the per-agent override is explicitly false (#472). */}}
+      {{- $metricsOn := ((.metrics).enabled | default $.Values.metrics.enabled) }}
+      {{- $podAnnOn := $.Values.metrics.podAnnotations }}
+      {{- if (.metrics) }}{{- if hasKey .metrics "podAnnotations" }}{{- $podAnnOn = .metrics.podAnnotations }}{{- end }}{{- end }}
+      {{- if or .podAnnotations (and $metricsOn $podAnnOn) }}
       annotations:
+        {{- if and $metricsOn $podAnnOn }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .port | default 8000 | quote }}
+        prometheus.io/path: "/metrics"
+        {{- end }}
+        {{- with .podAnnotations }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- end }}
     spec:
       terminationGracePeriodSeconds: 60
