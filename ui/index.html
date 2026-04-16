@@ -372,6 +372,10 @@
     .tool-row .role {
       font-size: 9px; color: var(--muted); letter-spacing: .05em;
       text-transform: uppercase; padding: 0 4px;
+      transition: color .15s, font-size .15s;
+    }
+    .tool-row:hover .role {
+      color: var(--text); font-size: 10px;
     }
     .tool-row .bbl {
       font-size: 11px; line-height: 1.55; white-space: pre-wrap; word-break: break-word;
