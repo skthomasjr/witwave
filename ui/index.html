@@ -1436,7 +1436,10 @@ function selectAgent(member) {
       backendSel.value = cache.backendId;
       backendSel.dispatchEvent(new Event('change'));
     }
-    _selectedBackendId = cache.backendId || _selectedBackendId;
+    // Use the actual selected value; the cached backendId may no longer exist in
+    // the select options, in which case the browser silently ignores the assignment
+    // above and the select stays at its default — don't persist the stale id (#403).
+    _selectedBackendId = (backendSel && backendSel.value) ? backendSel.value : _selectedBackendId;
     // Restore conversation thread
     if (_chatThread && cache.threadHtml) _chatThread.innerHTML = cache.threadHtml;
   } else {
