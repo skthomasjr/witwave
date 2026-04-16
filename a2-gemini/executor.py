@@ -36,7 +36,10 @@ from metrics import (
     a2_running_tasks,
     a2_sdk_messages_per_query,
     a2_sdk_query_duration_seconds,
+    a2_sdk_client_errors_total,
+    a2_sdk_errors_total,
     a2_sdk_query_error_duration_seconds,
+    a2_sdk_result_errors_total,
     a2_sdk_session_duration_seconds,
     a2_sdk_time_to_first_message_seconds,
     a2_sdk_turns_per_query,
@@ -361,8 +364,13 @@ async def run_query(
                 )
                 if a2_session_history_save_errors_total is not None:
                     a2_session_history_save_errors_total.labels(**_LABELS).inc()
+                # Mark the session in history_save_failed so the next request
+                # starts fresh rather than resuming inconsistent state — same
+                # invariant the success-path handler maintains (#437, #409).
+                if history_save_failed is not None:
+                    history_save_failed.add(session_id)
             raise
-        except Exception:
+        except Exception as _run_exc:
             if a2_sdk_query_error_duration_seconds is not None:
                 a2_sdk_query_error_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
                     time.monotonic() - _query_start
@@ -371,6 +379,24 @@ async def run_query(
                 a2_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
                     time.monotonic() - _session_start
                 )
+            # Classify by exception type so the new SDK error counters track
+            # connection vs result vs catch-all failures (#445). Best-effort —
+            # if the google.api_core import is unavailable, fall through to the
+            # generic catch-all counter.
+            try:
+                from google.api_core import exceptions as _g_exc
+                if isinstance(_run_exc, _g_exc.ClientError):
+                    if a2_sdk_client_errors_total is not None:
+                        a2_sdk_client_errors_total.labels(**_LABELS, model=resolved_model).inc()
+                elif isinstance(_run_exc, _g_exc.GoogleAPIError):
+                    if a2_sdk_result_errors_total is not None:
+                        a2_sdk_result_errors_total.labels(**_LABELS, model=resolved_model).inc()
+                else:
+                    if a2_sdk_errors_total is not None:
+                        a2_sdk_errors_total.labels(**_LABELS, model=resolved_model).inc()
+            except Exception:
+                if a2_sdk_errors_total is not None:
+                    a2_sdk_errors_total.labels(**_LABELS, model=resolved_model).inc()
             raise
 
         if a2_sdk_session_duration_seconds is not None:

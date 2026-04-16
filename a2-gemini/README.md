@@ -31,7 +31,9 @@ without restarting the container.
 **Metrics** — Exposes the common `a2_*` Prometheus metrics: request count/latency, session starts/evictions, queue
 depth, error counts, and execution duration. Also includes context-window metrics (`a2_context_tokens`,
 `a2_context_usage_percent`, `a2_context_exhaustion_total`, etc.) tracked via `usage_metadata.total_token_count` on
-each response chunk.
+each response chunk, and SDK error classification metrics (`a2_sdk_errors_total`, `a2_sdk_result_errors_total`,
+`a2_sdk_client_errors_total`) that distinguish connection-level failures from result-level errors and catch-all
+exceptions.
 
 ## Endpoints
 
