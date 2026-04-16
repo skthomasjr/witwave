@@ -577,6 +577,7 @@
       <button class="active" data-view="agents">agents</button>
       <button data-view="conversations">conversations</button>
       <button data-view="calendar">calendar</button>
+      <button data-view="triggers">triggers</button>
       <button data-view="metrics">metrics</button>
     </nav>
     <div class="spacer"></div>
@@ -611,6 +612,19 @@
         </div>
       </div>
       <div id="cal-body" style="flex:1;display:flex;flex-direction:column;overflow:hidden;"></div>
+    </div>
+
+    <!-- Triggers -->
+    <div id="triggers-view" class="view">
+      <div class="conv-toolbar">
+        <span class="ct-label">search</span>
+        <input id="triggers-search" type="text" placeholder="filter by endpoint or description…" />
+        <span class="conv-count" id="triggers-count"></span>
+        <button class="icon-btn" id="triggers-refresh" style="margin-left:auto">↺ now</button>
+      </div>
+      <div class="conv-feed" id="triggers-feed">
+        <div class="empty">Loading…</div>
+      </div>
     </div>
 
     <!-- Metrics -->
@@ -685,6 +699,7 @@ const viewEls = {
   agents: document.getElementById('agents-view'),
   conversations: document.getElementById('conversations-view'),
   calendar: document.getElementById('calendar-view'),
+  triggers: document.getElementById('triggers-view'),
   metrics: document.getElementById('metrics-view'),
 };
 function switchView(name) {
@@ -697,6 +712,7 @@ function switchView(name) {
   localStorage.setItem('nyx-active-view', name);
   if (name === 'conversations' && !conv.loaded) loadConversations();
   if (name === 'calendar') loadCalendarData();
+  if (name === 'triggers') loadTriggers();
   if (name === 'metrics') {
     if (!_metricsLoaded) { _metricsLoaded = true; loadMetrics(); }
     setRefreshInterval(Number(document.getElementById('refresh-interval').value) || 30_000);
@@ -1314,6 +1330,29 @@ let _selectedBackendId = null;
 let _chatSessionId = null;
 const _sessionMap = {};   // "agentName|backendId" → sessionId
 const _panelCache = {};   // agentName → { threadHtml, backendId }
+// Insertion-ordered LRU of agent names present in _panelCache. Bounded so that
+// long-running browser sessions that cycle through many agents do not grow
+// memory without limit (#406). The most-recently-touched agent moves to the
+// end; when the cache exceeds PANEL_CACHE_MAX, the oldest entry is evicted
+// along with its session-map rows.
+const _panelCacheOrder = [];
+const PANEL_CACHE_MAX = 10;
+
+function _panelCacheTouch(agentName) {
+  const _idx = _panelCacheOrder.indexOf(agentName);
+  if (_idx !== -1) _panelCacheOrder.splice(_idx, 1);
+  _panelCacheOrder.push(agentName);
+  while (_panelCacheOrder.length > PANEL_CACHE_MAX) {
+    const _evict = _panelCacheOrder.shift();
+    if (_evict === undefined) break;
+    delete _panelCache[_evict];
+    // Drop all session-map entries for the evicted agent so the map stays bounded.
+    const _prefix = `${_evict}|`;
+    for (const _k of Object.keys(_sessionMap)) {
+      if (_k.startsWith(_prefix)) delete _sessionMap[_k];
+    }
+  }
+}
 
 function _sessionKey(agentName, backendId) {
   return `${agentName}|${backendId}`;
@@ -1343,6 +1382,8 @@ function _loadAgentState() {
     if (cache) Object.assign(_panelCache, JSON.parse(cache));
     const sessions = localStorage.getItem('nyx-session-map');
     if (sessions) Object.assign(_sessionMap, JSON.parse(sessions));
+    // Seed the LRU order so restored entries are subject to eviction (#406).
+    for (const _name of Object.keys(_panelCache)) _panelCacheTouch(_name);
   } catch (e) {}
 }
 
@@ -1429,6 +1470,7 @@ function selectAgent(member) {
       threadHtml: liveThread ? liveThread.innerHTML : '',
       backendId: _selectedBackendId,
     };
+    _panelCacheTouch(prevName);
     _saveAgentState();
   }
 
@@ -1436,6 +1478,7 @@ function selectAgent(member) {
   _selectedBackendId = backends.length ? backends[0].id : null;
 
   if (_panelCache[agentName]) {
+    _panelCacheTouch(agentName);
     // Restore cached panel
     const cache = _panelCache[agentName];
     _buildAgentPanel(agentName, backends, right);
@@ -1593,6 +1636,7 @@ async function doSend(agentName) {
       threadHtml: thread.innerHTML,
       backendId,
     });
+    _panelCacheTouch(agentName);
     _saveAgentState();
   }
 
@@ -2215,6 +2259,61 @@ function renderDay() {
 
 // ── Render ────────────────────────────────────────────────────────────────────
 let _calNowTimer = null;
+
+// ── Triggers view (#433) ──────────────────────────────────────────────────────
+let _triggersData = [];
+
+async function loadTriggers() {
+  const feed = document.getElementById('triggers-feed');
+  const countEl = document.getElementById('triggers-count');
+  try {
+    const resp = await fetchWithTimeout(`${AGENT_BASE}/triggers`);
+    _triggersData = resp?.ok ? await resp.json() : [];
+  } catch (_e) {
+    _triggersData = [];
+  }
+  if (!Array.isArray(_triggersData)) _triggersData = [];
+  renderTriggers();
+  if (countEl) countEl.textContent = `${_triggersData.length} trigger${_triggersData.length === 1 ? '' : 's'}`;
+}
+
+function renderTriggers() {
+  const feed = document.getElementById('triggers-feed');
+  const search = (document.getElementById('triggers-search')?.value || '').trim().toLowerCase();
+  const list = search
+    ? _triggersData.filter(t =>
+        (t.endpoint || '').toLowerCase().includes(search) ||
+        (t.description || '').toLowerCase().includes(search) ||
+        (t.name || '').toLowerCase().includes(search))
+    : _triggersData;
+  if (!list.length) {
+    feed.innerHTML = '<div class="empty">No triggers configured.</div>';
+    return;
+  }
+  const rows = list.map(t => {
+    const endpoint = escHtml(t.endpoint || t.name || '(unnamed)');
+    const desc = t.description ? escHtml(t.description) : '<span class="muted">(no description)</span>';
+    const session = t.session_id ? escHtml(t.session_id) : '<span class="muted">—</span>';
+    const backend = t.backend_id ? escHtml(t.backend_id) : '<span class="muted">default</span>';
+    const model = t.model ? escHtml(t.model) : '<span class="muted">default</span>';
+    const runningHtml = t.running ? '<span class="ok">running</span>' : '<span class="muted">idle</span>';
+    return `<div class="conv-msg">
+      <div><strong>${endpoint}</strong> &nbsp; ${runningHtml}</div>
+      <div class="muted" style="margin-top:4px">${desc}</div>
+      <div class="muted" style="margin-top:4px;font-size:11px">
+        backend: ${backend} · model: ${model} · session: ${session}
+      </div>
+    </div>`;
+  }).join('');
+  feed.innerHTML = rows;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const searchEl = document.getElementById('triggers-search');
+  if (searchEl) searchEl.addEventListener('input', renderTriggers);
+  const refreshEl = document.getElementById('triggers-refresh');
+  if (refreshEl) refreshEl.addEventListener('click', loadTriggers);
+});
 
 async function loadCalendarData() {
   try {
