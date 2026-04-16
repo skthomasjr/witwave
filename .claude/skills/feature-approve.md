@@ -1,7 +1,7 @@
 ---
 name: feature-approve
 description: Evaluate pending features against the codebase and approve or defer them based on implementation confidence, scope, and priority. Trigger when the user says "approve features", "run feature approve", "evaluate features", "review features for approval", or "approve pending features".
-version: 1.2.0
+version: 1.3.0
 ---
 
 # feature-approve
@@ -72,7 +72,7 @@ If confidence is low for any reason — ambiguous scope, unclear requirements, m
 
 **Step 6: Update each feature's status.**
 
-For approved features: update the status to `approved` and add a comment documenting:
+For approved features: remove the `pending` label, add the `approved` label, update the status to `approved`, and add a comment documenting:
 - Confirmation that the capability was verified as absent from the current codebase
 - The assessed implementation scope and why
 - Any caution areas, edge cases, or related code paths the implementer should be aware of

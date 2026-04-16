@@ -1,7 +1,7 @@
 ---
 name: risk-implement
 description: Mitigate all approved risks one at a time, committing and pushing each mitigation. Trigger when the user says "implement risks", "fix risks", "mitigate risks", "implement approved risks", "fix approved risks", "mitigate approved risks", "run risk implement", or "start risk mitigation".
-version: 1.1.0
+version: 1.2.0
 ---
 
 # risk-implement
@@ -61,6 +61,6 @@ Leave a comment on the risk documenting:
 - Confirmation that the mitigation was verified
 - The name and version of this skill (see the frontmatter of this file)
 
-Then close the risk.
+Then remove the `in-progress` label and close the risk.
 
 Return to Step 1.

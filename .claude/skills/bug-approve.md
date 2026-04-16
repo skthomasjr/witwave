@@ -1,7 +1,7 @@
 ---
 name: bug-approve
 description: Evaluate pending bugs against the codebase and approve or defer them based on fix confidence, risk, and priority. Optionally scoped to a specific component; if no component is specified, processes all components including cross-cutting bugs with no component assigned. Trigger when the user says "approve bugs", "run bug approve", "evaluate bugs", "review bugs for approval", or "approve pending bugs".
-version: 1.1.0
+version: 1.2.0
 ---
 
 # bug-approve
@@ -53,7 +53,7 @@ If confidence is low for any reason — ambiguous fix, unclear blast radius, mis
 
 **Step 5: Update each bug's status.**
 
-For approved bugs: update the status to approved and add a comment documenting:
+For approved bugs: remove the `pending` label, add the `approved` label, update the status to `approved`, and add a comment documenting:
 - Confirmation that the bug was verified in the current code (file and line)
 - The assessed fix risk and why
 - Any caution areas, edge cases, or related code paths the fixer should be aware of

@@ -1,7 +1,7 @@
 ---
 name: feature-implement
 description: Implement all approved features one at a time, committing and pushing each implementation. Trigger when the user says "implement features", "fix features", "implement approved features", "fix approved features", "run feature implement", or "start feature implementation".
-version: 1.2.0
+version: 1.3.0
 ---
 
 # feature-implement
@@ -79,7 +79,7 @@ Leave a comment on the feature documenting:
 - Confirmation that the implementation was verified
 - The name and version of this skill (see the frontmatter of this file)
 
-Then close the feature.
+Then remove the `in-progress` label and close the feature.
 
 Look up all features linked to the same originating request. If every one of them is now closed, post a comment on the originating request summarizing what was delivered and asking whether the request is complete or whether further work is needed. Do not close the request — leave that decision to the requester.
 

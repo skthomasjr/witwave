@@ -1,7 +1,7 @@
 ---
 name: bug-implement
 description: Implement all approved bugs one at a time, committing and pushing each fix. Trigger when the user says "implement bugs", "fix bugs", "implement approved bugs", "fix approved bugs", "run bug implement", or "start bug fixing".
-version: 1.1.0
+version: 1.2.0
 ---
 
 # bug-implement
@@ -61,6 +61,6 @@ Leave a comment on the bug documenting:
 - Confirmation that the fix was verified
 - The name and version of this skill (see the frontmatter of this file)
 
-Then close the bug.
+Then remove the `in-progress` label and close the bug.
 
 Return to Step 1.

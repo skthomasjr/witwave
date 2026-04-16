@@ -1,7 +1,7 @@
 ---
 name: risk-approve
 description: Evaluate pending risks against the codebase and approve or defer them based on mitigation confidence, blast radius, and priority. Optionally scoped to a specific component; if no component is specified, processes all components including cross-cutting risks with no component assigned. Trigger when the user says "approve risks", "run risk approve", "evaluate risks", "review risks for approval", or "approve pending risks".
-version: 1.1.0
+version: 1.2.0
 ---
 
 # risk-approve
@@ -54,7 +54,7 @@ If confidence is low for any reason — ambiguous mitigation, unclear blast radi
 
 **Step 5: Update each risk's status.**
 
-For approved risks: update the status to `approved` and add a comment documenting:
+For approved risks: remove the `pending` label, add the `approved` label, update the status to `approved`, and add a comment documenting:
 - Confirmation that the risk was verified in the current code (file and line)
 - The assessed mitigation risk and why
 - Any caution areas, edge cases, or related code paths the implementer should be aware of

@@ -1,7 +1,7 @@
 ---
 name: gap-implement
 description: Implement all approved gaps one at a time, committing and pushing each implementation. Trigger when the user says "implement gaps", "fix gaps", "implement approved gaps", "fix approved gaps", "run gap implement", or "start gap implementation".
-version: 1.1.0
+version: 1.2.0
 ---
 
 # gap-implement
@@ -61,6 +61,6 @@ Leave a comment on the gap documenting:
 - Confirmation that the implementation was verified
 - The name and version of this skill (see the frontmatter of this file)
 
-Then close the gap.
+Then remove the `in-progress` label and close the gap.
 
 Return to Step 1.
