@@ -3,6 +3,10 @@ description: Builds all images, deploys the test environment via Helm, and verif
 enabled: true
 ---
 
+> **Before you start.** Read [`tests/README.md`](./README.md) for the framework conventions, the trigger Bearer-auth
+> contract, and (most importantly) the **required tabular output format** that the run must produce after the suite
+> finishes. Every executed test must have a row in that table.
+
 Tear down any existing test environment before starting fresh:
 
 ```
