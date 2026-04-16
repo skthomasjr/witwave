@@ -102,10 +102,13 @@ The operator does **not** yet handle:
 - Shared-storage `PVC` creation — only references to a pre-existing PVC
   are supported via `spec.sharedStorage.claimName`
 - Admission webhooks for validation and defaulting
-- `ServiceMonitor` for Prometheus Operator
 
 Track gaps as separate issues as they come up; the Helm chart covers
 these in the interim.
+
+The `nyx-operator` Helm chart provides an optional `ServiceMonitor` for
+Prometheus Operator integration — see `charts/nyx-operator/README.md`
+for the `serviceMonitor.*` values.
 
 ## License
 
