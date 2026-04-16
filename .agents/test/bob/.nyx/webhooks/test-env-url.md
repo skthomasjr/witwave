@@ -8,6 +8,8 @@ notify-on-kind:
 notify-on-response:
   - "*WEBHOOK_ENV_URL_FIRE*"
 content-type: application/json
+headers:
+  Authorization: "Bearer {{env.WEBHOOK_TEST_BEARER}}"
 body: |
   {"event": "env-url-test", "kind": "{{kind}}", "agent": "{{agent}}"}
 ---

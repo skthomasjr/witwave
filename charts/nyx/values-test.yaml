@@ -38,6 +38,22 @@ agents:
     env:
       - name: CORS_ALLOW_ORIGINS
         value: "*"
+      # Smoke-test trigger auth token. The harness rejects every trigger
+      # POST that lacks either a per-trigger HMAC secret or this Bearer
+      # token (security-by-default). Smoke tests pass `Authorization:
+      # Bearer smoke-test-token` to satisfy it.
+      - name: TRIGGERS_AUTH_TOKEN
+        value: smoke-test-token
+      # Webhook tests use these to template URLs / headers / Authorization
+      # without baking the cluster-specific service name into webhook .md
+      # files. WEBHOOK_TEST_BEARER must equal TRIGGERS_AUTH_TOKEN above
+      # so webhook deliveries to bob's own triggers authenticate.
+      - name: WEBHOOK_TEST_HOST
+        value: nyx-bob:8099
+      - name: WEBHOOK_TEST_TOKEN
+        value: test-token-abc123
+      - name: WEBHOOK_TEST_BEARER
+        value: smoke-test-token
     gitSyncs:
       - name: autonomous-agent
         repo: https://github.com/skthomasjr/autonomous-agent
