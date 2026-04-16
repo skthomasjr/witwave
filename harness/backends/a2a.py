@@ -218,6 +218,8 @@ class A2ABackend:
                 messages = [msg]
 
         for message in messages:
+            if not isinstance(message, dict):
+                continue
             parts = message.get("parts") or []
             for part in parts:
                 if part.get("kind") == "text":
