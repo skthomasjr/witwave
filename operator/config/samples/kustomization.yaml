@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- nyx_v1alpha1_nyxagent.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

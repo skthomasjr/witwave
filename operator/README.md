@@ -1,135 +1,112 @@
-# operator
-// TODO(user): Add simple overview of use/purpose
+# nyx-operator
 
-## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+A Kubernetes operator for the nyx platform. Provides the `NyxAgent` custom
+resource, which deploys one named agent — a nyx-harness orchestrator plus one
+or more backend sidecars (a2-claude, a2-codex, a2-gemini) — as a
+`Deployment` + `Service` + optional `ConfigMap`, `HPA`, `PDB`, and `PVC`.
+
+Built with Operator SDK v1.42 (Go). Mirrors the deployment shape of the
+[nyx Helm chart](../charts/nyx/) and is intended as an alternative install
+path once the CRD is stable. The Helm chart remains the supported install
+method while the operator is in `v1alpha1`.
+
+> **Status:** first pass. The `NyxAgent` type and reconciler are in place.
+> Git-sync sidecars, cross-agent manifest, UI, and Ingress are deferred to
+> a future `NyxPlatform` CRD — run the Helm chart alongside for those for now.
+
+## Requirements
+
+- Go 1.24+
+- Operator SDK v1.42+
+- `kubectl` against a cluster (kind, minikube, EKS, etc.) for `make install`
+  and `make deploy`
 
 ## Getting Started
 
-### Prerequisites
-- go version v1.24.0+
-- docker version 17.03+.
-- kubectl version v1.11.3+.
-- Access to a Kubernetes v1.11.3+ cluster.
+Build and install CRDs against the current kubeconfig context:
 
-### To Deploy on the cluster
-**Build and push your image to the location specified by `IMG`:**
-
-```sh
-make docker-build docker-push IMG=<some-registry>/operator:tag
+```bash
+make generate           # regenerate DeepCopy
+make manifests          # regenerate CRD YAML + RBAC
+make install            # apply CRDs to the cluster
 ```
 
-**NOTE:** This image ought to be published in the personal registry you specified.
-And it is required to have access to pull the image from the working environment.
-Make sure you have the proper permission to the registry if the above commands don’t work.
+Run the controller locally (outside the cluster) against the current context:
 
-**Install the CRDs into the cluster:**
-
-```sh
-make install
+```bash
+make run
 ```
 
-**Deploy the Manager to the cluster with the image specified by `IMG`:**
+Build and push the manager image, then deploy it into the cluster:
 
-```sh
-make deploy IMG=<some-registry>/operator:tag
+```bash
+make docker-build docker-push IMG=<registry>/nyx-operator:<tag>
+make deploy IMG=<registry>/nyx-operator:<tag>
 ```
 
-> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
-privileges or be logged in as admin.
+Apply the sample `NyxAgent`:
 
-**Create instances of your solution**
-You can apply the samples (examples) from the config/sample:
-
-```sh
+```bash
 kubectl apply -k config/samples/
+kubectl get nyxagent
 ```
 
->**NOTE**: Ensure that the samples has default values to test it out.
+Uninstall:
 
-### To Uninstall
-**Delete the instances (CRs) from the cluster:**
-
-```sh
+```bash
 kubectl delete -k config/samples/
-```
-
-**Delete the APIs(CRDs) from the cluster:**
-
-```sh
+make undeploy
 make uninstall
 ```
 
-**UnDeploy the controller from the cluster:**
+## The `NyxAgent` resource
 
-```sh
-make undeploy
-```
+One `NyxAgent` corresponds to one named agent (e.g. `iris`, `nova`, `kira`).
+Its spec mirrors the per-agent shape used by the Helm chart's `agents[]`
+list. See `config/samples/nyx_v1alpha1_nyxagent.yaml` for a minimal example
+and `api/v1alpha1/nyxagent_types.go` for the full schema.
 
-## Project Distribution
+Owned resources per `NyxAgent`:
 
-Following the options to release and provide this solution to the users.
+| Resource                  | When                                                     |
+| ------------------------- | -------------------------------------------------------- |
+| `Deployment`              | always                                                   |
+| `Service` (ClusterIP)     | always                                                   |
+| `ConfigMap` (agent)       | when `spec.config` is non-empty                          |
+| `ConfigMap` (per backend) | when a backend's `config` is non-empty                   |
+| `PersistentVolumeClaim`   | when a backend's `storage.enabled` is true               |
+| `HorizontalPodAutoscaler` | when `spec.autoscaling.enabled` is true                  |
+| `PodDisruptionBudget`     | when `spec.podDisruptionBudget.enabled` is true          |
 
-### By providing a bundle with all YAML files
+All owned resources carry `ownerReferences` pointing at the `NyxAgent`,
+so deleting the CR cascades their deletion.
 
-1. Build the installer for the image built and published in the registry:
+## Status
 
-```sh
-make build-installer IMG=<some-registry>/operator:tag
-```
+The controller writes the following status fields:
 
-**NOTE:** The makefile target mentioned above generates an 'install.yaml'
-file in the dist directory. This file contains all the resources built
-with Kustomize, which are necessary to install this project without its
-dependencies.
+- `phase` — one of `Pending`, `Ready`, `Degraded`, `Error` (shown as a
+  printer column).
+- `readyReplicas` — mirrored from the Deployment's `status.readyReplicas`.
+- `observedGeneration` — the spec generation most recently reconciled.
+- `conditions` — `Available`, `Progressing`, and `ReconcileSuccess`
+  following the standard Kubernetes condition convention.
 
-2. Using the installer
+## Deferred
 
-Users can just run 'kubectl apply -f <URL for YAML BUNDLE>' to install
-the project, i.e.:
+The operator does **not** yet handle:
 
-```sh
-kubectl apply -f https://raw.githubusercontent.com/<org>/operator/<tag or branch>/dist/install.yaml
-```
+- Git-sync sidecars / git mappings (Helm chart's `gitSyncs` and `gitMappings`)
+- Cross-agent `manifest.json` for peer discovery
+- UI `Deployment`, `Service`, and `Ingress`
+- Shared-storage `PVC` creation — only references to a pre-existing PVC
+  are supported via `spec.sharedStorage.claimName`
+- Admission webhooks for validation and defaulting
+- `ServiceMonitor` for Prometheus Operator
 
-### By providing a Helm Chart
-
-1. Build the chart using the optional helm plugin
-
-```sh
-operator-sdk edit --plugins=helm/v1-alpha
-```
-
-2. See that a chart was generated under 'dist/chart', and users
-can obtain this solution from there.
-
-**NOTE:** If you change the project, you need to update the Helm Chart
-using the same command above to sync the latest changes. Furthermore,
-if you create webhooks, you need to use the above command with
-the '--force' flag and manually ensure that any custom configuration
-previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
-is manually re-applied afterwards.
-
-## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
-
-**NOTE:** Run `make help` for more information on all potential `make` targets
-
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
+Track gaps as separate issues as they come up; the Helm chart covers
+these in the interim.
 
 ## License
 
-Copyright 2026.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
+Apache 2.0 — see [LICENSE](../LICENSE) (once present) for the full text.

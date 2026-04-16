@@ -1,0 +1,472 @@
+/*
+Copyright 2026.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package controller
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
+
+	nyxv1alpha1 "github.com/nyx-ai/nyx-operator/api/v1alpha1"
+)
+
+// DefaultImageTag is used when an ImageSpec omits Tag. Overridden at build
+// time via -ldflags. Tracking the operator version rather than the app
+// version keeps first-pass wiring simple — users can always pin tags per-CR.
+var DefaultImageTag = "latest"
+
+// NyxAgentReconciler reconciles a NyxAgent object.
+type NyxAgentReconciler struct {
+	client.Client
+	Scheme *runtime.Scheme
+}
+
+// +kubebuilder:rbac:groups=nyx.ai,resources=nyxagents,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=nyx.ai,resources=nyxagents/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=nyx.ai,resources=nyxagents/finalizers,verbs=update
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=services;configmaps;persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=autoscaling,resources=horizontalpodautoscalers,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update;patch;delete
+
+// Reconcile is the control loop's entry point. It brings owned resources into
+// alignment with the NyxAgent spec and writes status.
+func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := logf.FromContext(ctx)
+
+	agent := &nyxv1alpha1.NyxAgent{}
+	if err := r.Get(ctx, req.NamespacedName, agent); err != nil {
+		if apierrors.IsNotFound(err) {
+			// OwnerReferences take care of cascading deletion.
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, err
+	}
+
+	// Apply all desired resources, accumulating any error so status can
+	// reflect the first failure.
+	var reconcileErr error
+	applied := map[string]bool{
+		"deployment": false,
+		"service":    false,
+	}
+
+	if err := r.applyDeployment(ctx, agent); err != nil {
+		reconcileErr = err
+	} else {
+		applied["deployment"] = true
+	}
+
+	if err := r.applyService(ctx, agent); err != nil && reconcileErr == nil {
+		reconcileErr = err
+	} else if err == nil {
+		applied["service"] = true
+	}
+
+	// Optional resources. Failure to apply an optional does not block the
+	// whole reconcile — it is captured into the error chain.
+	if err := r.applyAgentConfigMap(ctx, agent); err != nil && reconcileErr == nil {
+		reconcileErr = err
+	}
+	if err := r.applyBackendConfigMaps(ctx, agent); err != nil && reconcileErr == nil {
+		reconcileErr = err
+	}
+	if err := r.applyBackendPVCs(ctx, agent); err != nil && reconcileErr == nil {
+		reconcileErr = err
+	}
+	if err := r.reconcileHPA(ctx, agent); err != nil && reconcileErr == nil {
+		reconcileErr = err
+	}
+	if err := r.reconcilePDB(ctx, agent); err != nil && reconcileErr == nil {
+		reconcileErr = err
+	}
+
+	// Observe Deployment status and update our own status subresource.
+	if err := r.updateStatus(ctx, agent, reconcileErr); err != nil {
+		log.Error(err, "failed to update NyxAgent status")
+		// Don't mask the primary reconcile error.
+		if reconcileErr == nil {
+			reconcileErr = err
+		}
+	}
+
+	if reconcileErr != nil {
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, reconcileErr
+	}
+
+	// Requeue while the Deployment is still rolling out; watches handle the
+	// steady state.
+	if agent.Status.Phase != nyxv1alpha1.NyxAgentPhaseReady {
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+	return ctrl.Result{}, nil
+}
+
+// ── Apply helpers ─────────────────────────────────────────────────────────────
+
+func (r *NyxAgentReconciler) applyDeployment(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
+	desired := buildDeployment(agent, DefaultImageTag)
+	if err := controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
+		return fmt.Errorf("set owner on Deployment: %w", err)
+	}
+	existing := &appsv1.Deployment{}
+	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
+	switch {
+	case apierrors.IsNotFound(err):
+		return r.Create(ctx, desired)
+	case err != nil:
+		return err
+	}
+	// Patch spec + labels; keep existing status and server-filled fields.
+	existing.Spec = desired.Spec
+	existing.Labels = desired.Labels
+	return r.Update(ctx, existing)
+}
+
+func (r *NyxAgentReconciler) applyService(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
+	desired := buildService(agent)
+	if err := controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
+		return fmt.Errorf("set owner on Service: %w", err)
+	}
+	existing := &corev1.Service{}
+	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
+	switch {
+	case apierrors.IsNotFound(err):
+		return r.Create(ctx, desired)
+	case err != nil:
+		return err
+	}
+	// Preserve ClusterIP across updates — the API server rejects attempts to
+	// change it.
+	desired.Spec.ClusterIP = existing.Spec.ClusterIP
+	existing.Spec = desired.Spec
+	existing.Labels = desired.Labels
+	existing.Annotations = desired.Annotations
+	return r.Update(ctx, existing)
+}
+
+func (r *NyxAgentReconciler) applyAgentConfigMap(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
+	cm := buildConfigMap(agent, agentConfigMapName(agent, ""), agent.Spec.Config)
+	if cm == nil {
+		// TODO: delete any stale ConfigMap when Config was previously set.
+		// Deferred to the follow-up GC pass.
+		return nil
+	}
+	return r.applyConfigMap(ctx, agent, cm)
+}
+
+func (r *NyxAgentReconciler) applyBackendConfigMaps(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
+	for _, b := range agent.Spec.Backends {
+		cm := buildConfigMap(agent, agentConfigMapName(agent, b.Name), b.Config)
+		if cm == nil {
+			continue
+		}
+		if err := r.applyConfigMap(ctx, agent, cm); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *NyxAgentReconciler) applyConfigMap(ctx context.Context, agent *nyxv1alpha1.NyxAgent, desired *corev1.ConfigMap) error {
+	if err := controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
+		return fmt.Errorf("set owner on ConfigMap %s: %w", desired.Name, err)
+	}
+	existing := &corev1.ConfigMap{}
+	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
+	switch {
+	case apierrors.IsNotFound(err):
+		return r.Create(ctx, desired)
+	case err != nil:
+		return err
+	}
+	existing.Data = desired.Data
+	existing.Labels = desired.Labels
+	return r.Update(ctx, existing)
+}
+
+func (r *NyxAgentReconciler) applyBackendPVCs(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
+	for _, desired := range buildBackendPVCs(agent) {
+		if err := controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
+			return fmt.Errorf("set owner on PVC %s: %w", desired.Name, err)
+		}
+		existing := &corev1.PersistentVolumeClaim{}
+		err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
+		switch {
+		case apierrors.IsNotFound(err):
+			if err := r.Create(ctx, desired); err != nil {
+				return err
+			}
+			continue
+		case err != nil:
+			return err
+		}
+		// PVC specs are largely immutable after creation; only labels are
+		// reconciled in-place. Size changes would need an expand-volume flow.
+		existing.Labels = desired.Labels
+		if err := r.Update(ctx, existing); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// reconcileHPA creates, updates, or deletes the HPA to match spec.
+func (r *NyxAgentReconciler) reconcileHPA(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
+	desired := buildHPA(agent)
+	key := client.ObjectKey{Namespace: agent.Namespace, Name: agent.Name}
+
+	if desired == nil {
+		// Ensure no HPA lingers from a previous spec.
+		existing := &autoscalingv2.HorizontalPodAutoscaler{}
+		if err := r.Get(ctx, key, existing); err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+		if metav1.IsControlledBy(existing, agent) {
+			return r.Delete(ctx, existing)
+		}
+		return nil
+	}
+
+	if err := controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
+		return fmt.Errorf("set owner on HPA: %w", err)
+	}
+	existing := &autoscalingv2.HorizontalPodAutoscaler{}
+	err := r.Get(ctx, key, existing)
+	switch {
+	case apierrors.IsNotFound(err):
+		return r.Create(ctx, desired)
+	case err != nil:
+		return err
+	}
+	existing.Spec = desired.Spec
+	existing.Labels = desired.Labels
+	return r.Update(ctx, existing)
+}
+
+// reconcilePDB creates, updates, or deletes the PDB to match spec.
+func (r *NyxAgentReconciler) reconcilePDB(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
+	desired := buildPDB(agent)
+	key := client.ObjectKey{Namespace: agent.Namespace, Name: agent.Name}
+
+	if desired == nil {
+		existing := &policyv1.PodDisruptionBudget{}
+		if err := r.Get(ctx, key, existing); err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+		if metav1.IsControlledBy(existing, agent) {
+			return r.Delete(ctx, existing)
+		}
+		return nil
+	}
+
+	if err := controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
+		return fmt.Errorf("set owner on PDB: %w", err)
+	}
+	existing := &policyv1.PodDisruptionBudget{}
+	err := r.Get(ctx, key, existing)
+	switch {
+	case apierrors.IsNotFound(err):
+		return r.Create(ctx, desired)
+	case err != nil:
+		return err
+	}
+	existing.Spec = desired.Spec
+	existing.Labels = desired.Labels
+	return r.Update(ctx, existing)
+}
+
+// ── Status ────────────────────────────────────────────────────────────────────
+
+func (r *NyxAgentReconciler) updateStatus(ctx context.Context, agent *nyxv1alpha1.NyxAgent, reconcileErr error) error {
+	// Re-read the Deployment to derive ready replicas.
+	dep := &appsv1.Deployment{}
+	depKey := client.ObjectKey{Namespace: agent.Namespace, Name: agent.Name}
+	depErr := r.Get(ctx, depKey, dep)
+
+	newStatus := agent.Status.DeepCopy()
+	newStatus.ObservedGeneration = agent.Generation
+
+	now := metav1.Now()
+
+	// ReconcileSuccess condition.
+	recCond := metav1.Condition{
+		Type:               nyxv1alpha1.ConditionReconcileSuccess,
+		LastTransitionTime: now,
+		ObservedGeneration: agent.Generation,
+	}
+	if reconcileErr != nil {
+		recCond.Status = metav1.ConditionFalse
+		recCond.Reason = "ReconcileFailed"
+		recCond.Message = reconcileErr.Error()
+	} else {
+		recCond.Status = metav1.ConditionTrue
+		recCond.Reason = "Reconciled"
+		recCond.Message = "All owned resources are in sync."
+	}
+	setCondition(&newStatus.Conditions, recCond)
+
+	// Available / Progressing driven by the Deployment.
+	availCond := metav1.Condition{
+		Type:               nyxv1alpha1.ConditionAvailable,
+		LastTransitionTime: now,
+		ObservedGeneration: agent.Generation,
+	}
+	progCond := metav1.Condition{
+		Type:               nyxv1alpha1.ConditionProgressing,
+		LastTransitionTime: now,
+		ObservedGeneration: agent.Generation,
+	}
+
+	switch {
+	case apierrors.IsNotFound(depErr):
+		newStatus.ReadyReplicas = 0
+		newStatus.Phase = nyxv1alpha1.NyxAgentPhasePending
+		availCond.Status = metav1.ConditionFalse
+		availCond.Reason = "DeploymentMissing"
+		availCond.Message = "Agent Deployment does not yet exist."
+		progCond.Status = metav1.ConditionTrue
+		progCond.Reason = "Creating"
+		progCond.Message = "Creating the agent Deployment."
+	case depErr != nil:
+		newStatus.Phase = nyxv1alpha1.NyxAgentPhaseError
+		availCond.Status = metav1.ConditionUnknown
+		availCond.Reason = "DeploymentFetchFailed"
+		availCond.Message = depErr.Error()
+		progCond.Status = metav1.ConditionUnknown
+		progCond.Reason = "DeploymentFetchFailed"
+		progCond.Message = depErr.Error()
+	default:
+		newStatus.ReadyReplicas = dep.Status.ReadyReplicas
+		desired := int32(1)
+		if dep.Spec.Replicas != nil {
+			desired = *dep.Spec.Replicas
+		}
+		switch {
+		case reconcileErr != nil:
+			newStatus.Phase = nyxv1alpha1.NyxAgentPhaseError
+			availCond.Status = metav1.ConditionFalse
+			availCond.Reason = "ReconcileError"
+			availCond.Message = reconcileErr.Error()
+			progCond.Status = metav1.ConditionFalse
+			progCond.Reason = "ReconcileError"
+			progCond.Message = reconcileErr.Error()
+		case dep.Status.ReadyReplicas >= desired && desired > 0:
+			newStatus.Phase = nyxv1alpha1.NyxAgentPhaseReady
+			availCond.Status = metav1.ConditionTrue
+			availCond.Reason = "AllReplicasReady"
+			availCond.Message = fmt.Sprintf("%d/%d replicas ready.", dep.Status.ReadyReplicas, desired)
+			progCond.Status = metav1.ConditionFalse
+			progCond.Reason = "Deployed"
+			progCond.Message = "Rollout complete."
+		default:
+			newStatus.Phase = nyxv1alpha1.NyxAgentPhaseDegraded
+			availCond.Status = metav1.ConditionFalse
+			availCond.Reason = "NotAllReady"
+			availCond.Message = fmt.Sprintf("%d/%d replicas ready.", dep.Status.ReadyReplicas, desired)
+			progCond.Status = metav1.ConditionTrue
+			progCond.Reason = "RolloutInProgress"
+			progCond.Message = "Waiting for replicas to become ready."
+		}
+	}
+
+	setCondition(&newStatus.Conditions, availCond)
+	setCondition(&newStatus.Conditions, progCond)
+
+	// Skip the write if nothing changed (avoids status churn).
+	if statusEqual(agent.Status, *newStatus) {
+		return nil
+	}
+	agent.Status = *newStatus
+	return r.Status().Update(ctx, agent)
+}
+
+// setCondition upserts a condition by type, preserving LastTransitionTime
+// when the status is unchanged.
+func setCondition(conds *[]metav1.Condition, newCond metav1.Condition) {
+	for i, c := range *conds {
+		if c.Type == newCond.Type {
+			if c.Status == newCond.Status {
+				newCond.LastTransitionTime = c.LastTransitionTime
+			}
+			(*conds)[i] = newCond
+			return
+		}
+	}
+	*conds = append(*conds, newCond)
+}
+
+// statusEqual is a shallow equality check sufficient for deciding whether to
+// write the status subresource. Conditions compared by (type, status, reason,
+// message, observedGeneration) only.
+func statusEqual(a, b nyxv1alpha1.NyxAgentStatus) bool {
+	if a.Phase != b.Phase ||
+		a.ObservedGeneration != b.ObservedGeneration ||
+		a.ReadyReplicas != b.ReadyReplicas ||
+		len(a.Conditions) != len(b.Conditions) {
+		return false
+	}
+	idx := map[string]metav1.Condition{}
+	for _, c := range a.Conditions {
+		idx[c.Type] = c
+	}
+	for _, c := range b.Conditions {
+		prev, ok := idx[c.Type]
+		if !ok {
+			return false
+		}
+		if prev.Status != c.Status ||
+			prev.Reason != c.Reason ||
+			prev.Message != c.Message ||
+			prev.ObservedGeneration != c.ObservedGeneration {
+			return false
+		}
+	}
+	return true
+}
+
+// SetupWithManager sets up the controller with the Manager.
+func (r *NyxAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&nyxv1alpha1.NyxAgent{}).
+		Owns(&appsv1.Deployment{}).
+		Owns(&corev1.Service{}).
+		Owns(&corev1.ConfigMap{}).
+		Owns(&corev1.PersistentVolumeClaim{}).
+		Owns(&autoscalingv2.HorizontalPodAutoscaler{}).
+		Owns(&policyv1.PodDisruptionBudget{}).
+		Named("nyxagent").
+		Complete(r)
+}
