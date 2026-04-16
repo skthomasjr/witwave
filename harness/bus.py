@@ -27,6 +27,11 @@ class Message:
     enqueued_at: float = 0.0
     result: asyncio.Future | None = field(default=None)
     metadata: dict[str, Any] = field(default_factory=dict)
+    # W3C trace context attached to this message (#468). Carried through every
+    # downstream A2A relay and webhook delivery. None for messages that
+    # originate inside the harness without an inbound request — callers can
+    # mint a fresh context via trace.new_context() when needed.
+    trace_context: Any = None  # avoid forward-importing harness.trace
 
 
 class MessageBus:

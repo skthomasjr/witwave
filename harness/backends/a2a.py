@@ -13,6 +13,7 @@ import uuid
 import httpx
 
 from backends.config import BackendConfig
+from tracing import TraceContext, inject_traceparent, set_span_error, start_span
 
 logger = logging.getLogger(__name__)
 
@@ -69,8 +70,14 @@ class A2ABackend:
         is_new: bool,
         model: str | None = None,
         max_tokens: int | None = None,
+        trace_context: TraceContext | None = None,
     ) -> list[str]:
-        """Forward the prompt to the remote A2A agent and return collected text chunks."""
+        """Forward the prompt to the remote A2A agent and return collected text chunks.
+
+        When *trace_context* is supplied, a fresh child span_id is minted for this
+        outbound call and sent as the W3C ``traceparent`` header (#468). The
+        downstream backend sees this harness as the immediate parent in the trace.
+        """
         _start = time.monotonic()
         message_id = str(uuid.uuid4())
 
@@ -87,42 +94,87 @@ class A2ABackend:
                 }
             },
         }
-        _metadata: dict = {}
-        if model:
-            _metadata["model"] = model
-        if max_tokens is not None:
-            _metadata["max_tokens"] = max_tokens
-        if _metadata:
-            payload["params"]["message"]["metadata"] = _metadata
+        # Mint the child traceparent once so the HTTP header and the JSON-RPC
+        # metadata echo refer to the same outbound span_id — mirroring the
+        # header inside metadata lets backends that only surface the JSON-RPC
+        # envelope (not raw HTTP headers) still correlate the call.
+        _outbound_traceparent: str | None = None
+        if trace_context is not None:
+            _outbound_traceparent = trace_context.child().to_header()
 
-        body = json.dumps(payload).encode()
-        response_text = await self._post_with_retry(self._url, body)
+        _span_attrs = {
+            "nyx.backend_id": self.id,
+            "nyx.url": self._url,
+            "nyx.model": model or "",
+            "nyx.session_id": session_id,
+            "http.request.method": "POST",
+        }
+        with start_span("a2a.backend.run_query", kind="client", attributes=_span_attrs) as _span:
+            # When OTel is enabled, inject() overwrites the traceparent we
+            # pre-computed from the bare TraceContext with one whose
+            # parent_id matches the active OTel span. This keeps the
+            # downstream backend linked to the correct ancestor span in
+            # the collector. When OTel is disabled, inject() is a no-op
+            # and our bare traceparent wins — the end-to-end trace_id
+            # invariant holds either way (#469).
+            _carrier: dict[str, str] = {}
+            inject_traceparent(_carrier)
+            if _carrier.get("traceparent"):
+                _outbound_traceparent = _carrier["traceparent"]
 
-        elapsed = time.monotonic() - _start
-        logger.debug(f"A2A backend '{self.id}' responded in {elapsed:.2f}s")
+            _metadata: dict = {}
+            if model:
+                _metadata["model"] = model
+            if max_tokens is not None:
+                _metadata["max_tokens"] = max_tokens
+            if _outbound_traceparent is not None:
+                _metadata["traceparent"] = _outbound_traceparent
+            if _metadata:
+                payload["params"]["message"]["metadata"] = _metadata
 
-        try:
-            data = json.loads(response_text)
-        except Exception as exc:
-            raise ValueError(f"A2A backend '{self.id}' returned non-JSON response: {response_text!r}") from exc
+            body = json.dumps(payload).encode()
+            try:
+                response_text = await self._post_with_retry(self._url, body, traceparent=_outbound_traceparent)
+            except Exception as _exc:
+                set_span_error(_span, _exc)
+                raise
 
-        error = data.get("error")
-        if error:
-            raise RuntimeError(f"A2A backend '{self.id}' returned error: {error}")
+            elapsed = time.monotonic() - _start
+            logger.debug(f"A2A backend '{self.id}' responded in {elapsed:.2f}s")
 
-        result = data.get("result") or {}
-        return self._extract_text(result)
+            try:
+                data = json.loads(response_text)
+            except Exception as exc:
+                set_span_error(_span, exc)
+                raise ValueError(f"A2A backend '{self.id}' returned non-JSON response: {response_text!r}") from exc
 
-    async def _post_with_retry(self, url: str, body: bytes) -> str:
-        """POST body to url using the shared AsyncClient, retrying on transient errors."""
+            error = data.get("error")
+            if error:
+                _err = RuntimeError(f"A2A backend '{self.id}' returned error: {error}")
+                set_span_error(_span, _err)
+                raise _err
+
+            result = data.get("result") or {}
+            return self._extract_text(result)
+
+    async def _post_with_retry(self, url: str, body: bytes, traceparent: str | None = None) -> str:
+        """POST body to url using the shared AsyncClient, retrying on transient errors.
+
+        *traceparent* — optional W3C trace-context header value; attached to every
+        retry attempt so downstream observability correlates all retries to the
+        same caller span (#468).
+        """
         last_exc: Exception | None = None
+        _headers = {"Content-Type": "application/json"}
+        if traceparent is not None:
+            _headers["traceparent"] = traceparent
         for attempt in range(_MAX_RETRIES):
             client = self._get_client()
             try:
                 resp = await client.post(
                     url,
                     content=body,
-                    headers={"Content-Type": "application/json"},
+                    headers=_headers,
                 )
                 if resp.status_code in _RETRYABLE_STATUS_CODES:
                     logger.warning(

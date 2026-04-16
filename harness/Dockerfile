@@ -27,7 +27,10 @@ RUN pip install --no-cache-dir \
     prometheus-client==0.24.1 \
     uvicorn==0.43.0 \
     watchfiles==1.1.1 \
-    pyyaml==6.0.2
+    pyyaml==6.0.2 \
+    opentelemetry-api==1.30.0 \
+    opentelemetry-sdk==1.30.0 \
+    opentelemetry-exporter-otlp-proto-http==1.30.0
 
 COPY --chown=agent:agent harness/ /home/agent/harness/
 COPY --chown=agent:agent shared/ /home/agent/shared/

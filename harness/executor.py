@@ -16,12 +16,21 @@ from a2a.utils import new_agent_text_message
 from backends.a2a import A2ABackend
 from backends.config import BACKEND_CONFIG_PATH, BackendConfig, RoutingConfig, RoutingEntry, load_backends_config, load_routing_config
 from bus import Message, MessageBus
+from tracing import (
+    TraceContext,
+    context_from_inbound,
+    extract_otel_context,
+    new_context,
+    set_span_error,
+    start_span,
+)
 from utils import ConsensusEntry
 from log_utils import _append_log
 from metrics import (
     agent_a2a_last_request_timestamp_seconds,
     agent_a2a_request_duration_seconds,
     agent_a2a_requests_total,
+    agent_a2a_traces_received_total,
     agent_active_sessions,
     agent_concurrent_queries,
     agent_consensus_backend_errors_total,
@@ -62,7 +71,14 @@ TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
 LOG_PROMPT_MAX_BYTES = int(os.environ.get("LOG_PROMPT_MAX_BYTES", "200"))
 
 
-async def log_entry(role: str, text: str, session_id: str, model: str | None = None, backend: str | None = None) -> None:
+async def log_entry(
+    role: str,
+    text: str,
+    session_id: str,
+    model: str | None = None,
+    backend: str | None = None,
+    trace_context: TraceContext | None = None,
+) -> None:
     try:
         entry = {
             "ts": datetime.now(timezone.utc).isoformat(),
@@ -73,6 +89,13 @@ async def log_entry(role: str, text: str, session_id: str, model: str | None = N
             "backend": backend,
             "text": text,
         }
+        # Attach trace context to every conversation log line when present so
+        # external log-correlation tools can join the JSONL with downstream
+        # backend traces and webhooks (#468). Absent by default to keep old
+        # logs backward-compatible.
+        if trace_context is not None:
+            entry["trace_id"] = trace_context.trace_id
+            entry["span_id"] = trace_context.parent_id
         _line = json.dumps(entry)
         await asyncio.to_thread(_append_log, CONVERSATION_LOG, _line)
         if agent_log_entries_total is not None:
@@ -150,11 +173,15 @@ async def run(
     backend_id: str | None = None,
     model: str | None = None,
     max_tokens: int | None = None,
+    trace_context: TraceContext | None = None,
 ) -> str:
     if agent_concurrent_queries is not None:
         agent_concurrent_queries.inc()
     try:
-        return await _run_inner(prompt, session_id, sessions, backends, default_backend_id, backend_id, model, max_tokens)
+        return await _run_inner(
+            prompt, session_id, sessions, backends, default_backend_id,
+            backend_id, model, max_tokens, trace_context=trace_context,
+        )
     finally:
         if agent_concurrent_queries is not None:
             agent_concurrent_queries.dec()
@@ -169,6 +196,7 @@ async def _run_inner(
     backend_id: str | None = None,
     model: str | None = None,
     max_tokens: int | None = None,
+    trace_context: TraceContext | None = None,
 ) -> str:
     resolved_id = backend_id or default_backend_id
     backend = backends.get(resolved_id)
@@ -186,8 +214,9 @@ async def _run_inner(
     _track_session(sessions, session_id)
 
     _prompt_preview = prompt[:LOG_PROMPT_MAX_BYTES] + ("[truncated]" if len(prompt) > LOG_PROMPT_MAX_BYTES else "") if LOG_PROMPT_MAX_BYTES > 0 else "[redacted]"
-    logger.info(f"Session {session_id} ({'new' if is_new else 'existing'}) backend={resolved_id} — prompt: {_prompt_preview!r}")
-    await log_entry("user", prompt, session_id, model=model, backend=resolved_id)
+    _trace_tag = f" trace_id={trace_context.trace_id}" if trace_context is not None else ""
+    logger.info(f"Session {session_id} ({'new' if is_new else 'existing'}) backend={resolved_id}{_trace_tag} — prompt: {_prompt_preview!r}")
+    await log_entry("user", prompt, session_id, model=model, backend=resolved_id, trace_context=trace_context)
 
     if agent_prompt_length_bytes is not None:
         agent_prompt_length_bytes.observe(len(prompt.encode()))
@@ -195,7 +224,11 @@ async def _run_inner(
     _start = time.monotonic()
     try:
         collected = await asyncio.wait_for(
-            backend.run_query(prompt, session_id, is_new, model=model, max_tokens=max_tokens),
+            backend.run_query(
+                prompt, session_id, is_new,
+                model=model, max_tokens=max_tokens,
+                trace_context=trace_context,
+            ),
             timeout=TASK_TIMEOUT_SECONDS,
         )
     except asyncio.TimeoutError:
@@ -258,6 +291,7 @@ async def run_consensus(
     synthesis_backend_id: str | None = None,
     synthesis_model: str | None = None,
     max_tokens: int | None = None,
+    trace_context: TraceContext | None = None,
 ) -> str:
     """Fan out *prompt* to matching backends concurrently and aggregate.
 
@@ -290,7 +324,11 @@ async def run_consensus(
 
     async def _call(call_key: str, bid: str, model: str | None) -> tuple[str, str | Exception]:
         try:
-            result = await _run_inner(prompt, session_id, sessions, backends, default_backend_id, backend_id=bid, model=model, max_tokens=max_tokens)
+            result = await _run_inner(
+                prompt, session_id, sessions, backends, default_backend_id,
+                backend_id=bid, model=model, max_tokens=max_tokens,
+                trace_context=trace_context,
+            )
             return call_key, result
         except Exception as exc:
             return call_key, exc
@@ -338,7 +376,12 @@ async def run_consensus(
         f"Agent responses:\n{parts}"
     )
     try:
-        synthesised = await _run_inner(synthesis_prompt, session_id, sessions, backends, default_backend_id, backend_id=synthesis_backend_id or default_backend_id, model=synthesis_model, max_tokens=max_tokens)
+        synthesised = await _run_inner(
+            synthesis_prompt, session_id, sessions, backends, default_backend_id,
+            backend_id=synthesis_backend_id or default_backend_id,
+            model=synthesis_model, max_tokens=max_tokens,
+            trace_context=trace_context,
+        )
     except Exception as exc:
         logger.error(f"Consensus synthesis pass failed: {exc!r} — returning concatenated responses.")
         if agent_consensus_runs_total is not None:
@@ -472,6 +515,7 @@ class AgentExecutor(A2AAgentExecutor):
         duration_seconds: float,
         error: str | None = None,
         model: str | None = None,
+        trace_context: TraceContext | None = None,
     ) -> None:
         if self._continuation_runner is not None:
             self._continuation_runner.notify(kind, session_id, success, response or "", self._bus)
@@ -485,6 +529,7 @@ class AgentExecutor(A2AAgentExecutor):
                 duration_seconds=duration_seconds,
                 error=error,
                 model=model,
+                trace_context=trace_context,
             )
 
     async def backends_watcher(self) -> None:
@@ -560,6 +605,19 @@ class AgentExecutor(A2AAgentExecutor):
                 max_tokens = int(_max_tokens_raw)
             except (ValueError, TypeError):
                 logger.warning(f"Session {session_id!r}: invalid max_tokens in metadata {_max_tokens_raw!r}, ignoring.")
+        # Resolve W3C trace context from inbound metadata (#468). The A2A SDK
+        # doesn't surface raw HTTP headers here, but upstream callers echo the
+        # traceparent into message.metadata so we can still continue the trace.
+        _tp_header = metadata.get("traceparent")
+        trace_context, _had_inbound = context_from_inbound(
+            _tp_header if isinstance(_tp_header, str) else None
+        )
+        if agent_a2a_traces_received_total is not None:
+            agent_a2a_traces_received_total.labels(has_inbound=str(_had_inbound).lower()).inc()
+        # Bridge to OTel (#469). When OTel is enabled the extracted context
+        # becomes the parent of the server span below; when disabled this
+        # returns None and start_span silently emits a no-op span.
+        _otel_parent = extract_otel_context({"traceparent": _tp_header}) if _tp_header else None
         task_id = context.task_id
 
         if task_id:
@@ -571,24 +629,40 @@ class AgentExecutor(A2AAgentExecutor):
         _response = ""
         _success = False
         _error: str | None = None
+        _span_attrs = {
+            "nyx.session_id": session_id,
+            "nyx.backend_id": backend_id or self._default_backend_id,
+            "nyx.model": model or "",
+            "nyx.trace_id": trace_context.trace_id,
+            "nyx.has_inbound_trace": _had_inbound,
+        }
         try:
-            _response = await run(
-                prompt, session_id, self._sessions,
-                self._backends, self._default_backend_id,
-                backend_id=backend_id,
-                model=model,
-                max_tokens=max_tokens,
-            )
-            _success = True
-            if _response:
-                await event_queue.enqueue_event(new_agent_text_message(_response))
-            if agent_a2a_requests_total is not None:
-                agent_a2a_requests_total.labels(status="success").inc()
-        except Exception as _exc:
-            _error = repr(_exc)
-            if agent_a2a_requests_total is not None:
-                agent_a2a_requests_total.labels(status="error").inc()
-            raise
+            with start_span(
+                "a2a.execute",
+                kind="server",
+                parent_context=_otel_parent,
+                attributes=_span_attrs,
+            ) as _span:
+                try:
+                    _response = await run(
+                        prompt, session_id, self._sessions,
+                        self._backends, self._default_backend_id,
+                        backend_id=backend_id,
+                        model=model,
+                        max_tokens=max_tokens,
+                        trace_context=trace_context,
+                    )
+                    _success = True
+                    if _response:
+                        await event_queue.enqueue_event(new_agent_text_message(_response))
+                    if agent_a2a_requests_total is not None:
+                        agent_a2a_requests_total.labels(status="success").inc()
+                except Exception as _exc:
+                    _error = repr(_exc)
+                    if agent_a2a_requests_total is not None:
+                        agent_a2a_requests_total.labels(status="error").inc()
+                    set_span_error(_span, _exc)
+                    raise
         finally:
             _opc_task = asyncio.create_task(self.on_prompt_completed(
                 source="a2a",
@@ -599,6 +673,7 @@ class AgentExecutor(A2AAgentExecutor):
                 duration_seconds=time.monotonic() - _exec_start,
                 error=_error,
                 model=model,
+                trace_context=trace_context,
             ))
             self._background_tasks.add(_opc_task)
             if agent_background_tasks is not None:
@@ -652,6 +727,11 @@ class AgentExecutor(A2AAgentExecutor):
         _routed_backend_id = message.backend_id or (_entry.agent if _entry else None)
         _resolved_id = _routed_backend_id or self._default_backend_id
         _model = self._resolve_model(message.model, _entry, _resolved_id)
+        # Bus-originated work (heartbeats, jobs, tasks, triggers, continuations)
+        # mints a fresh context when the message has no inbound trace. This
+        # ensures every backend call carries a trace_id even for internally
+        # scheduled work (#468).
+        _trace_context = message.trace_context or new_context()
         try:
             if message.consensus:
                 _response = await run_consensus(
@@ -664,6 +744,7 @@ class AgentExecutor(A2AAgentExecutor):
                     synthesis_backend_id=_resolved_id,
                     synthesis_model=_model,
                     max_tokens=message.max_tokens,
+                    trace_context=_trace_context,
                 )
             else:
                 _response = await run(
@@ -675,6 +756,7 @@ class AgentExecutor(A2AAgentExecutor):
                     backend_id=_routed_backend_id,
                     model=_model,
                     max_tokens=message.max_tokens,
+                    trace_context=_trace_context,
                 )
             _success = True
             if message.result is not None and not message.result.done():
@@ -694,6 +776,7 @@ class AgentExecutor(A2AAgentExecutor):
                 duration_seconds=time.monotonic() - _bus_start,
                 error=_error,
                 model=_model,
+                trace_context=_trace_context,
             ))
             self._background_tasks.add(_opc_task)
             if agent_background_tasks is not None:

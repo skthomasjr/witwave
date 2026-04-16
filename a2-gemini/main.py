@@ -204,6 +204,10 @@ async def main():
     start_time = datetime.now(timezone.utc)
     _startup_mono = time.monotonic()
 
+    # Initialise OTel before the executor (#469). No-op when OTEL_ENABLED is falsy.
+    from otel import init_otel_if_enabled
+    init_otel_if_enabled(service_name=os.environ.get("OTEL_SERVICE_NAME") or f"a2-gemini-{os.environ.get('AGENT_OWNER', 'unknown')}")
+
     agent_card = build_agent_card()
     executor = AgentExecutor()
     _task_store_path = os.environ.get("TASK_STORE_PATH", "")
@@ -307,6 +311,19 @@ async def main():
                     "id": rpc_id,
                     "error": {"code": -32602, "message": "Missing required argument: prompt"},
                 })
+            # Optional max_tokens — same parsing semantics as the A2A path
+            # (positive int; non-positive or invalid is logged and dropped) (#460).
+            _max_tokens_raw = arguments.get("max_tokens")
+            mcp_max_tokens: int | None = None
+            if _max_tokens_raw is not None:
+                try:
+                    _parsed = int(_max_tokens_raw)
+                    if _parsed <= 0:
+                        logger.warning("MCP tools/call: max_tokens=%s is non-positive; ignoring (#460).", _parsed)
+                    else:
+                        mcp_max_tokens = _parsed
+                except (ValueError, TypeError):
+                    logger.warning("MCP tools/call: invalid max_tokens %r; ignoring.", _max_tokens_raw)
             session_id = str(uuid.uuid4())
             try:
                 from executor import run as _run_for_mcp
@@ -318,13 +335,16 @@ async def main():
                     executor._session_locks,
                     history_save_failed=executor._history_save_failed,
                     model=None,
+                    max_tokens=mcp_max_tokens,
                 )
             except Exception as exc:
                 logger.error(f"MCP tools/call error: {exc!r}")
                 return JSONResponse({
                     "jsonrpc": "2.0",
                     "id": rpc_id,
-                    "error": {"code": -32603, "message": f"Internal error: {exc}"},
+                    # Generic message — full exception detail is logged server-side
+                    # (line above) but not leaked to MCP clients (#455).
+                    "error": {"code": -32603, "message": "Internal server error"},
                 })
             return JSONResponse({
                 "jsonrpc": "2.0",

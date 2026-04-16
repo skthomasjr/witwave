@@ -423,6 +423,13 @@ async def main():
     except Exception as _manifest_exc:
         logger.warning("Could not validate manifest at startup: %s", _manifest_exc)
 
+    # Initialise OTel before constructing the executor so the first span
+    # emitted by AgentExecutor.__init__ or any eager watcher gets exported
+    # through the configured OTLP pipeline (#469). No-op when OTEL_ENABLED
+    # is falsy, which is the default.
+    from tracing import init_otel_if_enabled
+    init_otel_if_enabled(service_name=os.environ.get("OTEL_SERVICE_NAME") or "nyx-harness")
+
     bus = MessageBus()
     agent_card = build_agent_card()
     executor = AgentExecutor()

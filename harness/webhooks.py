@@ -37,6 +37,7 @@ from pathlib import Path
 import httpx
 import yaml
 
+from tracing import inject_traceparent, set_span_error, start_span
 from metrics import (
     agent_file_watcher_restarts_total,
     agent_webhooks_delivery_shed_total,
@@ -394,6 +395,7 @@ async def deliver(
     backends: dict | None = None,
     default_backend_id: str | None = None,
     on_retry_task=None,
+    trace_context=None,
 ) -> None:
     """Deliver one webhook POST. Called as a fire-and-forget background task.
 
@@ -473,6 +475,11 @@ async def deliver(
         headers[k] = _substitute(v, context)
     if sub.signing_secret:
         headers["X-Hub-Signature-256"] = _sign_body(body_bytes, sub.signing_secret)
+    # Propagate W3C trace context to webhook receivers (#468). Each outbound
+    # delivery gets a fresh child span_id so retries/replays can be
+    # distinguished downstream while staying correlated to the same trace_id.
+    if trace_context is not None:
+        headers["traceparent"] = trace_context.child().to_header()
 
     # First delivery attempt — make one HTTP POST without holding a retry slot.
     # If it fails and retries are configured, schedule the next attempt as a
@@ -481,18 +488,33 @@ async def deliver(
     # retries from exhausting the per-subscription and global caps and starving
     # new deliveries during a downstream outage (#362).
     result = "unknown"
-    try:
-        async with httpx.AsyncClient(timeout=sub.timeout_seconds, follow_redirects=False) as client:
-            resp = await client.post(url, content=body_bytes, headers=headers)
-        if resp.status_code < 400:
-            result = "success"
-            logger.info(f"Webhook '{sub.name}' delivered to {url} — {resp.status_code}")
-        else:
-            result = f"http_{resp.status_code}"
-            logger.warning(f"Webhook '{sub.name}' attempt 1 got {resp.status_code}")
-    except Exception as exc:
-        result = "error"
-        logger.warning(f"Webhook '{sub.name}' attempt 1 failed: {exc!r}")
+    with start_span(
+        "webhook.deliver",
+        kind="client",
+        attributes={
+            "nyx.webhook.name": sub.name,
+            "nyx.kind": kind,
+            "nyx.session_id": session_id,
+            "http.url": url,
+        },
+    ) as _span:
+        # Stamp OTel traceparent into the outbound headers if enabled.
+        # When OTel is off, the trace_context carrier header set above
+        # remains in place unchanged (#469).
+        inject_traceparent(headers)
+        try:
+            async with httpx.AsyncClient(timeout=sub.timeout_seconds, follow_redirects=False) as client:
+                resp = await client.post(url, content=body_bytes, headers=headers)
+            if resp.status_code < 400:
+                result = "success"
+                logger.info(f"Webhook '{sub.name}' delivered to {url} — {resp.status_code}")
+            else:
+                result = f"http_{resp.status_code}"
+                logger.warning(f"Webhook '{sub.name}' attempt 1 got {resp.status_code}")
+        except Exception as exc:
+            result = "error"
+            set_span_error(_span, exc)
+            logger.warning(f"Webhook '{sub.name}' attempt 1 failed: {exc!r}")
 
     if result != "success" and sub.retries > 0:
         # Record the initial failure before dispatching the retry chain so that
@@ -601,6 +623,7 @@ class WebhookRunner:
         duration_seconds: float,
         error: str | None,
         model: str | None,
+        trace_context=None,
     ) -> None:
         """Evaluate all subscriptions and fire matching ones as background tasks."""
         response_preview = response[:2048] if response else ""
@@ -654,6 +677,7 @@ class WebhookRunner:
                     backends=self._backends,
                     default_backend_id=self._default_backend_id,
                     on_retry_task=_make_on_retry_task(),
+                    trace_context=trace_context,
                 ))
                 self._active_deliveries.add(_t)
                 deliveries = self._deliveries_by_name.setdefault(sub.name, set())

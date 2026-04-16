@@ -9,6 +9,7 @@ _enabled = bool(os.environ.get("METRICS_ENABLED"))
 agent_a2a_last_request_timestamp_seconds: prometheus_client.Gauge | None = None
 agent_a2a_request_duration_seconds: prometheus_client.Histogram | None = None
 agent_a2a_requests_total: prometheus_client.Counter | None = None
+agent_a2a_traces_received_total: prometheus_client.Counter | None = None
 agent_up: prometheus_client.Gauge | None = None
 agent_active_sessions: prometheus_client.Gauge | None = None
 agent_job_checkpoint_stale_total: prometheus_client.Counter | None = None
@@ -121,6 +122,13 @@ if _enabled:
         "agent_a2a_requests_total",
         "Total A2A HTTP requests by outcome.",
         ["status"],
+    )
+    agent_a2a_traces_received_total = prometheus_client.Counter(
+        "agent_a2a_traces_received_total",
+        "Total inbound A2A requests by trace-context provenance — labelled "
+        "has_inbound=true when the caller passed a valid W3C traceparent "
+        "header, false when the harness minted a fresh context (#468).",
+        ["has_inbound"],
     )
     agent_up = prometheus_client.Gauge("agent_up", "Agent is running", ["agent"])
     agent_active_sessions = prometheus_client.Gauge(

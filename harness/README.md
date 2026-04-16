@@ -62,6 +62,7 @@ metrics.
 | `webhooks.py`            | Outbound notification delivery                                                      |
 | `backends/config.py`     | Loads and hot-reloads `backend.yaml`                                                |
 | `backends/a2a.py`        | Forwards requests to a remote A2A backend over HTTP/JSON-RPC with retry on transient errors |
+| `tracing.py`             | W3C trace-context (`traceparent`) parse/mint/child helpers (#468)                   |
 | `metrics.py`             | Prometheus metric definitions                                                       |
 | `metrics_proxy.py`       | Aggregates backend /metrics with backend= label injection                           |
 | `conversations_proxy.py` | Concurrently fetches and merges /conversations and /trace from all backends         |
@@ -97,6 +98,44 @@ budget), `max-concurrent-fires` (cap on simultaneous in-flight fires; default `5
 
 **`webhooks/*.md`** — Frontmatter: `url` or `url-env-var` (destination), `notify-on-kind` (glob filter),
 `signing-secret-env-var` (HMAC key), `extract` (prompt for LLM extraction pass). Body: webhook payload template.
+
+## Tracing
+
+nyx-harness propagates W3C [Trace Context](https://www.w3.org/TR/trace-context/) end-to-end without depending on any
+external tracing SDK (#468). This is the smallest-viable building block for cross-agent correlation; a later issue
+(#469) can layer full OpenTelemetry on top without changing call sites.
+
+**Inbound.** On every A2A request, `executor.execute()` reads the `traceparent` value from `message.metadata` (the A2A
+SDK surfaces HTTP headers there, not on the raw request). If valid, the context is continued; otherwise a fresh
+`trace_id`/`span_id` pair is minted. The `agent_a2a_traces_received_total{has_inbound=true|false}` counter records
+which path was taken.
+
+**Internal.** Scheduled work (heartbeats, jobs, tasks, triggers, continuations) flows through the message bus. Each
+`Message` carries an optional `trace_context`; when absent, `process_bus` mints a fresh one so every backend call has a
+`trace_id` even for internally scheduled work. The context is also stamped onto conversation log entries
+(`trace_id`/`span_id` fields in `conversation.jsonl`) so external log tools can join it with downstream traces.
+
+**Outbound.** Every call through `backends/a2a.py` mints a child span_id and sends it to the downstream backend both as
+an HTTP `traceparent` header and inside the JSON-RPC `metadata.traceparent` field (the latter handles backends that
+only see the JSON envelope). Webhook deliveries (`webhooks.py`) stamp the same header, so external receivers see the
+harness as the immediate parent and stay correlated with the original trace.
+
+**Format.** `trace_id` is 32 hex chars (128-bit), `parent_id`/`span_id` is 16 hex chars (64-bit), flags is always `01`
+(sampled). See `tracing.py` for `parse_traceparent`, `new_context`, `context_from_inbound`, and `TraceContext.child()`.
+
+**OpenTelemetry (opt-in).** Set `OTEL_ENABLED=true` to layer OTLP/HTTP span export on top of the W3C plumbing
+(#469). When enabled, the harness creates a real server span for every A2A request, client spans for every outbound
+backend call and webhook delivery, and the per-backend `execute()` continues the trace via its own server span.
+Spans are exported using the standard OTel env vars:
+
+- `OTEL_EXPORTER_OTLP_ENDPOINT` — default `http://localhost:4318`
+- `OTEL_SERVICE_NAME` — default `nyx-harness`
+- `OTEL_TRACES_SAMPLER` — default `parentbased_always_on`
+
+Resource attributes `service.name`, `agent`, `agent_id`, and `backend` are populated automatically from the
+container's environment. The `tracing.py` module re-exports the shared OTel helpers from `shared/otel.py`, so
+backends use the same bootstrap without code duplication. When `OTEL_ENABLED` is falsy, the OTel call sites are
+no-ops and only the lightweight W3C propagation runs.
 
 ## Runtime
 
