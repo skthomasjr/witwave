@@ -205,6 +205,13 @@ async def main():
     start_time = datetime.now(timezone.utc)
     _startup_mono = time.monotonic()
 
+    # Initialize _computer_lock here, inside asyncio.run(), so it is always
+    # created within the running event loop.  Module-level asyncio.Lock() causes
+    # a DeprecationWarning in Python 3.10+ and wrong-loop attachment in 3.12+
+    # (#378).  Initializing eagerly before any request arrives eliminates the
+    # race in the former lazy check-and-assign inside _build_tools() (#402).
+    _executor_module._computer_lock = asyncio.Lock()
+
     agent_card = build_agent_card()
     executor = AgentExecutor()
     _task_store_path = os.environ.get("TASK_STORE_PATH", "")
