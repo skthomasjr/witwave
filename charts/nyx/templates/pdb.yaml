@@ -1,4 +1,5 @@
 {{- range $agent := .Values.agents }}
+{{- if eq (include "nyx.enabled" $agent) "true" }}
 {{- $pdb := dict }}
 {{- if $agent.podDisruptionBudget }}
 {{- $pdb = $agent.podDisruptionBudget }}
@@ -22,5 +23,6 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ $agent.name }}
+{{- end }}
 {{- end }}
 {{- end }}

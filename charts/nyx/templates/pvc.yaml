@@ -22,8 +22,10 @@ spec:
   {{- end }}
 {{- end }}
 {{- range .Values.agents }}
+{{- if eq (include "nyx.enabled" .) "true" }}
 {{- $agentName := .name }}
 {{- range .backends }}
+{{- if eq (include "nyx.enabled" .) "true" }}
 {{- if and (.storage).enabled (not (.storage).existingClaim) }}
 ---
 apiVersion: v1
@@ -41,6 +43,8 @@ spec:
   {{- if (.storage).storageClassName }}
   storageClassName: {{ (.storage).storageClassName }}
   {{- end }}
+{{- end }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

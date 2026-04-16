@@ -1,4 +1,5 @@
 {{- range $agent := .Values.agents }}
+{{- if eq (include "nyx.enabled" $agent) "true" }}
 {{- $auto := dict }}
 {{- if $agent.autoscaling }}
 {{- $auto = $agent.autoscaling }}
@@ -37,5 +38,6 @@ spec:
           type: Utilization
           averageUtilization: {{ $auto.targetMemoryUtilizationPercentage }}
     {{- end }}
+{{- end }}
 {{- end }}
 {{- end }}

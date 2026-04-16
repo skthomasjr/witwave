@@ -11,7 +11,12 @@ data:
   manifest.json: |
     {
       "team": [
-        {{- $agents := .Values.agents }}
+        {{- $agents := list }}
+        {{- range .Values.agents }}
+        {{- if eq (include "nyx.enabled" .) "true" }}
+        {{- $agents = append $agents . }}
+        {{- end }}
+        {{- end }}
         {{- range $i, $agent := $agents }}
         {
           "name": {{ $agent.name | quote }},

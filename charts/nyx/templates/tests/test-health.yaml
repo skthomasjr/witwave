@@ -1,4 +1,5 @@
 {{- range .Values.agents }}
+{{- if eq (include "nyx.enabled" .) "true" }}
 {{- $agent := . }}
 ---
 apiVersion: v1
@@ -38,9 +39,12 @@ spec:
           agents=$(curl -sf http://{{ $.Release.Name }}-{{ .name }}:{{ .port | default 8000 }}/agents)
           echo "$agents"
           {{- range .backends }}
+          {{- if eq (include "nyx.enabled" .) "true" }}
           echo "$agents" | grep -q '"id":"{{ .name }}"' || { echo "ERROR: backend {{ .name }} not found in /agents response" >&2; exit 1; }
           echo "$agents" | grep -q '"id":"{{ .name }}".*"card":{' || { echo "ERROR: backend {{ .name }} card is null — backend may be unreachable" >&2; exit 1; }
           {{- end }}
+          {{- end }}
           echo ""
           echo "All checks passed for {{ .name }}."
+{{- end }}
 {{- end }}

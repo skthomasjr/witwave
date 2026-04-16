@@ -51,7 +51,11 @@ Usage: {{- if include "nyx.hasMappings" . }}
 {{- define "nyx.hasMappings" -}}
 {{- $has := false -}}
 {{- if .gitMappings }}{{- $has = true }}{{- end -}}
-{{- range .backends }}{{- if .gitMappings }}{{- $has = true }}{{- end }}{{- end -}}
+{{- range .backends }}
+{{- if eq (include "nyx.enabled" .) "true" }}
+{{- if .gitMappings }}{{- $has = true }}{{- end }}
+{{- end }}
+{{- end -}}
 {{- if $has }}true{{- end -}}
 {{- end }}
 
@@ -74,6 +78,7 @@ Usage: {{- include "nyx.gitMappingMounts" (dict "agent" $agent "release" .Releas
 {{- end }}
 {{- end }}
 {{- range .agent.backends }}
+{{- if eq (include "nyx.enabled" .) "true" }}
 {{- if .gitMappings }}
 - name: {{ $release }}-{{ $agentName }}-{{ .name }}-git-mappings
   mountPath: /nyx-mappings/{{ .name }}
@@ -81,6 +86,7 @@ Usage: {{- include "nyx.gitMappingMounts" (dict "agent" $agent "release" .Releas
 {{- range .gitMappings }}
 - name: {{ include "nyx.gmVolumeName" (dict "agentName" $agentName "context" $backendName "dest" .dest) }}
   mountPath: {{ .dest }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}
@@ -107,6 +113,7 @@ Usage: {{- include "nyx.gitMappingVolumes" (dict "agent" . "release" $.Release.N
 {{- end }}
 {{- end }}
 {{- range .agent.backends }}
+{{- if eq (include "nyx.enabled" .) "true" }}
 {{- if .gitMappings }}
 - name: {{ $release }}-{{ $agentName }}-{{ .name }}-git-mappings
   configMap:
@@ -119,3 +126,16 @@ Usage: {{- include "nyx.gitMappingVolumes" (dict "agent" . "release" $.Release.N
 {{- end }}
 {{- end }}
 {{- end }}
+{{- end }}
+
+{{/*
+nyx.enabled — returns "true" or "false" for a scope's `enabled` field,
+defaulting to "true" when the key is absent. Use via `eq (include
+"nyx.enabled" .) "true"`. This exists because `default true .enabled`
+returns "true" even when .enabled is literally false (sprig's `default`
+treats the boolean false as an "empty" value). Added in beta.32 for the
+per-agent and per-backend enabled flags.
+*/}}
+{{- define "nyx.enabled" -}}
+{{- if hasKey . "enabled" -}}{{- .enabled -}}{{- else -}}true{{- end -}}
+{{- end -}}

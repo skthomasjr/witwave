@@ -1,8 +1,12 @@
 {{- $hasAnyMappings := false }}
 {{- range .Values.agents }}
+{{- if eq (include "nyx.enabled" .) "true" }}
 {{- if .gitMappings }}{{- $hasAnyMappings = true }}{{- end }}
 {{- range .backends }}
+{{- if eq (include "nyx.enabled" .) "true" }}
 {{- if .gitMappings }}{{- $hasAnyMappings = true }}{{- end }}
+{{- end }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- if $hasAnyMappings }}
@@ -70,6 +74,7 @@ data:
     fi
 {{- end }}
 {{- range .Values.agents }}
+{{- if eq (include "nyx.enabled" .) "true" }}
 {{- $agentName := .name }}
 {{- if .gitMappings }}
 ---
@@ -87,6 +92,7 @@ data:
     {{- end }}
 {{- end }}
 {{- range .backends }}
+{{- if eq (include "nyx.enabled" .) "true" }}
 {{- if .gitMappings }}
 ---
 apiVersion: v1
@@ -101,6 +107,8 @@ data:
     - src: /git/{{ .gitSync }}/{{ .src }}
       dest: {{ .dest }}
     {{- end }}
+{{- end }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}
