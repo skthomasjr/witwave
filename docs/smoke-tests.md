@@ -25,6 +25,7 @@ These fire immediately when the stack comes up. Look for them near the top of th
 | `model-check-codex-gpt-5-1-codex` | bob-codex | `model` field = `gpt-5.1-codex` |
 | `animal-memory-claude` | bob-claude | Response acknowledges hamsters; seeds session memory |
 | `animal-memory-codex` | bob-codex | Response acknowledges hamsters; seeds session memory |
+| `budget-exceeded-claude` | bob-claude | `system` entry in log: `Budget exceeded: N tokens used of 10 limit.` — verifies `max-tokens` enforcement surfaces a `BudgetExceededError` as a system conversation-log entry |
 | `fanin-a` | default | `FANIN_A_OK` response; first leg of fan-in continuation test |
 | `fanin-b` | default | `FANIN_B_OK` response; second leg of fan-in continuation test |
 
@@ -186,3 +187,4 @@ After deploying, confirm in order:
 8. `ping` job fires every 5 min with `continuation-ping` immediately after
 9. Fred's `ping` job and `continuation-ping` appear in fred's conversation log
 10. Fan-in: `fanin-a` and `fanin-b` both appear; `continuation-fanin-test` fires exactly once after both, with `FANIN_OK`
+11. Budget: `budget-exceeded-claude` produces a `system` log entry matching `Budget exceeded: N tokens used of 10 limit.`
