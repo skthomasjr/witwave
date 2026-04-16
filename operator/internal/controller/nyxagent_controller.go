@@ -102,10 +102,7 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	// Optional resources. Failure to apply an optional does not block the
 	// whole reconcile — it is captured into the error chain.
-	if err := r.applyAgentConfigMap(ctx, agent); err != nil && reconcileErr == nil {
-		reconcileErr = err
-	}
-	if err := r.applyBackendConfigMaps(ctx, agent); err != nil && reconcileErr == nil {
+	if err := r.reconcileConfigMaps(ctx, agent); err != nil && reconcileErr == nil {
 		reconcileErr = err
 	}
 	if err := r.applyBackendPVCs(ctx, agent); err != nil && reconcileErr == nil {
@@ -182,24 +179,56 @@ func (r *NyxAgentReconciler) applyService(ctx context.Context, agent *nyxv1alpha
 	return r.Update(ctx, existing)
 }
 
-func (r *NyxAgentReconciler) applyAgentConfigMap(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
-	cm := buildConfigMap(agent, agentConfigMapName(agent, ""), agent.Spec.Config)
-	if cm == nil {
-		// TODO: delete any stale ConfigMap when Config was previously set.
-		// Deferred to the follow-up GC pass.
-		return nil
+// reconcileConfigMaps applies every ConfigMap the spec currently calls for
+// AND garbage-collects ConfigMaps owned by this NyxAgent that the spec no
+// longer asks for (#443). Replaces the previous applyAgentConfigMap +
+// applyBackendConfigMaps split, which had a known TODO about stale cleanup.
+func (r *NyxAgentReconciler) reconcileConfigMaps(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
+	// Compute the desired set first — we apply by iterating this set, and we
+	// reuse it for the cleanup pass to decide what to delete.
+	desired := map[string]*corev1.ConfigMap{}
+	if cm := buildConfigMap(agent, agentConfigMapName(agent, ""), agent.Spec.Config); cm != nil {
+		desired[cm.Name] = cm
 	}
-	return r.applyConfigMap(ctx, agent, cm)
-}
-
-func (r *NyxAgentReconciler) applyBackendConfigMaps(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
 	for _, b := range agent.Spec.Backends {
-		cm := buildConfigMap(agent, agentConfigMapName(agent, b.Name), b.Config)
-		if cm == nil {
-			continue
+		if cm := buildConfigMap(agent, agentConfigMapName(agent, b.Name), b.Config); cm != nil {
+			desired[cm.Name] = cm
 		}
+	}
+
+	// Apply each desired ConfigMap.
+	for _, cm := range desired {
 		if err := r.applyConfigMap(ctx, agent, cm); err != nil {
 			return err
+		}
+	}
+
+	// Cleanup: list ConfigMaps in this namespace that carry our agent labels,
+	// then delete any owned by THIS NyxAgent that are not in the desired set.
+	// Dual-check both labels and IsControlledBy before deleting to never touch
+	// foreign or shared ConfigMaps.
+	existing := &corev1.ConfigMapList{}
+	if err := r.List(ctx, existing,
+		client.InNamespace(agent.Namespace),
+		client.MatchingLabels{
+			labelName:      agent.Name,
+			labelManagedBy: managedBy,
+		},
+	); err != nil {
+		return fmt.Errorf("list owned ConfigMaps for cleanup: %w", err)
+	}
+	for i := range existing.Items {
+		cm := &existing.Items[i]
+		if _, wanted := desired[cm.Name]; wanted {
+			continue
+		}
+		if !metav1.IsControlledBy(cm, agent) {
+			// Defensive: another controller owns this ConfigMap despite the
+			// labels matching. Leave it alone.
+			continue
+		}
+		if err := r.Delete(ctx, cm); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("delete stale ConfigMap %s: %w", cm.Name, err)
 		}
 	}
 	return nil
