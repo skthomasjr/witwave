@@ -252,6 +252,37 @@ type NyxAgentSpec struct {
 	// +optional
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
 
+	// ServiceAccountName is the name of a pre-existing ServiceAccount to
+	// attach to the agent pod. The operator does not create or manage the
+	// ServiceAccount or its RBAC bindings — supply an externally-managed SA
+	// that already has the permissions your MCP tools require (e.g. a
+	// ServiceAccount bound to a Role that lets `mcp-kubernetes` or
+	// `mcp-helm` talk to the Kubernetes API in-cluster).
+	//
+	// When this field is set, AutomountServiceAccountToken flips to true
+	// automatically so the SA token is projected into every container in
+	// the pod. Note: the token is visible to every sibling container
+	// (nyx-harness + all backend sidecars + any MCP sidecars) — there is
+	// no per-container scoping. When unset, the pod retains the hardened
+	// default (no SA, no token mounted).
+	//
+	// See risk #538.
+	// +optional
+	ServiceAccountName string `json:"serviceAccountName,omitempty"`
+
+	// AutomountServiceAccountToken explicitly controls whether the
+	// ServiceAccount token is mounted into the agent pod. When nil (the
+	// default), the operator infers the value: false when
+	// ServiceAccountName is empty (hardened), true when ServiceAccountName
+	// is set (so MCP tools can reach the Kubernetes API). Set this field
+	// explicitly only when you need to override the inferred value — e.g.
+	// to mount the default SA's token without naming a custom SA, or to
+	// keep the token out of a pod that does name a custom SA.
+	//
+	// See risk #538.
+	// +optional
+	AutomountServiceAccountToken *bool `json:"automountServiceAccountToken,omitempty"`
+
 	// Resources are CPU/memory requests and limits for the nyx-harness container.
 	// +optional
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`

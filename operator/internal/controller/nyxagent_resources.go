@@ -389,6 +389,21 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 		replicas = int32Ptr(1)
 	}
 
+	// Resolve ServiceAccount + automount per risk #538. Default stays
+	// hardened (no SA, token not mounted). When the user opts in by
+	// setting ServiceAccountName, automount flips to true so in-cluster
+	// MCP tools (mcp-kubernetes, mcp-helm) can reach the Kubernetes API.
+	// An explicit AutomountServiceAccountToken on the spec always wins.
+	var automount *bool
+	switch {
+	case agent.Spec.AutomountServiceAccountToken != nil:
+		automount = agent.Spec.AutomountServiceAccountToken
+	case agent.Spec.ServiceAccountName != "":
+		automount = boolPtr(true)
+	default:
+		automount = boolPtr(false)
+	}
+
 	podSpec := corev1.PodSpec{
 		TerminationGracePeriodSeconds: func() *int64 {
 			if agent.Spec.TerminationGracePeriodSeconds != nil {
@@ -396,7 +411,8 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 			}
 			return int64Ptr(60)
 		}(),
-		AutomountServiceAccountToken: boolPtr(false),
+		ServiceAccountName:           agent.Spec.ServiceAccountName,
+		AutomountServiceAccountToken: automount,
 		SecurityContext: &corev1.PodSecurityContext{
 			RunAsNonRoot: boolPtr(true),
 			RunAsUser:    int64Ptr(1000),
