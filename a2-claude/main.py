@@ -404,8 +404,11 @@ async def main():
     server = uvicorn.Server(config)
 
     # Start MCP watcher tasks
+    # These watchers (hooks/MCP/agent_md reloaders) are required for correct
+    # operation — a persistently crashing watcher should take readiness down
+    # via WORKER_MAX_RESTARTS rather than silently crash-loop forever (#585).
     for _w in executor._mcp_watchers():
-        _mcp_task = asyncio.create_task(_guarded(_w))
+        _mcp_task = asyncio.create_task(_guarded(_w, critical=True))
         _mcp_task.add_done_callback(
             lambda t, _wn=_w.__name__: logger.error(f"MCP watcher {_wn!r} exited unexpectedly: {t.exception()!r}")
             if not t.cancelled() and t.exception() is not None
