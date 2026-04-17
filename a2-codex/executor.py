@@ -78,6 +78,7 @@ from metrics import (
 
 from log_utils import _append_log
 from exceptions import BudgetExceededError
+from validation import parse_max_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -923,6 +924,10 @@ class AgentExecutor(A2AAgentExecutor):
         self._mcp_stack: AsyncExitStack | None = None
         self._live_mcp_servers: list = []
         self._mcp_servers_lock: asyncio.Lock | None = None
+        # Public idempotency flag — set to True after close() completes so
+        # callers (e.g. main.py's lifespan) can safely avoid double-close of
+        # shared resources like the module-level _browser_pool (#555).
+        self.closed: bool = False
 
     def _mcp_watchers(self):
         """Return callables for AGENTS.md and mcp.json watching (#371, #432)."""
@@ -1081,19 +1086,13 @@ class AgentExecutor(A2AAgentExecutor):
             except ValueError:
                 session_id = str(uuid.uuid5(uuid.NAMESPACE_URL, _raw_sid))
         model = metadata.get("model") or None
-        _max_tokens_raw = metadata.get("max_tokens")
-        max_tokens: int | None = None
-        if _max_tokens_raw is not None:
-            try:
-                _parsed = int(_max_tokens_raw)
-                if _parsed <= 0:
-                    logger.warning(
-                        f"Session {session_id!r}: max_tokens={_parsed} is non-positive; ignoring (#428)."
-                    )
-                else:
-                    max_tokens = _parsed
-            except (ValueError, TypeError):
-                logger.warning(f"Session {session_id!r}: invalid max_tokens in metadata {_max_tokens_raw!r}, ignoring.")
+        # Shared parser lives in shared/validation.py (#537, #428, #555).
+        max_tokens = parse_max_tokens(
+            metadata.get("max_tokens"),
+            logger=logger,
+            source="A2A metadata",
+            session_id=session_id,
+        )
         task_id = context.task_id
 
         if task_id:
@@ -1171,7 +1170,14 @@ class AgentExecutor(A2AAgentExecutor):
 
     async def close(self) -> None:
         """Cancel and drain all MCP watcher tasks, tear down the MCP server
-        stack (#526), and close the Playwright computer."""
+        stack (#526), and close the Playwright computer.
+
+        Idempotent: the public ``self.closed`` flag guards a second invocation
+        so the shutdown path cannot double-close shared resources such as
+        ``_browser_pool`` (#555).
+        """
+        if self.closed:
+            return
         for task in self._mcp_watcher_tasks:
             task.cancel()
         if self._mcp_watcher_tasks:
@@ -1196,6 +1202,7 @@ class AgentExecutor(A2AAgentExecutor):
             except Exception as _e:
                 logger.warning("Failed to close BrowserPool on shutdown: %s", _e)
             _browser_pool = None
+        self.closed = True
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         if a2_task_cancellations_total is not None:

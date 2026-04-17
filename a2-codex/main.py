@@ -21,6 +21,7 @@ from a2a.types import (
 from conversations import make_conversations_handler, make_trace_handler
 import executor as _executor_module
 from executor import AgentExecutor
+from validation import parse_max_tokens
 from metrics import (
     a2_event_loop_lag_seconds,
     a2_health_checks_total,
@@ -344,18 +345,13 @@ async def main():
                     "error": {"code": -32602, "message": "Missing required argument: prompt"},
                 })
             # Optional max_tokens — same parsing semantics as the A2A path
-            # (positive int; non-positive or invalid is logged and dropped) (#460).
-            _max_tokens_raw = arguments.get("max_tokens")
-            mcp_max_tokens: int | None = None
-            if _max_tokens_raw is not None:
-                try:
-                    _parsed = int(_max_tokens_raw)
-                    if _parsed <= 0:
-                        logger.warning("MCP tools/call: max_tokens=%s is non-positive; ignoring (#460).", _parsed)
-                    else:
-                        mcp_max_tokens = _parsed
-                except (ValueError, TypeError):
-                    logger.warning("MCP tools/call: invalid max_tokens %r; ignoring.", _max_tokens_raw)
+            # (positive int; non-positive or invalid is logged and dropped).
+            # Shared helper lives in shared/validation.py (#537, #460, #555).
+            mcp_max_tokens = parse_max_tokens(
+                arguments.get("max_tokens"),
+                logger=logger,
+                source="MCP tools/call",
+            )
             session_id = str(uuid.uuid4())
             try:
                 from executor import run as _run_for_mcp
@@ -408,11 +404,9 @@ async def main():
             try:
                 yield
             finally:
-                if _executor_module._browser_pool is not None:
-                    try:
-                        await _executor_module._browser_pool.close()
-                    except Exception as exc:
-                        logger.warning("BrowserPool close error: %s", exc)
+                # executor.close() owns the _browser_pool teardown and is now
+                # idempotent (guarded by executor.closed); the previous
+                # pre-close here produced a double-close hazard (#555).
                 await executor.close()
 
     full_app = Starlette(routes=_routes, lifespan=lifespan)
