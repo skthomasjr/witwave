@@ -13,7 +13,7 @@ kind: ServiceMonitor
 metadata:
   name: {{ $.Release.Name }}-{{ .name }}
   labels:
-    {{- include "nyx.agentLabels" .name | nindent 4 }}
+    {{- include "nyx.agentLabels" (dict "name" .name "root" $) | nindent 4 }}
     {{- with $.Values.serviceMonitor.labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}

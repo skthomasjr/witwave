@@ -33,7 +33,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: {{ $.Release.Name }}-{{ $agentName }}-{{ .name }}-data
   labels:
-    {{- include "nyx.backendLabels" (dict "agentName" $agentName "backendName" .name) | nindent 4 }}
+    {{- include "nyx.backendLabels" (dict "agentName" $agentName "backendName" .name "root" $) | nindent 4 }}
 spec:
   accessModes:
     - ReadWriteOnce

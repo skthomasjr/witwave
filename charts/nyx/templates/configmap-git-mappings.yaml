@@ -99,7 +99,7 @@ kind: ConfigMap
 metadata:
   name: {{ $.Release.Name }}-{{ $agentName }}-git-mappings
   labels:
-    {{- include "nyx.agentLabels" $agentName | nindent 4 }}
+    {{- include "nyx.agentLabels" (dict "name" $agentName "root" $) | nindent 4 }}
 data:
   mappings.yaml: |
     {{- range .gitMappings }}
@@ -120,7 +120,7 @@ kind: ConfigMap
 metadata:
   name: {{ $.Release.Name }}-{{ $agentName }}-{{ .name }}-git-mappings
   labels:
-    {{- include "nyx.backendLabels" (dict "agentName" $agentName "backendName" .name) | nindent 4 }}
+    {{- include "nyx.backendLabels" (dict "agentName" $agentName "backendName" .name "root" $) | nindent 4 }}
 data:
   mappings.yaml: |
     {{- range .gitMappings }}

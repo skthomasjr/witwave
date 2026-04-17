@@ -6,7 +6,7 @@ kind: Service
 metadata:
   name: {{ $.Release.Name }}-{{ .name }}
   labels:
-    {{- include "nyx.agentLabels" .name | nindent 4 }}
+    {{- include "nyx.agentLabels" (dict "name" .name "root" $) | nindent 4 }}
   {{- /* serviceAnnotations defaults to true, so use hasKey to detect an explicit
         per-agent `false` override — sprig's `default` would return the global
         true and ignore the override (#472). */}}

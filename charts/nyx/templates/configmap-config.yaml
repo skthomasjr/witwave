@@ -7,7 +7,7 @@ kind: ConfigMap
 metadata:
   name: {{ $.Release.Name }}-{{ .name }}-config
   labels:
-    {{- include "nyx.agentLabels" .name | nindent 4 }}
+    {{- include "nyx.agentLabels" (dict "name" .name "root" $) | nindent 4 }}
 data:
 {{- range .config }}
   {{ .name }}: |
@@ -24,7 +24,7 @@ kind: ConfigMap
 metadata:
   name: {{ $.Release.Name }}-{{ $agentName }}-{{ .name }}-config
   labels:
-    {{- include "nyx.backendLabels" (dict "agentName" $agentName "backendName" .name) | nindent 4 }}
+    {{- include "nyx.backendLabels" (dict "agentName" $agentName "backendName" .name "root" $) | nindent 4 }}
 data:
 {{- range .config }}
   {{ .name }}: |

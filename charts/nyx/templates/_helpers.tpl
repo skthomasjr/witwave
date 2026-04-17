@@ -15,25 +15,87 @@ Usage: {{ include "nyx.gitSyncImage" . }}
 {{- end }}
 
 {{/*
+Chart label value (used by helm.sh/chart).
+Usage: {{ include "nyx.chart" . }}
+*/}}
+{{- define "nyx.chart" -}}
+{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
+{{- end }}
+
+{{/*
 Agent component labels (nyx-harness).
-Usage: {{- include "nyx.agentLabels" .name | nindent 4 }}
+Emits the full Kubernetes Recommended Labels set. NOT suitable for use in
+selector.matchLabels (includes `app.kubernetes.io/version` and `helm.sh/chart`,
+which change on chart upgrade). For selectors, use `nyx.agentSelectorLabels`.
+Usage: {{- include "nyx.agentLabels" (dict "name" .name "root" $) | nindent 4 }}
+Legacy (no recommended labels): {{- include "nyx.agentLabels" .name | nindent 4 }}
 */}}
 {{- define "nyx.agentLabels" -}}
+{{- if kindIs "map" . -}}
+{{- $root := .root -}}
+helm.sh/chart: {{ include "nyx.chart" $root }}
+app.kubernetes.io/name: {{ .name }}
+app.kubernetes.io/instance: {{ $root.Release.Name }}
+app.kubernetes.io/component: nyx-harness
+app.kubernetes.io/part-of: nyx
+app.kubernetes.io/managed-by: {{ $root.Release.Service }}
+{{- if $root.Chart.AppVersion }}
+app.kubernetes.io/version: {{ $root.Chart.AppVersion | quote }}
+{{- end }}
+{{- else -}}
 app.kubernetes.io/name: {{ . }}
 app.kubernetes.io/component: nyx-harness
 app.kubernetes.io/part-of: nyx
 app.kubernetes.io/managed-by: helm
+{{- end -}}
+{{- end }}
+
+{{/*
+Agent selector labels — stable across upgrades (safe for selector.matchLabels).
+Intentionally omits `app.kubernetes.io/version` and `helm.sh/chart`.
+Usage: {{- include "nyx.agentSelectorLabels" .name | nindent 6 }}
+*/}}
+{{- define "nyx.agentSelectorLabels" -}}
+app.kubernetes.io/name: {{ . }}
+app.kubernetes.io/component: nyx-harness
+app.kubernetes.io/part-of: nyx
 {{- end }}
 
 {{/*
 Backend component labels.
-Usage: {{- include "nyx.backendLabels" (dict "agentName" .name "backendName" .backendName) | nindent 4 }}
+Emits the full Kubernetes Recommended Labels set. NOT suitable for
+selector.matchLabels. For selectors, use `nyx.backendSelectorLabels`.
+Usage: {{- include "nyx.backendLabels" (dict "agentName" .name "backendName" .backendName "root" $) | nindent 4 }}
+Legacy (no recommended labels): {{- include "nyx.backendLabels" (dict "agentName" .name "backendName" .backendName) | nindent 4 }}
 */}}
 {{- define "nyx.backendLabels" -}}
+{{- $root := .root -}}
+{{- if $root -}}
+helm.sh/chart: {{ include "nyx.chart" $root }}
+app.kubernetes.io/name: {{ .agentName }}
+app.kubernetes.io/instance: {{ $root.Release.Name }}
+app.kubernetes.io/component: {{ .backendName }}-backend
+app.kubernetes.io/part-of: nyx
+app.kubernetes.io/managed-by: {{ $root.Release.Service }}
+{{- if $root.Chart.AppVersion }}
+app.kubernetes.io/version: {{ $root.Chart.AppVersion | quote }}
+{{- end }}
+{{- else -}}
 app.kubernetes.io/name: {{ .agentName }}
 app.kubernetes.io/component: {{ .backendName }}-backend
 app.kubernetes.io/part-of: nyx
 app.kubernetes.io/managed-by: helm
+{{- end -}}
+{{- end }}
+
+{{/*
+Backend selector labels — stable across upgrades (safe for selector.matchLabels).
+Usage: {{- include "nyx.backendSelectorLabels" (dict "agentName" .name "backendName" .backendName) | nindent 6 }}
+*/}}
+{{- define "nyx.backendSelectorLabels" -}}
+app.kubernetes.io/name: {{ .agentName }}
+app.kubernetes.io/component: {{ .backendName }}-backend
+app.kubernetes.io/part-of: nyx
 {{- end }}
 
 {{/*

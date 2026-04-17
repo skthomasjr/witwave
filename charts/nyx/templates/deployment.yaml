@@ -21,7 +21,7 @@ kind: Deployment
 metadata:
   name: {{ $.Release.Name }}-{{ .name }}
   labels:
-    {{- include "nyx.agentLabels" .name | nindent 4 }}
+    {{- include "nyx.agentLabels" (dict "name" .name "root" $) | nindent 4 }}
 spec:
   {{- if not $agentAutoscaling.enabled }}
   replicas: 1
@@ -32,7 +32,7 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "nyx.agentLabels" .name | nindent 8 }}
+        {{- include "nyx.agentLabels" (dict "name" .name "root" $) | nindent 8 }}
       {{- /* Resolve metrics + podAnnotations toggles. hasKey is required
             because sprig's `default` treats `false` as empty, so the
             obvious `((.metrics).podAnnotations | default $.Values.metrics.podAnnotations)`
