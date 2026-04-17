@@ -328,6 +328,7 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 		LivenessProbe:  httpProbe(harnessPort, "/health/live", livenessProbe),
 		ReadinessProbe: httpProbe(harnessPort, "/health/ready", readinessProbe),
 		VolumeMounts:   harnessMounts,
+		Lifecycle:      preStopLifecycle(agent),
 	}
 
 	// Backend containers.
@@ -397,6 +398,7 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 			LivenessProbe:  httpProbe(bPort, "/health", livenessProbe),
 			ReadinessProbe: httpProbe(bPort, "/health", readinessProbe),
 			VolumeMounts:   bMounts,
+			Lifecycle:      preStopLifecycle(agent),
 		}
 		if b.Model != "" {
 			bc.Env = append(bc.Env, corev1.EnvVar{Name: "BACKEND_MODEL", Value: b.Model})
@@ -545,6 +547,28 @@ func metricsEnabledValue(agent *nyxv1alpha1.NyxAgent) string {
 
 // backendEnabled reports the per-backend enabled flag with default-true
 // semantics (#chart beta.32). Returns true when the field is unset.
+// preStopLifecycle returns a `lifecycle.preStop` exec sleep hook when the
+// agent's PreStop spec is enabled. The sleep duration mirrors the chart
+// default (5s) when DelaySeconds is unset, matching charts/nyx
+// templates/deployment.yaml (#547, #512). Returns nil when PreStop is
+// disabled or the spec is absent.
+func preStopLifecycle(agent *nyxv1alpha1.NyxAgent) *corev1.Lifecycle {
+	if agent.Spec.PreStop == nil || !agent.Spec.PreStop.Enabled {
+		return nil
+	}
+	delay := agent.Spec.PreStop.DelaySeconds
+	if delay <= 0 {
+		delay = 5
+	}
+	return &corev1.Lifecycle{
+		PreStop: &corev1.LifecycleHandler{
+			Exec: &corev1.ExecAction{
+				Command: []string{"/bin/sh", "-c", fmt.Sprintf("sleep %d", delay)},
+			},
+		},
+	}
+}
+
 func backendEnabled(b nyxv1alpha1.BackendSpec) bool {
 	if b.Enabled != nil {
 		return *b.Enabled

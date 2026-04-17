@@ -862,6 +862,29 @@ spec:
                 maximum: 65535
                 minimum: 1
                 type: integer
+              preStop:
+                description: |-
+                  PreStop adds a `lifecycle.preStop` sleep hook to every container in
+                  the agent pod. Mirrors the chart-level `preStop` block (#547, #512).
+                  Off by default; when enabled, PreStop.DelaySeconds must be strictly
+                  less than TerminationGracePeriodSeconds (defaulting to 60s) so
+                  SIGTERM still fires with enough remaining grace for graceful
+                  shutdown before SIGKILL.
+                properties:
+                  delaySeconds:
+                    default: 5
+                    description: |-
+                      DelaySeconds is the preStop sleep duration. Must be strictly less
+                      than the pod's terminationGracePeriodSeconds when Enabled=true.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  enabled:
+                    description: |-
+                      Enabled toggles rendering of the preStop sleep hook. Off by default —
+                      opt in for production deployments where graceful shutdown matters.
+                    type: boolean
+                type: object
               probes:
                 description: Probes overrides liveness/readiness probe timing.
                 properties:

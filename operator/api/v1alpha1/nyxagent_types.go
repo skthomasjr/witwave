@@ -83,6 +83,28 @@ type ProbesSpec struct {
 	Readiness *ProbeSpec `json:"readiness,omitempty"`
 }
 
+// PreStopSpec configures a `lifecycle.preStop` sleep hook on every container
+// in the agent pod. When enabled, each container sleeps for DelaySeconds
+// before SIGTERM arrives, giving in-flight A2A requests, scheduled jobs, and
+// webhook deliveries a coordinated drain window (#447). Mirrors the
+// `preStop` block in `charts/nyx/values.yaml` (#547, #512). Keep
+// DelaySeconds strictly less than Spec.TerminationGracePeriodSeconds so
+// SIGTERM has enough remaining grace to complete graceful shutdown before
+// SIGKILL.
+type PreStopSpec struct {
+	// Enabled toggles rendering of the preStop sleep hook. Off by default —
+	// opt in for production deployments where graceful shutdown matters.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// DelaySeconds is the preStop sleep duration. Must be strictly less
+	// than the pod's terminationGracePeriodSeconds when Enabled=true.
+	// +kubebuilder:default=5
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	DelaySeconds int32 `json:"delaySeconds,omitempty"`
+}
+
 // AutoscalingSpec controls optional HorizontalPodAutoscaler creation.
 type AutoscalingSpec struct {
 	// Enabled creates an HPA for the agent's Deployment.
@@ -244,6 +266,15 @@ type NyxAgentSpec struct {
 	// +kubebuilder:validation:Minimum=0
 	// +optional
 	TerminationGracePeriodSeconds *int64 `json:"terminationGracePeriodSeconds,omitempty"`
+
+	// PreStop adds a `lifecycle.preStop` sleep hook to every container in
+	// the agent pod. Mirrors the chart-level `preStop` block (#547, #512).
+	// Off by default; when enabled, PreStop.DelaySeconds must be strictly
+	// less than TerminationGracePeriodSeconds (defaulting to 60s) so
+	// SIGTERM still fires with enough remaining grace for graceful
+	// shutdown before SIGKILL.
+	// +optional
+	PreStop *PreStopSpec `json:"preStop,omitempty"`
 
 	// Image is the nyx-harness orchestrator image.
 	Image ImageSpec `json:"image"`
