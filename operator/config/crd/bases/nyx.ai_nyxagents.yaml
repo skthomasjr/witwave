@@ -839,6 +839,22 @@ spec:
                       historical chart behaviour).
                     type: boolean
                 type: object
+              podAnnotations:
+                additionalProperties:
+                  type: string
+                description: |-
+                  PodAnnotations are merged onto the agent pod template's
+                  `metadata.annotations`. Common uses: ServiceMesh sidecar injection
+                  (e.g. `linkerd.io/inject: enabled`), trace sampling overrides,
+                  observability-tool discovery hints (#477).
+
+                  Conflict precedence: operator-managed keys always win. User values
+                  are applied first, then overwritten by any operator-managed
+                  annotation (e.g. the `prometheus.io/*` set stamped when
+                  `spec.metrics.podAnnotations` is enabled — #472). This prevents
+                  silent loss of operator behaviour when users and the operator pick
+                  overlapping keys.
+                type: object
               podDisruptionBudget:
                 description: PodDisruptionBudget optionally creates a PDB for the
                   agent Deployment.
@@ -853,6 +869,21 @@ spec:
                   minAvailable:
                     format: int32
                     type: integer
+                type: object
+              podLabels:
+                additionalProperties:
+                  type: string
+                description: |-
+                  PodLabels are merged onto the agent pod template's `metadata.labels`.
+                  Common uses: custom NetworkPolicy / PodMonitor selectors, team or
+                  cost-allocation labels (#477).
+
+                  Conflict precedence: operator-managed keys always win. User labels
+                  are applied first, then overwritten by the operator's canonical
+                  agent labels. User-supplied entries that collide with the
+                  Deployment's selector keys (labelName / labelComponent /
+                  labelPartOf / labelManagedBy) are ignored so the selector cannot
+                  drift and orphan pods.
                 type: object
               port:
                 default: 8000

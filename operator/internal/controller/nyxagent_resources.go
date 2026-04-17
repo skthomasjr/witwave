@@ -483,16 +483,40 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 		Volumes:          volumes,
 	}
 
-	// Pod-level Prometheus scrape annotations when metrics.podAnnotations
-	// is true (#chart beta.35 / #472). Honoured per-agent via the Metrics
-	// sub-spec; defaults to off so existing CRs keep current behaviour.
-	var podAnnotations map[string]string
+	// Pod-level annotations: start from any user-supplied spec.podAnnotations
+	// (#477), then overlay operator-managed keys so the operator always wins
+	// on conflict. The Prometheus scrape set (#chart beta.35 / #472) is
+	// stamped when spec.metrics.enabled and metrics.podAnnotations are on.
+	podAnnotations := mergeStringMap(nil, agent.Spec.PodAnnotations)
 	if agent.Spec.Metrics.Enabled && metricsPodAnnotationsEnabled(agent) {
-		podAnnotations = map[string]string{
+		podAnnotations = mergeStringMap(podAnnotations, map[string]string{
 			"prometheus.io/scrape": "true",
 			"prometheus.io/port":   fmt.Sprintf("%d", harnessPort),
 			"prometheus.io/path":   "/metrics",
+		})
+	}
+	if len(podAnnotations) == 0 {
+		podAnnotations = nil
+	}
+
+	// Pod-level labels: start from any user-supplied spec.podLabels (#477),
+	// drop entries that would clobber operator-managed selector keys, then
+	// overlay the canonical agent labels so the selector stays stable.
+	podLabels := map[string]string{}
+	reservedLabelKeys := map[string]struct{}{
+		labelName:      {},
+		labelComponent: {},
+		labelPartOf:    {},
+		labelManagedBy: {},
+	}
+	for k, v := range agent.Spec.PodLabels {
+		if _, reserved := reservedLabelKeys[k]; reserved {
+			continue
 		}
+		podLabels[k] = v
+	}
+	for k, v := range labels {
+		podLabels[k] = v
 	}
 
 	return &appsv1.Deployment{
@@ -505,11 +529,29 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 			Replicas: replicas,
 			Selector: &metav1.LabelSelector{MatchLabels: selector},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: labels, Annotations: podAnnotations},
+				ObjectMeta: metav1.ObjectMeta{Labels: podLabels, Annotations: podAnnotations},
 				Spec:       podSpec,
 			},
 		},
 	}
+}
+
+// mergeStringMap returns a new map containing all entries from base with
+// entries from overlay applied on top (overlay wins on key collision).
+// A nil base is treated as empty. The result is nil only when both inputs
+// are empty.
+func mergeStringMap(base, overlay map[string]string) map[string]string {
+	if len(base) == 0 && len(overlay) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(base)+len(overlay))
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range overlay {
+		out[k] = v
+	}
+	return out
 }
 
 // buildService constructs the Service exposing the agent's nyx-harness
