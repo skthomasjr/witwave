@@ -18,6 +18,8 @@ door, no cross-agent fan-out inside any one agent's pod.
 | Heartbeat         | Per-agent heartbeat schedule + backend + model                                   |
 | Conversations     | Aggregated conversation log with agent/role/search/limit filters                 |
 | Trace             | Tool-use audit feed across the team (timestamp, tool, duration, status, input)   |
+| Tool audit        | Per-agent `tool-audit.jsonl` viewer (#635) with decision / tool / session filters; row click expands the raw JSON. URL-backed filters so links round-trip. |
+| OTel Traces       | Distributed trace viewer (#632): recent traces + span-tree drawer from an operator-configured Jaeger/Tempo HTTP API |
 | Metrics           | Label-breakdown bar/doughnut charts from each agent's /metrics                   |
 
 ## Development
@@ -37,6 +39,35 @@ VITE_TEAM='[{"name":"bob","url":"http://localhost:8099"},{"name":"fred","url":"h
 ```
 
 Open http://localhost:5173. `/api/team` serves the inline directory; `/api/agents/<name>/...` proxies to each entry.
+
+## OTel trace backend (`VITE_TRACE_API_URL`)
+
+The `OTel Traces` view (#632) queries an external Jaeger or Tempo query API directly — it does **not** route
+through `/api/*`. Point the dashboard at that backend with one of:
+
+- **Build time:** set `VITE_TRACE_API_URL` before `npm run build`
+  (e.g. `VITE_TRACE_API_URL=http://nyx-jaeger-query.observability:16686 npm run build`).
+- **Runtime:** have nginx or your platform inject `window.__NYX_CONFIG__ = { traceApiUrl: "…" }`
+  into `index.html` at startup. The runtime override wins if both are present.
+
+Endpoints the view calls (standard Jaeger v1 query-service shape, which Tempo also exposes):
+
+| Purpose | Request |
+| ------- | ------- |
+| List recent traces | `GET <base>/api/traces?limit=<N>[&service=<name>]` |
+| Load a single trace | `GET <base>/api/traces/<traceID>` |
+
+When neither `VITE_TRACE_API_URL` nor `window.__NYX_CONFIG__.traceApiUrl` is set, the view renders a clear
+"tracing not configured" empty state and makes no network calls. The referenced Helm values land with
+`charts/nyx` `observability.tracing` (feature #634).
+
+The view intentionally does **not** attach authentication headers. Operators who run Jaeger/Tempo on a
+non-public network typically front it with their own auth proxy (oauth2-proxy, ingress auth, etc.). If your
+deployment uses the Tempo Grafana-compatible API and hits a shape mismatch the Jaeger-compatible routes
+didn't cover, open a narrower follow-up issue rather than bloating this view.
+
+The existing `Trace` view (#592) is unrelated — it reads the harness `/trace` JSONL feed for per-agent tool
+events. Both views coexist; OTel Traces is for distributed request flow spanning harness + backends + operator.
 
 ## Testing
 

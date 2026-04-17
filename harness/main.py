@@ -54,8 +54,16 @@ from metrics import (
     agent_up,
     agent_uptime_seconds,
 )
-from conversations import make_proxy_conversations_handler, make_proxy_trace_handler
-from conversations_proxy import fetch_backend_conversations, fetch_backend_trace
+from conversations import (
+    make_proxy_conversations_handler,
+    make_proxy_tool_audit_handler,
+    make_proxy_trace_handler,
+)
+from conversations_proxy import (
+    fetch_backend_conversations,
+    fetch_backend_tool_audit,
+    fetch_backend_trace,
+)
 from metrics_proxy import fetch_backend_metrics
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
@@ -705,8 +713,28 @@ async def main():
             auth_token=_backend_conversations_auth_token or None,
         )
 
+    async def _fetch_tool_audit(
+        since: str | None,
+        limit: int | None,
+        decision: str | None,
+        tool: str | None,
+        session: str | None,
+    ) -> list[dict]:
+        # Per-agent tool-audit fanout (#635). Uses the live executor backends.
+        backend_configs = [b._config for b in executor._backends.values()]
+        return await fetch_backend_tool_audit(
+            backend_configs,
+            since=since,
+            limit=limit,
+            decision=decision,
+            tool=tool,
+            session=session,
+            auth_token=_backend_conversations_auth_token or None,
+        )
+
     conversations_handler = make_proxy_conversations_handler(_conversations_auth_token, _fetch_conversations)
     trace_handler = make_proxy_trace_handler(_conversations_auth_token, _fetch_trace)
+    tool_audit_handler = make_proxy_tool_audit_handler(_conversations_auth_token, _fetch_tool_audit)
 
     # The /proxy/{agent_name}, /conversations/{agent_name}, /trace/{agent_name},
     # and /team endpoints were removed in beta.46 — the dashboard owns cross-
@@ -1221,6 +1249,7 @@ async def main():
         Route("/routing", routing_handler, methods=["GET"]),
         Route("/conversations", conversations_handler, methods=["GET"]),
         Route("/trace", trace_handler, methods=["GET"]),
+        Route("/tool-audit", tool_audit_handler, methods=["GET"]),
     ]
     if metrics_enabled:
         _routes.append(Route("/metrics", metrics_handler, methods=["GET"]))

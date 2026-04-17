@@ -18,7 +18,11 @@ from a2a.types import (
     AgentCard,
     AgentSkill,
 )
-from conversations import make_conversations_handler, make_trace_handler
+from conversations import (
+    make_conversations_handler,
+    make_tool_audit_handler,
+    make_trace_handler,
+)
 import executor as _executor_module
 from executor import AgentExecutor
 from validation import parse_max_tokens
@@ -49,6 +53,7 @@ AGENT_URL = os.environ.get("AGENT_URL", f"http://localhost:{BACKEND_PORT}/")
 AGENT_VERSION = os.environ.get("AGENT_VERSION", "0.1.0")
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
 TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/trace.jsonl")
+TOOL_AUDIT_LOG = os.environ.get("TOOL_AUDIT_LOG", "/home/agent/logs/tool-audit.jsonl")
 AGENT_OWNER = os.environ.get("AGENT_OWNER", AGENT_NAME)
 AGENT_ID = os.environ.get("AGENT_ID", "codex")
 _BACKEND_ID = "codex"
@@ -278,6 +283,7 @@ async def main():
 
     conversations_handler = make_conversations_handler(CONVERSATIONS_AUTH_TOKEN, CONVERSATION_LOG)
     trace_handler = make_trace_handler(CONVERSATIONS_AUTH_TOKEN, TRACE_LOG)
+    tool_audit_handler = make_tool_audit_handler(CONVERSATIONS_AUTH_TOKEN, TOOL_AUDIT_LOG)
 
     _agent_description = load_agent_description()
 
@@ -389,6 +395,7 @@ async def main():
         Route("/health", health),
         Route("/conversations", conversations_handler, methods=["GET"]),
         Route("/trace", trace_handler, methods=["GET"]),
+        Route("/tool-audit", tool_audit_handler, methods=["GET"]),
         Route("/mcp", mcp_handler, methods=["GET", "POST"]),
     ]
     if metrics_enabled:

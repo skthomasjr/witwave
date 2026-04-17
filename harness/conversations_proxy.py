@@ -117,6 +117,100 @@ async def fetch_backend_conversations(
     return all_entries
 
 
+async def fetch_backend_tool_audit(
+    backends: list[BackendConfig],
+    since: str | None = None,
+    limit: int | None = None,
+    decision: str | None = None,
+    tool: str | None = None,
+    session: str | None = None,
+    auth_token: str | None = None,
+) -> list[dict]:
+    """Fetch /tool-audit from each backend concurrently and return merged rows (#635).
+
+    Mirrors :func:`fetch_backend_conversations` / :func:`fetch_backend_trace`:
+    unreachable or non-200 backends are skipped, failures counted in
+    ``agent_backend_proxy_fetch_errors_total{endpoint="tool_audit"}`` and logged
+    at warning (throttled). ``since`` / ``decision`` / ``tool`` / ``session`` are
+    forwarded verbatim so the per-backend read does the filtering cheaply.
+    """
+    params: dict = {}
+    if since:
+        params["since"] = since
+    if limit is not None:
+        params["limit"] = limit
+    if decision:
+        params["decision"] = decision
+    if tool:
+        params["tool"] = tool
+    if session:
+        params["session"] = session
+    headers: dict = {}
+    if auth_token:
+        headers["Authorization"] = f"Bearer {auth_token}"
+
+    async def _fetch_one_tool_audit(
+        client: httpx.AsyncClient, backend: BackendConfig
+    ) -> list[dict]:
+        if not backend.url:
+            return []
+        url = backend.url.rstrip("/") + "/tool-audit"
+        try:
+            resp = await client.get(url, params=params, headers=headers)
+            if resp.status_code == 200:
+                entries = resp.json()
+                if isinstance(entries, list):
+                    return entries
+            else:
+                _count_fetch_error(backend.id, "tool_audit")
+                _log_fetch_error(
+                    backend.id,
+                    "tool_audit",
+                    f"Backend {backend.id!r} /tool-audit returned {resp.status_code} — skipping",
+                )
+        except Exception as exc:
+            _count_fetch_error(backend.id, "tool_audit")
+            _log_fetch_error(
+                backend.id,
+                "tool_audit",
+                f"Backend {backend.id!r} /tool-audit unreachable: {exc!r} — skipping",
+            )
+        return []
+
+    seen: set[tuple] = set()
+    all_entries: list[dict] = []
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        results = await asyncio.gather(
+            *[_fetch_one_tool_audit(client, b) for b in backends],
+            return_exceptions=True,
+        )
+    for backend, result in zip(backends, results):
+        if isinstance(result, BaseException):
+            _count_fetch_error(backend.id, "tool_audit")
+            _log_fetch_error(
+                backend.id,
+                "tool_audit",
+                f"Backend {backend.id!r} /tool-audit gather error: {result!r} — skipping",
+            )
+            continue
+        for entry in result:
+            key = (
+                entry.get("ts"),
+                entry.get("session_id"),
+                entry.get("tool_use_id"),
+                entry.get("tool_name") or entry.get("tool"),
+                entry.get("decision"),
+            )
+            if key not in seen:
+                seen.add(key)
+                all_entries.append(entry)
+
+    all_entries.sort(key=lambda e: str(e.get("ts", "")))
+    if limit is not None:
+        all_entries = all_entries[-limit:]
+    return all_entries
+
+
 async def fetch_backend_trace(
     backends: list[BackendConfig],
     since: str | None = None,

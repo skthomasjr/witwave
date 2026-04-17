@@ -65,6 +65,69 @@ def _read_jsonl(path: str, since_dt: datetime | None, limit_n: int | None) -> li
     return list(entries)
 
 
+def _read_tool_audit_jsonl(
+    path: str,
+    since_dt: datetime | None,
+    limit_n: int | None,
+    decision: str | None,
+    tool: str | None,
+    session: str | None,
+) -> list:
+    """Read tool-audit.jsonl with per-row filters for decision / tool / session (#635).
+
+    Accepts both ISO-8601 string timestamps (a2-claude) and numeric epoch seconds
+    (a2-codex) so the same reader serves every backend without coercion in the
+    caller. Entries whose ``ts`` can't be parsed are retained when no ``since``
+    filter is active and skipped when one is, matching the existing
+    ``_read_jsonl`` policy. Runs in a worker thread via ``asyncio.to_thread``.
+    """
+    entries: deque = deque(maxlen=limit_n)
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if since_dt:
+                    ts_raw = entry.get("ts")
+                    ts_ok = False
+                    if isinstance(ts_raw, (int, float)):
+                        try:
+                            from datetime import timezone as _tz
+                            ts = datetime.fromtimestamp(float(ts_raw), tz=_tz.utc)
+                            ts_ok = ts >= since_dt
+                        except (OverflowError, OSError, ValueError):
+                            ts_ok = False
+                    elif isinstance(ts_raw, str):
+                        try:
+                            ts = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+                            ts_ok = ts >= since_dt
+                        except ValueError:
+                            ts_ok = False
+                    if not ts_ok:
+                        continue
+                if decision:
+                    row_decision = str(entry.get("decision") or "").lower()
+                    if row_decision != decision.lower():
+                        continue
+                if tool:
+                    row_tool = str(entry.get("tool_name") or entry.get("tool") or "")
+                    if row_tool != tool:
+                        continue
+                if session:
+                    row_session = str(entry.get("session_id") or "")
+                    if row_session != session:
+                        continue
+                entries.append(entry)
+    except FileNotFoundError:
+        pass
+    return list(entries)
+
+
 def make_conversations_handler(
     auth_token: str,
     conversation_log: str,
@@ -123,6 +186,99 @@ def make_trace_handler(
         return JSONResponse(entries)
 
     return trace_handler
+
+
+def make_tool_audit_handler(
+    auth_token: str,
+    tool_audit_log: str,
+):
+    """Return an ASGI handler for GET /tool-audit (#635).
+
+    Accepts the same ``since`` / ``limit`` contract as ``/conversations`` plus
+    ``decision`` / ``tool`` / ``session`` row filters. Backends that do not
+    (yet) write a tool-audit file return an empty list rather than 404 so the
+    dashboard can fan out uniformly across the team.
+    """
+    _warn_if_empty_token(auth_token, "make_tool_audit_handler")
+
+    async def tool_audit_handler(request: Request) -> JSONResponse:
+        if auth_token:
+            header = request.headers.get("Authorization", "")
+            if not hmac_mod.compare_digest(f"Bearer {auth_token}", header):
+                return JSONResponse({"error": "unauthorized"}, status_code=401)
+        since = request.query_params.get("since")
+        limit = request.query_params.get("limit")
+        decision = request.query_params.get("decision")
+        tool = request.query_params.get("tool")
+        session = request.query_params.get("session")
+        try:
+            limit_n = int(limit) if limit else None
+        except ValueError:
+            return JSONResponse({"error": "invalid limit"}, status_code=400)
+        since_dt: datetime | None = None
+        if since:
+            try:
+                since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
+            except ValueError:
+                return JSONResponse({"error": "invalid since"}, status_code=400)
+        if decision and decision.lower() not in ("allow", "warn", "deny"):
+            return JSONResponse({"error": "invalid decision"}, status_code=400)
+        entries = await asyncio.to_thread(
+            _read_tool_audit_jsonl,
+            tool_audit_log,
+            since_dt,
+            limit_n,
+            decision,
+            tool,
+            session,
+        )
+        return JSONResponse(entries)
+
+    return tool_audit_handler
+
+
+def make_proxy_tool_audit_handler(
+    auth_token: str,
+    fetch_fn,
+):
+    """Return an ASGI handler for GET /tool-audit backed by a fan-out fetch fn (#635).
+
+    fetch_fn is an async callable with the signature:
+        async def fetch_fn(
+            since: str | None,
+            limit: int | None,
+            decision: str | None,
+            tool: str | None,
+            session: str | None,
+        ) -> list[dict]
+    """
+    _warn_if_empty_token(auth_token, "make_proxy_tool_audit_handler")
+
+    async def tool_audit_handler(request: Request) -> JSONResponse:
+        if auth_token:
+            header = request.headers.get("Authorization", "")
+            if not hmac_mod.compare_digest(f"Bearer {auth_token}", header):
+                return JSONResponse({"error": "unauthorized"}, status_code=401)
+        since = request.query_params.get("since")
+        limit = request.query_params.get("limit")
+        decision = request.query_params.get("decision")
+        tool = request.query_params.get("tool")
+        session = request.query_params.get("session")
+        try:
+            limit_n = int(limit) if limit else None
+        except ValueError:
+            return JSONResponse({"error": "invalid limit"}, status_code=400)
+        if since:
+            try:
+                datetime.fromisoformat(since.replace("Z", "+00:00"))
+            except ValueError:
+                return JSONResponse({"error": "invalid since"}, status_code=400)
+        if decision and decision.lower() not in ("allow", "warn", "deny"):
+            return JSONResponse({"error": "invalid decision"}, status_code=400)
+        entries = await fetch_fn(since, limit_n, decision, tool, session)
+        return JSONResponse(entries)
+
+    return tool_audit_handler
 
 
 def make_proxy_conversations_handler(
