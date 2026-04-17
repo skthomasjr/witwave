@@ -33,6 +33,12 @@ const props = defineProps<{
   // each failing agent. Keeps the current "tolerate individual errors"
   // behavior — the table still renders rows from reachable agents.
   perAgentErrors?: Record<string, string>;
+  // Epoch-ms timestamp of the most recent successful refresh. When set,
+  // ListView renders an "updated HH:MM:SS" label in the toolbar — matching
+  // MetricsView's `updatedLabel`. Operators need this on every polled view
+  // to tell a stale-looking count from a stalled poll, especially because
+  // per-agent errors are tolerated silently by useAgentFanout.
+  lastUpdated?: number | null;
 }>();
 
 const emit = defineEmits<{ (e: "refresh"): void }>();
@@ -61,6 +67,11 @@ const degradedTooltip = computed(() =>
     .join("\n"),
 );
 
+const updatedLabel = computed(() => {
+  if (props.lastUpdated == null) return "";
+  return `updated ${new Date(props.lastUpdated).toLocaleTimeString()}`;
+});
+
 function cellFor(row: T, col: Column<T>): { text: string; className: string } {
   if (col.render) {
     const out = col.render(row);
@@ -83,6 +94,13 @@ function cellFor(row: T, col: Column<T>): { text: string; className: string } {
         :placeholder="searchPlaceholder ?? `filter ${title.toLowerCase()}…`"
       />
       <span class="count">{{ filtered.length }} / {{ items.length }}</span>
+      <span
+        v-if="updatedLabel"
+        class="ts"
+        :data-testid="`list-${title.toLowerCase()}-updated`"
+      >
+        {{ updatedLabel }}
+      </span>
       <span
         v-if="degradedEntries.length > 0"
         class="degraded"
@@ -188,6 +206,12 @@ function cellFor(row: T, col: Column<T>): { text: string; className: string } {
 .count {
   font-size: 10px;
   color: var(--nyx-dim);
+}
+
+.ts {
+  font-size: 10px;
+  color: var(--nyx-dim);
+  white-space: nowrap;
 }
 
 .degraded {

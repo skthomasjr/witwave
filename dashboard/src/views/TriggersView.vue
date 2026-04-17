@@ -5,9 +5,10 @@ import type { Trigger } from "../types/scheduler";
 
 type Row = Trigger & { _agent: string };
 
-const { items, perAgentErrors, loading, error, refresh } = useAgentFanout<Trigger>({
-  endpoint: "triggers",
-});
+const { items, perAgentErrors, loading, error, lastUpdated, refresh } =
+  useAgentFanout<Trigger>({
+    endpoint: "triggers",
+  });
 
 const columns = [
   { key: "_agent", label: "agent", width: 80 },
@@ -44,6 +45,7 @@ const columns = [
     :loading="loading"
     :error="error"
     :per-agent-errors="perAgentErrors"
+    :last-updated="lastUpdated"
     empty-message="No triggers configured."
     @refresh="refresh"
   />

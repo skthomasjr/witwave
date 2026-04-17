@@ -3,9 +3,10 @@ import { useAgentFanout } from "../composables/useAgentFanout";
 import ListView from "../components/ListView.vue";
 import type { Job } from "../types/scheduler";
 
-const { items, perAgentErrors, loading, error, refresh } = useAgentFanout<Job>({
-  endpoint: "jobs",
-});
+const { items, perAgentErrors, loading, error, lastUpdated, refresh } =
+  useAgentFanout<Job>({
+    endpoint: "jobs",
+  });
 
 const columns = [
   { key: "_agent", label: "agent", width: 80 },
@@ -43,6 +44,7 @@ const columns = [
     :loading="loading"
     :error="error"
     :per-agent-errors="perAgentErrors"
+    :last-updated="lastUpdated"
     empty-message="No jobs configured."
     @refresh="refresh"
   />

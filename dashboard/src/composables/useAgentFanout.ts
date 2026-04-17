@@ -58,6 +58,11 @@ export function useAgentFanout<T>(opts: UseAgentFanoutOptions) {
   const perAgentErrors = ref<PerAgentErrors>({});
   const error = ref<string>("");
   const loading = ref<boolean>(true);
+  // Stamped at the end of each successful refresh (including "degraded"
+  // refreshes where only some agents responded — matches useMetrics
+  // semantics). A failed top-level refresh leaves the previous timestamp in
+  // place so the UI signals staleness rather than lying about freshness.
+  const lastUpdated = ref<number | null>(null);
 
   // Throttles per-agent console.warn to once per sustained outage per agent.
   const warnedAgents = new Set<string>();
@@ -110,6 +115,7 @@ export function useAgentFanout<T>(opts: UseAgentFanoutOptions) {
         if (r.error) errs[r.agent] = r.error;
       }
       perAgentErrors.value = errs;
+      lastUpdated.value = Date.now();
       error.value = "";
     } catch (e) {
       if ((e as { name?: string }).name === "AbortError") return;
@@ -141,5 +147,5 @@ export function useAgentFanout<T>(opts: UseAgentFanoutOptions) {
     aborter?.abort();
   });
 
-  return { items, perAgentErrors, error, loading, refresh };
+  return { items, perAgentErrors, error, loading, lastUpdated, refresh };
 }

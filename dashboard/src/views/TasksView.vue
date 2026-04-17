@@ -5,9 +5,10 @@ import type { Task } from "../types/scheduler";
 
 type Row = Task & { _agent: string };
 
-const { items, perAgentErrors, loading, error, refresh } = useAgentFanout<Task>({
-  endpoint: "tasks",
-});
+const { items, perAgentErrors, loading, error, lastUpdated, refresh } =
+  useAgentFanout<Task>({
+    endpoint: "tasks",
+  });
 
 const columns = [
   { key: "_agent", label: "agent", width: 80 },
@@ -50,6 +51,7 @@ const columns = [
     :loading="loading"
     :error="error"
     :per-agent-errors="perAgentErrors"
+    :last-updated="lastUpdated"
     empty-message="No tasks configured."
     @refresh="refresh"
   />

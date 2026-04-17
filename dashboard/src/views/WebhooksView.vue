@@ -5,9 +5,10 @@ import type { Webhook } from "../types/scheduler";
 
 type Row = Webhook & { _agent: string };
 
-const { items, perAgentErrors, loading, error, refresh } = useAgentFanout<Webhook>({
-  endpoint: "webhooks",
-});
+const { items, perAgentErrors, loading, error, lastUpdated, refresh } =
+  useAgentFanout<Webhook>({
+    endpoint: "webhooks",
+  });
 
 const columns = [
   { key: "_agent", label: "agent", width: 80 },
@@ -42,6 +43,7 @@ const columns = [
     :loading="loading"
     :error="error"
     :per-agent-errors="perAgentErrors"
+    :last-updated="lastUpdated"
     empty-message="No webhooks configured."
     @refresh="refresh"
   />
