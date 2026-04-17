@@ -181,8 +181,20 @@ HOOKS_CONFIG_PATH = os.environ.get("HOOKS_CONFIG_PATH", "/home/agent/.claude/hoo
 HOOKS_BASELINE_ENABLED = os.environ.get("HOOKS_BASELINE_ENABLED", "true").lower() not in ("0", "false", "no", "off")
 TOOL_AUDIT_LOG = os.environ.get("TOOL_AUDIT_LOG", "/home/agent/logs/tool-audit.jsonl")
 
-_DEFAULT_TOOLS = "Read,Write,Edit,Bash,Glob,Grep,WebSearch,WebFetch"
-ALLOWED_TOOLS: list[str] = [t.strip() for t in os.environ.get("ALLOWED_TOOLS", _DEFAULT_TOOLS).split(",") if t.strip()]
+# Conservative secure-by-default tool set: read-only filesystem + search, no Bash/Write/Edit/WebFetch.
+# Operators who need broader capabilities must opt in explicitly via the ALLOWED_TOOLS env var.
+_DEFAULT_TOOLS = "Read,Grep,Glob"
+_ALLOWED_TOOLS_ENV = os.environ.get("ALLOWED_TOOLS")
+_ALLOWED_TOOLS_IS_DEFAULT = _ALLOWED_TOOLS_ENV is None
+ALLOWED_TOOLS: list[str] = [t.strip() for t in (_ALLOWED_TOOLS_ENV or _DEFAULT_TOOLS).split(",") if t.strip()]
+if _ALLOWED_TOOLS_IS_DEFAULT:
+    logger.warning(
+        "ALLOWED_TOOLS resolved to default (read-only): %s. "
+        "Set ALLOWED_TOOLS env var to override (e.g. to enable Bash/Write/Edit/WebFetch).",
+        ",".join(ALLOWED_TOOLS),
+    )
+else:
+    logger.info("ALLOWED_TOOLS resolved to: %s (from env override).", ",".join(ALLOWED_TOOLS))
 
 CONTEXT_USAGE_WARN_THRESHOLD = float(os.environ.get("CONTEXT_USAGE_WARN_THRESHOLD", "0.9"))
 MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "10000"))
