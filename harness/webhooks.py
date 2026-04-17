@@ -904,12 +904,16 @@ class WebhookRunner:
                     def _on_retry_task(retry_t: asyncio.Task) -> None:
                         self._active_deliveries.add(retry_t)
                         self._deliveries_by_name.setdefault(_sub_name, set()).add(retry_t)
-                        retry_t.add_done_callback(
-                            lambda t, _n=_sub_name: (
-                                self._active_deliveries.discard(t),
-                                self._deliveries_by_name.get(_n, set()).discard(t),
-                            )
-                        )
+                        def _retry_cleanup(t: asyncio.Task, _n: str = _sub_name) -> None:
+                            self._active_deliveries.discard(t)
+                            # Pop-when-empty: keep the retry path consistent
+                            # with the primary delivery cleanup (#507).
+                            _dels = self._deliveries_by_name.get(_n)
+                            if _dels is not None:
+                                _dels.discard(t)
+                                if not _dels:
+                                    self._deliveries_by_name.pop(_n, None)
+                        retry_t.add_done_callback(_retry_cleanup)
                     return _on_retry_task
 
                 _t = asyncio.create_task(deliver(
@@ -933,7 +937,14 @@ class WebhookRunner:
                 deliveries.add(_t)
                 def _cleanup(t: asyncio.Task, _name: str = sub.name) -> None:
                     self._active_deliveries.discard(t)
-                    self._deliveries_by_name.get(_name, set()).discard(t)
+                    # Pop-when-empty: drop the per-name set once it's drained
+                    # so entries for unregistered/renamed subscriptions don't
+                    # linger across hot reloads (#507).
+                    _dels = self._deliveries_by_name.get(_name)
+                    if _dels is not None:
+                        _dels.discard(t)
+                        if not _dels:
+                            self._deliveries_by_name.pop(_name, None)
                 _t.add_done_callback(_cleanup)
 
     async def run(self) -> None:

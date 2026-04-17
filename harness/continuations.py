@@ -1,12 +1,14 @@
 import asyncio
 import logging
 import os
+import time
 from dataclasses import asdict, dataclass, field
 from fnmatch import fnmatch
 from pathlib import Path
 
 from bus import Message, MessageBus
 from metrics import (
+    agent_continuation_fanin_evictions_total,
     agent_continuation_fires_total,
     agent_continuation_items_registered,
     agent_continuation_parse_errors_total,
@@ -302,7 +304,14 @@ class ContinuationRunner:
             fires.add(_t)
             def _cleanup(t: asyncio.Task, _name: str = item.name) -> None:
                 self._active_fires.discard(t)
-                self._fires_by_name.get(_name, set()).discard(t)
+                # Pop-when-empty: drop the per-name set once it's drained so
+                # entries for unregistered/renamed continuations don't linger
+                # across hot reloads (#507).
+                _fires = self._fires_by_name.get(_name)
+                if _fires is not None:
+                    _fires.discard(t)
+                    if not _fires:
+                        self._fires_by_name.pop(_name, None)
             _t.add_done_callback(_cleanup)
 
     async def run(self) -> None:
