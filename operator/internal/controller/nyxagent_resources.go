@@ -17,9 +17,12 @@ limitations under the License.
 package controller
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"regexp"
 	"sort"
+	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -59,6 +62,25 @@ const (
 	// agentConfigVolumePrefix is the prefix for per-agent/backend inline
 	// config ConfigMap volume names.
 	agentConfigVolumePrefix = "agent-config-"
+
+	// teamLabel opts a NyxAgent into a named team. Agents sharing the same
+	// value are listed together in the team manifest ConfigMap so each
+	// harness can address its peers by name (#474). When unset, the agent
+	// is grouped with every other label-less NyxAgent in its namespace.
+	teamLabel = "nyx.ai/team"
+
+	// componentManifest labels the per-team manifest ConfigMap so it can
+	// be identified independently of the per-agent owned ConfigMaps
+	// (inline config, dashboard nginx template, etc.).
+	componentManifest = "nyx-manifest"
+
+	// manifestVolumeName / manifestMountPath mirror the chart's harness
+	// volume wiring so operator-rendered pods behave identically to
+	// Helm-rendered pods (#474). MANIFEST_PATH env override still wins
+	// at runtime if an operator needs to remap it.
+	manifestVolumeName = "manifest"
+	manifestMountPath  = "/home/agent/manifest.json"
+	manifestSubPath    = "manifest.json"
 )
 
 // agentLabels returns the canonical label set for resources owned by an agent.
@@ -293,6 +315,18 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 			Name:      sharedStorageVolume,
 			MountPath: mountPath,
 		})
+	}
+
+	// Team manifest — mounted at the same path the chart uses
+	// (/home/agent/manifest.json) so the harness's /team and /proxy/{name}
+	// endpoints work identically across rendering paths (#474). The CM
+	// itself is reconciled separately; if it doesn't exist yet, the pod
+	// will stay in ContainerCreating until the first reconcile writes it.
+	{
+		cmName := manifestConfigMapName(agent)
+		vol, mount := manifestVolumeAndMount(cmName)
+		volumes = append(volumes, vol)
+		harnessMounts = append(harnessMounts, mount)
 	}
 
 	// nyx-harness container.
@@ -978,4 +1012,154 @@ func buildDashboardService(agent *nyxv1alpha1.NyxAgent) *corev1.Service {
 			}},
 		},
 	}
+}
+
+// ── Team manifest ─────────────────────────────────────────────────────────────
+//
+// The manifest ConfigMap lists every NyxAgent that shares a team (or
+// namespace when no team label is set) so each harness can route /team
+// and /proxy/{name} requests to peers by name. This is the operator's
+// equivalent of charts/nyx/templates/configmap-manifest.yaml (#474).
+//
+// Design note (option a in the gap-approve comment): each reconcile
+// recomputes the per-team manifest and writes a CM owned by the agent
+// currently being reconciled. A content-hash short-circuit (below)
+// avoids churning the CM — and therefore the mounted ConfigMap in every
+// pod — when membership is unchanged.
+
+// teamKey returns the value of the team label on an agent, or an empty
+// string when the label is absent. Agents with the same team key share
+// a manifest; agents without the label are grouped per-namespace.
+func teamKey(agent *nyxv1alpha1.NyxAgent) string {
+	if agent.Labels == nil {
+		return ""
+	}
+	return agent.Labels[teamLabel]
+}
+
+// manifestConfigMapName is the name of the per-team manifest CM for a
+// given agent. When the team label is set we include its value so
+// multiple teams within a namespace each get their own manifest;
+// otherwise we fall back to the namespace-level manifest.
+func manifestConfigMapName(agent *nyxv1alpha1.NyxAgent) string {
+	if t := teamKey(agent); t != "" {
+		return fmt.Sprintf("nyx-manifest-%s", t)
+	}
+	return "nyx-manifest"
+}
+
+// manifestLabels labels the manifest CM so it can be listed without
+// colliding with per-agent owned ConfigMaps. The team key (if any) is
+// included so the owning reconcile can short-circuit on a label-
+// selector list call.
+func manifestLabels(team string) map[string]string {
+	l := map[string]string{
+		labelComponent: componentManifest,
+		labelPartOf:    partOf,
+		labelManagedBy: managedBy,
+	}
+	if team != "" {
+		l[teamLabel] = team
+	}
+	return l
+}
+
+// manifestMember is one entry in the rendered manifest.json file. The
+// shape matches the chart's manifest exactly (name + URL) so the
+// harness parser doesn't care which rendering path produced it.
+type manifestMember struct {
+	Name string
+	Port int32
+}
+
+// buildManifestJSON renders the manifest.json payload for a fixed set
+// of members. Members are sorted by name for deterministic output,
+// which is what the hash short-circuit below relies on. The URL shape
+// mirrors the chart: in-cluster service DNS `http://<name>:<port>`.
+func buildManifestJSON(members []manifestMember) string {
+	sort.Slice(members, func(i, j int) bool { return members[i].Name < members[j].Name })
+	var b strings.Builder
+	b.WriteString("{\n  \"team\": [")
+	for i, m := range members {
+		if i == 0 {
+			b.WriteString("\n")
+		}
+		port := m.Port
+		if port == 0 {
+			port = 8000
+		}
+		fmt.Fprintf(&b, "    {\n      \"name\": %q,\n      \"url\": \"http://%s:%d\"\n    }",
+			m.Name, m.Name, port)
+		if i < len(members)-1 {
+			b.WriteString(",\n")
+		} else {
+			b.WriteString("\n  ")
+		}
+	}
+	if len(members) == 0 {
+		b.WriteString("]\n}\n")
+	} else {
+		b.WriteString("]\n}\n")
+	}
+	return b.String()
+}
+
+// manifestContentHash returns a short stable hash of the manifest JSON
+// used as an annotation on the rendered CM. The reconciler uses it to
+// skip writes when the desired payload matches what's already in the
+// cluster, so a membership-unchanged reconcile doesn't churn the
+// mounted volume on every harness pod.
+func manifestContentHash(body string) string {
+	sum := sha256.Sum256([]byte(body))
+	return hex.EncodeToString(sum[:8])
+}
+
+// manifestHashAnnotation is the annotation key used to stamp the
+// content hash onto the CM. The ConfigMap list in the reconciler
+// reads this to short-circuit equal-content reconciles.
+const manifestHashAnnotation = "nyx.ai/manifest-hash"
+
+// buildManifestConfigMap assembles the per-team manifest ConfigMap
+// covering the given members. `ownerAgent` is the NyxAgent whose
+// reconcile is producing the CM — it becomes the controller owner so
+// OwnerReferences GC still works when the last team member is
+// deleted. Returns the CM plus the hex hash so the caller can
+// annotate + compare.
+func buildManifestConfigMap(ownerAgent *nyxv1alpha1.NyxAgent, members []manifestMember) (*corev1.ConfigMap, string) {
+	body := buildManifestJSON(members)
+	hash := manifestContentHash(body)
+	team := teamKey(ownerAgent)
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      manifestConfigMapName(ownerAgent),
+			Namespace: ownerAgent.Namespace,
+			Labels:    manifestLabels(team),
+			Annotations: map[string]string{
+				manifestHashAnnotation: hash,
+			},
+		},
+		Data: map[string]string{
+			manifestSubPath: body,
+		},
+	}, hash
+}
+
+// manifestVolumeAndMount returns the pod Volume + harness VolumeMount
+// that surface the per-team manifest CM at the path the chart uses.
+// Always attached — an empty CM still renders a valid `{"team": []}`
+// payload, so the harness's startup parse never breaks.
+func manifestVolumeAndMount(cmName string) (corev1.Volume, corev1.VolumeMount) {
+	return corev1.Volume{
+			Name: manifestVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{Name: cmName},
+				},
+			},
+		}, corev1.VolumeMount{
+			Name:      manifestVolumeName,
+			MountPath: manifestMountPath,
+			SubPath:   manifestSubPath,
+			ReadOnly:  true,
+		}
 }

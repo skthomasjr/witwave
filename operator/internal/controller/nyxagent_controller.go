@@ -29,11 +29,17 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -175,6 +181,9 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// Optional resources. Failure to apply an optional does not block the
 	// whole reconcile — it is captured into the error chain.
 	if err := r.reconcileConfigMaps(ctx, agent); err != nil {
+		reconcileErrs = append(reconcileErrs, err)
+	}
+	if err := r.reconcileManifestConfigMap(ctx, agent); err != nil {
 		reconcileErrs = append(reconcileErrs, err)
 	}
 	if err := r.applyBackendPVCs(ctx, agent); err != nil {
@@ -333,6 +342,81 @@ func (r *NyxAgentReconciler) reconcileConfigMaps(ctx context.Context, agent *nyx
 		}
 	}
 	return nil
+}
+
+// reconcileManifestConfigMap maintains the per-team manifest ConfigMap the
+// harness mounts at /home/agent/manifest.json (#474). Each reconcile lists
+// every NyxAgent that shares the current agent's team label (or every
+// enabled, non-deleting NyxAgent in the namespace when no team label is
+// set) and writes a CM enumerating the members by name + service URL.
+//
+// A content-hash annotation on the CM lets us short-circuit writes when
+// membership is unchanged — this matters because option (a) in the
+// gap-approve comment warns every CR write triggers manifest churn, and
+// without the hash every pod would see a rolling configmap update on
+// every reconcile.
+func (r *NyxAgentReconciler) reconcileManifestConfigMap(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
+	// List every NyxAgent in the namespace. Filtering by team label is
+	// done in-memory because an apiserver selector can't express "label
+	// absent OR label equals X" in one call — both the labelled team
+	// and the "no label" namespace group need the unified list.
+	allAgents := &nyxv1alpha1.NyxAgentList{}
+	if err := r.List(ctx, allAgents, client.InNamespace(agent.Namespace)); err != nil {
+		return fmt.Errorf("list NyxAgents for manifest: %w", err)
+	}
+	wantTeam := teamKey(agent)
+
+	var members []manifestMember
+	for i := range allAgents.Items {
+		a := &allAgents.Items[i]
+		// Skip agents being deleted and agents explicitly disabled —
+		// both would produce a stale entry in the manifest that
+		// resolves to a Service with no endpoints.
+		if !a.DeletionTimestamp.IsZero() {
+			continue
+		}
+		if a.Spec.Enabled != nil && !*a.Spec.Enabled {
+			continue
+		}
+		if teamKey(a) != wantTeam {
+			continue
+		}
+		port := a.Spec.Port
+		if port == 0 {
+			port = 8000
+		}
+		members = append(members, manifestMember{Name: a.Name, Port: port})
+	}
+
+	desired, desiredHash := buildManifestConfigMap(agent, members)
+	if err := controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
+		return fmt.Errorf("set owner on manifest ConfigMap: %w", err)
+	}
+
+	existing := &corev1.ConfigMap{}
+	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
+	switch {
+	case apierrors.IsNotFound(err):
+		return r.Create(ctx, desired)
+	case err != nil:
+		return err
+	}
+
+	// Hash short-circuit: if the already-stored CM carries the same
+	// content hash, do nothing. This keeps the CM stable across
+	// reconciles that don't change team membership and avoids the
+	// kubelet's ~1 minute ConfigMap-refresh cycle firing on every
+	// pod in the team for no reason.
+	if existing.Annotations[manifestHashAnnotation] == desiredHash {
+		return nil
+	}
+	if existing.Annotations == nil {
+		existing.Annotations = map[string]string{}
+	}
+	existing.Annotations[manifestHashAnnotation] = desiredHash
+	existing.Labels = desired.Labels
+	existing.Data = desired.Data
+	return r.Update(ctx, existing)
 }
 
 func (r *NyxAgentReconciler) applyConfigMap(ctx context.Context, agent *nyxv1alpha1.NyxAgent, desired *corev1.ConfigMap) error {
@@ -952,6 +1036,79 @@ func statusEqual(a, b nyxv1alpha1.NyxAgentStatus) bool {
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *NyxAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// enqueueTeammates requeues every NyxAgent that shares a team
+	// (or namespace group) with the object that just changed, so
+	// team membership edits propagate into the manifest within one
+	// reconcile cycle regardless of which CR was mutated (#474).
+	enqueueTeammates := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+		trigger, ok := obj.(*nyxv1alpha1.NyxAgent)
+		if !ok {
+			return nil
+		}
+		triggerTeam := ""
+		if trigger.Labels != nil {
+			triggerTeam = trigger.Labels[teamLabel]
+		}
+		peers := &nyxv1alpha1.NyxAgentList{}
+		if err := mgr.GetClient().List(ctx, peers, client.InNamespace(trigger.Namespace)); err != nil {
+			return nil
+		}
+		reqs := make([]reconcile.Request, 0, len(peers.Items))
+		for i := range peers.Items {
+			p := &peers.Items[i]
+			peerTeam := ""
+			if p.Labels != nil {
+				peerTeam = p.Labels[teamLabel]
+			}
+			if peerTeam != triggerTeam {
+				continue
+			}
+			if p.Namespace == trigger.Namespace && p.Name == trigger.Name {
+				// The mutated CR already has its own
+				// reconcile queued via the primary For()
+				// watch — skip to avoid a duplicate entry.
+				continue
+			}
+			reqs = append(reqs, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: p.Namespace,
+					Name:      p.Name,
+				},
+			})
+		}
+		return reqs
+	})
+
+	// Only fan out on create/delete and on label-changing updates —
+	// spec churn on a teammate doesn't affect the manifest payload
+	// (name + URL only) and would otherwise thrash every peer.
+	teamPredicate := predicate.Funcs{
+		CreateFunc:  func(e event.CreateEvent) bool { return true },
+		DeleteFunc:  func(e event.DeleteEvent) bool { return true },
+		GenericFunc: func(e event.GenericEvent) bool { return false },
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldTeam, newTeam := "", ""
+			if e.ObjectOld != nil && e.ObjectOld.GetLabels() != nil {
+				oldTeam = e.ObjectOld.GetLabels()[teamLabel]
+			}
+			if e.ObjectNew != nil && e.ObjectNew.GetLabels() != nil {
+				newTeam = e.ObjectNew.GetLabels()[teamLabel]
+			}
+			// Port changes also change manifest URLs; include
+			// them so a spec.port edit propagates without a
+			// restart-the-operator workaround.
+			oldPort := int32(0)
+			newPort := int32(0)
+			if a, ok := e.ObjectOld.(*nyxv1alpha1.NyxAgent); ok {
+				oldPort = a.Spec.Port
+			}
+			if a, ok := e.ObjectNew.(*nyxv1alpha1.NyxAgent); ok {
+				newPort = a.Spec.Port
+			}
+			return oldTeam != newTeam || oldPort != newPort
+		},
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&nyxv1alpha1.NyxAgent{}).
 		Owns(&appsv1.Deployment{}).
@@ -960,6 +1117,7 @@ func (r *NyxAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.PersistentVolumeClaim{}).
 		Owns(&autoscalingv2.HorizontalPodAutoscaler{}).
 		Owns(&policyv1.PodDisruptionBudget{}).
+		Watches(&nyxv1alpha1.NyxAgent{}, enqueueTeammates, builder.WithPredicates(teamPredicate)).
 		Named("nyxagent").
 		Complete(r)
 }
