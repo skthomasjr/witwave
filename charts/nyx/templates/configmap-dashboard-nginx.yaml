@@ -32,6 +32,15 @@ data:
       listen 8080;
       server_name _;
 
+      # Required for any proxy_pass that contains a variable (the per-agent
+      # regex captures below do). Without it nginx fails with "no resolver
+      # defined" at request time — only the literal ${HARNESS_URL} upstream
+      # got away with it because nginx resolves literals once at startup.
+      # NGINX_LOCAL_RESOLVERS is populated by the nginx-unprivileged image's
+      # /docker-entrypoint.d/15-local-resolvers.envsh from /etc/resolv.conf,
+      # so this works in any cluster without hardcoding kube-dns addresses.
+      resolver ${NGINX_LOCAL_RESOLVERS} valid=30s ipv6=off;
+
       root /usr/share/nginx/html;
       index index.html;
 
@@ -62,7 +71,7 @@ data:
       # No cross-agent fan-out through another harness, no localhost-scoped
       # backend URLs on the wire (#470 design note).
       location ~ ^/api/agents/{{ $agent.name }}/(.*)$ {
-        proxy_pass http://{{ $release }}-{{ $agent.name }}:{{ $agent.port | default 8000 }}/$1$is_args$args;
+        proxy_pass http://{{ $release }}-{{ $agent.name }}.{{ $.Release.Namespace }}.svc.cluster.local:{{ $agent.port | default 8000 }}/$1$is_args$args;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_http_version 1.1;

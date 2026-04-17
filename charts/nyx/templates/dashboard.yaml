@@ -71,6 +71,12 @@ spec:
             # HARNESS_URL only handles anything not yet migrated (#470).
             - name: HARNESS_URL
               value: {{ .Values.dashboard.harnessUrl | default (printf "http://%s-harness:8000" $.Release.Name) | quote }}
+            # Enables /docker-entrypoint.d/15-local-resolvers.envsh to export
+            # NGINX_LOCAL_RESOLVERS from /etc/resolv.conf so the `resolver`
+            # directive in the ConfigMap template resolves cluster DNS at
+            # runtime (needed for proxy_pass URLs with captured variables).
+            - name: NGINX_ENTRYPOINT_LOCAL_RESOLVERS
+              value: "1"
           volumeMounts:
             # Overrides the baseline template baked into the image with the
             # Helm-rendered config that knows about every enabled agent.

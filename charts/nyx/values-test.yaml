@@ -2,15 +2,19 @@ ui:
   enabled: true
   image:
     repository: ghcr.io/skthomasjr/images/ui
-    tag: "0.2.0-beta.35"
+    tag: "0.2.0-beta.39"
   imagePullSecrets:
     - name: ghcr-credentials
 
 dashboard:
   enabled: true
+  # Legacy fallback for the /api/* catch-all in nginx. Point at any reachable
+  # agent (it's only used for endpoints not yet migrated to direct routing,
+  # e.g. /api/proxy/<name>). Must resolve in-cluster or nginx refuses to start.
+  harnessUrl: "http://nyx-bob:8099"
   image:
     repository: ghcr.io/skthomasjr/images/dashboard
-    tag: "0.2.0-beta.35"
+    tag: "0.2.0-beta.39"
   imagePullSecrets:
     - name: ghcr-credentials
 
@@ -29,14 +33,14 @@ metrics:
 gitSync:
   image:
     repository: ghcr.io/skthomasjr/images/git-sync
-    tag: 0.2.0-beta.35
+    tag: 0.2.0-beta.39
 
 agents:
   - name: bob
     port: 8099
     image:
       repository: ghcr.io/skthomasjr/images/nyx-harness
-      tag: "0.2.0-beta.35"
+      tag: "0.2.0-beta.39"
     imagePullSecrets:
       - name: ghcr-credentials
     env:
@@ -76,7 +80,7 @@ agents:
       - name: claude
         image:
           repository: ghcr.io/skthomasjr/images/a2-claude
-          tag: "0.2.0-beta.35"
+          tag: "0.2.0-beta.39"
         port: 8090
         model: claude-opus-4-6
         envFrom:
@@ -101,7 +105,7 @@ agents:
       - name: codex
         image:
           repository: ghcr.io/skthomasjr/images/a2-codex
-          tag: "0.2.0-beta.35"
+          tag: "0.2.0-beta.39"
         port: 8091
         model: gpt-5.1-codex-max
         envFrom:
@@ -125,7 +129,7 @@ agents:
         enabled: false
         image:
           repository: ghcr.io/skthomasjr/images/a2-gemini
-          tag: "0.2.0-beta.35"
+          tag: "0.2.0-beta.39"
         port: 8092
         env:
           - name: GEMINI_MAX_HISTORY_TURNS
@@ -147,7 +151,7 @@ agents:
     port: 8098
     image:
       repository: ghcr.io/skthomasjr/images/nyx-harness
-      tag: "0.2.0-beta.35"
+      tag: "0.2.0-beta.39"
     imagePullSecrets:
       - name: ghcr-credentials
     env:
@@ -171,7 +175,7 @@ agents:
       - name: claude
         image:
           repository: ghcr.io/skthomasjr/images/a2-claude
-          tag: "0.2.0-beta.35"
+          tag: "0.2.0-beta.39"
         port: 8089
         model: claude-opus-4-6
         envFrom:
