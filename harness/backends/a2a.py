@@ -13,6 +13,10 @@ import uuid
 import httpx
 
 from backends.config import BackendConfig
+from metrics import (
+    agent_a2a_backend_request_duration_seconds,
+    agent_a2a_backend_requests_total,
+)
 from tracing import TraceContext, inject_traceparent, set_span_error, start_span
 
 logger = logging.getLogger(__name__)
@@ -158,6 +162,28 @@ class A2ABackend:
             result = data.get("result") or {}
             return self._extract_text(result)
 
+    def _observe_backend_request(self, start_monotonic: float, result: str) -> None:
+        """Record one outbound-request observation for this backend (#622).
+
+        ``result`` must be one of: ``"ok"``, ``"error_status"``,
+        ``"error_connection"``, ``"error_timeout"``. Raw HTTP status codes
+        are deliberately NOT used as label values to bound cardinality.
+        """
+        if agent_a2a_backend_requests_total is not None:
+            try:
+                agent_a2a_backend_requests_total.labels(
+                    backend=self.id, result=result
+                ).inc()
+            except Exception:
+                pass
+        if agent_a2a_backend_request_duration_seconds is not None:
+            try:
+                agent_a2a_backend_request_duration_seconds.labels(
+                    backend=self.id
+                ).observe(time.monotonic() - start_monotonic)
+            except Exception:
+                pass
+
     async def _post_with_retry(self, url: str, body: bytes, traceparent: str | None = None) -> str:
         """POST body to url using the shared AsyncClient, retrying on transient errors.
 
@@ -179,6 +205,8 @@ class A2ABackend:
                 _headers["Authorization"] = f"Bearer {_token}"
         for attempt in range(_MAX_RETRIES):
             client = self._get_client()
+            _req_start = time.monotonic()
+            _result_label = "ok"  # re-set below in each error branch
             try:
                 resp = await client.post(
                     url,
@@ -193,19 +221,31 @@ class A2ABackend:
                     last_exc = ConnectionError(
                         f"A2A backend '{self.id}' returned HTTP {resp.status_code}"
                     )
+                    _result_label = "error_status"
                     # Fall through to the shared backoff block below so that
                     # retryable HTTP codes (429, 502, 503, 504) wait the same
                     # exponential delay as connection-level errors.
                 else:
                     resp.raise_for_status()
                     return resp.text
-            except (httpx.ConnectError, httpx.ReadTimeout, httpx.WriteTimeout, httpx.PoolTimeout) as exc:
+            except (httpx.ReadTimeout, httpx.WriteTimeout, httpx.PoolTimeout) as exc:
                 logger.warning(
                     f"A2A backend '{self.id}' transient error on attempt {attempt + 1}/{_MAX_RETRIES}: {exc!r}"
                 )
                 last_exc = exc
+                _result_label = "error_timeout"
                 # Close client after a connection-level error; _get_client() will
                 # recreate it on the next attempt.
+                try:
+                    await self._client.aclose()
+                except Exception:
+                    pass
+            except httpx.ConnectError as exc:
+                logger.warning(
+                    f"A2A backend '{self.id}' transient error on attempt {attempt + 1}/{_MAX_RETRIES}: {exc!r}"
+                )
+                last_exc = exc
+                _result_label = "error_connection"
                 try:
                     await self._client.aclose()
                 except Exception:
@@ -213,12 +253,19 @@ class A2ABackend:
             except httpx.HTTPStatusError as exc:
                 # Non-retryable HTTP error — surface immediately.
                 logger.error(f"A2A backend '{self.id}' HTTP error: {exc!r}")
+                _result_label = "error_status"
                 raise ConnectionError(
                     f"A2A backend '{self.id}' returned HTTP {exc.response.status_code}"
                 ) from exc
             except Exception as exc:
                 logger.error(f"A2A backend '{self.id}' unexpected error: {exc!r}")
+                _result_label = "error_connection"
                 raise
+            finally:
+                # Record one observation per attempt (#622). Success path sets
+                # _result_label to "ok"; error paths set "error_*" before the
+                # raise/fall-through. Runs exactly once per attempt.
+                self._observe_backend_request(_req_start, _result_label)
 
             if attempt < _MAX_RETRIES - 1:
                 delay = _RETRY_BACKOFF_BASE * (2 ** attempt) + random.uniform(0, _RETRY_BACKOFF_BASE)

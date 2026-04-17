@@ -39,6 +39,7 @@ from metrics import (
     agent_bus_processing_duration_seconds,
     agent_bus_wait_seconds,
     agent_event_loop_lag_seconds,
+    agent_backend_reachable,
     agent_health_checks_total,
     agent_info,
     agent_startup_duration_seconds,
@@ -238,6 +239,13 @@ async def health_ready(request: Request) -> JSONResponse:
                 return False
         async with httpx.AsyncClient(timeout=3.0) as client:
             results = await asyncio.gather(*[_probe(b, client) for b in backend_configs])
+
+        # Stamp per-backend reachability gauge (#619). This runs inside the
+        # refresh critical section (once per TTL) rather than on every probe,
+        # so the metric cost scales with refresh frequency, not probe rate.
+        if agent_backend_reachable is not None:
+            for b, ok in zip(backend_configs, results):
+                agent_backend_reachable.labels(backend=b.id).set(1 if ok else 0)
 
         if not all(results):
             unhealthy = [b.id for b, ok in zip(backend_configs, results) if not ok]

@@ -112,6 +112,9 @@ agent_backend_proxy_fetch_errors_total: prometheus_client.Counter | None = None
 agent_background_tasks: prometheus_client.Gauge | None = None
 agent_background_tasks_shed_total: prometheus_client.Counter | None = None
 agent_background_tasks_timeout_total: prometheus_client.Counter | None = None
+agent_backend_reachable: prometheus_client.Gauge | None = None
+agent_a2a_backend_requests_total: prometheus_client.Counter | None = None
+agent_a2a_backend_request_duration_seconds: prometheus_client.Histogram | None = None
 
 
 if _enabled:
@@ -584,5 +587,26 @@ if _enabled:
         "agent_background_tasks_timeout_total",
         "Total background tasks cancelled because they exceeded ON_PROMPT_COMPLETED_TIMEOUT.",
         ["source"],
+    )
+    agent_backend_reachable = prometheus_client.Gauge(
+        "agent_backend_reachable",
+        "Whether a configured backend responded OK on its last /health probe "
+        "from the harness health_ready sweep (#619). 1=reachable, 0=unreachable.",
+        ["backend"],
+    )
+    agent_a2a_backend_requests_total = prometheus_client.Counter(
+        "agent_a2a_backend_requests_total",
+        "Total outbound A2A requests issued by the harness to configured "
+        "backends, bucketed by coarse result (#622). Result is one of "
+        "ok | error_status | error_connection | error_timeout — raw HTTP "
+        "status codes are intentionally NOT in the label set to bound "
+        "cardinality.",
+        ["backend", "result"],
+    )
+    agent_a2a_backend_request_duration_seconds = prometheus_client.Histogram(
+        "agent_a2a_backend_request_duration_seconds",
+        "Wall-clock seconds for outbound A2A requests from the harness to "
+        "each configured backend (#622).",
+        ["backend"],
     )
 
