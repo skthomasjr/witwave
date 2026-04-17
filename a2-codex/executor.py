@@ -468,7 +468,7 @@ async def run_query(
     model: str | None = None,
     max_tokens: int | None = None,
     on_chunk: Callable[[str], Awaitable[None]] | None = None,
-    mcp_config: dict | None = None,
+    live_mcp_servers: list | None = None,
 ) -> list[str]:
     resolved_model = model or CODEX_MODEL
     log_dir = os.path.dirname(CODEX_SESSION_DB)
@@ -479,11 +479,12 @@ async def run_query(
     if agent_md_content:
         instructions = f"{agent_md_content}\n\nYour session ID is {session_id}."
 
-    # Build MCP server instances from the loaded config (#432). Each must be
-    # entered as an async context manager before passing to Agent — done via
-    # AsyncExitStack below so all servers are cleaned up regardless of how
-    # the run terminates.
-    _mcp_server_instances = _build_mcp_servers(mcp_config or {})
+    # MCP servers are entered once at backend lifespan start by
+    # AgentExecutor._apply_mcp_config() and passed in live here (#526). Previous
+    # behaviour spawned a fresh stdio subprocess on every request; servers now
+    # persist across requests for performance and to allow stateful MCP servers
+    # (e.g. kubeconfig / HTTP pool) to retain state between calls.
+    _live_mcp_servers: list = list(live_mcp_servers or [])
 
     try:
         session = SQLiteSession(session_id, CODEX_SESSION_DB)
@@ -507,145 +508,131 @@ async def run_query(
     _total_tokens = 0
 
     try:
-        async with AsyncExitStack() as _mcp_stack:
-            # Enter each MCP server context. Failures are logged and the server
-            # is skipped so a single broken MCP entry does not abort the whole
-            # request (#432).
-            _live_mcp_servers: list = []
-            for _srv in _mcp_server_instances:
-                try:
-                    _live = await _mcp_stack.enter_async_context(_srv)
-                    _live_mcp_servers.append(_live)
-                except Exception as _mcp_exc:
-                    logger.warning(
-                        "MCP server %r failed to start (%s); proceeding without it.",
-                        getattr(_srv, "name", "?"), _mcp_exc,
-                    )
+        # MCP servers are owned by AgentExecutor's lifespan-scoped AsyncExitStack
+        # (#526). We receive them already-entered; we do not enter or exit them
+        # per request. The snapshot above is the caller's live list.
+        codex_agent = Agent(
+            name=AGENT_NAME,
+            instructions=instructions,
+            model=resolved_model,
+            tools=await _build_tools(resolved_model, session_id),
+            mcp_servers=_live_mcp_servers,
+        )
 
-            # Build the Agent inside the stack so the MCP servers stay alive
-            # for the full Runner.run_streamed iteration.
-            codex_agent = Agent(
-                name=AGENT_NAME,
-                instructions=instructions,
-                model=resolved_model,
-                tools=await _build_tools(resolved_model, session_id),
-                mcp_servers=_live_mcp_servers,
-            )
-
-            result = Runner.run_streamed(codex_agent, prompt, session=session, run_config=run_config)
-            async for event in result.stream_events():
-                _message_count += 1
-                if event.type == "raw_response_event":
-                    data = getattr(event, "data", None)
-                    delta = getattr(data, "delta", None)
-                    if delta and hasattr(delta, "text") and delta.text:
-                        if _first_chunk_at is None:
-                            _first_chunk_at = time.monotonic()
-                            if a2_sdk_time_to_first_message_seconds is not None:
-                                a2_sdk_time_to_first_message_seconds.labels(**_LABELS, model=resolved_model).observe(
-                                    _first_chunk_at - _query_start
-                                )
-                        collected.append(delta.text)
-                        # Stream the chunk to the A2A event_queue (#430). Set by
-                        # execute(); None when MCP /mcp endpoint or non-streaming
-                        # caller. Awaited directly so chunk events stay ordered
-                        # on the wire and exceptions surface here. Errors are
-                        # logged and swallowed so SDK iteration is never aborted.
-                        if on_chunk is not None:
+        result = Runner.run_streamed(codex_agent, prompt, session=session, run_config=run_config)
+        async for event in result.stream_events():
+            _message_count += 1
+            if event.type == "raw_response_event":
+                data = getattr(event, "data", None)
+                delta = getattr(data, "delta", None)
+                if delta and hasattr(delta, "text") and delta.text:
+                    if _first_chunk_at is None:
+                        _first_chunk_at = time.monotonic()
+                        if a2_sdk_time_to_first_message_seconds is not None:
+                            a2_sdk_time_to_first_message_seconds.labels(**_LABELS, model=resolved_model).observe(
+                                _first_chunk_at - _query_start
+                            )
+                    collected.append(delta.text)
+                    # Stream the chunk to the A2A event_queue (#430). Set by
+                    # execute(); None when MCP /mcp endpoint or non-streaming
+                    # caller. Awaited directly so chunk events stay ordered
+                    # on the wire and exceptions surface here. Errors are
+                    # logged and swallowed so SDK iteration is never aborted.
+                    if on_chunk is not None:
+                        try:
+                            await on_chunk(delta.text)
+                        except Exception as _e:
+                            logger.warning("Session %r: on_chunk callback raised: %s", session_id, _e)
+                # Check usage on response events — response.completed carries usage
+                # in event.data.response (ResponseCompletedEvent.response = Response)
+                _usage = getattr(data, "usage", None) or getattr(getattr(data, "response", None), "usage", None)
+                if _usage is not None:
+                    _candidate = getattr(_usage, "total_tokens", None) or getattr(_usage, "output_tokens", None)
+                    if _candidate is not None:
+                        _total_tokens = max(_total_tokens, int(_candidate))
+                        if max_tokens is not None and _total_tokens >= max_tokens:
+                            if a2_budget_exceeded_total is not None:
+                                a2_budget_exceeded_total.labels(**_LABELS).inc()
+                            raise BudgetExceededError(_total_tokens, max_tokens, list(collected))
+            elif event.type == "agent_updated_stream_event":
+                _turn_count += 1
+            elif event.type == "run_item_stream_event":
+                item = event.item
+                if isinstance(item, ToolCallItem):
+                    raw = item.raw_item
+                    call_id = getattr(raw, "call_id", None) or getattr(raw, "id", None) or ""
+                    name = getattr(raw, "name", None) or getattr(raw, "type", "unknown")
+                    # For local_shell, extract command as input
+                    if hasattr(raw, "action") and hasattr(raw.action, "command"):
+                        tool_input = {"command": raw.action.command}
+                    else:
+                        args_str = getattr(raw, "arguments", None)
+                        if args_str:
                             try:
-                                await on_chunk(delta.text)
-                            except Exception as _e:
-                                logger.warning("Session %r: on_chunk callback raised: %s", session_id, _e)
-                    # Check usage on response events — response.completed carries usage
-                    # in event.data.response (ResponseCompletedEvent.response = Response)
-                    _usage = getattr(data, "usage", None) or getattr(getattr(data, "response", None), "usage", None)
-                    if _usage is not None:
-                        _candidate = getattr(_usage, "total_tokens", None) or getattr(_usage, "output_tokens", None)
-                        if _candidate is not None:
-                            _total_tokens = max(_total_tokens, int(_candidate))
-                            if max_tokens is not None and _total_tokens >= max_tokens:
-                                if a2_budget_exceeded_total is not None:
-                                    a2_budget_exceeded_total.labels(**_LABELS).inc()
-                                raise BudgetExceededError(_total_tokens, max_tokens, list(collected))
-                elif event.type == "agent_updated_stream_event":
-                    _turn_count += 1
-                elif event.type == "run_item_stream_event":
-                    item = event.item
-                    if isinstance(item, ToolCallItem):
-                        raw = item.raw_item
-                        call_id = getattr(raw, "call_id", None) or getattr(raw, "id", None) or ""
-                        name = getattr(raw, "name", None) or getattr(raw, "type", "unknown")
-                        # For local_shell, extract command as input
-                        if hasattr(raw, "action") and hasattr(raw.action, "command"):
-                            tool_input = {"command": raw.action.command}
-                        else:
-                            args_str = getattr(raw, "arguments", None)
-                            if args_str:
-                                try:
-                                    tool_input = json.loads(args_str)
-                                except Exception:
-                                    tool_input = {"arguments": args_str}
-                            else:
-                                tool_input = {}
-                        _tool_call_names[call_id] = name
-                        _tool_start_times[call_id] = time.monotonic()
-                        _tool_call_count += 1
-                        if a2_sdk_tool_calls_total is not None:
-                            a2_sdk_tool_calls_total.labels(**_LABELS, tool=name).inc()
-                        if a2_sdk_tool_call_input_size_bytes is not None:
-                            try:
-                                _input_bytes = len(json.dumps(tool_input).encode())
-                                a2_sdk_tool_call_input_size_bytes.labels(**_LABELS, tool=name).observe(_input_bytes)
+                                tool_input = json.loads(args_str)
                             except Exception:
-                                pass
+                                tool_input = {"arguments": args_str}
+                        else:
+                            tool_input = {}
+                    _tool_call_names[call_id] = name
+                    _tool_start_times[call_id] = time.monotonic()
+                    _tool_call_count += 1
+                    if a2_sdk_tool_calls_total is not None:
+                        a2_sdk_tool_calls_total.labels(**_LABELS, tool=name).inc()
+                    if a2_sdk_tool_call_input_size_bytes is not None:
                         try:
-                            ts = datetime.now(timezone.utc).isoformat()
-                            entry = {
-                                "ts": ts,
-                                "agent": AGENT_NAME, "agent_id": AGENT_ID,
-                                "session_id": session_id,
-                                "event_type": "tool_use",
-                                "model": resolved_model,
-                                "id": call_id,
-                                "name": name,
-                                "input": tool_input,
-                            }
-                            await log_trace(json.dumps(entry))
-                        except Exception as e:
-                            logger.error(f"log_trace tool_use error: {e}")
-                    elif isinstance(item, ToolCallOutputItem):
-                        raw = item.raw_item
-                        call_id = raw.get("call_id", "") if isinstance(raw, dict) else getattr(raw, "call_id", "")
-                        tool_name = _tool_call_names.get(call_id, "unknown")
-                        output = item.output
-                        content = str(output)
-                        is_error = bool(
-                            getattr(item, "is_error", None)
-                            or (isinstance(raw, dict) and raw.get("is_error"))
-                        )
-                        try:
-                            ts = datetime.now(timezone.utc).isoformat()
-                            entry = {
-                                "ts": ts,
-                                "agent": AGENT_NAME, "agent_id": AGENT_ID,
-                                "session_id": session_id,
-                                "event_type": "tool_result",
-                                "model": resolved_model,
-                                "tool_use_id": call_id,
-                                "name": tool_name,
-                                "content": content,
-                                "is_error": is_error,
-                            }
-                            await log_trace(json.dumps(entry))
-                        except Exception as e:
-                            logger.error(f"log_trace tool_result error: {e}")
-                        _tool_elapsed = time.monotonic() - _tool_start_times.pop(call_id, time.monotonic())
-                        if a2_sdk_tool_duration_seconds is not None:
-                            a2_sdk_tool_duration_seconds.labels(**_LABELS, tool=tool_name).observe(_tool_elapsed)
-                        if is_error and a2_sdk_tool_errors_total is not None:
-                            a2_sdk_tool_errors_total.labels(**_LABELS, tool=tool_name).inc()
-                        if a2_sdk_tool_result_size_bytes is not None:
-                            a2_sdk_tool_result_size_bytes.labels(**_LABELS, tool=tool_name).observe(len(content.encode()))
+                            _input_bytes = len(json.dumps(tool_input).encode())
+                            a2_sdk_tool_call_input_size_bytes.labels(**_LABELS, tool=name).observe(_input_bytes)
+                        except Exception:
+                            pass
+                    try:
+                        ts = datetime.now(timezone.utc).isoformat()
+                        entry = {
+                            "ts": ts,
+                            "agent": AGENT_NAME, "agent_id": AGENT_ID,
+                            "session_id": session_id,
+                            "event_type": "tool_use",
+                            "model": resolved_model,
+                            "id": call_id,
+                            "name": name,
+                            "input": tool_input,
+                        }
+                        await log_trace(json.dumps(entry))
+                    except Exception as e:
+                        logger.error(f"log_trace tool_use error: {e}")
+                elif isinstance(item, ToolCallOutputItem):
+                    raw = item.raw_item
+                    call_id = raw.get("call_id", "") if isinstance(raw, dict) else getattr(raw, "call_id", "")
+                    tool_name = _tool_call_names.get(call_id, "unknown")
+                    output = item.output
+                    content = str(output)
+                    is_error = bool(
+                        getattr(item, "is_error", None)
+                        or (isinstance(raw, dict) and raw.get("is_error"))
+                    )
+                    try:
+                        ts = datetime.now(timezone.utc).isoformat()
+                        entry = {
+                            "ts": ts,
+                            "agent": AGENT_NAME, "agent_id": AGENT_ID,
+                            "session_id": session_id,
+                            "event_type": "tool_result",
+                            "model": resolved_model,
+                            "tool_use_id": call_id,
+                            "name": tool_name,
+                            "content": content,
+                            "is_error": is_error,
+                        }
+                        await log_trace(json.dumps(entry))
+                    except Exception as e:
+                        logger.error(f"log_trace tool_result error: {e}")
+                    _tool_elapsed = time.monotonic() - _tool_start_times.pop(call_id, time.monotonic())
+                    if a2_sdk_tool_duration_seconds is not None:
+                        a2_sdk_tool_duration_seconds.labels(**_LABELS, tool=tool_name).observe(_tool_elapsed)
+                    if is_error and a2_sdk_tool_errors_total is not None:
+                        a2_sdk_tool_errors_total.labels(**_LABELS, tool=tool_name).inc()
+                    if a2_sdk_tool_result_size_bytes is not None:
+                        a2_sdk_tool_result_size_bytes.labels(**_LABELS, tool=tool_name).observe(len(content.encode()))
     except BudgetExceededError as exc:
         if a2_sdk_session_duration_seconds is not None:
             a2_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
@@ -761,12 +748,12 @@ async def run(
     model: str | None = None,
     max_tokens: int | None = None,
     on_chunk: Callable[[str], Awaitable[None]] | None = None,
-    mcp_config: dict | None = None,
+    live_mcp_servers: list | None = None,
 ) -> str:
     if a2_concurrent_queries is not None:
         a2_concurrent_queries.labels(**_LABELS).inc()
     try:
-        return await _run_inner(prompt, session_id, sessions, agent_md_content, model, max_tokens, on_chunk=on_chunk, mcp_config=mcp_config)
+        return await _run_inner(prompt, session_id, sessions, agent_md_content, model, max_tokens, on_chunk=on_chunk, live_mcp_servers=live_mcp_servers)
     finally:
         if a2_concurrent_queries is not None:
             a2_concurrent_queries.labels(**_LABELS).dec()
@@ -780,7 +767,7 @@ async def _run_inner(
     model: str | None = None,
     max_tokens: int | None = None,
     on_chunk: Callable[[str], Awaitable[None]] | None = None,
-    mcp_config: dict | None = None,
+    live_mcp_servers: list | None = None,
 ) -> str:
     resolved_model = model or CODEX_MODEL
     if a2_model_requests_total is not None:
@@ -805,7 +792,7 @@ async def _run_inner(
     _budget_exceeded = False
     try:
         collected = await asyncio.wait_for(
-            run_query(prompt, session_id, agent_md_content, model=model, max_tokens=max_tokens, on_chunk=on_chunk, mcp_config=mcp_config),
+            run_query(prompt, session_id, agent_md_content, model=model, max_tokens=max_tokens, on_chunk=on_chunk, live_mcp_servers=live_mcp_servers),
             timeout=TASK_TIMEOUT_SECONDS,
         )
     except asyncio.TimeoutError:
@@ -882,30 +869,100 @@ class AgentExecutor(A2AAgentExecutor):
         self._running_tasks: dict[str, asyncio.Task] = {}
         self._agent_md_content: str = _load_agent_md()
         # MCP config dict loaded from MCP_CONFIG_PATH; populated and refreshed
-        # by mcp_config_watcher() (#432). Threaded through run() into run_query
-        # where each entry is materialised into an MCPServer instance.
+        # by mcp_config_watcher() (#432).
         self._mcp_config: dict = {}
         self._mcp_watcher_tasks: list[asyncio.Task] = []
+        # Lifespan-scoped MCP server stack (#526). MCP servers are entered
+        # once at startup (or on hot-reload) and reused across requests,
+        # eliminating per-request stdio subprocess spawn overhead. The lock
+        # serialises reload-vs-request access to _live_mcp_servers so an
+        # in-flight Agent(...) call never sees a half-torn-down server.
+        self._mcp_stack: AsyncExitStack | None = None
+        self._live_mcp_servers: list = []
+        self._mcp_servers_lock: asyncio.Lock | None = None
 
     def _mcp_watchers(self):
         """Return callables for AGENTS.md and mcp.json watching (#371, #432)."""
         return [self.agent_md_watcher, self.mcp_config_watcher]
 
+    async def _apply_mcp_config(self, mcp_config: dict) -> None:
+        """Enter the given MCP config into a fresh lifespan-scoped stack (#526).
+
+        Tears down any previously-entered stack first, then enters each server
+        as an async context manager. Failures on individual servers are logged
+        and skipped so one broken entry does not prevent others from starting.
+        The a2_mcp_servers_active gauge reflects the actually-running count,
+        not the config-loaded count.
+        """
+        if self._mcp_servers_lock is None:
+            self._mcp_servers_lock = asyncio.Lock()
+        async with self._mcp_servers_lock:
+            # Tear down the previous stack (if any) before entering the new one.
+            if self._mcp_stack is not None:
+                try:
+                    await self._mcp_stack.aclose()
+                except Exception as _close_exc:
+                    logger.warning("Previous MCP stack aclose error: %s", _close_exc)
+                self._mcp_stack = None
+                self._live_mcp_servers = []
+
+            new_stack = AsyncExitStack()
+            await new_stack.__aenter__()
+            new_live: list = []
+            try:
+                for _srv in _build_mcp_servers(mcp_config or {}):
+                    try:
+                        _live = await new_stack.enter_async_context(_srv)
+                        new_live.append(_live)
+                    except Exception as _mcp_exc:
+                        logger.warning(
+                            "MCP server %r failed to start (%s); proceeding without it.",
+                            getattr(_srv, "name", "?"), _mcp_exc,
+                        )
+            except Exception:
+                # If the per-server loop itself raises something unexpected,
+                # unwind the partial stack so we do not leak subprocesses.
+                try:
+                    await new_stack.aclose()
+                except Exception:
+                    pass
+                raise
+
+            self._mcp_stack = new_stack
+            self._live_mcp_servers = new_live
+            if a2_mcp_servers_active is not None:
+                a2_mcp_servers_active.labels(**_LABELS).set(len(new_live))
+
+    async def _snapshot_live_mcp_servers(self) -> list:
+        """Return a defensive copy of the currently-live MCP server list (#526).
+
+        Taken under the lock so a concurrent hot-reload cannot swap the list
+        out from under the caller mid-read.
+        """
+        if self._mcp_servers_lock is None:
+            self._mcp_servers_lock = asyncio.Lock()
+        async with self._mcp_servers_lock:
+            return list(self._live_mcp_servers)
+
     async def mcp_config_watcher(self) -> None:
-        """Watch MCP_CONFIG_PATH for changes and hot-reload the MCP server config (#432).
+        """Watch MCP_CONFIG_PATH for changes and hot-reload the MCP server config (#432, #526).
 
         Mirrors the a2-claude pattern: load on startup, then watch the parent
-        directory for any changes to the config file. The next request after
-        a successful reload picks up the new config.
+        directory for any changes to the config file. Each reload restarts the
+        lifespan-scoped MCP server stack so stdio subprocesses are respawned
+        cleanly under the new config and existing request traffic sees a
+        consistent snapshot.
         """
         from watchfiles import awatch as _awatch
 
-        # Initial load.
+        # Initial load + first stack entry.
         self._mcp_config = await asyncio.to_thread(_load_mcp_config)
-        if a2_mcp_servers_active is not None:
-            a2_mcp_servers_active.labels(**_LABELS).set(len(self._mcp_config))
         if self._mcp_config:
             logger.info("MCP config loaded: %s", list(self._mcp_config.keys()))
+        try:
+            await self._apply_mcp_config(self._mcp_config)
+        except Exception as _apply_exc:
+            logger.warning("Initial MCP stack start failed: %s", _apply_exc)
 
         watch_dir = os.path.dirname(os.path.abspath(MCP_CONFIG_PATH))
         while True:
@@ -919,9 +976,11 @@ class AgentExecutor(A2AAgentExecutor):
                 for _, path in changes:
                     if os.path.abspath(path) == os.path.abspath(MCP_CONFIG_PATH):
                         self._mcp_config = await asyncio.to_thread(_load_mcp_config)
-                        if a2_mcp_servers_active is not None:
-                            a2_mcp_servers_active.labels(**_LABELS).set(len(self._mcp_config))
                         logger.info("MCP config reloaded: %s", list(self._mcp_config.keys()))
+                        try:
+                            await self._apply_mcp_config(self._mcp_config)
+                        except Exception as _apply_exc:
+                            logger.warning("MCP stack reload failed: %s", _apply_exc)
                         if a2_mcp_config_reloads_total is not None:
                             a2_mcp_config_reloads_total.labels(**_LABELS).inc()
                         break
@@ -1041,7 +1100,7 @@ class AgentExecutor(A2AAgentExecutor):
                     model=model,
                     max_tokens=max_tokens,
                     on_chunk=_emit_chunk,
-                    mcp_config=self._mcp_config,
+                    live_mcp_servers=await self._snapshot_live_mcp_servers(),
                 )
                 _success = True
                 # Skip the final aggregated event when chunks were streamed —
@@ -1068,12 +1127,25 @@ class AgentExecutor(A2AAgentExecutor):
                     a2_running_tasks.labels(**_LABELS).dec()
 
     async def close(self) -> None:
-        """Cancel and drain all MCP watcher tasks and close the Playwright computer."""
+        """Cancel and drain all MCP watcher tasks, tear down the MCP server
+        stack (#526), and close the Playwright computer."""
         for task in self._mcp_watcher_tasks:
             task.cancel()
         if self._mcp_watcher_tasks:
             await asyncio.gather(*self._mcp_watcher_tasks, return_exceptions=True)
         self._mcp_watcher_tasks.clear()
+        # Tear down the lifespan-scoped MCP stack so all stdio subprocesses and
+        # HTTP sessions are released cleanly on shutdown. Done after the
+        # watcher task is drained to avoid racing a concurrent reload.
+        if self._mcp_stack is not None:
+            try:
+                await self._mcp_stack.aclose()
+            except Exception as _close_exc:
+                logger.warning("MCP stack aclose on shutdown: %s", _close_exc)
+            self._mcp_stack = None
+            self._live_mcp_servers = []
+            if a2_mcp_servers_active is not None:
+                a2_mcp_servers_active.labels(**_LABELS).set(0)
         global _browser_pool
         if _browser_pool is not None:
             try:

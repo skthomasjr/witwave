@@ -366,7 +366,7 @@ async def main():
                     executor._agent_md_content,
                     model=None,
                     max_tokens=mcp_max_tokens,
-                    mcp_config=executor._mcp_config,
+                    live_mcp_servers=await executor._snapshot_live_mcp_servers(),
                 )
             except Exception as exc:
                 logger.error(f"MCP tools/call error: {exc!r}")
