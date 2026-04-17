@@ -285,6 +285,7 @@ def _track_session(
     sessions: OrderedDict[str, float],
     session_id: str,
     session_locks: dict[str, "_RefCountedLock"],
+    history_save_failed: set[str] | None = None,
 ) -> None:
     if session_id in sessions:
         sessions.move_to_end(session_id)
@@ -299,6 +300,11 @@ def _track_session(
             _evicted_entry = session_locks.get(_evicted_id)
             if _evicted_entry is not None and _evicted_entry.refcount <= 0:
                 session_locks.pop(_evicted_id, None)
+            # Prune the evicted session from history_save_failed so the set
+            # does not grow unbounded under sustained save failure (#485).
+            # Mirrors the pop symmetry maintained for sessions/session_locks.
+            if history_save_failed is not None:
+                history_save_failed.discard(_evicted_id)
             if a2_session_evictions_total is not None:
                 a2_session_evictions_total.labels(**_LABELS).inc()
             if a2_session_age_seconds is not None:
@@ -608,7 +614,7 @@ async def _run_inner(
             run_query(prompt, session_id, agent_md_content, session_locks, history_save_failed, model=model, max_tokens=max_tokens, on_chunk=on_chunk),
             timeout=TASK_TIMEOUT_SECONDS,
         )
-        _track_session(sessions, session_id, session_locks)
+        _track_session(sessions, session_id, session_locks, history_save_failed)
         # Lock-entry hygiene (#401) is now handled by the refcount in
         # run_query's finally clause so the pop cannot race with another
         # waiter (#483).
@@ -619,6 +625,10 @@ async def _run_inner(
         # cancellation; removing it ensures the next call for this session_id
         # starts fresh rather than attempting to resume a broken session.
         sessions.pop(session_id, None)
+        # Prune the timed-out session from history_save_failed so the set
+        # does not grow unbounded across cycling session IDs (#485).
+        if history_save_failed is not None:
+            history_save_failed.discard(session_id)
         # Lock-entry hygiene on timeout is handled by run_query's finally
         # (refcount release). Popping here while another waiter holds the
         # lock would reintroduce the #483 race.
@@ -650,11 +660,15 @@ async def _run_inner(
             model=resolved_model,
         )
         collected = _bexc.collected
-        _track_session(sessions, session_id, session_locks)
+        _track_session(sessions, session_id, session_locks, history_save_failed)
         # Lock-entry hygiene handled by run_query's finally (#483).
     except Exception:
         # Lock-entry hygiene handled by run_query's finally (#483); popping
         # here races with other waiters.
+        # Prune history_save_failed on error completion so the set does not
+        # grow unbounded when the same session_id never returns (#485).
+        if history_save_failed is not None:
+            history_save_failed.discard(session_id)
         if a2_tasks_total is not None:
             a2_tasks_total.labels(**_LABELS, status="error").inc()
         if a2_task_error_duration_seconds is not None:
