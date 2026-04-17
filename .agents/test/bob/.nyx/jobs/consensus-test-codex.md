@@ -9,7 +9,7 @@ consensus:
     model: "claude-sonnet-4-6"
   - backend: "claude"
     model: "claude-haiku-4-5"
-enabled: true
+enabled: false
 ---
 
 What are the three most important things an autonomous agent platform should prioritize to be reliable in production?

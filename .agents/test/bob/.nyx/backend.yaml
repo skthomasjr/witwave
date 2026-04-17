@@ -4,33 +4,29 @@ backend:
       url: http://localhost:8090
       model: claude-opus-4-6
 
-    - id: codex
-      url: http://localhost:8091
-      model: gpt-5.1-codex-max
-
-    # gemini intentionally omitted — disabled in values-test.yaml because no
-    # API key is provisioned. Restore both this entry and the values-test
-    # backend block to re-enable.
+    # codex and gemini omitted — no API budget for codex, no key provisioned
+    # for gemini. Restore those entries (and re-enable the backends in
+    # values-test.yaml) to bring them back.
 
   routing:
     default:
-      agent: codex
-      model: gpt-5.1-codex-max
+      agent: claude
+      model: claude-opus-4-6
     a2a:
-      agent: codex
-      model: gpt-5.1-codex-max
+      agent: claude
+      model: claude-opus-4-6
     heartbeat:
-      agent: codex
-      model: gpt-5.1-codex-max
+      agent: claude
+      model: claude-opus-4-6
     job:
-      agent: codex
-      model: gpt-5.1-codex-max
+      agent: claude
+      model: claude-opus-4-6
     task:
-      agent: codex
-      model: gpt-5.1-codex-max
+      agent: claude
+      model: claude-opus-4-6
     trigger:
-      agent: codex
-      model: gpt-5.1-codex-max
+      agent: claude
+      model: claude-opus-4-6
     continuation:
-      agent: codex
-      model: gpt-5.1-codex-max
+      agent: claude
+      model: claude-opus-4-6

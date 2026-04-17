@@ -91,6 +91,10 @@ agents:
               mountPath: /home/agent/memory
 
       - name: codex
+        # Disabled: out of OpenAI credits. All bob routing now targets claude
+        # (see .agents/test/bob/.nyx/backend.yaml). Flip back to true + top up
+        # the OpenAI account to restore the codex backend.
+        enabled: false
         image:
           repository: ghcr.io/skthomasjr/images/a2-codex
           tag: "0.2.0-beta.47"
