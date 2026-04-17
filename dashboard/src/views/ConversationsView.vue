@@ -130,8 +130,8 @@ function formatTs(ts: string): string {
       </div>
       <div v-else-if="filtered.length === 0" class="state">No messages.</div>
       <div
-        v-for="(row, i) in filtered"
-        :key="i"
+        v-for="row in filtered"
+        :key="`${row._agent}|${row.session_id ?? ''}|${row.ts}|${row.role}`"
         class="cm"
         :class="row.role === 'user' ? 'user' : row.role === 'agent' ? 'agent' : 'other'"
       >

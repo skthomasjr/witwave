@@ -101,8 +101,8 @@ onMounted(async () => {
       </div>
       <template v-else>
         <div
-          v-for="(m, i) in messages"
-          :key="i"
+          v-for="m in messages"
+          :key="m.id"
           class="cm"
           :class="m.role"
           :data-testid="`chat-msg-${m.role}`"

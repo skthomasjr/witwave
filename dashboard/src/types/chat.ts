@@ -4,6 +4,10 @@
 export type ChatRole = "user" | "agent" | "error";
 
 export interface ChatMessage {
+  // Stable, locally-generated identifier used as the Vue `v-for` key so list
+  // diffing survives filtering and reorders without cross-row DOM reuse
+  // (#550). Assigned at push time; never derived from array position.
+  id: string;
   role: ChatRole;
   text: string;
   // For agent replies: the resolved backend card name (e.g. "iris-claude") so

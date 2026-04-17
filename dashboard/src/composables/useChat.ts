@@ -49,8 +49,12 @@ export function useChat(opts: UseChatOptions) {
   let sendController: AbortController | null = null;
   let historyController: AbortController | null = null;
 
-  function push(msg: ChatMessage): void {
-    messages.value = [...messages.value, msg];
+  function push(msg: Omit<ChatMessage, "id"> & { id?: string }): void {
+    // Always stamp a stable id at push time so the chat feed can key on it
+    // instead of the array index (#550). Callers may supply their own id
+    // (e.g. backfill reuses harness ts) but the common path is a fresh uuid.
+    const stamped: ChatMessage = { ...msg, id: msg.id ?? randomId() };
+    messages.value = [...messages.value, stamped];
   }
 
   function isAbortError(e: unknown): boolean {
@@ -87,6 +91,7 @@ export function useChat(opts: UseChatOptions) {
       messages.value = entries
         .filter((e) => (e.text ?? "").trim().length > 0)
         .map<ChatMessage>((e) => ({
+          id: randomId(),
           role: e.role === "user" ? "user" : "agent",
           text: e.text ?? "",
           label: e.role === "user" ? "you" : e.agent,
