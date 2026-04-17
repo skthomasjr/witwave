@@ -33,6 +33,17 @@ dashboard:
   #   fsGroup: 1000
 
 # Ingress for the dashboard. Disabled by default — enable to expose the dashboard externally (#424).
+#
+# SECURITY (#528): When the dashboard is exposed via Ingress, the nginx pod
+# reverse-proxies every enabled agent's API (conversations, triggers, jobs).
+# Unauthenticated exposure is treated as unauthenticated remote code execution
+# against the cluster, so this chart FAILS TEMPLATE RENDER when ingress.enabled=true
+# unless one of the following is configured:
+#   1. ingress.auth.enabled=true (chart renders an auth block — default), or
+#   2. ingress.auth.allowInsecure=true (explicit opt-out — you own the auth gateway), or
+#   3. ingress.annotations includes one of: nginx.ingress.kubernetes.io/auth-url,
+#      nginx.ingress.kubernetes.io/auth-signin, or traefik.ingress.kubernetes.io/router.middlewares
+#      (you're wiring your own auth proxy / middleware).
 ingress:
   enabled: false
   # # Ingress class name (e.g. nginx, traefik).
@@ -50,6 +61,40 @@ ingress:
   #   - secretName: nyx-tls
   #     hosts:
   #       - nyx.example.com
+
+  # Auth configuration for the dashboard ingress (#528).
+  # Default: basic auth, enabled, credentials rendered from ingress.auth.basic
+  # into a chart-managed Secret and wired via nginx-ingress auth annotations.
+  auth:
+    # Master toggle. When true (default), the chart renders an auth block
+    # (type=basic -> Secret + nginx auth-* annotations). Set false only in
+    # combination with allowInsecure=true or a user-supplied auth annotation.
+    enabled: true
+    # Auth mechanism. Currently supported: "basic".
+    # For oauth2-proxy / custom auth-url setups, set enabled=false and provide
+    # nginx.ingress.kubernetes.io/auth-url (or a traefik middleware) in
+    # ingress.annotations directly.
+    type: basic
+    # Default-closed escape hatch. Set to true to deploy the ingress with no
+    # chart-managed auth AND no detected user-supplied auth annotation. This
+    # exposes every agent API unauthenticated — use only on isolated networks
+    # (smoke tests, internal clusters behind a separate auth gateway).
+    allowInsecure: false
+    # Basic auth settings. Used when type=basic and enabled=true.
+    basic:
+      # Reference an existing Secret containing an htpasswd `auth` key.
+      # When set, the chart does NOT render credentials and does NOT create
+      # a Secret — the referenced Secret is used as-is.
+      existingSecret: ""
+      # Inline htpasswd line(s). Rendered into a chart-managed Secret when
+      # existingSecret is empty. Generate with e.g.:
+      #   htpasswd -nbB admin 'choose-a-strong-password'
+      # Multiple users: supply a multiline string with one htpasswd entry per line.
+      # Leaving this empty while enabled=true and existingSecret="" fails
+      # template render — the chart refuses to render an empty auth Secret.
+      htpasswd: ""
+      # Realm shown in the browser auth prompt.
+      realm: "nyx dashboard"
 
 # Horizontal autoscaling for agent Deployments. Disabled by default — enable
 # per-agent via agents[].autoscaling to override these defaults. When enabled,
