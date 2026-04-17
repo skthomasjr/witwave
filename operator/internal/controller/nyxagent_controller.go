@@ -74,7 +74,10 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	agent := &nyxv1alpha1.NyxAgent{}
 	if err := r.Get(ctx, req.NamespacedName, agent); err != nil {
 		if apierrors.IsNotFound(err) {
-			// OwnerReferences take care of cascading deletion.
+			// OwnerReferences take care of cascading deletion. Drop the
+			// per-CR dashboard gauge series so a deleted agent doesn't
+			// linger in the metrics output until process restart (#471).
+			nyxagentDashboardEnabled.DeleteLabelValues(req.Namespace, req.Name)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
@@ -267,6 +270,7 @@ func (r *NyxAgentReconciler) applyBackendPVCs(ctx context.Context, agent *nyxv1a
 		log := logf.FromContext(ctx)
 		for _, be := range buildErrs {
 			log.Error(be.Err, "skipping backend PVC", "backend", be.BackendName, "size", be.Size)
+			nyxagentPVCBuildErrorsTotal.WithLabelValues(be.BackendName).Inc()
 			if r.Recorder != nil {
 				r.Recorder.Eventf(agent, corev1.EventTypeWarning, "InvalidStorageSize",
 					"backend %q: invalid storage.size %q (%v)", be.BackendName, be.Size, be.Err)
@@ -377,6 +381,15 @@ func (r *NyxAgentReconciler) reconcilePDB(ctx context.Context, agent *nyxv1alpha
 func (r *NyxAgentReconciler) reconcileDashboard(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
 	desiredDep := buildDashboardDeployment(agent, DefaultImageTag)
 	desiredSvc := buildDashboardService(agent)
+	// Mirror spec.dashboard.enabled into the per-CR gauge so dashboards
+	// can sum() across all NyxAgents to count adoption (#471).
+	{
+		val := 0.0
+		if agent.Spec.Dashboard != nil && agent.Spec.Dashboard.Enabled {
+			val = 1.0
+		}
+		nyxagentDashboardEnabled.WithLabelValues(agent.Namespace, agent.Name).Set(val)
+	}
 
 	// Key used for both Deployment and Service — buildDashboardDeployment
 	// and buildDashboardService agree on the "<agent>-dashboard" name.
@@ -575,8 +588,13 @@ func (r *NyxAgentReconciler) updateStatus(ctx context.Context, agent *nyxv1alpha
 	// Emit a Kubernetes Event on actual phase transitions (#442). Skipped on
 	// the empty→Pending bootstrap and on every no-op reconcile thanks to the
 	// previousPhase comparison and the statusEqual short-circuit above.
-	if r.Recorder != nil && newStatus.Phase != previousPhase && previousPhase != "" {
-		r.recordPhaseTransitionEvent(agent, previousPhase, newStatus.Phase, desired, reconcileErr)
+	// The same condition gates the phase-transition metric (#471), so
+	// counts agree with the events emitted.
+	if newStatus.Phase != previousPhase && previousPhase != "" {
+		nyxagentPhaseTransitionsTotal.WithLabelValues(string(previousPhase), string(newStatus.Phase)).Inc()
+		if r.Recorder != nil {
+			r.recordPhaseTransitionEvent(agent, previousPhase, newStatus.Phase, desired, reconcileErr)
+		}
 	}
 	return nil
 }

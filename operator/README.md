@@ -111,6 +111,27 @@ The `nyx-operator` Helm chart provides an optional `ServiceMonitor` for
 Prometheus Operator integration — see `charts/nyx-operator/README.md`
 for the `serviceMonitor.*` values.
 
+## Metrics
+
+The manager exposes `/metrics` (controller-runtime default) on the port
+configured by `--metrics-bind-address`. Standard reconcile / workqueue /
+client-go counters come for free.
+
+NyxAgent-specific domain metrics added on top (#471):
+
+| Metric                                | Type    | Labels             | Meaning                                                                          |
+| ------------------------------------- | ------- | ------------------ | -------------------------------------------------------------------------------- |
+| `nyxagent_phase_transitions_total`    | counter | `from`, `to`       | Status.phase transitions (Pending → Ready, Ready → Degraded, etc.)               |
+| `nyxagent_pvc_build_errors_total`     | counter | `backend`          | Backend PVC entries skipped due to invalid spec (e.g. `storage.size` parse fail) |
+| `nyxagent_dashboard_enabled`          | gauge   | `namespace`, `name`| 1 when `spec.dashboard.enabled=true`, 0 otherwise. `sum()` for cluster total.    |
+
+The dashboard gauge series is dropped on agent deletion; the two counters
+persist (Prometheus convention — counters are monotonic).
+
+OpenTelemetry tracing on the operator's reconcile loop is tracked
+separately under #471 (the (A) half of that issue is implemented; the
+OTel half is pending).
+
 ## License
 
 Apache 2.0 — see [LICENSE](../LICENSE) (once present) for the full text.

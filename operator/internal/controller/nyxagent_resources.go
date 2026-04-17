@@ -387,7 +387,7 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 			}
 			return int64Ptr(60)
 		}(),
-		AutomountServiceAccountToken:  boolPtr(false),
+		AutomountServiceAccountToken: boolPtr(false),
 		SecurityContext: &corev1.PodSecurityContext{
 			RunAsNonRoot: boolPtr(true),
 			RunAsUser:    int64Ptr(1000),
