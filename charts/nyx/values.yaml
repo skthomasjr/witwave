@@ -44,6 +44,38 @@ dashboard:
 #   3. ingress.annotations includes one of: nginx.ingress.kubernetes.io/auth-url,
 #      nginx.ingress.kubernetes.io/auth-signin, or traefik.ingress.kubernetes.io/router.middlewares
 #      (you're wiring your own auth proxy / middleware).
+# ----------------------------------------------------------------------------
+# cert-manager integration (#639).
+#
+# When enabled, the chart can auto-issue TLS certs for the dashboard ingress
+# (and, in the future, for any other TLS surface) through cert-manager. Three
+# install modes:
+#
+#   1. Chart renders its own selfSigned Issuer (default when certManager.enabled=true).
+#      Simplest for internal clusters; certs are self-signed so browsers will warn
+#      unless you trust the CA.
+#
+#   2. Chart creates no Issuer; point at an existing (Cluster)Issuer via issuerRef.
+#      Typical for production (Let's Encrypt via an ClusterIssuer you already run).
+#
+#   3. certManager.enabled=false (default): chart does not render any cert-manager
+#      resources. If you want TLS, set ingress.tls directly yourself.
+#
+# Values shape mirrors charts/nyx-operator so operators see the same knobs.
+certManager:
+  enabled: false
+  # Render a chart-owned Issuer. Set false when using an external ClusterIssuer
+  # (populate issuerRef below).
+  createIssuer: true
+  # Kind of Issuer to render. "Issuer" is namespaced; "ClusterIssuer" is global.
+  # Ignored when createIssuer=false.
+  issuerKind: Issuer
+  # Reference to an existing (Cluster)Issuer. When name is set, createIssuer is
+  # ignored and the chart references this issuer instead.
+  issuerRef:
+    name: ""
+    kind: ""   # e.g. "ClusterIssuer"
+
 ingress:
   enabled: false
   # # Ingress class name (e.g. nginx, traefik).
@@ -57,10 +89,29 @@ ingress:
   #     path: /
   #     pathType: Prefix
   # # TLS configuration.
-  # tls:
-  #   - secretName: nyx-tls
-  #     hosts:
-  #       - nyx.example.com
+  # #
+  # # Two ways to populate this list:
+  # #
+  # # (a) Let the chart auto-populate it via certManager.enabled=true AND
+  # #     ingress.tls.enabled=true. The chart will synthesize a tls entry from
+  # #     ingress.hosts and render a cert-manager Certificate targeting the
+  # #     secret below.
+  # #
+  # # (b) Provide the list directly (skip certManager entirely) for bring-your-own
+  # #     TLS setups.
+  # tls: []
+  # #   - secretName: nyx-dashboard-tls
+  # #     hosts:
+  # #       - nyx.example.com
+  #
+  # # cert-manager-driven TLS (#639). Requires certManager.enabled=true above.
+  # # When enabled:
+  # #   - chart renders a cert-manager Certificate for the ingress host(s)
+  # #   - secret name defaults to <release>-dashboard-tls when unset
+  # #   - ingress emits a tls: entry automatically
+  # # Mutually exclusive with manually populating ingress.tls as a list.
+  # tlsEnabled: false
+  # tlsSecretName: ""
 
   # Auth configuration for the dashboard ingress (#528).
   # Default: basic auth, enabled, credentials rendered from ingress.auth.basic

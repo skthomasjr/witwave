@@ -94,7 +94,14 @@ helm uninstall nyx --namespace nyx
 | `ingress.className` | Ingress class name (e.g. `nginx`, `traefik`) | `""` |
 | `ingress.annotations` | Annotations to add to the Ingress resource | `{}` |
 | `ingress.hosts` | Hostnames and paths for the Ingress | `[]` |
-| `ingress.tls` | TLS configuration for the Ingress | `[]` |
+| `ingress.tls` | TLS configuration for the Ingress (user-supplied list; BYO TLS path). When non-empty, takes precedence over cert-manager-driven TLS | `[]` |
+| `ingress.tlsEnabled` | When `true` AND `certManager.enabled=true`, the chart auto-synthesizes an `ingress.tls` entry from `ingress.hosts` and renders a cert-manager `Certificate` targeting the secret below (#639) | `false` |
+| `ingress.tlsSecretName` | Secret name for the cert-manager-issued cert. Defaults to `<release>-dashboard-tls` when unset | `""` |
+| `certManager.enabled` | Master toggle for cert-manager integration. When `false` (default), the chart renders no cert-manager resources (#639) | `false` |
+| `certManager.createIssuer` | Render a chart-owned selfSigned `Issuer`. Ignored when `certManager.issuerRef.name` is set | `true` |
+| `certManager.issuerKind` | Kind of Issuer to render when `createIssuer=true`. `Issuer` (namespaced) or `ClusterIssuer` | `Issuer` |
+| `certManager.issuerRef.name` | Name of an external (Cluster)Issuer to use instead of a chart-owned one. When set, `createIssuer` is ignored | `""` |
+| `certManager.issuerRef.kind` | Kind of the external issuer. Typically `ClusterIssuer` | `""` |
 | `ingress.auth.enabled` | Master toggle for the chart-managed auth block (renders the auth Secret and nginx-ingress `auth-*` annotations) | `true` |
 | `ingress.auth.type` | Auth mechanism. Currently only `basic` is supported | `basic` |
 | `ingress.auth.allowInsecure` | Explicit escape hatch: when `true`, skip the chart's auth block and render the Ingress with no auth. Intended for isolated networks or when a separate auth gateway is fronting the chart | `false` |

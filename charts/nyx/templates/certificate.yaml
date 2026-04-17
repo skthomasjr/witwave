@@ -1,0 +1,41 @@
+{{- /*
+Chart-owned cert-manager Certificate for dashboard ingress TLS (#639).
+
+Rendered only when certManager.enabled AND ingress.enabled AND ingress.tlsEnabled.
+The resulting Secret is referenced by the ingress tls: block (see ingress.yaml).
+
+Issuer selection precedence:
+  1. certManager.issuerRef.name     — external (Cluster)Issuer
+  2. chart-owned <release>-selfsigned — created by issuer.yaml when
+     certManager.createIssuer=true
+*/ -}}
+{{- if and .Values.certManager.enabled .Values.ingress.enabled (default false .Values.ingress.tlsEnabled) -}}
+{{- $secret := .Values.ingress.tlsSecretName | default (printf "%s-dashboard-tls" .Release.Name) -}}
+{{- $extRef := and .Values.certManager.issuerRef .Values.certManager.issuerRef.name -}}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ .Release.Name }}-dashboard
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Release.Name }}-dashboard
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/part-of: nyx
+    app.kubernetes.io/managed-by: helm
+spec:
+  secretName: {{ $secret | quote }}
+  {{- with .Values.ingress.hosts }}
+  dnsNames:
+    {{- range . }}
+    - {{ .host | quote }}
+    {{- end }}
+  {{- end }}
+  issuerRef:
+    {{- if $extRef }}
+    name: {{ .Values.certManager.issuerRef.name | quote }}
+    kind: {{ .Values.certManager.issuerRef.kind | default "ClusterIssuer" | quote }}
+    {{- else }}
+    name: {{ .Release.Name }}-selfsigned
+    kind: {{ .Values.certManager.issuerKind | default "Issuer" | quote }}
+    {{- end }}
+{{- end -}}

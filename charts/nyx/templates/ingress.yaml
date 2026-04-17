@@ -91,9 +91,27 @@ spec:
   {{- if .Values.ingress.className }}
   ingressClassName: {{ .Values.ingress.className }}
   {{- end }}
-  {{- if .Values.ingress.tls }}
+  {{- /*
+  TLS block precedence (#639):
+    1. User-supplied ingress.tls list wins verbatim (BYO TLS path).
+    2. certManager.enabled + ingress.tlsEnabled auto-synthesize a tls entry
+       from ingress.hosts, pointing at the Certificate's secret (see
+       certificate.yaml).
+    3. Neither → no tls block.
+  */}}
+  {{- $tlsFromUser := .Values.ingress.tls | default list -}}
+  {{- $cmTls := and .Values.certManager.enabled (default false .Values.ingress.tlsEnabled) -}}
+  {{- if $tlsFromUser }}
   tls:
-    {{- toYaml .Values.ingress.tls | nindent 4 }}
+    {{- toYaml $tlsFromUser | nindent 4 }}
+  {{- else if $cmTls }}
+  {{- $secret := .Values.ingress.tlsSecretName | default (printf "%s-dashboard-tls" .Release.Name) }}
+  tls:
+    - secretName: {{ $secret | quote }}
+      hosts:
+        {{- range .Values.ingress.hosts }}
+        - {{ .host | quote }}
+        {{- end }}
   {{- end }}
   rules:
     {{- range .Values.ingress.hosts }}
