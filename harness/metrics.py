@@ -115,6 +115,8 @@ agent_background_tasks_timeout_total: prometheus_client.Counter | None = None
 agent_backend_reachable: prometheus_client.Gauge | None = None
 agent_a2a_backend_requests_total: prometheus_client.Counter | None = None
 agent_a2a_backend_request_duration_seconds: prometheus_client.Histogram | None = None
+agent_a2a_backend_circuit_state: prometheus_client.Gauge | None = None
+agent_a2a_backend_circuit_transitions_total: prometheus_client.Counter | None = None
 
 
 if _enabled:
@@ -608,5 +610,19 @@ if _enabled:
         "Wall-clock seconds for outbound A2A requests from the harness to "
         "each configured backend (#622).",
         ["backend"],
+    )
+    agent_a2a_backend_circuit_state = prometheus_client.Gauge(
+        "agent_a2a_backend_circuit_state",
+        "Current circuit-breaker state for each configured A2A backend "
+        "(#609). Exactly one state label per backend reports 1; the others "
+        "report 0. state is one of closed | open | half_open.",
+        ["backend", "state"],
+    )
+    agent_a2a_backend_circuit_transitions_total = prometheus_client.Counter(
+        "agent_a2a_backend_circuit_transitions_total",
+        "Total circuit-breaker state transitions per backend (#609). "
+        "Labels `from` and `to` identify the transition; both take values "
+        "closed | open | half_open.",
+        ["backend", "from", "to"],
     )
 

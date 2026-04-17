@@ -14,6 +14,8 @@ import httpx
 
 from backends.config import BackendConfig
 from metrics import (
+    agent_a2a_backend_circuit_state,
+    agent_a2a_backend_circuit_transitions_total,
     agent_a2a_backend_request_duration_seconds,
     agent_a2a_backend_requests_total,
 )
@@ -38,6 +40,26 @@ _RETRY_BACKOFF_BASE = float(os.environ.get("A2A_BACKEND_RETRY_BACKOFF", "1.0"))
 # Transient status codes that are safe to retry.
 _RETRYABLE_STATUS_CODES: frozenset[int] = frozenset({429, 502, 503, 504})
 
+# Circuit-breaker configuration (#609). A simple consecutive-failure breaker
+# avoids running the full retry cycle against a known-bad backend. When the
+# breaker is `open`, run_query fast-fails with ConnectionError before issuing
+# any HTTP. After the cool-off, the next call is served in `half_open` mode
+# (one probe) — a success closes the circuit, a failure re-opens it.
+_CIRCUIT_THRESHOLD = int(os.environ.get("A2A_BACKEND_CIRCUIT_THRESHOLD", "5"))
+if _CIRCUIT_THRESHOLD < 1:
+    raise ValueError(
+        f"A2A_BACKEND_CIRCUIT_THRESHOLD must be >= 1, got {_CIRCUIT_THRESHOLD}"
+    )
+_CIRCUIT_COOLOFF_SECONDS = float(
+    os.environ.get("A2A_BACKEND_CIRCUIT_COOLOFF_SECONDS", "30")
+)
+if _CIRCUIT_COOLOFF_SECONDS < 0:
+    raise ValueError(
+        f"A2A_BACKEND_CIRCUIT_COOLOFF_SECONDS must be >= 0, got {_CIRCUIT_COOLOFF_SECONDS}"
+    )
+
+_CIRCUIT_STATES: tuple[str, ...] = ("closed", "open", "half_open")
+
 
 class A2ABackend:
     """Backend that forwards run_query calls to a remote A2A agent."""
@@ -60,6 +82,20 @@ class A2ABackend:
             limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
         )
 
+        # Circuit-breaker state (#609). Starts closed; transitions to `open`
+        # after `_CIRCUIT_THRESHOLD` consecutive non-OK outcomes. After the
+        # cool-off elapses, the next call runs in `half_open` mode: a success
+        # closes the circuit, a failure re-opens it. Protected by an asyncio
+        # Lock to keep state changes atomic under concurrent run_query calls.
+        self._circuit_state: str = "closed"
+        self._circuit_consecutive_failures: int = 0
+        self._circuit_opened_at: float = 0.0
+        self._circuit_lock: asyncio.Lock = asyncio.Lock()
+        # Initialize gauge labels so scrapes see this backend even before its
+        # first request — absent series are harder to alert on than 0-valued
+        # ones.
+        self._publish_circuit_state_gauge()
+
     def _get_client(self) -> httpx.AsyncClient:
         if self._client.is_closed:
             self._client = httpx.AsyncClient(
@@ -67,6 +103,96 @@ class A2ABackend:
                 limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
             )
         return self._client
+
+    # ------------------------------------------------------------------ #
+    # Circuit breaker (#609)
+    # ------------------------------------------------------------------ #
+
+    def _publish_circuit_state_gauge(self) -> None:
+        """Mirror ``self._circuit_state`` onto the Prometheus gauge.
+
+        Each possible state has its own labelset; exactly one reports 1 and
+        the rest report 0. This keeps alerting rules simple
+        (``max by (backend) (agent_a2a_backend_circuit_state{state="open"}) == 1``).
+        """
+        if agent_a2a_backend_circuit_state is None:
+            return
+        for _state in _CIRCUIT_STATES:
+            try:
+                agent_a2a_backend_circuit_state.labels(
+                    backend=self.id, state=_state
+                ).set(1.0 if _state == self._circuit_state else 0.0)
+            except Exception:
+                pass
+
+    def _transition_circuit(self, new_state: str) -> None:
+        """Record a circuit-state transition and update the gauge.
+
+        Caller must hold ``self._circuit_lock``. No-op when already in
+        ``new_state`` — avoids emitting phantom transitions.
+        """
+        prev = self._circuit_state
+        if prev == new_state:
+            return
+        self._circuit_state = new_state
+        if agent_a2a_backend_circuit_transitions_total is not None:
+            try:
+                agent_a2a_backend_circuit_transitions_total.labels(
+                    backend=self.id, **{"from": prev, "to": new_state}
+                ).inc()
+            except Exception:
+                pass
+        self._publish_circuit_state_gauge()
+        logger.info(
+            "A2A backend '%s' circuit %s -> %s (consecutive_failures=%d)",
+            self.id, prev, new_state, self._circuit_consecutive_failures,
+        )
+
+    async def _circuit_acquire(self) -> None:
+        """Gate an outbound call against the circuit breaker.
+
+        Raises ``ConnectionError`` when the breaker is `open` and its cool-off
+        has not elapsed. When the cool-off has elapsed, transitions to
+        `half_open` and lets the caller proceed as a probe.
+        """
+        async with self._circuit_lock:
+            if self._circuit_state == "open":
+                elapsed = time.monotonic() - self._circuit_opened_at
+                if elapsed < _CIRCUIT_COOLOFF_SECONDS:
+                    remaining = _CIRCUIT_COOLOFF_SECONDS - elapsed
+                    raise ConnectionError(
+                        f"circuit open for {self.id}; retry in {remaining:.1f}s"
+                    )
+                # Cool-off elapsed — allow a single probe.
+                self._transition_circuit("half_open")
+
+    async def _circuit_record(self, ok: bool) -> None:
+        """Record the outcome of one completed outbound call.
+
+        * On ``ok=True``, clears the consecutive-failure counter and
+          closes the breaker if it was `half_open`.
+        * On ``ok=False``, increments the counter; when it reaches
+          ``_CIRCUIT_THRESHOLD`` the breaker opens. A failure while in
+          `half_open` re-opens the breaker and resets the timer.
+        """
+        async with self._circuit_lock:
+            if ok:
+                self._circuit_consecutive_failures = 0
+                if self._circuit_state != "closed":
+                    self._transition_circuit("closed")
+                return
+            self._circuit_consecutive_failures += 1
+            if self._circuit_state == "half_open":
+                # Half-open probe failed — re-open and restart the timer.
+                self._circuit_opened_at = time.monotonic()
+                self._transition_circuit("open")
+                return
+            if (
+                self._circuit_state == "closed"
+                and self._circuit_consecutive_failures >= _CIRCUIT_THRESHOLD
+            ):
+                self._circuit_opened_at = time.monotonic()
+                self._transition_circuit("open")
 
     async def run_query(
         self,
