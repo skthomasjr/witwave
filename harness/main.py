@@ -321,6 +321,12 @@ async def bus_worker(bus: MessageBus, executor: AgentExecutor) -> None:
         finally:
             if message.result is not None and not message.result.done():
                 message.result.cancel()
+            # Release the dedup slot only after process_bus finishes (#514).
+            # Holding it across the backend call lets try_send correctly skip
+            # a second scheduled fire while the first is still in-flight. This
+            # must run in finally so error paths also clear the slot; otherwise
+            # a failed message would starve all future try_send for that kind.
+            bus.release_pending(message.kind)
             if agent_bus_processing_duration_seconds is not None:
                 agent_bus_processing_duration_seconds.labels(kind=message.kind).observe(time.monotonic() - t0)
             if agent_bus_last_processed_timestamp_seconds is not None:

@@ -103,7 +103,18 @@ class MessageBus:
         message = await self._queue.get()
         if agent_bus_queue_depth is not None:
             agent_bus_queue_depth.set(self._queue.qsize())
-        self._pending_kinds.discard(message.kind)
+        return message
+
+    def release_pending(self, kind: str) -> None:
+        """Release the dedup slot for ``kind``.
+
+        The ``_pending_kinds`` lifetime spans enqueue through the end of
+        ``process_bus`` so ``try_send`` correctly dedups a second scheduled
+        fire while the first is still executing (#514). Callers (the bus
+        worker) must invoke this in a ``finally`` after processing so that
+        both success and error paths clear the slot — otherwise a failed
+        message would starve all future ``try_send`` for that kind.
+        """
+        self._pending_kinds.discard(kind)
         if agent_bus_pending_kinds is not None:
             agent_bus_pending_kinds.set(len(self._pending_kinds))
-        return message
