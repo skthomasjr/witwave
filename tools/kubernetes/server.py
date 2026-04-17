@@ -6,17 +6,52 @@ by default and falls back to the local kubeconfig for development.
 All operations go through the Kubernetes API via the official Python client.
 The dynamic client is used for kind-agnostic operations so we can reach any
 resource the ServiceAccount has RBAC for.
+
+Distributed tracing (#637): each tool handler opens an ``mcp.handler`` SERVER
+span. The real Kubernetes API calls are wrapped in child ``k8s.api.call``
+spans with ``k8s.verb`` / ``k8s.resource`` attributes. OTel is a no-op when
+``OTEL_ENABLED`` is unset, so non-tracing installs pay no runtime cost.
 """
 
 from __future__ import annotations
 
 import logging
+import os
+import sys
 from typing import Any
 
 import yaml
 from kubernetes import client, config, dynamic
 from kubernetes.client.rest import ApiException
 from mcp.server.fastmcp import FastMCP
+
+# shared/otel.py is copied into the image (see Dockerfile) and imported as a
+# top-level module. Falls back to no-op shims if the shared module isn't on
+# sys.path (e.g. running tests outside the container).
+sys.path.insert(0, "/home/tool/shared")
+try:
+    from otel import (  # type: ignore
+        init_otel_if_enabled,
+        start_span,
+        set_span_error,
+        SPAN_KIND_SERVER,
+        SPAN_KIND_INTERNAL,
+    )
+except Exception:  # pragma: no cover - defensive fallback
+    SPAN_KIND_SERVER = "server"
+    SPAN_KIND_INTERNAL = "internal"
+
+    def init_otel_if_enabled(*_a: Any, **_kw: Any) -> bool:  # type: ignore
+        return False
+
+    from contextlib import contextmanager
+
+    @contextmanager  # type: ignore
+    def start_span(*_a: Any, **_kw: Any):
+        yield None
+
+    def set_span_error(*_a: Any, **_kw: Any) -> None:  # type: ignore
+        return None
 
 log = logging.getLogger("tools.kubernetes")
 
@@ -64,12 +99,34 @@ def _to_dict(obj: Any) -> Any:
     return obj
 
 
+def _handler_span(tool: str, attributes: dict[str, Any] | None = None):
+    """Open the outer ``mcp.handler`` SERVER span for a tool invocation."""
+    attrs: dict[str, Any] = {"mcp.server": "kubernetes", "mcp.tool": tool}
+    if attributes:
+        attrs.update({k: v for k, v in attributes.items() if v is not None})
+    return start_span("mcp.handler", kind=SPAN_KIND_SERVER, attributes=attrs)
+
+
+def _api_span(verb: str, resource: str, attributes: dict[str, Any] | None = None):
+    """Open a child ``k8s.api.call`` span wrapping a Kubernetes API call."""
+    attrs: dict[str, Any] = {"k8s.verb": verb, "k8s.resource": resource}
+    if attributes:
+        attrs.update({k: v for k, v in attributes.items() if v is not None})
+    return start_span("k8s.api.call", kind=SPAN_KIND_INTERNAL, attributes=attrs)
+
+
 @mcp.tool()
 def list_namespaces() -> list[str]:
     """List namespaces visible to the ServiceAccount."""
-    core = client.CoreV1Api(_api())
-    resp = core.list_namespace()
-    return [ns.metadata.name for ns in resp.items]
+    with _handler_span("list_namespaces") as _h:
+        try:
+            core = client.CoreV1Api(_api())
+            with _api_span("list", "Namespace"):
+                resp = core.list_namespace()
+            return [ns.metadata.name for ns in resp.items]
+        except Exception as exc:
+            set_span_error(_h, exc)
+            raise
 
 
 @mcp.tool()
@@ -84,17 +141,26 @@ def list_resources(
 
     api_version disambiguates kinds served by multiple groups (e.g. Ingress).
     """
-    resource = _resolve(kind, api_version)
-    kwargs: dict[str, Any] = {}
-    if namespace:
-        kwargs["namespace"] = namespace
-    if label_selector:
-        kwargs["label_selector"] = label_selector
-    if field_selector:
-        kwargs["field_selector"] = field_selector
-    result = resource.get(**kwargs)
-    items = getattr(result, "items", None) or []
-    return [_to_dict(item) for item in items]
+    with _handler_span(
+        "list_resources",
+        {"k8s.kind": kind, "k8s.namespace": namespace, "k8s.api_version": api_version},
+    ) as _h:
+        try:
+            resource = _resolve(kind, api_version)
+            kwargs: dict[str, Any] = {}
+            if namespace:
+                kwargs["namespace"] = namespace
+            if label_selector:
+                kwargs["label_selector"] = label_selector
+            if field_selector:
+                kwargs["field_selector"] = field_selector
+            with _api_span("list", kind, {"k8s.namespace": namespace}):
+                result = resource.get(**kwargs)
+            items = getattr(result, "items", None) or []
+            return [_to_dict(item) for item in items]
+        except Exception as exc:
+            set_span_error(_h, exc)
+            raise
 
 
 @mcp.tool()
@@ -105,11 +171,20 @@ def get_resource(
     api_version: str | None = None,
 ) -> dict:
     """Fetch a single resource by kind / namespace / name."""
-    resource = _resolve(kind, api_version)
-    kwargs: dict[str, Any] = {"name": name}
-    if namespace:
-        kwargs["namespace"] = namespace
-    return _to_dict(resource.get(**kwargs))
+    with _handler_span(
+        "get_resource",
+        {"k8s.kind": kind, "k8s.name": name, "k8s.namespace": namespace},
+    ) as _h:
+        try:
+            resource = _resolve(kind, api_version)
+            kwargs: dict[str, Any] = {"name": name}
+            if namespace:
+                kwargs["namespace"] = namespace
+            with _api_span("get", kind, {"k8s.name": name, "k8s.namespace": namespace}):
+                return _to_dict(resource.get(**kwargs))
+        except Exception as exc:
+            set_span_error(_h, exc)
+            raise
 
 
 @mcp.tool()
@@ -125,25 +200,37 @@ def describe(
     formatters). This returns structured data that is easier for an agent to
     reason over.
     """
-    resource = _resolve(kind, api_version)
-    kwargs: dict[str, Any] = {"name": name}
-    if namespace:
-        kwargs["namespace"] = namespace
-    obj = _to_dict(resource.get(**kwargs))
+    with _handler_span(
+        "describe",
+        {"k8s.kind": kind, "k8s.name": name, "k8s.namespace": namespace},
+    ) as _h:
+        try:
+            resource = _resolve(kind, api_version)
+            kwargs: dict[str, Any] = {"name": name}
+            if namespace:
+                kwargs["namespace"] = namespace
+            with _api_span("get", kind, {"k8s.name": name, "k8s.namespace": namespace}):
+                obj = _to_dict(resource.get(**kwargs))
 
-    events: list[dict] = []
-    try:
-        core = client.CoreV1Api(_api())
-        selector = f"involvedObject.name={name},involvedObject.kind={kind}"
-        if namespace:
-            ev_resp = core.list_namespaced_event(namespace=namespace, field_selector=selector)
-        else:
-            ev_resp = core.list_event_for_all_namespaces(field_selector=selector)
-        events = [ev.to_dict() for ev in ev_resp.items]
-    except ApiException as e:
-        log.warning("failed to fetch events for %s/%s: %s", kind, name, e)
+            events: list[dict] = []
+            try:
+                core = client.CoreV1Api(_api())
+                selector = f"involvedObject.name={name},involvedObject.kind={kind}"
+                with _api_span("list", "Event", {"k8s.namespace": namespace}):
+                    if namespace:
+                        ev_resp = core.list_namespaced_event(
+                            namespace=namespace, field_selector=selector
+                        )
+                    else:
+                        ev_resp = core.list_event_for_all_namespaces(field_selector=selector)
+                events = [ev.to_dict() for ev in ev_resp.items]
+            except ApiException as e:
+                log.warning("failed to fetch events for %s/%s: %s", kind, name, e)
 
-    return {"object": obj, "events": events}
+            return {"object": obj, "events": events}
+        except Exception as exc:
+            set_span_error(_h, exc)
+            raise
 
 
 @mcp.tool()
@@ -156,45 +243,62 @@ def logs(
     previous: bool = False,
 ) -> str:
     """Return pod logs."""
-    core = client.CoreV1Api(_api())
-    kwargs: dict[str, Any] = {"name": pod, "namespace": namespace, "previous": previous}
-    if container:
-        kwargs["container"] = container
-    if tail_lines is not None:
-        kwargs["tail_lines"] = tail_lines
-    if since_seconds is not None:
-        kwargs["since_seconds"] = since_seconds
-    return core.read_namespaced_pod_log(**kwargs)
+    with _handler_span(
+        "logs",
+        {"k8s.pod": pod, "k8s.namespace": namespace, "k8s.container": container},
+    ) as _h:
+        try:
+            core = client.CoreV1Api(_api())
+            kwargs: dict[str, Any] = {"name": pod, "namespace": namespace, "previous": previous}
+            if container:
+                kwargs["container"] = container
+            if tail_lines is not None:
+                kwargs["tail_lines"] = tail_lines
+            if since_seconds is not None:
+                kwargs["since_seconds"] = since_seconds
+            with _api_span("logs", "Pod", {"k8s.pod": pod, "k8s.namespace": namespace}):
+                return core.read_namespaced_pod_log(**kwargs)
+        except Exception as exc:
+            set_span_error(_h, exc)
+            raise
 
 
 @mcp.tool()
 def apply(manifest: str) -> list[dict]:
     """Server-side apply a YAML or JSON manifest (supports multi-doc YAML)."""
-    docs = [d for d in yaml.safe_load_all(manifest) if d]
-    results: list[dict] = []
-    for doc in docs:
-        api_version = doc.get("apiVersion")
-        kind = doc.get("kind")
-        if not api_version or not kind:
-            raise ValueError("manifest document missing apiVersion or kind")
-        meta = doc.get("metadata") or {}
-        name = meta.get("name")
-        ns = meta.get("namespace")
-        if not name:
-            raise ValueError(f"{kind} manifest missing metadata.name")
+    with _handler_span("apply") as _h:
+        try:
+            docs = [d for d in yaml.safe_load_all(manifest) if d]
+            results: list[dict] = []
+            for doc in docs:
+                api_version = doc.get("apiVersion")
+                kind = doc.get("kind")
+                if not api_version or not kind:
+                    raise ValueError("manifest document missing apiVersion or kind")
+                meta = doc.get("metadata") or {}
+                name = meta.get("name")
+                ns = meta.get("namespace")
+                if not name:
+                    raise ValueError(f"{kind} manifest missing metadata.name")
 
-        resource = _resolve(kind, api_version)
-        patch_kwargs: dict[str, Any] = {
-            "body": doc,
-            "name": name,
-            "content_type": "application/apply-patch+yaml",
-            "field_manager": FIELD_MANAGER,
-        }
-        if ns:
-            patch_kwargs["namespace"] = ns
-        applied = resource.patch(**patch_kwargs)
-        results.append(_to_dict(applied))
-    return results
+                resource = _resolve(kind, api_version)
+                patch_kwargs: dict[str, Any] = {
+                    "body": doc,
+                    "name": name,
+                    "content_type": "application/apply-patch+yaml",
+                    "field_manager": FIELD_MANAGER,
+                }
+                if ns:
+                    patch_kwargs["namespace"] = ns
+                with _api_span(
+                    "apply", kind, {"k8s.name": name, "k8s.namespace": ns, "k8s.api_version": api_version}
+                ):
+                    applied = resource.patch(**patch_kwargs)
+                results.append(_to_dict(applied))
+            return results
+        except Exception as exc:
+            set_span_error(_h, exc)
+            raise
 
 
 @mcp.tool()
@@ -206,15 +310,28 @@ def delete(
     propagation_policy: str = "Background",
 ) -> dict:
     """Delete a resource by kind / namespace / name."""
-    resource = _resolve(kind, api_version)
-    body = client.V1DeleteOptions(propagation_policy=propagation_policy)
-    kwargs: dict[str, Any] = {"name": name, "body": body}
-    if namespace:
-        kwargs["namespace"] = namespace
-    return _to_dict(resource.delete(**kwargs))
+    with _handler_span(
+        "delete",
+        {"k8s.kind": kind, "k8s.name": name, "k8s.namespace": namespace},
+    ) as _h:
+        try:
+            resource = _resolve(kind, api_version)
+            body = client.V1DeleteOptions(propagation_policy=propagation_policy)
+            kwargs: dict[str, Any] = {"name": name, "body": body}
+            if namespace:
+                kwargs["namespace"] = namespace
+            with _api_span("delete", kind, {"k8s.name": name, "k8s.namespace": namespace}):
+                return _to_dict(resource.delete(**kwargs))
+        except Exception as exc:
+            set_span_error(_h, exc)
+            raise
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
+    # Initialise OTel up-front; no-op unless OTEL_ENABLED is truthy (#637).
+    init_otel_if_enabled(
+        service_name=os.environ.get("OTEL_SERVICE_NAME") or "mcp-kubernetes",
+    )
     _load_kube_config()
     mcp.run()
