@@ -115,6 +115,17 @@ LOG_PROMPT_MAX_BYTES = int(os.environ.get("LOG_PROMPT_MAX_BYTES", "200"))
 CODEX_MODEL = os.environ.get("CODEX_MODEL") or "gpt-5.1-codex"
 OPENAI_API_KEY: str | None = os.environ.get("OPENAI_API_KEY") or None
 
+
+def _resolve_model_label(model: str | None) -> str:
+    """Resolve a non-empty model label for observability (metrics + spans).
+
+    Falls back to the module-load ``CODEX_MODEL`` default, then to the sentinel
+    ``"unknown"`` if both are empty. Using ``"unknown"`` (not ``""``) keeps
+    Prometheus series and OTel span attributes filterable in dashboards and
+    avoids phantom empty-string label values (#570).
+    """
+    return model or CODEX_MODEL or "unknown"
+
 _BACKEND_ID = "codex"
 _LABELS = {"agent": AGENT_OWNER, "agent_id": AGENT_ID, "backend": _BACKEND_ID}
 
@@ -1109,7 +1120,7 @@ class AgentExecutor(A2AAgentExecutor):
         # post-completion aggregated enqueue can be skipped when chunks were
         # already delivered.
         _chunks_emitted = 0
-        _streaming_label_model = model or CODEX_MODEL or ""
+        _streaming_label_model = _resolve_model_label(model)
 
         async def _emit_chunk(text: str) -> None:
             nonlocal _chunks_emitted
@@ -1129,7 +1140,7 @@ class AgentExecutor(A2AAgentExecutor):
                 parent_context=_otel_parent,
                 attributes={
                     "a2.session_id": session_id,
-                    "a2.model": model or CODEX_MODEL or "",
+                    "a2.model": _resolve_model_label(model),
                     "a2.agent": AGENT_NAME,
                     "a2.agent_id": AGENT_ID,
                 },
