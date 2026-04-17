@@ -471,6 +471,21 @@ spec:
                   independent of the cluster-wide dashboard the Helm chart deploys.
                   Disabled by default.
                 properties:
+                  clusterDomain:
+                    default: cluster.local
+                    description: |-
+                      ClusterDomain is the cluster DNS zone used to build the in-cluster
+                      FQDN the dashboard's nginx proxies to (e.g. `cluster.local`,
+                      `cluster.example`). nginx's `resolver` directive does not apply the
+                      pod's /etc/resolv.conf search list, so the upstream must be an
+                      absolute FQDN; this field lets clusters bootstrapped with a
+                      non-default `--service-dns-domain` point the dashboard at the right
+                      zone (risk #581). Must match `^[a-z0-9][a-z0-9.-]*[a-z0-9]$`.
+                      Defaults to `cluster.local` for back-compat.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$
+                    type: string
                   enabled:
                     description: Enabled toggles creation of the dashboard Deployment
                       + Service.

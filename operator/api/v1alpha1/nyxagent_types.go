@@ -356,6 +356,21 @@ type DashboardSpec struct {
 	// +optional
 	Port int32 `json:"port,omitempty"`
 
+	// ClusterDomain is the cluster DNS zone used to build the in-cluster
+	// FQDN the dashboard's nginx proxies to (e.g. `cluster.local`,
+	// `cluster.example`). nginx's `resolver` directive does not apply the
+	// pod's /etc/resolv.conf search list, so the upstream must be an
+	// absolute FQDN; this field lets clusters bootstrapped with a
+	// non-default `--service-dns-domain` point the dashboard at the right
+	// zone (risk #581). Must match `^[a-z0-9][a-z0-9.-]*[a-z0-9]$`.
+	// Defaults to `cluster.local` for back-compat.
+	// +kubebuilder:default=cluster.local
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$`
+	// +optional
+	ClusterDomain string `json:"clusterDomain,omitempty"`
+
 	// HarnessURL is retained for CR backward-compatibility but no longer
 	// read by the operator. Since beta.46 the dashboard owns cross-agent
 	// routing and talks to each agent's service directly via the per-agent

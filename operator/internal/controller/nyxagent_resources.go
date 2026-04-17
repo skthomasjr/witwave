@@ -761,10 +761,16 @@ func buildDashboardConfigMap(agent *nyxv1alpha1.NyxAgent) *corev1.ConfigMap {
 	}
 
 	// FQDN — nginx's resolver doesn't apply Kubernetes search domains, so
-	// short names land as NXDOMAIN. Cluster-local domain is `cluster.local`
-	// by convention; if anyone's running with a different one this will need
-	// to become configurable.
-	upstream := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", agent.Name, agent.Namespace, agentPort)
+	// short names land as NXDOMAIN. The cluster DNS zone defaults to
+	// `cluster.local` but is overridable via spec.dashboard.clusterDomain
+	// for clusters bootstrapped with a custom --service-dns-domain
+	// (risk #581). The CRD pattern validates the value charset, so it is
+	// safe to interpolate into the nginx template verbatim.
+	clusterDomain := d.ClusterDomain
+	if clusterDomain == "" {
+		clusterDomain = "cluster.local"
+	}
+	upstream := fmt.Sprintf("http://%s.%s.svc.%s:%d", agent.Name, agent.Namespace, clusterDomain, agentPort)
 	directory := fmt.Sprintf(`[{"name":%q,"url":%q}]`, agent.Name, fmt.Sprintf("http://%s:%d", agent.Name, agentPort))
 
 	tpl := `server {
