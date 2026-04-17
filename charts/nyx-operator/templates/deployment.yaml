@@ -29,7 +29,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "nyx-operator.serviceAccountName" . }}
-      terminationGracePeriodSeconds: 10
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds | default 30 }}
       {{- with .Values.podSecurityContext }}
       securityContext:
         {{- toYaml . | nindent 8 }}
@@ -89,7 +89,7 @@ spec:
             preStop:
               exec:
                 # Drain window for in-flight reconciliations before SIGTERM (#465).
-                command: ["/bin/sh", "-c", "sleep {{ .Values.preStop.delaySeconds | default 10 }}"]
+                command: ["/bin/sh", "-c", "sleep {{ .Values.preStop.delaySeconds | default 5 }}"]
           {{- end }}
           livenessProbe:
             httpGet:

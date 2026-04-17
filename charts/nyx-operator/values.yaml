@@ -77,13 +77,22 @@ podDisruptionBudget:
   minAvailable: 1
   # maxUnavailable: 1   # mutually exclusive with minAvailable
 
+# Pod termination grace period (#512). Must be greater than
+# preStop.delaySeconds so the manager has time to receive SIGTERM and run
+# controller-runtime's graceful shutdown (leader-lease release, in-flight
+# reconcile drain) before the kubelet sends SIGKILL. Default 30s allows for
+# the default 5s preStop drain plus a ~25s shutdown budget.
+terminationGracePeriodSeconds: 30
+
 # Optional preStop lifecycle sleep on the manager container (#465). Gives a
 # coordinated drain window for in-flight reconciliations before SIGTERM.
-# Default off; the operator's Reconcile cycles are short so 10s is usually
-# plenty when enabled.
+# Default off; the operator's Reconcile cycles are short so 5s is usually
+# plenty when enabled. Keep delaySeconds strictly less than
+# terminationGracePeriodSeconds so SIGTERM fires with enough remaining grace
+# to complete graceful shutdown (#512).
 preStop:
   enabled: false
-  delaySeconds: 10
+  delaySeconds: 5
 
 # ServiceAccount used by the manager pod.
 serviceAccount:
