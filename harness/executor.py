@@ -359,8 +359,21 @@ async def run_consensus(
             winner = "yes" if yes_count > no_count else "no"
         else:
             # Tie — default backend wins (use first matching call_key).
-            default_key = next((k for k, bid, _ in resolved if bid == default_backend_id), default_backend_id)
-            winner = classifications.get(default_key, "yes")
+            # If the default backend isn't among the consensus participants (or its
+            # call_key isn't present in classifications), fall back deterministically
+            # to the lexicographically first call_key rather than silently biasing
+            # toward "yes" (#496).
+            default_key = next((k for k, bid, _ in resolved if bid == default_backend_id), None)
+            if default_key is not None and default_key in classifications:
+                winner = classifications[default_key]
+            else:
+                fallback_key = min(classifications.keys())
+                logger.warning(
+                    "Consensus tie-break: default backend %r not present in "
+                    "classifications (keys=%s); falling back deterministically to %r.",
+                    default_backend_id, sorted(classifications.keys()), fallback_key,
+                )
+                winner = classifications[fallback_key]
         logger.info(f"Consensus (binary): yes={yes_count} no={no_count} → {winner}")
         if agent_consensus_runs_total is not None:
             agent_consensus_runs_total.labels(mode="binary", status="success").inc()
