@@ -28,10 +28,13 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	"strings"
+
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -66,6 +69,7 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	var watchNamespacesRaw string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -84,6 +88,11 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.StringVar(&watchNamespacesRaw, "watch-namespaces", "",
+		"Comma-separated list of namespaces to watch. When empty, the operator "+
+			"watches all namespaces (requires cluster-scoped RBAC). Set this when "+
+			"running with per-namespace Role/RoleBinding RBAC (#532) so "+
+			"controller-runtime restricts its cache to the same namespaces.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -212,11 +221,32 @@ func main() {
 		})
 	}
 
+	// When --watch-namespaces is set, restrict the manager's cache to the
+	// listed namespaces so controller-runtime does not attempt cluster-wide
+	// LIST/WATCH calls the namespaced RBAC does not permit (#532).
+	cacheOpts := cache.Options{}
+	if strings.TrimSpace(watchNamespacesRaw) != "" {
+		nsSet := map[string]cache.Config{}
+		for _, ns := range strings.Split(watchNamespacesRaw, ",") {
+			ns = strings.TrimSpace(ns)
+			if ns == "" {
+				continue
+			}
+			nsSet[ns] = cache.Config{}
+		}
+		if len(nsSet) > 0 {
+			cacheOpts.DefaultNamespaces = nsSet
+			setupLog.Info("restricting controller cache to namespaces",
+				"namespaces", watchNamespacesRaw)
+		}
+	}
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsServerOptions,
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
+		Cache:                  cacheOpts,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "2658b259.nyx.ai",
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily

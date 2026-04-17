@@ -25,8 +25,27 @@ installCRDs: true
 # RBAC — when false the chart skips ClusterRole/ClusterRoleBinding/Role
 # creation. Operators deployed into multi-tenant clusters may want to
 # manage RBAC separately.
+#
+# scope controls the blast radius of the operator's service account (#532):
+#   - "cluster"   (default) installs a ClusterRole + ClusterRoleBinding so the
+#                 operator can reconcile NyxAgent resources in any namespace.
+#                 The ClusterRole is narrowed to the exact resources the
+#                 reconciler owns (configmaps, services, persistentvolumeclaims,
+#                 deployments, horizontalpodautoscalers, poddisruptionbudgets,
+#                 events, and nyxagents) — no wildcards.
+#   - "namespace" installs a Role + RoleBinding pair per entry in
+#                 rbac.watchNamespaces (defaults to the release namespace).
+#                 The ClusterRole/ClusterRoleBinding are NOT created. In this
+#                 mode set watchNamespaces explicitly and ensure the operator
+#                 restricts its controller-runtime cache to the same set via
+#                 --watch-namespaces (see extraArgs below).
 rbac:
   create: true
+  scope: cluster
+  # Namespaces the operator watches when rbac.scope=namespace. Each entry
+  # receives its own Role + RoleBinding. When empty, the release namespace is
+  # used. Ignored when scope=cluster.
+  watchNamespaces: []
 
 # Leader election — required when replicaCount > 1 to ensure a single
 # active controller. Harmless for replicaCount=1.

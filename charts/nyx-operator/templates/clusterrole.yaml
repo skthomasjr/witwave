@@ -1,8 +1,12 @@
-{{- if .Values.rbac.create }}
+{{- if and .Values.rbac.create (eq (default "cluster" .Values.rbac.scope) "cluster") }}
 ---
 # ClusterRole aggregating every permission the nyx-operator reconciler needs.
 # Kept in sync with operator/config/rbac/role.yaml — update both when new
 # owned resource types are added.
+#
+# Only rendered when rbac.scope=cluster (default). For per-namespace installs
+# set rbac.scope=namespace and the chart installs a Role + RoleBinding in each
+# rbac.watchNamespaces entry instead (#532).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
