@@ -41,6 +41,7 @@ class A2ABackend:
     def __init__(self, config: BackendConfig) -> None:
         self.id = config.id
         self._config = config
+        self._auth_env = config.auth_env
         # Allow per-backend URL override via env var: A2A_URL_<ID_UPPERCASED>
         # e.g. for id "iris-a2-claude" the env var is "A2A_URL_IRIS_A2_CLAUDE"
         _env_var = "A2A_URL_" + config.id.upper().replace("-", "_")
@@ -168,6 +169,14 @@ class A2ABackend:
         _headers = {"Content-Type": "application/json"}
         if traceparent is not None:
             _headers["traceparent"] = traceparent
+        # Resolve auth token at call time (not __init__) so token rotation takes
+        # effect without a container restart. When auth_env is unset or the env
+        # var is empty, no Authorization header is added. Never log the token
+        # value — only its presence is safe to surface.
+        if self._auth_env:
+            _token = os.environ.get(self._auth_env) or ""
+            if _token:
+                _headers["Authorization"] = f"Bearer {_token}"
         for attempt in range(_MAX_RETRIES):
             client = self._get_client()
             try:
