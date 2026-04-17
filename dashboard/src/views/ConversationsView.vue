@@ -18,7 +18,10 @@ const roleFilter = ref<string>("");
 
 const { items, loading, error, refresh } = useAgentFanout<ConversationEntry>({
   endpoint: "conversations",
-  query: computed(() => ({ limit: String(limit.value) })).value,
+  // Pass the computed itself (not `.value`) so the composable can watch the
+  // limit dropdown and re-fetch when it changes. Previously `.value` captured
+  // the mount-time snapshot and further dropdown changes were ignored (#495).
+  query: computed(() => ({ limit: String(limit.value) })),
 });
 
 const agentOptions = computed(() => {

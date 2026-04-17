@@ -1,4 +1,5 @@
-import { onMounted, onUnmounted, ref } from "vue";
+import { onMounted, onUnmounted, ref, unref, watch } from "vue";
+import type { Ref } from "vue";
 import { apiGet, ApiError } from "../api/client";
 
 // Generic per-agent fan-out + polling. Hits /api/agents/<name>/<endpoint> for
@@ -16,13 +17,26 @@ export interface AgentSourced {
   _agent: string;
 }
 
+type QueryRecord = Record<string, string | undefined>;
+
+// Accept a plain record, a ref/computed of one, or a zero-arg getter so
+// consumers can make the query reactive (dropdown-driven limits, etc.).
+// Passing a plain object keeps the previous call-site shape working.
+export type QueryInput = QueryRecord | Ref<QueryRecord> | (() => QueryRecord);
+
 export interface UseAgentFanoutOptions {
   endpoint: string;
   intervalMs?: number;
-  query?: Record<string, string | undefined>;
+  query?: QueryInput;
   // When true, individual agent failures do not set the overall error —
   // items from reachable agents still render. Default true for list views.
   tolerateIndividualErrors?: boolean;
+}
+
+function resolveQuery(q: QueryInput | undefined): QueryRecord | undefined {
+  if (q === undefined) return undefined;
+  if (typeof q === "function") return (q as () => QueryRecord)();
+  return unref(q as QueryRecord | Ref<QueryRecord>);
 }
 
 export function useAgentFanout<T>(opts: UseAgentFanoutOptions) {
@@ -43,7 +57,7 @@ export function useAgentFanout<T>(opts: UseAgentFanoutOptions) {
     try {
       const raw = await apiGet<T | T[]>(
         `/agents/${encodeURIComponent(member.name)}/${opts.endpoint}`,
-        { signal, query: opts.query },
+        { signal, query: resolveQuery(opts.query) },
       );
       const arr = Array.isArray(raw) ? raw : [raw];
       return arr.map((item) => ({ ...(item as T), _agent: member.name }));
@@ -78,6 +92,18 @@ export function useAgentFanout<T>(opts: UseAgentFanoutOptions) {
     void refresh();
     timer = setInterval(() => void refresh(), intervalMs);
   });
+
+  // When a reactive query (ref/computed/getter) is supplied, re-fetch on
+  // change so dropdown-driven params (e.g. limit) take effect immediately
+  // rather than waiting for the next poll tick. Plain-object queries have no
+  // reactive dependencies, so the watcher simply never fires.
+  if (opts.query !== undefined) {
+    watch(
+      () => resolveQuery(opts.query),
+      () => void refresh(),
+      { deep: true },
+    );
+  }
 
   onUnmounted(() => {
     if (timer !== null) clearInterval(timer);
