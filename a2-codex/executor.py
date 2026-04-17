@@ -770,18 +770,19 @@ async def run_query(
         a2_sdk_tokens_per_query.labels(**_LABELS, model=resolved_model).observe(_total_tokens)
     if a2_sdk_tool_calls_per_query is not None:
         a2_sdk_tool_calls_per_query.labels(**_LABELS).observe(_tool_call_count)
-    if _total_tokens and max_tokens:
+    if _total_tokens:
         if a2_context_tokens is not None:
             a2_context_tokens.labels(**_LABELS).observe(_total_tokens)
-        if a2_context_tokens_remaining is not None:
-            a2_context_tokens_remaining.labels(**_LABELS).observe(max(0, max_tokens - _total_tokens))
-        _pct = _total_tokens / max_tokens * 100
-        if a2_context_usage_percent is not None:
-            a2_context_usage_percent.labels(**_LABELS).observe(_pct)
-        if _pct >= 100 and a2_context_exhaustion_total is not None:
-            a2_context_exhaustion_total.labels(**_LABELS).inc()
-        elif _pct >= CONTEXT_USAGE_WARN_THRESHOLD * 100 and a2_context_warnings_total is not None:
-            a2_context_warnings_total.labels(**_LABELS).inc()
+        if max_tokens:
+            if a2_context_tokens_remaining is not None:
+                a2_context_tokens_remaining.labels(**_LABELS).observe(max(0, max_tokens - _total_tokens))
+            _pct = _total_tokens / max_tokens * 100
+            if a2_context_usage_percent is not None:
+                a2_context_usage_percent.labels(**_LABELS).observe(_pct)
+            if _pct >= 100 and a2_context_exhaustion_total is not None:
+                a2_context_exhaustion_total.labels(**_LABELS).inc()
+            elif _pct >= CONTEXT_USAGE_WARN_THRESHOLD * 100 and a2_context_warnings_total is not None:
+                a2_context_warnings_total.labels(**_LABELS).inc()
 
     # Log a trace entry for the completed turn
     try:
