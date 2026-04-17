@@ -942,8 +942,18 @@ async def _run_inner(
             timeout=TASK_TIMEOUT_SECONDS,
         )
         await _track_session(sessions, session_id)
-    except asyncio.TimeoutError:
+    except asyncio.TimeoutError as _exc:
         logger.error(f"Session {session_id!r}: timed out after {TASK_TIMEOUT_SECONDS}s.")
+        # Terminal marker for partial assistant text already committed by
+        # per-block log_entry calls inside _run_query_inner (#566). Without
+        # this, conversation.jsonl ends on a plausible-looking agent turn
+        # that never completed. Mirrors the BudgetExceededError branch above.
+        await log_entry(
+            "system",
+            f"{type(_exc).__name__}: {_exc}",
+            session_id,
+            model=model,
+        )
         # Remove the session from the LRU cache on timeout. The SDK context
         # manager is cancelled mid-stream, so the session state may be
         # inconsistent. Evicting it ensures the next call starts a fresh
@@ -979,13 +989,21 @@ async def _run_inner(
         )
         collected = _bexc.collected
         await _track_session(sessions, session_id)
-    except Exception:
+    except Exception as _exc:
         if a2_tasks_total is not None:
             a2_tasks_total.labels(**_LABELS, status="error").inc()
         if a2_task_error_duration_seconds is not None:
             a2_task_error_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _start)
         if a2_task_last_error_timestamp_seconds is not None:
             a2_task_last_error_timestamp_seconds.labels(**_LABELS).set(time.time())
+        # Terminal marker so partial assistant text already in
+        # conversation.jsonl is demarcated on mid-stream failure (#566).
+        await log_entry(
+            "system",
+            f"{type(_exc).__name__}: {_exc}",
+            session_id,
+            model=model,
+        )
         raise
 
     if a2_tasks_total is not None:
@@ -1284,6 +1302,16 @@ class AgentExecutor(A2AAgentExecutor):
                     if a2_a2a_requests_total is not None:
                         a2_a2a_requests_total.labels(**_LABELS, status="error").inc()
                     _set_span_error(_otel_span, _exc)
+                    # Terminal marker so partial assistant text already in
+                    # conversation.jsonl is demarcated on mid-stream failure
+                    # (#566). log_entry swallows its own exceptions, so this
+                    # cannot mask the original error being re-raised below.
+                    await log_entry(
+                        "system",
+                        f"{type(_exc).__name__}: {_exc}",
+                        session_id,
+                        model=model,
+                    )
                     raise
         finally:
             if a2_a2a_request_duration_seconds is not None:
