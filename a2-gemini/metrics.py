@@ -90,6 +90,9 @@ a2_context_warnings_total: prometheus_client.Counter | None = None
 # Token budget metrics
 a2_budget_exceeded_total: prometheus_client.Counter | None = None
 
+# SqliteTaskStore lock-contention observability (#552)
+a2_sqlite_task_store_lock_wait_seconds: prometheus_client.Histogram | None = None
+
 if _enabled:
     a2_up = prometheus_client.Gauge("a2_up", "Backend agent is running", ["agent", "agent_id", "backend"])
     a2_info = prometheus_client.Info("a2", "Static backend agent metadata.")
@@ -389,4 +392,18 @@ if _enabled:
         "a2_budget_exceeded_total",
         "Total token budget exceeded events (max_tokens limit hit during execution).",
         ["agent", "agent_id", "backend"],
+    )
+
+    # SqliteTaskStore lock-contention observability (#552)
+    # Measures wait time to acquire the single asyncio.Lock that serializes
+    # save/get/delete. With WAL (#523) in place, SQLite itself can serve
+    # concurrent readers alongside writers; the Python-level lock is retained
+    # because sqlite3.Connection is not safe for concurrent use. This metric
+    # lets us see, empirically, whether contention is a real bottleneck before
+    # investing in a connection-pool or per-call-connect refactor.
+    a2_sqlite_task_store_lock_wait_seconds = prometheus_client.Histogram(
+        "a2_sqlite_task_store_lock_wait_seconds",
+        "Seconds waited to acquire the SqliteTaskStore asyncio.Lock, by operation.",
+        ["agent", "agent_id", "backend", "op"],
+        buckets=(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0),
     )

@@ -19,12 +19,45 @@ import asyncio
 import logging
 import os
 import sqlite3
+import time
 
 from a2a.server.context import ServerCallContext
 from a2a.server.tasks.task_store import TaskStore
 from a2a.types import Task
 
+import metrics as _metrics  # noqa: F401 — histograms are registered on import
+
 logger = logging.getLogger(__name__)
+
+
+def _metric_labels() -> dict[str, str]:
+    """Return (agent, agent_id, backend) labels resolved lazily.
+
+    Resolved at call time (not import time) so tests that mutate env vars
+    before constructing the store still see the right values. Mirrors the
+    label source-of-truth in ``executor._LABELS``.
+    """
+    agent_name = os.environ.get("AGENT_NAME", "local-agent")
+    return {
+        "agent": os.environ.get("AGENT_OWNER", agent_name),
+        "agent_id": os.environ.get("AGENT_ID", "gemini"),
+        "backend": "gemini",
+    }
+
+
+def _observe_lock_wait(op: str, wait_seconds: float) -> None:
+    """Record lock-acquisition wait time for a store op (#552).
+
+    Silently no-ops when metrics are disabled. Any bookkeeping failure is
+    swallowed — observability must never break a task-store write.
+    """
+    hist = _metrics.a2_sqlite_task_store_lock_wait_seconds
+    if hist is None:
+        return
+    try:
+        hist.labels(**_metric_labels(), op=op).observe(wait_seconds)
+    except Exception:  # pragma: no cover — never let metrics break persistence
+        logger.debug("a2_sqlite_task_store_lock_wait_seconds observe failed", exc_info=True)
 
 
 def _open_db(path: str) -> sqlite3.Connection:
@@ -82,6 +115,19 @@ class SqliteTaskStore(TaskStore):
     in-flight when the process was killed remain in the store with their last
     known status; clients polling for completion will eventually time out and
     receive a proper error rather than waiting indefinitely.
+
+    Concurrency trade-off (#552, unblocked by #523)
+    -----------------------------------------------
+    ``save``/``get``/``delete`` all serialize on a single ``asyncio.Lock``.
+    This is intentional: ``sqlite3.Connection`` is not safe for concurrent use
+    even with ``check_same_thread=False``, and we share one connection across
+    ``asyncio.to_thread`` workers. With WAL mode + ``busy_timeout=5000`` now in
+    place (see ``_open_db``), SQLite itself can serve concurrent readers
+    alongside writers — so a future refactor to a per-call ``sqlite3.connect``
+    or a small connection pool could split reader/writer contention without
+    fear of shared-cache issues. We defer that refactor until telemetry
+    justifies it: the ``a2_sqlite_task_store_lock_wait_seconds`` histogram
+    (one observation per op, labelled by ``op``) is the signal to watch.
     """
 
     def __init__(self, path: str) -> None:
@@ -99,14 +145,18 @@ class SqliteTaskStore(TaskStore):
         self, task: Task, context: ServerCallContext | None = None
     ) -> None:
         data = task.model_dump_json()
+        _wait_start = time.perf_counter()
         async with self._lock:
+            _observe_lock_wait("save", time.perf_counter() - _wait_start)
             await asyncio.to_thread(_db_save, self._get_conn(), task.id, data)
         logger.debug("Task %s saved to SQLite store.", task.id)
 
     async def get(
         self, task_id: str, context: ServerCallContext | None = None
     ) -> Task | None:
+        _wait_start = time.perf_counter()
         async with self._lock:
+            _observe_lock_wait("get", time.perf_counter() - _wait_start)
             raw = await asyncio.to_thread(_db_get, self._get_conn(), task_id)
         if raw is None:
             logger.debug("Task %s not found in SQLite store.", task_id)
@@ -118,6 +168,8 @@ class SqliteTaskStore(TaskStore):
     async def delete(
         self, task_id: str, context: ServerCallContext | None = None
     ) -> None:
+        _wait_start = time.perf_counter()
         async with self._lock:
+            _observe_lock_wait("delete", time.perf_counter() - _wait_start)
             await asyncio.to_thread(_db_delete, self._get_conn(), task_id)
         logger.debug("Task %s deleted from SQLite store.", task_id)
