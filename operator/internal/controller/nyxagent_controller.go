@@ -56,6 +56,13 @@ var DefaultImageTag = "unset"
 // inject a real version via ldflags.
 const DefaultImageTagSentinel = "unset"
 
+// nyxAgentFinalizer guarantees the operator observes NyxAgent deletion so
+// per-CR metric series and owned cluster resources are cleaned up even when
+// the operator was offline at delete time (#569). Future per-CR metrics or
+// external-state teardown should piggyback on this single finalizer rather
+// than adding per-concern finalizers.
+const nyxAgentFinalizer = "nyxagent.nyx.ai/finalizer"
+
 // NyxAgentReconciler reconciles a NyxAgent object.
 type NyxAgentReconciler struct {
 	client.Client
@@ -92,13 +99,51 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	agent := &nyxv1alpha1.NyxAgent{}
 	if err := r.Get(ctx, req.NamespacedName, agent); err != nil {
 		if apierrors.IsNotFound(err) {
-			// OwnerReferences take care of cascading deletion. Drop the
-			// per-CR dashboard gauge series so a deleted agent doesn't
-			// linger in the metrics output until process restart (#471).
+			// Belt-and-suspenders: with the finalizer (#569) the
+			// delete-branch below is the primary cleanup path, but
+			// this NotFound branch still runs if a CR is ever
+			// orphaned (e.g. operator upgrade where a user removed
+			// the finalizer externally) and drops the gauge series
+			// so it doesn't linger until process restart (#471).
 			nyxagentDashboardEnabled.DeleteLabelValues(req.Namespace, req.Name)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
+	}
+
+	// Finalizer lifecycle (#569). Two cases:
+	//
+	//   1. CR is being deleted (DeletionTimestamp set): run teardown so
+	//      the dashboard metric series, owned ConfigMaps, PVCs, and
+	//      other resources are cleaned up explicitly — then drop the
+	//      finalizer so the apiserver can remove the object. Without
+	//      this, a delete that happens while the operator is down
+	//      relies on OwnerReferences GC alone, which leaves the
+	//      per-CR gauge series stuck at its last value until the
+	//      operator process restarts.
+	//
+	//   2. CR is live: ensure the finalizer is attached before any
+	//      further work so a subsequent delete is guaranteed to be
+	//      observed. Requeue immediately after the patch lands — the
+	//      update triggers its own reconcile anyway, but returning
+	//      here keeps the control flow linear.
+	if !agent.DeletionTimestamp.IsZero() {
+		if controllerutil.ContainsFinalizer(agent, nyxAgentFinalizer) {
+			if err := r.finalizeNyxAgent(ctx, agent); err != nil {
+				return ctrl.Result{}, fmt.Errorf("finalize NyxAgent: %w", err)
+			}
+			controllerutil.RemoveFinalizer(agent, nyxAgentFinalizer)
+			if err := r.Update(ctx, agent); err != nil {
+				return ctrl.Result{}, fmt.Errorf("remove finalizer: %w", err)
+			}
+		}
+		return ctrl.Result{}, nil
+	}
+	if controllerutil.AddFinalizer(agent, nyxAgentFinalizer) {
+		if err := r.Update(ctx, agent); err != nil {
+			return ctrl.Result{}, fmt.Errorf("add finalizer: %w", err)
+		}
+		return ctrl.Result{}, nil
 	}
 
 	// Per-agent enabled flag (default true). When explicitly false, tear
@@ -541,6 +586,17 @@ func (r *NyxAgentReconciler) teardownDisabledAgent(ctx context.Context, agent *n
 	// linger across enable/disable cycles.
 	nyxagentDashboardEnabled.DeleteLabelValues(agent.Namespace, agent.Name)
 	return nil
+}
+
+// finalizeNyxAgent runs the explicit cleanup path invoked when a NyxAgent is
+// being deleted (#569). OwnerReferences already cascade to owned cluster
+// resources, but the operator also needs to drop the per-CR Prometheus
+// gauge series and proactively delete resources the controller manages —
+// both are achieved by reusing the teardown path used for spec.enabled=false,
+// which covers Deployment, Service, HPA, PDB, ConfigMaps, PVCs, the
+// dashboard stack, and the `nyxagent_dashboard_enabled` gauge.
+func (r *NyxAgentReconciler) finalizeNyxAgent(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
+	return r.teardownDisabledAgent(ctx, agent)
 }
 
 // reconcileDashboard creates, updates, or deletes the per-agent dashboard
