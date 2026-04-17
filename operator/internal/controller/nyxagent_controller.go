@@ -108,7 +108,10 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	if agent.Spec.Enabled != nil && !*agent.Spec.Enabled {
 		log.Info("NyxAgent disabled — tearing down owned resources", "name", agent.Name)
 		if err := r.teardownDisabledAgent(ctx, agent); err != nil {
-			return ctrl.Result{RequeueAfter: 30 * time.Second}, err
+			// Return the error alone so controller-runtime's rate
+			// limiter applies exponential backoff rather than our
+			// defeating it with a fixed 30s interval (#548).
+			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
 	}
@@ -162,13 +165,20 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	if reconcileErr != nil {
 		span.RecordError(reconcileErr)
 		span.SetStatus(codes.Error, reconcileErr.Error())
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, reconcileErr
+		// Let controller-runtime's rate limiter drive retry spacing via
+		// exponential backoff (5ms → 1000s). A hardcoded 30s interval
+		// defeats that and can thundering-herd an unhealthy apiserver
+		// when many NyxAgents fail in lockstep (#548).
+		return ctrl.Result{}, reconcileErr
 	}
 
-	// Requeue while the Deployment is still rolling out; watches handle the
-	// steady state.
+	// The Deployment watch registered via Owns(&appsv1.Deployment{})
+	// delivers the real Ready transition, so no primary polling loop is
+	// needed. Keep a long safety-net requeue as a floor in case the
+	// informer ever misses an event (cache resync, informer reset) so
+	// the agent doesn't hang in a non-Ready phase forever (#548).
 	if agent.Status.Phase != nyxv1alpha1.NyxAgentPhaseReady {
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 10 * time.Minute}, nil
 	}
 	return ctrl.Result{}, nil
 }
@@ -751,7 +761,18 @@ func (r *NyxAgentReconciler) updateStatus(ctx context.Context, agent *nyxv1alpha
 			progCond.Status = metav1.ConditionFalse
 			progCond.Reason = "ReconcileError"
 			progCond.Message = reconcileErr.Error()
-		case dep.Status.ReadyReplicas >= desired && desired > 0:
+		case dep.Status.ObservedGeneration >= dep.Generation &&
+			dep.Status.UpdatedReplicas >= desired &&
+			dep.Status.ReadyReplicas >= desired &&
+			desired > 0:
+			// Mirror `kubectl rollout status`: require the Deployment
+			// controller to have observed the current generation AND
+			// the new ReplicaSet to have updated replicas in the Ready
+			// count before declaring Ready. Without the generation
+			// guard, stale ReadyReplicas from the previous ReplicaSet
+			// can satisfy the old check immediately after an image
+			// bump, flipping phase to Ready before the new pods
+			// actually come up (#554).
 			newStatus.Phase = nyxv1alpha1.NyxAgentPhaseReady
 			availCond.Status = metav1.ConditionTrue
 			availCond.Reason = "AllReplicasReady"
