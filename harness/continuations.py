@@ -172,7 +172,9 @@ def parse_continuation_file(path: str) -> "ContinuationItem | object | None":
 async def _fire(item: ContinuationItem, session_id: str, bus: MessageBus) -> None:
     if item.delay is not None:
         await asyncio.sleep(item.delay)
-    prompt = f"Continuation: {item.name}\n\n{item.content}"
+    from prompt_env import resolve_prompt_env  # noqa: E402 — scoped import keeps startup simple
+
+    prompt = resolve_prompt_env(f"Continuation: {item.name}\n\n{item.content}")
     resolved_session = item.session_id or session_id
     try:
         response = await bus.send(Message(

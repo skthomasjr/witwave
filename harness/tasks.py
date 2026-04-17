@@ -367,7 +367,9 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
             logger.error(f"Task '{item.name}' checkpoint write failed: {e}")
 
         try:
-            prompt = f"Task: {item.name}\n\n{item.content}"
+            from prompt_env import resolve_prompt_env  # noqa: E402 — scoped import keeps startup simple
+
+            prompt = resolve_prompt_env(f"Task: {item.name}\n\n{item.content}")
             _task_start = time.monotonic()
             if agent_sched_task_item_last_run_timestamp_seconds is not None:
                 agent_sched_task_item_last_run_timestamp_seconds.labels(name=item.name).set(time.time())
@@ -506,7 +508,9 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
                 if agent_sched_task_item_last_run_timestamp_seconds is not None:
                     agent_sched_task_item_last_run_timestamp_seconds.labels(name=item.name).set(time.time())
 
-                prompt = f"Task: {item.name}\n\n{item.content}"
+                from prompt_env import resolve_prompt_env  # noqa: E402 — scoped import keeps startup simple
+
+                prompt = resolve_prompt_env(f"Task: {item.name}\n\n{item.content}")
                 logger.info(f"Task '{item.name}' firing (session={session_id}).")
                 _task_start = time.monotonic()
 

@@ -123,7 +123,11 @@ async def _run_loop(
                 continue
             _, content, model, backend_id, consensus, max_tokens = loaded
 
-            prompt = f"Heartbeat check. Follow these instructions:\n\n{content}"
+            from prompt_env import resolve_prompt_env  # noqa: E402 — scoped import keeps startup simple
+
+            prompt = resolve_prompt_env(
+                f"Heartbeat check. Follow these instructions:\n\n{content}"
+            )
             _hb_start = time.monotonic()
             message = Message(prompt=prompt, session_id=HEARTBEAT_SESSION, kind="heartbeat", model=model, backend_id=backend_id, consensus=consensus, max_tokens=max_tokens)
             if not bus.try_send(message):

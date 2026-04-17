@@ -145,7 +145,9 @@ async def _execute_job(item: JobItem, bus: MessageBus, semaphore: asyncio.Semaph
         logger.error(f"Job '{item.name}' checkpoint write failed: {e}")
     _send_task: asyncio.Task | None = None
     try:
-        prompt = f"Job: {item.name}\n\n{item.content}"
+        from prompt_env import resolve_prompt_env  # noqa: E402 — scoped import keeps startup simple
+
+        prompt = resolve_prompt_env(f"Job: {item.name}\n\n{item.content}")
         logger.info(f"Job '{item.name}' firing.")
         _job_start = time.monotonic()
         message = Message(prompt=prompt, session_id=item.session_id, kind=f"job:{item.name}", model=item.model, backend_id=item.backend_id, consensus=item.consensus, max_tokens=item.max_tokens)

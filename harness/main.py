@@ -878,6 +878,12 @@ async def main():
         except (UnicodeDecodeError, ValueError):
             body_text = body_bytes[:4096].hex()
 
+        from prompt_env import resolve_prompt_env  # noqa: E402
+
+        # #473: interpolate env vars in the OPERATOR-AUTHORED body only.
+        # The untrusted inbound HTTP body is never interpolated; it would
+        # let any caller who can hit the endpoint read local env vars.
+        _interpolated_content = resolve_prompt_env(item.content)
         prompt = (
             f"Trigger: {item.name}\n\n"
             f"Request:\n"
@@ -887,7 +893,7 @@ async def main():
             f"{body_text}\n"
             f"</untrusted-request-body>\n\n"
             f"---\n\n"
-            f"{item.content}"
+            f"{_interpolated_content}"
         )
 
         delivery_id = str(uuid.uuid4())
@@ -1005,9 +1011,11 @@ async def main():
         return None
 
     async def _dispatch_adhoc_job(item) -> str:
+        from prompt_env import resolve_prompt_env  # noqa: E402
+
         delivery_id = str(uuid.uuid4())
         message = Message(
-            prompt=f"Job: {item.name}\n\n{item.content}",
+            prompt=resolve_prompt_env(f"Job: {item.name}\n\n{item.content}"),
             session_id=item.session_id,
             kind=f"job:{item.name}",
             model=item.model,
@@ -1034,8 +1042,10 @@ async def main():
         else:
             from tasks import _day_session_id, _now_in_tz
             session_id = _day_session_id(item, _now_in_tz(item.tz).date())
+        from prompt_env import resolve_prompt_env  # noqa: E402
+
         message = Message(
-            prompt=f"Task: {item.name}\n\n{item.content}",
+            prompt=resolve_prompt_env(f"Task: {item.name}\n\n{item.content}"),
             session_id=session_id,
             kind=f"task:{item.name}",
             model=item.model,
@@ -1139,8 +1149,12 @@ async def main():
             return JSONResponse({"error": "heartbeat not configured or disabled"}, status_code=404)
         _schedule, content, model, backend_id, consensus, max_tokens = loaded
         from heartbeat import HEARTBEAT_SESSION
+        from prompt_env import resolve_prompt_env  # noqa: E402
+
         delivery_id = str(uuid.uuid4())
-        prompt = f"Heartbeat check. Follow these instructions:\n\n{content}"
+        prompt = resolve_prompt_env(
+            f"Heartbeat check. Follow these instructions:\n\n{content}"
+        )
         message = Message(
             prompt=prompt,
             session_id=HEARTBEAT_SESSION,

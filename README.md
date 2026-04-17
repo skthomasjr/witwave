@@ -445,6 +445,32 @@ nyx-harness exposes `agent_*`-prefixed infrastructure metrics (bus, heartbeat, j
 nyx-harness `/metrics` endpoint also aggregates all backend `/metrics` endpoints, injecting a `backend="<id>"` label on
 each sample so a single scrape target captures the full deployment.
 
+## Prompt env-var interpolation (#473)
+
+Scheduler prompt bodies (`HEARTBEAT.md`, `jobs/*.md`, `tasks/*.md`, `triggers/*.md`, `continuations/*.md`) support
+`{{env.VAR}}` interpolation so the same markdown can ship across dev / staging / prod without forking:
+
+```yaml
+# jobs/daily-status.md
+---
+schedule: "0 9 * * *"
+---
+Send a daily status update. Environment: {{env.DEPLOYMENT_ENV}}.
+Dashboard: https://{{env.DASHBOARD_HOST}}/team.
+```
+
+Two env vars control the feature, both set on the nyx-harness container:
+
+| Variable                 | Default   | Description                                                                                              |
+| ------------------------ | --------- | -------------------------------------------------------------------------------------------------------- |
+| `PROMPT_ENV_ENABLED`     | unset     | Master toggle. When unset/false, prompt bodies pass through verbatim. Operators opt in.                  |
+| `PROMPT_ENV_ALLOWLIST`   | empty     | Comma-separated prefixes or globs (`NYX_*,DEPLOY_*`). References outside the allowlist become `""`.      |
+
+Missing vars (and non-allowlisted references) are substituted with an empty string and a warning is logged once per
+variable. For triggers specifically, interpolation is applied to the operator-authored `.md` body **only** — inbound
+HTTP bodies are never interpolated, so callers who can hit the trigger endpoint cannot use the template engine to
+read local env vars.
+
 ## Outbound Webhooks
 
 Webhooks fire after a prompt completes. Each webhook subscription is a markdown file under `.nyx/webhooks/` with
