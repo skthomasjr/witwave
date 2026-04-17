@@ -49,8 +49,7 @@ from metrics import (
     agent_webhooks_reloads_total,
     agent_watcher_events_total,
 )
-from utils import parse_duration, parse_frontmatter
-from watchfiles import awatch
+from utils import parse_duration, parse_frontmatter, run_awatch_loop
 
 logger = logging.getLogger(__name__)
 
@@ -950,47 +949,33 @@ class WebhookRunner:
     async def run(self) -> None:
         logger.info(f"Webhook runner watching {WEBHOOKS_DIR}")
 
-        while True:
-            if not os.path.isdir(WEBHOOKS_DIR):
-                logger.info("Webhooks directory not found — retrying in 10s.")
-                await asyncio.sleep(10)
-                continue
+        def _on_change(path: str) -> None:
+            logger.info(f"Webhook file changed: {path}")
+            self._register(path, count_reload=True)
 
-            _scan_task = asyncio.ensure_future(self._scan())
+        def _on_delete(path: str) -> None:
+            logger.info(f"Webhook file removed: {path}")
+            self._unregister(path, count_reload=True)
 
-            def _scan_done(t: asyncio.Task) -> None:
-                if not t.cancelled() and t.exception() is not None:
-                    logger.error("Webhook runner _scan crashed: %r", t.exception())
-
-            _scan_task.add_done_callback(_scan_done)
-            async for changes in awatch(WEBHOOKS_DIR):
-                if agent_watcher_events_total is not None:
-                    agent_watcher_events_total.labels(watcher="webhooks").inc()
-                for _, path in changes:
-                    if not path.endswith(".md"):
-                        continue
-                    if os.path.exists(path):
-                        logger.info(f"Webhook file changed: {path}")
-                        self._register(path, count_reload=True)
-                    else:
-                        logger.info(f"Webhook file removed: {path}")
-                        self._unregister(path, count_reload=True)
-
-            logger.warning("Webhooks directory watcher exited — retrying in 10s.")
-            if agent_file_watcher_restarts_total is not None:
-                agent_file_watcher_restarts_total.labels(watcher="webhooks").inc()
-            # Cancel + await the in-flight _scan_task before the next iteration so
-            # a new _scan_task from the next loop cannot race with a prior one
-            # (e.g. on a flapping directory mount). Without this, overlapping
-            # _scan() runs would produce duplicate _register calls and double-
-            # cancellation of the same item.task (#513). The #515 retry-
-            # registration wrapper in deliver() is orthogonal and untouched.
-            if not _scan_task.done():
-                _scan_task.cancel()
-            await asyncio.gather(_scan_task, return_exceptions=True)
+        def _cleanup() -> None:
             for path in list(self._items.keys()):
                 self._unregister(path)
-            await asyncio.sleep(10)
+
+        # The #515 retry-registration wrapper in deliver() is orthogonal to
+        # this loop and untouched by the #576 helper extraction.
+        await run_awatch_loop(
+            directory=WEBHOOKS_DIR,
+            watcher_name="webhooks",
+            scan=self._scan,
+            on_change=_on_change,
+            on_delete=_on_delete,
+            cleanup=_cleanup,
+            logger_=logger,
+            not_found_message="Webhooks directory not found — retrying in 10s.",
+            watcher_exited_message="Webhooks directory watcher exited — retrying in 10s.",
+            watcher_events_metric=agent_watcher_events_total,
+            file_watcher_restarts_metric=agent_file_watcher_restarts_total,
+        )
 
     async def close(self) -> None:
         """Shut the runner down: drain in-flight deliveries (including any

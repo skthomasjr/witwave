@@ -18,8 +18,14 @@ from metrics import (
     agent_file_watcher_restarts_total,
     agent_watcher_events_total,
 )
-from utils import ConsensusEntry, parse_consensus, parse_duration, parse_frontmatter, parse_frontmatter_raw
-from watchfiles import awatch
+from utils import (
+    ConsensusEntry,
+    parse_consensus,
+    parse_duration,
+    parse_frontmatter,
+    parse_frontmatter_raw,
+    run_awatch_loop,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -360,47 +366,32 @@ class ContinuationRunner:
     async def run(self) -> None:
         logger.info(f"Continuation runner watching {CONTINUATIONS_DIR}")
 
-        while True:
-            if not os.path.isdir(CONTINUATIONS_DIR):
-                logger.info("Continuations directory not found — retrying in 10s.")
-                await asyncio.sleep(10)
-                continue
+        def _on_change(path: str) -> None:
+            logger.info(f"Continuation file changed: {path}")
+            if agent_continuation_reloads_total is not None:
+                agent_continuation_reloads_total.inc()
+            self._register(path)
 
-            _scan_task = asyncio.ensure_future(self._scan())
+        def _on_delete(path: str) -> None:
+            logger.info(f"Continuation file removed: {path}")
+            if agent_continuation_reloads_total is not None:
+                agent_continuation_reloads_total.inc()
+            self._unregister(path)
 
-            def _scan_done(t: asyncio.Task) -> None:
-                if not t.cancelled() and t.exception() is not None:
-                    logger.error("Continuation runner _scan crashed: %r", t.exception())
-
-            _scan_task.add_done_callback(_scan_done)
-            async for changes in awatch(CONTINUATIONS_DIR):
-                if agent_watcher_events_total is not None:
-                    agent_watcher_events_total.labels(watcher="continuations").inc()
-                for _, path in changes:
-                    if not path.endswith(".md"):
-                        continue
-                    if os.path.exists(path):
-                        logger.info(f"Continuation file changed: {path}")
-                        if agent_continuation_reloads_total is not None:
-                            agent_continuation_reloads_total.inc()
-                        self._register(path)
-                    else:
-                        logger.info(f"Continuation file removed: {path}")
-                        if agent_continuation_reloads_total is not None:
-                            agent_continuation_reloads_total.inc()
-                        self._unregister(path)
-
-            logger.warning("Continuations directory watcher exited — directory deleted or unavailable. Retrying in 10s.")
-            if agent_file_watcher_restarts_total is not None:
-                agent_file_watcher_restarts_total.labels(watcher="continuations").inc()
-            # Cancel + await the in-flight _scan_task before the next iteration so
-            # a new _scan_task from the next loop cannot race with a prior one
-            # (e.g. on a flapping directory mount). Without this, overlapping
-            # _scan() runs would produce duplicate _register calls and double-
-            # cancellation of the same item.task (#513).
-            if not _scan_task.done():
-                _scan_task.cancel()
-            await asyncio.gather(_scan_task, return_exceptions=True)
+        def _cleanup() -> None:
             for path in list(self._items.keys()):
                 self._unregister(path)
-            await asyncio.sleep(10)
+
+        await run_awatch_loop(
+            directory=CONTINUATIONS_DIR,
+            watcher_name="continuations",
+            scan=self._scan,
+            on_change=_on_change,
+            on_delete=_on_delete,
+            cleanup=_cleanup,
+            logger_=logger,
+            not_found_message="Continuations directory not found — retrying in 10s.",
+            watcher_exited_message="Continuations directory watcher exited — directory deleted or unavailable. Retrying in 10s.",
+            watcher_events_metric=agent_watcher_events_total,
+            file_watcher_restarts_metric=agent_file_watcher_restarts_total,
+        )
