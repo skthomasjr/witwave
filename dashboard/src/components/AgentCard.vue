@@ -35,7 +35,12 @@ const descriptionHtml = computed(() => renderMarkdown(description.value));
   <div
     class="named-agent"
     :class="{ selected }"
+    role="button"
+    tabindex="0"
+    :aria-pressed="selected ? 'true' : 'false'"
     @click="emit('select')"
+    @keydown.enter.prevent="emit('select')"
+    @keydown.space.prevent="emit('select')"
   >
     <div v-if="unreachable" class="nyx-card" data-testid="agent-card-unreachable">
       <div class="ac-header">
@@ -80,6 +85,16 @@ const descriptionHtml = computed(() => renderMarkdown(description.value));
   display: flex;
   flex-direction: column;
   gap: 10px;
+  cursor: pointer;
+}
+
+.named-agent:focus {
+  outline: none;
+}
+
+.named-agent:focus-visible > .nyx-card {
+  outline: 2px solid var(--nyx-accent);
+  outline-offset: 2px;
 }
 
 .named-agent.selected > .nyx-card {

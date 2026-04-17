@@ -30,28 +30,46 @@ function onClick(e: MouseEvent) {
 </script>
 
 <template>
-  <div
+  <button
+    type="button"
     class="backend-bubble"
     :class="[type, { 'active-backend': active }]"
     :title="backend.url ?? ''"
+    :aria-pressed="active ? 'true' : 'false'"
     @click="onClick"
   >
     <div class="bb-dot" :class="{ up: reachable, down: !reachable }" />
     <span class="bb-label">{{ backend.id }}</span>
     <span class="bb-id">/ {{ agentName }}</span>
-  </div>
+  </button>
 </template>
 
 <style scoped>
 .backend-bubble {
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 5px 10px;
   border-radius: 20px;
   font-size: 11px;
   border: 1px solid transparent;
+  /* Reset user-agent button styles. */
+  appearance: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  line-height: inherit;
+}
+
+.backend-bubble:focus {
+  outline: none;
+}
+
+.backend-bubble:focus-visible {
+  outline: 2px solid var(--nyx-accent);
+  outline-offset: 2px;
 }
 
 .backend-bubble.active-backend {
