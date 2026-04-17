@@ -373,6 +373,44 @@ def _get_client() -> genai.Client:
     return _genai_client
 
 
+async def _close_client() -> None:
+    """Dispose the module-level genai.Client singleton, if any.
+
+    google-genai (>=1.20) does not expose a public close API on ``genai.Client``;
+    the SDK's underlying ``BaseApiClient`` owns ``_httpx_client`` (sync) and
+    ``_async_httpx_client`` (async) connection pools that otherwise linger
+    until the process exits. Best-effort teardown: close whichever pools were
+    actually instantiated and swallow any errors so shutdown is never blocked
+    by a transport quirk. Resets the singleton so a later ``_get_client()``
+    call will construct a fresh instance.
+    """
+    global _genai_client
+    client = _genai_client
+    if client is None:
+        return
+    try:
+        api_client = getattr(client, "_api_client", None)
+        if api_client is not None:
+            async_httpx = getattr(api_client, "_async_httpx_client", None)
+            if async_httpx is not None:
+                aclose = getattr(async_httpx, "aclose", None)
+                if aclose is not None:
+                    try:
+                        await aclose()
+                    except Exception as e:  # pragma: no cover - defensive
+                        logger.debug("genai async httpx client aclose failed: %s", e)
+            sync_httpx = getattr(api_client, "_httpx_client", None)
+            if sync_httpx is not None:
+                close = getattr(sync_httpx, "close", None)
+                if close is not None:
+                    try:
+                        close()
+                    except Exception as e:  # pragma: no cover - defensive
+                        logger.debug("genai sync httpx client close failed: %s", e)
+    finally:
+        _genai_client = None
+
+
 async def run_query(
     prompt: str,
     session_id: str,
@@ -898,9 +936,14 @@ class AgentExecutor(A2AAgentExecutor):
             logger.info(f"Task {task_id!r} cancellation requested but no running task found.")
 
     async def close(self) -> None:
-        """Cancel and drain all watcher tasks."""
+        """Cancel and drain all watcher tasks, then dispose the genai client.
+
+        The genai client close runs *after* watchers are drained so in-flight
+        A2A requests are not orphaned mid-call (#545).
+        """
         for task in self._mcp_watcher_tasks:
             task.cancel()
         if self._mcp_watcher_tasks:
             await asyncio.gather(*self._mcp_watcher_tasks, return_exceptions=True)
         self._mcp_watcher_tasks.clear()
+        await _close_client()
