@@ -12,7 +12,6 @@ import TraceView from "./views/TraceView.vue";
 import ToolAuditView from "./views/ToolAuditView.vue";
 import OTelTracesView from "./views/OTelTracesView.vue";
 import MetricsView from "./views/MetricsView.vue";
-import CalendarView from "./views/CalendarView.vue";
 
 // Route table backs the nav in App.vue one-to-one (#470). Add a view here
 // and a nav entry there; dashboard picks up the new link automatically.
@@ -20,7 +19,6 @@ export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: "/", name: "team", component: TeamView },
-    { path: "/calendar", name: "calendar", component: CalendarView },
     { path: "/jobs", name: "jobs", component: JobsView },
     { path: "/tasks", name: "tasks", component: TasksView },
     { path: "/triggers", name: "triggers", component: TriggersView },

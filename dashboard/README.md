@@ -9,7 +9,6 @@ door, no cross-agent fan-out inside any one agent's pod.
 | View              | What it shows                                                                    |
 | ----------------- | -------------------------------------------------------------------------------- |
 | Team              | Agent cards with per-backend health bubbles + a chat panel on selection (send + history load are timeout-bounded with a cancel button, #535) |
-| Calendar          | Conversation log plotted on a day/week/month grid (vue-cal)                      |
 | Jobs              | Scheduled jobs across every agent, with search + refresh                         |
 | Tasks             | Day/window-scheduled tasks across every agent                                    |
 | Triggers          | Inbound HTTP triggers (endpoint, auth, enabled state)                            |
@@ -100,7 +99,7 @@ over `/etc/nginx/templates/` at deploy time with per-agent routes templated from
 
 ```
 dashboard/
-├── package.json           # npm scripts + deps (vue, vue-router, primevue, chart.js, vue-cal)
+├── package.json           # npm scripts + deps (vue, vue-router, primevue, chart.js)
 ├── vite.config.ts         # dev server + VITE_TEAM-driven per-agent proxies
 ├── tsconfig.json          # strict TS for .ts + .vue
 ├── index.html             # SPA entry

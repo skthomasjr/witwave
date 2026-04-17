@@ -15,7 +15,6 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: "Team", to: { name: "team" } },
-  { label: "Calendar", to: { name: "calendar" } },
   { label: "Jobs", to: { name: "jobs" } },
   { label: "Tasks", to: { name: "tasks" } },
   { label: "Triggers", to: { name: "triggers" } },
