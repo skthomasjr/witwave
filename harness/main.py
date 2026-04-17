@@ -58,10 +58,19 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Mount, Route
 
+# Log format includes trace_id (#625) so `kubectl logs` lines correlate
+# directly to the trace_ids emitted into conversation JSONL / Jaeger / Tempo.
+# The trailing-suffix placement keeps legacy parsers that split on `:` intact.
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s trace_id=%(trace_id)s",
 )
+# Install the filter *after* basicConfig so it attaches to the default
+# StreamHandler basicConfig created above; without this the %(trace_id)s
+# reference raises KeyError on records that never passed through a filter.
+from tracing import install_trace_id_log_filter  # noqa: E402 — must run after basicConfig
+
+install_trace_id_log_filter()
 logger = logging.getLogger(__name__)
 
 AGENT_NAME = os.environ.get("AGENT_NAME", "nyx")

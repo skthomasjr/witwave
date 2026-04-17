@@ -28,6 +28,7 @@ shadowing the Python stdlib ``trace`` module on the harness sys.path.
 """
 from __future__ import annotations
 
+import contextvars
 import logging
 import os
 import re
@@ -134,6 +135,86 @@ def context_from_inbound(header_value: str | None) -> tuple[TraceContext, bool]:
     if parsed is None:
         return new_context(), False
     return parsed, True
+
+
+# ---------------------------------------------------------------------------
+# Logger correlation (#625) — harness-only in this pass.
+#
+# A ContextVar holds the active trace_id for the current async task; a
+# ``logging.Filter`` reads it and exposes ``trace_id`` as a log record
+# attribute so the root formatter can append it.  When no context is
+# active the filter substitutes ``-`` so legacy log parsers keep seeing
+# a well-formed field.  Cross-backend rollout (a2-claude / a2-codex /
+# a2-gemini via ``shared/log_utils.py``) stays deferred.
+# ---------------------------------------------------------------------------
+
+_current_trace_id: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "nyx_trace_id", default=""
+)
+
+
+def set_log_trace_id(trace_id: str | None) -> contextvars.Token:
+    """Bind *trace_id* to the current async context for log correlation.
+
+    Returns the ContextVar token so the caller can restore the prior
+    value via :func:`reset_log_trace_id` in a ``finally`` block.  Passing
+    ``None`` or an empty string unbinds the trace_id for the current
+    scope (useful for background tasks that should not inherit an
+    ambient trace).
+    """
+    return _current_trace_id.set(trace_id or "")
+
+
+def reset_log_trace_id(token: contextvars.Token) -> None:
+    """Restore the trace_id ContextVar to its previous value."""
+    _current_trace_id.reset(token)
+
+
+def get_log_trace_id() -> str:
+    """Return the trace_id currently bound for log correlation, or ``""``."""
+    return _current_trace_id.get()
+
+
+class TraceIdLogFilter(logging.Filter):
+    """Injects the current trace_id onto every log record.
+
+    The filter is side-effect free aside from mutating the record and
+    always returns True so no records are dropped.  When no trace
+    context is active the attribute is set to ``-`` so the format string
+    ``%(trace_id)s`` always renders a stable placeholder.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:  # noqa: D401 — logging API
+        trace_id = _current_trace_id.get() or "-"
+        # Only set when unset so call sites that pre-populate the attribute
+        # (e.g. a LogRecord built manually with an explicit trace_id) win.
+        if not getattr(record, "trace_id", None):
+            record.trace_id = trace_id
+        return True
+
+
+def install_trace_id_log_filter(logger: logging.Logger | None = None) -> TraceIdLogFilter:
+    """Install :class:`TraceIdLogFilter` on *logger* (root by default).
+
+    Attaching the filter to the root logger — plus to every handler on
+    the root logger — guarantees the ``trace_id`` attribute is present
+    before formatters render.  Attaching to the logger alone is
+    insufficient because ``logging.basicConfig`` handlers run their own
+    filter chain after propagation.  Safe to call more than once; the
+    filter is idempotent per (logger|handler, instance) pair.
+    """
+    target = logger or logging.getLogger()
+    flt = TraceIdLogFilter()
+    # Attach to the logger itself so logger-level filters see it.
+    if not any(isinstance(f, TraceIdLogFilter) for f in target.filters):
+        target.addFilter(flt)
+    # Attach to every existing handler so handler-level formatters
+    # always resolve %(trace_id)s even when the record was emitted on
+    # a child logger that bypasses the root filter chain.
+    for handler in target.handlers:
+        if not any(isinstance(f, TraceIdLogFilter) for f in handler.filters):
+            handler.addFilter(flt)
+    return flt
 
 
 # ---------------------------------------------------------------------------
