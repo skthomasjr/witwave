@@ -70,14 +70,24 @@ Owned resources per `NyxAgent`:
 
 | Resource                    | When                                                     |
 | --------------------------- | -------------------------------------------------------- |
-| `Deployment`                | always                                                   |
-| `Service` (ClusterIP)       | always                                                   |
+| `Deployment`                | always (when `spec.enabled != false`)                    |
+| `Service`                   | always; type set by `spec.serviceType` (default ClusterIP) |
 | `ConfigMap` (agent)         | when `spec.config` is non-empty                          |
-| `ConfigMap` (per backend)   | when a backend's `config` is non-empty                   |
-| `PersistentVolumeClaim`     | when a backend's `storage.enabled` is true               |
+| `ConfigMap` (per backend)   | when a backend's `config` is non-empty (and `enabled != false`) |
+| `PersistentVolumeClaim`     | when a backend's `storage.enabled` is true (and `enabled != false`) |
 | `HorizontalPodAutoscaler`   | when `spec.autoscaling.enabled` is true                  |
 | `PodDisruptionBudget`       | when `spec.podDisruptionBudget.enabled` is true          |
 | Dashboard `Deployment`/`Service` | when `spec.dashboard.enabled` is true (#470)        |
+
+When `spec.enabled` is explicitly false, every owned resource above is
+torn down (only resources owned via `IsControlledBy` are touched).
+Per-backend `backends[].enabled: false` skips that backend's container,
+PVC, and ConfigMap while leaving the rest of the agent untouched.
+
+Pod-level Prometheus scrape annotations are emitted onto the Pod template
+when `spec.metrics.enabled && spec.metrics.podAnnotations` is true; the
+Service-level equivalents are gated on `spec.metrics.serviceAnnotations`
+(default true).
 
 All owned resources carry `ownerReferences` pointing at the `NyxAgent`,
 so deleting the CR cascades their deletion.

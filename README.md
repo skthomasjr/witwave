@@ -64,21 +64,24 @@ Backend containers:
 
 ## Container Images
 
-Published images are available on GitHub Container Registry. All seven images are built and pushed automatically on
-every release tag.
+Published images are available on GitHub Container Registry. Every image listed below is built and pushed
+automatically on every release tag.
 
-| Image          | Registry path                                   |
-| -------------- | ----------------------------------------------- |
-| `nyx-harness`  | `ghcr.io/skthomasjr/images/nyx-harness:latest`  |
-| `a2-claude`    | `ghcr.io/skthomasjr/images/a2-claude:latest`    |
-| `a2-codex`     | `ghcr.io/skthomasjr/images/a2-codex:latest`     |
-| `a2-gemini`    | `ghcr.io/skthomasjr/images/a2-gemini:latest`    |
-| `ui`           | `ghcr.io/skthomasjr/images/ui:latest`           |
-| `dashboard`    | `ghcr.io/skthomasjr/images/dashboard:latest`    |
-| `nyx-operator` | `ghcr.io/skthomasjr/images/nyx-operator:latest` |
-| `git-sync`     | `ghcr.io/skthomasjr/images/git-sync:latest`     |
+| Image            | Registry path                                     |
+| ---------------- | ------------------------------------------------- |
+| `nyx-harness`    | `ghcr.io/skthomasjr/images/nyx-harness:latest`    |
+| `a2-claude`      | `ghcr.io/skthomasjr/images/a2-claude:latest`      |
+| `a2-codex`       | `ghcr.io/skthomasjr/images/a2-codex:latest`       |
+| `a2-gemini`      | `ghcr.io/skthomasjr/images/a2-gemini:latest`      |
+| `ui`             | `ghcr.io/skthomasjr/images/ui:latest`             |
+| `dashboard`      | `ghcr.io/skthomasjr/images/dashboard:latest`      |
+| `nyx-operator`   | `ghcr.io/skthomasjr/images/nyx-operator:latest`   |
+| `git-sync`       | `ghcr.io/skthomasjr/images/git-sync:latest`       |
+| `mcp-kubernetes` | `ghcr.io/skthomasjr/images/mcp-kubernetes:latest` |
+| `mcp-helm`       | `ghcr.io/skthomasjr/images/mcp-helm:latest`       |
 
-Pull a specific version with a semver tag, e.g. `ghcr.io/skthomasjr/images/nyx-harness:0.1.0`.
+Pull a specific version with a semver tag, e.g. `ghcr.io/skthomasjr/images/nyx-harness:0.2.0-beta.37`.
+The latest released tag is visible in the [GitHub Releases](https://github.com/skthomasjr/autonomous-agent/releases) page; substitute it for the version below.
 
 ## Helm Charts
 
@@ -86,10 +89,10 @@ Two Helm charts are published to GHCR alongside the images on every release tag:
 
 ```bash
 # Agent chart — deploys nyx agents directly via templated manifests.
-helm install nyx oci://ghcr.io/skthomasjr/charts/nyx --version 0.1.0 --namespace nyx
+helm install nyx oci://ghcr.io/skthomasjr/charts/nyx --version 0.2.0-beta.37 --namespace nyx --create-namespace
 
 # Operator chart — installs the nyx-operator controller and the NyxAgent CRD.
-helm install nyx-operator oci://ghcr.io/skthomasjr/charts/nyx-operator --version 0.1.0 --namespace nyx
+helm install nyx-operator oci://ghcr.io/skthomasjr/charts/nyx-operator --version 0.2.0-beta.37 --namespace nyx --create-namespace
 ```
 
 See [charts/nyx/README.md](charts/nyx/README.md) and
