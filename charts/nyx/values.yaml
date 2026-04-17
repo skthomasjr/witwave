@@ -852,11 +852,11 @@ agents:
         #   # Subdirectory mounts from the PVC into the container.
         #   # Each entry maps a subPath within the PVC to a container mountPath.
         #   mounts:
-        #     - subPath: claude-projects
+        #     - subPath: projects
         #       mountPath: /home/agent/.claude/projects
-        #     - subPath: claude-sessions
+        #     - subPath: sessions
         #       mountPath: /home/agent/.claude/sessions
-        #     - subPath: claude-backups
+        #     - subPath: backups
         #       mountPath: /home/agent/.claude/backups
         #     - subPath: memory
         #       mountPath: /home/agent/.claude/memory   # or .codex/memory / .gemini/memory for those backends
