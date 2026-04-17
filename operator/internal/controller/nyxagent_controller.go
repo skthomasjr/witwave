@@ -195,6 +195,12 @@ func (r *NyxAgentReconciler) applyDeployment(ctx context.Context, agent *nyxv1al
 	case err != nil:
 		return err
 	}
+	// When autoscaling is enabled, the HPA owns spec.replicas. Preserve the
+	// existing value so that `existing.Spec = desired.Spec` (where desired has
+	// replicas=nil) doesn't defeat the HPA on every reconcile. See #486.
+	if agent.Spec.Autoscaling != nil && agent.Spec.Autoscaling.Enabled {
+		desired.Spec.Replicas = existing.Spec.Replicas
+	}
 	// Patch spec + labels; keep existing status and server-filled fields.
 	existing.Spec = desired.Spec
 	existing.Labels = desired.Labels
@@ -450,6 +456,40 @@ func (r *NyxAgentReconciler) teardownDisabledAgent(ctx context.Context, agent *n
 	}
 	if err := tryDelete(&policyv1.PodDisruptionBudget{}); err != nil {
 		return fmt.Errorf("delete PDB: %w", err)
+	}
+	// ConfigMaps and PVCs use per-backend naming, so they can't be
+	// addressed by the single `key` above. List every object carrying our
+	// agent labels and delete the ones we actually own, mirroring the
+	// cleanup pattern in reconcileConfigMaps (#490).
+	labelSel := client.MatchingLabels{
+		labelName:      agent.Name,
+		labelManagedBy: managedBy,
+	}
+	cms := &corev1.ConfigMapList{}
+	if err := r.List(ctx, cms, client.InNamespace(agent.Namespace), labelSel); err != nil {
+		return fmt.Errorf("list owned ConfigMaps for teardown: %w", err)
+	}
+	for i := range cms.Items {
+		cm := &cms.Items[i]
+		if !metav1.IsControlledBy(cm, agent) {
+			continue
+		}
+		if err := r.Delete(ctx, cm); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("delete ConfigMap %s: %w", cm.Name, err)
+		}
+	}
+	pvcs := &corev1.PersistentVolumeClaimList{}
+	if err := r.List(ctx, pvcs, client.InNamespace(agent.Namespace), labelSel); err != nil {
+		return fmt.Errorf("list owned PVCs for teardown: %w", err)
+	}
+	for i := range pvcs.Items {
+		pvc := &pvcs.Items[i]
+		if !metav1.IsControlledBy(pvc, agent) {
+			continue
+		}
+		if err := r.Delete(ctx, pvc); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("delete PVC %s: %w", pvc.Name, err)
+		}
 	}
 	// reconcileDashboard already handles the dashboard delete path when
 	// spec.dashboard.enabled is false — call it so the dashboard
