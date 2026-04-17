@@ -98,6 +98,40 @@ default `100`; set to `0` to disable truncation and keep full history), `METRICS
 `CONVERSATIONS_AUTH_TOKEN`, `TASK_STORE_PATH`, `WORKER_MAX_RESTARTS`, `LOG_PROMPT_MAX_BYTES` (max bytes of prompt logged
 at INFO; default 200; set to 0 to suppress).
 
+## Tools / MCP
+
+a2-gemini supports external tool invocation via the Model Context Protocol (MCP). The google-genai SDK's
+experimental MCP-as-tool path accepts raw `mcp.ClientSession` objects in `GenerateContentConfig(tools=[...])`
+and handles the entire function_call / function_response ping-pong via its Automatic Function Calling (AFC)
+loop.
+
+**Enable MCP by mounting an `mcp.json`** at `/home/agent/.gemini/mcp.json` (override with the `MCP_CONFIG_PATH`
+environment variable). The file uses the same shape as a2-claude and a2-codex:
+
+```json
+{
+  "mcpServers": {
+    "kubernetes": {
+      "command": "python",
+      "args": ["/app/server.py"],
+      "env": {"KUBECONFIG": "/home/agent/.kube/config"}
+    }
+  }
+}
+```
+
+Only stdio transport is supported today (the `command` shape above). HTTP transport support can be added if a
+use case emerges. Each configured server is started once at process startup, reused across requests, and
+hot-reloaded on `mcp.json` changes — the lifespan-scoped stack pattern is shared with a2-codex (#526).
+
+**AFC vs. hooks caveat.** google-genai's AFC runs the tool loop inside `generate_content`, so the #631 hooks
+skeleton (PreToolUse policy enforcement) **cannot intercept MCP tool calls**. Tool invocations are observable
+after the fact (via `tool_use` / `tool_result` rows on `trace.jsonl` and the
+`a2_sdk_tool_calls_total` / `a2_sdk_tool_duration_seconds` metrics), but a rule like "deny tool X on input
+pattern Y" cannot block the call because the decision point is inside the SDK. If policy enforcement is a
+hard requirement, the #640 issue body documents the alternate design (disable AFC and hand-roll the
+function-call dispatch loop); no operator toggle ships today.
+
 ## Tracing (OpenTelemetry)
 
 When `OTEL_ENABLED=true` is set, a2-gemini emits a server span for every `execute()` call and continues any trace

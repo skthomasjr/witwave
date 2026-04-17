@@ -104,6 +104,16 @@ a2_tool_audit_entries_total: prometheus_client.Counter | None = None
 a2_hooks_config_errors_total: prometheus_client.Counter | None = None
 a2_hooks_config_reloads_total: prometheus_client.Counter | None = None
 
+# MCP config watcher metrics (#640 — parity with a2-codex #432, #526).
+a2_mcp_config_errors_total: prometheus_client.Counter | None = None
+a2_mcp_config_reloads_total: prometheus_client.Counter | None = None
+a2_mcp_servers_active: prometheus_client.Gauge | None = None
+
+# Tool call metrics (#640 — parity with a2-codex #445). Populated on each
+# function_call observed in the google-genai AFC history.
+a2_sdk_tool_calls_total: prometheus_client.Counter | None = None
+a2_sdk_tool_duration_seconds: prometheus_client.Histogram | None = None
+
 if _enabled:
     a2_up = prometheus_client.Gauge("a2_up", "Backend agent is running", ["agent", "agent_id", "backend"])
     a2_info = prometheus_client.Info("a2", "Static backend agent metadata.")
@@ -450,4 +460,39 @@ if _enabled:
         "a2_hooks_config_reloads_total",
         "Total reloads of hooks.yaml by the hooks config watcher.",
         ["agent", "agent_id", "backend"],
+    )
+
+    # MCP config (parity with a2-codex — #432, #526; landed for gemini in #640).
+    a2_mcp_config_errors_total = prometheus_client.Counter(
+        "a2_mcp_config_errors_total",
+        "Total errors loading the MCP config file (mcp.json). Counts both "
+        "missing-file silently-ignored cases (no increment) and parse / "
+        "I/O failures (incremented).",
+        ["agent", "agent_id", "backend"],
+    )
+    a2_mcp_config_reloads_total = prometheus_client.Counter(
+        "a2_mcp_config_reloads_total",
+        "Total successful reloads of mcp.json triggered by the file watcher.",
+        ["agent", "agent_id", "backend"],
+    )
+    a2_mcp_servers_active = prometheus_client.Gauge(
+        "a2_mcp_servers_active",
+        "Number of MCP servers currently live in the lifespan-scoped stack.",
+        ["agent", "agent_id", "backend"],
+    )
+
+    # Tool calls (#640 — parity with a2-codex / a2-claude). Emitted per
+    # function_call observed in the google-genai AFC history. `status` is
+    # bounded to "success" | "error" so per-tool error rates are visible
+    # without blowing up cardinality.
+    a2_sdk_tool_calls_total = prometheus_client.Counter(
+        "a2_sdk_tool_calls_total",
+        "Total tool calls dispatched via the backend SDK, by tool name and outcome.",
+        ["agent", "agent_id", "backend", "tool", "status"],
+    )
+    a2_sdk_tool_duration_seconds = prometheus_client.Histogram(
+        "a2_sdk_tool_duration_seconds",
+        "Duration of individual tool calls in seconds.",
+        ["agent", "agent_id", "backend", "tool"],
+        buckets=(0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60),
     )

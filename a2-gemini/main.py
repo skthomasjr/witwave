@@ -54,9 +54,11 @@ AGENT_URL = os.environ.get("AGENT_URL", f"http://localhost:{BACKEND_PORT}/")
 AGENT_VERSION = os.environ.get("AGENT_VERSION", "0.1.0")
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
 TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/trace.jsonl")
-# a2-gemini does not write tool-audit rows yet (tracked under #640). The handler
-# is still registered so the dashboard fan-out receives an empty list instead of
-# a 404, keeping per-agent views consistent across backends (#635).
+# a2-gemini surfaces AFC tool_use / tool_result rows on trace.jsonl (#640).
+# tool-audit.jsonl is still declared so the dashboard fan-out receives an
+# empty list instead of a 404 when a PostToolUse hook path is wired in the
+# future (currently blocked by AFC running inside the SDK — see #640 issue
+# body option 2), keeping per-agent views consistent across backends (#635).
 TOOL_AUDIT_LOG = os.environ.get("TOOL_AUDIT_LOG", "/home/agent/logs/tool-audit.jsonl")
 AGENT_OWNER = os.environ.get("AGENT_OWNER", AGENT_NAME)
 AGENT_ID = os.environ.get("AGENT_ID", "gemini")
@@ -382,6 +384,7 @@ async def main():
                         history_save_failed=executor._history_save_failed,
                         model=None,
                         max_tokens=mcp_max_tokens,
+                        live_mcp_servers=await executor._snapshot_live_mcp_servers(),
                     )
                 except Exception as exc:
                     logger.error(f"MCP tools/call error: {exc!r}")

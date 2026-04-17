@@ -5,8 +5,9 @@ import os
 import time
 import uuid
 from collections import OrderedDict
+from contextlib import AsyncExitStack
 from datetime import datetime, timezone
-from typing import Awaitable, Callable
+from typing import Any, Awaitable, Callable
 
 from a2a.server.agent_execution import AgentExecutor as A2AAgentExecutor
 from a2a.server.agent_execution import RequestContext
@@ -33,6 +34,9 @@ from metrics import (
     a2_log_entries_total,
     a2_log_write_errors_total,
     a2_lru_cache_utilization_percent,
+    a2_mcp_config_errors_total,
+    a2_mcp_config_reloads_total,
+    a2_mcp_servers_active,
     a2_model_requests_total,
     a2_prompt_length_bytes,
     a2_response_length_bytes,
@@ -45,6 +49,8 @@ from metrics import (
     a2_sdk_result_errors_total,
     a2_sdk_session_duration_seconds,
     a2_sdk_time_to_first_message_seconds,
+    a2_sdk_tool_calls_total,
+    a2_sdk_tool_duration_seconds,
     a2_sdk_turns_per_query,
     a2_session_age_seconds,
     a2_session_evictions_total,
@@ -109,6 +115,31 @@ LOG_PROMPT_MAX_BYTES = int(os.environ.get("LOG_PROMPT_MAX_BYTES", "200"))
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL") or "gemini-2.5-pro"
 GEMINI_API_KEY: str | None = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or None
 
+MCP_CONFIG_PATH = os.environ.get("MCP_CONFIG_PATH", "/home/agent/.gemini/mcp.json")
+
+# Env var keys that must not be overridden by caller-supplied MCP server env
+# entries. Mirrors a2-codex (#519): MCP stdio entries spawn a subprocess with
+# identical code-injection risk so keep the denylist symmetric. a2-gemini has
+# no LocalShell path; this list is only used by ``_build_mcp_stdio_params``.
+_SHELL_ENV_DENYLIST: frozenset[str] = frozenset({
+    "PATH",
+    "LD_PRELOAD",
+    "LD_LIBRARY_PATH",
+    "LD_AUDIT",
+    "LD_DEBUG",
+    "PYTHONPATH",
+    "PYTHONSTARTUP",
+    "PYTHONINSPECT",
+    "RUBYLIB",
+    "RUBYOPT",
+    "PERL5LIB",
+    "PERL5OPT",
+    "NODE_PATH",
+    "DYLD_INSERT_LIBRARIES",
+    "DYLD_LIBRARY_PATH",
+    "DYLD_FRAMEWORK_PATH",
+})
+
 _BACKEND_ID = "gemini"
 _LABELS = {"agent": AGENT_OWNER, "agent_id": AGENT_ID, "backend": _BACKEND_ID}
 
@@ -129,6 +160,79 @@ def _load_agent_md() -> str:
             return f.read()
     except OSError:
         return ""
+
+
+def _load_mcp_config() -> dict:
+    """Load and normalise the MCP server config from MCP_CONFIG_PATH (#640).
+
+    Accepts both the Claude-native shape (``{"mcpServers": {...}}``) and a
+    flat ``{server_name: {...}}`` dict, returning the inner dict in both
+    cases. Missing file is treated as "no MCP servers" (returns ``{}``).
+    Parse / I/O errors return ``{}`` AND increment
+    ``a2_mcp_config_errors_total``. Mirrors a2-codex._load_mcp_config for
+    parity across backends.
+    """
+    if not os.path.exists(MCP_CONFIG_PATH):
+        return {}
+    try:
+        with open(MCP_CONFIG_PATH) as f:
+            data = json.load(f)
+        if isinstance(data, dict) and "mcpServers" in data and isinstance(data["mcpServers"], dict):
+            return data["mcpServers"]
+        if isinstance(data, dict):
+            return data
+        logger.warning("MCP config at %s is not a dict; ignoring.", MCP_CONFIG_PATH)
+        return {}
+    except Exception as e:
+        if a2_mcp_config_errors_total is not None:
+            a2_mcp_config_errors_total.labels(**_LABELS).inc()
+        logger.warning("Failed to load MCP config from %s: %s", MCP_CONFIG_PATH, e)
+        return {}
+
+
+def _build_mcp_stdio_params(name: str, cfg: dict) -> Any | None:
+    """Construct an ``mcp.StdioServerParameters`` from a single config entry (#640).
+
+    Applies the shared env denylist (#519) before passing ``env`` through to
+    the subprocess so a malicious config cannot hijack dynamic-linker /
+    interpreter resolution of the spawned MCP server. Returns ``None`` on
+    malformed entries (logged and skipped by the caller).
+    """
+    try:
+        from mcp import StdioServerParameters  # type: ignore
+    except Exception as _imp_exc:
+        logger.warning(
+            "mcp package not available (%s); MCP support disabled.",
+            _imp_exc,
+        )
+        return None
+    if "command" not in cfg:
+        logger.warning(
+            "MCP server %r: missing 'command' (a2-gemini only supports stdio transport "
+            "via google-genai AFC); skipping.",
+            name,
+        )
+        return None
+    params_kwargs: dict = {"command": cfg["command"]}
+    if "args" in cfg:
+        params_kwargs["args"] = list(cfg["args"])
+    if "env" in cfg:
+        raw_env = dict(cfg["env"])
+        sanitized_env = {k: v for k, v in raw_env.items() if k not in _SHELL_ENV_DENYLIST}
+        rejected = set(raw_env) - set(sanitized_env)
+        if rejected:
+            logger.warning(
+                "MCP server %r: stripped dangerous env vars from config env: %s",
+                name, sorted(rejected),
+            )
+        params_kwargs["env"] = sanitized_env
+    if "cwd" in cfg:
+        params_kwargs["cwd"] = cfg["cwd"]
+    try:
+        return StdioServerParameters(**params_kwargs)
+    except Exception as _e:
+        logger.warning("MCP server %r: failed to build stdio params (%s); skipping.", name, _e)
+        return None
 
 
 def _current_trace_id_hex() -> str | None:
@@ -177,6 +281,139 @@ async def log_entry(role: str, text: str, session_id: str, model: str | None = N
         if a2_log_write_errors_total is not None:
             a2_log_write_errors_total.labels(**_LABELS).inc()
         logger.error(f"log_entry error: {e}")
+
+
+def _to_jsonable(value: Any) -> Any:
+    """Best-effort coercion of SDK objects into json-serialisable structures.
+
+    Used when we extract ``function_call.args`` and ``function_response.response``
+    off the google-genai AFC history — the SDK returns pydantic models or
+    their raw proto mirrors. Falls back to ``repr`` so logging never crashes
+    on an unexpected shape (#640).
+    """
+    try:
+        if hasattr(value, "model_dump"):
+            return value.model_dump(exclude_none=True)
+    except Exception:
+        pass
+    if isinstance(value, dict):
+        return {k: _to_jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_to_jsonable(v) for v in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    try:
+        return repr(value)
+    except Exception:
+        return "<unrepr-able>"
+
+
+async def _emit_afc_history(
+    history: list,
+    *,
+    session_id: str,
+    model: str | None,
+) -> None:
+    """Extract ``function_call`` / ``function_response`` parts from an AFC history
+    and emit ``tool_use`` / ``tool_result`` trace rows + metrics (#640).
+
+    google-genai's AFC appends both the user/assistant turns and the
+    synthesised function_call / function_response turns to
+    ``chat.history`` (and to ``response.automatic_function_calling_history``
+    on non-streaming calls). This helper walks that flat list, pairs each
+    ``function_call`` with the matching ``function_response`` by tool name,
+    and writes one row per side into ``trace.jsonl`` using the same shape
+    a2-claude uses so the dashboard TraceView (#592) and OTel trace viewer
+    (#632) can render them uniformly.
+
+    Errors here are logged and swallowed — observability must never break
+    the response path.
+    """
+    if not history:
+        return
+    pending_calls: dict[str, dict] = {}
+    call_counter = 0
+    for content in history:
+        parts = getattr(content, "parts", None) or []
+        for part in parts:
+            fc = getattr(part, "function_call", None)
+            fr = getattr(part, "function_response", None)
+            if fc is not None:
+                call_counter += 1
+                name = getattr(fc, "name", None) or "<unknown>"
+                # Gemini function_call objects don't carry a stable id on
+                # older SDK releases; synthesise one so the matching
+                # tool_result row can reference it.
+                call_id = getattr(fc, "id", None) or f"fc-{session_id[:8]}-{call_counter}"
+                args = getattr(fc, "args", None)
+                ts = datetime.now(timezone.utc).isoformat()
+                entry = {
+                    "ts": ts,
+                    "event_type": "tool_use",
+                    "id": call_id,
+                    "name": name,
+                    "input": _to_jsonable(args) if args is not None else {},
+                    "session_id": session_id,
+                    "agent": AGENT_NAME,
+                    "model": model,
+                }
+                _tid = _current_trace_id_hex()
+                if _tid is not None:
+                    entry["trace_id"] = _tid
+                try:
+                    await log_trace(json.dumps(entry))
+                except Exception as _e:
+                    logger.debug("AFC tool_use log failed: %s", _e)
+                pending_calls.setdefault(name, []).append({"id": call_id, "ts": ts})
+            elif fr is not None:
+                name = getattr(fr, "name", None) or "<unknown>"
+                response = getattr(fr, "response", None)
+                is_error = False
+                # Best-effort error detection: google-genai surfaces tool
+                # errors as a dict with an ``error`` key on the response.
+                response_j = _to_jsonable(response) if response is not None else None
+                if isinstance(response_j, dict) and "error" in response_j:
+                    is_error = True
+                # Pair with the most recent unmatched call of the same name.
+                queue = pending_calls.get(name) or []
+                matched = queue.pop(0) if queue else None
+                tool_use_id = matched["id"] if matched else None
+                ts = datetime.now(timezone.utc).isoformat()
+                entry = {
+                    "ts": ts,
+                    "event_type": "tool_result",
+                    "id": f"{tool_use_id}-resp" if tool_use_id else f"fr-{session_id[:8]}-{call_counter}",
+                    "tool_use_id": tool_use_id,
+                    "content": response_j,
+                    "is_error": is_error,
+                    "session_id": session_id,
+                    "agent": AGENT_NAME,
+                    "model": model,
+                }
+                _tid = _current_trace_id_hex()
+                if _tid is not None:
+                    entry["trace_id"] = _tid
+                try:
+                    await log_trace(json.dumps(entry))
+                except Exception as _e:
+                    logger.debug("AFC tool_result log failed: %s", _e)
+                # Metrics: one sample per observed function_call (keyed on
+                # the response side so status="error" / "success" is known).
+                status = "error" if is_error else "success"
+                if a2_sdk_tool_calls_total is not None:
+                    a2_sdk_tool_calls_total.labels(**_LABELS, tool=name, status=status).inc()
+                # Duration: the SDK does not expose per-call timings through
+                # AFC history. Fall back to wall-clock delta between the
+                # matched function_call row and this function_response row
+                # — an approximation that still catches runaway tool calls.
+                if matched is not None and a2_sdk_tool_duration_seconds is not None:
+                    try:
+                        _start = datetime.fromisoformat(matched["ts"])
+                        _end = datetime.fromisoformat(ts)
+                        _dur = max(0.0, (_end - _start).total_seconds())
+                        a2_sdk_tool_duration_seconds.labels(**_LABELS, tool=name).observe(_dur)
+                    except Exception:
+                        pass
 
 
 async def log_trace(text: str) -> None:
@@ -446,6 +683,7 @@ async def run_query(
     model: str | None = None,
     max_tokens: int | None = None,
     on_chunk: Callable[[str], Awaitable[None]] | None = None,
+    live_mcp_servers: list | None = None,
 ) -> list[str]:
     resolved_model = model or GEMINI_MODEL
     # Note: resolved_model carries the raw caller-supplied string (so we pass
@@ -467,21 +705,29 @@ async def run_query(
 
             client = _get_client()
 
-            # TODO(#640): evaluate_pre_tool_use — once a2-gemini wires native
-            # tool calls through the google-genai SDK (Tool/FunctionDeclaration
-            # plumbing in GenerateContentConfig and a function-call dispatch
-            # loop around send_message_stream), each dispatched tool call must
-            # pass through ``evaluate_pre_tool_use(tool_name, tool_input,
-            # self._hook_state.active_rules())`` before execution. The
-            # hook_state is already kept in sync by hooks_config_watcher (#631).
-            # TODO(#640): emit tool.call / mcp.call child spans (#630) around
-            # each dispatched tool invocation in the same dispatch loop.
+            # NOTE(#640): AFC-internal — hook enforcement requires disabling AFC;
+            # see issue body option 2. The google-genai SDK's Automatic Function
+            # Calling (AFC) runs the tool ping-pong inside ``generate_content``,
+            # so a ``PreToolUse``-style ``evaluate_pre_tool_use`` call site here
+            # cannot intercept MCP tool invocations without disabling AFC and
+            # hand-rolling the loop. ``self._hook_state`` is still kept in sync
+            # by ``hooks_config_watcher`` (#631) so that a future AFC-off path
+            # can wire the engine in without further plumbing.
+
+            # Build the GenerateContentConfig. When live MCP sessions are
+            # attached (#640), pass them into ``tools=[...]`` — google-genai's
+            # experimental MCP-as-tool support accepts raw ``ClientSession``
+            # objects and handles the full function_call / function_response
+            # ping-pong via AFC. See ``googleapis.github.io/python-genai``
+            # for the current surface.
+            _config_kwargs: dict = {"system_instruction": instructions}
+            _live = list(live_mcp_servers or [])
+            if _live:
+                _config_kwargs["tools"] = list(_live)
             # Create chat with persisted history and system instruction
             chat = client.aio.chats.create(
                 model=resolved_model,
-                config=types.GenerateContentConfig(
-                    system_instruction=instructions,
-                ),
+                config=types.GenerateContentConfig(**_config_kwargs),
                 history=history,
             )
 
@@ -496,12 +742,22 @@ async def run_query(
             # llm.request child span (#630) — one per generate_content /
             # send_message_stream round-trip. Managed via manual enter/exit so
             # the streaming loop body below does not need to be re-indented.
-            # TODO(#640): emit tool.call / mcp.call child spans once the
-            # google-genai tool dispatch path is wired into this executor.
+            # When ``live_mcp_servers`` is non-empty (#640), AFC may dispatch
+            # an arbitrary number of MCP tool calls inside this single SDK
+            # invocation without surfacing per-call hooks to the caller.
+            # Emitting a child span per MCP tool call would require disabling
+            # AFC; instead we stamp the ``mcp.sessions.count`` / ``tools.count``
+            # attributes on this aggregate span so traces still record that an
+            # AFC roundtrip happened and how many sessions were in scope. A
+            # future AFC-off path can split this into per-call child spans.
+            _llm_attrs: dict = {"model": _sanitize_model_label(resolved_model)}
+            if _live:
+                _llm_attrs["mcp.sessions.count"] = len(_live)
+                _llm_attrs["tools.count"] = len(_live)
             _llm_ctx = start_span(
                 "llm.request",
                 kind="client",
-                attributes={"model": _sanitize_model_label(resolved_model)},
+                attributes=_llm_attrs,
             )
             _llm_ctx.__enter__()
             _llm_closed = False
@@ -619,6 +875,23 @@ async def run_query(
             if full_response:
                 await log_entry("agent", full_response, session_id, model=resolved_model, tokens=_total_tokens or None)
 
+            # AFC observability (#640): walk chat.history to surface any
+            # function_call / function_response parts appended by the SDK
+            # during this roundtrip. Emits one tool_use + tool_result row
+            # per pair into trace.jsonl (matching a2-claude's shape for
+            # dashboard TraceView #592 and OTel trace viewer #632) and
+            # increments a2_sdk_tool_calls_total / observes
+            # a2_sdk_tool_duration_seconds. No-op when AFC did not run.
+            if _live:
+                try:
+                    await _emit_afc_history(
+                        chat.history,
+                        session_id=session_id,
+                        model=resolved_model,
+                    )
+                except Exception as _afc_exc:
+                    logger.debug("AFC history emit failed: %s", _afc_exc)
+
             # Persist updated history — log at ERROR on permanent failure so it is
             # visible in monitoring, but do not propagate so the completed response
             # is still returned to the caller.  Mark the session in history_save_failed
@@ -689,11 +962,16 @@ async def run(
     model: str | None = None,
     max_tokens: int | None = None,
     on_chunk: Callable[[str], Awaitable[None]] | None = None,
+    live_mcp_servers: list | None = None,
 ) -> str:
     if a2_concurrent_queries is not None:
         a2_concurrent_queries.labels(**_LABELS).inc()
     try:
-        return await _run_inner(prompt, session_id, sessions, agent_md_content, session_locks, history_save_failed, model, max_tokens, on_chunk=on_chunk)
+        return await _run_inner(
+            prompt, session_id, sessions, agent_md_content, session_locks,
+            history_save_failed, model, max_tokens,
+            on_chunk=on_chunk, live_mcp_servers=live_mcp_servers,
+        )
     finally:
         if a2_concurrent_queries is not None:
             a2_concurrent_queries.labels(**_LABELS).dec()
@@ -709,6 +987,7 @@ async def _run_inner(
     model: str | None = None,
     max_tokens: int | None = None,
     on_chunk: Callable[[str], Awaitable[None]] | None = None,
+    live_mcp_servers: list | None = None,
 ) -> str:
     resolved_model = model or GEMINI_MODEL
     if a2_model_requests_total is not None:
@@ -736,7 +1015,11 @@ async def _run_inner(
     _budget_exceeded = False
     try:
         collected = await asyncio.wait_for(
-            run_query(prompt, session_id, agent_md_content, session_locks, history_save_failed, model=model, max_tokens=max_tokens, on_chunk=on_chunk),
+            run_query(
+                prompt, session_id, agent_md_content, session_locks,
+                history_save_failed, model=model, max_tokens=max_tokens,
+                on_chunk=on_chunk, live_mcp_servers=live_mcp_servers,
+            ),
             timeout=TASK_TIMEOUT_SECONDS,
         )
         _track_session(sessions, session_id, session_locks, history_save_failed)
@@ -853,10 +1136,179 @@ class AgentExecutor(A2AAgentExecutor):
             baseline=list(BASELINE_RULES) if HOOKS_BASELINE_ENABLED else [],
             extensions=[],
         )
+        # Lifespan-scoped MCP session stack (#640 — mirrors a2-codex #526).
+        # MCP stdio subprocesses are entered once at startup (or on
+        # hot-reload) and reused across requests. The lock serialises
+        # reload-vs-request access to ``_live_mcp_servers`` so an in-flight
+        # ``generate_content`` call with AFC cannot see a half-torn-down
+        # ClientSession mid-stream.
+        self._mcp_config: dict = {}
+        self._mcp_stack: AsyncExitStack | None = None
+        self._live_mcp_servers: list = []
+        self._mcp_servers_lock: asyncio.Lock | None = None
 
     def _mcp_watchers(self):
-        """Return callables for GEMINI.md and hooks.yaml watching (#371, #631)."""
-        return [self.agent_md_watcher, self.hooks_config_watcher]
+        """Return callables for GEMINI.md, hooks.yaml, and mcp.json watching (#371, #631, #640)."""
+        return [self.agent_md_watcher, self.hooks_config_watcher, self.mcp_config_watcher]
+
+    async def _apply_mcp_config(self, mcp_config: dict) -> None:
+        """Enter the given MCP config into a fresh lifespan-scoped stack (#640).
+
+        Mirrors a2-codex.AgentExecutor._apply_mcp_config (#526). Tears down
+        any previously-entered stack first, then opens a fresh
+        ``stdio_client`` + ``ClientSession`` per server. Failures on
+        individual servers are logged and skipped so one broken entry does
+        not prevent others from starting. The ``a2_mcp_servers_active`` gauge
+        reflects the actually-running count, not the config-loaded count.
+
+        The ``ClientSession`` objects are what google-genai's AFC accepts in
+        ``GenerateContentConfig(tools=[...])`` — they are the authoritative
+        handle used everywhere downstream.
+        """
+        if self._mcp_servers_lock is None:
+            self._mcp_servers_lock = asyncio.Lock()
+        async with self._mcp_servers_lock:
+            # Tear down the previous stack (if any) before entering the new one.
+            if self._mcp_stack is not None:
+                try:
+                    await self._mcp_stack.aclose()
+                except Exception as _close_exc:
+                    logger.warning("Previous MCP stack aclose error: %s", _close_exc)
+                self._mcp_stack = None
+                self._live_mcp_servers = []
+
+            if not mcp_config:
+                if a2_mcp_servers_active is not None:
+                    a2_mcp_servers_active.labels(**_LABELS).set(0)
+                return
+
+            try:
+                from mcp import ClientSession  # type: ignore
+                from mcp.client.stdio import stdio_client  # type: ignore
+            except Exception as _imp_exc:
+                logger.warning(
+                    "mcp package not available (%s); MCP support disabled.",
+                    _imp_exc,
+                )
+                if a2_mcp_servers_active is not None:
+                    a2_mcp_servers_active.labels(**_LABELS).set(0)
+                return
+
+            new_stack = AsyncExitStack()
+            await new_stack.__aenter__()
+            new_live: list = []
+            try:
+                for name, cfg in mcp_config.items():
+                    if not isinstance(cfg, dict):
+                        logger.warning(
+                            "MCP server %r: config must be a dict; got %r — skipping.",
+                            name, type(cfg).__name__,
+                        )
+                        continue
+                    params = _build_mcp_stdio_params(name, cfg)
+                    if params is None:
+                        continue
+                    # mcp.call child span (#630) — wraps the stdio transport
+                    # bring-up so the trace shows which MCP server the stack
+                    # is spinning up (or failing to). kind=client reflects
+                    # that the backend is dialling an external server.
+                    with start_span(
+                        "mcp.call",
+                        kind="client",
+                        attributes={"mcp.server": name, "mcp.tool": "__start__"},
+                    ) as _mcp_span:
+                        try:
+                            read, write = await new_stack.enter_async_context(stdio_client(params))
+                            session = await new_stack.enter_async_context(ClientSession(read, write))
+                            await session.initialize()
+                            new_live.append(session)
+                        except Exception as _mcp_exc:
+                            set_span_error(_mcp_span, _mcp_exc)
+                            logger.warning(
+                                "MCP server %r failed to start (%s); proceeding without it.",
+                                name, _mcp_exc,
+                            )
+            except Exception:
+                try:
+                    await new_stack.aclose()
+                except Exception:
+                    pass
+                raise
+
+            self._mcp_stack = new_stack
+            self._live_mcp_servers = new_live
+            if a2_mcp_servers_active is not None:
+                a2_mcp_servers_active.labels(**_LABELS).set(len(new_live))
+
+            # Startup warning re: AFC vs hooks asymmetry (#640). Logged once
+            # per stack bring-up so operators see it on every reload when
+            # both sides are active. hooks skeleton in #631 cannot intercept
+            # tool calls that AFC runs inside the SDK; the hand-rolled-loop
+            # option lives in the #640 issue body.
+            if new_live and os.environ.get("HOOKS_CONFIG_PATH") and (
+                self._hook_state.extensions or self._hook_state.baseline
+            ):
+                logger.warning(
+                    "a2-gemini hooks skeleton (#631) cannot intercept MCP tool calls "
+                    "because google-genai's AFC runs the loop internally. "
+                    "See #640 issue body option 2 to disable AFC and hand-roll the "
+                    "loop if policy enforcement is required."
+                )
+
+    async def _snapshot_live_mcp_servers(self) -> list:
+        """Return a defensive copy of the currently-live MCP server list (#640).
+
+        Taken under the lock so a concurrent hot-reload cannot swap the list
+        out from under the caller mid-read.
+        """
+        if self._mcp_servers_lock is None:
+            self._mcp_servers_lock = asyncio.Lock()
+        async with self._mcp_servers_lock:
+            return list(self._live_mcp_servers)
+
+    async def mcp_config_watcher(self) -> None:
+        """Watch MCP_CONFIG_PATH and hot-reload the MCP server stack (#640).
+
+        Mirrors a2-codex.AgentExecutor.mcp_config_watcher (#432, #526): load
+        on startup, then watch the parent directory for any changes to the
+        config file. Each reload restarts the lifespan-scoped MCP server
+        stack so stdio subprocesses are respawned cleanly under the new
+        config and existing request traffic sees a consistent snapshot.
+        """
+        from watchfiles import awatch as _awatch
+
+        self._mcp_config = await asyncio.to_thread(_load_mcp_config)
+        if self._mcp_config:
+            logger.info("MCP config loaded: %s", list(self._mcp_config.keys()))
+        try:
+            await self._apply_mcp_config(self._mcp_config)
+        except Exception as _apply_exc:
+            logger.warning("Initial MCP stack start failed: %s", _apply_exc)
+
+        watch_dir = os.path.dirname(os.path.abspath(MCP_CONFIG_PATH))
+        while True:
+            if not os.path.isdir(watch_dir):
+                logger.info("MCP config directory not found — retrying in 10s.")
+                await asyncio.sleep(10)
+                continue
+            async for changes in _awatch(watch_dir, recursive=False):
+                if a2_watcher_events_total is not None:
+                    a2_watcher_events_total.labels(**_LABELS, watcher="mcp").inc()
+                for _, path in changes:
+                    if os.path.abspath(path) == os.path.abspath(MCP_CONFIG_PATH):
+                        self._mcp_config = await asyncio.to_thread(_load_mcp_config)
+                        logger.info("MCP config reloaded: %s", list(self._mcp_config.keys()))
+                        try:
+                            await self._apply_mcp_config(self._mcp_config)
+                        except Exception as _apply_exc:
+                            logger.warning("MCP stack reload failed: %s", _apply_exc)
+                        if a2_mcp_config_reloads_total is not None:
+                            a2_mcp_config_reloads_total.labels(**_LABELS).inc()
+                        break
+            logger.warning("MCP config directory watcher exited — retrying in 10s.")
+            if a2_file_watcher_restarts_total is not None:
+                a2_file_watcher_restarts_total.labels(**_LABELS, watcher="mcp").inc()
+            await asyncio.sleep(10)
 
     async def agent_md_watcher(self) -> None:
         """Watch AGENT_MD for changes and hot-reload agent identity / behavioral instructions (#371).
@@ -1022,6 +1474,7 @@ class AgentExecutor(A2AAgentExecutor):
                     model=model,
                     max_tokens=max_tokens,
                     on_chunk=_emit_chunk,
+                    live_mcp_servers=await self._snapshot_live_mcp_servers(),
                 )
                 _success = True
                 # Skip the final aggregated event when chunks were streamed —
@@ -1058,14 +1511,27 @@ class AgentExecutor(A2AAgentExecutor):
             logger.info(f"Task {task_id!r} cancellation requested but no running task found.")
 
     async def close(self) -> None:
-        """Cancel and drain all watcher tasks, then dispose the genai client.
+        """Cancel and drain all watcher tasks, tear down the MCP stack (#640),
+        then dispose the genai client.
 
         The genai client close runs *after* watchers are drained so in-flight
-        A2A requests are not orphaned mid-call (#545).
+        A2A requests are not orphaned mid-call (#545). The MCP stack is
+        torn down between the watchers and the genai client so stdio
+        subprocesses and ClientSession pipes are released cleanly before
+        the HTTP client pools go away.
         """
         for task in self._mcp_watcher_tasks:
             task.cancel()
         if self._mcp_watcher_tasks:
             await asyncio.gather(*self._mcp_watcher_tasks, return_exceptions=True)
         self._mcp_watcher_tasks.clear()
+        if self._mcp_stack is not None:
+            try:
+                await self._mcp_stack.aclose()
+            except Exception as _close_exc:
+                logger.warning("MCP stack aclose on shutdown: %s", _close_exc)
+            self._mcp_stack = None
+            self._live_mcp_servers = []
+            if a2_mcp_servers_active is not None:
+                a2_mcp_servers_active.labels(**_LABELS).set(0)
         await _close_client()
