@@ -477,6 +477,9 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 			RunAsUser:    int64Ptr(1000),
 			RunAsGroup:   int64Ptr(1000),
 			FSGroup:      int64Ptr(1000),
+			SeccompProfile: &corev1.SeccompProfile{
+				Type: corev1.SeccompProfileTypeRuntimeDefault,
+			},
 		},
 		ImagePullSecrets: agent.Spec.ImagePullSecrets,
 		Containers:       containers,
@@ -1054,6 +1057,12 @@ func buildDashboardDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *a
 				Spec: corev1.PodSpec{
 					AutomountServiceAccountToken: boolPtr(false),
 					ImagePullSecrets:             agent.Spec.ImagePullSecrets,
+					SecurityContext: &corev1.PodSecurityContext{
+						RunAsNonRoot: boolPtr(true),
+						SeccompProfile: &corev1.SeccompProfile{
+							Type: corev1.SeccompProfileTypeRuntimeDefault,
+						},
+					},
 					Volumes: []corev1.Volume{{
 						Name: nginxTemplateVol,
 						VolumeSource: corev1.VolumeSource{
