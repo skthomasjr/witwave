@@ -1154,7 +1154,30 @@ class AgentExecutor(A2AAgentExecutor):
         return [self.mcp_config_watcher, self.agent_md_watcher, self.hooks_config_watcher]
 
     async def close(self) -> None:
-        """Cancel and drain all MCP watcher tasks."""
+        """Cancel and drain all in-flight execute() tasks and MCP watcher tasks (#587).
+
+        On shutdown, uvicorn invokes this before its force-shutdown deadline.
+        Previously only the MCP/agent_md/hooks watchers were cancelled, leaving
+        any in-flight A2A request tasks tracked in ``self._running_tasks`` to
+        run to natural completion — or be SIGKILLed by uvicorn — which left
+        partial records in ``conversation.jsonl``, ``trace.jsonl``, and
+        ``tool-audit.jsonl`` plus orphaned Claude CLI subprocesses.
+
+        Cancellation order matters:
+          1. Cancel in-flight execute() tasks first. ``_run_query`` /
+             ``_run_inner`` propagate ``CancelledError`` through the
+             ``async with ClaudeSDKClient(...)`` context manager, which
+             closes the CLI subprocess, and the ``finally`` blocks in
+             ``execute()`` flush their last JSONL appends via
+             ``asyncio.to_thread(_append_log, ...)`` before the task exits.
+          2. Then cancel the MCP/config watchers (existing behavior).
+        """
+        in_flight = list(self._running_tasks.values())
+        for task in in_flight:
+            task.cancel()
+        if in_flight:
+            await asyncio.gather(*in_flight, return_exceptions=True)
+
         for task in self._mcp_watcher_tasks:
             task.cancel()
         if self._mcp_watcher_tasks:
