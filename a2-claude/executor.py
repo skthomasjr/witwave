@@ -40,6 +40,7 @@ from metrics import (
     a2_context_tokens_remaining,
     a2_context_usage_percent,
     a2_context_warnings_total,
+    a2_empty_prompts_total,
     a2_empty_responses_total,
     a2_file_watcher_restarts_total,
     a2_log_bytes_total,
@@ -1134,6 +1135,42 @@ class AgentExecutor(A2AAgentExecutor):
         _exec_start = time.monotonic()
         prompt = context.get_user_input()
         metadata = context.message.metadata or {}
+        # Empty-prompt guard (#544). A metadata-only or whitespace-only A2A
+        # message would otherwise flow into run() -> ClaudeSDKClient.query("")
+        # and spawn a subprocess / burn tokens on a "How can I help?" reply.
+        # Reject it here with an explicit A2A error event, a counter bump, and
+        # a conversation log entry so the occurrence is visible in both
+        # metrics and the session transcript. Mirrors the early-validation
+        # pattern used for max_tokens further down.
+        if not prompt or not prompt.strip():
+            _empty_sid_raw = str(
+                context.context_id
+                or (context.message.metadata or {}).get("session_id")
+                or ""
+            ).strip()[:256]
+            _empty_sid = "".join(c for c in _empty_sid_raw if c >= " ") or "unknown"
+            logger.warning(
+                f"Session {_empty_sid!r}: rejected execute() — prompt was empty or whitespace-only (#544)."
+            )
+            if a2_empty_prompts_total is not None:
+                a2_empty_prompts_total.labels(**_LABELS).inc()
+            if a2_a2a_requests_total is not None:
+                a2_a2a_requests_total.labels(**_LABELS, status="error").inc()
+            if a2_a2a_request_duration_seconds is not None:
+                a2_a2a_request_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _exec_start)
+            if a2_a2a_last_request_timestamp_seconds is not None:
+                a2_a2a_last_request_timestamp_seconds.labels(**_LABELS).set(time.time())
+            await log_entry(
+                "system",
+                "execute() rejected: empty or whitespace-only prompt (#544).",
+                _empty_sid,
+            )
+            await event_queue.enqueue_event(
+                new_agent_text_message(
+                    "Error: prompt is empty or whitespace-only; request rejected without dispatching to the model."
+                )
+            )
+            return
         # OTel server span continuation (#469). Upstream harness echoes the
         # traceparent into metadata; when OTel is on we use it as the parent
         # context so the backend span joins the end-to-end trace.
