@@ -320,15 +320,21 @@ func (r *NyxAgentReconciler) applyBackendPVCs(ctx context.Context, agent *nyxv1a
 			}
 		}
 	}
-	for _, desired := range pvcs {
-		if err := controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
-			return fmt.Errorf("set owner on PVC %s: %w", desired.Name, err)
+	// Build the desired-set index up front so the cleanup pass can look up
+	// names in O(1). Mirrors the reconcileConfigMaps pattern (#491).
+	desired := make(map[string]*corev1.PersistentVolumeClaim, len(pvcs))
+	for _, pvc := range pvcs {
+		desired[pvc.Name] = pvc
+	}
+	for _, d := range desired {
+		if err := controllerutil.SetControllerReference(agent, d, r.Scheme); err != nil {
+			return fmt.Errorf("set owner on PVC %s: %w", d.Name, err)
 		}
 		existing := &corev1.PersistentVolumeClaim{}
-		err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
+		err := r.Get(ctx, client.ObjectKeyFromObject(d), existing)
 		switch {
 		case apierrors.IsNotFound(err):
-			if err := r.Create(ctx, desired); err != nil {
+			if err := r.Create(ctx, d); err != nil {
 				return err
 			}
 			continue
@@ -337,9 +343,40 @@ func (r *NyxAgentReconciler) applyBackendPVCs(ctx context.Context, agent *nyxv1a
 		}
 		// PVC specs are largely immutable after creation; only labels are
 		// reconciled in-place. Size changes would need an expand-volume flow.
-		existing.Labels = desired.Labels
+		existing.Labels = d.Labels
 		if err := r.Update(ctx, existing); err != nil {
 			return err
+		}
+	}
+	// Cleanup: list PVCs in this namespace that carry our agent labels, then
+	// delete any owned by THIS NyxAgent that are not in the desired set.
+	// This catches backends that have been disabled, removed from spec, or
+	// transitioned to `existingClaim` (#491). Dual-check both labels and
+	// IsControlledBy before deleting to never touch foreign or shared PVCs.
+	// Distinct from #490's teardown path, which runs only when the whole
+	// agent is disabled.
+	existing := &corev1.PersistentVolumeClaimList{}
+	if err := r.List(ctx, existing,
+		client.InNamespace(agent.Namespace),
+		client.MatchingLabels{
+			labelName:      agent.Name,
+			labelManagedBy: managedBy,
+		},
+	); err != nil {
+		return fmt.Errorf("list owned PVCs for cleanup: %w", err)
+	}
+	for i := range existing.Items {
+		pvc := &existing.Items[i]
+		if _, wanted := desired[pvc.Name]; wanted {
+			continue
+		}
+		if !metav1.IsControlledBy(pvc, agent) {
+			// Defensive: another controller owns this PVC despite the
+			// labels matching. Leave it alone.
+			continue
+		}
+		if err := r.Delete(ctx, pvc); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("delete stale PVC %s: %w", pvc.Name, err)
 		}
 	}
 	return nil
