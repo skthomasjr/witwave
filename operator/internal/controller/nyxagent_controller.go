@@ -464,11 +464,12 @@ func (r *NyxAgentReconciler) teardownDisabledAgent(ctx context.Context, agent *n
 }
 
 // reconcileDashboard creates, updates, or deletes the per-agent dashboard
-// Deployment + Service to match NyxAgent.spec.dashboard (#470). The
-// dashboard is opt-in and coexists with the legacy release-level `ui`
-// Deployment — the two are independent resources and neither blocks the
-// other.
+// ConfigMap + Deployment + Service to match NyxAgent.spec.dashboard (#470).
+// The ConfigMap holds the nginx template that routes /api/agents/<name>/...
+// directly to the owned agent's service, matching the direct-routing
+// architecture the Helm chart uses cluster-wide.
 func (r *NyxAgentReconciler) reconcileDashboard(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
+	desiredCM := buildDashboardConfigMap(agent)
 	desiredDep := buildDashboardDeployment(agent, DefaultImageTag)
 	desiredSvc := buildDashboardService(agent)
 	// Mirror spec.dashboard.enabled into the per-CR gauge so dashboards
@@ -481,9 +482,11 @@ func (r *NyxAgentReconciler) reconcileDashboard(ctx context.Context, agent *nyxv
 		nyxagentDashboardEnabled.WithLabelValues(agent.Namespace, agent.Name).Set(val)
 	}
 
-	// Key used for both Deployment and Service — buildDashboardDeployment
-	// and buildDashboardService agree on the "<agent>-dashboard" name.
+	// Key used for Deployment and Service — <agent>-dashboard.
 	key := client.ObjectKey{Namespace: agent.Namespace, Name: agent.Name + "-dashboard"}
+	// ConfigMap uses its own suffix so it doesn't collide with the
+	// Deployment/Service objects sharing the short key.
+	cmKey := client.ObjectKey{Namespace: agent.Namespace, Name: agent.Name + "-dashboard-nginx"}
 
 	// Delete path: the spec was toggled off or removed. Only remove
 	// resources we actually own to avoid clobbering something the
@@ -509,7 +512,41 @@ func (r *NyxAgentReconciler) reconcileDashboard(ctx context.Context, agent *nyxv
 		} else if !apierrors.IsNotFound(err) {
 			return err
 		}
+		existingCM := &corev1.ConfigMap{}
+		if err := r.Get(ctx, cmKey, existingCM); err == nil {
+			if metav1.IsControlledBy(existingCM, agent) {
+				if err := r.Delete(ctx, existingCM); err != nil && !apierrors.IsNotFound(err) {
+					return err
+				}
+			}
+		} else if !apierrors.IsNotFound(err) {
+			return err
+		}
 		return nil
+	}
+
+	// Apply ConfigMap first — the Deployment mounts it, so creation order
+	// matters for fresh installs.
+	if desiredCM != nil {
+		if err := controllerutil.SetControllerReference(agent, desiredCM, r.Scheme); err != nil {
+			return fmt.Errorf("set owner on dashboard ConfigMap: %w", err)
+		}
+		existingCM := &corev1.ConfigMap{}
+		if err := r.Get(ctx, cmKey, existingCM); err != nil {
+			if apierrors.IsNotFound(err) {
+				if err := r.Create(ctx, desiredCM); err != nil {
+					return fmt.Errorf("create dashboard ConfigMap: %w", err)
+				}
+			} else {
+				return err
+			}
+		} else {
+			existingCM.Data = desiredCM.Data
+			existingCM.Labels = desiredCM.Labels
+			if err := r.Update(ctx, existingCM); err != nil {
+				return fmt.Errorf("update dashboard ConfigMap: %w", err)
+			}
+		}
 	}
 
 	// Apply Deployment.

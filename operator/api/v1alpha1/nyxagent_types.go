@@ -294,10 +294,9 @@ type NyxAgentSpec struct {
 	SharedStorage *SharedStorageRef `json:"sharedStorage,omitempty"`
 
 	// Dashboard optionally deploys the Vue 3 dashboard (#470) alongside the
-	// agent. The dashboard is the future replacement for the existing `ui`
-	// surface; both run side-by-side until dashboard reaches feature parity
-	// with `ui/`. Disabled by default — the current UI remains primary until
-	// explicitly flipped.
+	// agent. The operator renders a per-agent dashboard (one per NyxAgent),
+	// independent of the cluster-wide dashboard the Helm chart deploys.
+	// Disabled by default.
 	// +optional
 	Dashboard *DashboardSpec `json:"dashboard,omitempty"`
 }
@@ -326,9 +325,13 @@ type DashboardSpec struct {
 	// +optional
 	Port int32 `json:"port,omitempty"`
 
-	// HarnessURL overrides the origin the dashboard's nginx /api/* proxy
-	// forwards to. Defaults to "http://<agent>-harness:<port>" derived from
-	// the parent NyxAgent.
+	// HarnessURL is retained for CR backward-compatibility but no longer
+	// read by the operator. Since beta.46 the dashboard owns cross-agent
+	// routing and talks to each agent's service directly via the per-agent
+	// nginx config the operator renders; the legacy /api/* catch-all that
+	// this field fed is gone. Drop this field from CRs at your leisure; it
+	// is ignored either way.
+	// Deprecated: no effect since beta.46; remove on next breaking CRD bump.
 	// +optional
 	HarnessURL string `json:"harnessUrl,omitempty"`
 

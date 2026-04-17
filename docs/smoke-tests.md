@@ -159,25 +159,18 @@ helm upgrade --install nyx-test ./charts/nyx \
 
 ---
 
-## Viewing the conversation (UI)
+## Viewing the conversation (dashboard)
 
-The test stack deploys a web UI at `nyx-test-ui`. Port-forward it locally:
-
-```bash
-kubectl port-forward svc/nyx-test-ui 8080:80 -n nyx
-```
-
-Then open http://localhost:8080 in your browser. Select **bob** or **fred** from the agent dropdown to see the conversation log. Agent messages show `agent · model · N tok · timestamp · session_id` in the subdued label line.
-
-To bring up both the agent API and the UI at the same time:
+The test stack deploys the web dashboard at `nyx-test-dashboard`. Port-forward it locally:
 
 ```bash
-# UI defaults to port 8000 for the agent when accessed on port 8080
-kubectl port-forward svc/nyx-test-bob 8000:8099 -n nyx &
-kubectl port-forward svc/nyx-test-ui 8080:80 -n nyx &
+kubectl port-forward svc/nyx-test-dashboard 5173:80 -n nyx
 ```
 
-Then open http://localhost:8080. The UI resolves the agent at `http://localhost:8000` automatically.
+Then open http://localhost:5173. The Team view lists every agent with per-backend health bubbles; click one to
+open its chat panel. The Conversations view shows an aggregated log across all agents with agent/role/search
+filters; the Calendar view plots the same log on a day/week grid. Everything is served by the dashboard pod — no
+extra port-forwards per agent are needed.
 
 ---
 

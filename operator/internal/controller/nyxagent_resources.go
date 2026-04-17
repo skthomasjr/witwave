@@ -687,12 +687,95 @@ func dashboardSelectorLabels(agent *nyxv1alpha1.NyxAgent) map[string]string {
 	}
 }
 
+// buildDashboardConfigMap renders the nginx template the dashboard image
+// reads from /etc/nginx/templates/. The template teaches nginx about the
+// owned agent's service at /api/agents/<name>/... and serves /api/team
+// inline so the dashboard client's two-phase discovery (directory + per-
+// agent fan-out) works against a single-CR deployment (#470). Returns nil
+// when the dashboard is disabled.
+//
+// The ConfigMap mirrors the logic in
+// charts/nyx/templates/configmap-dashboard-nginx.yaml but scoped to the
+// one NyxAgent the operator owns — per-CR dashboards can't see other
+// agents the operator happens to manage; that's a deliberate boundary.
+func buildDashboardConfigMap(agent *nyxv1alpha1.NyxAgent) *corev1.ConfigMap {
+	d := agent.Spec.Dashboard
+	if d == nil || !d.Enabled {
+		return nil
+	}
+
+	agentPort := agent.Spec.Port
+	if agentPort == 0 {
+		agentPort = 8000
+	}
+
+	// FQDN — nginx's resolver doesn't apply Kubernetes search domains, so
+	// short names land as NXDOMAIN. Cluster-local domain is `cluster.local`
+	// by convention; if anyone's running with a different one this will need
+	// to become configurable.
+	upstream := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", agent.Name, agent.Namespace, agentPort)
+	directory := fmt.Sprintf(`[{"name":%q,"url":%q}]`, agent.Name, fmt.Sprintf("http://%s:%d", agent.Name, agentPort))
+
+	tpl := `server {
+  listen 8080;
+  server_name _;
+
+  resolver ${NGINX_LOCAL_RESOLVERS} valid=30s ipv6=off;
+
+  root /usr/share/nginx/html;
+  index index.html;
+
+  location / {
+    try_files $uri $uri/ /index.html;
+  }
+
+  location = /health {
+    access_log off;
+    add_header Content-Type application/json;
+    return 200 '{"status":"ok","component":"dashboard"}';
+  }
+
+  location = /api/team {
+    default_type application/json;
+    return 200 '` + directory + `';
+  }
+
+  location ~ ^/api/agents/` + agent.Name + `/(.*)$ {
+    proxy_pass ` + upstream + `/$1$is_args$args;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_http_version 1.1;
+    proxy_buffering off;
+    proxy_read_timeout 310s;
+    client_max_body_size 1m;
+  }
+
+  location /api/ {
+    return 404;
+  }
+}
+`
+
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      agent.Name + "-dashboard-nginx",
+			Namespace: agent.Namespace,
+			Labels:    dashboardLabels(agent),
+		},
+		Data: map[string]string{
+			"default.conf.template": tpl,
+		},
+	}
+}
+
 // buildDashboardDeployment returns the Deployment for the per-agent Vue 3
 // dashboard, or nil when the dashboard is disabled. The dashboard container
 // always listens on 8080; the Service port is controlled separately via
-// DashboardSpec.Port. HARNESS_URL is derived from the parent NyxAgent so the
-// nginx /api/* reverse proxy inside the dashboard image finds the right
-// harness without extra config (#470).
+// DashboardSpec.Port. Per-agent nginx routing comes from the sibling
+// ConfigMap built by buildDashboardConfigMap — the browser talks to the
+// dashboard pod, which proxies to the owned agent's harness directly. No
+// HARNESS_URL env var is required (that was the legacy /api/* catch-all
+// path retired in beta.46).
 func buildDashboardDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Deployment {
 	d := agent.Spec.Dashboard
 	if d == nil || !d.Enabled {
@@ -714,17 +797,10 @@ func buildDashboardDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *a
 		img = *d.Image
 	}
 
-	agentPort := agent.Spec.Port
-	if agentPort == 0 {
-		agentPort = 8000
-	}
-	harnessURL := d.HarnessURL
-	if harnessURL == "" {
-		harnessURL = fmt.Sprintf("http://%s:%d", agent.Name, agentPort)
-	}
-
 	probeSpec := nyxv1alpha1.ProbeSpec{}
 	containerPort := int32(8080)
+
+	nginxTemplateVol := agent.Name + "-dashboard-nginx"
 
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -744,6 +820,16 @@ func buildDashboardDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *a
 				Spec: corev1.PodSpec{
 					AutomountServiceAccountToken: boolPtr(false),
 					ImagePullSecrets:             agent.Spec.ImagePullSecrets,
+					Volumes: []corev1.Volume{{
+						Name: nginxTemplateVol,
+						VolumeSource: corev1.VolumeSource{
+							ConfigMap: &corev1.ConfigMapVolumeSource{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: agent.Name + "-dashboard-nginx",
+								},
+							},
+						},
+					}},
 					Containers: []corev1.Container{{
 						Name:            "dashboard",
 						Image:           imageRef(img, appVersion),
@@ -754,8 +840,17 @@ func buildDashboardDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *a
 							Protocol:      corev1.ProtocolTCP,
 						}},
 						Env: []corev1.EnvVar{{
-							Name:  "HARNESS_URL",
-							Value: harnessURL,
+							// Enables the nginx-unprivileged image's local-
+							// resolvers envsh hook so NGINX_LOCAL_RESOLVERS
+							// gets populated from /etc/resolv.conf at boot
+							// — required for the resolver directive above.
+							Name:  "NGINX_ENTRYPOINT_LOCAL_RESOLVERS",
+							Value: "1",
+						}},
+						VolumeMounts: []corev1.VolumeMount{{
+							Name:      nginxTemplateVol,
+							MountPath: "/etc/nginx/templates",
+							ReadOnly:  true,
 						}},
 						SecurityContext: &corev1.SecurityContext{
 							AllowPrivilegeEscalation: boolPtr(false),

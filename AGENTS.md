@@ -290,7 +290,7 @@ docker build -f tools/kubernetes/Dockerfile -t mcp-kubernetes:latest .
 # Helm MCP tool
 docker build -f tools/helm/Dockerfile -t mcp-helm:latest .
 
-# Dashboard — future UI, coexists with ui/ (#470). Optional; only needed when dashboard.enabled=true.
+# Dashboard image — optional; only built/pushed when dashboard.enabled=true in the chart.
 docker build -f dashboard/Dockerfile -t dashboard:latest .
 ```
 

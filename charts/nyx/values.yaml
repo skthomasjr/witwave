@@ -1,6 +1,5 @@
-# Vue 3 dashboard — the nyx web interface. Replaced the legacy single-file
-# `ui/` app in beta.44 once parity was reached (#470). Disabled by default;
-# enable to deploy it alongside the agent harnesses in the same release.
+# Vue 3 dashboard — the nyx web interface. Disabled by default; enable to
+# deploy it alongside the agent harnesses in the same release.
 dashboard:
   enabled: false
   image:

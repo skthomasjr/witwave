@@ -1,37 +1,41 @@
 # nyx dashboard
 
-Vue 3 + Vite + PrimeVue + Vitest dashboard for the nyx autonomous agent platform. This is the **future** UI; the
-current first-class UI remains the single-file `ui/index.html` app. The two ship side-by-side (#470) until the
-dashboard reaches feature parity — at which point UI stays as the fallback and dashboard becomes primary.
+Vue 3 + Vite + PrimeVue + Vitest dashboard for the nyx autonomous agent platform (#470). Browser talks to the
+dashboard pod, which fans out to each agent's harness directly via nginx per-agent routes — no single-harness front
+door, no cross-agent fan-out inside any one agent's pod.
 
-## Status: scaffold
+## Views
 
-Only the Team view is implemented so far. The table below tracks parity against `ui/` and will be checked off as
-each feature lands.
-
-| Feature                          | `ui/`  | `dashboard/` |
-| -------------------------------- | ------ | ------------ |
-| Team list                        | ✓      | ✓ (placeholder) |
-| Conversations viewer             | ✓      | —            |
-| Trace viewer                     | ✓      | —            |
-| Triggers / signed toggle         | ✓      | —            |
-| Jobs + tasks viewer              | ✓      | —            |
-| Webhooks + continuations viewer  | ✓      | —            |
-| Heartbeat panel                  | ✓      | —            |
-| Trigger send form                | ✓      | —            |
-| Metrics aggregation panel        | ✓      | —            |
-| Session continuity send/receive  | ✓      | —            |
+| View              | What it shows                                                                    |
+| ----------------- | -------------------------------------------------------------------------------- |
+| Team              | Agent cards with per-backend health bubbles + a chat panel on selection          |
+| Calendar          | Conversation log plotted on a day/week/month grid (vue-cal)                      |
+| Jobs              | Scheduled jobs across every agent, with search + refresh                         |
+| Tasks             | Day/window-scheduled tasks across every agent                                    |
+| Triggers          | Inbound HTTP triggers (endpoint, auth, enabled state)                            |
+| Webhooks          | Outbound webhook subscriptions and delivery counts                               |
+| Continuations     | Continues-after chains (jobs, triggers, other continuations)                     |
+| Heartbeat         | Per-agent heartbeat schedule + backend + model                                   |
+| Conversations     | Aggregated conversation log with agent/role/search/limit filters                 |
+| Metrics           | Label-breakdown bar/doughnut charts from each agent's /metrics                   |
 
 ## Development
 
+Per-agent routes need a team list at dev time too, not just in production. Pass `VITE_TEAM` as JSON and port-forward
+each agent's harness:
+
 ```bash
+# Terminal 1: port-forward each agent's harness
+kubectl port-forward -n nyx svc/nyx-bob 8099:8099 &
+kubectl port-forward -n nyx svc/nyx-fred 8098:8098 &
+
+# Terminal 2: run the dev server with the team list
 cd dashboard
-npm install
-VITE_HARNESS_URL=http://localhost:8000 npm run dev
+VITE_TEAM='[{"name":"bob","url":"http://localhost:8099"},{"name":"fred","url":"http://localhost:8098"}]' \
+  npm run dev
 ```
 
-The Vite dev server listens on `:5173`; `/api/*` is proxied to `VITE_HARNESS_URL` (default `http://localhost:8000`)
-so component code can talk to the harness without CORS gymnastics.
+Open http://localhost:5173. `/api/team` serves the inline directory; `/api/agents/<name>/...` proxies to each entry.
 
 ## Testing
 
@@ -40,8 +44,8 @@ npm run test         # one-shot
 npm run test:watch   # interactive
 ```
 
-Vitest + `@vue/test-utils` in jsdom. A smoke test for `TeamView` covers the happy path, error path, and empty
-state — use it as the template for each new view.
+Vitest + `@vue/test-utils` in jsdom. Smoke specs for `TeamView`, `ChatPanel`, and `JobsView` cover the list /
+chat / fan-out patterns; add one per new view with the same shape.
 
 ## Production build
 
@@ -49,32 +53,36 @@ state — use it as the template for each new view.
 npm run build
 ```
 
-Produces `dist/`, which the Dockerfile copies into `/usr/share/nginx/html`. The nginx layer serves the SPA with a
-history-mode fallback and proxies `/api/*` to the harness (target from `HARNESS_URL` at deploy time).
+Produces `dist/`, which the Dockerfile copies into `/usr/share/nginx/html`. The image's baseline `nginx.conf`
+returns 404 for `/api/*`; the Helm chart (charts/nyx/templates/configmap-dashboard-nginx.yaml) mounts a ConfigMap
+over `/etc/nginx/templates/` at deploy time with per-agent routes templated from `.Values.agents`.
 
 ## Deployment
 
-The chart in `charts/nyx` adds a `dashboard` section (gated by `dashboard.enabled`, default `false`) that renders a
-Deployment + Service per agent. The operator's `NyxAgent.spec.dashboard` mirrors this field so clusters that declare
-agents via the CRD get the same coexistence model as the Helm path.
+- **Helm (cluster-wide dashboard):** set `dashboard.enabled: true` in `charts/nyx` values. Renders one dashboard
+  that knows about every enabled agent via the ConfigMap described above.
+- **Operator (per-agent dashboard):** set `spec.dashboard.enabled: true` on a `NyxAgent` CR. Operator renders a
+  Deployment + Service + ConfigMap scoped to the one agent. Only that agent is visible from that dashboard.
 
 ## Directory layout
 
 ```
 dashboard/
-├── package.json           # npm scripts + deps
-├── vite.config.ts         # dev server + /api proxy, Vitest config
+├── package.json           # npm scripts + deps (vue, vue-router, primevue, chart.js, vue-cal)
+├── vite.config.ts         # dev server + VITE_TEAM-driven per-agent proxies
 ├── tsconfig.json          # strict TS for .ts + .vue
 ├── index.html             # SPA entry
-├── nginx.conf             # prod static+proxy serving
-├── Dockerfile             # build (node) → serve (nginx) multi-stage
+├── nginx.conf             # image baseline (SPA + 404 on /api/*)
+├── Dockerfile             # build (node) → serve (nginx-unprivileged) multi-stage
 ├── src/
-│   ├── main.ts            # createApp + PrimeVue theme (Aura)
-│   ├── App.vue            # root layout shell
-│   ├── router.ts          # vue-router history mode
-│   └── views/
-│       └── TeamView.vue   # first parity view (reads /api/team)
-└── tests/unit/
-    └── TeamView.spec.ts   # Vitest smoke test
-
+│   ├── main.ts            # createApp + PrimeVue Aura theme
+│   ├── App.vue            # shell: brand, nav, header status dot
+│   ├── router.ts          # vue-router routes for every view
+│   ├── types/             # typed contracts: team, chat, scheduler
+│   ├── api/client.ts      # apiGet / apiPost + ApiError
+│   ├── utils/             # markdown.ts (marked+DOMPurify), prometheus.ts
+│   ├── composables/       # useTeam, useChat, useAgentFanout, useMetrics, useHealth
+│   ├── components/        # AgentCard, AgentList, BackendBubble, AgentDetail, ChatPanel, ListView
+│   └── views/             # TeamView, JobsView, TasksView, … (ten views)
+└── tests/unit/            # Vitest smoke specs
 ```

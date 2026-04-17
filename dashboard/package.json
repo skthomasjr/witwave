@@ -2,7 +2,7 @@
   "name": "nyx-dashboard",
   "version": "0.1.0-alpha.0",
   "private": true,
-  "description": "Vue 3 + PrimeVue dashboard for the nyx autonomous agent platform (future replacement for the ui/ single-file app).",
+  "description": "Vue 3 + PrimeVue dashboard for the nyx autonomous agent platform.",
   "type": "module",
   "scripts": {
     "dev": "vite",
