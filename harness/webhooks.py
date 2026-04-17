@@ -161,6 +161,21 @@ _URL_ALLOWED_HOSTS = tuple(
 )
 
 
+# Event kinds this runner knows how to fan out. The default-event used when
+# a subscription omits ``events:`` is ``completion`` — the legacy
+# "agent prompt completed" fan-out that predates #633 — so existing .md
+# files keep their behavior. ``hook.decision`` is the scaffolded kind added
+# for #633; its backend→harness transport is still to-do (see the close
+# comment and follow-up gap), but subscribers can already opt in to
+# hook.decision[:deny|:warn|:allow] so the filter path can be covered by
+# tests and documentation today.
+EVENT_KIND_COMPLETION = "completion"
+EVENT_KIND_HOOK_DECISION = "hook.decision"
+_DEFAULT_EVENT_KINDS: tuple[str, ...] = (EVENT_KIND_COMPLETION,)
+_KNOWN_EVENT_KINDS: frozenset[str] = frozenset({EVENT_KIND_COMPLETION, EVENT_KIND_HOOK_DECISION})
+_HOOK_DECISION_SUB_KINDS: frozenset[str] = frozenset({"allow", "warn", "deny"})
+
+
 @dataclass
 class WebhookSubscription:
     path: str
@@ -182,6 +197,67 @@ class WebhookSubscription:
     backend_id: str | None = None
     model: str | None = None
     max_concurrent_deliveries: int = WEBHOOK_MAX_CONCURRENT_DELIVERIES_PER_SUB
+    # Subscribed event kinds (#633). ``None`` / missing in frontmatter means
+    # "legacy completion-only fan-out" so existing subscribers are unaffected.
+    # Accepted entries: "completion", "hook.decision", or the qualified forms
+    # "hook.decision:allow" / ":warn" / ":deny" for finer-grained filtering.
+    events: list[str] = field(default_factory=lambda: list(_DEFAULT_EVENT_KINDS))
+
+
+def _normalize_events_field(raw: object, path: str) -> list[str]:
+    """Normalize and validate a frontmatter ``events:`` value.
+
+    Returns the default (``["completion"]``) when the field is missing or
+    empty, preserving the pre-#633 behavior for subscribers that do not opt
+    in to the new kinds. Unknown kinds are dropped with a warning so a typo
+    never silently widens the subscription.
+    """
+    if raw is None or raw == "":
+        return list(_DEFAULT_EVENT_KINDS)
+    items = _parse_list_field(raw)
+    if not items:
+        return list(_DEFAULT_EVENT_KINDS)
+    cleaned: list[str] = []
+    for item in items:
+        base, _, sub = item.partition(":")
+        base = base.strip()
+        sub = sub.strip()
+        if base not in _KNOWN_EVENT_KINDS:
+            logger.warning(
+                f"Webhook file {path}: unknown event kind {item!r} — dropping. "
+                f"Known kinds: {sorted(_KNOWN_EVENT_KINDS)}."
+            )
+            continue
+        if sub:
+            if base != EVENT_KIND_HOOK_DECISION or sub not in _HOOK_DECISION_SUB_KINDS:
+                logger.warning(
+                    f"Webhook file {path}: unsupported event qualifier {item!r} — dropping. "
+                    f"hook.decision supports {sorted(_HOOK_DECISION_SUB_KINDS)}."
+                )
+                continue
+            cleaned.append(f"{base}:{sub}")
+        else:
+            cleaned.append(base)
+    return cleaned or list(_DEFAULT_EVENT_KINDS)
+
+
+def _events_match(sub_events: list[str], event_kind: str, qualifier: str | None) -> bool:
+    """Return True when *sub_events* subscribes to this (kind, qualifier) pair.
+
+    Matching rules:
+      * ``completion`` — plain kind match, no qualifier.
+      * ``hook.decision`` — matches either the bare kind (any qualifier) or
+        the exact ``hook.decision:<qualifier>`` entry.
+    """
+    if event_kind == EVENT_KIND_COMPLETION:
+        return EVENT_KIND_COMPLETION in sub_events
+    if event_kind == EVENT_KIND_HOOK_DECISION:
+        if EVENT_KIND_HOOK_DECISION in sub_events:
+            return True
+        if qualifier and f"{EVENT_KIND_HOOK_DECISION}:{qualifier}" in sub_events:
+            return True
+        return False
+    return False
 
 
 def _resolve_env_vars(text: str) -> str:
@@ -419,6 +495,10 @@ def parse_webhook_file(path: str) -> "WebhookSubscription | object | None":
         name = fields.get("name") or filename
         description = fields.get("description") or None
 
+        # events: list (#633) — defaults to legacy completion-only when absent
+        # so existing .md files keep their pre-#633 fan-out semantics.
+        events = _normalize_events_field(parsed_yaml.get("events"), path)
+
         return WebhookSubscription(
             path=path,
             name=name,
@@ -439,6 +519,7 @@ def parse_webhook_file(path: str) -> "WebhookSubscription | object | None":
             backend_id=backend_id,
             model=model,
             max_concurrent_deliveries=max_concurrent_deliveries,
+            events=events,
         )
 
     except Exception as e:
@@ -474,7 +555,15 @@ def _matches_filters(
     kind: str,
     response_preview: str,
 ) -> bool:
-    """Return True if all three filters pass for this subscription."""
+    """Return True if all filters pass for this subscription (legacy completion fan-out).
+
+    A subscription that does not list ``completion`` in its ``events:`` field
+    is considered opted out of the legacy fan-out path, so completion events
+    skip it entirely (#633).
+    """
+    if not _events_match(sub.events, EVENT_KIND_COMPLETION, None):
+        return False
+
     if sub.notify_when == "on_success" and not success:
         return False
     if sub.notify_when == "on_error" and success:
@@ -517,6 +606,33 @@ def _render_default_envelope(context: dict) -> str:
             "duration_seconds": context.get("duration_seconds", 0.0),
             "response_preview": context.get("response_preview", ""),
             "model": context.get("model") or None,
+        },
+    }
+    return json.dumps(envelope)
+
+
+def _render_hook_decision_envelope(context: dict) -> str:
+    """Default JSON envelope for the ``hook.decision`` webhook event kind (#633).
+
+    The ``traceparent`` field carries the W3C trace-context header so webhook
+    receivers can correlate with the trace that produced the decision. All
+    fields match the attribute set stamped onto the OTel span event in
+    :func:`a2-claude/executor._make_pre_tool_use_hook._hook`, so operators
+    see the same shape whether they consume traces or webhooks.
+    """
+    envelope = {
+        "event": "hook.decision",
+        "agent": context.get("agent", AGENT_NAME),
+        "timestamp": context.get("timestamp", ""),
+        "delivery_id": context.get("delivery_id", ""),
+        "payload": {
+            "session_id": context.get("session_id", ""),
+            "tool": context.get("tool", ""),
+            "decision": context.get("decision", ""),
+            "rule_name": context.get("rule_name", ""),
+            "reason": context.get("reason", ""),
+            "source": context.get("source", ""),
+            "traceparent": context.get("traceparent") or None,
         },
     }
     return json.dumps(envelope)
@@ -816,6 +932,85 @@ async def deliver(
         agent_webhooks_delivery_total.labels(result=result, subscription=sub.name).inc()
 
 
+async def _deliver_hook_decision(
+    sub: WebhookSubscription,
+    context: dict,
+    client: httpx.AsyncClient,
+) -> None:
+    """Slim deliverer for hook.decision events (#633).
+
+    Unlike :func:`deliver`, hook.decision events carry no ``response`` to run
+    LLM extractions against, so this path skips the extraction pipeline and
+    uses the dedicated :func:`_render_hook_decision_envelope` when the
+    subscription does not supply its own ``body:`` template. Retry semantics
+    and per-attempt timeouts are intentionally omitted from the scaffold —
+    this is a fire-once best-effort path; retries can be folded in later if
+    the backend→harness transport gap (deferred follow-up to #633) shows
+    they're needed in production.
+    """
+    url = _substitute_url(sub.url_template, context)
+    if not url:
+        logger.warning(f"Webhook '{sub.name}': URL resolved to empty string — skipping hook.decision delivery.")
+        return
+    url_error = _validate_url(url)
+    if url_error is not None:
+        logger.error(f"Webhook '{sub.name}': resolved URL rejected — {url_error}.")
+        return
+
+    if sub.body_template:
+        body = _substitute(sub.body_template, context)
+    else:
+        body = _render_hook_decision_envelope(context)
+
+    body_bytes = body.encode("utf-8")
+    if len(body_bytes) > 256 * 1024:
+        body_bytes = body_bytes[: 256 * 1024].decode("utf-8", errors="ignore").encode("utf-8")
+
+    headers = {"Content-Type": sub.content_type}
+    for k, v in sub.headers.items():
+        headers[k] = _substitute(v, context)
+    if sub.signing_secret:
+        headers["X-Hub-Signature-256"] = _sign_body(body_bytes, sub.signing_secret)
+    # Forward the trace-context header that arrived with the event so the
+    # webhook receiver stays correlated with the trace that produced the
+    # hook decision. Fall back to whatever the OTel layer injects when no
+    # explicit traceparent was provided.
+    tp = context.get("traceparent")
+    if tp:
+        headers["traceparent"] = tp
+
+    result = "unknown"
+    with start_span(
+        "webhook.hook_decision",
+        kind="client",
+        attributes={
+            "nyx.webhook.name": sub.name,
+            "nyx.hook.decision": context.get("decision", ""),
+            "nyx.hook.tool": context.get("tool", ""),
+            "nyx.hook.rule_name": context.get("rule_name", ""),
+            "http.url": url,
+        },
+    ) as _span:
+        inject_traceparent(headers)
+        try:
+            resp = await client.post(
+                url, content=body_bytes, headers=headers, timeout=sub.timeout_seconds,
+            )
+            if resp.status_code < 400:
+                result = "success"
+                logger.info(f"Webhook '{sub.name}' hook.decision delivered to {url} — {resp.status_code}")
+            else:
+                result = f"http_{resp.status_code}"
+                logger.warning(f"Webhook '{sub.name}' hook.decision got {resp.status_code}")
+        except Exception as exc:
+            result = "error"
+            set_span_error(_span, exc)
+            logger.warning(f"Webhook '{sub.name}' hook.decision delivery failed: {exc!r}")
+
+    if agent_webhooks_delivery_total is not None:
+        agent_webhooks_delivery_total.labels(result=result, subscription=sub.name).inc()
+
+
 class WebhookRunner:
     def __init__(self, backends: dict | None = None, default_backend_id: str | None = None):
         self._items: dict[str, WebhookSubscription] = {}
@@ -860,6 +1055,7 @@ class WebhookRunner:
                 "model": sub.model,
                 "active_deliveries": len(self._deliveries_by_name.get(sub.name, set())),
                 "max_concurrent_deliveries": sub.max_concurrent_deliveries,
+                "events": list(sub.events),
             })
         return result
 
@@ -984,6 +1180,92 @@ class WebhookRunner:
                         if not _dels:
                             self._deliveries_by_name.pop(_name, None)
                 _t.add_done_callback(_cleanup)
+
+    def fire_hook_decision(
+        self,
+        agent: str,
+        session_id: str,
+        tool: str,
+        decision: str,
+        rule_name: str,
+        reason: str,
+        source: str,
+        traceparent: str | None = None,
+    ) -> None:
+        """Fan a ``hook.decision`` event out to subscribed webhooks (#633).
+
+        Scaffolded path: accepts the structured payload shape documented in
+        #633 and dispatches to every subscription whose ``events:`` list
+        includes ``hook.decision`` (or the specific ``hook.decision:<decision>``
+        qualifier). A follow-up gap will wire the backend→harness transport
+        that populates this call site from the backends' hook callbacks;
+        until then, harness-side callers (e.g. future harness-owned hooks)
+        can invoke it directly, and unit tests can exercise the fan-out.
+        """
+        qualifier = decision if decision in _HOOK_DECISION_SUB_KINDS else None
+        delivery_id = str(uuid.uuid4())
+        timestamp = datetime.now(timezone.utc).isoformat()
+        context: dict = {
+            "agent": agent or AGENT_NAME,
+            "session_id": session_id,
+            "tool": tool,
+            "decision": decision,
+            "rule_name": rule_name,
+            "reason": reason,
+            "source": source,
+            "traceparent": traceparent,
+            "timestamp": timestamp,
+            "delivery_id": delivery_id,
+            # ``kind`` is populated for URL-template compatibility with the
+            # documented allow-list; we reuse the event name so URL templates
+            # referencing {{kind}} render something meaningful.
+            "kind": EVENT_KIND_HOOK_DECISION,
+            "success": decision != "deny",
+            "error": "",
+            "duration_seconds": 0.0,
+            "response_preview": "",
+            "model": "",
+        }
+
+        for sub in self._items.values():
+            if not _events_match(sub.events, EVENT_KIND_HOOK_DECISION, qualifier):
+                continue
+            # Per-subscription cap mirrors the completion path so a noisy
+            # receiver can't starve the rest.
+            sub_deliveries = self._deliveries_by_name.get(sub.name, set())
+            if len(sub_deliveries) >= sub.max_concurrent_deliveries:
+                logger.warning(
+                    f"Webhook '{sub.name}': per-subscription max concurrent deliveries "
+                    f"({sub.max_concurrent_deliveries}) reached — shedding hook.decision delivery."
+                )
+                if agent_webhooks_delivery_shed_total is not None:
+                    agent_webhooks_delivery_shed_total.labels(subscription=sub.name).inc()
+                continue
+            if len(self._active_deliveries) >= WEBHOOK_MAX_CONCURRENT_DELIVERIES:
+                logger.warning(
+                    f"Webhook '{sub.name}': global max concurrent deliveries "
+                    f"({WEBHOOK_MAX_CONCURRENT_DELIVERIES}) reached — shedding hook.decision delivery."
+                )
+                if agent_webhooks_delivery_shed_total is not None:
+                    agent_webhooks_delivery_shed_total.labels(subscription=sub.name).inc()
+                continue
+
+            _t = asyncio.create_task(
+                _deliver_hook_decision(sub, context, self._get_client())
+            )
+            self._active_deliveries.add(_t)
+            deliveries = self._deliveries_by_name.setdefault(sub.name, set())
+            deliveries.add(_t)
+
+            def _cleanup(t: asyncio.Task, _name: str = sub.name) -> None:
+                self._active_deliveries.discard(t)
+                _dels = self._deliveries_by_name.get(_name)
+                if _dels is not None:
+                    _dels.discard(t)
+                    if not _dels:
+                        self._deliveries_by_name.pop(_name, None)
+
+            _t.add_done_callback(_cleanup)
 
     async def run(self) -> None:
         logger.info(f"Webhook runner watching {WEBHOOKS_DIR}")

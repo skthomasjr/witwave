@@ -509,6 +509,28 @@ def _make_pre_tool_use_hook(state: HookState):
                 **_LABELS, tool=tool_name or "unknown", decision=decision,
             ).inc()
 
+        # Emit a span event on the current OTel span for allow/warn/deny so
+        # hook decisions surface in trace UIs alongside the tool invocation
+        # that triggered them (#633). No-op when OTel is disabled or no
+        # current span is active. Wrapped in a bare try/except because
+        # observability must never break hook evaluation.
+        try:
+            from opentelemetry import trace as _otel_trace
+            _span = _otel_trace.get_current_span()
+            if _span is not None and _span.is_recording():
+                _attrs = {
+                    "decision": decision,
+                    "rule": (matched.name if matched is not None else ""),
+                    "source": (matched.source if matched is not None else ""),
+                    "tool": tool_name or "",
+                    "reason": (matched.reason if matched is not None else ""),
+                }
+                _span.add_event("hook.decision", _attrs)
+                if decision == DECISION_DENY:
+                    _span.set_attribute("hook.denied", True)
+        except Exception:
+            pass
+
         if decision == DECISION_DENY and matched is not None:
             if a2_hooks_blocked_total is not None:
                 a2_hooks_blocked_total.labels(

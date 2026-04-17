@@ -29,7 +29,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 from metrics import agent_bus_dedup_total, agent_bus_pending_kinds, agent_bus_queue_depth
 from utils import ConsensusEntry
@@ -144,3 +144,72 @@ class MessageBus:
         self._pending_kinds.discard(kind)
         if agent_bus_pending_kinds is not None:
             agent_bus_pending_kinds.set(len(self._pending_kinds))
+
+
+# ---------------------------------------------------------------------------
+# Side-channel events (#633)
+# ---------------------------------------------------------------------------
+# The queue-based prompt path above deliberately deduplicates by ``kind`` and
+# carries a ``result`` future the caller awaits.  Observability fan-out
+# (webhooks, metrics sinks) has neither requirement: the producer should not
+# block, listeners should not be deduped against one another, and a missing
+# listener must not back-pressure the caller.  We keep those semantics in a
+# separate lightweight callback registry rather than reusing ``MessageBus``.
+#
+# As of #633 the only event shape defined on this channel is
+# :class:`HookDecisionEvent`.  Backends (which run in a separate process from
+# the harness today) cannot reach this registry directly — a follow-up gap
+# will file the cross-process transport.  The in-process scaffold exists so
+# harness-side call sites and unit tests have a stable API to target before
+# that transport lands.
+
+
+@dataclass
+class HookDecisionEvent:
+    """Structured record of a single PreToolUse hook decision (#633).
+
+    Emitted whenever an a2-claude hook evaluator finalises a decision
+    (allow / warn / deny).  Mirrors the attribute set stamped onto the OTel
+    span event so downstream consumers see the same shape regardless of the
+    transport.  ``traceparent`` is a serialised W3C trace-context header so
+    webhook receivers can correlate the event with the originating trace.
+    """
+
+    agent: str
+    session_id: str
+    tool: str
+    decision: str  # "allow" | "warn" | "deny"
+    rule_name: str
+    reason: str
+    source: str  # "baseline" | "extension" | ...
+    traceparent: str | None = None
+
+
+# Registered listener callbacks.  Each is invoked synchronously from
+# :func:`publish_hook_decision`; a listener that must do async work should
+# schedule it onto its own loop (e.g. ``asyncio.create_task``).  Failures in
+# any one listener must not prevent the others from running and must never
+# propagate out of ``publish_hook_decision``.
+_hook_decision_listeners: list[Callable[[HookDecisionEvent], None]] = []
+
+
+def subscribe_hook_decision(listener: Callable[[HookDecisionEvent], None]) -> None:
+    """Register *listener* for future :class:`HookDecisionEvent` publications."""
+    _hook_decision_listeners.append(listener)
+
+
+def unsubscribe_hook_decision(listener: Callable[[HookDecisionEvent], None]) -> None:
+    """Remove a previously registered listener. No-op if not registered."""
+    try:
+        _hook_decision_listeners.remove(listener)
+    except ValueError:
+        pass
+
+
+def publish_hook_decision(event: HookDecisionEvent) -> None:
+    """Fan ``event`` out to every registered listener. Never raises."""
+    for listener in list(_hook_decision_listeners):
+        try:
+            listener(event)
+        except Exception as exc:  # pragma: no cover — best-effort side channel
+            logger.warning("hook.decision listener %r raised: %r", listener, exc)
