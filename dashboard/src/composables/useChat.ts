@@ -1,4 +1,4 @@
-import { ref, shallowRef } from "vue";
+import { onUnmounted, ref, shallowRef } from "vue";
 import { apiGet, apiPost, ApiError } from "../api/client";
 import type {
   A2AResponse,
@@ -15,6 +15,12 @@ import { extractReplyText } from "../types/chat";
 // we send — we reuse it across sends so the backend can thread the
 // conversation. It resets when the composable is recreated.
 
+// Default send timeout. Long enough to accommodate slow LLM responses without
+// leaving the UI wedged forever when the harness, backend, or network stalls
+// mid-request (#535). Callers can override per useChat() invocation.
+const DEFAULT_SEND_TIMEOUT_MS = 120_000;
+const DEFAULT_HISTORY_TIMEOUT_MS = 30_000;
+
 function randomId(): string {
   // crypto.randomUUID isn't universally typed in older TS lib sets, but every
   // supported target (vitest jsdom, modern browsers) has it.
@@ -23,6 +29,8 @@ function randomId(): string {
 
 export interface UseChatOptions {
   agentName: string;
+  sendTimeoutMs?: number;
+  historyTimeoutMs?: number;
 }
 
 export function useChat(opts: UseChatOptions) {
@@ -32,12 +40,37 @@ export function useChat(opts: UseChatOptions) {
   const historyError = ref<string>("");
 
   const contextId = randomId();
+  const sendTimeoutMs = opts.sendTimeoutMs ?? DEFAULT_SEND_TIMEOUT_MS;
+  const historyTimeoutMs = opts.historyTimeoutMs ?? DEFAULT_HISTORY_TIMEOUT_MS;
+
+  // Tracks the in-flight send so both the user (via cancel()) and the
+  // unmount teardown can abort an orphaned fetch. Only one send is allowed
+  // at a time because `sending` gates submission.
+  let sendController: AbortController | null = null;
+  let historyController: AbortController | null = null;
 
   function push(msg: ChatMessage): void {
     messages.value = [...messages.value, msg];
   }
 
+  function isAbortError(e: unknown): boolean {
+    if (e instanceof DOMException) {
+      return e.name === "AbortError" || e.name === "TimeoutError";
+    }
+    const err = e as { name?: string } | null;
+    return !!err && (err.name === "AbortError" || err.name === "TimeoutError");
+  }
+
+  function isTimeoutError(e: unknown): boolean {
+    if (e instanceof DOMException) return e.name === "TimeoutError";
+    const err = e as { name?: string } | null;
+    return !!err && err.name === "TimeoutError";
+  }
+
   async function loadHistory(): Promise<void> {
+    historyController?.abort();
+    const controller = new AbortController();
+    historyController = controller;
     loadingHistory.value = true;
     historyError.value = "";
     try {
@@ -45,7 +78,11 @@ export function useChat(opts: UseChatOptions) {
       // dashboard nginx to that agent's service, no harness fan-out (#470).
       const entries = await apiGet<ConversationEntry[]>(
         `/agents/${encodeURIComponent(opts.agentName)}/conversations`,
-        { query: { limit: "50" } },
+        {
+          query: { limit: "50" },
+          signal: controller.signal,
+          timeoutMs: historyTimeoutMs,
+        },
       );
       messages.value = entries
         .filter((e) => (e.text ?? "").trim().length > 0)
@@ -56,9 +93,11 @@ export function useChat(opts: UseChatOptions) {
           ts: e.ts,
         }));
     } catch (e) {
+      if (isAbortError(e)) return;
       historyError.value =
         e instanceof ApiError ? e.message : (e as Error).message;
     } finally {
+      if (historyController === controller) historyController = null;
       loadingHistory.value = false;
     }
   }
@@ -69,6 +108,9 @@ export function useChat(opts: UseChatOptions) {
 
     push({ role: "user", text: trimmed, label: "you" });
     sending.value = true;
+
+    const controller = new AbortController();
+    sendController = controller;
 
     // Direct to the named agent's A2A root. Backend selection travels in
     // message metadata — every harness's executor already honors
@@ -95,6 +137,7 @@ export function useChat(opts: UseChatOptions) {
       const resp = await apiPost<A2AResponse>(
         `/agents/${encodeURIComponent(opts.agentName)}/`,
         body,
+        { signal: controller.signal, timeoutMs: sendTimeoutMs },
       );
       if (resp.error) {
         push({
@@ -119,12 +162,42 @@ export function useChat(opts: UseChatOptions) {
         });
       }
     } catch (e) {
-      const msg = e instanceof ApiError ? e.message : (e as Error).message;
-      push({ role: "error", text: msg, label: "error" });
+      if (isTimeoutError(e)) {
+        push({
+          role: "error",
+          text: `request timed out after ${Math.round(sendTimeoutMs / 1000)}s`,
+          label: "timeout",
+        });
+      } else if (isAbortError(e)) {
+        // User cancelled — keep the label distinct from "timeout" so operators
+        // can tell a deliberate cancel from a stalled backend.
+        push({
+          role: "error",
+          text: "cancelled",
+          label: "cancelled",
+        });
+      } else {
+        const msg = e instanceof ApiError ? e.message : (e as Error).message;
+        push({ role: "error", text: msg, label: "error" });
+      }
     } finally {
+      if (sendController === controller) sendController = null;
       sending.value = false;
     }
   }
+
+  function cancel(): void {
+    sendController?.abort();
+  }
+
+  // The composable is recreated per agent via :key="member.name", so
+  // onUnmounted fires on both agent switch and full unmount. Aborting here
+  // guarantees the orphaned fetch releases its connection instead of
+  // outliving the panel until the tab reloads.
+  onUnmounted(() => {
+    sendController?.abort();
+    historyController?.abort();
+  });
 
   return {
     messages,
@@ -133,5 +206,6 @@ export function useChat(opts: UseChatOptions) {
     historyError,
     loadHistory,
     send,
+    cancel,
   };
 }

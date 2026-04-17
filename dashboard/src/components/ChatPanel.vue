@@ -19,8 +19,15 @@ const emit = defineEmits<{
   (e: "select-backend", backendId: string): void;
 }>();
 
-const { messages, sending, loadingHistory, historyError, loadHistory, send } =
-  useChat({ agentName: props.agentName });
+const {
+  messages,
+  sending,
+  loadingHistory,
+  historyError,
+  loadHistory,
+  send,
+  cancel,
+} = useChat({ agentName: props.agentName });
 
 const input = ref("");
 const feed = useTemplateRef<HTMLElement>("feed");
@@ -130,14 +137,26 @@ onMounted(async () => {
         @keydown="onKeydown"
       />
       <button
+        v-if="!sending"
         type="submit"
         class="chat-send-btn"
-        :disabled="sending || input.trim().length === 0"
+        :disabled="input.trim().length === 0"
         aria-label="send message"
         title="Send (enter)"
         data-testid="chat-send"
       >
         <i class="pi pi-send" aria-hidden="true" />
+      </button>
+      <button
+        v-else
+        type="button"
+        class="chat-send-btn chat-cancel-btn"
+        aria-label="cancel request"
+        title="Cancel"
+        data-testid="chat-cancel"
+        @click="cancel"
+      >
+        <i class="pi pi-times" aria-hidden="true" />
       </button>
     </form>
   </div>
@@ -390,5 +409,9 @@ onMounted(async () => {
 .chat-send-btn:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+.chat-cancel-btn {
+  background: var(--nyx-red, #b94a4a);
 }
 </style>
