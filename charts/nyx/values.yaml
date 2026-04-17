@@ -201,6 +201,23 @@ serviceMonitor:
   # (e.g. release: kube-prometheus-stack).
   labels: {}
 
+# PodMonitor for the Prometheus Operator (#582). Scrapes backend /metrics
+# endpoints directly on the pod. Required for backend observability because
+# the per-agent Service only publishes the harness port — ServiceMonitor
+# cannot reach backend container ports through it. When enabled, one
+# PodMonitor is rendered per agent that has metrics enabled, with one
+# endpoint per enabled backend. Off by default so the chart never references
+# monitoring.coreos.com CRDs unless the user opts in.
+podMonitor:
+  enabled: false
+  # Forwarded to each PodMonitor's podMetricsEndpoints[].
+  scrapeInterval: 30s
+  scrapeTimeout: 10s
+  # Extra labels merged into every PodMonitor's metadata. Useful when
+  # the cluster's Prometheus selects PodMonitors by a tenancy label
+  # (e.g. release: kube-prometheus-stack).
+  labels: {}
+
 # Shared storage volume mounted into all agent pods and backend sidecars.
 sharedStorage:
   # Enable shared storage.
