@@ -79,6 +79,26 @@ WEBHOOK_EXTRACTION_TIMEOUT = float(os.environ.get("WEBHOOK_EXTRACTION_TIMEOUT", 
 WEBHOOK_CLIENT_MAX_CONNECTIONS = int(os.environ.get("WEBHOOK_CLIENT_MAX_CONNECTIONS", "50"))
 WEBHOOK_CLIENT_MAX_KEEPALIVE = int(os.environ.get("WEBHOOK_CLIENT_MAX_KEEPALIVE", "20"))
 
+# HTTP status codes that are safe to retry — mirrors the inbound A2A pattern
+# at backends/a2a.py:35 (#598). 408 (Request Timeout) and 429 (Too Many
+# Requests) are the only legitimately retryable 4xx codes; everything else in
+# the 4xx range is treated as a permanent client error (bad URL, bad auth,
+# validation failure) that will not recover by resending the same POST with
+# the same body and headers. 5xx and connection errors remain retryable.
+_RETRYABLE_STATUS_CODES: frozenset[int] = frozenset({408, 429, 500, 502, 503, 504})
+
+
+def _is_retryable_http(status_code: int) -> bool:
+    """Return True when an HTTP status code warrants another delivery attempt.
+
+    Retries any 5xx response plus the explicit retryable 4xx codes (408, 429).
+    All other 4xx codes are treated as permanent client errors (#598).
+    """
+    if status_code in _RETRYABLE_STATUS_CODES:
+        return True
+    # Any other 5xx (e.g. 501, 507) — still transient server-side.
+    return 500 <= status_code < 600
+
 
 def _build_shared_client() -> httpx.AsyncClient:
     """Construct the shared outbound AsyncClient used across all webhook
@@ -565,6 +585,12 @@ async def _retry_deliver(
                 break
             else:
                 result = f"http_{resp.status_code}"
+                if not _is_retryable_http(resp.status_code):
+                    logger.warning(
+                        f"Webhook '{sub.name}' attempt {attempt} got {resp.status_code} — "
+                        f"permanent client error; aborting retry chain (#598)"
+                    )
+                    break
                 logger.warning(f"Webhook '{sub.name}' attempt {attempt} got {resp.status_code}")
         except Exception as exc:
             result = "error"
@@ -721,13 +747,26 @@ async def deliver(
                 logger.info(f"Webhook '{sub.name}' delivered to {url} — {resp.status_code}")
             else:
                 result = f"http_{resp.status_code}"
-                logger.warning(f"Webhook '{sub.name}' attempt 1 got {resp.status_code}")
+                if not _is_retryable_http(resp.status_code):
+                    logger.warning(
+                        f"Webhook '{sub.name}' attempt 1 got {resp.status_code} — "
+                        f"permanent client error; skipping retry chain (#598)"
+                    )
+                else:
+                    logger.warning(f"Webhook '{sub.name}' attempt 1 got {resp.status_code}")
         except Exception as exc:
             result = "error"
             set_span_error(_span, exc)
             logger.warning(f"Webhook '{sub.name}' attempt 1 failed: {exc!r}")
 
-    if result != "success" and sub.retries > 0:
+    # Decide whether the first-attempt outcome warrants scheduling the retry
+    # chain. Network/timeout errors ("error") and retryable HTTP codes follow
+    # the retry path; permanent 4xx client errors fall through to the single-
+    # record metric path below (#598).
+    _is_retryable_result = result == "error" or (
+        result.startswith("http_") and _is_retryable_http(int(result.split("_", 1)[1]))
+    )
+    if result != "success" and sub.retries > 0 and _is_retryable_result:
         # Record the initial failure before dispatching the retry chain so that
         # the first attempt's outcome is always visible in metrics (#375/#382).
         if agent_webhooks_delivery_total is not None:
