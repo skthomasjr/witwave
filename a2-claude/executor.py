@@ -75,6 +75,7 @@ from metrics import (
     a2_session_evictions_total,
     a2_session_history_save_errors_total,
     a2_session_idle_seconds,
+    a2_session_path_mismatch_total,
     a2_session_starts_total,
     a2_stderr_lines_per_task,
     a2_task_cancellations_total,
@@ -169,6 +170,152 @@ def _session_file_exists(session_id: str) -> bool:
         if a2_session_history_save_errors_total is not None:
             a2_session_history_save_errors_total.labels(**_LABELS).inc()
         return False
+
+
+def _session_path_self_test() -> None:
+    """Startup probe for Claude Agent SDK on-disk layout drift (#530).
+
+    The backend derives session file paths via a hand-rolled port of what the
+    Claude CLI *appears* to do: ``<config_home>/projects/<sanitized_cwd>/<session_id>.jsonl``
+    with a JS-style 32-bit hash for long paths. If a future SDK/CLI release
+    changes that shape (moves to SQLite, adopts an index file, swaps the
+    sanitizer, switches to a 64-bit hash, etc.), ``_session_file_path`` will
+    resolve to a wrong-but-plausible path. The consequences are silent:
+
+    - ``_session_file_exists`` returns False for every post-restart resume,
+      causing one wasted subprocess spawn + retry per cold request.
+    - ``_track_session`` and the timeout path unlink the wrong file with
+      ``missing_ok=True``, so disk usage grows unbounded.
+
+    This probe runs once at startup. It **never** spawns a ClaudeSDKClient,
+    issues a query, or touches the network — it is read-only filesystem +
+    internal SDK attribute inspection, so cold-start cost is ~milliseconds and
+    no tokens are billed. Any failure is logged loud (WARN/ERROR) and
+    ``a2_session_path_mismatch_total`` is incremented with a ``reason`` label
+    so operators can alert on drift. A broken probe must never prevent the
+    agent from starting — this function swallows every exception.
+
+    Upstream ask: a first-class SDK API (``get_session_file_path(session_id)``
+    or ``session_file_exists(session_id)``) would make this probe obsolete
+    and remove the hand-rolled hash entirely.
+    """
+    import pathlib
+
+    def _bump(reason: str) -> None:
+        if a2_session_path_mismatch_total is not None:
+            try:
+                a2_session_path_mismatch_total.labels(**_LABELS, reason=reason).inc()
+            except Exception:
+                # Metric emission must never crash startup.
+                pass
+
+    try:
+        # (1) Shape check — the function we rely on must return a pathlib.Path
+        # whose layout matches our documented assumption. A probe session id
+        # is fine here; we never write the file, we only inspect the name.
+        probe_id = "0000probe-self-test-0000"
+        resolved = _session_file_path(probe_id)
+        if resolved is None:
+            logger.error(
+                "session-path self-test: _session_file_path returned None for probe id %r — "
+                "layout helper is broken; eviction/timeout unlinks will no-op, disk may grow. "
+                "See #530.",
+                probe_id,
+            )
+            _bump("resolver_returned_none")
+            return
+
+        if not isinstance(resolved, pathlib.Path):
+            logger.error(
+                "session-path self-test: _session_file_path returned %r (type=%s) — "
+                "expected pathlib.Path. See #530.",
+                resolved, type(resolved).__name__,
+            )
+            _bump("resolver_wrong_type")
+            return
+
+        # Expected shape: .../projects/<sanitized_cwd>/<session_id>.jsonl
+        parts = resolved.parts
+        if resolved.suffix != ".jsonl":
+            logger.warning(
+                "session-path self-test: resolved path %r does not end in .jsonl — "
+                "Claude Agent SDK on-disk layout may have changed (e.g. moved to SQLite). "
+                "See #530.",
+                str(resolved),
+            )
+            _bump("suffix_not_jsonl")
+        if "projects" not in parts:
+            logger.warning(
+                "session-path self-test: resolved path %r has no 'projects' segment — "
+                "SDK layout may have changed. See #530.",
+                str(resolved),
+            )
+            _bump("missing_projects_segment")
+        if resolved.stem != probe_id:
+            logger.warning(
+                "session-path self-test: resolved stem %r does not match probe id %r — "
+                "session-id handling has changed. See #530.",
+                resolved.stem, probe_id,
+            )
+            _bump("stem_mismatch")
+
+        # (2) Cross-check against any files the SDK has actually written on
+        # disk before this process started. If the sessions directory we
+        # derived is missing but *some* projects directory exists with the
+        # same config_home, the sanitizer has almost certainly drifted.
+        sessions_dir = resolved.parent
+        config_projects_dir = sessions_dir.parent
+        if config_projects_dir.exists() and config_projects_dir.is_dir():
+            if not sessions_dir.exists():
+                # Other project subdirs exist but ours does not — strong
+                # signal that _sanitize() disagrees with the CLI. Only warn
+                # when there are peer entries; an empty projects/ dir on a
+                # fresh install is not a mismatch.
+                try:
+                    peers = [p.name for p in config_projects_dir.iterdir() if p.is_dir()]
+                except OSError:
+                    peers = []
+                if peers:
+                    logger.warning(
+                        "session-path self-test: expected sessions dir %r does not exist "
+                        "but sibling project dirs %r do — sanitizer may have drifted "
+                        "from the CLI. Eviction/timeout unlinks will target the wrong "
+                        "location. See #530.",
+                        str(sessions_dir), peers[:5],
+                    )
+                    _bump("sanitized_cwd_not_found")
+
+        # (3) Best-effort static check that claude_agent_sdk still ships the
+        # symbols we consume. If a future release renames or removes these,
+        # _make_options / run_query will fail at call time; this tells us at
+        # startup instead so operators have a clean signal.
+        try:
+            import claude_agent_sdk as _sdk
+            for _symbol in ("ClaudeAgentOptions", "ClaudeSDKClient", "HookMatcher"):
+                if not hasattr(_sdk, _symbol):
+                    logger.error(
+                        "session-path self-test: claude_agent_sdk is missing expected "
+                        "symbol %r — SDK version incompatible. See #530.",
+                        _symbol,
+                    )
+                    _bump(f"sdk_symbol_missing_{_symbol}")
+        except ImportError:
+            # The SDK is a hard dependency at the top of this module; if it
+            # is somehow missing here, import would have failed earlier. Swallow.
+            pass
+
+        logger.info(
+            "session-path self-test: ok — resolver layout matches documented conventions "
+            "(%r).",
+            str(resolved),
+        )
+    except Exception as exc:
+        # Broken probe must not take the agent offline.
+        logger.warning(
+            "session-path self-test raised %r — continuing startup. See #530.",
+            exc,
+        )
+        _bump("probe_exception")
 
 AGENT_NAME = os.environ.get("AGENT_NAME", "a2-claude")
 AGENT_OWNER = os.environ.get("AGENT_OWNER", AGENT_NAME)
@@ -860,6 +1007,12 @@ class AgentExecutor(A2AAgentExecutor):
         if a2_hooks_active_rules is not None:
             a2_hooks_active_rules.labels(**_LABELS, source="baseline").set(len(self._hook_state.baseline))
             a2_hooks_active_rules.labels(**_LABELS, source="extension").set(0)
+        # One-shot probe for Claude Agent SDK on-disk layout drift (#530).
+        # Read-only filesystem + attribute inspection; no SDK subprocess is
+        # spawned and no LLM query is fired. Emits a2_session_path_mismatch_total
+        # labelled by reason when the layout helper's assumptions no longer
+        # match reality. Must never prevent startup — wrapped internally.
+        _session_path_self_test()
 
     def _mcp_watchers(self):
         """Return callables for MCP config, CLAUDE.md, and hooks.yaml watching."""

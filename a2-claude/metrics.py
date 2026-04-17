@@ -55,6 +55,9 @@ a2_log_write_errors_total: prometheus_client.Counter | None = None
 # Session history persistence metrics
 a2_session_history_save_errors_total: prometheus_client.Counter | None = None
 
+# Session path layout drift metrics (#530)
+a2_session_path_mismatch_total: prometheus_client.Counter | None = None
+
 # Claude SDK / subprocess metrics
 a2_sdk_subprocess_spawn_duration_seconds: prometheus_client.Histogram | None = None
 a2_sdk_query_duration_seconds: prometheus_client.Histogram | None = None
@@ -281,6 +284,17 @@ if _enabled:
         "a2_session_history_save_errors_total",
         "Total failures when detecting or accessing session files on disk.",
         ["agent", "agent_id", "backend"],
+    )
+
+    # Session path layout drift (#530)
+    a2_session_path_mismatch_total = prometheus_client.Counter(
+        "a2_session_path_mismatch_total",
+        "Total startup self-test observations that the Claude Agent SDK "
+        "on-disk layout has drifted from the conventions the backend assumes "
+        "in _session_file_path. Labelled by probe outcome. A non-zero counter "
+        "means _session_file_path may resolve to the wrong path — eviction "
+        "and timeout unlinks will no-op and disk usage can grow silently.",
+        ["agent", "agent_id", "backend", "reason"],
     )
 
     # SDK / subprocess
