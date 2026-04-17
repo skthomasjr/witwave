@@ -170,6 +170,9 @@ async def _guarded(coro_fn, *args, restart_delay: float = 5.0, critical: bool = 
             raise
         except Exception as exc:
             if time.monotonic() - _attempt_start >= restart_delay:
+                if critical and consecutive_restarts >= WORKER_MAX_RESTARTS and not _ready:
+                    logger.info(f"Task {coro_fn.__name__!r} ran cleanly for >= {restart_delay}s — restoring agent ready")
+                    _ready = True
                 consecutive_restarts = 0
             consecutive_restarts += 1
             logger.error(f"Task {coro_fn.__name__!r} crashed: {exc!r} — restarting in {restart_delay}s (consecutive restart #{consecutive_restarts})")
