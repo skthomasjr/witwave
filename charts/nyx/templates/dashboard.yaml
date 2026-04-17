@@ -40,7 +40,7 @@ spec:
           imagePullPolicy: {{ .Values.dashboard.image.pullPolicy | default "IfNotPresent" }}
           ports:
             - name: http
-              containerPort: 8080
+              containerPort: 3000
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -50,7 +50,7 @@ spec:
           livenessProbe:
             httpGet:
               path: /health
-              port: 8080
+              port: 3000
             initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
             timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
@@ -58,7 +58,7 @@ spec:
           readinessProbe:
             httpGet:
               path: /health
-              port: 8080
+              port: 3000
             initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
             timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
@@ -100,5 +100,5 @@ spec:
   ports:
     - name: http
       port: {{ .Values.dashboard.port | default 80 }}
-      targetPort: 8080
+      targetPort: 3000
 {{- end }}

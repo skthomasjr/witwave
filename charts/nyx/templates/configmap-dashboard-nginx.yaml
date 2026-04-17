@@ -36,7 +36,7 @@ metadata:
 data:
   default.conf.template: |
     server {
-      listen 8080;
+      listen 3000;
       server_name _;
 
       # Required for any proxy_pass that contains a variable (the per-agent

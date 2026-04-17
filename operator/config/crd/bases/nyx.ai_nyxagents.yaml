@@ -1524,7 +1524,7 @@ spec:
                   port:
                     default: 80
                     description: Port is the Service port (the container always listens
-                      on 8080).
+                      on 3000).
                     format: int32
                     maximum: 65535
                     minimum: 1

@@ -1386,7 +1386,7 @@ func buildDashboardConfigMap(agent *nyxv1alpha1.NyxAgent) *corev1.ConfigMap {
 	directory := fmt.Sprintf(`[{"name":%q,"url":%q}]`, agent.Name, fmt.Sprintf("http://%s:%d", agent.Name, agentPort))
 
 	tpl := `server {
-  listen 8080;
+  listen 3000;
   server_name _;
 
   resolver ${NGINX_LOCAL_RESOLVERS} valid=30s ipv6=off;
@@ -1439,7 +1439,7 @@ func buildDashboardConfigMap(agent *nyxv1alpha1.NyxAgent) *corev1.ConfigMap {
 
 // buildDashboardDeployment returns the Deployment for the per-agent Vue 3
 // dashboard, or nil when the dashboard is disabled. The dashboard container
-// always listens on 8080; the Service port is controlled separately via
+// always listens on 3000; the Service port is controlled separately via
 // DashboardSpec.Port. Per-agent nginx routing comes from the sibling
 // ConfigMap built by buildDashboardConfigMap — the browser talks to the
 // dashboard pod, which proxies to the owned agent's harness directly. No
@@ -1467,7 +1467,7 @@ func buildDashboardDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *a
 	}
 
 	probeSpec := nyxv1alpha1.ProbeSpec{}
-	containerPort := int32(8080)
+	containerPort := int32(3000)
 
 	nginxTemplateVol := agent.Name + "-dashboard-nginx"
 
@@ -1546,7 +1546,7 @@ func buildDashboardDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *a
 
 // buildDashboardService returns the ClusterIP Service for the dashboard,
 // or nil when disabled. The Service port defaults to 80 (what users expect
-// to hit in-cluster); targetPort is always 8080 to match the nginx listen.
+// to hit in-cluster); targetPort is always 3000 to match the nginx listen.
 func buildDashboardService(agent *nyxv1alpha1.NyxAgent) *corev1.Service {
 	d := agent.Spec.Dashboard
 	if d == nil || !d.Enabled {
@@ -1568,7 +1568,7 @@ func buildDashboardService(agent *nyxv1alpha1.NyxAgent) *corev1.Service {
 			Ports: []corev1.ServicePort{{
 				Name:       "http",
 				Port:       port,
-				TargetPort: intstr.FromInt(8080),
+				TargetPort: intstr.FromInt(3000),
 			}},
 		},
 	}

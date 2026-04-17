@@ -8,7 +8,7 @@ dashboard:
     # tag: ""
     # # Image pull policy.
     # pullPolicy: IfNotPresent
-  # Service port (the container always listens on 8080; this is the Service port).
+  # Service port (the container always listens on 3000; this is the Service port).
   port: 80
   # Number of replicas.
   # replicas: 1
@@ -24,7 +24,7 @@ dashboard:
   #     cpu: 250m
   #     memory: 128Mi
   # # Pod-level securityContext (the dashboard image runs as non-root and
-  # # binds port 8080, so the Pod Security Standards "restricted" profile is
+  # # binds port 3000, so the Pod Security Standards "restricted" profile is
   # # applicable out of the box when you supply a matching context here).
   # securityContext:
   #   runAsNonRoot: true

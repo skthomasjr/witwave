@@ -758,7 +758,7 @@ type DashboardSpec struct {
 	// +optional
 	Replicas *int32 `json:"replicas,omitempty"`
 
-	// Port is the Service port (the container always listens on 8080).
+	// Port is the Service port (the container always listens on 3000).
 	// +kubebuilder:default=80
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=65535

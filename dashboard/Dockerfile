@@ -12,8 +12,10 @@ COPY dashboard/ ./
 RUN npm run build
 
 FROM nginxinc/nginx-unprivileged:1.27-bookworm
-# nginx-unprivileged runs as uid 101 (nginx) and binds on 8080 by default,
-# so the pod runs with runAsNonRoot: true without capability tricks.
+# nginx-unprivileged runs as uid 101 (nginx) and can bind any non-privileged
+# port (>=1024). We listen on 3000 — the de facto "web dashboard" port —
+# so the pod runs with runAsNonRoot: true without capability tricks and
+# the default doesn't collide with the 80xx backend range.
 # Writeable runtime paths (/tmp, /var/cache/nginx) are already owned by
 # the nginx user in the base image.
 # The image ships a baseline default.conf.template that serves the static
@@ -23,5 +25,5 @@ FROM nginxinc/nginx-unprivileged:1.27-bookworm
 # configmap-dashboard-nginx.yaml).
 COPY --chown=nginx:nginx dashboard/nginx.conf /etc/nginx/templates/default.conf.template
 COPY --from=build --chown=nginx:nginx /build/dist /usr/share/nginx/html
-EXPOSE 8080
+EXPOSE 3000
 CMD ["nginx", "-g", "daemon off;"]
