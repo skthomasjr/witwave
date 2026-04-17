@@ -257,17 +257,179 @@ var _ = Describe("Manager", Ordered, func() {
 		})
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
+	})
 
-		// TODO: Customize the e2e test suite with scenarios specific to your project.
-		// Consider applying sample/CR(s) and check their status and/or verifying
-		// the reconciliation by using the metrics, i.e.:
-		// metricsOutput := getMetricsOutput()
-		// Expect(metricsOutput).To(ContainSubstring(
-		//    fmt.Sprintf(`controller_runtime_reconcile_total{controller="%s",result="success"} 1`,
-		//    strings.ToLower(<Kind>),
-		// ))
+	// NyxAgent reconciliation lifecycle (#628).
+	//
+	// Pairs with the envtest unit coverage added in #627. Where the unit tests
+	// cover builder/reconciler logic in milliseconds, this spec exercises the
+	// real kind API server end-to-end: apply a minimal NyxAgent, wait for the
+	// operator to reconcile a Deployment + Service with the right ownerRefs
+	// and pod readiness, then delete the NyxAgent and assert cascade teardown.
+	//
+	// The spec skips when kubeconfig / cluster access is unavailable (SKIP_E2E
+	// set, or KUBECONFIG/~/.kube/config missing) so developers can run `go
+	// test ./test/e2e/...` without a cluster.
+	Context("NyxAgent reconciliation", func() {
+		const (
+			nyxAgentName      = "e2e-nyxagent"
+			nyxAgentNamespace = "operator-system"
+			harnessImage      = "ghcr.io/skthomasjr/images/nyx-harness:latest"
+			backendImage      = "ghcr.io/skthomasjr/images/a2-claude:latest"
+		)
+
+		BeforeEach(func() {
+			if os.Getenv("SKIP_E2E") != "" {
+				Skip("SKIP_E2E set; skipping NyxAgent reconciliation spec")
+			}
+			if !kubeconfigAvailable() {
+				Skip("no KUBECONFIG / ~/.kube/config available; skipping NyxAgent reconciliation spec")
+			}
+		})
+
+		AfterEach(func() {
+			// Best-effort cleanup in case a spec aborted mid-way. Ignore
+			// errors — the resource may already be gone.
+			cmd := exec.Command("kubectl", "delete", "nyxagent", nyxAgentName,
+				"-n", nyxAgentNamespace, "--ignore-not-found", "--wait=false")
+			_, _ = utils.Run(cmd)
+		})
+
+		It("should reconcile a minimal NyxAgent to a ready Deployment + Service and cascade-delete", func() {
+			By("applying a minimal NyxAgent CR")
+			manifest := minimalNyxAgentManifest(nyxAgentName, nyxAgentNamespace, harnessImage, backendImage)
+			manifestPath := filepath.Join(os.TempDir(), fmt.Sprintf("%s.yaml", nyxAgentName))
+			Expect(os.WriteFile(manifestPath, []byte(manifest), 0o644)).To(Succeed())
+			defer func() { _ = os.Remove(manifestPath) }()
+
+			cmd := exec.Command("kubectl", "apply", "-f", manifestPath)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to apply NyxAgent CR")
+
+			By("waiting for the reconciler to create the agent Deployment")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "deployment", nyxAgentName, "-n", nyxAgentNamespace)
+				_, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "Deployment not yet created by reconciler")
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("asserting the Deployment's ownerReference points at the NyxAgent")
+			cmd = exec.Command("kubectl", "get", "deployment", nyxAgentName, "-n", nyxAgentNamespace,
+				"-o", "jsonpath={.metadata.ownerReferences[0].kind}")
+			ownerKind, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ownerKind).To(Equal("NyxAgent"), "Deployment should be owned by NyxAgent for cascade delete")
+
+			By("waiting for the reconciler to create the agent Service")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "service", nyxAgentName, "-n", nyxAgentNamespace)
+				_, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "Service not yet created by reconciler")
+			}, 1*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("waiting for the Deployment to report available replicas")
+			// Image pulls on kind can be slow, so give this a generous budget.
+			// We only assert that the Deployment's rollout progresses far enough
+			// for status.availableReplicas to become >= 1 — we don't require a
+			// real in-cluster image, because the e2e harness doesn't preload
+			// ghcr.io/skthomasjr/images/* into kind. If the image can't be
+			// pulled, this will time out and the AfterEach dump will surface
+			// the ImagePullBackOff event for the debugger.
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "deployment", nyxAgentName, "-n", nyxAgentNamespace,
+					"-o", "jsonpath={.status.availableReplicas}")
+				out, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(out).To(Equal("1"), "Deployment has no available replicas yet")
+			}, 5*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("asserting the NyxAgent status observedGeneration tracks spec.generation")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "nyxagent", nyxAgentName, "-n", nyxAgentNamespace,
+					"-o", "jsonpath={.status.observedGeneration}")
+				out, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(out).NotTo(BeEmpty(), "status.observedGeneration should be set after reconcile")
+				g.Expect(out).NotTo(Equal("0"), "status.observedGeneration should advance past 0 after reconcile")
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("deleting the NyxAgent and waiting for owned resources to be garbage-collected")
+			cmd = exec.Command("kubectl", "delete", "nyxagent", nyxAgentName, "-n", nyxAgentNamespace, "--wait=true")
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to delete NyxAgent CR")
+
+			By("confirming the Deployment is gone (cascade)")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "deployment", nyxAgentName, "-n", nyxAgentNamespace)
+				_, err := utils.Run(cmd)
+				g.Expect(err).To(HaveOccurred(), "Deployment should be deleted via ownerRef cascade")
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+
+			By("confirming the Service is gone (cascade)")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "service", nyxAgentName, "-n", nyxAgentNamespace)
+				_, err := utils.Run(cmd)
+				g.Expect(err).To(HaveOccurred(), "Service should be deleted via ownerRef cascade")
+			}, 2*time.Minute, 2*time.Second).Should(Succeed())
+		})
 	})
 })
+
+// kubeconfigAvailable reports whether the test environment has a reachable
+// kubeconfig. Used to skip cluster-requiring specs in local `go test` runs
+// that aren't paired with a kind cluster.
+func kubeconfigAvailable() bool {
+	if kc := os.Getenv("KUBECONFIG"); kc != "" {
+		if _, err := os.Stat(kc); err == nil {
+			return true
+		}
+		return false
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	if _, err := os.Stat(filepath.Join(home, ".kube", "config")); err == nil {
+		return true
+	}
+	return false
+}
+
+// minimalNyxAgentManifest renders the smallest NyxAgent that passes CRD
+// validation: one backend, required image repositories, everything else left
+// to kubebuilder defaults. Kept inline so the spec isn't coupled to the
+// `config/samples/` fixture (which may evolve independently).
+func minimalNyxAgentManifest(name, namespace, harnessImage, backendImage string) string {
+	return fmt.Sprintf(`apiVersion: nyx.ai/v1alpha1
+kind: NyxAgent
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  image:
+    repository: %s
+  backends:
+    - name: claude
+      image:
+        repository: %s
+      model: claude-opus-4-6
+`, name, namespace, trimTag(harnessImage), trimTag(backendImage))
+}
+
+// trimTag strips a `:tag` suffix from an image reference so the repository
+// field of ImageSpec validates (repository is sans-tag; tag is a separate
+// optional field).
+func trimTag(image string) string {
+	for i := len(image) - 1; i >= 0; i-- {
+		if image[i] == ':' {
+			return image[:i]
+		}
+		if image[i] == '/' {
+			break
+		}
+	}
+	return image
+}
 
 // serviceAccountToken returns a token for the specified service account in the given namespace.
 // It uses the Kubernetes TokenRequest API to generate a token by directly sending a request
