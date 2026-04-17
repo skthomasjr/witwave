@@ -138,12 +138,21 @@ async def _sub_app_lifespan(app):
                 shutdown.set_result(None)
 
     task = asyncio.create_task(_run())
-    supported = await startup
-    if not supported:
-        logger.critical("A2A sub-app lifespan startup failed — aborting server startup")
+    try:
+        supported = await startup
+    except Exception:
+        # Sub-app startup failed; cancel and drain the _run task before propagating
+        # so we don't leak a suspended coroutine waiting on do_shutdown.wait().
         task.cancel()
-        await asyncio.gather(task, return_exceptions=True)
-        raise RuntimeError("A2A sub-app lifespan startup failed")
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
+        raise
+    if not supported:
+        # App does not implement lifespan — proceed normally, matching agent/main.py behaviour.
+        yield
+        return
 
     try:
         yield
