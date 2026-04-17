@@ -16,9 +16,9 @@ If the caller specified a list of files, format only those. If no files were spe
 
 - `<repo-root>/README.md`
 - `<repo-root>/agent/README.md`
-- `<repo-root>/a2-claude/README.md`
-- `<repo-root>/a2-codex/README.md`
-- `<repo-root>/a2-gemini/README.md`
+- `<repo-root>/backends/a2-claude/README.md`
+- `<repo-root>/backends/a2-codex/README.md`
+- `<repo-root>/backends/a2-gemini/README.md`
 - `<repo-root>/ui/README.md`
 - `<repo-root>/docs/**/*.md`
 

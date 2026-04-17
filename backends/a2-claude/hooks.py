@@ -70,5 +70,5 @@ def _bump_config_error(reason: str) -> None:
 
 
 # Register the claude reporter with the shared engine. Import-time side
-# effect, executed exactly once when ``a2-claude/hooks.py`` is first loaded.
+# effect, executed exactly once when ``backends/a2-claude/hooks.py`` is first loaded.
 set_config_error_reporter(_bump_config_error)

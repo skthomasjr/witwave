@@ -20,13 +20,13 @@ jobs:
             file: harness/Dockerfile
             context: .
           - image: a2-claude
-            file: a2-claude/Dockerfile
+            file: backends/a2-claude/Dockerfile
             context: .
           - image: a2-codex
-            file: a2-codex/Dockerfile
+            file: backends/a2-codex/Dockerfile
             context: .
           - image: a2-gemini
-            file: a2-gemini/Dockerfile
+            file: backends/a2-gemini/Dockerfile
             context: .
           - image: dashboard
             file: dashboard/Dockerfile

@@ -25,9 +25,9 @@ Build all images and bring up the test environment:
 
 ```
 docker build -f harness/Dockerfile -t nyx-harness:latest . \
-  && docker build -f a2-claude/Dockerfile -t a2-claude:latest . \
-  && docker build -f a2-codex/Dockerfile -t a2-codex:latest . \
-  && docker build -f a2-gemini/Dockerfile -t a2-gemini:latest . \
+  && docker build -f backends/a2-claude/Dockerfile -t a2-claude:latest . \
+  && docker build -f backends/a2-codex/Dockerfile -t a2-codex:latest . \
+  && docker build -f backends/a2-gemini/Dockerfile -t a2-gemini:latest . \
   && helm upgrade --install nyx-test ./charts/nyx -f ./charts/nyx/values-test.yaml -n nyx-test --create-namespace
 ```
 

@@ -1407,7 +1407,7 @@ class AgentExecutor(A2AAgentExecutor):
             _chunks_emitted += 1
             if a2_streaming_events_emitted_total is not None:
                 a2_streaming_events_emitted_total.labels(**_LABELS, model=_streaming_label_model).inc()
-            # Await directly — see a2-claude/executor.py _emit_chunk for the
+            # Await directly — see backends/a2-claude/executor.py _emit_chunk for the
             # rationale (event ordering + exception surfacing).
             await event_queue.enqueue_event(new_agent_text_message(text))
 

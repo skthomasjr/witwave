@@ -1344,7 +1344,7 @@ class AgentExecutor(A2AAgentExecutor):
     async def hooks_config_watcher(self) -> None:
         """Watch hooks.yaml and hot-reload extension rules (#631).
 
-        Mirrors ``a2-claude/executor.AgentExecutor.hooks_config_watcher`` so
+        Mirrors ``backends/a2-claude/executor.AgentExecutor.hooks_config_watcher`` so
         operators see identical semantics across backends: an initial load,
         then an ``awatch`` over the containing directory, re-parsing on every
         change to the target file. Failures during reload keep the previous
@@ -1446,7 +1446,7 @@ class AgentExecutor(A2AAgentExecutor):
             _chunks_emitted += 1
             if a2_streaming_events_emitted_total is not None:
                 a2_streaming_events_emitted_total.labels(**_LABELS, model=_streaming_label_model).inc()
-            # Await directly — see a2-claude/executor.py _emit_chunk for the
+            # Await directly — see backends/a2-claude/executor.py _emit_chunk for the
             # rationale (event ordering + exception surfacing).
             await event_queue.enqueue_event(new_agent_text_message(text))
 

@@ -1,6 +1,6 @@
 """a2-gemini PreToolUse/PostToolUse hook policy facade (#631).
 
-This module is the gemini-flavoured companion to ``a2-claude/hooks.py``. It
+This module is the gemini-flavoured companion to ``backends/a2-claude/hooks.py``. It
 re-exports the backend-agnostic engine from ``shared/hooks_engine.py`` and
 registers a gemini-specific ``a2_hooks_config_errors_total`` reporter so
 YAML parse/validation errors land on the counter with

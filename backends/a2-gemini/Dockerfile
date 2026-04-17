@@ -27,10 +27,10 @@ WORKDIR /home/agent
 RUN python3 -m venv .venv
 ENV PATH="/home/agent/.venv/bin:$PATH"
 
-COPY --chown=agent:agent a2-gemini/requirements.txt /home/agent/a2-gemini/requirements.txt
+COPY --chown=agent:agent backends/a2-gemini/requirements.txt /home/agent/a2-gemini/requirements.txt
 RUN pip install --no-cache-dir -r /home/agent/a2-gemini/requirements.txt
 
-COPY --chown=agent:agent a2-gemini/ /home/agent/a2-gemini/
+COPY --chown=agent:agent backends/a2-gemini/ /home/agent/a2-gemini/
 COPY --chown=agent:agent shared/ /home/agent/shared/
 
 ENV PYTHONPATH="/home/agent/shared"

@@ -1185,7 +1185,7 @@ async def run(
     ``mcp_servers``, ``agent_md_content``) into a ``RunContext`` and forwards
     the per-layer params (``sessions``, ``max_tokens``, ``on_chunk``,
     ``hook_state``) explicitly to ``_run_inner``. Keeps all existing callers
-    (executor.execute, a2-claude/main.py MCP tools/call path) working without
+    (executor.execute, backends/a2-claude/main.py MCP tools/call path) working without
     signature churn.
     """
     ctx = RunContext(

@@ -1,6 +1,6 @@
 """Backend-agnostic PreToolUse/PostToolUse hook policy engine (#631).
 
-Extracted from ``a2-claude/hooks.py`` so that a2-gemini (#631) and eventually
+Extracted from ``backends/a2-claude/hooks.py`` so that a2-gemini (#631) and eventually
 a2-codex (#586) can share the same rule vocabulary, baseline predicate set,
 YAML extension loader, and evaluator. The original a2-claude module now
 imports from here and keeps only the Claude-SDK-specific integration glue
@@ -23,7 +23,7 @@ Design notes
   absolute paths, home-shorthand, symbolic chmod) do not defeat matching
   (#521).
 
-See ``a2-claude/hooks.py`` for the original motivating documentation and the
+See ``backends/a2-claude/hooks.py`` for the original motivating documentation and the
 ``hooks.yaml`` schema.
 """
 from __future__ import annotations
@@ -86,7 +86,7 @@ class Rule:
 
     ``tool`` is matched exactly against the caller-supplied ``tool_name`` or is
     the literal ``"*"`` / ``None`` to apply to every tool. ``action`` decides
-    what happens on a match. See ``a2-claude/hooks.py`` module docstring for
+    what happens on a match. See ``backends/a2-claude/hooks.py`` module docstring for
     the full matching semantics and the ``pattern`` vs ``predicate`` split.
     """
 

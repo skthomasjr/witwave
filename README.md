@@ -26,9 +26,9 @@ The platform has eight components, each with its own source directory:
 | Component          | Directory              | Type               | Description                                                                                                                 |
 | ------------------ | ---------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------- |
 | **Orchestrator**   | `harness/`             | Orchestrator agent | nyx-harness: the infrastructure and routing layer. Owns scheduling, triggering, chaining, and A2A relay. No LLM of its own. |
-| **Claude backend** | `a2-claude/`           | Backend agent      | Executes prompts via the Claude Agent SDK. Manages sessions, memory, conversation logs, and metrics.                        |
-| **Codex backend**  | `a2-codex/`            | Backend agent      | Executes prompts via the OpenAI Agents SDK. Supports web search and headless browser via Playwright.                        |
-| **Gemini backend** | `a2-gemini/`           | Backend agent      | Executes prompts via the Google Gemini SDK. Manages sessions and conversation history.                                      |
+| **Claude backend** | `backends/a2-claude/`           | Backend agent      | Executes prompts via the Claude Agent SDK. Manages sessions, memory, conversation logs, and metrics.                        |
+| **Codex backend**  | `backends/a2-codex/`            | Backend agent      | Executes prompts via the OpenAI Agents SDK. Supports web search and headless browser via Playwright.                        |
+| **Gemini backend** | `backends/a2-gemini/`           | Backend agent      | Executes prompts via the Google Gemini SDK. Manages sessions and conversation history.                                      |
 | **Dashboard**      | `dashboard/`           | Web interface      | Vue 3 + PrimeVue app for monitoring metrics, browsing agents, viewing conversations, and chatting with agents.              |
 | **Operator**       | `operator/`            | Kubernetes operator| Go controller (Operator SDK) that reconciles `NyxAgent` custom resources into the same workloads the Helm chart renders.     |
 | **Agent chart**    | `charts/nyx/`          | Deployment         | Kubernetes Helm chart for deploying nyx agents via templated manifests (no CRDs).                                            |
@@ -114,9 +114,9 @@ Or build locally:
 
 ```bash
 docker build -f harness/Dockerfile -t nyx-harness:latest .
-docker build -f a2-claude/Dockerfile -t a2-claude:latest .
-docker build -f a2-codex/Dockerfile -t a2-codex:latest .
-docker build -f a2-gemini/Dockerfile -t a2-gemini:latest .
+docker build -f backends/a2-claude/Dockerfile -t a2-claude:latest .
+docker build -f backends/a2-codex/Dockerfile -t a2-codex:latest .
+docker build -f backends/a2-gemini/Dockerfile -t a2-gemini:latest .
 ```
 
 ### 2. Configure credentials

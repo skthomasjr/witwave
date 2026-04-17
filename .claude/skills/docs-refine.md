@@ -14,9 +14,9 @@ The documents covered by this skill are:
 
 - `<repo-root>/README.md` — root project overview
 - `<repo-root>/agent/README.md` — orchestrator component
-- `<repo-root>/a2-claude/README.md` — Claude backend component
-- `<repo-root>/a2-codex/README.md` — Codex backend component
-- `<repo-root>/a2-gemini/README.md` — Gemini backend component
+- `<repo-root>/backends/a2-claude/README.md` — Claude backend component
+- `<repo-root>/backends/a2-codex/README.md` — Codex backend component
+- `<repo-root>/backends/a2-gemini/README.md` — Gemini backend component
 - `<repo-root>/ui/README.md` — web UI component
 - `<repo-root>/docs/` — all files, including the `prompts/` subdirectory
 

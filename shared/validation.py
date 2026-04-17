@@ -2,8 +2,8 @@
 
 Currently exposes ``parse_max_tokens``, factored out of the duplicated
 ``max_tokens`` parsing blocks that previously lived in
-``a2-gemini/main.py`` (MCP ``tools/call`` handler) and
-``a2-gemini/executor.py`` (``AgentExecutor.execute``). See risk #537
+``backends/a2-gemini/main.py`` (MCP ``tools/call`` handler) and
+``backends/a2-gemini/executor.py`` (``AgentExecutor.execute``). See risk #537
 (companion issues #460, #428).
 
 The helper is intentionally pure: no I/O, no shared state, no
@@ -31,7 +31,7 @@ __all__ = ["parse_max_tokens", "sanitize_model_label"]
 # sending a fresh UUID per request (TSDB compaction / Prometheus OOM).
 # Accept only simple model identifiers (alnum / dot / dash / underscore, length
 # <= 64) and collapse anything else to the literal "unknown". Originally landed
-# in ``a2-gemini/executor.py`` via #487; hoisted here so a2-claude (#601) and
+# in ``backends/a2-gemini/executor.py`` via #487; hoisted here so a2-claude (#601) and
 # a2-codex can share a single well-reviewed definition.
 _MODEL_LABEL_RE = re.compile(r"^[a-zA-Z0-9._\-]{1,64}$")
 

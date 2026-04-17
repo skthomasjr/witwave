@@ -68,9 +68,9 @@ live in the backend container.
 
 Three backend types exist, each implemented as a standalone A2A server:
 
-- **`a2-claude`** — Claude Agent SDK backend. Source in `a2-claude/`. Image: `a2-claude:latest`.
-- **`a2-codex`** — OpenAI Agents SDK (Codex) backend. Source in `a2-codex/`. Image: `a2-codex:latest`.
-- **`a2-gemini`** — Google Gemini backend (google-genai SDK). Source in `a2-gemini/`. Image: `a2-gemini:latest`.
+- **`a2-claude`** — Claude Agent SDK backend. Source in `backends/a2-claude/`. Image: `a2-claude:latest`.
+- **`a2-codex`** — OpenAI Agents SDK (Codex) backend. Source in `backends/a2-codex/`. Image: `a2-codex:latest`.
+- **`a2-gemini`** — Google Gemini backend (google-genai SDK). Source in `backends/a2-gemini/`. Image: `a2-gemini:latest`.
 
 Each backend:
 
@@ -228,22 +228,22 @@ harness/                     # nyx-harness source (router/scheduler)
     ├── a2a.py               # A2ABackend — forwards requests to remote A2A backend
     └── config.py            # Backend config loader (backend.yaml)
 
-a2-claude/                   # Claude backend source
+backends/a2-claude/                   # Claude backend source
 ├── Dockerfile
 ├── main.py                  # A2A server entrypoint
 ├── executor.py              # Claude Agent SDK executor; owns sessions, logging, hooks (#467)
 ├── hooks.py                 # PreToolUse/PostToolUse policy engine + baseline deny rules (#467)
-├── metrics.py               # Prometheus metrics (superset of a2-codex/a2-gemini; adds tool, context, MCP, hooks metrics)
+├── metrics.py               # Prometheus metrics (superset of backends/a2-codex and backends/a2-gemini; adds tool, context, MCP, hooks metrics)
 └── requirements.txt
 
-a2-codex/                    # Codex backend source
+backends/a2-codex/                    # Codex backend source
 ├── Dockerfile
 ├── main.py                  # A2A server entrypoint
 ├── executor.py              # OpenAI Agents SDK executor; owns sessions and logging
 ├── metrics.py               # Prometheus metrics (common a2_* set; subset of a2-claude)
 └── requirements.txt
 
-a2-gemini/                   # Gemini backend source
+backends/a2-gemini/                   # Gemini backend source
 ├── Dockerfile
 ├── main.py                  # A2A server entrypoint
 ├── executor.py              # google-genai SDK executor; owns sessions and logging
@@ -278,13 +278,13 @@ shared/                      # Shared Python modules mounted into harness + back
 docker build -f harness/Dockerfile -t nyx-harness:latest .
 
 # Claude backend
-docker build -f a2-claude/Dockerfile -t a2-claude:latest .
+docker build -f backends/a2-claude/Dockerfile -t a2-claude:latest .
 
 # Codex backend
-docker build -f a2-codex/Dockerfile -t a2-codex:latest .
+docker build -f backends/a2-codex/Dockerfile -t a2-codex:latest .
 
 # Gemini backend
-docker build -f a2-gemini/Dockerfile -t a2-gemini:latest .
+docker build -f backends/a2-gemini/Dockerfile -t a2-gemini:latest .
 
 # Kubernetes MCP tool
 docker build -f tools/kubernetes/Dockerfile -t mcp-kubernetes:latest .
@@ -300,9 +300,9 @@ docker build -f dashboard/Dockerfile -t dashboard:latest .
 
 ```bash
 docker build -f harness/Dockerfile -t nyx-harness:latest . \
-  && docker build -f a2-claude/Dockerfile -t a2-claude:latest . \
-  && docker build -f a2-codex/Dockerfile -t a2-codex:latest . \
-  && docker build -f a2-gemini/Dockerfile -t a2-gemini:latest . \
+  && docker build -f backends/a2-claude/Dockerfile -t a2-claude:latest . \
+  && docker build -f backends/a2-codex/Dockerfile -t a2-codex:latest . \
+  && docker build -f backends/a2-gemini/Dockerfile -t a2-gemini:latest . \
   && docker build -f tools/kubernetes/Dockerfile -t mcp-kubernetes:latest . \
   && docker build -f tools/helm/Dockerfile -t mcp-helm:latest . \
   && helm upgrade --install nyx ./charts/nyx -f ./charts/nyx/values-test.yaml -n nyx --create-namespace
