@@ -290,6 +290,15 @@ _browser_pool: BrowserPool | None = None
 # Python 3.12+ (#378).  Do not set this at import time.
 _computer_lock: asyncio.Lock | None = None
 
+# Serialises the LRU evict/insert block in _track_session (#506). Without
+# this, a concurrent caller can observe the shared OrderedDict in a
+# transient under-capacity state between popitem(last=False) and the
+# post-await sessions[session_id] = ... insertion — leading to
+# over-eviction, mis-counted metrics, and redundant SQLite deletes. Lazily
+# initialized on first use so it binds to the running event loop (same
+# rationale as _computer_lock above; #378).
+_sessions_lock: asyncio.Lock | None = None
+
 # Models known to support computer_use_preview
 _COMPUTER_SUPPORTED_MODELS = {"computer-use-preview"}
 
@@ -428,37 +437,51 @@ async def log_trace(text: str) -> None:
 
 
 async def _track_session(sessions: OrderedDict[str, float], session_id: str) -> None:
-    if session_id in sessions:
-        sessions.move_to_end(session_id)
-        sessions[session_id] = time.monotonic()
-    else:
-        if len(sessions) >= MAX_SESSIONS:
-            _evicted_id, last_used_at = sessions.popitem(last=False)
-            if a2_session_evictions_total is not None:
-                a2_session_evictions_total.labels(**_LABELS).inc()
-            if a2_session_age_seconds is not None:
-                a2_session_age_seconds.labels(**_LABELS).observe(time.monotonic() - last_used_at)
-            # Clean up the evicted session's SQLite record so the database does not
-            # grow unboundedly as sessions cycle through the LRU cache (#415).
-            # Run the delete in a thread pool so the event loop is not blocked
-            # on slow/remote filesystems — same pattern the timeout-cleanup
-            # path at line 766 uses, and consistent with a2-claude #426 (#450).
-            _db = CODEX_SESSION_DB
-            if _db and _db != ":memory:":
-                try:
-                    await asyncio.to_thread(_delete_sqlite_session, _evicted_id, _db)
-                except Exception as _del_exc:
-                    logger.warning("Could not delete evicted session %r from DB: %s", _evicted_id, _del_exc)
-            # Release the per-session Playwright browser context, if any, so
-            # cookies/localStorage/service workers from the evicted session do
-            # not linger in memory (#522). Safe no-op when the session never
-            # used the computer tool.
-            await _release_computer(_evicted_id)
-        sessions[session_id] = time.monotonic()
-    if a2_active_sessions is not None:
-        a2_active_sessions.labels(**_LABELS).set(len(sessions))
-    if a2_lru_cache_utilization_percent is not None:
-        a2_lru_cache_utilization_percent.labels(**_LABELS).set(len(sessions) / MAX_SESSIONS * 100)
+    # Serialise evict/insert on the shared OrderedDict so concurrent callers
+    # (A2A execute() and the /mcp tools/call path both share
+    # AgentExecutor._sessions) cannot interleave popitem(last=False) with
+    # the post-await reinsertion (#506). The SQLite delete and browser
+    # release run inside the lock so the invariant
+    # `len(sessions) <= MAX_SESSIONS` and eviction-metric accuracy are
+    # restored before any other coroutine observes the dict — consistent
+    # with the #522 per-session computer-tool pool and the #526
+    # lifespan-scoped MCP server lock (both of which also serialise
+    # await-crossing critical sections over shared state).
+    global _sessions_lock
+    if _sessions_lock is None:
+        _sessions_lock = asyncio.Lock()
+    async with _sessions_lock:
+        if session_id in sessions:
+            sessions.move_to_end(session_id)
+            sessions[session_id] = time.monotonic()
+        else:
+            if len(sessions) >= MAX_SESSIONS:
+                _evicted_id, last_used_at = sessions.popitem(last=False)
+                if a2_session_evictions_total is not None:
+                    a2_session_evictions_total.labels(**_LABELS).inc()
+                if a2_session_age_seconds is not None:
+                    a2_session_age_seconds.labels(**_LABELS).observe(time.monotonic() - last_used_at)
+                # Clean up the evicted session's SQLite record so the database does not
+                # grow unboundedly as sessions cycle through the LRU cache (#415).
+                # Run the delete in a thread pool so the event loop is not blocked
+                # on slow/remote filesystems — same pattern the timeout-cleanup
+                # path at line 766 uses, and consistent with a2-claude #426 (#450).
+                _db = CODEX_SESSION_DB
+                if _db and _db != ":memory:":
+                    try:
+                        await asyncio.to_thread(_delete_sqlite_session, _evicted_id, _db)
+                    except Exception as _del_exc:
+                        logger.warning("Could not delete evicted session %r from DB: %s", _evicted_id, _del_exc)
+                # Release the per-session Playwright browser context, if any, so
+                # cookies/localStorage/service workers from the evicted session do
+                # not linger in memory (#522). Safe no-op when the session never
+                # used the computer tool.
+                await _release_computer(_evicted_id)
+            sessions[session_id] = time.monotonic()
+        if a2_active_sessions is not None:
+            a2_active_sessions.labels(**_LABELS).set(len(sessions))
+        if a2_lru_cache_utilization_percent is not None:
+            a2_lru_cache_utilization_percent.labels(**_LABELS).set(len(sessions) / MAX_SESSIONS * 100)
 
 
 async def run_query(
