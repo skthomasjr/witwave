@@ -523,8 +523,19 @@ async def deliver(
             agent_webhooks_delivery_total.labels(result=result, subscription=sub.name).inc()
         # Schedule retry as a new independent task so this task can exit now,
         # freeing its slot before the backoff delay begins.
-        _retry_task = asyncio.ensure_future(
-            _retry_deliver(
+        #
+        # Registration order matters (#515): the retry task must be present in
+        # the caller's tracking structures BEFORE the underlying work coroutine
+        # starts executing. We use a wrapper coroutine gated on a `registered`
+        # event: the task starts, immediately awaits registration, and only
+        # then proceeds to the real retry work. The caller registers the task
+        # and signals the event; if registration raises, we cancel the task so
+        # it cannot leak untracked.
+        registered = asyncio.Event()
+
+        async def _tracked_retry() -> None:
+            await registered.wait()
+            await _retry_deliver(
                 sub=sub,
                 url=url,
                 body_bytes=body_bytes,
@@ -532,11 +543,22 @@ async def deliver(
                 attempt=1,
                 max_attempts=1 + sub.retries,
             )
-        )
+
+        _retry_task = asyncio.ensure_future(_tracked_retry())
         # Notify the caller (e.g. WebhookRunner.fire) so it can register the
-        # retry task in its concurrency-tracking structures (#376).
+        # retry task in its concurrency-tracking structures (#376). If
+        # registration fails, cancel the scheduled task so it cannot run
+        # untracked and leak (#515).
         if on_retry_task is not None:
-            on_retry_task(_retry_task)
+            try:
+                on_retry_task(_retry_task)
+            except Exception:
+                _retry_task.cancel()
+                raise
+            finally:
+                registered.set()
+        else:
+            registered.set()
         return
 
     if agent_webhooks_delivery_total is not None:
