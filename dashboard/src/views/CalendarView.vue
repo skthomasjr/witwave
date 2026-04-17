@@ -22,10 +22,17 @@ import type { ConversationEntry } from "../types/chat";
 
 type Row = ConversationEntry & { _agent: string };
 
-const { items, loading, error, refresh } = useAgentFanout<ConversationEntry>({
+const { items, perAgentErrors, loading, error, refresh } = useAgentFanout<ConversationEntry>({
   endpoint: "conversations",
   query: { limit: "500" },
 });
+
+const degradedEntries = computed<[string, string][]>(() =>
+  Object.entries(perAgentErrors.value),
+);
+const degradedTooltip = computed(() =>
+  degradedEntries.value.map(([a, m]) => `${a}: ${m}`).join("\n"),
+);
 
 // Agents get stable colors — matches the nyx palette and avoids churn when
 // the team list changes order.
@@ -116,6 +123,15 @@ function formatTs(ts: string): string {
         </span>
       </div>
       <span class="count">{{ events.length }}</span>
+      <span
+        v-if="degradedEntries.length > 0"
+        class="degraded"
+        :title="degradedTooltip"
+        data-testid="list-calendar-degraded"
+      >
+        <i class="pi pi-exclamation-triangle" aria-hidden="true" />
+        {{ degradedEntries.length }} degraded
+      </span>
       <button class="refresh" type="button" :disabled="loading" @click="refresh">
         <i class="pi pi-refresh" aria-hidden="true" />
         <span>refresh</span>
@@ -244,6 +260,19 @@ function formatTs(ts: string): string {
   margin-left: auto;
   font-size: 10px;
   color: var(--nyx-dim);
+}
+
+.degraded {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--nyx-red);
+  border: 1px solid var(--nyx-red);
+  border-radius: var(--nyx-radius);
+  padding: 2px 6px;
+  cursor: help;
+  white-space: nowrap;
 }
 
 .refresh {

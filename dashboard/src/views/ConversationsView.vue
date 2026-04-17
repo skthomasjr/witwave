@@ -16,13 +16,20 @@ const searchTerm = ref<string>("");
 const agentFilter = ref<string>("");
 const roleFilter = ref<string>("");
 
-const { items, loading, error, refresh } = useAgentFanout<ConversationEntry>({
+const { items, perAgentErrors, loading, error, refresh } = useAgentFanout<ConversationEntry>({
   endpoint: "conversations",
   // Pass the computed itself (not `.value`) so the composable can watch the
   // limit dropdown and re-fetch when it changes. Previously `.value` captured
   // the mount-time snapshot and further dropdown changes were ignored (#495).
   query: computed(() => ({ limit: String(limit.value) })),
 });
+
+const degradedEntries = computed<[string, string][]>(() =>
+  Object.entries(perAgentErrors.value),
+);
+const degradedTooltip = computed(() =>
+  degradedEntries.value.map(([a, m]) => `${a}: ${m}`).join("\n"),
+);
 
 const agentOptions = computed(() => {
   const set = new Set<string>();
@@ -102,6 +109,15 @@ function formatTs(ts: string): string {
         <option :value="500">500</option>
       </select>
       <span class="count">{{ filtered.length }} / {{ items.length }}</span>
+      <span
+        v-if="degradedEntries.length > 0"
+        class="degraded"
+        :title="degradedTooltip"
+        data-testid="list-conversations-degraded"
+      >
+        <i class="pi pi-exclamation-triangle" aria-hidden="true" />
+        {{ degradedEntries.length }} degraded
+      </span>
       <button class="refresh" type="button" :disabled="loading" @click="refresh">
         <i class="pi pi-refresh" aria-hidden="true" />
       </button>
@@ -197,6 +213,19 @@ function formatTs(ts: string): string {
 .count {
   font-size: 10px;
   color: var(--nyx-dim);
+}
+
+.degraded {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--nyx-red);
+  border: 1px solid var(--nyx-red);
+  border-radius: var(--nyx-radius);
+  padding: 2px 6px;
+  cursor: help;
+  white-space: nowrap;
 }
 
 .refresh {

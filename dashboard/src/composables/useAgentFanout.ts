@@ -17,6 +17,11 @@ export interface AgentSourced {
   _agent: string;
 }
 
+// Aligned with useMetrics: map agentId -> error string for agents whose
+// per-agent fetch failed during the most recent refresh. Successful agents
+// are absent. Kept as a Record (not a Map) for easy template iteration.
+export type PerAgentErrors = Record<string, string>;
+
 type QueryRecord = Record<string, string | undefined>;
 
 // Accept a plain record, a ref/computed of one, or a zero-arg getter so
@@ -39,13 +44,23 @@ function resolveQuery(q: QueryInput | undefined): QueryRecord | undefined {
   return unref(q as QueryRecord | Ref<QueryRecord>);
 }
 
+interface FetchOneResult<T> {
+  agent: string;
+  items: (T & AgentSourced)[];
+  error?: string;
+}
+
 export function useAgentFanout<T>(opts: UseAgentFanoutOptions) {
   const intervalMs = opts.intervalMs ?? 5000;
   const tolerateIndividualErrors = opts.tolerateIndividualErrors ?? true;
 
   const items = ref<(T & AgentSourced)[]>([]);
+  const perAgentErrors = ref<PerAgentErrors>({});
   const error = ref<string>("");
   const loading = ref<boolean>(true);
+
+  // Throttles per-agent console.warn to once per sustained outage per agent.
+  const warnedAgents = new Set<string>();
 
   let timer: ReturnType<typeof setInterval> | null = null;
   let aborter: AbortController | null = null;
@@ -53,18 +68,29 @@ export function useAgentFanout<T>(opts: UseAgentFanoutOptions) {
   async function fetchOne(
     member: TeamDirectoryEntry,
     signal: AbortSignal,
-  ): Promise<(T & AgentSourced)[]> {
+  ): Promise<FetchOneResult<T>> {
     try {
       const raw = await apiGet<T | T[]>(
         `/agents/${encodeURIComponent(member.name)}/${opts.endpoint}`,
         { signal, query: resolveQuery(opts.query) },
       );
       const arr = Array.isArray(raw) ? raw : [raw];
-      return arr.map((item) => ({ ...(item as T), _agent: member.name }));
+      warnedAgents.delete(member.name);
+      return {
+        agent: member.name,
+        items: arr.map((item) => ({ ...(item as T), _agent: member.name })),
+      };
     } catch (e) {
       if ((e as { name?: string }).name === "AbortError") throw e;
       if (!tolerateIndividualErrors) throw e;
-      return [];
+      const message = e instanceof ApiError ? e.message : (e as Error).message;
+      if (!warnedAgents.has(member.name)) {
+        warnedAgents.add(member.name);
+        console.warn(
+          `[useAgentFanout] /${opts.endpoint} failed for agent "${member.name}": ${message}`,
+        );
+      }
+      return { agent: member.name, items: [], error: message };
     }
   }
 
@@ -78,7 +104,12 @@ export function useAgentFanout<T>(opts: UseAgentFanoutOptions) {
         directory.map((entry) => fetchOne(entry, signal)),
       );
       if (signal.aborted) return;
-      items.value = perAgent.flat();
+      items.value = perAgent.flatMap((r) => r.items);
+      const errs: PerAgentErrors = {};
+      for (const r of perAgent) {
+        if (r.error) errs[r.agent] = r.error;
+      }
+      perAgentErrors.value = errs;
       error.value = "";
     } catch (e) {
       if ((e as { name?: string }).name === "AbortError") return;
@@ -110,5 +141,5 @@ export function useAgentFanout<T>(opts: UseAgentFanoutOptions) {
     aborter?.abort();
   });
 
-  return { items, error, loading, refresh };
+  return { items, perAgentErrors, error, loading, refresh };
 }

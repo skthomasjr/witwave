@@ -51,7 +51,15 @@ const PALETTE = [
 ];
 
 const intervalMs = ref<number>(5000);
-const { merged, loading, error, lastUpdated, refresh } = useMetrics({ intervalMs });
+const { merged, loading, error, lastUpdated, perAgentErrors, refresh } =
+  useMetrics({ intervalMs });
+
+const degradedEntries = computed<[string, string][]>(() =>
+  Object.entries(perAgentErrors.value),
+);
+const degradedTooltip = computed(() =>
+  degradedEntries.value.map(([a, m]) => `${a}: ${m}`).join("\n"),
+);
 
 function fmtNum(n: number | null): string {
   if (n === null || !Number.isFinite(n)) return "—";
@@ -217,6 +225,15 @@ const updatedLabel = computed(() => {
         <option :value="0">off</option>
       </select>
       <span class="ts">{{ updatedLabel }}</span>
+      <span
+        v-if="degradedEntries.length > 0"
+        class="degraded"
+        :title="degradedTooltip"
+        data-testid="list-metrics-degraded"
+      >
+        <i class="pi pi-exclamation-triangle" aria-hidden="true" />
+        {{ degradedEntries.length }} scrape failed
+      </span>
       <button class="refresh" type="button" :disabled="loading" @click="refresh">
         <i class="pi pi-refresh" aria-hidden="true" />
         <span>refresh</span>
@@ -315,6 +332,19 @@ const updatedLabel = computed(() => {
   font-size: 11px;
   color: var(--nyx-dim);
   margin-left: auto;
+}
+
+.degraded {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--nyx-red);
+  border: 1px solid var(--nyx-red);
+  border-radius: var(--nyx-radius);
+  padding: 2px 6px;
+  cursor: help;
+  white-space: nowrap;
 }
 
 .refresh {

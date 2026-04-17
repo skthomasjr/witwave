@@ -3,7 +3,7 @@ import { useAgentFanout } from "../composables/useAgentFanout";
 import ListView from "../components/ListView.vue";
 import type { Job } from "../types/scheduler";
 
-const { items, loading, error, refresh } = useAgentFanout<Job>({
+const { items, perAgentErrors, loading, error, refresh } = useAgentFanout<Job>({
   endpoint: "jobs",
 });
 
@@ -42,6 +42,7 @@ const columns = [
     :search-keys="['_agent', 'name', 'schedule', 'backend_id']"
     :loading="loading"
     :error="error"
+    :per-agent-errors="perAgentErrors"
     empty-message="No jobs configured."
     @refresh="refresh"
   />

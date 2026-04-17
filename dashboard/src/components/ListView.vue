@@ -27,6 +27,12 @@ const props = defineProps<{
   loading: boolean;
   error: string;
   emptyMessage?: string;
+  // Optional map of agentId -> error string for agents whose per-agent fetch
+  // failed in the most recent refresh. When non-empty, ListView renders a
+  // compact "N agents degraded" badge in the toolbar with a tooltip listing
+  // each failing agent. Keeps the current "tolerate individual errors"
+  // behavior — the table still renders rows from reachable agents.
+  perAgentErrors?: Record<string, string>;
 }>();
 
 const emit = defineEmits<{ (e: "refresh"): void }>();
@@ -44,6 +50,16 @@ const filtered = computed(() => {
     ),
   );
 });
+
+const degradedEntries = computed<[string, string][]>(() =>
+  Object.entries(props.perAgentErrors ?? {}),
+);
+
+const degradedTooltip = computed(() =>
+  degradedEntries.value
+    .map(([agent, msg]) => `${agent}: ${msg}`)
+    .join("\n"),
+);
 
 function cellFor(row: T, col: Column<T>): { text: string; className: string } {
   if (col.render) {
@@ -67,6 +83,15 @@ function cellFor(row: T, col: Column<T>): { text: string; className: string } {
         :placeholder="searchPlaceholder ?? `filter ${title.toLowerCase()}…`"
       />
       <span class="count">{{ filtered.length }} / {{ items.length }}</span>
+      <span
+        v-if="degradedEntries.length > 0"
+        class="degraded"
+        :title="degradedTooltip"
+        :data-testid="`list-${title.toLowerCase()}-degraded`"
+      >
+        <i class="pi pi-exclamation-triangle" aria-hidden="true" />
+        {{ degradedEntries.length }} degraded
+      </span>
       <button
         class="refresh"
         type="button"
@@ -163,6 +188,19 @@ function cellFor(row: T, col: Column<T>): { text: string; className: string } {
 .count {
   font-size: 10px;
   color: var(--nyx-dim);
+}
+
+.degraded {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--nyx-red);
+  border: 1px solid var(--nyx-red);
+  border-radius: var(--nyx-radius);
+  padding: 2px 6px;
+  cursor: help;
+  white-space: nowrap;
 }
 
 .refresh {

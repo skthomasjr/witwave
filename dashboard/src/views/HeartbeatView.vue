@@ -9,7 +9,7 @@ import type { Heartbeat } from "../types/scheduler";
 
 type Row = Heartbeat & { _agent: string };
 
-const { items, loading, error, refresh } = useAgentFanout<Heartbeat>({
+const { items, perAgentErrors, loading, error, refresh } = useAgentFanout<Heartbeat>({
   endpoint: "heartbeat",
 });
 
@@ -53,6 +53,7 @@ const columns = [
     :search-keys="['_agent', 'schedule', 'backend_id', 'model']"
     :loading="loading"
     :error="error"
+    :per-agent-errors="perAgentErrors"
     empty-message="No heartbeat configured."
     @refresh="refresh"
   />

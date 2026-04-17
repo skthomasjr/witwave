@@ -9,7 +9,7 @@ function formatUpstream(v: string | string[]): string {
   return Array.isArray(v) ? v.join(", ") : v;
 }
 
-const { items, loading, error, refresh } = useAgentFanout<Continuation>({
+const { items, perAgentErrors, loading, error, refresh } = useAgentFanout<Continuation>({
   endpoint: "continuations",
 });
 
@@ -58,6 +58,7 @@ const columns = [
     :search-keys="['_agent', 'name', 'description']"
     :loading="loading"
     :error="error"
+    :per-agent-errors="perAgentErrors"
     empty-message="No continuations configured."
     @refresh="refresh"
   />

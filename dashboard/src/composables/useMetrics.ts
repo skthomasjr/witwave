@@ -16,7 +16,15 @@ interface TeamDirectoryEntry {
 export interface AgentMetrics {
   agent: string;
   families: FamilyMap;
+  // When set, this agent's /metrics endpoint failed to respond. `families`
+  // is an empty map in that case so merged aggregates are unaffected.
+  error?: string;
 }
+
+// Aligned with useAgentFanout: map agentId -> error string for agents whose
+// per-agent fetch failed during the most recent refresh. Successful agents
+// are absent. Kept as a Record (not a Map) for easy template iteration.
+export type PerAgentErrors = Record<string, string>;
 
 async function fetchText(url: string, signal: AbortSignal): Promise<string> {
   const resp = await fetch(url, { signal });
@@ -34,9 +42,15 @@ export interface UseMetricsOptions {
 
 export function useMetrics(options: UseMetricsOptions = {}) {
   const perAgent = ref<AgentMetrics[]>([]);
+  const perAgentErrors = ref<PerAgentErrors>({});
   const error = ref<string>("");
   const loading = ref<boolean>(true);
   const lastUpdated = ref<number | null>(null);
+
+  // Track which agents we've already warned about in the current outage so
+  // devtools doesn't get spammed at every poll tick. Cleared for an agent as
+  // soon as it recovers.
+  const warnedAgents = new Set<string>();
 
   let timer: ReturnType<typeof setInterval> | null = null;
   let aborter: AbortController | null = null;
@@ -66,20 +80,41 @@ export function useMetrics(options: UseMetricsOptions = {}) {
     try {
       const directory = await apiGet<TeamDirectoryEntry[]>("/team", { signal });
       const results = await Promise.all(
-        directory.map(async (entry): Promise<AgentMetrics | null> => {
+        directory.map(async (entry): Promise<AgentMetrics> => {
           try {
             const text = await fetchText(
               `/api/agents/${encodeURIComponent(entry.name)}/metrics`,
               signal,
             );
+            // Clear any prior warn-suppression so a future failure warns again.
+            warnedAgents.delete(entry.name);
             return { agent: entry.name, families: parseProm(text) };
-          } catch {
-            return null;
+          } catch (e) {
+            if ((e as { name?: string }).name === "AbortError") throw e;
+            const message =
+              e instanceof ApiError ? e.message : (e as Error).message;
+            // Throttled: warn once per agent per outage, not every poll tick.
+            if (!warnedAgents.has(entry.name)) {
+              warnedAgents.add(entry.name);
+              console.warn(
+                `[useMetrics] /metrics failed for agent "${entry.name}": ${message}`,
+              );
+            }
+            return {
+              agent: entry.name,
+              families: new Map() as FamilyMap,
+              error: message,
+            };
           }
         }),
       );
       if (signal.aborted) return;
-      perAgent.value = results.filter((r): r is AgentMetrics => r !== null);
+      perAgent.value = results;
+      const errs: PerAgentErrors = {};
+      for (const r of results) {
+        if (r.error) errs[r.agent] = r.error;
+      }
+      perAgentErrors.value = errs;
       lastUpdated.value = Date.now();
       error.value = "";
     } catch (e) {
@@ -108,5 +143,13 @@ export function useMetrics(options: UseMetricsOptions = {}) {
     aborter?.abort();
   });
 
-  return { perAgent, merged, error, loading, lastUpdated, refresh };
+  return {
+    perAgent,
+    perAgentErrors,
+    merged,
+    error,
+    loading,
+    lastUpdated,
+    refresh,
+  };
 }
