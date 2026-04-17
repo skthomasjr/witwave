@@ -87,13 +87,11 @@ helm uninstall nyx --namespace nyx
 | `agents` | List of agents to deploy, each as a nyx-harness pod | `[{name: adam}]` |
 | `agents[].name` | Agent name — used for pod name, service name, and `AGENT_NAME` env var | `adam` |
 | `agents[].imagePullSecrets` | Image pull secrets for the agent pod | `[]` |
-| `ui.enabled` | Deploy the nyx web UI | `false` |
-| `ui.image.repository` | UI image repository | `ghcr.io/skthomasjr/images/ui` |
-| `ui.port` | UI service port | `80` |
-| `ui.corsAllowOrigin` | `Access-Control-Allow-Origin` value on UI static responses | `"*"` |
-| `ui.connectSrc` | CSP `connect-src` directive — restrict which origins UI scripts may contact | `"*"` |
-| `ui.securityContext` | Pod-level securityContext for the UI Deployment (opt-in; unset preserves stock nginx:alpine compatibility) | unset |
-| `ingress.enabled` | Deploy a Kubernetes Ingress for the UI | `false` |
+| `dashboard.enabled` | Deploy the nyx web dashboard | `false` |
+| `dashboard.image.repository` | Dashboard image repository | `ghcr.io/skthomasjr/images/dashboard` |
+| `dashboard.port` | Dashboard service port | `80` |
+| `dashboard.harnessUrl` | Override the harness origin used by the `/api/*` fallback proxy (default: `http://<release>-harness:8000`) | unset |
+| `ingress.enabled` | Deploy a Kubernetes Ingress for the dashboard | `false` |
 | `ingress.className` | Ingress class name (e.g. `nginx`, `traefik`) | `""` |
 | `ingress.annotations` | Annotations to add to the Ingress resource | `{}` |
 | `ingress.hosts` | Hostnames and paths for the Ingress | `[]` |

@@ -29,13 +29,13 @@ The platform has eight components, each with its own source directory:
 | **Claude backend** | `a2-claude/`           | Backend agent      | Executes prompts via the Claude Agent SDK. Manages sessions, memory, conversation logs, and metrics.                        |
 | **Codex backend**  | `a2-codex/`            | Backend agent      | Executes prompts via the OpenAI Agents SDK. Supports web search and headless browser via Playwright.                        |
 | **Gemini backend** | `a2-gemini/`           | Backend agent      | Executes prompts via the Google Gemini SDK. Manages sessions and conversation history.                                      |
-| **UI**             | `ui/`                  | Web interface      | Single-page app for monitoring metrics, browsing agents, viewing conversations, and chatting with agents.                   |
+| **Dashboard**      | `dashboard/`           | Web interface      | Vue 3 + PrimeVue app for monitoring metrics, browsing agents, viewing conversations, and chatting with agents.              |
 | **Operator**       | `operator/`            | Kubernetes operator| Go controller (Operator SDK) that reconciles `NyxAgent` custom resources into the same workloads the Helm chart renders.     |
 | **Agent chart**    | `charts/nyx/`          | Deployment         | Kubernetes Helm chart for deploying nyx agents via templated manifests (no CRDs).                                            |
 | **Operator chart** | `charts/nyx-operator/` | Deployment         | Kubernetes Helm chart that installs the operator and the `NyxAgent` CRD.                                                     |
 
 Each backend agent is a full A2A server. The orchestrator routes work to backends but does no LLM execution itself. The
-UI provides visibility only — it does not participate in agent workflows. The operator and its chart are an alternative
+dashboard provides visibility only — it does not participate in agent workflows. The operator and its chart are an alternative
 install path to the agent chart; both target the same per-agent deployment shape.
 
 ## How It Works
@@ -73,7 +73,6 @@ automatically on every release tag.
 | `a2-claude`      | `ghcr.io/skthomasjr/images/a2-claude:latest`      |
 | `a2-codex`       | `ghcr.io/skthomasjr/images/a2-codex:latest`       |
 | `a2-gemini`      | `ghcr.io/skthomasjr/images/a2-gemini:latest`      |
-| `ui`             | `ghcr.io/skthomasjr/images/ui:latest`             |
 | `dashboard`      | `ghcr.io/skthomasjr/images/dashboard:latest`      |
 | `nyx-operator`   | `ghcr.io/skthomasjr/images/nyx-operator:latest`   |
 | `git-sync`       | `ghcr.io/skthomasjr/images/git-sync:latest`       |

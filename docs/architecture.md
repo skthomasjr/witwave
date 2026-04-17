@@ -107,7 +107,7 @@ a2-gemini/                     # Gemini backend source
 ├── sqlite_task_store.py       # SQLite-backed A2A task store (used when TASK_STORE_PATH is set)
 └── requirements.txt
 
-ui/                            # Web UI
+dashboard/                     # Vue 3 + Vite + PrimeVue web interface
 
 operator/                      # Go/Kubebuilder Kubernetes operator
 

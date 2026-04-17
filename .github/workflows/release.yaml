@@ -28,9 +28,6 @@ jobs:
           - image: a2-gemini
             file: a2-gemini/Dockerfile
             context: .
-          - image: ui
-            file: ui/Dockerfile
-            context: .
           - image: dashboard
             file: dashboard/Dockerfile
             context: .

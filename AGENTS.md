@@ -258,8 +258,7 @@ tools/                       # MCP components (one directory per server)
     ├── server.py
     └── requirements.txt
 
-ui/                          # Web UI — legacy single-file app (currently primary)
-dashboard/                   # Vue 3 + Vite + PrimeVue dashboard — future replacement for ui/ (#470)
+dashboard/                   # Vue 3 + Vite + PrimeVue web interface
 charts/                      # Helm charts
 ├── nyx/                     # nyx Helm chart (deploys agents to Kubernetes)
 └── nyx-operator/            # nyx-operator Helm chart (deploys the NyxAgent controller)

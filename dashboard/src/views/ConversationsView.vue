@@ -27,9 +27,31 @@ const agentOptions = computed(() => {
   return Array.from(set).sort();
 });
 
-const sorted = computed(() =>
-  [...items.value].sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0)),
-);
+// Keep request/response pairs together: group by session_id, order
+// sessions by their first message's timestamp (oldest → newest), then
+// order messages within a session by timestamp. Latest session ends up
+// at the bottom; within any given exchange the user message stays
+// immediately above its agent reply.
+const sorted = computed(() => {
+  // First-seen timestamp per session — governs session ordering.
+  const firstTs = new Map<string, string>();
+  for (const e of items.value) {
+    const sid = e.session_id ?? "__no_session__";
+    const prior = firstTs.get(sid);
+    if (!prior || e.ts < prior) firstTs.set(sid, e.ts);
+  }
+  return [...items.value].sort((a, b) => {
+    const sa = a.session_id ?? "__no_session__";
+    const sb = b.session_id ?? "__no_session__";
+    if (sa !== sb) {
+      const ta = firstTs.get(sa) ?? "";
+      const tb = firstTs.get(sb) ?? "";
+      if (ta !== tb) return ta < tb ? -1 : 1;
+      return sa < sb ? -1 : 1;
+    }
+    return a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0;
+  });
+});
 
 const filtered = computed(() => {
   const q = searchTerm.value.trim().toLowerCase();

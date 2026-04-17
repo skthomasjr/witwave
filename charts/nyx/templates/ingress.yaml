@@ -3,10 +3,10 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ $.Release.Name }}-ui
+  name: {{ $.Release.Name }}-dashboard
   labels:
-    app.kubernetes.io/name: {{ $.Release.Name }}-ui
-    app.kubernetes.io/component: ui
+    app.kubernetes.io/name: {{ $.Release.Name }}-dashboard
+    app.kubernetes.io/component: dashboard
     app.kubernetes.io/part-of: nyx
     app.kubernetes.io/managed-by: helm
   {{- with .Values.ingress.annotations }}
@@ -30,8 +30,8 @@ spec:
             pathType: {{ .pathType | default "Prefix" }}
             backend:
               service:
-                name: {{ $.Release.Name }}-ui
+                name: {{ $.Release.Name }}-dashboard
                 port:
-                  number: {{ $.Values.ui.port | default 80 }}
+                  number: {{ $.Values.dashboard.port | default 80 }}
     {{- end }}
 {{- end }}
