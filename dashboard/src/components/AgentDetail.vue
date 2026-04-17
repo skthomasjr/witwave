@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { TeamMember } from "../types/team";
+import { renderMarkdown } from "../utils/markdown";
 
 // Right-hand detail pane. For now shows lightweight metadata for the selected
 // member — chat is deferred to the next pass (parity plan, #470). Once chat
@@ -16,6 +17,7 @@ const backends = computed(() => props.member?.agents.filter((a) => a.role === "b
 const activeBackend = computed(
   () => backends.value.find((b) => b.id === props.activeBackendId) ?? null,
 );
+const descriptionHtml = computed(() => renderMarkdown(nyxAgent.value?.card?.description));
 </script>
 
 <template>
@@ -31,7 +33,7 @@ const activeBackend = computed(
 
       <section v-if="nyxAgent?.card?.description" class="detail-section">
         <h3>description</h3>
-        <p class="detail-desc">{{ nyxAgent.card.description }}</p>
+        <div class="detail-desc" v-html="descriptionHtml" />
       </section>
 
       <section v-if="backends.length" class="detail-section">
@@ -117,8 +119,45 @@ const activeBackend = computed(
   font-size: 12px;
   color: var(--nyx-text);
   line-height: 1.6;
-  white-space: pre-wrap;
   margin: 0;
+}
+
+.detail-desc :deep(p) {
+  margin: 0 0 6px;
+}
+
+.detail-desc :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.detail-desc :deep(h1),
+.detail-desc :deep(h2),
+.detail-desc :deep(h3) {
+  font-size: 12px;
+  color: var(--nyx-bright);
+  margin: 8px 0 4px;
+}
+
+.detail-desc :deep(ul),
+.detail-desc :deep(ol) {
+  padding-left: 18px;
+  margin: 4px 0;
+}
+
+.detail-desc :deep(li) {
+  margin: 2px 0;
+}
+
+.detail-desc :deep(code) {
+  background: var(--nyx-border);
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 11px;
+}
+
+.detail-desc :deep(a) {
+  color: var(--nyx-accent);
+  text-decoration: none;
 }
 
 .detail-list {

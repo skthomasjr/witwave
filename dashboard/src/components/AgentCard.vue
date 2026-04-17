@@ -2,11 +2,12 @@
 import { computed } from "vue";
 import type { TeamMember } from "../types/team";
 import BackendBubble from "./BackendBubble.vue";
+import { renderMarkdown } from "../utils/markdown";
 
 // Single agent card for the left-hand list. Mirrors the legacy renderAgentCards
 // output in ui/index.html (nyx-card with ac-header + ac-desc + backends-row).
-// Markdown rendering of card.description is deliberately deferred (#470 parity
-// follow-up) — we show plain text until marked+DOMPurify are pulled in.
+// Descriptions render through marked + DOMPurify — same pipeline as the
+// legacy UI — so heading/list/code formatting matches byte-for-byte.
 
 const props = defineProps<{
   member: TeamMember;
@@ -27,6 +28,7 @@ const displayName = computed(
   () => props.member.name || nyxAgent.value?.card?.name || nyxAgent.value?.id || props.member.url,
 );
 const description = computed(() => (nyxAgent.value?.card?.description ?? "").trim());
+const descriptionHtml = computed(() => renderMarkdown(description.value));
 </script>
 
 <template>
@@ -58,7 +60,7 @@ const description = computed(() => (nyxAgent.value?.card?.description ?? "").tri
         </span>
       </div>
 
-      <div v-if="description" class="ac-desc">{{ description }}</div>
+      <div v-if="description" class="ac-desc" v-html="descriptionHtml" />
 
       <div v-if="backends.length" class="backends-row">
         <BackendBubble
@@ -148,7 +150,45 @@ const description = computed(() => (nyxAgent.value?.card?.description ?? "").tri
   font-size: 11px;
   color: var(--nyx-dim);
   line-height: 1.6;
-  white-space: pre-wrap;
+}
+
+/* Legacy ui/ .ac-desc child rules — keep in sync with ui/index.html. */
+.ac-desc :deep(p) {
+  margin: 0 0 6px;
+}
+
+.ac-desc :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.ac-desc :deep(h1),
+.ac-desc :deep(h2),
+.ac-desc :deep(h3) {
+  font-size: 11px;
+  color: var(--nyx-text);
+  margin: 6px 0 3px;
+}
+
+.ac-desc :deep(ul),
+.ac-desc :deep(ol) {
+  padding-left: 16px;
+  margin: 4px 0;
+}
+
+.ac-desc :deep(li) {
+  margin: 2px 0;
+}
+
+.ac-desc :deep(code) {
+  background: var(--nyx-border);
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 10px;
+}
+
+.ac-desc :deep(a) {
+  color: var(--nyx-accent);
+  text-decoration: none;
 }
 
 .ac-status {

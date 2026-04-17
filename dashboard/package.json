@@ -12,11 +12,14 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "vue": "^3.5.13",
-    "vue-router": "^4.5.0",
-    "primevue": "^4.3.3",
     "@primevue/themes": "^4.3.3",
-    "primeicons": "^7.0.0"
+    "@types/dompurify": "^3.0.5",
+    "dompurify": "^3.4.0",
+    "marked": "^18.0.0",
+    "primeicons": "^7.0.0",
+    "primevue": "^4.3.3",
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.2.1",
