@@ -98,6 +98,11 @@ MCP_CONFIG_PATH = os.environ.get("MCP_CONFIG_PATH", "/home/agent/.codex/mcp.json
 
 MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "10000"))
 TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
+# Per-chunk timeout for the streaming on_chunk callback. Bounds the SDK event
+# loop's wait on a slow A2A consumer so token-budget enforcement and SDK
+# iteration are never stalled by backpressure on a single delivery. On timeout
+# the chunk is logged and dropped; iteration continues (#539).
+STREAM_CHUNK_TIMEOUT_SECONDS = float(os.environ.get("STREAM_CHUNK_TIMEOUT_SECONDS", "5"))
 # Percent of max_tokens at which a context-window warning metric is incremented.
 # Tunable via env so operators can dial sensitivity without patching the
 # binary. Matches the a2-claude knob (#459).
@@ -561,9 +566,24 @@ async def run_query(
                     # caller. Awaited directly so chunk events stay ordered
                     # on the wire and exceptions surface here. Errors are
                     # logged and swallowed so SDK iteration is never aborted.
+                    # Wrapped in asyncio.wait_for so a slow/stuck A2A consumer
+                    # cannot stall the SDK event loop, token-budget
+                    # enforcement, or tool-call processing (#539). On timeout
+                    # the chunk is dropped with a warning and iteration
+                    # continues; the overall TASK_TIMEOUT_SECONDS still bounds
+                    # total request time.
                     if on_chunk is not None:
                         try:
-                            await on_chunk(delta.text)
+                            await asyncio.wait_for(
+                                on_chunk(delta.text),
+                                timeout=STREAM_CHUNK_TIMEOUT_SECONDS,
+                            )
+                        except asyncio.TimeoutError:
+                            logger.warning(
+                                "Session %r: on_chunk callback timed out after %.3fs; dropping chunk and continuing stream",
+                                session_id,
+                                STREAM_CHUNK_TIMEOUT_SECONDS,
+                            )
                         except Exception as _e:
                             logger.warning("Session %r: on_chunk callback raised: %s", session_id, _e)
                 # Check usage on response events — response.completed carries usage
