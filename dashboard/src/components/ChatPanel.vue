@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from "vue";
 import type { Agent } from "../types/team";
 import { useChat } from "../composables/useChat";
+import { useRouting } from "../composables/useRouting";
 import { renderMarkdown } from "../utils/markdown";
 
 // Tier 1 chat panel — single round-trip send to the harness /proxy endpoint
@@ -32,8 +33,21 @@ const {
 const input = ref("");
 const feed = useTemplateRef<HTMLElement>("feed");
 
+// Fetch the harness's /routing reflection (#638) so the selector's
+// implicit default honors backend.yaml's a2a routing target rather
+// than the first backend in the list. User's explicit pick (via
+// select-backend) still wins.
+const { defaultBackendFor } = useRouting(() => props.agentName);
+
 const selectedBackendId = computed({
-  get: () => props.activeBackendId ?? props.backends[0]?.id ?? "",
+  get: () => {
+    if (props.activeBackendId) return props.activeBackendId;
+    const routed = defaultBackendFor("a2a");
+    // Only honor routing when the backend is actually present in this
+    // agent's backend list — avoids sending to a configured-but-offline id.
+    if (routed && props.backends.some((b) => b.id === routed)) return routed;
+    return props.backends[0]?.id ?? "";
+  },
   set: (id: string) => emit("select-backend", id),
 });
 
