@@ -39,7 +39,15 @@ const (
 	labelPartOf    = "app.kubernetes.io/part-of"
 	labelManagedBy = "app.kubernetes.io/managed-by"
 
-	componentAgent   = "agent"
+	// componentAgent matches the chart's nyx.agentLabels component value
+	// ("nyx-harness") so Prometheus rules, ServiceMonitors, and Grafana
+	// panels that select on `app.kubernetes.io/component=nyx-harness`
+	// match operator-rendered agents the same way they match Helm-rendered
+	// agents (#575). managedBy stays "nyx-operator" (vs the chart's "helm")
+	// on purpose — it's the one label that is semantically different
+	// between the two install paths and consumers should be able to tell
+	// the rendering path apart.
+	componentAgent   = "nyx-harness"
 	componentBackend = "backend"
 	partOf           = "nyx"
 	managedBy        = "nyx-operator"
