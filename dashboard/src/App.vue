@@ -23,6 +23,7 @@ const navItems: NavItem[] = [
   { label: "Continuations", to: { name: "continuations" } },
   { label: "Heartbeat", to: { name: "heartbeat" } },
   { label: "Conversations", to: { name: "conversations" } },
+  { label: "Trace", to: { name: "trace" } },
   { label: "Metrics", to: { name: "metrics" } },
 ];
 

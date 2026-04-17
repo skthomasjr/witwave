@@ -8,6 +8,7 @@ import WebhooksView from "./views/WebhooksView.vue";
 import ContinuationsView from "./views/ContinuationsView.vue";
 import HeartbeatView from "./views/HeartbeatView.vue";
 import ConversationsView from "./views/ConversationsView.vue";
+import TraceView from "./views/TraceView.vue";
 import MetricsView from "./views/MetricsView.vue";
 import CalendarView from "./views/CalendarView.vue";
 
@@ -25,6 +26,7 @@ export const router = createRouter({
     { path: "/continuations", name: "continuations", component: ContinuationsView },
     { path: "/heartbeat", name: "heartbeat", component: HeartbeatView },
     { path: "/conversations", name: "conversations", component: ConversationsView },
+    { path: "/trace", name: "trace", component: TraceView },
     { path: "/metrics", name: "metrics", component: MetricsView },
   ],
 });

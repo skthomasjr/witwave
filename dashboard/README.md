@@ -17,6 +17,7 @@ door, no cross-agent fan-out inside any one agent's pod.
 | Continuations     | Continues-after chains (jobs, triggers, other continuations)                     |
 | Heartbeat         | Per-agent heartbeat schedule + backend + model                                   |
 | Conversations     | Aggregated conversation log with agent/role/search/limit filters                 |
+| Trace             | Tool-use audit feed across the team (timestamp, tool, duration, status, input)   |
 | Metrics           | Label-breakdown bar/doughnut charts from each agent's /metrics                   |
 
 ## Development
