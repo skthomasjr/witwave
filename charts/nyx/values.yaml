@@ -116,14 +116,25 @@ podDisruptionBudget:
   # # Alternative: cap unavailable pods instead of guaranteeing available.
   # maxUnavailable: 1
 
+# Pod termination grace period (#547). Must be strictly greater than
+# preStop.delaySeconds so the harness + backends have time to receive SIGTERM
+# and run graceful shutdown (drain in-flight A2A requests, flush conversation
+# logs, flush Prometheus counters) before the kubelet sends SIGKILL. Default
+# 60s preserves prior hardcoded behaviour; the chart's fail guard enforces the
+# `preStop.delaySeconds < terminationGracePeriodSeconds` invariant when preStop
+# is enabled.
+terminationGracePeriodSeconds: 60
+
 # preStop lifecycle hook for graceful drain on pod termination. When enabled,
 # every container in the agent pod sleeps for delaySeconds before SIGTERM
 # arrives, giving in-flight A2A requests, scheduled jobs, and webhook
 # deliveries a coordinated drain window (#447). Off by default — opt in for
-# production deployments where graceful shutdown matters.
+# production deployments where graceful shutdown matters. Keep delaySeconds
+# strictly less than terminationGracePeriodSeconds so SIGTERM fires with
+# enough remaining grace to complete graceful shutdown (#547).
 preStop:
   enabled: false
-  delaySeconds: 30
+  delaySeconds: 5
 
 # Liveness and readiness probe timing for all containers.
 # Defaults match the values previously hardcoded in templates (#425).

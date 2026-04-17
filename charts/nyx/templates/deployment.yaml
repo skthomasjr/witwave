@@ -1,3 +1,12 @@
+{{- /* Guard: when preStop is enabled, preStop.delaySeconds must be strictly
+       less than terminationGracePeriodSeconds so SIGTERM actually fires with
+       enough remaining grace for A2A requests, jobs, and webhook deliveries
+       to drain before SIGKILL (#547, mirrors #512). */}}
+{{- if .Values.preStop.enabled }}
+{{- if ge (int .Values.preStop.delaySeconds) (int (.Values.terminationGracePeriodSeconds | default 60)) }}
+{{- fail (printf "preStop.delaySeconds (%d) must be strictly less than terminationGracePeriodSeconds (%d)" (int .Values.preStop.delaySeconds) (int (.Values.terminationGracePeriodSeconds | default 60))) }}
+{{- end }}
+{{- end }}
 {{- range .Values.agents }}
 {{- if eq (include "nyx.enabled" .) "true" }}
 {{- $agentAutoscaling := dict }}
@@ -43,7 +52,7 @@ spec:
         {{- end }}
       {{- end }}
     spec:
-      terminationGracePeriodSeconds: 60
+      terminationGracePeriodSeconds: {{ $.Values.terminationGracePeriodSeconds | default 60 }}
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
@@ -142,7 +151,7 @@ spec:
               exec:
                 # Sleep before SIGTERM to give in-flight A2A requests, jobs,
                 # and webhook deliveries a coordinated drain window (#447).
-                command: ["/bin/sh", "-c", "sleep {{ $.Values.preStop.delaySeconds | default 30 }}"]
+                command: ["/bin/sh", "-c", "sleep {{ $.Values.preStop.delaySeconds | default 5 }}"]
           {{- end }}
           ports:
             - name: http
@@ -222,7 +231,7 @@ spec:
               exec:
                 # Sleep before SIGTERM to give in-flight backend queries a
                 # coordinated drain window (#447).
-                command: ["/bin/sh", "-c", "sleep {{ $.Values.preStop.delaySeconds | default 30 }}"]
+                command: ["/bin/sh", "-c", "sleep {{ $.Values.preStop.delaySeconds | default 5 }}"]
           {{- end }}
           ports:
             - containerPort: {{ .port }}
