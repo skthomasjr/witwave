@@ -24,6 +24,14 @@ data:
     #!/bin/sh
     set -e
     MAPPINGS_DIR="${1:-/nyx-mappings}"
+    # Failure marker path (risk #584): when any mapping fails, we drop a
+    # timestamped marker file here so that a readiness probe or sidecar check
+    # can surface the failure externally. The exechook itself only logs to
+    # stderr, which is invisible outside `kubectl logs -c git-sync-<name>`.
+    # Consumers: mount an emptyDir at /var/run/git-sync shared between the
+    # git-sync sidecar and the harness container, and have the harness
+    # readiness endpoint fail if this file exists.
+    FAILURE_MARKER="/var/run/git-sync/failed"
     failed=0
     apply_mappings() {
       MAPPINGS_FILE="$1"
@@ -69,8 +77,17 @@ data:
     done
     if [ "$failed" -ne 0 ]; then
       echo "ERROR: one or more mappings failed" >&2
+      # Write failure marker (risk #584). Best-effort: if the marker
+      # directory isn't mounted we still exit 1 so the pod-level signal is
+      # preserved. Timestamp is ISO-8601 UTC to make the file self-describing.
+      if mkdir -p "$(dirname "$FAILURE_MARKER")" 2>/dev/null; then
+        date -u +"%Y-%m-%dT%H:%M:%SZ" > "$FAILURE_MARKER" 2>/dev/null || true
+      fi
       exit 1
     fi
+    # Clear any stale failure marker from a previous failed run so that
+    # readiness can recover once mappings succeed again.
+    rm -f "$FAILURE_MARKER" 2>/dev/null || true
 {{- end }}
 {{- range .Values.agents }}
 {{- if eq (include "nyx.enabled" .) "true" }}
