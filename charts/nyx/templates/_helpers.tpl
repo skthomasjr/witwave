@@ -129,6 +129,56 @@ Usage: {{- include "nyx.gitMappingVolumes" (dict "agent" . "release" $.Release.N
 {{- end }}
 
 {{/*
+Resolve resources for the nyx-harness container (#553). Order of precedence:
+  1. agent.resources (per-agent override in values.yaml)
+  2. .Values.defaults.resources.harness (chart-shipped default)
+Returns the empty string when neither is set, so the caller can branch on it.
+Usage:
+  {{- $res := include "nyx.harnessResources" (dict "agent" . "Values" $.Values) }}
+  {{- if $res }}
+  resources:
+    {{- $res | nindent 12 }}
+  {{- end }}
+*/}}
+{{- define "nyx.harnessResources" -}}
+{{- $agent := .agent -}}
+{{- $Values := .Values -}}
+{{- if $agent.resources -}}
+{{ toYaml $agent.resources }}
+{{- else if and $Values.defaults $Values.defaults.resources $Values.defaults.resources.harness -}}
+{{ toYaml $Values.defaults.resources.harness }}
+{{- end -}}
+{{- end }}
+
+{{/*
+Resolve resources for a backend sidecar (#553). Order of precedence:
+  1. backend.resources (per-backend override in values.yaml)
+  2. .Values.defaults.resources.backends[<backend-name>] (per-backend-type default,
+     keyed by backend.name — e.g. "claude", "codex", "gemini")
+  3. .Values.defaults.resources.backend (shared fallback for any unknown backend)
+Returns the empty string when none of these are set.
+Usage:
+  {{- $res := include "nyx.backendResources" (dict "backend" . "Values" $.Values) }}
+  {{- if $res }}
+  resources:
+    {{- $res | nindent 12 }}
+  {{- end }}
+*/}}
+{{- define "nyx.backendResources" -}}
+{{- $backend := .backend -}}
+{{- $Values := .Values -}}
+{{- $defaults := dict -}}
+{{- if and $Values.defaults $Values.defaults.resources -}}{{- $defaults = $Values.defaults.resources -}}{{- end -}}
+{{- if $backend.resources -}}
+{{ toYaml $backend.resources }}
+{{- else if and $defaults.backends (index $defaults.backends $backend.name) -}}
+{{ toYaml (index $defaults.backends $backend.name) }}
+{{- else if $defaults.backend -}}
+{{ toYaml $defaults.backend }}
+{{- end -}}
+{{- end }}
+
+{{/*
 nyx.enabled — returns "true" or "false" for a scope's `enabled` field,
 defaulting to "true" when the key is absent. Use via `eq (include
 "nyx.enabled" .) "true"`. This exists because `default true .enabled`

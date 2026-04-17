@@ -224,6 +224,77 @@ sharedStorage:
   # # Required when storageType is hostPath — must be a non-empty absolute path.
   # hostPath: /tmp/nyx-shared
 
+# Chart-wide defaults applied to every agent pod when the per-agent /
+# per-backend entry does not set its own value (#553).
+#
+# Resource requests and limits default to conservative values so the chart
+# installs with Guaranteed/Burstable QoS out of the box instead of BestEffort.
+# Without requests, HPA `targetCPUUtilizationPercentage` (see `autoscaling`
+# above) is a no-op (FailedGetResourceMetric) and pods are the first to be
+# evicted under node pressure. These defaults exist so a vanilla `helm install`
+# stands on something reasonable; tune them per workload.
+#
+# Precedence:
+#   agents[].resources                            → overrides harness default
+#   agents[].backends[].resources                 → overrides backend default
+#   defaults.resources.backends.<backend-name>    → per-backend-type default,
+#                                                    keyed by backend.name
+#                                                    (claude / codex / gemini)
+#   defaults.resources.backend                    → shared fallback for any
+#                                                    backend name not listed
+#                                                    under .backends above
+#   defaults.resources.harness                    → nyx-harness container
+#
+# Set any leaf to null (`~`) to disable the default and render no resources
+# block for that container (back to pre-#553 BestEffort behaviour).
+defaults:
+  resources:
+    # nyx-harness orchestrator is pure-Python infrastructure (no LLM): small,
+    # bursty CPU and a low-memory steady state.
+    harness:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    # Shared default for any backend sidecar whose name is not listed under
+    # `backends` below. Backends run LLM clients and scale with concurrent
+    # sessions, so they need more headroom than nyx-harness.
+    backend:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+    # Per-backend-type overrides, keyed by backend.name. Users running heavy
+    # concurrency (especially on a2-claude, whose memory scales with active
+    # Claude Code subprocess sessions) should raise these on the specific
+    # backend entry — these defaults are a soft ceiling, not a recommendation.
+    backends:
+      claude:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+      codex:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+      gemini:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+
 # List of agents to deploy. Each agent runs as a single pod containing
 # the nyx-harness orchestrator and one or more backend sidecars.
 agents:
@@ -248,14 +319,16 @@ agents:
     #   - name: ghcr-credentials
 
     # # Resource requests and limits for the nyx-harness orchestrator container.
-    # # nyx-harness is lightweight (pure Python, no LLM) — CPU and memory needs are low.
+    # # Overrides `defaults.resources.harness` above. nyx-harness is lightweight
+    # # (pure Python, no LLM) — CPU and memory needs are low; only raise if a
+    # # single agent hosts a very large number of jobs/triggers/webhooks.
     # resources:
     #   requests:
-    #     cpu: 50m
-    #     memory: 128Mi
-    #   limits:
-    #     cpu: 250m
+    #     cpu: 100m
     #     memory: 256Mi
+    #   limits:
+    #     cpu: 500m
+    #     memory: 512Mi
 
     # # Per-agent metrics override. Takes precedence over global metrics.enabled.
     # metrics:
@@ -340,15 +413,17 @@ agents:
         model: claude-opus-4-7
 
         # # Resource requests and limits for this backend container.
-        # # Claude backends spawn a Claude Code subprocess per session — memory usage
-        # # scales with concurrent sessions and context window size. CPU is bursty
-        # # during active queries but mostly idle between them.
+        # # Overrides `defaults.resources.backends.claude` above. Claude backends
+        # # spawn a Claude Code subprocess per session — memory usage scales with
+        # # concurrent sessions and context window size. CPU is bursty during
+        # # active queries but mostly idle between them. Operators running heavy
+        # # concurrency should raise memory (e.g. 2Gi limit) and CPU.
         # resources:
         #   requests:
-        #     cpu: 100m
+        #     cpu: 250m
         #     memory: 512Mi
         #   limits:
-        #     cpu: 2000m
+        #     cpu: "2"
         #     memory: 2Gi
 
         # # Git mappings for this backend. Same semantics as agent-level gitMappings

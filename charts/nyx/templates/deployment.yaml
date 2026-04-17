@@ -172,9 +172,10 @@ spec:
             periodSeconds: {{ $.Values.probes.readiness.periodSeconds }}
             timeoutSeconds: {{ $.Values.probes.readiness.timeoutSeconds }}
             failureThreshold: {{ $.Values.probes.readiness.failureThreshold }}
-          {{- if .resources }}
+          {{- $harnessResources := include "nyx.harnessResources" (dict "agent" . "Values" $.Values) }}
+          {{- if $harnessResources }}
           resources:
-            {{- toYaml .resources | nindent 12 }}
+            {{- $harnessResources | nindent 12 }}
           {{- end }}
           env:
             - name: AGENT_NAME
@@ -251,9 +252,10 @@ spec:
             periodSeconds: {{ $.Values.probes.readiness.periodSeconds }}
             timeoutSeconds: {{ $.Values.probes.readiness.timeoutSeconds }}
             failureThreshold: {{ $.Values.probes.readiness.failureThreshold }}
-          {{- if .resources }}
+          {{- $backendResources := include "nyx.backendResources" (dict "backend" . "Values" $.Values) }}
+          {{- if $backendResources }}
           resources:
-            {{- toYaml .resources | nindent 12 }}
+            {{- $backendResources | nindent 12 }}
           {{- end }}
           env:
             - name: AGENT_NAME
