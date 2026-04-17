@@ -356,6 +356,32 @@ LOG_PROMPT_MAX_BYTES = int(os.environ.get("LOG_PROMPT_MAX_BYTES", "200"))
 _BACKEND_ID = "claude"
 _LABELS = {"agent": AGENT_OWNER, "agent_id": AGENT_ID, "backend": _BACKEND_ID}
 
+
+# Env var keys that must not be forwarded to MCP stdio subprocesses because
+# they influence binary resolution or dynamic-linker / interpreter behavior
+# and could be used for privilege escalation or code injection via a malicious
+# or poorly-audited ``mcp.json``. Mirrors the denylist a2-codex applies to
+# both ``_shell_executor`` (#248) and ``_build_mcp_servers`` (#519); lifted
+# here verbatim so the two backends stay in lockstep (#606).
+_SHELL_ENV_DENYLIST: frozenset[str] = frozenset({
+    "PATH",
+    "LD_PRELOAD",
+    "LD_LIBRARY_PATH",
+    "LD_AUDIT",
+    "LD_DEBUG",
+    "PYTHONPATH",
+    "PYTHONSTARTUP",
+    "PYTHONINSPECT",
+    "RUBYLIB",
+    "RUBYOPT",
+    "PERL5LIB",
+    "PERL5OPT",
+    "NODE_PATH",
+    "DYLD_INSERT_LIBRARIES",
+    "DYLD_LIBRARY_PATH",
+    "DYLD_FRAMEWORK_PATH",
+})
+
 CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL") or None
 CLAUDE_CREDENTIAL = (
     os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
@@ -564,6 +590,38 @@ async def _log_tool_event(event_type: str, block, session_id: str, model: str | 
         logger.error(f"_log_tool_event error: {e}")
 
 
+def _sanitize_mcp_servers(servers: dict) -> dict:
+    """Strip loader/interpreter-hijack env vars from every stdio MCP server's ``env`` dict (#606).
+
+    The Claude Agent SDK forwards each server entry's ``env`` dict verbatim to
+    the subprocess it spawns for stdio transport, so a malicious or poorly-
+    audited ``mcp.json`` could drop e.g. ``LD_PRELOAD`` / ``PYTHONPATH`` into
+    the MCP server process and achieve code execution — identical threat
+    model to a2-codex #519. Filter each entry's ``env`` through
+    ``_SHELL_ENV_DENYLIST`` and log any rejected keys at WARNING so
+    operators notice misconfigurations. Non-dict entries, entries without
+    an ``env`` key, and non-stdio transports are passed through untouched.
+    """
+    if not isinstance(servers, dict):
+        return servers
+    for name, cfg in servers.items():
+        if not isinstance(cfg, dict):
+            continue
+        raw_env = cfg.get("env")
+        if not isinstance(raw_env, dict):
+            continue
+        sanitized_env = {k: v for k, v in raw_env.items() if k not in _SHELL_ENV_DENYLIST}
+        rejected = set(raw_env) - set(sanitized_env)
+        if rejected:
+            logger.warning(
+                "MCP server %r: stripped dangerous env vars from config env: %s",
+                name,
+                sorted(rejected),
+            )
+        cfg["env"] = sanitized_env
+    return servers
+
+
 def _load_mcp_config() -> dict:
     if not os.path.exists(MCP_CONFIG_PATH):
         return {}
@@ -573,8 +631,8 @@ def _load_mcp_config() -> dict:
         # mcp.json may be in Claude's native format {"mcpServers": {...}}.
         # The SDK expects the inner servers dict directly, not the wrapper object.
         if isinstance(data, dict) and "mcpServers" in data and isinstance(data["mcpServers"], dict):
-            return data["mcpServers"]
-        return data
+            return _sanitize_mcp_servers(data["mcpServers"])
+        return _sanitize_mcp_servers(data) if isinstance(data, dict) else data
     except Exception as e:
         if a2_mcp_config_errors_total is not None:
             a2_mcp_config_errors_total.labels(**_LABELS).inc()
