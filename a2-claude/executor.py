@@ -623,6 +623,13 @@ def _sanitize_mcp_servers(servers: dict) -> dict:
 
 
 def _load_mcp_config() -> dict:
+    """Load and sanitize mcp.json.
+
+    Returns ``{}`` when the file is absent (legitimate "no MCP servers"
+    state). Raises on parse/validation errors so hot-reload callers can
+    distinguish "successfully empty" from "unparseable" and keep the
+    previous server set in the latter case (#591).
+    """
     if not os.path.exists(MCP_CONFIG_PATH):
         return {}
     try:
@@ -637,7 +644,7 @@ def _load_mcp_config() -> dict:
         if a2_mcp_config_errors_total is not None:
             a2_mcp_config_errors_total.labels(**_LABELS).inc()
         logger.warning(f"Failed to load MCP config from {MCP_CONFIG_PATH}: {e}")
-        return {}
+        raise
 
 
 async def _track_session(sessions: OrderedDict[str, float], session_id: str) -> None:
@@ -1185,7 +1192,14 @@ class AgentExecutor(A2AAgentExecutor):
         self._mcp_watcher_tasks.clear()
 
     async def mcp_config_watcher(self) -> None:
-        self._mcp_servers = await asyncio.to_thread(_load_mcp_config)
+        # Initial load: fall back to an empty server set if the first parse
+        # fails — there is no previous value to keep. The warning log and
+        # ``a2_mcp_config_errors_total`` increment are already emitted by
+        # ``_load_mcp_config`` itself (#591).
+        try:
+            self._mcp_servers = await asyncio.to_thread(_load_mcp_config)
+        except Exception:
+            self._mcp_servers = {}
         if a2_mcp_servers_active is not None:
             a2_mcp_servers_active.labels(**_LABELS).set(len(self._mcp_servers))
         if self._mcp_servers:
@@ -1202,7 +1216,18 @@ class AgentExecutor(A2AAgentExecutor):
                     a2_watcher_events_total.labels(**_LABELS, watcher="mcp").inc()
                 for _, path in changes:
                     if os.path.abspath(path) == os.path.abspath(MCP_CONFIG_PATH):
-                        self._mcp_servers = await asyncio.to_thread(_load_mcp_config)
+                        # Load into a temp and only swap on success. A
+                        # malformed edit must not wipe the live server set —
+                        # mirrors ``hooks_config_watcher`` (#591).
+                        try:
+                            new_servers = await asyncio.to_thread(_load_mcp_config)
+                        except Exception as exc:
+                            logger.warning(
+                                "MCP config reload failed — keeping previous servers: %s",
+                                exc,
+                            )
+                            break
+                        self._mcp_servers = new_servers
                         if a2_mcp_servers_active is not None:
                             a2_mcp_servers_active.labels(**_LABELS).set(len(self._mcp_servers))
                         logger.info(f"MCP config reloaded: {list(self._mcp_servers.keys())}")
