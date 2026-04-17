@@ -90,6 +90,19 @@ func imageRef(img nyxv1alpha1.ImageSpec, fallbackTag string) string {
 	return fmt.Sprintf("%s:%s", img.Repository, tag)
 }
 
+// imagePullPolicy returns the effective container ImagePullPolicy for an
+// ImageSpec, defaulting to IfNotPresent when the spec leaves it unset. This
+// mirrors the Helm chart's `| default "IfNotPresent"` behaviour so the
+// operator and the chart render identical pod specs for the same CR (#578).
+// When the user explicitly sets PullPolicy (including "Always" for :latest
+// during local dev), the spec value is honoured verbatim.
+func imagePullPolicy(img nyxv1alpha1.ImageSpec) corev1.PullPolicy {
+	if img.PullPolicy == "" {
+		return corev1.PullIfNotPresent
+	}
+	return img.PullPolicy
+}
+
 // probeDefaults returns an effective ProbeSpec merging optional overrides with
 // the Helm-chart defaults.
 func probeDefaults(override *nyxv1alpha1.ProbeSpec, liveness bool) nyxv1alpha1.ProbeSpec {
@@ -297,7 +310,7 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 	harness := corev1.Container{
 		Name:            "nyx-harness",
 		Image:           imageRef(agent.Spec.Image, appVersion),
-		ImagePullPolicy: agent.Spec.Image.PullPolicy,
+		ImagePullPolicy: imagePullPolicy(agent.Spec.Image),
 		Ports: []corev1.ContainerPort{
 			{Name: "http", ContainerPort: harnessPort},
 		},
@@ -363,7 +376,7 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 		bc := corev1.Container{
 			Name:            b.Name,
 			Image:           imageRef(b.Image, appVersion),
-			ImagePullPolicy: b.Image.PullPolicy,
+			ImagePullPolicy: imagePullPolicy(b.Image),
 			Ports: []corev1.ContainerPort{
 				{Name: "http", ContainerPort: bPort},
 			},
@@ -871,7 +884,7 @@ func buildDashboardDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *a
 					Containers: []corev1.Container{{
 						Name:            "dashboard",
 						Image:           imageRef(img, appVersion),
-						ImagePullPolicy: img.PullPolicy,
+						ImagePullPolicy: imagePullPolicy(img),
 						Ports: []corev1.ContainerPort{{
 							Name:          "http",
 							ContainerPort: containerPort,
