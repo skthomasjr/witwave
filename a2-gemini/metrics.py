@@ -93,6 +93,17 @@ a2_budget_exceeded_total: prometheus_client.Counter | None = None
 # SqliteTaskStore lock-contention observability (#552)
 a2_sqlite_task_store_lock_wait_seconds: prometheus_client.Histogram | None = None
 
+# Hooks / tool-audit (#631 — parity with a2-claude #467). Populated lazily
+# when the gemini tool-call path is wired (currently blocked on #640);
+# declaring the module-level names now keeps import-time references safe
+# and gives operators a single known contract regardless of whether hooks
+# are actively evaluated yet.
+a2_hooks_denials_total: prometheus_client.Counter | None = None
+a2_hooks_warnings_total: prometheus_client.Counter | None = None
+a2_tool_audit_entries_total: prometheus_client.Counter | None = None
+a2_hooks_config_errors_total: prometheus_client.Counter | None = None
+a2_hooks_config_reloads_total: prometheus_client.Counter | None = None
+
 if _enabled:
     a2_up = prometheus_client.Gauge("a2_up", "Backend agent is running", ["agent", "agent_id", "backend"])
     a2_info = prometheus_client.Info("a2", "Static backend agent metadata.")
@@ -406,4 +417,37 @@ if _enabled:
         "Seconds waited to acquire the SqliteTaskStore asyncio.Lock, by operation.",
         ["agent", "agent_id", "backend", "op"],
         buckets=(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0),
+    )
+
+    # Hooks / tool-audit (#631). Label schema mirrors a2-claude's superset
+    # (#467) so dashboards can union across backends on (agent, agent_id,
+    # backend, tool, rule). The `rule` label on denials/warnings is the
+    # matched rule name from hooks_engine; `tool` is the tool-name string
+    # presented to ``evaluate_pre_tool_use``. No `source` label here — gemini
+    # ships skeleton-only for now; a future enhancement can bring it to full
+    # parity once #640 lands and the warn path is exercised.
+    a2_hooks_denials_total = prometheus_client.Counter(
+        "a2_hooks_denials_total",
+        "Total tool calls denied by a PreToolUse hook.",
+        ["agent", "agent_id", "backend", "tool", "rule"],
+    )
+    a2_hooks_warnings_total = prometheus_client.Counter(
+        "a2_hooks_warnings_total",
+        "Total tool calls flagged (but not denied) by a PreToolUse hook.",
+        ["agent", "agent_id", "backend", "tool", "rule"],
+    )
+    a2_tool_audit_entries_total = prometheus_client.Counter(
+        "a2_tool_audit_entries_total",
+        "Total rows written to tool-audit.jsonl by the PostToolUse hook.",
+        ["agent", "agent_id", "backend", "tool"],
+    )
+    a2_hooks_config_errors_total = prometheus_client.Counter(
+        "a2_hooks_config_errors_total",
+        "Total hooks.yaml parse/reload/validation errors by reason.",
+        ["agent", "agent_id", "backend", "reason"],
+    )
+    a2_hooks_config_reloads_total = prometheus_client.Counter(
+        "a2_hooks_config_reloads_total",
+        "Total reloads of hooks.yaml by the hooks config watcher.",
+        ["agent", "agent_id", "backend"],
     )

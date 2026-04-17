@@ -27,6 +27,8 @@ from metrics import (
     a2_context_usage_percent,
     a2_context_warnings_total,
     a2_empty_responses_total,
+    a2_hooks_config_errors_total,
+    a2_hooks_config_reloads_total,
     a2_log_bytes_total,
     a2_log_entries_total,
     a2_log_write_errors_total,
@@ -60,6 +62,18 @@ from metrics import (
     a2_text_blocks_per_query,
     a2_watcher_events_total,
     a2_file_watcher_restarts_total,
+)
+
+# Hooks engine facade (#631). Imported even though the gemini tool-call path
+# is not wired yet (blocked on #640) — this lands the infrastructure so the
+# executor can register the hooks_config_watcher alongside existing watchers
+# and #640 can drop `evaluate_pre_tool_use` in without further plumbing.
+from hooks import (
+    BASELINE_RULES,
+    HOOKS_BASELINE_ENABLED,
+    HOOKS_CONFIG_PATH,
+    HookState,
+    load_hooks_config_sync,
 )
 
 from log_utils import _append_log
@@ -427,6 +441,13 @@ async def run_query(
 
             client = _get_client()
 
+            # TODO(#640): evaluate_pre_tool_use — once a2-gemini wires native
+            # tool calls through the google-genai SDK (Tool/FunctionDeclaration
+            # plumbing in GenerateContentConfig and a function-call dispatch
+            # loop around send_message_stream), each dispatched tool call must
+            # pass through ``evaluate_pre_tool_use(tool_name, tool_input,
+            # self._hook_state.active_rules())`` before execution. The
+            # hook_state is already kept in sync by hooks_config_watcher (#631).
             # Create chat with persisted history and system instruction
             chat = client.aio.chats.create(
                 model=resolved_model,
@@ -771,10 +792,20 @@ class AgentExecutor(A2AAgentExecutor):
         # these sessions are treated as new rather than resuming potentially
         # inconsistent state (#409).
         self._history_save_failed: set[str] = set()
+        # Hooks policy state (#631). Baseline rules ship with the image; the
+        # extensions list starts empty and is populated by
+        # ``hooks_config_watcher`` on startup and on every subsequent
+        # hooks.yaml change. Held by reference so any future tool-call path
+        # (#640) sees the latest rule set without re-reading the file.
+        self._hook_state: HookState = HookState(
+            baseline_enabled=HOOKS_BASELINE_ENABLED,
+            baseline=list(BASELINE_RULES) if HOOKS_BASELINE_ENABLED else [],
+            extensions=[],
+        )
 
     def _mcp_watchers(self):
-        """Return callables for GEMINI.md watching (#371)."""
-        return [self.agent_md_watcher]
+        """Return callables for GEMINI.md and hooks.yaml watching (#371, #631)."""
+        return [self.agent_md_watcher, self.hooks_config_watcher]
 
     async def agent_md_watcher(self) -> None:
         """Watch AGENT_MD for changes and hot-reload agent identity / behavioral instructions (#371).
@@ -805,6 +836,60 @@ class AgentExecutor(A2AAgentExecutor):
             logger.warning("GEMINI.md directory watcher exited — retrying in 10s.")
             if a2_file_watcher_restarts_total is not None:
                 a2_file_watcher_restarts_total.labels(**_LABELS, watcher="agent_md").inc()
+            await asyncio.sleep(10)
+
+    async def hooks_config_watcher(self) -> None:
+        """Watch hooks.yaml and hot-reload extension rules (#631).
+
+        Mirrors ``a2-claude/executor.AgentExecutor.hooks_config_watcher`` so
+        operators see identical semantics across backends: an initial load,
+        then an ``awatch`` over the containing directory, re-parsing on every
+        change to the target file. Failures during reload keep the previous
+        rule set in place so a malformed edit cannot accidentally disable the
+        policy.
+
+        Note: this runs even though the gemini tool-call path is not yet
+        exercising the engine (blocked on #640). Keeping the watcher active
+        means rules are ready the moment #640 plumbs ``evaluate_pre_tool_use``
+        into the dispatch path.
+        """
+        from watchfiles import awatch as _awatch
+
+        self._hook_state.extensions = await asyncio.to_thread(load_hooks_config_sync)
+        logger.info(
+            "Hooks config loaded: baseline=%s (rules=%d) extensions=%d",
+            self._hook_state.baseline_enabled,
+            len(self._hook_state.baseline),
+            len(self._hook_state.extensions),
+        )
+
+        watch_dir = os.path.dirname(os.path.abspath(HOOKS_CONFIG_PATH))
+        while True:
+            if not os.path.isdir(watch_dir):
+                logger.info("hooks.yaml directory not found — retrying in 10s.")
+                await asyncio.sleep(10)
+                continue
+            async for changes in _awatch(watch_dir):
+                if a2_watcher_events_total is not None:
+                    a2_watcher_events_total.labels(**_LABELS, watcher="hooks").inc()
+                for _, path in changes:
+                    if os.path.abspath(path) == os.path.abspath(HOOKS_CONFIG_PATH):
+                        try:
+                            new_rules = await asyncio.to_thread(load_hooks_config_sync)
+                            self._hook_state.extensions = new_rules
+                            if a2_hooks_config_reloads_total is not None:
+                                a2_hooks_config_reloads_total.labels(**_LABELS).inc()
+                            logger.info("hooks.yaml reloaded: extensions=%d", len(new_rules))
+                        except Exception as exc:
+                            logger.warning("hooks.yaml reload failed — keeping previous rules: %s", exc)
+                            if a2_hooks_config_errors_total is not None:
+                                a2_hooks_config_errors_total.labels(
+                                    **_LABELS, reason="yaml_reload_failed",
+                                ).inc()
+                        break
+            logger.warning("hooks.yaml directory watcher exited — retrying in 10s.")
+            if a2_file_watcher_restarts_total is not None:
+                a2_file_watcher_restarts_total.labels(**_LABELS, watcher="hooks").inc()
             await asyncio.sleep(10)
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
