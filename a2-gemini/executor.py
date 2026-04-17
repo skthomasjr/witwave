@@ -79,6 +79,7 @@ from hooks import (
 from log_utils import _append_log
 from exceptions import BudgetExceededError
 from validation import parse_max_tokens, sanitize_model_label
+from otel import start_span, set_span_error
 
 logger = logging.getLogger(__name__)
 
@@ -448,6 +449,8 @@ async def run_query(
             # pass through ``evaluate_pre_tool_use(tool_name, tool_input,
             # self._hook_state.active_rules())`` before execution. The
             # hook_state is already kept in sync by hooks_config_watcher (#631).
+            # TODO(#640): emit tool.call / mcp.call child spans (#630) around
+            # each dispatched tool invocation in the same dispatch loop.
             # Create chat with persisted history and system instruction
             chat = client.aio.chats.create(
                 model=resolved_model,
@@ -465,6 +468,18 @@ async def run_query(
             _message_count = 0
             _total_tokens = 0
 
+            # llm.request child span (#630) — one per generate_content /
+            # send_message_stream round-trip. Managed via manual enter/exit so
+            # the streaming loop body below does not need to be re-indented.
+            # TODO(#640): emit tool.call / mcp.call child spans once the
+            # google-genai tool dispatch path is wired into this executor.
+            _llm_ctx = start_span(
+                "llm.request",
+                kind="client",
+                attributes={"model": _sanitize_model_label(resolved_model)},
+            )
+            _llm_ctx.__enter__()
+            _llm_closed = False
             try:
                 async for chunk in await chat.send_message_stream(prompt):
                     _message_count += 1
@@ -558,6 +573,17 @@ async def run_query(
                 if history_save_failed is not None:
                     history_save_failed.add(session_id)
                 raise
+            finally:
+                # Close the llm.request span (#630). Safe to call once in the
+                # finally — the context manager swallows double-close and on
+                # error paths the propagating exception is already recorded in
+                # _sdk_errors metrics above.
+                if not _llm_closed:
+                    _llm_closed = True
+                    try:
+                        _llm_ctx.__exit__(None, None, None)
+                    except Exception:
+                        pass
 
             if a2_sdk_session_duration_seconds is not None:
                 a2_sdk_session_duration_seconds.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).observe(

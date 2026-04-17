@@ -100,6 +100,7 @@ from watchfiles import awatch
 from log_utils import _append_log
 from exceptions import BudgetExceededError
 from validation import sanitize_model_label
+from otel import start_span, set_span_error
 
 logger = logging.getLogger(__name__)
 
@@ -498,8 +499,20 @@ def _make_pre_tool_use_hook(state: HookState):
     async def _hook(input_data: dict, tool_use_id: str | None, context) -> dict:
         tool_name = input_data.get("tool_name", "")
         tool_input = input_data.get("tool_input") or {}
-        rules = state.active_rules()
-        decision, matched = evaluate_pre_tool_use(tool_name, tool_input, rules)
+        # hook.invoke child span (#630). Wraps the rule-evaluation + logging
+        # path so PreToolUse invocations show up as a dedicated span instead of
+        # being implicit under the ambient llm.request / tool.call span.
+        with start_span(
+            "hook.invoke",
+            kind="internal",
+            attributes={
+                "hook.name": "PreToolUse",
+                "hook.phase": "pre",
+                "tool.name": tool_name or "",
+            },
+        ):
+            rules = state.active_rules()
+            decision, matched = evaluate_pre_tool_use(tool_name, tool_input, rules)
 
         # Bump the evaluations-total denominator once per call so operators
         # can compute deny / warn / allow rates (#620). Done before the
@@ -575,30 +588,40 @@ def _make_post_tool_use_hook(session_id_ref: dict, model_ref: dict):
     """
 
     async def _hook(input_data: dict, tool_use_id: str | None, context) -> dict:
-        try:
-            # ``tool_response`` can be large — capture only a preview so the
-            # audit log stays compact. Operators who need the full payload
-            # can read trace.jsonl.
-            _resp = input_data.get("tool_response")
-            if isinstance(_resp, (dict, list)):
-                _resp_preview = json.dumps(_resp, default=str)[:2048]
-            else:
-                _resp_preview = str(_resp)[:2048] if _resp is not None else ""
-            entry = {
-                "ts": datetime.now(timezone.utc).isoformat(),
-                "agent": AGENT_NAME,
-                "agent_id": AGENT_ID,
-                "session_id": session_id_ref.get("value") or input_data.get("session_id") or "",
-                "model": model_ref.get("value") or "",
-                "tool_use_id": tool_use_id or "",
-                "tool_name": input_data.get("tool_name") or "",
-                "tool_input": input_data.get("tool_input") or {},
-                "tool_response_preview": _resp_preview,
-            }
-            await log_tool_audit(entry)
-        except Exception as exc:
-            logger.error("PostToolUse audit error: %r", exc)
-        return {}
+        # hook.invoke child span (#630) — PostToolUse audit write.
+        with start_span(
+            "hook.invoke",
+            kind="internal",
+            attributes={
+                "hook.name": "PostToolUse",
+                "hook.phase": "post",
+                "tool.name": input_data.get("tool_name") or "",
+            },
+        ):
+            try:
+                # ``tool_response`` can be large — capture only a preview so the
+                # audit log stays compact. Operators who need the full payload
+                # can read trace.jsonl.
+                _resp = input_data.get("tool_response")
+                if isinstance(_resp, (dict, list)):
+                    _resp_preview = json.dumps(_resp, default=str)[:2048]
+                else:
+                    _resp_preview = str(_resp)[:2048] if _resp is not None else ""
+                entry = {
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "agent": AGENT_NAME,
+                    "agent_id": AGENT_ID,
+                    "session_id": session_id_ref.get("value") or input_data.get("session_id") or "",
+                    "model": model_ref.get("value") or "",
+                    "tool_use_id": tool_use_id or "",
+                    "tool_name": input_data.get("tool_name") or "",
+                    "tool_input": input_data.get("tool_input") or {},
+                    "tool_response_preview": _resp_preview,
+                }
+                await log_tool_audit(entry)
+            except Exception as exc:
+                logger.error("PostToolUse audit error: %r", exc)
+            return {}
 
     return _hook
 
@@ -813,120 +836,155 @@ async def _run_query_inner(
     # ("\n\n".join(collected) below) — see #500.
     _streamed_text_emitted = False
 
+    # llm.request child span (#630) — one per Claude SDK round-trip. Scoped
+    # around the client lifecycle + receive_response loop so tool / hook spans
+    # emitted inside nest correctly under this model-call span.
     try:
         _spawn_start = time.monotonic()
-        async with ClaudeSDKClient(options=options) as client:
-            if a2_sdk_subprocess_spawn_duration_seconds is not None:
-                a2_sdk_subprocess_spawn_duration_seconds.labels(**_sdk_labels).observe(time.monotonic() - _spawn_start)
-            await client.query(prompt)
-            _query_sent_at = time.monotonic()
-            async for message in client.receive_response():
-                _message_count += 1
-                if isinstance(message, AssistantMessage):
-                    if _assistant_turn_count == 0:
-                        if a2_sdk_time_to_first_message_seconds is not None:
-                            a2_sdk_time_to_first_message_seconds.labels(**_sdk_labels).observe(time.monotonic() - _query_sent_at)
-                    _assistant_turn_count += 1
-                    _text_blocks: list[str] = []
-                    for block in message.content:
-                        if isinstance(block, TextBlock):
-                            collected.append(block.text)
-                            _text_blocks.append(block.text)
-                            # Stream the chunk to the A2A event_queue (#430).
-                            # The on_chunk coroutine is set by execute(); when
-                            # None (e.g. MCP /mcp endpoint or non-streaming
-                            # caller), we just buffer and the caller gets the
-                            # full text at the end as before. Awaited directly
-                            # so events stay ordered and exceptions surface
-                            # rather than being swallowed by a fire-and-forget
-                            # task object.
-                            if on_chunk is not None and block.text:
-                                try:
-                                    # Insert "\n\n" separator before any subsequent
-                                    # non-empty TextBlock so streaming clients see
-                                    # the same shape as non-streaming callers, which
-                                    # receive "\n\n".join(collected) at line 808
-                                    # (#500). The separator is routed through
-                                    # on_chunk so it counts as an emitted chunk,
-                                    # keeping the _chunks_emitted==0 final-enqueue
-                                    # guard accurate.
-                                    if _streamed_text_emitted:
-                                        await on_chunk("\n\n")
-                                    await on_chunk(block.text)
-                                    _streamed_text_emitted = True
-                                except Exception as _e:
-                                    # Never let a streaming-side error abort the
-                                    # SDK iteration; log and continue buffering.
-                                    logger.warning(
-                                        "Session %r: on_chunk callback raised: %s",
-                                        session_id, _e,
+        with start_span(
+            "llm.request",
+            kind="client",
+            attributes={"model": sanitize_model_label(effective_model)},
+        ):
+            async with ClaudeSDKClient(options=options) as client:
+                if a2_sdk_subprocess_spawn_duration_seconds is not None:
+                    a2_sdk_subprocess_spawn_duration_seconds.labels(**_sdk_labels).observe(time.monotonic() - _spawn_start)
+                await client.query(prompt)
+                _query_sent_at = time.monotonic()
+                async for message in client.receive_response():
+                    _message_count += 1
+                    if isinstance(message, AssistantMessage):
+                        if _assistant_turn_count == 0:
+                            if a2_sdk_time_to_first_message_seconds is not None:
+                                a2_sdk_time_to_first_message_seconds.labels(**_sdk_labels).observe(time.monotonic() - _query_sent_at)
+                        _assistant_turn_count += 1
+                        _text_blocks: list[str] = []
+                        for block in message.content:
+                            if isinstance(block, TextBlock):
+                                collected.append(block.text)
+                                _text_blocks.append(block.text)
+                                # Stream the chunk to the A2A event_queue (#430).
+                                # The on_chunk coroutine is set by execute(); when
+                                # None (e.g. MCP /mcp endpoint or non-streaming
+                                # caller), we just buffer and the caller gets the
+                                # full text at the end as before. Awaited directly
+                                # so events stay ordered and exceptions surface
+                                # rather than being swallowed by a fire-and-forget
+                                # task object.
+                                if on_chunk is not None and block.text:
+                                    try:
+                                        # Insert "\n\n" separator before any subsequent
+                                        # non-empty TextBlock so streaming clients see
+                                        # the same shape as non-streaming callers, which
+                                        # receive "\n\n".join(collected) at line 808
+                                        # (#500). The separator is routed through
+                                        # on_chunk so it counts as an emitted chunk,
+                                        # keeping the _chunks_emitted==0 final-enqueue
+                                        # guard accurate.
+                                        if _streamed_text_emitted:
+                                            await on_chunk("\n\n")
+                                        await on_chunk(block.text)
+                                        _streamed_text_emitted = True
+                                    except Exception as _e:
+                                        # Never let a streaming-side error abort the
+                                        # SDK iteration; log and continue buffering.
+                                        logger.warning(
+                                            "Session %r: on_chunk callback raised: %s",
+                                            session_id, _e,
+                                        )
+                            elif isinstance(block, ToolUseBlock):
+                                _tool_names[block.id] = block.name
+                                _tool_start_times[block.id] = time.monotonic()
+                                if a2_sdk_tool_calls_total is not None:
+                                    a2_sdk_tool_calls_total.labels(**_LABELS, tool=block.name).inc()
+                                if a2_sdk_tool_call_input_size_bytes is not None:
+                                    a2_sdk_tool_call_input_size_bytes.labels(**_LABELS, tool=block.name).observe(
+                                        _utf8_byte_length(json.dumps(block.input, default=str))
                                     )
-                        elif isinstance(block, ToolUseBlock):
-                            _tool_names[block.id] = block.name
-                            _tool_start_times[block.id] = time.monotonic()
-                            if a2_sdk_tool_calls_total is not None:
-                                a2_sdk_tool_calls_total.labels(**_LABELS, tool=block.name).inc()
-                            if a2_sdk_tool_call_input_size_bytes is not None:
-                                a2_sdk_tool_call_input_size_bytes.labels(**_LABELS, tool=block.name).observe(
-                                    _utf8_byte_length(json.dumps(block.input, default=str))
+                                # tool.call / mcp.call child span (#630).
+                                # Claude MCP tools surface as ToolUseBlocks with
+                                # names of the form "mcp__<server>__<tool>";
+                                # split to emit the more specific mcp.call span
+                                # with server/tool attributes. Non-MCP tool
+                                # calls get a generic tool.call span.
+                                _bname = block.name or ""
+                                if _bname.startswith("mcp__"):
+                                    _parts = _bname.split("__", 2)
+                                    _mcp_server = _parts[1] if len(_parts) > 1 else ""
+                                    _mcp_tool = _parts[2] if len(_parts) > 2 else ""
+                                    with start_span(
+                                        "mcp.call",
+                                        kind="client",
+                                        attributes={
+                                            "mcp.server": _mcp_server,
+                                            "mcp.tool": _mcp_tool,
+                                            "tool.name": _bname,
+                                        },
+                                    ):
+                                        await _log_tool_event("tool_use", block, session_id, model=effective_model)
+                                else:
+                                    with start_span(
+                                        "tool.call",
+                                        kind="internal",
+                                        attributes={"tool.name": _bname},
+                                    ):
+                                        await _log_tool_event("tool_use", block, session_id, model=effective_model)
+                            elif isinstance(block, ToolResultBlock):
+                                tool_name = _tool_names.get(block.tool_use_id, "unknown")
+                                if block.is_error and a2_sdk_tool_errors_total is not None:
+                                    a2_sdk_tool_errors_total.labels(**_LABELS, tool=tool_name).inc()
+                                _t_start = _tool_start_times.pop(block.tool_use_id, None)
+                                if _t_start is not None and a2_sdk_tool_duration_seconds is not None:
+                                    a2_sdk_tool_duration_seconds.labels(**_LABELS, tool=tool_name).observe(
+                                        time.monotonic() - _t_start
+                                    )
+                                if a2_sdk_tool_result_size_bytes is not None:
+                                    a2_sdk_tool_result_size_bytes.labels(**_LABELS, tool=tool_name).observe(
+                                        _utf8_byte_length(str(block.content))
+                                    )
+                                await _log_tool_event("tool_result", block, session_id, model=effective_model)
+                        try:
+                            usage = await client.get_context_usage()
+                            pct = usage.get("percentage", 0.0)
+                            _last_total_tokens = usage.get("totalTokens", 0)
+                            if a2_context_tokens is not None:
+                                a2_context_tokens.labels(**_LABELS).observe(_last_total_tokens)
+                            if a2_context_tokens_remaining is not None:
+                                a2_context_tokens_remaining.labels(**_LABELS).observe(
+                                    usage.get("maxTokens", 0) - _last_total_tokens
                                 )
-                            await _log_tool_event("tool_use", block, session_id, model=effective_model)
-                        elif isinstance(block, ToolResultBlock):
-                            tool_name = _tool_names.get(block.tool_use_id, "unknown")
-                            if block.is_error and a2_sdk_tool_errors_total is not None:
-                                a2_sdk_tool_errors_total.labels(**_LABELS, tool=tool_name).inc()
-                            _t_start = _tool_start_times.pop(block.tool_use_id, None)
-                            if _t_start is not None and a2_sdk_tool_duration_seconds is not None:
-                                a2_sdk_tool_duration_seconds.labels(**_LABELS, tool=tool_name).observe(
-                                    time.monotonic() - _t_start
+                            if a2_context_usage_percent is not None:
+                                a2_context_usage_percent.labels(**_LABELS).observe(pct)
+                            if pct >= 100 and a2_context_exhaustion_total is not None:
+                                a2_context_exhaustion_total.labels(**_LABELS).inc()
+                            if pct >= CONTEXT_USAGE_WARN_THRESHOLD * 100:
+                                if a2_context_warnings_total is not None:
+                                    a2_context_warnings_total.labels(**_LABELS).inc()
+                                logger.warning(
+                                    f"Session {session_id!r}: context usage {pct:.1f}% "
+                                    f"exceeds threshold {CONTEXT_USAGE_WARN_THRESHOLD * 100:.0f}%"
                                 )
-                            if a2_sdk_tool_result_size_bytes is not None:
-                                a2_sdk_tool_result_size_bytes.labels(**_LABELS, tool=tool_name).observe(
-                                    _utf8_byte_length(str(block.content))
-                                )
-                            await _log_tool_event("tool_result", block, session_id, model=effective_model)
-                    try:
-                        usage = await client.get_context_usage()
-                        pct = usage.get("percentage", 0.0)
-                        _last_total_tokens = usage.get("totalTokens", 0)
-                        if a2_context_tokens is not None:
-                            a2_context_tokens.labels(**_LABELS).observe(_last_total_tokens)
-                        if a2_context_tokens_remaining is not None:
-                            a2_context_tokens_remaining.labels(**_LABELS).observe(
-                                usage.get("maxTokens", 0) - _last_total_tokens
-                            )
-                        if a2_context_usage_percent is not None:
-                            a2_context_usage_percent.labels(**_LABELS).observe(pct)
-                        if pct >= 100 and a2_context_exhaustion_total is not None:
-                            a2_context_exhaustion_total.labels(**_LABELS).inc()
-                        if pct >= CONTEXT_USAGE_WARN_THRESHOLD * 100:
-                            if a2_context_warnings_total is not None:
-                                a2_context_warnings_total.labels(**_LABELS).inc()
-                            logger.warning(
-                                f"Session {session_id!r}: context usage {pct:.1f}% "
-                                f"exceeds threshold {CONTEXT_USAGE_WARN_THRESHOLD * 100:.0f}%"
-                            )
-                        if max_tokens is not None and _last_total_tokens >= max_tokens:
-                            if a2_budget_exceeded_total is not None:
-                                a2_budget_exceeded_total.labels(**_LABELS).inc()
-                            raise BudgetExceededError(_last_total_tokens, max_tokens, list(collected))
-                    except BudgetExceededError:
-                        raise
-                    except Exception as e:
-                        if a2_sdk_context_fetch_errors_total is not None:
-                            a2_sdk_context_fetch_errors_total.labels(**_sdk_labels).inc()
-                        logger.warning(f"Session {session_id!r}: get_context_usage failed: {e}")
-                    for _text in _text_blocks:
-                        await log_entry("agent", _text, session_id, model=effective_model, tokens=_last_total_tokens or None)
-                elif isinstance(message, ResultMessage) and message.is_error:
-                    if a2_sdk_result_errors_total is not None:
-                        a2_sdk_result_errors_total.labels(**_sdk_labels).inc()
-                    if a2_sdk_query_error_duration_seconds is not None:
-                        a2_sdk_query_error_duration_seconds.labels(**_sdk_labels).observe(time.monotonic() - _query_start)
-                    error_parts = list(message.errors or [])
-                    if not error_parts and message.result:
-                        error_parts = [message.result]
-                    raise RuntimeError("\n".join(error_parts) if error_parts else "Claude SDK returned an error result with no details")
+                            if max_tokens is not None and _last_total_tokens >= max_tokens:
+                                if a2_budget_exceeded_total is not None:
+                                    a2_budget_exceeded_total.labels(**_LABELS).inc()
+                                raise BudgetExceededError(_last_total_tokens, max_tokens, list(collected))
+                        except BudgetExceededError:
+                            raise
+                        except Exception as e:
+                            if a2_sdk_context_fetch_errors_total is not None:
+                                a2_sdk_context_fetch_errors_total.labels(**_sdk_labels).inc()
+                            logger.warning(f"Session {session_id!r}: get_context_usage failed: {e}")
+                        for _text in _text_blocks:
+                            await log_entry("agent", _text, session_id, model=effective_model, tokens=_last_total_tokens or None)
+                    elif isinstance(message, ResultMessage) and message.is_error:
+                        if a2_sdk_result_errors_total is not None:
+                            a2_sdk_result_errors_total.labels(**_sdk_labels).inc()
+                        if a2_sdk_query_error_duration_seconds is not None:
+                            a2_sdk_query_error_duration_seconds.labels(**_sdk_labels).observe(time.monotonic() - _query_start)
+                        error_parts = list(message.errors or [])
+                        if not error_parts and message.result:
+                            error_parts = [message.result]
+                        raise RuntimeError("\n".join(error_parts) if error_parts else "Claude SDK returned an error result with no details")
     except (OSError, ConnectionError):
         if a2_sdk_client_errors_total is not None:
             a2_sdk_client_errors_total.labels(**_sdk_labels).inc()

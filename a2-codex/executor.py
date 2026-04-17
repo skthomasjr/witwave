@@ -82,6 +82,7 @@ from metrics import (
 from log_utils import _append_log
 from exceptions import BudgetExceededError
 from validation import parse_max_tokens
+from otel import start_span, set_span_error
 
 logger = logging.getLogger(__name__)
 
@@ -230,6 +231,22 @@ def _append_tool_audit(entry: dict) -> None:
 
 
 async def _shell_executor(req: LocalShellCommandRequest) -> str:
+    # tool.call child span (#630) — the LocalShellTool invocation path. Kept
+    # around the full executor body so baseline-deny short-circuits and
+    # subprocess.run are both inside the span, not just the allowed branch.
+    with start_span(
+        "tool.call",
+        kind="internal",
+        attributes={"tool.name": "LocalShell"},
+    ) as _tool_span:
+        try:
+            return await _shell_executor_inner(req)
+        except BaseException as _exc:
+            set_span_error(_tool_span, _exc)
+            raise
+
+
+async def _shell_executor_inner(req: LocalShellCommandRequest) -> str:
     cmd = req.data.action.command
     cwd = req.data.action.working_directory or None
     env_extra = req.data.action.env or {}
@@ -660,6 +677,10 @@ async def run_query(
     _tool_start_times: dict[str, float] = {}  # call_id -> monotonic start time
     _tool_call_count = 0
     _total_tokens = 0
+    # Initialized before the try so the llm.request span's finally-close
+    # handler always has a sentinel to test against even if Agent construction
+    # fails (#630).
+    _llm_ctx = None
 
     try:
         # MCP servers are owned by AgentExecutor's lifespan-scoped AsyncExitStack
@@ -673,6 +694,16 @@ async def run_query(
             mcp_servers=_live_mcp_servers,
         )
 
+        # llm.request child span (#630) — one per Runner event-loop entry.
+        # Managed manually with a finally so we do not need to re-indent the
+        # long stream loop below. The span stays open for the full streaming
+        # iteration so nested tool.call / mcp.call spans parent under it.
+        _llm_ctx = start_span(
+            "llm.request",
+            kind="client",
+            attributes={"model": _resolve_model_label(resolved_model)},
+        )
+        _llm_ctx.__enter__()
         result = Runner.run_streamed(codex_agent, prompt, session=session, run_config=run_config)
         async for event in result.stream_events():
             _message_count += 1
@@ -754,6 +785,37 @@ async def run_query(
                             a2_sdk_tool_call_input_size_bytes.labels(**_LABELS, tool=name).observe(_input_bytes)
                         except Exception:
                             pass
+                    # tool.call / mcp.call span (#630). Emitted on the dispatch
+                    # bookkeeping side so the call is visible in trace UIs as a
+                    # child of llm.request. MCP tools surface via Agents SDK
+                    # with a separate raw_item.type (e.g. "mcp_call"); fall
+                    # back to name-prefix detection for the Claude-compatible
+                    # "mcp__server__tool" convention.
+                    _raw_type = getattr(raw, "type", "") or ""
+                    _is_mcp = "mcp" in _raw_type.lower() or (isinstance(name, str) and name.startswith("mcp__"))
+                    if _is_mcp:
+                        _mcp_server = ""
+                        _mcp_tool = name
+                        if isinstance(name, str) and name.startswith("mcp__"):
+                            _parts = name.split("__", 2)
+                            _mcp_server = _parts[1] if len(_parts) > 1 else ""
+                            _mcp_tool = _parts[2] if len(_parts) > 2 else name
+                        _tool_ctx = start_span(
+                            "mcp.call",
+                            kind="client",
+                            attributes={
+                                "mcp.server": _mcp_server,
+                                "mcp.tool": _mcp_tool,
+                                "tool.name": name,
+                            },
+                        )
+                    else:
+                        _tool_ctx = start_span(
+                            "tool.call",
+                            kind="internal",
+                            attributes={"tool.name": name},
+                        )
+                    _tool_ctx.__enter__()
                     try:
                         ts = datetime.now(timezone.utc).isoformat()
                         entry = {
@@ -769,6 +831,11 @@ async def run_query(
                         await log_trace(json.dumps(entry))
                     except Exception as e:
                         logger.error(f"log_trace tool_use error: {e}")
+                    finally:
+                        try:
+                            _tool_ctx.__exit__(None, None, None)
+                        except Exception:
+                            pass
                 elif isinstance(item, ToolCallOutputItem):
                     raw = item.raw_item
                     call_id = raw.get("call_id", "") if isinstance(raw, dict) else getattr(raw, "call_id", "")
@@ -820,6 +887,13 @@ async def run_query(
             a2_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
                 time.monotonic() - _session_start
             )
+        # Mark the llm.request span as errored so traces reflect the failure
+        # even though we re-raise immediately (#630).
+        try:
+            _otel_cur = getattr(_llm_ctx, "_active_span", None)
+            set_span_error(_otel_cur, _run_exc)
+        except Exception:
+            pass
         # Classify by exception type to match a2-claude's error metric surface
         # (#431). Best-effort — unknown exception types fall through to the
         # generic a2_sdk_errors_total counter.
@@ -838,6 +912,15 @@ async def run_query(
             if a2_sdk_errors_total is not None:
                 a2_sdk_errors_total.labels(**_LABELS, model=resolved_model).inc()
         raise
+    finally:
+        # Close the llm.request span opened above (#630). Best-effort — if the
+        # context manager was never entered (e.g. exception before its __enter__
+        # call), swallow any error.
+        if _llm_ctx is not None:
+            try:
+                _llm_ctx.__exit__(None, None, None)
+            except Exception:
+                pass
 
     if a2_sdk_session_duration_seconds is not None:
         a2_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
@@ -1092,14 +1175,27 @@ class AgentExecutor(A2AAgentExecutor):
             new_live: list = []
             try:
                 for _srv in _build_mcp_servers(mcp_config or {}):
-                    try:
-                        _live = await new_stack.enter_async_context(_srv)
-                        new_live.append(_live)
-                    except Exception as _mcp_exc:
-                        logger.warning(
-                            "MCP server %r failed to start (%s); proceeding without it.",
-                            getattr(_srv, "name", "?"), _mcp_exc,
-                        )
+                    # mcp.call child span (#630) — wraps the stdio transport
+                    # bring-up so the trace shows which MCP server the stack
+                    # is spinning up (or failing to). kind=client reflects
+                    # that the backend is dialling an external server.
+                    with start_span(
+                        "mcp.call",
+                        kind="client",
+                        attributes={
+                            "mcp.server": getattr(_srv, "name", "?") or "?",
+                            "mcp.tool": "__start__",
+                        },
+                    ) as _mcp_span:
+                        try:
+                            _live = await new_stack.enter_async_context(_srv)
+                            new_live.append(_live)
+                        except Exception as _mcp_exc:
+                            set_span_error(_mcp_span, _mcp_exc)
+                            logger.warning(
+                                "MCP server %r failed to start (%s); proceeding without it.",
+                                getattr(_srv, "name", "?"), _mcp_exc,
+                            )
             except Exception:
                 # If the per-server loop itself raises something unexpected,
                 # unwind the partial stack so we do not leak subprocesses.
