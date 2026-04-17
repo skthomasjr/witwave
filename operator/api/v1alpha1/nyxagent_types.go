@@ -218,6 +218,82 @@ type BackendSpec struct {
 	// Storage provisions or references a PVC for backend persistence.
 	// +optional
 	Storage *BackendStorageSpec `json:"storage,omitempty"`
+
+	// GitMappings materialise files or directories from a named GitSync
+	// repo into this backend container. The referenced GitSync name must
+	// exist in NyxAgentSpec.GitSyncs. Mirrors the chart's per-backend
+	// `gitMappings` block (#475).
+	// +optional
+	GitMappings []GitMappingSpec `json:"gitMappings,omitempty"`
+}
+
+// GitSyncSpec configures a git-sync sidecar that clones a repo into /git
+// on the pod and keeps it in sync. An init container runs the initial
+// clone before the agent starts. Auth credentials are typically injected
+// via EnvFrom referencing a Secret (e.g. GITSYNC_USERNAME, GITSYNC_PASSWORD,
+// GITSYNC_SSH_KEY_FILE). Mirrors the chart's `gitSyncs[]` entry shape
+// (charts/nyx/values.yaml).
+type GitSyncSpec struct {
+	// Name is the unique identifier for this git-sync entry within the
+	// agent. Used to name the sidecar container (git-sync-<name>), the
+	// init container (git-sync-init-<name>), and as the `gitSync`
+	// reference in GitMappingSpec entries.
+	// +kubebuilder:validation:Pattern=^[a-z0-9][a-z0-9-]*$
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+
+	// Repo is the git repository URL (HTTPS or SSH).
+	// +kubebuilder:validation:MinLength=1
+	Repo string `json:"repo"`
+
+	// Ref is the branch, tag, or commit SHA to sync. Defaults to HEAD.
+	// +optional
+	Ref string `json:"ref,omitempty"`
+
+	// Period is the sync interval (e.g. "30s", "1m"). Defaults to "60s".
+	// +optional
+	Period string `json:"period,omitempty"`
+
+	// Depth is the clone depth. 1 is sufficient for config-only repos.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	Depth int32 `json:"depth,omitempty"`
+
+	// Image optionally overrides the default git-sync image for this
+	// entry. When unset, the operator's default git-sync image is used
+	// (ghcr.io/skthomasjr/images/git-sync:<appVersion>).
+	// +optional
+	Image *ImageSpec `json:"image,omitempty"`
+
+	// EnvFrom sources env vars from Secrets or ConfigMaps, injected
+	// into the git-sync init + sidecar containers for this entry.
+	// +optional
+	EnvFrom []corev1.EnvFromSource `json:"envFrom,omitempty"`
+}
+
+// GitMappingSpec copies a file or directory from a named GitSync repo
+// into the target container at a given destination path. Mirrors the
+// chart's `gitMappings[]` entry shape so on-cluster behaviour matches
+// byte-for-byte (#475).
+type GitMappingSpec struct {
+	// GitSync is the name of a GitSyncSpec in NyxAgentSpec.GitSyncs.
+	// +kubebuilder:validation:Pattern=^[a-z0-9][a-z0-9-]*$
+	// +kubebuilder:validation:MinLength=1
+	GitSync string `json:"gitSync"`
+
+	// Src is the source path within the repo, relative to the repo
+	// root. A trailing "/" indicates a directory copy; otherwise a
+	// single-file copy is performed.
+	// +kubebuilder:validation:MinLength=1
+	Src string `json:"src"`
+
+	// Dest is the destination path inside the target container. The
+	// mapped path is materialised from an emptyDir volume mounted into
+	// the container, populated by the git-map-init container and
+	// kept in sync by the git-sync sidecar's exechook.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern=`^/.*`
+	Dest string `json:"dest"`
 }
 
 // SharedStorageRef references a pre-existing PVC to mount into all containers
@@ -354,6 +430,22 @@ type NyxAgentSpec struct {
 	// SharedStorage optionally mounts a pre-existing PVC into every container.
 	// +optional
 	SharedStorage *SharedStorageRef `json:"sharedStorage,omitempty"`
+
+	// GitSyncs declares git-sync sidecar(s) for this agent. Each entry
+	// produces one init container (one-time clone) and one long-running
+	// sidecar that keeps /git in sync with the remote repo. All
+	// containers in the pod share the /git volume. Mirrors the chart's
+	// per-agent `gitSyncs` block (#475).
+	// +optional
+	GitSyncs []GitSyncSpec `json:"gitSyncs,omitempty"`
+
+	// GitMappings materialise files or directories from named GitSyncs
+	// into the nyx-harness container. A referenced GitSync name must
+	// exist in GitSyncs. Per-backend overrides live in
+	// BackendSpec.GitMappings. Mirrors the chart's per-agent
+	// `gitMappings` block (#475).
+	// +optional
+	GitMappings []GitMappingSpec `json:"gitMappings,omitempty"`
 
 	// ServiceMonitor optionally creates a monitoring.coreos.com/v1
 	// ServiceMonitor for the agent when the Prometheus Operator CRDs

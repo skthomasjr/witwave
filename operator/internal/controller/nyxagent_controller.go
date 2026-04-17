@@ -315,6 +315,18 @@ func (r *NyxAgentReconciler) reconcileConfigMaps(ctx context.Context, agent *nyx
 		}
 	}
 
+	// Git-sync script + mappings ConfigMaps (#475). The script CM is the
+	// chart's byte-identical rsync helper; mapping CMs carry per-context
+	// TSV tables (one line per mapping). Reconciled via the same desired-
+	// set + cleanup flow as the inline-config CMs, so a mapping removed
+	// from spec is GC'd by the label-matching cleanup pass below.
+	if cm := buildGitSyncScriptConfigMap(agent); cm != nil {
+		desired[cm.Name] = cm
+	}
+	for _, cm := range buildGitMappingsConfigMaps(agent) {
+		desired[cm.Name] = cm
+	}
+
 	// Apply each desired ConfigMap.
 	for _, cm := range desired {
 		if err := r.applyConfigMap(ctx, agent, cm); err != nil {

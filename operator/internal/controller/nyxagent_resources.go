@@ -331,6 +331,15 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 		harnessMounts = append(harnessMounts, mount)
 	}
 
+	// Git-sync plumbing (#475). Mirrors the chart's shared /git emptyDir
+	// + per-mapping emptyDirs + script/mapping ConfigMap volumes. Adding
+	// these to the pod spec is always safe — when GitSyncs is empty the
+	// helper returns nil, keeping pod specs identical to the no-git-sync
+	// case. The init/sidecar containers are appended below once the
+	// harness container is built so order stays deterministic.
+	volumes = append(volumes, gitSyncVolumes(agent)...)
+	harnessMounts = append(harnessMounts, agentGitMappingMounts(agent)...)
+
 	// nyx-harness container.
 	harnessPort := agent.Spec.Port
 	if harnessPort == 0 {
@@ -410,6 +419,12 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 			bMounts = append(bMounts, corev1.VolumeMount{Name: sharedStorageVolume, MountPath: mountPath})
 		}
 
+		// Git-sync mounts for this backend (#475): the shared /git
+		// volume plus one emptyDir per backend-scoped GitMapping at
+		// its declared dest. When the agent has no GitSyncs the
+		// helper returns nil.
+		bMounts = append(bMounts, backendGitMappingMounts(agent, b)...)
+
 		bc := corev1.Container{
 			Name:            b.Name,
 			Image:           imageRef(b.Image, appVersion),
@@ -463,6 +478,22 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 		automount = boolPtr(false)
 	}
 
+	// Git-sync sidecars run alongside the harness + backends so the pod
+	// stays in sync with the remote repo for its full lifetime (#475).
+	// Prepend them so they appear before the backends in pod spec — the
+	// harness container stays first, matching the chart.
+	if sidecars := gitSyncSidecarContainers(agent, appVersion); len(sidecars) > 0 {
+		withSidecars := make([]corev1.Container, 0, len(containers)+len(sidecars))
+		// harness at index 0 is preserved; sidecars appear between
+		// harness and backends to match the chart's container order.
+		withSidecars = append(withSidecars, containers[0])
+		withSidecars = append(withSidecars, sidecars...)
+		if len(containers) > 1 {
+			withSidecars = append(withSidecars, containers[1:]...)
+		}
+		containers = withSidecars
+	}
+
 	podSpec := corev1.PodSpec{
 		TerminationGracePeriodSeconds: func() *int64 {
 			if agent.Spec.TerminationGracePeriodSeconds != nil {
@@ -482,6 +513,7 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 			},
 		},
 		ImagePullSecrets: agent.Spec.ImagePullSecrets,
+		InitContainers:   gitSyncInitContainers(agent, appVersion),
 		Containers:       containers,
 		Volumes:          volumes,
 	}

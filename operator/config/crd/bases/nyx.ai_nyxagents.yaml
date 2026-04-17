@@ -300,6 +300,46 @@ spec:
                             x-kubernetes-map-type: atomic
                         type: object
                       type: array
+                    gitMappings:
+                      description: |-
+                        GitMappings materialise files or directories from a named GitSync
+                        repo into this backend container. The referenced GitSync name must
+                        exist in NyxAgentSpec.GitSyncs. Mirrors the chart's per-backend
+                        `gitMappings` block (#475).
+                      items:
+                        description: |-
+                          GitMappingSpec copies a file or directory from a named GitSync repo
+                          into the target container at a given destination path. Mirrors the
+                          chart's `gitMappings[]` entry shape so on-cluster behaviour matches
+                          byte-for-byte (#475).
+                        properties:
+                          dest:
+                            description: |-
+                              Dest is the destination path inside the target container. The
+                              mapped path is materialised from an emptyDir volume mounted into
+                              the container, populated by the git-map-init container and
+                              kept in sync by the git-sync sidecar's exechook.
+                            minLength: 1
+                            pattern: ^/.*
+                            type: string
+                          gitSync:
+                            description: GitSync is the name of a GitSyncSpec in NyxAgentSpec.GitSyncs.
+                            minLength: 1
+                            pattern: ^[a-z0-9][a-z0-9-]*$
+                            type: string
+                          src:
+                            description: |-
+                              Src is the source path within the repo, relative to the repo
+                              root. A trailing "/" indicates a directory copy; otherwise a
+                              single-file copy is performed.
+                            minLength: 1
+                            type: string
+                        required:
+                        - dest
+                        - gitSync
+                        - src
+                        type: object
+                      type: array
                     image:
                       description: Image is the backend container image.
                       properties:
@@ -769,6 +809,169 @@ spec:
                           type: boolean
                       type: object
                       x-kubernetes-map-type: atomic
+                  type: object
+                type: array
+              gitMappings:
+                description: |-
+                  GitMappings materialise files or directories from named GitSyncs
+                  into the nyx-harness container. A referenced GitSync name must
+                  exist in GitSyncs. Per-backend overrides live in
+                  BackendSpec.GitMappings. Mirrors the chart's per-agent
+                  `gitMappings` block (#475).
+                items:
+                  description: |-
+                    GitMappingSpec copies a file or directory from a named GitSync repo
+                    into the target container at a given destination path. Mirrors the
+                    chart's `gitMappings[]` entry shape so on-cluster behaviour matches
+                    byte-for-byte (#475).
+                  properties:
+                    dest:
+                      description: |-
+                        Dest is the destination path inside the target container. The
+                        mapped path is materialised from an emptyDir volume mounted into
+                        the container, populated by the git-map-init container and
+                        kept in sync by the git-sync sidecar's exechook.
+                      minLength: 1
+                      pattern: ^/.*
+                      type: string
+                    gitSync:
+                      description: GitSync is the name of a GitSyncSpec in NyxAgentSpec.GitSyncs.
+                      minLength: 1
+                      pattern: ^[a-z0-9][a-z0-9-]*$
+                      type: string
+                    src:
+                      description: |-
+                        Src is the source path within the repo, relative to the repo
+                        root. A trailing "/" indicates a directory copy; otherwise a
+                        single-file copy is performed.
+                      minLength: 1
+                      type: string
+                  required:
+                  - dest
+                  - gitSync
+                  - src
+                  type: object
+                type: array
+              gitSyncs:
+                description: |-
+                  GitSyncs declares git-sync sidecar(s) for this agent. Each entry
+                  produces one init container (one-time clone) and one long-running
+                  sidecar that keeps /git in sync with the remote repo. All
+                  containers in the pod share the /git volume. Mirrors the chart's
+                  per-agent `gitSyncs` block (#475).
+                items:
+                  description: |-
+                    GitSyncSpec configures a git-sync sidecar that clones a repo into /git
+                    on the pod and keeps it in sync. An init container runs the initial
+                    clone before the agent starts. Auth credentials are typically injected
+                    via EnvFrom referencing a Secret (e.g. GITSYNC_USERNAME, GITSYNC_PASSWORD,
+                    GITSYNC_SSH_KEY_FILE). Mirrors the chart's `gitSyncs[]` entry shape
+                    (charts/nyx/values.yaml).
+                  properties:
+                    depth:
+                      description: Depth is the clone depth. 1 is sufficient for config-only
+                        repos.
+                      format: int32
+                      minimum: 0
+                      type: integer
+                    envFrom:
+                      description: |-
+                        EnvFrom sources env vars from Secrets or ConfigMaps, injected
+                        into the git-sync init + sidecar containers for this entry.
+                      items:
+                        description: EnvFromSource represents the source of a set
+                          of ConfigMaps or Secrets
+                        properties:
+                          configMapRef:
+                            description: The ConfigMap to select from
+                            properties:
+                              name:
+                                default: ""
+                                description: |-
+                                  Name of the referent.
+                                  This field is effectively required, but due to backwards compatibility is
+                                  allowed to be empty. Instances of this type with an empty value here are
+                                  almost certainly wrong.
+                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                type: string
+                              optional:
+                                description: Specify whether the ConfigMap must be
+                                  defined
+                                type: boolean
+                            type: object
+                            x-kubernetes-map-type: atomic
+                          prefix:
+                            description: Optional text to prepend to the name of each
+                              environment variable. Must be a C_IDENTIFIER.
+                            type: string
+                          secretRef:
+                            description: The Secret to select from
+                            properties:
+                              name:
+                                default: ""
+                                description: |-
+                                  Name of the referent.
+                                  This field is effectively required, but due to backwards compatibility is
+                                  allowed to be empty. Instances of this type with an empty value here are
+                                  almost certainly wrong.
+                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                type: string
+                              optional:
+                                description: Specify whether the Secret must be defined
+                                type: boolean
+                            type: object
+                            x-kubernetes-map-type: atomic
+                        type: object
+                      type: array
+                    image:
+                      description: |-
+                        Image optionally overrides the default git-sync image for this
+                        entry. When unset, the operator's default git-sync image is used
+                        (ghcr.io/skthomasjr/images/git-sync:<appVersion>).
+                      properties:
+                        pullPolicy:
+                          description: PullPolicy controls when the image is pulled.
+                          enum:
+                          - Always
+                          - IfNotPresent
+                          - Never
+                          type: string
+                        repository:
+                          description: Repository is the image repository without
+                            tag or digest.
+                          minLength: 1
+                          type: string
+                        tag:
+                          description: Tag is the image tag. If empty, the operator
+                            may fill in a default.
+                          type: string
+                      required:
+                      - repository
+                      type: object
+                    name:
+                      description: |-
+                        Name is the unique identifier for this git-sync entry within the
+                        agent. Used to name the sidecar container (git-sync-<name>), the
+                        init container (git-sync-init-<name>), and as the `gitSync`
+                        reference in GitMappingSpec entries.
+                      minLength: 1
+                      pattern: ^[a-z0-9][a-z0-9-]*$
+                      type: string
+                    period:
+                      description: Period is the sync interval (e.g. "30s", "1m").
+                        Defaults to "60s".
+                      type: string
+                    ref:
+                      description: Ref is the branch, tag, or commit SHA to sync.
+                        Defaults to HEAD.
+                      type: string
+                    repo:
+                      description: Repo is the git repository URL (HTTPS or SSH).
+                      minLength: 1
+                      type: string
+                  required:
+                  - name
+                  - repo
                   type: object
                 type: array
               image:
