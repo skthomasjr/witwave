@@ -90,7 +90,6 @@ helm uninstall nyx --namespace nyx
 | `dashboard.enabled` | Deploy the nyx web dashboard | `false` |
 | `dashboard.image.repository` | Dashboard image repository | `ghcr.io/skthomasjr/images/dashboard` |
 | `dashboard.port` | Dashboard service port | `80` |
-| `dashboard.harnessUrl` | Override the harness origin used by the `/api/*` fallback proxy (default: `http://<release>-harness:8000`) | unset |
 | `ingress.enabled` | Deploy a Kubernetes Ingress for the dashboard | `false` |
 | `ingress.className` | Ingress class name (e.g. `nginx`, `traefik`) | `""` |
 | `ingress.annotations` | Annotations to add to the Ingress resource | `{}` |

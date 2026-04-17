@@ -8,7 +8,7 @@ and an outage of any single agent cannot take the whole UI down.
 
 The ConfigMap is mounted at /etc/nginx/templates/ in the dashboard pod; the
 nginx-unprivileged entrypoint runs envsubst over it at container start so
-${HARNESS_URL} stays substitutable for the legacy fallback route.
+${NGINX_LOCAL_RESOLVERS} is substituted before nginx reads the config.
 */}}
 {{- $release := .Release.Name }}
 {{- $enabledAgents := list }}
@@ -34,8 +34,8 @@ data:
 
       # Required for any proxy_pass that contains a variable (the per-agent
       # regex captures below do). Without it nginx fails with "no resolver
-      # defined" at request time — only the literal ${HARNESS_URL} upstream
-      # got away with it because nginx resolves literals once at startup.
+      # defined" at request time — literal upstreams would resolve once at
+      # startup, but the per-agent routes below are dynamic and need this.
       # NGINX_LOCAL_RESOLVERS is populated by the nginx-unprivileged image's
       # /docker-entrypoint.d/15-local-resolvers.envsh from /etc/resolv.conf,
       # so this works in any cluster without hardcoding kube-dns addresses.
