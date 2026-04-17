@@ -282,7 +282,7 @@ agents:
         port: 8080
 
         # Default model for this backend.
-        model: claude-opus-4-6
+        model: claude-opus-4-7
 
         # # Resource requests and limits for this backend container.
         # # Claude backends spawn a Claude Code subprocess per session — memory usage

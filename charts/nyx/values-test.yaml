@@ -70,7 +70,7 @@ agents:
           repository: ghcr.io/skthomasjr/images/a2-claude
           tag: "0.2.0-beta.47"
         port: 8090
-        model: claude-opus-4-6
+        model: claude-opus-4-7
         envFrom:
           - secretRef:
               name: bob-claude-secrets
@@ -169,7 +169,7 @@ agents:
           repository: ghcr.io/skthomasjr/images/a2-claude
           tag: "0.2.0-beta.47"
         port: 8089
-        model: claude-opus-4-6
+        model: claude-opus-4-7
         envFrom:
           - secretRef:
               name: fred-claude-secrets

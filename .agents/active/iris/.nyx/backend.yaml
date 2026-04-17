@@ -2,7 +2,7 @@ backend:
   agents:
     - id: claude
       url: http://iris-a2-claude:8080
-      model: claude-opus-4-6
+      model: claude-opus-4-7
 
     - id: codex
       url: http://iris-a2-codex:8080
@@ -14,22 +14,22 @@ backend:
   routing:
     default:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7
     a2a:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7
     heartbeat:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7
     job:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7
     task:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7
     trigger:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7
     continuation:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7

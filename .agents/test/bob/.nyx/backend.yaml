@@ -2,7 +2,7 @@ backend:
   agents:
     - id: claude
       url: http://localhost:8090
-      model: claude-opus-4-6
+      model: claude-opus-4-7
 
     # codex and gemini omitted — no API budget for codex, no key provisioned
     # for gemini. Restore those entries (and re-enable the backends in
@@ -11,22 +11,22 @@ backend:
   routing:
     default:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7
     a2a:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7
     heartbeat:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7
     job:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7
     task:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7
     trigger:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7
     continuation:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7
