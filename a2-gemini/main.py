@@ -138,6 +138,7 @@ async def _sub_app_lifespan(app):
     if not supported:
         logger.critical("A2A sub-app lifespan startup failed — aborting server startup")
         task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
         raise RuntimeError("A2A sub-app lifespan startup failed")
 
     try:
