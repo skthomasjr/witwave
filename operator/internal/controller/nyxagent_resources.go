@@ -296,6 +296,7 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 		Env: append([]corev1.EnvVar{
 			{Name: "AGENT_NAME", Value: agent.Name},
 			{Name: "AGENT_PORT", Value: fmt.Sprintf("%d", harnessPort)},
+			{Name: "METRICS_ENABLED", Value: metricsEnabledValue(agent)},
 		}, agent.Spec.Env...),
 		EnvFrom:   agent.Spec.EnvFrom,
 		Resources: agent.Spec.Resources,
@@ -362,7 +363,9 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 				{Name: "AGENT_NAME", Value: fmt.Sprintf("%s-a2-%s", agent.Name, b.Name)},
 				{Name: "AGENT_OWNER", Value: agent.Name},
 				{Name: "AGENT_ID", Value: b.Name},
+				{Name: "AGENT_URL", Value: fmt.Sprintf("http://localhost:%d", bPort)},
 				{Name: "BACKEND_PORT", Value: fmt.Sprintf("%d", bPort)},
+				{Name: "METRICS_ENABLED", Value: metricsEnabledValue(agent)},
 			}, b.Env...),
 			EnvFrom:   b.EnvFrom,
 			Resources: b.Resources,
@@ -491,6 +494,16 @@ func metricsPodAnnotationsEnabled(agent *nyxv1alpha1.NyxAgent) bool {
 		return *agent.Spec.Metrics.PodAnnotations
 	}
 	return false // chart default
+}
+
+// metricsEnabledValue renders the METRICS_ENABLED env var value for harness
+// and backend containers, mirroring the chart's quoted bool semantics
+// (#502). Backends gate their /metrics endpoint on this variable.
+func metricsEnabledValue(agent *nyxv1alpha1.NyxAgent) string {
+	if agent.Spec.Metrics.Enabled {
+		return "true"
+	}
+	return "false"
 }
 
 // backendEnabled reports the per-backend enabled flag with default-true
