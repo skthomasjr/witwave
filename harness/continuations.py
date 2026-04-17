@@ -34,6 +34,11 @@ _DISABLED = object()
 # Overridable per-continuation via the max-concurrent-fires frontmatter field.
 CONTINUATION_MAX_CONCURRENT_FIRES = int(os.environ.get("CONTINUATION_MAX_CONCURRENT_FIRES", "5"))
 
+# TTL (seconds) for partial fan-in state entries in `_fanin_state`.  Prevents
+# unbounded growth when one of several required upstreams never fires for a
+# given session (#557).  Default 1 hour; override via env.
+CONTINUATION_FANIN_TTL = float(os.environ.get("CONTINUATION_FANIN_TTL", "3600"))
+
 
 @dataclass
 class ContinuationItem:
@@ -188,9 +193,12 @@ class ContinuationRunner:
         self._active_fires: set[asyncio.Task] = set()
         # Per-continuation in-flight tasks, keyed by continuation name.
         self._fires_by_name: dict[str, set[asyncio.Task]] = {}
-        # Fan-in state: maps (continuation_name, session_id) -> set of upstream
-        # kind patterns that have been satisfied so far.  Cleared on each fire.
-        self._fanin_state: dict[tuple[str, str], set[str]] = {}
+        # Fan-in state: maps (continuation_name, session_id) -> (monotonic_ts, set
+        # of upstream kind patterns satisfied so far).  Cleared on each fire;
+        # stale partial entries are evicted after CONTINUATION_FANIN_TTL to
+        # prevent unbounded growth when a required upstream never completes
+        # (#557).
+        self._fanin_state: dict[tuple[str, str], tuple[float, set[str]]] = {}
 
     def _register(self, path: str) -> None:
         result = parse_continuation_file(path)
@@ -217,6 +225,31 @@ class ContinuationRunner:
                 del self._fanin_state[k]
         if agent_continuation_items_registered is not None:
             agent_continuation_items_registered.set(len(self._items))
+
+    def _evict_stale_fanin(self, now: float | None = None) -> int:
+        """Evict fan-in state entries older than CONTINUATION_FANIN_TTL.
+
+        Returns the number of evicted entries.  Records each eviction on the
+        agent_continuation_fanin_evictions_total counter, labelled by
+        continuation name.  Called opportunistically from notify() so stale
+        partial fan-ins can never accumulate unboundedly (#557).
+        """
+        if CONTINUATION_FANIN_TTL <= 0:
+            return 0
+        if now is None:
+            now = time.monotonic()
+        cutoff = now - CONTINUATION_FANIN_TTL
+        stale_keys = [k for k, (ts, _seen) in self._fanin_state.items() if ts < cutoff]
+        for key in stale_keys:
+            name, _session = key
+            del self._fanin_state[key]
+            logger.info(
+                f"Continuation '{name}': evicted stale fan-in state "
+                f"(session={_session}) after {CONTINUATION_FANIN_TTL}s TTL."
+            )
+            if agent_continuation_fanin_evictions_total is not None:
+                agent_continuation_fanin_evictions_total.labels(name=name).inc()
+        return len(stale_keys)
 
     async def _scan(self) -> None:
         if not os.path.isdir(CONTINUATIONS_DIR):
@@ -252,6 +285,9 @@ class ContinuationRunner:
 
     def notify(self, kind: str, session_id: str, success: bool, response: str, bus: MessageBus) -> None:
         """Called by on_prompt_completed() when an upstream completes. Non-blocking."""
+        # Evict any stale partial fan-in state before processing this event so
+        # sessions whose required upstream never fires cannot leak memory (#557).
+        self._evict_stale_fanin()
         for item in list(self._items.values()):
             outcome_matches = (success and item.on_success) or (not success and item.on_error)
             content_matches = item.trigger_when is None or item.trigger_when in response
@@ -271,8 +307,15 @@ class ContinuationRunner:
                 # Fan-in: record which patterns have been satisfied for this session
                 # and fire only once all required patterns have been seen.
                 key = (item.name, session_id)
-                seen = self._fanin_state.setdefault(key, set())
+                entry = self._fanin_state.get(key)
+                if entry is None:
+                    seen: set[str] = set()
+                else:
+                    _ts, seen = entry
                 seen.update(matched_patterns)
+                # Refresh timestamp on every update so active fan-ins are kept
+                # alive and only truly stale partial state ages out (#557).
+                self._fanin_state[key] = (time.monotonic(), seen)
                 # Check whether every required pattern has been satisfied by at
                 # least one upstream completion in this session.
                 ready = all(

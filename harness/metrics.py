@@ -98,6 +98,7 @@ agent_continuation_items_registered: prometheus_client.Gauge | None = None
 agent_continuation_runs_total: prometheus_client.Counter | None = None
 agent_continuation_fires_total: prometheus_client.Counter | None = None
 agent_continuation_throttled_total: prometheus_client.Counter | None = None
+agent_continuation_fanin_evictions_total: prometheus_client.Counter | None = None
 agent_webhooks_delivery_total: prometheus_client.Counter | None = None
 agent_webhooks_delivery_shed_total: prometheus_client.Counter | None = None
 agent_webhooks_parse_errors_total: prometheus_client.Counter | None = None
@@ -514,6 +515,11 @@ if _enabled:
     agent_continuation_throttled_total = prometheus_client.Counter(
         "agent_continuation_throttled_total",
         "Total continuation firings skipped due to max_concurrent_fires throttle.",
+        ["name"],
+    )
+    agent_continuation_fanin_evictions_total = prometheus_client.Counter(
+        "agent_continuation_fanin_evictions_total",
+        "Total partial fan-in state entries evicted after TTL expiry.",
         ["name"],
     )
     agent_webhooks_delivery_total = prometheus_client.Counter(
