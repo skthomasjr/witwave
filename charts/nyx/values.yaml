@@ -809,7 +809,7 @@ agents:
         # # Additional environment variables injected into the backend container.
         # # Common backend env vars:
         # #   a2-gemini: GEMINI_MAX_HISTORY_TURNS (max turns persisted per session; default 100; 0 = unlimited)
-        # #              SESSION_STORE_DIR (session JSON directory; default /home/agent/memory/sessions)
+        # #              SESSION_STORE_DIR (session JSON directory; default /home/agent/.gemini/memory/sessions)
         # #              MAX_SESSIONS (LRU cache size; default 10000)
         # #   a2-claude: LOG_PROMPT_MAX_BYTES (max bytes of prompt logged at INFO; default 200; 0 = suppress)
         # #   a2-codex:  CODEX_MODEL (model override; default gpt-5.1-codex)
@@ -859,7 +859,7 @@ agents:
         #     - subPath: claude-backups
         #       mountPath: /home/agent/.claude/backups
         #     - subPath: memory
-        #       mountPath: /home/agent/memory
+        #       mountPath: /home/agent/.claude/memory   # or .codex/memory / .gemini/memory for those backends
 
         # # Inline config files mounted into the backend container.
         # # Each entry is added as a key in a ConfigMap and mounted at mountPath.

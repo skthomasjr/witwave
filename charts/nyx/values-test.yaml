@@ -99,7 +99,7 @@ agents:
             - subPath: claude-backups
               mountPath: /home/agent/.claude/backups
             - subPath: memory
-              mountPath: /home/agent/memory
+              mountPath: /home/agent/.claude/memory
 
       - name: codex
         # Disabled: out of OpenAI credits. All bob routing now targets claude
@@ -122,7 +122,7 @@ agents:
           enabled: true
           mounts:
             - subPath: memory
-              mountPath: /home/agent/memory
+              mountPath: /home/agent/.codex/memory
 
       - name: gemini
         # Disabled: no Gemini API key available for the local test stack.
@@ -148,7 +148,7 @@ agents:
           enabled: true
           mounts:
             - subPath: memory
-              mountPath: /home/agent/memory
+              mountPath: /home/agent/.gemini/memory
 
   - name: fred
     port: 8098
@@ -200,4 +200,4 @@ agents:
             - subPath: claude-backups
               mountPath: /home/agent/.claude/backups
             - subPath: memory
-              mountPath: /home/agent/memory
+              mountPath: /home/agent/.claude/memory

@@ -48,7 +48,7 @@ COPY --chown=agent:agent shared/ /home/agent/shared/
 
 ENV PYTHONPATH="/home/agent/shared"
 
-RUN mkdir -p /home/agent/logs /home/agent/memory /home/agent/.codex
+RUN mkdir -p /home/agent/logs /home/agent/.codex/memory
 WORKDIR /home/agent/workspace
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
