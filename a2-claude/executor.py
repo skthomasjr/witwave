@@ -562,7 +562,7 @@ async def _run_query_inner(
                                 a2_sdk_tool_calls_total.labels(**_LABELS, tool=block.name).inc()
                             if a2_sdk_tool_call_input_size_bytes is not None:
                                 a2_sdk_tool_call_input_size_bytes.labels(**_LABELS, tool=block.name).observe(
-                                    len(json.dumps(block.input).encode())
+                                    len(json.dumps(block.input, default=str).encode())
                                 )
                             await _log_tool_event("tool_use", block, session_id, model=effective_model)
                         elif isinstance(block, ToolResultBlock):
