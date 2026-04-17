@@ -465,6 +465,18 @@ async def run_query(
                 except Exception:
                     if a2_sdk_errors_total is not None:
                         a2_sdk_errors_total.labels(**_LABELS, model=resolved_model).inc()
+                # Do not persist chat.history here (#499). The SDK may have
+                # partially advanced chat.history to include the failed user
+                # turn with no (or an incomplete) assistant response. Saving
+                # that would leave the session violating Gemini's alternating
+                # user/model contract or resuming on incomplete content on the
+                # next request. Mirror the BudgetExceededError policy (#493):
+                # skip the save and mark the session in history_save_failed so
+                # the next request starts fresh. The prior on-disk history (if
+                # any) remains authoritative; _run_inner treats save-failed
+                # sessions as new (#409, #437).
+                if history_save_failed is not None:
+                    history_save_failed.add(session_id)
                 raise
 
             if a2_sdk_session_duration_seconds is not None:
