@@ -1,16 +1,31 @@
 <script setup lang="ts">
 import { RouterLink, RouterView } from "vue-router";
+import { useHealth } from "./composables/useHealth";
 
 // App shell. Simple button-style nav matching the legacy ui/ pattern —
-// compact, dark-surface, one entry per view. Reintroduce PrimeVue Menubar
-// when the view count grows enough to need overflow management (#470).
+// compact, dark-surface, one entry per view. Status dot in the header
+// mirrors legacy #hdr-status: green when /api/team answers, red when it
+// doesn't, gray during the first probe.
 
 interface NavItem {
   label: string;
   to: { name: string };
 }
 
-const navItems: NavItem[] = [{ label: "Team", to: { name: "team" } }];
+const navItems: NavItem[] = [
+  { label: "Team", to: { name: "team" } },
+  { label: "Calendar", to: { name: "calendar" } },
+  { label: "Jobs", to: { name: "jobs" } },
+  { label: "Tasks", to: { name: "tasks" } },
+  { label: "Triggers", to: { name: "triggers" } },
+  { label: "Webhooks", to: { name: "webhooks" } },
+  { label: "Continuations", to: { name: "continuations" } },
+  { label: "Heartbeat", to: { name: "heartbeat" } },
+  { label: "Conversations", to: { name: "conversations" } },
+  { label: "Metrics", to: { name: "metrics" } },
+];
+
+const { state, detail } = useHealth();
 </script>
 
 <template>
@@ -28,6 +43,14 @@ const navItems: NavItem[] = [{ label: "Team", to: { name: "team" } }];
           {{ item.label }}
         </RouterLink>
       </nav>
+      <span
+        class="status"
+        :class="`status-${state}`"
+        :title="state === 'err' ? detail : state"
+        data-testid="header-status"
+      >
+        {{ state === "connecting" ? "connecting…" : state === "ok" ? "online" : "offline" }}
+      </span>
       <span class="version" data-testid="dashboard-version">v0.1.0-alpha</span>
     </header>
     <main class="app-main">
@@ -67,6 +90,7 @@ const navItems: NavItem[] = [{ label: "Team", to: { name: "team" } }];
   display: flex;
   gap: 2px;
   flex: 1;
+  overflow-x: auto;
 }
 
 .nav-link {
@@ -80,6 +104,7 @@ const navItems: NavItem[] = [{ label: "Team", to: { name: "team" } }];
   font-size: 12px;
   letter-spacing: 0.04em;
   text-decoration: none;
+  white-space: nowrap;
   transition: color 0.12s, background 0.12s;
 }
 
@@ -91,6 +116,42 @@ const navItems: NavItem[] = [{ label: "Team", to: { name: "team" } }];
 .nav-link.is-active {
   color: var(--nyx-bright);
   background: var(--nyx-bg);
+}
+
+.status {
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.status::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--nyx-muted);
+}
+
+.status-ok {
+  color: var(--nyx-dim);
+}
+
+.status-ok::before {
+  background: var(--nyx-green);
+}
+
+.status-err {
+  color: var(--nyx-red);
+}
+
+.status-err::before {
+  background: var(--nyx-red);
+}
+
+.status-connecting {
+  color: var(--nyx-dim);
 }
 
 .version {
