@@ -9,6 +9,8 @@ import ContinuationsView from "./views/ContinuationsView.vue";
 import HeartbeatView from "./views/HeartbeatView.vue";
 import ConversationsView from "./views/ConversationsView.vue";
 import TraceView from "./views/TraceView.vue";
+import ToolAuditView from "./views/ToolAuditView.vue";
+import OTelTracesView from "./views/OTelTracesView.vue";
 import MetricsView from "./views/MetricsView.vue";
 import CalendarView from "./views/CalendarView.vue";
 
@@ -27,6 +29,16 @@ export const router = createRouter({
     { path: "/heartbeat", name: "heartbeat", component: HeartbeatView },
     { path: "/conversations", name: "conversations", component: ConversationsView },
     { path: "/trace", name: "trace", component: TraceView },
+    { path: "/tool-audit", name: "tool-audit", component: ToolAuditView },
+    // OTel distributed-trace viewer (#632). The detail drawer is driven by
+    // the /:traceId param so conversation rows can deep-link to a specific
+    // trace (see ConversationsView.vue "Open trace" action).
+    { path: "/otel-traces", name: "otel-traces", component: OTelTracesView },
+    {
+      path: "/otel-traces/:traceId",
+      name: "otel-traces-detail",
+      component: OTelTracesView,
+    },
     { path: "/metrics", name: "metrics", component: MetricsView },
   ],
 });

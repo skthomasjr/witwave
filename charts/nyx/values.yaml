@@ -358,6 +358,123 @@ podMonitor:
   # (e.g. release: kube-prometheus-stack).
   labels: {}
 
+# OpenTelemetry tracing (#634). End-to-end opt-in wiring for distributed
+# traces across harness, backends, and operator. Disabled by default so
+# existing deployments are unaffected.
+#
+# When observability.tracing.enabled=true, every harness and backend pod
+# receives the standard OTel env vars (OTEL_ENABLED, OTEL_EXPORTER_OTLP_ENDPOINT,
+# OTEL_TRACES_SAMPLER, OTEL_TRACES_SAMPLER_ARG, OTEL_SERVICE_NAME). The Python
+# SDK bootstrap in shared/otel.py and the Go bootstrap in
+# operator/internal/tracing/otel.go both honour these variables.
+#
+# When observability.tracing.collector.enabled=true, the chart also deploys
+# an OpenTelemetry Collector (Deployment + Service + ConfigMap) into the
+# release namespace. Pods route to that collector automatically unless
+# observability.tracing.endpoint is set explicitly to override.
+observability:
+  tracing:
+    # Master toggle. When false, no OTEL_* env vars are injected and the
+    # collector template is not rendered — matches existing behaviour.
+    enabled: false
+
+    # OTLP endpoint the pods export to. Leave empty to auto-derive from the
+    # chart-deployed collector when collector.enabled=true (see below). When
+    # pointing at an out-of-band collector, set the full URL including scheme
+    # and port — e.g. http://otel-collector.observability:4318 for OTLP/HTTP
+    # or http://otel-collector.observability:4317 for OTLP/gRPC.
+    endpoint: ""
+
+    # OTel trace sampler name — forwarded verbatim as OTEL_TRACES_SAMPLER.
+    # Common values: "parentbased_always_on" (SDK default), "always_on",
+    # "always_off", "traceidratio", "parentbased_traceidratio". Leave empty
+    # to accept the SDK default.
+    sampler: ""
+
+    # OTEL_TRACES_SAMPLER_ARG — only meaningful for ratio-based samplers
+    # (e.g. "0.1" for 10% sampling with parentbased_traceidratio).
+    samplerArg: ""
+
+    # OpenTelemetry Collector, deployed into the release namespace. Acts as
+    # the funnel between the pods and whichever trace backend (Jaeger,
+    # Tempo, Grafana Cloud, Datadog, …) is configured in config.exporters.
+    #
+    # Disable this block and set observability.tracing.endpoint to route
+    # directly to an existing out-of-band collector instead.
+    collector:
+      enabled: false
+
+      image:
+        repository: otel/opentelemetry-collector-contrib
+        # Tag defaults to an LTS-known-good 0.x release. Bump when a newer
+        # contrib image is required (the :latest tag is intentionally
+        # avoided so upgrades are deterministic).
+        tag: "0.112.0"
+        pullPolicy: IfNotPresent
+
+      replicas: 1
+
+      # Service name exposed inside the cluster. Empty → "<release>-otel-collector".
+      service:
+        type: ClusterIP
+        name: ""
+
+      resources:
+        limits:
+          cpu: 500m
+          memory: 512Mi
+        requests:
+          cpu: 50m
+          memory: 128Mi
+
+      # Full collector configuration rendered into a ConfigMap mounted at
+      # /etc/otel-collector/config.yaml. The default pipeline accepts OTLP
+      # on 4317 (gRPC) + 4318 (HTTP) and emits to the `debug` exporter —
+      # safe to deploy, but you'll see traces only in the collector's own
+      # logs until you wire a real exporter.
+      #
+      # Example — forward to Jaeger (replace exporters + the traces pipeline):
+      #   exporters:
+      #     otlp/jaeger:
+      #       endpoint: jaeger-collector.observability:4317
+      #       tls: { insecure: true }
+      #   service:
+      #     pipelines:
+      #       traces:
+      #         receivers: [otlp]
+      #         processors: [batch]
+      #         exporters: [otlp/jaeger]
+      #
+      # Example — forward to Tempo (OTLP/HTTP):
+      #   exporters:
+      #     otlphttp/tempo:
+      #       endpoint: http://tempo.observability:4318
+      #   service:
+      #     pipelines:
+      #       traces:
+      #         receivers: [otlp]
+      #         processors: [batch]
+      #         exporters: [otlphttp/tempo]
+      config:
+        receivers:
+          otlp:
+            protocols:
+              grpc:
+                endpoint: 0.0.0.0:4317
+              http:
+                endpoint: 0.0.0.0:4318
+        processors:
+          batch: {}
+        exporters:
+          debug:
+            verbosity: basic
+        service:
+          pipelines:
+            traces:
+              receivers: [otlp]
+              processors: [batch]
+              exporters: [debug]
+
 # Shared storage volume mounted into all agent pods and backend sidecars.
 sharedStorage:
   # Enable shared storage.

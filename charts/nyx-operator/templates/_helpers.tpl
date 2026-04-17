@@ -51,6 +51,40 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
+nyx-operator.otelEnv — emit OTEL_* env list entries when
+observability.tracing is enabled (#634). Paired with the nyx chart's
+nyx.otelEnv helper; the operator's Go bootstrap in
+operator/internal/tracing/otel.go honours the same env vars.
+
+Usage:
+  {{- include "nyx-operator.otelEnv" . | nindent 12 }}
+*/}}
+{{- define "nyx-operator.otelEnv" -}}
+{{- $tracing := ((.Values.observability).tracing) -}}
+{{- if and $tracing $tracing.enabled -}}
+{{- $endpoint := $tracing.endpoint | default "" }}
+- name: OTEL_ENABLED
+  value: "true"
+{{- if $endpoint }}
+- name: OTEL_EXPORTER_OTLP_ENDPOINT
+  value: {{ $endpoint | quote }}
+{{- end }}
+{{- if $tracing.sampler }}
+- name: OTEL_TRACES_SAMPLER
+  value: {{ $tracing.sampler | quote }}
+{{- end }}
+{{- if $tracing.samplerArg }}
+- name: OTEL_TRACES_SAMPLER_ARG
+  value: {{ $tracing.samplerArg | quote }}
+{{- end }}
+{{- if $tracing.serviceName }}
+- name: OTEL_SERVICE_NAME
+  value: {{ $tracing.serviceName | quote }}
+{{- end }}
+{{- end -}}
+{{- end }}
+
+{{/*
 Create the name of the service account to use
 */}}
 {{- define "nyx-operator.serviceAccountName" -}}

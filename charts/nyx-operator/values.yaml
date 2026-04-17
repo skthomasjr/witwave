@@ -154,14 +154,36 @@ extraArgs: []
 
 # Extra environment variables for the controller-manager container. POD_NAME
 # and POD_NAMESPACE are always injected via the downward API (used for OTel
-# resource attributes when OTEL_ENABLED=true). Add OTEL_* / OTEL_EXPORTER_*
-# entries here to enable distributed tracing without rebuilding the image:
-# env:
-#   - name: OTEL_ENABLED
-#     value: "true"
-#   - name: OTEL_EXPORTER_OTLP_ENDPOINT
-#     value: http://otel-collector.observability:4318
+# resource attributes when OTEL_ENABLED=true). Prefer the structured
+# observability.tracing block below (#634) over hand-rolling OTEL_* entries
+# here, but this list still works for escape-hatch env vars.
 env: []
+
+# OpenTelemetry tracing (#634). Paired with the nyx chart's
+# observability.tracing block so the operator can emit spans to the same
+# collector as the harness + backends. Disabled by default.
+#
+# The operator's Go bootstrap in operator/internal/tracing/otel.go reads
+# the standard OTEL_* env vars set below. OTEL_EXPORTER_OTLP_ENDPOINT /
+# OTEL_TRACES_SAMPLER are picked up by the OTel SDK directly; the other
+# values are consumed by InitOTel() at startup.
+observability:
+  tracing:
+    enabled: false
+
+    # OTLP endpoint the operator exports to. Typical values:
+    #   http://<release>-otel-collector.<namespace>:4318        (nyx chart's collector)
+    #   http://otel-collector.observability:4318                (out-of-band collector)
+    endpoint: ""
+
+    # OTEL_TRACES_SAMPLER / OTEL_TRACES_SAMPLER_ARG pass-through. Leave
+    # empty to accept the SDK default.
+    sampler: ""
+    samplerArg: ""
+
+    # Overrides OTEL_SERVICE_NAME. The operator defaults to "nyx-operator"
+    # when unset (see serviceName() in operator/internal/tracing/otel.go).
+    serviceName: ""
 # extraArgs:
 #   - --zap-log-level=debug
 

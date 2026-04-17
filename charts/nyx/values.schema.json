@@ -141,6 +141,49 @@
         "labels": { "type": "object" }
       }
     },
+    "observability": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "tracing": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "endpoint": { "type": "string" },
+            "sampler": { "type": "string" },
+            "samplerArg": { "type": "string" },
+            "collector": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "image": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "repository": { "type": "string" },
+                    "tag": { "type": "string" },
+                    "pullPolicy": { "type": "string" }
+                  }
+                },
+                "replicas": { "type": "integer", "minimum": 0 },
+                "service": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "type": { "type": "string" },
+                    "name": { "type": "string" }
+                  }
+                },
+                "resources": { "type": "object" },
+                "config": { "type": "object" }
+              }
+            }
+          }
+        }
+      }
+    },
     "sharedStorage": {
       "type": "object",
       "additionalProperties": true,

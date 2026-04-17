@@ -245,6 +245,60 @@ Usage:
 {{- end }}
 
 {{/*
+nyx.otelEnv — emit OTEL_* env list entries for a container when
+observability.tracing is enabled (#634). Renders nothing when tracing is
+disabled, so the caller can unconditionally include it.
+
+Wiring:
+  - OTEL_ENABLED              master toggle read by shared/otel.py +
+                              operator/internal/tracing/otel.go
+  - OTEL_EXPORTER_OTLP_ENDPOINT  read by the OTel SDK directly; when
+                                 observability.tracing.endpoint is empty
+                                 and the chart-managed collector is
+                                 enabled, the in-cluster collector
+                                 Service URL is used instead
+  - OTEL_TRACES_SAMPLER[_ARG] forwarded verbatim when set
+  - OTEL_SERVICE_NAME         per-container service name; omitted when
+                              the caller doesn't supply one (each
+                              backend main.py already derives a sensible
+                              default from AGENT_OWNER)
+
+Usage:
+  {{- include "nyx.otelEnv" (dict "root" $ "serviceName" (printf "nyx-harness-%s" .name)) | nindent 12 }}
+*/}}
+{{- define "nyx.otelEnv" -}}
+{{- $root := .root -}}
+{{- $serviceName := .serviceName -}}
+{{- $tracing := (((($root.Values).observability)).tracing) -}}
+{{- if and $tracing $tracing.enabled -}}
+{{- $endpoint := $tracing.endpoint | default "" -}}
+{{- $collector := $tracing.collector | default dict -}}
+{{- if and (not $endpoint) $collector.enabled -}}
+{{- $svcName := (($collector.service).name) | default (printf "%s-otel-collector" $root.Release.Name) -}}
+{{- $endpoint = printf "http://%s:4318" $svcName -}}
+{{- end }}
+- name: OTEL_ENABLED
+  value: "true"
+{{- if $endpoint }}
+- name: OTEL_EXPORTER_OTLP_ENDPOINT
+  value: {{ $endpoint | quote }}
+{{- end }}
+{{- if $tracing.sampler }}
+- name: OTEL_TRACES_SAMPLER
+  value: {{ $tracing.sampler | quote }}
+{{- end }}
+{{- if $tracing.samplerArg }}
+- name: OTEL_TRACES_SAMPLER_ARG
+  value: {{ $tracing.samplerArg | quote }}
+{{- end }}
+{{- if $serviceName }}
+- name: OTEL_SERVICE_NAME
+  value: {{ $serviceName | quote }}
+{{- end }}
+{{- end -}}
+{{- end }}
+
+{{/*
 nyx.enabled — returns "true" or "false" for a scope's `enabled` field,
 defaulting to "true" when the key is absent. Use via `eq (include
 "nyx.enabled" .) "true"`. This exists because `default true .enabled`

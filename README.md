@@ -493,3 +493,20 @@ header values (not in the URL — see above):
 | `{{delivery_id}}`      | UUID unique to this delivery attempt           |
 
 If the body is empty, a default JSON envelope is sent.
+
+## Observability
+
+Prometheus metrics are opt-in per-agent; see `charts/nyx` values for `metrics.*`, `serviceMonitor.*`, and
+`podMonitor.*`.
+
+Distributed tracing (OpenTelemetry) is also opt-in and spans harness + backends + operator when enabled. The
+pod-side SDK bootstraps already honour the standard OTel env vars (`shared/otel.py`,
+`operator/internal/tracing/otel.go`); the Helm charts own the wiring end-to-end (#634):
+
+- `charts/nyx` — `observability.tracing.enabled` + `observability.tracing.collector.enabled` deploys an in-cluster
+  OpenTelemetry Collector and points every agent pod at it. Set `observability.tracing.endpoint` to forward to an
+  out-of-band collector instead.
+- `charts/nyx-operator` — matching `observability.tracing.*` block; wire the same endpoint to trace the reconciler
+  alongside the agents.
+
+See `charts/nyx/README.md` → "Enabling distributed tracing" for Jaeger and Tempo recipes.

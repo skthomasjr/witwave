@@ -196,6 +196,7 @@ spec:
               value: {{ .port | default 8000 | quote }}
             - name: METRICS_ENABLED
               value: {{ (.metrics).enabled | default $.Values.metrics.enabled | toString | quote }}
+            {{- include "nyx.otelEnv" (dict "root" $ "serviceName" (printf "nyx-harness-%s" .name)) | nindent 12 }}
             {{- if .env }}
             {{- toYaml .env | nindent 12 }}
             {{- end }}
@@ -314,6 +315,7 @@ spec:
             - name: BACKEND_MODEL
               value: {{ .model | quote }}
             {{- end }}
+            {{- include "nyx.otelEnv" (dict "root" $ "serviceName" (printf "a2-%s-%s" .name $agentName)) | nindent 12 }}
             {{- if .env }}
             {{- toYaml .env | nindent 12 }}
             {{- end }}
