@@ -52,6 +52,9 @@ spec:
             # Disable the metrics endpoint entirely.
             - --metrics-bind-address=0
             {{- end }}
+            {{- if .Values.webhooks.enabled }}
+            - --webhook-cert-path={{ .Values.webhooks.certDir }}
+            {{- end }}
             {{- with .Values.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -80,6 +83,17 @@ spec:
               containerPort: {{ .Values.metrics.port }}
               protocol: TCP
             {{- end }}
+            {{- if .Values.webhooks.enabled }}
+            - name: webhook
+              containerPort: {{ .Values.webhooks.port | default 9443 }}
+              protocol: TCP
+            {{- end }}
+          {{- if .Values.webhooks.enabled }}
+          volumeMounts:
+            - name: webhook-cert
+              mountPath: {{ .Values.webhooks.certDir | quote }}
+              readOnly: true
+          {{- end }}
           {{- with .Values.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}
@@ -118,4 +132,12 @@ spec:
       {{- with .Values.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.webhooks.enabled }}
+      volumes:
+        # cert-manager-issued serving cert for the admission webhook (#624).
+        # Secret name matches the Certificate's secretName in webhook.yaml.
+        - name: webhook-cert
+          secret:
+            secretName: {{ printf "%s-webhook-serving-cert" (include "nyx-operator.fullname" .) | quote }}
       {{- end }}

@@ -98,6 +98,30 @@ kubectl delete crd nyxagents.nyx.ai
 | `nodeSelector`               | Node selector for the controller pod                                                         | `{}`                                        |
 | `tolerations`                | Tolerations for the controller pod                                                           | `[]`                                        |
 | `affinity`                   | Affinity rules for the controller pod                                                        | `{}`                                        |
+| `webhooks.enabled`           | Render the admission webhook Service, Mutating/Validating webhook configs, and cert-manager resources. Requires cert-manager installed in the cluster (#624) | `false` |
+| `webhooks.port`              | Container port for the webhook server (matches controller-runtime default)                   | `9443`                                      |
+| `webhooks.certDir`           | Directory the cert-manager-issued TLS pair is mounted at inside the container                | `/tmp/k8s-webhook-server/serving-certs`     |
+| `webhooks.failurePolicy`     | Webhook failure policy. `Fail` rejects admission on error; `Ignore` allows it. Safer default for invariant checks | `Fail` |
+| `webhooks.certManager.enabled` | cert-manager integration toggle. Required when `webhooks.enabled=true` in this first pass — BYO-cert installs aren't supported until a later gap | `true` |
+| `webhooks.certManager.createIssuer` | Render a chart-owned selfSigned Issuer. Ignored when `webhooks.certManager.issuerRef.name` is set | `true`                                   |
+| `webhooks.certManager.issuerKind` | Kind of Issuer to render when `createIssuer=true`. `Issuer` or `ClusterIssuer`           | `Issuer`                                    |
+| `webhooks.certManager.issuerRef.name` | Name of an external (Cluster)Issuer to use instead of a chart-owned one              | `""`                                        |
+| `webhooks.certManager.issuerRef.kind` | Kind of the external issuer                                                          | `""`                                        |
+
+## Admission webhook (#624)
+
+When `webhooks.enabled=true`, the chart renders a webhook `Service`, a cert-manager `Certificate` + selfSigned `Issuer`
+(or external issuer reference), and both `MutatingWebhookConfiguration` and `ValidatingWebhookConfiguration` resources.
+The CA bundle is auto-injected into the webhook configs via the `cert-manager.io/inject-ca-from` annotation so operators
+never paste base64 CA blobs into values.
+
+Initial scaffold ships **one defaulting rule** (populate `spec.port=8080` when unset) and **one validating rule**
+(reject duplicate backend names in `spec.backends`). Further invariants land as follow-up gaps on top of this skeleton.
+
+Values shape mirrors the primary `nyx` chart's cert-manager block (#639) so operators running both charts side-by-side
+see identical knobs for `certManager.enabled`, `createIssuer`, `issuerKind`, and `issuerRef.{name,kind}`.
+
+Disabled (default) installs run the controller without admission webhooks; `cmd/main.go` logs a note at startup.
 
 ## Namespace-scoped RBAC (#532)
 

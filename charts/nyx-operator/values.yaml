@@ -168,3 +168,41 @@ env: []
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# ----------------------------------------------------------------------------
+# Admission webhook (#624).
+#
+# When enabled, the chart renders the webhook Service, Mutating/Validating
+# webhook configurations, and (when webhooks.certManager.enabled) a
+# cert-manager Certificate + Issuer so the controller-manager boots with
+# a TLS pair already mounted.
+#
+# Disabled by default (default off) — the operator runs without admission
+# webhooks and the manager logs a note at startup. Turn on in clusters
+# that have cert-manager installed.
+webhooks:
+  enabled: false
+  # Port the webhook server listens on inside the container. Matches the
+  # controller-runtime default. Also the containerPort on the Deployment.
+  port: 9443
+  # Path the webhook cert pair is mounted at inside the container. The
+  # --webhook-cert-path flag on the manager reads from this directory.
+  certDir: /tmp/k8s-webhook-server/serving-certs
+  # Webhook failure policy: "Fail" rejects admission on webhook error,
+  # "Ignore" allows it. Fail is the safer default for invariant checks.
+  failurePolicy: Fail
+  # cert-manager integration — mirrors charts/nyx's shape (#639).
+  certManager:
+    enabled: true
+    # Render a chart-owned selfSigned Issuer. Set false when using an
+    # external ClusterIssuer via issuerRef below.
+    createIssuer: true
+    # Kind of Issuer to render when createIssuer=true. Typically "Issuer"
+    # (namespaced to the operator install). Some operators prefer
+    # "ClusterIssuer" when certs are shared across multiple releases.
+    issuerKind: Issuer
+    # Reference an external (Cluster)Issuer. When name is set, createIssuer
+    # is ignored and the Certificate references this issuer instead.
+    issuerRef:
+      name: ""
+      kind: ""   # e.g. "ClusterIssuer"

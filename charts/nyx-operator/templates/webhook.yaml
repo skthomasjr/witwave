@@ -1,0 +1,143 @@
+{{- /*
+Admission webhook resources for the nyx-operator (#624).
+
+Renders only when webhooks.enabled=true. Ships four pieces:
+
+  1. Service — fronts the controller-manager's webhook server on port
+     .Values.webhooks.port (default 9443). The Certificate targets this
+     Service's DNS name so cert-manager issues a cert valid for it.
+
+  2. Certificate + Issuer — cert-manager resources. The CA bundle is
+     auto-injected into the webhook configurations below via the
+     `cert-manager.io/inject-ca-from` annotation, so operators never
+     paste a base64 CA blob into values.
+
+  3. MutatingWebhookConfiguration — invokes the defaulter on create/update.
+
+  4. ValidatingWebhookConfiguration — invokes the validator on create/update.
+
+The chart refuses to render webhook configs when webhooks.certManager.enabled=false
+because the CA-injection annotation requires a cert-manager Certificate
+to be the authoritative source. BYO-cert installs would need a different
+injection mechanism and aren't in scope for this first pass.
+*/ -}}
+{{- if .Values.webhooks.enabled -}}
+{{- if not .Values.webhooks.certManager.enabled -}}
+{{- fail "nyx-operator chart: webhooks.enabled=true requires webhooks.certManager.enabled=true (#624). BYO-cert installs aren't supported in this first pass; install cert-manager or leave webhooks disabled." -}}
+{{- end -}}
+{{- $fullName := include "nyx-operator.fullname" . -}}
+{{- $ns := .Release.Namespace -}}
+{{- $svcName := printf "%s-webhook" $fullName -}}
+{{- $certName := printf "%s-webhook-serving-cert" $fullName -}}
+{{- $issuerName := printf "%s-selfsigned" $fullName -}}
+{{- $caInject := printf "%s/%s" $ns $certName -}}
+{{- $issuerKind := .Values.webhooks.certManager.issuerKind | default "Issuer" -}}
+{{- $extRef := and .Values.webhooks.certManager.issuerRef .Values.webhooks.certManager.issuerRef.name -}}
+---
+# Webhook Service — selects the controller-manager pods via the deployment's
+# standard `control-plane: controller-manager` label.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $svcName }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "nyx-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook
+spec:
+  type: ClusterIP
+  ports:
+    - name: webhook
+      port: 443
+      targetPort: webhook
+      protocol: TCP
+  selector:
+    {{- include "nyx-operator.selectorLabels" . | nindent 4 }}
+{{- if and .Values.webhooks.certManager.createIssuer (not $extRef) }}
+---
+apiVersion: cert-manager.io/v1
+kind: {{ $issuerKind | quote }}
+metadata:
+  name: {{ $issuerName }}
+  {{- if eq $issuerKind "Issuer" }}
+  namespace: {{ $ns }}
+  {{- end }}
+  labels:
+    {{- include "nyx-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cert-manager
+spec:
+  selfSigned: {}
+{{- end }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $certName }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "nyx-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook
+spec:
+  secretName: {{ $certName | quote }}
+  dnsNames:
+    - {{ printf "%s.%s.svc" $svcName $ns | quote }}
+    - {{ printf "%s.%s.svc.cluster.local" $svcName $ns | quote }}
+  issuerRef:
+    {{- if $extRef }}
+    name: {{ .Values.webhooks.certManager.issuerRef.name | quote }}
+    kind: {{ .Values.webhooks.certManager.issuerRef.kind | default "ClusterIssuer" | quote }}
+    {{- else }}
+    name: {{ $issuerName }}
+    kind: {{ $issuerKind | quote }}
+    {{- end }}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ printf "%s-mutating" $fullName }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ $caInject | quote }}
+  labels:
+    {{- include "nyx-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook
+webhooks:
+  - name: mnyxagent.kb.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: {{ .Values.webhooks.failurePolicy | default "Fail" | quote }}
+    clientConfig:
+      service:
+        name: {{ $svcName }}
+        namespace: {{ $ns }}
+        path: /mutate-nyx-ai-v1alpha1-nyxagent
+    rules:
+      - apiGroups: ["nyx.ai"]
+        apiVersions: ["v1alpha1"]
+        resources: ["nyxagents"]
+        operations: ["CREATE", "UPDATE"]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: {{ printf "%s-validating" $fullName }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ $caInject | quote }}
+  labels:
+    {{- include "nyx-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook
+webhooks:
+  - name: vnyxagent.kb.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: {{ .Values.webhooks.failurePolicy | default "Fail" | quote }}
+    clientConfig:
+      service:
+        name: {{ $svcName }}
+        namespace: {{ $ns }}
+        path: /validate-nyx-ai-v1alpha1-nyxagent
+    rules:
+      - apiGroups: ["nyx.ai"]
+        apiVersions: ["v1alpha1"]
+        resources: ["nyxagents"]
+        operations: ["CREATE", "UPDATE"]
+{{- end -}}

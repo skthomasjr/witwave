@@ -45,6 +45,7 @@ import (
 	nyxv1alpha1 "github.com/nyx-ai/nyx-operator/api/v1alpha1"
 	"github.com/nyx-ai/nyx-operator/internal/controller"
 	"github.com/nyx-ai/nyx-operator/internal/tracing"
+	webhookv1alpha1 "github.com/nyx-ai/nyx-operator/internal/webhook/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -273,6 +274,18 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "NyxAgent")
 		os.Exit(1)
+	}
+
+	// Admission webhook (#624). Registered only when a cert path is supplied
+	// so non-webhook installs (local dev, clusters without cert-manager)
+	// still boot cleanly without failing Complete() on the missing TLS pair.
+	if len(webhookCertPath) > 0 {
+		if err := webhookv1alpha1.SetupNyxAgentWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "NyxAgent")
+			os.Exit(1)
+		}
+	} else {
+		setupLog.Info("webhook disabled: --webhook-cert-path is empty (install cert-manager and enable webhooks.certManager in the chart to turn on admission validation)")
 	}
 	// +kubebuilder:scaffold:builder
 
