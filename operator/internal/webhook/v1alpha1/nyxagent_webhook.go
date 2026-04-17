@@ -77,7 +77,7 @@ func (v *NyxAgentCustomValidator) ValidateCreate(ctx context.Context, obj runtim
 	if !ok {
 		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected *NyxAgent, got %T", obj))
 	}
-	return nil, validateBackendNamesUnique(agent)
+	return nil, validateNyxAgent(agent)
 }
 
 func (v *NyxAgentCustomValidator) ValidateUpdate(ctx context.Context, _ runtime.Object, newObj runtime.Object) (admission.Warnings, error) {
@@ -85,7 +85,72 @@ func (v *NyxAgentCustomValidator) ValidateUpdate(ctx context.Context, _ runtime.
 	if !ok {
 		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected *NyxAgent, got %T", newObj))
 	}
-	return nil, validateBackendNamesUnique(agent)
+	return nil, validateNyxAgent(agent)
+}
+
+// validateNyxAgent runs every NyxAgent admission check. Any single failure
+// returns immediately so the first offending field is reported to the
+// user, rather than piling every unrelated error into one message.
+func validateNyxAgent(agent *nyxv1alpha1.NyxAgent) error {
+	if err := validateBackendNamesUnique(agent); err != nil {
+		return err
+	}
+	if err := validateInlineCredentialsAck(agent); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateInlineCredentialsAck enforces the AcknowledgeInsecureInline
+// gate on every credentials block in the spec. Any GitSync or Backend
+// entry whose inline Username/Token/Secrets is populated must set
+// AcknowledgeInsecureInline=true — inline values land in etcd and show
+// up in `kubectl get nyxagent -o yaml`, so we refuse them unless the
+// operator explicitly opts in. Mirrors the chart's `nyx.resolveCredentials`
+// fail path.
+func validateInlineCredentialsAck(agent *nyxv1alpha1.NyxAgent) error {
+	for i, gs := range agent.Spec.GitSyncs {
+		c := gs.Credentials
+		if c == nil {
+			continue
+		}
+		// ExistingSecret wins; inline values are ignored when it's set,
+		// so there's no security risk to accept the CR even if
+		// acknowledgeInsecureInline is false in that case.
+		if c.ExistingSecret != "" {
+			continue
+		}
+		if (c.Username != "" || c.Token != "") && !c.AcknowledgeInsecureInline {
+			return apierrors.NewForbidden(
+				schema.GroupResource{Group: "nyx.ai", Resource: "nyxagents"},
+				agent.Name,
+				fmt.Errorf(
+					"spec.gitSyncs[%d].credentials (name=%q): inline username/token requires acknowledgeInsecureInline=true — inline credentials land in etcd + CR history and are readable via `kubectl get nyxagent -o yaml`; set the flag to confirm (dev only) OR use existingSecret to reference a pre-created Secret (production)",
+					i, gs.Name,
+				),
+			)
+		}
+	}
+	for i, b := range agent.Spec.Backends {
+		c := b.Credentials
+		if c == nil {
+			continue
+		}
+		if c.ExistingSecret != "" {
+			continue
+		}
+		if len(c.Secrets) > 0 && !c.AcknowledgeInsecureInline {
+			return apierrors.NewForbidden(
+				schema.GroupResource{Group: "nyx.ai", Resource: "nyxagents"},
+				agent.Name,
+				fmt.Errorf(
+					"spec.backends[%d].credentials (name=%q): inline secrets map requires acknowledgeInsecureInline=true — inline credentials land in etcd + CR history and are readable via `kubectl get nyxagent -o yaml`; set the flag to confirm (dev only) OR use existingSecret to reference a pre-created Secret (production)",
+					i, b.Name,
+				),
+			)
+		}
+	}
+	return nil
 }
 
 func (v *NyxAgentCustomValidator) ValidateDelete(ctx context.Context, _ runtime.Object) (admission.Warnings, error) {

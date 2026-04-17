@@ -160,6 +160,30 @@ spec) feed `k8s.namespace` and `k8s.pod.name` resource attributes.
 When `OTEL_ENABLED` is unset/false (default), the no-op tracer takes over
 and the per-reconcile overhead is a single branch + interface dispatch.
 
+**The operator does not deploy an OpenTelemetry Collector.** Matching the
+idiomatic pattern across Strimzi, cert-manager, Istio, Elastic ECK,
+Knative, Argo, Crossplane, and grafana-operator, nyx-operator emits OTLP
+to a user-provided endpoint and delegates collector deployment to
+something purpose-built for that job:
+
+- **Recommended:** install the
+  [opentelemetry-operator](https://github.com/open-telemetry/opentelemetry-operator)
+  and create an `OpenTelemetryCollector` CR, then point
+  `OTEL_EXPORTER_OTLP_ENDPOINT` at the resulting Service.
+- **Alternative:** point at any OTLP-compatible target directly —
+  Jaeger, Tempo, Honeycomb, Grafana Cloud, Datadog.
+
+Wiring per NyxAgent:
+
+```yaml
+spec:
+  env:
+    - name: OTEL_ENABLED
+      value: "true"
+    - name: OTEL_EXPORTER_OTLP_ENDPOINT
+      value: http://otel-collector.observability:4318
+```
+
 Client-go HTTP transport instrumentation (so Kubernetes API calls emit
 child spans) is a separate enhancement — not yet implemented; tracked
 follow-on if needed.

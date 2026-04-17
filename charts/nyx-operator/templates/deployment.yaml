@@ -135,10 +135,16 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- if .Values.webhooks.enabled }}
+      {{- /* Webhook serving cert Secret. Two sources:
+             - BYO mode: webhooks.existingSecret references a user-
+               pre-created Secret with tls.crt + tls.key.
+             - cert-manager mode: the Certificate resource in webhook.yaml
+               writes to `<fullname>-webhook-serving-cert`.
+             webhook.yaml enforces that exactly one of these is active. */}}
+      {{- $byoSecret := .Values.webhooks.existingSecret | default "" }}
+      {{- $cmSecret := printf "%s-webhook-serving-cert" (include "nyx-operator.fullname" .) }}
       volumes:
-        # cert-manager-issued serving cert for the admission webhook (#624).
-        # Secret name matches the Certificate's secretName in webhook.yaml.
         - name: webhook-cert
           secret:
-            secretName: {{ printf "%s-webhook-serving-cert" (include "nyx-operator.fullname" .) | quote }}
+            secretName: {{ (ternary $byoSecret $cmSecret (ne $byoSecret "")) | quote }}
       {{- end }}

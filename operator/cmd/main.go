@@ -276,12 +276,25 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := (&controller.NyxPromptReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("nyxprompt-controller"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "NyxPrompt")
+		os.Exit(1)
+	}
+
 	// Admission webhook (#624). Registered only when a cert path is supplied
 	// so non-webhook installs (local dev, clusters without cert-manager)
 	// still boot cleanly without failing Complete() on the missing TLS pair.
 	if len(webhookCertPath) > 0 {
 		if err := webhookv1alpha1.SetupNyxAgentWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "NyxAgent")
+			os.Exit(1)
+		}
+		if err := webhookv1alpha1.SetupNyxPromptWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "NyxPrompt")
 			os.Exit(1)
 		}
 	} else {

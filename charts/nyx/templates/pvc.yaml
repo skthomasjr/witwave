@@ -36,7 +36,11 @@ metadata:
     {{- include "nyx.backendLabels" (dict "agentName" $agentName "backendName" .name "root" $) | nindent 4 }}
 spec:
   accessModes:
+    {{- if (.storage).accessModes }}
+    {{- toYaml (.storage).accessModes | nindent 4 }}
+    {{- else }}
     - ReadWriteOnce
+    {{- end }}
   resources:
     requests:
       storage: {{ (.storage).size | default "1Gi" }}

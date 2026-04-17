@@ -449,7 +449,7 @@ func gitSyncInitContainers(agent *nyxv1alpha1.NyxAgent, appVersion string) []cor
 				AllowPrivilegeEscalation: boolPtr(false),
 				Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
 			},
-			EnvFrom: gs.EnvFrom,
+			EnvFrom: gitSyncEnvFromWithCredentials(agent, gs),
 			VolumeMounts: []corev1.VolumeMount{{
 				Name:      gitSyncDataVolume,
 				MountPath: gitSyncMountPath,
@@ -514,7 +514,7 @@ func gitSyncSidecarContainers(agent *nyxv1alpha1.NyxAgent, appVersion string) []
 				AllowPrivilegeEscalation: boolPtr(false),
 				Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
 			},
-			EnvFrom:      gs.EnvFrom,
+			EnvFrom:      gitSyncEnvFromWithCredentials(agent, gs),
 			VolumeMounts: mounts,
 		})
 	}

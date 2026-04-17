@@ -217,9 +217,20 @@ type BackendSpec struct {
 	// +optional
 	Env []corev1.EnvVar `json:"env,omitempty"`
 
-	// EnvFrom sources env vars from Secrets or ConfigMaps.
+	// EnvFrom sources env vars from Secrets or ConfigMaps. When
+	// Credentials is set to a resolvable value, the resolved Secret is
+	// prepended to this list at render time so legacy `envFrom` shapes
+	// keep working alongside the resolver.
 	// +optional
 	EnvFrom []corev1.EnvFromSource `json:"envFrom,omitempty"`
+
+	// Credentials is the unified dev/prod credentials resolver for
+	// this backend (#nyx.resolveCredentials parity). Three modes:
+	// ExistingSecret (production), inline Secrets map with
+	// AcknowledgeInsecureInline=true (dev, operator reconciles a
+	// Secret keyed by the map), or empty (legacy EnvFrom passthrough).
+	// +optional
+	Credentials *BackendCredentialsSpec `json:"credentials,omitempty"`
 
 	// Config mounts inline config files into the backend container.
 	// +optional
@@ -235,6 +246,81 @@ type BackendSpec struct {
 	// `gitMappings` block (#475).
 	// +optional
 	GitMappings []GitMappingSpec `json:"gitMappings,omitempty"`
+}
+
+// GitSyncCredentialsSpec is the dev-friendly / production-friendly
+// credentials resolver for a GitSync entry, mirroring the chart's
+// `nyx.resolveCredentials` helper for gitSync scope.
+//
+// Three mutually-exclusive modes:
+//
+//   1. ExistingSecret — reference a pre-created Secret. The operator
+//      never writes to it. Production default.
+//
+//   2. Inline (Username + Token + AcknowledgeInsecureInline=true) —
+//      the operator reconciles a per-entry Secret keyed
+//      `GITSYNC_USERNAME` / `GITSYNC_PASSWORD` and envFroms it into
+//      the git-sync init + sidecar. The ack flag is load-bearing: the
+//      admission webhook refuses inline values without it because they
+//      land in etcd + CR history and are recoverable via
+//      `kubectl get nyxagent -o yaml`.
+//
+//   3. Empty — the entry's legacy `EnvFrom` list is used as-is (no
+//      operator-managed Secret, no Secret reconciliation).
+//
+// When both ExistingSecret and inline values are set, ExistingSecret
+// wins and the inline values are ignored.
+type GitSyncCredentialsSpec struct {
+	// ExistingSecret references a pre-created Secret containing the
+	// gitSync credentials (typically GITSYNC_USERNAME / GITSYNC_PASSWORD
+	// for HTTPS, or an SSH key env for git+ssh).
+	// +optional
+	ExistingSecret string `json:"existingSecret,omitempty"`
+
+	// Username is the inline git username (dev path only). Must be
+	// combined with AcknowledgeInsecureInline=true.
+	// +optional
+	Username string `json:"username,omitempty"`
+
+	// Token is the inline git token or password (dev path only).
+	// Must be combined with AcknowledgeInsecureInline=true.
+	// +optional
+	Token string `json:"token,omitempty"`
+
+	// AcknowledgeInsecureInline MUST be true for inline Username/Token
+	// to be accepted. The admission webhook rejects any NyxAgent that
+	// sets Username or Token without this flag. The name is intentionally
+	// long and awkward — it shows up in CR YAML and is the one place
+	// users accept the security tradeoff explicitly.
+	// +optional
+	AcknowledgeInsecureInline bool `json:"acknowledgeInsecureInline,omitempty"`
+}
+
+// BackendCredentialsSpec is the dev-friendly / production-friendly
+// credentials resolver for a backend entry, mirroring the chart's
+// `nyx.resolveCredentials` helper for backend scope. Same three-mode
+// semantics as GitSyncCredentialsSpec; the inline form carries an
+// open-ended map of env-var-name → value so each backend can set its
+// own token shape (CLAUDE_CODE_OAUTH_TOKEN, OPENAI_API_KEY,
+// GOOGLE_API_KEY, …) without the CRD having to enumerate them.
+type BackendCredentialsSpec struct {
+	// ExistingSecret references a pre-created Secret containing the
+	// backend credentials. The Secret's keys become the backend
+	// container's env-var names.
+	// +optional
+	ExistingSecret string `json:"existingSecret,omitempty"`
+
+	// Secrets is the inline env-var → value map (dev path only). Keys
+	// become Secret data keys and environment variable names inside
+	// the backend container. Must be combined with
+	// AcknowledgeInsecureInline=true.
+	// +optional
+	Secrets map[string]string `json:"secrets,omitempty"`
+
+	// AcknowledgeInsecureInline MUST be true for inline Secrets to be
+	// accepted. See GitSyncCredentialsSpec for the rationale.
+	// +optional
+	AcknowledgeInsecureInline bool `json:"acknowledgeInsecureInline,omitempty"`
 }
 
 // GitSyncSpec configures a git-sync sidecar that clones a repo into /git
@@ -277,8 +363,19 @@ type GitSyncSpec struct {
 
 	// EnvFrom sources env vars from Secrets or ConfigMaps, injected
 	// into the git-sync init + sidecar containers for this entry.
+	// When Credentials is set to a resolvable value, the resolved
+	// Secret is prepended to this list at render time — the legacy
+	// `envFrom` shape keeps working alongside the resolver.
 	// +optional
 	EnvFrom []corev1.EnvFromSource `json:"envFrom,omitempty"`
+
+	// Credentials is the unified dev/prod credentials resolver for this
+	// entry (#nyx.resolveCredentials parity). Three modes: ExistingSecret
+	// (pre-created Secret, production default), inline Username+Token
+	// with AcknowledgeInsecureInline=true (operator reconciles a Secret,
+	// dev path), or empty (falls back to the legacy EnvFrom list).
+	// +optional
+	Credentials *GitSyncCredentialsSpec `json:"credentials,omitempty"`
 }
 
 // GitMappingSpec copies a file or directory from a named GitSync repo
@@ -561,6 +658,15 @@ type NyxAgentSpec struct {
 	// +optional
 	ServiceMonitor *ServiceMonitorSpec `json:"serviceMonitor,omitempty"`
 
+	// PodMonitor optionally creates a monitoring.coreos.com/v1 PodMonitor
+	// for the agent's backend containers (#582). Gated by
+	// spec.metrics.enabled and a CRD presence check at reconcile time;
+	// no-ops on clusters without prometheus-operator. Complementary to
+	// ServiceMonitor: use PodMonitor to scrape per-backend /metrics
+	// directly (tokens, tool-use, context usage).
+	// +optional
+	PodMonitor *PodMonitorSpec `json:"podMonitor,omitempty"`
+
 	// Dashboard optionally deploys the Vue 3 dashboard (#470) alongside the
 	// agent. The operator renders a per-agent dashboard (one per NyxAgent),
 	// independent of the cluster-wide dashboard the Helm chart deploys.
@@ -687,6 +793,38 @@ type DashboardSpec struct {
 	// Resources for the dashboard container.
 	// +optional
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
+}
+
+// PodMonitorSpec configures an optional monitoring.coreos.com/v1 PodMonitor
+// reconciled by the operator when the Prometheus Operator CRDs are present
+// (#582). Mirrors the chart's `podMonitor.*` block. Unlike ServiceMonitor
+// (which scrapes the harness Service), PodMonitor scrapes each backend
+// container's /metrics endpoint directly — useful for per-backend
+// telemetry (tokens, tool-use, context-window usage).
+//
+// Reconciliation is gated by the same CRD-presence probe as ServiceMonitor;
+// no hard dependency on prometheus-operator Go types is introduced.
+type PodMonitorSpec struct {
+	// Enabled toggles creation of the PodMonitor. Requires
+	// spec.metrics.enabled=true (no endpoint to scrape otherwise) and the
+	// monitoring.coreos.com CRD to be installed.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Interval between scrapes (e.g. "30s"). Defaults to "30s".
+	// +kubebuilder:default="30s"
+	// +optional
+	Interval string `json:"interval,omitempty"`
+
+	// ScrapeTimeout per scrape (e.g. "10s"). Defaults to "10s".
+	// +kubebuilder:default="10s"
+	// +optional
+	ScrapeTimeout string `json:"scrapeTimeout,omitempty"`
+
+	// Labels merged into the PodMonitor's metadata.labels for tenancy-
+	// selecting Prometheus deployments (e.g. `release: kube-prometheus-stack`).
+	// +optional
+	Labels map[string]string `json:"labels,omitempty"`
 }
 
 // ServiceMonitorSpec configures an optional monitoring.coreos.com/v1

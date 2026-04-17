@@ -1,30 +1,30 @@
 {{- /*
 Admission webhook resources for the nyx-operator (#624).
 
-Renders only when webhooks.enabled=true. Ships four pieces:
+Renders only when webhooks.enabled=true. Two TLS modes are supported:
 
-  1. Service — fronts the controller-manager's webhook server on port
-     .Values.webhooks.port (default 9443). The Certificate targets this
-     Service's DNS name so cert-manager issues a cert valid for it.
+  1. cert-manager (default)
+     - Chart renders a cert-manager Certificate + (optional) Issuer.
+     - MutatingWebhookConfiguration / ValidatingWebhookConfiguration carry
+       the `cert-manager.io/inject-ca-from` annotation so the CA bundle
+       is filled in by cert-manager's CA injector at reconcile time.
+     - Activated when webhooks.certManager.enabled=true AND
+       webhooks.existingSecret is empty.
 
-  2. Certificate + Issuer — cert-manager resources. The CA bundle is
-     auto-injected into the webhook configurations below via the
-     `cert-manager.io/inject-ca-from` annotation, so operators never
-     paste a base64 CA blob into values.
+  2. BYO Secret
+     - User pre-creates a Secret with `tls.crt` + `tls.key` keys, sets
+       webhooks.existingSecret to its name, and supplies the PEM CA
+       bundle (base64-encoded) via webhooks.caBundle.
+     - No Certificate / Issuer / CA-injection annotation rendered — the
+       chart stamps the user-supplied caBundle literally onto the webhook
+       configs.
+     - Use this path when cert-manager isn't installed or appropriate
+       (air-gapped, service mesh, Vault PKI, strict RBAC).
 
-  3. MutatingWebhookConfiguration — invokes the defaulter on create/update.
-
-  4. ValidatingWebhookConfiguration — invokes the validator on create/update.
-
-The chart refuses to render webhook configs when webhooks.certManager.enabled=false
-because the CA-injection annotation requires a cert-manager Certificate
-to be the authoritative source. BYO-cert installs would need a different
-injection mechanism and aren't in scope for this first pass.
+A third path — webhooks disabled entirely — is handled by the
+`webhooks.enabled` guard at the top.
 */ -}}
 {{- if .Values.webhooks.enabled -}}
-{{- if not .Values.webhooks.certManager.enabled -}}
-{{- fail "nyx-operator chart: webhooks.enabled=true requires webhooks.certManager.enabled=true (#624). BYO-cert installs aren't supported in this first pass; install cert-manager or leave webhooks disabled." -}}
-{{- end -}}
 {{- $fullName := include "nyx-operator.fullname" . -}}
 {{- $ns := .Release.Namespace -}}
 {{- $svcName := printf "%s-webhook" $fullName -}}
@@ -33,15 +33,32 @@ injection mechanism and aren't in scope for this first pass.
 {{- $caInject := printf "%s/%s" $ns $certName -}}
 {{- $issuerKind := .Values.webhooks.certManager.issuerKind | default "Issuer" -}}
 {{- $extRef := and .Values.webhooks.certManager.issuerRef .Values.webhooks.certManager.issuerRef.name -}}
+{{- $byo := ne (default "" .Values.webhooks.existingSecret) "" -}}
+{{- $cm  := and (not $byo) .Values.webhooks.certManager.enabled -}}
 {{- /*
-Fail-fast guard: if neither a chart-owned Issuer nor an external issuerRef
-is available, the Certificate points at a non-existent issuer and
-cert-manager emits events forever without issuing — which then blocks the
-webhook from ever coming up because the manager has no cert to serve on
-:9443. Force the operator to pick one.
+Fail-fast guard: webhooks need SOMEWHERE to get TLS from. Refuse render
+when neither mode is configured — the manager would start serving on
+:9443 with no cert and every admission call would error out.
 */ -}}
-{{- if and (not .Values.webhooks.certManager.createIssuer) (not $extRef) -}}
-  {{- fail "nyx-operator chart: webhooks.enabled=true requires either webhooks.certManager.createIssuer=true (chart renders a selfSigned Issuer) OR webhooks.certManager.issuerRef.name set (reference an external (Cluster)Issuer). Neither is configured — the webhook serving cert would point at a non-existent issuer and the manager would never come up." -}}
+{{- if and (not $byo) (not $cm) -}}
+  {{- fail "nyx-operator chart: webhooks.enabled=true requires either webhooks.certManager.enabled=true OR webhooks.existingSecret set. Neither is configured — the webhook server would boot without TLS and every admission call would fail." -}}
+{{- end -}}
+{{- /*
+Fail-fast guard: BYO Secret needs the caBundle too, or the webhook
+configs have no CA to validate the serving cert against and the
+apiserver will refuse to call the webhook.
+*/ -}}
+{{- if and $byo (eq (default "" .Values.webhooks.caBundle) "") -}}
+  {{- fail "nyx-operator chart: webhooks.existingSecret is set but webhooks.caBundle is empty. Supply the base64-encoded PEM CA that signed the Secret's tls.crt (one-liner: `base64 -w0 < ca.crt`) so the MutatingWebhookConfiguration / ValidatingWebhookConfiguration can validate the serving cert." -}}
+{{- end -}}
+{{- /*
+Fail-fast guard (cert-manager path only): if neither a chart-owned
+Issuer nor an external issuerRef is available, the Certificate points
+at a non-existent issuer and cert-manager emits events forever without
+issuing — which blocks the webhook from ever coming up.
+*/ -}}
+{{- if and $cm (not .Values.webhooks.certManager.createIssuer) (not $extRef) -}}
+  {{- fail "nyx-operator chart: webhooks.certManager.enabled=true requires either webhooks.certManager.createIssuer=true (chart renders a selfSigned Issuer) OR webhooks.certManager.issuerRef.name set (reference an external (Cluster)Issuer). Neither is configured — the webhook serving cert would point at a non-existent issuer and the manager would never come up." -}}
 {{- end -}}
 ---
 # Webhook Service — selects the controller-manager pods via the deployment's
@@ -63,6 +80,7 @@ spec:
       protocol: TCP
   selector:
     {{- include "nyx-operator.selectorLabels" . | nindent 4 }}
+{{- if $cm }}
 {{- if and .Values.webhooks.certManager.createIssuer (not $extRef) }}
 ---
 apiVersion: cert-manager.io/v1
@@ -100,13 +118,16 @@ spec:
     name: {{ $issuerName }}
     kind: {{ $issuerKind | quote }}
     {{- end }}
+{{- end }}
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
   name: {{ printf "%s-mutating" $fullName }}
+  {{- if $cm }}
   annotations:
     cert-manager.io/inject-ca-from: {{ $caInject | quote }}
+  {{- end }}
   labels:
     {{- include "nyx-operator.labels" . | nindent 4 }}
     app.kubernetes.io/component: webhook
@@ -120,6 +141,9 @@ webhooks:
         name: {{ $svcName }}
         namespace: {{ $ns }}
         path: /mutate-nyx-ai-v1alpha1-nyxagent
+      {{- if $byo }}
+      caBundle: {{ .Values.webhooks.caBundle | quote }}
+      {{- end }}
     rules:
       - apiGroups: ["nyx.ai"]
         apiVersions: ["v1alpha1"]
@@ -130,8 +154,10 @@ apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
   name: {{ printf "%s-validating" $fullName }}
+  {{- if $cm }}
   annotations:
     cert-manager.io/inject-ca-from: {{ $caInject | quote }}
+  {{- end }}
   labels:
     {{- include "nyx-operator.labels" . | nindent 4 }}
     app.kubernetes.io/component: webhook
@@ -145,9 +171,29 @@ webhooks:
         name: {{ $svcName }}
         namespace: {{ $ns }}
         path: /validate-nyx-ai-v1alpha1-nyxagent
+      {{- if $byo }}
+      caBundle: {{ .Values.webhooks.caBundle | quote }}
+      {{- end }}
     rules:
       - apiGroups: ["nyx.ai"]
         apiVersions: ["v1alpha1"]
         resources: ["nyxagents"]
+        operations: ["CREATE", "UPDATE"]
+  - name: vnyxprompt.kb.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: {{ .Values.webhooks.failurePolicy | default "Fail" | quote }}
+    clientConfig:
+      service:
+        name: {{ $svcName }}
+        namespace: {{ $ns }}
+        path: /validate-nyx-ai-v1alpha1-nyxprompt
+      {{- if $byo }}
+      caBundle: {{ .Values.webhooks.caBundle | quote }}
+      {{- end }}
+    rules:
+      - apiGroups: ["nyx.ai"]
+        apiVersions: ["v1alpha1"]
+        resources: ["nyxprompts"]
         operations: ["CREATE", "UPDATE"]
 {{- end -}}

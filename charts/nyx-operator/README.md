@@ -110,18 +110,71 @@ kubectl delete crd nyxagents.nyx.ai
 
 ## Admission webhook (#624)
 
-When `webhooks.enabled=true`, the chart renders a webhook `Service`, a cert-manager `Certificate` + selfSigned `Issuer`
-(or external issuer reference), and both `MutatingWebhookConfiguration` and `ValidatingWebhookConfiguration` resources.
-The CA bundle is auto-injected into the webhook configs via the `cert-manager.io/inject-ca-from` annotation so operators
-never paste base64 CA blobs into values.
+When `webhooks.enabled=true`, the chart renders a webhook `Service`, `MutatingWebhookConfiguration`, and
+`ValidatingWebhookConfiguration` resources. The controller-manager needs a TLS serving cert; the chart supports two
+modes.
+
+### TLS mode 1: cert-manager (default)
+
+```yaml
+webhooks:
+  enabled: true
+  certManager:
+    enabled: true
+    createIssuer: true
+```
+
+The chart renders a cert-manager `Certificate` + selfSigned `Issuer` (or references an external `Issuer` /
+`ClusterIssuer` via `certManager.issuerRef`). The CA bundle is auto-injected into the webhook configs via the
+`cert-manager.io/inject-ca-from` annotation — no base64 blobs in values.
+
+### TLS mode 2: BYO Secret
+
+For air-gapped clusters, service-mesh-managed TLS, existing Vault PKI, or any environment where cert-manager isn't
+appropriate:
+
+```yaml
+webhooks:
+  enabled: true
+  existingSecret: my-webhook-serving-cert   # Secret pre-created with tls.crt + tls.key
+  caBundle: LS0tLS1CRUdJTi...               # base64 of the PEM CA that signed tls.crt
+  certManager:
+    enabled: false
+```
+
+Pre-create the Secret:
+
+```bash
+# assuming you have ca.crt, tls.crt, tls.key on disk signed by your CA
+kubectl create secret generic my-webhook-serving-cert \
+  -n nyx-operator-system \
+  --from-file=tls.crt=./tls.crt \
+  --from-file=tls.key=./tls.key
+
+# then encode the CA for the caBundle value
+base64 -w0 < ca.crt
+```
+
+When `existingSecret` is set, the chart skips all cert-manager integration (no `Certificate`, no `Issuer`, no
+CA-injection annotation) and stamps the user-supplied `caBundle` literally onto the webhook configs' `caBundle`
+field. The DNS SANs on `tls.crt` must include `<release>-webhook.<namespace>.svc` and
+`<release>-webhook.<namespace>.svc.cluster.local` or the apiserver will refuse to call the webhook.
+
+### Invariants enforced
 
 Initial scaffold ships **one defaulting rule** (populate `spec.port=8080` when unset) and **one validating rule**
-(reject duplicate backend names in `spec.backends`). Further invariants land as follow-up gaps on top of this skeleton.
+(reject duplicate backend names in `spec.backends`). Further invariants land as follow-up gaps on top of this
+skeleton.
 
-Values shape mirrors the primary `nyx` chart's cert-manager block (#639) so operators running both charts side-by-side
-see identical knobs for `certManager.enabled`, `createIssuer`, `issuerKind`, and `issuerRef.{name,kind}`.
+### Values shape
 
-Disabled (default) installs run the controller without admission webhooks; `cmd/main.go` logs a note at startup.
+Mirrors the primary `nyx` chart's cert-manager block (#639) so operators running both charts side-by-side see
+identical knobs for `certManager.enabled`, `createIssuer`, `issuerKind`, and `issuerRef.{name,kind}`.
+
+### Disabled (default)
+
+`webhooks.enabled=false` skips every webhook resource entirely; the controller runs without admission webhooks and
+`cmd/main.go` logs a note at startup. CR validation falls back to CRD structural-schema checks only.
 
 ## Namespace-scoped RBAC (#532)
 

@@ -11,6 +11,13 @@ nginx-unprivileged entrypoint runs envsubst over it at container start so
 ${NGINX_LOCAL_RESOLVERS} is substituted before nginx reads the config.
 */}}
 {{- $release := .Release.Name }}
+{{- /* Cluster DNS zone (#581). Defaults to cluster.local so existing installs
+       keep working byte-for-byte. Override `dashboard.clusterDomain` when the
+       cluster was bootstrapped with a non-default `--service-dns-domain`
+       (e.g. cluster.example) — nginx's resolver doesn't apply /etc/resolv.conf's
+       search list, so proxy_pass upstreams must be fully-qualified. Mirrors
+       the operator's DashboardSpec.ClusterDomain field. */}}
+{{- $clusterDomain := .Values.dashboard.clusterDomain | default "cluster.local" }}
 {{- $enabledAgents := list }}
 {{- range .Values.agents }}
 {{- if eq (include "nyx.enabled" .) "true" }}
@@ -71,7 +78,7 @@ data:
       # No cross-agent fan-out through another harness, no localhost-scoped
       # backend URLs on the wire (#470 design note).
       location ~ ^/api/agents/{{ $agent.name }}/(.*)$ {
-        proxy_pass http://{{ $release }}-{{ $agent.name }}.{{ $.Release.Namespace }}.svc.cluster.local:{{ $agent.port | default 8000 }}/$1$is_args$args;
+        proxy_pass http://{{ $release }}-{{ $agent.name }}.{{ $.Release.Namespace }}.svc.{{ $clusterDomain }}:{{ $agent.port | default 8000 }}/$1$is_args$args;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_http_version 1.1;

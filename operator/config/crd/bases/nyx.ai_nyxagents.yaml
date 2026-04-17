@@ -1040,6 +1040,35 @@ spec:
                         - name
                         type: object
                       type: array
+                    credentials:
+                      description: |-
+                        Credentials is the unified dev/prod credentials resolver for
+                        this backend (#nyx.resolveCredentials parity). Three modes:
+                        ExistingSecret (production), inline Secrets map with
+                        AcknowledgeInsecureInline=true (dev, operator reconciles a
+                        Secret keyed by the map), or empty (legacy EnvFrom passthrough).
+                      properties:
+                        acknowledgeInsecureInline:
+                          description: |-
+                            AcknowledgeInsecureInline MUST be true for inline Secrets to be
+                            accepted. See GitSyncCredentialsSpec for the rationale.
+                          type: boolean
+                        existingSecret:
+                          description: |-
+                            ExistingSecret references a pre-created Secret containing the
+                            backend credentials. The Secret's keys become the backend
+                            container's env-var names.
+                          type: string
+                        secrets:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            Secrets is the inline env-var → value map (dev path only). Keys
+                            become Secret data keys and environment variable names inside
+                            the backend container. Must be combined with
+                            AcknowledgeInsecureInline=true.
+                          type: object
+                      type: object
                     enabled:
                       default: true
                       description: |-
@@ -1168,7 +1197,11 @@ spec:
                         type: object
                       type: array
                     envFrom:
-                      description: EnvFrom sources env vars from Secrets or ConfigMaps.
+                      description: |-
+                        EnvFrom sources env vars from Secrets or ConfigMaps. When
+                        Credentials is set to a resolvable value, the resolved Secret is
+                        prepended to this list at render time so legacy `envFrom` shapes
+                        keep working alongside the resolver.
                       items:
                         description: EnvFromSource represents the source of a set
                           of ConfigMaps or Secrets
@@ -1794,6 +1827,39 @@ spec:
                     GITSYNC_SSH_KEY_FILE). Mirrors the chart's `gitSyncs[]` entry shape
                     (charts/nyx/values.yaml).
                   properties:
+                    credentials:
+                      description: |-
+                        Credentials is the unified dev/prod credentials resolver for this
+                        entry (#nyx.resolveCredentials parity). Three modes: ExistingSecret
+                        (pre-created Secret, production default), inline Username+Token
+                        with AcknowledgeInsecureInline=true (operator reconciles a Secret,
+                        dev path), or empty (falls back to the legacy EnvFrom list).
+                      properties:
+                        acknowledgeInsecureInline:
+                          description: |-
+                            AcknowledgeInsecureInline MUST be true for inline Username/Token
+                            to be accepted. The admission webhook rejects any NyxAgent that
+                            sets Username or Token without this flag. The name is intentionally
+                            long and awkward — it shows up in CR YAML and is the one place
+                            users accept the security tradeoff explicitly.
+                          type: boolean
+                        existingSecret:
+                          description: |-
+                            ExistingSecret references a pre-created Secret containing the
+                            gitSync credentials (typically GITSYNC_USERNAME / GITSYNC_PASSWORD
+                            for HTTPS, or an SSH key env for git+ssh).
+                          type: string
+                        token:
+                          description: |-
+                            Token is the inline git token or password (dev path only).
+                            Must be combined with AcknowledgeInsecureInline=true.
+                          type: string
+                        username:
+                          description: |-
+                            Username is the inline git username (dev path only). Must be
+                            combined with AcknowledgeInsecureInline=true.
+                          type: string
+                      type: object
                     depth:
                       description: Depth is the clone depth. 1 is sufficient for config-only
                         repos.
@@ -1804,6 +1870,9 @@ spec:
                       description: |-
                         EnvFrom sources env vars from Secrets or ConfigMaps, injected
                         into the git-sync init + sidecar containers for this entry.
+                        When Credentials is set to a resolvable value, the resolved
+                        Secret is prepended to this list at render time — the legacy
+                        `envFrom` shape keeps working alongside the resolver.
                       items:
                         description: EnvFromSource represents the source of a set
                           of ConfigMaps or Secrets
@@ -2021,6 +2090,39 @@ spec:
                   Deployment's selector keys (labelName / labelComponent /
                   labelPartOf / labelManagedBy) are ignored so the selector cannot
                   drift and orphan pods.
+                type: object
+              podMonitor:
+                description: |-
+                  PodMonitor optionally creates a monitoring.coreos.com/v1 PodMonitor
+                  for the agent's backend containers (#582). Gated by
+                  spec.metrics.enabled and a CRD presence check at reconcile time;
+                  no-ops on clusters without prometheus-operator. Complementary to
+                  ServiceMonitor: use PodMonitor to scrape per-backend /metrics
+                  directly (tokens, tool-use, context usage).
+                properties:
+                  enabled:
+                    description: |-
+                      Enabled toggles creation of the PodMonitor. Requires
+                      spec.metrics.enabled=true (no endpoint to scrape otherwise) and the
+                      monitoring.coreos.com CRD to be installed.
+                    type: boolean
+                  interval:
+                    default: 30s
+                    description: Interval between scrapes (e.g. "30s"). Defaults to
+                      "30s".
+                    type: string
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Labels merged into the PodMonitor's metadata.labels for tenancy-
+                      selecting Prometheus deployments (e.g. `release: kube-prometheus-stack`).
+                    type: object
+                  scrapeTimeout:
+                    default: 10s
+                    description: ScrapeTimeout per scrape (e.g. "10s"). Defaults to
+                      "10s".
+                    type: string
                 type: object
               port:
                 default: 8000

@@ -83,10 +83,12 @@ type NyxAgentReconciler struct {
 // +kubebuilder:rbac:groups=nyx.ai,resources=nyxagents/finalizers,verbs=update
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=services;configmaps;persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=autoscaling,resources=horizontalpodautoscalers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=monitoring.coreos.com,resources=podmonitors,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is the control loop's entry point. It brings owned resources into
 // alignment with the NyxAgent spec and writes status.
@@ -174,6 +176,13 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// surface every failure rather than only the first (#497).
 	var reconcileErrs []error
 
+	// Credentials Secrets (#nyx.resolveCredentials parity). Runs FIRST
+	// so the inline-mode path's freshly-created Secret exists by the
+	// time the kubelet resolves envFrom references for the pod spec
+	// applyDeployment is about to write.
+	if err := r.reconcileCredentialsSecrets(ctx, agent); err != nil {
+		reconcileErrs = append(reconcileErrs, err)
+	}
 	if err := r.applyDeployment(ctx, agent); err != nil {
 		reconcileErrs = append(reconcileErrs, err)
 	}
@@ -218,6 +227,11 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// when the monitoring.coreos.com CRD is absent so the operator
 	// runs safely on clusters without the Prometheus Operator.
 	if err := r.reconcileServiceMonitor(ctx, agent); err != nil {
+		reconcileErrs = append(reconcileErrs, err)
+	}
+	// PodMonitor is opt-in per agent (#582). Same gating as ServiceMonitor:
+	// spec.podMonitor.enabled + spec.metrics.enabled + CRD present.
+	if err := r.reconcilePodMonitor(ctx, agent); err != nil {
 		reconcileErrs = append(reconcileErrs, err)
 	}
 	reconcileErr := errors.Join(reconcileErrs...)
@@ -282,7 +296,11 @@ func (r *NyxAgentReconciler) applyDeployment(ctx context.Context, agent *nyxv1al
 	)
 	defer finish(&err)
 
-	desired := buildDeployment(agent, DefaultImageTag)
+	prompts, err := r.listNyxPromptsForAgent(ctx, agent)
+	if err != nil {
+		return fmt.Errorf("list NyxPrompts: %w", err)
+	}
+	desired := buildDeployment(agent, DefaultImageTag, prompts)
 	if err = controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
 		return fmt.Errorf("set owner on Deployment: %w", err)
 	}
@@ -309,6 +327,27 @@ func (r *NyxAgentReconciler) applyDeployment(ctx context.Context, agent *nyxv1al
 	span.SetAttributes(attribute.String("nyx.resource.action", "update"))
 	err = r.Update(ctx, existing)
 	return err
+}
+
+// listNyxPromptsForAgent returns every NyxPrompt in the agent's namespace
+// whose spec.agentRefs contains this agent. The result is sorted by CR
+// name so buildDeployment renders pod volumes in a deterministic order.
+func (r *NyxAgentReconciler) listNyxPromptsForAgent(ctx context.Context, agent *nyxv1alpha1.NyxAgent) ([]nyxv1alpha1.NyxPrompt, error) {
+	all := &nyxv1alpha1.NyxPromptList{}
+	if err := r.List(ctx, all, client.InNamespace(agent.Namespace)); err != nil {
+		return nil, err
+	}
+	matched := make([]nyxv1alpha1.NyxPrompt, 0, len(all.Items))
+	for i := range all.Items {
+		p := &all.Items[i]
+		for _, ref := range p.Spec.AgentRefs {
+			if ref.Name == agent.Name {
+				matched = append(matched, *p)
+				break
+			}
+		}
+	}
+	return matched, nil
 }
 
 func (r *NyxAgentReconciler) applyService(ctx context.Context, agent *nyxv1alpha1.NyxAgent) (err error) {
@@ -1164,6 +1203,108 @@ func (r *NyxAgentReconciler) reconcileServiceMonitor(ctx context.Context, agent 
 	return nil
 }
 
+// podMonitorCRDPresent reports whether the monitoring.coreos.com/v1
+// PodMonitor CRD is known to the cluster. Mirrors serviceMonitorCRDPresent.
+func (r *NyxAgentReconciler) podMonitorCRDPresent(ctx context.Context) (bool, error) {
+	_ = ctx
+	mapper := r.Client.RESTMapper()
+	if mapper == nil {
+		return false, nil
+	}
+	_, err := mapper.RESTMapping(podMonitorGVK.GroupKind(), podMonitorGVK.Version)
+	if err != nil {
+		if meta.IsNoMatchError(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// reconcilePodMonitor creates, updates, or deletes a per-agent PodMonitor
+// (#582). Same gating pattern as reconcileServiceMonitor:
+//
+//  1. spec.podMonitor.enabled=true.
+//  2. spec.metrics.enabled=true (nothing to scrape otherwise).
+//  3. monitoring.coreos.com/v1 PodMonitor CRD is installed.
+//
+// When any condition flips off the reconciler deletes a previously-created
+// PodMonitor. User-created PodMonitors that collide by name are left alone
+// via the IsControlledBy check.
+func (r *NyxAgentReconciler) reconcilePodMonitor(ctx context.Context, agent *nyxv1alpha1.NyxAgent) (err error) {
+	ctx, _, finish := startStepSpan(ctx, "nyxagent.reconcilePodMonitor",
+		attribute.Bool("nyx.podmonitor.enabled", podMonitorEnabled(agent)),
+		attribute.Bool("nyx.metrics.enabled", agent.Spec.Metrics.Enabled),
+	)
+	defer finish(&err)
+
+	log := logf.FromContext(ctx)
+
+	present, err := r.podMonitorCRDPresent(ctx)
+	if err != nil {
+		return fmt.Errorf("probe PodMonitor CRD: %w", err)
+	}
+	if !present {
+		if podMonitorEnabled(agent) && agent.Spec.Metrics.Enabled {
+			log.V(1).Info("PodMonitor CRD not installed — skipping PodMonitor reconcile",
+				"group", podMonitorGVK.Group, "version", podMonitorGVK.Version)
+		}
+		return nil
+	}
+
+	key := client.ObjectKey{Namespace: agent.Namespace, Name: fmt.Sprintf("%s-backends", agent.Name)}
+	wantCreate := podMonitorEnabled(agent) && agent.Spec.Metrics.Enabled
+
+	if !wantCreate {
+		existing := &unstructured.Unstructured{}
+		existing.SetGroupVersionKind(podMonitorGVK)
+		if err := r.Get(ctx, key, existing); err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil
+			}
+			return fmt.Errorf("get PodMonitor for delete: %w", err)
+		}
+		if !metav1.IsControlledBy(existing, agent) {
+			return nil
+		}
+		if err := r.Delete(ctx, existing); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("delete PodMonitor: %w", err)
+		}
+		return nil
+	}
+
+	desired := buildPodMonitor(agent)
+	if desired == nil {
+		return nil
+	}
+	if err := controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
+		return fmt.Errorf("set owner on PodMonitor: %w", err)
+	}
+
+	existing := &unstructured.Unstructured{}
+	existing.SetGroupVersionKind(podMonitorGVK)
+	err = r.Get(ctx, key, existing)
+	switch {
+	case apierrors.IsNotFound(err):
+		if err := r.Create(ctx, desired); err != nil {
+			return fmt.Errorf("create PodMonitor: %w", err)
+		}
+		return nil
+	case err != nil:
+		return fmt.Errorf("get PodMonitor: %w", err)
+	}
+
+	if !metav1.IsControlledBy(existing, agent) {
+		return nil
+	}
+	existing.Object["spec"] = desired.Object["spec"]
+	existing.SetLabels(desired.GetLabels())
+	if err := r.Update(ctx, existing); err != nil {
+		return fmt.Errorf("update PodMonitor: %w", err)
+	}
+	return nil
+}
+
 // ── Status ────────────────────────────────────────────────────────────────────
 
 func (r *NyxAgentReconciler) updateStatus(ctx context.Context, agent *nyxv1alpha1.NyxAgent, reconcileErr error) (err error) {
@@ -1461,15 +1602,36 @@ func (r *NyxAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		},
 	}
 
+	// enqueueAgentsBoundByPrompt re-enqueues every NyxAgent listed in a
+	// NyxPrompt's spec.agentRefs when the NyxPrompt changes. This keeps
+	// the agent Deployment pod-spec in sync with prompt adds/removes
+	// without waiting for a future unrelated reconcile to pick up the
+	// new prompt list.
+	enqueueAgentsBoundByPrompt := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+		p, ok := obj.(*nyxv1alpha1.NyxPrompt)
+		if !ok {
+			return nil
+		}
+		reqs := make([]reconcile.Request, 0, len(p.Spec.AgentRefs))
+		for _, ref := range p.Spec.AgentRefs {
+			reqs = append(reqs, reconcile.Request{
+				NamespacedName: types.NamespacedName{Namespace: p.Namespace, Name: ref.Name},
+			})
+		}
+		return reqs
+	})
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&nyxv1alpha1.NyxAgent{}).
 		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.ConfigMap{}).
+		Owns(&corev1.Secret{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
 		Owns(&autoscalingv2.HorizontalPodAutoscaler{}).
 		Owns(&policyv1.PodDisruptionBudget{}).
 		Watches(&nyxv1alpha1.NyxAgent{}, enqueueTeammates, builder.WithPredicates(teamPredicate)).
+		Watches(&nyxv1alpha1.NyxPrompt{}, enqueueAgentsBoundByPrompt).
 		Named("nyxagent").
 		Complete(r)
 }

@@ -195,13 +195,26 @@ affinity: {}
 # Admission webhook (#624).
 #
 # When enabled, the chart renders the webhook Service, Mutating/Validating
-# webhook configurations, and (when webhooks.certManager.enabled) a
-# cert-manager Certificate + Issuer so the controller-manager boots with
-# a TLS pair already mounted.
+# webhook configurations, and the TLS plumbing needed by the manager to
+# serve the webhook endpoints. Three TLS modes:
 #
-# Disabled by default (default off) — the operator runs without admission
-# webhooks and the manager logs a note at startup. Turn on in clusters
-# that have cert-manager installed.
+#   1. cert-manager (default) — chart renders a cert-manager Certificate
+#      + Issuer. CA bundle is auto-injected into the webhook configs via
+#      the `cert-manager.io/inject-ca-from` annotation.
+#
+#   2. BYO Secret — set `webhooks.existingSecret` to reference a Secret
+#      pre-created with `tls.crt` + `tls.key` keys, and supply the PEM
+#      CA bundle via `webhooks.caBundle` so the webhook configs validate.
+#      Use this when cert-manager isn't available (air-gapped clusters,
+#      service-mesh-managed TLS, existing Vault PKI, strict RBAC that
+#      can't grant cert-manager cluster-wide Secret access).
+#
+#   3. Disabled — webhooks.enabled=false skips every webhook resource;
+#      the manager logs a note at startup and CR validation falls back to
+#      structural-schema-only checks.
+#
+# Disabled by default — turn on in clusters that have cert-manager
+# installed OR pre-create the TLS Secret and set existingSecret/caBundle.
 webhooks:
   enabled: false
   # Port the webhook server listens on inside the container. Matches the
@@ -213,7 +226,23 @@ webhooks:
   # Webhook failure policy: "Fail" rejects admission on webhook error,
   # "Ignore" allows it. Fail is the safer default for invariant checks.
   failurePolicy: Fail
-  # cert-manager integration — mirrors charts/nyx's shape (#639).
+
+  # ── TLS mode 2: BYO Secret ─────────────────────────────────────────────
+  # Reference a pre-created Secret containing `tls.crt` and `tls.key`. When
+  # set, the chart skips cert-manager integration entirely regardless of
+  # the certManager.enabled setting. Requires caBundle to be set as well
+  # so the MutatingWebhookConfiguration / ValidatingWebhookConfiguration
+  # `caBundle` fields are populated.
+  existingSecret: ""
+  # PEM-encoded CA bundle (base64-encoded for the caBundle field per the
+  # AdmissionRegistration API). The CA that signed existingSecret's
+  # tls.crt — typically your internal CA or the service mesh root CA.
+  # Must be base64 of the PEM. One-liner: `base64 -w0 < ca.crt`
+  # Required when existingSecret is set.
+  caBundle: ""
+
+  # ── TLS mode 1: cert-manager (default) ─────────────────────────────────
+  # Mirrors charts/nyx's shape (#639). Ignored when existingSecret is set.
   certManager:
     enabled: true
     # Render a chart-owned selfSigned Issuer. Set false when using an

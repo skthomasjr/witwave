@@ -1,3 +1,19 @@
+{{- /* Guard: backend names must be unique within each agent. Mirrors the
+       operator's `validateBackendNamesUnique` admission webhook so the
+       chart rendering path refuses the same mistake it rejects via
+       admission control. Duplicates would silently cause one backend's
+       Deployment-embedded container + PVC + ConfigMap to shadow the
+       other's (every owned resource embeds backend name in its own name). */}}
+{{- range .Values.agents }}
+{{- $agentName := .name }}
+{{- $seen := dict }}
+{{- range .backends }}
+{{- if hasKey $seen .name }}
+{{- fail (printf "agents[%q].backends: duplicate name %q — backend names must be unique per agent (Service/PVC/ConfigMap names embed the backend name; duplicates silently shadow each other)" $agentName .name) }}
+{{- end }}
+{{- $_ := set $seen .name true }}
+{{- end }}
+{{- end }}
 {{- /* Guard: when preStop is enabled, preStop.delaySeconds must be strictly
        less than terminationGracePeriodSeconds so SIGTERM actually fires with
        enough remaining grace for A2A requests, jobs, and webhook deliveries
@@ -32,6 +48,17 @@ spec:
   template:
     metadata:
       labels:
+        {{- /* Pod labels (#477): user podLabels first, then canonical agent
+              labels on top so selectors never drift. Keys that collide with
+              the Deployment selector keys (app.kubernetes.io/name / component
+              / part-of / managed-by) are dropped from the user map — the
+              operator applies the exact same rule. */}}
+        {{- $reservedKeys := list "app.kubernetes.io/name" "app.kubernetes.io/component" "app.kubernetes.io/part-of" "app.kubernetes.io/managed-by" }}
+        {{- range $k, $v := .podLabels }}
+        {{- if not (has $k $reservedKeys) }}
+        {{ $k }}: {{ $v | quote }}
+        {{- end }}
+        {{- end }}
         {{- include "nyx.agentLabels" (dict "name" .name "root" $) | nindent 8 }}
       {{- /* Resolve metrics + podAnnotations toggles. hasKey is required
             because sprig's `default` treats `false` as empty, so the
@@ -53,7 +80,20 @@ spec:
       {{- end }}
     spec:
       terminationGracePeriodSeconds: {{ $.Values.terminationGracePeriodSeconds | default 60 }}
+      {{- /* ServiceAccount + automount (#538). Defaults match the operator:
+            no SA → token not mounted (hardened); SA set → token auto-mounted
+            so in-cluster MCP tools can reach the Kubernetes API.
+            automountServiceAccountToken on the spec always wins. */}}
+      {{- if .serviceAccountName }}
+      serviceAccountName: {{ .serviceAccountName }}
+      {{- end }}
+      {{- if hasKey . "automountServiceAccountToken" }}
+      automountServiceAccountToken: {{ .automountServiceAccountToken }}
+      {{- else if .serviceAccountName }}
+      automountServiceAccountToken: true
+      {{- else }}
       automountServiceAccountToken: false
+      {{- end }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -403,7 +443,7 @@ spec:
           {{- end }}
           hostPath:
             path: {{ $.Values.sharedStorage.hostPath }}
-            type: DirectoryOrCreate
+            type: {{ $.Values.sharedStorage.hostPathType | default "DirectoryOrCreate" }}
           {{- else }}
           persistentVolumeClaim:
             claimName: {{ $.Values.sharedStorage.existingClaim | default (printf "%s-shared" $.Release.Name) }}

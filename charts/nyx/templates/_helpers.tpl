@@ -249,14 +249,18 @@ nyx.otelEnv — emit OTEL_* env list entries for a container when
 observability.tracing is enabled (#634). Renders nothing when tracing is
 disabled, so the caller can unconditionally include it.
 
+This chart does NOT deploy a collector — the endpoint must be a
+user-provided OTLP target (opentelemetry-operator-managed collector,
+direct Jaeger/Tempo/cloud backend, etc.). Matches the idiomatic operator
+pattern across Strimzi, cert-manager, Istio, Knative, Argo, Crossplane
+and others.
+
 Wiring:
   - OTEL_ENABLED              master toggle read by shared/otel.py +
                               operator/internal/tracing/otel.go
-  - OTEL_EXPORTER_OTLP_ENDPOINT  read by the OTel SDK directly; when
-                                 observability.tracing.endpoint is empty
-                                 and the chart-managed collector is
-                                 enabled, the in-cluster collector
-                                 Service URL is used instead
+  - OTEL_EXPORTER_OTLP_ENDPOINT  read by the OTel SDK directly; only
+                                 emitted when observability.tracing.endpoint
+                                 is set
   - OTEL_TRACES_SAMPLER[_ARG] forwarded verbatim when set
   - OTEL_SERVICE_NAME         per-container service name; omitted when
                               the caller doesn't supply one (each
@@ -272,11 +276,6 @@ Usage:
 {{- $tracing := (((($root.Values).observability)).tracing) -}}
 {{- if and $tracing $tracing.enabled -}}
 {{- $endpoint := $tracing.endpoint | default "" -}}
-{{- $collector := $tracing.collector | default dict -}}
-{{- if and (not $endpoint) $collector.enabled -}}
-{{- $svcName := (($collector.service).name) | default (printf "%s-otel-collector" $root.Release.Name) -}}
-{{- $endpoint = printf "http://%s:4318" $svcName -}}
-{{- end }}
 - name: OTEL_ENABLED
   value: "true"
 {{- if $endpoint }}

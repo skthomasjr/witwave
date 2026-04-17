@@ -474,8 +474,12 @@ func backendStorageVolumeAndMounts(agent *nyxv1alpha1.NyxAgent, b nyxv1alpha1.Ba
 
 // buildDeployment assembles the agent Deployment: one nyx-harness container
 // plus one container per backend. AppVersion is the chart/operator app version
-// used as a default image tag when an ImageSpec omits Tag.
-func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Deployment {
+// used as a default image tag when an ImageSpec omits Tag. Prompts lists the
+// NyxPrompt CRs bound to this agent; one pod-level Volume + harness-level
+// subPath VolumeMount is rendered per prompt so the harness scheduler sees
+// the NyxPrompt-sourced .md files alongside anything gitSync dropped into
+// the same `.nyx/<kind>/` directory.
+func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string, prompts []nyxv1alpha1.NyxPrompt) *appsv1.Deployment {
 	labels := agentLabels(agent)
 	selector := selectorLabels(agent)
 
@@ -528,6 +532,14 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 	// harness container is built so order stays deterministic.
 	volumes = append(volumes, gitSyncVolumes(agent)...)
 	harnessMounts = append(harnessMounts, agentGitMappingMounts(agent)...)
+
+	// NyxPrompt-owned prompt files. One pod-level Volume per CR (so a
+	// removed CR drops its Volume cleanly) and one subPath file mount
+	// per CR at the kind's directory. The harness is the only container
+	// that needs these — backends never read `.nyx/`.
+	pv, pm := nyxPromptVolumesAndMounts(agent, prompts)
+	volumes = append(volumes, pv...)
+	harnessMounts = append(harnessMounts, pm...)
 
 	// nyx-harness container.
 	harnessPort := agent.Spec.Port
@@ -622,7 +634,11 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 			Image:           imageRef(b.Image, appVersion),
 			ImagePullPolicy: imagePullPolicy(b.Image),
 			Ports: []corev1.ContainerPort{
-				{Name: "http", ContainerPort: bPort},
+				// Named so PodMonitor.endpoints[].port can reference the
+				// backend's /metrics port by name (#582). Truncated to 15
+				// chars per RFC 6335 / k8s IANA_SVC_NAME validation —
+				// matches the chart's port naming exactly.
+				{Name: backendMetricsPortName(b.Name), ContainerPort: bPort},
 			},
 			Env: append([]corev1.EnvVar{
 				{Name: "AGENT_NAME", Value: fmt.Sprintf("%s-a2-%s", agent.Name, b.Name)},
@@ -639,7 +655,7 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 				// harness and backend env.
 				{Name: "HARNESS_EVENTS_URL", Value: fmt.Sprintf("http://localhost:%d", harnessPort)},
 			}, b.Env...),
-			EnvFrom:   b.EnvFrom,
+			EnvFrom:   backendEnvFromWithCredentials(agent, b),
 			Resources: b.Resources,
 			SecurityContext: &corev1.SecurityContext{
 				AllowPrivilegeEscalation: boolPtr(false),
@@ -777,6 +793,77 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 	}
 }
 
+// nyxPromptVolumesAndMounts returns the pod Volumes and harness container
+// VolumeMounts the agent needs to surface every NyxPrompt bound to it. Each
+// prompt becomes one Volume (ConfigMap-backed) and one subPath file mount
+// at `<kind-dir>/<filename>` so the prompt file appears next to whatever
+// gitSync dropped into the same directory. Prompts is sorted by CR name
+// for deterministic pod-spec rendering.
+//
+// A prompt CR that lists a non-existent agent is silently skipped — the
+// NyxPrompt reconciler already records that in the CR status, and the
+// agent pod spec stays valid either way.
+func nyxPromptVolumesAndMounts(agent *nyxv1alpha1.NyxAgent, prompts []nyxv1alpha1.NyxPrompt) ([]corev1.Volume, []corev1.VolumeMount) {
+	if len(prompts) == 0 {
+		return nil, nil
+	}
+	// Gather the prompt/ref pairs that target this agent, in deterministic
+	// order (prompt name, then filename suffix).
+	type binding struct {
+		prompt *nyxv1alpha1.NyxPrompt
+		ref    nyxv1alpha1.NyxPromptAgentRef
+	}
+	var bindings []binding
+	for i := range prompts {
+		p := &prompts[i]
+		for _, ref := range p.Spec.AgentRefs {
+			if ref.Name != agent.Name {
+				continue
+			}
+			bindings = append(bindings, binding{prompt: p, ref: ref})
+		}
+	}
+	if len(bindings) == 0 {
+		return nil, nil
+	}
+	sort.Slice(bindings, func(i, j int) bool {
+		if bindings[i].prompt.Name != bindings[j].prompt.Name {
+			return bindings[i].prompt.Name < bindings[j].prompt.Name
+		}
+		return bindings[i].ref.FilenameSuffix < bindings[j].ref.FilenameSuffix
+	})
+
+	var vols []corev1.Volume
+	var mounts []corev1.VolumeMount
+	for _, b := range bindings {
+		cmName := nyxPromptConfigMapName(b.prompt.Name, b.ref.Name)
+		volName := fmt.Sprintf("nyxprompt-%s", b.prompt.Name)
+		filename := nyxPromptFilename(b.prompt, b.ref)
+		dir := nyxPromptMountDir(b.prompt.Spec.Kind)
+		if dir == "" {
+			// Unknown kind — admission webhook should have rejected
+			// this CR, but skip rather than emit a broken pod spec.
+			continue
+		}
+		mountPath := dir + "/" + filename
+		vols = append(vols, corev1.Volume{
+			Name: volName,
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{Name: cmName},
+				},
+			},
+		})
+		mounts = append(mounts, corev1.VolumeMount{
+			Name:      volName,
+			MountPath: mountPath,
+			SubPath:   filename,
+			ReadOnly:  true,
+		})
+	}
+	return vols, mounts
+}
+
 // mergeStringMap returns a new map containing all entries from base with
 // entries from overlay applied on top (overlay wins on key collision).
 // A nil base is treated as empty. The result is nil only when both inputs
@@ -844,6 +931,92 @@ func buildService(agent *nyxv1alpha1.NyxAgent) *corev1.Service {
 			}},
 		},
 	}
+}
+
+// backendMetricsPortName is the container-port name PodMonitor uses to
+// reference the backend's /metrics endpoint (#582). Mirrors the chart's
+// naming (`<backend>-metrics`, truncated to 15 chars per RFC 6335) so
+// chart-rendered and operator-rendered pods are scraped the same way.
+func backendMetricsPortName(backendName string) string {
+	name := backendName + "-metrics"
+	if len(name) > 15 {
+		name = name[:15]
+	}
+	return strings.TrimRight(name, "-")
+}
+
+// podMonitorGVK is the monitoring.coreos.com/v1 PodMonitor GroupVersionKind
+// used by the Prometheus Operator. Written via an unstructured client so
+// the operator build has no hard dependency on prometheus-operator Go
+// types (#582, mirrors the ServiceMonitor path).
+var podMonitorGVK = schema.GroupVersionKind{
+	Group:   "monitoring.coreos.com",
+	Version: "v1",
+	Kind:    "PodMonitor",
+}
+
+// podMonitorEnabled reports whether the agent opted in to PodMonitor
+// reconciliation. Creation still additionally requires
+// spec.metrics.enabled=true and CRD presence.
+func podMonitorEnabled(agent *nyxv1alpha1.NyxAgent) bool {
+	return agent.Spec.PodMonitor != nil && agent.Spec.PodMonitor.Enabled
+}
+
+// buildPodMonitor assembles the unstructured PodMonitor manifest for an
+// agent. One PodMetricsEndpoint per enabled backend, referencing the named
+// `<backend>-metrics` container port. Mirrors
+// charts/nyx/templates/podmonitor.yaml.
+func buildPodMonitor(agent *nyxv1alpha1.NyxAgent) *unstructured.Unstructured {
+	pm := agent.Spec.PodMonitor
+	if pm == nil {
+		return nil
+	}
+	interval := pm.Interval
+	if interval == "" {
+		interval = "30s"
+	}
+	scrapeTimeout := pm.ScrapeTimeout
+	if scrapeTimeout == "" {
+		scrapeTimeout = "10s"
+	}
+
+	labels := agentLabels(agent)
+	for k, v := range pm.Labels {
+		labels[k] = v
+	}
+
+	endpoints := []interface{}{}
+	backends := append([]nyxv1alpha1.BackendSpec(nil), agent.Spec.Backends...)
+	sort.Slice(backends, func(i, j int) bool { return backends[i].Name < backends[j].Name })
+	for _, b := range backends {
+		if !backendEnabled(b) {
+			continue
+		}
+		endpoints = append(endpoints, map[string]interface{}{
+			"port":          backendMetricsPortName(b.Name),
+			"path":          "/metrics",
+			"interval":      interval,
+			"scrapeTimeout": scrapeTimeout,
+		})
+	}
+
+	obj := &unstructured.Unstructured{}
+	obj.SetGroupVersionKind(podMonitorGVK)
+	obj.SetName(fmt.Sprintf("%s-backends", agent.Name))
+	obj.SetNamespace(agent.Namespace)
+	obj.SetLabels(labels)
+	obj.Object["spec"] = map[string]interface{}{
+		"selector": map[string]interface{}{
+			"matchLabels": map[string]interface{}{
+				labelName: agent.Name,
+			},
+		},
+		"namespaceSelector": map[string]interface{}{
+			"matchNames": []interface{}{agent.Namespace},
+		},
+		"podMetricsEndpoints": endpoints,
+	}
+	return obj
 }
 
 // serviceMonitorGVK is the monitoring.coreos.com/v1 ServiceMonitor

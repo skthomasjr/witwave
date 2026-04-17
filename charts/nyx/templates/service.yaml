@@ -1,5 +1,15 @@
 {{- range .Values.agents }}
 {{- if eq (include "nyx.enabled" .) "true" }}
+{{- /* Service port vs container port (#479). `port` is the container port
+       (probes, pod-to-pod); when `service.port` is set it overrides the
+       Service port only — targetPort stays pinned to the container port
+       so probes keep landing on the same listener. Matches the operator's
+       NyxAgentSpec.ServicePort override. */}}
+{{- $containerPort := .port | default 8000 }}
+{{- $svcPort := $containerPort }}
+{{- if and (.service) (hasKey .service "port") }}
+{{- $svcPort = .service.port }}
+{{- end }}
 ---
 apiVersion: v1
 kind: Service
@@ -16,7 +26,7 @@ metadata:
   {{- if and $metricsOn $svcAnnOn }}
   annotations:
     prometheus.io/scrape: "true"
-    prometheus.io/port: {{ .port | default 8000 | quote }}
+    prometheus.io/port: {{ $svcPort | quote }}
     prometheus.io/path: "/metrics"
   {{- end }}
 spec:
@@ -25,7 +35,7 @@ spec:
     app.kubernetes.io/name: {{ .name }}
   ports:
     - name: http
-      port: {{ .port | default 8000 }}
-      targetPort: {{ .port | default 8000 }}
+      port: {{ $svcPort }}
+      targetPort: {{ $containerPort }}
 {{- end }}
 {{- end }}

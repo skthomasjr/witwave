@@ -1,0 +1,72 @@
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: mutating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-nyx-ai-v1alpha1-nyxagent
+  failurePolicy: Fail
+  name: mnyxagent.kb.io
+  rules:
+  - apiGroups:
+    - nyx.ai
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - nyxagents
+  sideEffects: None
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: validating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-nyx-ai-v1alpha1-nyxagent
+  failurePolicy: Fail
+  name: vnyxagent.kb.io
+  rules:
+  - apiGroups:
+    - nyx.ai
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - nyxagents
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-nyx-ai-v1alpha1-nyxprompt
+  failurePolicy: Fail
+  name: vnyxprompt.kb.io
+  rules:
+  - apiGroups:
+    - nyx.ai
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - nyxprompts
+  sideEffects: None

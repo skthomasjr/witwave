@@ -31,6 +31,7 @@ rules:
     resources:
       - configmaps
       - persistentvolumeclaims
+      - secrets
       - services
     verbs: [create, delete, get, list, patch, update, watch]
   - apiGroups: [""]
@@ -45,6 +46,9 @@ rules:
   - apiGroups: [policy]
     resources: [poddisruptionbudgets]
     verbs: [create, delete, get, list, patch, update, watch]
+  - apiGroups: [monitoring.coreos.com]
+    resources: [servicemonitors, podmonitors]
+    verbs: [create, delete, get, list, patch, update, watch]
   - apiGroups: [nyx.ai]
     resources: [nyxagents]
     verbs: [create, delete, get, list, patch, update, watch]
@@ -53,6 +57,15 @@ rules:
     verbs: [get, patch, update]
   - apiGroups: [nyx.ai]
     resources: [nyxagents/finalizers]
+    verbs: [update]
+  - apiGroups: [nyx.ai]
+    resources: [nyxprompts]
+    verbs: [create, delete, get, list, patch, update, watch]
+  - apiGroups: [nyx.ai]
+    resources: [nyxprompts/status]
+    verbs: [get, patch, update]
+  - apiGroups: [nyx.ai]
+    resources: [nyxprompts/finalizers]
     verbs: [update]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

@@ -315,110 +315,46 @@ backend without baking it into the image or a per-agent ConfigMap.
 
 End-to-end OpenTelemetry tracing across harness + backends + operator is opt-in. The pod-side OTel bootstraps
 (`shared/otel.py` for Python, `operator/internal/tracing/otel.go` for Go) have shipped since #469/#471 — this chart
-now owns the env-var wiring and an optional in-cluster OpenTelemetry Collector, so turning tracing on no longer
-requires hand-editing a dozen pod specs.
+owns the env-var wiring.
 
-### Quick start — chart-managed collector
+**This chart does not deploy an OpenTelemetry Collector.** Matching the idiomatic pattern across Strimzi,
+cert-manager, Istio, Elastic ECK, Knative, Argo, Crossplane, and grafana-operator, nyx emits OTLP to a user-provided
+endpoint and delegates collector deployment to something built for that job:
 
-The simplest path stands up an OTel Collector alongside the agents and auto-routes every pod to it:
+- **Recommended:** install the [opentelemetry-operator](https://github.com/open-telemetry/opentelemetry-operator)
+  and create an `OpenTelemetryCollector` CR. Point `observability.tracing.endpoint` at the resulting Service.
+- **Alternative:** point `observability.tracing.endpoint` at any OTLP-compatible backend directly — Jaeger,
+  Tempo, Honeycomb, Grafana Cloud, Datadog, etc.
 
-```yaml
-observability:
-  tracing:
-    enabled: true
-    collector:
-      enabled: true
-```
-
-With just those two flags:
-
-- An `<release>-otel-collector` Deployment + Service + ConfigMap are rendered into the release namespace.
-- Every harness, backend, and (when the `nyx-operator` chart has matching values) operator pod receives
-  `OTEL_ENABLED=true` plus `OTEL_EXPORTER_OTLP_ENDPOINT=http://<release>-otel-collector:4318` and a per-component
-  `OTEL_SERVICE_NAME`.
-- The default collector config accepts OTLP on 4317/gRPC and 4318/HTTP and emits to the `debug` exporter. Override
-  `observability.tracing.collector.config` to point at your real backend.
-
-### Forwarding to Jaeger
+### Quick start — wire to a collector
 
 ```yaml
 observability:
   tracing:
     enabled: true
-    collector:
-      enabled: true
-      config:
-        receivers:
-          otlp:
-            protocols:
-              grpc: { endpoint: 0.0.0.0:4317 }
-              http: { endpoint: 0.0.0.0:4318 }
-        processors:
-          batch: {}
-        exporters:
-          otlp/jaeger:
-            endpoint: jaeger-collector.observability:4317
-            tls: { insecure: true }
-        service:
-          pipelines:
-            traces:
-              receivers: [otlp]
-              processors: [batch]
-              exporters: [otlp/jaeger]
-```
-
-### Forwarding to Tempo (OTLP/HTTP)
-
-```yaml
-observability:
-  tracing:
-    enabled: true
-    collector:
-      enabled: true
-      config:
-        receivers:
-          otlp:
-            protocols:
-              http: { endpoint: 0.0.0.0:4318 }
-        processors:
-          batch: {}
-        exporters:
-          otlphttp/tempo:
-            endpoint: http://tempo.observability:4318
-        service:
-          pipelines:
-            traces:
-              receivers: [otlp]
-              processors: [batch]
-              exporters: [otlphttp/tempo]
-```
-
-### Point at an out-of-band collector
-
-Skip the chart-managed Deployment entirely and target an existing collector instead:
-
-```yaml
-observability:
-  tracing:
-    enabled: true
-    endpoint: http://otel-collector.observability:4318
+    endpoint: http://otel-collector.observability:4318    # OTLP/HTTP
+    # or http://otel-collector.observability:4317 for OTLP/gRPC
     sampler: parentbased_traceidratio
     samplerArg: "0.1"        # 10% sampling
-    collector:
-      enabled: false
 ```
+
+With that:
+
+- Every harness and backend pod receives `OTEL_ENABLED=true`, `OTEL_EXPORTER_OTLP_ENDPOINT`, and a
+  per-component `OTEL_SERVICE_NAME`.
+- `OTEL_TRACES_SAMPLER` / `OTEL_TRACES_SAMPLER_ARG` are forwarded verbatim when set.
 
 ### Wiring the operator
 
-The `nyx-operator` chart exposes a matching `observability.tracing` block. To trace the reconciler alongside the
-agents, install both charts with the same endpoint:
+The `nyx-operator` chart exposes a matching `observability.tracing` block. Point both at the same endpoint to
+trace the reconciler alongside the agents:
 
 ```yaml
 # values for nyx-operator
 observability:
   tracing:
     enabled: true
-    endpoint: http://nyx-otel-collector.nyx:4318
+    endpoint: http://otel-collector.observability:4318
 ```
 
 See `operator/internal/tracing/otel.go` for the full list of OTel env vars the operator honours — the chart forwards
