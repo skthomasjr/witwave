@@ -5,6 +5,7 @@ import os
 import time
 import uuid
 from collections import OrderedDict
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Awaitable, Callable
 
@@ -609,6 +610,27 @@ async def _track_session(sessions: OrderedDict[str, float], session_id: str) -> 
         a2_lru_cache_utilization_percent.labels(**_LABELS).set(len(sessions) / MAX_SESSIONS * 100)
 
 
+@dataclass(frozen=True)
+class RunContext:
+    """Per-request pass-through parameters for ``run`` / ``run_query`` / ``_run_inner`` (#551).
+
+    Groups the fields that flow through all three layers unchanged. Per-layer
+    parameters that interact with streaming/budget/hooks (``max_tokens``,
+    ``on_chunk``, ``hook_state``) and layer-specific state (``sessions``,
+    ``is_new``, ``prompt``) are intentionally *not* captured here — they stay
+    as explicit arguments because they are either modified, created, or
+    consumed differently at each layer.
+
+    Frozen so a caller cannot accidentally mutate the context mid-run and
+    cause different layers to see different values.
+    """
+
+    session_id: str
+    model: str | None
+    mcp_servers: dict
+    agent_md_content: str
+
+
 def _make_options(
     session_id: str,
     resume: bool,
@@ -824,11 +846,8 @@ async def _run_query_inner(
 
 async def run_query(
     prompt: str,
-    session_id: str,
+    ctx: RunContext,
     is_new: bool,
-    mcp_servers: dict,
-    agent_md_content: str,
-    model: str | None = None,
     max_tokens: int | None = None,
     on_chunk: Callable[[str], Awaitable[None]] | None = None,
     hook_state: HookState | None = None,
@@ -842,12 +861,12 @@ async def run_query(
             a2_sdk_errors_total.labels(**_LABELS).inc()
         logger.error(f"[claude stderr] {line}")
 
-    effective_model = model or CLAUDE_MODEL
+    effective_model = ctx.model or CLAUDE_MODEL
     try:
         return await _run_query_inner(
             prompt,
-            _make_options(session_id, resume=not is_new, stderr_fn=capture_stderr, mcp_servers=mcp_servers, model=model, agent_md_content=agent_md_content, hook_state=hook_state),
-            session_id,
+            _make_options(ctx.session_id, resume=not is_new, stderr_fn=capture_stderr, mcp_servers=ctx.mcp_servers, model=ctx.model, agent_md_content=ctx.agent_md_content, hook_state=hook_state),
+            ctx.session_id,
             effective_model=effective_model,
             max_tokens=max_tokens,
             on_chunk=on_chunk,
@@ -861,7 +880,7 @@ async def run_query(
         ]
         if is_new and _collision_lines:
             logger.warning(
-                f"Session {session_id!r}: session-ID collision detected on new session "
+                f"Session {ctx.session_id!r}: session-ID collision detected on new session "
                 f"(stderr: {_collision_lines[0]!r}) — retrying as resume."
             )
             if a2_task_retries_total is not None:
@@ -870,8 +889,8 @@ async def run_query(
                 a2_sdk_query_error_duration_seconds.labels(**_LABELS, model=effective_model or "").observe(time.monotonic() - _query_start)
             return await _run_query_inner(
                 prompt,
-                _make_options(session_id, resume=True, stderr_fn=capture_stderr, mcp_servers=mcp_servers, model=model, agent_md_content=agent_md_content, hook_state=hook_state),
-                session_id,
+                _make_options(ctx.session_id, resume=True, stderr_fn=capture_stderr, mcp_servers=ctx.mcp_servers, model=ctx.model, agent_md_content=ctx.agent_md_content, hook_state=hook_state),
+                ctx.session_id,
                 effective_model=effective_model,
                 max_tokens=max_tokens,
                 on_chunk=on_chunk,
@@ -895,10 +914,32 @@ async def run(
     on_chunk: Callable[[str], Awaitable[None]] | None = None,
     hook_state: "HookState | None" = None,
 ) -> str:
+    """External entry point — preserves the legacy signature (#551).
+
+    Thin adapter that packs the pass-through params (``session_id``, ``model``,
+    ``mcp_servers``, ``agent_md_content``) into a ``RunContext`` and forwards
+    the per-layer params (``sessions``, ``max_tokens``, ``on_chunk``,
+    ``hook_state``) explicitly to ``_run_inner``. Keeps all existing callers
+    (executor.execute, a2-claude/main.py MCP tools/call path) working without
+    signature churn.
+    """
+    ctx = RunContext(
+        session_id=session_id,
+        model=model,
+        mcp_servers=mcp_servers,
+        agent_md_content=agent_md_content,
+    )
     if a2_concurrent_queries is not None:
         a2_concurrent_queries.labels(**_LABELS).inc()
     try:
-        return await _run_inner(prompt, session_id, sessions, mcp_servers, agent_md_content, model, max_tokens, on_chunk=on_chunk, hook_state=hook_state)
+        return await _run_inner(
+            prompt,
+            ctx,
+            sessions,
+            max_tokens=max_tokens,
+            on_chunk=on_chunk,
+            hook_state=hook_state,
+        )
     finally:
         if a2_concurrent_queries is not None:
             a2_concurrent_queries.labels(**_LABELS).dec()
@@ -906,30 +947,27 @@ async def run(
 
 async def _run_inner(
     prompt: str,
-    session_id: str,
+    ctx: RunContext,
     sessions: OrderedDict[str, float],
-    mcp_servers: dict,
-    agent_md_content: str,
-    model: str | None = None,
     max_tokens: int | None = None,
     on_chunk: Callable[[str], Awaitable[None]] | None = None,
     hook_state: "HookState | None" = None,
 ) -> str:
-    resolved_model = model or CLAUDE_MODEL or "default"
+    resolved_model = ctx.model or CLAUDE_MODEL or "default"
     if a2_model_requests_total is not None:
         a2_model_requests_total.labels(**_LABELS, model=resolved_model).inc()
 
-    is_new = session_id not in sessions and not await asyncio.to_thread(_session_file_exists, session_id)
+    is_new = ctx.session_id not in sessions and not await asyncio.to_thread(_session_file_exists, ctx.session_id)
     if not is_new and a2_session_idle_seconds is not None:
-        _last_used = sessions.get(session_id)
+        _last_used = sessions.get(ctx.session_id)
         if _last_used is not None:
             a2_session_idle_seconds.labels(**_LABELS).observe(time.monotonic() - _last_used)
     if a2_session_starts_total is not None:
         a2_session_starts_total.labels(**_LABELS, type="new" if is_new else "resumed").inc()
 
     _prompt_preview = prompt[:LOG_PROMPT_MAX_BYTES] + ("[truncated]" if len(prompt) > LOG_PROMPT_MAX_BYTES else "") if LOG_PROMPT_MAX_BYTES > 0 else "[redacted]"
-    logger.info(f"Session {session_id} ({'new' if is_new else 'existing'}) — prompt: {_prompt_preview!r}")
-    await log_entry("user", prompt, session_id, model=model)
+    logger.info(f"Session {ctx.session_id} ({'new' if is_new else 'existing'}) — prompt: {_prompt_preview!r}")
+    await log_entry("user", prompt, ctx.session_id, model=ctx.model)
 
     if a2_prompt_length_bytes is not None:
         a2_prompt_length_bytes.labels(**_LABELS).observe(_utf8_byte_length(prompt))
@@ -938,12 +976,12 @@ async def _run_inner(
     _budget_exceeded = False
     try:
         collected = await asyncio.wait_for(
-            run_query(prompt, session_id, is_new, mcp_servers, agent_md_content, model=model, max_tokens=max_tokens, on_chunk=on_chunk, hook_state=hook_state),
+            run_query(prompt, ctx, is_new, max_tokens=max_tokens, on_chunk=on_chunk, hook_state=hook_state),
             timeout=TASK_TIMEOUT_SECONDS,
         )
-        await _track_session(sessions, session_id)
+        await _track_session(sessions, ctx.session_id)
     except asyncio.TimeoutError as _exc:
-        logger.error(f"Session {session_id!r}: timed out after {TASK_TIMEOUT_SECONDS}s.")
+        logger.error(f"Session {ctx.session_id!r}: timed out after {TASK_TIMEOUT_SECONDS}s.")
         # Terminal marker for partial assistant text already committed by
         # per-block log_entry calls inside _run_query_inner (#566). Without
         # this, conversation.jsonl ends on a plausible-looking agent turn
@@ -951,26 +989,26 @@ async def _run_inner(
         await log_entry(
             "system",
             f"{type(_exc).__name__}: {_exc}",
-            session_id,
-            model=model,
+            ctx.session_id,
+            model=ctx.model,
         )
         # Remove the session from the LRU cache on timeout. The SDK context
         # manager is cancelled mid-stream, so the session state may be
         # inconsistent. Evicting it ensures the next call starts a fresh
         # session rather than trying to resume a potentially broken one.
-        sessions.pop(session_id, None)
+        sessions.pop(ctx.session_id, None)
         # Also remove the on-disk session file so the next request for this
         # session_id starts with empty history rather than reloading the
         # potentially stale or mid-stream snapshot written before the timeout.
         # Run the unlink in a thread pool to avoid blocking the event loop on
         # slow/remote filesystems (#426).
-        _timeout_path = _session_file_path(session_id)
+        _timeout_path = _session_file_path(ctx.session_id)
         if _timeout_path is not None:
             try:
                 await asyncio.to_thread(_timeout_path.unlink, missing_ok=True)
-                logger.info("Removed stale session file for timed-out session %r", session_id)
+                logger.info("Removed stale session file for timed-out session %r", ctx.session_id)
             except OSError as _e:
-                logger.warning("Could not remove session file for timed-out session %r: %s", session_id, _e)
+                logger.warning("Could not remove session file for timed-out session %r: %s", ctx.session_id, _e)
         if a2_tasks_total is not None:
             a2_tasks_total.labels(**_LABELS, status="timeout").inc()
         if a2_task_error_duration_seconds is not None:
@@ -980,15 +1018,15 @@ async def _run_inner(
         raise
     except BudgetExceededError as _bexc:
         _budget_exceeded = True
-        logger.warning(f"Session {session_id!r}: {_bexc} — returning partial response.")
+        logger.warning(f"Session {ctx.session_id!r}: {_bexc} — returning partial response.")
         await log_entry(
             "system",
             f"Budget exceeded: {_bexc.total} tokens used of {_bexc.limit} limit.",
-            session_id,
-            model=model,
+            ctx.session_id,
+            model=ctx.model,
         )
         collected = _bexc.collected
-        await _track_session(sessions, session_id)
+        await _track_session(sessions, ctx.session_id)
     except Exception as _exc:
         if a2_tasks_total is not None:
             a2_tasks_total.labels(**_LABELS, status="error").inc()
@@ -1001,8 +1039,8 @@ async def _run_inner(
         await log_entry(
             "system",
             f"{type(_exc).__name__}: {_exc}",
-            session_id,
-            model=model,
+            ctx.session_id,
+            model=ctx.model,
         )
         raise
 
