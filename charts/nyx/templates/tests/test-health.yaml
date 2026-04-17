@@ -13,6 +13,7 @@ metadata:
     helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
 spec:
   restartPolicy: Never
+  activeDeadlineSeconds: 60
   securityContext:
     runAsNonRoot: true
     runAsUser: 100
@@ -30,13 +31,13 @@ spec:
         - |
           set -e
           echo "Testing nyx-harness health/ready for {{ .name }}..."
-          curl -sf http://{{ $.Release.Name }}-{{ .name }}:{{ .port | default 8000 }}/health/ready
+          curl -sf --connect-timeout 3 --max-time 10 http://{{ $.Release.Name }}-{{ .name }}:{{ .port | default 8000 }}/health/ready
           echo ""
           echo "Testing A2A discovery for {{ .name }}..."
-          curl -sf http://{{ $.Release.Name }}-{{ .name }}:{{ .port | default 8000 }}/.well-known/agent.json
+          curl -sf --connect-timeout 3 --max-time 10 http://{{ $.Release.Name }}-{{ .name }}:{{ .port | default 8000 }}/.well-known/agent.json
           echo ""
           echo "Testing backend connectivity for {{ .name }}..."
-          agents=$(curl -sf http://{{ $.Release.Name }}-{{ .name }}:{{ .port | default 8000 }}/agents)
+          agents=$(curl -sf --connect-timeout 3 --max-time 20 http://{{ $.Release.Name }}-{{ .name }}:{{ .port | default 8000 }}/agents)
           echo "$agents"
           {{- range .backends }}
           {{- if eq (include "nyx.enabled" .) "true" }}
