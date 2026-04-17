@@ -38,10 +38,14 @@ app.kubernetes.io/managed-by: helm
 
 {{/*
 Generate a git-mapping emptyDir volume name from agent, context, and dest path.
+The dest is hashed (sha1sum, truncated to 10 chars) rather than slug-translated
+so that paths differing only by `/` vs `-` vs `.` produce distinct names (#573).
+The final name is capped to 63 chars to satisfy Kubernetes' DNS-1123 label limit.
 Usage: {{- include "nyx.gmVolumeName" (dict "agentName" $agentName "context" "agent" "dest" .dest) }}
 */}}
 {{- define "nyx.gmVolumeName" -}}
-gm-{{ .agentName }}-{{ .context }}-{{ .dest | trimPrefix "/home/agent/" | trimPrefix "." | replace "/" "-" | replace "." "-" | trimSuffix "-" }}
+{{- $hash := printf "%s" .dest | sha1sum | trunc 10 -}}
+{{- printf "gm-%s-%s-%s" .agentName .context $hash | trunc 63 | trimSuffix "-" -}}
 {{- end }}
 
 {{/*
