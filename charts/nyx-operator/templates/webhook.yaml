@@ -33,6 +33,16 @@ injection mechanism and aren't in scope for this first pass.
 {{- $caInject := printf "%s/%s" $ns $certName -}}
 {{- $issuerKind := .Values.webhooks.certManager.issuerKind | default "Issuer" -}}
 {{- $extRef := and .Values.webhooks.certManager.issuerRef .Values.webhooks.certManager.issuerRef.name -}}
+{{- /*
+Fail-fast guard: if neither a chart-owned Issuer nor an external issuerRef
+is available, the Certificate points at a non-existent issuer and
+cert-manager emits events forever without issuing — which then blocks the
+webhook from ever coming up because the manager has no cert to serve on
+:9443. Force the operator to pick one.
+*/ -}}
+{{- if and (not .Values.webhooks.certManager.createIssuer) (not $extRef) -}}
+  {{- fail "nyx-operator chart: webhooks.enabled=true requires either webhooks.certManager.createIssuer=true (chart renders a selfSigned Issuer) OR webhooks.certManager.issuerRef.name set (reference an external (Cluster)Issuer). Neither is configured — the webhook serving cert would point at a non-existent issuer and the manager would never come up." -}}
+{{- end -}}
 ---
 # Webhook Service — selects the controller-manager pods via the deployment's
 # standard `control-plane: controller-manager` label.

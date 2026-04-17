@@ -12,6 +12,15 @@ Issuer selection precedence:
 {{- if and .Values.certManager.enabled .Values.ingress.enabled (default false .Values.ingress.tlsEnabled) -}}
 {{- $secret := .Values.ingress.tlsSecretName | default (printf "%s-dashboard-tls" .Release.Name) -}}
 {{- $extRef := and .Values.certManager.issuerRef .Values.certManager.issuerRef.name -}}
+{{- /*
+Fail-fast guard: if neither a chart-owned Issuer nor an external issuerRef
+is available, rendering a Certificate pointing at <release>-selfsigned
+would produce a broken resource (cert-manager emits events forever without
+ever issuing). Force the operator to pick one.
+*/ -}}
+{{- if and (not .Values.certManager.createIssuer) (not $extRef) -}}
+  {{- fail "nyx chart: certManager.enabled=true + ingress.tlsEnabled=true requires either certManager.createIssuer=true (chart renders a selfSigned Issuer) OR certManager.issuerRef.name set (reference an external (Cluster)Issuer). Neither is configured — the Certificate would point at a non-existent issuer." -}}
+{{- end -}}
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:

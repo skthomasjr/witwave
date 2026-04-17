@@ -64,17 +64,23 @@ dashboard:
 # Values shape mirrors charts/nyx-operator so operators see the same knobs.
 certManager:
   enabled: false
-  # Render a chart-owned Issuer. Set false when using an external ClusterIssuer
-  # (populate issuerRef below).
+  # Render a chart-owned Issuer. Set false when using an external (Cluster)Issuer
+  # via issuerRef below. Note: setting createIssuer=false WITHOUT populating
+  # issuerRef.name fails render — the Certificate would otherwise point at a
+  # non-existent issuer.
   createIssuer: true
-  # Kind of Issuer to render. "Issuer" is namespaced; "ClusterIssuer" is global.
-  # Ignored when createIssuer=false.
+  # Kind of the Issuer the CHART creates when createIssuer=true.
+  # "Issuer" is namespaced to the release; "ClusterIssuer" is global.
+  # Ignored entirely when createIssuer=false — see issuerRef.kind for the
+  # corresponding knob on external issuers.
   issuerKind: Issuer
   # Reference to an existing (Cluster)Issuer. When name is set, createIssuer is
-  # ignored and the chart references this issuer instead.
+  # ignored and the chart references this issuer instead. issuerRef.kind
+  # defaults to "ClusterIssuer" when unset — if you're pointing at a namespaced
+  # "Issuer" you MUST set kind explicitly.
   issuerRef:
     name: ""
-    kind: ""   # e.g. "ClusterIssuer"
+    kind: ""   # defaults to "ClusterIssuer" when empty; set to "Issuer" for namespaced issuers
 
 ingress:
   enabled: false

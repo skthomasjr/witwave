@@ -217,14 +217,21 @@ webhooks:
   certManager:
     enabled: true
     # Render a chart-owned selfSigned Issuer. Set false when using an
-    # external ClusterIssuer via issuerRef below.
+    # external (Cluster)Issuer via issuerRef below. Note: setting
+    # createIssuer=false WITHOUT populating issuerRef.name fails render —
+    # the webhook serving cert would otherwise point at a non-existent
+    # issuer and the manager would never come up.
     createIssuer: true
-    # Kind of Issuer to render when createIssuer=true. Typically "Issuer"
-    # (namespaced to the operator install). Some operators prefer
+    # Kind of the Issuer the CHART creates when createIssuer=true. Typically
+    # "Issuer" (namespaced to the operator install). Some operators prefer
     # "ClusterIssuer" when certs are shared across multiple releases.
+    # Ignored entirely when createIssuer=false — see issuerRef.kind for the
+    # corresponding knob on external issuers.
     issuerKind: Issuer
     # Reference an external (Cluster)Issuer. When name is set, createIssuer
     # is ignored and the Certificate references this issuer instead.
+    # issuerRef.kind defaults to "ClusterIssuer" when unset — if you're
+    # pointing at a namespaced "Issuer" you MUST set kind explicitly.
     issuerRef:
       name: ""
-      kind: ""   # e.g. "ClusterIssuer"
+      kind: ""   # defaults to "ClusterIssuer" when empty; set to "Issuer" for namespaced issuers
