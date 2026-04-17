@@ -107,6 +107,7 @@ agent_webhooks_items_registered: prometheus_client.Gauge | None = None
 agent_consensus_runs_total: prometheus_client.Counter | None = None
 agent_consensus_backend_errors_total: prometheus_client.Counter | None = None
 agent_metrics_backend_fetch_errors_total: prometheus_client.Counter | None = None
+agent_backend_proxy_fetch_errors_total: prometheus_client.Counter | None = None
 agent_background_tasks: prometheus_client.Gauge | None = None
 agent_background_tasks_shed_total: prometheus_client.Counter | None = None
 agent_background_tasks_timeout_total: prometheus_client.Counter | None = None
@@ -557,6 +558,12 @@ if _enabled:
         "agent_metrics_backend_fetch_errors_total",
         "Total failures when fetching /metrics from a backend during aggregation.",
         ["backend"],
+    )
+    agent_backend_proxy_fetch_errors_total = prometheus_client.Counter(
+        "agent_backend_proxy_fetch_errors_total",
+        "Total failures when fetching /conversations or /trace from a backend "
+        "during proxy aggregation (#579). endpoint=\"conversations\"|\"trace\".",
+        ["backend", "endpoint"],
     )
     agent_background_tasks = prometheus_client.Gauge(
         "agent_background_tasks",

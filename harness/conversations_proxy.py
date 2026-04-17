@@ -2,12 +2,40 @@
 
 import asyncio
 import logging
+import time
 
 import httpx
 
 from backends.config import BackendConfig
+from metrics import agent_backend_proxy_fetch_errors_total
 
 logger = logging.getLogger(__name__)
+
+# Log-flood guard: throttle warning-level emissions per (backend_id, endpoint)
+# to at most once per _LOG_THROTTLE_SECONDS. Further failures within the window
+# fall back to debug-level so a down backend does not flood logs for hours (#579).
+_LOG_THROTTLE_SECONDS = 60.0
+_last_warn_ts: dict[tuple[str, str], float] = {}
+
+
+def _log_fetch_error(backend_id: str, endpoint: str, message: str) -> None:
+    """Emit a warning at most once per backend+endpoint per throttle window; else debug."""
+    key = (backend_id, endpoint)
+    now = time.monotonic()
+    last = _last_warn_ts.get(key, 0.0)
+    if now - last >= _LOG_THROTTLE_SECONDS:
+        _last_warn_ts[key] = now
+        logger.warning(message)
+    else:
+        logger.debug(message)
+
+
+def _count_fetch_error(backend_id: str, endpoint: str) -> None:
+    """Increment the proxy fetch-error counter when metrics are enabled."""
+    if agent_backend_proxy_fetch_errors_total is not None:
+        agent_backend_proxy_fetch_errors_total.labels(
+            backend=backend_id, endpoint=endpoint
+        ).inc()
 
 
 async def fetch_backend_conversations(
@@ -18,7 +46,9 @@ async def fetch_backend_conversations(
 ) -> list[dict]:
     """Fetch /conversations from each backend concurrently and return merged entries sorted by ts.
 
-    Backends that are unreachable or return non-200 are silently skipped.
+    Backends that are unreachable or return non-200 are skipped; failures are counted in
+    agent_backend_proxy_fetch_errors_total{backend, endpoint="conversations"} and logged at
+    warning (throttled per-backend per-endpoint) so silent degradation is visible (#579).
     When auth_token is provided, it is forwarded as a Bearer Authorization header.
     """
     # Pass limit to each backend so the per-backend response is bounded.
@@ -44,9 +74,19 @@ async def fetch_backend_conversations(
                 if isinstance(entries, list):
                     return entries
             else:
-                logger.debug(f"Backend {backend.id!r} /conversations returned {resp.status_code} — skipping")
+                _count_fetch_error(backend.id, "conversations")
+                _log_fetch_error(
+                    backend.id,
+                    "conversations",
+                    f"Backend {backend.id!r} /conversations returned {resp.status_code} — skipping",
+                )
         except Exception as exc:
-            logger.debug(f"Backend {backend.id!r} /conversations unreachable: {exc!r} — skipping")
+            _count_fetch_error(backend.id, "conversations")
+            _log_fetch_error(
+                backend.id,
+                "conversations",
+                f"Backend {backend.id!r} /conversations unreachable: {exc!r} — skipping",
+            )
         return []
 
     seen: set[tuple] = set()
@@ -56,9 +96,14 @@ async def fetch_backend_conversations(
             *[_fetch_one_conversations(client, b) for b in backends],
             return_exceptions=True,
         )
-    for result in results:
+    for backend, result in zip(backends, results):
         if isinstance(result, BaseException):
-            logger.debug(f"Backend /conversations gather error: {result!r} — skipping")
+            _count_fetch_error(backend.id, "conversations")
+            _log_fetch_error(
+                backend.id,
+                "conversations",
+                f"Backend {backend.id!r} /conversations gather error: {result!r} — skipping",
+            )
             continue
         for entry in result:
             key = (entry.get("ts"), entry.get("session_id"), entry.get("role"), entry.get("agent"), (entry.get("text") or "")[:64])
@@ -80,7 +125,9 @@ async def fetch_backend_trace(
 ) -> list[dict]:
     """Fetch /trace from each backend concurrently and return merged entries sorted by ts.
 
-    Backends that are unreachable or return non-200 are silently skipped.
+    Backends that are unreachable or return non-200 are skipped; failures are counted in
+    agent_backend_proxy_fetch_errors_total{backend, endpoint="trace"} and logged at
+    warning (throttled per-backend per-endpoint) so silent degradation is visible (#579).
     When auth_token is provided, it is forwarded as a Bearer Authorization header.
     """
     # Pass limit to each backend so the per-backend response is bounded.
@@ -106,9 +153,19 @@ async def fetch_backend_trace(
                 if isinstance(entries, list):
                     return entries
             else:
-                logger.debug(f"Backend {backend.id!r} /trace returned {resp.status_code} — skipping")
+                _count_fetch_error(backend.id, "trace")
+                _log_fetch_error(
+                    backend.id,
+                    "trace",
+                    f"Backend {backend.id!r} /trace returned {resp.status_code} — skipping",
+                )
         except Exception as exc:
-            logger.debug(f"Backend {backend.id!r} /trace unreachable: {exc!r} — skipping")
+            _count_fetch_error(backend.id, "trace")
+            _log_fetch_error(
+                backend.id,
+                "trace",
+                f"Backend {backend.id!r} /trace unreachable: {exc!r} — skipping",
+            )
         return []
 
     seen: set[tuple] = set()
@@ -118,9 +175,14 @@ async def fetch_backend_trace(
             *[_fetch_one_trace(client, b) for b in backends],
             return_exceptions=True,
         )
-    for result in results:
+    for backend, result in zip(backends, results):
         if isinstance(result, BaseException):
-            logger.debug(f"Backend /trace gather error: {result!r} — skipping")
+            _count_fetch_error(backend.id, "trace")
+            _log_fetch_error(
+                backend.id,
+                "trace",
+                f"Backend {backend.id!r} /trace gather error: {result!r} — skipping",
+            )
             continue
         for entry in result:
             key = (entry.get("ts"), entry.get("session_id"), entry.get("event_type"), entry.get("id") or entry.get("tool_use_id"))
