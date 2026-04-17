@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -112,47 +113,39 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, nil
 	}
 
-	// Apply all desired resources, accumulating any error so status can
-	// reflect the first failure.
-	var reconcileErr error
-	applied := map[string]bool{
-		"deployment": false,
-		"service":    false,
-	}
+	// Apply all desired resources, joining any errors so status and logs
+	// surface every failure rather than only the first (#497).
+	var reconcileErrs []error
 
 	if err := r.applyDeployment(ctx, agent); err != nil {
-		reconcileErr = err
-	} else {
-		applied["deployment"] = true
+		reconcileErrs = append(reconcileErrs, err)
 	}
-
-	if err := r.applyService(ctx, agent); err != nil && reconcileErr == nil {
-		reconcileErr = err
-	} else if err == nil {
-		applied["service"] = true
+	if err := r.applyService(ctx, agent); err != nil {
+		reconcileErrs = append(reconcileErrs, err)
 	}
 
 	// Optional resources. Failure to apply an optional does not block the
 	// whole reconcile — it is captured into the error chain.
-	if err := r.reconcileConfigMaps(ctx, agent); err != nil && reconcileErr == nil {
-		reconcileErr = err
+	if err := r.reconcileConfigMaps(ctx, agent); err != nil {
+		reconcileErrs = append(reconcileErrs, err)
 	}
-	if err := r.applyBackendPVCs(ctx, agent); err != nil && reconcileErr == nil {
-		reconcileErr = err
+	if err := r.applyBackendPVCs(ctx, agent); err != nil {
+		reconcileErrs = append(reconcileErrs, err)
 	}
-	if err := r.reconcileHPA(ctx, agent); err != nil && reconcileErr == nil {
-		reconcileErr = err
+	if err := r.reconcileHPA(ctx, agent); err != nil {
+		reconcileErrs = append(reconcileErrs, err)
 	}
-	if err := r.reconcilePDB(ctx, agent); err != nil && reconcileErr == nil {
-		reconcileErr = err
+	if err := r.reconcilePDB(ctx, agent); err != nil {
+		reconcileErrs = append(reconcileErrs, err)
 	}
 	// Dashboard is opt-in per agent (#470). reconcileDashboard handles
 	// both the create/update path when enabled and the delete path when
 	// the field is removed or toggled off, so the cluster converges
 	// cleanly in either direction.
-	if err := r.reconcileDashboard(ctx, agent); err != nil && reconcileErr == nil {
-		reconcileErr = err
+	if err := r.reconcileDashboard(ctx, agent); err != nil {
+		reconcileErrs = append(reconcileErrs, err)
 	}
+	reconcileErr := errors.Join(reconcileErrs...)
 
 	// Observe Deployment status and update our own status subresource.
 	if err := r.updateStatus(ctx, agent, reconcileErr); err != nil {
