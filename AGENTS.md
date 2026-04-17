@@ -98,7 +98,9 @@ treated equally regardless of what it wraps. Current MCP components:
 Each MCP component:
 
 - Speaks the Model Context Protocol (not A2A) and is consumed by backends via their MCP configuration
-  (`mcp.json` for a2-claude, `config.toml` for a2-codex, equivalent for a2-gemini).
+  (`mcp.json` under `.claude/`, `.codex/`, or `.gemini/` — all three backends share the same wire format).
+  Codex additionally reads `.codex/config.toml` for built-in tool enablement flags; that file is unrelated to
+  MCP server wiring.
 - Targets only the cluster where it is deployed; auth is in-cluster ServiceAccount + RBAC, not arbitrary
   kubeconfigs.
 - Is independently deployable and typically **shared across all agents** in a cluster rather than replicated

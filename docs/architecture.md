@@ -86,6 +86,7 @@ backends/a2-claude/                     # Claude backend source
 ├── Dockerfile
 ├── main.py                    # A2A server entrypoint
 ├── executor.py                # Claude Agent SDK executor; owns session state and logging
+├── hooks.py                   # PreToolUse/PostToolUse policy engine + baseline deny rules (#467)
 ├── metrics.py                 # Prometheus metric definitions (a2_* prefix; superset with tool/MCP metrics)
 ├── sqlite_task_store.py       # SQLite-backed A2A task store (used when TASK_STORE_PATH is set)
 └── requirements.txt
@@ -103,9 +104,19 @@ backends/a2-gemini/                     # Gemini backend source
 ├── Dockerfile
 ├── main.py                    # A2A server entrypoint
 ├── executor.py                # google-genai SDK executor; owns session state and logging
+├── hooks.py                   # Hook skeleton; #631/#640 AFC caveat documented in backend README
 ├── metrics.py                 # Prometheus metric definitions (a2_* prefix)
 ├── sqlite_task_store.py       # SQLite-backed A2A task store (used when TASK_STORE_PATH is set)
 └── requirements.txt
+
+shared/                        # Python modules mounted into harness + backends
+├── otel.py                    # OpenTelemetry bootstrap and helpers (#469)
+├── log_utils.py               # Structured log append helpers
+├── conversations.py           # Shared /conversations, /trace, /tool-audit auth-gated handlers
+├── hooks_engine.py            # Hook policy evaluation shared by backends that wire hooks
+├── prompt_env.py              # {{env.VAR}} interpolation for prompt bodies (#473)
+├── validation.py              # Input validation helpers
+└── exceptions.py              # Shared exception types
 
 dashboard/                     # Vue 3 + Vite + PrimeVue web interface
 
@@ -148,6 +159,8 @@ docs/
 ├── architecture.md            # This document
 ├── competitive-landscape.md   # Competitor research and gap analysis
 ├── product-vision.md          # Target audience, design principles, deployment roadmap
+├── examples.md                # Redirect stub → prompts/ and architecture.md
+├── smoke-tests.md             # What to check in the conversation log after deploying the test stack
 └── prompts/                   # Prompt type reference (one file per type)
     ├── README.md              # Index and overview
     ├── heartbeat.md

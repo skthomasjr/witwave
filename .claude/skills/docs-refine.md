@@ -1,7 +1,7 @@
 ---
 name: docs-refine
 description: Review and update project documentation to ensure it is accurate, complete, and consistent with the current codebase. Trigger when the user says "refine docs", "update the docs", "review the docs", "check the documentation", "update documentation", or "run docs refine" — with or without a specific document or component name.
-version: 1.2.0
+version: 1.3.0
 ---
 
 # docs-refine
@@ -13,14 +13,23 @@ Review project documentation against the current codebase and update it in place
 The documents covered by this skill are:
 
 - `<repo-root>/README.md` — root project overview
-- `<repo-root>/agent/README.md` — orchestrator component
+- `<repo-root>/CONTRIBUTING.md` — contribution model (issue-only)
+- `<repo-root>/harness/README.md` — nyx-harness orchestrator component (was `agent/README.md`)
 - `<repo-root>/backends/a2-claude/README.md` — Claude backend component
 - `<repo-root>/backends/a2-codex/README.md` — Codex backend component
 - `<repo-root>/backends/a2-gemini/README.md` — Gemini backend component
-- `<repo-root>/ui/README.md` — web UI component
+- `<repo-root>/dashboard/README.md` — Vue 3 dashboard component (was `ui/README.md`)
+- `<repo-root>/operator/README.md` — Kubernetes operator (Go) component
+- `<repo-root>/tools/README.md` — MCP component index
+- `<repo-root>/tools/kubernetes/README.md` — mcp-kubernetes MCP server
+- `<repo-root>/tools/helm/README.md` — mcp-helm MCP server
+- `<repo-root>/charts/nyx/README.md` — nyx Helm chart (agents)
+- `<repo-root>/charts/nyx-operator/README.md` — nyx-operator Helm chart
+- `<repo-root>/tests/README.md` — smoke-test suite index
 - `<repo-root>/docs/` — all files, including the `prompts/` subdirectory
 
-Excluded from this skill: `AGENTS.md`, `CLAUDE.md`, skills, and issue templates.
+Excluded from this skill: `AGENTS.md`, `CLAUDE.md`, `.claude/skills/`, individual `tests/NNN-*.md` specs,
+and issue templates under `.github/ISSUE_TEMPLATE/`.
 
 ## Instructions
 

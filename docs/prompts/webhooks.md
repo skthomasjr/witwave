@@ -11,7 +11,7 @@ Webhooks complement inbound triggers: triggers are internet → agent; webhooks 
 ```markdown
 ---
 name: slack-job-summary
-url: https://hooks.slack.com/services/{{env.SLACK_TEAM}}/{{env.SLACK_CHANNEL}}/{{env.SLACK_TOKEN}}
+url-env-var: SLACK_WEBHOOK_URL
 notify-when: on_success
 notify-on-kind:
   - job:daily-report
@@ -56,7 +56,10 @@ body: |
 
 ## Built-in Variables
 
-Available in the markdown body, `body:` template, header values, and `url:`.
+Available in the markdown body, `body:` template, and header values. **Not available in the `url:` field** —
+`{{env.VAR}}` and extracted variables are stripped from URLs to prevent SSRF via env exfiltration or
+extraction-steered redirects (#524). Use `url-env-var` when the destination URL is stored in an environment
+variable.
 
 | Variable               | Value                                                     |
 | ---------------------- | --------------------------------------------------------- |
@@ -72,7 +75,11 @@ Available in the markdown body, `body:` template, header values, and `url:`.
 | `{{timestamp}}`        | ISO 8601 UTC timestamp of delivery                        |
 | `{{delivery_id}}`      | UUID unique to this delivery attempt                      |
 
-`{{env.VAR}}` resolves the environment variable `VAR` at delivery time. Available anywhere variables are supported.
+`{{env.VAR}}` resolves the environment variable `VAR` at delivery time. Available in the markdown body,
+`body:` template, and header values. **Rejected in the `url:` field** — env-derived URLs must be placed
+in a single environment variable and referenced via `url-env-var` instead (#524). Only `http`/`https`
+schemes are accepted, and hosts resolving to loopback/link-local/private/reserved IP literals are blocked
+unless explicitly opted in via the nyx-harness `WEBHOOK_URL_ALLOWED_HOSTS` env var.
 
 Extracted variables (defined under `extract:`) are also available in the `body:` template and header values.
 
@@ -80,8 +87,8 @@ Extracted variables (defined under `extract:`) are also available in the `body:`
 
 | Field                       | Required   | Description                                                                                                                                                            |
 | --------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `url`                       | One of two | Literal webhook destination URL. Supports `{{env.VAR}}` interpolation.                                                                                                 |
-| `url-env-var`               | One of two | Name of an env var holding the destination URL.                                                                                                                        |
+| `url`                       | One of two | Literal webhook destination URL. `{{env.VAR}}` and extracted variables are **not** substituted here (#524); only `http`/`https` are accepted and private/loopback IP hosts are rejected unless allow-listed. |
+| `url-env-var`               | One of two | Name of an env var holding the destination URL. Use this instead of `url:` when the URL comes from the environment.                                                    |
 | `name`                      | No         | Display name used in logs and metrics. Defaults to filename stem.                                                                                                      |
 | `description`               | No         | Human-readable summary.                                                                                                                                                |
 | `enabled`                   | No         | `false` disables without deleting. Default: `true`.                                                                                                                    |

@@ -32,6 +32,11 @@ consensus:
     model: "claude-haiku-4-5"           # same backend, different model = two parallel calls
 ```
 
-When consensus is active, the prompt is dispatched to every matched `(backend, model)` pair concurrently. The default
-backend's response is used as the primary result; responses from all other backends are appended as commentary. The same
-backend can appear twice with different models — each combination is treated as a distinct call.
+When consensus is active, the prompt is dispatched to every matched `(backend, model)` pair concurrently, then the
+responses are aggregated:
+
+- **Binary responses** (yes/no/agree/disagree variants): majority vote. The default backend breaks ties.
+- **Freeform responses**: a synthesis prompt is dispatched to the default backend, which merges the collected
+  responses into a single coherent answer.
+
+The same backend can appear twice with different models — each combination is treated as a distinct call.

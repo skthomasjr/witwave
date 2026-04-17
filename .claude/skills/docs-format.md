@@ -1,7 +1,7 @@
 ---
 name: docs-format
 description: Lint and format markdown documents using the repository's markdownlint and prettier configuration. Trigger when the user says "format docs", "lint docs", "fix doc formatting", or "run docs format".
-version: 1.0.0
+version: 1.1.0
 ---
 
 # docs-format
@@ -15,11 +15,19 @@ This is a leaf skill. It lints and formats markdown files using the tooling conf
 If the caller specified a list of files, format only those. If no files were specified, format all markdown files in scope:
 
 - `<repo-root>/README.md`
-- `<repo-root>/agent/README.md`
+- `<repo-root>/CONTRIBUTING.md`
+- `<repo-root>/harness/README.md`
 - `<repo-root>/backends/a2-claude/README.md`
 - `<repo-root>/backends/a2-codex/README.md`
 - `<repo-root>/backends/a2-gemini/README.md`
-- `<repo-root>/ui/README.md`
+- `<repo-root>/dashboard/README.md`
+- `<repo-root>/operator/README.md`
+- `<repo-root>/tools/README.md`
+- `<repo-root>/tools/kubernetes/README.md`
+- `<repo-root>/tools/helm/README.md`
+- `<repo-root>/charts/nyx/README.md`
+- `<repo-root>/charts/nyx-operator/README.md`
+- `<repo-root>/tests/README.md`
 - `<repo-root>/docs/**/*.md`
 
 **Step 2: Run prettier.**
