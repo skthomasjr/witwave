@@ -1,3 +1,29 @@
+"""Internal async message bus for the harness scheduler.
+
+Dedup semantics (#615)
+----------------------
+Two enqueue paths exist, and the choice between them is deliberate:
+
+* :meth:`MessageBus.send` — always enqueues, always awaits the result.
+  Used by trigger dispatch, ad-hoc run endpoints, continuations, and any
+  caller that must not silently drop a request. The ``_pending_kinds``
+  membership is set on enqueue but does **not** dedup — a second call
+  with the same ``kind`` still enqueues and the caller still gets its
+  own future.
+
+* :meth:`MessageBus.try_send` — dedups against ``_pending_kinds``;
+  returns ``False`` when a message of the same ``kind`` is already
+  in-flight. Used today only by the heartbeat scheduler, whose
+  semantics are "fire at most one heartbeat per tick, silently skip
+  ticks that overlap a still-running one". Job / task / trigger /
+  continuation runners intentionally use ``send`` so overlapping
+  schedules do not silently coalesce.
+
+Dedup usage is already observable via ``agent_bus_dedup_total{kind}``
+so operators can see which kinds actually experience dedup without
+auditing call sites.
+"""
+
 import asyncio
 import logging
 import os
