@@ -797,12 +797,60 @@ class AgentExecutor(A2AAgentExecutor):
                     agent_running_tasks.dec()
 
     async def close(self) -> None:
-        """Cancel and drain all MCP watcher tasks."""
+        """Coordinated shutdown: watchers, background tasks, backend clients (#604).
+
+        Runs three phases in order so later phases can assume earlier ones
+        completed. Each phase swallows exceptions so a single stubborn task
+        can't block the rest of the teardown.
+
+        1. Cancel and drain MCP watcher tasks.
+        2. Cancel and drain in-flight background tasks tracked by
+           ``track_background`` — these are the webhook / trigger / continuation
+           fire-and-forget coroutines. Draining here prevents leaked sockets
+           and half-finished work on shutdown.
+        3. Close every backend client (``A2ABackend.close`` releases its
+           pooled ``httpx.AsyncClient``). The executor owns backends so it
+           owns their lifetime.
+
+        The bus worker and scheduler runner tasks are owned by the
+        ``main.py`` lifespan (not this executor) and stay under that layer's
+        control. Wiring the lifespan-level shutdown is a follow-up, tracked
+        as a separate narrower gap — this slice closes the leaks the
+        executor does own.
+        """
+        # Phase 1: MCP watchers.
         for task in self._mcp_watcher_tasks:
             task.cancel()
         if self._mcp_watcher_tasks:
             await asyncio.gather(*self._mcp_watcher_tasks, return_exceptions=True)
         self._mcp_watcher_tasks.clear()
+
+        # Phase 2: Background tasks (webhook / trigger / continuation fires).
+        if self._background_tasks:
+            _pending = [t for t in self._background_tasks if not t.done()]
+            for t in _pending:
+                t.cancel()
+            if _pending:
+                await asyncio.gather(*_pending, return_exceptions=True)
+            # Done callbacks will have discarded most entries by now; clear
+            # anything that slipped through (e.g. callback scheduled after
+            # loop close) so the set doesn't retain references.
+            self._background_tasks.clear()
+            if agent_background_tasks is not None:
+                try:
+                    agent_background_tasks.set(0)
+                except Exception:
+                    pass
+
+        # Phase 3: Backend clients (pooled httpx).
+        for _backend in list(self._backends.values()):
+            _close = getattr(_backend, "close", None)
+            if _close is None:
+                continue
+            try:
+                await _close()
+            except Exception as _exc:  # noqa: BLE001 — shutdown must continue
+                logger.warning("backend %r close() failed: %r", _backend.id, _exc)
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         if agent_task_cancellations_total is not None:
