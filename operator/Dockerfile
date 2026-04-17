@@ -1,5 +1,6 @@
 # Build the manager binary
-FROM golang:1.24 AS builder
+# Go 1.25 required by transitive deps from go.opentelemetry.io/otel@v1.43.0 (#471 part B).
+FROM golang:1.25 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 # VERSION is injected into the manager binary via -ldflags so the operator
