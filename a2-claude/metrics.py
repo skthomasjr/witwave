@@ -111,6 +111,13 @@ a2_hooks_warnings_total: prometheus_client.Counter | None = None
 a2_tool_audit_entries_total: prometheus_client.Counter | None = None
 a2_hooks_config_reloads_total: prometheus_client.Counter | None = None
 a2_hooks_active_rules: prometheus_client.Gauge | None = None
+a2_hooks_evaluations_total: prometheus_client.Counter | None = None
+a2_hooks_config_errors_total: prometheus_client.Counter | None = None
+
+# Per-logger log write errors (#626). Complementary to a2_log_write_errors_total
+# (kept unchanged for backward compatibility with existing alerts that aggregate
+# without a `logger` label).
+a2_log_write_errors_by_logger_total: prometheus_client.Counter | None = None
 
 if _enabled:
     a2_up = prometheus_client.Gauge("a2_up", "Backend agent is running", ["agent", "agent_id", "backend"])
@@ -520,4 +527,39 @@ if _enabled:
         "a2_hooks_active_rules",
         "Number of currently active hook rules, by rule source.",
         ["agent", "agent_id", "backend", "source"],
+    )
+    # Total PreToolUse evaluations — denominator for deny/warn rates (#620).
+    # The `decision` label is the intended grouping (allow|warn|deny); other
+    # per-match labels (source, rule) stay on a2_hooks_blocked_total /
+    # a2_hooks_warnings_total and are intentionally NOT duplicated here.
+    a2_hooks_evaluations_total = prometheus_client.Counter(
+        "a2_hooks_evaluations_total",
+        "Total PreToolUse hook evaluations, grouped by final decision.",
+        ["agent", "agent_id", "backend", "tool", "decision"],
+    )
+    # hooks.yaml parse / reload failures (#623). ``reason`` is a closed enum:
+    #   yaml_reload_failed       — hooks_config_watcher caught an exception.
+    #   missing_name             — rule entry had empty/missing name.
+    #   non_string_tool          — rule `tool` was not a string.
+    #   no_pattern               — rule had neither deny_if_match nor warn_if_match.
+    #   both_patterns            — rule had both deny_if_match and warn_if_match.
+    #   non_string_pattern       — pattern field was not a string.
+    #   invalid_regex            — regex failed to compile.
+    #   non_mapping_entry        — extensions list contained a non-mapping.
+    #   file_load_failed         — load_extension_rules failed to read/parse file.
+    #   not_mapping              — top-level YAML was not a mapping.
+    #   non_list_extensions      — `extensions` key was not a list.
+    # Do not extend this list without updating operator dashboards / docs.
+    a2_hooks_config_errors_total = prometheus_client.Counter(
+        "a2_hooks_config_errors_total",
+        "Total hooks.yaml parse/reload/validation errors by reason.",
+        ["agent", "agent_id", "backend", "reason"],
+    )
+    # Per-logger log write errors (#626). Non-breaking complement to
+    # a2_log_write_errors_total — carries the `logger` label so operators can
+    # distinguish tool-audit vs conversation vs trace write failures.
+    a2_log_write_errors_by_logger_total = prometheus_client.Counter(
+        "a2_log_write_errors_by_logger_total",
+        "Total log write errors attributed to a specific logger.",
+        ["agent", "agent_id", "backend", "logger"],
     )

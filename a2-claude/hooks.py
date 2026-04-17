@@ -83,6 +83,28 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
+
+def _bump_config_error(reason: str) -> None:
+    """Increment ``a2_hooks_config_errors_total{reason}`` if metrics enabled (#623).
+
+    Imported lazily so this module stays test-friendly when metrics are not
+    wired up. The ``reason`` value is a closed enum — see metrics.py for the
+    canonical list. Labels are looked up from executor's ``_LABELS`` context.
+    """
+    try:
+        from metrics import a2_hooks_config_errors_total
+        if a2_hooks_config_errors_total is None:
+            return
+        import os as _os
+        _labels = {
+            "agent": _os.environ.get("AGENT_OWNER", _os.environ.get("AGENT_NAME", "a2-claude")),
+            "agent_id": _os.environ.get("AGENT_ID", "claude"),
+            "backend": "claude",
+        }
+        a2_hooks_config_errors_total.labels(**_labels, reason=reason).inc()
+    except Exception:  # pragma: no cover — metrics must never break hook parsing
+        pass
+
 # Decision vocabulary — strings instead of enums so YAML-loaded rules can
 # round-trip cleanly and hook callables can return the SDK-native literals
 # without conversion gymnastics.
@@ -518,10 +540,12 @@ def _parse_extension_rule(raw: dict[str, Any]) -> Rule | None:
     name = raw.get("name")
     if not isinstance(name, str) or not name.strip():
         logger.warning("hooks.yaml: skipping entry with missing/empty name: %r", raw)
+        _bump_config_error("missing_name")
         return None
     tool = raw.get("tool")
     if tool is not None and not isinstance(tool, str):
         logger.warning("hooks.yaml: rule %r has non-string tool %r — skipping.", name, tool)
+        _bump_config_error("non_string_tool")
         return None
 
     deny_pat = raw.get("deny_if_match")
@@ -530,20 +554,24 @@ def _parse_extension_rule(raw: dict[str, Any]) -> Rule | None:
         logger.warning(
             "hooks.yaml: rule %r has both deny_if_match and warn_if_match — preferring deny.", name
         )
+        _bump_config_error("both_patterns")
         warn_pat = None
     if not deny_pat and not warn_pat:
         logger.warning("hooks.yaml: rule %r has neither deny_if_match nor warn_if_match — skipping.", name)
+        _bump_config_error("no_pattern")
         return None
 
     action = DECISION_DENY if deny_pat else DECISION_WARN
     pat_source = deny_pat if deny_pat else warn_pat
     if not isinstance(pat_source, str):
         logger.warning("hooks.yaml: rule %r pattern is not a string — skipping.", name)
+        _bump_config_error("non_string_pattern")
         return None
     try:
         pattern = re.compile(pat_source)
     except re.error as exc:
         logger.warning("hooks.yaml: rule %r has invalid regex %r: %s — skipping.", name, pat_source, exc)
+        _bump_config_error("invalid_regex")
         return None
 
     reason = raw.get("reason") or f"blocked by extension rule {name!r}"
@@ -574,21 +602,25 @@ def load_extension_rules(path: str) -> list[Rule]:
             data = yaml.safe_load(f) or {}
     except Exception as exc:
         logger.warning("Failed to load hooks.yaml from %s: %s", path, exc)
+        _bump_config_error("file_load_failed")
         return []
 
     if not isinstance(data, dict):
         logger.warning("hooks.yaml at %s is not a mapping — ignoring.", path)
+        _bump_config_error("not_mapping")
         return []
 
     raw_list = data.get("extensions") or []
     if not isinstance(raw_list, list):
         logger.warning("hooks.yaml at %s has non-list `extensions` — ignoring.", path)
+        _bump_config_error("non_list_extensions")
         return []
 
     parsed: list[Rule] = []
     for raw in raw_list:
         if not isinstance(raw, dict):
             logger.warning("hooks.yaml: skipping non-mapping entry %r", raw)
+            _bump_config_error("non_mapping_entry")
             continue
         rule = _parse_extension_rule(raw)
         if rule is not None:

@@ -33,8 +33,11 @@ from metrics import (
     a2_concurrent_queries,
     a2_hooks_active_rules,
     a2_hooks_blocked_total,
+    a2_hooks_config_errors_total,
     a2_hooks_config_reloads_total,
+    a2_hooks_evaluations_total,
     a2_hooks_warnings_total,
+    a2_log_write_errors_by_logger_total,
     a2_tool_audit_entries_total,
     a2_context_exhaustion_total,
     a2_context_tokens,
@@ -326,7 +329,7 @@ AGENT_ID = os.environ.get("AGENT_ID", "claude")
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
 TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/trace.jsonl")
 MCP_CONFIG_PATH = os.environ.get("MCP_CONFIG_PATH", "/home/agent/.claude/mcp.json")
-AGENT_MD = "/home/agent/.claude/CLAUDE.md"
+AGENT_MD = os.environ.get("AGENT_MD_PATH", "/home/agent/.claude/CLAUDE.md")
 HOOKS_CONFIG_PATH = os.environ.get("HOOKS_CONFIG_PATH", "/home/agent/.claude/hooks.yaml")
 HOOKS_BASELINE_ENABLED = os.environ.get("HOOKS_BASELINE_ENABLED", "true").lower() not in ("0", "false", "no", "off")
 TOOL_AUDIT_LOG = os.environ.get("TOOL_AUDIT_LOG", "/home/agent/logs/tool-audit.jsonl")
@@ -346,7 +349,7 @@ if _ALLOWED_TOOLS_IS_DEFAULT:
 else:
     logger.info("ALLOWED_TOOLS resolved to: %s (from env override).", ",".join(ALLOWED_TOOLS))
 
-CONTEXT_USAGE_WARN_THRESHOLD = float(os.environ.get("CONTEXT_USAGE_WARN_THRESHOLD", "0.9"))
+CONTEXT_USAGE_WARN_THRESHOLD = float(os.environ.get("CONTEXT_USAGE_WARN_THRESHOLD", "0.8"))
 MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "10000"))
 TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
 # Maximum number of bytes of prompt text included in INFO-level log messages.
@@ -439,6 +442,8 @@ async def log_entry(role: str, text: str, session_id: str, model: str | None = N
     except Exception as e:
         if a2_log_write_errors_total is not None:
             a2_log_write_errors_total.labels(**_LABELS).inc()
+        if a2_log_write_errors_by_logger_total is not None:
+            a2_log_write_errors_by_logger_total.labels(**_LABELS, logger="conversation").inc()
         logger.error(f"log_entry error: {e}")
 
 
@@ -452,6 +457,8 @@ async def log_trace(text: str) -> None:
     except Exception as e:
         if a2_log_write_errors_total is not None:
             a2_log_write_errors_total.labels(**_LABELS).inc()
+        if a2_log_write_errors_by_logger_total is not None:
+            a2_log_write_errors_by_logger_total.labels(**_LABELS, logger="trace").inc()
         logger.error(f"log_trace error: {e}")
 
 
@@ -476,6 +483,8 @@ async def log_tool_audit(entry: dict) -> None:
     except Exception as e:
         if a2_log_write_errors_total is not None:
             a2_log_write_errors_total.labels(**_LABELS).inc()
+        if a2_log_write_errors_by_logger_total is not None:
+            a2_log_write_errors_by_logger_total.labels(**_LABELS, logger="tool_audit").inc()
         logger.error(f"log_tool_audit error: {e}")
 
 
@@ -491,6 +500,14 @@ def _make_pre_tool_use_hook(state: HookState):
         tool_input = input_data.get("tool_input") or {}
         rules = state.active_rules()
         decision, matched = evaluate_pre_tool_use(tool_name, tool_input, rules)
+
+        # Bump the evaluations-total denominator once per call so operators
+        # can compute deny / warn / allow rates (#620). Done before the
+        # branch returns so all three paths contribute.
+        if a2_hooks_evaluations_total is not None:
+            a2_hooks_evaluations_total.labels(
+                **_LABELS, tool=tool_name or "unknown", decision=decision,
+            ).inc()
 
         if decision == DECISION_DENY and matched is not None:
             if a2_hooks_blocked_total is not None:
@@ -1307,6 +1324,10 @@ class AgentExecutor(A2AAgentExecutor):
                             logger.info("hooks.yaml reloaded: extensions=%d", len(new_rules))
                         except Exception as exc:
                             logger.warning("hooks.yaml reload failed — keeping previous rules: %s", exc)
+                            if a2_hooks_config_errors_total is not None:
+                                a2_hooks_config_errors_total.labels(
+                                    **_LABELS, reason="yaml_reload_failed",
+                                ).inc()
                         break
             logger.warning("hooks.yaml directory watcher exited — retrying in 10s.")
             if a2_file_watcher_restarts_total is not None:

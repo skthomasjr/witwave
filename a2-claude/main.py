@@ -306,7 +306,21 @@ async def main():
                             "description": _agent_description,
                             "inputSchema": {
                                 "type": "object",
-                                "properties": {"prompt": {"type": "string", "description": "The prompt to send to the agent."}},
+                                "properties": {
+                                    "prompt": {"type": "string", "description": "The prompt to send to the agent."},
+                                    "session_id": {
+                                        "type": "string",
+                                        "description": "Optional session identifier for conversation continuity (#596). "
+                                                       "A valid UUID is passed through verbatim; any other string is "
+                                                       "hashed via uuid5(NAMESPACE_URL, value). Omit for a fresh session.",
+                                    },
+                                    "max_tokens": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "description": "Optional per-call token budget (#460). Positive integers only; "
+                                                       "non-positive or invalid values are logged and ignored.",
+                                    },
+                                },
                                 "required": ["prompt"],
                             },
                         }
@@ -343,7 +357,23 @@ async def main():
                         mcp_max_tokens = _parsed
                 except (ValueError, TypeError):
                     logger.warning("MCP tools/call: invalid max_tokens %r; ignoring.", _max_tokens_raw)
-            session_id = str(uuid.uuid4())
+            # Session continuity (#596). Mirror the A2A validation pattern in
+            # executor.execute(): accept a caller-supplied session_id from
+            # arguments — UUID passthrough, else uuid5(NAMESPACE_URL, raw) —
+            # so repeated /mcp tools/call invocations can resume context
+            # instead of starting a fresh session every time. Fall back to a
+            # random UUID when no session_id is provided.
+            _raw_sid = "".join(
+                c for c in str(arguments.get("session_id") or "").strip()[:256] if c >= " "
+            )
+            if not _raw_sid:
+                session_id = str(uuid.uuid4())
+            else:
+                try:
+                    uuid.UUID(_raw_sid)
+                    session_id = _raw_sid
+                except ValueError:
+                    session_id = str(uuid.uuid5(uuid.NAMESPACE_URL, _raw_sid))
             try:
                 from executor import run as _run_query_for_mcp
                 response = await _run_query_for_mcp(
