@@ -21,6 +21,28 @@ import { extractReplyText } from "../types/chat";
 const DEFAULT_SEND_TIMEOUT_MS = 120_000;
 const DEFAULT_HISTORY_TIMEOUT_MS = 30_000;
 
+// Ceiling on the live messages array. A sliding window drops the oldest
+// entries once the cap is exceeded so long-lived dashboard tabs don't grow
+// unbounded memory / DOM footprints (#564). Override via the option or the
+// `CHAT_MAX_MESSAGES` build-time env var (exposed by Vite as
+// import.meta.env.VITE_CHAT_MAX_MESSAGES for runtime parity).
+const DEFAULT_MAX_MESSAGES = 500;
+
+function resolveMaxMessages(override?: number): number {
+  if (typeof override === "number" && override > 0) return Math.floor(override);
+  const fromEnv = (
+    import.meta as unknown as {
+      env?: { VITE_CHAT_MAX_MESSAGES?: string | number };
+    }
+  ).env?.VITE_CHAT_MAX_MESSAGES;
+  if (fromEnv !== undefined) {
+    const parsed =
+      typeof fromEnv === "number" ? fromEnv : parseInt(String(fromEnv), 10);
+    if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed);
+  }
+  return DEFAULT_MAX_MESSAGES;
+}
+
 function randomId(): string {
   // crypto.randomUUID isn't universally typed in older TS lib sets, but every
   // supported target (vitest jsdom, modern browsers) has it.
@@ -31,6 +53,7 @@ export interface UseChatOptions {
   agentName: string;
   sendTimeoutMs?: number;
   historyTimeoutMs?: number;
+  maxMessages?: number;
 }
 
 export function useChat(opts: UseChatOptions) {
@@ -42,6 +65,15 @@ export function useChat(opts: UseChatOptions) {
   const contextId = randomId();
   const sendTimeoutMs = opts.sendTimeoutMs ?? DEFAULT_SEND_TIMEOUT_MS;
   const historyTimeoutMs = opts.historyTimeoutMs ?? DEFAULT_HISTORY_TIMEOUT_MS;
+  const maxMessages = resolveMaxMessages(opts.maxMessages);
+
+  function cap(list: ChatMessage[]): ChatMessage[] {
+    // Sliding window: when the ceiling is exceeded, drop the oldest entries
+    // so the tail (most recent messages) stays visible. Returning the input
+    // unchanged when within bounds preserves referential behavior for the
+    // common path.
+    return list.length > maxMessages ? list.slice(-maxMessages) : list;
+  }
 
   // Tracks the in-flight send so both the user (via cancel()) and the
   // unmount teardown can abort an orphaned fetch. Only one send is allowed
@@ -54,7 +86,7 @@ export function useChat(opts: UseChatOptions) {
     // instead of the array index (#550). Callers may supply their own id
     // (e.g. backfill reuses harness ts) but the common path is a fresh uuid.
     const stamped: ChatMessage = { ...msg, id: msg.id ?? randomId() };
-    messages.value = [...messages.value, stamped];
+    messages.value = cap([...messages.value, stamped]);
   }
 
   function isAbortError(e: unknown): boolean {
@@ -88,15 +120,17 @@ export function useChat(opts: UseChatOptions) {
           timeoutMs: historyTimeoutMs,
         },
       );
-      messages.value = entries
-        .filter((e) => (e.text ?? "").trim().length > 0)
-        .map<ChatMessage>((e) => ({
-          id: randomId(),
-          role: e.role === "user" ? "user" : "agent",
-          text: e.text ?? "",
-          label: e.role === "user" ? "you" : e.agent,
-          ts: e.ts,
-        }));
+      messages.value = cap(
+        entries
+          .filter((e) => (e.text ?? "").trim().length > 0)
+          .map<ChatMessage>((e) => ({
+            id: randomId(),
+            role: e.role === "user" ? "user" : "agent",
+            text: e.text ?? "",
+            label: e.role === "user" ? "you" : e.agent,
+            ts: e.ts,
+          })),
+      );
     } catch (e) {
       if (isAbortError(e)) return;
       historyError.value =
