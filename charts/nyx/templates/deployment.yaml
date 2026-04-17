@@ -340,6 +340,30 @@ spec:
             {{- end }}
 {{- end }}
 {{- end }}
+      {{- /* Scheduling controls (#603). Each field is resolved per-agent first,
+             falling back to the chart-global value. Per-agent replaces global
+             (not merge) — matches the existing autoscaling / podDisruptionBudget
+             semantics. Mirrors the nyx-operator chart's value names exactly so
+             NyxAgent → chart translation is 1:1 (pairs with #605). */}}
+      {{- with (.nodeSelector | default $.Values.nodeSelector) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (.tolerations | default $.Values.tolerations) }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (.affinity | default $.Values.affinity) }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (.topologySpreadConstraints | default $.Values.topologySpreadConstraints) }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (.priorityClassName | default $.Values.priorityClassName) }}
+      priorityClassName: {{ . }}
+      {{- end }}
       volumes:
         - name: manifest
           configMap:

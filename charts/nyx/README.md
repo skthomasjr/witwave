@@ -112,6 +112,16 @@ helm uninstall nyx --namespace nyx
 | `terminationGracePeriodSeconds` | Pod termination grace period. Must be strictly greater than `preStop.delaySeconds` so SIGTERM fires with enough remaining time for the harness and backends to drain in-flight work before SIGKILL (#547) | `60` |
 | `preStop.enabled` | Add a `lifecycle.preStop` sleep on every container so in-flight A2A requests, jobs, and webhook deliveries get a coordinated drain window before SIGTERM (#447) | `false` |
 | `preStop.delaySeconds` | preStop sleep duration in seconds. Keep strictly less than `terminationGracePeriodSeconds`; the chart will `fail` render otherwise when `preStop.enabled=true` (#547) | `5` |
+| `nodeSelector` | Chart-global `nodeSelector` applied to every agent pod. Per-agent overrides via `agents[].nodeSelector` **replace** (not merge) this value — matches the `autoscaling` / `podDisruptionBudget` semantics. Mirrors the nyx-operator chart and pairs with the NyxAgent CRD (#603, #605) | `{}` |
+| `tolerations` | Chart-global pod tolerations applied to every agent pod. Per-agent `agents[].tolerations` **replace** this value. Use with node taints to dedicate node pools to agent workloads (#603) | `[]` |
+| `affinity` | Chart-global pod affinity / anti-affinity applied to every agent pod. Per-agent `agents[].affinity` **replace** this value. Rendered with `toYaml` so the full affinity schema is supported (#603) | `{}` |
+| `topologySpreadConstraints` | Chart-global topology spread constraints applied to every agent pod. Per-agent `agents[].topologySpreadConstraints` **replace** this value. Interacts with `podDisruptionBudget` on multi-replica agents — spread replicas first, then let the PDB gate drains (#603) | `[]` |
+| `priorityClassName` | Chart-global `priorityClassName` applied to every agent pod. Per-agent `agents[].priorityClassName` **replaces** this value. Use to bias scheduling priority for production agent pods (#603) | `""` |
+| `agents[].nodeSelector` | Per-agent `nodeSelector`. Replaces chart-global `nodeSelector` when set (#603) | unset |
+| `agents[].tolerations` | Per-agent tolerations. Replaces chart-global `tolerations` when set (#603) | unset |
+| `agents[].affinity` | Per-agent affinity. Replaces chart-global `affinity` when set (#603) | unset |
+| `agents[].topologySpreadConstraints` | Per-agent topology spread constraints. Replaces chart-global `topologySpreadConstraints` when set (#603) | unset |
+| `agents[].priorityClassName` | Per-agent `priorityClassName`. Replaces chart-global `priorityClassName` when set (#603) | unset |
 | `probes.liveness.initialDelaySeconds` | Liveness probe initial delay | `10` |
 | `probes.liveness.periodSeconds` | Liveness probe period | `30` |
 | `probes.liveness.timeoutSeconds` | Liveness probe timeout | `5` |

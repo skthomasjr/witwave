@@ -170,6 +170,44 @@ preStop:
   enabled: false
   delaySeconds: 5
 
+# Scheduling controls applied to every agent pod unless the per-agent entry
+# overrides them (#603). Mirrors the nyx-operator chart's value names exactly
+# so a NyxAgent CRD → chart values translation is 1:1 (pairs with #605).
+# Per-agent values REPLACE these (not merge) — matches the existing
+# autoscaling / podDisruptionBudget semantics. Leave empty/unset to place
+# no scheduling constraints on the pod.
+#
+# nodeSelector:
+#   workload-class: ai-memory-optimized
+# tolerations:
+#   - key: dedicated
+#     operator: Equal
+#     value: ai
+#     effect: NoSchedule
+# affinity:
+#   nodeAffinity:
+#     requiredDuringSchedulingIgnoredDuringExecution:
+#       nodeSelectorTerms:
+#         - matchExpressions:
+#             - key: node.kubernetes.io/instance-type
+#               operator: In
+#               values: [r6i.xlarge, r6i.2xlarge]
+# topologySpreadConstraints:
+#   # Spread replicas of the same agent across zones. Pairs naturally with
+#   # podDisruptionBudget.enabled=true once multi-replica is safe (#559).
+#   - maxSkew: 1
+#     topologyKey: topology.kubernetes.io/zone
+#     whenUnsatisfiable: ScheduleAnyway
+#     labelSelector:
+#       matchLabels:
+#         app.kubernetes.io/name: adam
+# priorityClassName: system-cluster-critical
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+priorityClassName: ""
+
 # Liveness and readiness probe timing for all containers.
 # Defaults match the values previously hardcoded in templates (#425).
 #
@@ -385,6 +423,35 @@ agents:
     # # Image pull secrets for private registries.
     # imagePullSecrets:
     #   - name: ghcr-credentials
+
+    # # Per-agent scheduling overrides (#603). Each field REPLACES the chart-global
+    # # value (nodeSelector / tolerations / affinity / topologySpreadConstraints /
+    # # priorityClassName) — same semantics as autoscaling / podDisruptionBudget.
+    # # Field names mirror the nyx-operator chart and the NyxAgent CRD (#605).
+    # nodeSelector:
+    #   workload-class: ai-memory-optimized
+    # tolerations:
+    #   - key: dedicated
+    #     operator: Equal
+    #     value: ai
+    #     effect: NoSchedule
+    # affinity:
+    #   podAntiAffinity:
+    #     preferredDuringSchedulingIgnoredDuringExecution:
+    #       - weight: 100
+    #         podAffinityTerm:
+    #           labelSelector:
+    #             matchLabels:
+    #               app.kubernetes.io/name: adam
+    #           topologyKey: kubernetes.io/hostname
+    # topologySpreadConstraints:
+    #   - maxSkew: 1
+    #     topologyKey: topology.kubernetes.io/zone
+    #     whenUnsatisfiable: ScheduleAnyway
+    #     labelSelector:
+    #       matchLabels:
+    #         app.kubernetes.io/name: adam
+    # priorityClassName: system-cluster-critical
 
     # # Resource requests and limits for the nyx-harness orchestrator container.
     # # Overrides `defaults.resources.harness` above. nyx-harness is lightweight
