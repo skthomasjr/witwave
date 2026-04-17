@@ -34,7 +34,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
 	nyxv1alpha1 "github.com/nyx-ai/nyx-operator/api/v1alpha1"
+	"github.com/nyx-ai/nyx-operator/internal/tracing"
 )
 
 // DefaultImageTag is used when an ImageSpec omits Tag. The release pipeline
@@ -69,6 +74,18 @@ type NyxAgentReconciler struct {
 // Reconcile is the control loop's entry point. It brings owned resources into
 // alignment with the NyxAgent spec and writes status.
 func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	// OTel server span around the full reconcile (#471 part B). When OTel
+	// isn't enabled the tracer is a no-op so the overhead is a single
+	// branch + interface dispatch — safe to leave on always.
+	ctx, span := tracing.Tracer().Start(ctx, "nyxagent.reconcile",
+		trace.WithSpanKind(trace.SpanKindServer),
+		trace.WithAttributes(
+			attribute.String("nyx.namespace", req.Namespace),
+			attribute.String("nyx.name", req.Name),
+		),
+	)
+	defer span.End()
+
 	log := logf.FromContext(ctx)
 
 	agent := &nyxv1alpha1.NyxAgent{}
@@ -146,7 +163,12 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		}
 	}
 
+	// Stamp the resulting phase onto the span so traces show outcome at a
+	// glance, plus mark errors so collectors flag them red.
+	span.SetAttributes(attribute.String("nyx.phase", string(agent.Status.Phase)))
 	if reconcileErr != nil {
+		span.RecordError(reconcileErr)
+		span.SetStatus(codes.Error, reconcileErr.Error())
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, reconcileErr
 	}
 

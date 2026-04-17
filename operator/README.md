@@ -143,9 +143,26 @@ NyxAgent-specific domain metrics added on top (#471):
 The dashboard gauge series is dropped on agent deletion; the two counters
 persist (Prometheus convention — counters are monotonic).
 
-OpenTelemetry tracing on the operator's reconcile loop is tracked
-separately under #471 (the (A) half of that issue is implemented; the
-OTel half is pending).
+## Tracing (OpenTelemetry)
+
+When `OTEL_ENABLED=true`, the manager emits one server span per
+`Reconcile()` call (`nyxagent.reconcile`) attributed with `nyx.namespace`,
+`nyx.name`, and the resulting `nyx.phase`. Errors are recorded on the span
+so collectors flag them red. W3C trace-context propagator matches the
+Python side (#468/#469) so inbound `traceparent` headers propagate across
+the agent boundary.
+
+Standard OTel env vars apply: `OTEL_EXPORTER_OTLP_ENDPOINT`,
+`OTEL_SERVICE_NAME` (defaults to `nyx-operator`), `OTEL_TRACES_SAMPLER`.
+`POD_NAMESPACE` and `POD_NAME` (set via downward API in the chart's pod
+spec) feed `k8s.namespace` and `k8s.pod.name` resource attributes.
+
+When `OTEL_ENABLED` is unset/false (default), the no-op tracer takes over
+and the per-reconcile overhead is a single branch + interface dispatch.
+
+Client-go HTTP transport instrumentation (so Kubernetes API calls emit
+child spans) is a separate enhancement — not yet implemented; tracked
+follow-on if needed.
 
 ## License
 

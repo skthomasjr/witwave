@@ -17,10 +17,12 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"os"
 	"path/filepath"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -39,6 +41,7 @@ import (
 
 	nyxv1alpha1 "github.com/nyx-ai/nyx-operator/api/v1alpha1"
 	"github.com/nyx-ai/nyx-operator/internal/controller"
+	"github.com/nyx-ai/nyx-operator/internal/tracing"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -88,6 +91,22 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	// Initialise OpenTelemetry tracing (#471 part B). No-op when
+	// OTEL_ENABLED is unset/false. Shutdown is deferred so a clean exit
+	// flushes the in-flight batch span exporter; the timeout matches
+	// the standard envoy-style 5s drain budget.
+	otelShutdown, err := tracing.InitOTel(context.Background())
+	if err != nil {
+		setupLog.Error(err, "OTel init failed — continuing without tracing")
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := otelShutdown(shutdownCtx); err != nil {
+			setupLog.Error(err, "OTel shutdown returned an error")
+		}
+	}()
 
 	// Surface uninjected DefaultImageTag at boot so misconfigured release
 	// builds are loud rather than silently pulling whatever "latest" resolves

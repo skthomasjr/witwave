@@ -123,6 +123,17 @@ resources:
 # Additional command-line flags passed to /manager. Useful for experimental
 # flags that are not yet first-class values above.
 extraArgs: []
+
+# Extra environment variables for the controller-manager container. POD_NAME
+# and POD_NAMESPACE are always injected via the downward API (used for OTel
+# resource attributes when OTEL_ENABLED=true). Add OTEL_* / OTEL_EXPORTER_*
+# entries here to enable distributed tracing without rebuilding the image:
+# env:
+#   - name: OTEL_ENABLED
+#     value: "true"
+#   - name: OTEL_EXPORTER_OTLP_ENDPOINT
+#     value: http://otel-collector.observability:4318
+env: []
 # extraArgs:
 #   - --zap-log-level=debug
 

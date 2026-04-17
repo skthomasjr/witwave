@@ -55,6 +55,22 @@ spec:
             {{- with .Values.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+          env:
+            # Downward-API namespace + pod name feed the OTel resource
+            # attributes k8s.namespace and k8s.pod.name when tracing is
+            # enabled (#471 part B). Empty otherwise — the operator's
+            # tracing.InitOTel falls back to defaults.
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            {{- with .Values.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           ports:
             - name: probes
               containerPort: {{ .Values.probes.port }}
