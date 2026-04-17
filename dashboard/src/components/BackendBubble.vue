@@ -16,7 +16,10 @@ const emit = defineEmits<{
   (e: "select", backendId: string): void;
 }>();
 
-const type = computed(() => backendType(props.backend.id));
+// Pass the full Agent so backendType() can prefer an explicit `family` on the
+// agent-card (structured match) and only fall back to id-based inference when
+// the field is absent.
+const type = computed(() => backendType(props.backend));
 const reachable = computed(() => !!props.backend.card);
 const agentName = computed(() => props.backend.card?.name ?? props.backend.id);
 
