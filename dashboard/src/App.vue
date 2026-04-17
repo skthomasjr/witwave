@@ -4,8 +4,9 @@ import { useHealth } from "./composables/useHealth";
 
 // App shell. Simple button-style nav matching the legacy ui/ pattern —
 // compact, dark-surface, one entry per view. Status dot in the header
-// mirrors legacy #hdr-status: green when /api/team answers, red when it
-// doesn't, gray during the first probe.
+// aggregates per-agent health across the team (#543): green when every
+// member is reachable, amber when some are failing, red when all are
+// down, gray during the first fan-out probe.
 
 interface NavItem {
   label: string;
@@ -46,10 +47,18 @@ const { state, detail } = useHealth();
       <span
         class="status"
         :class="`status-${state}`"
-        :title="state === 'err' ? detail : state"
+        :title="detail || state"
         data-testid="header-status"
       >
-        {{ state === "connecting" ? "connecting…" : state === "ok" ? "online" : "offline" }}
+        {{
+          state === "connecting"
+            ? "connecting…"
+            : state === "ok"
+              ? "online"
+              : state === "partial"
+                ? "degraded"
+                : "offline"
+        }}
       </span>
       <span class="version" data-testid="dashboard-version">v0.1.0-alpha</span>
     </header>
@@ -140,6 +149,14 @@ const { state, detail } = useHealth();
 
 .status-ok::before {
   background: var(--nyx-green);
+}
+
+.status-partial {
+  color: var(--nyx-yellow);
+}
+
+.status-partial::before {
+  background: var(--nyx-yellow);
 }
 
 .status-err {

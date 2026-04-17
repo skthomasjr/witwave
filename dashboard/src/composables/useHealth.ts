@@ -1,41 +1,52 @@
-import { onMounted, onUnmounted, ref } from "vue";
-import { apiGet } from "../api/client";
+import { computed } from "vue";
+import { useTeam } from "./useTeam";
 
-// Polls /api/team (served locally by dashboard nginx — cheap and always
-// available if the pod itself is up) to produce the status dot in the
-// header. Green = last fetch ok, red = last fetch failed, gray = first
-// fetch in flight. Deliberately lightweight; the per-view composables
-// still own their own error state for the main UI.
+// Header status dot — aggregates per-agent health across the whole team
+// (#543). Previously this polled the dashboard-local /api/team endpoint,
+// which is served by the dashboard pod itself and cannot detect cluster
+// outages. We now derive state from useTeam's per-member fan-out (each
+// member carries its own `error` populated by /api/agents/<name>/agents),
+// giving a tri-state indicator that reflects real cluster health rather
+// than "the dashboard pod is up".
+//
+//   connecting — first fetch in flight, or we haven't seen any members yet
+//   ok         — every team member's last probe succeeded
+//   partial    — some members ok, some failed (tooltip lists failing names)
+//   err        — every team member failed, or the directory itself failed
+//
+// Implementation note: we reuse useTeam rather than starting a second
+// poller to avoid doubling dashboard network traffic. Soft-dependency on
+// the per-agent error shape surfaced by #574.
+
+export type HealthState = "connecting" | "ok" | "partial" | "err";
 
 export function useHealth(intervalMs = 10000) {
-  const state = ref<"connecting" | "ok" | "err">("connecting");
-  const detail = ref<string>("");
+  const { members, error, loading } = useTeam({ intervalMs });
 
-  let timer: ReturnType<typeof setInterval> | null = null;
-  let aborter: AbortController | null = null;
+  const state = computed<HealthState>(() => {
+    // Directory fetch itself failed (dashboard-local /api/team unreachable,
+    // which in practice means the SPA also can't load — but handle it).
+    if (error.value && members.value.length === 0) return "err";
+    // First fan-out still in flight, or no members resolved yet.
+    if (loading.value && members.value.length === 0) return "connecting";
+    if (members.value.length === 0) return "connecting";
 
-  async function check(): Promise<void> {
-    aborter?.abort();
-    aborter = new AbortController();
-    try {
-      await apiGet<unknown>("/team", { signal: aborter.signal });
-      state.value = "ok";
-      detail.value = "";
-    } catch (e) {
-      if ((e as { name?: string }).name === "AbortError") return;
-      state.value = "err";
-      detail.value = (e as Error).message;
-    }
-  }
-
-  onMounted(() => {
-    void check();
-    timer = setInterval(() => void check(), intervalMs);
+    const failing = members.value.filter((m) => m.error);
+    if (failing.length === 0) return "ok";
+    if (failing.length === members.value.length) return "err";
+    return "partial";
   });
 
-  onUnmounted(() => {
-    if (timer !== null) clearInterval(timer);
-    aborter?.abort();
+  const detail = computed<string>(() => {
+    if (state.value === "ok" || state.value === "connecting") return "";
+    if (state.value === "err" && members.value.length === 0) {
+      return error.value || "team directory unavailable";
+    }
+    const failing = members.value.filter((m) => m.error);
+    if (failing.length === 0) return "";
+    const names = failing.map((m) => m.name).join(", ");
+    if (state.value === "err") return `all agents unreachable: ${names}`;
+    return `failing: ${names}`;
   });
 
   return { state, detail };
