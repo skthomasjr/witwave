@@ -320,16 +320,21 @@ _sessions_lock: asyncio.Lock | None = None
 _COMPUTER_SUPPORTED_MODELS = {"computer-use-preview"}
 
 
-async def _build_tools(model: str, session_id: str) -> list:
+async def _build_tools(model: str, session_id: str, tool_config: dict | None = None) -> list:
     """Build the SDK tool list for one run.
 
     The ComputerTool is bound to a per-``session_id`` PlaywrightComputer
     acquired from the shared BrowserPool so cookies, localStorage,
     service workers, cache, and page state stay isolated between A2A
     sessions (#522).
+
+    ``tool_config`` is the cached [tools] table from CODEX_CONFIG_TOML,
+    maintained by ``AgentExecutor.tool_config_watcher`` (#561). If None
+    (e.g. invoked outside a running AgentExecutor, such as in tests),
+    falls back to a direct disk read for backwards compatibility.
     """
     global _browser_pool
-    cfg = _load_tool_config()
+    cfg = tool_config if tool_config is not None else _load_tool_config()
     tools = []
     if cfg.get("shell", False):
         tools.append(LocalShellTool(executor=_shell_executor))
@@ -509,6 +514,7 @@ async def run_query(
     max_tokens: int | None = None,
     on_chunk: Callable[[str], Awaitable[None]] | None = None,
     live_mcp_servers: list | None = None,
+    tool_config: dict | None = None,
 ) -> list[str]:
     resolved_model = model or CODEX_MODEL
     log_dir = os.path.dirname(CODEX_SESSION_DB)
@@ -555,7 +561,7 @@ async def run_query(
             name=AGENT_NAME,
             instructions=instructions,
             model=resolved_model,
-            tools=await _build_tools(resolved_model, session_id),
+            tools=await _build_tools(resolved_model, session_id, tool_config=tool_config),
             mcp_servers=_live_mcp_servers,
         )
 
@@ -804,11 +810,12 @@ async def run(
     max_tokens: int | None = None,
     on_chunk: Callable[[str], Awaitable[None]] | None = None,
     live_mcp_servers: list | None = None,
+    tool_config: dict | None = None,
 ) -> str:
     if a2_concurrent_queries is not None:
         a2_concurrent_queries.labels(**_LABELS).inc()
     try:
-        return await _run_inner(prompt, session_id, sessions, agent_md_content, model, max_tokens, on_chunk=on_chunk, live_mcp_servers=live_mcp_servers)
+        return await _run_inner(prompt, session_id, sessions, agent_md_content, model, max_tokens, on_chunk=on_chunk, live_mcp_servers=live_mcp_servers, tool_config=tool_config)
     finally:
         if a2_concurrent_queries is not None:
             a2_concurrent_queries.labels(**_LABELS).dec()
@@ -823,6 +830,7 @@ async def _run_inner(
     max_tokens: int | None = None,
     on_chunk: Callable[[str], Awaitable[None]] | None = None,
     live_mcp_servers: list | None = None,
+    tool_config: dict | None = None,
 ) -> str:
     resolved_model = model or CODEX_MODEL
     if a2_model_requests_total is not None:
@@ -847,7 +855,7 @@ async def _run_inner(
     _budget_exceeded = False
     try:
         collected = await asyncio.wait_for(
-            run_query(prompt, session_id, agent_md_content, model=model, max_tokens=max_tokens, on_chunk=on_chunk, live_mcp_servers=live_mcp_servers),
+            run_query(prompt, session_id, agent_md_content, model=model, max_tokens=max_tokens, on_chunk=on_chunk, live_mcp_servers=live_mcp_servers, tool_config=tool_config),
             timeout=TASK_TIMEOUT_SECONDS,
         )
     except asyncio.TimeoutError:
@@ -926,6 +934,11 @@ class AgentExecutor(A2AAgentExecutor):
         # MCP config dict loaded from MCP_CONFIG_PATH; populated and refreshed
         # by mcp_config_watcher() (#432).
         self._mcp_config: dict = {}
+        # [tools] table from CODEX_CONFIG_TOML; populated and refreshed by
+        # tool_config_watcher() (#561). Eliminates per-request TOML re-parse
+        # in _build_tools; consistent with the mcp.json / AGENTS.md cache
+        # pattern elsewhere in this module.
+        self._tool_config: dict = {}
         self._mcp_watcher_tasks: list[asyncio.Task] = []
         # Lifespan-scoped MCP server stack (#526). MCP servers are entered
         # once at startup (or on hot-reload) and reused across requests,
@@ -941,8 +954,8 @@ class AgentExecutor(A2AAgentExecutor):
         self.closed: bool = False
 
     def _mcp_watchers(self):
-        """Return callables for AGENTS.md and mcp.json watching (#371, #432)."""
-        return [self.agent_md_watcher, self.mcp_config_watcher]
+        """Return callables for AGENTS.md, mcp.json, and config.toml watching (#371, #432, #561)."""
+        return [self.agent_md_watcher, self.mcp_config_watcher, self.tool_config_watcher]
 
     async def _apply_mcp_config(self, mcp_config: dict) -> None:
         """Enter the given MCP config into a fresh lifespan-scoped stack (#526).
@@ -1079,6 +1092,43 @@ class AgentExecutor(A2AAgentExecutor):
                 a2_file_watcher_restarts_total.labels(**_LABELS, watcher="agent_md").inc()
             await asyncio.sleep(10)
 
+    async def tool_config_watcher(self) -> None:
+        """Watch CODEX_CONFIG_TOML for changes and hot-reload the [tools] table (#561).
+
+        Mirrors the mcp_config_watcher / agent_md_watcher pattern: load once on
+        startup into ``self._tool_config`` (used by ``_build_tools`` via
+        ``run_query(tool_config=...)``), then watch the parent directory for any
+        changes to the config file. Eliminates the per-request
+        ``open + tomllib.load`` that previously ran on the hot path of every
+        Agent construction.
+        """
+        from watchfiles import awatch as _awatch
+
+        # Initial load so the cache is populated before the first request
+        # arrives. Run in a thread so slow/remote filesystems do not stall the
+        # event loop at startup (same rationale as mcp_config_watcher).
+        self._tool_config = await asyncio.to_thread(_load_tool_config)
+        logger.info("tool config loaded from %s: %s", CODEX_CONFIG_TOML, dict(self._tool_config))
+
+        watch_dir = os.path.dirname(os.path.abspath(CODEX_CONFIG_TOML))
+        while True:
+            if not os.path.isdir(watch_dir):
+                logger.info("tool config directory not found — retrying in 10s.")
+                await asyncio.sleep(10)
+                continue
+            async for changes in _awatch(watch_dir, recursive=False):
+                if a2_watcher_events_total is not None:
+                    a2_watcher_events_total.labels(**_LABELS, watcher="tool_config").inc()
+                for _, path in changes:
+                    if os.path.abspath(path) == os.path.abspath(CODEX_CONFIG_TOML):
+                        self._tool_config = await asyncio.to_thread(_load_tool_config)
+                        logger.info("tool config reloaded from %s: %s", CODEX_CONFIG_TOML, dict(self._tool_config))
+                        break
+            logger.warning("tool config directory watcher exited — retrying in 10s.")
+            if a2_file_watcher_restarts_total is not None:
+                a2_file_watcher_restarts_total.labels(**_LABELS, watcher="tool_config").inc()
+            await asyncio.sleep(10)
+
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         _exec_start = time.monotonic()
         prompt = context.get_user_input()
@@ -1154,6 +1204,7 @@ class AgentExecutor(A2AAgentExecutor):
                     max_tokens=max_tokens,
                     on_chunk=_emit_chunk,
                     live_mcp_servers=await self._snapshot_live_mcp_servers(),
+                    tool_config=self._tool_config,
                 )
                 _success = True
                 # Skip the final aggregated event when chunks were streamed —
