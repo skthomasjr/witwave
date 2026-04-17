@@ -319,7 +319,14 @@ owns the env-var wiring.
 
 **This chart does not deploy an OpenTelemetry Collector.** Matching the idiomatic pattern across Strimzi,
 cert-manager, Istio, Elastic ECK, Knative, Argo, Crossplane, and grafana-operator, nyx emits OTLP to a user-provided
-endpoint and delegates collector deployment to something built for that job:
+endpoint and delegates collector deployment to something built for that job.
+
+> **Note:** Earlier chart versions (pre-`0.3.x`) rendered an in-release OTel Collector Deployment + Service +
+> ConfigMap gated on `observability.tracing.collector.enabled`. That path was removed — the corresponding values
+> keys (`observability.tracing.collector.*`) are gone. Point `observability.tracing.endpoint` at an
+> opentelemetry-operator-managed collector or a direct OTLP backend instead.
+
+Options:
 
 - **Recommended:** install the [opentelemetry-operator](https://github.com/open-telemetry/opentelemetry-operator)
   and create an `OpenTelemetryCollector` CR. Point `observability.tracing.endpoint` at the resulting Service.
