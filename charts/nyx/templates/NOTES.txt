@@ -7,7 +7,7 @@ AGENTS
 ------
 {{- range .Values.agents }}
   • {{ $.Release.Name }}-{{ .name }}  →  port {{ .port | default 8000 }}
-    Backends: {{ range .backends }}{{ .name }}({{ .port }}) {{ end }}
+    Backends: {{ range .backends }}{{ if eq (include "nyx.enabled" .) "true" }}{{ .name }}({{ .port }}) {{ end }}{{ end }}
 {{- end }}
 
 VERIFY
@@ -44,7 +44,14 @@ If pulling images from a private registry:
 METRICS
 -------
 {{- if .Values.metrics.enabled }}
-Metrics are enabled. Each agent service has Prometheus scrape annotations on port {{ (index .Values.agents 0).port | default 8000 }}.
+{{- if .Values.agents }}
+Metrics are enabled. Each agent service has Prometheus scrape annotations:
+{{- range .Values.agents }}
+  • {{ $.Release.Name }}-{{ .name }}  →  port {{ .port | default 8000 }}
+{{- end }}
+{{- else }}
+Metrics are enabled, but no agents are configured.
+{{- end }}
 {{- else }}
 Metrics are disabled. Enable with:
   helm upgrade {{ .Release.Name }} nyx --set metrics.enabled=true -n {{ .Release.Namespace }}
