@@ -1011,6 +1011,41 @@ spec:
 
                   See risk #538.
                 type: string
+              serviceMonitor:
+                description: |-
+                  ServiceMonitor optionally creates a monitoring.coreos.com/v1
+                  ServiceMonitor for the agent when the Prometheus Operator CRDs
+                  are installed (#476). Gated by spec.metrics.enabled and a CRD
+                  presence check at reconcile time; no-ops on clusters without
+                  prometheus-operator.
+                properties:
+                  enabled:
+                    description: |-
+                      Enabled toggles creation of the ServiceMonitor. Requires
+                      spec.metrics.enabled=true (no endpoint to scrape otherwise) and the
+                      monitoring.coreos.com CRD to be installed. When the CRD is absent
+                      the reconciler logs once and no-ops; reconciliation resumes
+                      automatically once the CRD appears.
+                    type: boolean
+                  interval:
+                    default: 30s
+                    description: Interval between scrapes (e.g. "30s"). Defaults to
+                      "30s".
+                    type: string
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Labels merged into the ServiceMonitor's metadata.labels. Useful
+                      when the cluster's Prometheus selects ServiceMonitors by a
+                      tenancy label (e.g. `release: kube-prometheus-stack`).
+                    type: object
+                  scrapeTimeout:
+                    default: 10s
+                    description: ScrapeTimeout per scrape (e.g. "10s"). Defaults to
+                      "10s".
+                    type: string
+                type: object
               serviceType:
                 default: ClusterIP
                 description: |-

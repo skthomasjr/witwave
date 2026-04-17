@@ -30,6 +30,8 @@ import (
 	policyv1 "k8s.io/api/policy/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	nyxv1alpha1 "github.com/nyx-ai/nyx-operator/api/v1alpha1"
@@ -550,6 +552,81 @@ func buildService(agent *nyxv1alpha1.NyxAgent) *corev1.Service {
 			}},
 		},
 	}
+}
+
+// serviceMonitorGVK is the monitoring.coreos.com/v1 ServiceMonitor
+// GroupVersionKind used by the Prometheus Operator. The operator writes
+// ServiceMonitors via an unstructured client so the controller build has
+// no hard dependency on prometheus-operator Go types — the CRD may or
+// may not be installed on the target cluster (#476).
+var serviceMonitorGVK = schema.GroupVersionKind{
+	Group:   "monitoring.coreos.com",
+	Version: "v1",
+	Kind:    "ServiceMonitor",
+}
+
+// serviceMonitorEnabled reports whether the agent opted in to
+// ServiceMonitor reconciliation. Creation still additionally requires
+// spec.metrics.enabled=true (no point scraping a Service that has no
+// annotations or metrics endpoint advertised) and CRD presence.
+func serviceMonitorEnabled(agent *nyxv1alpha1.NyxAgent) bool {
+	return agent.Spec.ServiceMonitor != nil && agent.Spec.ServiceMonitor.Enabled
+}
+
+// buildServiceMonitor assembles the unstructured ServiceMonitor manifest
+// for an agent. Mirrors charts/nyx/templates/servicemonitor.yaml so the
+// two rendering paths produce equivalent ServiceMonitors for the same
+// input: one endpoint named `http` (the harness Service port), scraped
+// at /metrics with the configured interval + timeout, selected by the
+// agent's app.kubernetes.io/name label, and namespace-scoped to the
+// agent's namespace.
+func buildServiceMonitor(agent *nyxv1alpha1.NyxAgent) *unstructured.Unstructured {
+	sm := agent.Spec.ServiceMonitor
+	if sm == nil {
+		return nil
+	}
+	interval := sm.Interval
+	if interval == "" {
+		interval = "30s"
+	}
+	scrapeTimeout := sm.ScrapeTimeout
+	if scrapeTimeout == "" {
+		scrapeTimeout = "10s"
+	}
+
+	// Labels: start from the canonical agent labels so Prometheus's
+	// ServiceMonitor selectors that look at the nyx label set still
+	// match, then merge any tenancy labels the user supplied (e.g.
+	// `release: kube-prometheus-stack`).
+	labels := agentLabels(agent)
+	for k, v := range sm.Labels {
+		labels[k] = v
+	}
+
+	obj := &unstructured.Unstructured{}
+	obj.SetGroupVersionKind(serviceMonitorGVK)
+	obj.SetName(agent.Name)
+	obj.SetNamespace(agent.Namespace)
+	obj.SetLabels(labels)
+	obj.Object["spec"] = map[string]interface{}{
+		"selector": map[string]interface{}{
+			"matchLabels": map[string]interface{}{
+				labelName: agent.Name,
+			},
+		},
+		"namespaceSelector": map[string]interface{}{
+			"matchNames": []interface{}{agent.Namespace},
+		},
+		"endpoints": []interface{}{
+			map[string]interface{}{
+				"port":          "http",
+				"path":          "/metrics",
+				"interval":      interval,
+				"scrapeTimeout": scrapeTimeout,
+			},
+		},
+	}
+	return obj
 }
 
 // metricsServiceAnnotationsEnabled / metricsPodAnnotationsEnabled resolve

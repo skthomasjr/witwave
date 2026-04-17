@@ -27,7 +27,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -84,6 +86,7 @@ type NyxAgentReconciler struct {
 // +kubebuilder:rbac:groups=autoscaling,resources=horizontalpodautoscalers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is the control loop's entry point. It brings owned resources into
 // alignment with the NyxAgent spec and writes status.
@@ -200,6 +203,12 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// the field is removed or toggled off, so the cluster converges
 	// cleanly in either direction.
 	if err := r.reconcileDashboard(ctx, agent); err != nil {
+		reconcileErrs = append(reconcileErrs, err)
+	}
+	// ServiceMonitor is opt-in per agent (#476). Reconciliation no-ops
+	// when the monitoring.coreos.com CRD is absent so the operator
+	// runs safely on clusters without the Prometheus Operator.
+	if err := r.reconcileServiceMonitor(ctx, agent); err != nil {
 		reconcileErrs = append(reconcileErrs, err)
 	}
 	reconcileErr := errors.Join(reconcileErrs...)
@@ -666,6 +675,29 @@ func (r *NyxAgentReconciler) teardownDisabledAgent(ctx context.Context, agent *n
 	if err := r.reconcileDashboard(ctx, agent); err != nil {
 		return fmt.Errorf("teardown dashboard: %w", err)
 	}
+	// ServiceMonitor follows the same pattern — its reconciler treats
+	// spec.metrics.enabled=false (which is implied when the agent is
+	// disabled and we still hold spec.serviceMonitor.enabled=true) as a
+	// delete, and gracefully no-ops when the Prometheus Operator CRD
+	// is absent (#476). Run it here so a disabled agent never leaves a
+	// stale ServiceMonitor pointing at a Service with no endpoints.
+	present, err := r.serviceMonitorCRDPresent(ctx)
+	if err != nil {
+		return fmt.Errorf("probe ServiceMonitor CRD for teardown: %w", err)
+	}
+	if present {
+		existing := &unstructured.Unstructured{}
+		existing.SetGroupVersionKind(serviceMonitorGVK)
+		if err := r.Get(ctx, key, existing); err == nil {
+			if metav1.IsControlledBy(existing, agent) {
+				if err := r.Delete(ctx, existing); err != nil && !apierrors.IsNotFound(err) {
+					return fmt.Errorf("delete ServiceMonitor: %w", err)
+				}
+			}
+		} else if !apierrors.IsNotFound(err) {
+			return fmt.Errorf("get ServiceMonitor for teardown: %w", err)
+		}
+	}
 	// Drop the per-CR dashboard gauge so the metric series doesn't
 	// linger across enable/disable cycles.
 	nyxagentDashboardEnabled.DeleteLabelValues(agent.Namespace, agent.Name)
@@ -813,6 +845,128 @@ func (r *NyxAgentReconciler) reconcileDashboard(ctx context.Context, agent *nyxv
 				return fmt.Errorf("update dashboard Service: %w", err)
 			}
 		}
+	}
+	return nil
+}
+
+// serviceMonitorCRDPresent reports whether the cluster has the
+// monitoring.coreos.com/v1 ServiceMonitor REST mapping registered. Uses
+// the RESTMapper on the shared client so the probe is a cache lookup on
+// steady state rather than an apiserver round trip per reconcile. A
+// NoKindMatchError (or any IsNoMatchError) means the CRD is not
+// installed — the reconciler treats that as a clean no-op. Other errors
+// propagate so they surface in status + the retry loop.
+func (r *NyxAgentReconciler) serviceMonitorCRDPresent(ctx context.Context) (bool, error) {
+	_ = ctx // reserved — RESTMapper lookups are synchronous and don't need ctx
+	mapper := r.Client.RESTMapper()
+	if mapper == nil {
+		return false, nil
+	}
+	_, err := mapper.RESTMapping(serviceMonitorGVK.GroupKind(), serviceMonitorGVK.Version)
+	if err != nil {
+		if meta.IsNoMatchError(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// reconcileServiceMonitor creates, updates, or deletes a per-agent
+// ServiceMonitor (monitoring.coreos.com/v1) to match spec.serviceMonitor
+// (#476). The reconciler is gated on three independent conditions:
+//
+//  1. The NyxAgent opted in via spec.serviceMonitor.enabled=true.
+//  2. spec.metrics.enabled=true (there is nothing to scrape otherwise).
+//  3. The monitoring.coreos.com/v1 ServiceMonitor CRD is installed on
+//     the cluster. When absent the reconciler logs once per reconcile
+//     and no-ops so clusters without the Prometheus Operator are
+//     unaffected.
+//
+// When any of the conditions above are false the reconciler also runs
+// the delete path: a ServiceMonitor we previously created is removed,
+// and IsControlledBy gates the delete so a user-managed ServiceMonitor
+// in the same namespace is never touched. ServiceMonitors created
+// outside this reconciler keep their owner reference untouched — the
+// controller dual-checks label + IsControlledBy before mutating.
+func (r *NyxAgentReconciler) reconcileServiceMonitor(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
+	log := logf.FromContext(ctx)
+
+	// Probe CRD presence. An absent CRD means we can't read or write
+	// the object at all; short-circuit both the apply and delete paths.
+	present, err := r.serviceMonitorCRDPresent(ctx)
+	if err != nil {
+		return fmt.Errorf("probe ServiceMonitor CRD: %w", err)
+	}
+	if !present {
+		if serviceMonitorEnabled(agent) && agent.Spec.Metrics.Enabled {
+			// Keep this at V(1) so it's visible during debugging but
+			// doesn't spam on every reconcile on clusters that
+			// intentionally omit prometheus-operator.
+			log.V(1).Info("ServiceMonitor CRD not installed — skipping ServiceMonitor reconcile",
+				"group", serviceMonitorGVK.Group, "version", serviceMonitorGVK.Version)
+		}
+		return nil
+	}
+
+	key := client.ObjectKey{Namespace: agent.Namespace, Name: agent.Name}
+
+	wantCreate := serviceMonitorEnabled(agent) && agent.Spec.Metrics.Enabled
+
+	// Delete path: spec disabled or metrics disabled. Only touch the
+	// object when we own it.
+	if !wantCreate {
+		existing := &unstructured.Unstructured{}
+		existing.SetGroupVersionKind(serviceMonitorGVK)
+		if err := r.Get(ctx, key, existing); err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil
+			}
+			return fmt.Errorf("get ServiceMonitor for delete: %w", err)
+		}
+		if !metav1.IsControlledBy(existing, agent) {
+			return nil
+		}
+		if err := r.Delete(ctx, existing); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("delete ServiceMonitor: %w", err)
+		}
+		return nil
+	}
+
+	desired := buildServiceMonitor(agent)
+	if desired == nil {
+		return nil
+	}
+	if err := controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
+		return fmt.Errorf("set owner on ServiceMonitor: %w", err)
+	}
+
+	existing := &unstructured.Unstructured{}
+	existing.SetGroupVersionKind(serviceMonitorGVK)
+	err = r.Get(ctx, key, existing)
+	switch {
+	case apierrors.IsNotFound(err):
+		if err := r.Create(ctx, desired); err != nil {
+			return fmt.Errorf("create ServiceMonitor: %w", err)
+		}
+		return nil
+	case err != nil:
+		return fmt.Errorf("get ServiceMonitor: %w", err)
+	}
+
+	// Defensive: refuse to mutate a ServiceMonitor we don't own. Users
+	// may pre-create one with the same name; leaving it untouched is
+	// safer than clobbering their scrape config.
+	if !metav1.IsControlledBy(existing, agent) {
+		return nil
+	}
+
+	// Patch spec + labels; preserve everything else (resourceVersion,
+	// uid, etc.).
+	existing.Object["spec"] = desired.Object["spec"]
+	existing.SetLabels(desired.GetLabels())
+	if err := r.Update(ctx, existing); err != nil {
+		return fmt.Errorf("update ServiceMonitor: %w", err)
 	}
 	return nil
 }

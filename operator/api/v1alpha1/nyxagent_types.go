@@ -355,6 +355,14 @@ type NyxAgentSpec struct {
 	// +optional
 	SharedStorage *SharedStorageRef `json:"sharedStorage,omitempty"`
 
+	// ServiceMonitor optionally creates a monitoring.coreos.com/v1
+	// ServiceMonitor for the agent when the Prometheus Operator CRDs
+	// are installed (#476). Gated by spec.metrics.enabled and a CRD
+	// presence check at reconcile time; no-ops on clusters without
+	// prometheus-operator.
+	// +optional
+	ServiceMonitor *ServiceMonitorSpec `json:"serviceMonitor,omitempty"`
+
 	// Dashboard optionally deploys the Vue 3 dashboard (#470) alongside the
 	// agent. The operator renders a per-agent dashboard (one per NyxAgent),
 	// independent of the cluster-wide dashboard the Helm chart deploys.
@@ -415,6 +423,42 @@ type DashboardSpec struct {
 	// Resources for the dashboard container.
 	// +optional
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
+}
+
+// ServiceMonitorSpec configures an optional monitoring.coreos.com/v1
+// ServiceMonitor reconciled by the operator when the Prometheus Operator
+// CRDs are present on the cluster (#476). Mirrors the chart's
+// `serviceMonitor.*` block in charts/nyx/values.yaml so operator-rendered
+// agents are scraped the same way chart-rendered agents are.
+//
+// The reconciler probes for the `monitoring.coreos.com/v1 ServiceMonitor`
+// REST mapping at reconcile time and no-ops when the CRD is absent — no
+// hard dependency on prometheus-operator Go types is introduced; the
+// ServiceMonitor is created via an unstructured client.
+type ServiceMonitorSpec struct {
+	// Enabled toggles creation of the ServiceMonitor. Requires
+	// spec.metrics.enabled=true (no endpoint to scrape otherwise) and the
+	// monitoring.coreos.com CRD to be installed. When the CRD is absent
+	// the reconciler logs once and no-ops; reconciliation resumes
+	// automatically once the CRD appears.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Interval between scrapes (e.g. "30s"). Defaults to "30s".
+	// +kubebuilder:default="30s"
+	// +optional
+	Interval string `json:"interval,omitempty"`
+
+	// ScrapeTimeout per scrape (e.g. "10s"). Defaults to "10s".
+	// +kubebuilder:default="10s"
+	// +optional
+	ScrapeTimeout string `json:"scrapeTimeout,omitempty"`
+
+	// Labels merged into the ServiceMonitor's metadata.labels. Useful
+	// when the cluster's Prometheus selects ServiceMonitors by a
+	// tenancy label (e.g. `release: kube-prometheus-stack`).
+	// +optional
+	Labels map[string]string `json:"labels,omitempty"`
 }
 
 // MetricsSpec toggles Prometheus scrape behaviour for the agent.
