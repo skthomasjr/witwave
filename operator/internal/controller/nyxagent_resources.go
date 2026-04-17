@@ -18,6 +18,7 @@ package controller
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -740,7 +741,7 @@ func buildDashboardConfigMap(agent *nyxv1alpha1.NyxAgent) *corev1.ConfigMap {
     return 200 '` + directory + `';
   }
 
-  location ~ ^/api/agents/` + agent.Name + `/(.*)$ {
+  location ~ ^/api/agents/` + regexp.QuoteMeta(agent.Name) + `/(.*)$ {
     proxy_pass ` + upstream + `/$1$is_args$args;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
