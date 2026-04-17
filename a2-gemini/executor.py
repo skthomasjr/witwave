@@ -64,6 +64,7 @@ from metrics import (
 
 from log_utils import _append_log
 from exceptions import BudgetExceededError
+from validation import parse_max_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -800,19 +801,13 @@ class AgentExecutor(A2AAgentExecutor):
             except ValueError:
                 session_id = str(uuid.uuid5(uuid.NAMESPACE_URL, _raw_sid))
         model = metadata.get("model") or None
-        _max_tokens_raw = metadata.get("max_tokens")
-        max_tokens: int | None = None
-        if _max_tokens_raw is not None:
-            try:
-                _parsed = int(_max_tokens_raw)
-                if _parsed <= 0:
-                    logger.warning(
-                        f"Session {session_id!r}: max_tokens={_parsed} is non-positive; ignoring (#428)."
-                    )
-                else:
-                    max_tokens = _parsed
-            except (ValueError, TypeError):
-                logger.warning(f"Session {session_id!r}: invalid max_tokens in metadata {_max_tokens_raw!r}, ignoring.")
+        # Shared parser lives in shared/validation.py (#537, #428).
+        max_tokens = parse_max_tokens(
+            metadata.get("max_tokens"),
+            logger=logger,
+            source="A2A metadata",
+            session_id=session_id,
+        )
         task_id = context.task_id
 
         if task_id:
