@@ -17,6 +17,24 @@ from starlette.responses import JSONResponse
 logger = logging.getLogger(__name__)
 
 
+def _warn_if_empty_token(auth_token: str | None, handler_name: str) -> None:
+    """Emit a clear warning when auth_token is an empty string.
+
+    Distinguishes "unset" (None) from "set-but-empty" ("") so operators get a
+    loud signal that a misconfigured CONVERSATIONS_AUTH_TOKEN has silently
+    disabled authentication. Preserves the existing permissive behavior for
+    backward compatibility — the handler still skips auth — but the warning
+    surfaces the exposure at startup instead of leaving it silent.
+    """
+    if auth_token == "":
+        logger.warning(
+            "%s: CONVERSATIONS_AUTH_TOKEN is set but empty; authentication is DISABLED "
+            "and logs are readable by any caller. Set a non-empty token or unset the "
+            "variable entirely to acknowledge disabled auth.",
+            handler_name,
+        )
+
+
 def _read_jsonl(path: str, since_dt: datetime | None, limit_n: int | None) -> list:
     """Read a JSONL log file, optionally filtering by timestamp and limiting results.
 
@@ -52,6 +70,7 @@ def make_conversations_handler(
     conversation_log: str,
 ):
     """Return an ASGI handler for GET /conversations."""
+    _warn_if_empty_token(auth_token, "make_conversations_handler")
 
     async def conversations_handler(request: Request) -> JSONResponse:
         if auth_token:
@@ -81,6 +100,7 @@ def make_trace_handler(
     trace_log: str,
 ):
     """Return an ASGI handler for GET /trace."""
+    _warn_if_empty_token(auth_token, "make_trace_handler")
 
     async def trace_handler(request: Request) -> JSONResponse:
         if auth_token:
@@ -117,6 +137,7 @@ def make_proxy_conversations_handler(
     This variant is used by nyx-harness, which fans out to multiple backend agents
     rather than reading a local JSONL file.
     """
+    _warn_if_empty_token(auth_token, "make_proxy_conversations_handler")
 
     async def conversations_handler(request: Request) -> JSONResponse:
         if auth_token:
@@ -149,6 +170,7 @@ def make_proxy_trace_handler(
     fetch_fn is an async callable with the signature:
         async def fetch_fn(since: str | None, limit: int | None) -> list[dict]
     """
+    _warn_if_empty_token(auth_token, "make_proxy_trace_handler")
 
     async def trace_handler(request: Request) -> JSONResponse:
         if auth_token:
