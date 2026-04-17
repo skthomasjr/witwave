@@ -28,9 +28,19 @@ logger = logging.getLogger(__name__)
 
 
 def _open_db(path: str) -> sqlite3.Connection:
-    """Open (or create) the SQLite database and ensure the tasks table exists."""
+    """Open (or create) the SQLite database and ensure the tasks table exists.
+
+    Enables WAL journaling and a 5s busy_timeout so concurrent readers/writers
+    wait for the lock instead of raising ``SQLITE_BUSY`` immediately, and so
+    readers do not block writers (and vice versa). ``check_same_thread=False``
+    is retained because ``SqliteTaskStore`` shares a single connection across
+    threads via ``asyncio.to_thread`` under an ``asyncio.Lock``.
+    """
     os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
     conn = sqlite3.connect(path, check_same_thread=False)
+    journal_mode = conn.execute("PRAGMA journal_mode=WAL").fetchone()
+    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS tasks (
@@ -40,6 +50,10 @@ def _open_db(path: str) -> sqlite3.Connection:
         """
     )
     conn.commit()
+    logger.info(
+        "SqliteTaskStore pragmas applied: journal_mode=%s busy_timeout=5000 synchronous=NORMAL",
+        journal_mode[0] if journal_mode else "unknown",
+    )
     return conn
 
 
