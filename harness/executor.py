@@ -475,6 +475,23 @@ class AgentExecutor(A2AAgentExecutor):
         self._webhook_runner = None
         self._bus = None
 
+    # Public read-only accessors for the two most-accessed private attributes
+    # across executor-boundary call sites (narrow slice of #572). These are
+    # additive: call sites still read ``_backends`` / ``_default_backend_id``
+    # directly today; new code should prefer the public names so the underlying
+    # storage can evolve without a big-bang rename. The broader API-extraction
+    # refactor (all accessors, call-site migration, TriggerRunner wrapping,
+    # A2ABackend._config exposure) remains deferred.
+    @property
+    def backends(self) -> dict:
+        """Mapping of backend_id → A2ABackend. Reflects live reloads."""
+        return self._backends
+
+    @property
+    def default_backend_id(self) -> str:
+        """Currently configured default backend id. Reflects live reloads."""
+        return self._default_backend_id
+
     def track_background(
         self,
         coro,
