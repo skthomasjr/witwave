@@ -95,17 +95,22 @@ The controller writes the following status fields:
 
 ## Deferred
 
-The operator does **not** yet handle:
+Tracked chart-vs-operator parity gaps (each links to its own issue):
 
-- Git-sync sidecars / git mappings (Helm chart's `gitSyncs` and `gitMappings`)
-- Cross-agent `manifest.json` for peer discovery
-- UI `Deployment`, `Service`, and `Ingress`
-- Shared-storage `PVC` creation — only references to a pre-existing PVC
-  are supported via `spec.sharedStorage.claimName`
-- Admission webhooks for validation and defaulting
+| Gap                                                       | Issue |
+| --------------------------------------------------------- | ----- |
+| Git-sync sidecars + git mappings                          | #474  |
+| Per-agent `manifest.json` ConfigMap (team discovery)      | #475  |
+| Per-agent ServiceMonitor                                  | #476  |
+| `preStop` lifecycle drain hook                            | #477  |
+| Custom `podAnnotations` / `podLabels`                     | #479  |
+| Service `port` distinct from container port               | #478  |
+| Shared-storage `PVC` creation (currently `existingClaim` only) | #480  |
+| UI `Deployment` + `Service` (and optional `Ingress`)      | #481  |
 
-Track gaps as separate issues as they come up; the Helm chart covers
-these in the interim.
+Not yet tracked (no issue): admission webhooks for validation and defaulting.
+
+The Helm chart covers all of the above in the interim.
 
 The `nyx-operator` Helm chart provides an optional `ServiceMonitor` for
 Prometheus Operator integration — see `charts/nyx-operator/README.md`
