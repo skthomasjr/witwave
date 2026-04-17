@@ -375,6 +375,22 @@ def _load_agent_md() -> str:
         return ""
 
 
+def _utf8_byte_length(s: str) -> int:
+    """Return the UTF-8 byte length of *s* without allocating a throwaway bytes object
+    for ASCII-only inputs (#558).
+
+    ``str.encode()`` allocates a fresh ``bytes`` object equal in size to the encoded
+    form. On multi-megabyte payloads that allocation is pure waste when the caller
+    only needs the length. Python's ``str.isascii()`` is an O(n) C-level check; when
+    it returns True (the common case for JSON logs and latin text), the UTF-8 byte
+    length equals the character length and no allocation is required. For non-ASCII
+    strings we fall back to a single ``encode()`` — correctness preserved.
+    """
+    if s.isascii():
+        return len(s)
+    return len(s.encode("utf-8"))
+
+
 async def log_entry(role: str, text: str, session_id: str, model: str | None = None, tokens: int | None = None) -> None:
     try:
         entry = {
@@ -391,7 +407,7 @@ async def log_entry(role: str, text: str, session_id: str, model: str | None = N
         if a2_log_entries_total is not None:
             a2_log_entries_total.labels(**_LABELS, logger="conversation").inc()
         if a2_log_bytes_total is not None:
-            a2_log_bytes_total.labels(**_LABELS, logger="conversation").inc(len(_line.encode()))
+            a2_log_bytes_total.labels(**_LABELS, logger="conversation").inc(_utf8_byte_length(_line))
     except Exception as e:
         if a2_log_write_errors_total is not None:
             a2_log_write_errors_total.labels(**_LABELS).inc()
@@ -404,7 +420,7 @@ async def log_trace(text: str) -> None:
         if a2_log_entries_total is not None:
             a2_log_entries_total.labels(**_LABELS, logger="trace").inc()
         if a2_log_bytes_total is not None:
-            a2_log_bytes_total.labels(**_LABELS, logger="trace").inc(len(text.encode()))
+            a2_log_bytes_total.labels(**_LABELS, logger="trace").inc(_utf8_byte_length(text))
     except Exception as e:
         if a2_log_write_errors_total is not None:
             a2_log_write_errors_total.labels(**_LABELS).inc()
@@ -428,7 +444,7 @@ async def log_tool_audit(entry: dict) -> None:
         if a2_log_entries_total is not None:
             a2_log_entries_total.labels(**_LABELS, logger="tool_audit").inc()
         if a2_log_bytes_total is not None:
-            a2_log_bytes_total.labels(**_LABELS, logger="tool_audit").inc(len(line.encode()))
+            a2_log_bytes_total.labels(**_LABELS, logger="tool_audit").inc(_utf8_byte_length(line))
     except Exception as e:
         if a2_log_write_errors_total is not None:
             a2_log_write_errors_total.labels(**_LABELS).inc()
@@ -722,7 +738,7 @@ async def _run_query_inner(
                                 a2_sdk_tool_calls_total.labels(**_LABELS, tool=block.name).inc()
                             if a2_sdk_tool_call_input_size_bytes is not None:
                                 a2_sdk_tool_call_input_size_bytes.labels(**_LABELS, tool=block.name).observe(
-                                    len(json.dumps(block.input, default=str).encode())
+                                    _utf8_byte_length(json.dumps(block.input, default=str))
                                 )
                             await _log_tool_event("tool_use", block, session_id, model=effective_model)
                         elif isinstance(block, ToolResultBlock):
@@ -736,7 +752,7 @@ async def _run_query_inner(
                                 )
                             if a2_sdk_tool_result_size_bytes is not None:
                                 a2_sdk_tool_result_size_bytes.labels(**_LABELS, tool=tool_name).observe(
-                                    len(str(block.content).encode())
+                                    _utf8_byte_length(str(block.content))
                                 )
                             await _log_tool_event("tool_result", block, session_id, model=effective_model)
                     try:
@@ -916,7 +932,7 @@ async def _run_inner(
     await log_entry("user", prompt, session_id, model=model)
 
     if a2_prompt_length_bytes is not None:
-        a2_prompt_length_bytes.labels(**_LABELS).observe(len(prompt.encode()))
+        a2_prompt_length_bytes.labels(**_LABELS).observe(_utf8_byte_length(prompt))
 
     _start = time.monotonic()
     _budget_exceeded = False
@@ -986,7 +1002,7 @@ async def _run_inner(
         if a2_empty_responses_total is not None:
             a2_empty_responses_total.labels(**_LABELS).inc()
     elif a2_response_length_bytes is not None:
-        a2_response_length_bytes.labels(**_LABELS).observe(len(response.encode()))
+        a2_response_length_bytes.labels(**_LABELS).observe(_utf8_byte_length(response))
     return response
 
 
