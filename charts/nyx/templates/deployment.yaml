@@ -228,6 +228,7 @@ spec:
 {{- $agentName := .name }}
 {{- $agentMetricsEnabled := (.metrics).enabled | default $.Values.metrics.enabled }}
 {{- $hasGitSyncs := .gitSyncs }}
+{{- $harnessPort := .port | default 8000 }}
 {{- range .backends }}
 {{- if eq (include "nyx.enabled" .) "true" }}
 {{- $storageEnabled := ((.storage).enabled) }}
@@ -299,6 +300,16 @@ spec:
               value: {{ .port | quote }}
             - name: METRICS_ENABLED
               value: {{ $agentMetricsEnabled | toString | quote }}
+            # Backend→harness transport for hook.decision events (#641).
+            # Points at the harness running in the same pod.  Empty string
+            # disables the POST cleanly; the in-process OTel span event
+            # emission from #633 still fires regardless.  HARNESS_EVENTS_AUTH_TOKEN
+            # is not set here — the backend falls back to TRIGGERS_AUTH_TOKEN
+            # (pass it through the agent's existing `env:` block on the harness
+            # and the backend's `env:`/`envFrom:` so both ends share the same
+            # secret), matching the harness-side env-var semantics.
+            - name: HARNESS_EVENTS_URL
+              value: http://localhost:{{ $harnessPort }}
             {{- if .model }}
             - name: BACKEND_MODEL
               value: {{ .model | quote }}

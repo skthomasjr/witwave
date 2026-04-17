@@ -335,6 +335,17 @@ HOOKS_CONFIG_PATH = os.environ.get("HOOKS_CONFIG_PATH", "/home/agent/.claude/hoo
 HOOKS_BASELINE_ENABLED = os.environ.get("HOOKS_BASELINE_ENABLED", "true").lower() not in ("0", "false", "no", "off")
 TOOL_AUDIT_LOG = os.environ.get("TOOL_AUDIT_LOG", "/home/agent/logs/tool-audit.jsonl")
 
+# Backend→harness hook.decision transport (#641).  Empty HARNESS_EVENTS_URL
+# disables the POST path cleanly — the in-process OTel span-event emission
+# from #633 still fires regardless.  Defaults the bearer token to
+# TRIGGERS_AUTH_TOKEN so operators don't need an additional secret.
+HARNESS_EVENTS_URL = os.environ.get("HARNESS_EVENTS_URL", "") or ""
+HARNESS_EVENTS_AUTH_TOKEN = os.environ.get("HARNESS_EVENTS_AUTH_TOKEN") or os.environ.get("TRIGGERS_AUTH_TOKEN", "")
+# Tight timeout — the hook is synchronous with tool execution; we never block
+# on the POST (fire-and-forget via asyncio.create_task) but still want any
+# connection the client opens to fail fast when the harness is unreachable.
+HARNESS_EVENTS_TIMEOUT = float(os.environ.get("HARNESS_EVENTS_TIMEOUT", "5.0"))
+
 # Conservative secure-by-default tool set: read-only filesystem + search, no Bash/Write/Edit/WebFetch.
 # Operators who need broader capabilities must opt in explicitly via the ALLOWED_TOOLS env var.
 _DEFAULT_TOOLS = "Read,Grep,Glob"
@@ -514,6 +525,39 @@ async def log_tool_audit(entry: dict) -> None:
         logger.error(f"log_tool_audit error: {e}")
 
 
+async def _post_hook_event_to_harness(event_dict: dict) -> None:
+    """Fire-and-forget POST of a hook.decision event to the harness (#641).
+
+    Transport for the backend→harness side-channel defined in #633: the
+    harness exposes ``POST /internal/events/hook-decision`` and fans matching
+    events out to subscribed webhooks via
+    :func:`WebhookRunner.fire_hook_decision`.  Scheduled by the hook callbacks
+    via ``asyncio.create_task`` so a slow or unreachable harness never stalls
+    tool execution.  All exceptions are swallowed (warn-level log) because
+    observability must never break the hook pipeline.
+    """
+    if not HARNESS_EVENTS_URL:
+        return
+    if not HARNESS_EVENTS_AUTH_TOKEN:
+        # Fail silently but loudly in logs — the harness endpoint will reject
+        # anyway, so emitting would only generate noise in both directions.
+        logger.debug("hook.decision transport skipped: HARNESS_EVENTS_AUTH_TOKEN not set.")
+        return
+    import httpx
+    url = HARNESS_EVENTS_URL.rstrip("/") + "/internal/events/hook-decision"
+    try:
+        async with httpx.AsyncClient(timeout=HARNESS_EVENTS_TIMEOUT) as client:
+            await client.post(
+                url,
+                json=event_dict,
+                headers={"Authorization": f"Bearer {HARNESS_EVENTS_AUTH_TOKEN}"},
+            )
+    except Exception as exc:
+        # Transport failures are expected during harness restarts or network
+        # blips; the span event from #633 still captured the decision.
+        logger.warning("hook.decision POST to %s failed: %r", url, exc)
+
+
 def _make_pre_tool_use_hook(state: HookState):
     """Build the PreToolUse hook callable bound to *state*.
 
@@ -552,6 +596,7 @@ def _make_pre_tool_use_hook(state: HookState):
         # that triggered them (#633). No-op when OTel is disabled or no
         # current span is active. Wrapped in a bare try/except because
         # observability must never break hook evaluation.
+        _traceparent: str | None = None
         try:
             from opentelemetry import trace as _otel_trace
             _span = _otel_trace.get_current_span()
@@ -566,8 +611,37 @@ def _make_pre_tool_use_hook(state: HookState):
                 _span.add_event("hook.decision", _attrs)
                 if decision == DECISION_DENY:
                     _span.set_attribute("hook.denied", True)
+                # Capture the current trace-context as a W3C traceparent header
+                # so the harness can forward it on to webhook receivers.
+                try:
+                    _ctx = _span.get_span_context()
+                    if getattr(_ctx, "is_valid", False) or (getattr(_ctx, "trace_id", 0) and getattr(_ctx, "span_id", 0)):
+                        _traceparent = "00-{:032x}-{:016x}-{:02x}".format(
+                            _ctx.trace_id, _ctx.span_id, int(_ctx.trace_flags) & 0xFF,
+                        )
+                except Exception:
+                    _traceparent = None
         except Exception:
             pass
+
+        # Schedule the backend→harness transport (#641) fire-and-forget so
+        # that a slow or unreachable harness never stalls tool execution.
+        # Wrapped in try/except because the hook must never fail on the
+        # transport; the span event above is still the authoritative record.
+        try:
+            _event_dict = {
+                "agent": AGENT_OWNER or AGENT_NAME,
+                "session_id": input_data.get("session_id") or "",
+                "tool": tool_name or "",
+                "decision": decision,
+                "rule_name": (matched.name if matched is not None else ""),
+                "reason": (matched.reason if matched is not None else ""),
+                "source": (matched.source if matched is not None else ""),
+                "traceparent": _traceparent,
+            }
+            asyncio.create_task(_post_hook_event_to_harness(_event_dict))
+        except Exception as _transport_exc:
+            logger.debug("hook.decision transport scheduling failed: %r", _transport_exc)
 
         if decision == DECISION_DENY and matched is not None:
             if a2_hooks_blocked_total is not None:

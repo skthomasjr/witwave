@@ -631,6 +631,13 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 				{Name: "AGENT_URL", Value: fmt.Sprintf("http://localhost:%d", bPort)},
 				{Name: "BACKEND_PORT", Value: fmt.Sprintf("%d", bPort)},
 				{Name: "METRICS_ENABLED", Value: metricsEnabledValue(agent)},
+				// Backend→harness transport for hook.decision events (#641).
+				// Points at the harness running in the same pod; an empty
+				// value disables the POST cleanly. HARNESS_EVENTS_AUTH_TOKEN
+				// falls back to TRIGGERS_AUTH_TOKEN on the backend side, so
+				// operators only need to thread one secret through both
+				// harness and backend env.
+				{Name: "HARNESS_EVENTS_URL", Value: fmt.Sprintf("http://localhost:%d", harnessPort)},
 			}, b.Env...),
 			EnvFrom:   b.EnvFrom,
 			Resources: b.Resources,

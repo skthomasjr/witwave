@@ -26,7 +26,13 @@ from jobs import JobRunner
 from tasks import TaskRunner
 from triggers import TriggerItem, TriggerRunner
 from webhooks import WebhookRunner
-from bus import Message, MessageBus
+from bus import (
+    HookDecisionEvent,
+    Message,
+    MessageBus,
+    publish_hook_decision,
+    subscribe_hook_decision,
+)
 from executor import AgentExecutor, _guarded as _guarded_from_executor, run as executor_run, run_consensus as executor_run_consensus
 from heartbeat import heartbeat_runner, load_heartbeat
 from metrics import (
@@ -163,6 +169,97 @@ def _check_adhoc_auth(request: Request) -> bool:
         return False
     header = request.headers.get("Authorization", "")
     return hmac_mod.compare_digest(f"Bearer {auth_token}", header)
+
+
+async def hook_decision_event_handler(request: Request) -> JSONResponse:
+    """Receive a backend-originated hook.decision event (#641).
+
+    Backends (a2-claude today, a2-codex/a2-gemini in a follow-up) POST
+    the structured :class:`HookDecisionEvent` shape here whenever a
+    PreToolUse hook finalises a decision.  The handler authenticates the
+    caller with a bearer token, parses the body into the dataclass, and
+    publishes to the in-process side-channel via ``publish_hook_decision``
+    so the ``WebhookRunner`` subscription installed at startup fans the
+    event out to every webhook that opted in to ``hook.decision``.
+
+    The endpoint is fail-safe: when no auth token is configured it rejects
+    every request rather than silently accepting internal traffic.
+    """
+    if not HOOK_EVENTS_AUTH_TOKEN:
+        logger.warning(
+            "POST /internal/events/hook-decision rejected: no auth token configured "
+            "(set HOOK_EVENTS_AUTH_TOKEN or TRIGGERS_AUTH_TOKEN)."
+        )
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    header = request.headers.get("Authorization", "")
+    if not hmac_mod.compare_digest(f"Bearer {HOOK_EVENTS_AUTH_TOKEN}", header):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    # Bounded read: backends send a small JSON blob; reject oversize bodies
+    # before buffering rather than letting an adversarial caller pin memory.
+    try:
+        declared_len = int(request.headers.get("Content-Length", "") or "-1")
+    except ValueError:
+        declared_len = -1
+    if declared_len > MAX_HOOK_EVENT_BODY_BYTES:
+        return JSONResponse({"error": "request body too large"}, status_code=413)
+
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        if not chunk:
+            continue
+        total += len(chunk)
+        if total > MAX_HOOK_EVENT_BODY_BYTES:
+            return JSONResponse({"error": "request body too large"}, status_code=413)
+        chunks.append(chunk)
+    body_bytes = b"".join(chunks)
+
+    import json as _json
+    try:
+        payload = _json.loads(body_bytes.decode("utf-8") or "{}")
+    except (UnicodeDecodeError, _json.JSONDecodeError) as exc:
+        logger.warning("hook-decision event: malformed JSON body: %r", exc)
+        return JSONResponse({"error": "malformed json"}, status_code=400)
+    if not isinstance(payload, dict):
+        return JSONResponse({"error": "payload must be a JSON object"}, status_code=400)
+
+    # Required fields.  Missing or non-string values are rejected so the
+    # downstream listener (WebhookRunner.fire_hook_decision) always sees
+    # the shape it documents.
+    try:
+        event = HookDecisionEvent(
+            agent=str(payload.get("agent") or ""),
+            session_id=str(payload.get("session_id") or ""),
+            tool=str(payload.get("tool") or ""),
+            decision=str(payload.get("decision") or ""),
+            rule_name=str(payload.get("rule_name") or ""),
+            reason=str(payload.get("reason") or ""),
+            source=str(payload.get("source") or ""),
+            traceparent=(str(payload["traceparent"]) if payload.get("traceparent") else None),
+        )
+    except Exception as exc:  # defensive — dataclass construction is trivial
+        logger.warning("hook-decision event: failed to build HookDecisionEvent: %r", exc)
+        return JSONResponse({"error": "malformed event"}, status_code=400)
+
+    if not event.decision:
+        return JSONResponse({"error": "decision is required"}, status_code=400)
+
+    publish_hook_decision(event)
+    return JSONResponse({"status": "accepted"}, status_code=202)
+
+
+# Hard cap on the body size the backend→harness hook.decision POST will buffer (#641).
+# The shape is small (agent + session_id + tool + decision + rule_name + reason +
+# source + optional traceparent), so 64 KiB is comfortably above worst-case
+# payloads while rejecting anything that could only be abusive.
+MAX_HOOK_EVENT_BODY_BYTES = 65_536
+
+# Bearer token expected on POST /internal/events/hook-decision (#641).  Falls
+# back to ``TRIGGERS_AUTH_TOKEN`` so operators don't need a second secret; the
+# endpoint is fail-safe — when no token is configured, every request is
+# rejected rather than silently open.
+HOOK_EVENTS_AUTH_TOKEN = os.environ.get("HOOK_EVENTS_AUTH_TOKEN") or os.environ.get("TRIGGERS_AUTH_TOKEN", "")
 
 
 # Hard cap on the body size the ad-hoc run endpoints will buffer. These endpoints
@@ -623,6 +720,26 @@ async def main():
     task_runner = TaskRunner(bus, backends_ready)
     webhook_runner = WebhookRunner()
     continuation_runner = ContinuationRunner()
+
+    # Fan bus-published HookDecisionEvents out to matching webhook
+    # subscriptions (#641).  Closes the loop started by #633 (bus side-channel +
+    # WebhookRunner.fire_hook_decision) now that POST /internal/events/hook-decision
+    # accepts backend-originated events.  The listener is synchronous — it
+    # schedules delivery tasks via asyncio.create_task — so publish_hook_decision
+    # never blocks the HTTP handler that called it.
+    def _fanout_hook_decision(event: HookDecisionEvent) -> None:
+        webhook_runner.fire_hook_decision(
+            event.agent,
+            event.session_id,
+            event.tool,
+            event.decision,
+            event.rule_name,
+            event.reason,
+            event.source,
+            event.traceparent,
+        )
+
+    subscribe_hook_decision(_fanout_hook_decision)
 
     async def triggers_discovery(request: Request) -> JSONResponse:
         items = trigger_runner.items_by_endpoint()
@@ -1090,6 +1207,7 @@ async def main():
         Route("/health/ready", health_ready),
         Route("/.well-known/agent-triggers.json", triggers_discovery, methods=["GET"]),
         Route("/triggers/{endpoint}", trigger_handler, methods=["POST"]),
+        Route("/internal/events/hook-decision", hook_decision_event_handler, methods=["POST"]),
         Route("/jobs/{name}/run", jobs_run_handler, methods=["POST"]),
         Route("/tasks/{name}/run", tasks_run_handler, methods=["POST"]),
         Route("/heartbeat/run", heartbeat_run_handler, methods=["POST"]),
