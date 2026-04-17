@@ -1,4 +1,5 @@
 import asyncio
+import hmac as hmac_mod
 import logging
 import os
 import time
@@ -281,6 +282,13 @@ async def main():
 
     async def mcp_handler(request: Request) -> JSONResponse:
         """Minimal MCP JSON-RPC server: initialize / tools/list / tools/call."""
+        # Gate on the same bearer token used by /conversations and /trace when
+        # configured. Without this, any network caller could drive the LLM via
+        # tools/call -> ask_agent and burn the operator's API key (#510).
+        if CONVERSATIONS_AUTH_TOKEN:
+            header = request.headers.get("Authorization", "")
+            if not hmac_mod.compare_digest(f"Bearer {CONVERSATIONS_AUTH_TOKEN}", header):
+                return JSONResponse({"error": "unauthorized"}, status_code=401)
         try:
             body = await request.json()
         except Exception:
