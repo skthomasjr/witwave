@@ -2,21 +2,23 @@
 import { computed } from "vue";
 import type { TeamMember } from "../types/team";
 import { renderMarkdown } from "../utils/markdown";
+import ChatPanel from "./ChatPanel.vue";
 
-// Right-hand detail pane. For now shows lightweight metadata for the selected
-// member — chat is deferred to the next pass (parity plan, #470). Once chat
-// lands, this component splits into a "detail header" + conversation feed.
+// Right-hand detail pane. Shows member metadata at the top and a live chat
+// panel below. ChatPanel is :key'd on the member name so switching agents
+// resets its internal state (Tier 1 — no cross-agent cache yet, see #470).
 
 const props = defineProps<{
   member: TeamMember | null;
   activeBackendId: string | null;
 }>();
 
+const emit = defineEmits<{
+  (e: "select-backend", backendId: string): void;
+}>();
+
 const nyxAgent = computed(() => props.member?.agents.find((a) => a.role === "nyx") ?? null);
 const backends = computed(() => props.member?.agents.filter((a) => a.role === "backend") ?? []);
-const activeBackend = computed(
-  () => backends.value.find((b) => b.id === props.activeBackendId) ?? null,
-);
 const descriptionHtml = computed(() => renderMarkdown(nyxAgent.value?.card?.description));
 </script>
 
@@ -32,29 +34,16 @@ const descriptionHtml = computed(() => renderMarkdown(nyxAgent.value?.card?.desc
       </header>
 
       <section v-if="nyxAgent?.card?.description" class="detail-section">
-        <h3>description</h3>
         <div class="detail-desc" v-html="descriptionHtml" />
       </section>
 
-      <section v-if="backends.length" class="detail-section">
-        <h3>backends</h3>
-        <ul class="detail-list">
-          <li
-            v-for="b in backends"
-            :key="b.id"
-            :class="{ 'is-active': b.id === activeBackendId }"
-          >
-            <span class="detail-list-id">{{ b.id }}</span>
-            <span class="detail-list-url">{{ b.url ?? "" }}</span>
-            <span class="detail-list-state">{{ b.card ? "up" : "down" }}</span>
-          </li>
-        </ul>
-      </section>
-
-      <p class="detail-note">
-        Chat arrives in the next parity pass — see issue #470.
-        <span v-if="activeBackend"> Current backend selection: {{ activeBackend.id }}.</span>
-      </p>
+      <ChatPanel
+        :key="member.name"
+        :agent-name="member.name"
+        :backends="backends"
+        :active-backend-id="activeBackendId"
+        @select-backend="(id) => emit('select-backend', id)"
+      />
     </div>
   </div>
 </template>
@@ -78,11 +67,15 @@ const descriptionHtml = computed(() => renderMarkdown(nyxAgent.value?.card?.desc
 }
 
 .detail-body {
-  padding: 18px;
-  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+}
+
+.detail-header,
+.detail-section {
+  padding: 12px 18px;
 }
 
 .detail-header {
@@ -90,7 +83,6 @@ const descriptionHtml = computed(() => renderMarkdown(nyxAgent.value?.card?.desc
   align-items: baseline;
   gap: 12px;
   border-bottom: 1px solid var(--nyx-border);
-  padding-bottom: 10px;
 }
 
 .detail-title {
@@ -105,14 +97,6 @@ const descriptionHtml = computed(() => renderMarkdown(nyxAgent.value?.card?.desc
   color: var(--nyx-dim);
   font-size: 11px;
   word-break: break-all;
-}
-
-.detail-section h3 {
-  font-size: 10px;
-  color: var(--nyx-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  margin: 0 0 6px;
 }
 
 .detail-desc {

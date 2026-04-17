@@ -65,12 +65,22 @@ spec:
             {{- toYaml .Values.dashboard.resources | nindent 12 }}
           {{- end }}
           env:
-            # Drives the /api/* reverse proxy inside the nginx layer. Defaults to
-            # the conventional release-level harness service; override if the
-            # dashboard lives in a different namespace or fronts a bespoke
-            # harness endpoint.
+            # Legacy fallback for the catch-all /api/* route. Most /api/*
+            # traffic is now routed directly to each agent's service by the
+            # nginx config rendered in {{ $.Release.Name }}-dashboard-nginx;
+            # HARNESS_URL only handles anything not yet migrated (#470).
             - name: HARNESS_URL
               value: {{ .Values.dashboard.harnessUrl | default (printf "http://%s-harness:8000" $.Release.Name) | quote }}
+          volumeMounts:
+            # Overrides the baseline template baked into the image with the
+            # Helm-rendered config that knows about every enabled agent.
+            - name: nginx-template
+              mountPath: /etc/nginx/templates
+              readOnly: true
+      volumes:
+        - name: nginx-template
+          configMap:
+            name: {{ $.Release.Name }}-dashboard-nginx
 ---
 apiVersion: v1
 kind: Service

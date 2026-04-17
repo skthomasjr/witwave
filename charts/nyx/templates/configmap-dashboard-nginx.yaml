@@ -1,0 +1,88 @@
+{{- if .Values.dashboard.enabled }}
+{{/*
+Dashboard nginx template — sourced from .Values.agents so the dashboard can
+route browser requests directly to each named agent's in-cluster service
+(#470). This eliminates the "one agent pod fans out for the whole team"
+design: the dashboard pod owns routing, each agent only speaks for itself,
+and an outage of any single agent cannot take the whole UI down.
+
+The ConfigMap is mounted at /etc/nginx/templates/ in the dashboard pod; the
+nginx-unprivileged entrypoint runs envsubst over it at container start so
+${HARNESS_URL} stays substitutable for the legacy fallback route.
+*/}}
+{{- $release := .Release.Name }}
+{{- $enabledAgents := list }}
+{{- range .Values.agents }}
+{{- if eq (include "nyx.enabled" .) "true" }}
+{{- $enabledAgents = append $enabledAgents . }}
+{{- end }}
+{{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $release }}-dashboard-nginx
+  labels:
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/part-of: nyx
+    app.kubernetes.io/managed-by: helm
+data:
+  default.conf.template: |
+    server {
+      listen 8080;
+      server_name _;
+
+      root /usr/share/nginx/html;
+      index index.html;
+
+      # History-mode fallback so deep-linked routes (e.g. /team) hit index.html
+      # rather than returning 404 from nginx's static resolver.
+      location / {
+        try_files $uri $uri/ /index.html;
+      }
+
+      # Dashboard-local health probe (distinct from any upstream agent's /health).
+      location = /health {
+        access_log off;
+        add_header Content-Type application/json;
+        return 200 '{"status":"ok","component":"dashboard"}';
+      }
+
+      # Team discovery — served directly by this nginx from .Values.agents at
+      # Helm render time. The dashboard client uses this to learn member names
+      # and URLs, then fans out to /api/agents/<name>/agents for the full cards.
+      # Keeps discovery off the agent pods (no SPOF on any one harness).
+      location = /api/team {
+        default_type application/json;
+        return 200 '[{{- range $i, $agent := $enabledAgents -}}{{- if $i -}},{{- end -}}{"name":{{ $agent.name | quote }},"url":"http://{{ $release }}-{{ $agent.name }}:{{ $agent.port | default 8000 }}"}{{- end -}}]';
+      }
+
+{{ range $agent := $enabledAgents }}
+      # Per-agent direct route — browser → dashboard nginx → {{ $release }}-{{ $agent.name }}
+      # No cross-agent fan-out through another harness, no localhost-scoped
+      # backend URLs on the wire (#470 design note).
+      location ~ ^/api/agents/{{ $agent.name }}/(.*)$ {
+        proxy_pass http://{{ $release }}-{{ $agent.name }}:{{ $agent.port | default 8000 }}/$1$is_args$args;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_read_timeout 310s;
+        client_max_body_size 1m;
+      }
+{{ end }}
+      # Legacy catch-all — any /api/* not handled above falls through to the
+      # configured front-door harness. Retained so nothing that still calls
+      # /api/proxy/<name> or /api/conversations/<name> breaks during the
+      # additive migration. Remove when no consumers remain (#470 follow-up).
+      location /api/ {
+        proxy_pass ${HARNESS_URL}/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_read_timeout 310s;
+        client_max_body_size 1m;
+      }
+    }
+{{- end }}

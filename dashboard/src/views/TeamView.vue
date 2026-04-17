@@ -47,7 +47,11 @@ function selectBackend(name: string, backendId: string) {
       />
     </SplitterPanel>
     <SplitterPanel :size="55" :min-size="25">
-      <AgentDetail :member="selectedMember" :active-backend-id="activeBackendId" />
+      <AgentDetail
+        :member="selectedMember"
+        :active-backend-id="activeBackendId"
+        @select-backend="(id) => (activeBackendId = id)"
+      />
     </SplitterPanel>
   </Splitter>
 </template>

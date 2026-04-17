@@ -5,8 +5,9 @@ import TeamView from "../../src/views/TeamView.vue";
 
 // Dashboard TeamView smoke tests. Shape matches harness /team contract
 // (src/types/team.ts) — array of team members each with an `agents` array of
-// nyx + backend cards. Chat is deferred per #470, so these tests cover list
-// render, selection, and the loading/error/empty placeholders only.
+// nyx + backend cards. Covers list render, selection, chat-panel mount, and
+// the loading/error/empty placeholders. Live chat send/receive is exercised
+// separately in ChatPanel.spec.ts.
 
 function mountView() {
   return mount(TeamView, {
@@ -16,14 +17,54 @@ function mountView() {
   });
 }
 
-function mockTeamResponse(data: unknown) {
+function okJson(data: unknown): Response {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => data,
+  } as unknown as Response;
+}
+
+// Path-aware fetch mock — matches the new direct-routing dashboard API:
+//   GET  /api/team                      → directory of members
+//   GET  /api/agents/<name>/agents      → that member's nyx + backend cards
+//   GET  /api/agents/<name>/conversations → empty list (ChatPanel will
+//                                          fetch this on mount once the
+//                                          right-pane is shown)
+// `team` is an array of TeamMember-shaped objects; the mock derives the
+// directory and per-agent responses from it.
+interface MockTeamMember {
+  name: string;
+  url: string;
+  agents?: unknown[];
+  error?: string;
+}
+
+function mockEndpoints(team: MockTeamMember[]) {
   vi.stubGlobal(
     "fetch",
-    vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => data,
-    } as unknown as Response),
+    vi.fn((input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : (input as URL).toString();
+      if (url.includes("/conversations")) return Promise.resolve(okJson([]));
+      const agentMatch = /\/agents\/([^/]+)\/agents$/.exec(url);
+      if (agentMatch) {
+        const name = decodeURIComponent(agentMatch[1]);
+        const member = team.find((m) => m.name === name);
+        if (!member) {
+          return Promise.resolve({ ok: false, status: 404 } as unknown as Response);
+        }
+        if (member.error) {
+          return Promise.resolve({ ok: false, status: 502 } as unknown as Response);
+        }
+        return Promise.resolve(okJson(member.agents ?? []));
+      }
+      if (url.endsWith("/api/team") || url.endsWith("/team")) {
+        return Promise.resolve(
+          okJson(team.map((m) => ({ name: m.name, url: m.url }))),
+        );
+      }
+      return Promise.resolve(okJson(null));
+    }),
   );
 }
 
@@ -38,7 +79,7 @@ describe("TeamView", () => {
   });
 
   it("renders loading state then agent cards on fetch success", async () => {
-    mockTeamResponse([
+    mockEndpoints([
       {
         name: "iris",
         url: "http://iris:8000",
@@ -91,7 +132,7 @@ describe("TeamView", () => {
   });
 
   it("renders empty-state when team list is empty", async () => {
-    mockTeamResponse([]);
+    mockEndpoints([]);
 
     const wrapper = mountView();
     await flushPromises();
@@ -100,7 +141,7 @@ describe("TeamView", () => {
   });
 
   it("renders an unreachable card when a member reports an error", async () => {
-    mockTeamResponse([
+    mockEndpoints([
       {
         name: "ghost",
         url: "http://ghost:8000",
@@ -115,12 +156,20 @@ describe("TeamView", () => {
     expect(wrapper.find("[data-testid='agent-card-unreachable']").exists()).toBe(true);
   });
 
-  it("shows the right-pane placeholder until an agent is selected", async () => {
-    mockTeamResponse([
+  it("mounts the chat panel once an agent is selected", async () => {
+    mockEndpoints([
       {
         name: "iris",
         url: "http://iris:8000",
-        agents: [{ id: "iris-nyx", role: "nyx", url: "http://iris:8000", card: { name: "iris" } }],
+        agents: [
+          { id: "iris-nyx", role: "nyx", url: "http://iris:8000", card: { name: "iris" } },
+          {
+            id: "iris-a2-claude",
+            role: "backend",
+            url: "http://iris-a2-claude:8080",
+            card: { name: "iris-claude" },
+          },
+        ],
       },
     ]);
 
@@ -130,7 +179,10 @@ describe("TeamView", () => {
     expect(wrapper.find("[data-testid='detail-placeholder']").exists()).toBe(true);
 
     await wrapper.find("[data-testid='agent-card']").trigger("click");
+    await flushPromises();
+
     expect(wrapper.find("[data-testid='detail-body']").exists()).toBe(true);
-    expect(wrapper.find("[data-testid='detail-placeholder']").exists()).toBe(false);
+    expect(wrapper.find("[data-testid='chat-panel']").exists()).toBe(true);
+    expect(wrapper.find("[data-testid='chat-backend-select']").exists()).toBe(true);
   });
 });

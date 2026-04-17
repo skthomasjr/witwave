@@ -16,12 +16,40 @@ export class ApiError extends Error {
   }
 }
 
-export interface ApiGetOptions {
+export interface ApiRequestOptions {
   signal?: AbortSignal;
+  query?: Record<string, string | undefined>;
 }
 
-export async function apiGet<T>(path: string, opts: ApiGetOptions = {}): Promise<T> {
-  const resp = await fetch(`${API_BASE}${path}`, { signal: opts.signal });
+function buildUrl(path: string, query?: ApiRequestOptions["query"]): string {
+  if (!query) return `${API_BASE}${path}`;
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(query)) {
+    if (v !== undefined && v !== "") params.set(k, v);
+  }
+  const qs = params.toString();
+  return qs ? `${API_BASE}${path}?${qs}` : `${API_BASE}${path}`;
+}
+
+export async function apiGet<T>(path: string, opts: ApiRequestOptions = {}): Promise<T> {
+  const resp = await fetch(buildUrl(path, opts.query), { signal: opts.signal });
+  if (!resp.ok) {
+    throw new ApiError(resp.status, `HTTP ${resp.status}`);
+  }
+  return (await resp.json()) as T;
+}
+
+export async function apiPost<T, B = unknown>(
+  path: string,
+  body: B,
+  opts: ApiRequestOptions = {},
+): Promise<T> {
+  const resp = await fetch(buildUrl(path, opts.query), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: opts.signal,
+  });
   if (!resp.ok) {
     throw new ApiError(resp.status, `HTTP ${resp.status}`);
   }

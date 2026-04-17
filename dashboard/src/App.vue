@@ -1,28 +1,33 @@
 <script setup lang="ts">
-import { useRouter } from "vue-router";
-import Menubar from "primevue/menubar";
-import type { MenuItem } from "primevue/menuitem";
+import { RouterLink, RouterView } from "vue-router";
 
-// App shell. Single nav item for now (Team) — other parity views (Jobs, Tasks,
-// Triggers, Conversations, Metrics, …) get added to this list as they land.
-// PrimeVue Menubar keeps the chrome consistent as we grow.
+// App shell. Simple button-style nav matching the legacy ui/ pattern —
+// compact, dark-surface, one entry per view. Reintroduce PrimeVue Menubar
+// when the view count grows enough to need overflow management (#470).
 
-const router = useRouter();
+interface NavItem {
+  label: string;
+  to: { name: string };
+}
 
-const navItems: MenuItem[] = [
-  {
-    label: "Team",
-    icon: "pi pi-users",
-    command: () => router.push({ name: "team" }),
-  },
-];
+const navItems: NavItem[] = [{ label: "Team", to: { name: "team" } }];
 </script>
 
 <template>
   <div class="app-shell p-dark">
     <header class="app-header">
       <h1 class="brand">nyx</h1>
-      <Menubar :model="navItems" class="app-nav" />
+      <nav class="app-nav">
+        <RouterLink
+          v-for="item in navItems"
+          :key="item.label"
+          :to="item.to"
+          class="nav-link"
+          active-class="is-active"
+        >
+          {{ item.label }}
+        </RouterLink>
+      </nav>
       <span class="version" data-testid="dashboard-version">v0.1.0-alpha</span>
     </header>
     <main class="app-main">
@@ -59,14 +64,33 @@ const navItems: MenuItem[] = [
 }
 
 .app-nav {
+  display: flex;
+  gap: 2px;
   flex: 1;
-  background: transparent;
-  border: none;
-  padding: 0;
 }
 
-.app-nav :deep(.p-menubar-root-list) {
-  gap: 2px;
+.nav-link {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 5px 13px;
+  border-radius: var(--nyx-radius);
+  color: var(--nyx-dim);
+  font-family: var(--nyx-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  transition: color 0.12s, background 0.12s;
+}
+
+.nav-link:hover {
+  color: var(--nyx-text);
+  background: var(--nyx-bg);
+}
+
+.nav-link.is-active {
+  color: var(--nyx-bright);
+  background: var(--nyx-bg);
 }
 
 .version {
