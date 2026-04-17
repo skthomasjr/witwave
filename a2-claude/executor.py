@@ -501,6 +501,11 @@ async def _run_query_inner(
     _last_total_tokens = 0
     _session_start = time.monotonic()
     _assistant_turn_count = 0
+    # Tracks whether a non-empty TextBlock has already been streamed via on_chunk
+    # during this run. Used to insert "\n\n" between streamed blocks so streaming
+    # clients see the same on-wire shape as the non-streaming aggregation path
+    # ("\n\n".join(collected) below) — see #500.
+    _streamed_text_emitted = False
 
     try:
         _spawn_start = time.monotonic()
@@ -531,7 +536,18 @@ async def _run_query_inner(
                             # task object.
                             if on_chunk is not None and block.text:
                                 try:
+                                    # Insert "\n\n" separator before any subsequent
+                                    # non-empty TextBlock so streaming clients see
+                                    # the same shape as non-streaming callers, which
+                                    # receive "\n\n".join(collected) at line 808
+                                    # (#500). The separator is routed through
+                                    # on_chunk so it counts as an emitted chunk,
+                                    # keeping the _chunks_emitted==0 final-enqueue
+                                    # guard accurate.
+                                    if _streamed_text_emitted:
+                                        await on_chunk("\n\n")
                                     await on_chunk(block.text)
+                                    _streamed_text_emitted = True
                                 except Exception as _e:
                                     # Never let a streaming-side error abort the
                                     # SDK iteration; log and continue buffering.
