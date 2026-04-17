@@ -72,14 +72,17 @@ func enabledEnv() bool {
 // no-op.
 func InitOTel(ctx context.Context) (func(context.Context) error, error) {
 	log := logf.FromContext(ctx).WithName("otel-init")
+	// noopShutdown is returned on every error path so callers can unconditionally
+	// defer the shutdown closure without a nil check (#484).
+	noopShutdown := func(context.Context) error { return nil }
 	if !enabledEnv() {
 		log.V(1).Info("OTEL_ENABLED unset/false — skipping OTel init (call sites will use the no-op tracer)")
-		return func(context.Context) error { return nil }, nil
+		return noopShutdown, nil
 	}
 
 	exporter, err := otlptracehttp.New(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("create OTLP HTTP exporter: %w", err)
+		return noopShutdown, fmt.Errorf("create OTLP HTTP exporter: %w", err)
 	}
 
 	res, err := resource.Merge(
@@ -92,7 +95,7 @@ func InitOTel(ctx context.Context) (func(context.Context) error, error) {
 		),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("merge resource attributes: %w", err)
+		return noopShutdown, fmt.Errorf("merge resource attributes: %w", err)
 	}
 
 	tp := sdktrace.NewTracerProvider(
