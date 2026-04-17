@@ -693,10 +693,15 @@ async def _run_inner(
     except Exception:
         # Lock-entry hygiene handled by run_query's finally (#483); popping
         # here races with other waiters.
-        # Prune history_save_failed on error completion so the set does not
-        # grow unbounded when the same session_id never returns (#485).
-        if history_save_failed is not None:
-            history_save_failed.discard(session_id)
+        # Do NOT discard session_id from history_save_failed here (#520).
+        # run_query's own except block intentionally ADDS session_id to
+        # history_save_failed before re-raising (#493, #499), so the next
+        # request for this session starts fresh rather than resuming a
+        # partially-advanced chat.history. Discarding it here would silently
+        # undo that protection. Unbounded-growth concerns (#485) are
+        # addressed on the success and budget-exceeded paths via
+        # _track_session's LRU-aligned pruning, and on the timeout path
+        # above (which also removes the on-disk session file).
         if a2_tasks_total is not None:
             a2_tasks_total.labels(**_LABELS, status="error").inc()
         if a2_task_error_duration_seconds is not None:
