@@ -425,20 +425,18 @@ async def run_query(
                 partial_response = "".join(exc.collected)
                 if partial_response:
                     await log_entry("agent", partial_response, session_id, model=resolved_model, tokens=_total_tokens or None)
-                try:
-                    await _save_history(session_id, chat.history)
-                except Exception as _save_exc:
-                    logger.error(
-                        "Permanently failed to save session history for %r after budget exceeded: %s",
-                        session_id, _save_exc, exc_info=True,
-                    )
-                    if a2_session_history_save_errors_total is not None:
-                        a2_session_history_save_errors_total.labels(**_LABELS).inc()
-                    # Mark the session in history_save_failed so the next request
-                    # starts fresh rather than resuming inconsistent state — same
-                    # invariant the success-path handler maintains (#437, #409).
-                    if history_save_failed is not None:
-                        history_save_failed.add(session_id)
+                # Do not persist chat.history here (#493). At this point the
+                # history contains the user turn that triggered the aborted
+                # call and, at best, a partial/implementation-defined model
+                # turn appended by the google-genai SDK. Saving that would
+                # leave the session in a state that either violates Gemini's
+                # alternating user/model contract or resumes on incomplete
+                # content on the next request. Instead, mark the session in
+                # history_save_failed so the next request starts fresh —
+                # same invariant the success-path handler maintains
+                # (#437, #409). The prior on-disk history remains authoritative.
+                if history_save_failed is not None:
+                    history_save_failed.add(session_id)
                 raise
             except Exception as _run_exc:
                 if a2_sdk_query_error_duration_seconds is not None:
