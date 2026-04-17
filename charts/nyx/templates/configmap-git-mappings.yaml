@@ -27,43 +27,42 @@ data:
     failed=0
     apply_mappings() {
       MAPPINGS_FILE="$1"
-      src=""
-      dest=""
-      while IFS= read -r line; do
-        case "$line" in
-          *"src:"*)
-            src=$(echo "$line" | sed 's/.*src:[[:space:]]*//')
+      # mappings.tsv format: one mapping per line, "<src>\t<dest>" (tab-separated).
+      # Emitted by Helm at render time so shell never has to parse YAML. Tab is
+      # used as the delimiter because ':' and whitespace are legal in paths but
+      # tabs effectively never are; this removes the substring-match ambiguity
+      # of the previous line-based parser (see risk #577).
+      while IFS="$(printf '\t')" read -r src dest; do
+        if [ -z "$src" ] && [ -z "$dest" ]; then
+          continue
+        fi
+        if [ -z "$src" ] || [ -z "$dest" ]; then
+          echo "ERROR: malformed mapping line (src='$src' dest='$dest') in $MAPPINGS_FILE" >&2
+          failed=1
+          continue
+        fi
+        case "$src" in
+          */)
+            echo "Syncing dir  $src -> $dest"
+            if ! mkdir -p "$dest"; then
+              echo "ERROR: failed to create dir $dest" >&2
+              failed=1
+            elif ! rsync -a --omit-dir-times --no-perms --delete --exclude='*.checkpoint' "$src" "$dest"; then
+              echo "ERROR: failed to sync dir $src -> $dest" >&2
+              failed=1
+            fi
             ;;
-          *"dest:"*)
-            dest=$(echo "$line" | sed 's/.*dest:[[:space:]]*//')
-            if [ -n "$src" ] && [ -n "$dest" ]; then
-              case "$src" in
-                */)
-                  echo "Syncing dir  $src -> $dest"
-                  if ! mkdir -p "$dest"; then
-                    echo "ERROR: failed to create dir $dest" >&2
-                    failed=1
-                  elif ! rsync -a --omit-dir-times --no-perms --delete --exclude='*.checkpoint' "$src" "$dest"; then
-                    echo "ERROR: failed to sync dir $src -> $dest" >&2
-                    failed=1
-                  fi
-                  ;;
-                *)
-                  echo "Syncing file $src -> $dest"
-                  if ! mkdir -p "$(dirname "$dest")" || ! rsync -a --omit-dir-times --no-perms "$src" "$dest"; then
-                    echo "ERROR: failed to sync file $src -> $dest" >&2
-                    failed=1
-                  fi
-                  ;;
-              esac
-              src=""
-              dest=""
+          *)
+            echo "Syncing file $src -> $dest"
+            if ! mkdir -p "$(dirname "$dest")" || ! rsync -a --omit-dir-times --no-perms "$src" "$dest"; then
+              echo "ERROR: failed to sync file $src -> $dest" >&2
+              failed=1
             fi
             ;;
         esac
       done < "$MAPPINGS_FILE"
     }
-    for f in "$MAPPINGS_DIR"/*/mappings.yaml; do
+    for f in "$MAPPINGS_DIR"/*/mappings.tsv; do
       [ -f "$f" ] || continue
       echo "Applying mappings from $f"
       apply_mappings "$f"
@@ -90,6 +89,10 @@ data:
     - src: /git/{{ .gitSync }}/{{ .src }}
       dest: {{ .dest }}
     {{- end }}
+  mappings.tsv: |
+    {{- range .gitMappings }}
+    {{ printf "/git/%s/%s\t%s" .gitSync .src .dest }}
+    {{- end }}
 {{- end }}
 {{- range .backends }}
 {{- if eq (include "nyx.enabled" .) "true" }}
@@ -106,6 +109,10 @@ data:
     {{- range .gitMappings }}
     - src: /git/{{ .gitSync }}/{{ .src }}
       dest: {{ .dest }}
+    {{- end }}
+  mappings.tsv: |
+    {{- range .gitMappings }}
+    {{ printf "/git/%s/%s\t%s" .gitSync .src .dest }}
     {{- end }}
 {{- end }}
 {{- end }}
