@@ -94,6 +94,17 @@ _metrics_cache_expires: float = 0.0
 # critical section; the cheap nyx-own generate_latest() call stays outside.
 _metrics_cache_lock: asyncio.Lock = asyncio.Lock()
 
+# Short-TTL cache for the health_ready backend sweep (#542).  Readiness probes
+# typically fire every 5-10s from Kubernetes plus dashboard polling and any
+# external monitor; without this cache each probe fans out a fresh HTTP GET to
+# every backend's /health.  2-3s TTL is short enough that real backend wobbles
+# surface quickly while collapsing bursts of concurrent probes into a single
+# sweep.  Override via HEALTH_READY_CACHE_TTL.
+HEALTH_READY_CACHE_TTL = float(os.environ.get("HEALTH_READY_CACHE_TTL", "3"))
+_health_ready_cache: "tuple[int, dict] | None" = None
+_health_ready_expires: float = 0.0
+_health_ready_lock: asyncio.Lock = asyncio.Lock()
+
 
 def _check_trigger_auth(request: Request, item: TriggerItem, body_bytes: bytes) -> bool:
     """Validate trigger request auth. HMAC takes priority over Bearer token.
@@ -169,13 +180,29 @@ async def health_live(request: Request) -> JSONResponse:
 
 
 async def health_ready(request: Request) -> JSONResponse:
+    global _health_ready_cache, _health_ready_expires
     if agent_health_checks_total is not None:
         agent_health_checks_total.labels(probe="ready").inc()
     if not _ready:
         return JSONResponse({"status": "starting"}, status_code=503)
-    import httpx
     backend_configs = [b._config for b in _executor._backends.values() if b._config.url] if _executor else []
-    if backend_configs:
+    if not backend_configs:
+        return JSONResponse({"status": "ready"})
+
+    # Fast path: serve from cache when not yet expired.  Single-flight lock
+    # serialises refreshes so N concurrent probes collapse into one sweep.
+    now = time.monotonic()
+    if _health_ready_cache is not None and now < _health_ready_expires:
+        status_code, body = _health_ready_cache
+        return JSONResponse(body, status_code=status_code)
+
+    async with _health_ready_lock:
+        now = time.monotonic()
+        if _health_ready_cache is not None and now < _health_ready_expires:
+            status_code, body = _health_ready_cache
+            return JSONResponse(body, status_code=status_code)
+
+        import httpx
         async def _probe(backend, client) -> bool:
             try:
                 resp = await client.get(backend.url.rstrip("/") + "/health")
@@ -184,10 +211,19 @@ async def health_ready(request: Request) -> JSONResponse:
                 return False
         async with httpx.AsyncClient(timeout=3.0) as client:
             results = await asyncio.gather(*[_probe(b, client) for b in backend_configs])
+
         if not all(results):
             unhealthy = [b.id for b, ok in zip(backend_configs, results) if not ok]
-            return JSONResponse({"status": "degraded", "unhealthy_backends": unhealthy}, status_code=503)
-    return JSONResponse({"status": "ready"})
+            body = {"status": "degraded", "unhealthy_backends": unhealthy}
+            status_code = 503
+        else:
+            body = {"status": "ready"}
+            status_code = 200
+
+        _health_ready_cache = (status_code, body)
+        _health_ready_expires = time.monotonic() + HEALTH_READY_CACHE_TTL
+
+    return JSONResponse(body, status_code=status_code)
 
 
 @asynccontextmanager
