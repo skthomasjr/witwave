@@ -96,6 +96,12 @@ a2_sdk_tool_result_size_bytes: prometheus_client.Histogram | None = None
 # Token budget metrics
 a2_budget_exceeded_total: prometheus_client.Counter | None = None
 
+# Hooks / tool-audit (#586) — shell-only baseline scope.
+# Non-shell enforcement and the rest of the a2_hooks_* family stay deferred
+# until a tool-wrapping proxy design is validated against the Agents SDK.
+a2_codex_hooks_denials_total: prometheus_client.Counter | None = None
+a2_tool_audit_entries_total: prometheus_client.Counter | None = None
+
 if _enabled:
     a2_up = prometheus_client.Gauge("a2_up", "Backend agent is running", ["agent", "agent_id", "backend"])
     a2_info = prometheus_client.Info("a2", "Static backend agent metadata.")
@@ -452,4 +458,21 @@ if _enabled:
         "a2_budget_exceeded_total",
         "Total token budget exceeded events (max_tokens limit hit during execution).",
         ["agent", "agent_id", "backend"],
+    )
+
+    # Hooks / tool-audit (#586) — shell-only PreToolUse deny baseline.
+    # Narrowly scoped: the `rule` label enumerates the shell baseline rule
+    # names that mirror a2-claude's baseline (baseline-rm-rf-root,
+    # baseline-git-force-push-main, baseline-curl-pipe-shell,
+    # baseline-chmod-777, baseline-dd-device). Non-shell enforcement is not
+    # covered by this counter yet — see #586 for the deferred design.
+    a2_codex_hooks_denials_total = prometheus_client.Counter(
+        "a2_codex_hooks_denials_total",
+        "Total shell commands denied by the a2-codex PreToolUse baseline, by rule.",
+        ["agent", "agent_id", "backend", "rule"],
+    )
+    a2_tool_audit_entries_total = prometheus_client.Counter(
+        "a2_tool_audit_entries_total",
+        "Total rows written to tool-audit.jsonl by a2-codex PostToolUse audit.",
+        ["agent", "agent_id", "backend", "tool"],
     )

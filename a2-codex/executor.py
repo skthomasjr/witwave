@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import subprocess
 import time
 import uuid
@@ -74,6 +75,8 @@ from metrics import (
     a2_text_blocks_per_query,
     a2_watcher_events_total,
     a2_file_watcher_restarts_total,
+    a2_codex_hooks_denials_total,
+    a2_tool_audit_entries_total,
 )
 
 from log_utils import _append_log
@@ -153,10 +156,112 @@ _SHELL_ENV_DENYLIST: frozenset[str] = frozenset({
 })
 
 
+TOOL_AUDIT_LOG = os.environ.get(
+    "TOOL_AUDIT_LOG", "/home/agent/logs/tool-audit.jsonl"
+)
+
+
+# PreToolUse deny baseline for LocalShellTool (#586, shell-only scope).
+# Mirrors a2-claude's shell baseline. `pattern` is compiled once at module
+# load; `rule` name matches a2-claude's a2_hooks_denials_total{rule=...}
+# label convention for cross-backend dashboard parity.
+_SHELL_DENY_RULES: tuple[tuple[str, "re.Pattern[str]", str], ...] = (
+    (
+        "baseline-rm-rf-root",
+        re.compile(r"\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*r)\s+(/|/\*|~|\$HOME|/\$)", re.IGNORECASE),
+        "rm -rf of /, ~, $HOME, or / glob",
+    ),
+    (
+        "baseline-git-force-push-main",
+        re.compile(r"\bgit\s+push\b.*\b--force\b.*\b(main|master)\b|\bgit\s+push\b.*\b(main|master)\b.*--force\b", re.IGNORECASE),
+        "git force-push to main/master",
+    ),
+    (
+        "baseline-curl-pipe-shell",
+        re.compile(r"\bcurl\b[^|]*\|\s*(sh|bash|zsh|python3?)\b", re.IGNORECASE),
+        "curl | sh / bash / python pipeline",
+    ),
+    (
+        "baseline-chmod-777",
+        re.compile(r"\bchmod\b\s+(-R\s+)?[0-7]*777\b"),
+        "chmod 777",
+    ),
+    (
+        "baseline-dd-device",
+        re.compile(r"\bdd\b.*\bof=/dev/(sd|nvme|hd|xvd)", re.IGNORECASE),
+        "dd of=/dev/<block-device>",
+    ),
+)
+
+
+def _evaluate_shell_baseline(cmd_parts: list[str]) -> tuple[str, str] | None:
+    """Return (rule, reason) for the first matching baseline rule, else None.
+
+    ``cmd_parts`` is the argv list as supplied by the SDK. Joined on single
+    spaces before matching so the regex authors don't need to guess quoting.
+    """
+    joined = " ".join(cmd_parts)
+    for rule, pattern, reason in _SHELL_DENY_RULES:
+        if pattern.search(joined):
+            return rule, reason
+    return None
+
+
+def _append_tool_audit(entry: dict) -> None:
+    """Append a JSON line to tool-audit.jsonl; swallow errors.
+
+    Mirrors a2-claude's audit writer shape: one JSON object per line with
+    a monotonic timestamp, tool name, decision (allow|deny), command, and
+    reason when denied. Best-effort — a full disk or missing parent dir
+    must not block the tool call.
+    """
+    try:
+        os.makedirs(os.path.dirname(TOOL_AUDIT_LOG), exist_ok=True)
+        with open(TOOL_AUDIT_LOG, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception:
+        pass
+    tool = str(entry.get("tool") or "")
+    if a2_tool_audit_entries_total is not None:
+        try:
+            a2_tool_audit_entries_total.labels(**_LABELS, tool=tool).inc()
+        except Exception:
+            pass
+
+
 async def _shell_executor(req: LocalShellCommandRequest) -> str:
     cmd = req.data.action.command
     cwd = req.data.action.working_directory or None
     env_extra = req.data.action.env or {}
+
+    # PreToolUse deny baseline (#586 shell-only).
+    _denied = _evaluate_shell_baseline(cmd)
+    if _denied is not None:
+        rule, reason = _denied
+        if a2_codex_hooks_denials_total is not None:
+            try:
+                a2_codex_hooks_denials_total.labels(**_LABELS, rule=rule).inc()
+            except Exception:
+                pass
+        _append_tool_audit({
+            "ts": time.time(),
+            "tool": "LocalShell",
+            "decision": "deny",
+            "rule": rule,
+            "reason": reason,
+            "command": cmd,
+        })
+        logger.warning("_shell_executor: baseline deny rule=%s cmd=%r", rule, cmd)
+        return f"Command blocked by shell baseline rule '{rule}': {reason}"
+
+    # Audit allowed commands too so the log is a complete forensic trail.
+    _append_tool_audit({
+        "ts": time.time(),
+        "tool": "LocalShell",
+        "decision": "allow",
+        "command": cmd,
+    })
+
     # Strip keys that could be used to hijack binary resolution or loader
     # behavior before merging caller-supplied values into the subprocess env.
     sanitized_extra = {k: v for k, v in env_extra.items() if k not in _SHELL_ENV_DENYLIST}
