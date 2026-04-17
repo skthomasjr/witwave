@@ -88,6 +88,11 @@ start_time: datetime = datetime.now(timezone.utc)
 METRICS_CACHE_TTL = float(os.environ.get("METRICS_CACHE_TTL", "15"))
 _metrics_cache_body: str = ""
 _metrics_cache_expires: float = 0.0
+# Single-flight lock: serialises concurrent refreshes at the cache-expiry
+# boundary so N concurrent Prometheus scrapers do not all fan out to every
+# backend's /metrics endpoint (see #536).  The lock guards only the refresh
+# critical section; the cheap nyx-own generate_latest() call stays outside.
+_metrics_cache_lock: asyncio.Lock = asyncio.Lock()
 
 
 def _check_trigger_auth(request: Request, item: TriggerItem, body_bytes: bytes) -> bool:
@@ -438,13 +443,22 @@ async def main():
         nyx_output = prometheus_client.exposition.generate_latest().decode("utf-8")
         now = time.monotonic()
         if now >= _metrics_cache_expires:
-            # Use the live executor backends rather than re-reading backend.yaml
-            # from disk.  After a hot-reload, executor._backends reflects the
-            # current routing state; re-reading the file would fan out to a
-            # potentially stale set of backends.
-            backend_configs = [b._config for b in executor._backends.values()]
-            _metrics_cache_body = await fetch_backend_metrics(backend_configs)
-            _metrics_cache_expires = now + METRICS_CACHE_TTL
+            # Single-flight refresh (#536): N concurrent scrapers at the cache
+            # boundary would otherwise each fan out to every backend's
+            # /metrics.  The first waiter through the lock does the fetch; the
+            # rest re-check expiry under the lock and return the refreshed
+            # cache without issuing their own fan-out.
+            async with _metrics_cache_lock:
+                now = time.monotonic()
+                if now >= _metrics_cache_expires:
+                    # Use the live executor backends rather than re-reading
+                    # backend.yaml from disk.  After a hot-reload,
+                    # executor._backends reflects the current routing state;
+                    # re-reading the file would fan out to a potentially
+                    # stale set of backends.
+                    backend_configs = [b._config for b in executor._backends.values()]
+                    _metrics_cache_body = await fetch_backend_metrics(backend_configs)
+                    _metrics_cache_expires = now + METRICS_CACHE_TTL
         body = nyx_output + _metrics_cache_body
         return Response(
             content=body,
