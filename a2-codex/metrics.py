@@ -113,6 +113,7 @@ if _enabled:
         "a2_event_loop_lag_seconds",
         "Excess delay beyond expected sleep duration, measuring asyncio event loop congestion.",
         ["agent", "agent_id", "backend"],
+        buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
     )
     a2_health_checks_total = prometheus_client.Counter(
         "a2_health_checks_total",
@@ -135,6 +136,7 @@ if _enabled:
         "a2_a2a_request_duration_seconds",
         "Wall-clock duration of each A2A execute() call.",
         ["agent", "agent_id", "backend"],
+        buckets=(0.1, 0.5, 1, 5, 10, 30, 60, 120, 300, 600),
     )
     a2_a2a_last_request_timestamp_seconds = prometheus_client.Gauge(
         "a2_a2a_last_request_timestamp_seconds",
@@ -152,11 +154,13 @@ if _enabled:
         "a2_task_duration_seconds",
         "Duration of agent tasks in seconds.",
         ["agent", "agent_id", "backend"],
+        buckets=(0.1, 0.5, 1, 5, 10, 30, 60, 120, 300, 600),
     )
     a2_task_error_duration_seconds = prometheus_client.Histogram(
         "a2_task_error_duration_seconds",
         "Wall-clock seconds for tasks that end in error or timeout.",
         ["agent", "agent_id", "backend"],
+        buckets=(0.1, 0.5, 1, 5, 10, 30, 60, 120, 300, 600),
     )
     a2_task_last_success_timestamp_seconds = prometheus_client.Gauge(
         "a2_task_last_success_timestamp_seconds",
@@ -172,6 +176,7 @@ if _enabled:
         "a2_task_timeout_headroom_seconds",
         "Remaining timeout budget when a task completes successfully.",
         ["agent", "agent_id", "backend"],
+        buckets=(0.1, 0.5, 1, 5, 10, 30, 60, 120, 300, 600),
     )
     a2_task_cancellations_total = prometheus_client.Counter(
         "a2_task_cancellations_total",
@@ -233,11 +238,13 @@ if _enabled:
         "a2_prompt_length_bytes",
         "Byte length of incoming prompts passed to run().",
         ["agent", "agent_id", "backend"],
+        buckets=(100, 500, 1_000, 5_000, 10_000, 50_000, 100_000, 500_000, 1_000_000, 5_000_000),
     )
     a2_response_length_bytes = prometheus_client.Histogram(
         "a2_response_length_bytes",
         "Byte length of responses returned by run().",
         ["agent", "agent_id", "backend"],
+        buckets=(100, 500, 1_000, 5_000, 10_000, 50_000, 100_000, 500_000, 1_000_000, 5_000_000),
     )
     a2_empty_responses_total = prometheus_client.Counter(
         "a2_empty_responses_total",
@@ -274,21 +281,25 @@ if _enabled:
         "a2_sdk_query_duration_seconds",
         "Raw backend query time in seconds inside run_query().",
         ["agent", "agent_id", "backend", "model"],
+        buckets=(0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60),
     )
     a2_sdk_query_error_duration_seconds = prometheus_client.Histogram(
         "a2_sdk_query_error_duration_seconds",
         "Wall-clock seconds for run_query() calls that end in error.",
         ["agent", "agent_id", "backend", "model"],
+        buckets=(0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60),
     )
     a2_sdk_time_to_first_message_seconds = prometheus_client.Histogram(
         "a2_sdk_time_to_first_message_seconds",
         "Seconds from query submission to the first response message.",
         ["agent", "agent_id", "backend", "model"],
+        buckets=(0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60),
     )
     a2_sdk_session_duration_seconds = prometheus_client.Histogram(
         "a2_sdk_session_duration_seconds",
         "Backend session/connection lifetime in seconds.",
         ["agent", "agent_id", "backend", "model"],
+        buckets=(0.1, 0.5, 1, 5, 10, 30, 60, 120, 300, 600),
     )
     a2_sdk_messages_per_query = prometheus_client.Histogram(
         "a2_sdk_messages_per_query",
@@ -312,6 +323,7 @@ if _enabled:
         "a2_sdk_tokens_per_query",
         "Total tokens consumed per run_query() invocation (parity with a2-claude — #459).",
         ["agent", "agent_id", "backend", "model"],
+        buckets=(100, 500, 1_000, 5_000, 10_000, 25_000, 50_000, 100_000, 200_000, 500_000),
     )
     a2_streaming_events_emitted_total = prometheus_client.Counter(
         "a2_streaming_events_emitted_total",
@@ -374,6 +386,7 @@ if _enabled:
         "a2_context_tokens",
         "Token count used per query (from SDK usage response).",
         ["agent", "agent_id", "backend"],
+        buckets=(100, 500, 1_000, 5_000, 10_000, 25_000, 50_000, 100_000, 200_000, 500_000),
     )
     a2_context_tokens_remaining = prometheus_client.Histogram(
         "a2_context_tokens_remaining",
@@ -414,6 +427,7 @@ if _enabled:
         "a2_sdk_tool_duration_seconds",
         "Duration of individual tool calls in seconds.",
         ["agent", "agent_id", "backend", "tool"],
+        buckets=(0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60),
     )
     a2_sdk_tool_errors_total = prometheus_client.Counter(
         "a2_sdk_tool_errors_total",
@@ -424,11 +438,13 @@ if _enabled:
         "a2_sdk_tool_call_input_size_bytes",
         "Byte size of tool call input arguments.",
         ["agent", "agent_id", "backend", "tool"],
+        buckets=(100, 500, 1_000, 5_000, 10_000, 50_000, 100_000, 500_000, 1_000_000, 5_000_000),
     )
     a2_sdk_tool_result_size_bytes = prometheus_client.Histogram(
         "a2_sdk_tool_result_size_bytes",
         "Byte size of tool call result output.",
         ["agent", "agent_id", "backend", "tool"],
+        buckets=(100, 500, 1_000, 5_000, 10_000, 50_000, 100_000, 500_000, 1_000_000, 5_000_000),
     )
 
     # Token budget
