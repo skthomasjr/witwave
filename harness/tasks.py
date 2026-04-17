@@ -75,7 +75,16 @@ class TaskItem:
     running: bool = False
 
 
-def parse_task_file(path: str) -> TaskItem | None:
+# Sentinel distinguishing "file parsed cleanly but is disabled" from "parse
+# failed entirely". _register uses this to stop a running schedule when a
+# file flips from enabled to disabled; parse errors fall through to the
+# last-known-good path so transient syntax issues don't drop a healthy
+# task off the schedule. Matches the pattern in triggers/continuations/
+# webhooks and the fix that went into jobs.py alongside.
+_DISABLED = object()
+
+
+def parse_task_file(path: str) -> "TaskItem | object | None":
     try:
         with open(path) as f:
             raw = f.read()
@@ -88,7 +97,7 @@ def parse_task_file(path: str) -> TaskItem | None:
             enabled = str(fields["enabled"]).lower() not in ("false", "")
         if not enabled:
             logger.info(f"Task file {path}: disabled, skipping.")
-            return None
+            return _DISABLED
 
         # name
         filename = Path(path).stem
@@ -599,9 +608,17 @@ class TaskRunner:
             logger.info(f"Task concurrency limit: {_TASKS_MAX_CONCURRENT} concurrent items")
 
     async def _register(self, path: str) -> None:
-        item = parse_task_file(path)
-        if not item:
+        result = parse_task_file(path)
+        if result is _DISABLED:
+            # File went from enabled to disabled — stop the running schedule.
+            cancelled = self._unregister(path)
+            if cancelled is not None:
+                await asyncio.gather(cancelled, return_exceptions=True)
             return
+        if result is None:
+            # Parse error — preserve last-known-good.
+            return
+        item = result
         cancelled = self._unregister(path)
         if cancelled is not None:
             await asyncio.gather(cancelled, return_exceptions=True)

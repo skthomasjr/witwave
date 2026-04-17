@@ -54,7 +54,16 @@ class JobItem:
     running: bool = False
 
 
-def parse_job_file(path: str) -> JobItem | None:
+# Sentinel distinguishing "file parsed cleanly but is disabled" from
+# "parse failed entirely". _register uses this to unregister any previously-
+# scheduled task when a file flips from enabled to disabled, while parse
+# errors fall through to the last-known-good path so transient syntax
+# issues don't drop a healthy job off the schedule. Matches the pattern
+# already used by triggers.py / continuations.py / webhooks.py.
+_DISABLED = object()
+
+
+def parse_job_file(path: str) -> "JobItem | object | None":
     try:
         with open(path) as f:
             raw = f.read()
@@ -81,7 +90,7 @@ def parse_job_file(path: str) -> JobItem | None:
 
         if not enabled:
             logger.info(f"Job file {path}: disabled, skipping.")
-            return None
+            return _DISABLED
 
         if schedule and not croniter.is_valid(schedule):
             logger.warning(f"Job file {path}: invalid cron expression '{schedule}', skipping.")
@@ -227,9 +236,18 @@ class JobRunner:
             logger.info(f"Job concurrency limit: {_JOBS_MAX_CONCURRENT} concurrent items")
 
     async def _register(self, path: str) -> None:
-        item = parse_job_file(path)
-        if not item:
+        result = parse_job_file(path)
+        if result is _DISABLED:
+            # File went from enabled to disabled — stop the running cron.
+            cancelled = self._unregister(path)
+            if cancelled is not None:
+                await asyncio.gather(cancelled, return_exceptions=True)
             return
+        if result is None:
+            # Parse error — preserve the last known good registration so a
+            # transient syntax issue doesn't drop a healthy job.
+            return
+        item = result
         cancelled = self._unregister(path)
         if cancelled is not None:
             await asyncio.gather(cancelled, return_exceptions=True)
