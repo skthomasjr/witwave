@@ -228,16 +228,63 @@ async def _save_history(session_id: str, history: list[types.Content]) -> None:
     ) from last_exc
 
 
-def _get_session_lock(session_id: str, session_locks: dict[str, asyncio.Lock]) -> asyncio.Lock:
-    if session_id not in session_locks:
-        session_locks[session_id] = asyncio.Lock()
-    return session_locks[session_id]
+class _RefCountedLock:
+    """An asyncio.Lock bundled with a waiter refcount (#483).
+
+    The refcount is incremented by `_acquire_session_lock` BEFORE `async with
+    lock` and decremented by `_release_session_lock` AFTER the lock is released.
+    Eviction from ``session_locks`` is only permitted when the refcount reaches
+    zero, which guarantees:
+
+    - A task that has already looked up (or is about to acquire) a lock entry
+      cannot have that entry silently replaced by a fresh ``asyncio.Lock``
+      while it still holds — or is queued on — the original lock instance.
+    - The #401 hygiene goal is preserved: once the last waiter is done, the
+      entry is removed from the dict so idle session locks do not accumulate.
+    """
+
+    __slots__ = ("lock", "refcount")
+
+    def __init__(self) -> None:
+        self.lock: asyncio.Lock = asyncio.Lock()
+        self.refcount: int = 0
+
+
+def _acquire_session_lock(
+    session_id: str, session_locks: dict[str, "_RefCountedLock"]
+) -> "_RefCountedLock":
+    """Return (and register a waiter on) the refcounted lock for ``session_id``.
+
+    Must be paired with a ``_release_session_lock`` call in a ``finally`` so
+    that eviction invariants are not violated on cancellation or error. This is
+    safe to call without holding any async-level lock because ``session_locks``
+    is mutated only from the single asyncio event loop thread; the refcount
+    bump and dict insertion happen synchronously in one step.
+    """
+    entry = session_locks.get(session_id)
+    if entry is None:
+        entry = _RefCountedLock()
+        session_locks[session_id] = entry
+    entry.refcount += 1
+    return entry
+
+
+def _release_session_lock(
+    session_id: str, session_locks: dict[str, "_RefCountedLock"]
+) -> None:
+    """Drop this task's reference; evict the dict entry when no waiters remain."""
+    entry = session_locks.get(session_id)
+    if entry is None:
+        return
+    entry.refcount -= 1
+    if entry.refcount <= 0 and session_locks.get(session_id) is entry:
+        session_locks.pop(session_id, None)
 
 
 def _track_session(
     sessions: OrderedDict[str, float],
     session_id: str,
-    session_locks: dict[str, asyncio.Lock],
+    session_locks: dict[str, "_RefCountedLock"],
 ) -> None:
     if session_id in sessions:
         sessions.move_to_end(session_id)
@@ -245,7 +292,13 @@ def _track_session(
     else:
         if len(sessions) >= MAX_SESSIONS:
             _evicted_id, last_used_at = sessions.popitem(last=False)
-            session_locks.pop(_evicted_id, None)
+            # Only evict the lock entry when no one holds or waits on it.
+            # Otherwise the current holder's release path (_release_session_lock)
+            # will remove it once refcount reaches zero. This preserves the
+            # mutual-exclusion invariant under MAX_SESSIONS pressure (#483).
+            _evicted_entry = session_locks.get(_evicted_id)
+            if _evicted_entry is not None and _evicted_entry.refcount <= 0:
+                session_locks.pop(_evicted_id, None)
             if a2_session_evictions_total is not None:
                 a2_session_evictions_total.labels(**_LABELS).inc()
             if a2_session_age_seconds is not None:
@@ -293,7 +346,7 @@ async def run_query(
     prompt: str,
     session_id: str,
     agent_md_content: str,
-    session_locks: dict[str, asyncio.Lock],
+    session_locks: dict[str, "_RefCountedLock"],
     history_save_failed: set[str] | None = None,
     model: str | None = None,
     max_tokens: int | None = None,
@@ -305,176 +358,184 @@ async def run_query(
     if agent_md_content:
         instructions = f"{agent_md_content}\n\nYour session ID is {session_id}."
 
-    lock = _get_session_lock(session_id, session_locks)
-    async with lock:
-        history = await asyncio.to_thread(_load_history, session_id)
+    # Refcounted lock lookup (#483). The waiter is registered before we
+    # block on the lock so the dict entry cannot be evicted out from under
+    # us while we are queued — eviction is gated on refcount == 0.
+    entry = _acquire_session_lock(session_id, session_locks)
+    try:
+        async with entry.lock:
+            history = await asyncio.to_thread(_load_history, session_id)
 
-        client = _get_client()
+            client = _get_client()
 
-        # Create chat with persisted history and system instruction
-        chat = client.aio.chats.create(
-            model=resolved_model,
-            config=types.GenerateContentConfig(
-                system_instruction=instructions,
-            ),
-            history=history,
-        )
+            # Create chat with persisted history and system instruction
+            chat = client.aio.chats.create(
+                model=resolved_model,
+                config=types.GenerateContentConfig(
+                    system_instruction=instructions,
+                ),
+                history=history,
+            )
 
-        collected: list[str] = []
-        _query_start = time.monotonic()
-        _session_start = time.monotonic()
-        _first_chunk_at: float | None = None
-        _turn_count = 0
-        _message_count = 0
-        _total_tokens = 0
+            collected: list[str] = []
+            _query_start = time.monotonic()
+            _session_start = time.monotonic()
+            _first_chunk_at: float | None = None
+            _turn_count = 0
+            _message_count = 0
+            _total_tokens = 0
 
-        try:
-            async for chunk in await chat.send_message_stream(prompt):
-                _message_count += 1
-                text = getattr(chunk, "text", None)
-                if text:
-                    if _first_chunk_at is None:
-                        _first_chunk_at = time.monotonic()
-                        if a2_sdk_time_to_first_message_seconds is not None:
-                            a2_sdk_time_to_first_message_seconds.labels(**_LABELS, model=resolved_model).observe(
-                                _first_chunk_at - _query_start
-                            )
-                    collected.append(text)
-                    # Stream the chunk to the A2A event_queue (#430). Set by
-                    # execute(); None for non-streaming callers (e.g. /mcp).
-                    # Awaited directly so events stay ordered and exceptions
-                    # surface here. Errors swallowed so SDK iteration is never
-                    # aborted.
-                    if on_chunk is not None:
-                        try:
-                            await on_chunk(text)
-                        except Exception as _e:
-                            logger.warning("Session %r: on_chunk callback raised: %s", session_id, _e)
-                # Track token count and check budget on each chunk
-                _usage_meta = getattr(chunk, "usage_metadata", None)
-                _token_count = getattr(_usage_meta, "total_token_count", None)
-                if _token_count is not None:
-                    _total_tokens = int(_token_count)
-                if max_tokens is not None and _token_count is not None and _total_tokens >= max_tokens:
-                    if a2_budget_exceeded_total is not None:
-                        a2_budget_exceeded_total.labels(**_LABELS).inc()
-                    raise BudgetExceededError(_total_tokens, max_tokens, list(collected))
-            _turn_count = 1
-        except BudgetExceededError as exc:
+            try:
+                async for chunk in await chat.send_message_stream(prompt):
+                    _message_count += 1
+                    text = getattr(chunk, "text", None)
+                    if text:
+                        if _first_chunk_at is None:
+                            _first_chunk_at = time.monotonic()
+                            if a2_sdk_time_to_first_message_seconds is not None:
+                                a2_sdk_time_to_first_message_seconds.labels(**_LABELS, model=resolved_model).observe(
+                                    _first_chunk_at - _query_start
+                                )
+                        collected.append(text)
+                        # Stream the chunk to the A2A event_queue (#430). Set by
+                        # execute(); None for non-streaming callers (e.g. /mcp).
+                        # Awaited directly so events stay ordered and exceptions
+                        # surface here. Errors swallowed so SDK iteration is never
+                        # aborted.
+                        if on_chunk is not None:
+                            try:
+                                await on_chunk(text)
+                            except Exception as _e:
+                                logger.warning("Session %r: on_chunk callback raised: %s", session_id, _e)
+                    # Track token count and check budget on each chunk
+                    _usage_meta = getattr(chunk, "usage_metadata", None)
+                    _token_count = getattr(_usage_meta, "total_token_count", None)
+                    if _token_count is not None:
+                        _total_tokens = int(_token_count)
+                    if max_tokens is not None and _token_count is not None and _total_tokens >= max_tokens:
+                        if a2_budget_exceeded_total is not None:
+                            a2_budget_exceeded_total.labels(**_LABELS).inc()
+                        raise BudgetExceededError(_total_tokens, max_tokens, list(collected))
+                _turn_count = 1
+            except BudgetExceededError as exc:
+                if a2_sdk_session_duration_seconds is not None:
+                    a2_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
+                        time.monotonic() - _session_start
+                    )
+                partial_response = "".join(exc.collected)
+                if partial_response:
+                    await log_entry("agent", partial_response, session_id, model=resolved_model, tokens=_total_tokens or None)
+                try:
+                    await _save_history(session_id, chat.history)
+                except Exception as _save_exc:
+                    logger.error(
+                        "Permanently failed to save session history for %r after budget exceeded: %s",
+                        session_id, _save_exc, exc_info=True,
+                    )
+                    if a2_session_history_save_errors_total is not None:
+                        a2_session_history_save_errors_total.labels(**_LABELS).inc()
+                    # Mark the session in history_save_failed so the next request
+                    # starts fresh rather than resuming inconsistent state — same
+                    # invariant the success-path handler maintains (#437, #409).
+                    if history_save_failed is not None:
+                        history_save_failed.add(session_id)
+                raise
+            except Exception as _run_exc:
+                if a2_sdk_query_error_duration_seconds is not None:
+                    a2_sdk_query_error_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
+                        time.monotonic() - _query_start
+                    )
+                if a2_sdk_session_duration_seconds is not None:
+                    a2_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
+                        time.monotonic() - _session_start
+                    )
+                # Classify by exception type so the new SDK error counters track
+                # connection vs result vs catch-all failures (#445). Best-effort —
+                # if the google.api_core import is unavailable, fall through to the
+                # generic catch-all counter.
+                try:
+                    from google.api_core import exceptions as _g_exc
+                    if isinstance(_run_exc, _g_exc.ClientError):
+                        if a2_sdk_client_errors_total is not None:
+                            a2_sdk_client_errors_total.labels(**_LABELS, model=resolved_model).inc()
+                    elif isinstance(_run_exc, _g_exc.GoogleAPIError):
+                        if a2_sdk_result_errors_total is not None:
+                            a2_sdk_result_errors_total.labels(**_LABELS, model=resolved_model).inc()
+                    else:
+                        if a2_sdk_errors_total is not None:
+                            a2_sdk_errors_total.labels(**_LABELS, model=resolved_model).inc()
+                except Exception:
+                    if a2_sdk_errors_total is not None:
+                        a2_sdk_errors_total.labels(**_LABELS, model=resolved_model).inc()
+                raise
+
             if a2_sdk_session_duration_seconds is not None:
                 a2_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
                     time.monotonic() - _session_start
                 )
-            partial_response = "".join(exc.collected)
-            if partial_response:
-                await log_entry("agent", partial_response, session_id, model=resolved_model, tokens=_total_tokens or None)
+
+            full_response = "".join(collected)
+            if full_response:
+                await log_entry("agent", full_response, session_id, model=resolved_model, tokens=_total_tokens or None)
+
+            # Persist updated history — log at ERROR on permanent failure so it is
+            # visible in monitoring, but do not propagate so the completed response
+            # is still returned to the caller.  Mark the session in history_save_failed
+            # so the next request starts fresh rather than resuming inconsistent state (#409).
             try:
                 await _save_history(session_id, chat.history)
+                if history_save_failed is not None:
+                    history_save_failed.discard(session_id)
             except Exception as _save_exc:
                 logger.error(
-                    "Permanently failed to save session history for %r after budget exceeded: %s",
+                    "Permanently failed to save session history for %r: %s",
                     session_id, _save_exc, exc_info=True,
                 )
                 if a2_session_history_save_errors_total is not None:
                     a2_session_history_save_errors_total.labels(**_LABELS).inc()
-                # Mark the session in history_save_failed so the next request
-                # starts fresh rather than resuming inconsistent state — same
-                # invariant the success-path handler maintains (#437, #409).
                 if history_save_failed is not None:
                     history_save_failed.add(session_id)
-            raise
-        except Exception as _run_exc:
-            if a2_sdk_query_error_duration_seconds is not None:
-                a2_sdk_query_error_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
-                    time.monotonic() - _query_start
-                )
-            if a2_sdk_session_duration_seconds is not None:
-                a2_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
-                    time.monotonic() - _session_start
-                )
-            # Classify by exception type so the new SDK error counters track
-            # connection vs result vs catch-all failures (#445). Best-effort —
-            # if the google.api_core import is unavailable, fall through to the
-            # generic catch-all counter.
-            try:
-                from google.api_core import exceptions as _g_exc
-                if isinstance(_run_exc, _g_exc.ClientError):
-                    if a2_sdk_client_errors_total is not None:
-                        a2_sdk_client_errors_total.labels(**_LABELS, model=resolved_model).inc()
-                elif isinstance(_run_exc, _g_exc.GoogleAPIError):
-                    if a2_sdk_result_errors_total is not None:
-                        a2_sdk_result_errors_total.labels(**_LABELS, model=resolved_model).inc()
-                else:
-                    if a2_sdk_errors_total is not None:
-                        a2_sdk_errors_total.labels(**_LABELS, model=resolved_model).inc()
-            except Exception:
-                if a2_sdk_errors_total is not None:
-                    a2_sdk_errors_total.labels(**_LABELS, model=resolved_model).inc()
-            raise
 
-        if a2_sdk_session_duration_seconds is not None:
-            a2_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
-                time.monotonic() - _session_start
-            )
+        if a2_sdk_query_duration_seconds is not None:
+            a2_sdk_query_duration_seconds.labels(**_LABELS, model=resolved_model).observe(time.monotonic() - _query_start)
+        if a2_sdk_messages_per_query is not None:
+            a2_sdk_messages_per_query.labels(**_LABELS, model=resolved_model).observe(_message_count)
+        if a2_sdk_turns_per_query is not None:
+            a2_sdk_turns_per_query.labels(**_LABELS, model=resolved_model).observe(_turn_count)
+        if a2_text_blocks_per_query is not None:
+            a2_text_blocks_per_query.labels(**_LABELS, model=resolved_model).observe(len(collected))
+        if _total_tokens is not None and max_tokens is not None:
+            if a2_context_tokens is not None:
+                a2_context_tokens.labels(**_LABELS).observe(_total_tokens)
+            if a2_context_tokens_remaining is not None:
+                a2_context_tokens_remaining.labels(**_LABELS).observe(max(0, max_tokens - _total_tokens))
+            _pct = _total_tokens / max_tokens * 100
+            if a2_context_usage_percent is not None:
+                a2_context_usage_percent.labels(**_LABELS).observe(_pct)
+            if _pct >= 100 and a2_context_exhaustion_total is not None:
+                a2_context_exhaustion_total.labels(**_LABELS).inc()
+            elif _pct >= 80 and a2_context_warnings_total is not None:
+                a2_context_warnings_total.labels(**_LABELS).inc()
 
-        full_response = "".join(collected)
-        if full_response:
-            await log_entry("agent", full_response, session_id, model=resolved_model, tokens=_total_tokens or None)
-
-        # Persist updated history — log at ERROR on permanent failure so it is
-        # visible in monitoring, but do not propagate so the completed response
-        # is still returned to the caller.  Mark the session in history_save_failed
-        # so the next request starts fresh rather than resuming inconsistent state (#409).
         try:
-            await _save_history(session_id, chat.history)
-            if history_save_failed is not None:
-                history_save_failed.discard(session_id)
-        except Exception as _save_exc:
-            logger.error(
-                "Permanently failed to save session history for %r: %s",
-                session_id, _save_exc, exc_info=True,
-            )
-            if a2_session_history_save_errors_total is not None:
-                a2_session_history_save_errors_total.labels(**_LABELS).inc()
-            if history_save_failed is not None:
-                history_save_failed.add(session_id)
+            ts = datetime.now(timezone.utc).isoformat()
+            _trace_entry = {
+                "ts": ts,
+                "agent": AGENT_NAME, "agent_id": AGENT_ID,
+                "session_id": session_id,
+                "event_type": "response",
+                "model": resolved_model,
+                "chunks": len(collected),
+            }
+            await log_trace(json.dumps(_trace_entry))
+        except Exception as e:
+            logger.error(f"log_trace error: {e}")
 
-    if a2_sdk_query_duration_seconds is not None:
-        a2_sdk_query_duration_seconds.labels(**_LABELS, model=resolved_model).observe(time.monotonic() - _query_start)
-    if a2_sdk_messages_per_query is not None:
-        a2_sdk_messages_per_query.labels(**_LABELS, model=resolved_model).observe(_message_count)
-    if a2_sdk_turns_per_query is not None:
-        a2_sdk_turns_per_query.labels(**_LABELS, model=resolved_model).observe(_turn_count)
-    if a2_text_blocks_per_query is not None:
-        a2_text_blocks_per_query.labels(**_LABELS, model=resolved_model).observe(len(collected))
-    if _total_tokens is not None and max_tokens is not None:
-        if a2_context_tokens is not None:
-            a2_context_tokens.labels(**_LABELS).observe(_total_tokens)
-        if a2_context_tokens_remaining is not None:
-            a2_context_tokens_remaining.labels(**_LABELS).observe(max(0, max_tokens - _total_tokens))
-        _pct = _total_tokens / max_tokens * 100
-        if a2_context_usage_percent is not None:
-            a2_context_usage_percent.labels(**_LABELS).observe(_pct)
-        if _pct >= 100 and a2_context_exhaustion_total is not None:
-            a2_context_exhaustion_total.labels(**_LABELS).inc()
-        elif _pct >= 80 and a2_context_warnings_total is not None:
-            a2_context_warnings_total.labels(**_LABELS).inc()
-
-    try:
-        ts = datetime.now(timezone.utc).isoformat()
-        entry = {
-            "ts": ts,
-            "agent": AGENT_NAME, "agent_id": AGENT_ID,
-            "session_id": session_id,
-            "event_type": "response",
-            "model": resolved_model,
-            "chunks": len(collected),
-        }
-        await log_trace(json.dumps(entry))
-    except Exception as e:
-        logger.error(f"log_trace error: {e}")
-
-    return collected
+        return collected
+    finally:
+        # Drop our refcount; the lock entry is evicted from session_locks only
+        # when no other task holds or is waiting on it (#483).
+        _release_session_lock(session_id, session_locks)
 
 
 async def run(
@@ -482,7 +543,7 @@ async def run(
     session_id: str,
     sessions: OrderedDict[str, float],
     agent_md_content: str,
-    session_locks: dict[str, asyncio.Lock],
+    session_locks: dict[str, "_RefCountedLock"],
     history_save_failed: set[str] | None = None,
     model: str | None = None,
     max_tokens: int | None = None,
@@ -502,7 +563,7 @@ async def _run_inner(
     session_id: str,
     sessions: OrderedDict[str, float],
     agent_md_content: str,
-    session_locks: dict[str, asyncio.Lock],
+    session_locks: dict[str, "_RefCountedLock"],
     history_save_failed: set[str] | None = None,
     model: str | None = None,
     max_tokens: int | None = None,
@@ -538,7 +599,9 @@ async def _run_inner(
             timeout=TASK_TIMEOUT_SECONDS,
         )
         _track_session(sessions, session_id, session_locks)
-        session_locks.pop(session_id, None)  # avoid orphaned lock entry on success path (#401)
+        # Lock-entry hygiene (#401) is now handled by the refcount in
+        # run_query's finally clause so the pop cannot race with another
+        # waiter (#483).
     except asyncio.TimeoutError:
         logger.error(f"Session {session_id!r}: timed out after {TASK_TIMEOUT_SECONDS}s.")
         # Evict the session from the LRU cache on timeout. The underlying
@@ -546,7 +609,9 @@ async def _run_inner(
         # cancellation; removing it ensures the next call for this session_id
         # starts fresh rather than attempting to resume a broken session.
         sessions.pop(session_id, None)
-        session_locks.pop(session_id, None)  # avoid orphaned lock entry (#379)
+        # Lock-entry hygiene on timeout is handled by run_query's finally
+        # (refcount release). Popping here while another waiter holds the
+        # lock would reintroduce the #483 race.
         # Also remove the on-disk history file so the next request for this
         # session_id starts with empty history rather than reloading the
         # potentially stale or mid-stream snapshot written before the timeout.
@@ -576,9 +641,10 @@ async def _run_inner(
         )
         collected = _bexc.collected
         _track_session(sessions, session_id, session_locks)
-        session_locks.pop(session_id, None)  # avoid orphaned lock entry on budget-exceeded path (#401)
+        # Lock-entry hygiene handled by run_query's finally (#483).
     except Exception:
-        session_locks.pop(session_id, None)  # avoid orphaned lock entry on error path (#394)
+        # Lock-entry hygiene handled by run_query's finally (#483); popping
+        # here races with other waiters.
         if a2_tasks_total is not None:
             a2_tasks_total.labels(**_LABELS, status="error").inc()
         if a2_task_error_duration_seconds is not None:
@@ -615,7 +681,7 @@ class AgentExecutor(A2AAgentExecutor):
                 "No Gemini API key configured. Set GEMINI_API_KEY or GOOGLE_API_KEY before starting."
             )
         self._sessions: OrderedDict[str, float] = OrderedDict()
-        self._session_locks: dict[str, asyncio.Lock] = {}
+        self._session_locks: dict[str, _RefCountedLock] = {}
         self._running_tasks: dict[str, asyncio.Task] = {}
         self._agent_md_content: str = _load_agent_md()
         self._mcp_watcher_tasks: list[asyncio.Task] = []
