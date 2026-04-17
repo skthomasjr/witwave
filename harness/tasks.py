@@ -745,6 +745,14 @@ class TaskRunner:
             logger.warning("Tasks directory watcher exited — directory deleted or unavailable. Retrying in 10s.")
             if agent_file_watcher_restarts_total is not None:
                 agent_file_watcher_restarts_total.labels(watcher="tasks").inc()
+            # Cancel + await the in-flight _scan_task before the next iteration so
+            # a new _scan_task from the next loop cannot race with a prior one
+            # (e.g. on a flapping directory mount). Without this, overlapping
+            # _scan() runs would produce duplicate _register calls and double-
+            # cancellation of the same item.task (#513).
+            if not _scan_task.done():
+                _scan_task.cancel()
+            await asyncio.gather(_scan_task, return_exceptions=True)
             cancelled = [t for path in list(self._items.keys()) if (t := self._unregister(path)) is not None]
             if cancelled:
                 await asyncio.gather(*cancelled, return_exceptions=True)

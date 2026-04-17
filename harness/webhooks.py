@@ -741,6 +741,15 @@ class WebhookRunner:
             logger.warning("Webhooks directory watcher exited — retrying in 10s.")
             if agent_file_watcher_restarts_total is not None:
                 agent_file_watcher_restarts_total.labels(watcher="webhooks").inc()
+            # Cancel + await the in-flight _scan_task before the next iteration so
+            # a new _scan_task from the next loop cannot race with a prior one
+            # (e.g. on a flapping directory mount). Without this, overlapping
+            # _scan() runs would produce duplicate _register calls and double-
+            # cancellation of the same item.task (#513). The #515 retry-
+            # registration wrapper in deliver() is orthogonal and untouched.
+            if not _scan_task.done():
+                _scan_task.cancel()
+            await asyncio.gather(_scan_task, return_exceptions=True)
             for path in list(self._items.keys()):
                 self._unregister(path)
             await asyncio.sleep(10)
