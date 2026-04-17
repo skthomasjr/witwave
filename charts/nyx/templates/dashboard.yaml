@@ -65,12 +65,6 @@ spec:
             {{- toYaml .Values.dashboard.resources | nindent 12 }}
           {{- end }}
           env:
-            # Legacy fallback for the catch-all /api/* route. Most /api/*
-            # traffic is now routed directly to each agent's service by the
-            # nginx config rendered in {{ $.Release.Name }}-dashboard-nginx;
-            # HARNESS_URL only handles anything not yet migrated (#470).
-            - name: HARNESS_URL
-              value: {{ .Values.dashboard.harnessUrl | default (printf "http://%s-harness:8000" $.Release.Name) | quote }}
             # Enables /docker-entrypoint.d/15-local-resolvers.envsh to export
             # NGINX_LOCAL_RESOLVERS from /etc/resolv.conf so the `resolver`
             # directive in the ConfigMap template resolves cluster DNS at

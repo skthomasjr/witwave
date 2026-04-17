@@ -1,9 +1,5 @@
 dashboard:
   enabled: true
-  # Legacy fallback for the /api/* catch-all in nginx. Point at any reachable
-  # agent (it's only used for endpoints not yet migrated to direct routing,
-  # e.g. /api/proxy/<name>). Must resolve in-cluster or nginx refuses to start.
-  harnessUrl: "http://nyx-bob:8099"
   image:
     repository: ghcr.io/skthomasjr/images/dashboard
     tag: "0.2.0-beta.45"

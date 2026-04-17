@@ -33,12 +33,10 @@ the response, and optional delay. Enables prompt chaining without hardcoded sequ
 **Webhook dispatcher** — Reads `webhooks/*.md` and delivers outbound HTTP notifications when work completes. Supports
 glob-based filtering, optional LLM extraction passes, HMAC signing, and retry with exponential backoff.
 
-**Proxy endpoints** — Exposes `/proxy/{agent_name}`, `/conversations/{agent_name}`, and `/trace/{agent_name}` so the UI
-can target any team member by name and have the request routed through nyx's team manifest.
-
-**Agent and team discovery** — Exposes `GET /agents` (own card + all backend cards) and `GET /team` (cards for all team
-members from `manifest.json`). Also exposes `GET /.well-known/agent-triggers.json` (array of all enabled trigger
-descriptors with endpoint, name, description, and session ID).
+**Agent discovery** — Exposes `GET /agents` (own card + all backend cards). Also exposes
+`GET /.well-known/agent-triggers.json` (array of all enabled trigger descriptors with endpoint, name, description, and
+session ID). The harness only speaks for itself; cross-agent routing lives in the dashboard pod (#470) — the legacy
+`/team`, `/proxy/<name>`, `/conversations/<name>`, and `/trace/<name>` endpoints were retired in beta.46.
 
 **Scheduler discovery** — Exposes `GET /jobs`, `GET /tasks`, `GET /webhooks`, `GET /continuations`, `GET /triggers`, and
 `GET /heartbeat`, each returning a structured snapshot of all currently registered items of that type (name,

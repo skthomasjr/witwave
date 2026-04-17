@@ -16,14 +16,12 @@ FROM nginxinc/nginx-unprivileged:1.27-bookworm
 # so the pod runs with runAsNonRoot: true without capability tricks.
 # Writeable runtime paths (/tmp, /var/cache/nginx) are already owned by
 # the nginx user in the base image.
-# Mount the conf as a *template*: nginx-unprivileged's entrypoint runs
-# envsubst over /etc/nginx/templates/*.template at container start so
-# ${HARNESS_URL} (and any other env refs) get substituted before nginx
-# loads. Keeps the chart-supplied HARNESS_URL the single source of truth.
+# The image ships a baseline default.conf.template that serves the static
+# SPA and returns 404 for /api/*. In Kubernetes the Helm chart overrides
+# this with a ConfigMap that adds per-agent /api/agents/<name>/ routes
+# templated from .Values.agents (see charts/nyx/templates/
+# configmap-dashboard-nginx.yaml).
 COPY --chown=nginx:nginx dashboard/nginx.conf /etc/nginx/templates/default.conf.template
 COPY --from=build --chown=nginx:nginx /build/dist /usr/share/nginx/html
-# Default HARNESS_URL — chart overrides via env. localhost will fail at
-# request time (intentional) so misconfiguration is loud instead of silent.
-ENV HARNESS_URL=http://localhost:8000
 EXPOSE 8080
 CMD ["nginx", "-g", "daemon off;"]

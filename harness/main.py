@@ -89,65 +89,6 @@ METRICS_CACHE_TTL = float(os.environ.get("METRICS_CACHE_TTL", "15"))
 _metrics_cache_body: str = ""
 _metrics_cache_expires: float = 0.0
 
-# Manifest cache: avoid re-reading manifest.json on every proxy/team request.
-# Invalidated automatically when the file's mtime changes on disk.
-_manifest_cache_team: list = []
-_manifest_cache_mtime: float = -1.0
-_manifest_cache_path: str = ""
-
-
-def _validate_manifest_entry(idx: int, entry: object) -> bool:
-    """Validate a manifest team entry has the required string fields.
-
-    Logs a WARNING for each invalid entry and returns False so callers can
-    filter out bad entries rather than silently propagating None values.
-    """
-    if not isinstance(entry, dict):
-        logger.warning("manifest team[%d]: entry is not a dict (got %r) — skipping", idx, type(entry).__name__)
-        return False
-    name = entry.get("name")
-    url = entry.get("url")
-    if not isinstance(name, str) or not name:
-        logger.warning("manifest team[%d]: missing or non-string 'name' field (got %r) — skipping", idx, name)
-        return False
-    if not isinstance(url, str) or not url:
-        logger.warning("manifest team[%d]: missing or non-string 'url' field (got %r) — skipping", idx, url)
-        return False
-    return True
-
-
-def _load_manifest_cached(path: str) -> list:
-    """Return the validated team list from manifest.json, using a cached copy when the file is unchanged.
-
-    The cache is keyed on the file path and invalidated whenever the file's mtime changes on disk.
-    On any read error the previously cached list (which may be empty) is returned so callers degrade
-    gracefully rather than raising.
-    """
-    import json as _json
-
-    global _manifest_cache_team, _manifest_cache_mtime, _manifest_cache_path  # noqa: PLW0603
-
-    try:
-        current_mtime = os.stat(path).st_mtime
-    except OSError:
-        # File not accessible — return whatever was last successfully loaded.
-        return _manifest_cache_team
-
-    if path == _manifest_cache_path and current_mtime == _manifest_cache_mtime:
-        return _manifest_cache_team
-
-    try:
-        with open(path) as _f:
-            _manifest = _json.load(_f)
-        _team = [e for idx, e in enumerate(_manifest.get("team", [])) if _validate_manifest_entry(idx, e)]
-        _manifest_cache_team = _team
-        _manifest_cache_mtime = current_mtime
-        _manifest_cache_path = path
-        return _manifest_cache_team
-    except Exception as exc:
-        logger.warning("_load_manifest_cached: failed to load manifest at %s: %s", path, exc)
-        return _manifest_cache_team
-
 
 def _check_trigger_auth(request: Request, item: TriggerItem, body_bytes: bytes) -> bool:
     """Validate trigger request auth. HMAC takes priority over Bearer token.
@@ -570,207 +511,10 @@ async def main():
     conversations_handler = make_proxy_conversations_handler(_conversations_auth_token, _fetch_conversations)
     trace_handler = make_proxy_trace_handler(_conversations_auth_token, _fetch_trace)
 
-    _proxy_auth_token = os.environ.get("PROXY_AUTH_TOKEN", "")
-
-    async def proxy_handler(request: Request) -> Response:
-        """Proxy an A2A JSON-RPC request to a named team member, optionally targeting a specific backend."""
-        if _proxy_auth_token:
-            header = request.headers.get("Authorization", "")
-            if not hmac_mod.compare_digest(f"Bearer {_proxy_auth_token}", header):
-                return Response(
-                    content="Unauthorized",
-                    status_code=401,
-                    headers={"WWW-Authenticate": 'Bearer realm="proxy"'},
-                )
-        import httpx
-        agent_name = request.path_params["agent_name"]
-        backend_id = request.query_params.get("backend")
-        manifest_path = os.environ.get("MANIFEST_PATH", "/home/agent/manifest.json")
-        team = _load_manifest_cached(manifest_path)
-        target_url = next((m.get("url") for m in team if m.get("name") == agent_name), None)
-        if not target_url:
-            return JSONResponse({"error": f"agent {agent_name!r} not found"}, status_code=404)
-        # If a specific backend is requested, resolve its URL from backend.yaml of the target agent
-        if backend_id:
-            try:
-                from backends.config import load_backends_config as _lbc
-                # We can only load our own backend.yaml; for other agents fan out via their /agents endpoint
-                async with httpx.AsyncClient(timeout=5.0) as _c:
-                    _r = await _c.get(target_url.rstrip("/") + "/agents")
-                    if _r.status_code == 200:
-                        _agents = _r.json()
-                        _b = next((a for a in _agents if a.get("role") == "backend" and a.get("id") == backend_id), None)
-                        if _b and _b.get("url"):
-                            target_url = _b["url"]
-                        else:
-                            logger.warning(
-                                "proxy_handler: backend_id %r not found in /agents for agent %r — "
-                                "falling back to nyx URL %r",
-                                backend_id, agent_name, target_url,
-                            )
-                    else:
-                        logger.warning(
-                            "proxy_handler: /agents for agent %r returned HTTP %s — "
-                            "cannot resolve backend_id %r, falling back to nyx URL %r",
-                            agent_name, _r.status_code, backend_id, target_url,
-                        )
-            except Exception as exc:
-                logger.warning(
-                    "proxy_handler: failed to resolve backend_id %r for agent %r: %s — "
-                    "falling back to nyx URL %r",
-                    backend_id, agent_name, exc, target_url,
-                )
-        body = await request.body()
-        if len(body) > 1_048_576:
-            return JSONResponse({"error": "request body too large"}, status_code=413)
-        _proxy_timeout = TASK_TIMEOUT_SECONDS + 10
-        async with httpx.AsyncClient(timeout=_proxy_timeout) as client:
-            try:
-                resp = await client.post(
-                    target_url.rstrip("/") + "/",
-                    content=body,
-                    headers={"Content-Type": "application/json"},
-                )
-                return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
-            except Exception as exc:
-                return JSONResponse({"error": str(exc)}, status_code=502)
-
-    async def conversations_proxy_handler(request: Request) -> JSONResponse:
-        """Proxy /conversations from a named team member's backend, optionally filtered by backend id."""
-        import httpx
-        agent_name = request.path_params["agent_name"]
-        backend_id = request.query_params.get("backend")
-        since = request.query_params.get("since")
-        limit = request.query_params.get("limit", "200")
-        manifest_path = os.environ.get("MANIFEST_PATH", "/home/agent/manifest.json")
-        team = _load_manifest_cached(manifest_path)
-        target_url = next((m.get("url") for m in team if m.get("name") == agent_name), None)
-        if not target_url:
-            return JSONResponse({"error": f"agent {agent_name!r} not found"}, status_code=404)
-        # Resolve specific backend URL if requested
-        if backend_id:
-            try:
-                async with httpx.AsyncClient(timeout=5.0) as _c:
-                    _r = await _c.get(target_url.rstrip("/") + "/agents")
-                    if _r.status_code == 200:
-                        _agents = _r.json()
-                        _b = next((a for a in _agents if a.get("role") == "backend" and a.get("id") == backend_id), None)
-                        if _b and _b.get("url"):
-                            target_url = _b["url"]
-                        else:
-                            logger.warning(
-                                "conversations_proxy_handler: backend_id %r not found in /agents for "
-                                "agent %r — falling back to nyx URL %r",
-                                backend_id, agent_name, target_url,
-                            )
-                    else:
-                        logger.warning(
-                            "conversations_proxy_handler: /agents for agent %r returned HTTP %s — "
-                            "cannot resolve backend_id %r, falling back to nyx URL %r",
-                            agent_name, _r.status_code, backend_id, target_url,
-                        )
-            except Exception as exc:
-                logger.warning(
-                    "conversations_proxy_handler: failed to resolve backend_id %r for agent %r: %s — "
-                    "falling back to nyx URL %r",
-                    backend_id, agent_name, exc, target_url,
-                )
-        params: dict = {"limit": limit}
-        if since:
-            params["since"] = since
-        _conv_headers: dict = {}
-        if _backend_conversations_auth_token:
-            _conv_headers["Authorization"] = f"Bearer {_backend_conversations_auth_token}"
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            try:
-                resp = await client.get(target_url.rstrip("/") + "/conversations", params=params, headers=_conv_headers)
-                return JSONResponse(resp.json(), status_code=resp.status_code)
-            except Exception as exc:
-                return JSONResponse({"error": str(exc)}, status_code=502)
-
-    async def trace_proxy_handler(request: Request) -> JSONResponse:
-        """Proxy /trace from a named team member's backend, optionally filtered by backend id."""
-        import httpx
-        agent_name = request.path_params["agent_name"]
-        backend_id = request.query_params.get("backend")
-        since = request.query_params.get("since")
-        limit = request.query_params.get("limit", "200")
-        manifest_path = os.environ.get("MANIFEST_PATH", "/home/agent/manifest.json")
-        team = _load_manifest_cached(manifest_path)
-        target_url = next((m.get("url") for m in team if m.get("name") == agent_name), None)
-        if not target_url:
-            return JSONResponse({"error": f"agent {agent_name!r} not found"}, status_code=404)
-        # Resolve specific backend URL if requested
-        if backend_id:
-            try:
-                async with httpx.AsyncClient(timeout=5.0) as _c:
-                    _r = await _c.get(target_url.rstrip("/") + "/agents")
-                    if _r.status_code == 200:
-                        _agents = _r.json()
-                        _b = next((a for a in _agents if a.get("role") == "backend" and a.get("id") == backend_id), None)
-                        if _b and _b.get("url"):
-                            target_url = _b["url"]
-                        else:
-                            logger.warning(
-                                "trace_proxy_handler: backend_id %r not found in /agents for "
-                                "agent %r — falling back to nyx URL %r",
-                                backend_id, agent_name, target_url,
-                            )
-                    else:
-                        logger.warning(
-                            "trace_proxy_handler: /agents for agent %r returned HTTP %s — "
-                            "cannot resolve backend_id %r, falling back to nyx URL %r",
-                            agent_name, _r.status_code, backend_id, target_url,
-                        )
-            except Exception as exc:
-                logger.warning(
-                    "trace_proxy_handler: failed to resolve backend_id %r for agent %r: %s — "
-                    "falling back to nyx URL %r",
-                    backend_id, agent_name, exc, target_url,
-                )
-        params: dict = {"limit": limit}
-        if since:
-            params["since"] = since
-        _trace_headers: dict = {}
-        if _backend_conversations_auth_token:
-            _trace_headers["Authorization"] = f"Bearer {_backend_conversations_auth_token}"
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            try:
-                resp = await client.get(target_url.rstrip("/") + "/trace", params=params, headers=_trace_headers)
-                return JSONResponse(resp.json(), status_code=resp.status_code)
-            except Exception as exc:
-                return JSONResponse({"error": str(exc)}, status_code=502)
-
-    async def team_handler(request: Request) -> JSONResponse:
-        """Return agent cards for all team members by reading manifest.json and fanning out to /agents."""
-        import httpx
-        manifest_path = os.environ.get("MANIFEST_PATH", "/home/agent/manifest.json")
-        team = _load_manifest_cached(manifest_path) or [{"name": AGENT_NAME, "url": AGENT_URL}]
-        reachable = [(m, m.get("url", "").rstrip("/")) for m in team if m.get("url", "").rstrip("/")]
-
-        # Fan out /agents requests to all team members concurrently so that one
-        # slow or unreachable member does not delay all others (#360).
-        async def _fetch_member(member, url, client) -> dict:
-            try:
-                resp = await client.get(f"{url}/agents")
-                if resp.status_code == 200:
-                    return {"name": member.get("name"), "url": url, "agents": resp.json()}
-                return {"name": member.get("name"), "url": url, "agents": [], "error": f"HTTP {resp.status_code}"}
-            except Exception as exc:
-                return {"name": member.get("name"), "url": url, "agents": [], "error": str(exc)}
-
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            results = await asyncio.gather(
-                *[_fetch_member(m, url, client) for m, url in reachable],
-                return_exceptions=True,
-            )
-        result = []
-        for (member, url), r in zip(reachable, results):
-            if isinstance(r, Exception):
-                result.append({"name": member.get("name"), "url": url, "agents": [], "error": str(r)})
-            else:
-                result.append(r)
-        return JSONResponse(result)
+    # The /proxy/{agent_name}, /conversations/{agent_name}, /trace/{agent_name},
+    # and /team endpoints were removed in beta.46 — the dashboard owns cross-
+    # agent routing now (it fans out to each agent's own /agents, /conversations,
+    # /trace, and A2A root). This harness only speaks for itself.
 
     backends_ready = asyncio.Event()
 
@@ -978,18 +722,14 @@ async def main():
         Route("/.well-known/agent-triggers.json", triggers_discovery, methods=["GET"]),
         Route("/triggers/{endpoint}", trigger_handler, methods=["POST"]),
         Route("/agents", agents_handler, methods=["GET"]),
-        Route("/team", team_handler, methods=["GET"]),
         Route("/jobs", jobs_handler, methods=["GET"]),
         Route("/tasks", tasks_handler, methods=["GET"]),
         Route("/webhooks", webhooks_handler, methods=["GET"]),
         Route("/continuations", continuations_handler, methods=["GET"]),
         Route("/heartbeat", heartbeat_handler, methods=["GET"]),
         Route("/triggers", triggers_handler, methods=["GET"]),
-        Route("/proxy/{agent_name}", proxy_handler, methods=["POST"]),
         Route("/conversations", conversations_handler, methods=["GET"]),
-        Route("/conversations/{agent_name}", conversations_proxy_handler, methods=["GET"]),
         Route("/trace", trace_handler, methods=["GET"]),
-        Route("/trace/{agent_name}", trace_proxy_handler, methods=["GET"]),
     ]
     if metrics_enabled:
         _routes.append(Route("/metrics", metrics_handler, methods=["GET"]))

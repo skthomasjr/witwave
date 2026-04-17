@@ -100,7 +100,13 @@ onMounted(async () => {
           :class="m.role"
           :data-testid="`chat-msg-${m.role}`"
         >
-          <div class="role">{{ m.label || m.role }}</div>
+          <!--
+            The user's own messages are already visually distinct (right-
+            aligned, accent-tinted) — a "you" / "user" label above them is
+            redundant. Keep the role line for agent/error rows so the user
+            can see which backend answered.
+          -->
+          <div v-if="m.role !== 'user'" class="role">{{ m.label || m.role }}</div>
           <div
             v-if="m.role === 'agent'"
             class="bbl"

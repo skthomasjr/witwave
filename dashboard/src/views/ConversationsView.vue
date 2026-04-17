@@ -63,15 +63,18 @@ const filtered = computed(() => {
   });
 });
 
+// Format the date part via toLocaleString, then splice ms into the time
+// between seconds and the AM/PM marker. toLocaleString's plain concatenation
+// put ms *after* AM/PM (e.g. "1:50:00 AM.070") which read wrong; this puts
+// it where seconds normally would end up ("1:50:00.070 AM").
 function formatTs(ts: string): string {
   try {
     const d = new Date(ts);
     if (Number.isNaN(d.getTime())) return ts;
-    // Include milliseconds so messages that share a second still read in
-    // the same order we display them — the harness logs have sub-second
-    // precision (API emits microseconds; Date truncates to ms).
     const ms = String(d.getMilliseconds()).padStart(3, "0");
-    return `${d.toLocaleString()}.${ms}`;
+    const s = d.toLocaleString();
+    // Match the last H:MM:SS (or HH:MM:SS) group and insert .<ms> right after it.
+    return s.replace(/(\d{1,2}:\d{2}:\d{2})/, (match) => `${match}.${ms}`);
   } catch {
     return ts;
   }

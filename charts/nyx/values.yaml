@@ -13,9 +13,6 @@ dashboard:
   port: 80
   # Number of replicas.
   # replicas: 1
-  # Override the harness origin used by the nginx /api/* reverse proxy inside
-  # the dashboard container. Defaults to http://<release>-harness:8000.
-  # harnessUrl: "http://my-harness:8000"
   # # Image pull secrets for private registries.
   # imagePullSecrets:
   #   - name: ghcr-credentials
@@ -36,7 +33,7 @@ dashboard:
   #   runAsGroup: 1000
   #   fsGroup: 1000
 
-# Ingress for the UI. Disabled by default — enable to expose the UI externally (#424).
+# Ingress for the dashboard. Disabled by default — enable to expose the dashboard externally (#424).
 ingress:
   enabled: false
   # # Ingress class name (e.g. nginx, traefik).

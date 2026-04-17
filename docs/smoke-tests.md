@@ -222,6 +222,6 @@ These are real things worth testing but don't fit the prompt-in / conversation-l
 |---|---|
 | Metrics endpoint smoke (`/metrics` scrape asserts specific counters move) | Verification is regex over Prometheus text output, not conversation log |
 | Trigger trace / header propagation (e.g. `X-Trace-Id` round-trips) | Verification is on HTTP headers, not conversation log |
-| UI read-only endpoints (`/conversations`, `/team`, `/triggers`) return well-formed responses | curl-and-assert-on-JSON, not conversation log |
+| Read-only endpoints (`/conversations`, `/triggers`, etc.) return well-formed responses | curl-and-assert-on-JSON, not conversation log |
 | Agent-card hot-reload (`/.well-known/agent.json` updates after editing mounted `agent-card.md`) | Verification is on the agent-card JSON response, not the conversation log; also requires mutating a ConfigMap-mounted file mid-test |
 | Strict token-count assertion (`tokens` field always non-null for Claude and Codex) | Not a separate dispatched test — an invariant check on fields of existing log entries; lives better as a log-shape linter |

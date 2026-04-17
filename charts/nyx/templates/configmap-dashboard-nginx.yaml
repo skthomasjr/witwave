@@ -80,18 +80,12 @@ data:
         client_max_body_size 1m;
       }
 {{ end }}
-      # Legacy catch-all — any /api/* not handled above falls through to the
-      # configured front-door harness. Retained so nothing that still calls
-      # /api/proxy/<name> or /api/conversations/<name> breaks during the
-      # additive migration. Remove when no consumers remain (#470 follow-up).
+      # Anything under /api/* that didn't match a per-agent route above is
+      # intentionally 404 — the legacy /api/proxy/<name>, /api/conversations/
+      # <name>, and /api/team fallbacks were retired once every consumer
+      # migrated to direct per-agent routing (#470).
       location /api/ {
-        proxy_pass ${HARNESS_URL}/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_http_version 1.1;
-        proxy_buffering off;
-        proxy_read_timeout 310s;
-        client_max_body_size 1m;
+        return 404;
       }
     }
 {{- end }}

@@ -1,16 +1,15 @@
 import { defineConfig, type ProxyOptions } from "vite";
 import vue from "@vitejs/plugin-vue";
 
-// `npm run dev` needs to mirror the production nginx routing (#470):
+// `npm run dev` mirrors the production nginx routing (#470):
 //   /api/team                    → served locally from VITE_TEAM (no agent call)
 //   /api/agents/<name>/...       → proxied to that agent's own harness
-//   /api/...                     → legacy fallback, proxied to VITE_HARNESS_URL
+//   /api/...                     → 404 (matches prod nginx behaviour)
 //
 // VITE_TEAM is a JSON string like:
 //   [{"name":"bob","url":"http://localhost:8099"},{"name":"fred","url":"http://localhost:8098"}]
 // Each URL should point at a kubectl port-forward of that agent's nyx service.
-// When VITE_TEAM is unset the dev server degrades to the legacy single-harness
-// mode so existing setups keep working without extra env configuration.
+// When VITE_TEAM is unset only static routes serve; /api/* won't work.
 
 interface TeamEntry {
   name: string;
@@ -70,13 +69,6 @@ function buildProxy(): Record<string, ProxyOptions> {
         path.replace(new RegExp(`^/api/agents/${entry.name}/`), "/"),
     };
   }
-
-  // Legacy catch-all — matches the production nginx's /api/ fallback.
-  proxy["/api"] = {
-    target: process.env.VITE_HARNESS_URL || "http://localhost:8000",
-    changeOrigin: true,
-    rewrite: (path) => path.replace(/^\/api/, ""),
-  };
 
   return proxy;
 }

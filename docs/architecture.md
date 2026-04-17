@@ -340,7 +340,6 @@ Agent identity and behavior are entirely file-based. No identity is baked into a
 | `METRICS_CACHE_TTL`                         | `15`                            | Seconds to cache aggregated backend metrics between scrapes                                                                    |
 | `CONVERSATIONS_AUTH_TOKEN`                  | _(unset)_                       | Bearer token required to access `/conversations` and `/trace` (inbound)                                                        |
 | `BACKEND_CONVERSATIONS_AUTH_TOKEN`          | _(unset)_                       | Bearer token forwarded to backend `/conversations` and `/trace` endpoints (set if backends require auth)                       |
-| `PROXY_AUTH_TOKEN`                          | _(unset)_                       | Bearer token required to access `/proxy/{agent_name}`                                                                          |
 | `TRIGGERS_AUTH_TOKEN`                       | _(unset)_                       | Bearer token for inbound trigger requests (fallback when no per-trigger HMAC secret is set)                                    |
 | `CORS_ALLOW_ORIGINS`                        | _(unset)_                       | Comma-separated allowed CORS origins; when unset, all cross-origin requests are denied (logs a warning)                        |
 | `TASK_STORE_PATH`                           | _(unset)_                       | Path for SQLite A2A task store; defaults to in-memory                                                                          |
@@ -350,7 +349,7 @@ Agent identity and behavior are entirely file-based. No identity is baked into a
 | `WEBHOOK_EXTRACTION_TIMEOUT`                | `120`                           | Seconds to wait for a single LLM extraction call inside a webhook delivery                                                     |
 | `JOBS_MAX_CONCURRENT`                       | `0` (unlimited)                 | Maximum number of jobs that may run concurrently; `0` disables the limit                                                       |
 | `TASKS_MAX_CONCURRENT`                      | `0` (unlimited)                 | Maximum number of tasks that may run concurrently; `0` disables the limit                                                      |
-| `TASK_TIMEOUT_SECONDS`                      | `300`                           | Timeout in seconds for proxy requests forwarded via `/proxy/{agent_name}`                                                      |
+| `TASK_TIMEOUT_SECONDS`                      | `300`                           | Task timeout in seconds, applied to A2A backend requests                                                                       |
 | `MANIFEST_PATH`                             | `/home/agent/manifest.json`     | Path to the team manifest file listing all agents by name and URL                                                              |
 | `BACKENDS_READY_WARN_AFTER`                 | `120`                           | Seconds to wait before logging a warning that backends have not become healthy                                                 |
 | `LOG_PROMPT_MAX_BYTES`                      | `200`                           | Maximum bytes of the prompt logged at INFO level; `0` suppresses prompt logging entirely                                       |
@@ -393,7 +392,6 @@ Each nyx-harness exposes:
 - `GET /health/ready` — readiness probe: 200/`{"status": "ready"}`; 503/`{"status": "starting"}` while initializing;
   503/`{"status": "degraded"}` when a backend is unhealthy
 - `GET /agents` — own card plus agent cards from all configured backends
-- `GET /team` — agent cards for all team members from the manifest
 - `GET /jobs` — structured snapshot of registered scheduled jobs
 - `GET /tasks` — structured snapshot of registered scheduled tasks
 - `GET /webhooks` — structured snapshot of registered webhook subscriptions
@@ -401,11 +399,11 @@ Each nyx-harness exposes:
 - `GET /triggers` — structured snapshot of registered inbound trigger endpoints
 - `GET /heartbeat` — current heartbeat configuration from `HEARTBEAT.md`
 - `GET /conversations` — merged conversation log from all backends
-- `GET /conversations/{agent_name}` — conversation log proxied from a named team member
 - `GET /trace` — merged trace log from all backends
-- `GET /trace/{agent_name}` — trace log proxied from a named team member
-- `POST /proxy/{agent_name}` — forward an A2A request to a named team member
 - `GET /.well-known/agent-triggers.json` — discovery array of all enabled trigger descriptors
+
+Cross-agent aggregation (`/team`, `/proxy/<name>`, `/conversations/<name>`, `/trace/<name>`) was retired in beta.46 —
+the dashboard pod fans out directly to each agent's endpoints and owns cross-agent routing (#470).
 
 Each backend exposes the same A2A surface plus:
 
