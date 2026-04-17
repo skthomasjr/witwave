@@ -1,112 +1,71 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { computed, ref } from "vue";
+import Splitter from "primevue/splitter";
+import SplitterPanel from "primevue/splitterpanel";
+import { useTeam } from "../composables/useTeam";
+import AgentList from "../components/AgentList.vue";
+import AgentDetail from "../components/AgentDetail.vue";
 
-// Placeholder "team" view — first view to reach parity with the legacy ui/.
-// Hits the harness `/team` endpoint through the /api proxy (vite dev or nginx
-// prod). Once this is stable we grow into conversations, triggers, jobs, etc.
-// See #470 and dashboard/README.md for the parity plan.
+// Team view — two-pane layout matching legacy ui/ #agents-view.
+// Left: scrollable agent cards with per-backend health bubbles.
+// Right: details for the selected member (chat lands in a follow-up pass, #470).
+// Polling is handled by useTeam(); selection state lives here.
 
-interface TeamMember {
-  name: string;
-  url: string;
-  description?: string;
+const { members, loading, error } = useTeam();
+
+const selectedName = ref<string | null>(null);
+const activeBackendId = ref<string | null>(null);
+
+const selectedMember = computed(
+  () => members.value.find((m) => m.name === selectedName.value) ?? null,
+);
+
+function selectAgent(name: string) {
+  selectedName.value = name;
+  // Drop backend selection when switching agents — the legacy UI syncs a
+  // dropdown instead, but since chat isn't wired yet we just clear.
+  activeBackendId.value = null;
 }
 
-const members = ref<TeamMember[]>([]);
-const error = ref<string>("");
-const loading = ref<boolean>(true);
-
-onMounted(async () => {
-  try {
-    const resp = await fetch("/api/team");
-    if (!resp.ok) {
-      error.value = `HTTP ${resp.status}`;
-      return;
-    }
-    const data = (await resp.json()) as TeamMember[] | { team: TeamMember[] };
-    members.value = Array.isArray(data) ? data : data.team || [];
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e);
-  } finally {
-    loading.value = false;
-  }
-});
+function selectBackend(name: string, backendId: string) {
+  selectedName.value = name;
+  activeBackendId.value = backendId;
+}
 </script>
 
 <template>
-  <section class="team-view">
-    <h2 class="heading">Team</h2>
-    <p class="description">
-      Members of this agent deployment, sourced from the harness
-      <code>/team</code> endpoint.
-    </p>
-
-    <div v-if="loading" class="state" data-testid="team-loading">Loading…</div>
-    <div v-else-if="error" class="state state-error" data-testid="team-error">
-      Could not load team: {{ error }}
-    </div>
-    <ul v-else-if="members.length" class="team-list" data-testid="team-list">
-      <li v-for="m in members" :key="m.name" class="team-item">
-        <div class="team-name">{{ m.name }}</div>
-        <div class="team-url">{{ m.url }}</div>
-        <div v-if="m.description" class="team-desc">{{ m.description }}</div>
-      </li>
-    </ul>
-    <div v-else class="state" data-testid="team-empty">No team members configured.</div>
-  </section>
+  <Splitter class="team-splitter">
+    <SplitterPanel :size="45" :min-size="25">
+      <AgentList
+        :members="members"
+        :loading="loading"
+        :error="error"
+        :selected-name="selectedName"
+        :active-backend-id="activeBackendId"
+        @select="selectAgent"
+        @select-backend="selectBackend"
+      />
+    </SplitterPanel>
+    <SplitterPanel :size="55" :min-size="25">
+      <AgentDetail :member="selectedMember" :active-backend-id="activeBackendId" />
+    </SplitterPanel>
+  </Splitter>
 </template>
 
 <style scoped>
-.heading {
-  margin: 0 0 0.5rem;
-  font-size: 1.4rem;
+.team-splitter {
+  height: 100%;
+  border: none;
+  background: transparent;
 }
 
-.description {
-  color: var(--nyx-muted);
-  margin: 0 0 1.5rem;
+.team-splitter :deep(.p-splitter-gutter) {
+  background: var(--nyx-border);
 }
 
-.state {
-  padding: 1rem;
-  color: var(--nyx-muted);
-}
-
-.state-error {
-  color: #ff9090;
-}
-
-.team-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  gap: 0.75rem;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-}
-
-.team-item {
-  background: #181c26;
-  border: 1px solid #222636;
-  border-radius: 6px;
-  padding: 1rem;
-}
-
-.team-name {
-  font-weight: 600;
-  margin-bottom: 0.25rem;
-}
-
-.team-url {
-  color: var(--nyx-muted);
-  font-family: ui-monospace, "SFMono-Regular", monospace;
-  font-size: 0.85rem;
-  word-break: break-all;
-}
-
-.team-desc {
-  color: var(--nyx-fg);
-  margin-top: 0.5rem;
-  font-size: 0.9rem;
+.team-splitter :deep(.p-splitterpanel) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 </style>

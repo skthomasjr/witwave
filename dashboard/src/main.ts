@@ -2,6 +2,7 @@ import { createApp } from "vue";
 import PrimeVue from "primevue/config";
 import Aura from "@primevue/themes/aura";
 import "primeicons/primeicons.css";
+import "./styles/tokens.css";
 
 import App from "./App.vue";
 import { router } from "./router";

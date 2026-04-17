@@ -1,0 +1,42 @@
+/* Legacy ui/ palette. Kept byte-identical so the dashboard reaches visual
+   parity with the existing UI before we consider restyling. PrimeVue Aura
+   still provides component-level tokens; these are the nyx-specific overlays
+   the legacy UI used directly (accent, backend brand colors, status dots). */
+
+:root {
+  --nyx-bg: #0d0d0d;
+  --nyx-surface: #161616;
+  --nyx-border: #262626;
+  --nyx-muted: #444;
+  --nyx-dim: #777;
+  --nyx-text: #d4d4d4;
+  --nyx-bright: #f0f0f0;
+  --nyx-accent: #7c6af7;
+  --nyx-teal: #3ecfcf;
+  --nyx-green: #4ade80;
+  --nyx-yellow: #fbbf24;
+  --nyx-red: #f87171;
+  --nyx-radius: 6px;
+  --nyx-mono: "SF Mono", "Fira Code", "Menlo", monospace;
+
+  /* Backend brand colors — match legacy ui/index.html backend-bubble rules. */
+  --nyx-brand-claude: #da7756;
+  --nyx-brand-codex: #74aa9c;
+  --nyx-brand-gemini: #8e44ec;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: var(--nyx-bg);
+  color: var(--nyx-text);
+  font-family: var(--nyx-mono);
+  font-size: 13px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
