@@ -763,7 +763,18 @@ class AgentExecutor(A2AAgentExecutor):
                     )
                     _success = True
                     if _response:
-                        await event_queue.enqueue_event(new_agent_text_message(_response))
+                        # Stamp trace_id on the outbound A2A response message
+                        # metadata so callers can correlate the reply with the
+                        # end-to-end trace (#636). Additive / optional — absent
+                        # when no trace context exists.
+                        _msg = new_agent_text_message(_response)
+                        if trace_context is not None and trace_context.trace_id:
+                            _existing = _msg.metadata or {}
+                            _existing["trace_id"] = trace_context.trace_id
+                            if trace_context.parent_id:
+                                _existing["span_id"] = trace_context.parent_id
+                            _msg.metadata = _existing
+                        await event_queue.enqueue_event(_msg)
                     if agent_a2a_requests_total is not None:
                         agent_a2a_requests_total.labels(status="success").inc()
                 except Exception as _exc:

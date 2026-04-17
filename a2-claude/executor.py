@@ -423,6 +423,26 @@ def _utf8_byte_length(s: str) -> int:
     return len(s.encode("utf-8"))
 
 
+def _current_trace_id_hex() -> str | None:
+    """Return the active OTel span's trace_id as hex, or None when no active span.
+
+    Used to stamp ``trace_id`` on conversation.jsonl rows so external
+    log-correlation tools can join the backend log with harness / downstream
+    spans (#636). Returns None when OTel is disabled (invalid span context
+    or zero trace_id) so old rows stay backward-compatible.
+    """
+    try:
+        from opentelemetry import trace as _otel_trace
+
+        span = _otel_trace.get_current_span()
+        ctx = span.get_span_context()
+        if not ctx or not ctx.is_valid or ctx.trace_id == 0:
+            return None
+        return _otel_trace.format_trace_id(ctx.trace_id)
+    except Exception:
+        return None
+
+
 async def log_entry(role: str, text: str, session_id: str, model: str | None = None, tokens: int | None = None) -> None:
     try:
         entry = {
@@ -434,6 +454,11 @@ async def log_entry(role: str, text: str, session_id: str, model: str | None = N
             "tokens": tokens,
             "text": text,
         }
+        # Stamp trace_id from the active OTel span so conversation rows can be
+        # joined with backend/harness traces (#636). Absent when OTel is off.
+        _tid = _current_trace_id_hex()
+        if _tid is not None:
+            entry["trace_id"] = _tid
         _line = json.dumps(entry)
         await asyncio.to_thread(_append_log, CONVERSATION_LOG, _line)
         if a2_log_entries_total is not None:
