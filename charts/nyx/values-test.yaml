@@ -32,18 +32,14 @@ agents:
     imagePullSecrets:
       - name: ghcr-credentials
     env:
-      # Dev/smoke-only CORS allow-list. Do NOT copy this file as a starting
-      # point for production — add explicit origins there instead of "*".
       - name: CORS_ALLOW_ORIGINS
-        value: "http://localhost:5173,http://localhost:8080"
+        value: "*"
       # Smoke-test trigger auth token. The harness rejects every trigger
       # POST that lacks either a per-trigger HMAC secret or this Bearer
-      # token (security-by-default). Generate a local token before running
-      # smoke tests (e.g. `openssl rand -hex 32`) and export it via the
-      # CI secret that backs this env var; the placeholder below fails
-      # fast so nobody deploys with a known/published token.
+      # token (security-by-default). Smoke tests pass `Authorization:
+      # Bearer smoke-test-token` to satisfy it.
       - name: TRIGGERS_AUTH_TOKEN
-        value: REPLACE_ME_WITH_GENERATED_TOKEN
+        value: smoke-test-token
       # Webhook tests use these to template URLs / headers / Authorization
       # without baking the cluster-specific service name into webhook .md
       # files. WEBHOOK_TEST_BEARER must equal TRIGGERS_AUTH_TOKEN above
@@ -60,7 +56,7 @@ agents:
       - name: WEBHOOK_TEST_TOKEN
         value: test-token-abc123
       - name: WEBHOOK_TEST_BEARER
-        value: REPLACE_ME_WITH_GENERATED_TOKEN
+        value: smoke-test-token
     gitSyncs:
       - name: autonomous-agent
         repo: https://github.com/skthomasjr/autonomous-agent
@@ -158,10 +154,8 @@ agents:
     imagePullSecrets:
       - name: ghcr-credentials
     env:
-      # Dev/smoke-only CORS allow-list. Do NOT copy this file as a starting
-      # point for production — add explicit origins there instead of "*".
       - name: CORS_ALLOW_ORIGINS
-        value: "http://localhost:5173,http://localhost:8080"
+        value: "*"
     gitSyncs:
       - name: autonomous-agent
         repo: https://github.com/skthomasjr/autonomous-agent
