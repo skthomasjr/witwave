@@ -395,7 +395,10 @@ def _sqlite_session_exists(session_id: str) -> bool:
             return cursor.fetchone() is not None
         finally:
             conn.close()
-    except Exception:
+    except Exception as exc:
+        logger.warning("_sqlite_session_exists(%r) failed: %s", session_id, exc)
+        if a2_session_history_save_errors_total is not None:
+            a2_session_history_save_errors_total.labels(**_LABELS).inc()
         return False
 
 
