@@ -83,6 +83,24 @@ export function scalarGauge(m: FamilyMap, key: string): number | null {
   return s && s.length ? s[0].value : null;
 }
 
+// Sum gauge samples across every agent in the merged family map. Use this
+// for additive cluster-wide gauges (e.g. agent_active_sessions) where each
+// agent contributes its own value and the total is their sum.
+export function sumGauge(m: FamilyMap, key: string): number | null {
+  const s = m.get(key)?.samples;
+  if (!s || !s.length) return null;
+  return s.reduce((a, x) => a + x.value, 0);
+}
+
+// Max gauge sample across every agent. Use this for non-additive gauges
+// like agent_uptime_seconds, where summing has no physical meaning but the
+// cluster-wide longest-running agent is informative.
+export function maxGauge(m: FamilyMap, key: string): number | null {
+  const s = m.get(key)?.samples;
+  if (!s || !s.length) return null;
+  return s.reduce((a, x) => (x.value > a ? x.value : a), -Infinity);
+}
+
 export function sumTotal(m: FamilyMap, key: string): number {
   return (m.get(key)?.samples ?? [])
     .filter((s) => s.name.endsWith("_total"))
@@ -111,8 +129,12 @@ export function breakdownByLabel(
   return out;
 }
 
-// Merge many per-agent FamilyMaps into one. Label breakdowns naturally sum;
-// gauges use the last seen value (callers treat gauges as cluster-total-ish).
+// Merge many per-agent FamilyMaps into one. Counter/histogram breakdowns
+// naturally sum via sumTotal/breakdownByLabel. Gauges retain every agent's
+// sample — callers must pick an aggregation policy explicitly via
+// sumGauge (additive) or maxGauge (non-additive). scalarGauge only returns
+// the first sample and should not be used on the merged map for
+// cluster-wide stats.
 export function mergeFamilies(maps: FamilyMap[]): FamilyMap {
   const out: FamilyMap = new Map();
   for (const m of maps) {

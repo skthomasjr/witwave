@@ -15,7 +15,8 @@ import { useMetrics } from "../composables/useMetrics";
 import {
   breakdownByLabel,
   histAvg,
-  scalarGauge,
+  maxGauge,
+  sumGauge,
   sumTotal,
   type FamilyMap,
 } from "../utils/prometheus";
@@ -71,10 +72,10 @@ function fmtMs(n: number | null): string {
 const stats = computed(() => {
   const m = merged.value;
   return [
-    { label: "Uptime", val: fmtSec(scalarGauge(m, "agent_uptime_seconds")) },
-    { label: "Active Sessions", val: fmtNum(scalarGauge(m, "agent_active_sessions")) },
-    { label: "Running Tasks", val: fmtNum(scalarGauge(m, "agent_running_tasks")) },
-    { label: "Running Sched Tasks", val: fmtNum(scalarGauge(m, "agent_sched_task_running_items")) },
+    { label: "Max Uptime", val: fmtSec(maxGauge(m, "agent_uptime_seconds")) },
+    { label: "Active Sessions", val: fmtNum(sumGauge(m, "agent_active_sessions")) },
+    { label: "Running Tasks", val: fmtNum(sumGauge(m, "agent_running_tasks")) },
+    { label: "Running Sched Tasks", val: fmtNum(sumGauge(m, "agent_sched_task_running_items")) },
     { label: "Tasks Total", val: fmtNum(sumTotal(m, "agent_tasks")) },
     { label: "A2A Requests", val: fmtNum(sumTotal(m, "agent_a2a_requests")) },
     { label: "Heartbeats", val: fmtNum(sumTotal(m, "agent_heartbeat_runs")) },
