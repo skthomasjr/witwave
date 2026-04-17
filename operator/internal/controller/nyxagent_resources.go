@@ -58,8 +58,24 @@ const (
 	managedBy        = "nyx-operator"
 
 	// sharedStorageVolume is the pod-level volume name used when the agent
-	// references a pre-existing shared PVC. All containers mount it.
+	// mounts a shared volume (PVC or hostPath). All containers mount it.
 	sharedStorageVolume = "shared-storage"
+
+	// componentSharedStorage labels the operator-managed shared-storage PVC
+	// (#481) so its cleanup path stays cleanly separated from the backend
+	// PVC cleanup path — both sweep by labelName+labelManagedBy and would
+	// otherwise reciprocally delete each other.
+	componentSharedStorage = "shared-storage"
+
+	// defaultSharedStorageMountPath mirrors charts/nyx/values.yaml's
+	// `sharedStorage.mountPath` default so operator-rendered pods mount
+	// the shared volume at the same path Helm-rendered pods do.
+	defaultSharedStorageMountPath = "/data/shared"
+
+	// defaultSharedStorageSize mirrors the chart default PVC storage
+	// request for `sharedStorage.size` when the operator creates the PVC
+	// itself (#481).
+	defaultSharedStorageSize = "1Gi"
 
 	// agentConfigVolumePrefix is the prefix for per-agent/backend inline
 	// config ConfigMap volume names.
@@ -241,6 +257,185 @@ func configVolumesAndMounts(cmName string, volumeKey string, files []nyxv1alpha1
 	return []corev1.Volume{vol}, mounts
 }
 
+// ── Shared storage (#481, #611) ──────────────────────────────────────────────
+//
+// sharedStorageEnabled returns whether the agent has any form of shared
+// volume configured. Backward-compat: an older CR that only sets
+// `claimName` (the deprecated SharedStorageRef shape) is treated as
+// enabled=true even when `enabled` is unset.
+func sharedStorageEnabled(agent *nyxv1alpha1.NyxAgent) bool {
+	s := agent.Spec.SharedStorage
+	if s == nil {
+		return false
+	}
+	if s.Enabled {
+		return true
+	}
+	// Back-compat path: a CR authored against SharedStorageRef set only
+	// claimName. Treat that as enabled=true, storageType=pvc,
+	// existingClaim=claimName so such CRs render identically to before.
+	return s.ClaimName != "" && s.ExistingClaim == "" && s.StorageType == ""
+}
+
+// sharedStorageType returns the effective storage type for the shared
+// volume, defaulting to pvc.
+func sharedStorageType(agent *nyxv1alpha1.NyxAgent) nyxv1alpha1.SharedStorageType {
+	s := agent.Spec.SharedStorage
+	if s == nil || s.StorageType == "" {
+		return nyxv1alpha1.SharedStorageTypePVC
+	}
+	return s.StorageType
+}
+
+// sharedStorageExistingClaim returns the claim name the pod should
+// reference when StorageType=pvc. When the user supplied neither
+// ExistingClaim nor the deprecated ClaimName, the operator falls back to
+// the claim it reconciles itself: `<agent>-shared`.
+func sharedStorageExistingClaim(agent *nyxv1alpha1.NyxAgent) string {
+	s := agent.Spec.SharedStorage
+	if s == nil {
+		return ""
+	}
+	if s.ExistingClaim != "" {
+		return s.ExistingClaim
+	}
+	if s.ClaimName != "" {
+		return s.ClaimName
+	}
+	return sharedStoragePVCName(agent)
+}
+
+// sharedStorageMountPath returns the effective mount path, defaulting
+// to the chart's default `/data/shared`.
+func sharedStorageMountPath(agent *nyxv1alpha1.NyxAgent) string {
+	s := agent.Spec.SharedStorage
+	if s != nil && s.MountPath != "" {
+		return s.MountPath
+	}
+	return defaultSharedStorageMountPath
+}
+
+// sharedStorageOperatorManaged reports whether the operator is the one
+// reconciling the shared PVC (vs. referencing one supplied by the user).
+// Matches the chart's `.enabled && storageType==pvc && !existingClaim`
+// rule — when ExistingClaim and the deprecated ClaimName are both empty
+// the operator creates the PVC (#481).
+func sharedStorageOperatorManaged(agent *nyxv1alpha1.NyxAgent) bool {
+	if !sharedStorageEnabled(agent) {
+		return false
+	}
+	if sharedStorageType(agent) != nyxv1alpha1.SharedStorageTypePVC {
+		return false
+	}
+	s := agent.Spec.SharedStorage
+	return s != nil && s.ExistingClaim == "" && s.ClaimName == ""
+}
+
+// sharedStoragePVCName returns the conventional name for the
+// operator-reconciled shared PVC (#481).
+func sharedStoragePVCName(agent *nyxv1alpha1.NyxAgent) string {
+	return fmt.Sprintf("%s-shared", agent.Name)
+}
+
+// sharedStorageLabels returns the label set stamped on the operator-managed
+// shared PVC. The distinct `componentSharedStorage` value keeps backend
+// PVC cleanup from sweeping the shared PVC (and vice versa) even though
+// both share the same name+managed-by labels (#481).
+func sharedStorageLabels(agent *nyxv1alpha1.NyxAgent) map[string]string {
+	l := agentLabels(agent)
+	l[labelComponent] = componentSharedStorage
+	return l
+}
+
+// sharedStorageVolumeForPod returns the pod Volume for the shared
+// storage mount, or nil when shared storage is disabled. When
+// StorageType=hostPath and HostPath is empty the function also returns
+// nil — the pod cannot legally reference an unset hostPath, so the
+// container mount is skipped to keep the pod schedulable; the user-
+// facing validation lives at the CRD layer plus a future webhook check.
+func sharedStorageVolumeForPod(agent *nyxv1alpha1.NyxAgent) *corev1.Volume {
+	if !sharedStorageEnabled(agent) {
+		return nil
+	}
+	switch sharedStorageType(agent) {
+	case nyxv1alpha1.SharedStorageTypeHostPath:
+		s := agent.Spec.SharedStorage
+		if s == nil || s.HostPath == "" {
+			return nil
+		}
+		hpType := corev1.HostPathDirectoryOrCreate
+		if s.HostPathType != nil {
+			hpType = *s.HostPathType
+		}
+		return &corev1.Volume{
+			Name: sharedStorageVolume,
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: s.HostPath,
+					Type: &hpType,
+				},
+			},
+		}
+	default:
+		// PVC mode.
+		claim := sharedStorageExistingClaim(agent)
+		if claim == "" {
+			return nil
+		}
+		return &corev1.Volume{
+			Name: sharedStorageVolume,
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: claim,
+				},
+			},
+		}
+	}
+}
+
+// buildSharedStoragePVC returns the PVC the operator should create for
+// shared storage, or nil when no PVC is required (user supplied an
+// existing claim, storage is disabled, or StorageType=hostPath). Mirrors
+// the chart's pvc.yaml branch gated on
+// `.enabled && storageType==pvc && !existingClaim` (#481). When the
+// caller cannot parse Size the returned error is surfaced as an event
+// rather than failing the whole reconcile.
+func buildSharedStoragePVC(agent *nyxv1alpha1.NyxAgent) (*corev1.PersistentVolumeClaim, error) {
+	if !sharedStorageOperatorManaged(agent) {
+		return nil, nil
+	}
+	s := agent.Spec.SharedStorage
+	size := s.Size
+	if size == "" {
+		size = defaultSharedStorageSize
+	}
+	qty, err := resource.ParseQuantity(size)
+	if err != nil {
+		return nil, fmt.Errorf("sharedStorage.size %q: %w", size, err)
+	}
+	accessModes := s.AccessModes
+	if len(accessModes) == 0 {
+		accessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany}
+	}
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      sharedStoragePVCName(agent),
+			Namespace: agent.Namespace,
+			Labels:    sharedStorageLabels(agent),
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: accessModes,
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{corev1.ResourceStorage: qty},
+			},
+		},
+	}
+	if s.StorageClassName != "" {
+		pvc.Spec.StorageClassName = &s.StorageClassName
+	}
+	return pvc, nil
+}
+
 // backendStorageVolumeAndMounts returns the pod Volume and container
 // VolumeMounts for a backend's persistent storage, or (nil, nil) when storage
 // is disabled.
@@ -299,23 +494,17 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 		harnessMounts = append(harnessMounts, mounts...)
 	}
 
-	// Shared storage (pre-existing PVC).
-	if agent.Spec.SharedStorage != nil && agent.Spec.SharedStorage.ClaimName != "" {
-		mountPath := agent.Spec.SharedStorage.MountPath
-		if mountPath == "" {
-			mountPath = "/data/shared"
-		}
-		volumes = append(volumes, corev1.Volume{
-			Name: sharedStorageVolume,
-			VolumeSource: corev1.VolumeSource{
-				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-					ClaimName: agent.Spec.SharedStorage.ClaimName,
-				},
-			},
-		})
+	// Shared storage (#481, #611). Supports two VolumeSource shapes:
+	//   pvc:      reference existingClaim, or the operator-reconciled
+	//             `<agent>-shared` PVC when none is supplied.
+	//   hostPath: bind-mount a node-local directory (single-node only).
+	// Backward-compat: older CRs that set only `claimName` are treated as
+	// {enabled: true, storageType: pvc, existingClaim: claimName}.
+	if vol := sharedStorageVolumeForPod(agent); vol != nil {
+		volumes = append(volumes, *vol)
 		harnessMounts = append(harnessMounts, corev1.VolumeMount{
 			Name:      sharedStorageVolume,
-			MountPath: mountPath,
+			MountPath: sharedStorageMountPath(agent),
 		})
 	}
 
@@ -410,13 +599,16 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 			bMounts = append(bMounts, mounts...)
 		}
 
-		// Shared storage (same volume as harness).
-		if agent.Spec.SharedStorage != nil && agent.Spec.SharedStorage.ClaimName != "" {
-			mountPath := agent.Spec.SharedStorage.MountPath
-			if mountPath == "" {
-				mountPath = "/data/shared"
-			}
-			bMounts = append(bMounts, corev1.VolumeMount{Name: sharedStorageVolume, MountPath: mountPath})
+		// Shared storage (same volume as harness). The pod-level
+		// Volume is appended once up-top by sharedStorageVolumeForPod;
+		// here we just mount it into each backend container so the
+		// volume graph stays consistent whether the source is a PVC or
+		// a hostPath directory (#481, #611).
+		if sharedStorageEnabled(agent) && sharedStorageVolumeForPod(agent) != nil {
+			bMounts = append(bMounts, corev1.VolumeMount{
+				Name:      sharedStorageVolume,
+				MountPath: sharedStorageMountPath(agent),
+			})
 		}
 
 		// Git-sync mounts for this backend (#475): the shared /git

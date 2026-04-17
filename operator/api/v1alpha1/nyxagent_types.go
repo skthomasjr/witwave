@@ -306,19 +306,111 @@ type GitMappingSpec struct {
 	Dest string `json:"dest"`
 }
 
-// SharedStorageRef references a pre-existing PVC to mount into all containers
-// of the agent pod. The operator does not create this PVC — it must exist
-// before the NyxAgent is reconciled.
-type SharedStorageRef struct {
-	// ClaimName is the name of the existing PersistentVolumeClaim.
-	// +kubebuilder:validation:MinLength=1
-	ClaimName string `json:"claimName"`
+// SharedStorageType selects the VolumeSource the operator emits for the
+// agent-wide shared volume. Mirrors the chart's `sharedStorage.storageType`
+// enum (`pvc`, `hostPath`) so operator-rendered pods match Helm-rendered
+// pods byte-for-byte (#481, #611).
+// +kubebuilder:validation:Enum=pvc;hostPath
+type SharedStorageType string
 
-	// MountPath is the absolute path inside each container.
+const (
+	// SharedStorageTypePVC selects a PersistentVolumeClaim volume source.
+	// When ExistingClaim is set the operator references it verbatim; when
+	// ExistingClaim is empty the operator reconciles a PVC named
+	// "<agent>-shared" in the agent's namespace.
+	SharedStorageTypePVC SharedStorageType = "pvc"
+
+	// SharedStorageTypeHostPath selects a HostPath volume source. Intended
+	// for single-node clusters (kind, Docker Desktop, minikube) that lack
+	// a ReadWriteMany storage class; not recommended for production
+	// multi-node clusters.
+	SharedStorageTypeHostPath SharedStorageType = "hostPath"
+)
+
+// SharedStorageSpec configures a volume mounted into every container of the
+// agent pod (nyx-harness + every backend sidecar). Mirrors the chart's
+// `sharedStorage.*` block (charts/nyx/values.yaml) so the operator path has
+// feature parity with the chart path (#481, #611).
+//
+// Backward compatibility: older CRs set only `claimName` and rely on the
+// operator to treat that as a reference to a pre-existing PVC. When
+// `claimName` is set the operator treats the spec as
+// `{enabled: true, storageType: pvc, existingClaim: <claimName>}` — so
+// existing CRs keep working without edits. New CRs should set `enabled`
+// plus `storageType` plus either `existingClaim`, PVC sizing fields, or
+// `hostPath`.
+type SharedStorageSpec struct {
+	// Enabled toggles rendering of the shared volume. When false (or when
+	// the field is omitted), no shared volume is mounted and the operator
+	// reconciles away any shared PVC it previously created.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// StorageType selects the VolumeSource: `pvc` (default) or `hostPath`.
+	// +kubebuilder:default=pvc
+	// +optional
+	StorageType SharedStorageType `json:"storageType,omitempty"`
+
+	// MountPath is the absolute path inside each container the shared
+	// volume is mounted at. Defaults to `/data/shared` to match the
+	// chart.
 	// +kubebuilder:default=/data/shared
+	// +kubebuilder:validation:Pattern=`^/.*`
 	// +optional
 	MountPath string `json:"mountPath,omitempty"`
+
+	// ClaimName is a deprecated alias for ExistingClaim retained so CRs
+	// authored against the original `SharedStorageRef` shape keep working
+	// without edits. When set and ExistingClaim is empty, the operator
+	// treats the spec as enabled=true, storageType=pvc,
+	// existingClaim=<claimName>.
+	// Deprecated: set `existingClaim` instead.
+	// +optional
+	ClaimName string `json:"claimName,omitempty"`
+
+	// ExistingClaim references a pre-existing PersistentVolumeClaim. Only
+	// meaningful when StorageType=pvc. When empty and StorageType=pvc the
+	// operator creates a PVC named `<agent>-shared`.
+	// +optional
+	ExistingClaim string `json:"existingClaim,omitempty"`
+
+	// Size is the PVC storage request (e.g. `1Gi`). Only meaningful when
+	// StorageType=pvc and ExistingClaim is empty. Defaults to `1Gi`.
+	// +optional
+	Size string `json:"size,omitempty"`
+
+	// StorageClassName is the storage class for the created PVC. Only
+	// meaningful when StorageType=pvc and ExistingClaim is empty. When
+	// empty the cluster default storage class is used.
+	// +optional
+	StorageClassName string `json:"storageClassName,omitempty"`
+
+	// AccessModes are the PVC access modes. Only meaningful when
+	// StorageType=pvc and ExistingClaim is empty. Defaults to
+	// `[ReadWriteMany]` matching the chart's default.
+	// +optional
+	AccessModes []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
+
+	// HostPath is the node-local directory to bind-mount. Required (and
+	// must be absolute) when StorageType=hostPath. Ignored otherwise.
+	// Prefer hostPath for single-node local clusters only.
+	// +kubebuilder:validation:Pattern=`^(|/.*)$`
+	// +optional
+	HostPath string `json:"hostPath,omitempty"`
+
+	// HostPathType mirrors corev1.HostPathType. When nil the operator
+	// defaults to `DirectoryOrCreate` so pods don't fail to start on
+	// fresh nodes that have not yet materialised the directory (matches
+	// the chart's fixed `type: DirectoryOrCreate`).
+	// +optional
+	HostPathType *corev1.HostPathType `json:"hostPathType,omitempty"`
 }
+
+// SharedStorageRef is the deprecated alias for SharedStorageSpec retained so
+// existing Go consumers don't break. New code should reference
+// SharedStorageSpec directly.
+// Deprecated: use SharedStorageSpec.
+type SharedStorageRef = SharedStorageSpec
 
 // NyxAgentSpec defines the desired state of NyxAgent.
 type NyxAgentSpec struct {
@@ -437,9 +529,13 @@ type NyxAgentSpec struct {
 	// +kubebuilder:validation:MinItems=1
 	Backends []BackendSpec `json:"backends"`
 
-	// SharedStorage optionally mounts a pre-existing PVC into every container.
+	// SharedStorage optionally mounts a volume into every container of the
+	// agent pod. Supports PVC mode (reference an existing claim or have
+	// the operator create one sized per spec) and hostPath mode (for
+	// single-node clusters). Mirrors charts/nyx/values.yaml's
+	// `sharedStorage.*` block (#481, #611).
 	// +optional
-	SharedStorage *SharedStorageRef `json:"sharedStorage,omitempty"`
+	SharedStorage *SharedStorageSpec `json:"sharedStorage,omitempty"`
 
 	// GitSyncs declares git-sync sidecar(s) for this agent. Each entry
 	// produces one init container (one-time clone) and one long-running

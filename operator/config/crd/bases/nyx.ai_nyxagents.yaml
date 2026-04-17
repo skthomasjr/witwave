@@ -2244,19 +2244,83 @@ spec:
                 - LoadBalancer
                 type: string
               sharedStorage:
-                description: SharedStorage optionally mounts a pre-existing PVC into
-                  every container.
+                description: |-
+                  SharedStorage optionally mounts a volume into every container of the
+                  agent pod. Supports PVC mode (reference an existing claim or have
+                  the operator create one sized per spec) and hostPath mode (for
+                  single-node clusters). Mirrors charts/nyx/values.yaml's
+                  `sharedStorage.*` block (#481, #611).
                 properties:
+                  accessModes:
+                    description: |-
+                      AccessModes are the PVC access modes. Only meaningful when
+                      StorageType=pvc and ExistingClaim is empty. Defaults to
+                      `[ReadWriteMany]` matching the chart's default.
+                    items:
+                      type: string
+                    type: array
                   claimName:
-                    description: ClaimName is the name of the existing PersistentVolumeClaim.
-                    minLength: 1
+                    description: |-
+                      ClaimName is a deprecated alias for ExistingClaim retained so CRs
+                      authored against the original `SharedStorageRef` shape keep working
+                      without edits. When set and ExistingClaim is empty, the operator
+                      treats the spec as enabled=true, storageType=pvc,
+                      existingClaim=<claimName>.
+                      Deprecated: set `existingClaim` instead.
+                    type: string
+                  enabled:
+                    description: |-
+                      Enabled toggles rendering of the shared volume. When false (or when
+                      the field is omitted), no shared volume is mounted and the operator
+                      reconciles away any shared PVC it previously created.
+                    type: boolean
+                  existingClaim:
+                    description: |-
+                      ExistingClaim references a pre-existing PersistentVolumeClaim. Only
+                      meaningful when StorageType=pvc. When empty and StorageType=pvc the
+                      operator creates a PVC named `<agent>-shared`.
+                    type: string
+                  hostPath:
+                    description: |-
+                      HostPath is the node-local directory to bind-mount. Required (and
+                      must be absolute) when StorageType=hostPath. Ignored otherwise.
+                      Prefer hostPath for single-node local clusters only.
+                    pattern: ^(|/.*)$
+                    type: string
+                  hostPathType:
+                    description: |-
+                      HostPathType mirrors corev1.HostPathType. When nil the operator
+                      defaults to `DirectoryOrCreate` so pods don't fail to start on
+                      fresh nodes that have not yet materialised the directory (matches
+                      the chart's fixed `type: DirectoryOrCreate`).
                     type: string
                   mountPath:
                     default: /data/shared
-                    description: MountPath is the absolute path inside each container.
+                    description: |-
+                      MountPath is the absolute path inside each container the shared
+                      volume is mounted at. Defaults to `/data/shared` to match the
+                      chart.
+                    pattern: ^/.*
                     type: string
-                required:
-                - claimName
+                  size:
+                    description: |-
+                      Size is the PVC storage request (e.g. `1Gi`). Only meaningful when
+                      StorageType=pvc and ExistingClaim is empty. Defaults to `1Gi`.
+                    type: string
+                  storageClassName:
+                    description: |-
+                      StorageClassName is the storage class for the created PVC. Only
+                      meaningful when StorageType=pvc and ExistingClaim is empty. When
+                      empty the cluster default storage class is used.
+                    type: string
+                  storageType:
+                    default: pvc
+                    description: 'StorageType selects the VolumeSource: `pvc` (default)
+                      or `hostPath`.'
+                    enum:
+                    - pvc
+                    - hostPath
+                    type: string
                 type: object
               terminationGracePeriodSeconds:
                 description: |-

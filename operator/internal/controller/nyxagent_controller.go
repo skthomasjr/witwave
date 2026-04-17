@@ -192,6 +192,15 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	if err := r.applyBackendPVCs(ctx, agent); err != nil {
 		reconcileErrs = append(reconcileErrs, err)
 	}
+	// Shared-storage PVC (#481) runs after backend PVC reconciliation so
+	// it can create or delete the distinct `component=shared-storage`
+	// claim independently. hostPath mode (#611) is a pod-spec concern
+	// and does not produce a PVC — the reconciler still runs so any
+	// previously-created operator-managed PVC gets cleaned up on a flip
+	// from pvc→hostPath.
+	if err := r.reconcileSharedStoragePVC(ctx, agent); err != nil {
+		reconcileErrs = append(reconcileErrs, err)
+	}
 	if err := r.reconcileHPA(ctx, agent); err != nil {
 		reconcileErrs = append(reconcileErrs, err)
 	}
@@ -248,17 +257,44 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 // ── Apply helpers ─────────────────────────────────────────────────────────────
 
-func (r *NyxAgentReconciler) applyDeployment(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
+// startStepSpan opens a child span for a reconcile sub-step (#629) and
+// returns the (ctx, span, finish) triple. `finish` MUST be deferred by
+// the caller with the final error so errors are recorded on the
+// specific sub-span (not only the joined top-level error). The
+// tracer returned by tracing.Tracer() is a no-op when OTel is
+// disabled, so this is free in that mode.
+func startStepSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) (context.Context, trace.Span, func(*error)) {
+	var span trace.Span
+	ctx, span = tracing.Tracer().Start(ctx, name, trace.WithAttributes(attrs...))
+	finish := func(errPtr *error) {
+		if errPtr != nil && *errPtr != nil {
+			span.RecordError(*errPtr)
+			span.SetStatus(codes.Error, (*errPtr).Error())
+		}
+		span.End()
+	}
+	return ctx, span, finish
+}
+
+func (r *NyxAgentReconciler) applyDeployment(ctx context.Context, agent *nyxv1alpha1.NyxAgent) (err error) {
+	ctx, span, finish := startStepSpan(ctx, "nyxagent.applyDeployment",
+		attribute.Int("nyx.backends.count", len(agent.Spec.Backends)),
+	)
+	defer finish(&err)
+
 	desired := buildDeployment(agent, DefaultImageTag)
-	if err := controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
+	if err = controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
 		return fmt.Errorf("set owner on Deployment: %w", err)
 	}
 	existing := &appsv1.Deployment{}
-	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
+	getErr := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
 	switch {
-	case apierrors.IsNotFound(err):
-		return r.Create(ctx, desired)
-	case err != nil:
+	case apierrors.IsNotFound(getErr):
+		span.SetAttributes(attribute.String("nyx.resource.action", "create"))
+		err = r.Create(ctx, desired)
+		return err
+	case getErr != nil:
+		err = getErr
 		return err
 	}
 	// When autoscaling is enabled, the HPA owns spec.replicas. Preserve the
@@ -270,20 +306,28 @@ func (r *NyxAgentReconciler) applyDeployment(ctx context.Context, agent *nyxv1al
 	// Patch spec + labels; keep existing status and server-filled fields.
 	existing.Spec = desired.Spec
 	existing.Labels = desired.Labels
-	return r.Update(ctx, existing)
+	span.SetAttributes(attribute.String("nyx.resource.action", "update"))
+	err = r.Update(ctx, existing)
+	return err
 }
 
-func (r *NyxAgentReconciler) applyService(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
+func (r *NyxAgentReconciler) applyService(ctx context.Context, agent *nyxv1alpha1.NyxAgent) (err error) {
+	ctx, span, finish := startStepSpan(ctx, "nyxagent.applyService")
+	defer finish(&err)
+
 	desired := buildService(agent)
-	if err := controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
+	if err = controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
 		return fmt.Errorf("set owner on Service: %w", err)
 	}
 	existing := &corev1.Service{}
-	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
+	getErr := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
 	switch {
-	case apierrors.IsNotFound(err):
-		return r.Create(ctx, desired)
-	case err != nil:
+	case apierrors.IsNotFound(getErr):
+		span.SetAttributes(attribute.String("nyx.resource.action", "create"))
+		err = r.Create(ctx, desired)
+		return err
+	case getErr != nil:
+		err = getErr
 		return err
 	}
 	// Preserve ClusterIP across updates — the API server rejects attempts to
@@ -292,14 +336,19 @@ func (r *NyxAgentReconciler) applyService(ctx context.Context, agent *nyxv1alpha
 	existing.Spec = desired.Spec
 	existing.Labels = desired.Labels
 	existing.Annotations = desired.Annotations
-	return r.Update(ctx, existing)
+	span.SetAttributes(attribute.String("nyx.resource.action", "update"))
+	err = r.Update(ctx, existing)
+	return err
 }
 
 // reconcileConfigMaps applies every ConfigMap the spec currently calls for
 // AND garbage-collects ConfigMaps owned by this NyxAgent that the spec no
 // longer asks for (#443). Replaces the previous applyAgentConfigMap +
 // applyBackendConfigMaps split, which had a known TODO about stale cleanup.
-func (r *NyxAgentReconciler) reconcileConfigMaps(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
+func (r *NyxAgentReconciler) reconcileConfigMaps(ctx context.Context, agent *nyxv1alpha1.NyxAgent) (err error) {
+	ctx, span, finish := startStepSpan(ctx, "nyxagent.reconcileConfigMaps")
+	defer finish(&err)
+
 	// Compute the desired set first — we apply by iterating this set, and we
 	// reuse it for the cleanup pass to decide what to delete.
 	desired := map[string]*corev1.ConfigMap{}
@@ -326,6 +375,7 @@ func (r *NyxAgentReconciler) reconcileConfigMaps(ctx context.Context, agent *nyx
 	for _, cm := range buildGitMappingsConfigMaps(agent) {
 		desired[cm.Name] = cm
 	}
+	span.SetAttributes(attribute.Int("nyx.configmaps.desired", len(desired)))
 
 	// Apply each desired ConfigMap.
 	for _, cm := range desired {
@@ -376,7 +426,12 @@ func (r *NyxAgentReconciler) reconcileConfigMaps(ctx context.Context, agent *nyx
 // gap-approve comment warns every CR write triggers manifest churn, and
 // without the hash every pod would see a rolling configmap update on
 // every reconcile.
-func (r *NyxAgentReconciler) reconcileManifestConfigMap(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
+func (r *NyxAgentReconciler) reconcileManifestConfigMap(ctx context.Context, agent *nyxv1alpha1.NyxAgent) (err error) {
+	ctx, span, finish := startStepSpan(ctx, "nyxagent.reconcileManifestConfigMap",
+		attribute.String("nyx.team", teamKey(agent)),
+	)
+	defer finish(&err)
+
 	// List every NyxAgent in the namespace. Filtering by team label is
 	// done in-memory because an apiserver selector can't express "label
 	// absent OR label equals X" in one call — both the labelled team
@@ -410,15 +465,17 @@ func (r *NyxAgentReconciler) reconcileManifestConfigMap(ctx context.Context, age
 	}
 
 	desired, desiredHash := buildManifestConfigMap(agent, members)
+	span.SetAttributes(attribute.Int("nyx.members.count", len(members)))
 	if err := controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
 		return fmt.Errorf("set owner on manifest ConfigMap: %w", err)
 	}
 
 	existing := &corev1.ConfigMap{}
-	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
+	err = r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
 	switch {
 	case apierrors.IsNotFound(err):
-		return r.Create(ctx, desired)
+		err = r.Create(ctx, desired)
+		return err
 	case err != nil:
 		return err
 	}
@@ -457,8 +514,17 @@ func (r *NyxAgentReconciler) applyConfigMap(ctx context.Context, agent *nyxv1alp
 	return r.Update(ctx, existing)
 }
 
-func (r *NyxAgentReconciler) applyBackendPVCs(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
+func (r *NyxAgentReconciler) applyBackendPVCs(ctx context.Context, agent *nyxv1alpha1.NyxAgent) (err error) {
+	ctx, span, finish := startStepSpan(ctx, "nyxagent.applyBackendPVCs",
+		attribute.Int("nyx.backends.count", len(agent.Spec.Backends)),
+	)
+	defer finish(&err)
+
 	pvcs, buildErrs := buildBackendPVCs(agent)
+	span.SetAttributes(
+		attribute.Int("nyx.pvcs.desired", len(pvcs)),
+		attribute.Int("nyx.pvcs.build_errors", len(buildErrs)),
+	)
 	// Surface size-parse failures so they don't get silently dropped (#454).
 	// We log via the reconciler's logger and emit a Warning Event per bad
 	// entry. This is non-fatal — other backends still get their PVCs.
@@ -480,6 +546,10 @@ func (r *NyxAgentReconciler) applyBackendPVCs(ctx context.Context, agent *nyxv1a
 		desired[pvc.Name] = pvc
 	}
 	for _, d := range desired {
+		// Annotate the per-backend apply on the parent span as an event
+		// so per-PVC outcomes are searchable in Jaeger/Tempo without the
+		// cardinality cost of a child span per PVC (#629).
+		span.AddEvent("pvc.apply.begin", trace.WithAttributes(attribute.String("nyx.pvc.name", d.Name)))
 		if err := controllerutil.SetControllerReference(agent, d, r.Scheme); err != nil {
 			return fmt.Errorf("set owner on PVC %s: %w", d.Name, err)
 		}
@@ -490,6 +560,7 @@ func (r *NyxAgentReconciler) applyBackendPVCs(ctx context.Context, agent *nyxv1a
 			if err := r.Create(ctx, d); err != nil {
 				return err
 			}
+			span.AddEvent("pvc.created", trace.WithAttributes(attribute.String("nyx.pvc.name", d.Name)))
 			continue
 		case err != nil:
 			return err
@@ -500,6 +571,7 @@ func (r *NyxAgentReconciler) applyBackendPVCs(ctx context.Context, agent *nyxv1a
 		if err := r.Update(ctx, existing); err != nil {
 			return err
 		}
+		span.AddEvent("pvc.updated", trace.WithAttributes(attribute.String("nyx.pvc.name", d.Name)))
 	}
 	// Cleanup: list PVCs in this namespace that carry our agent labels, then
 	// delete any owned by THIS NyxAgent that are not in the desired set.
@@ -523,6 +595,14 @@ func (r *NyxAgentReconciler) applyBackendPVCs(ctx context.Context, agent *nyxv1a
 		if _, wanted := desired[pvc.Name]; wanted {
 			continue
 		}
+		// Skip the operator-managed shared-storage PVC — it is
+		// reconciled by reconcileSharedStoragePVC (#481) and carries a
+		// distinct `component=shared-storage` label. Without this guard
+		// the two reconcilers would reciprocally delete each other's
+		// PVCs since both match name+managed-by.
+		if pvc.Labels[labelComponent] == componentSharedStorage {
+			continue
+		}
 		if !metav1.IsControlledBy(pvc, agent) {
 			// Defensive: another controller owns this PVC despite the
 			// labels matching. Leave it alone.
@@ -535,10 +615,89 @@ func (r *NyxAgentReconciler) applyBackendPVCs(ctx context.Context, agent *nyxv1a
 	return nil
 }
 
+// reconcileSharedStoragePVC creates, updates, or deletes the agent-wide
+// shared-storage PVC (#481). The PVC is only produced when the NyxAgent
+// sets sharedStorage.enabled=true with storageType=pvc (default) and no
+// existingClaim — mirroring the chart's `pvc.yaml` branch gated on the
+// same three conditions. When any of those flip, or when storageType is
+// hostPath (#611), the reconciler deletes any PVC it previously created
+// (tracked by the `component=shared-storage` label). The backend PVC
+// reconciler skips PVCs bearing this component label so the two paths
+// never step on each other.
+func (r *NyxAgentReconciler) reconcileSharedStoragePVC(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
+	desired, buildErr := buildSharedStoragePVC(agent)
+	if buildErr != nil {
+		// Size-parse failure — surface as event + log, reconcile as if
+		// the PVC is not desired so a previously-created shared PVC is
+		// left in place rather than recreated with a bad size.
+		logf.FromContext(ctx).Error(buildErr, "skipping shared-storage PVC")
+		if r.Recorder != nil {
+			r.Recorder.Eventf(agent, corev1.EventTypeWarning, "InvalidSharedStorageSize",
+				"sharedStorage: %v", buildErr)
+		}
+		return nil
+	}
+
+	// Delete path: no PVC desired — sweep any operator-managed shared
+	// PVC labelled for this agent. Dual-check labels + IsControlledBy to
+	// never touch a user-supplied claim.
+	if desired == nil {
+		owned := &corev1.PersistentVolumeClaimList{}
+		if err := r.List(ctx, owned,
+			client.InNamespace(agent.Namespace),
+			client.MatchingLabels{
+				labelName:      agent.Name,
+				labelManagedBy: managedBy,
+				labelComponent: componentSharedStorage,
+			},
+		); err != nil {
+			return fmt.Errorf("list shared-storage PVC for cleanup: %w", err)
+		}
+		for i := range owned.Items {
+			pvc := &owned.Items[i]
+			if !metav1.IsControlledBy(pvc, agent) {
+				continue
+			}
+			if err := r.Delete(ctx, pvc); err != nil && !apierrors.IsNotFound(err) {
+				return fmt.Errorf("delete stale shared-storage PVC %s: %w", pvc.Name, err)
+			}
+		}
+		return nil
+	}
+
+	if err := controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
+		return fmt.Errorf("set owner on shared-storage PVC: %w", err)
+	}
+	existing := &corev1.PersistentVolumeClaim{}
+	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
+	switch {
+	case apierrors.IsNotFound(err):
+		if err := r.Create(ctx, desired); err != nil {
+			return fmt.Errorf("create shared-storage PVC: %w", err)
+		}
+		return nil
+	case err != nil:
+		return err
+	}
+	// PVC specs are largely immutable post-creation; reconcile labels
+	// only so cleanup selectors stay accurate across spec edits.
+	existing.Labels = desired.Labels
+	if err := r.Update(ctx, existing); err != nil {
+		return fmt.Errorf("update shared-storage PVC: %w", err)
+	}
+	return nil
+}
+
 // reconcileHPA creates, updates, or deletes the HPA to match spec.
-func (r *NyxAgentReconciler) reconcileHPA(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
+func (r *NyxAgentReconciler) reconcileHPA(ctx context.Context, agent *nyxv1alpha1.NyxAgent) (err error) {
+	ctx, span, finish := startStepSpan(ctx, "nyxagent.reconcileHPA")
+	defer finish(&err)
+
 	desired := buildHPA(agent)
 	key := client.ObjectKey{Namespace: agent.Namespace, Name: agent.Name}
+	if desired == nil {
+		span.SetAttributes(attribute.String("nyx.resource.action", "delete-if-present"))
+	}
 
 	if desired == nil {
 		// Ensure no HPA lingers from a previous spec.
@@ -559,22 +718,30 @@ func (r *NyxAgentReconciler) reconcileHPA(ctx context.Context, agent *nyxv1alpha
 		return fmt.Errorf("set owner on HPA: %w", err)
 	}
 	existing := &autoscalingv2.HorizontalPodAutoscaler{}
-	err := r.Get(ctx, key, existing)
+	err = r.Get(ctx, key, existing)
 	switch {
 	case apierrors.IsNotFound(err):
-		return r.Create(ctx, desired)
+		err = r.Create(ctx, desired)
+		return err
 	case err != nil:
 		return err
 	}
 	existing.Spec = desired.Spec
 	existing.Labels = desired.Labels
-	return r.Update(ctx, existing)
+	err = r.Update(ctx, existing)
+	return err
 }
 
 // reconcilePDB creates, updates, or deletes the PDB to match spec.
-func (r *NyxAgentReconciler) reconcilePDB(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
+func (r *NyxAgentReconciler) reconcilePDB(ctx context.Context, agent *nyxv1alpha1.NyxAgent) (err error) {
+	ctx, span, finish := startStepSpan(ctx, "nyxagent.reconcilePDB")
+	defer finish(&err)
+
 	desired := buildPDB(agent)
 	key := client.ObjectKey{Namespace: agent.Namespace, Name: agent.Name}
+	if desired == nil {
+		span.SetAttributes(attribute.String("nyx.resource.action", "delete-if-present"))
+	}
 
 	if desired == nil {
 		existing := &policyv1.PodDisruptionBudget{}
@@ -594,16 +761,18 @@ func (r *NyxAgentReconciler) reconcilePDB(ctx context.Context, agent *nyxv1alpha
 		return fmt.Errorf("set owner on PDB: %w", err)
 	}
 	existing := &policyv1.PodDisruptionBudget{}
-	err := r.Get(ctx, key, existing)
+	err = r.Get(ctx, key, existing)
 	switch {
 	case apierrors.IsNotFound(err):
-		return r.Create(ctx, desired)
+		err = r.Create(ctx, desired)
+		return err
 	case err != nil:
 		return err
 	}
 	existing.Spec = desired.Spec
 	existing.Labels = desired.Labels
-	return r.Update(ctx, existing)
+	err = r.Update(ctx, existing)
+	return err
 }
 
 // teardownDisabledAgent deletes every owned resource for an agent whose
@@ -732,7 +901,13 @@ func (r *NyxAgentReconciler) finalizeNyxAgent(ctx context.Context, agent *nyxv1a
 // The ConfigMap holds the nginx template that routes /api/agents/<name>/...
 // directly to the owned agent's service, matching the direct-routing
 // architecture the Helm chart uses cluster-wide.
-func (r *NyxAgentReconciler) reconcileDashboard(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
+func (r *NyxAgentReconciler) reconcileDashboard(ctx context.Context, agent *nyxv1alpha1.NyxAgent) (err error) {
+	dashboardEnabled := agent.Spec.Dashboard != nil && agent.Spec.Dashboard.Enabled
+	ctx, _, finish := startStepSpan(ctx, "nyxagent.reconcileDashboard",
+		attribute.Bool("nyx.dashboard.enabled", dashboardEnabled),
+	)
+	defer finish(&err)
+
 	desiredCM := buildDashboardConfigMap(agent)
 	desiredDep := buildDashboardDeployment(agent, DefaultImageTag)
 	desiredSvc := buildDashboardService(agent)
@@ -901,7 +1076,13 @@ func (r *NyxAgentReconciler) serviceMonitorCRDPresent(ctx context.Context) (bool
 // in the same namespace is never touched. ServiceMonitors created
 // outside this reconciler keep their owner reference untouched — the
 // controller dual-checks label + IsControlledBy before mutating.
-func (r *NyxAgentReconciler) reconcileServiceMonitor(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
+func (r *NyxAgentReconciler) reconcileServiceMonitor(ctx context.Context, agent *nyxv1alpha1.NyxAgent) (err error) {
+	ctx, _, finish := startStepSpan(ctx, "nyxagent.reconcileServiceMonitor",
+		attribute.Bool("nyx.servicemonitor.enabled", serviceMonitorEnabled(agent)),
+		attribute.Bool("nyx.metrics.enabled", agent.Spec.Metrics.Enabled),
+	)
+	defer finish(&err)
+
 	log := logf.FromContext(ctx)
 
 	// Probe CRD presence. An absent CRD means we can't read or write
@@ -985,7 +1166,12 @@ func (r *NyxAgentReconciler) reconcileServiceMonitor(ctx context.Context, agent 
 
 // ── Status ────────────────────────────────────────────────────────────────────
 
-func (r *NyxAgentReconciler) updateStatus(ctx context.Context, agent *nyxv1alpha1.NyxAgent, reconcileErr error) error {
+func (r *NyxAgentReconciler) updateStatus(ctx context.Context, agent *nyxv1alpha1.NyxAgent, reconcileErr error) (err error) {
+	ctx, _, finish := startStepSpan(ctx, "nyxagent.updateStatus",
+		attribute.Bool("nyx.reconcile.had_error", reconcileErr != nil),
+	)
+	defer finish(&err)
+
 	// Re-read the Deployment to derive ready replicas.
 	dep := &appsv1.Deployment{}
 	depKey := client.ObjectKey{Namespace: agent.Namespace, Name: agent.Name}
