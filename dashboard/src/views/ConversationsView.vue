@@ -27,31 +27,22 @@ const agentOptions = computed(() => {
   return Array.from(set).sort();
 });
 
-// Keep request/response pairs together: group by session_id, order
-// sessions by their first message's timestamp (oldest → newest), then
-// order messages within a session by timestamp. Latest session ends up
-// at the bottom; within any given exchange the user message stays
-// immediately above its agent reply.
-const sorted = computed(() => {
-  // First-seen timestamp per session — governs session ordering.
-  const firstTs = new Map<string, string>();
-  for (const e of items.value) {
-    const sid = e.session_id ?? "__no_session__";
-    const prior = firstTs.get(sid);
-    if (!prior || e.ts < prior) firstTs.set(sid, e.ts);
-  }
-  return [...items.value].sort((a, b) => {
-    const sa = a.session_id ?? "__no_session__";
-    const sb = b.session_id ?? "__no_session__";
-    if (sa !== sb) {
-      const ta = firstTs.get(sa) ?? "";
-      const tb = firstTs.get(sb) ?? "";
-      if (ta !== tb) return ta < tb ? -1 : 1;
-      return sa < sb ? -1 : 1;
-    }
-    return a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0;
-  });
-});
+// Pure chronological order. Within a session, a response's ts is always
+// >= the matching request's ts, so the two rows land adjacent naturally —
+// no session grouping needed. session_id breaks ties deterministically in
+// the (rare) case two rows share a ts down to the microsecond.
+// Use Date.parse so timezone-offset vs Z-formatted timestamps compare by
+// actual instant instead of string shape.
+const sorted = computed(() =>
+  [...items.value].sort((a, b) => {
+    const ta = Date.parse(a.ts);
+    const tb = Date.parse(b.ts);
+    if (ta !== tb) return ta - tb;
+    const sa = a.session_id ?? "";
+    const sb = b.session_id ?? "";
+    return sa < sb ? -1 : sa > sb ? 1 : 0;
+  }),
+);
 
 const filtered = computed(() => {
   const q = searchTerm.value.trim().toLowerCase();
