@@ -96,6 +96,30 @@ GEMINI_API_KEY: str | None = os.environ.get("GEMINI_API_KEY") or os.environ.get(
 _BACKEND_ID = "gemini"
 _LABELS = {"agent": AGENT_OWNER, "agent_id": AGENT_ID, "backend": _BACKEND_ID}
 
+# Bounded allow-pattern for the Prometheus `model` label (#487). User-supplied
+# metadata.model flows through resolved_model into 12+ metric call sites; an
+# unbounded string would let a caller blow up metric cardinality by sending a
+# fresh UUID per request. Pre-filter at every label site: accept only simple
+# model identifiers (alnum / dot / dash / underscore, length <= 64) and collapse
+# anything else to the literal "unknown". Use a single helper everywhere so a
+# missed site cannot keep the DoS surface alive.
+import re as _re
+
+_MODEL_LABEL_RE = _re.compile(r"^[a-zA-Z0-9._\-]{1,64}$")
+
+
+def _sanitize_model_label(value: str | None) -> str:
+    """Clamp a model label to a bounded, well-formed string for Prometheus.
+
+    Returns the input unchanged when it matches _MODEL_LABEL_RE; otherwise
+    returns "unknown". Empty / None inputs also collapse to "unknown".
+    """
+    if not value:
+        return "unknown"
+    if _MODEL_LABEL_RE.match(value):
+        return value
+    return "unknown"
+
 
 def _load_agent_md() -> str:
     try:
@@ -359,6 +383,10 @@ async def run_query(
     on_chunk: Callable[[str], Awaitable[None]] | None = None,
 ) -> list[str]:
     resolved_model = model or GEMINI_MODEL
+    # Note: resolved_model carries the raw caller-supplied string (so we pass
+    # it faithfully to the SDK and log it verbatim). Wherever it lands in a
+    # Prometheus label, pass it through _sanitize_model_label() so a hostile
+    # caller cannot blow up metric cardinality (#487).
 
     instructions = f"Your name is {AGENT_NAME}. Your session ID is {session_id}."
     if agent_md_content:
@@ -399,7 +427,7 @@ async def run_query(
                         if _first_chunk_at is None:
                             _first_chunk_at = time.monotonic()
                             if a2_sdk_time_to_first_message_seconds is not None:
-                                a2_sdk_time_to_first_message_seconds.labels(**_LABELS, model=resolved_model).observe(
+                                a2_sdk_time_to_first_message_seconds.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).observe(
                                     _first_chunk_at - _query_start
                                 )
                         collected.append(text)
@@ -425,7 +453,7 @@ async def run_query(
                 _turn_count = 1
             except BudgetExceededError as exc:
                 if a2_sdk_session_duration_seconds is not None:
-                    a2_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
+                    a2_sdk_session_duration_seconds.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).observe(
                         time.monotonic() - _session_start
                     )
                 partial_response = "".join(exc.collected)
@@ -446,11 +474,11 @@ async def run_query(
                 raise
             except Exception as _run_exc:
                 if a2_sdk_query_error_duration_seconds is not None:
-                    a2_sdk_query_error_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
+                    a2_sdk_query_error_duration_seconds.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).observe(
                         time.monotonic() - _query_start
                     )
                 if a2_sdk_session_duration_seconds is not None:
-                    a2_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
+                    a2_sdk_session_duration_seconds.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).observe(
                         time.monotonic() - _session_start
                     )
                 # Classify by exception type so the new SDK error counters track
@@ -461,16 +489,16 @@ async def run_query(
                     from google.api_core import exceptions as _g_exc
                     if isinstance(_run_exc, _g_exc.ClientError):
                         if a2_sdk_client_errors_total is not None:
-                            a2_sdk_client_errors_total.labels(**_LABELS, model=resolved_model).inc()
+                            a2_sdk_client_errors_total.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).inc()
                     elif isinstance(_run_exc, _g_exc.GoogleAPIError):
                         if a2_sdk_result_errors_total is not None:
-                            a2_sdk_result_errors_total.labels(**_LABELS, model=resolved_model).inc()
+                            a2_sdk_result_errors_total.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).inc()
                     else:
                         if a2_sdk_errors_total is not None:
-                            a2_sdk_errors_total.labels(**_LABELS, model=resolved_model).inc()
+                            a2_sdk_errors_total.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).inc()
                 except Exception:
                     if a2_sdk_errors_total is not None:
-                        a2_sdk_errors_total.labels(**_LABELS, model=resolved_model).inc()
+                        a2_sdk_errors_total.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).inc()
                 # Do not persist chat.history here (#499). The SDK may have
                 # partially advanced chat.history to include the failed user
                 # turn with no (or an incomplete) assistant response. Saving
@@ -486,7 +514,7 @@ async def run_query(
                 raise
 
             if a2_sdk_session_duration_seconds is not None:
-                a2_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
+                a2_sdk_session_duration_seconds.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).observe(
                     time.monotonic() - _session_start
                 )
 
@@ -513,13 +541,13 @@ async def run_query(
                     history_save_failed.add(session_id)
 
         if a2_sdk_query_duration_seconds is not None:
-            a2_sdk_query_duration_seconds.labels(**_LABELS, model=resolved_model).observe(time.monotonic() - _query_start)
+            a2_sdk_query_duration_seconds.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).observe(time.monotonic() - _query_start)
         if a2_sdk_messages_per_query is not None:
-            a2_sdk_messages_per_query.labels(**_LABELS, model=resolved_model).observe(_message_count)
+            a2_sdk_messages_per_query.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).observe(_message_count)
         if a2_sdk_turns_per_query is not None:
-            a2_sdk_turns_per_query.labels(**_LABELS, model=resolved_model).observe(_turn_count)
+            a2_sdk_turns_per_query.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).observe(_turn_count)
         if a2_text_blocks_per_query is not None:
-            a2_text_blocks_per_query.labels(**_LABELS, model=resolved_model).observe(len(collected))
+            a2_text_blocks_per_query.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).observe(len(collected))
         if _total_tokens is not None and max_tokens is not None:
             if a2_context_tokens is not None:
                 a2_context_tokens.labels(**_LABELS).observe(_total_tokens)
@@ -587,7 +615,7 @@ async def _run_inner(
 ) -> str:
     resolved_model = model or GEMINI_MODEL
     if a2_model_requests_total is not None:
-        a2_model_requests_total.labels(**_LABELS, model=resolved_model).inc()
+        a2_model_requests_total.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).inc()
 
     # Treat sessions whose history failed to persist as new — resuming from a
     # partially-written or missing history file could produce incorrect context (#409).
@@ -796,7 +824,10 @@ class AgentExecutor(A2AAgentExecutor):
         # post-completion aggregated enqueue can be skipped when chunks were
         # already delivered.
         _chunks_emitted = 0
-        _streaming_label_model = model or GEMINI_MODEL or ""
+        # Pre-sanitize once for the streaming counter (#487): the inner closure
+        # runs per chunk so resolving the bounded label here keeps it O(1) per
+        # emit and guarantees a single canonical value for the whole request.
+        _streaming_label_model = _sanitize_model_label(model or GEMINI_MODEL or "")
 
         async def _emit_chunk(text: str) -> None:
             nonlocal _chunks_emitted
