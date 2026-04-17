@@ -1052,6 +1052,38 @@ async def main():
         """Return a snapshot of currently registered trigger endpoints."""
         return JSONResponse(trigger_runner.items())
 
+    async def routing_handler(request: Request) -> JSONResponse:
+        """Return a read-only view of the backend.yaml routing config (#638).
+
+        Shape mirrors the structure of `.nyx/backend.yaml`'s `routing:` block
+        so clients (e.g. the dashboard chat selector in #597) can discover
+        which backend handles each kind and the default fallback without
+        needing to re-parse the YAML themselves.
+        """
+        if _conversations_auth_token:
+            header = request.headers.get("Authorization", "")
+            if not hmac_mod.compare_digest(
+                f"Bearer {_conversations_auth_token}", header
+            ):
+                return JSONResponse({"error": "unauthorized"}, status_code=401)
+        _routing = getattr(_executor, "_routing", None) if _executor else None
+        _default_id = (
+            getattr(_executor, "_default_backend_id", None) if _executor else None
+        )
+
+        def _entry_json(entry):
+            if entry is None:
+                return None
+            return {"agent": entry.agent, "model": entry.model}
+
+        _kinds = ("a2a", "heartbeat", "job", "task", "trigger", "continuation")
+        _routing_json = {k: _entry_json(getattr(_routing, k, None) if _routing else None) for k in _kinds}
+        return JSONResponse({
+            "default": _default_id,
+            "default_routing": _entry_json(_routing.default if _routing else None),
+            "routing": _routing_json,
+        })
+
     _routes = [
         Route("/health/start", health_start),
         Route("/health/live", health_live),
@@ -1068,6 +1100,7 @@ async def main():
         Route("/continuations", continuations_handler, methods=["GET"]),
         Route("/heartbeat", heartbeat_handler, methods=["GET"]),
         Route("/triggers", triggers_handler, methods=["GET"]),
+        Route("/routing", routing_handler, methods=["GET"]),
         Route("/conversations", conversations_handler, methods=["GET"]),
         Route("/trace", trace_handler, methods=["GET"]),
     ]
