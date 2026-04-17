@@ -113,12 +113,15 @@ Continuations are triggered by the jobs and tasks above. They should not need to
 
 ### Webhooks
 
-Webhooks fire outbound HTTP POSTs after matching upstream completions. They require `WEBHOOK_TEST_HOST` and `WEBHOOK_TEST_TOKEN` env vars to be set for the env-url and headers tests.
+Webhooks fire outbound HTTP POSTs after matching upstream completions. They require
+`WEBHOOK_TEST_URL_FEATURE_SINK`, `WEBHOOK_TEST_URL_WEBHOOK_SINK`, and `WEBHOOK_TEST_TOKEN` env vars to be set for
+the env-url and headers tests. Env-derived webhook URLs resolve only through `url-env-var` (see #524); inline
+`{{env.VAR}}` in the `url:` field is no longer supported.
 
 | Webhook | Fires when | What to check |
 |---|---|---|
 | `chain-test` | A2A response contains `WEBHOOK_FIRE` | POST delivered to `webhook-sink` trigger; `WEBHOOK_CHAIN_OK` appears in log |
-| `test-env-url` | A2A response contains `WEBHOOK_ENV_URL_FIRE` | POST delivered to `{{env.WEBHOOK_TEST_HOST}}/triggers/feature-sink`; `FEATURE_SINK_OK` in log |
+| `test-env-url` | A2A response contains `WEBHOOK_ENV_URL_FIRE` | POST delivered to the URL in `WEBHOOK_TEST_URL_FEATURE_SINK`; `FEATURE_SINK_OK` in log |
 | `test-extract` | A2A response contains `WEBHOOK_EXTRACT_FIRE` | LLM extraction runs; extracted word appears in POST body; `FEATURE_SINK_OK` in log |
 | `test-headers` | A2A response contains `WEBHOOK_HEADERS_FIRE` | POST includes `X-Test-Token` and `X-Static-Header` headers; `FEATURE_SINK_OK` in log |
 

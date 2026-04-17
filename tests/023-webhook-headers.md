@@ -9,7 +9,8 @@ trigger endpoint returns 202 (meaning nyx-harness accepted the POST), and the ba
 confirming the full delivery path completed.
 
 The webhook fixture is `.agents/test/bob/.nyx/webhooks/test-headers.md`. It fires when a response contains
-`WEBHOOK_HEADERS_FIRE` and POSTs to `http://bob:8000/triggers/feature-sink` with:
+`WEBHOOK_HEADERS_FIRE` and POSTs to the URL held in `WEBHOOK_TEST_URL_FEATURE_SINK` (resolves to
+`http://nyx-bob:8099/triggers/feature-sink`) with:
 - `X-Test-Token: test-token-abc123` (resolved from `{{env.WEBHOOK_TEST_TOKEN}}`)
 - `X-Static-Header: static-value`
 

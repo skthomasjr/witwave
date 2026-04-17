@@ -1,14 +1,15 @@
 ---
-description: Verifies that {{env.VAR}} interpolation in the webhook url field resolves correctly and delivery succeeds.
+description: Verifies that env-derived webhook URLs resolve correctly via url-env-var and delivery succeeds.
 enabled: true
 ---
 
-This test verifies that a webhook whose `url` field contains `{{env.WEBHOOK_TEST_HOST}}` resolves the environment
-variable at delivery time and successfully POSTs to the resolved URL.
+This test verifies that a webhook whose URL is resolved via the `url-env-var` field reads the full URL from the
+named environment variable at parse time and successfully POSTs to the resolved URL. Inline `{{env.VAR}}`
+interpolation in the `url:` field is not supported (see #524) — env-derived URLs must go through `url-env-var`.
 
 The webhook fixture is `.agents/test/bob/.nyx/webhooks/test-env-url.md`. It fires when a response contains
-`WEBHOOK_ENV_URL_FIRE` and POSTs to `http://{{env.WEBHOOK_TEST_HOST}}/triggers/feature-sink`, which resolves to
-`http://bob:8000/triggers/feature-sink`. That trigger dispatches a prompt to the backend which responds with
+`WEBHOOK_ENV_URL_FIRE` and POSTs to `WEBHOOK_TEST_URL_FEATURE_SINK`, which resolves to
+`http://nyx-bob:8099/triggers/feature-sink`. That trigger dispatches a prompt to the backend which responds with
 `FEATURE_SINK_OK`.
 
 ## Step 1 — Send a prompt that produces WEBHOOK_ENV_URL_FIRE

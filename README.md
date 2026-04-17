@@ -415,7 +415,19 @@ frontmatter fields:
 
 \* Either `url` or `url-env-var` is required.
 
-The markdown body is the POST payload. Use `{{variable}}` placeholders for substitution:
+### URL safety (#524)
+
+- The `url:` template may only reference the built-in variables listed below. `{{env.VAR}}` references and
+  extraction-defined variables are **not** substituted in the URL field — env-derived URLs must be placed
+  in a single env var and read via `url-env-var`.
+- Only `http` and `https` URLs are accepted. Schemes like `file://`, `gopher://`, `ftp://` are rejected.
+- URLs whose host is a loopback / link-local / private / reserved IP literal (e.g. `127.0.0.1`,
+  `169.254.169.254`, `10.0.0.5`) are rejected to prevent SSRF to cloud metadata endpoints and internal
+  services. Operators can opt specific internal hosts into the allow-list via the
+  `WEBHOOK_URL_ALLOWED_HOSTS` env var (comma-separated `host` or `host:port` entries).
+
+The markdown body is the POST payload. Use `{{variable}}` placeholders for substitution in the body and
+header values (not in the URL — see above):
 
 | Variable               | Value                                          |
 | ---------------------- | ---------------------------------------------- |

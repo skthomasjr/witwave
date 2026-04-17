@@ -1,7 +1,7 @@
 ---
 name: test-extract
 description: Verifies that LLM extraction runs and produces variables available in the body template.
-url: http://{{env.WEBHOOK_TEST_HOST}}/triggers/feature-sink
+url-env-var: WEBHOOK_TEST_URL_FEATURE_SINK
 notify-when: on_success
 notify-on-kind:
   - a2a

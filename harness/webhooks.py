@@ -24,6 +24,7 @@ Kind examples: a2a, heartbeat, job:daily-report, task:standup,
 import asyncio
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import os
@@ -33,6 +34,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from fnmatch import fnmatch
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import httpx
 import yaml
@@ -77,6 +79,39 @@ _DISABLED = object()
 _ENV_VAR_RE = re.compile(r"\{\{env\.(\w+)\}\}")
 _VAR_RE = re.compile(r"\{\{(\w+)\}\}")
 
+# Documented allow-list of built-in variables that may appear in the URL
+# template (see README "Outbound Webhooks"). Extraction-defined variables and
+# {{env.VAR}} references are intentionally NOT permitted in URLs, to prevent
+# env-var exfiltration and LLM-steered SSRF via webhook .md files (#524).
+_URL_TEMPLATE_ALLOWED_VARS = frozenset({
+    "agent",
+    "kind",
+    "session_id",
+    "source",
+    "model",
+    "success",
+    "error",
+    "response_preview",
+    "duration_seconds",
+    "timestamp",
+    "delivery_id",
+})
+
+# Scheme / host allow-list for outbound webhook URLs (#524). Only http(s) is
+# permitted; file://, gopher://, ftp://, data:, etc. are rejected. Hosts that
+# resolve to loopback/link-local/private/reserved IP literals are rejected so
+# that cloud metadata endpoints (169.254.169.254) and arbitrary internal
+# service IPs cannot be reached via a webhook .md file. Operators can widen
+# the host allow-list via the WEBHOOK_URL_ALLOWED_HOSTS env var (comma-
+# separated list of host[:port] entries) when internal delivery targets are
+# legitimate (e.g. in-cluster sinks for smoke tests).
+_URL_ALLOWED_SCHEMES = ("http", "https")
+_URL_ALLOWED_HOSTS = tuple(
+    h.strip().lower()
+    for h in os.environ.get("WEBHOOK_URL_ALLOWED_HOSTS", "").split(",")
+    if h.strip()
+)
+
 
 @dataclass
 class WebhookSubscription:
@@ -106,6 +141,95 @@ def _resolve_env_vars(text: str) -> str:
     def _sub(m: re.Match) -> str:
         return os.environ.get(m.group(1), "")
     return _ENV_VAR_RE.sub(_sub, text)
+
+
+def _url_template_has_forbidden_refs(template: str) -> str | None:
+    """Return a diagnostic string if the URL template references variables
+    outside the documented allow-list, else None.
+
+    Enforced at parse time so misconfigured subscriptions fail fast rather
+    than silently allowing env-var exfiltration or extraction-steered SSRF
+    (#524).
+    """
+    if _ENV_VAR_RE.search(template):
+        return "{{env.VAR}} is not allowed in the url template"
+    for m in _VAR_RE.finditer(template):
+        key = m.group(1).strip()
+        if key not in _URL_TEMPLATE_ALLOWED_VARS:
+            return f"{{{{{key}}}}} is not allowed in the url template"
+    return None
+
+
+def _substitute_url(template: str, context: dict) -> str:
+    """Substitute ONLY built-in allow-listed {{var}} references in a URL
+    template. {{env.VAR}} and extraction-defined variables are never
+    expanded here — they are already rejected at parse time, but this
+    function strips any unexpected reference (including {{env.VAR}}) to
+    empty string as a defense-in-depth measure (#524).
+    """
+    # Strip any {{env.VAR}} references first so they cannot survive in
+    # the final URL even if parse-time validation was bypassed.
+    result = _ENV_VAR_RE.sub("", template)
+    def _replacer(m: re.Match) -> str:
+        key = m.group(1).strip()
+        if key not in _URL_TEMPLATE_ALLOWED_VARS:
+            return ""
+        return str(context.get(key, ""))
+    return _VAR_RE.sub(_replacer, result)
+
+
+def _host_is_private(host: str) -> bool:
+    """Return True if host is an IP literal in a loopback/link-local/private/
+    reserved range. Hostnames (non-IP) return False — DNS resolution is not
+    performed here to avoid a TOCTOU gap; the shared httpx client is the
+    chokepoint for the resolved-IP check (#524 / #567 coordination).
+    """
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return (
+        ip.is_loopback
+        or ip.is_link_local
+        or ip.is_private
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+    )
+
+
+def _validate_url(url: str) -> str | None:
+    """Return a diagnostic string if the URL is not safe to POST to, else
+    None. Applied to both literal `url:` values and env-var-resolved URLs
+    (including `url-env-var`) to close the SSRF surface (#524).
+    """
+    if not url:
+        return "empty url"
+    try:
+        parts = urlsplit(url)
+    except ValueError as exc:
+        return f"unparseable url: {exc}"
+    scheme = (parts.scheme or "").lower()
+    if scheme not in _URL_ALLOWED_SCHEMES:
+        return f"scheme {scheme!r} is not allowed (only http/https)"
+    host = (parts.hostname or "").lower()
+    if not host:
+        return "url has no host component"
+    # Operator-configured host allow-list takes precedence over the
+    # private-IP default-deny. This lets smoke tests and in-cluster sinks
+    # opt in explicitly without re-enabling general SSRF.
+    port = parts.port
+    host_port = f"{host}:{port}" if port is not None else host
+    if _URL_ALLOWED_HOSTS and (
+        host in _URL_ALLOWED_HOSTS or host_port in _URL_ALLOWED_HOSTS
+    ):
+        return None
+    if _host_is_private(host):
+        return (
+            f"host {host!r} is a loopback/link-local/private/reserved IP "
+            "and is not in WEBHOOK_URL_ALLOWED_HOSTS"
+        )
+    return None
 
 
 def parse_webhook_file(path: str) -> "WebhookSubscription | object | None":
@@ -138,14 +262,43 @@ def parse_webhook_file(path: str) -> "WebhookSubscription | object | None":
             logger.info(f"Webhook file {path}: disabled, skipping.")
             return _DISABLED
 
-        # Resolve URL — supports {{env.VAR}} interpolation
+        # Resolve URL. The URL template is restricted to the documented
+        # allow-list of built-in variables (see README "Outbound Webhooks");
+        # {{env.VAR}} interpolation in the url field is intentionally rejected
+        # — env-derived URLs must use `url-env-var` so the resolved string can
+        # be validated as a whole (#524). Either way, the final URL is
+        # additionally filtered through the scheme / host allow-list.
         url_template = fields.get("url") or ""
+        url_from_env_var = False
         if not url_template:
             env_var = fields.get("url-env-var") or None
             if env_var:
                 url_template = os.environ.get(env_var) or ""
+                url_from_env_var = True
         if not url_template:
             logger.warning(f"Webhook file {path}: no resolvable URL — skipping.")
+            return None
+        if not url_from_env_var:
+            forbidden = _url_template_has_forbidden_refs(url_template)
+            if forbidden is not None:
+                logger.error(
+                    f"Webhook file {path}: url template rejected — {forbidden}. "
+                    "Move env-derived URLs to `url-env-var` and only use "
+                    f"allow-listed variables {sorted(_URL_TEMPLATE_ALLOWED_VARS)} "
+                    "in the url template."
+                )
+                return None
+        # Scheme / host allow-list check. For templated URLs the substituted
+        # built-in variables don't change scheme/host, so validating the
+        # template literal here catches misconfiguration at parse time. For
+        # env-var-resolved URLs the resolved string is validated directly.
+        url_check_target = url_template
+        if not url_from_env_var:
+            # Strip {{var}} placeholders so urlsplit sees a clean authority.
+            url_check_target = _VAR_RE.sub("", url_template)
+        url_error = _validate_url(url_check_target)
+        if url_error is not None:
+            logger.error(f"Webhook file {path}: url rejected — {url_error}.")
             return None
 
         # Resolve signing secret
@@ -421,7 +574,22 @@ async def deliver(
         "source": source,
     }
 
-    # Run LLM extractions if defined and backends are available
+    # Resolve URL BEFORE running extractions so LLM-extracted variables
+    # cannot participate in URL resolution (#524). Only the documented
+    # built-in variables are substituted; {{env.VAR}} was already rejected
+    # at parse time for literal templates, and env-var-resolved URLs are
+    # used verbatim (they contain no templating by construction).
+    url = _substitute_url(sub.url_template, context)
+    if not url:
+        logger.warning(f"Webhook '{sub.name}': URL resolved to empty string — skipping delivery.")
+        return
+    url_error = _validate_url(url)
+    if url_error is not None:
+        logger.error(f"Webhook '{sub.name}': resolved URL rejected — {url_error}.")
+        return
+
+    # Run LLM extractions if defined and backends are available. Extraction
+    # results are only used for body/headers rendering — never for the URL.
     if sub.extract and backends and default_backend_id:
         extraction_session_id = f"webhook-extract-{delivery_id}"
         # Render the context template (markdown body) with built-in variables
@@ -451,12 +619,6 @@ async def deliver(
             except Exception as exc:
                 logger.warning(f"Webhook '{sub.name}': extraction '{var_name}' failed — {exc!r}. Using empty string.")
                 context[var_name] = ""
-
-    # Resolve URL ({{env.VAR}} and context variables)
-    url = _substitute(sub.url_template, context)
-    if not url:
-        logger.warning(f"Webhook '{sub.name}': URL resolved to empty string — skipping delivery.")
-        return
 
     # Render body
     if sub.body_template:

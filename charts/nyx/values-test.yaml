@@ -46,6 +46,13 @@ agents:
       # so webhook deliveries to bob's own triggers authenticate.
       - name: WEBHOOK_TEST_HOST
         value: nyx-bob:8099
+      # Full URLs for webhook smoke tests. Env-derived URLs must be
+      # resolved via `url-env-var` (not via {{env.VAR}} templating in
+      # the `url:` field), so each smoke-test sink has its own full URL.
+      - name: WEBHOOK_TEST_URL_FEATURE_SINK
+        value: http://nyx-bob:8099/triggers/feature-sink
+      - name: WEBHOOK_TEST_URL_WEBHOOK_SINK
+        value: http://nyx-bob:8099/triggers/webhook-sink
       - name: WEBHOOK_TEST_TOKEN
         value: test-token-abc123
       - name: WEBHOOK_TEST_BEARER

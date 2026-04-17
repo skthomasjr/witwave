@@ -1,7 +1,7 @@
 ---
 name: chain-test
 description: Test webhook — fires at the webhook-sink trigger when response contains WEBHOOK_FIRE.
-url: http://{{env.WEBHOOK_TEST_HOST}}/triggers/webhook-sink
+url-env-var: WEBHOOK_TEST_URL_WEBHOOK_SINK
 notify-when: on_success
 notify-on-kind:
   - a2a

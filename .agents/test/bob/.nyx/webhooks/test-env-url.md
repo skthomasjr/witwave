@@ -1,7 +1,7 @@
 ---
 name: test-env-url
-description: Verifies that {{env.VAR}} interpolation works in the url field.
-url: http://{{env.WEBHOOK_TEST_HOST}}/triggers/feature-sink
+description: Verifies that env-derived URLs resolve correctly via the url-env-var field.
+url-env-var: WEBHOOK_TEST_URL_FEATURE_SINK
 notify-when: on_success
 notify-on-kind:
   - a2a
