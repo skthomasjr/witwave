@@ -1,23 +1,21 @@
-import { onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { apiGet, ApiError } from "../api/client";
-import { parseProm, type Sample } from "../utils/prometheus";
+import { mergeFamilies, parseProm, type FamilyMap } from "../utils/prometheus";
 
-// Fetches the metrics endpoint of each team member, parses the Prometheus
-// text, and keeps a short in-memory history so the view can render small
-// trend charts. The history window is bounded — this is a live dashboard,
-// not a time-series DB. For real trend analysis point Grafana at /metrics.
-
-const MAX_HISTORY = 60; // ~5 min at 5s cadence
+// Polls /api/agents/<name>/metrics for each team member, parses the
+// Prometheus text into per-agent FamilyMaps, and exposes a merged
+// cluster-wide view. Kept snapshot-only (no history): the dashboard shows
+// the current-moment distribution across labels, matching the legacy ui/
+// semantics. For trend analysis point Grafana at /metrics.
 
 interface TeamDirectoryEntry {
   name: string;
   url: string;
 }
 
-export interface MetricsSnapshot {
-  _agent: string;
-  ts: number;
-  samples: Sample[];
+export interface AgentMetrics {
+  agent: string;
+  families: FamilyMap;
 }
 
 async function fetchText(url: string, signal: AbortSignal): Promise<string> {
@@ -27,9 +25,10 @@ async function fetchText(url: string, signal: AbortSignal): Promise<string> {
 }
 
 export function useMetrics() {
-  const history = ref<MetricsSnapshot[]>([]);
+  const perAgent = ref<AgentMetrics[]>([]);
   const error = ref<string>("");
   const loading = ref<boolean>(true);
+  const lastUpdated = ref<number | null>(null);
 
   let timer: ReturnType<typeof setInterval> | null = null;
   let aborter: AbortController | null = null;
@@ -38,25 +37,24 @@ export function useMetrics() {
     aborter?.abort();
     aborter = new AbortController();
     const signal = aborter.signal;
-    const ts = Date.now();
     try {
       const directory = await apiGet<TeamDirectoryEntry[]>("/team", { signal });
-      const snaps = await Promise.all(
-        directory.map(async (entry): Promise<MetricsSnapshot | null> => {
+      const results = await Promise.all(
+        directory.map(async (entry): Promise<AgentMetrics | null> => {
           try {
             const text = await fetchText(
               `/api/agents/${encodeURIComponent(entry.name)}/metrics`,
               signal,
             );
-            return { _agent: entry.name, ts, samples: parseProm(text) };
+            return { agent: entry.name, families: parseProm(text) };
           } catch {
             return null;
           }
         }),
       );
       if (signal.aborted) return;
-      const fresh = snaps.filter((s): s is MetricsSnapshot => s !== null);
-      history.value = [...history.value, ...fresh].slice(-MAX_HISTORY * directory.length);
+      perAgent.value = results.filter((r): r is AgentMetrics => r !== null);
+      lastUpdated.value = Date.now();
       error.value = "";
     } catch (e) {
       if ((e as { name?: string }).name === "AbortError") return;
@@ -65,6 +63,10 @@ export function useMetrics() {
       loading.value = false;
     }
   }
+
+  const merged = computed<FamilyMap>(() =>
+    mergeFamilies(perAgent.value.map((p) => p.families)),
+  );
 
   onMounted(() => {
     void refresh();
@@ -76,5 +78,5 @@ export function useMetrics() {
     aborter?.abort();
   });
 
-  return { history, error, loading, refresh };
+  return { perAgent, merged, error, loading, lastUpdated, refresh };
 }

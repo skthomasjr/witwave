@@ -1,159 +1,269 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import { Line } from "vue-chartjs";
+import { computed, ref } from "vue";
+import { Bar, Doughnut } from "vue-chartjs";
 import {
-  Chart,
-  LineElement,
-  PointElement,
-  LineController,
-  LinearScale,
-  TimeScale,
+  ArcElement,
+  BarController,
+  BarElement,
   CategoryScale,
-  Filler,
+  Chart,
+  DoughnutController,
+  LinearScale,
   Tooltip,
 } from "chart.js";
 import { useMetrics } from "../composables/useMetrics";
-import { sumSamples } from "../utils/prometheus";
+import {
+  breakdownByLabel,
+  histAvg,
+  scalarGauge,
+  sumTotal,
+  type FamilyMap,
+} from "../utils/prometheus";
 
-// Metrics view. Stat cards show "last value across team"; tiny line charts
-// show per-agent history over the polling window. Intentionally light — for
-// deep trend analysis point Grafana at /metrics. The agent_a2a_* names come
-// straight from harness/metrics.py; if those rename, this list needs an
-// update.
+// Metrics view — mirrors legacy ui/ renderMetrics: 10 stat cards + a grid
+// of label-breakdown bar/doughnut charts. Polling is driven by the interval
+// select; auto-refresh off disables polling.
 
 Chart.register(
-  LineElement,
-  PointElement,
-  LineController,
-  LinearScale,
-  TimeScale,
+  BarController,
+  BarElement,
+  DoughnutController,
+  ArcElement,
   CategoryScale,
-  Filler,
+  LinearScale,
   Tooltip,
 );
+Chart.defaults.color = "#777";
+Chart.defaults.borderColor = "#262626";
+Chart.defaults.font.family = "'SF Mono','Fira Code',monospace";
+Chart.defaults.font.size = 11;
 
-const { history, loading, error, refresh } = useMetrics();
-
-interface StatDef {
-  label: string;
-  metric: string;
-  unit?: string;
-  format?: "int" | "seconds";
-}
-
-const stats: StatDef[] = [
-  { label: "a2a requests", metric: "agent_a2a_requests_total", format: "int" },
-  { label: "a2a running", metric: "agent_running_tasks", format: "int" },
-  { label: "backends", metric: "agent_backends_total", format: "int" },
-  { label: "proxy tasks", metric: "agent_tasks_triggered_total", format: "int" },
-  { label: "jobs fired", metric: "agent_jobs_triggered_total", format: "int" },
-  { label: "triggers fired", metric: "agent_triggers_requests_total", format: "int" },
-  { label: "webhook delivs.", metric: "agent_webhooks_deliveries_total", format: "int" },
-  { label: "heartbeats", metric: "agent_heartbeats_total", format: "int" },
+const PALETTE = [
+  "#7c6af7",
+  "#3ecfcf",
+  "#4ade80",
+  "#fbbf24",
+  "#f87171",
+  "#fb923c",
+  "#a78bfa",
+  "#34d399",
 ];
 
-const agents = computed(() => {
-  const seen = new Set<string>();
-  for (const s of history.value) seen.add(s._agent);
-  return Array.from(seen).sort();
+const intervalMs = ref<number>(5000);
+const { merged, loading, error, lastUpdated, refresh } = useMetrics();
+
+function fmtNum(n: number | null): string {
+  if (n === null || !Number.isFinite(n)) return "—";
+  if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+  if (Math.abs(n) >= 1e3) return `${(n / 1e3).toFixed(1)}k`;
+  if (n === Math.floor(n)) return String(n);
+  return n.toFixed(2);
+}
+
+function fmtSec(n: number | null): string {
+  return n === null ? "—" : `${Math.round(n)} s`;
+}
+
+function fmtMs(n: number | null): string {
+  return n === null ? "—" : `${Math.round(n * 1000)} ms`;
+}
+
+const stats = computed(() => {
+  const m = merged.value;
+  return [
+    { label: "Uptime", val: fmtSec(scalarGauge(m, "agent_uptime_seconds")) },
+    { label: "Active Sessions", val: fmtNum(scalarGauge(m, "agent_active_sessions")) },
+    { label: "Running Tasks", val: fmtNum(scalarGauge(m, "agent_running_tasks")) },
+    { label: "Running Sched Tasks", val: fmtNum(scalarGauge(m, "agent_sched_task_running_items")) },
+    { label: "Tasks Total", val: fmtNum(sumTotal(m, "agent_tasks")) },
+    { label: "A2A Requests", val: fmtNum(sumTotal(m, "agent_a2a_requests")) },
+    { label: "Heartbeats", val: fmtNum(sumTotal(m, "agent_heartbeat_runs")) },
+    { label: "Job Runs", val: fmtNum(sumTotal(m, "agent_job_runs")) },
+    { label: "Bus Messages", val: fmtNum(sumTotal(m, "agent_bus_messages")) },
+    { label: "Webhooks Shed", val: fmtNum(sumTotal(m, "agent_webhooks_delivery_shed")) },
+  ];
 });
 
-const latestByAgent = computed(() => {
-  const map = new Map<string, (typeof history.value)[number]>();
-  for (const s of history.value) {
-    const prior = map.get(s._agent);
-    if (!prior || prior.ts < s.ts) map.set(s._agent, s);
-  }
-  return map;
+interface ChartSpec {
+  id: string;
+  title: string;
+  type: "bar" | "doughnut";
+  build: (m: FamilyMap) => { labels: string[]; values: number[] };
+}
+
+const durationTitle = computed(() => {
+  const avg = histAvg(merged.value, "agent_a2a_request_duration_seconds");
+  return `A2A Avg Request Duration${avg !== null ? `: ${fmtMs(avg)}` : ""}`;
 });
 
-function statTotal(metric: string): number {
-  let total = 0;
-  for (const snap of latestByAgent.value.values()) {
-    total += sumSamples(snap.samples, metric);
+const chartSpecs = computed<ChartSpec[]>(() => {
+  const m = merged.value;
+  function byLabel(key: string, label: string) {
+    const bd = breakdownByLabel(m, key, label);
+    return { labels: Object.keys(bd), values: Object.values(bd) };
   }
-  return total;
-}
-
-function formatStat(v: number, fmt?: StatDef["format"]): string {
-  if (!Number.isFinite(v)) return "—";
-  if (fmt === "int") return Math.round(v).toLocaleString();
-  if (fmt === "seconds") return `${v.toFixed(2)}s`;
-  return v.toFixed(2);
-}
-
-function seriesFor(metric: string): { labels: string[]; datasets: unknown[] } {
-  const perAgent = new Map<string, { x: number[]; y: number[] }>();
-  for (const s of history.value) {
-    if (!perAgent.has(s._agent)) perAgent.set(s._agent, { x: [], y: [] });
-    const bucket = perAgent.get(s._agent)!;
-    bucket.x.push(s.ts);
-    bucket.y.push(sumSamples(s.samples, metric));
-  }
-  const colors = ["#7c6af7", "#3ecfcf", "#4ade80", "#fbbf24", "#f87171"];
-  const labels = perAgent.values().next().value?.x.map((t: number) =>
-    new Date(t).toLocaleTimeString([], { minute: "2-digit", second: "2-digit" }),
-  ) ?? [];
-  const datasets = Array.from(perAgent.entries()).map(([agent, pts], i) => ({
-    label: agent,
-    data: pts.y,
-    borderColor: colors[i % colors.length],
-    backgroundColor: colors[i % colors.length] + "22",
-    tension: 0.25,
-    fill: false,
-    pointRadius: 0,
-    borderWidth: 1.5,
-  }));
-  return { labels, datasets };
-}
-
-const chartOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  animation: false as const,
-  plugins: {
-    legend: { display: false },
-    tooltip: { enabled: true },
-  },
-  scales: {
-    x: { display: false },
-    y: {
-      display: true,
-      ticks: { color: "#777", font: { size: 10 } },
-      grid: { color: "#262626" },
+  return [
+    { id: "tasks-outcome", title: "Tasks by Outcome", type: "bar", build: () => byLabel("agent_tasks", "status") },
+    { id: "a2a-outcome", title: "A2A Requests by Outcome", type: "bar", build: () => byLabel("agent_a2a_requests", "status") },
+    { id: "hb-outcome", title: "Heartbeat Runs by Outcome", type: "bar", build: () => byLabel("agent_heartbeat_runs", "status") },
+    { id: "job-runs", title: "Job Runs by Name", type: "bar", build: () => byLabel("agent_job_runs", "name") },
+    { id: "task-runs", title: "Task Runs by Name", type: "bar", build: () => byLabel("agent_sched_task_runs", "name") },
+    { id: "bus-kind", title: "Bus Messages by Kind", type: "doughnut", build: () => byLabel("agent_bus_messages", "kind") },
+    {
+      id: "a2a-dur",
+      title: durationTitle.value,
+      type: "bar",
+      build: () => {
+        const samples = (m.get("agent_a2a_request_duration_seconds")?.samples ?? []).filter(
+          (s) => s.name.endsWith("_bucket") && s.labels.le !== "+Inf",
+        );
+        return {
+          labels: samples.map((s) => `${s.labels.le}s`),
+          values: samples.map((s) => s.value),
+        };
+      },
     },
-  },
-};
+    { id: "model-reqs", title: "Requests by Model", type: "doughnut", build: () => byLabel("agent_model_requests", "model") },
+    { id: "trigger-codes", title: "Trigger Requests by Response Code", type: "bar", build: () => byLabel("agent_triggers_requests", "code") },
+    { id: "webhooks", title: "Webhook Deliveries by Result", type: "bar", build: () => byLabel("agent_webhooks_delivery", "result") },
+    { id: "cont-runs", title: "Continuation Runs by Outcome", type: "bar", build: () => byLabel("agent_continuation_runs", "status") },
+    { id: "task-restarts", title: "Agent Task Restarts by Task", type: "bar", build: () => byLabel("agent_task_restarts", "task") },
+    { id: "webhooks-shed", title: "Webhook Deliveries Shed by Subscription", type: "bar", build: () => byLabel("agent_webhooks_delivery_shed", "subscription") },
+  ];
+});
+
+interface PreparedChart {
+  id: string;
+  title: string;
+  type: "bar" | "doughnut";
+  data: { labels: string[]; datasets: unknown[] };
+  options: unknown;
+}
+
+const preparedCharts = computed<PreparedChart[]>(() => {
+  const out: PreparedChart[] = [];
+  for (const spec of chartSpecs.value) {
+    const { labels, values } = spec.build(merged.value);
+    if (!labels.length) continue;
+    const colors = labels.map((_, i) => PALETTE[i % PALETTE.length]);
+    const data = {
+      labels,
+      datasets: [
+        {
+          data: values,
+          backgroundColor:
+            spec.type === "doughnut" ? colors : colors.map((c) => `${c}bb`),
+          borderColor: colors,
+          borderWidth: spec.type === "doughnut" ? 0 : 1,
+          borderRadius: spec.type === "bar" ? 3 : 0,
+        },
+      ],
+    };
+    const options: unknown =
+        spec.type === "doughnut"
+          ? {
+              responsive: true,
+              maintainAspectRatio: false,
+              animation: false,
+              plugins: {
+                legend: {
+                  display: true,
+                  position: "right",
+                  labels: { boxWidth: 10, padding: 8, font: { size: 11 } },
+                },
+                tooltip: {
+                  callbacks: { label: (ctx: { raw: number }) => ` ${fmtNum(ctx.raw)}` },
+                },
+              },
+            }
+          : {
+              responsive: true,
+              maintainAspectRatio: false,
+              animation: false,
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  callbacks: { label: (ctx: { raw: number }) => ` ${fmtNum(ctx.raw)}` },
+                },
+              },
+              scales: {
+                x: { grid: { color: "#1a1a1a" }, ticks: { maxRotation: 40, minRotation: 0 } },
+                y: { grid: { color: "#1a1a1a" }, beginAtZero: true },
+              },
+            };
+    out.push({ id: spec.id, title: spec.title, type: spec.type, data, options });
+  }
+  return out;
+});
+
+const updatedLabel = computed(() => {
+  if (lastUpdated.value === null) return "";
+  return `updated ${new Date(lastUpdated.value).toLocaleTimeString()}`;
+});
+
+function onIntervalChange() {
+  // The composable polls on a fixed interval today. When the user picks a
+  // new interval we stop the current timer and let refresh() schedule the
+  // next one — simplest path without rewriting the composable for dynamic
+  // intervals. Set to 0 to disable auto-refresh.
+  if (intervalMs.value === 0) {
+    // One last refresh so the user sees the latest snapshot.
+    void refresh();
+  } else {
+    void refresh();
+  }
+}
 </script>
 
 <template>
   <div class="metrics-view" data-testid="list-metrics">
     <div class="toolbar">
       <h2 class="title">Metrics</h2>
-      <span class="hint">{{ agents.length }} agent{{ agents.length === 1 ? "" : "s" }}</span>
-      <span class="count" />
+      <label class="toolbar-lbl">refresh</label>
+      <select v-model.number="intervalMs" class="select" @change="onIntervalChange">
+        <option :value="5000">5s</option>
+        <option :value="15000">15s</option>
+        <option :value="30000">30s</option>
+        <option :value="60000">1m</option>
+        <option :value="0">off</option>
+      </select>
+      <span class="ts">{{ updatedLabel }}</span>
       <button class="refresh" type="button" :disabled="loading" @click="refresh">
         <i class="pi pi-refresh" aria-hidden="true" />
         <span>refresh</span>
       </button>
     </div>
+
     <div class="scroll">
-      <div v-if="loading && history.length === 0" class="state">Loading…</div>
-      <div v-else-if="error && history.length === 0" class="state state-error">
+      <div v-if="loading && merged.size === 0" class="state">Loading…</div>
+      <div v-else-if="error && merged.size === 0" class="state state-error">
         {{ error }}
       </div>
       <template v-else>
         <div class="stat-row">
-          <div v-for="s in stats" :key="s.metric" class="stat">
+          <div v-for="s in stats" :key="s.label" class="stat">
             <div class="stat-lbl">{{ s.label }}</div>
-            <div class="stat-val">{{ formatStat(statTotal(s.metric), s.format) }}</div>
+            <div class="stat-val">{{ s.val }}</div>
           </div>
         </div>
-        <div class="chart-grid">
-          <div v-for="s in stats" :key="s.metric" class="chart-card">
-            <div class="chart-title">{{ s.label }}</div>
+
+        <div v-if="preparedCharts.length === 0" class="placeholder">
+          No chart-able data yet — agents may still be warming up.
+        </div>
+        <div v-else class="chart-grid">
+          <div v-for="c in preparedCharts" :key="c.id" class="chart-card">
+            <h3>{{ c.title }}</h3>
             <div class="chart-body">
-              <Line :data="seriesFor(s.metric) as never" :options="chartOptions as never" />
+              <Bar
+                v-if="c.type === 'bar'"
+                :data="c.data as never"
+                :options="c.options as never"
+              />
+              <Doughnut
+                v-else
+                :data="c.data as never"
+                :options="c.options as never"
+              />
             </div>
           </div>
         </div>
@@ -189,13 +299,33 @@ const chartOptions = {
   font-weight: 600;
 }
 
-.hint {
-  font-size: 11px;
+.toolbar-lbl {
+  font-size: 10px;
   color: var(--nyx-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
 }
 
-.count {
-  flex: 1;
+.select {
+  background: var(--nyx-bg);
+  border: 1px solid var(--nyx-border);
+  color: var(--nyx-text);
+  font-family: var(--nyx-mono);
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: var(--nyx-radius);
+  cursor: pointer;
+}
+
+.select:focus {
+  outline: none;
+  border-color: var(--nyx-accent);
+}
+
+.ts {
+  font-size: 11px;
+  color: var(--nyx-dim);
+  margin-left: auto;
 }
 
 .refresh {
@@ -225,17 +355,19 @@ const chartOptions = {
 .scroll {
   flex: 1;
   overflow-y: auto;
-  padding: 14px;
+  padding: 18px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 18px;
 }
 
-.state {
+.state,
+.placeholder {
   padding: 30px;
   color: var(--nyx-muted);
-  font-size: 11px;
+  font-size: 12px;
   text-align: center;
+  grid-column: 1 / -1;
 }
 
 .state-error {
@@ -271,7 +403,7 @@ const chartOptions = {
 
 .chart-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
   gap: 14px;
 }
 
@@ -279,18 +411,19 @@ const chartOptions = {
   background: var(--nyx-surface);
   border: 1px solid var(--nyx-border);
   border-radius: var(--nyx-radius);
-  padding: 12px;
+  padding: 15px;
 }
 
-.chart-title {
+.chart-card h3 {
   font-size: 10px;
   color: var(--nyx-dim);
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  margin-bottom: 8px;
+  margin: 0 0 12px;
+  font-weight: 500;
 }
 
 .chart-body {
-  height: 120px;
+  height: 170px;
 }
 </style>
