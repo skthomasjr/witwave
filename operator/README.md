@@ -92,7 +92,135 @@ Service-level equivalents are gated on `spec.metrics.serviceAnnotations`
 All owned resources carry `ownerReferences` pointing at the `NyxAgent`,
 so deleting the CR cascades their deletion.
 
-## Status
+## The `NyxPrompt` resource
+
+One `NyxPrompt` declares a single prompt definition that binds to one or
+more `NyxAgent`s. The operator reconciles a `ConfigMap` per
+`(NyxPrompt, agent)` pair; the NyxAgent pod mounts each ConfigMap as a
+subPath file at `/home/agent/.nyx/<kind>/nyxprompt-<name>.md` (or
+`HEARTBEAT.md` for kind=heartbeat) so the harness scheduler picks them up
+alongside anything gitSync dropped into the same directory.
+
+See `config/samples/nyx_v1alpha1_nyxprompt.yaml` for a runnable example
+and `api/v1alpha1/nyxprompt_types.go` for the full schema.
+
+### Kinds
+
+Each kind maps to one of the harness scheduler directories (or the
+singleton heartbeat file):
+
+| `spec.kind`    | Target path                                                  | Required frontmatter |
+| -------------- | ------------------------------------------------------------ | -------------------- |
+| `job`          | `/home/agent/.nyx/jobs/nyxprompt-<name>.md`                  | `schedule` (cron)    |
+| `task`         | `/home/agent/.nyx/tasks/nyxprompt-<name>.md`                 | `schedule` (cron)    |
+| `trigger`      | `/home/agent/.nyx/triggers/nyxprompt-<name>.md`              | `endpoint`           |
+| `continuation` | `/home/agent/.nyx/continuations/nyxprompt-<name>.md`         | `continues-after` (string or list) |
+| `webhook`      | `/home/agent/.nyx/webhooks/nyxprompt-<name>.md`              | `url`                |
+| `heartbeat`    | `/home/agent/.nyx/HEARTBEAT.md` (singleton per agent)        | none                 |
+
+### Multi-bind
+
+`spec.agentRefs[]` lists every NyxAgent the prompt binds to. The operator
+renders one ConfigMap per agent (name pattern
+`nyxprompt-<crname>-<agent>`) with owner-reference cascade and stale-
+binding garbage collection. An optional `filenameSuffix` on each ref
+disambiguates when the same CR binds to multiple agents that already
+have a gitSync-managed prompt sharing the default filename.
+
+### Admission webhook invariants
+
+The `ValidatingWebhookConfiguration` enforces:
+
+- Kind-specific required frontmatter keys (see table above)
+- `continues-after` must be a non-empty string or list of strings
+- Duplicate `agentRefs` entries rejected
+- `kind: heartbeat` is singleton-per-agent — no two NyxPrompts can both
+  target the same agent with heartbeat, since the harness reads a single
+  `HEARTBEAT.md` and the writes would race
+
+When admission webhooks are disabled (cert-manager not installed + no
+BYO-cert set — see "Admission webhook TLS" below) the CRD's structural
+schema is the only validation and these invariants are not enforced.
+
+### Status
+
+Each reconcile writes `.status` via the subresource:
+
+- `observedGeneration` — spec generation most recently reconciled
+- `readyCount` — number of bindings whose ConfigMap applied cleanly
+- `bindings[]` — one entry per `spec.agentRefs`, keyed by `agentName`,
+  with `configMapName`, `filename`, `ready`, and a `message` when a
+  binding failed (e.g. "target NyxAgent not found")
+- `conditions[]` — one `Ready` condition, `True` when every binding is
+  ready
+
+The reconciler tracks materialization (did the ConfigMap apply?) — NOT
+runtime execution (did the prompt actually fire?). Execution telemetry
+lives in Prometheus / conversation.jsonl / trace.jsonl / the dashboard
+views. See request
+[#642](https://github.com/skthomasjr/autonomous-agent/issues/642) for
+the runtime-status proposal.
+
+## Credentials
+
+Both `GitSyncSpec.credentials` and `BackendSpec.credentials` accept the
+same three-mode resolver (parity with the Helm chart's
+`nyx.resolveCredentials` helper):
+
+```yaml
+# Production: reference a pre-created Secret
+gitSyncs:
+  - name: autonomous-agent
+    repo: https://github.com/org/repo
+    credentials:
+      existingSecret: agent-github-credentials   # must contain GITSYNC_USERNAME + GITSYNC_PASSWORD
+
+# Dev: inline values. Operator reconciles a Secret named
+# <agent>-<entry>-gitsync-credentials owned by the NyxAgent (GC'd on
+# removal). acknowledgeInsecureInline MUST be true or the admission
+# webhook rejects the CR — inline values land in etcd + `kubectl get
+# nyxagent -o yaml`, so the ack flag is the explicit opt-in.
+gitSyncs:
+  - name: autonomous-agent
+    repo: https://github.com/org/repo
+    credentials:
+      username: dev-user
+      token: ghp_...
+      acknowledgeInsecureInline: true
+
+# Legacy: raw envFrom (unchanged — works when credentials is empty)
+gitSyncs:
+  - name: autonomous-agent
+    envFrom:
+      - secretRef:
+          name: my-existing-secret
+```
+
+The backend equivalent (`BackendSpec.credentials`) uses a `secrets:` map
+instead of `username`/`token` so each backend can set its own env-var
+shape (`CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`).
+
+Operator-managed credential Secrets carry `app.kubernetes.io/component:
+credentials` and are dual-checked (label + `IsControlledBy`) before any
+update or delete — user-created Secrets that collide by name are never
+touched.
+
+## Admission webhook TLS
+
+The controller-manager's admission webhook server (port 9443) needs a
+TLS cert. The `nyx-operator` Helm chart supports two modes:
+
+- **cert-manager** (default): chart renders a Certificate + Issuer, CA
+  bundle auto-injected into the webhook configs
+- **BYO Secret**: set `webhooks.existingSecret` + `webhooks.caBundle`
+  to reference a pre-created Secret with `tls.crt` + `tls.key`. Use
+  this when cert-manager isn't available (air-gapped, service mesh,
+  Vault PKI, strict RBAC).
+
+Full setup in `charts/nyx-operator/README.md` — both modes are covered
+with copy-paste snippets.
+
+## `NyxAgent` status
 
 The controller writes the following status fields:
 
@@ -103,28 +231,23 @@ The controller writes the following status fields:
 - `conditions` — `Available`, `Progressing`, and `ReconcileSuccess`
   following the standard Kubernetes condition convention.
 
-## Deferred
+## Chart / operator feature fidelity
 
-Tracked chart-vs-operator parity gaps (each links to its own issue):
+The Helm chart (`charts/nyx`) and this operator render equivalent
+workloads for the same inputs. Remaining by-design asymmetries:
 
-| Gap                                                       | Issue |
-| --------------------------------------------------------- | ----- |
-| Git-sync sidecars + git mappings                          | #474  |
-| Per-agent `manifest.json` ConfigMap (team discovery)      | #475  |
-| Per-agent ServiceMonitor                                  | #476  |
-| `preStop` lifecycle drain hook                            | #477  |
-| Custom `podAnnotations` / `podLabels`                     | #479  |
-| Service `port` distinct from container port               | #478  |
-| Shared-storage `PVC` creation (currently `existingClaim` only) | #480  |
-| UI `Deployment` + `Service` (and optional `Ingress`)      | #481  |
+| Concept                          | Chart | Operator | Notes |
+| -------------------------------- | ----- | -------- | ----- |
+| `NyxPrompt` CRD                  | —     | ✓        | Operator-only; chart path uses gitSync mappings to materialise prompts. |
+| Dashboard `Ingress` + basic auth | ✓     | —        | Operator delegates: BYO `Ingress` / `HTTPRoute` / `Route` pointing at the `<agent>-dashboard` Service. Matches Strimzi / cert-manager / Argo / ECK convention. |
+| Trigger Ingress (external webhooks reaching `/triggers/*`) | — | — | Neither path emits it. Users hand-roll or use service mesh routing. Design discussion is [request #trigger-ingress](https://github.com/skthomasjr/autonomous-agent/issues) (pending filing). |
 
-Not yet tracked (no issue): admission webhooks for validation and defaulting.
+Tracked open requests (not gaps):
 
-The Helm chart covers all of the above in the interim.
-
-The `nyx-operator` Helm chart provides an optional `ServiceMonitor` for
-Prometheus Operator integration — see `charts/nyx-operator/README.md`
-for the `serviceMonitor.*` values.
+| Topic                                            | Issue | State |
+| ------------------------------------------------ | ----- | ----- |
+| NyxPrompt runtime execution status on CR         | [#642](https://github.com/skthomasjr/autonomous-agent/issues/642) | request, Ready: false |
+| Metrics on a dedicated port (9000) separate from app traffic | [#643](https://github.com/skthomasjr/autonomous-agent/issues/643) | request, Ready: false |
 
 ## Metrics
 
@@ -142,6 +265,23 @@ NyxAgent-specific domain metrics added on top (#471):
 
 The dashboard gauge series is dropped on agent deletion; the two counters
 persist (Prometheus convention — counters are monotonic).
+
+### Prometheus Operator integration
+
+The operator reconciles two optional CRs when the
+`monitoring.coreos.com/v1` API group is installed on the cluster:
+
+- `ServiceMonitor` via `spec.serviceMonitor.enabled` (#476) — scrapes the
+  harness's `/metrics` endpoint through the per-agent Service
+- `PodMonitor` via `spec.podMonitor.enabled` (#582) — scrapes each
+  backend container's `/metrics` directly on the pod via the named
+  `<backend>-metrics` port (backend-level telemetry like tokens, tool
+  use, context usage)
+
+Both use an unstructured client so the operator build has no hard
+dependency on prometheus-operator Go types. When the CRD is absent the
+reconciler logs once per reconcile and no-ops; reconciliation resumes
+automatically once the CRDs appear.
 
 ## Tracing (OpenTelemetry)
 

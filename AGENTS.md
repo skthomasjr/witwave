@@ -61,6 +61,13 @@ Each named agent runs a containerized instance of the `nyx-harness` image. nyx-h
   (job, task, trigger, a2a, or another continuation) completes, enabling prompt chaining without hardcoded sequences.
 - **Router** — reads `backend.yaml` to decide which named backend handles each concern (a2a, heartbeat, job, task, trigger, continuation).
 
+Prompts can land in `.nyx/{jobs,tasks,triggers,continuations,webhooks}/` (or at `HEARTBEAT.md`) via two paths:
+
+1. **gitSync materialisation** — a gitSync sidecar rsyncs `.md` files from a repo.
+2. **`NyxPrompt` CR** (operator-only) — declarative Kubernetes resource that binds one prompt to one or more `NyxAgent`s;
+   the operator reconciles a ConfigMap per `(NyxPrompt, agent)` pair that mounts at the same path. See
+   `operator/README.md#the-nyxprompt-resource` and `operator/config/samples/nyx_v1alpha1_nyxprompt.yaml`.
+
 nyx-harness retains no LLM of its own. All conversation state, session continuity, memory, and conversation logging
 live in the backend container.
 
@@ -321,6 +328,12 @@ request internally to its configured backend (e.g. `iris-a2-claude`). Never targ
 | nova  | 8001 | 8020      | 8021     | 8022      |
 | kira  | 8002 | 8030      | 8031     | 8032      |
 | bob   | 8099 | 8090      | 8091     | 8092      |
+| fred  | 8098 | 8089      | —        | —         |
+
+Test agents `jack` (codex-only) and `luke` (gemini-only) exist as filesystem
+scaffolds under `.agents/test/` but are not wired into
+`charts/nyx/values-test.yaml` yet. Port assignments will land when they're
+deployed.
 
 The `/remote` skill derives the session ID automatically from the current Claude Code session. Pass it explicitly only
 when you need to target a specific session.
