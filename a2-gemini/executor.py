@@ -64,7 +64,7 @@ from metrics import (
 
 from log_utils import _append_log
 from exceptions import BudgetExceededError
-from validation import parse_max_tokens
+from validation import parse_max_tokens, sanitize_model_label
 
 logger = logging.getLogger(__name__)
 
@@ -97,29 +97,15 @@ GEMINI_API_KEY: str | None = os.environ.get("GEMINI_API_KEY") or os.environ.get(
 _BACKEND_ID = "gemini"
 _LABELS = {"agent": AGENT_OWNER, "agent_id": AGENT_ID, "backend": _BACKEND_ID}
 
-# Bounded allow-pattern for the Prometheus `model` label (#487). User-supplied
+# Bounded allow-pattern for the Prometheus `model` label (#487, hoisted to
+# ``shared/validation.py`` for reuse across backends in #601). User-supplied
 # metadata.model flows through resolved_model into 12+ metric call sites; an
 # unbounded string would let a caller blow up metric cardinality by sending a
-# fresh UUID per request. Pre-filter at every label site: accept only simple
-# model identifiers (alnum / dot / dash / underscore, length <= 64) and collapse
-# anything else to the literal "unknown". Use a single helper everywhere so a
-# missed site cannot keep the DoS surface alive.
-import re as _re
-
-_MODEL_LABEL_RE = _re.compile(r"^[a-zA-Z0-9._\-]{1,64}$")
-
-
-def _sanitize_model_label(value: str | None) -> str:
-    """Clamp a model label to a bounded, well-formed string for Prometheus.
-
-    Returns the input unchanged when it matches _MODEL_LABEL_RE; otherwise
-    returns "unknown". Empty / None inputs also collapse to "unknown".
-    """
-    if not value:
-        return "unknown"
-    if _MODEL_LABEL_RE.match(value):
-        return value
-    return "unknown"
+# fresh UUID per request. The shared ``sanitize_model_label`` helper enforces
+# the allow-pattern (alnum / dot / dash / underscore, length <= 64) and falls
+# back to the literal "unknown". Keep the private ``_sanitize_model_label``
+# alias so existing call sites stay on-pattern with other local helpers.
+_sanitize_model_label = sanitize_model_label
 
 
 def _load_agent_md() -> str:

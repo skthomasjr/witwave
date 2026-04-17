@@ -96,6 +96,7 @@ from metrics import (
 from watchfiles import awatch
 from log_utils import _append_log
 from exceptions import BudgetExceededError
+from validation import sanitize_model_label
 
 logger = logging.getLogger(__name__)
 
@@ -690,7 +691,10 @@ async def _run_query_inner(
     max_tokens: int | None = None,
     on_chunk: Callable[[str], Awaitable[None]] | None = None,
 ) -> list[str]:
-    _sdk_labels = {**_LABELS, "model": effective_model or ""}
+    # Sanitize the `model` label once at the construction site so every
+    # downstream `.labels(**_sdk_labels)` call is cardinality-bounded (#601).
+    # Raw `effective_model` is still used for logging and SDK wiring elsewhere.
+    _sdk_labels = {**_LABELS, "model": sanitize_model_label(effective_model)}
     collected: list[str] = []
     _query_start = time.monotonic()
     _message_count = 0
@@ -886,7 +890,7 @@ async def run_query(
             if a2_task_retries_total is not None:
                 a2_task_retries_total.labels(**_LABELS).inc()
             if a2_sdk_query_error_duration_seconds is not None:
-                a2_sdk_query_error_duration_seconds.labels(**_LABELS, model=effective_model or "").observe(time.monotonic() - _query_start)
+                a2_sdk_query_error_duration_seconds.labels(**_LABELS, model=sanitize_model_label(effective_model)).observe(time.monotonic() - _query_start)
             return await _run_query_inner(
                 prompt,
                 _make_options(ctx.session_id, resume=True, stderr_fn=capture_stderr, mcp_servers=ctx.mcp_servers, model=ctx.model, agent_md_content=ctx.agent_md_content, hook_state=hook_state),
@@ -955,7 +959,7 @@ async def _run_inner(
 ) -> str:
     resolved_model = ctx.model or CLAUDE_MODEL or "default"
     if a2_model_requests_total is not None:
-        a2_model_requests_total.labels(**_LABELS, model=resolved_model).inc()
+        a2_model_requests_total.labels(**_LABELS, model=sanitize_model_label(resolved_model)).inc()
 
     is_new = ctx.session_id not in sessions and not await asyncio.to_thread(_session_file_exists, ctx.session_id)
     if not is_new and a2_session_idle_seconds is not None:
@@ -1288,7 +1292,10 @@ class AgentExecutor(A2AAgentExecutor):
         # enqueue can be skipped when chunks were already delivered (avoids
         # duplicate text on the wire).
         _chunks_emitted = 0
-        _streaming_label_model = model or CLAUDE_MODEL or ""
+        # Bound the `model` label for streaming metrics to the same allow-pattern
+        # applied to _sdk_labels (#601) so `metadata.model` cannot inflate
+        # Prometheus cardinality via the streaming code path.
+        _streaming_label_model = sanitize_model_label(model or CLAUDE_MODEL)
 
         async def _emit_chunk(text: str) -> None:
             nonlocal _chunks_emitted

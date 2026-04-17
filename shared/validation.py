@@ -19,9 +19,36 @@ helper there is a follow-up and deliberately out of scope for #537.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Optional
 
-__all__ = ["parse_max_tokens"]
+__all__ = ["parse_max_tokens", "sanitize_model_label"]
+
+
+# Bounded allow-pattern for the Prometheus ``model`` label. Caller-supplied
+# ``metadata.model`` flows into ~12 metric families with a ``model`` label; an
+# unbounded string would let a hostile caller blow up metric cardinality by
+# sending a fresh UUID per request (TSDB compaction / Prometheus OOM).
+# Accept only simple model identifiers (alnum / dot / dash / underscore, length
+# <= 64) and collapse anything else to the literal "unknown". Originally landed
+# in ``a2-gemini/executor.py`` via #487; hoisted here so a2-claude (#601) and
+# a2-codex can share a single well-reviewed definition.
+_MODEL_LABEL_RE = re.compile(r"^[a-zA-Z0-9._\-]{1,64}$")
+
+
+def sanitize_model_label(value: Optional[str]) -> str:
+    """Clamp a model label to a bounded, well-formed string for Prometheus.
+
+    Returns the input unchanged when it matches ``_MODEL_LABEL_RE``; otherwise
+    returns ``"unknown"``. Empty / ``None`` inputs also collapse to
+    ``"unknown"``. Keep ``resolved_model`` / ``effective_model`` intact for
+    logging and SDK wiring — only wrap at the Prometheus label site.
+    """
+    if not value:
+        return "unknown"
+    if _MODEL_LABEL_RE.match(value):
+        return value
+    return "unknown"
 
 
 def parse_max_tokens(
