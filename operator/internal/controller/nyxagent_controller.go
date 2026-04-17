@@ -83,6 +83,18 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
+	// Per-agent enabled flag (default true). When explicitly false, tear
+	// down owned resources and skip reconciliation entirely. This mirrors
+	// the chart's per-agent toggle (#chart beta.32) and lets operators
+	// pause an agent without deleting the CR.
+	if agent.Spec.Enabled != nil && !*agent.Spec.Enabled {
+		log.Info("NyxAgent disabled — tearing down owned resources", "name", agent.Name)
+		if err := r.teardownDisabledAgent(ctx, agent); err != nil {
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, err
+		}
+		return ctrl.Result{}, nil
+	}
+
 	// Apply all desired resources, accumulating any error so status can
 	// reflect the first failure.
 	var reconcileErr error
@@ -201,6 +213,9 @@ func (r *NyxAgentReconciler) reconcileConfigMaps(ctx context.Context, agent *nyx
 		desired[cm.Name] = cm
 	}
 	for _, b := range agent.Spec.Backends {
+		if !backendEnabled(b) {
+			continue
+		}
 		if cm := buildConfigMap(agent, agentConfigMapName(agent, b.Name), b.Config); cm != nil {
 			desired[cm.Name] = cm
 		}
@@ -371,6 +386,59 @@ func (r *NyxAgentReconciler) reconcilePDB(ctx context.Context, agent *nyxv1alpha
 	existing.Spec = desired.Spec
 	existing.Labels = desired.Labels
 	return r.Update(ctx, existing)
+}
+
+// teardownDisabledAgent deletes every owned resource for an agent whose
+// spec.enabled has been flipped to false. The delete is gated on
+// IsControlledBy so we never touch resources we didn't create. Status
+// is left untouched — the next reconcile after re-enabling will rewrite
+// it from observed Deployment state.
+func (r *NyxAgentReconciler) teardownDisabledAgent(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
+	key := client.ObjectKey{Namespace: agent.Namespace, Name: agent.Name}
+
+	// Helper closure: fetch the resource at `key`, delete only if owned
+	// by this NyxAgent. Missing-object is not an error.
+	tryDelete := func(obj client.Object) error {
+		if err := r.Get(ctx, key, obj); err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+		if !metav1.IsControlledBy(obj, agent) {
+			return nil
+		}
+		if err := r.Delete(ctx, obj); err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
+		return nil
+	}
+
+	// Order: Deployment → Service → optional resources. Doesn't matter
+	// for correctness (k8s GC handles dependents) but makes log streams
+	// easier to read.
+	if err := tryDelete(&appsv1.Deployment{}); err != nil {
+		return fmt.Errorf("delete Deployment: %w", err)
+	}
+	if err := tryDelete(&corev1.Service{}); err != nil {
+		return fmt.Errorf("delete Service: %w", err)
+	}
+	if err := tryDelete(&autoscalingv2.HorizontalPodAutoscaler{}); err != nil {
+		return fmt.Errorf("delete HPA: %w", err)
+	}
+	if err := tryDelete(&policyv1.PodDisruptionBudget{}); err != nil {
+		return fmt.Errorf("delete PDB: %w", err)
+	}
+	// reconcileDashboard already handles the dashboard delete path when
+	// spec.dashboard.enabled is false — call it so the dashboard
+	// resources get cleaned up as part of the agent disable.
+	if err := r.reconcileDashboard(ctx, agent); err != nil {
+		return fmt.Errorf("teardown dashboard: %w", err)
+	}
+	// Drop the per-CR dashboard gauge so the metric series doesn't
+	// linger across enable/disable cycles.
+	nyxagentDashboardEnabled.DeleteLabelValues(agent.Namespace, agent.Name)
+	return nil
 }
 
 // reconcileDashboard creates, updates, or deletes the per-agent dashboard

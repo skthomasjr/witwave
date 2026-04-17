@@ -156,6 +156,13 @@ type BackendSpec struct {
 	// +kubebuilder:validation:Pattern=^[a-z0-9][a-z0-9-]*$
 	Name string `json:"name"`
 
+	// Enabled toggles whether this backend's container, PVC, and any
+	// per-backend ConfigMap get reconciled. Defaults to true. Mirrors
+	// the per-backend `enabled` flag in the Helm chart (#chart beta.32).
+	// +kubebuilder:default=true
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
+
 	// Image is the backend container image.
 	Image ImageSpec `json:"image"`
 
@@ -207,12 +214,27 @@ type SharedStorageRef struct {
 
 // NyxAgentSpec defines the desired state of NyxAgent.
 type NyxAgentSpec struct {
+	// Enabled toggles whether the entire agent (Deployment, Service, PVCs,
+	// ConfigMaps, HPA, PDB, Dashboard) gets reconciled. Defaults to true.
+	// Mirrors the per-agent `enabled` flag in the Helm chart (#chart beta.32).
+	// +kubebuilder:default=true
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
+
 	// Port is the HTTP port nyx-harness listens on (Service + probe target).
 	// +kubebuilder:default=8000
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=65535
 	// +optional
 	Port int32 `json:"port,omitempty"`
+
+	// ServiceType controls the agent Service.spec.type. Defaults to ClusterIP.
+	// Set to NodePort or LoadBalancer to expose the agent outside the
+	// cluster without an Ingress (#chart beta.31 / #466).
+	// +kubebuilder:validation:Enum=ClusterIP;NodePort;LoadBalancer
+	// +kubebuilder:default=ClusterIP
+	// +optional
+	ServiceType corev1.ServiceType `json:"serviceType,omitempty"`
 
 	// TerminationGracePeriodSeconds overrides the pod's grace window between
 	// SIGTERM and SIGKILL. Defaults to 60s, matching the chart-managed
@@ -315,10 +337,29 @@ type DashboardSpec struct {
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 }
 
-// MetricsSpec toggles Prometheus scrape behaviour for the agent Service.
+// MetricsSpec toggles Prometheus scrape behaviour for the agent.
 type MetricsSpec struct {
+	// Master toggle. When false, no scrape annotations are emitted on
+	// either the Service or the Pod template, regardless of the
+	// granular flags below.
 	// +optional
 	Enabled bool `json:"enabled,omitempty"`
+
+	// ServiceAnnotations stamps prometheus.io/{scrape,port,path}
+	// annotations onto the agent Service for Prometheus configs using
+	// `kubernetes_sd_configs.role: service`. Defaults to true (preserves
+	// historical chart behaviour).
+	// +kubebuilder:default=true
+	// +optional
+	ServiceAnnotations *bool `json:"serviceAnnotations,omitempty"`
+
+	// PodAnnotations stamps the same annotations onto the Pod template
+	// for Prometheus configs using `kubernetes_sd_configs.role: pod`
+	// (per-replica metrics). Defaults to false — opt in when needed.
+	// Mirrors charts/nyx beta.35 / #472.
+	// +kubebuilder:default=false
+	// +optional
+	PodAnnotations *bool `json:"podAnnotations,omitempty"`
 }
 
 // NyxAgentPhase is a coarse-grained lifecycle phase for display purposes.

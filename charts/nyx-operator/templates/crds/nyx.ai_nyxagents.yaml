@@ -118,6 +118,13 @@ spec:
                         - name
                         type: object
                       type: array
+                    enabled:
+                      default: true
+                      description: |-
+                        Enabled toggles whether this backend's container, PVC, and any
+                        per-backend ConfigMap get reconciled. Defaults to true. Mirrors
+                        the per-backend `enabled` flag in the Helm chart (#chart beta.32).
+                      type: boolean
                     env:
                       description: Env adds environment variables directly.
                       items:
@@ -565,6 +572,13 @@ spec:
                 required:
                 - enabled
                 type: object
+              enabled:
+                default: true
+                description: |-
+                  Enabled toggles whether the entire agent (Deployment, Service, PVCs,
+                  ConfigMaps, HPA, PDB, Dashboard) gets reconciled. Defaults to true.
+                  Mirrors the per-agent `enabled` flag in the Helm chart (#chart beta.32).
+                type: boolean
               env:
                 description: Env adds environment variables to the nyx-harness container.
                 items:
@@ -777,6 +791,26 @@ spec:
                   Service.
                 properties:
                   enabled:
+                    description: |-
+                      Master toggle. When false, no scrape annotations are emitted on
+                      either the Service or the Pod template, regardless of the
+                      granular flags below.
+                    type: boolean
+                  podAnnotations:
+                    default: false
+                    description: |-
+                      PodAnnotations stamps the same annotations onto the Pod template
+                      for Prometheus configs using `kubernetes_sd_configs.role: pod`
+                      (per-replica metrics). Defaults to false — opt in when needed.
+                      Mirrors charts/nyx beta.35 / #472.
+                    type: boolean
+                  serviceAnnotations:
+                    default: true
+                    description: |-
+                      ServiceAnnotations stamps prometheus.io/{scrape,port,path}
+                      annotations onto the agent Service for Prometheus configs using
+                      `kubernetes_sd_configs.role: service`. Defaults to true (preserves
+                      historical chart behaviour).
                     type: boolean
                 type: object
               podDisruptionBudget:
@@ -910,6 +944,17 @@ spec:
                       More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                     type: object
                 type: object
+              serviceType:
+                default: ClusterIP
+                description: |-
+                  ServiceType controls the agent Service.spec.type. Defaults to ClusterIP.
+                  Set to NodePort or LoadBalancer to expose the agent outside the
+                  cluster without an Ingress (#chart beta.31 / #466).
+                enum:
+                - ClusterIP
+                - NodePort
+                - LoadBalancer
+                type: string
               sharedStorage:
                 description: SharedStorage optionally mounts a pre-existing PVC into
                   every container.

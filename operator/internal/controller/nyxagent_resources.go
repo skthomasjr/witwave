@@ -309,10 +309,15 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 
 	// Backend containers.
 	containers := []corev1.Container{harness}
-	// Sort backends by name for a deterministic rendering.
+	// Sort backends by name for a deterministic rendering. Skip per-backend
+	// disabled entries (#chart beta.32 / #466 mirror) so the container,
+	// per-backend volume mounts, and any inline configs aren't materialised.
 	backends := append([]nyxv1alpha1.BackendSpec(nil), agent.Spec.Backends...)
 	sort.Slice(backends, func(i, j int) bool { return backends[i].Name < backends[j].Name })
 	for _, b := range backends {
+		if !backendEnabled(b) {
+			continue
+		}
 		bPort := b.Port
 		if bPort == 0 {
 			bPort = 8080
@@ -399,6 +404,18 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 		Volumes:          volumes,
 	}
 
+	// Pod-level Prometheus scrape annotations when metrics.podAnnotations
+	// is true (#chart beta.35 / #472). Honoured per-agent via the Metrics
+	// sub-spec; defaults to off so existing CRs keep current behaviour.
+	var podAnnotations map[string]string
+	if agent.Spec.Metrics.Enabled && metricsPodAnnotationsEnabled(agent) {
+		podAnnotations = map[string]string{
+			"prometheus.io/scrape": "true",
+			"prometheus.io/port":   fmt.Sprintf("%d", harnessPort),
+			"prometheus.io/path":   "/metrics",
+		}
+	}
+
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      agent.Name,
@@ -409,27 +426,36 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 			Replicas: replicas,
 			Selector: &metav1.LabelSelector{MatchLabels: selector},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: labels},
+				ObjectMeta: metav1.ObjectMeta{Labels: labels, Annotations: podAnnotations},
 				Spec:       podSpec,
 			},
 		},
 	}
 }
 
-// buildService constructs the ClusterIP Service exposing the agent's
-// nyx-harness HTTP port. Prometheus scrape annotations are added when metrics
-// are enabled.
+// buildService constructs the Service exposing the agent's nyx-harness
+// HTTP port. Service.spec.type defaults to ClusterIP and is overridable
+// via spec.serviceType (#chart beta.31 / #466). Prometheus scrape
+// annotations honour spec.metrics.serviceAnnotations (default true)
+// when spec.metrics.enabled is true (#chart beta.35 / #472).
 func buildService(agent *nyxv1alpha1.NyxAgent) *corev1.Service {
 	port := agent.Spec.Port
 	if port == 0 {
 		port = 8000
 	}
+
 	annotations := map[string]string{}
-	if agent.Spec.Metrics.Enabled {
+	if agent.Spec.Metrics.Enabled && metricsServiceAnnotationsEnabled(agent) {
 		annotations["prometheus.io/scrape"] = "true"
 		annotations["prometheus.io/port"] = fmt.Sprintf("%d", port)
 		annotations["prometheus.io/path"] = "/metrics"
 	}
+
+	svcType := agent.Spec.ServiceType
+	if svcType == "" {
+		svcType = corev1.ServiceTypeClusterIP
+	}
+
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        agent.Name,
@@ -438,7 +464,7 @@ func buildService(agent *nyxv1alpha1.NyxAgent) *corev1.Service {
 			Annotations: annotations,
 		},
 		Spec: corev1.ServiceSpec{
-			Type:     corev1.ServiceTypeClusterIP,
+			Type:     svcType,
 			Selector: selectorLabels(agent),
 			Ports: []corev1.ServicePort{{
 				Name:       "http",
@@ -447,6 +473,32 @@ func buildService(agent *nyxv1alpha1.NyxAgent) *corev1.Service {
 			}},
 		},
 	}
+}
+
+// metricsServiceAnnotationsEnabled / metricsPodAnnotationsEnabled resolve
+// the per-agent metrics annotation toggles, defaulting to backward-
+// compatible chart behaviour when the field is unset (#chart beta.35).
+func metricsServiceAnnotationsEnabled(agent *nyxv1alpha1.NyxAgent) bool {
+	if agent.Spec.Metrics.ServiceAnnotations != nil {
+		return *agent.Spec.Metrics.ServiceAnnotations
+	}
+	return true // chart default
+}
+
+func metricsPodAnnotationsEnabled(agent *nyxv1alpha1.NyxAgent) bool {
+	if agent.Spec.Metrics.PodAnnotations != nil {
+		return *agent.Spec.Metrics.PodAnnotations
+	}
+	return false // chart default
+}
+
+// backendEnabled reports the per-backend enabled flag with default-true
+// semantics (#chart beta.32). Returns true when the field is unset.
+func backendEnabled(b nyxv1alpha1.BackendSpec) bool {
+	if b.Enabled != nil {
+		return *b.Enabled
+	}
+	return true
 }
 
 // buildHPA constructs the optional HorizontalPodAutoscaler, or nil when
@@ -575,6 +627,9 @@ func buildBackendPVCs(agent *nyxv1alpha1.NyxAgent) ([]*corev1.PersistentVolumeCl
 	var out []*corev1.PersistentVolumeClaim
 	var errs []*PVCBuildError
 	for _, b := range agent.Spec.Backends {
+		if !backendEnabled(b) {
+			continue
+		}
 		if b.Storage == nil || !b.Storage.Enabled || b.Storage.ExistingClaim != "" {
 			continue
 		}
