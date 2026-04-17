@@ -516,6 +516,13 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string) *appsv1.Dep
 		InitContainers:   gitSyncInitContainers(agent, appVersion),
 		Containers:       containers,
 		Volumes:          volumes,
+		// Scheduling knobs (#605). All passthrough — empty/nil values are
+		// no-ops at the PodSpec level, matching the chart's defaults.
+		NodeSelector:              agent.Spec.NodeSelector,
+		Tolerations:               agent.Spec.Tolerations,
+		Affinity:                  agent.Spec.Affinity,
+		TopologySpreadConstraints: agent.Spec.TopologySpreadConstraints,
+		PriorityClassName:         agent.Spec.PriorityClassName,
 	}
 
 	// Pod-level annotations: start from any user-supplied spec.podAnnotations
@@ -600,10 +607,19 @@ func buildService(agent *nyxv1alpha1.NyxAgent) *corev1.Service {
 		port = 8000
 	}
 
+	// Service port defaults to the container port (#479). When
+	// spec.servicePort is set, it overrides the Service `port` only —
+	// `targetPort` stays pinned to the container port so probes and
+	// pod-to-pod traffic continue to land on the same listener.
+	svcPort := port
+	if agent.Spec.ServicePort != nil && *agent.Spec.ServicePort > 0 {
+		svcPort = *agent.Spec.ServicePort
+	}
+
 	annotations := map[string]string{}
 	if agent.Spec.Metrics.Enabled && metricsServiceAnnotationsEnabled(agent) {
 		annotations["prometheus.io/scrape"] = "true"
-		annotations["prometheus.io/port"] = fmt.Sprintf("%d", port)
+		annotations["prometheus.io/port"] = fmt.Sprintf("%d", svcPort)
 		annotations["prometheus.io/path"] = "/metrics"
 	}
 
@@ -624,7 +640,7 @@ func buildService(agent *nyxv1alpha1.NyxAgent) *corev1.Service {
 			Selector: selectorLabels(agent),
 			Ports: []corev1.ServicePort{{
 				Name:       "http",
-				Port:       port,
+				Port:       svcPort,
 				TargetPort: intstr.FromInt(int(port)),
 			}},
 		},
@@ -905,6 +921,18 @@ func buildBackendPVCs(agent *nyxv1alpha1.NyxAgent) ([]*corev1.PersistentVolumeCl
 			errs = append(errs, &PVCBuildError{BackendName: b.Name, Size: size, Err: err})
 			continue
 		}
+		// AccessModes default: preserve the historical RWO behaviour for
+		// single-replica deployments. Users opt into RWX / RWOP by
+		// populating spec.backends[].storage.accessModes explicitly
+		// (#614).
+		accessModes := b.Storage.AccessModes
+		if len(accessModes) == 0 {
+			accessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
+		} else {
+			// Copy so a downstream mutation of the PVC spec can't
+			// alias back into the NyxAgent's AccessModes slice.
+			accessModes = append([]corev1.PersistentVolumeAccessMode(nil), accessModes...)
+		}
 		pvc := &corev1.PersistentVolumeClaim{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      fmt.Sprintf("%s-%s-data", agent.Name, b.Name),
@@ -912,7 +940,7 @@ func buildBackendPVCs(agent *nyxv1alpha1.NyxAgent) ([]*corev1.PersistentVolumeCl
 				Labels:    agentLabels(agent),
 			},
 			Spec: corev1.PersistentVolumeClaimSpec{
-				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+				AccessModes: accessModes,
 				Resources: corev1.VolumeResourceRequirements{
 					Requests: corev1.ResourceList{corev1.ResourceStorage: qty},
 				},

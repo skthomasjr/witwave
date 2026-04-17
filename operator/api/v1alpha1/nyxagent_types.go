@@ -167,6 +167,16 @@ type BackendStorageSpec struct {
 	// +optional
 	ExistingClaim string `json:"existingClaim,omitempty"`
 
+	// AccessModes is the list of access modes for the operator-created
+	// backend PVC. Defaults to [ReadWriteOnce] when empty for backward
+	// compatibility with single-replica deployments. Set to [ReadWriteMany]
+	// when running HPA-scaled backends on RWX-capable storage, or
+	// [ReadWriteOncePod] (K8s 1.27+) for stricter single-pod isolation.
+	// Ignored when ExistingClaim is set — the pre-existing PVC's access
+	// modes are honoured as-is.
+	// +optional
+	AccessModes []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty"`
+
 	// +optional
 	Mounts []BackendStorageMount `json:"mounts,omitempty"`
 }
@@ -488,6 +498,45 @@ type NyxAgentSpec struct {
 	// drift and orphan pods.
 	// +optional
 	PodLabels map[string]string `json:"podLabels,omitempty"`
+
+	// NodeSelector constrains the agent pod onto nodes whose labels match
+	// every entry. Mirrors the chart-side `nodeSelector` value (#603) so
+	// operator- and Helm-rendered pods schedule identically.
+	// +optional
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+
+	// Tolerations allow the agent pod onto nodes with matching taints.
+	// Mirrors the chart-side `tolerations` value (#603).
+	// +optional
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+
+	// Affinity expresses node / pod affinity and anti-affinity rules for
+	// the agent pod. Mirrors the chart-side `affinity` value (#603).
+	// +optional
+	Affinity *corev1.Affinity `json:"affinity,omitempty"`
+
+	// TopologySpreadConstraints spreads agent replicas across zones /
+	// nodes for HA. Mirrors the chart-side `topologySpreadConstraints`
+	// value (#603).
+	// +optional
+	TopologySpreadConstraints []corev1.TopologySpreadConstraint `json:"topologySpreadConstraints,omitempty"`
+
+	// PriorityClassName sets the pod's scheduling priority. Mirrors the
+	// chart-side `priorityClassName` value (#603).
+	// +optional
+	PriorityClassName string `json:"priorityClassName,omitempty"`
+
+	// ServicePort overrides the agent Service's `port` so it can differ
+	// from the container port (#479). When unset, the Service `port` and
+	// `targetPort` both resolve to `Spec.Port` (preserving current
+	// behaviour). When set, `Service.spec.ports[0].port` becomes
+	// `ServicePort` while `targetPort` continues to point at the
+	// container port (`Spec.Port`). Mirrors the chart's `service.yaml`
+	// which already separates Service port from target port.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	// +optional
+	ServicePort *int32 `json:"servicePort,omitempty"`
 }
 
 // DashboardSpec configures an optional dashboard Deployment + Service per
