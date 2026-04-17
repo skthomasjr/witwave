@@ -72,6 +72,35 @@ WEBHOOK_MAX_CONCURRENT_DELIVERIES_PER_SUB = int(os.environ.get("WEBHOOK_MAX_CONC
 # indefinitely.  Override via WEBHOOK_EXTRACTION_TIMEOUT env var.
 WEBHOOK_EXTRACTION_TIMEOUT = float(os.environ.get("WEBHOOK_EXTRACTION_TIMEOUT", "120"))
 
+# Connection-pool limits for the shared outbound httpx.AsyncClient (#567).
+# Mirrors the A2ABackend shape so operators get consistent tuning knobs across
+# subsystems. max_connections caps total simultaneous sockets; keepalive lets
+# repeated deliveries to the same host reuse TCP+TLS state rather than paying
+# the full handshake every time. Override via env vars.
+WEBHOOK_CLIENT_MAX_CONNECTIONS = int(os.environ.get("WEBHOOK_CLIENT_MAX_CONNECTIONS", "50"))
+WEBHOOK_CLIENT_MAX_KEEPALIVE = int(os.environ.get("WEBHOOK_CLIENT_MAX_KEEPALIVE", "20"))
+
+
+def _build_shared_client() -> httpx.AsyncClient:
+    """Construct the shared outbound AsyncClient used across all webhook
+    deliveries and retries (#567).
+
+    Per-delivery timeouts are passed at `client.post(..., timeout=...)` time
+    so each subscription's `timeout_seconds` is still honored; the client-
+    level timeout is a defensive upper bound only. `follow_redirects=False`
+    is preserved from the prior per-call construction to avoid turning a
+    single webhook POST into an SSRF fan-out via a 30x to an internal host
+    (#524 coordination).
+    """
+    return httpx.AsyncClient(
+        timeout=httpx.Timeout(connect=10.0, read=30.0, write=30.0, pool=5.0),
+        follow_redirects=False,
+        limits=httpx.Limits(
+            max_connections=WEBHOOK_CLIENT_MAX_CONNECTIONS,
+            max_keepalive_connections=WEBHOOK_CLIENT_MAX_KEEPALIVE,
+        ),
+    )
+
 _VALID_NOTIFY_WHEN = ("always", "on_success", "on_error")
 
 _DISABLED = object()
@@ -504,6 +533,7 @@ async def _retry_deliver(
     headers: dict,
     attempt: int,
     max_attempts: int,
+    client: httpx.AsyncClient,
 ) -> None:
     """Continue delivery for a subscription after the first attempt failed.
 
@@ -511,6 +541,12 @@ async def _retry_deliver(
     can exit immediately, releasing its concurrency slot before the backoff
     sleep.  This prevents sleeping retries from holding capacity and starving
     new deliveries during a downstream outage (#362).
+
+    Reuses the shared `httpx.AsyncClient` owned by `WebhookRunner` instead of
+    opening a fresh client (and paying a fresh TCP+TLS handshake) for every
+    retry attempt (#567). Per-attempt timeout is still `sub.timeout_seconds`,
+    passed at `client.post(...)` time so behavior matches the pre-shared-
+    client semantics.
     """
     result = "unknown"
     while attempt < max_attempts:
@@ -518,8 +554,12 @@ async def _retry_deliver(
         await asyncio.sleep(backoff)
         attempt += 1
         try:
-            async with httpx.AsyncClient(timeout=sub.timeout_seconds, follow_redirects=False) as client:
-                resp = await client.post(url, content=body_bytes, headers=headers)
+            resp = await client.post(
+                url,
+                content=body_bytes,
+                headers=headers,
+                timeout=sub.timeout_seconds,
+            )
             if resp.status_code < 400:
                 result = "success"
                 logger.info(f"Webhook '{sub.name}' delivered to {url} — {resp.status_code} (attempt {attempt})")
@@ -545,6 +585,7 @@ async def deliver(
     duration_seconds: float,
     error: str | None,
     model: str | None,
+    client: httpx.AsyncClient,
     backends: dict | None = None,
     default_backend_id: str | None = None,
     on_retry_task=None,
@@ -665,8 +706,17 @@ async def deliver(
         # remains in place unchanged (#469).
         inject_traceparent(headers)
         try:
-            async with httpx.AsyncClient(timeout=sub.timeout_seconds, follow_redirects=False) as client:
-                resp = await client.post(url, content=body_bytes, headers=headers)
+            # Reuse the shared AsyncClient owned by WebhookRunner so deliveries
+            # to the same receiver benefit from connection pooling and
+            # keep-alive instead of paying a fresh TCP+TLS handshake per
+            # attempt (#567). Per-subscription timeout is still honored by
+            # passing it at post() time.
+            resp = await client.post(
+                url,
+                content=body_bytes,
+                headers=headers,
+                timeout=sub.timeout_seconds,
+            )
             if resp.status_code < 400:
                 result = "success"
                 logger.info(f"Webhook '{sub.name}' delivered to {url} — {resp.status_code}")
@@ -704,6 +754,7 @@ async def deliver(
                 headers=headers,
                 attempt=1,
                 max_attempts=1 + sub.retries,
+                client=client,
             )
 
         _retry_task = asyncio.ensure_future(_tracked_retry())
@@ -735,6 +786,19 @@ class WebhookRunner:
         self._active_deliveries: set[asyncio.Task] = set()
         # Per-subscription in-flight tasks, keyed by subscription name.
         self._deliveries_by_name: dict[str, set[asyncio.Task]] = {}
+        # Shared outbound AsyncClient reused across every delivery and retry
+        # attempt (#567). Constructed eagerly so fire() has a client to hand
+        # to deliver() even if deliveries race the first pass of run(); the
+        # client is cheap to allocate, and concurrent calls sharing a single
+        # instance is exactly the point (same shape as A2ABackend #398).
+        self._client: httpx.AsyncClient = _build_shared_client()
+
+    def _get_client(self) -> httpx.AsyncClient:
+        """Return the shared client, re-opening if it was closed (e.g. after
+        a prior shutdown path). Mirrors A2ABackend._get_client()."""
+        if self._client.is_closed:
+            self._client = _build_shared_client()
+        return self._client
 
     def set_backends(self, backends: dict, default_backend_id: str) -> None:
         """Update the backend references (called when backends are reloaded)."""
@@ -858,6 +922,7 @@ class WebhookRunner:
                     duration_seconds=duration_seconds,
                     error=error,
                     model=model,
+                    client=self._get_client(),
                     backends=self._backends,
                     default_backend_id=self._default_backend_id,
                     on_retry_task=_make_on_retry_task(),
@@ -915,3 +980,20 @@ class WebhookRunner:
             for path in list(self._items.keys()):
                 self._unregister(path)
             await asyncio.sleep(10)
+
+    async def close(self) -> None:
+        """Shut the runner down: drain in-flight deliveries (including any
+        pending retry tasks) and then close the shared AsyncClient (#567).
+
+        The approver explicitly flagged that retry tasks outlive their
+        originating delivery task (they live on `_active_deliveries` across
+        the backoff sleep), so naively closing the client before draining
+        would cancel connections mid-retry. We gather the tracking set with
+        `return_exceptions=True` so one failing task cannot block shutdown
+        of the rest, then aclose the client. Mirrors A2ABackend.close().
+        """
+        pending = list(self._active_deliveries)
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        if not self._client.is_closed:
+            await self._client.aclose()
