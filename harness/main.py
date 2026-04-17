@@ -563,19 +563,64 @@ async def main():
         # Claim the slot before any await to prevent concurrent requests from
         # both passing the 409 check above.
         trigger_runner._running.add(endpoint)
+
+        # Pre-auth gate (#529): before touching the body, require the caller to
+        # present the header appropriate to the trigger's configured auth
+        # mechanism.  This keeps unauthenticated callers from forcing the
+        # harness to buffer up to MAX_TRIGGER_BODY_BYTES per concurrent request.
+        MAX_TRIGGER_BODY_BYTES = 1_048_576
+        auth_header_present = False
+        if item.secret_env_var:
+            auth_header_present = bool(request.headers.get("X-Hub-Signature-256"))
+        elif os.environ.get("TRIGGERS_AUTH_TOKEN", ""):
+            auth_header_present = bool(request.headers.get("Authorization"))
+        if not auth_header_present:
+            trigger_runner._running.discard(endpoint)
+            if agent_triggers_requests_total is not None:
+                agent_triggers_requests_total.labels(method=request.method, code="401").inc()
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+        # Cheap Content-Length short-circuit: if the client advertised an
+        # oversized body, reject before reading any of it.
         try:
-            body_bytes = await request.body()
+            declared_len = int(request.headers.get("Content-Length", "") or "-1")
+        except ValueError:
+            declared_len = -1
+        if declared_len > MAX_TRIGGER_BODY_BYTES:
+            trigger_runner._running.discard(endpoint)
+            if agent_triggers_requests_total is not None:
+                agent_triggers_requests_total.labels(method=request.method, code="413").inc()
+            return JSONResponse({"error": "request body too large"}, status_code=413)
+
+        # Streaming read with a hard cap: abort as soon as the accumulated size
+        # exceeds MAX_TRIGGER_BODY_BYTES rather than buffering the whole payload
+        # first (the pre-#529 behaviour).  HMAC verification still needs the
+        # full body, so we keep the full buffer up to the cap.
+        try:
+            chunks: list[bytes] = []
+            total = 0
+            oversized = False
+            async for chunk in request.stream():
+                if not chunk:
+                    continue
+                total += len(chunk)
+                if total > MAX_TRIGGER_BODY_BYTES:
+                    oversized = True
+                    break
+                chunks.append(chunk)
         except Exception:
             trigger_runner._running.discard(endpoint)
             if agent_triggers_requests_total is not None:
                 agent_triggers_requests_total.labels(method=request.method, code="500").inc()
             raise
 
-        if len(body_bytes) > 1_048_576:
+        if oversized:
             trigger_runner._running.discard(endpoint)
             if agent_triggers_requests_total is not None:
                 agent_triggers_requests_total.labels(method=request.method, code="413").inc()
             return JSONResponse({"error": "request body too large"}, status_code=413)
+
+        body_bytes = b"".join(chunks)
 
         if not _check_trigger_auth(request, item, body_bytes):
             trigger_runner._running.discard(endpoint)
