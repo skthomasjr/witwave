@@ -156,6 +156,18 @@ spec:
           ports:
             - name: http
               containerPort: {{ .port | default 8000 }}
+          # startupProbe gives the harness a long grace window on cold-start
+          # before readiness/liveness begin enforcing (#580). Points at the
+          # same endpoint as readiness; kubelet suspends readiness/liveness
+          # until this succeeds once.
+          startupProbe:
+            httpGet:
+              path: /health/ready
+              port: {{ .port | default 8000 }}
+            initialDelaySeconds: {{ $.Values.probes.startup.initialDelaySeconds }}
+            periodSeconds: {{ $.Values.probes.startup.periodSeconds }}
+            timeoutSeconds: {{ $.Values.probes.startup.timeoutSeconds }}
+            failureThreshold: {{ $.Values.probes.startup.failureThreshold }}
           livenessProbe:
             httpGet:
               path: /health/live
@@ -241,6 +253,18 @@ spec:
             # IANA_SVC_NAME validation.
             - name: {{ printf "%s-metrics" .name | trunc 15 | trimSuffix "-" }}
               containerPort: {{ .port }}
+          # startupProbe gives the backend a long grace window on cold-start
+          # before readiness/liveness begin enforcing (#580). Backends pay
+          # SDK import cost + MCP server handshakes on first boot; without
+          # this, readiness can flap during warm-up.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: {{ .port }}
+            initialDelaySeconds: {{ $.Values.probes.startup.initialDelaySeconds }}
+            periodSeconds: {{ $.Values.probes.startup.periodSeconds }}
+            timeoutSeconds: {{ $.Values.probes.startup.timeoutSeconds }}
+            failureThreshold: {{ $.Values.probes.startup.failureThreshold }}
           livenessProbe:
             httpGet:
               path: /health

@@ -172,6 +172,18 @@ preStop:
 
 # Liveness and readiness probe timing for all containers.
 # Defaults match the values previously hardcoded in templates (#425).
+#
+# startup gives cold-starting pods a long grace window before kubelet begins
+# enforcing readiness/liveness (#580). Backends (Claude Agent SDK, OpenAI
+# Agents SDK, google-genai) pay SDK import cost + MCP server handshakes on
+# first boot; without a startupProbe, the tight readiness defaults below flap
+# NotReady → Ready → NotReady during warm-up and liveness can restart a pod
+# before it ever finishes initialising. The defaults here (failureThreshold 30
+# × periodSeconds 10 = 5 minutes) are strictly additive: once startup succeeds
+# once, kubelet switches to the readiness/liveness cadence below. Point the
+# probe at the same health endpoint used by readiness (hardcoded per-container
+# in the template: /health/ready for nyx-harness, /health for backends). Bump
+# failureThreshold if your cold-start genuinely exceeds 5 minutes.
 probes:
   liveness:
     initialDelaySeconds: 10
@@ -183,6 +195,11 @@ probes:
     periodSeconds: 10
     timeoutSeconds: 5
     failureThreshold: 3
+  startup:
+    initialDelaySeconds: 0
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 30
 
 # Default git-sync image used by all gitSyncs entries unless overridden per-entry.
 gitSync:
