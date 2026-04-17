@@ -107,6 +107,8 @@ agent_consensus_runs_total: prometheus_client.Counter | None = None
 agent_consensus_backend_errors_total: prometheus_client.Counter | None = None
 agent_metrics_backend_fetch_errors_total: prometheus_client.Counter | None = None
 agent_background_tasks: prometheus_client.Gauge | None = None
+agent_background_tasks_shed_total: prometheus_client.Counter | None = None
+agent_background_tasks_timeout_total: prometheus_client.Counter | None = None
 
 
 if _enabled:
@@ -553,5 +555,15 @@ if _enabled:
     agent_background_tasks = prometheus_client.Gauge(
         "agent_background_tasks",
         "Number of background asyncio tasks currently in flight (webhooks, continuations, etc.).",
+    )
+    agent_background_tasks_shed_total = prometheus_client.Counter(
+        "agent_background_tasks_shed_total",
+        "Total background tasks shed because the executor's in-flight cap was reached.",
+        ["source"],
+    )
+    agent_background_tasks_timeout_total = prometheus_client.Counter(
+        "agent_background_tasks_timeout_total",
+        "Total background tasks cancelled because they exceeded ON_PROMPT_COMPLETED_TIMEOUT.",
+        ["source"],
     )
 

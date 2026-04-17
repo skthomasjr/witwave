@@ -692,33 +692,30 @@ async def main():
                 logger.error(f"Trigger '{item.name}' execution error: {exc!r}")
             finally:
                 trigger_runner._running.discard(endpoint)
-                _opc_task = asyncio.create_task(executor.on_prompt_completed(
+                executor.track_background(
+                    executor.on_prompt_completed(
+                        source="trigger",
+                        kind=f"trigger:{endpoint}",
+                        session_id=item.session_id,
+                        success=_success,
+                        response=_response,
+                        duration_seconds=time.monotonic() - _fire_start,
+                        error=_error,
+                        model=_model,
+                    ),
                     source="trigger",
-                    kind=f"trigger:{endpoint}",
-                    session_id=item.session_id,
-                    success=_success,
-                    response=_response,
-                    duration_seconds=time.monotonic() - _fire_start,
-                    error=_error,
-                    model=_model,
-                ))
-                executor._background_tasks.add(_opc_task)
-                _opc_task.add_done_callback(executor._background_tasks.discard)
-                _opc_task.add_done_callback(
-                    lambda t: logger.error(f"on_prompt_completed error: {t.exception()}")
-                    if not t.cancelled() and t.exception() is not None
-                    else None
                 )
 
         try:
-            _task = asyncio.ensure_future(_fire())
-            executor._background_tasks.add(_task)
-            _task.add_done_callback(executor._background_tasks.discard)
-            _task.add_done_callback(
-                lambda t: logger.error(f"Trigger '{item.name}' task exited unexpectedly: {t.exception()!r}")
-                if not t.cancelled() and t.exception() is not None
-                else None
-            )
+            _scheduled = executor.track_background(_fire(), source="trigger-fire")
+            if _scheduled is None:
+                trigger_runner._running.discard(endpoint)
+                logger.error(
+                    f"Trigger '{item.name}': shed — background-task cap reached"
+                )
+                if agent_triggers_requests_total is not None:
+                    agent_triggers_requests_total.labels(method=request.method, code="503").inc()
+                return JSONResponse({"error": "overloaded"}, status_code=503)
         except Exception as exc:
             trigger_runner._running.discard(endpoint)
             logger.error(f"Trigger '{item.name}': failed to schedule background task: {exc!r}")

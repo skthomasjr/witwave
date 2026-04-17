@@ -57,6 +57,8 @@ from metrics import (
     agent_log_entries_total,
     agent_log_write_errors_total,
     agent_background_tasks,
+    agent_background_tasks_shed_total,
+    agent_background_tasks_timeout_total,
 )
 
 logger = logging.getLogger(__name__)
@@ -69,6 +71,18 @@ TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
 # Maximum number of bytes of prompt text included in INFO-level log messages.
 # Set to 0 to suppress prompt text from logs entirely; set higher for more context.
 LOG_PROMPT_MAX_BYTES = int(os.environ.get("LOG_PROMPT_MAX_BYTES", "200"))
+# Hard ceiling on how long an on_prompt_completed fan-out (continuation + webhook
+# extraction) is allowed to run before the tracking task is cancelled. Chosen to
+# be generous by default — 2× TASK_TIMEOUT_SECONDS + a 60s margin — so legitimate
+# LLM extraction completes while still bounding stuck downstreams. Override via
+# ON_PROMPT_COMPLETED_TIMEOUT (#549).
+ON_PROMPT_COMPLETED_TIMEOUT = float(
+    os.environ.get("ON_PROMPT_COMPLETED_TIMEOUT", str(TASK_TIMEOUT_SECONDS * 2 + 60))
+)
+# Maximum number of background tasks tracked by AgentExecutor at any one time.
+# When the cap is hit new tasks are shed and counted in
+# agent_background_tasks_shed_total rather than growing the set without bound (#549).
+BACKGROUND_TASKS_MAX = int(os.environ.get("BACKGROUND_TASKS_MAX", "1000"))
 
 
 async def log_entry(
@@ -461,6 +475,71 @@ class AgentExecutor(A2AAgentExecutor):
         self._webhook_runner = None
         self._bus = None
 
+    def track_background(
+        self,
+        coro,
+        *,
+        source: str = "unknown",
+        timeout: float | None = None,
+        name: str | None = None,
+    ) -> asyncio.Task | None:
+        """Schedule ``coro`` as a tracked background task with a bounded lifetime.
+
+        The task is added to ``_background_tasks`` and discarded via a done-callback
+        when it finishes, so the set stays bounded even if the coroutine raises.
+        A hard ceiling on in-flight tasks (``BACKGROUND_TASKS_MAX``) prevents the
+        set from growing without bound when downstreams hang — excess tasks are
+        shed and the ``agent_background_tasks_shed_total`` counter is incremented.
+        A per-task timeout (``ON_PROMPT_COMPLETED_TIMEOUT`` by default) prevents a
+        single stuck coroutine from pinning memory forever (#549).
+
+        Returns the scheduled task, or ``None`` if the task was shed.
+        """
+        if len(self._background_tasks) >= BACKGROUND_TASKS_MAX:
+            logger.warning(
+                "track_background: shedding %r task (in-flight=%d, cap=%d)",
+                source, len(self._background_tasks), BACKGROUND_TASKS_MAX,
+            )
+            if agent_background_tasks_shed_total is not None:
+                agent_background_tasks_shed_total.labels(source=source).inc()
+            # Close the coroutine so we don't leak a 'coroutine was never awaited'
+            # warning and any resources it holds are released immediately.
+            try:
+                coro.close()
+            except Exception:
+                pass
+            return None
+
+        _effective_timeout = timeout if timeout is not None else ON_PROMPT_COMPLETED_TIMEOUT
+
+        async def _bounded() -> None:
+            try:
+                await asyncio.wait_for(coro, timeout=_effective_timeout)
+            except asyncio.TimeoutError:
+                logger.error(
+                    "track_background: %r task exceeded timeout=%.1fs and was cancelled",
+                    source, _effective_timeout,
+                )
+                if agent_background_tasks_timeout_total is not None:
+                    agent_background_tasks_timeout_total.labels(source=source).inc()
+
+        task = asyncio.create_task(_bounded(), name=name or f"bg-{source}")
+        self._background_tasks.add(task)
+        if agent_background_tasks is not None:
+            agent_background_tasks.set(len(self._background_tasks))
+
+        def _on_done(t: asyncio.Task, _tasks=self._background_tasks) -> None:
+            _tasks.discard(t)
+            if agent_background_tasks is not None:
+                agent_background_tasks.set(len(_tasks))
+            if not t.cancelled():
+                exc = t.exception()
+                if exc is not None:
+                    logger.error(f"track_background({source!r}) error: {exc!r}")
+
+        task.add_done_callback(_on_done)
+        return task
+
     def set_continuation_runner(self, runner: "ContinuationRunner", bus: MessageBus) -> None:
         self._continuation_runner = runner
         self._bus = bus
@@ -677,29 +756,19 @@ class AgentExecutor(A2AAgentExecutor):
                     set_span_error(_span, _exc)
                     raise
         finally:
-            _opc_task = asyncio.create_task(self.on_prompt_completed(
+            self.track_background(
+                self.on_prompt_completed(
+                    source="a2a",
+                    kind="a2a",
+                    session_id=session_id,
+                    success=_success,
+                    response=_response,
+                    duration_seconds=time.monotonic() - _exec_start,
+                    error=_error,
+                    model=model,
+                    trace_context=trace_context,
+                ),
                 source="a2a",
-                kind="a2a",
-                session_id=session_id,
-                success=_success,
-                response=_response,
-                duration_seconds=time.monotonic() - _exec_start,
-                error=_error,
-                model=model,
-                trace_context=trace_context,
-            ))
-            self._background_tasks.add(_opc_task)
-            if agent_background_tasks is not None:
-                agent_background_tasks.set(len(self._background_tasks))
-            def _discard_and_update_exec(t, _tasks=self._background_tasks):
-                _tasks.discard(t)
-                if agent_background_tasks is not None:
-                    agent_background_tasks.set(len(_tasks))
-            _opc_task.add_done_callback(_discard_and_update_exec)
-            _opc_task.add_done_callback(
-                lambda t: logger.error(f"on_prompt_completed error: {t.exception()}")
-                if not t.cancelled() and t.exception() is not None
-                else None
             )
             if agent_a2a_request_duration_seconds is not None:
                 agent_a2a_request_duration_seconds.observe(time.monotonic() - _exec_start)
@@ -780,27 +849,17 @@ class AgentExecutor(A2AAgentExecutor):
             if message.result is not None and not message.result.done():
                 message.result.set_exception(e)
         finally:
-            _opc_task = asyncio.create_task(self.on_prompt_completed(
+            self.track_background(
+                self.on_prompt_completed(
+                    source="bus",
+                    kind=message.kind,
+                    session_id=_session_id,
+                    success=_success,
+                    response=_response,
+                    duration_seconds=time.monotonic() - _bus_start,
+                    error=_error,
+                    model=_model,
+                    trace_context=_trace_context,
+                ),
                 source="bus",
-                kind=message.kind,
-                session_id=_session_id,
-                success=_success,
-                response=_response,
-                duration_seconds=time.monotonic() - _bus_start,
-                error=_error,
-                model=_model,
-                trace_context=_trace_context,
-            ))
-            self._background_tasks.add(_opc_task)
-            if agent_background_tasks is not None:
-                agent_background_tasks.set(len(self._background_tasks))
-            def _discard_and_update_bus(t, _tasks=self._background_tasks):
-                _tasks.discard(t)
-                if agent_background_tasks is not None:
-                    agent_background_tasks.set(len(_tasks))
-            _opc_task.add_done_callback(_discard_and_update_bus)
-            _opc_task.add_done_callback(
-                lambda t: logger.error(f"on_prompt_completed error: {t.exception()}")
-                if not t.cancelled() and t.exception() is not None
-                else None
             )
