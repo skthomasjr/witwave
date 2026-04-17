@@ -231,8 +231,16 @@ onMounted(async () => {
   font-size: 12px;
   color: var(--nyx-text);
   line-height: 1.55;
-  white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* Plain-text bubbles (user / error) need pre-wrap so newlines render.
+   Agent bubbles render through marked → DOMPurify, which already produces
+   block elements for paragraph breaks; leaving pre-wrap on those caused
+   a visible trailing newline after marked's final </p>. */
+.cm.user .bbl,
+.cm.error .bbl {
+  white-space: pre-wrap;
 }
 
 .cm.user .bbl {

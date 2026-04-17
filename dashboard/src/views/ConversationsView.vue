@@ -258,8 +258,14 @@ function formatTs(ts: string): string {
   font-size: 12px;
   color: var(--nyx-text);
   line-height: 1.55;
-  white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* pre-wrap only on plain-text roles; agent rows render markdown (marked +
+   DOMPurify) which already emits block elements for paragraph breaks. */
+.cm.user .bbl,
+.cm.other .bbl {
+  white-space: pre-wrap;
 }
 
 .cm.user .bbl {
