@@ -20,6 +20,10 @@ a2_a2a_requests_total: prometheus_client.Counter | None = None
 a2_a2a_request_duration_seconds: prometheus_client.Histogram | None = None
 a2_a2a_last_request_timestamp_seconds: prometheus_client.Gauge | None = None
 
+# MCP request metrics (#560)
+a2_mcp_requests_total: prometheus_client.Counter | None = None
+a2_mcp_request_duration_seconds: prometheus_client.Histogram | None = None
+
 # Task execution metrics
 a2_tasks_total: prometheus_client.Counter | None = None
 a2_task_duration_seconds: prometheus_client.Histogram | None = None
@@ -130,6 +134,18 @@ if _enabled:
         "a2_a2a_last_request_timestamp_seconds",
         "Unix epoch of the most recent A2A request received.",
         ["agent", "agent_id", "backend"],
+    )
+
+    # MCP (#560)
+    a2_mcp_requests_total = prometheus_client.Counter(
+        "a2_mcp_requests_total",
+        "Total MCP JSON-RPC requests received on the /mcp endpoint by method and outcome.",
+        ["agent", "agent_id", "backend", "method", "status"],
+    )
+    a2_mcp_request_duration_seconds = prometheus_client.Histogram(
+        "a2_mcp_request_duration_seconds",
+        "Wall-clock duration of each MCP JSON-RPC request handled on /mcp.",
+        ["agent", "agent_id", "backend", "method"],
     )
 
     # Tasks

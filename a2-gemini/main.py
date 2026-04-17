@@ -25,6 +25,8 @@ from metrics import (
     a2_event_loop_lag_seconds,
     a2_health_checks_total,
     a2_info,
+    a2_mcp_request_duration_seconds,
+    a2_mcp_requests_total,
     a2_startup_duration_seconds,
     a2_task_restarts_total,
     a2_up,
@@ -266,105 +268,142 @@ async def main():
         # Gate on the same bearer token used by /conversations and /trace when
         # configured. Without this, any network caller could drive the LLM via
         # tools/call -> ask_agent and burn the operator's API key (#516).
-        if CONVERSATIONS_AUTH_TOKEN:
-            header = request.headers.get("Authorization", "")
-            if not hmac_mod.compare_digest(f"Bearer {CONVERSATIONS_AUTH_TOKEN}", header):
-                return JSONResponse({"error": "unauthorized"}, status_code=401)
+        #
+        # Transport-level observability (#560): wrap the full handler in a
+        # try/finally so every exit path records a request counter + latency
+        # histogram. The status taxonomy is bounded to keep cardinality low:
+        # success | unauthorized | parse_error | method_not_found |
+        # unknown_tool | missing_prompt | internal_error.
+        _mcp_start = time.monotonic()
+        _mcp_method = "unknown"
+        _mcp_status = "internal_error"
         try:
-            body = await request.json()
-        except Exception:
-            return JSONResponse({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}, status_code=400)
-        rpc_id = body.get("id")
-        method = body.get("method", "")
-        params = body.get("params") or {}
-
-        if method == "initialize":
-            return JSONResponse({
-                "jsonrpc": "2.0",
-                "id": rpc_id,
-                "result": {
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {"tools": {}},
-                    "serverInfo": {"name": AGENT_NAME, "version": AGENT_VERSION},
-                },
-            })
-
-        if method == "tools/list":
-            return JSONResponse({
-                "jsonrpc": "2.0",
-                "id": rpc_id,
-                "result": {
-                    "tools": [
-                        {
-                            "name": "ask_agent",
-                            "description": _agent_description,
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {"prompt": {"type": "string", "description": "The prompt to send to the agent."}},
-                                "required": ["prompt"],
-                            },
-                        }
-                    ]
-                },
-            })
-
-        if method == "tools/call":
-            tool_name = params.get("name", "")
-            if tool_name != "ask_agent":
-                return JSONResponse({
-                    "jsonrpc": "2.0",
-                    "id": rpc_id,
-                    "error": {"code": -32602, "message": f"Unknown tool: {tool_name!r}"},
-                })
-            arguments = params.get("arguments") or {}
-            prompt = arguments.get("prompt", "")
-            if not prompt:
-                return JSONResponse({
-                    "jsonrpc": "2.0",
-                    "id": rpc_id,
-                    "error": {"code": -32602, "message": "Missing required argument: prompt"},
-                })
-            # Optional max_tokens — same parsing semantics as the A2A path
-            # (positive int; non-positive or invalid is logged and dropped).
-            # Shared helper lives in shared/validation.py (#537, #460).
-            mcp_max_tokens = parse_max_tokens(
-                arguments.get("max_tokens"),
-                logger=logger,
-                source="MCP tools/call",
-            )
-            session_id = str(uuid.uuid4())
+            if CONVERSATIONS_AUTH_TOKEN:
+                header = request.headers.get("Authorization", "")
+                if not hmac_mod.compare_digest(f"Bearer {CONVERSATIONS_AUTH_TOKEN}", header):
+                    _mcp_status = "unauthorized"
+                    return JSONResponse({"error": "unauthorized"}, status_code=401)
             try:
-                from executor import run as _run_for_mcp
-                response = await _run_for_mcp(
-                    prompt,
-                    session_id,
-                    executor._sessions,
-                    executor._agent_md_content,
-                    executor._session_locks,
-                    history_save_failed=executor._history_save_failed,
-                    model=None,
-                    max_tokens=mcp_max_tokens,
-                )
-            except Exception as exc:
-                logger.error(f"MCP tools/call error: {exc!r}")
+                body = await request.json()
+            except Exception:
+                _mcp_status = "parse_error"
+                return JSONResponse({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}, status_code=400)
+            rpc_id = body.get("id")
+            method = body.get("method", "")
+            params = body.get("params") or {}
+            if method in ("initialize", "tools/list", "tools/call"):
+                _mcp_method = method
+
+            if method == "initialize":
+                _mcp_status = "success"
                 return JSONResponse({
                     "jsonrpc": "2.0",
                     "id": rpc_id,
-                    # Generic message — full exception detail is logged server-side
-                    # (line above) but not leaked to MCP clients (#455).
-                    "error": {"code": -32603, "message": "Internal server error"},
+                    "result": {
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": {"tools": {}},
+                        "serverInfo": {"name": AGENT_NAME, "version": AGENT_VERSION},
+                    },
                 })
+
+            if method == "tools/list":
+                _mcp_status = "success"
+                return JSONResponse({
+                    "jsonrpc": "2.0",
+                    "id": rpc_id,
+                    "result": {
+                        "tools": [
+                            {
+                                "name": "ask_agent",
+                                "description": _agent_description,
+                                "inputSchema": {
+                                    "type": "object",
+                                    "properties": {"prompt": {"type": "string", "description": "The prompt to send to the agent."}},
+                                    "required": ["prompt"],
+                                },
+                            }
+                        ]
+                    },
+                })
+
+            if method == "tools/call":
+                tool_name = params.get("name", "")
+                if tool_name != "ask_agent":
+                    _mcp_status = "unknown_tool"
+                    return JSONResponse({
+                        "jsonrpc": "2.0",
+                        "id": rpc_id,
+                        "error": {"code": -32602, "message": f"Unknown tool: {tool_name!r}"},
+                    })
+                arguments = params.get("arguments") or {}
+                prompt = arguments.get("prompt", "")
+                if not prompt:
+                    _mcp_status = "missing_prompt"
+                    return JSONResponse({
+                        "jsonrpc": "2.0",
+                        "id": rpc_id,
+                        "error": {"code": -32602, "message": "Missing required argument: prompt"},
+                    })
+                # Optional max_tokens — same parsing semantics as the A2A path
+                # (positive int; non-positive or invalid is logged and dropped).
+                # Shared helper lives in shared/validation.py (#537, #460).
+                mcp_max_tokens = parse_max_tokens(
+                    arguments.get("max_tokens"),
+                    logger=logger,
+                    source="MCP tools/call",
+                )
+                session_id = str(uuid.uuid4())
+                try:
+                    from executor import run as _run_for_mcp
+                    response = await _run_for_mcp(
+                        prompt,
+                        session_id,
+                        executor._sessions,
+                        executor._agent_md_content,
+                        executor._session_locks,
+                        history_save_failed=executor._history_save_failed,
+                        model=None,
+                        max_tokens=mcp_max_tokens,
+                    )
+                except Exception as exc:
+                    logger.error(f"MCP tools/call error: {exc!r}")
+                    _mcp_status = "internal_error"
+                    return JSONResponse({
+                        "jsonrpc": "2.0",
+                        "id": rpc_id,
+                        # Generic message — full exception detail is logged server-side
+                        # (line above) but not leaked to MCP clients (#455).
+                        "error": {"code": -32603, "message": "Internal server error"},
+                    })
+                _mcp_status = "success"
+                return JSONResponse({
+                    "jsonrpc": "2.0",
+                    "id": rpc_id,
+                    "result": {"content": [{"type": "text", "text": response}]},
+                })
+
+            _mcp_status = "method_not_found"
             return JSONResponse({
                 "jsonrpc": "2.0",
                 "id": rpc_id,
-                "result": {"content": [{"type": "text", "text": response}]},
+                "error": {"code": -32601, "message": f"Method not found: {method!r}"},
             })
-
-        return JSONResponse({
-            "jsonrpc": "2.0",
-            "id": rpc_id,
-            "error": {"code": -32601, "message": f"Method not found: {method!r}"},
-        })
+        finally:
+            if a2_mcp_requests_total is not None:
+                a2_mcp_requests_total.labels(
+                    agent=AGENT_OWNER,
+                    agent_id=AGENT_ID,
+                    backend=_BACKEND_ID,
+                    method=_mcp_method,
+                    status=_mcp_status,
+                ).inc()
+            if a2_mcp_request_duration_seconds is not None:
+                a2_mcp_request_duration_seconds.labels(
+                    agent=AGENT_OWNER,
+                    agent_id=AGENT_ID,
+                    backend=_BACKEND_ID,
+                    method=_mcp_method,
+                ).observe(time.monotonic() - _mcp_start)
 
     _routes = [
         Route("/health", health),
