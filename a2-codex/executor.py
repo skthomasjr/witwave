@@ -249,7 +249,22 @@ def _build_mcp_servers(mcp_config: dict) -> list:
                 if "args" in cfg:
                     params["args"] = list(cfg["args"])
                 if "env" in cfg:
-                    params["env"] = dict(cfg["env"])
+                    # Apply the same loader/interpreter env denylist used by
+                    # _shell_executor (#248) to MCP stdio env — MCPServerStdio
+                    # spawns a subprocess with identical code-injection risk
+                    # profile. Strip keys that could be used to hijack binary
+                    # resolution or dynamic-linker / interpreter behavior
+                    # before passing env to the SDK (#519).
+                    raw_env = dict(cfg["env"])
+                    sanitized_env = {k: v for k, v in raw_env.items() if k not in _SHELL_ENV_DENYLIST}
+                    rejected = set(raw_env) - set(sanitized_env)
+                    if rejected:
+                        logger.warning(
+                            "MCP server %r: stripped dangerous env vars from config env: %s",
+                            name,
+                            sorted(rejected),
+                        )
+                    params["env"] = sanitized_env
                 if "cwd" in cfg:
                     params["cwd"] = cfg["cwd"]
                 servers.append(MCPServerStdio(name=name, params=params))
