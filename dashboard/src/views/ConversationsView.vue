@@ -66,7 +66,12 @@ const filtered = computed(() => {
 function formatTs(ts: string): string {
   try {
     const d = new Date(ts);
-    return d.toLocaleString();
+    if (Number.isNaN(d.getTime())) return ts;
+    // Include milliseconds so messages that share a second still read in
+    // the same order we display them — the harness logs have sub-second
+    // precision (API emits microseconds; Date truncates to ms).
+    const ms = String(d.getMilliseconds()).padStart(3, "0");
+    return `${d.toLocaleString()}.${ms}`;
   } catch {
     return ts;
   }
