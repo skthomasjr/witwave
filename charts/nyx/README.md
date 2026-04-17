@@ -198,6 +198,81 @@ dropping the pod immediately. The drain takes longer, but there is no service ga
 and the backends' local session state are not yet safe for multi-replica operation. A future change will
 externalize scheduler state and session storage so the chart can move to a true HA topology.
 
+## Credentials for gitSync + backends
+
+Every `agents[].gitSyncs[]` and `agents[].backends[]` entry supports a three-way `credentials` block with identical
+shape between the two. Pick the path that matches your environment:
+
+```yaml
+# Chart-global defaults — inherited when per-entry credentials are unset.
+gitSync:
+  credentials:
+    existingSecret: ""
+    username: ""
+    token: ""
+    acknowledgeInsecureInline: false
+
+backends:
+  credentials:
+    existingSecret: ""
+    secrets: {}                # map of env-var-name → value
+    acknowledgeInsecureInline: false
+
+agents:
+  - name: bob
+    gitSyncs:
+      - name: autonomous-agent
+        repo: https://github.com/org/repo
+        # Per-entry override (omit to inherit chart-global default).
+        credentials:
+          existingSecret: bob-github-pat    # OR inline below, not both.
+    backends:
+      - name: claude
+        credentials:
+          secrets:
+            CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat-xxxxxxxxxxxx"
+          acknowledgeInsecureInline: true
+```
+
+**Three modes (mutually exclusive, in precedence order):**
+
+1. **`existingSecret`** — reference a Secret you (or a CI pipeline) pre-created in the release namespace. The
+   chart emits `envFrom: - secretRef: name: <existingSecret>`. Recommended for production; tokens never touch
+   helm release state or values files.
+
+2. **Inline values** (`username` + `token` for gitSync, `secrets: {}` map for backends) — chart auto-renders
+   a Secret named `<release>-<agent>-<entry>-{gitsync,backend}-credentials` and wires envFrom. Dev-friendly:
+   a single `--set` flag sourced from `.env` sets everything up. **Must** also set
+   `acknowledgeInsecureInline: true` or the chart aborts template render with a pointed warning — inline
+   tokens land in etcd release state, `helm get values`, and `kubectl describe`. Our own `values-test.yaml`
+   uses this path because smoke tests are ephemeral.
+
+3. **Empty (default)** — no auth envFrom rendered. gitSync runs anonymously (fine for public repos);
+   backends start but will fail on first LLM call.
+
+**Legacy `envFrom:` escape hatch** remains supported on every entry for custom auth setups (SSH-key secrets,
+multiple secrets merged, ConfigMaps) that the `credentials:` block doesn't cover. When both `credentials:`
+and `envFrom:` are set on the same entry, `credentials:` wins.
+
+### Installing with credentials from `.env`
+
+There's no Helm-native `.env` reader — easiest path is to shell-source before `helm upgrade`:
+
+```bash
+set -a; source .env; set +a
+helm upgrade --install nyx-test ./charts/nyx \
+  -f ./charts/nyx/values-test.yaml \
+  --set-string gitSync.credentials.username="$GITSYNC_USERNAME" \
+  --set-string gitSync.credentials.token="$GITSYNC_PASSWORD" \
+  --set     gitSync.credentials.acknowledgeInsecureInline=true \
+  --set-string backends.credentials.secrets.CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_CODE_OAUTH_TOKEN" \
+  --set     backends.credentials.acknowledgeInsecureInline=true \
+  -n nyx-test --create-namespace
+```
+
+Use `--set-string` on any value that might parse as a number / boolean to avoid type coercion (`--set x=01234` becomes an int).
+Per-agent or per-entry overrides use dot-paths like `--set agents[0].backends[0].credentials.secrets.FOO=bar`.
+
 ## Security
 
 ### Dashboard Ingress — fail-closed (#528)

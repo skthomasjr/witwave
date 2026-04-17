@@ -309,3 +309,157 @@ per-agent and per-backend enabled flags.
 {{- define "nyx.enabled" -}}
 {{- if hasKey . "enabled" -}}{{- .enabled -}}{{- else -}}true{{- end -}}
 {{- end -}}
+
+{{/*
+nyx.resolveCredentials — unified dev-friendly / production-friendly
+credentials resolver used by gitSync (GITSYNC_USERNAME / GITSYNC_PASSWORD)
+and by each backend (CLAUDE_CODE_OAUTH_TOKEN, OPENAI_API_KEY, …).
+
+Call site passes a dict with:
+  .creds        — the per-entry credentials block (may be empty)
+  .default      — the chart-global fallback credentials block (may be empty)
+  .secretName   — the name the chart-rendered Secret should use in inline mode
+                  (e.g. "bob-claude-credentials", "bob-autonomous-agent-gitsync-credentials")
+  .context      — string used in error messages to identify the caller
+                  (e.g. "agents[0].backends[0] (bob/claude)")
+
+The helper fails render with {{- fail ... }} when:
+  - inline values (username/token or secrets map) are populated without
+    acknowledgeInsecureInline=true
+  - nothing at all resolves (no existingSecret, no inline, no default)
+    AND .required is true
+
+Returns the NAME of the Secret the caller should envFrom (either the
+existingSecret or the chart-rendered one). Empty string when no
+credentials are needed. Callers use the return to wire envFrom.
+*/}}
+{{- define "nyx.resolveCredentials" -}}
+{{- $creds := .creds | default dict -}}
+{{- $def := .default | default dict -}}
+{{- $ctx := .context | default "(unknown)" -}}
+{{- $existing := "" -}}
+{{- if $creds.existingSecret -}}
+  {{- $existing = $creds.existingSecret -}}
+{{- else if $def.existingSecret -}}
+  {{- $existing = $def.existingSecret -}}
+{{- end -}}
+{{- $inlineUser := or $creds.username $def.username -}}
+{{- $inlineTok  := or $creds.token $def.token -}}
+{{- $inlineSecs := $creds.secrets | default $def.secrets | default dict -}}
+{{- $hasInline  := or (or $inlineUser $inlineTok) (gt (len $inlineSecs) 0) -}}
+{{- $ack := or $creds.acknowledgeInsecureInline $def.acknowledgeInsecureInline -}}
+{{- if and $existing $hasInline -}}
+  {{- /* existingSecret wins; inline is ignored. Emit a NOTES.txt-side warning via .Warnings could go here. */ -}}
+{{- end -}}
+{{- if $existing -}}
+{{- $existing -}}
+{{- else if $hasInline -}}
+  {{- if not $ack -}}
+    {{- fail (printf "charts/nyx: %s has inline credential values set but acknowledgeInsecureInline is false. Inline tokens land in helm release history, `helm get values`, and etcd. Set acknowledgeInsecureInline: true to confirm the risk (dev/smoke only) OR use existingSecret to reference a pre-created Secret (production)." $ctx) -}}
+  {{- end -}}
+{{- .secretName -}}
+{{- else -}}
+{{- /* no credentials resolved — empty return means "don't render envFrom" */ -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+nyx.inlineCredentialData — returns the stringData map for a chart-rendered
+Secret in inline mode. Caller handles Secret metadata + passes result into
+stringData:. Merges default + entry maps so either/or chart-global vs
+per-entry works. gitSync credentials map into GITSYNC_USERNAME /
+GITSYNC_PASSWORD keys; backend credentials map open-ended env-var names.
+*/}}
+{{- define "nyx.inlineCredentialData" -}}
+{{- $creds := .creds | default dict -}}
+{{- $def := .default | default dict -}}
+{{- $kind := .kind -}} {{/* "gitsync" or "backend" */}}
+{{- $user := or $creds.username $def.username -}}
+{{- $tok := or $creds.token $def.token -}}
+{{- $secs := $creds.secrets | default $def.secrets | default dict -}}
+{{- $out := dict -}}
+{{- if eq $kind "gitsync" -}}
+  {{- if $user -}}{{- $_ := set $out "GITSYNC_USERNAME" $user -}}{{- end -}}
+  {{- if $tok  -}}{{- $_ := set $out "GITSYNC_PASSWORD" $tok  -}}{{- end -}}
+{{- else if eq $kind "backend" -}}
+  {{- range $k, $v := $secs -}}
+    {{- $_ := set $out $k $v -}}
+  {{- end -}}
+{{- end -}}
+{{- toYaml $out -}}
+{{- end -}}
+
+{{/*
+nyx.renderGitSyncEnvFrom — emits the envFrom block for a gitSync entry,
+resolving credentials via nyx.resolveCredentials. Falls back to the
+entry's legacy `envFrom:` list when no credentials/default resolve, so
+deployments that haven't adopted the new shape keep working verbatim.
+
+Caller passes:
+  .gs        — the single gitSyncs[] entry
+  .agent     — the enclosing agent dict (for name)
+  .default   — the chart-global gitSync.credentials fallback
+  .release   — $.Release.Name
+
+Writes a full `envFrom:` block including the leading key + indentation
+when there's anything to emit; nothing otherwise. Caller should NOT
+wrap this in `if` — the helper decides internally.
+*/}}
+{{- define "nyx.renderGitSyncEnvFrom" -}}
+{{- $gs := .gs -}}
+{{- $agent := .agent -}}
+{{- $def := .default | default dict -}}
+{{- $creds := $gs.credentials | default dict -}}
+{{- $ctx := printf "agent %q gitSync %q" $agent.name $gs.name -}}
+{{- $secretName := printf "%s-%s-%s-gitsync-credentials" .release $agent.name $gs.name | trunc 253 -}}
+{{- $resolved := include "nyx.resolveCredentials" (dict "creds" $creds "default" $def "secretName" $secretName "context" $ctx) -}}
+{{- $legacy := $gs.envFrom -}}
+{{- if $resolved }}
+envFrom:
+  - secretRef:
+      name: {{ $resolved | quote }}
+{{- else if $legacy }}
+envFrom:
+{{ toYaml $legacy | indent 2 }}
+{{- end -}}
+{{- end -}}
+
+{{/*
+nyx.renderBackendEnvFrom — same pattern for agents[].backends[] entries.
+Inline "secrets:" map (vs gitSync's username/password) is the dev path.
+*/}}
+{{- define "nyx.renderBackendEnvFrom" -}}
+{{- $b := .backend -}}
+{{- $agent := .agent -}}
+{{- $def := .default | default dict -}}
+{{- $creds := $b.credentials | default dict -}}
+{{- $ctx := printf "agent %q backend %q" $agent.name $b.name -}}
+{{- $secretName := printf "%s-%s-%s-backend-credentials" .release $agent.name $b.name | trunc 253 -}}
+{{- $resolved := include "nyx.resolveCredentials" (dict "creds" $creds "default" $def "secretName" $secretName "context" $ctx) -}}
+{{- $legacy := $b.envFrom -}}
+{{- if $resolved }}
+envFrom:
+  - secretRef:
+      name: {{ $resolved | quote }}
+{{- else if $legacy }}
+envFrom:
+{{ toYaml $legacy | indent 2 }}
+{{- end -}}
+{{- end -}}
+
+{{/*
+nyx.hasInlineCredentials — true when the creds-or-default combo has any
+inline secret material set. Used by the credential-secret templates to
+decide whether to render a Secret at all.
+*/}}
+{{- define "nyx.hasInlineCredentials" -}}
+{{- $creds := .creds | default dict -}}
+{{- $def := .default | default dict -}}
+{{- $kind := .kind -}}
+{{- if eq $kind "gitsync" -}}
+  {{- if or (or $creds.username $def.username) (or $creds.token $def.token) -}}true{{- end -}}
+{{- else if eq $kind "backend" -}}
+  {{- $secs := $creds.secrets | default $def.secrets | default dict -}}
+  {{- if gt (len $secs) 0 -}}true{{- end -}}
+{{- end -}}
+{{- end -}}

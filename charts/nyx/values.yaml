@@ -307,6 +307,33 @@ gitSync:
     # tag defaults to .Chart.AppVersion when empty
     tag: ""
 
+  # Default credentials for every agents[].gitSyncs[] entry unless overridden
+  # per-entry via agents[].gitSyncs[].credentials. Mirrors the pattern the
+  # ingress.auth block already uses for basic-auth (#528) — three mutually
+  # exclusive modes, in precedence order:
+  #
+  #   1. existingSecret — reference a pre-created Secret in the release
+  #      namespace. The recommended path for production.
+  #
+  #   2. inline username + token + acknowledgeInsecureInline=true — chart
+  #      renders a Secret for you. Convenient for local dev and smoke tests
+  #      (our own values-test.yaml uses this path), but tokens land in etcd
+  #      release state + `helm get values` + `kubectl describe`, so NEVER
+  #      commit a values file with inline tokens to a shared repo.
+  #
+  #   3. empty (default) — no auth envFrom rendered. Fine for anonymous
+  #      clones of public repos.
+  #
+  # When both existingSecret and inline token are populated, existingSecret
+  # wins and a warning is logged via NOTES.txt. When inline username/token
+  # are populated but acknowledgeInsecureInline stays false, chart aborts
+  # render with a clear message pointing at this comment.
+  credentials:
+    existingSecret: ""
+    username: ""
+    token: ""
+    acknowledgeInsecureInline: false
+
 # Enable Prometheus metrics for all agents and their backends.
 # When enabled, prometheus.io scrape annotations are added to each agent Service
 # and the /metrics endpoint is activated on both nyx-harness and backend containers.
@@ -575,6 +602,32 @@ defaults:
           cpu: "1"
           memory: 1Gi
 
+# Default credentials for every agents[].backends[] entry unless overridden
+# per-backend via agents[].backends[].credentials. Three mutually exclusive
+# paths, mirroring the gitSync.credentials pattern above:
+#
+#   1. existingSecret — reference a pre-created Secret with the env vars the
+#      backend needs (CLAUDE_CODE_OAUTH_TOKEN, OPENAI_API_KEY, GEMINI_API_KEY,
+#      or whatever the specific backend reads). Recommended for production.
+#
+#   2. inline secrets: {} map + acknowledgeInsecureInline=true — chart renders
+#      a Secret from the map entries and wires envFrom automatically. Dev only;
+#      tokens end up in etcd release state + `helm get values`.
+#
+#   3. empty (default) — no auth envFrom rendered. Backend starts but will
+#      fail at first LLM call. Useful for smoke-testing the harness path
+#      without exercising the LLM API.
+#
+# Chart-global defaults rarely make sense here because each backend type
+# takes different credentials — prefer per-backend `agents[].backends[].credentials`
+# over chart-global. This block exists mainly so single-backend-type
+# deployments (only a2-claude across all agents, say) can set one token once.
+backends:
+  credentials:
+    existingSecret: ""
+    secrets: {}                  # map of env-var-name → value; dev only
+    acknowledgeInsecureInline: false
+
 # List of agents to deploy. Each agent runs as a single pod containing
 # the nyx-harness orchestrator and one or more backend sidecars.
 agents:
@@ -662,8 +715,19 @@ agents:
     #     # depth: 1
     #     # git-sync image. Defaults to the internal image (upstream git-sync + rsync).
     #     # image: ghcr.io/skthomasjr/images/git-sync:latest
-    #     # Secret containing auth credentials (GITSYNC_USERNAME, GITSYNC_PASSWORD,
-    #     # or GITSYNC_SSH_KEY_FILE). See git-sync documentation for full options.
+    #     # Credentials for the sidecar. Three mutually exclusive paths — the
+    #     # `credentials:` block takes precedence over the legacy `envFrom:` shape
+    #     # when both are set. Leave empty to inherit top-level gitSync.credentials.
+    #     # credentials:
+    #     #   # Path 1: reference a pre-created Secret (production default).
+    #     #   existingSecret: bob-github-pat
+    #     #   # Path 2: inline dev credentials. MUST also set acknowledgeInsecureInline=true.
+    #     #   username: skthomasjr
+    #     #   token: ghp_xxxxxxxxxxxxxxxxxxxx
+    #     #   acknowledgeInsecureInline: true
+    #     #
+    #     # Legacy escape hatch — raw envFrom list for custom auth setups (SSH key
+    #     # secrets, multiple secrets, etc.) that the credentials block doesn't cover.
     #     # envFrom:
     #     #   - secretRef:
     #     #       name: git-sync-credentials
@@ -753,8 +817,23 @@ agents:
         #   - name: GEMINI_MAX_HISTORY_TURNS
         #     value: "100"
 
-        # # Environment variables sourced from Secrets or ConfigMaps.
-        # # See the backend README for required secret keys.
+        # # Backend credentials. Three mutually exclusive paths — see
+        # # backends.credentials top-level comment for the full picture.
+        # # credentials:
+        # #   existingSecret: adam-claude-secrets          # production default
+        # #
+        # #   # OR inline (dev only) — MUST also set acknowledgeInsecureInline=true.
+        # #   # `secrets:` is a free-form map of env-var-name → value. The backend
+        # #   # reads whichever env vars it needs (CLAUDE_CODE_OAUTH_TOKEN for
+        # #   # a2-claude, OPENAI_API_KEY for a2-codex, GEMINI_API_KEY for a2-gemini).
+        # #   secrets:
+        # #     CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat-xxxxxxxxxxxxxxxxxxxx"
+        # #   acknowledgeInsecureInline: true
+        #
+        # # Legacy escape hatch — raw envFrom list for custom auth setups
+        # # (SSH-key secrets, multiple secrets, ConfigMaps, etc.) that the
+        # # credentials block doesn't cover. When both credentials and envFrom
+        # # are set, credentials takes precedence.
         # envFrom:
         #   - secretRef:
         #       name: adam-claude-secrets
