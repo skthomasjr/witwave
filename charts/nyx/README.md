@@ -101,12 +101,12 @@ helm uninstall nyx --namespace nyx
 | `ingress.auth.basic.existingSecret` | Name of an existing Secret containing an htpasswd `auth` key. When set, the chart does not render its own Secret | `""` |
 | `ingress.auth.basic.htpasswd` | Inline htpasswd line(s) rendered into a chart-managed Secret when `existingSecret` is empty. Multi-line strings are supported | `""` |
 | `ingress.auth.basic.realm` | Browser auth-prompt realm displayed by nginx-ingress | `nyx dashboard` |
-| `autoscaling.enabled` | Deploy a HorizontalPodAutoscaler per agent (Deployment omits `replicas` when enabled) | `false` |
+| `autoscaling.enabled` | Deploy a HorizontalPodAutoscaler per agent (Deployment omits `replicas` when enabled). See [Reliability](#reliability) — multi-replica is not yet safe for the harness's singleton schedulers (#559) | `false` |
 | `autoscaling.minReplicas` | HPA minimum replicas | `1` |
 | `autoscaling.maxReplicas` | HPA maximum replicas | `3` |
 | `autoscaling.targetCPUUtilizationPercentage` | HPA CPU utilization target | `80` |
 | `autoscaling.targetMemoryUtilizationPercentage` | HPA memory utilization target (optional) | unset |
-| `podDisruptionBudget.enabled` | Deploy a PodDisruptionBudget per agent | `false` |
+| `podDisruptionBudget.enabled` | Deploy a PodDisruptionBudget per agent. Strongly recommended for production — safe at replicas=1 (blocks node drains until a replacement pod is Ready instead of dropping immediately). See [Reliability](#reliability) (#559) | `false` |
 | `podDisruptionBudget.minAvailable` | Minimum available replicas during voluntary disruption | `1` |
 | `podDisruptionBudget.maxUnavailable` | Alternative to `minAvailable` — max unavailable replicas | unset |
 | `terminationGracePeriodSeconds` | Pod termination grace period. Must be strictly greater than `preStop.delaySeconds` so SIGTERM fires with enough remaining time for the harness and backends to drain in-flight work before SIGKILL (#547) | `60` |
@@ -142,6 +142,44 @@ agents:
   - name: nova
   - name: kira
 ```
+
+## Reliability
+
+### Single-replica default is intentional (#559)
+
+Each agent's Deployment renders `replicas: 1` by default, and both `autoscaling.enabled` and
+`podDisruptionBudget.enabled` default to `false`. This is deliberate — not an oversight:
+
+- **nyx-harness runs singleton schedulers.** The harness owns the heartbeat scheduler, job scheduler, task
+  scheduler, trigger handler, and continuation runner. Running two harness pods for the same agent would
+  cause every scheduled item to fire twice.
+- **Backends keep local session state.** Conversation logs and per-session memory live on a local volume
+  inside each backend pod. Running two backend pods for the same agent can interleave writes.
+
+The trade-off is that with `replicas=1` AND `podDisruptionBudget.enabled=false`, every voluntary disruption
+(`kubectl drain`, node upgrade, cluster-autoscaler scale-down) immediately drops the pod. During the ~30s
+gap until the replacement is Ready: scheduled jobs and heartbeats miss their fire windows, inbound triggers
+return 503, in-flight A2A calls return 5xx, and webhook deliveries are lost.
+
+The chart emits a helm NOTES warning after `helm install`/`helm upgrade` whenever an agent is deployed with
+replicas=1 AND both HPA and PDB disabled.
+
+### HA opt-in path
+
+The safest production configuration keeps the singleton topology but adds a PodDisruptionBudget:
+
+```yaml
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+```
+
+With `replicas=1` this blocks `kubectl drain` until a replacement pod is Ready on another node — instead of
+dropping the pod immediately. The drain takes longer, but there is no service gap.
+
+**Do not simply raise `replicas > 1` or `autoscaling.minReplicas >= 2`** — the harness's singleton schedulers
+and the backends' local session state are not yet safe for multi-replica operation. A future change will
+externalize scheduler state and session storage so the chart can move to a true HA topology.
 
 ## Security
 

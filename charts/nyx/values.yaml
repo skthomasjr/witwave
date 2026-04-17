@@ -96,10 +96,38 @@ ingress:
       # Realm shown in the browser auth prompt.
       realm: "nyx dashboard"
 
+# ----------------------------------------------------------------------------
+# Replica topology — single-replica default is INTENTIONAL (#559).
+#
+# Each agent's Deployment renders `replicas: 1` by default (see the Deployment
+# template). This is deliberate for per-agent workloads: nyx-harness owns the
+# heartbeat scheduler, job scheduler, task scheduler, trigger handler, and
+# continuation runner, and running two harness pods for the same agent would
+# cause those schedulers to fire twice. Backends are mostly stateless but
+# still keep per-session conversation logs on a local volume — running two
+# backend pods for the same agent can interleave writes.
+#
+# The trade-off: with replicas=1 AND PDB/HPA disabled, any voluntary
+# disruption (`kubectl drain`, node upgrade, cluster autoscaler scale-down)
+# causes a brief outage. Scheduled jobs/heartbeats miss fire windows,
+# inbound triggers return 503, and in-flight A2A calls fail.
+#
+# HA opt-in path (requires coordination — DO NOT just flip replicas > 1):
+#   1. Land default resource requests/limits (#553 — already landed).
+#   2. Enable `podDisruptionBudget.enabled: true` with `minAvailable: 1` to
+#      block node drains until a replacement pod is Ready elsewhere. Safe
+#      even at replicas=1 (blocks the drain instead of dropping the pod).
+#   3. Only raise `replicas > 1` or `autoscaling.minReplicas >= 2` AFTER
+#      backends are updated to use shared storage or externalized session
+#      state — otherwise scheduled jobs will double-fire and conversation
+#      logs will interleave.
+# ----------------------------------------------------------------------------
+
 # Horizontal autoscaling for agent Deployments. Disabled by default — enable
 # per-agent via agents[].autoscaling to override these defaults. When enabled,
 # the Deployment's replicas field is omitted so the HPA owns replica count
-# (#434).
+# (#434). NOTE: Enabling autoscaling currently conflicts with the harness's
+# singleton schedulers — see the Replica topology note above before enabling.
 autoscaling:
   enabled: false
   minReplicas: 1
@@ -110,6 +138,12 @@ autoscaling:
 
 # PodDisruptionBudget for agent Deployments. Disabled by default — enable to
 # limit voluntary disruption during node drain and cluster upgrades (#435).
+# STRONGLY RECOMMENDED for production: with replicas=1 and PDB disabled, every
+# node drain drops the pod immediately, suspending heartbeats/jobs/triggers
+# until the new pod is Ready (typically ~30s). Setting `enabled: true` with
+# `minAvailable: 1` blocks the drain until a replacement pod is Ready on
+# another node — safe even at replicas=1, and the recommended production
+# default. Leaving it disabled is fine for dev/test (#559).
 podDisruptionBudget:
   enabled: false
   minAvailable: 1

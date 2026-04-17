@@ -41,6 +41,40 @@ If pulling images from a private registry:
     --docker-password=<token> \
     -n {{ .Release.Namespace }}
 
+RELIABILITY
+-----------
+{{- $warnAgents := list }}
+{{- range $agent := .Values.agents }}
+{{- if eq (include "nyx.enabled" $agent) "true" }}
+{{- $as := dict }}
+{{- if $agent.autoscaling }}{{ $as = $agent.autoscaling }}{{ else if $.Values.autoscaling }}{{ $as = $.Values.autoscaling }}{{ end }}
+{{- $pdb := dict }}
+{{- if $agent.podDisruptionBudget }}{{ $pdb = $agent.podDisruptionBudget }}{{ else if $.Values.podDisruptionBudget }}{{ $pdb = $.Values.podDisruptionBudget }}{{ end }}
+{{- if and (not $as.enabled) (not $pdb.enabled) }}
+{{- $warnAgents = append $warnAgents $agent.name }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if $warnAgents }}
+WARNING: The following agents are deployed with replicas=1, HPA disabled, and PDB disabled:
+{{- range $warnAgents }}
+  • {{ $.Release.Name }}-{{ . }}
+{{- end }}
+
+This is the default shape and is fine for dev/test. In production it means
+every `kubectl drain`, node upgrade, or cluster-autoscaler scale-down causes
+a brief outage: the harness's scheduled jobs, heartbeats, and triggers miss
+fire windows, and in-flight A2A calls return 5xx until the replacement pod
+is Ready (typically ~30s).
+
+Recommended mitigation (safe at replicas=1 — see charts/nyx/README.md#reliability):
+  helm upgrade {{ .Release.Name }} ... --set podDisruptionBudget.enabled=true
+
+This enables a PodDisruptionBudget with `minAvailable: 1`, which blocks the
+drain until a replacement pod is Ready on another node instead of dropping
+the pod immediately. See #559 for background.
+{{- end }}
+
 METRICS
 -------
 {{- if .Values.metrics.enabled }}
