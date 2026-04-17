@@ -14,8 +14,26 @@ file in order and follows the instructions. There is no central test runner — 
 900-cleanup.md   — uninstall the test release
 ```
 
-Stop the run early if `000-init.md` fails (no point exercising agents that aren't ready). Skip tests with
-`enabled: false` in their frontmatter.
+Stop the run early if `000-init.md` fails (no point exercising agents that aren't ready).
+
+### Check the spec's `enabled` flag *before* running
+
+**Before executing any spec, read its frontmatter and verify `enabled: true`.** A spec with `enabled: false` must be
+skipped entirely — do not dispatch the test prompt, do not curl the endpoint, do not look in the conversation log.
+Report it as `⊘ skipped` in the output table with the reason pulled from the spec's description or a nearby comment.
+
+Why this matters: `enabled: false` usually signals that the underlying fixture (a disabled job, a removed backend,
+an absent env var) is not present in the running deployment. Running the spec anyway produces a false-negative
+failure that masks real issues. The check is cheap:
+
+```bash
+awk '/^---$/{c++; if (c==2) exit} c==1 && /^enabled:/{print}' tests/014-continuation-fires.md
+# enabled: true   ← run it
+# enabled: false  ← skip it, record as ⊘
+```
+
+Agents exercising the suite should default to **skip** when `enabled:` is missing or unparseable, and should log the
+decision so the reviewer can tell skip-from-spec apart from skip-from-absent-fixture.
 
 ## Framework conventions
 
