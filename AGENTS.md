@@ -78,6 +78,8 @@ Each backend:
 - Exposes `/` as the A2A JSON-RPC task endpoint
 - Exposes `/health` for health checks
 - Exposes `/metrics` for Prometheus scraping (when `METRICS_ENABLED` is set)
+- Exposes `/conversations`, `/trace`, and `/mcp` guarded by the same bearer token (`CONVERSATIONS_AUTH_TOKEN`) —
+  parity across all three backends (#510, #516, #518). An empty token logs a startup warning (#517)
 - Manages its own session state, conversation log (`conversation.jsonl`), and memory (`/memory/`)
 - Receives behavioral instructions via a mounted file (`CLAUDE.md` for a2-claude, `AGENTS.md` for a2-codex, `GEMINI.md` for a2-gemini) and A2A identity via a mounted `agent-card.md`
 

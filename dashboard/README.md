@@ -8,7 +8,7 @@ door, no cross-agent fan-out inside any one agent's pod.
 
 | View              | What it shows                                                                    |
 | ----------------- | -------------------------------------------------------------------------------- |
-| Team              | Agent cards with per-backend health bubbles + a chat panel on selection          |
+| Team              | Agent cards with per-backend health bubbles + a chat panel on selection (send + history load are timeout-bounded with a cancel button, #535) |
 | Calendar          | Conversation log plotted on a day/week/month grid (vue-cal)                      |
 | Jobs              | Scheduled jobs across every agent, with search + refresh                         |
 | Tasks             | Day/window-scheduled tasks across every agent                                    |

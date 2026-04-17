@@ -50,7 +50,7 @@ below.
 | `GET /metrics`                | Prometheus metrics                                                                                |
 | `GET /conversations`          | Conversation log (JSONL, filterable by `since`/`limit`)                                           |
 | `GET /trace`                  | Trace log (JSONL, filterable by `since`/`limit`)                                                  |
-| `POST /mcp`                   | MCP JSON-RPC server (`initialize`, `tools/list`, `tools/call`); exposes a single `ask_agent` tool |
+| `POST /mcp`                   | MCP JSON-RPC server (`initialize`, `tools/list`, `tools/call`); exposes a single `ask_agent` tool. Requires `Authorization: Bearer $CONVERSATIONS_AUTH_TOKEN` (#518) |
 
 ## Key files
 

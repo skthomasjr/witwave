@@ -323,7 +323,10 @@ Each backend container additionally exposes:
   503/`{"status": "starting"}` while initializing
 - `GET /metrics` — Prometheus metrics (when `METRICS_ENABLED` is set)
 - `POST /mcp` — MCP JSON-RPC server (`initialize`, `tools/list`, `tools/call` with a single `ask_agent` tool); allows
-  MCP hosts (Claude Desktop, Cursor, VS Code extensions) to invoke the agent as a tool without going through nyx-harness
+  MCP hosts (Claude Desktop, Cursor, VS Code extensions) to invoke the agent as a tool without going through
+  nyx-harness. **All three backends require a bearer token** (`CONVERSATIONS_AUTH_TOKEN`) on `/mcp` (#510, #516, #518);
+  the shared token guard also gates `/conversations` and `/trace`. If the env var is left empty the backend logs a
+  startup warning (#517) — set a non-empty token in production.
 
 ## Memory
 
@@ -339,6 +342,50 @@ Memory files are not committed to source control. nyx-harness has no memory laye
 | a2-claude | Anthropic API key  | `ANTHROPIC_API_KEY`                  |
 | a2-codex  | OpenAI API key     | `OPENAI_API_KEY`                     |
 | a2-gemini | Gemini API key     | `GEMINI_API_KEY` or `GOOGLE_API_KEY` |
+
+## Security
+
+Three cross-cutting security gates land in this cycle. Each is configured via environment variables; all three ship
+default-closed but with a warning when left unconfigured so an oversight is loud rather than silent.
+
+### Backend `/mcp`, `/conversations`, `/trace` bearer auth
+
+All three backends (`a2-claude`, `a2-codex`, `a2-gemini`) now require a bearer token on the `/mcp`, `/conversations`,
+and `/trace` endpoints — **parity across backends** (#510, #516, #518). Set `CONVERSATIONS_AUTH_TOKEN` on every backend
+container. If it is unset or empty the backend logs a startup warning (#517) and the shared guard in
+`shared/conversations.py` refuses to serve the protected endpoints.
+
+nyx-harness forwards inbound `/conversations` and `/trace` reads to the backends — set
+`BACKEND_CONVERSATIONS_AUTH_TOKEN` on the harness to match so the aggregated reads continue to work. See the
+environment variable tables below.
+
+### Webhook URL allow-list and scheme guard (#524)
+
+Outbound webhooks now go through an SSRF-resistant URL check. See [URL safety (#524)](#url-safety-524) under Outbound
+Webhooks for the full rules. Migration: any webhook markdown that previously used `url: http://{{env.FOO}}/…` must be
+rewritten to use `url-env-var: FOO` — `{{env.*}}` substitutions in the `url:` field are no longer honoured. Private /
+loopback / link-local / reserved destinations can be explicitly opted in via the `WEBHOOK_URL_ALLOWED_HOSTS` env var
+on nyx-harness (comma-separated `host` or `host:port` entries).
+
+### Dashboard Ingress (#528)
+
+The dashboard Ingress template is default-closed: `ingress.enabled=true` fails template render unless one of the
+following is configured — chart-managed basic auth (`ingress.auth.enabled=true`, the default), an explicit escape
+hatch (`ingress.auth.allowInsecure=true`), or a user-supplied auth annotation (nginx-ingress `auth-url` / `auth-signin`
+or a traefik middleware). See [`charts/nyx/README.md`](charts/nyx/README.md) for the full `ingress.auth.*` values.
+
+### Operator namespace-scoped RBAC (#532)
+
+The `nyx-operator` chart supports a namespace-scoped deployment mode. Set `rbac.scope=namespace` and
+`rbac.watchNamespaces: [...]` to install per-namespace Role/RoleBindings only (no ClusterRole/ClusterRoleBinding), and
+pass the matching `--watch-namespaces` flag to restrict the controller-runtime cache. See
+[`charts/nyx-operator/README.md`](charts/nyx-operator/README.md).
+
+### Pod security (#541)
+
+The agent chart's pod spec now sets `seccompProfile: RuntimeDefault` alongside the existing `runAsNonRoot` / `runAsUser`
+settings, and the dashboard pod runs as non-root. This keeps the chart compatible with the Pod Security Standards
+"restricted" profile out of the box.
 
 ## Configuration
 
@@ -362,6 +409,7 @@ Memory files are not committed to source control. nyx-harness has no memory laye
 | `WEBHOOK_MAX_CONCURRENT_DELIVERIES`         | `50`                            | Maximum number of in-flight webhook delivery tasks across all subscriptions; deliveries beyond this cap are shed and counted                          |
 | `WEBHOOK_MAX_CONCURRENT_DELIVERIES_PER_SUB` | `10`                            | Per-subscription cap on concurrent in-flight deliveries; also settable per webhook via `max-concurrent-deliveries` frontmatter                        |
 | `WEBHOOK_EXTRACTION_TIMEOUT`                | `120`                           | Maximum seconds to wait for a single LLM extraction call inside a webhook delivery; prevents a slow backend from holding a delivery slot indefinitely |
+| `WEBHOOK_URL_ALLOWED_HOSTS`                 | _(unset)_                       | Comma-separated `host` or `host:port` entries that are allowed to override the SSRF guard on private / loopback / reserved destinations (#524)        |
 | `JOBS_MAX_CONCURRENT`                       | `0` (unlimited)                 | Maximum number of jobs that may run concurrently; `0` disables the limit                                                                              |
 | `TASKS_MAX_CONCURRENT`                      | `0` (unlimited)                 | Maximum number of tasks that may run concurrently; `0` disables the limit                                                                             |
 | `TASK_TIMEOUT_SECONDS`                      | `300`                           | Task timeout in seconds, applied to A2A backend requests                                                                                              |
@@ -381,7 +429,7 @@ Memory files are not committed to source control. nyx-harness has no memory laye
 | `AGENT_URL`                | `http://localhost:8080/`           | Public A2A endpoint URL for the agent card                                               |
 | `BACKEND_PORT`             | `8080`                             | HTTP port the backend listens on (internal)                                              |
 | `METRICS_ENABLED`          | _(unset)_                          | Set to any non-empty value to expose `/metrics`                                          |
-| `CONVERSATIONS_AUTH_TOKEN` | _(unset)_                          | Bearer token required to access `/conversations` and `/trace`                            |
+| `CONVERSATIONS_AUTH_TOKEN` | _(unset — warn on empty)_          | Bearer token required to access `/conversations`, `/trace`, and `/mcp` on all three backends (#510, #516, #517, #518) |
 | `TASK_STORE_PATH`          | _(unset)_                          | Path for SQLite A2A task store; defaults to in-memory (state lost on restart)            |
 | `WORKER_MAX_RESTARTS`      | `5`                                | Consecutive crash limit before a critical worker marks the backend not-ready             |
 | `LOG_PROMPT_MAX_BYTES`     | `200`                              | Maximum bytes of the prompt logged at INFO level; `0` suppresses prompt logging entirely |
@@ -419,12 +467,13 @@ frontmatter fields:
 
 - The `url:` template may only reference the built-in variables listed below. `{{env.VAR}}` references and
   extraction-defined variables are **not** substituted in the URL field — env-derived URLs must be placed
-  in a single env var and read via `url-env-var`.
+  in a single env var and read via `url-env-var`. **Migration:** any webhook previously using
+  `url: http://{{env.FOO}}/…` must switch to `url-env-var: FOO` — render fails loudly otherwise.
 - Only `http` and `https` URLs are accepted. Schemes like `file://`, `gopher://`, `ftp://` are rejected.
 - URLs whose host is a loopback / link-local / private / reserved IP literal (e.g. `127.0.0.1`,
   `169.254.169.254`, `10.0.0.5`) are rejected to prevent SSRF to cloud metadata endpoints and internal
   services. Operators can opt specific internal hosts into the allow-list via the
-  `WEBHOOK_URL_ALLOWED_HOSTS` env var (comma-separated `host` or `host:port` entries).
+  `WEBHOOK_URL_ALLOWED_HOSTS` env var on nyx-harness (comma-separated `host` or `host:port` entries).
 
 The markdown body is the POST payload. Use `{{variable}}` placeholders for substitution in the body and
 header values (not in the URL — see above):

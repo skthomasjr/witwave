@@ -70,6 +70,8 @@ kubectl delete crd nyxagents.nyx.ai
 | `replicaCount`               | Number of controller manager replicas                                                        | `1`                                         |
 | `installCRDs`                | Install the `nyxagents.nyx.ai` CRD with the chart                                            | `true`                                      |
 | `rbac.create`                | Create the ClusterRole/ClusterRoleBinding and leader-election Role/RoleBinding               | `true`                                      |
+| `rbac.scope`                 | `cluster` (install a ClusterRole + ClusterRoleBinding, operator watches all namespaces) or `namespace` (install a Role + RoleBinding per `rbac.watchNamespaces` entry; ClusterRole is skipped) (#532) | `cluster`                       |
+| `rbac.watchNamespaces`       | Namespaces the operator watches when `rbac.scope=namespace`. Each entry receives a per-namespace Role + RoleBinding. Empty falls back to the release namespace. Ignored when `rbac.scope=cluster` | `[]`                               |
 | `leaderElection.enabled`     | Pass `--leader-elect` to the manager and create a leader-election RoleBinding                | `true`                                      |
 | `metrics.enabled`            | Expose controller-runtime metrics and create a ClusterIP Service for them                    | `false`                                     |
 | `metrics.port`               | Metrics port                                                                                 | `8443`                                      |
@@ -89,7 +91,37 @@ kubectl delete crd nyxagents.nyx.ai
 | `podSecurityContext`         | Pod-level securityContext (defaults satisfy PSS "restricted")                                | see `values.yaml`                           |
 | `securityContext`            | Container-level securityContext                                                              | `allowPrivilegeEscalation: false` + drop ALL|
 | `resources`                  | CPU/memory requests and limits for the manager container                                     | 10m/64Mi requests, 500m/128Mi limits        |
-| `extraArgs`                  | Additional command-line flags passed to `/manager`                                           | `[]`                                        |
+| `extraArgs`                  | Additional command-line flags passed to `/manager`. Pair with `rbac.scope=namespace` by adding `--watch-namespaces=<csv>` so controller-runtime's cache matches the RBAC blast radius (#532) | `[]`                |
+| `terminationGracePeriodSeconds` | Pod termination grace period. Must be > `preStop.delaySeconds` so SIGTERM fires with enough remaining time for controller-runtime's graceful shutdown (leader-lease release, in-flight reconcile drain) before SIGKILL (#512) | `30` |
+| `preStop.enabled`            | Add a `lifecycle.preStop` sleep on the manager container so in-flight reconciliations drain before SIGTERM (#465)                                                   | `false`                                     |
+| `preStop.delaySeconds`       | preStop sleep duration in seconds. Keep strictly less than `terminationGracePeriodSeconds`                                                                          | `5`                                         |
 | `nodeSelector`               | Node selector for the controller pod                                                         | `{}`                                        |
 | `tolerations`                | Tolerations for the controller pod                                                           | `[]`                                        |
 | `affinity`                   | Affinity rules for the controller pod                                                        | `{}`                                        |
+
+## Namespace-scoped RBAC (#532)
+
+By default the operator installs a ClusterRole + ClusterRoleBinding and watches `NyxAgent` resources cluster-wide.
+For multi-tenant clusters or least-privilege rollouts, switch to namespace-scoped RBAC:
+
+```yaml
+rbac:
+  scope: namespace
+  watchNamespaces:
+    - tenant-a
+    - tenant-b
+
+extraArgs:
+  - --watch-namespaces=tenant-a,tenant-b
+```
+
+In namespace mode the chart renders a `Role` + `RoleBinding` pair per entry in `watchNamespaces` (falling back to the
+release namespace when the list is empty) and **does not** create a `ClusterRole`/`ClusterRoleBinding`. Always pair
+it with `--watch-namespaces` in `extraArgs` so controller-runtime's informer cache matches — otherwise the operator's
+watches will hit RBAC errors the moment it tries to list outside the permitted namespaces.
+
+## Graceful shutdown (#465, #512)
+
+`terminationGracePeriodSeconds` (default `30`) and the optional `preStop.delaySeconds` sleep are parameterised so the
+manager has enough time to release its leader lease and drain in-flight reconciles before SIGKILL. Keep
+`preStop.delaySeconds` strictly less than `terminationGracePeriodSeconds`.

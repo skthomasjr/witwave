@@ -24,8 +24,10 @@ via OpenAI's search index), and optionally `ComputerTool` (headless browser via 
 via environment variables and `config.toml`.
 
 **Headless browser** — When computer tool support is enabled, a2-codex manages a Playwright Chromium instance via
-`computer.py`. The browser is initialized lazily on first use and reused across tool calls within a session. Supports
-screenshot, click, scroll, type, keypress, and drag operations.
+`computer.py`. The browser is initialized lazily on first use and reused across tool calls within a session. Each
+session gets its own **isolated browser context** (#522) — cookies, storage, and navigation history do not leak
+between sessions, even though the underlying Chromium process is shared. Supports screenshot, click, scroll, type,
+keypress, and drag operations.
 
 **Model override** — The model for a given request can be set via `metadata.model` in the A2A message. Resolution order:
 per-message metadata → routing config model → `MODEL` environment variable.
@@ -61,7 +63,7 @@ when the SQLite session store fails to initialize or when LRU eviction cleanup f
 | `GET /metrics`                | Prometheus metrics                                                                                |
 | `GET /conversations`          | Conversation log (JSONL, filterable by `since`/`limit`)                                           |
 | `GET /trace`                  | Trace log (JSONL, filterable by `since`/`limit`)                                                  |
-| `POST /mcp`                   | MCP JSON-RPC server (`initialize`, `tools/list`, `tools/call`); exposes a single `ask_agent` tool |
+| `POST /mcp`                   | MCP JSON-RPC server (`initialize`, `tools/list`, `tools/call`); exposes a single `ask_agent` tool. Requires `Authorization: Bearer $CONVERSATIONS_AUTH_TOKEN` (#510) |
 
 ## Key files
 
