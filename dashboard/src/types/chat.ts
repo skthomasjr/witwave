@@ -25,6 +25,9 @@ export interface ConversationEntry {
   model?: string | null;
   tokens?: number | null;
   text?: string | null;
+  // W3C trace-context ID (#636). When present, the dashboard surfaces an
+  // "Open trace" action that jumps to /otel-traces/<trace_id> (#632).
+  trace_id?: string | null;
 }
 
 // Trace/tool-audit row emitted by backends and merged by the harness /trace

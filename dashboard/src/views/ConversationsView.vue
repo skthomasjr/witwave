@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { RouterLink } from "vue-router";
 import { useAgentFanout } from "../composables/useAgentFanout";
 import { renderMarkdown } from "../utils/markdown";
 import type { ConversationEntry } from "../types/chat";
@@ -141,6 +142,15 @@ function formatTs(ts: string): string {
           <span class="meta-agent">{{ row.agent }}</span>
           <span class="meta-team">@{{ row._agent }}</span>
           <span v-if="row.model" class="meta-model">{{ row.model }}</span>
+          <RouterLink
+            v-if="row.trace_id"
+            class="meta-trace"
+            :to="{ name: 'otel-traces-detail', params: { traceId: row.trace_id } }"
+            :title="row.trace_id"
+            data-testid="conversation-open-trace"
+          >
+            open trace
+          </RouterLink>
         </div>
         <div
           v-if="row.role === 'agent'"
@@ -301,6 +311,17 @@ function formatTs(ts: string): string {
 
 .meta-model {
   color: var(--nyx-dim);
+}
+
+.meta-trace {
+  color: var(--nyx-accent);
+  text-decoration: none;
+  letter-spacing: 0.04em;
+}
+
+.meta-trace:hover {
+  color: var(--nyx-bright);
+  text-decoration: underline;
 }
 
 .bbl {
