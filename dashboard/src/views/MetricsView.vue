@@ -50,7 +50,7 @@ const PALETTE = [
 ];
 
 const intervalMs = ref<number>(5000);
-const { merged, loading, error, lastUpdated, refresh } = useMetrics();
+const { merged, loading, error, lastUpdated, refresh } = useMetrics({ intervalMs });
 
 function fmtNum(n: number | null): string {
   if (n === null || !Number.isFinite(n)) return "—";
@@ -201,18 +201,6 @@ const updatedLabel = computed(() => {
   return `updated ${new Date(lastUpdated.value).toLocaleTimeString()}`;
 });
 
-function onIntervalChange() {
-  // The composable polls on a fixed interval today. When the user picks a
-  // new interval we stop the current timer and let refresh() schedule the
-  // next one — simplest path without rewriting the composable for dynamic
-  // intervals. Set to 0 to disable auto-refresh.
-  if (intervalMs.value === 0) {
-    // One last refresh so the user sees the latest snapshot.
-    void refresh();
-  } else {
-    void refresh();
-  }
-}
 </script>
 
 <template>
@@ -220,7 +208,7 @@ function onIntervalChange() {
     <div class="toolbar">
       <h2 class="title">Metrics</h2>
       <label class="toolbar-lbl">refresh</label>
-      <select v-model.number="intervalMs" class="select" @change="onIntervalChange">
+      <select v-model.number="intervalMs" class="select">
         <option :value="5000">5s</option>
         <option :value="15000">15s</option>
         <option :value="30000">30s</option>

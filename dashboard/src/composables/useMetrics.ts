@@ -1,4 +1,4 @@
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch, type Ref } from "vue";
 import { apiGet, ApiError } from "../api/client";
 import { mergeFamilies, parseProm, type FamilyMap } from "../utils/prometheus";
 
@@ -24,7 +24,15 @@ async function fetchText(url: string, signal: AbortSignal): Promise<string> {
   return await resp.text();
 }
 
-export function useMetrics() {
+export interface UseMetricsOptions {
+  // Polling interval in milliseconds. Accepts a ref or plain number. A value
+  // of 0 disables the auto-refresh timer entirely (manual refresh() still
+  // works). Changes are observed: the timer is torn down and reinstalled
+  // whenever the interval changes.
+  intervalMs?: Ref<number> | number;
+}
+
+export function useMetrics(options: UseMetricsOptions = {}) {
   const perAgent = ref<AgentMetrics[]>([]);
   const error = ref<string>("");
   const loading = ref<boolean>(true);
@@ -32,6 +40,24 @@ export function useMetrics() {
 
   let timer: ReturnType<typeof setInterval> | null = null;
   let aborter: AbortController | null = null;
+
+  const intervalSource = options.intervalMs ?? 5000;
+  const intervalRef: Ref<number> =
+    typeof intervalSource === "number" ? ref(intervalSource) : intervalSource;
+
+  function clearTimer(): void {
+    if (timer !== null) {
+      clearInterval(timer);
+      timer = null;
+    }
+  }
+
+  function installTimer(ms: number): void {
+    clearTimer();
+    if (ms > 0) {
+      timer = setInterval(() => void refresh(), ms);
+    }
+  }
 
   async function refresh(): Promise<void> {
     aborter?.abort();
@@ -70,11 +96,15 @@ export function useMetrics() {
 
   onMounted(() => {
     void refresh();
-    timer = setInterval(() => void refresh(), 5000);
+    installTimer(intervalRef.value);
+  });
+
+  watch(intervalRef, (ms) => {
+    installTimer(ms);
   });
 
   onUnmounted(() => {
-    if (timer !== null) clearInterval(timer);
+    clearTimer();
     aborter?.abort();
   });
 
