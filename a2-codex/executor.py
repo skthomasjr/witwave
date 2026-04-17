@@ -16,7 +16,7 @@ from a2a.server.events import EventQueue
 from a2a.utils import new_agent_text_message
 from agents import Agent, ComputerTool, LocalShellCommandRequest, LocalShellTool, Runner, RunConfig, SQLiteSession, WebSearchTool
 from agents.items import ToolCallItem, ToolCallOutputItem
-from computer import PlaywrightComputer
+from computer import BrowserPool, PlaywrightComputer
 from agents.models.multi_provider import MultiProvider
 from metrics import (
     a2_a2a_last_request_timestamp_seconds,
@@ -268,7 +268,7 @@ def _build_mcp_servers(mcp_config: dict) -> list:
     return servers
 
 
-_computer: PlaywrightComputer | None = None
+_browser_pool: BrowserPool | None = None
 # _computer_lock is initialized in main() inside asyncio.run() so that it is
 # always created within the running event loop.  A module-level asyncio.Lock()
 # causes a DeprecationWarning in Python 3.10+ and wrong-loop attachment in
@@ -279,8 +279,15 @@ _computer_lock: asyncio.Lock | None = None
 _COMPUTER_SUPPORTED_MODELS = {"computer-use-preview"}
 
 
-async def _build_tools(model: str) -> list:
-    global _computer
+async def _build_tools(model: str, session_id: str) -> list:
+    """Build the SDK tool list for one run.
+
+    The ComputerTool is bound to a per-``session_id`` PlaywrightComputer
+    acquired from the shared BrowserPool so cookies, localStorage,
+    service workers, cache, and page state stay isolated between A2A
+    sessions (#522).
+    """
+    global _browser_pool
     cfg = _load_tool_config()
     tools = []
     if cfg.get("shell", False):
@@ -289,10 +296,32 @@ async def _build_tools(model: str) -> list:
         tools.append(WebSearchTool())
     if cfg.get("computer", False) and model in _COMPUTER_SUPPORTED_MODELS:
         async with _computer_lock:
-            if _computer is None:
-                _computer = PlaywrightComputer()
-        tools.append(ComputerTool(computer=_computer))
+            if _browser_pool is None:
+                _browser_pool = BrowserPool()
+            pool = _browser_pool
+        computer = await pool.acquire(session_id)
+        tools.append(ComputerTool(computer=computer))
     return tools
+
+
+async def _release_computer(session_id: str) -> None:
+    """Release the per-session PlaywrightComputer, if any.
+
+    Called when a session is evicted from the LRU cache, times out, or
+    the executor shuts down. Closes the session's browser context
+    (isolating its cookies/storage/service workers from any future
+    session) while leaving the shared browser process running.
+    """
+    pool = _browser_pool
+    if pool is None:
+        return
+    try:
+        await pool.release(session_id)
+    except Exception as _e:
+        logger.warning(
+            "Failed to release PlaywrightComputer for session %r: %s",
+            session_id, _e,
+        )
 
 
 def _sqlite_session_exists(session_id: str) -> bool:
@@ -405,6 +434,11 @@ async def _track_session(sessions: OrderedDict[str, float], session_id: str) -> 
                     await asyncio.to_thread(_delete_sqlite_session, _evicted_id, _db)
                 except Exception as _del_exc:
                     logger.warning("Could not delete evicted session %r from DB: %s", _evicted_id, _del_exc)
+            # Release the per-session Playwright browser context, if any, so
+            # cookies/localStorage/service workers from the evicted session do
+            # not linger in memory (#522). Safe no-op when the session never
+            # used the computer tool.
+            await _release_computer(_evicted_id)
         sessions[session_id] = time.monotonic()
     if a2_active_sessions is not None:
         a2_active_sessions.labels(**_LABELS).set(len(sessions))
@@ -479,7 +513,7 @@ async def run_query(
                 name=AGENT_NAME,
                 instructions=instructions,
                 model=resolved_model,
-                tools=await _build_tools(resolved_model),
+                tools=await _build_tools(resolved_model, session_id),
                 mcp_servers=_live_mcp_servers,
             )
 
@@ -777,6 +811,9 @@ async def _run_inner(
                 logger.info("Removed stale SQLite session for timed-out session %r", session_id)
             except Exception as _e:
                 logger.warning("Could not remove SQLite session for timed-out session %r: %s", session_id, _e)
+        # Drop the per-session Playwright context so a later request reusing
+        # this session_id does not inherit mid-stream browser state (#522).
+        await _release_computer(session_id)
         if a2_tasks_total is not None:
             a2_tasks_total.labels(**_LABELS, status="timeout").inc()
         if a2_task_error_duration_seconds is not None:
@@ -1022,13 +1059,13 @@ class AgentExecutor(A2AAgentExecutor):
         if self._mcp_watcher_tasks:
             await asyncio.gather(*self._mcp_watcher_tasks, return_exceptions=True)
         self._mcp_watcher_tasks.clear()
-        global _computer
-        if _computer is not None:
+        global _browser_pool
+        if _browser_pool is not None:
             try:
-                await _computer.close()
+                await _browser_pool.close()
             except Exception as _e:
-                logger.warning("Failed to close PlaywrightComputer on shutdown: %s", _e)
-            _computer = None
+                logger.warning("Failed to close BrowserPool on shutdown: %s", _e)
+            _browser_pool = None
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         if a2_task_cancellations_total is not None:

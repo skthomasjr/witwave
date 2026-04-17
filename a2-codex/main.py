@@ -408,11 +408,11 @@ async def main():
             try:
                 yield
             finally:
-                if _executor_module._computer is not None:
+                if _executor_module._browser_pool is not None:
                     try:
-                        await _executor_module._computer.close()
+                        await _executor_module._browser_pool.close()
                     except Exception as exc:
-                        logger.warning("PlaywrightComputer close error: %s", exc)
+                        logger.warning("BrowserPool close error: %s", exc)
                 await executor.close()
 
     full_app = Starlette(routes=_routes, lifespan=lifespan)
