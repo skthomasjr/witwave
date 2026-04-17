@@ -26,10 +26,11 @@ from jobs import JobRunner
 from tasks import TaskRunner
 from triggers import TriggerItem, TriggerRunner
 from webhooks import WebhookRunner
-from bus import MessageBus
+from bus import Message, MessageBus
 from executor import AgentExecutor, _guarded as _guarded_from_executor, run as executor_run, run_consensus as executor_run_consensus
 from heartbeat import heartbeat_runner, load_heartbeat
 from metrics import (
+    agent_adhoc_fires_total,
     agent_bus_consumer_idle_seconds,
     agent_bus_error_processing_duration_seconds,
     agent_bus_errors_total,
@@ -134,6 +135,32 @@ def _check_trigger_auth(request: Request, item: TriggerItem, body_bytes: bytes) 
         "trigger file or set TRIGGERS_AUTH_TOKEN) — request rejected."
     )
     return False
+
+
+def _check_adhoc_auth(request: Request) -> bool:
+    """Validate ad-hoc run-endpoint auth.
+
+    Uses the shared ``TRIGGERS_AUTH_TOKEN`` Bearer token as fallback so operators
+    don't need a second secret to fire scheduled items out-of-schedule. When the
+    env var is unset the request is rejected — these endpoints are never open by
+    default.
+    """
+    auth_token = os.environ.get("TRIGGERS_AUTH_TOKEN", "")
+    if not auth_token:
+        logger.warning(
+            "Ad-hoc run endpoint rejected: TRIGGERS_AUTH_TOKEN is not configured."
+        )
+        return False
+    header = request.headers.get("Authorization", "")
+    return hmac_mod.compare_digest(f"Bearer {auth_token}", header)
+
+
+# Hard cap on the body size the ad-hoc run endpoints will buffer. These endpoints
+# do not use the body for prompt content (the prompt comes from the item's
+# frontmatter/content in the .md file), so any body is effectively ignored —
+# but we still drain a bounded amount to avoid silently buffering large payloads
+# or leaving the connection in a weird state.
+MAX_ADHOC_BODY_BYTES = 65_536
 
 
 def load_agent_description() -> str:
@@ -780,6 +807,201 @@ async def main():
             status_code=202,
         )
 
+    async def _drain_adhoc_body(request: Request) -> bool:
+        """Drain up to MAX_ADHOC_BODY_BYTES from the request body.
+
+        Returns False if the client advertised or streamed more than the cap,
+        so the caller can respond with 413. Body content is discarded — ad-hoc
+        endpoints derive their prompt from the item's .md file, not the request
+        body.
+        """
+        try:
+            declared_len = int(request.headers.get("Content-Length", "") or "-1")
+        except ValueError:
+            declared_len = -1
+        if declared_len > MAX_ADHOC_BODY_BYTES:
+            return False
+        total = 0
+        async for chunk in request.stream():
+            if not chunk:
+                continue
+            total += len(chunk)
+            if total > MAX_ADHOC_BODY_BYTES:
+                return False
+        return True
+
+    def _find_job_item(name: str):
+        for item in job_runner._items.values():
+            if item.name == name:
+                return item
+        return None
+
+    def _find_task_item(name: str):
+        for item in task_runner._items.values():
+            if item.name == name:
+                return item
+        return None
+
+    async def _dispatch_adhoc_job(item) -> str:
+        delivery_id = str(uuid.uuid4())
+        message = Message(
+            prompt=f"Job: {item.name}\n\n{item.content}",
+            session_id=item.session_id,
+            kind=f"job:{item.name}",
+            model=item.model,
+            backend_id=item.backend_id,
+            consensus=item.consensus,
+            max_tokens=item.max_tokens,
+        )
+
+        async def _fire() -> None:
+            try:
+                await bus.send(message)
+            except Exception as exc:
+                logger.error(f"Ad-hoc job '{item.name}' bus.send failed: {exc!r}")
+
+        executor.track_background(_fire(), source="adhoc-job-fire")
+        return delivery_id
+
+    async def _dispatch_adhoc_task(item) -> str:
+        delivery_id = str(uuid.uuid4())
+        from pathlib import Path as _Path
+        filename = _Path(item.path).stem
+        if item.window_start is None:
+            session_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{AGENT_NAME}.{filename}"))
+        else:
+            from tasks import _day_session_id, _now_in_tz
+            session_id = _day_session_id(item, _now_in_tz(item.tz).date())
+        message = Message(
+            prompt=f"Task: {item.name}\n\n{item.content}",
+            session_id=session_id,
+            kind=f"task:{item.name}",
+            model=item.model,
+            backend_id=item.backend_id,
+            consensus=item.consensus,
+            max_tokens=item.max_tokens,
+        )
+
+        async def _fire() -> None:
+            try:
+                await bus.send(message)
+            except Exception as exc:
+                logger.error(f"Ad-hoc task '{item.name}' bus.send failed: {exc!r}")
+
+        executor.track_background(_fire(), source="adhoc-task-fire")
+        return delivery_id
+
+    async def jobs_run_handler(request: Request) -> JSONResponse:
+        name = request.path_params["name"]
+        if not _check_adhoc_auth(request):
+            if agent_adhoc_fires_total is not None:
+                agent_adhoc_fires_total.labels(kind="job", name=name, code="401").inc()
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if not await _drain_adhoc_body(request):
+            if agent_adhoc_fires_total is not None:
+                agent_adhoc_fires_total.labels(kind="job", name=name, code="413").inc()
+            return JSONResponse({"error": "request body too large"}, status_code=413)
+        item = _find_job_item(name)
+        if item is None:
+            if agent_adhoc_fires_total is not None:
+                agent_adhoc_fires_total.labels(kind="job", name=name, code="404").inc()
+            return JSONResponse({"error": "not found", "name": name}, status_code=404)
+        if item.running:
+            if agent_adhoc_fires_total is not None:
+                agent_adhoc_fires_total.labels(kind="job", name=name, code="409").inc()
+            return JSONResponse({"error": "already running", "name": name}, status_code=409)
+        try:
+            delivery_id = await _dispatch_adhoc_job(item)
+        except Exception as exc:
+            logger.error(f"Ad-hoc job '{name}' dispatch failed: {exc!r}")
+            if agent_adhoc_fires_total is not None:
+                agent_adhoc_fires_total.labels(kind="job", name=name, code="500").inc()
+            return JSONResponse({"error": "internal error"}, status_code=500)
+        if agent_adhoc_fires_total is not None:
+            agent_adhoc_fires_total.labels(kind="job", name=name, code="202").inc()
+        return JSONResponse(
+            {"delivery_id": delivery_id, "session_id": item.session_id, "kind": "job", "name": name},
+            status_code=202,
+        )
+
+    async def tasks_run_handler(request: Request) -> JSONResponse:
+        name = request.path_params["name"]
+        if not _check_adhoc_auth(request):
+            if agent_adhoc_fires_total is not None:
+                agent_adhoc_fires_total.labels(kind="task", name=name, code="401").inc()
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if not await _drain_adhoc_body(request):
+            if agent_adhoc_fires_total is not None:
+                agent_adhoc_fires_total.labels(kind="task", name=name, code="413").inc()
+            return JSONResponse({"error": "request body too large"}, status_code=413)
+        item = _find_task_item(name)
+        if item is None:
+            if agent_adhoc_fires_total is not None:
+                agent_adhoc_fires_total.labels(kind="task", name=name, code="404").inc()
+            return JSONResponse({"error": "not found", "name": name}, status_code=404)
+        if item.running:
+            if agent_adhoc_fires_total is not None:
+                agent_adhoc_fires_total.labels(kind="task", name=name, code="409").inc()
+            return JSONResponse({"error": "already running", "name": name}, status_code=409)
+        try:
+            delivery_id = await _dispatch_adhoc_task(item)
+        except Exception as exc:
+            logger.error(f"Ad-hoc task '{name}' dispatch failed: {exc!r}")
+            if agent_adhoc_fires_total is not None:
+                agent_adhoc_fires_total.labels(kind="task", name=name, code="500").inc()
+            return JSONResponse({"error": "internal error"}, status_code=500)
+        if agent_adhoc_fires_total is not None:
+            agent_adhoc_fires_total.labels(kind="task", name=name, code="202").inc()
+        return JSONResponse(
+            {"delivery_id": delivery_id, "kind": "task", "name": name},
+            status_code=202,
+        )
+
+    async def heartbeat_run_handler(request: Request) -> JSONResponse:
+        if not _check_adhoc_auth(request):
+            if agent_adhoc_fires_total is not None:
+                agent_adhoc_fires_total.labels(kind="heartbeat", name="heartbeat", code="401").inc()
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if not await _drain_adhoc_body(request):
+            if agent_adhoc_fires_total is not None:
+                agent_adhoc_fires_total.labels(kind="heartbeat", name="heartbeat", code="413").inc()
+            return JSONResponse({"error": "request body too large"}, status_code=413)
+        try:
+            loaded = load_heartbeat()
+        except Exception as exc:
+            logger.warning(f"Ad-hoc heartbeat: failed to load HEARTBEAT.md: {exc!r}")
+            loaded = None
+        if not loaded:
+            if agent_adhoc_fires_total is not None:
+                agent_adhoc_fires_total.labels(kind="heartbeat", name="heartbeat", code="404").inc()
+            return JSONResponse({"error": "heartbeat not configured or disabled"}, status_code=404)
+        _schedule, content, model, backend_id, consensus, max_tokens = loaded
+        from heartbeat import HEARTBEAT_SESSION
+        delivery_id = str(uuid.uuid4())
+        prompt = f"Heartbeat check. Follow these instructions:\n\n{content}"
+        message = Message(
+            prompt=prompt,
+            session_id=HEARTBEAT_SESSION,
+            kind="heartbeat",
+            model=model,
+            backend_id=backend_id,
+            consensus=consensus,
+            max_tokens=max_tokens,
+        )
+        # Preserve heartbeat dedup semantics (#514): if a scheduled heartbeat is
+        # already in-flight, reject the ad-hoc fire rather than stacking a
+        # second one. Matches heartbeat.py:129.
+        if not bus.try_send(message):
+            if agent_adhoc_fires_total is not None:
+                agent_adhoc_fires_total.labels(kind="heartbeat", name="heartbeat", code="409").inc()
+            return JSONResponse({"error": "heartbeat already pending"}, status_code=409)
+        if agent_adhoc_fires_total is not None:
+            agent_adhoc_fires_total.labels(kind="heartbeat", name="heartbeat", code="202").inc()
+        return JSONResponse(
+            {"delivery_id": delivery_id, "session_id": HEARTBEAT_SESSION, "kind": "heartbeat"},
+            status_code=202,
+        )
+
     async def jobs_handler(request: Request) -> JSONResponse:
         """Return a snapshot of currently registered scheduled jobs."""
         return JSONResponse(job_runner.items())
@@ -819,6 +1041,9 @@ async def main():
         Route("/health/ready", health_ready),
         Route("/.well-known/agent-triggers.json", triggers_discovery, methods=["GET"]),
         Route("/triggers/{endpoint}", trigger_handler, methods=["POST"]),
+        Route("/jobs/{name}/run", jobs_run_handler, methods=["POST"]),
+        Route("/tasks/{name}/run", tasks_run_handler, methods=["POST"]),
+        Route("/heartbeat/run", heartbeat_run_handler, methods=["POST"]),
         Route("/agents", agents_handler, methods=["GET"]),
         Route("/jobs", jobs_handler, methods=["GET"]),
         Route("/tasks", tasks_handler, methods=["GET"]),

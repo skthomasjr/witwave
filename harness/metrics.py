@@ -89,6 +89,7 @@ agent_sched_task_running_items: prometheus_client.Gauge | None = None
 agent_sched_task_runs_total: prometheus_client.Counter | None = None
 agent_sched_task_skips_total: prometheus_client.Counter | None = None
 agent_triggers_requests_total: prometheus_client.Counter | None = None
+agent_adhoc_fires_total: prometheus_client.Counter | None = None
 agent_triggers_parse_errors_total: prometheus_client.Counter | None = None
 agent_triggers_reloads_total: prometheus_client.Counter | None = None
 agent_triggers_items_registered: prometheus_client.Gauge | None = None
@@ -478,6 +479,11 @@ if _enabled:
         "agent_triggers_requests_total",
         "Trigger endpoint HTTP requests by method and response code.",
         ["method", "code"],
+    )
+    agent_adhoc_fires_total = prometheus_client.Counter(
+        "agent_adhoc_fires_total",
+        "Ad-hoc run endpoint fire attempts for scheduled kinds (jobs, tasks, heartbeat).",
+        ["kind", "name", "code"],
     )
     agent_triggers_parse_errors_total = prometheus_client.Counter(
         "agent_triggers_parse_errors_total",
