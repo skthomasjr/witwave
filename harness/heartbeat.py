@@ -31,6 +31,11 @@ DEFAULT_SCHEDULE = "*/30 * * * *"
 HEARTBEAT_DIR = os.path.dirname(HEARTBEAT_PATH)
 AGENT_NAME = os.environ.get("AGENT_NAME", "nyx")
 HEARTBEAT_SESSION = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{AGENT_NAME}.heartbeat"))
+# Bounded wait for an in-flight heartbeat to wind down after stop_event fires
+# (#492). The loop also races message.result against stop_event internally, so
+# this outer bound only acts as a safety net against an unresponsive backend
+# that ignores future cancellation.
+HEARTBEAT_STOP_JOIN_TIMEOUT = float(os.environ.get("HEARTBEAT_STOP_JOIN_TIMEOUT", "5.0"))
 # Sentinel token: heartbeat prompts should include this string to suppress response logging.
 HEARTBEAT_OK = "HEARTBEAT_OK"
 
@@ -131,7 +136,24 @@ async def _run_loop(
                 if agent_heartbeat_last_run_timestamp_seconds is not None:
                     agent_heartbeat_last_run_timestamp_seconds.set(time.time())
                 try:
-                    response = await message.result
+                    # Race the in-flight result against stop_event (#492). Shield
+                    # the result future so asyncio.wait doesn't mark our local
+                    # reference as cancelled — the bus worker still owns the
+                    # message and will release the dedup slot (#514) once
+                    # process_bus completes, regardless of whether we await the
+                    # outcome here.
+                    shielded_result = asyncio.shield(message.result)
+                    done, _ = await asyncio.wait(
+                        {shielded_result, stop_waiter},
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                    if shielded_result not in done:
+                        # stop_event fired while the backend call is still
+                        # in-flight; abandon the result and exit the loop so the
+                        # watcher can reload promptly.
+                        logger.info("Heartbeat stop requested mid-run — abandoning pending result.")
+                        return
+                    response = shielded_result.result()
                     if agent_heartbeat_duration_seconds is not None:
                         agent_heartbeat_duration_seconds.observe(time.monotonic() - _hb_start)
                     if response and HEARTBEAT_OK not in response:
@@ -158,6 +180,29 @@ def _loop_task_done_callback(t: asyncio.Task) -> None:
         logger.error(f"Heartbeat loop_task crashed: {t.exception()!r}")
         if agent_heartbeat_runs_total is not None:
             agent_heartbeat_runs_total.labels(status="error").inc()
+
+
+async def _stop_and_join(loop_task: asyncio.Task, stop_event: asyncio.Event) -> None:
+    """Signal the run loop to stop and wait for it to unwind, with a bound (#492).
+
+    The loop already races ``message.result`` against ``stop_event`` internally,
+    so a clean exit should be prompt. This bounded join is a safety net: if an
+    unresponsive backend keeps the loop parked past
+    :data:`HEARTBEAT_STOP_JOIN_TIMEOUT`, cancel the task so the watcher can
+    proceed with the reload instead of hanging indefinitely.
+    """
+    stop_event.set()
+    try:
+        await asyncio.wait_for(asyncio.shield(loop_task), timeout=HEARTBEAT_STOP_JOIN_TIMEOUT)
+    except asyncio.TimeoutError:
+        logger.warning(
+            f"Heartbeat loop did not stop within {HEARTBEAT_STOP_JOIN_TIMEOUT:.1f}s — cancelling."
+        )
+        loop_task.cancel()
+        try:
+            await loop_task
+        except (asyncio.CancelledError, Exception):
+            pass
 
 
 async def heartbeat_runner(bus: MessageBus) -> None:
@@ -198,8 +243,7 @@ async def heartbeat_runner(bus: MessageBus) -> None:
                 if agent_heartbeat_reloads_total is not None:
                     agent_heartbeat_reloads_total.inc()
                 if loop_task and not loop_task.done():
-                    stop_event.set()
-                    await loop_task
+                    await _stop_and_join(loop_task, stop_event)
                     stop_event.clear()
 
                 try:
@@ -223,8 +267,7 @@ async def heartbeat_runner(bus: MessageBus) -> None:
         if agent_file_watcher_restarts_total is not None:
             agent_file_watcher_restarts_total.labels(watcher="heartbeat").inc()
         if loop_task and not loop_task.done():
-            stop_event.set()
-            await loop_task
+            await _stop_and_join(loop_task, stop_event)
         stop_event.clear()
         try:
             loaded = load_heartbeat()
