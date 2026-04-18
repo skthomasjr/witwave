@@ -298,6 +298,20 @@ func main() {
 			setupLog.Error(err, "unable to create webhook", "webhook", "NyxAgent")
 			os.Exit(1)
 		}
+		// Field indexer for heartbeat NyxPrompt singleton validation
+		// (#755). Registered before the webhook setup so the validator's
+		// fast-path ``MatchingFields`` lookup works on the first
+		// admission request instead of silently falling back to the
+		// full-namespace List.
+		if err := mgr.GetFieldIndexer().IndexField(
+			context.Background(),
+			&nyxv1alpha1.NyxPrompt{},
+			webhookv1alpha1.NyxPromptHeartbeatAgentIndex,
+			webhookv1alpha1.NyxPromptHeartbeatAgentExtractor,
+		); err != nil {
+			setupLog.Error(err, "unable to register field indexer", "field", webhookv1alpha1.NyxPromptHeartbeatAgentIndex)
+			os.Exit(1)
+		}
 		if err := webhookv1alpha1.SetupNyxPromptWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "NyxPrompt")
 			os.Exit(1)

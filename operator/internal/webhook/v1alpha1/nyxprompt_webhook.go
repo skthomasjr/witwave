@@ -143,10 +143,50 @@ func validateNyxPromptSpec(p *nyxv1alpha1.NyxPrompt) error {
 	return nil
 }
 
+// NyxPromptHeartbeatAgentIndex is the field-indexer key under which the
+// controller-runtime cache pre-computes "heartbeat agent ref names" for
+// every NyxPrompt (#755).  Keying the index by agent name means the
+// webhook can issue one short scoped List per AgentRef on the incoming
+// object instead of a full-namespace List that the admission handler
+// has to filter in-process on every Create/Update.  The indexer is
+// registered from ``cmd/main.go`` alongside the other field indexers;
+// the webhook falls back to the legacy full-List path when the index
+// is not present (for example in unit tests that skip the manager
+// bootstrap).
+const NyxPromptHeartbeatAgentIndex = "spec.agentRefs.name.heartbeat"
+
+// NyxPromptHeartbeatAgentExtractor returns the per-object values stored
+// under ``NyxPromptHeartbeatAgentIndex``.  Non-heartbeat prompts
+// produce nil so they drop out of the index entirely — keeps the
+// index small when most NyxPrompts are jobs/tasks/triggers.
+func NyxPromptHeartbeatAgentExtractor(obj client.Object) []string {
+	p, ok := obj.(*nyxv1alpha1.NyxPrompt)
+	if !ok {
+		return nil
+	}
+	if p.Spec.Kind != nyxv1alpha1.NyxPromptKindHeartbeat {
+		return nil
+	}
+	out := make([]string, 0, len(p.Spec.AgentRefs))
+	for _, ref := range p.Spec.AgentRefs {
+		if ref.Name != "" {
+			out = append(out, ref.Name)
+		}
+	}
+	return out
+}
+
 // validateHeartbeatSingleton rejects a kind=heartbeat NyxPrompt that
 // targets an agent that already has another heartbeat prompt bound to it.
 // The harness reads a single `HEARTBEAT.md` file so overlapping prompts
 // would race to overwrite the same mount.
+//
+// Performance (#755): prefers ``client.MatchingFields`` against the
+// ``NyxPromptHeartbeatAgentIndex`` field indexer so each agent-ref
+// contributes one O(k) scoped List rather than a full-namespace O(N)
+// scan.  Exits on the first collision rather than continuing to scan.
+// When the indexer is not wired (unit tests) the code path falls back
+// to the legacy full List so behaviour is preserved.
 func (v *NyxPromptCustomValidator) validateHeartbeatSingleton(ctx context.Context, p *nyxv1alpha1.NyxPrompt) error {
 	if p.Spec.Kind != nyxv1alpha1.NyxPromptKindHeartbeat {
 		return nil
@@ -157,6 +197,49 @@ func (v *NyxPromptCustomValidator) validateHeartbeatSingleton(ctx context.Contex
 		// client, so this branch only fires in unit tests.
 		return nil
 	}
+	// Fast path: one scoped List per agent-ref via the field indexer.
+	// The index only contains heartbeat prompts, so every returned item
+	// is already a collision candidate — the inner loop just filters out
+	// ``p`` itself (the object currently being validated).
+	for _, myRef := range p.Spec.AgentRefs {
+		if myRef.Name == "" {
+			continue
+		}
+		scoped := &nyxv1alpha1.NyxPromptList{}
+		err := v.Client.List(ctx, scoped,
+			client.InNamespace(p.Namespace),
+			client.MatchingFields{NyxPromptHeartbeatAgentIndex: myRef.Name},
+		)
+		if err != nil {
+			// An indexer lookup error may mean the index wasn't registered
+			// (controller-runtime returns a typed error referencing the
+			// missing field). Fall through to the legacy path rather than
+			// failing admission — this keeps unit tests that skip the
+			// manager bootstrap working and is safe because the legacy
+			// path is semantically identical, just slower.
+			if strings.Contains(err.Error(), NyxPromptHeartbeatAgentIndex) {
+				return v.validateHeartbeatSingletonFull(ctx, p)
+			}
+			return apierrors.NewInternalError(fmt.Errorf("list heartbeat NyxPrompts by index: %w", err))
+		}
+		for i := range scoped.Items {
+			other := &scoped.Items[i]
+			if other.Name == p.Name && other.Namespace == p.Namespace {
+				continue
+			}
+			return apierrors.NewForbidden(nyxpromptGR, p.Name, fmt.Errorf(
+				"agent %q already has a heartbeat NyxPrompt (%q); heartbeat is singleton-per-agent — consolidate into one CR or bind separate agents",
+				myRef.Name, other.Name,
+			))
+		}
+	}
+	return nil
+}
+
+// validateHeartbeatSingletonFull is the legacy O(N) full-namespace
+// scan, kept as a fallback for unit-test call sites that run without
+// the field indexer registered.
+func (v *NyxPromptCustomValidator) validateHeartbeatSingletonFull(ctx context.Context, p *nyxv1alpha1.NyxPrompt) error {
 	all := &nyxv1alpha1.NyxPromptList{}
 	if err := v.Client.List(ctx, all, client.InNamespace(p.Namespace)); err != nil {
 		return apierrors.NewInternalError(fmt.Errorf("list NyxPrompts: %w", err))
