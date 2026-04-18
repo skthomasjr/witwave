@@ -671,6 +671,12 @@ _HARNESS_EVENTS_AUTH_TOKEN_WARNED = False
 # it completes (Python asyncio docs). Entries are discarded via
 # add_done_callback so the set does not grow unboundedly (#660).
 _INFLIGHT_HOOK_POSTS: set[asyncio.Task] = set()
+# Serialises the cap check-and-add across event loops (#931). Under the
+# standard single-loop topology this is redundant with the asyncio
+# scheduler's implicit ordering, but the set is module-global — a
+# secondary loop touching it would double-count without a lock. Also
+# pairs cleanly with the shed-warning flag's _HOOK_POST_SHED_WARNED_LOCK.
+_INFLIGHT_HOOK_POSTS_LOCK = threading.Lock()
 
 # Bounded cap on concurrent fire-and-forget hook.decision POSTs (#712).
 # When the harness is unreachable and tool calls fire rapidly, without
@@ -827,7 +833,17 @@ def _make_pre_tool_use_hook(state: HookState, session_id_ref: dict | None = None
             # driving the backend to OOM. When at cap we drop the
             # event and bump a counter — the span event recorded
             # above remains the authoritative record.
-            if len(_INFLIGHT_HOOK_POSTS) >= _HOOK_POST_MAX_INFLIGHT:
+            # Check-and-add under _INFLIGHT_HOOK_POSTS_LOCK (#931) so
+            # the cap holds under secondary-loop topologies.
+            _t_created: asyncio.Task | None = None
+            with _INFLIGHT_HOOK_POSTS_LOCK:
+                _over_cap = len(_INFLIGHT_HOOK_POSTS) >= _HOOK_POST_MAX_INFLIGHT
+                if not _over_cap:
+                    _t_created = asyncio.create_task(
+                        _post_hook_event_to_harness(_event_dict)
+                    )
+                    _INFLIGHT_HOOK_POSTS.add(_t_created)
+            if _over_cap:
                 global _HOOK_POST_SHED_WARNED
                 with _HOOK_POST_SHED_WARNED_LOCK:
                     if not _HOOK_POST_SHED_WARNED:
@@ -842,19 +858,20 @@ def _make_pre_tool_use_hook(state: HookState, session_id_ref: dict | None = None
                     except Exception:
                         pass
             else:
-                _t = asyncio.create_task(_post_hook_event_to_harness(_event_dict))
-                _INFLIGHT_HOOK_POSTS.add(_t)
                 def _done(tt, _reset=_INFLIGHT_HOOK_POSTS):
-                    _reset.discard(tt)
+                    with _INFLIGHT_HOOK_POSTS_LOCK:
+                        _reset.discard(tt)
+                        _size = len(_reset)
                     # Re-arm the warning once we drop back below cap.
                     # Serialise with the same Lock so two concurrent
                     # completions can't both flip the flag after one
                     # task already did (#873).
-                    if len(_reset) < _HOOK_POST_MAX_INFLIGHT // 2:
+                    if _size < _HOOK_POST_MAX_INFLIGHT // 2:
                         global _HOOK_POST_SHED_WARNED
                         with _HOOK_POST_SHED_WARNED_LOCK:
                             _HOOK_POST_SHED_WARNED = False
-                _t.add_done_callback(_done)
+                assert _t_created is not None
+                _t_created.add_done_callback(_done)
         except Exception as _transport_exc:
             logger.debug("hook.decision transport scheduling failed: %r", _transport_exc)
 
