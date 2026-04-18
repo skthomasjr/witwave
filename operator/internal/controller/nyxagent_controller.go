@@ -697,6 +697,27 @@ func (r *NyxAgentReconciler) reconcileManifestConfigMap(ctx context.Context, age
 	desired, desiredHash := buildManifestConfigMap(agent, memberAgents, members)
 	span.SetAttributes(attribute.Int("nyx.members.count", len(members)))
 
+	// Empty-membership finalize (#1010): when the last team member is
+	// being removed, buildManifestOwnerRefs returns zero OwnerReferences
+	// and rewriting the CM would produce an orphaned object that K8s
+	// garbage collection can never reclaim. Delete it explicitly so a new
+	// agent joining the same team later doesn't collide with a stale
+	// manifestHashAnnotation.
+	if len(memberAgents) == 0 {
+		existing := &corev1.ConfigMap{}
+		getErr := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
+		if apierrors.IsNotFound(getErr) {
+			return nil
+		}
+		if getErr != nil {
+			return getErr
+		}
+		if delErr := r.Delete(ctx, existing); delErr != nil && !apierrors.IsNotFound(delErr) {
+			return delErr
+		}
+		return nil
+	}
+
 	existing := &corev1.ConfigMap{}
 	err = r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
 	switch {
