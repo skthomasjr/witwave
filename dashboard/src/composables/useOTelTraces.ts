@@ -312,13 +312,21 @@ async function inClusterFetchDetail(
     if (byTid.size > 0) {
       return { data: [...byTid.values()], total: byTid.size };
     }
+    // #952: When we DID reach every known agent and none returned the
+    // trace, the ring buffers have evicted it — scanning a 500-item list
+    // per agent cannot recover it and just burns megabytes of payload
+    // and harness CPU on a single user click. Surface "trace not found"
+    // directly instead of falling through to the list-scan.
+    return { data: [], total: 0 };
   }
 
-  // Fallback: the list-scan. Saves us for older implementations that
-  // lack the per-ID endpoint and is the only path in browsers where
-  // AbortSignal.any is not available.
+  // Fallback: the list-scan. Only reached when we have no team roster
+  // to fan the per-ID probe across (older implementations, first-paint
+  // before /api/team resolves, or browsers without AbortSignal.any).
+  // #952: Cap the fallback at 50 rather than 500 so a single click on a
+  // stale URL cannot amplify into a multi-megabyte harness fan-out.
   const full = await inClusterFetchList(
-    `/api/traces?limit=500`,
+    `/api/traces?limit=50`,
     signal,
     timeoutMs,
   );
