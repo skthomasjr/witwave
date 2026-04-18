@@ -1709,24 +1709,60 @@ async def main():
             _attempt += 1
             await asyncio.sleep(delay)
 
-    await asyncio.gather(
-        server.serve(),
+    # Coordinated shutdown (#780). Previously `asyncio.gather` ran
+    # server.serve() alongside the bus worker, scheduler runners, and
+    # watchers as unstructured siblings; SIGTERM propagated cancellation
+    # through all of them simultaneously, with no ordering guarantee
+    # between "stop accepting new work" and "drain in-flight work".
+    # Now we create each runner as a named task, run server.serve() in
+    # the foreground, and cancel the runners in phases once the server
+    # exits: schedulers first (stop accepting new triggers / heartbeat
+    # ticks / job fires), then the bus worker (so the final batch of
+    # in-flight prompts sees cancellation), then watchers.
+    scheduler_tasks: list[asyncio.Task] = [
+        asyncio.create_task(
+            # Pass backends_ready so the heartbeat loop blocks its first
+            # fire until /health passes (#785).
+            _guarded(heartbeat_runner, bus, backends_ready),
+            name="heartbeat_runner",
+        ),
+        asyncio.create_task(_guarded(job_runner.run), name="job_runner"),
+        asyncio.create_task(_guarded(task_runner.run), name="task_runner"),
+        asyncio.create_task(_guarded(trigger_runner.run), name="trigger_runner"),
+        asyncio.create_task(_guarded(continuation_runner.run), name="continuation_runner"),
+        asyncio.create_task(_guarded(webhook_runner.run), name="webhook_runner"),
+    ]
+    bus_task = asyncio.create_task(
         _guarded(bus_worker, bus, executor, critical=True),
-        # Pass backends_ready so the heartbeat loop blocks its first
-        # fire until /health passes (#785). Without this, a */1
-        # schedule would dispatch at *:00 while the backend was still
-        # warming and the prompt would 503 before any work started.
-        _guarded(heartbeat_runner, bus, backends_ready),
-        _guarded(job_runner.run),
-        _guarded(task_runner.run),
-        _guarded(trigger_runner.run),
-        _guarded(continuation_runner.run),
-        _guarded(webhook_runner.run),
-        _guarded(_event_loop_monitor),
-        _guarded(executor.backends_watcher),
-        _set_ready_when_started(server),
-        _wait_for_backends(),
+        name="bus_worker",
     )
+    watcher_tasks: list[asyncio.Task] = [
+        asyncio.create_task(_guarded(_event_loop_monitor), name="event_loop_monitor"),
+        asyncio.create_task(_guarded(executor.backends_watcher), name="backends_watcher"),
+    ]
+    helper_tasks: list[asyncio.Task] = [
+        asyncio.create_task(_set_ready_when_started(server), name="set_ready"),
+        asyncio.create_task(_wait_for_backends(), name="wait_for_backends"),
+    ]
+
+    try:
+        await server.serve()
+    finally:
+        # Phase 1: schedulers stop firing new work.
+        for t in scheduler_tasks:
+            t.cancel()
+        await asyncio.gather(*scheduler_tasks, return_exceptions=True)
+        # Phase 2: bus worker drains (cancellation propagates into
+        # in-flight process_bus calls so they don't get stuck on a
+        # shut-down backend transport).
+        bus_task.cancel()
+        await asyncio.gather(bus_task, return_exceptions=True)
+        # Phase 3: watchers and helper tasks. These observe filesystem
+        # / health state and have nothing to drain once schedulers and
+        # bus worker are done.
+        for t in (*watcher_tasks, *helper_tasks):
+            t.cancel()
+        await asyncio.gather(*watcher_tasks, *helper_tasks, return_exceptions=True)
 
 
 if __name__ == "__main__":
