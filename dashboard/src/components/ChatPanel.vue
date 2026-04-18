@@ -59,8 +59,20 @@ function onChangeBackend(e: Event) {
 async function onSubmit(e: Event) {
   e.preventDefault();
   const text = input.value;
+  // Capture text first but DO NOT clear the textarea until send()
+  // resolves successfully (#896). On timeout/cancel/transport error
+  // send() returns false; restoring the captured text spares the user
+  // from retyping a long prompt they've just dictated. The "sending"
+  // flag already disables the textarea, so the intermediate state is
+  // visually distinct even though the value is still there.
   input.value = "";
-  await send(text, selectedBackendId.value || undefined);
+  const ok = await send(text, selectedBackendId.value || undefined);
+  if (!ok && input.value === "") {
+    // Only restore when the user hasn't started typing again during
+    // the in-flight request. Defensive; the textarea is disabled while
+    // sending, but retain-safety avoids clobbering a subsequent input.
+    input.value = text;
+  }
   await scrollToBottom();
 }
 

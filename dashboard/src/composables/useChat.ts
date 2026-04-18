@@ -148,12 +148,18 @@ export function useChat(opts: UseChatOptions) {
     }
   }
 
-  async function send(text: string, backendId?: string): Promise<void> {
+  async function send(text: string, backendId?: string): Promise<boolean> {
     const trimmed = text.trim();
-    if (!trimmed || sending.value) return;
+    if (!trimmed || sending.value) return false;
 
     push({ role: "user", text: trimmed, label: "you" });
     sending.value = true;
+    // Track whether the request completed with an agent reply so the
+    // caller (ChatPanel) can restore the textarea on timeout / cancel /
+    // transport error (#896). The trimmed text is pushed as a "user"
+    // bubble above, but that doesn't preserve the user's untrimmed
+    // original input — restore from the caller's captured copy.
+    let ok = false;
 
     const controller = new AbortController();
     sendController = controller;
@@ -191,7 +197,7 @@ export function useChat(opts: UseChatOptions) {
           text: resp.error.message || "request failed",
           label: "error",
         });
-        return;
+        return false;
       }
       const replyText = extractReplyText(resp);
       if (replyText) {
@@ -200,6 +206,7 @@ export function useChat(opts: UseChatOptions) {
           text: replyText,
           label: backendId || opts.agentName,
         });
+        ok = true;
       } else {
         push({
           role: "error",
@@ -230,6 +237,7 @@ export function useChat(opts: UseChatOptions) {
       if (sendController === controller) sendController = null;
       sending.value = false;
     }
+    return ok;
   }
 
   function cancel(): void {
