@@ -331,7 +331,14 @@ async def _emit_afc_history(
     """
     if not history:
         return
-    pending_calls: dict[str, dict] = {}
+    # Pairing strategy (#676):
+    #   1. If both sides carry a matching id (newer google-genai), pair by id.
+    #   2. Else fall back to content index — parallel calls from the same
+    #      content Part block emit their function_response rows in the same
+    #      index order, which is stable even when multiple in-flight calls
+    #      share a tool name.
+    pending_by_id: dict[str, dict] = {}
+    pending_by_index: list[dict] = []  # FIFO across all tool names
     call_counter = 0
     for content in history:
         parts = getattr(content, "parts", None) or []
@@ -341,10 +348,11 @@ async def _emit_afc_history(
             if fc is not None:
                 call_counter += 1
                 name = getattr(fc, "name", None) or "<unknown>"
+                fc_id = getattr(fc, "id", None)
                 # Gemini function_call objects don't carry a stable id on
                 # older SDK releases; synthesise one so the matching
                 # tool_result row can reference it.
-                call_id = getattr(fc, "id", None) or f"fc-{session_id[:8]}-{call_counter}"
+                call_id = fc_id or f"fc-{session_id[:8]}-{call_counter}"
                 args = getattr(fc, "args", None)
                 ts = datetime.now(timezone.utc).isoformat()
                 entry = {
@@ -364,7 +372,10 @@ async def _emit_afc_history(
                     await log_trace(json.dumps(entry))
                 except Exception as _e:
                     logger.debug("AFC tool_use log failed: %s", _e)
-                pending_calls.setdefault(name, []).append({"id": call_id, "ts": ts})
+                pending_entry = {"id": call_id, "ts": ts, "name": name, "fc_id": fc_id}
+                if fc_id:
+                    pending_by_id[fc_id] = pending_entry
+                pending_by_index.append(pending_entry)
             elif fr is not None:
                 name = getattr(fr, "name", None) or "<unknown>"
                 response = getattr(fr, "response", None)
@@ -374,9 +385,21 @@ async def _emit_afc_history(
                 response_j = _to_jsonable(response) if response is not None else None
                 if isinstance(response_j, dict) and "error" in response_j:
                     is_error = True
-                # Pair with the most recent unmatched call of the same name.
-                queue = pending_calls.get(name) or []
-                matched = queue.pop(0) if queue else None
+                # Prefer the SDK-supplied id when both sides provide one;
+                # fall back to content-order (FIFO index across all tools)
+                # for older SDK releases where ids are absent.
+                fr_id = getattr(fr, "id", None)
+                matched = None
+                if fr_id and fr_id in pending_by_id:
+                    matched = pending_by_id.pop(fr_id)
+                    try:
+                        pending_by_index.remove(matched)
+                    except ValueError:
+                        pass
+                elif pending_by_index:
+                    matched = pending_by_index.pop(0)
+                    if matched.get("fc_id"):
+                        pending_by_id.pop(matched["fc_id"], None)
                 tool_use_id = matched["id"] if matched else None
                 ts = datetime.now(timezone.utc).isoformat()
                 entry = {
