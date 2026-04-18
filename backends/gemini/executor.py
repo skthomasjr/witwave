@@ -1718,6 +1718,13 @@ class AgentExecutor(A2AAgentExecutor):
         self._mcp_stack: AsyncExitStack | None = None
         self._live_mcp_servers: list = []
         self._mcp_servers_lock: asyncio.Lock | None = None
+        # Track every MCP server name that has had backend_mcp_server_up
+        # set to a non-zero value so hot-reload / shutdown can zero-out
+        # the gauge for servers that were removed from the new config
+        # (#884). Without this set the gauge remains at 1 for long-gone
+        # servers, producing false-OK alerting after a server is
+        # removed or renamed.
+        self._mcp_known_servers: set[str] = set()
         # Refcount of in-flight requests holding the current stack. When a
         # hot-reload swaps in a new stack while this is > 0, the old stack is
         # parked in _mcp_old_stacks and only aclose()d when the last
@@ -1895,6 +1902,7 @@ class AgentExecutor(A2AAgentExecutor):
                                     ).set(1)
                                 except Exception:
                                     pass
+                            self._mcp_known_servers.add(name)
                         except Exception as _mcp_exc:
                             set_span_error(_mcp_span, _mcp_exc)
                             logger.warning(
@@ -1908,6 +1916,7 @@ class AgentExecutor(A2AAgentExecutor):
                                     ).set(0)
                                 except Exception:
                                     pass
+                            self._mcp_known_servers.add(name)
                             if backend_mcp_server_exits_total is not None:
                                 try:
                                     backend_mcp_server_exits_total.labels(
@@ -1926,6 +1935,29 @@ class AgentExecutor(A2AAgentExecutor):
             self._live_mcp_servers = new_live
             if backend_mcp_servers_active is not None:
                 backend_mcp_servers_active.labels(**_LABELS).set(len(new_live))
+
+            # Zero-out backend_mcp_server_up for any server that was
+            # present in a previous config but is absent from mcp_config
+            # (#884). Without this the gauge remains at 1 forever for
+            # removed/renamed servers and feeds stale OK signals into
+            # alerting. We record every server we've ever seen in
+            # self._mcp_known_servers and subtract the current config
+            # keys; the delta gets set to 0 here.
+            new_names = set(mcp_config.keys())
+            removed = self._mcp_known_servers - new_names
+            if removed and backend_mcp_server_up is not None:
+                for _gone in removed:
+                    try:
+                        backend_mcp_server_up.labels(
+                            **_LABELS, server=_gone,
+                        ).set(0)
+                    except Exception:
+                        pass
+            # _mcp_known_servers now reflects the currently-configured
+            # set plus anything still-bound to a zero gauge; keep only
+            # the current config names so future reloads don't keep
+            # growing the set unboundedly.
+            self._mcp_known_servers = set(new_names) | self._mcp_known_servers
 
             # Startup warning re: AFC vs hooks asymmetry (#640). Logged once
             # per stack bring-up so operators see it on every reload when
@@ -2307,6 +2339,18 @@ class AgentExecutor(A2AAgentExecutor):
             self._mcp_stack_refcount = 0
             if backend_mcp_servers_active is not None:
                 backend_mcp_servers_active.labels(**_LABELS).set(0)
+            # Zero-out backend_mcp_server_up on shutdown for every
+            # known server (#884). Without this the gauge stays at 1
+            # for any server we ever booted, producing false-OK alerts
+            # from a pod that's already exited.
+            if backend_mcp_server_up is not None:
+                for _name in self._mcp_known_servers:
+                    try:
+                        backend_mcp_server_up.labels(
+                            **_LABELS, server=_name,
+                        ).set(0)
+                    except Exception:
+                        pass
         # Drain any parked old stacks (#673) from previous hot-reloads that
         # still had in-flight holders when swapped. On shutdown we force-
         # close them regardless of refcount.
