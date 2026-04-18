@@ -61,12 +61,14 @@ backend_log_write_errors_total: prometheus_client.Counter | None = None
 backend_session_history_save_errors_total: prometheus_client.Counter | None = None
 
 # SDK metrics
+backend_sdk_subprocess_spawn_duration_seconds: prometheus_client.Histogram | None = None
 backend_sdk_query_duration_seconds: prometheus_client.Histogram | None = None
 backend_sdk_query_error_duration_seconds: prometheus_client.Histogram | None = None
 backend_sdk_time_to_first_message_seconds: prometheus_client.Histogram | None = None
 backend_sdk_session_duration_seconds: prometheus_client.Histogram | None = None
 backend_sdk_messages_per_query: prometheus_client.Histogram | None = None
 backend_sdk_turns_per_query: prometheus_client.Histogram | None = None
+backend_sdk_tokens_per_query: prometheus_client.Histogram | None = None
 backend_text_blocks_per_query: prometheus_client.Histogram | None = None
 
 # SDK error classification (parity with claude / codex — #445)
@@ -316,6 +318,12 @@ if _enabled:
     )
 
     # SDK
+    backend_sdk_subprocess_spawn_duration_seconds = prometheus_client.Histogram(
+        "backend_sdk_subprocess_spawn_duration_seconds",
+        "Time to initialize the backend client/SDK (genai.Client cold start).",
+        ["agent", "agent_id", "backend", "model"],
+        buckets=(0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60),
+    )
     backend_sdk_query_duration_seconds = prometheus_client.Histogram(
         "backend_sdk_query_duration_seconds",
         "Raw backend query time in seconds inside run_query().",
@@ -347,6 +355,12 @@ if _enabled:
         "Number of assistant turns per run_query() invocation.",
         ["agent", "agent_id", "backend", "model"],
         buckets=(1, 2, 3, 5, 10, 20, 50, 100),
+    )
+    backend_sdk_tokens_per_query = prometheus_client.Histogram(
+        "backend_sdk_tokens_per_query",
+        "Aggregate token count per run_query() invocation.",
+        ["agent", "agent_id", "backend", "model"],
+        buckets=(100, 500, 1_000, 5_000, 10_000, 25_000, 50_000, 100_000, 200_000, 500_000),
     )
     backend_text_blocks_per_query = prometheus_client.Histogram(
         "backend_text_blocks_per_query",

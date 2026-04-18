@@ -97,7 +97,9 @@ from metrics import (
     backend_sdk_query_error_duration_seconds,
     backend_sdk_result_errors_total,
     backend_sdk_session_duration_seconds,
+    backend_sdk_subprocess_spawn_duration_seconds,
     backend_sdk_time_to_first_message_seconds,
+    backend_sdk_tokens_per_query,
     backend_sdk_tool_calls_total,
     backend_sdk_tool_duration_seconds,
     backend_sdk_turns_per_query,
@@ -963,7 +965,7 @@ import threading as _threading
 _genai_client_lock = _threading.Lock()
 
 
-def _get_client() -> genai.Client:
+def _get_client(model_label: str | None = None) -> genai.Client:
     """Return the module-level genai.Client singleton, creating it on first call.
 
     The API key is read from the environment on each construction so that
@@ -992,7 +994,17 @@ def _get_client() -> genai.Client:
             key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or None
             if not key:
                 raise RuntimeError("No Gemini API key configured. Set GEMINI_API_KEY or GOOGLE_API_KEY.")
+            # Cold-start timing (#813). Observes subprocess/client init latency
+            # so operators can alert on slow first-request cold-starts.
+            _spawn_start = time.monotonic()
             _genai_client = genai.Client(api_key=key)
+            try:
+                if backend_sdk_subprocess_spawn_duration_seconds is not None:
+                    backend_sdk_subprocess_spawn_duration_seconds.labels(
+                        **_LABELS, model=_sanitize_model_label(model_label or ""),
+                    ).observe(time.monotonic() - _spawn_start)
+            except Exception:
+                pass
         return _genai_client
 
 
@@ -1287,6 +1299,16 @@ async def run_query(
             backend_sdk_turns_per_query.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).observe(_turn_count)
         if backend_text_blocks_per_query is not None:
             backend_text_blocks_per_query.labels(**_LABELS, model=_sanitize_model_label(resolved_model)).observe(len(collected))
+        # Tokens-per-query (#813). Parity with claude's
+        # backend_sdk_tokens_per_query. Falls back to 0 when the
+        # response usage_metadata is missing.
+        if backend_sdk_tokens_per_query is not None:
+            try:
+                backend_sdk_tokens_per_query.labels(
+                    **_LABELS, model=_sanitize_model_label(resolved_model),
+                ).observe(int(_total_tokens or 0))
+            except Exception:
+                pass
         if _total_tokens is not None and max_tokens is not None:
             if backend_context_tokens is not None:
                 backend_context_tokens.labels(**_LABELS).observe(_total_tokens)
