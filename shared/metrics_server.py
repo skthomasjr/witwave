@@ -173,7 +173,7 @@ def start_metrics_server(
         access_log=False,
     )
     server = uvicorn.Server(config)
-    task = asyncio.get_event_loop().create_task(server.serve(), name="metrics-server")
+    task = asyncio.get_running_loop().create_task(server.serve(), name="metrics-server")
     logger.info(
         "Prometheus metrics enabled on dedicated listener :%d%s", bind_port, path
     )
