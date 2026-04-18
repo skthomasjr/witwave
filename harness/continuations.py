@@ -9,6 +9,7 @@ from pathlib import Path
 from bus import Message, MessageBus
 from metrics import (
     harness_continuation_fanin_evictions_total,
+    harness_continuation_fires_shed_total,
     harness_continuation_fires_total,
     harness_continuation_items_registered,
     harness_continuation_parse_errors_total,
@@ -39,6 +40,15 @@ _DISABLED = object()
 # Global default cap on concurrent in-flight fires per continuation.
 # Overridable per-continuation via the max-concurrent-fires frontmatter field.
 CONTINUATION_MAX_CONCURRENT_FIRES = int(os.environ.get("CONTINUATION_MAX_CONCURRENT_FIRES", "5"))
+# Global concurrency cap across *all* continuations (#781). Mirrors
+# WEBHOOK_MAX_CONCURRENT_DELIVERIES so N continuations sharing an
+# upstream can't fan out 5×N in-flight fires and starve the harness
+# event loop. Set to 0 to disable (not recommended). Default is 5×the
+# per-continuation cap, matching the webhook pattern.
+CONTINUATION_MAX_CONCURRENT_FIRES_GLOBAL = int(
+    os.environ.get("CONTINUATION_MAX_CONCURRENT_FIRES_GLOBAL",
+                   str(CONTINUATION_MAX_CONCURRENT_FIRES * 5))
+)
 
 # TTL (seconds) for partial fan-in state entries in `_fanin_state`.  Prevents
 # unbounded growth when one of several required upstreams never fires for a
@@ -370,6 +380,31 @@ class ContinuationRunner:
                     fanin_key = key
 
             if not ready:
+                continue
+
+            # Global throttle (#781): shed the fire if the process-wide
+            # in-flight continuation count is at or above
+            # CONTINUATION_MAX_CONCURRENT_FIRES_GLOBAL. Mirrors the
+            # webhook runner's WEBHOOK_MAX_CONCURRENT_DELIVERIES cap so
+            # N continuations sharing an upstream can't fan out 5×N
+            # in-flight fires and starve the harness event loop.
+            if (
+                CONTINUATION_MAX_CONCURRENT_FIRES_GLOBAL > 0
+                and len(self._active_fires) >= CONTINUATION_MAX_CONCURRENT_FIRES_GLOBAL
+            ):
+                logger.warning(
+                    f"Continuation '{item.name}': global in-flight cap "
+                    f"({CONTINUATION_MAX_CONCURRENT_FIRES_GLOBAL}) reached — "
+                    f"shedding fire for upstream '{kind}'."
+                )
+                if harness_continuation_fires_shed_total is not None:
+                    try:
+                        harness_continuation_fires_shed_total.labels(name=item.name).inc()
+                    except Exception:
+                        pass
+                # Fan-in state intentionally preserved — same as the
+                # per-continuation throttle path — so a future upstream
+                # event can re-enter once the cap drops.
                 continue
 
             # Throttle: skip this fire if the per-continuation in-flight
