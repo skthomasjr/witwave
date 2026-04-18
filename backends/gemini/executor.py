@@ -504,7 +504,15 @@ async def _emit_afc_history(
     #      index order, which is stable even when multiple in-flight calls
     #      share a tool name.
     pending_by_id: dict[str, dict] = {}
-    pending_by_index: list[dict] = []  # FIFO across all tool names
+    # Tool-name-segregated FIFO (#887). Previously a single flat FIFO was
+    # used across all tool names, so parallel calls with ids missing on
+    # the response side would pop the oldest pending entry regardless of
+    # name, mis-labelling tool_use_id + the duration metric's tool label.
+    # Same-tool FIFO first; cross-tool fallback only when same-tool empty
+    # (with a WARN so operators notice SDK-version drift).
+    pending_by_name: dict[str, list[dict]] = {}
+    # Secondary flat FIFO preserved only for cross-tool fallback ordering.
+    pending_by_index: list[dict] = []
     call_counter = 0
     for content in history:
         parts = getattr(content, "parts", None) or []
@@ -555,6 +563,7 @@ async def _emit_afc_history(
                 pending_entry = {"id": call_id, "ts": ts, "name": name, "fc_id": fc_id}
                 if fc_id:
                     pending_by_id[fc_id] = pending_entry
+                pending_by_name.setdefault(name, []).append(pending_entry)
                 pending_by_index.append(pending_entry)
             elif fr is not None:
                 name = getattr(fr, "name", None) or "<unknown>"
@@ -576,10 +585,43 @@ async def _emit_afc_history(
                         pending_by_index.remove(matched)
                     except ValueError:
                         pass
-                elif pending_by_index:
-                    matched = pending_by_index.pop(0)
-                    if matched.get("fc_id"):
-                        pending_by_id.pop(matched["fc_id"], None)
+                    _same_name_q = pending_by_name.get(matched.get("name", ""))
+                    if _same_name_q:
+                        try:
+                            _same_name_q.remove(matched)
+                        except ValueError:
+                            pass
+                else:
+                    # Same-tool FIFO first (#887). Only fall back to the
+                    # cross-tool flat FIFO when this tool has no pending,
+                    # and warn so a SDK-version drift that drops fr.id
+                    # doesn't silently mis-label duration metrics.
+                    _same_name_q = pending_by_name.get(name) or []
+                    if _same_name_q:
+                        matched = _same_name_q.pop(0)
+                        try:
+                            pending_by_index.remove(matched)
+                        except ValueError:
+                            pass
+                        if matched.get("fc_id"):
+                            pending_by_id.pop(matched["fc_id"], None)
+                    elif pending_by_index:
+                        matched = pending_by_index.pop(0)
+                        if matched.get("fc_id"):
+                            pending_by_id.pop(matched["fc_id"], None)
+                        _xn = matched.get("name", "")
+                        _xq = pending_by_name.get(_xn)
+                        if _xq:
+                            try:
+                                _xq.remove(matched)
+                            except ValueError:
+                                pass
+                        logger.warning(
+                            "AFC pairing: no same-tool pending for %r; "
+                            "cross-tool FIFO fallback matched pending %r — "
+                            "tool_use_id/duration label may be imprecise (#887).",
+                            name, matched.get("name"),
+                        )
                 tool_use_id = matched["id"] if matched else None
                 ts = datetime.now(timezone.utc).isoformat()
                 entry = {
