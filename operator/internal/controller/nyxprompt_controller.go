@@ -101,6 +101,10 @@ func (r *NyxPromptReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 		return ctrl.Result{}, err
 	}
+	// Snapshot for status Patch(MergeFrom) (#757) — captured before any
+	// in-memory mutation so the computed patch contains only the status
+	// delta, not unrelated server-side fields.
+	promptBeforeStatus := prompt.DeepCopy()
 
 	// Compute the desired ConfigMap set.
 	desired := map[string]*corev1.ConfigMap{}
@@ -217,7 +221,12 @@ func (r *NyxPromptReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 	setCondition(&prompt.Status.Conditions, readyCond)
 
-	if err := r.Status().Update(ctx, prompt); err != nil {
+	// Status().Patch with MergeFrom (#757) so concurrent writers on the
+	// status subresource do not contend over the full object version;
+	// only contested fields raise a conflict. A 409 here still requeues
+	// via the returned error but no duplicate status-write is attempted
+	// inside this reconcile.
+	if err := r.Status().Patch(ctx, prompt, client.MergeFrom(promptBeforeStatus)); err != nil {
 		reconcileErrs = append(reconcileErrs, fmt.Errorf("update status: %w", err))
 	}
 

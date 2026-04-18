@@ -1546,8 +1546,18 @@ func (r *NyxAgentReconciler) updateStatus(ctx context.Context, agent *nyxv1alpha
 	if statusEqual(agent.Status, *newStatus) {
 		return nil
 	}
+	// Use Status().Patch with MergeFrom(before) (#757) rather than
+	// Status().Update: a server-side optimistic-concurrency conflict on
+	// the subresource now only fails the single field that contended,
+	// without requeueing the whole object or prompting a duplicate
+	// status write. Crucially, we also defer the phase-transition
+	// metric increment + Kubernetes Event emission until *after* the
+	// patch succeeds so a retried Update-on-conflict cannot double-count
+	// either (the previous Update call incremented the metric first
+	// then retried on 409 -> duplicate Events in the audit log).
+	before := agent.DeepCopy()
 	agent.Status = *newStatus
-	if err := r.Status().Update(ctx, agent); err != nil {
+	if err := r.Status().Patch(ctx, agent, client.MergeFrom(before)); err != nil {
 		return err
 	}
 
