@@ -826,6 +826,50 @@ async def main():
         ]
         return JSONResponse(payload)
 
+    async def runs_discovery(request: Request) -> JSONResponse:
+        """Advertise the runnable ad-hoc entrypoints (#788).
+
+        Clients can discover the heartbeat/jobs/tasks ad-hoc run endpoints
+        from a single well-known document, the way /.well-known/agent-triggers.json
+        advertises inbound trigger endpoints.  All three endpoints share the
+        TRIGGERS_AUTH_TOKEN bearer-token auth plumbing used elsewhere in the
+        harness HTTP surface.
+        """
+        payload: list[dict] = [
+            {
+                "kind": "heartbeat",
+                "name": "heartbeat",
+                "endpoint": "/heartbeat/run",
+                "methods": ["POST"],
+                "auth": "bearer:TRIGGERS_AUTH_TOKEN",
+            },
+        ]
+        try:
+            for job in job_runner.items():
+                name = (job.get("name") if isinstance(job, dict) else getattr(job, "name", "")) or ""
+                payload.append({
+                    "kind": "job",
+                    "name": name,
+                    "endpoint": f"/jobs/{name}/run",
+                    "methods": ["POST"],
+                    "auth": "bearer:TRIGGERS_AUTH_TOKEN",
+                })
+        except Exception:
+            pass
+        try:
+            for task in task_runner.items():
+                name = (task.get("name") if isinstance(task, dict) else getattr(task, "name", "")) or ""
+                payload.append({
+                    "kind": "task",
+                    "name": name,
+                    "endpoint": f"/tasks/{name}/run",
+                    "methods": ["POST"],
+                    "auth": "bearer:TRIGGERS_AUTH_TOKEN",
+                })
+        except Exception:
+            pass
+        return JSONResponse(payload)
+
     async def trigger_handler(request: Request) -> JSONResponse:
         endpoint = request.path_params["endpoint"]
         # TODO(#71): HEAD /triggers/{endpoint} returns 405 (Starlette default). Should it return 200 with metadata?
@@ -1460,6 +1504,7 @@ async def main():
         Route("/health/live", health_live),
         Route("/health/ready", health_ready),
         Route("/.well-known/agent-triggers.json", triggers_discovery, methods=["GET"]),
+        Route("/.well-known/agent-runs.json", runs_discovery, methods=["GET"]),
         Route("/triggers/{endpoint}", trigger_handler, methods=["POST"]),
         Route("/internal/events/hook-decision", hook_decision_event_handler, methods=["POST"]),
         Route("/jobs/{name}/run", jobs_run_handler, methods=["POST"]),
