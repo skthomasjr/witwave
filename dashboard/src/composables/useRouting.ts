@@ -47,22 +47,32 @@ export function useRouting(agentName: () => string) {
 
   async function load() {
     aborter?.abort();
-    aborter = new AbortController();
+    const localAborter = new AbortController();
+    aborter = localAborter;
     const name = agentName();
     if (!name) {
       routing.value = null;
       return;
     }
     try {
-      routing.value = await apiGet<RoutingResponse>(
+      const response = await apiGet<RoutingResponse>(
         `/agents/${encodeURIComponent(name)}/routing`,
-        { signal: aborter.signal, timeoutMs: 10_000 },
+        { signal: localAborter.signal, timeoutMs: 10_000 },
       );
+      // #1005: identity guard. A rapid agentName() change would have
+      // aborted this cycle already and started a newer one; if the
+      // module-level aborter no longer points at ours, the response is
+      // stale and must NOT clobber the newer cycle's state.
+      if (aborter !== localAborter) return;
+      routing.value = response;
       error.value = "";
     } catch (e) {
       // Routing reflection is best-effort; absence falls back to
       // the caller's prior default. Swallow AbortError.
       if ((e as { name?: string })?.name === "AbortError") return;
+      // Identity guard on the error path too: a superseded cycle's
+      // failure shouldn't flip the newer cycle's state either (#1005).
+      if (aborter !== localAborter) return;
       routing.value = null;
       error.value = e instanceof Error ? e.message : String(e);
     }
