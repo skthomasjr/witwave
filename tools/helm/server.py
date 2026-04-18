@@ -554,13 +554,16 @@ def diff(
     """Show a unified diff of what ``helm upgrade`` WOULD change (#854).
 
     Requires the `helm-diff` plugin to be installed in the tool image
-    (`helm plugin install https://github.com/databus23/helm-diff`). When
-    absent, returns a clear stderr message rather than silently
-    succeeding. Useful to let an LLM caller inspect a proposed upgrade
-    before running it.
+    (`helm plugin install https://github.com/databus23/helm-diff`).
+    When the plugin is absent, ``diff`` does NOT return a text message
+    — it raises ``HelmError`` from the wrapped ``helm diff upgrade``
+    invocation, mirroring every other helm CLI failure surface
+    (#922 corrected the previous docstring which claimed the error
+    was returned inline).
 
     Returns the raw text diff from ``helm diff upgrade`` — consumers
-    should treat an empty string as "no changes".
+    should treat an empty string as "no changes". Non-zero exit codes
+    from the wrapped CLI bubble up as ``HelmError``.
     """
     _reject_flag_like(
         name=name, chart=chart, namespace=namespace, version=version, repo=repo
