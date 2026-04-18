@@ -1244,6 +1244,12 @@ class AgentExecutor(A2AAgentExecutor):
         self._mcp_stack: AsyncExitStack | None = None
         self._live_mcp_servers: list = []
         self._mcp_servers_lock: asyncio.Lock | None = None
+        # Refcount of in-flight requests holding the current stack. When a
+        # hot-reload swaps in a new stack while this is > 0, the old stack is
+        # parked in _mcp_old_stacks and only aclose()d when the last
+        # user releases (#673, mirror of codex #667).
+        self._mcp_stack_refcount: int = 0
+        self._mcp_old_stacks: list[tuple[AsyncExitStack, int]] = []
 
     def _mcp_watchers(self):
         """Return callables for GEMINI.md, hooks.yaml, and mcp.json watching (#371, #631, #640)."""
@@ -1266,14 +1272,28 @@ class AgentExecutor(A2AAgentExecutor):
         if self._mcp_servers_lock is None:
             self._mcp_servers_lock = asyncio.Lock()
         async with self._mcp_servers_lock:
-            # Tear down the previous stack (if any) before entering the new one.
+            # Park the previous stack rather than closing it immediately
+            # (#673). In-flight generate_content / AFC calls may still be
+            # using its ClientSessions; only aclose once every caller has
+            # released via _release_mcp_stack.
             if self._mcp_stack is not None:
-                try:
-                    await self._mcp_stack.aclose()
-                except Exception as _close_exc:
-                    logger.warning("Previous MCP stack aclose error: %s", _close_exc)
+                _prev_stack = self._mcp_stack
+                _prev_refcount = self._mcp_stack_refcount
                 self._mcp_stack = None
                 self._live_mcp_servers = []
+                self._mcp_stack_refcount = 0
+                if _prev_refcount <= 0:
+                    try:
+                        await _prev_stack.aclose()
+                    except Exception as _close_exc:
+                        logger.warning("Previous MCP stack aclose error: %s", _close_exc)
+                else:
+                    logger.info(
+                        "MCP hot-reload: deferring aclose of previous stack "
+                        "until %d in-flight request(s) release it.",
+                        _prev_refcount,
+                    )
+                    self._mcp_old_stacks.append((_prev_stack, _prev_refcount))
 
             if not mcp_config:
                 if backend_mcp_servers_active is not None:
@@ -1352,6 +1372,53 @@ class AgentExecutor(A2AAgentExecutor):
                     "See #640 issue body option 2 to disable AFC and hand-roll the "
                     "loop if policy enforcement is required."
                 )
+
+    async def _acquire_mcp_stack(self) -> tuple[list, "AsyncExitStack | None"]:
+        """Acquire the current MCP stack for one in-flight request (#673).
+
+        Returns a snapshot of the live ClientSession list and the stack the
+        caller is now holding a refcount on. MUST be paired with
+        _release_mcp_stack in a finally block so hot-reload can free parked
+        stacks promptly.
+        """
+        if self._mcp_servers_lock is None:
+            self._mcp_servers_lock = asyncio.Lock()
+        async with self._mcp_servers_lock:
+            stack = self._mcp_stack
+            if stack is not None:
+                self._mcp_stack_refcount += 1
+            return list(self._live_mcp_servers), stack
+
+    async def _release_mcp_stack(self, stack: "AsyncExitStack | None") -> None:
+        """Release a refcount previously acquired via _acquire_mcp_stack.
+
+        Closes a parked old stack when its refcount hits zero so
+        ClientSession stdio subprocesses stop promptly without breaking
+        in-flight AFC traffic (#673).
+        """
+        if stack is None:
+            return
+        if self._mcp_servers_lock is None:
+            self._mcp_servers_lock = asyncio.Lock()
+        async with self._mcp_servers_lock:
+            if self._mcp_stack is stack:
+                if self._mcp_stack_refcount > 0:
+                    self._mcp_stack_refcount -= 1
+                return
+            for i, (old_stack, old_ref) in enumerate(self._mcp_old_stacks):
+                if old_stack is stack:
+                    new_ref = old_ref - 1
+                    if new_ref <= 0:
+                        self._mcp_old_stacks.pop(i)
+                        try:
+                            await old_stack.aclose()
+                        except Exception as _close_exc:
+                            logger.warning(
+                                "Deferred MCP stack aclose error: %s", _close_exc,
+                            )
+                    else:
+                        self._mcp_old_stacks[i] = (old_stack, new_ref)
+                    return
 
     async def _snapshot_live_mcp_servers(self) -> list:
         """Return a defensive copy of the currently-live MCP server list (#640).
@@ -1562,18 +1629,23 @@ class AgentExecutor(A2AAgentExecutor):
                     "a2.agent_id": AGENT_ID,
                 },
             ) as _otel_span:
-                _response = await run(
-                    prompt,
-                    session_id,
-                    self._sessions,
-                    self._agent_md_content,
-                    self._session_locks,
-                    history_save_failed=self._history_save_failed,
-                    model=model,
-                    max_tokens=max_tokens,
-                    on_chunk=_emit_chunk,
-                    live_mcp_servers=await self._snapshot_live_mcp_servers(),
-                )
+                _mcp_servers_snapshot, _mcp_stack_held = await self._acquire_mcp_stack()
+                try:
+                    _response = await run(
+                        prompt,
+                        session_id,
+                        self._sessions,
+                        self._agent_md_content,
+                        self._session_locks,
+                        history_save_failed=self._history_save_failed,
+                        model=model,
+                        max_tokens=max_tokens,
+                        on_chunk=_emit_chunk,
+                        live_mcp_servers=_mcp_servers_snapshot,
+                    )
+                finally:
+                    # Release the hot-reload refcount (#673).
+                    await self._release_mcp_stack(_mcp_stack_held)
                 _success = True
                 # Skip the final aggregated event when chunks were streamed —
                 # they already delivered the content.
@@ -1630,6 +1702,16 @@ class AgentExecutor(A2AAgentExecutor):
                 logger.warning("MCP stack aclose on shutdown: %s", _close_exc)
             self._mcp_stack = None
             self._live_mcp_servers = []
+            self._mcp_stack_refcount = 0
             if backend_mcp_servers_active is not None:
                 backend_mcp_servers_active.labels(**_LABELS).set(0)
+        # Drain any parked old stacks (#673) from previous hot-reloads that
+        # still had in-flight holders when swapped. On shutdown we force-
+        # close them regardless of refcount.
+        while self._mcp_old_stacks:
+            _old_stack, _ = self._mcp_old_stacks.pop()
+            try:
+                await _old_stack.aclose()
+            except Exception as _close_exc:
+                logger.warning("Parked MCP stack aclose on shutdown: %s", _close_exc)
         await _close_client()
