@@ -180,6 +180,58 @@ def inject_traceparent(carrier: dict[str, str], context: Any = None) -> None:
         pass
 
 
+class TraceparentASGIMiddleware:
+    """Tiny ASGI middleware that attaches the inbound ``traceparent`` header.
+
+    The A2A SDK auto-traces its server-side classes via ``@trace_class`` —
+    those spans use whatever OpenTelemetry context is current when the
+    JSON-RPC handler runs. Without this middleware they are orphans
+    (their trace_id is freshly minted, so the harness's upstream trace
+    does not continue through the backend).
+
+    This middleware reads the ``traceparent`` (and ``tracestate``) headers
+    from the ASGI scope, extracts the OTel context, and attaches it for
+    the duration of the request. After the middleware returns, the
+    context is detached. Safe to mount unconditionally — when OTel is
+    disabled or the header is absent it is a no-op.
+    """
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+        try:
+            headers = {
+                k.decode("latin-1").lower(): v.decode("latin-1")
+                for k, v in scope.get("headers") or []
+            }
+        except Exception:
+            headers = {}
+        tp = headers.get("traceparent")
+        if not tp:
+            await self.app(scope, receive, send)
+            return
+        try:
+            from opentelemetry import context as _ctx_mod
+            from opentelemetry.propagate import extract
+
+            ctx = extract(headers)
+            token = _ctx_mod.attach(ctx)
+        except Exception:
+            await self.app(scope, receive, send)
+            return
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            try:
+                _ctx_mod.detach(token)
+            except Exception:
+                pass
+
+
 @contextmanager
 def start_span(
     name: str,

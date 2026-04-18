@@ -449,6 +449,11 @@ async def main():
                 await executor.close()
 
     full_app = Starlette(routes=_routes, lifespan=lifespan)
+    # Wrap with the ASGI middleware that extracts the inbound traceparent
+    # so the A2A SDK's @trace_class spans become children of the harness
+    # trace rather than orphaned roots (#otel-cross-pod).
+    from otel import TraceparentASGIMiddleware
+    full_app = TraceparentASGIMiddleware(full_app)
 
     logger.info(f"Starting {AGENT_NAME} on {AGENT_HOST}:{BACKEND_PORT}")
     config = uvicorn.Config(full_app, host=AGENT_HOST, port=BACKEND_PORT)
