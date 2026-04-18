@@ -1,4 +1,5 @@
 import asyncio
+import contextvars
 import json
 import logging
 import os
@@ -10,6 +11,16 @@ from collections import OrderedDict
 from contextlib import AsyncExitStack
 from datetime import datetime, timezone
 from typing import Awaitable, Callable
+
+# Per-task session context (#937). The LocalShellTool baseline deny path fires
+# before the Agents SDK exposes session_id to the tool, so hook.decision events
+# previously shipped with session_id="" and broke cross-backend correlation
+# (webhooks, dashboard forensics). Stashing the current session_id in a
+# ContextVar at _run_inner entry lets the shell executor thread it through
+# without plumbing new parameters into the SDK's tool-invocation surface.
+_current_session_id: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "codex_current_session_id", default=""
+)
 
 from a2a.server.agent_execution import AgentExecutor as A2AAgentExecutor
 from a2a.server.agent_execution import RequestContext
@@ -442,7 +453,11 @@ async def _shell_executor_inner(req: LocalShellCommandRequest) -> str:
             _hook_events.schedule_post(
                 {
                     "agent": AGENT_OWNER or AGENT_NAME,
-                    "session_id": "",  # shell denial fires before the SDK exposes the session id
+                    # #937: carry the per-task session_id from the ContextVar
+                    # seeded in _run_inner. Falls back to "" only when the
+                    # executor is driven outside a normal task run (tests,
+                    # warmup, etc.) — same semantics as the old hard-coded "".
+                    "session_id": _current_session_id.get(),
                     "tool": "shell",
                     "decision": "deny",
                     "rule_name": rule,
@@ -1517,6 +1532,12 @@ async def _run_inner(
     live_mcp_servers: list | None = None,
     tool_config: dict | None = None,
 ) -> str:
+    # #937: seed the per-task session ContextVar so shell-baseline denials
+    # (and any other contextvar-aware callers) can correlate their hook
+    # events back to this A2A session. No reset is required — the set
+    # scopes to the current asyncio Task's context, which terminates when
+    # this coroutine returns.
+    _current_session_id.set(session_id)
     resolved_model = model or CODEX_MODEL
     if backend_model_requests_total is not None:
         backend_model_requests_total.labels(**_LABELS, model=sanitize_model_label(resolved_model)).inc()
