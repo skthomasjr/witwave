@@ -35,8 +35,39 @@ from __future__ import annotations
 
 import os
 
-DEFAULT_MCP_ALLOWED_COMMANDS = "mcp-kubernetes,mcp-helm,uv,uvx"
+# Minimal default: only the MCP tool binaries shipped in this repo (#930).
+# Previously ``uv`` and ``uvx`` were included as a convenience for
+# development setups, but the same binaries accept arbitrary packages
+# via ``uvx <pkg>`` and scripts via ``uv run``, so a mis-reviewed
+# mcp.json could reach arbitrary code execution. Operators who need
+# interpreter-style entries must now opt in explicitly via
+# MCP_ALLOWED_COMMANDS. Also documented under
+# INTERPRETER_COMMANDS below so the args-level sanitizer can reject
+# inline-code arg forms when an interpreter IS explicitly allow-listed.
+DEFAULT_MCP_ALLOWED_COMMANDS = "mcp-kubernetes,mcp-helm"
 DEFAULT_MCP_ALLOWED_COMMAND_PREFIXES = "/home/agent/mcp-bin/,/usr/local/bin/"
+
+# Commands that, when allow-listed, must have their args sanitised so
+# inline-code / arbitrary-package invocations are rejected even after
+# the command itself passed the allow-list check (#930).
+INTERPRETER_COMMANDS: frozenset[str] = frozenset({
+    "python", "python3",
+    "node", "nodejs",
+    "npx", "npm",
+    "uv", "uvx",
+    "ruby", "perl", "php",
+    "bash", "sh", "zsh", "ksh",
+    "deno", "bun",
+})
+
+# Flags that deliver arbitrary code to an interpreter inline and must
+# therefore be rejected when they appear in the args array of an
+# interpreter command.
+_INTERPRETER_INLINE_CODE_FLAGS: frozenset[str] = frozenset({
+    "-c", "--command",
+    "-e", "--execute", "--eval",
+    "--inline",
+})
 
 
 def _load_env_frozenset(var: str, default: str) -> frozenset[str]:
@@ -86,3 +117,39 @@ def mcp_command_allowed(
     if cmd in allowed or os.path.basename(cmd) in allowed:
         return True, "basename_allowed"
     return False, "basename_not_allowed"
+
+
+def mcp_command_args_safe(
+    command: object, args: object
+) -> tuple[bool, str]:
+    """Validate args for an already-allow-listed MCP command (#930).
+
+    Returns (ok, reason). When the command basename is in
+    :data:`INTERPRETER_COMMANDS`, inline-code flags (``-c``, ``-e``,
+    ``--eval``, …) are rejected — those deliver arbitrary code to the
+    interpreter and defeat the allow-list. Non-interpreter commands
+    pass through (backwards compatible). ``args`` must be a list or
+    tuple of strings; anything else returns ``(False, 'args_not_list')``.
+    """
+    if args is None:
+        return True, "no_args"
+    if not isinstance(args, (list, tuple)):
+        return False, "args_not_list"
+    if not isinstance(command, str):
+        return False, "non_string_command"
+    base = os.path.basename(command.strip())
+    if base not in INTERPRETER_COMMANDS:
+        return True, "not_interpreter"
+    for arg in args:
+        if not isinstance(arg, str):
+            continue
+        if arg in _INTERPRETER_INLINE_CODE_FLAGS:
+            return False, "interpreter_inline_code_flag"
+        # Also reject the common "run arbitrary string as script" shape
+        # of uv/uvx ("uvx <pkg>" where pkg resolves to arbitrary code).
+        if base in ("uv",) and arg == "run":
+            return False, "uv_run_rejected"
+        if base in ("uvx",) and not arg.startswith("-"):
+            # uvx <package> installs and runs an arbitrary PyPI pkg.
+            return False, "uvx_package_rejected"
+    return True, "interpreter_args_ok"
