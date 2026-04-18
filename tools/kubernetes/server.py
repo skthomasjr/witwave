@@ -496,11 +496,15 @@ def apply(
                 if ns:
                     patch_kwargs["namespace"] = ns
                 if dry_run:
-                    # Server-side dry-run: the apiserver resolves the apply
-                    # end-to-end (admission, defaulting, conflicts) but
-                    # skips persistence. Exact field name expected by the
-                    # dynamic client's REST helper.
-                    patch_kwargs["dry_run"] = ["All"]
+                    # Server-side dry-run (#854, #917): the apiserver
+                    # resolves the apply end-to-end (admission, defaulting,
+                    # conflicts) but skips persistence. The dynamic client's
+                    # kwarg→query-param translation for ``dry_run`` is
+                    # version-dependent — some releases accept ``["All"]``,
+                    # others silently drop it and persist the object. Use
+                    # the explicit string form that every shipped kubernetes
+                    # client translates to ``?dryRun=All`` on the wire.
+                    patch_kwargs["dry_run"] = "All"
                 with _api_span(
                     "apply",
                     kind,
@@ -549,7 +553,11 @@ def delete(
             if namespace:
                 kwargs["namespace"] = namespace
             if dry_run:
-                kwargs["dry_run"] = ["All"]
+                # Explicit string form (#917) — list-of-strings form is
+                # accepted by some kubernetes client releases and silently
+                # dropped by others, risking a real delete when the caller
+                # expected a dry-run.
+                kwargs["dry_run"] = "All"
             with _api_span("delete", kind, {"k8s.name": name, "k8s.namespace": namespace, "k8s.dry_run": dry_run}):
                 return _to_dict(resource.delete(**kwargs))
         except Exception as exc:
