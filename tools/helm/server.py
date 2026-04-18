@@ -143,6 +143,83 @@ def _reject_flag_like(**named: str | None) -> None:
             )
 
 
+# Key substrings that mark a values-tree leaf as likely secret material
+# (#774). Case-insensitive substring match — conservative and covers the
+# common names that flow through Helm values: password, token, secret,
+# apiKey, authToken, pullSecret, bearer, private_key, credential, etc.
+_SECRET_KEY_HINTS = (
+    "password",
+    "passwd",
+    "secret",
+    "token",
+    "apikey",
+    "api_key",
+    "auth",
+    "bearer",
+    "credential",
+    "privatekey",
+    "private_key",
+    "pullsecret",
+    "pull_secret",
+    "dockerconfig",
+    ".dockerconfigjson",
+)
+_REDACTED = "***REDACTED***"
+
+
+def _looks_like_secret_key(key: str) -> bool:
+    k = key.lower()
+    return any(hint in k for hint in _SECRET_KEY_HINTS)
+
+
+def _redact_values(obj: Any) -> Any:
+    """Recursively redact values whose keys match _SECRET_KEY_HINTS (#774).
+
+    Leaves non-matching keys untouched. Lists/tuples are recursed into
+    with the parent key preserved (so a list of token-ish strings under
+    a matching key is redacted). The returned tree is a fresh structure
+    — original input is not mutated.
+    """
+    if isinstance(obj, dict):
+        out: dict[str, Any] = {}
+        for k, v in obj.items():
+            if isinstance(k, str) and _looks_like_secret_key(k):
+                # Redact scalar + container payloads under matching keys.
+                out[k] = _REDACTED
+            else:
+                out[k] = _redact_values(v)
+        return out
+    if isinstance(obj, list):
+        return [_redact_values(v) for v in obj]
+    if isinstance(obj, tuple):
+        return tuple(_redact_values(v) for v in obj)
+    return obj
+
+
+def _redact_manifest(manifest: str) -> str:
+    """Redact Secret data/stringData payloads inside a rendered manifest (#774).
+
+    Parses each YAML doc; when kind == Secret, replaces data/stringData
+    values with ``_REDACTED``. Non-Secret docs pass through unchanged.
+    Falls back to the raw manifest on parse failure so operators don't
+    lose visibility into malformed templates.
+    """
+    try:
+        docs = list(yaml.safe_load_all(manifest))
+    except Exception:
+        return manifest
+    out_docs: list[Any] = []
+    for doc in docs:
+        if isinstance(doc, dict) and doc.get("kind") == "Secret":
+            for field in ("data", "stringData"):
+                payload = doc.get(field)
+                if isinstance(payload, dict):
+                    doc[field] = {k: _REDACTED for k in payload}
+        out_docs.append(doc)
+    # safe_dump_all preserves doc separators.
+    return yaml.safe_dump_all(out_docs, default_flow_style=False, sort_keys=False)
+
+
 def _ns_args(namespace: str | None, all_namespaces: bool = False) -> list[str]:
     if all_namespaces:
         return ["-A"]
@@ -199,27 +276,57 @@ def get_release(name: str, namespace: str) -> dict:
 
 
 @mcp.tool()
-def get_values(name: str, namespace: str, all_values: bool = False) -> dict:
-    """Return user-supplied values (or all computed values) for a release."""
+def get_values(
+    name: str,
+    namespace: str,
+    all_values: bool = False,
+    redact: bool = True,
+) -> dict:
+    """Return user-supplied values (or all computed values) for a release.
+
+    Secret-looking leaves (password/token/apiKey/auth/credential/…) are
+    redacted by default (#774) to stop secret material flowing into
+    backend conversation.jsonl, memory, and OTel spans. Pass
+    ``redact=False`` to opt out when the caller genuinely needs the raw
+    values (e.g. a credential-rotation workflow); the opt-out must be
+    explicit.
+    """
     _reject_flag_like(name=name, namespace=namespace)
-    with _handler_span("get_values", {"helm.release": name, "helm.namespace": namespace}) as _h:
+    with _handler_span(
+        "get_values",
+        {"helm.release": name, "helm.namespace": namespace, "helm.redacted": redact},
+    ) as _h:
         try:
             args = ["get", "values", name, "-n", namespace, "-o", "json"]
             if all_values:
                 args.append("-a")
-            return _helm(args, parse_json=True) or {}
+            values = _helm(args, parse_json=True) or {}
+            if redact:
+                values = _redact_values(values)
+            return values
         except Exception as exc:
             set_span_error(_h, exc)
             raise
 
 
 @mcp.tool()
-def get_manifest(name: str, namespace: str) -> str:
-    """Return the rendered manifest for a release."""
+def get_manifest(name: str, namespace: str, redact: bool = True) -> str:
+    """Return the rendered manifest for a release.
+
+    Secret resources' data/stringData are redacted by default (#774). Pass
+    ``redact=False`` to retrieve the raw manifest when you explicitly need
+    the secret payload (credential-rotation, debugging apiserver decode).
+    """
     _reject_flag_like(name=name, namespace=namespace)
-    with _handler_span("get_manifest", {"helm.release": name, "helm.namespace": namespace}) as _h:
+    with _handler_span(
+        "get_manifest",
+        {"helm.release": name, "helm.namespace": namespace, "helm.redacted": redact},
+    ) as _h:
         try:
-            return _helm(["get", "manifest", name, "-n", namespace])
+            manifest = _helm(["get", "manifest", name, "-n", namespace])
+            if redact:
+                manifest = _redact_manifest(manifest)
+            return manifest
         except Exception as exc:
             set_span_error(_h, exc)
             raise
