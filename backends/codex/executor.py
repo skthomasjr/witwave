@@ -81,7 +81,7 @@ from metrics import (
 
 from log_utils import _append_log
 from exceptions import BudgetExceededError
-from validation import parse_max_tokens
+from validation import parse_max_tokens, sanitize_model_label
 from otel import start_span, set_span_error
 
 logger = logging.getLogger(__name__)
@@ -121,14 +121,16 @@ OPENAI_API_KEY: str | None = os.environ.get("OPENAI_API_KEY") or None
 
 
 def _resolve_model_label(model: str | None) -> str:
-    """Resolve a non-empty model label for observability (metrics + spans).
+    """Resolve a non-empty, cardinality-safe model label for observability (#719).
 
-    Falls back to the module-load ``CODEX_MODEL`` default, then to the sentinel
-    ``"unknown"`` if both are empty. Using ``"unknown"`` (not ``""``) keeps
-    Prometheus series and OTel span attributes filterable in dashboards and
-    avoids phantom empty-string label values (#570).
+    Falls back to the module-load ``CODEX_MODEL`` default, then runs the
+    result through ``sanitize_model_label`` so caller-supplied
+    ``metadata.model`` values can't blow up Prometheus cardinality by
+    injecting a fresh UUID per request. Using ``"unknown"`` (not ``""``)
+    keeps Prometheus series and OTel span attributes filterable in
+    dashboards and avoids phantom empty-string label values (#570).
     """
-    return model or CODEX_MODEL or "unknown"
+    return sanitize_model_label(model or CODEX_MODEL or None)
 
 _BACKEND_ID = "codex"
 _LABELS = {"agent": AGENT_OWNER, "agent_id": AGENT_ID, "backend": _BACKEND_ID}
@@ -764,7 +766,7 @@ async def run_query(
                     if _first_chunk_at is None:
                         _first_chunk_at = time.monotonic()
                         if backend_sdk_time_to_first_message_seconds is not None:
-                            backend_sdk_time_to_first_message_seconds.labels(**_LABELS, model=resolved_model).observe(
+                            backend_sdk_time_to_first_message_seconds.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(
                                 _first_chunk_at - _query_start
                             )
                     collected.append(delta.text)
@@ -929,7 +931,7 @@ async def run_query(
                         backend_sdk_tool_result_size_bytes.labels(**_LABELS, tool=tool_name).observe(len(content.encode()))
     except BudgetExceededError as exc:
         if backend_sdk_session_duration_seconds is not None:
-            backend_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
+            backend_sdk_session_duration_seconds.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(
                 time.monotonic() - _session_start
             )
         partial_response = "".join(exc.collected)
@@ -941,15 +943,15 @@ async def run_query(
         # tokens, tool-call counts, and context-usage metrics.
         try:
             if backend_sdk_query_duration_seconds is not None:
-                backend_sdk_query_duration_seconds.labels(**_LABELS, model=resolved_model).observe(time.monotonic() - _query_start)
+                backend_sdk_query_duration_seconds.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(time.monotonic() - _query_start)
             if backend_sdk_messages_per_query is not None:
-                backend_sdk_messages_per_query.labels(**_LABELS, model=resolved_model).observe(_message_count)
+                backend_sdk_messages_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(_message_count)
             if backend_sdk_turns_per_query is not None:
-                backend_sdk_turns_per_query.labels(**_LABELS, model=resolved_model).observe(_turn_count)
+                backend_sdk_turns_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(_turn_count)
             if backend_text_blocks_per_query is not None:
-                backend_text_blocks_per_query.labels(**_LABELS, model=resolved_model).observe(len(collected))
+                backend_text_blocks_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(len(collected))
             if backend_sdk_tokens_per_query is not None:
-                backend_sdk_tokens_per_query.labels(**_LABELS, model=resolved_model).observe(_total_tokens)
+                backend_sdk_tokens_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(_total_tokens)
             if backend_sdk_tool_calls_per_query is not None:
                 backend_sdk_tool_calls_per_query.labels(**_LABELS).observe(_tool_call_count)
             if _total_tokens:
@@ -970,11 +972,11 @@ async def run_query(
         raise
     except Exception as _run_exc:
         if backend_sdk_query_error_duration_seconds is not None:
-            backend_sdk_query_error_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
+            backend_sdk_query_error_duration_seconds.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(
                 time.monotonic() - _query_start
             )
         if backend_sdk_session_duration_seconds is not None:
-            backend_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
+            backend_sdk_session_duration_seconds.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(
                 time.monotonic() - _session_start
             )
         # Mark the llm.request span as errored so traces reflect the failure
@@ -991,16 +993,16 @@ async def run_query(
             import openai as _openai
             if isinstance(_run_exc, _openai.APIConnectionError):
                 if backend_sdk_client_errors_total is not None:
-                    backend_sdk_client_errors_total.labels(**_LABELS, model=resolved_model).inc()
+                    backend_sdk_client_errors_total.labels(**_LABELS, model=sanitize_model_label(resolved_model)).inc()
             elif isinstance(_run_exc, _openai.APIError):
                 if backend_sdk_result_errors_total is not None:
-                    backend_sdk_result_errors_total.labels(**_LABELS, model=resolved_model).inc()
+                    backend_sdk_result_errors_total.labels(**_LABELS, model=sanitize_model_label(resolved_model)).inc()
             else:
                 if backend_sdk_errors_total is not None:
-                    backend_sdk_errors_total.labels(**_LABELS, model=resolved_model).inc()
+                    backend_sdk_errors_total.labels(**_LABELS, model=sanitize_model_label(resolved_model)).inc()
         except Exception:
             if backend_sdk_errors_total is not None:
-                backend_sdk_errors_total.labels(**_LABELS, model=resolved_model).inc()
+                backend_sdk_errors_total.labels(**_LABELS, model=sanitize_model_label(resolved_model)).inc()
         raise
     finally:
         # Close the llm.request span opened above (#630). Best-effort — if the
@@ -1013,7 +1015,7 @@ async def run_query(
                 pass
 
     if backend_sdk_session_duration_seconds is not None:
-        backend_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
+        backend_sdk_session_duration_seconds.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(
             time.monotonic() - _session_start
         )
 
@@ -1040,15 +1042,15 @@ async def run_query(
         await log_entry("agent", full_response, session_id, model=resolved_model, tokens=_total_tokens or None)
 
     if backend_sdk_query_duration_seconds is not None:
-        backend_sdk_query_duration_seconds.labels(**_LABELS, model=resolved_model).observe(time.monotonic() - _query_start)
+        backend_sdk_query_duration_seconds.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(time.monotonic() - _query_start)
     if backend_sdk_messages_per_query is not None:
-        backend_sdk_messages_per_query.labels(**_LABELS, model=resolved_model).observe(_message_count)
+        backend_sdk_messages_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(_message_count)
     if backend_sdk_turns_per_query is not None:
-        backend_sdk_turns_per_query.labels(**_LABELS, model=resolved_model).observe(_turn_count)
+        backend_sdk_turns_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(_turn_count)
     if backend_text_blocks_per_query is not None:
-        backend_text_blocks_per_query.labels(**_LABELS, model=resolved_model).observe(len(collected))
+        backend_text_blocks_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(len(collected))
     if backend_sdk_tokens_per_query is not None:
-        backend_sdk_tokens_per_query.labels(**_LABELS, model=resolved_model).observe(_total_tokens)
+        backend_sdk_tokens_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(_total_tokens)
     if backend_sdk_tool_calls_per_query is not None:
         backend_sdk_tool_calls_per_query.labels(**_LABELS).observe(_tool_call_count)
     if _total_tokens:
@@ -1116,7 +1118,7 @@ async def _run_inner(
 ) -> str:
     resolved_model = model or CODEX_MODEL
     if backend_model_requests_total is not None:
-        backend_model_requests_total.labels(**_LABELS, model=resolved_model).inc()
+        backend_model_requests_total.labels(**_LABELS, model=sanitize_model_label(resolved_model)).inc()
 
     is_new = session_id not in sessions and not await asyncio.to_thread(_sqlite_session_exists, session_id)
     if not is_new and backend_session_idle_seconds is not None:
