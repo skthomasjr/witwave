@@ -590,7 +590,7 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string, prompts []n
 		}
 		bPort := b.Port
 		if bPort == 0 {
-			bPort = 8080
+			bPort = 8000
 		}
 		var bMounts []corev1.VolumeMount
 

@@ -93,7 +93,7 @@ describe("TeamView", () => {
           {
             id: "iris-a2-claude",
             role: "backend",
-            url: "http://iris-a2-claude:8080",
+            url: "http://iris-a2-claude:8000",
             card: { name: "iris-claude" },
           },
         ],
@@ -166,7 +166,7 @@ describe("TeamView", () => {
           {
             id: "iris-a2-claude",
             role: "backend",
-            url: "http://iris-a2-claude:8080",
+            url: "http://iris-a2-claude:8000",
             card: { name: "iris-claude" },
           },
         ],

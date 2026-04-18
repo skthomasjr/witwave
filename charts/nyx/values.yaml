@@ -703,7 +703,7 @@ agents:
           # pullPolicy: IfNotPresent
 
         # Port the backend listens on. Must be unique across all backends in the same agent.
-        port: 8080
+        port: 8000
 
         # Default model for this backend.
         model: claude-opus-4-7

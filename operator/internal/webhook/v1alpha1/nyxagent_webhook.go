@@ -52,7 +52,7 @@ var _ webhook.CustomDefaulter = &NyxAgentCustomDefaulter{}
 // against git-ops tools, etc.).
 //
 // Initial scope: exactly one rule — when Spec.Port is unset (0), default
-// to 8080. Additional rules land as follow-up gaps once the scaffold is
+// to 8000. Additional rules land as follow-up gaps once the scaffold is
 // live in production.
 func (d *NyxAgentCustomDefaulter) Default(ctx context.Context, obj runtime.Object) error {
 	log := logf.FromContext(ctx)
@@ -61,8 +61,8 @@ func (d *NyxAgentCustomDefaulter) Default(ctx context.Context, obj runtime.Objec
 		return apierrors.NewBadRequest(fmt.Sprintf("expected *NyxAgent, got %T", obj))
 	}
 	if agent.Spec.Port == 0 {
-		agent.Spec.Port = 8080
-		log.V(1).Info("defaulted spec.port", "namespace", agent.Namespace, "name", agent.Name, "port", 8080)
+		agent.Spec.Port = 8000
+		log.V(1).Info("defaulted spec.port", "namespace", agent.Namespace, "name", agent.Name, "port", 8000)
 	}
 	return nil
 }

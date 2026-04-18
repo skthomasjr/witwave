@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 AGENT_NAME = os.environ.get("AGENT_NAME", "a2-claude")
 AGENT_HOST = os.environ.get("AGENT_HOST", "0.0.0.0")
-BACKEND_PORT = int(os.environ.get("BACKEND_PORT", "8080"))
+BACKEND_PORT = int(os.environ.get("BACKEND_PORT", "8000"))
 AGENT_URL = os.environ.get("AGENT_URL", f"http://localhost:{BACKEND_PORT}/")
 AGENT_VERSION = os.environ.get("AGENT_VERSION", "0.1.0")
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")

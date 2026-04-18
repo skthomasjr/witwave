@@ -199,7 +199,7 @@ type BackendSpec struct {
 	Image ImageSpec `json:"image"`
 
 	// Port is the HTTP port the backend listens on inside the pod.
-	// +kubebuilder:default=8080
+	// +kubebuilder:default=8000
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=65535
 	// +optional

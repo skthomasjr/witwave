@@ -16,7 +16,7 @@ spec:
     - name: claude
       image:
         repository: ghcr.io/skthomasjr/images/a2-claude
-      port: 8080
+      port: 8000
       model: claude-opus-4-6
       # envFrom references a Secret the user creates separately, e.g.
       # kubectl create secret generic adam-claude-secrets \

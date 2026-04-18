@@ -162,7 +162,7 @@ field. The DNS SANs on `tls.crt` must include `<release>-webhook.<namespace>.svc
 
 ### Invariants enforced
 
-Initial scaffold ships **one defaulting rule** (populate `spec.port=8080` when unset) and **one validating rule**
+Initial scaffold ships **one defaulting rule** (populate `spec.port=8000` when unset) and **one validating rule**
 (reject duplicate backend names in `spec.backends`). Further invariants land as follow-up gaps on top of this
 skeleton.
 

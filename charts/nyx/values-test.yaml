@@ -35,7 +35,7 @@ agents:
       # Dev/smoke-only CORS allow-list. Do NOT copy this file as a starting
       # point for production — add explicit origins there instead of "*".
       - name: CORS_ALLOW_ORIGINS
-        value: "http://localhost:5173,http://localhost:8080"
+        value: "http://localhost:5173,http://localhost:3000"
       # Smoke-test trigger auth token. The harness rejects every trigger
       # POST that lacks either a per-trigger HMAC secret or this Bearer
       # token (security-by-default). Generate a local token before running
@@ -161,7 +161,7 @@ agents:
       # Dev/smoke-only CORS allow-list. Do NOT copy this file as a starting
       # point for production — add explicit origins there instead of "*".
       - name: CORS_ALLOW_ORIGINS
-        value: "http://localhost:5173,http://localhost:8080"
+        value: "http://localhost:5173,http://localhost:3000"
     gitSyncs:
       - name: autonomous-agent
         repo: https://github.com/skthomasjr/autonomous-agent

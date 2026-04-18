@@ -378,8 +378,8 @@ Agent identity and behavior are entirely file-based. No identity is baked into a
 | `AGENT_NAME`               | `a2-claude` / `a2-codex` / `a2-gemini` | Backend instance name (e.g. `iris-a2-claude`)                                |
 | `AGENT_OWNER`              | _(same as `AGENT_NAME`)_               | Named agent this backend belongs to (e.g. `iris`); used in metric labels     |
 | `AGENT_ID`                 | `claude` / `codex` / `gemini`          | Backend slot identifier; used in metric labels                               |
-| `AGENT_URL`                | `http://localhost:8080/`               | Public A2A endpoint URL reported in agent card                               |
-| `BACKEND_PORT`             | `8080`                                 | HTTP port the backend listens on (internal)                                  |
+| `AGENT_URL`                | `http://localhost:8000/`               | Public A2A endpoint URL reported in agent card                               |
+| `BACKEND_PORT`             | `8000`                                 | HTTP port the backend listens on (internal)                                  |
 | `METRICS_ENABLED`          | _(unset)_                              | Enable Prometheus `/metrics`                                                 |
 | `CONVERSATIONS_AUTH_TOKEN` | _(unset)_                              | Bearer token required to access `/conversations` and `/trace`                |
 | `TASK_STORE_PATH`          | _(unset)_                              | Path for SQLite A2A task store; defaults to in-memory                        |
@@ -446,7 +446,7 @@ This prevents concurrent outbound backend calls from the same nyx-harness proces
 | ui (active) | 3002        | —         | —        | —         |
 | ui (test)   | 3001        | —         | —        | —         |
 
-Backend containers all listen on port 8080 internally; host port mappings are as above.
+Backend containers all listen on port 8000 internally; host port mappings are as above.
 
 ---
 
@@ -504,8 +504,8 @@ All infrastructure decisions are evaluated against Kubernetes compatibility:
 - Health probes follow the three-probe model (`/health/start`, `/health/live`, `/health/ready`) for nyx-harness;
   `/health` for backend containers
 - Configuration injected via env vars and mounted `ConfigMap`/`Secret` volumes
-- Backend URL configurable via `A2A_URL_<ID>` env var — supports sidecar (`http://localhost:8080`), separate pod
-  (`http://a2-claude-svc:8080`), or Compose service DNS (`http://iris-a2-claude:8080`) without config file changes
+- Backend URL configurable via `A2A_URL_<ID>` env var — supports sidecar (`http://localhost:8000`), separate pod
+  (`http://a2-claude-svc:8000`), or Compose service DNS (`http://iris-a2-claude:8000`) without config file changes
 - Stateless containers at the nyx-harness layer (all state lives in backends)
 - Standard HTTP endpoints suitable for `Service` and `Ingress`
 
@@ -597,7 +597,7 @@ containing an `agents:` list and a `routing:` block.
 backend:
   agents:
     - id: claude
-      url: http://iris-a2-claude:8080
+      url: http://iris-a2-claude:8000
 
   routing:
     default: claude
@@ -609,15 +609,15 @@ backend:
 backend:
   agents:
     - id: claude
-      url: http://iris-a2-claude:8080
+      url: http://iris-a2-claude:8000
       model: claude-opus-4-6
 
     - id: codex
-      url: http://iris-a2-codex:8080
+      url: http://iris-a2-codex:8000
       model: gpt-5.1-codex
 
     - id: gemini
-      url: http://iris-a2-gemini:8080
+      url: http://iris-a2-gemini:8000
 
   routing:
     default:

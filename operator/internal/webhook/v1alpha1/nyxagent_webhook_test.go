@@ -21,8 +21,8 @@ func TestDefaulterPopulatesPortWhenZero(t *testing.T) {
 	if err := d.Default(context.Background(), agent); err != nil {
 		t.Fatalf("Default returned err: %v", err)
 	}
-	if agent.Spec.Port != 8080 {
-		t.Fatalf("expected default port 8080, got %d", agent.Spec.Port)
+	if agent.Spec.Port != 8000 {
+		t.Fatalf("expected default port 8000, got %d", agent.Spec.Port)
 	}
 }
 

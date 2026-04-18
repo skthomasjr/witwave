@@ -1,15 +1,15 @@
 backend:
   agents:
     - id: claude
-      url: http://nova-a2-claude:8080
+      url: http://nova-a2-claude:8000
       model: claude-opus-4-7
 
     - id: codex
-      url: http://nova-a2-codex:8080
+      url: http://nova-a2-codex:8000
       model: gpt-5.1-codex
 
     - id: gemini
-      url: http://nova-a2-gemini:8080
+      url: http://nova-a2-gemini:8000
 
   routing:
     default:

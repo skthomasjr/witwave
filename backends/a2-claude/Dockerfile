@@ -47,8 +47,8 @@ RUN mkdir -p /home/agent/logs /home/agent/.claude/memory
 WORKDIR /home/agent/workspace
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:${BACKEND_PORT:-8080}/health || exit 1
+    CMD curl -f http://localhost:${BACKEND_PORT:-8000}/health || exit 1
 
-EXPOSE 8080
+EXPOSE 8000
 
 CMD ["python3", "/home/agent/a2-claude/main.py"]

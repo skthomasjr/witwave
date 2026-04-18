@@ -125,15 +125,15 @@ issues/PRs with the `mcp` GitHub label.
 backend:
   agents:
     - id: iris-a2-claude
-      url: http://iris-a2-claude:8080
+      url: http://iris-a2-claude:8000
       model: claude-opus-4-6
 
     - id: iris-a2-codex
-      url: http://iris-a2-codex:8080
+      url: http://iris-a2-codex:8000
       model: gpt-5.1-codex
 
     - id: iris-a2-gemini
-      url: http://iris-a2-gemini:8080
+      url: http://iris-a2-gemini:8000
 
   routing:
     default:

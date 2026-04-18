@@ -1320,7 +1320,7 @@ spec:
                       pattern: ^[a-z0-9][a-z0-9-]*$
                       type: string
                     port:
-                      default: 8080
+                      default: 8000
                       description: Port is the HTTP port the backend listens on inside
                         the pod.
                       format: int32

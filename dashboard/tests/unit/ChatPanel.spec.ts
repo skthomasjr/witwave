@@ -7,8 +7,8 @@ import type { Agent } from "../../src/types/team";
 // the thread rendering for user / agent / error rows.
 
 const backends: Agent[] = [
-  { id: "iris-a2-claude", role: "backend", url: "http://iris-a2-claude:8080" },
-  { id: "iris-a2-codex", role: "backend", url: "http://iris-a2-codex:8080" },
+  { id: "iris-a2-claude", role: "backend", url: "http://iris-a2-claude:8000" },
+  { id: "iris-a2-codex", role: "backend", url: "http://iris-a2-codex:8000" },
 ];
 
 function okJson(data: unknown): Response {

@@ -195,13 +195,13 @@ Each agent's `backend.yaml` (under `.nyx/`) controls where nyx routes each type 
 backend:
   agents:
     - id: iris-a2-claude
-      url: http://iris-a2-claude:8080
+      url: http://iris-a2-claude:8000
 
     - id: iris-a2-codex
-      url: http://iris-a2-codex:8080
+      url: http://iris-a2-codex:8000
 
     - id: iris-a2-gemini
-      url: http://iris-a2-gemini:8080
+      url: http://iris-a2-gemini:8000
 
   routing:
     default: iris-a2-claude # fallback backend when no per-concern override matches
@@ -427,8 +427,8 @@ settings, and the dashboard pod runs as non-root. This keeps the chart compatibl
 | `AGENT_NAME`               | `a2-claude`/`a2-codex`/`a2-gemini` | Backend instance name (e.g. `iris-a2-claude`)                                            |
 | `AGENT_OWNER`              | _(same as `AGENT_NAME`)_           | Named agent this backend belongs to (e.g. `iris`); used in metric labels                 |
 | `AGENT_ID`                 | `claude`/`codex`/`gemini`          | Backend slot identifier (e.g. `claude`); used in metric labels                           |
-| `AGENT_URL`                | `http://localhost:8080/`           | Public A2A endpoint URL for the agent card                                               |
-| `BACKEND_PORT`             | `8080`                             | HTTP port the backend listens on (internal)                                              |
+| `AGENT_URL`                | `http://localhost:8000/`           | Public A2A endpoint URL for the agent card                                               |
+| `BACKEND_PORT`             | `8000`                             | HTTP port the backend listens on (internal)                                              |
 | `METRICS_ENABLED`          | _(unset)_                          | Set to any non-empty value to expose `/metrics`                                          |
 | `CONVERSATIONS_AUTH_TOKEN` | _(unset — warn on empty)_          | Bearer token required to access `/conversations`, `/trace`, and `/mcp` on all three backends (#510, #516, #517, #518) |
 | `TASK_STORE_PATH`          | _(unset)_                          | Path for SQLite A2A task store; defaults to in-memory (state lost on restart)            |
