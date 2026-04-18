@@ -956,50 +956,11 @@ async def _log_tool_event(event_type: str, block, session_id: str, model: str | 
 #                         with one of these prefixes are accepted even if
 #                         the basename isn't explicitly in the allow-list.
 #                         Default "/home/agent/mcp-bin/,/usr/local/bin/".
-_DEFAULT_MCP_ALLOWED_COMMANDS = (
-    "mcp-kubernetes,mcp-helm,python,python3,node,npx,uv,uvx"
-)
-_DEFAULT_MCP_ALLOWED_COMMAND_PREFIXES = "/home/agent/mcp-bin/,/usr/local/bin/"
-_MCP_ALLOWED_COMMANDS: frozenset[str] = frozenset(
-    t.strip() for t in os.environ.get("MCP_ALLOWED_COMMANDS", _DEFAULT_MCP_ALLOWED_COMMANDS).split(",") if t.strip()
-)
-_MCP_ALLOWED_COMMAND_PREFIXES: tuple[str, ...] = tuple(
-    t.strip() for t in os.environ.get(
-        "MCP_ALLOWED_COMMAND_PREFIXES", _DEFAULT_MCP_ALLOWED_COMMAND_PREFIXES,
-    ).split(",") if t.strip()
-)
-
-
-def _mcp_command_allowed(command: str) -> tuple[bool, str]:
-    """Return (ok, reason) for an ``mcp.json`` stdio ``command`` (#711).
-
-    reason is a short category key ("non_string", "empty",
-    "absolute_not_on_prefix", "basename_not_allowed") suitable for the
-    ``backend_mcp_command_rejected_total`` metric label.
-    """
-    if not isinstance(command, str):
-        return False, "non_string"
-    cmd = command.strip()
-    if not cmd:
-        return False, "empty"
-    if cmd.startswith("/"):
-        for prefix in _MCP_ALLOWED_COMMAND_PREFIXES:
-            if cmd.startswith(prefix):
-                return True, "absolute_prefix"
-        # Absolute but outside the allow-list prefixes — still allow if
-        # the basename is in the explicit allow-list so operators can
-        # point at e.g. /opt/my-mcp/bin/mcp-kubernetes without also
-        # adding /opt to the prefix list.
-        basename = os.path.basename(cmd)
-        if basename in _MCP_ALLOWED_COMMANDS:
-            return True, "basename_allowed"
-        return False, "absolute_not_on_prefix"
-    # Non-absolute path — only allowed if the bare basename matches an
-    # entry in the allow-list. PATH resolution still applies at spawn
-    # time, but the attacker can no longer wedge in ``/bin/sh``.
-    if cmd in _MCP_ALLOWED_COMMANDS or os.path.basename(cmd) in _MCP_ALLOWED_COMMANDS:
-        return True, "basename_allowed"
-    return False, "basename_not_allowed"
+# MCP command allow-list logic now lives in shared/mcp_command_allowlist.py
+# so codex + gemini can import the same rule (#711 / #797). Keep the
+# private alias so intra-file callers (``_sanitize_mcp_servers`` below)
+# don't need to touch their import paths.
+from mcp_command_allowlist import mcp_command_allowed as _mcp_command_allowed  # noqa: E402
 
 
 def _sanitize_mcp_servers(servers: dict) -> dict:
