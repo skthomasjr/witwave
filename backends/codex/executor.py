@@ -85,6 +85,7 @@ from metrics import (
     backend_file_watcher_restarts_total,
     backend_codex_hooks_denials_total,
     backend_hooks_denials_total,
+    backend_hooks_shed_total,
     backend_tool_audit_entries_total,
 )
 
@@ -429,6 +430,15 @@ async def _shell_executor_inner(req: LocalShellCommandRequest) -> str:
         # blocked on #808 (AFC-disable) before it can emit similarly.
         try:
             import hook_events as _hook_events
+            # Pass the pre-labelled shed counter so sustained shedding is
+            # visible on dashboards (#957). Prior to this commit
+            # schedule_post's one-shot WARN fired once and went silent,
+            # leaving a cap-reached storm undetectable.
+            _shed_counter = (
+                backend_hooks_shed_total.labels(**_LABELS)
+                if backend_hooks_shed_total is not None
+                else None
+            )
             _hook_events.schedule_post(
                 {
                     "agent": AGENT_OWNER or AGENT_NAME,
@@ -439,7 +449,8 @@ async def _shell_executor_inner(req: LocalShellCommandRequest) -> str:
                     "reason": reason,
                     "source": "baseline",
                     "traceparent": None,
-                }
+                },
+                shed_counter=_shed_counter,
             )
         except Exception as _hev_exc:
             logger.debug("hook.decision transport scheduling failed: %r", _hev_exc)

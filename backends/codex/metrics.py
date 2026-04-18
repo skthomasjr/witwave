@@ -121,6 +121,7 @@ backend_codex_hooks_denials_total: prometheus_client.Counter | None = None
 # stays in place to avoid breaking existing scrapers; both increment on
 # each deny.
 backend_hooks_denials_total: prometheus_client.Counter | None = None
+backend_hooks_shed_total: prometheus_client.Counter | None = None
 # Peer-parity hook metric family (#800) — matches the claude superset so
 # cross-backend dashboards don't drop the series. codex's hook path is
 # shell-baseline-only today (#586/#799 deferred) so warnings/config-*
@@ -601,6 +602,19 @@ if _enabled:
         "rule source (baseline|extension), and the rule name that matched. "
         "Canonical name across claude/codex/gemini backends.",
         ["agent", "agent_id", "backend", "tool", "source", "rule"],
+    )
+    # Parity with claude.backend_hooks_shed_total (#957). codex shares
+    # shared/hook_events.schedule_post with the other backends; without
+    # registering + passing a shed_counter the module's one-shot WARN
+    # fires once and goes silent, so sustained shedding is invisible on
+    # dashboards. Labels match claude's (agent, agent_id, backend).
+    backend_hooks_shed_total = prometheus_client.Counter(
+        "backend_hooks_shed_total",
+        "Total hook.decision POSTs shed because the bounded in-flight "
+        "cap (HOOK_POST_MAX_INFLIGHT, default 64) was reached (#712, #957). "
+        "Non-zero rate indicates the harness is unreachable or slow while "
+        "shell baseline denials fire; the backend would otherwise OOM.",
+        ["agent", "agent_id", "backend"],
     )
     backend_tool_audit_entries_total = prometheus_client.Counter(
         "backend_tool_audit_entries_total",
