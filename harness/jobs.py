@@ -159,6 +159,10 @@ async def _execute_job(item: JobItem, bus: MessageBus, semaphore: asyncio.Semaph
             harness_checkpoint_write_errors_total.inc()
         logger.error(f"Job '{item.name}' checkpoint write failed: {e}")
     _send_task: asyncio.Task | None = None
+    # Initialise before the try so the except branch can always reference it,
+    # even when resolve_prompt_env (or any earlier statement) raises before
+    # the in-body assignment is reached (#657).
+    _job_start = time.monotonic()
     try:
         from prompt_env import resolve_prompt_env  # noqa: E402 — scoped import keeps startup simple
 
