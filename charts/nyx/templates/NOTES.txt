@@ -35,7 +35,7 @@ For a Codex backend (OpenAI):
 
 For a Gemini backend (Google):
   kubectl create secret generic <agent>-gemini-secrets \
-    --from-literal=GOOGLE_API_KEY=<key> \
+    --from-literal=GEMINI_API_KEY=<key> \
     -n {{ .Release.Namespace }}
 
 If using git-sync, create the git credentials secret:
