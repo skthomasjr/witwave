@@ -30,6 +30,24 @@
     "ADHOC_RUN_AUTH_TOKEN"
     "CONVERSATIONS_AUTH_TOKEN"
     "BACKEND_CONVERSATIONS_AUTH_TOKEN" }}
+{{- /* Shared backend credentials default — inline secrets resolved from
+       chart-global `backends.credentials.secrets` (#1022). Checked once
+       outside the per-agent loop because its REPLACE_ME value would
+       otherwise leak through to every backend that doesn't override
+       credentials. */}}
+{{- $defBackendSecrets := dict }}
+{{- if and (.Values.backends) (.Values.backends).credentials }}
+{{- if (.Values.backends).credentials.secrets }}
+{{- $defBackendSecrets = .Values.backends.credentials.secrets }}
+{{- end }}
+{{- end }}
+{{- range $k, $v := $defBackendSecrets }}
+{{- if has $k $sensitiveEnvKeys }}
+{{- if hasPrefix "REPLACE_ME" ($v | toString) }}
+{{- fail (printf "backends.credentials.secrets[%q] still carries a REPLACE_ME placeholder (%q) — generate a real token before deploying. See #760, #1022." $k ($v | toString)) }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- range .Values.agents }}
 {{- $agentName := .name }}
 {{- range .env }}
@@ -37,6 +55,24 @@
 {{- if has .name $sensitiveEnvKeys }}
 {{- if hasPrefix "REPLACE_ME" (.value | toString) }}
 {{- fail (printf "agents[%q].env[%q] still carries a REPLACE_ME placeholder (%q) — generate a real token (e.g. `openssl rand -hex 32`) before deploying. See #760." $agentName .name (.value | toString)) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- /* #1022: valueFrom.secretKeyRef bypass. When a sensitive env var is
+       wired via an existingSecret, inspect the reference for a
+       REPLACE_ME* shape on either the Secret name or the key so a
+       deliberately-named placeholder Secret fails render instead of
+       booting a pod with an unrevoked token. */}}
+{{- if and (hasKey . "name") (hasKey . "valueFrom") }}
+{{- if has .name $sensitiveEnvKeys }}
+{{- $vf := .valueFrom }}
+{{- if $vf.secretKeyRef }}
+{{- $skr := $vf.secretKeyRef }}
+{{- $refName := ($skr.name | default "" | toString) }}
+{{- $refKey := ($skr.key | default "" | toString) }}
+{{- if or (hasPrefix "REPLACE_ME" $refName) (hasPrefix "REPLACE_ME" $refKey) }}
+{{- fail (printf "agents[%q].env[%q].valueFrom.secretKeyRef points at a REPLACE_ME-shaped reference (name=%q, key=%q) — replace the placeholder Secret/key with a real one before deploying. See #1022." $agentName .name $refName $refKey) }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}
@@ -49,6 +85,33 @@
 {{- if hasPrefix "REPLACE_ME" (.value | toString) }}
 {{- fail (printf "agents[%q].backends[%q].env[%q] still carries a REPLACE_ME placeholder (%q) — generate a real token before deploying. See #760." $agentName $backendName .name (.value | toString)) }}
 {{- end }}
+{{- end }}
+{{- end }}
+{{- /* #1022: same valueFrom.secretKeyRef check on backend env. */}}
+{{- if and (hasKey . "name") (hasKey . "valueFrom") }}
+{{- if has .name $sensitiveEnvKeys }}
+{{- $vf := .valueFrom }}
+{{- if $vf.secretKeyRef }}
+{{- $skr := $vf.secretKeyRef }}
+{{- $refName := ($skr.name | default "" | toString) }}
+{{- $refKey := ($skr.key | default "" | toString) }}
+{{- if or (hasPrefix "REPLACE_ME" $refName) (hasPrefix "REPLACE_ME" $refKey) }}
+{{- fail (printf "agents[%q].backends[%q].env[%q].valueFrom.secretKeyRef points at a REPLACE_ME-shaped reference (name=%q, key=%q) — replace the placeholder Secret/key with a real one before deploying. See #1022." $agentName $backendName .name $refName $refKey) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- /* #1022: inline backend credentials (stringData in the chart-rendered
+       Secret) bypass the `.env` guard because they land in the pod via
+       envFrom. Walk the resolved inline secrets map for REPLACE_ME values
+       on sensitive keys. */}}
+{{- $bCreds := (.credentials | default dict) }}
+{{- $bSecrets := $bCreds.secrets | default $defBackendSecrets | default dict }}
+{{- range $k, $v := $bSecrets }}
+{{- if has $k $sensitiveEnvKeys }}
+{{- if hasPrefix "REPLACE_ME" ($v | toString) }}
+{{- fail (printf "agents[%q].backends[%q].credentials.secrets[%q] still carries a REPLACE_ME placeholder (%q) — generate a real token before deploying. See #760, #1022." $agentName $backendName $k ($v | toString)) }}
 {{- end }}
 {{- end }}
 {{- end }}
