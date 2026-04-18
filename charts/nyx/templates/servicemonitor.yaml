@@ -1,7 +1,12 @@
 {{- if .Values.serviceMonitor.enabled }}
 {{- range .Values.agents }}
 {{- if eq (include "nyx.enabled" .) "true" }}
-{{- $agentMetricsEnabled := (.metrics).enabled | default $.Values.metrics.enabled }}
+{{- /* Per-agent metrics.enabled=false must disable SM/PM emission (#1019).
+       sprig `default` treats `false` as empty so a bare
+       `(.metrics).enabled | default $.Values.metrics.enabled` silently
+       falls back to the global value. */}}
+{{- $agentMetricsEnabled := $.Values.metrics.enabled }}
+{{- if (.metrics) }}{{- if hasKey .metrics "enabled" }}{{- $agentMetricsEnabled = .metrics.enabled }}{{- end }}{{- end }}
 {{- if $agentMetricsEnabled }}
 ---
 # ServiceMonitor for the Prometheus Operator (#449). One per agent, gated on
