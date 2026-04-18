@@ -133,6 +133,11 @@ backend_sdk_tool_errors_total: prometheus_client.Counter | None = None
 # the tool-call path enhancements in #640.
 backend_sdk_tool_calls_per_query: prometheus_client.Histogram | None = None
 backend_sdk_tool_duration_seconds: prometheus_client.Histogram | None = None
+# Per-call payload size histograms (#811). Peer parity with claude so
+# cross-backend dashboards can chart input/result size distributions
+# without backend-specific metric names.
+backend_sdk_tool_call_input_size_bytes: prometheus_client.Histogram | None = None
+backend_sdk_tool_result_size_bytes: prometheus_client.Histogram | None = None
 
 if _enabled:
     backend_up = prometheus_client.Gauge("backend_up", "Backend agent is running", ["agent", "agent_id", "backend"])
@@ -581,4 +586,19 @@ if _enabled:
         "Duration of individual tool calls in seconds.",
         ["agent", "agent_id", "backend", "tool"],
         buckets=(0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60),
+    )
+    # Per-call payload size histograms (#811). Bucket edges match claude's
+    # backend_sdk_tool_call_input_size_bytes / *_result_size_bytes so
+    # cross-backend p95 / p99 heatmaps line up without rescaling.
+    backend_sdk_tool_call_input_size_bytes = prometheus_client.Histogram(
+        "backend_sdk_tool_call_input_size_bytes",
+        "Byte length of each tool call input payload by tool name.",
+        ["agent", "agent_id", "backend", "tool"],
+        buckets=(100, 500, 1_000, 5_000, 10_000, 50_000, 100_000, 500_000, 1_000_000, 5_000_000),
+    )
+    backend_sdk_tool_result_size_bytes = prometheus_client.Histogram(
+        "backend_sdk_tool_result_size_bytes",
+        "Byte length of each tool result by tool name.",
+        ["agent", "agent_id", "backend", "tool"],
+        buckets=(100, 500, 1_000, 5_000, 10_000, 50_000, 100_000, 500_000, 1_000_000, 5_000_000),
     )

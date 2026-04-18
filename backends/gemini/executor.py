@@ -100,9 +100,11 @@ from metrics import (
     backend_sdk_subprocess_spawn_duration_seconds,
     backend_sdk_time_to_first_message_seconds,
     backend_sdk_tokens_per_query,
+    backend_sdk_tool_call_input_size_bytes,
     backend_sdk_tool_calls_total,
     backend_sdk_tool_errors_total,
     backend_sdk_tool_duration_seconds,
+    backend_sdk_tool_result_size_bytes,
     backend_sdk_turns_per_query,
     backend_session_age_seconds,
     backend_session_evictions_total,
@@ -523,6 +525,20 @@ async def _emit_afc_history(
                     await log_trace(json.dumps(entry))
                 except Exception as _e:
                     logger.debug("AFC tool_use log failed: %s", _e)
+                # Per-call input payload size (#811). Observed on the best
+                # available proxy for payload bytes — JSON-encoded args
+                # matches the byte count claude reports for its own
+                # backend_sdk_tool_call_input_size_bytes.
+                if backend_sdk_tool_call_input_size_bytes is not None:
+                    try:
+                        _input_bytes = len(json.dumps(
+                            entry["input"], default=str, ensure_ascii=False,
+                        ).encode("utf-8"))
+                        backend_sdk_tool_call_input_size_bytes.labels(
+                            **_LABELS, tool=name,
+                        ).observe(_input_bytes)
+                    except Exception:
+                        pass
                 pending_entry = {"id": call_id, "ts": ts, "name": name, "fc_id": fc_id}
                 if fc_id:
                     pending_by_id[fc_id] = pending_entry
@@ -571,6 +587,18 @@ async def _emit_afc_history(
                     await log_trace(json.dumps(entry))
                 except Exception as _e:
                     logger.debug("AFC tool_result log failed: %s", _e)
+                # Per-call result payload size (#811). Peer parity with
+                # claude's backend_sdk_tool_result_size_bytes.
+                if backend_sdk_tool_result_size_bytes is not None:
+                    try:
+                        _result_bytes = len(json.dumps(
+                            response_j, default=str, ensure_ascii=False,
+                        ).encode("utf-8")) if response_j is not None else 0
+                        backend_sdk_tool_result_size_bytes.labels(
+                            **_LABELS, tool=name,
+                        ).observe(_result_bytes)
+                    except Exception:
+                        pass
                 # Metrics: one sample per observed function_call (#793).
                 # Aligned with claude/codex — plain counter for calls,
                 # separate counter for errors.
