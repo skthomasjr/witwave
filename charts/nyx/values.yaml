@@ -612,6 +612,12 @@ mcpTools:
 
   kubernetes:
     enabled: false
+    # # Three-state override (#856). When set, honoured verbatim on the
+    # # pod spec. Omit to default to true. Set to false when the pod
+    # # should reach the control plane via IRSA / workload identity
+    # # (the SA is still attached for annotations; the in-pod
+    # # projected SA token is suppressed).
+    # automountServiceAccountToken: true
     image:
       repository: ghcr.io/skthomasjr/images/mcp-kubernetes
       # # Image tag. Defaults to .Chart.AppVersion when omitted.
@@ -663,6 +669,8 @@ mcpTools:
 
   helm:
     enabled: false
+    # # Three-state override (#856). See kubernetes.automountServiceAccountToken.
+    # automountServiceAccountToken: true
     image:
       repository: ghcr.io/skthomasjr/images/mcp-helm
       # tag: ""

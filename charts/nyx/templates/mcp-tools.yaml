@@ -149,10 +149,19 @@ spec:
     spec:
       {{- /* Use the resolved SA ($saName): chart-rendered when
              rbac.create=true and no user override, user-supplied
-             otherwise. automountServiceAccountToken is on whenever an
-             SA is in effect (#762). */}}
+             otherwise. automountServiceAccountToken is three-state
+             (#856): when $tool.automountServiceAccountToken is
+             set by the operator, honour it verbatim (true or false);
+             otherwise default to true whenever an SA is in effect
+             (#762). Setting it false lets IRSA / workload identity
+             deployments attach the SA for IAM role annotations
+             while suppressing the in-pod token mount. */}}
       serviceAccountName: {{ $saName }}
+      {{- if hasKey $tool "automountServiceAccountToken" }}
+      automountServiceAccountToken: {{ $tool.automountServiceAccountToken }}
+      {{- else }}
       automountServiceAccountToken: true
+      {{- end }}
       {{- with $tool.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
