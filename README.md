@@ -26,9 +26,9 @@ The platform has eight components, each with its own source directory:
 | Component          | Directory              | Type               | Description                                                                                                                 |
 | ------------------ | ---------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------- |
 | **Orchestrator**   | `harness/`             | Orchestrator agent | harness: the infrastructure and routing layer. Owns scheduling, triggering, chaining, and A2A relay. No LLM of its own. |
-| **Claude backend** | `backends/a2-claude/`           | Backend agent      | Executes prompts via the Claude Agent SDK. Manages sessions, memory, conversation logs, and metrics.                        |
-| **Codex backend**  | `backends/a2-codex/`            | Backend agent      | Executes prompts via the OpenAI Agents SDK. Supports web search and headless browser via Playwright.                        |
-| **Gemini backend** | `backends/a2-gemini/`           | Backend agent      | Executes prompts via the Google Gemini SDK. Manages sessions and conversation history.                                      |
+| **Claude backend** | `backends/claude/`           | Backend agent      | Executes prompts via the Claude Agent SDK. Manages sessions, memory, conversation logs, and metrics.                        |
+| **Codex backend**  | `backends/codex/`            | Backend agent      | Executes prompts via the OpenAI Agents SDK. Supports web search and headless browser via Playwright.                        |
+| **Gemini backend** | `backends/gemini/`           | Backend agent      | Executes prompts via the Google Gemini SDK. Manages sessions and conversation history.                                      |
 | **Dashboard**      | `dashboard/`           | Web interface      | Vue 3 + PrimeVue app for monitoring metrics, browsing agents, viewing conversations, and chatting with agents.              |
 | **Operator**       | `operator/`            | Kubernetes operator| Go controller (Operator SDK) that reconciles `NyxAgent` custom resources into the same workloads the Helm chart renders.     |
 | **Agent chart**    | `charts/nyx/`          | Deployment         | Kubernetes Helm chart for deploying nyx agents via templated manifests (no CRDs).                                            |
@@ -70,9 +70,9 @@ automatically on every release tag.
 | Image            | Registry path                                     |
 | ---------------- | ------------------------------------------------- |
 | `harness`        | `ghcr.io/skthomasjr/images/harness:latest`        |
-| `a2-claude`      | `ghcr.io/skthomasjr/images/a2-claude:latest`      |
-| `a2-codex`       | `ghcr.io/skthomasjr/images/a2-codex:latest`       |
-| `a2-gemini`      | `ghcr.io/skthomasjr/images/a2-gemini:latest`      |
+| `claude`         | `ghcr.io/skthomasjr/images/claude:latest`         |
+| `codex`          | `ghcr.io/skthomasjr/images/codex:latest`          |
+| `gemini`         | `ghcr.io/skthomasjr/images/gemini:latest`         |
 | `dashboard`      | `ghcr.io/skthomasjr/images/dashboard:latest`      |
 | `nyx-operator`   | `ghcr.io/skthomasjr/images/nyx-operator:latest`   |
 | `git-sync`       | `ghcr.io/skthomasjr/images/git-sync:latest`       |
@@ -105,18 +105,18 @@ Pull published images:
 
 ```bash
 docker pull ghcr.io/skthomasjr/images/harness:latest
-docker pull ghcr.io/skthomasjr/images/a2-claude:latest
-docker pull ghcr.io/skthomasjr/images/a2-codex:latest
-docker pull ghcr.io/skthomasjr/images/a2-gemini:latest
+docker pull ghcr.io/skthomasjr/images/claude:latest
+docker pull ghcr.io/skthomasjr/images/codex:latest
+docker pull ghcr.io/skthomasjr/images/gemini:latest
 ```
 
 Or build locally:
 
 ```bash
 docker build -f harness/Dockerfile -t harness:latest .
-docker build -f backends/a2-claude/Dockerfile -t a2-claude:latest .
-docker build -f backends/a2-codex/Dockerfile -t a2-codex:latest .
-docker build -f backends/a2-gemini/Dockerfile -t a2-gemini:latest .
+docker build -f backends/claude/Dockerfile -t claude:latest .
+docker build -f backends/codex/Dockerfile -t codex:latest .
+docker build -f backends/gemini/Dockerfile -t gemini:latest .
 ```
 
 ### 2. Configure credentials

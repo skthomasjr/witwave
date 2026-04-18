@@ -19,14 +19,14 @@ jobs:
           - image: harness
             file: harness/Dockerfile
             context: .
-          - image: a2-claude
-            file: backends/a2-claude/Dockerfile
+          - image: claude
+            file: backends/claude/Dockerfile
             context: .
-          - image: a2-codex
-            file: backends/a2-codex/Dockerfile
+          - image: codex
+            file: backends/codex/Dockerfile
             context: .
-          - image: a2-gemini
-            file: backends/a2-gemini/Dockerfile
+          - image: gemini
+            file: backends/gemini/Dockerfile
             context: .
           - image: dashboard
             file: dashboard/Dockerfile

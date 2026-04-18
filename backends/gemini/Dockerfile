@@ -27,10 +27,10 @@ WORKDIR /home/agent
 RUN python3 -m venv .venv
 ENV PATH="/home/agent/.venv/bin:$PATH"
 
-COPY --chown=agent:agent backends/a2-gemini/requirements.txt /home/agent/a2-gemini/requirements.txt
-RUN pip install --no-cache-dir -r /home/agent/a2-gemini/requirements.txt
+COPY --chown=agent:agent backends/gemini/requirements.txt /home/agent/gemini/requirements.txt
+RUN pip install --no-cache-dir -r /home/agent/gemini/requirements.txt
 
-COPY --chown=agent:agent backends/a2-gemini/ /home/agent/a2-gemini/
+COPY --chown=agent:agent backends/gemini/ /home/agent/gemini/
 COPY --chown=agent:agent shared/ /home/agent/shared/
 
 ENV PYTHONPATH="/home/agent/shared"
@@ -46,4 +46,4 @@ EXPOSE 8000
 # override with METRICS_PORT env var. Only active when METRICS_ENABLED is set.
 EXPOSE 9000
 
-CMD ["python3", "/home/agent/a2-gemini/main.py"]
+CMD ["python3", "/home/agent/gemini/main.py"]

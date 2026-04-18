@@ -749,7 +749,7 @@ agents:
         # Backend container image.
         image:
           # Image repository.
-          repository: ghcr.io/skthomasjr/images/a2-claude
+          repository: ghcr.io/skthomasjr/images/claude
           # # Image tag. Defaults to .Chart.AppVersion when omitted.
           # tag: ""
           # # Image pull policy.

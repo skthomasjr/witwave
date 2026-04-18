@@ -275,7 +275,7 @@ var _ = Describe("Manager", Ordered, func() {
 			nyxAgentName      = "e2e-nyxagent"
 			nyxAgentNamespace = "operator-system"
 			harnessImage      = "ghcr.io/skthomasjr/images/harness:latest"
-			backendImage      = "ghcr.io/skthomasjr/images/a2-claude:latest"
+			backendImage      = "ghcr.io/skthomasjr/images/claude:latest"
 		)
 
 		BeforeEach(func() {

@@ -38,9 +38,9 @@ agents:
 
 Create backend secrets for each agent. The required keys depend on which backends you are deploying — see the backend READMEs for details:
 
-- [a2-claude secrets](../../backends/a2-claude/README.md#secrets) — `ANTHROPIC_API_KEY`
-- [a2-codex secrets](../../backends/a2-codex/README.md#secrets) — `OPENAI_API_KEY`
-- [a2-gemini secrets](../../backends/a2-gemini/README.md#secrets) — `GEMINI_API_KEY`
+- [claude secrets](../../backends/claude/README.md#secrets) — `ANTHROPIC_API_KEY`
+- [codex secrets](../../backends/codex/README.md#secrets) — `OPENAI_API_KEY`
+- [gemini secrets](../../backends/gemini/README.md#secrets) — `GEMINI_API_KEY`
 
 Example for an agent named `adam` using the Claude backend:
 

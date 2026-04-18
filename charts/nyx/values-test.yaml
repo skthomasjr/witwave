@@ -78,7 +78,7 @@ agents:
     backends:
       - name: claude
         image:
-          repository: ghcr.io/skthomasjr/images/a2-claude
+          repository: ghcr.io/skthomasjr/images/claude
           tag: "0.3.0-beta.5"
         port: 8090
         model: claude-opus-4-7
@@ -107,7 +107,7 @@ agents:
         # the OpenAI account to restore the codex backend.
         enabled: false
         image:
-          repository: ghcr.io/skthomasjr/images/a2-codex
+          repository: ghcr.io/skthomasjr/images/codex
           tag: "0.3.0-beta.5"
         port: 8091
         model: gpt-5.1-codex-max
@@ -131,7 +131,7 @@ agents:
         # git-mappings ConfigMap, and Service port (#beta.32).
         enabled: false
         image:
-          repository: ghcr.io/skthomasjr/images/a2-gemini
+          repository: ghcr.io/skthomasjr/images/gemini
           tag: "0.3.0-beta.5"
         port: 8092
         env:
@@ -179,7 +179,7 @@ agents:
     backends:
       - name: claude
         image:
-          repository: ghcr.io/skthomasjr/images/a2-claude
+          repository: ghcr.io/skthomasjr/images/claude
           tag: "0.3.0-beta.5"
         port: 8089
         model: claude-opus-4-7

@@ -52,7 +52,7 @@ func newTestAgent(name string) *nyxv1alpha1.NyxAgent {
 			Backends: []nyxv1alpha1.BackendSpec{{
 				Name: "claude",
 				Image: nyxv1alpha1.ImageSpec{
-					Repository: "ghcr.io/skthomasjr/images/a2-claude",
+					Repository: "ghcr.io/skthomasjr/images/claude",
 					Tag:        "test",
 				},
 			}},

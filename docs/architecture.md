@@ -82,7 +82,7 @@ harness/                       # harness source (router/scheduler)
     ├── a2a.py                 # A2ABackend — forwards requests to a remote A2A agent
     └── config.py              # Backend config loader (backend.yaml)
 
-backends/a2-claude/                     # Claude backend source
+backends/claude/                     # Claude backend source
 ├── Dockerfile
 ├── main.py                    # A2A server entrypoint
 ├── executor.py                # Claude Agent SDK executor; owns session state and logging
@@ -91,7 +91,7 @@ backends/a2-claude/                     # Claude backend source
 ├── sqlite_task_store.py       # SQLite-backed A2A task store (used when TASK_STORE_PATH is set)
 └── requirements.txt
 
-backends/a2-codex/                      # Codex backend source
+backends/codex/                      # Codex backend source
 ├── Dockerfile
 ├── main.py                    # A2A server entrypoint
 ├── executor.py                # OpenAI Agents SDK executor; owns session state and logging
@@ -100,7 +100,7 @@ backends/a2-codex/                      # Codex backend source
 ├── sqlite_task_store.py       # SQLite-backed A2A task store (used when TASK_STORE_PATH is set)
 └── requirements.txt
 
-backends/a2-gemini/                     # Gemini backend source
+backends/gemini/                     # Gemini backend source
 ├── Dockerfile
 ├── main.py                    # A2A server entrypoint
 ├── executor.py                # google-genai SDK executor; owns session state and logging
@@ -484,9 +484,9 @@ Build all four images and deploy with Helm:
 
 ```bash
 docker build -f harness/Dockerfile -t harness:latest .
-docker build -f backends/a2-claude/Dockerfile -t a2-claude:latest .
-docker build -f backends/a2-codex/Dockerfile -t a2-codex:latest .
-docker build -f backends/a2-gemini/Dockerfile -t a2-gemini:latest .
+docker build -f backends/claude/Dockerfile -t claude:latest .
+docker build -f backends/codex/Dockerfile -t codex:latest .
+docker build -f backends/gemini/Dockerfile -t gemini:latest .
 helm upgrade --install nyx ./charts/nyx -f ./charts/nyx/values-test.yaml -n nyx --create-namespace
 ```
 
