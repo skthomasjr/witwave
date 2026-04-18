@@ -977,8 +977,12 @@ async def deliver(
     ) as _span:
         # Stamp OTel traceparent into the outbound headers if enabled.
         # When OTel is off, the trace_context carrier header set above
-        # remains in place unchanged (#469).
-        inject_traceparent(headers)
+        # remains in place unchanged (#469). Only stamp when no caller-
+        # supplied traceparent is present — otherwise we'd overwrite
+        # the forwarded trace_id with the harness's active span and
+        # break end-to-end correlation (#977).
+        if not headers.get("traceparent"):
+            inject_traceparent(headers)
         try:
             # TOCTOU re-check against DNS rebinding (#699). Revalidate
             # the resolved addresses immediately before the POST so an
@@ -1190,7 +1194,13 @@ async def _deliver_hook_decision(
             "http.url": url,
         },
     ) as _span:
-        inject_traceparent(headers)
+        # #977: preserve the caller-supplied traceparent (forwarded from
+        # the HookDecisionEvent above) so the backend's PreToolUse span
+        # stays linked to the outbound webhook POST. Only fall back to
+        # injecting the harness's active OTel span when no upstream
+        # traceparent was provided.
+        if not headers.get("traceparent"):
+            inject_traceparent(headers)
         try:
             # TOCTOU re-check before POST (#699).
             url_recheck = await _validate_url_async(url)
