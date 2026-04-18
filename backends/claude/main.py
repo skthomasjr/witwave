@@ -575,6 +575,17 @@ async def main():
     config = uvicorn.Config(full_app, host=AGENT_HOST, port=BACKEND_PORT)
     server = uvicorn.Server(config)
 
+    # Pre-load MCP config, CLAUDE.md, and hooks.yaml before readiness flips
+    # (#869). Previously the first parse happened inside each watcher task,
+    # so a request arriving immediately after pod start could observe empty
+    # MCP servers / empty agent_md / baseline-only hooks. Running the initial
+    # loads synchronously on this startup path guarantees the executor state
+    # matches on-disk config by the time _set_ready_when_started flips ready.
+    try:
+        await executor.perform_initial_loads()
+    except Exception as exc:
+        logger.error("perform_initial_loads failed: %r — watchers will retry", exc)
+
     # Start MCP watcher tasks
     # These watchers (hooks/MCP/agent_md reloaders) are required for correct
     # operation — a persistently crashing watcher should take readiness down

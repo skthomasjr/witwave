@@ -1647,6 +1647,56 @@ class AgentExecutor(A2AAgentExecutor):
             self.settings_watcher,
         ]
 
+    async def perform_initial_loads(self) -> None:
+        """Pre-load MCP config, CLAUDE.md, and hooks.yaml before readiness (#869).
+
+        Previously these initial parses happened inside each watcher body, which
+        started as a background task alongside ``server.serve()``. A request
+        arriving immediately after pod start could therefore observe an empty
+        MCP server set, empty agent_md content, or baseline-only hooks. Running
+        the first parse synchronously on the lifespan/startup path guarantees
+        that when ``_set_ready_when_started`` flips readiness, the executor
+        state reflects on-disk config. The watchers then detect the pre-loaded
+        state and skip the redundant first parse before entering awatch().
+        """
+        # MCP config.
+        try:
+            self._mcp_servers = await asyncio.to_thread(_load_mcp_config)
+        except Exception:
+            self._mcp_servers = {}
+        if backend_mcp_servers_active is not None:
+            backend_mcp_servers_active.labels(**_LABELS).set(len(self._mcp_servers))
+        if self._mcp_servers:
+            logger.info(f"MCP config loaded (initial): {list(self._mcp_servers.keys())}")
+        self._initial_mcp_loaded = True
+
+        # CLAUDE.md — __init__ already loaded this synchronously, but refresh
+        # here so any content written between import time and lifespan start is
+        # picked up before readiness flips.
+        try:
+            self._agent_md_content = _load_agent_md()
+            logger.info("CLAUDE.md loaded (initial) from %s", AGENT_MD)
+        except Exception as exc:
+            logger.warning("CLAUDE.md initial load failed: %r (keeping __init__ value)", exc)
+        self._initial_agent_md_loaded = True
+
+        # hooks.yaml extensions.
+        try:
+            self._hook_state.extensions = await asyncio.to_thread(load_hooks_config_sync)
+        except Exception as exc:
+            logger.warning("hooks.yaml initial load failed: %r (baseline-only)", exc)
+        if backend_hooks_active_rules is not None:
+            backend_hooks_active_rules.labels(**_LABELS, source="extension").set(
+                len(self._hook_state.extensions)
+            )
+        logger.info(
+            "Hooks config loaded (initial): baseline=%s (rules=%d) extensions=%d",
+            self._hook_state.baseline_enabled,
+            len(self._hook_state.baseline),
+            len(self._hook_state.extensions),
+        )
+        self._initial_hooks_loaded = True
+
     async def close(self) -> None:
         """Cancel and drain all in-flight execute() tasks and MCP watcher tasks (#587).
 
@@ -1685,15 +1735,17 @@ class AgentExecutor(A2AAgentExecutor):
         # Initial load: fall back to an empty server set if the first parse
         # fails — there is no previous value to keep. The warning log and
         # ``backend_mcp_config_errors_total`` increment are already emitted by
-        # ``_load_mcp_config`` itself (#591).
-        try:
-            self._mcp_servers = await asyncio.to_thread(_load_mcp_config)
-        except Exception:
-            self._mcp_servers = {}
-        if backend_mcp_servers_active is not None:
-            backend_mcp_servers_active.labels(**_LABELS).set(len(self._mcp_servers))
-        if self._mcp_servers:
-            logger.info(f"MCP config loaded: {list(self._mcp_servers.keys())}")
+        # ``_load_mcp_config`` itself (#591). Skipped when perform_initial_loads
+        # already ran on the lifespan startup path (#869).
+        if not getattr(self, "_initial_mcp_loaded", False):
+            try:
+                self._mcp_servers = await asyncio.to_thread(_load_mcp_config)
+            except Exception:
+                self._mcp_servers = {}
+            if backend_mcp_servers_active is not None:
+                backend_mcp_servers_active.labels(**_LABELS).set(len(self._mcp_servers))
+            if self._mcp_servers:
+                logger.info(f"MCP config loaded: {list(self._mcp_servers.keys())}")
 
         watch_dir = os.path.dirname(MCP_CONFIG_PATH)
         while True:
@@ -1736,8 +1788,10 @@ class AgentExecutor(A2AAgentExecutor):
         consistent with all other file-based configuration in the platform.
         """
         # Perform an initial load so the watcher starts with current content.
-        self._agent_md_content = _load_agent_md()
-        logger.info("CLAUDE.md loaded from %s", AGENT_MD)
+        # Skipped when perform_initial_loads already ran on startup (#869).
+        if not getattr(self, "_initial_agent_md_loaded", False):
+            self._agent_md_content = _load_agent_md()
+            logger.info("CLAUDE.md loaded from %s", AGENT_MD)
 
         watch_dir = os.path.dirname(os.path.abspath(AGENT_MD))
         while True:
@@ -1766,15 +1820,17 @@ class AgentExecutor(A2AAgentExecutor):
         Failures during reload keep the previous rule set in place so a
         malformed edit cannot accidentally disable the policy.
         """
-        self._hook_state.extensions = await asyncio.to_thread(load_hooks_config_sync)
-        if backend_hooks_active_rules is not None:
-            backend_hooks_active_rules.labels(**_LABELS, source="extension").set(len(self._hook_state.extensions))
-        logger.info(
-            "Hooks config loaded: baseline=%s (rules=%d) extensions=%d",
-            self._hook_state.baseline_enabled,
-            len(self._hook_state.baseline),
-            len(self._hook_state.extensions),
-        )
+        # Skipped when perform_initial_loads already ran on startup (#869).
+        if not getattr(self, "_initial_hooks_loaded", False):
+            self._hook_state.extensions = await asyncio.to_thread(load_hooks_config_sync)
+            if backend_hooks_active_rules is not None:
+                backend_hooks_active_rules.labels(**_LABELS, source="extension").set(len(self._hook_state.extensions))
+            logger.info(
+                "Hooks config loaded: baseline=%s (rules=%d) extensions=%d",
+                self._hook_state.baseline_enabled,
+                len(self._hook_state.baseline),
+                len(self._hook_state.extensions),
+            )
 
         watch_dir = os.path.dirname(os.path.abspath(HOOKS_CONFIG_PATH))
         while True:
