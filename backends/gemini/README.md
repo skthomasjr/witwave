@@ -8,8 +8,8 @@ Google `google-genai` SDK, managing its own sessions, conversation logs, trace l
 gemini receives A2A JSON-RPC requests (forwarded by harness), runs them through a Gemini model via the
 `google-genai` SDK, and logs everything to JSONL files.
 
-Each named agent that uses Gemini gets its own dedicated instance of this image (e.g. `iris-a2-gemini`,
-`bob-a2-gemini`). Instances are completely isolated — separate sessions, logs, and metrics.
+Each named agent that uses Gemini gets its own dedicated instance of this image (e.g. `iris-gemini`,
+`bob-gemini`). Instances are completely isolated — separate sessions, logs, and metrics.
 
 ## Key features
 

@@ -90,7 +90,7 @@ Each backend:
 - Manages its own session state, conversation log (`conversation.jsonl`), and memory (`/memory/`)
 - Receives behavioral instructions via a mounted file (`CLAUDE.md` for claude, `AGENTS.md` for codex, `GEMINI.md` for gemini) and A2A identity via a mounted `agent-card.md`
 
-Each named agent has its own dedicated backend instances. For example, iris has `iris-a2-claude`, `iris-a2-codex`, and `iris-a2-gemini`.
+Each named agent has its own dedicated backend instances. For example, iris has `iris-claude`, `iris-codex`, and `iris-gemini`.
 
 ### MCP components
 
@@ -178,7 +178,7 @@ Routing values can be a plain agent ID string or an object with `agent:` and opt
 Model resolution order: per-message override → routing entry model → per-backend config model.
 
 The `url` field can be overridden at deploy time via the environment variable
-`A2A_URL_<ID_UPPERCASED_WITH_UNDERSCORES>` (e.g. `A2A_URL_IRIS_A2_CLAUDE`). This enables the same config file to
+`A2A_URL_<ID_UPPERCASED_WITH_UNDERSCORES>` (e.g. `A2A_URL_IRIS_CLAUDE`). This enables the same config file to
 work with Docker Compose service DNS, Kubernetes service DNS, or localhost sidecars without modification.
 
 ### Agent configuration layout

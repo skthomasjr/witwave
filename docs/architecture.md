@@ -370,13 +370,13 @@ Agent identity and behavior are entirely file-based. No identity is baked into a
 | `LOG_PROMPT_MAX_BYTES`                      | `200`                           | Maximum bytes of the prompt logged at INFO level; `0` suppresses prompt logging entirely                                       |
 | `A2A_BACKEND_MAX_RETRIES`                   | `3`                             | Maximum retry attempts for transient backend errors (429, 502, 503, 504, connection errors); must be >= 1                     |
 | `A2A_BACKEND_RETRY_BACKOFF`                 | `1.0`                           | Base backoff in seconds for retry delay (exponential with jitter)                                                             |
-| `A2A_URL_<ID>`                              | _(unset)_                       | Per-backend URL override (e.g. `A2A_URL_IRIS_A2_CLAUDE`)                                                                       |
+| `A2A_URL_<ID>`                              | _(unset)_                       | Per-backend URL override (e.g. `A2A_URL_IRIS_CLAUDE`)                                                                       |
 
 **Backends (claude / codex / gemini):**
 
 | Variable                   | Default                                | Description                                                                  |
 | -------------------------- | -------------------------------------- | ---------------------------------------------------------------------------- |
-| `AGENT_NAME`               | `claude` / `codex` / `gemini` | Backend instance name (e.g. `iris-a2-claude`)                                |
+| `AGENT_NAME`               | `claude` / `codex` / `gemini` | Backend instance name (e.g. `iris-claude`)                                |
 | `AGENT_OWNER`              | _(same as `AGENT_NAME`)_               | Named agent this backend belongs to (e.g. `iris`); used in metric labels     |
 | `AGENT_ID`                 | `claude` / `codex` / `gemini`          | Backend slot identifier; used in metric labels                               |
 | `AGENT_URL`                | `http://localhost:8000/`               | Public A2A endpoint URL reported in agent card                               |
@@ -653,7 +653,7 @@ Routing values can be a plain agent ID string (`default: claude`) or an object w
 fields. Model resolution order: per-message override → routing entry model → per-backend config model.
 
 The `url` for any backend can be overridden at deploy time via an environment variable named
-`A2A_URL_<ID_UPPERCASED_WITH_UNDERSCORES>` — for example, `A2A_URL_IRIS_A2_CLAUDE`. This lets the same `backend.yaml`
+`A2A_URL_<ID_UPPERCASED_WITH_UNDERSCORES>` — for example, `A2A_URL_IRIS_CLAUDE`. This lets the same `backend.yaml`
 work across Docker Compose, Kubernetes, and local sidecar deployments without modification.
 
 ---

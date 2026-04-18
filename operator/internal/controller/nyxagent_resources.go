@@ -658,7 +658,7 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string, prompts []n
 			ImagePullPolicy: imagePullPolicy(b.Image),
 			Ports:           bPorts,
 			Env: append([]corev1.EnvVar{
-				{Name: "AGENT_NAME", Value: fmt.Sprintf("%s-a2-%s", agent.Name, b.Name)},
+				{Name: "AGENT_NAME", Value: fmt.Sprintf("%s-%s", agent.Name, b.Name)},
 				{Name: "AGENT_OWNER", Value: agent.Name},
 				{Name: "AGENT_ID", Value: b.Name},
 				{Name: "AGENT_URL", Value: fmt.Sprintf("http://localhost:%d", bPort)},

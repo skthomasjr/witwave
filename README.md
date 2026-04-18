@@ -228,10 +228,10 @@ then the responses are aggregated:
 
 ```yaml
 consensus:
-  - backend: "iris-a2-claude"
+  - backend: "iris-claude"
     model: "claude-opus-4-6"
-  - backend: "iris-a2-codex*" # glob — matches all codex backends
-  - backend: "iris-a2-claude"
+  - backend: "iris-codex*" # glob — matches all codex backends
+  - backend: "iris-claude"
     model: "claude-haiku-4-5" # same backend, different model = two parallel calls
 ```
 
@@ -425,7 +425,7 @@ settings, and the dashboard pod runs as non-root. This keeps the chart compatibl
 
 | Variable                   | Default                            | Description                                                                              |
 | -------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------- |
-| `AGENT_NAME`               | `claude`/`codex`/`gemini` | Backend instance name (e.g. `iris-a2-claude`)                                            |
+| `AGENT_NAME`               | `claude`/`codex`/`gemini` | Backend instance name (e.g. `iris-claude`)                                            |
 | `AGENT_OWNER`              | _(same as `AGENT_NAME`)_           | Named agent this backend belongs to (e.g. `iris`); used in metric labels                 |
 | `AGENT_ID`                 | `claude`/`codex`/`gemini`          | Backend slot identifier (e.g. `claude`); used in metric labels                           |
 | `AGENT_URL`                | `http://localhost:8000/`           | Public A2A endpoint URL for the agent card                                               |

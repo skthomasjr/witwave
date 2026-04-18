@@ -362,7 +362,7 @@ spec:
             - name: BACKEND_MODEL
               value: {{ .model | quote }}
             {{- end }}
-            {{- include "nyx.otelEnv" (dict "root" $ "serviceName" (printf "a2-%s-%s" .name $agentName)) | nindent 12 }}
+            {{- include "nyx.otelEnv" (dict "root" $ "serviceName" (printf "%s-%s" $agentName .name)) | nindent 12 }}
             {{- if .env }}
             {{- toYaml .env | nindent 12 }}
             {{- end }}

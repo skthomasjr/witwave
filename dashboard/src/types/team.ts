@@ -55,12 +55,12 @@ const KNOWN_FAMILIES: ReadonlySet<BackendType> = new Set([
 ]);
 
 // Structured id-suffix mapping. Matches the canonical backend container names
-// (e.g. "iris-a2-claude", "nova-a2-codex", "kira-a2-gemini") without relying
-// on free-form substring matches anywhere in the id.
+// (e.g. "iris-claude", "nova-codex", "kira-gemini") without relying on
+// free-form substring matches anywhere in the id.
 const BACKEND_ID_SUFFIXES: ReadonlyArray<readonly [string, BackendType]> = [
-  ["-a2-claude", "claude"],
-  ["-a2-codex", "codex"],
-  ["-a2-gemini", "gemini"],
+  ["-claude", "claude"],
+  ["-codex", "codex"],
+  ["-gemini", "gemini"],
 ];
 
 // Dev-only: warn once per unknown id so drift is visible without flooding

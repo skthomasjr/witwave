@@ -8,7 +8,7 @@ OpenAI Agents SDK, managing its own sessions, conversation logs, trace logs, and
 codex receives A2A JSON-RPC requests (forwarded by harness), runs them through an OpenAI model via the Agents SDK
 with streaming, and logs everything to JSONL files.
 
-Each named agent that uses Codex gets its own dedicated instance of this image (e.g. `iris-a2-codex`, `bob-a2-codex`).
+Each named agent that uses Codex gets its own dedicated instance of this image (e.g. `iris-codex`, `bob-codex`).
 Instances are completely isolated — separate sessions, logs, and metrics.
 
 ## Key features

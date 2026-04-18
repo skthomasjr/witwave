@@ -7,7 +7,7 @@ import { apiGet } from "../api/client";
 //
 // Response shape (see harness/main.py routing_handler):
 //   {
-//     "default": "iris-a2-claude",
+//     "default": "iris-claude",
 //     "default_routing": {"agent": "...", "model": "..."} | null,
 //     "routing": {
 //       "a2a":         {"agent": "...", "model": "..."} | null,

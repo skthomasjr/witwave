@@ -7,8 +7,8 @@ import type { Agent } from "../../src/types/team";
 // the thread rendering for user / agent / error rows.
 
 const backends: Agent[] = [
-  { id: "iris-a2-claude", role: "backend", url: "http://iris-a2-claude:8000" },
-  { id: "iris-a2-codex", role: "backend", url: "http://iris-a2-codex:8000" },
+  { id: "iris-claude", role: "backend", url: "http://iris-claude:8000" },
+  { id: "iris-codex", role: "backend", url: "http://iris-codex:8000" },
 ];
 
 function okJson(data: unknown): Response {
@@ -24,7 +24,7 @@ function mountPanel() {
     props: {
       agentName: "iris",
       backends,
-      activeBackendId: "iris-a2-claude",
+      activeBackendId: "iris-claude",
     },
   });
 }
@@ -103,7 +103,7 @@ describe("ChatPanel", () => {
     const sentBody = JSON.parse(
       String((sendCall?.[1] as RequestInit | undefined)?.body ?? "{}"),
     );
-    expect(sentBody.params.message.metadata.backend_id).toBe("iris-a2-claude");
+    expect(sentBody.params.message.metadata.backend_id).toBe("iris-claude");
   });
 
   it("surfaces an error row when the proxy call fails", async () => {

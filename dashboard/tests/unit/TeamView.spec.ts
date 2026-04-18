@@ -91,9 +91,9 @@ describe("TeamView", () => {
             card: { name: "iris", description: "Primary agent" },
           },
           {
-            id: "iris-a2-claude",
+            id: "iris-claude",
             role: "backend",
-            url: "http://iris-a2-claude:8000",
+            url: "http://iris-claude:8000",
             card: { name: "iris-claude" },
           },
         ],
@@ -114,7 +114,7 @@ describe("TeamView", () => {
     expect(cards.length).toBe(2);
     expect(wrapper.text()).toContain("iris");
     expect(wrapper.text()).toContain("nova");
-    expect(wrapper.text()).toContain("iris-a2-claude");
+    expect(wrapper.text()).toContain("iris-claude");
   });
 
   it("renders error placeholder on fetch failure", async () => {
@@ -164,9 +164,9 @@ describe("TeamView", () => {
         agents: [
           { id: "iris-nyx", role: "nyx", url: "http://iris:8000", card: { name: "iris" } },
           {
-            id: "iris-a2-claude",
+            id: "iris-claude",
             role: "backend",
-            url: "http://iris-a2-claude:8000",
+            url: "http://iris-claude:8000",
             card: { name: "iris-claude" },
           },
         ],

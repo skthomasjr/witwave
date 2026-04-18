@@ -113,7 +113,7 @@ const totalDuration = computed<number>(() => {
         v-model="serviceInput"
         class="search"
         type="text"
-        placeholder="service (e.g. iris-a2-claude)"
+        placeholder="service (e.g. iris-claude)"
         @keyup.enter="applyService"
       />
       <button class="btn" type="button" @click="applyService">Apply</button>
