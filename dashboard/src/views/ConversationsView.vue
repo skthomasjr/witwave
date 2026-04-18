@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch, onBeforeUnmount } from "vue";
 import { RouterLink } from "vue-router";
 import { useAgentFanout } from "../composables/useAgentFanout";
 import { renderMarkdown } from "../utils/markdown";
@@ -14,6 +14,22 @@ type Row = ConversationEntry & { _agent: string };
 
 const limit = ref<number>(100);
 const searchTerm = ref<string>("");
+// Debounced copy of searchTerm used by the filter computed (#745).
+// Without this, every keystroke recomputes the filter over the full
+// items list — visibly janks the UI on large teams.
+const searchTermDebounced = ref<string>("");
+const SEARCH_DEBOUNCE_MS = 150;
+let _searchTimer: ReturnType<typeof setTimeout> | null = null;
+watch(searchTerm, (v) => {
+  if (_searchTimer !== null) clearTimeout(_searchTimer);
+  _searchTimer = setTimeout(() => {
+    searchTermDebounced.value = v;
+    _searchTimer = null;
+  }, SEARCH_DEBOUNCE_MS);
+});
+onBeforeUnmount(() => {
+  if (_searchTimer !== null) clearTimeout(_searchTimer);
+});
 const agentFilter = ref<string>("");
 const roleFilter = ref<string>("");
 
@@ -55,12 +71,25 @@ const sorted = computed(() =>
   }),
 );
 
+// Cache per-row lowercased text so the search filter is O(N) on each
+// recompute (not O(N*text-length)). WeakMap keyed on the row identity
+// so rows that drop out of the aggregate are garbage-collected too.
+const _textLowerCache = new WeakMap<Row, string>();
+function _rowText(row: Row): string {
+  let lower = _textLowerCache.get(row);
+  if (lower === undefined) {
+    lower = (row.text ?? "").toLowerCase();
+    _textLowerCache.set(row, lower);
+  }
+  return lower;
+}
+
 const filtered = computed(() => {
-  const q = searchTerm.value.trim().toLowerCase();
+  const q = searchTermDebounced.value.trim().toLowerCase();
   return sorted.value.filter((row) => {
     if (agentFilter.value && row._agent !== agentFilter.value) return false;
     if (roleFilter.value && row.role !== roleFilter.value) return false;
-    if (q && !(row.text ?? "").toLowerCase().includes(q)) return false;
+    if (q && !_rowText(row).includes(q)) return false;
     return true;
   });
 });
