@@ -421,6 +421,7 @@ settings, and the dashboard pod runs as non-root. This keeps the chart compatibl
 | `HARNESS_URL`                               | `http://localhost:$HARNESS_PORT/` | Public URL published on the A2A agent card                                                                                                          |
 | `BACKEND_CONFIG_PATH`                       | `/home/agent/.nyx/backend.yaml` | Path to the backend routing config file                                                                                                               |
 | `METRICS_ENABLED`                           | _(unset)_                       | Set to any non-empty value to expose `/metrics`                                                                                                       |
+| `METRICS_PORT`                              | `9000`                          | Dedicated port the metrics listener binds to (split from the app port so NetworkPolicy + auth can differ, #643)                                       |
 | `METRICS_AUTH_TOKEN`                        | _(unset)_                       | Bearer token required to access `/metrics` (recommended in production)                                                                                |
 | `METRICS_CACHE_TTL`                         | `15`                            | Seconds to cache aggregated backend metrics between scrapes                                                                                           |
 | `CONVERSATIONS_AUTH_TOKEN`                  | _(unset)_                       | Bearer token required to access `/conversations` and `/trace` (inbound)                                                                               |
@@ -452,6 +453,7 @@ settings, and the dashboard pod runs as non-root. This keeps the chart compatibl
 | `AGENT_URL`                | `http://localhost:8000/`           | Public A2A endpoint URL for the agent card                                               |
 | `BACKEND_PORT`             | `8000`                             | HTTP port the backend listens on (internal)                                              |
 | `METRICS_ENABLED`          | _(unset)_                          | Set to any non-empty value to expose `/metrics`                                          |
+| `METRICS_PORT`             | `9000`                             | Dedicated port the metrics listener binds to (#643; same semantics as harness)           |
 | `CONVERSATIONS_AUTH_TOKEN` | _(unset — warn on empty)_          | Bearer token required to access `/conversations`, `/trace`, and `/mcp` on all three backends (#510, #516, #517, #518) |
 | `TASK_STORE_PATH`          | _(unset)_                          | Path for SQLite A2A task store; defaults to in-memory (state lost on restart)            |
 | `WORKER_MAX_RESTARTS`      | `5`                                | Consecutive crash limit before a critical worker marks the backend not-ready             |
@@ -459,14 +461,25 @@ settings, and the dashboard pod runs as non-root. This keeps the chart compatibl
 
 ## Metrics
 
-When `METRICS_ENABLED` is set, Prometheus metrics are served at `/metrics` on both harness and backend containers.
+When `METRICS_ENABLED` is set, Prometheus metrics are served at `/metrics` on a **dedicated port** (9000 by default,
+configurable via `METRICS_PORT`) on every container — harness, each backend, and each MCP tool (#643). The metrics
+listener is split from the app listener so NetworkPolicy and auth posture can diverge cleanly between app traffic
+(A2A, triggers, conversations) and monitoring scrapes.
 
 Backend containers (`claude`, `codex`, `gemini`) expose `a2_*`-prefixed metrics. `claude` exposes a superset
 that includes tool call, context window, and MCP metrics; `codex` also exposes tool-call and context-window metrics;
 `gemini` exposes context-window metrics. All three share the common `a2_*` baseline set.
-harness exposes `agent_*`-prefixed infrastructure metrics (bus, heartbeat, job, sessions, webhooks, etc.). The
-harness `/metrics` endpoint also aggregates all backend `/metrics` endpoints, injecting a `backend="<id>"` label on
-each sample so a single scrape target captures the full deployment.
+harness exposes `harness_*`-prefixed infrastructure metrics (bus, heartbeat, job, sessions, webhooks, etc.). The
+harness `/metrics` endpoint also aggregates all backend `/metrics` endpoints (fetched at each backend's `:9000`),
+injecting a `backend="<id>"` label on each sample so a single scrape target captures the full deployment. This is
+redundant with scraping each container's `:9000` directly via PodMonitor, but is preserved so operators curl-ing
+the harness endpoint get the full picture.
+
+Quick verify (default ports, harness exposed to localhost):
+
+```bash
+curl -s http://localhost:9000/metrics | head
+```
 
 ## Prompt env-var interpolation (#473)
 

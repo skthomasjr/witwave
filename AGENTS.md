@@ -71,6 +71,12 @@ Prompts can land in `.nyx/{jobs,tasks,triggers,continuations,webhooks}/` (or at 
 harness retains no LLM of its own. All conversation state, session continuity, memory, and conversation logging
 live in the backend container.
 
+Every container in the stack exposes `/metrics` on a **dedicated port** (9000 by default, set via `METRICS_PORT`
+env / `metrics.port` chart value / `NyxAgentSpec.MetricsPort` CRD field) separate from the app listener (#643).
+The split lets NetworkPolicy and auth posture diverge between app traffic and monitoring scrapes. The shared
+helper `shared/metrics_server.py` implements both the asyncio-task listener (harness + backends) and the
+daemon-thread variant (FastMCP-hosted MCP tools).
+
 ### Backend containers
 
 Three backend types exist, each implemented as a standalone A2A server:
@@ -289,9 +295,12 @@ charts/                      # Helm charts
 ├── nyx/                     # nyx Helm chart (deploys agents to Kubernetes)
 └── nyx-operator/            # nyx-operator Helm chart (deploys the NyxAgent controller)
 operator/                    # Kubernetes operator (Go) — reconciles NyxAgent CRDs
-shared/                      # Shared Python modules mounted into harness + backends
-                             #   otel.py      — OpenTelemetry bootstrap and helpers (#469)
-                             #   log_utils.py — structured log append helpers
+shared/                      # Shared Python modules mounted into harness + backends + MCP tools
+                             #   otel.py           — OpenTelemetry bootstrap and helpers (#469)
+                             #   metrics_server.py — dedicated /metrics listener on :9000 (#643);
+                             #                       asyncio-task variant for harness/backends,
+                             #                       daemon-thread variant for MCP tools
+                             #   log_utils.py      — structured log append helpers
                              #   exceptions.py, conversations.py
 ```
 

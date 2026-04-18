@@ -247,7 +247,13 @@ Tracked open requests (not gaps):
 | Topic                                            | Issue | State |
 | ------------------------------------------------ | ----- | ----- |
 | NyxPrompt runtime execution status on CR         | [#642](https://github.com/skthomasjr/autonomous-agent/issues/642) | request, Ready: false |
-| Metrics on a dedicated port (9000) separate from app traffic | [#643](https://github.com/skthomasjr/autonomous-agent/issues/643) | request, Ready: false |
+
+Recently closed — shipped in the operator:
+
+| Topic                                            | Issue | Landed |
+| ------------------------------------------------ | ----- | ------ |
+| MCP tools streamable-http + chart-deployed       | [#644](https://github.com/skthomasjr/autonomous-agent/issues/644) | `564ae83` |
+| Metrics on dedicated :9000 listener (9-gap series) | [#643](https://github.com/skthomasjr/autonomous-agent/issues/643) (→ [#645-#653](https://github.com/skthomasjr/autonomous-agent/issues/645)) | `9b935e7` + `2c571c4` |
 
 ## Metrics
 

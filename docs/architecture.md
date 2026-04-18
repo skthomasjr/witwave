@@ -72,8 +72,8 @@ harness/                       # harness source (router/scheduler)
 ├── triggers.py                # Inbound HTTP trigger handler — serves POST /triggers/{endpoint}
 ├── continuations.py           # Continuation runner — fires follow-up prompts on upstream completion
 ├── webhooks.py                # Outbound webhook runner — POSTs to subscribed URLs after prompt completion
-├── metrics.py                 # Prometheus metric definitions (agent_* prefix)
-├── metrics_proxy.py           # Aggregates backend /metrics with backend= label injection
+├── metrics.py                 # Prometheus metric definitions (harness_* prefix)
+├── metrics_proxy.py           # Aggregates backend /metrics (fetches on METRICS_PORT=9000, not app port)
 ├── conversations_proxy.py     # Fetches and merges /conversations and /trace from all backends
 ├── sqlite_task_store.py       # SQLite-backed A2A task store (used when TASK_STORE_PATH is set)
 ├── utils.py                   # Shared utilities (frontmatter parser, duration parser, etc.)
@@ -286,9 +286,20 @@ forwarding it to the backend URL. Retries transient errors (HTTP 429/502/503/504
 per-backend via an environment variable (`A2A_URL_<ID_UPPERCASED>`), enabling Kubernetes sidecar, separate pod, or
 Docker Compose deployments without config file changes.
 
-**`metrics_proxy.py`** — Fetches `/metrics` from each configured backend and injects a `backend="<id>"` label on every
-Prometheus sample line. The harness `/metrics` endpoint merges its own metrics with all backend metrics, providing a
-single scrape target for the full deployment.
+**`metrics_proxy.py`** — Fetches `/metrics` from each configured backend on the dedicated metrics port
+(`METRICS_PORT`, default 9000 — the backend's app URL is rewritten to swap the port). Injects a `backend="<id>"`
+label on every sample line. The harness metrics listener merges its own metrics with all backend metrics, providing
+a single scrape target for the full deployment (redundant with PodMonitor-per-container scraping, but preserved for
+anyone curl-ing the harness directly).
+
+### Dedicated metrics listener (`shared/metrics_server.py`)
+
+Every container in the stack — harness, each backend, each MCP tool — runs `/metrics` on a **dedicated port** (9000
+by default, set via `METRICS_PORT` env / `metrics.port` chart value / `NyxAgentSpec.MetricsPort` CRD field)
+separate from the app listener (#643). The split lets NetworkPolicy and auth posture diverge cleanly between app
+traffic (A2A, triggers, conversations, MCP) and monitoring scrapes. `shared/metrics_server.py` exposes two
+entry points: an asyncio-task variant for containers that own the main event loop (harness, backends), and a
+daemon-thread variant for FastMCP-hosted containers (MCP tools) that don't.
 
 ### Backend Components (claude, codex, gemini)
 
