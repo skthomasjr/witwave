@@ -123,6 +123,11 @@ backend_mcp_servers_active: prometheus_client.Gauge | None = None
 # Tool call metrics (#640 — parity with codex #445). Populated on each
 # function_call observed in the google-genai AFC history.
 backend_sdk_tool_calls_total: prometheus_client.Counter | None = None
+# Per-query tool-call histogram (#795). Parity with claude / codex label
+# schema. Ships as a registered zero-value placeholder today since gemini
+# does not yet surface per-run_query tool-call counts; wiring lands with
+# the tool-call path enhancements in #640.
+backend_sdk_tool_calls_per_query: prometheus_client.Histogram | None = None
 backend_sdk_tool_duration_seconds: prometheus_client.Histogram | None = None
 
 if _enabled:
@@ -530,6 +535,13 @@ if _enabled:
         "backend_sdk_tool_calls_total",
         "Total tool calls dispatched via the backend SDK, by tool name and outcome.",
         ["agent", "agent_id", "backend", "tool", "status"],
+    )
+    backend_sdk_tool_calls_per_query = prometheus_client.Histogram(
+        "backend_sdk_tool_calls_per_query",
+        "Number of tool calls per run_query() invocation.",
+        # model label aligned with claude / codex (#795).
+        ["agent", "agent_id", "backend", "model"],
+        buckets=(0, 1, 2, 5, 10, 20, 50, 100, 200),
     )
     backend_sdk_tool_duration_seconds = prometheus_client.Histogram(
         "backend_sdk_tool_duration_seconds",

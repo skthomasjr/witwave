@@ -1223,7 +1223,7 @@ async def run_query(
             if backend_sdk_tokens_per_query is not None:
                 backend_sdk_tokens_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(_total_tokens)
             if backend_sdk_tool_calls_per_query is not None:
-                backend_sdk_tool_calls_per_query.labels(**_LABELS).observe(_tool_call_count)
+                backend_sdk_tool_calls_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(_tool_call_count)
             if _total_tokens:
                 if backend_context_tokens is not None:
                     backend_context_tokens.labels(**_LABELS).observe(_total_tokens)
@@ -1333,7 +1333,7 @@ async def run_query(
     if backend_sdk_tokens_per_query is not None:
         backend_sdk_tokens_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(_total_tokens)
     if backend_sdk_tool_calls_per_query is not None:
-        backend_sdk_tool_calls_per_query.labels(**_LABELS).observe(_tool_call_count)
+        backend_sdk_tool_calls_per_query.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(_tool_call_count)
     if _total_tokens:
         if backend_context_tokens is not None:
             backend_context_tokens.labels(**_LABELS).observe(_total_tokens)

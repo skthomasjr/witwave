@@ -502,7 +502,9 @@ if _enabled:
     backend_sdk_tool_calls_per_query = prometheus_client.Histogram(
         "backend_sdk_tool_calls_per_query",
         "Number of tool calls per run_query() invocation.",
-        ["agent", "agent_id", "backend"],
+        # model label aligned with claude (#795) so cross-backend queries
+        # don't lose the per-model dimension on codex.
+        ["agent", "agent_id", "backend", "model"],
         buckets=(0, 1, 2, 5, 10, 20, 50),
     )
     backend_sdk_tool_duration_seconds = prometheus_client.Histogram(
