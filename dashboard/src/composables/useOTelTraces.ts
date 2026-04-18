@@ -432,19 +432,61 @@ export function useOTelTraces(opts: UseOTelTracesOptions = {}) {
   const configured: ComputedRef<boolean> = computed(
     () => baseUrl !== null || inClusterReachable.value,
   );
-  // One-shot probe: fetch /api/team; a non-empty response means the
-  // dashboard can fan out to at least one agent's /api/traces endpoint.
-  // Errors leave configured=false so consumers render a "not
-  // configured" empty state instead of polling into the void.
-  void (async () => {
+  // Probe: fetch /api/team; a non-empty response means the dashboard
+  // can fan out to at least one agent's /api/traces endpoint. Errors
+  // leave configured=false so consumers render a "not configured" empty
+  // state instead of polling into the void.
+  //
+  // #1003: Previously this was one-shot — a cold-start glitch where the
+  // dashboard loaded before pods became ready would pin
+  // inClusterReachable=false forever. Now:
+  //  (a) the probe's AbortController is bound to the component lifecycle
+  //      (aborted in onUnmounted below) so it can't leak,
+  //  (b) the probe auto-retries at PROBE_RETRY_MS after a failure until
+  //      it succeeds once,
+  //  (c) refreshList() flips inClusterReachable=true on the first
+  //      successful list fetch in inClusterMode, so even without the
+  //      probe the configured flag recovers,
+  //  (d) retryProbe() is exposed for explicit user-driven retry.
+  const PROBE_RETRY_MS = 60_000;
+  let probeAborter: AbortController | null = null;
+  let probeRetryTimer: ReturnType<typeof setTimeout> | null = null;
+
+  async function runProbe(): Promise<void> {
+    if (!inClusterMode) return;
+    if (inClusterReachable.value) return;
+    probeAborter?.abort();
+    const localAborter = new AbortController();
+    probeAborter = localAborter;
     try {
-      const team = await fetchTeam(new AbortController().signal);
-      if (team.length > 0) inClusterReachable.value = true;
+      const team = await fetchTeam(localAborter.signal);
+      if (probeAborter !== localAborter) return;
+      if (team.length > 0) {
+        inClusterReachable.value = true;
+        return;
+      }
     } catch {
-      // Leave configured=false; the polling loop will still attempt
-      // the fallback and surface any persistent error via listError.
+      // Fall through to schedule retry.
     }
-  })();
+    if (probeAborter !== localAborter) return;
+    if (inClusterReachable.value) return;
+    if (probeRetryTimer !== null) clearTimeout(probeRetryTimer);
+    probeRetryTimer = setTimeout(() => {
+      probeRetryTimer = null;
+      void runProbe();
+    }, PROBE_RETRY_MS);
+  }
+
+  function retryProbe(): void {
+    // User-invoked: cancel any pending backoff and re-probe immediately.
+    if (probeRetryTimer !== null) {
+      clearTimeout(probeRetryTimer);
+      probeRetryTimer = null;
+    }
+    void runProbe();
+  }
+
+  void runProbe();
 
   const list = ref<TraceListRow[]>([]);
   const listError = ref<string>("");
@@ -490,6 +532,13 @@ export function useOTelTraces(opts: UseOTelTracesOptions = {}) {
         .sort((a, b) => b.startTime - a.startTime);
       list.value = rows;
       listError.value = "";
+      // #1003: recover from a stuck-false probe. If the list fetch
+      // succeeded (even with empty data) in inClusterMode, the fan-out
+      // is evidently reachable — flip configured=true so the UI stops
+      // rendering the "not configured" empty state.
+      if (inClusterMode && !inClusterReachable.value) {
+        inClusterReachable.value = true;
+      }
     } catch (e) {
       if ((e as { name?: string }).name === "AbortError") return;
       if (listAborter !== localAborter) return;
@@ -547,6 +596,14 @@ export function useOTelTraces(opts: UseOTelTracesOptions = {}) {
     if (timer !== null) clearInterval(timer);
     listAborter?.abort();
     detailAborter?.abort();
+    // #1003: probe controller + retry backoff must also be torn down
+    // so neither a late-resolving fetchTeam() nor a pending timeout
+    // touches refs after the component unmounts.
+    probeAborter?.abort();
+    if (probeRetryTimer !== null) {
+      clearTimeout(probeRetryTimer);
+      probeRetryTimer = null;
+    }
   });
 
   return {
@@ -564,6 +621,7 @@ export function useOTelTraces(opts: UseOTelTracesOptions = {}) {
     refreshList,
     loadDetail,
     clearDetail,
+    retryProbe,
   };
 }
 
