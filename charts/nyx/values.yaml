@@ -231,6 +231,17 @@ preStop:
   enabled: false
   delaySeconds: 5
 
+# Pod security hardening (#948). Applied uniformly to every operator-rendered
+# container (harness, backends, dashboard, mcp tools). Off by default because
+# some MCP tools (helm) write cache dirs at runtime — operators on PSS-
+# restricted clusters should enable this and verify their MCP tool set still
+# functions (or side-mount an emptyDir for their tool's cache path). Leaving
+# the knob off keeps behaviour identical to pre-#948.
+podSecurity:
+  # When true, sets securityContext.readOnlyRootFilesystem on each managed
+  # container so a code-exec attacker cannot overwrite binaries in /.
+  readOnlyRootFilesystem: false
+
 # Scheduling controls applied to every agent pod unless the per-agent entry
 # overrides them (#603). Mirrors the nyx-operator chart's value names exactly
 # so a NyxAgent CRD → chart values translation is 1:1 (pairs with #605).

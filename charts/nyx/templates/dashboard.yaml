@@ -56,6 +56,9 @@ spec:
               drop:
                 - ALL
             runAsNonRoot: true
+            {{- if (.Values.podSecurity).readOnlyRootFilesystem }}
+            readOnlyRootFilesystem: true
+            {{- end }}
           # Startup probe added (#768) for parity with harness + backends.
           # Slow image pulls on low-spec nodes would otherwise let the liveness
           # probe kill the pod after ~30s of unreadiness; startup suspends

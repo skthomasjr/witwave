@@ -193,6 +193,9 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
+            {{- if ($.Values.podSecurity).readOnlyRootFilesystem }}
+            readOnlyRootFilesystem: true
+            {{- end }}
           ports:
             - name: http
               containerPort: 8000
