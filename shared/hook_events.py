@@ -68,6 +68,11 @@ HOOK_POST_MAX_INFLIGHT = int(os.environ.get("HOOK_POST_MAX_INFLIGHT", "32"))
 # first-posts don't race the write.
 _auth_warn_lock = threading.Lock()
 _auth_warned = False
+# Counter + re-arm threshold (#936). Re-emit the auth-disabled WARN
+# every _AUTH_REARM_EVERY dropped events so a sustained misconfig
+# doesn't go silent after the initial log line is shipped.
+_auth_dropped_since_warn = 0
+_AUTH_REARM_EVERY = int(os.environ.get("HOOK_EVENTS_AUTH_REARM_EVERY", "500"))
 _shed_warn_lock = threading.Lock()
 # Serialises the cap check-and-add path in schedule_post (#878). Under
 # current single-loop asyncio this is redundant, but any future refactor
@@ -106,16 +111,30 @@ async def _post_once(event_dict: dict[str, Any]) -> None:
     if not HARNESS_EVENTS_URL:
         return
     if not HOOK_EVENTS_AUTH_TOKEN:
-        global _auth_warned
+        # Periodic re-WARN (#936). Previously _auth_warned flipped True
+        # on first drop and never reset, so a sustained misconfig where
+        # the initial WARN was lost to log shipping became completely
+        # invisible. Re-arm every N drops so operators see the signal
+        # repeatedly while the misconfig persists.
+        global _auth_warned, _auth_dropped_since_warn
         with _auth_warn_lock:
-            if not _auth_warned:
+            _auth_dropped_since_warn += 1
+            # Re-emit every _AUTH_REARM_EVERY drops.
+            _should_warn = (
+                not _auth_warned
+                or _auth_dropped_since_warn >= _AUTH_REARM_EVERY
+            )
+            if _should_warn:
                 _auth_warned = True
+                _count = _auth_dropped_since_warn
+                _auth_dropped_since_warn = 0
                 logger.warning(
                     "hook.decision transport DISABLED: HARNESS_EVENTS_URL is set "
                     "but HOOK_EVENTS_AUTH_TOKEN (and its HARNESS_EVENTS_AUTH_TOKEN/"
                     "TRIGGERS_AUTH_TOKEN aliases) are all empty. Set the token so "
-                    "the harness endpoint accepts the POST. Subsequent calls will "
-                    "early-return silently."
+                    "the harness endpoint accepts the POST. %d event(s) dropped "
+                    "since the last warning; will re-warn every %d dropped events.",
+                    _count, _AUTH_REARM_EVERY,
                 )
         return
     url = HARNESS_EVENTS_URL.rstrip("/") + "/internal/events/hook-decision"
