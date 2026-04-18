@@ -129,6 +129,14 @@ export function useMetrics(options: UseMetricsOptions = {}) {
         signal,
         timeoutMs: directoryTimeoutMs,
       });
+      // #1002: Each per-agent fetch settles independently. Previously an
+      // AbortError from one member's per-request timeout was rethrown and
+      // bubbled up through Promise.all, cancelling the entire refresh and
+      // discarding every successful sibling. A slow member now produces a
+      // row with `error` set, while successful siblings still render.
+      // Only a true outer-signal abort (caller-triggered, e.g. unmount or
+      // a superseding refresh) short-circuits the cycle — see the
+      // `signal.aborted` check after the fan-out.
       const results = await Promise.all(
         directory.map(async (entry): Promise<AgentMetrics> => {
           try {
@@ -141,9 +149,17 @@ export function useMetrics(options: UseMetricsOptions = {}) {
             warnedAgents.delete(entry.name);
             return { agent: entry.name, families: parseProm(text) };
           } catch (e) {
-            if ((e as { name?: string }).name === "AbortError") throw e;
-            const message =
-              e instanceof ApiError ? e.message : (e as Error).message;
+            const isAbort = (e as { name?: string }).name === "AbortError";
+            // Only a caller-driven outer abort should propagate. A
+            // per-member timeout (merged via AbortSignal.any) also
+            // surfaces as AbortError but the outer signal is still live,
+            // so treat it as a fetch failure for this row only.
+            if (isAbort && signal.aborted) throw e;
+            const message = isAbort
+              ? `timeout after ${memberTimeoutMs}ms`
+              : e instanceof ApiError
+                ? e.message
+                : (e as Error).message;
             // Throttled: warn once per agent per outage, not every poll tick.
             if (!warnedAgents.has(entry.name)) {
               warnedAgents.add(entry.name);
