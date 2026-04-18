@@ -1742,6 +1742,17 @@ async def _run_inner(
         # still sees a mismatch on recheck.  Two bumps are cheap and
         # make the "captured mid-cleanup" window impossible to hit.
         _bump_cleanup_epoch(session_id)
+        # Symmetric with the LRU eviction path (line ~1160/1173): pop
+        # the bookkeeping dicts so a stream of unique session IDs
+        # timing out repeatedly does not leak entries into
+        # _session_cleanup_epoch / _history_write_done (#942).  The
+        # second-bump above is the final read of the epoch for this
+        # session on this cleanup path — any later writer for this
+        # session_id starts a fresh epoch at 1 via _bump_cleanup_epoch
+        # above in run_query.
+        _session_cleanup_epoch.pop(session_id, None)
+        if _history_write_done is not None:
+            _history_write_done.pop(session_id, None)
         if backend_tasks_total is not None:
             backend_tasks_total.labels(**_LABELS, status="timeout").inc()
         if backend_task_error_duration_seconds is not None:
