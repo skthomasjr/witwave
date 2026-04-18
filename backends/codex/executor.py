@@ -31,6 +31,7 @@ from metrics import (
     backend_context_tokens_remaining,
     backend_context_usage_percent,
     backend_context_warnings_total,
+    backend_empty_prompts_total,
     backend_empty_responses_total,
     backend_log_bytes_total,
     backend_log_entries_total,
@@ -1743,6 +1744,40 @@ class AgentExecutor(A2AAgentExecutor):
         _exec_start = time.monotonic()
         prompt = context.get_user_input()
         metadata = context.message.metadata or {}
+        # Empty-prompt guard (#544 / #801). An empty or whitespace-only prompt
+        # will otherwise reach the SDK and burn a query/tokens on a no-op
+        # "How can I help?" reply. Reject early, bump counters, and log the
+        # rejection so the occurrence is visible in both metrics and the
+        # transcript. Mirrors the claude implementation.
+        if not prompt or not prompt.strip():
+            _empty_sid_raw = str(
+                context.context_id
+                or (context.message.metadata or {}).get("session_id")
+                or ""
+            ).strip()[:256]
+            _empty_sid = "".join(c for c in _empty_sid_raw if c >= " ") or "unknown"
+            logger.warning(
+                f"Session {_empty_sid!r}: rejected execute() — prompt was empty or whitespace-only (#544)."
+            )
+            if backend_empty_prompts_total is not None:
+                backend_empty_prompts_total.labels(**_LABELS).inc()
+            if backend_a2a_requests_total is not None:
+                backend_a2a_requests_total.labels(**_LABELS, status="error").inc()
+            if backend_a2a_request_duration_seconds is not None:
+                backend_a2a_request_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _exec_start)
+            if backend_a2a_last_request_timestamp_seconds is not None:
+                backend_a2a_last_request_timestamp_seconds.labels(**_LABELS).set(time.time())
+            await log_entry(
+                "system",
+                "execute() rejected: empty or whitespace-only prompt (#544).",
+                _empty_sid,
+            )
+            await event_queue.enqueue_event(
+                new_agent_text_message(
+                    "Error: prompt is empty or whitespace-only; request rejected without dispatching to the model."
+                )
+            )
+            return
         # OTel server span continuation (#469).
         from otel import extract_otel_context as _extract_ctx
         _tp = metadata.get("traceparent") if isinstance(metadata.get("traceparent"), str) else None
