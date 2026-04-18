@@ -90,7 +90,12 @@ async def _run_loop(
     max_tokens: int | None = None,
     backends_ready: asyncio.Event | None = None,
 ) -> None:
-    cron = croniter(schedule, datetime.now(timezone.utc))
+    # Track the most recent scheduled tick so iterations can anchor the
+    # croniter forward rather than relying on a persistent cursor that
+    # drifts behind wall-clock under long reloads, suspended laptops, or
+    # NTP step adjustments (#659). Initialised to None; the first
+    # iteration anchors at wall-clock.
+    last_scheduled: datetime | None = None
     stop_waiter = asyncio.create_task(stop_event.wait())
     # Wait for backends to pass /health before firing the first heartbeat
     # (#785). Without this, a */1 schedule would dispatch at *:00 while
@@ -108,9 +113,17 @@ async def _run_loop(
             return
     try:
         while not stop_event.is_set():
-            next_run = cron.get_next(datetime)
             now = datetime.now(timezone.utc)
-            delay = (next_run - now).total_seconds()
+            # Anchor cron from max(now, last_scheduled) every iteration so
+            # cumulative drift (overrunning backend calls, reload-error
+            # `continue`s, system suspend/resume) cannot push subsequent
+            # ticks behind wall-clock — while `last_scheduled` prevents the
+            # same tick from firing twice if wall-clock skews backwards by
+            # a small amount between iterations (#659).
+            anchor = now if last_scheduled is None else max(now, last_scheduled)
+            next_run = croniter(schedule, anchor).get_next(datetime)
+            last_scheduled = next_run
+            delay = max(0.0, (next_run - now).total_seconds())
             logger.info(f"Heartbeat next run in {delay:.0f}s at {next_run.isoformat()}")
             try:
                 await asyncio.wait_for(asyncio.shield(stop_waiter), timeout=delay)
