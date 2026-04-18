@@ -87,7 +87,7 @@ from otel import start_span, set_span_error
 logger = logging.getLogger(__name__)
 
 
-AGENT_NAME = os.environ.get("AGENT_NAME", "a2-codex")
+AGENT_NAME = os.environ.get("AGENT_NAME", "codex")
 AGENT_OWNER = os.environ.get("AGENT_OWNER", AGENT_NAME)
 AGENT_ID = os.environ.get("AGENT_ID", "codex")
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")

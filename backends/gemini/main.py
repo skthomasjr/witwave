@@ -47,7 +47,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-AGENT_NAME = os.environ.get("AGENT_NAME", "a2-gemini")
+AGENT_NAME = os.environ.get("AGENT_NAME", "gemini")
 AGENT_HOST = os.environ.get("AGENT_HOST", "0.0.0.0")
 BACKEND_PORT = int(os.environ.get("BACKEND_PORT", "8000"))
 AGENT_URL = os.environ.get("AGENT_URL", f"http://localhost:{BACKEND_PORT}/")
@@ -233,7 +233,7 @@ async def main():
 
     # Initialise OTel before the executor (#469). No-op when OTEL_ENABLED is falsy.
     from otel import init_otel_if_enabled
-    init_otel_if_enabled(service_name=os.environ.get("OTEL_SERVICE_NAME") or f"a2-gemini-{os.environ.get('AGENT_OWNER', 'unknown')}")
+    init_otel_if_enabled(service_name=os.environ.get("OTEL_SERVICE_NAME") or f"gemini-{os.environ.get('AGENT_OWNER', 'unknown')}")
 
     agent_card = build_agent_card()
     executor = AgentExecutor()

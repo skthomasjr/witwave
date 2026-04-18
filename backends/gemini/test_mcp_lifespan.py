@@ -32,14 +32,14 @@ sys.path.insert(0, str(_HERE))
 sys.path.insert(0, str(_REPO_ROOT / "shared"))
 
 os.environ.setdefault("GEMINI_API_KEY", "test-key")
-os.environ.setdefault("AGENT_NAME", "a2-gemini-test")
+os.environ.setdefault("AGENT_NAME", "gemini-test")
 os.environ.setdefault("AGENT_OWNER", "test")
 os.environ.setdefault("AGENT_ID", "gemini")
 # Redirect log paths off /home/agent (which doesn't exist in the test env) so
 # log_entry / log_trace writes silently no-op into a tmp file rather than
 # spamming stderr with ENOENT.
 import tempfile as _tempfile
-_log_tmp_dir = _tempfile.mkdtemp(prefix="a2-gemini-test-")
+_log_tmp_dir = _tempfile.mkdtemp(prefix="gemini-test-")
 os.environ.setdefault("CONVERSATION_LOG", os.path.join(_log_tmp_dir, "conversation.jsonl"))
 os.environ.setdefault("TRACE_LOG", os.path.join(_log_tmp_dir, "trace.jsonl"))
 os.environ.setdefault("SESSION_STORE_DIR", os.path.join(_log_tmp_dir, "sessions"))

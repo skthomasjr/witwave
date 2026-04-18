@@ -324,7 +324,7 @@ def _session_path_self_test() -> None:
         )
         _bump("probe_exception")
 
-AGENT_NAME = os.environ.get("AGENT_NAME", "a2-claude")
+AGENT_NAME = os.environ.get("AGENT_NAME", "claude")
 AGENT_OWNER = os.environ.get("AGENT_OWNER", AGENT_NAME)
 AGENT_ID = os.environ.get("AGENT_ID", "claude")
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")

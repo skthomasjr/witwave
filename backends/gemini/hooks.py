@@ -54,7 +54,7 @@ def _bump_config_error(reason: str) -> None:
         if backend_hooks_config_errors_total is None:
             return
         labels = {
-            "agent": os.environ.get("AGENT_OWNER", os.environ.get("AGENT_NAME", "a2-gemini")),
+            "agent": os.environ.get("AGENT_OWNER", os.environ.get("AGENT_NAME", "gemini")),
             "agent_id": os.environ.get("AGENT_ID", "gemini"),
             "backend": "gemini",
         }
