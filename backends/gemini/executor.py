@@ -523,7 +523,37 @@ async def _save_history(session_id: str, history: list[types.Content]) -> None:
         if parts:
             raw.append({"role": content.role, "parts": parts})
     if _SAVE_HISTORY_MAX_TURNS > 0 and len(raw) > _SAVE_HISTORY_MAX_TURNS:
-        raw = raw[-_SAVE_HISTORY_MAX_TURNS:]
+        # Advance the cut point forward until it lands on a user-role
+        # Content whose first part is not a function_response (#672).
+        # Gemini's send_message_stream requires the history start with a
+        # user turn, and a function_call/function_response pair must stay
+        # intact — a naive slice can split AFC pairs or start on a
+        # "model"/function_response Content, which permanently bricks the
+        # session on reload.
+        cut = len(raw) - _SAVE_HISTORY_MAX_TURNS
+        n = len(raw)
+        while cut < n:
+            entry = raw[cut]
+            if entry.get("role") != "user":
+                cut += 1
+                continue
+            first_part = (entry.get("parts") or [{}])[0]
+            if "function_response" in first_part:
+                # Splitting before a function_response would orphan the
+                # pair — keep walking until we clear it.
+                cut += 1
+                continue
+            break
+        if cut >= n:
+            # Tail contained no safe cut point; keep the last entry only
+            # if it's a valid user turn, otherwise drop history entirely
+            # so the next send_message_stream starts fresh.
+            if n > 0 and raw[-1].get("role") == "user" and "function_response" not in (raw[-1].get("parts") or [{}])[0]:
+                raw = raw[-1:]
+            else:
+                raw = []
+        else:
+            raw = raw[cut:]
     tmp_path = path + ".tmp"
     last_exc: Exception | None = None
     # Announce that a save is in progress so a concurrent timeout cleanup
