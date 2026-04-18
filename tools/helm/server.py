@@ -109,8 +109,18 @@ def _write_values(values: dict | None) -> Path | None:
     if not values:
         return None
     fd, path = tempfile.mkstemp(suffix=".yaml", prefix="helm-values-")
-    with os.fdopen(fd, "w") as f:
-        yaml.safe_dump(values, f)
+    try:
+        with os.fdopen(fd, "w") as f:
+            yaml.safe_dump(values, f)
+    except Exception:
+        # safe_dump (or the fdopen/write) failed — tempfile.mkstemp already
+        # created the on-disk file. Remove it so we do not leak orphaned
+        # /tmp/helm-values-*.yaml files on the pod filesystem.
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        raise
     return Path(path)
 
 
