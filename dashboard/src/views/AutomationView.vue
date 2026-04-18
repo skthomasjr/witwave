@@ -279,6 +279,10 @@ const drawerAgent = computed<string | null>(
         <input v-model="showDisabled" type="checkbox" />
         <span>show disabled</span>
       </label>
+      <!-- Kind-filter pills expose aria-pressed so assistive tech can
+           report which kinds are visible. Keyboard shortcut Shift+Enter
+           on a focused pill isolates that kind (parity with shift+click);
+           bare Enter/Space toggles. (#821) -->
       <div class="kind-filters" role="group" aria-label="kind filters">
         <button
           v-for="k in ['job', 'task', 'trigger', 'webhook', 'continuation', 'heartbeat'] as PromptKind[]"
@@ -287,8 +291,11 @@ const drawerAgent = computed<string | null>(
           class="kind-pill"
           :class="{ active: activeKinds[k] }"
           :data-kind="k"
-          :title="`Click to toggle — shift+click to isolate`"
+          :aria-pressed="activeKinds[k] ? 'true' : 'false'"
+          :aria-label="`toggle ${k} (shift+enter isolates)`"
+          :title="`Click to toggle — shift+click or shift+enter to isolate`"
           @click="(ev: MouseEvent) => (ev.shiftKey ? showOnly(k) : toggleKind(k))"
+          @keydown.shift.enter.prevent="showOnly(k)"
         >
           {{ k }}
         </button>
