@@ -6,8 +6,14 @@
 
 FROM node:20-bookworm-slim AS build
 WORKDIR /build
-COPY dashboard/package.json ./
-RUN npm install --no-audit --no-fund --ignore-scripts
+# Copy the package.json and the checked-in lockfile together so `npm ci`
+# can run. Using `npm ci` instead of `npm install` (#741) enforces the
+# package-lock.json resolution verbatim — no caret-range drift into the
+# v-html render path (marked/dompurify/primevue/vue are the risky ones).
+# `--ignore-scripts` keeps install-time postinstall hooks from executing
+# in the build stage; `--no-audit --no-fund` just trims noise.
+COPY dashboard/package.json dashboard/package-lock.json ./
+RUN npm ci --no-audit --no-fund --ignore-scripts
 COPY dashboard/ ./
 RUN npm run build
 
