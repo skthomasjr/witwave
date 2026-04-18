@@ -31,3 +31,21 @@ per-agent.
 - Stable component names are referenced by agents in their MCP configuration.
 - Register new components in the `Building Images` section of `AGENTS.md` and
   tag related issues/PRs with the `mcp` GitHub label.
+
+## Digest pinning (#855)
+
+The `nyx` Helm chart accepts a `digest` field alongside `repository`/`tag`
+on every MCP tool (`mcpTools.<name>.image.digest`). When set the template
+renders `repository@<digest>` and `tag` is ignored. Prefer an immutable
+digest over a rolling tag in production: MCP pods typically hold a
+cluster ServiceAccount token, and a re-tagged upstream image could be
+pulled silently with vulnerable code.
+
+```yaml
+mcpTools:
+  kubernetes:
+    enabled: true
+    image:
+      repository: ghcr.io/skthomasjr/images/mcp-kubernetes
+      digest: sha256:abc123...
+```

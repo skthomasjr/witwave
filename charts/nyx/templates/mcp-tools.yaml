@@ -38,6 +38,13 @@ is a two-line values change plus a new image build; no template edits.
        (we skip ClusterRole/Binding so we do not widen their SA's
        perms unexpectedly). */}}
 {{- $imageTag := default $.Chart.AppVersion $tool.image.tag }}
+{{- /* Digest pinning (#855): when image.digest is set, render
+       repository@sha256:... and ignore tag. Immutable digests guard
+       against a mutable registry tag silently pulling a newer — possibly
+       vulnerable — image into a pod that holds a cluster ServiceAccount
+       token. */}}
+{{- $imageDigest := default "" $tool.image.digest }}
+{{- $imageRef := ternary (printf "%s@%s" $tool.image.repository $imageDigest) (printf "%s:%s" $tool.image.repository $imageTag) (ne $imageDigest "") }}
 {{- $pullPolicy := default "IfNotPresent" $tool.image.pullPolicy }}
 {{- /* MCP Service now exposes the metrics port when metrics.enabled so
        ServiceMonitor / plain Prometheus scrape discovery can reach the
@@ -164,7 +171,7 @@ spec:
       {{- $metricsPort := ($.Values.mcpTools.metricsPort | default ($.Values.metrics.port | default 9000)) }}
       containers:
         - name: mcp
-          image: "{{ $tool.image.repository }}:{{ $imageTag }}"
+          image: "{{ $imageRef }}"
           imagePullPolicy: {{ $pullPolicy }}
           securityContext:
             allowPrivilegeEscalation: false

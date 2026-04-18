@@ -616,6 +616,12 @@ mcpTools:
       repository: ghcr.io/skthomasjr/images/mcp-kubernetes
       # # Image tag. Defaults to .Chart.AppVersion when omitted.
       # tag: ""
+      # # Immutable digest pin (#855). When set (e.g.
+      # # "sha256:abc123..."), the chart renders
+      # # `repository@<digest>` and ignores `tag`. Use this in
+      # # production to prevent silent pulls of re-tagged "latest"
+      # # images into a pod that holds a cluster ServiceAccount token.
+      # digest: ""
       # pullPolicy: IfNotPresent
     # # Number of replicas.
     # replicas: 1
@@ -660,6 +666,10 @@ mcpTools:
     image:
       repository: ghcr.io/skthomasjr/images/mcp-helm
       # tag: ""
+      # # Immutable digest pin (#855). When set, renders
+      # # `repository@<digest>` and ignores `tag`. See kubernetes.image.digest
+      # # above for the full rationale.
+      # digest: ""
       # pullPolicy: IfNotPresent
     # replicas: 1
     # serviceAccountName: ""
