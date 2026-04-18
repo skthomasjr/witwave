@@ -71,7 +71,12 @@ spec:
       annotations:
         {{- if and $metricsOn $podAnnOn }}
         prometheus.io/scrape: "true"
-        prometheus.io/port: {{ $.Values.metrics.port | default 9000 | quote }}
+        # The harness and backend metrics listeners bind at
+        # app_port+1000 (#643). Advertise the harness port here since
+        # scrape-annotations only support one port value; operators
+        # wanting per-backend scrape should use a ServiceMonitor or
+        # PodMonitor instead (#687).
+        prometheus.io/port: {{ add (int (.port | default 8000)) 1000 | quote }}
         prometheus.io/path: "/metrics"
         {{- end }}
         {{- with .podAnnotations }}

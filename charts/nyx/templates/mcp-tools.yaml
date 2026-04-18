@@ -16,7 +16,9 @@ The templating walks .Values.mcpTools as a dict so adding a third tool
 is a two-line values change plus a new image build; no template edits.
 */}}
 {{- range $name, $tool := .Values.mcpTools }}
-{{- if $tool.enabled }}
+{{- /* Skip non-dict entries (e.g. mcpTools.metricsPort scalar introduced
+       in #687). Only dict values with an enabled field are tools. */}}
+{{- if and (kindIs "map" $tool) $tool.enabled }}
 {{- $fullName := printf "%s-mcp-%s" $.Release.Name $name }}
 {{- $imageTag := default $.Chart.AppVersion $tool.image.tag }}
 {{- $pullPolicy := default "IfNotPresent" $tool.image.pullPolicy }}
@@ -79,7 +81,11 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       {{- $metricsOn := $.Values.metrics.enabled }}
-      {{- $metricsPort := $.Values.metrics.port | default 9000 }}
+      {{- /* mcpTools.metricsPort is the canonical key (#687).
+             Fall back to the deprecated metrics.port so existing installs
+             that still set the old key keep rendering the same port for
+             MCP tools; NOTES.txt warns operators to migrate. */}}
+      {{- $metricsPort := ($.Values.mcpTools.metricsPort | default ($.Values.metrics.port | default 9000)) }}
       containers:
         - name: mcp
           image: "{{ $tool.image.repository }}:{{ $imageTag }}"

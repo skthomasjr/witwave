@@ -348,14 +348,12 @@ metrics:
   # rendered.
   enabled: false
 
-  # Port the dedicated Prometheus metrics listener binds to, across every
-  # container type (harness, backends, MCP tools). Split from the app
-  # port so NetworkPolicy + auth posture can diverge between
-  # app traffic and monitoring scrapes (#643). 9000 matches the operator-
-  # sdk / cert-manager / Prometheus Operator convention.
-  #
-  # Injected into containers as the METRICS_PORT env var; the Python code
-  # falls back to 9000 internally if the env var is unset.
+  # DEPRECATED (#687): metrics.port is no longer honored for harness or
+  # backend containers — those use app_port+1000 per-container so
+  # colocated pod containers don't fight for a shared port. The value
+  # was only ever honored by MCP tool pods; use `mcpTools.metricsPort`
+  # for that. Setting this key now emits a deprecation warning via
+  # NOTES.txt and is otherwise ignored.
   port: 9000
 
   # Where Prometheus scrape annotations land. Both can be true at the
@@ -578,6 +576,13 @@ backends:
 # appropriate RBAC (BYO via `serviceAccountName`); `mcp-helm` shells out
 # to the helm CLI and also typically needs cluster RBAC.
 mcpTools:
+  # Port the dedicated Prometheus metrics listener binds to for MCP tool
+  # pods. Renamed from metrics.port in #687 — metrics.port now only
+  # exists as a backward-compatibility shim that emits a deprecation
+  # warning. Harness and backends use app_port+1000 and do not consult
+  # either key.
+  metricsPort: 9000
+
   kubernetes:
     enabled: false
     image:

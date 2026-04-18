@@ -87,6 +87,17 @@ the pod immediately. See #559 for background.
 
 METRICS
 -------
+{{- /* Deprecation warning for metrics.port (#687). Always visible when
+      the key is set in values, regardless of whether metrics.enabled is
+      on — the rename affects all deployments. */}}
+{{- if hasKey .Values.metrics "port" }}
+WARNING: `metrics.port` is deprecated since #687. It is no longer honored
+for harness or backend containers (both use app_port+1000 per-container
+so colocated pods don't fight for a port). The value now only matters
+for MCP tool pods, and the canonical key there is `mcpTools.metricsPort`.
+Set `mcpTools.metricsPort: {{ .Values.metrics.port }}` and remove
+`metrics.port` from your values.
+{{- end }}
 {{- if .Values.metrics.enabled }}
 {{- if .Values.agents }}
 Metrics are enabled. Each agent exposes a dedicated metrics listener at app_port+1000:
