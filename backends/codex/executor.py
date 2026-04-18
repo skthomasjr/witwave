@@ -234,6 +234,22 @@ def _append_tool_audit(entry: dict) -> None:
             pass
 
 
+class ShellBlockedError(RuntimeError):
+    """Raised by _shell_executor when a shell command fails the baseline deny
+    policy (#670). Surfacing the error as an exception lets the Agents SDK
+    flag the tool result with ``is_error=True`` so
+    ``backend_sdk_tool_errors_total`` and trace JSONL reflect the failure.
+    """
+
+
+class ShellTimeoutError(RuntimeError):
+    """Raised by _shell_executor when a shell command exceeds its timeout."""
+
+
+class ShellExecutionError(RuntimeError):
+    """Raised by _shell_executor when subprocess.run itself faults."""
+
+
 async def _shell_executor(req: LocalShellCommandRequest) -> str:
     # tool.call child span (#630) — the LocalShellTool invocation path. Kept
     # around the full executor body so baseline-deny short-circuits and
@@ -273,7 +289,12 @@ async def _shell_executor_inner(req: LocalShellCommandRequest) -> str:
             "command": cmd,
         })
         logger.warning("_shell_executor: baseline deny rule=%s cmd=%r", rule, cmd)
-        return f"Command blocked by shell baseline rule '{rule}': {reason}"
+        # Raise so the SDK flags the tool result as is_error=True; the
+        # denial counter above still increments before the exception
+        # (#670).
+        raise ShellBlockedError(
+            f"Command blocked by shell baseline rule '{rule}': {reason}"
+        )
 
     # Audit allowed commands too so the log is a complete forensic trail.
     _append_tool_audit({
@@ -308,9 +329,9 @@ async def _shell_executor_inner(req: LocalShellCommandRequest) -> str:
             out += result.stderr
         return out
     except subprocess.TimeoutExpired:
-        return f"Command timed out after {timeout_s}s"
+        raise ShellTimeoutError(f"Command timed out after {timeout_s}s")
     except Exception as exc:
-        return f"Shell error: {exc}"
+        raise ShellExecutionError(f"Shell error: {exc}") from exc
 
 
 def _load_tool_config() -> dict:
