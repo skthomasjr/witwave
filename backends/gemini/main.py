@@ -20,7 +20,6 @@ from a2a.types import (
 )
 from conversations import (
     make_conversations_handler,
-    make_tool_audit_handler,
     make_trace_handler,
 )
 from executor import AgentExecutor
@@ -55,11 +54,8 @@ AGENT_VERSION = os.environ.get("AGENT_VERSION", "0.1.0")
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
 TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/trace.jsonl")
 # gemini surfaces AFC tool_use / tool_result rows on trace.jsonl (#640).
-# tool-audit.jsonl is still declared so the dashboard fan-out receives an
-# empty list instead of a 404 when a PostToolUse hook path is wired in the
-# future (currently blocked by AFC running inside the SDK — see #640 issue
-# body option 2), keeping per-agent views consistent across backends (#635).
-TOOL_AUDIT_LOG = os.environ.get("TOOL_AUDIT_LOG", "/home/agent/logs/tool-audit.jsonl")
+# Audit rows would share the same file with event_type='tool_audit' once
+# a PostToolUse hook path is wired in (AFC runs inside the SDK — see #640).
 AGENT_OWNER = os.environ.get("AGENT_OWNER", AGENT_NAME)
 AGENT_ID = os.environ.get("AGENT_ID", "gemini")
 _BACKEND_ID = "gemini"
@@ -279,7 +275,6 @@ async def main():
 
     conversations_handler = make_conversations_handler(CONVERSATIONS_AUTH_TOKEN, CONVERSATION_LOG)
     trace_handler = make_trace_handler(CONVERSATIONS_AUTH_TOKEN, TRACE_LOG)
-    tool_audit_handler = make_tool_audit_handler(CONVERSATIONS_AUTH_TOKEN, TOOL_AUDIT_LOG)
 
     _agent_description = load_agent_description()
 
@@ -457,7 +452,6 @@ async def main():
         Route("/health", health),
         Route("/conversations", conversations_handler, methods=["GET"]),
         Route("/trace", trace_handler, methods=["GET"]),
-        Route("/tool-audit", tool_audit_handler, methods=["GET"]),
         Route("/mcp", mcp_handler, methods=["GET", "POST"]),
         Route("/api/traces", otel_traces_list_handler, methods=["GET"]),
         Route("/api/traces/{trace_id}", otel_traces_detail_handler, methods=["GET"]),

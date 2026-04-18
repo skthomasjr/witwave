@@ -157,9 +157,10 @@ _SHELL_ENV_DENYLIST: frozenset[str] = frozenset({
 })
 
 
-TOOL_AUDIT_LOG = os.environ.get(
-    "TOOL_AUDIT_LOG", "/home/agent/logs/tool-audit.jsonl"
-)
+# Audit rows share TRACE_LOG with SDK tool events, discriminated by
+# ``event_type`` ("tool_audit" vs "tool_use"/"tool_result"). The two
+# feeds were consolidated so downstream UIs can show a single
+# "Tool Activity" tab.
 
 
 # PreToolUse deny baseline for LocalShellTool (#586, shell-only scope).
@@ -209,17 +210,20 @@ def _evaluate_shell_baseline(cmd_parts: list[str]) -> tuple[str, str] | None:
 
 
 def _append_tool_audit(entry: dict) -> None:
-    """Append a JSON line to tool-audit.jsonl; swallow errors.
+    """Append an ``event_type='tool_audit'`` row to TRACE_LOG; swallow errors.
 
-    Mirrors claude's audit writer shape: one JSON object per line with
-    a monotonic timestamp, tool name, decision (allow|deny), command, and
-    reason when denied. Best-effort — a full disk or missing parent dir
-    must not block the tool call.
+    Consolidated with SDK tool events into a single trace.jsonl so
+    downstream UIs can render a single "Tool Activity" feed. Mirrors
+    claude's audit shape: one JSON object per line with a monotonic
+    timestamp, tool name, decision (allow|deny), command, and reason
+    when denied. Best-effort — a full disk or missing parent dir must
+    not block the tool call.
     """
     try:
-        os.makedirs(os.path.dirname(TOOL_AUDIT_LOG), exist_ok=True)
-        with open(TOOL_AUDIT_LOG, "a") as f:
-            f.write(json.dumps(entry) + "\n")
+        row = {**entry, "event_type": "tool_audit"}
+        os.makedirs(os.path.dirname(TRACE_LOG), exist_ok=True)
+        with open(TRACE_LOG, "a") as f:
+            f.write(json.dumps(row) + "\n")
     except Exception:
         pass
     tool = str(entry.get("tool") or "")

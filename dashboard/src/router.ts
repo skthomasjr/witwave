@@ -4,7 +4,6 @@ import TeamView from "./views/TeamView.vue";
 import AutomationView from "./views/AutomationView.vue";
 import ConversationsView from "./views/ConversationsView.vue";
 import TraceView from "./views/TraceView.vue";
-import ToolAuditView from "./views/ToolAuditView.vue";
 import OTelTracesView from "./views/OTelTracesView.vue";
 import MetricsView from "./views/MetricsView.vue";
 
@@ -29,7 +28,10 @@ export const router = createRouter({
     { path: "/heartbeat", redirect: { name: "automation" } },
     { path: "/conversations", name: "conversations", component: ConversationsView },
     { path: "/trace", name: "trace", component: TraceView },
-    { path: "/tool-audit", name: "tool-audit", component: ToolAuditView },
+    // Tool audit rows now land in trace.jsonl with event_type='tool_audit'
+    // and render through the Tool Trace tab. Legacy path redirects so
+    // deep links and bookmarks keep working for at least one release.
+    { path: "/tool-audit", redirect: { name: "trace" } },
     // OTel distributed-trace viewer (#632). The detail drawer is driven by
     // the /:traceId param so conversation rows can deep-link to a specific
     // trace (see ConversationsView.vue "Open trace" action).

@@ -333,7 +333,6 @@ MCP_CONFIG_PATH = os.environ.get("MCP_CONFIG_PATH", "/home/agent/.claude/mcp.jso
 AGENT_MD = os.environ.get("AGENT_MD_PATH", "/home/agent/.claude/CLAUDE.md")
 HOOKS_CONFIG_PATH = os.environ.get("HOOKS_CONFIG_PATH", "/home/agent/.claude/hooks.yaml")
 HOOKS_BASELINE_ENABLED = os.environ.get("HOOKS_BASELINE_ENABLED", "true").lower() not in ("0", "false", "no", "off")
-TOOL_AUDIT_LOG = os.environ.get("TOOL_AUDIT_LOG", "/home/agent/logs/tool-audit.jsonl")
 
 # Backend→harness hook.decision transport (#641).  Empty HARNESS_EVENTS_URL
 # disables the POST path cleanly — the in-process OTel span-event emission
@@ -541,28 +540,33 @@ async def log_trace(text: str) -> None:
 
 
 async def log_tool_audit(entry: dict) -> None:
-    """Append one audit row to ``tool-audit.jsonl`` (#467).
+    """Append one audit row to ``trace.jsonl`` with event_type='tool_audit'.
 
-    Separate log file so security-sensitive readers (SIEM / forensic tools)
-    can tail a compact JSONL of tool calls without parsing the full trace
-    log. Errors are logged but never raised — audit failure must not break
-    the agent's primary response path.
+    Previously this wrote to a separate ``tool-audit.jsonl`` file; the two
+    feeds were consolidated so one endpoint (``/trace``) carries both
+    SDK-level tool events and hook-level audit rows. Readers filter by
+    ``event_type``. Errors are logged but never raised — audit failure
+    must not break the agent's primary response path.
     """
     try:
+        # Stamp the shared discriminator so downstream filters (dashboard
+        # "Tool Activity" tab, SIEM exports) can separate audit rows from
+        # raw SDK tool_use/tool_result events.
+        entry = {**entry, "event_type": "tool_audit"}
         line = json.dumps(entry, default=str)
-        await asyncio.to_thread(_append_log, TOOL_AUDIT_LOG, line)
+        await asyncio.to_thread(_append_log, TRACE_LOG, line)
         if backend_tool_audit_entries_total is not None:
             _tool = entry.get("tool_name") or "unknown"
             backend_tool_audit_entries_total.labels(**_LABELS, tool=_tool).inc()
         if backend_log_entries_total is not None:
-            backend_log_entries_total.labels(**_LABELS, logger="tool_audit").inc()
+            backend_log_entries_total.labels(**_LABELS, logger="trace").inc()
         if backend_log_bytes_total is not None:
-            backend_log_bytes_total.labels(**_LABELS, logger="tool_audit").inc(_utf8_byte_length(line))
+            backend_log_bytes_total.labels(**_LABELS, logger="trace").inc(_utf8_byte_length(line))
     except Exception as e:
         if backend_log_write_errors_total is not None:
             backend_log_write_errors_total.labels(**_LABELS).inc()
         if backend_log_write_errors_by_logger_total is not None:
-            backend_log_write_errors_by_logger_total.labels(**_LABELS, logger="tool_audit").inc()
+            backend_log_write_errors_by_logger_total.labels(**_LABELS, logger="trace").inc()
         logger.error(f"log_tool_audit error: {e}")
 
 

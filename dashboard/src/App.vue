@@ -22,7 +22,6 @@ const navItems: NavItem[] = [
   { label: "Automation", to: { name: "automation" } },
   { label: "Conversations", to: { name: "conversations" } },
   { label: "Tool Trace", to: { name: "trace" } },
-  { label: "Tool audit", to: { name: "tool-audit" } },
   { label: "Traces", to: { name: "otel-traces" } },
   { label: "Metrics", to: { name: "metrics" } },
 ];
