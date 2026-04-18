@@ -359,15 +359,18 @@ def _redact_diff(diff_text: str) -> str:
         # Leaf inside data: map — indented key: value under data/stringData.
         if in_data_map and ":" in stripped and content.startswith(("  ", "\t")):
             indent = len(content) - len(content.lstrip())
-            # Still inside the data/stringData map while indent > 0; an
-            # un-indented line would end the map (handled below).
+            # Still inside the data/stringData map while indent > 0.
+            # in_data_map is only cleared when a new ``kind:`` header or
+            # a standalone ``---`` doc separator is seen (#1031) — the
+            # previous "un-indented non-blank exits the map" heuristic
+            # was load-bearing for blank-line safety but also caused
+            # false exits on non-data lines inside the same Secret, and
+            # blank lines left the flag asserted anyway. Scoping the
+            # reset to doc/kind boundaries keeps the machine simple and
+            # predictable.
             key, _, _value = content[indent:].partition(":")
             out_lines.append(f"{prefix}{' ' * indent}{key}: {_REDACTED}")
             continue
-
-        # Un-indented line inside the Secret but outside data map — exit data map.
-        if in_data_map and stripped and not content.startswith(("  ", "\t")):
-            in_data_map = False
 
         out_lines.append(line)
     return "\n".join(out_lines)

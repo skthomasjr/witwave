@@ -209,6 +209,24 @@ def test_redact_diff_does_not_reset_on_pem_dash_prefix():
     assert server._REDACTED in out
 
 
+def test_redact_diff_blank_line_between_data_leaves_preserves_redaction():
+    """A blank line inside a Secret's data map previously left
+    in_data_map asserted — which is actually the desired behaviour
+    (#1031). The bug was the inverse: the un-indented-non-blank exit
+    path dropped the map prematurely on mixed diffs. Verify blank
+    lines inside the data map do not leak subsequent leaves."""
+    diff_text = (
+        " kind: Secret\n"
+        " data:\n"
+        "   k1: dmFsMQ==\n"
+        "\n"
+        "   k2: dmFsMg==\n"
+    )
+    out = server._redact_diff(diff_text)
+    assert "dmFsMQ==" not in out
+    assert "dmFsMg==" not in out
+
+
 def test_redact_diff_still_resets_on_standalone_doc_separator():
     """The exact ``---`` separator must still reset state so a Secret
     in doc N doesn't suppress a non-Secret leaf in doc N+1."""
