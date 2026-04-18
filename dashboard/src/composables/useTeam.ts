@@ -42,16 +42,28 @@ const sharedMembers = ref<TeamResponse>([]);
 const sharedError = ref<string>("");
 const sharedLoading = ref<boolean>(true);
 
-// Poller configuration — uses the most recently supplied options so a
-// view that needs a tighter interval can still opt in. The default 5s
-// interval matches the pre-#742 behaviour.
-let currentIntervalMs = 5000;
+// Poller configuration — the effective interval is min(intervalMs) across
+// *all* active subscribers so a later subscriber that needs tighter
+// cadence can always win (#891). The timer is restarted whenever the
+// effective interval changes. Member/directory timeouts take the latest
+// supplied value (still tight enough in practice).
 let currentMemberTimeoutMs = 5000;
 let currentDirectoryTimeoutMs = 5000;
 
+// Multiset of requested interval values; we pick the min on every
+// subscribe/unsubscribe so dropping a tight subscriber relaxes the
+// cadence correctly.
+const subscriberIntervals: number[] = [];
+let effectiveIntervalMs = 5000;
 let subscriberCount = 0;
 let pollerTimer: ReturnType<typeof setInterval> | null = null;
 let pollerAborter: AbortController | null = null;
+
+function recomputeEffectiveInterval(): number {
+  return subscriberIntervals.length === 0
+    ? 5000
+    : Math.min(...subscriberIntervals);
+}
 
 async function fetchMember(
   entry: TeamDirectoryEntry,
@@ -115,17 +127,28 @@ function startShared(
   memberTimeoutMs: number,
   directoryTimeoutMs: number,
 ): void {
-  // Track the most-aggressive timeouts so per-view hints take effect
-  // when they arrive. The first non-default interval after mount wins
-  // until the last subscriber unmounts — matches the pre-#742
-  // behaviour for a single-composable page.
-  currentIntervalMs = intervalMs;
+  // Register this subscriber's interval and recompute the effective
+  // (min) cadence. A later subscriber that needs a tighter interval
+  // than the current one restarts the timer (#891); one that requests
+  // a looser interval leaves the timer unchanged.
+  subscriberIntervals.push(intervalMs);
   currentMemberTimeoutMs = memberTimeoutMs;
   currentDirectoryTimeoutMs = directoryTimeoutMs;
 
-  if (pollerTimer !== null) return;
-  void sharedRefresh();
-  pollerTimer = setInterval(() => void sharedRefresh(), currentIntervalMs);
+  const newEffective = recomputeEffectiveInterval();
+
+  if (pollerTimer === null) {
+    effectiveIntervalMs = newEffective;
+    void sharedRefresh();
+    pollerTimer = setInterval(() => void sharedRefresh(), effectiveIntervalMs);
+    return;
+  }
+
+  if (newEffective !== effectiveIntervalMs) {
+    clearInterval(pollerTimer);
+    effectiveIntervalMs = newEffective;
+    pollerTimer = setInterval(() => void sharedRefresh(), effectiveIntervalMs);
+  }
 }
 
 function stopShared(): void {
@@ -137,12 +160,29 @@ function stopShared(): void {
   pollerAborter = null;
 }
 
+function unregisterSubscriber(intervalMs: number): void {
+  const idx = subscriberIntervals.indexOf(intervalMs);
+  if (idx !== -1) subscriberIntervals.splice(idx, 1);
+
+  if (subscriberIntervals.length === 0 || pollerTimer === null) {
+    return;
+  }
+  const newEffective = recomputeEffectiveInterval();
+  if (newEffective !== effectiveIntervalMs) {
+    clearInterval(pollerTimer);
+    effectiveIntervalMs = newEffective;
+    pollerTimer = setInterval(() => void sharedRefresh(), effectiveIntervalMs);
+  }
+}
+
 // Test/shutdown hook — unit tests reset the singleton between cases so
 // timers from the previous suite can't leak into the next. Not part of
 // the stable surface consumed by views.
 export function __resetSharedTeamPoller(): void {
   stopShared();
   subscriberCount = 0;
+  subscriberIntervals.length = 0;
+  effectiveIntervalMs = 5000;
   sharedMembers.value = [];
   sharedError.value = "";
   sharedLoading.value = true;
@@ -160,7 +200,17 @@ export function useTeam(opts: UseTeamOptions = {}) {
 
   onUnmounted(() => {
     subscriberCount = Math.max(0, subscriberCount - 1);
-    if (subscriberCount === 0) stopShared();
+    if (subscriberCount === 0) {
+      // Last subscriber leaving: tear everything down AND clear the
+      // interval multiset so the poller starts cleanly on next mount.
+      stopShared();
+      subscriberIntervals.length = 0;
+      effectiveIntervalMs = 5000;
+    } else {
+      // Recompute min — if this subscriber was the tightest, the poller
+      // should relax its cadence accordingly (#891).
+      unregisterSubscriber(intervalMs);
+    }
   });
 
   return {
