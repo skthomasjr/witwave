@@ -76,6 +76,7 @@ from metrics import (
     backend_empty_responses_total,
     backend_hooks_config_errors_total,
     backend_hooks_config_reloads_total,
+    backend_hooks_enforcement_mode,
     backend_log_bytes_total,
     backend_log_entries_total,
     backend_log_write_errors_total,
@@ -1427,6 +1428,15 @@ class AgentExecutor(A2AAgentExecutor):
             baseline=list(BASELINE_RULES) if HOOKS_BASELINE_ENABLED else [],
             extensions=[],
         )
+        # Report hook enforcement mode to Prometheus (#736). Gemini's AFC
+        # runs the tool-call loop inside google-genai's generate_content,
+        # so PreToolUse hooks never fire even when hooks.yaml is loaded.
+        # We publish the "skeleton" sentinel (0) so dashboards and alert
+        # rules can distinguish this from the claude backend's
+        # "enforcing" (1).  When #640 disables AFC we can flip this
+        # to 1 in one place.
+        if backend_hooks_enforcement_mode is not None:
+            backend_hooks_enforcement_mode.labels(**_LABELS).set(0)
         # Lifespan-scoped MCP session stack (#640 — mirrors codex #526).
         # MCP stdio subprocesses are entered once at startup (or on
         # hot-reload) and reused across requests. The lock serialises

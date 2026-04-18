@@ -99,10 +99,24 @@ def build_agent_card() -> AgentCard:
 async def health(request: Request) -> JSONResponse:
     if backend_health_checks_total is not None:
         backend_health_checks_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="health").inc()
+    # Hook enforcement mode (#736). Surfacing it here lets dashboards,
+    # operators, and smoke tests confirm whether PreToolUse rules are
+    # actually enforced on this backend. Gemini's AFC currently
+    # bypasses the hooks engine so the value is "skeleton" until #640
+    # disables AFC and hand-rolls the tool loop.
+    hook_mode = "skeleton"
     if _ready:
         elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
-        return JSONResponse({"status": "ok", "agent": AGENT_NAME, "uptime_seconds": elapsed})
-    return JSONResponse({"status": "starting"}, status_code=503)
+        return JSONResponse({
+            "status": "ok",
+            "agent": AGENT_NAME,
+            "uptime_seconds": elapsed,
+            "hooks_enforcement_mode": hook_mode,
+        })
+    return JSONResponse(
+        {"status": "starting", "hooks_enforcement_mode": hook_mode},
+        status_code=503,
+    )
 
 
 @asynccontextmanager

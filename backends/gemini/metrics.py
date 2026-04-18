@@ -103,6 +103,13 @@ backend_hooks_warnings_total: prometheus_client.Counter | None = None
 backend_tool_audit_entries_total: prometheus_client.Counter | None = None
 backend_hooks_config_errors_total: prometheus_client.Counter | None = None
 backend_hooks_config_reloads_total: prometheus_client.Counter | None = None
+# Enforcement-mode gauge (#736). Reports whether PreToolUse hooks are
+# actually evaluated on tool calls. On gemini the answer is "skeleton"
+# until #640 lands (google-genai's AFC runs the tool loop internally so
+# evaluate_pre_tool_use never fires even when hooks.yaml is loaded).
+# Dashboards and alerts can read this gauge to tell the difference
+# between "hooks loaded and enforcing" and "hooks loaded but bypassed".
+backend_hooks_enforcement_mode: prometheus_client.Gauge | None = None
 
 # MCP config watcher metrics (#640 — parity with codex #432, #526).
 backend_mcp_config_errors_total: prometheus_client.Counter | None = None
@@ -459,6 +466,13 @@ if _enabled:
     backend_hooks_config_reloads_total = prometheus_client.Counter(
         "backend_hooks_config_reloads_total",
         "Total reloads of hooks.yaml by the hooks config watcher.",
+        ["agent", "agent_id", "backend"],
+    )
+    backend_hooks_enforcement_mode = prometheus_client.Gauge(
+        "backend_hooks_enforcement_mode",
+        "PreToolUse hook enforcement mode. 0=skeleton (rules loaded but "
+        "AFC bypasses them), 1=enforcing, -1=disabled. Gemini reports 0 "
+        "until #640 disables AFC and hand-rolls the tool loop (#736).",
         ["agent", "agent_id", "backend"],
     )
 
