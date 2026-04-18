@@ -37,7 +37,7 @@ spec:
        kube-prometheus-stack discovers the metrics listener the tool
        binds in-container. Skips the scalar metricsPort entry under
        .Values.mcpTools introduced in #687. */}}
-{{- if .Values.metrics.enabled }}
+{{- if and .Values.podMonitor.enabled .Values.metrics.enabled }}
 {{- range $name, $tool := .Values.mcpTools }}
 {{- if and (kindIs "map" $tool) $tool.enabled }}
 {{- $fullName := printf "%s-mcp-%s" $.Release.Name $name }}
