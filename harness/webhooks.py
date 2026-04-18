@@ -336,6 +336,18 @@ def _host_is_private(host: str) -> bool:
     )
 
 
+async def _validate_url_async(url: str) -> str | None:
+    """Async counterpart of :func:`_validate_url` (#699, #705).
+
+    Runs the entire sync validator in a worker thread via
+    ``asyncio.to_thread`` so the blocking ``socket.getaddrinfo`` call
+    no longer stalls the harness event loop. The synchronous check
+    remains in use at parse time (runs once per file change) where
+    event-loop cost is irrelevant.
+    """
+    return await asyncio.to_thread(_validate_url, url)
+
+
 def _validate_url(url: str) -> str | None:
     """Return a diagnostic string if the URL is not safe to POST to, else
     None. Applied to both literal `url:` values and env-var-resolved URLs
@@ -745,6 +757,15 @@ async def _retry_deliver(
         await asyncio.sleep(backoff)
         attempt += 1
         try:
+            # TOCTOU re-check before each retry (#699). A DNS-rebinding
+            # attacker could otherwise flip the A record during the
+            # exponential backoff.
+            url_recheck = await _validate_url_async(url)
+            if url_recheck is not None:
+                logger.error(
+                    f"Webhook '{sub.name}': URL failed re-validation before retry {attempt} — {url_recheck}; aborting retry chain."
+                )
+                break
             resp = await client.post(
                 url,
                 content=body_bytes,
@@ -821,7 +842,7 @@ async def deliver(
     if not url:
         logger.warning(f"Webhook '{sub.name}': URL resolved to empty string — skipping delivery.")
         return
-    url_error = _validate_url(url)
+    url_error = await _validate_url_async(url)
     if url_error is not None:
         logger.error(f"Webhook '{sub.name}': resolved URL rejected — {url_error}.")
         return
@@ -903,6 +924,19 @@ async def deliver(
         # remains in place unchanged (#469).
         inject_traceparent(headers)
         try:
+            # TOCTOU re-check against DNS rebinding (#699). Revalidate
+            # the resolved addresses immediately before the POST so an
+            # attacker cannot flip the A record between parse-time
+            # validation and delivery. Window between this check and
+            # httpx's own resolve is bounded by the resolver TTL + our
+            # RTT, which is orders of magnitude smaller than the
+            # multi-minute delivery window that used to exist.
+            url_recheck = await _validate_url_async(url)
+            if url_recheck is not None:
+                logger.error(
+                    f"Webhook '{sub.name}': URL failed re-validation before POST — {url_recheck}; aborting delivery."
+                )
+                return
             # Reuse the shared AsyncClient owned by WebhookRunner so deliveries
             # to the same receiver benefit from connection pooling and
             # keep-alive instead of paying a fresh TCP+TLS handshake per
@@ -1008,7 +1042,7 @@ async def _deliver_hook_decision(
     if not url:
         logger.warning(f"Webhook '{sub.name}': URL resolved to empty string — skipping hook.decision delivery.")
         return
-    url_error = _validate_url(url)
+    url_error = await _validate_url_async(url)
     if url_error is not None:
         logger.error(f"Webhook '{sub.name}': resolved URL rejected — {url_error}.")
         return
@@ -1049,6 +1083,13 @@ async def _deliver_hook_decision(
     ) as _span:
         inject_traceparent(headers)
         try:
+            # TOCTOU re-check before POST (#699).
+            url_recheck = await _validate_url_async(url)
+            if url_recheck is not None:
+                logger.error(
+                    f"Webhook '{sub.name}': URL failed re-validation before hook.decision POST — {url_recheck}; aborting delivery."
+                )
+                return
             resp = await client.post(
                 url, content=body_bytes, headers=headers, timeout=sub.timeout_seconds,
             )
