@@ -25,7 +25,17 @@ REQUIRED SECRETS
 ----------------
 Each backend requires a secret with API credentials. Example for a Claude backend:
   kubectl create secret generic <agent>-claude-secrets \
-    --from-literal=ANTHROPIC_API_KEY=<key> \
+    --from-literal=CLAUDE_CODE_OAUTH_TOKEN=<token> \
+    -n {{ .Release.Namespace }}
+
+For a Codex backend (OpenAI):
+  kubectl create secret generic <agent>-codex-secrets \
+    --from-literal=OPENAI_API_KEY=<key> \
+    -n {{ .Release.Namespace }}
+
+For a Gemini backend (Google):
+  kubectl create secret generic <agent>-gemini-secrets \
+    --from-literal=GOOGLE_API_KEY=<key> \
     -n {{ .Release.Namespace }}
 
 If using git-sync, create the git credentials secret:
