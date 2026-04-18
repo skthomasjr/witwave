@@ -102,7 +102,7 @@ kubectl delete crd nyxagents.nyx.ai
 | `webhooks.port`              | Container port for the webhook server (matches controller-runtime default)                   | `9443`                                      |
 | `webhooks.certDir`           | Directory the cert-manager-issued TLS pair is mounted at inside the container                | `/tmp/k8s-webhook-server/serving-certs`     |
 | `webhooks.failurePolicy`     | Webhook failure policy. `Fail` rejects admission on error; `Ignore` allows it. Safer default for invariant checks | `Fail` |
-| `webhooks.certManager.enabled` | cert-manager integration toggle. Required when `webhooks.enabled=true` in this first pass — BYO-cert installs aren't supported until a later gap | `true` |
+| `webhooks.certManager.enabled` | cert-manager integration toggle. One of two mutually exclusive TLS modes for `webhooks.enabled=true` — leave `true` for cert-manager-issued certs, or set `false` and supply `webhooks.existingSecret` + `webhooks.caBundle` for BYO-cert mode (see "TLS mode 2: BYO Secret" below) | `true` |
 | `webhooks.certManager.createIssuer` | Render a chart-owned selfSigned Issuer. Ignored when `webhooks.certManager.issuerRef.name` is set | `true`                                   |
 | `webhooks.certManager.issuerKind` | Kind of Issuer to render when `createIssuer=true`. `Issuer` or `ClusterIssuer`           | `Issuer`                                    |
 | `webhooks.certManager.issuerRef.name` | Name of an external (Cluster)Issuer to use instead of a chart-owned one              | `""`                                        |
