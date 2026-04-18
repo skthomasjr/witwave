@@ -1270,6 +1270,18 @@ async def run_query(
                 history=history,
             )
 
+            # Snapshot pre-call history length so AFC observability only emits
+            # function_call / function_response pairs appended during *this*
+            # turn (#883). Previously _emit_afc_history walked the entire
+            # chat.history every turn, duplicating every prior turn's rows
+            # and counter increments. The snapshot is taken after chat
+            # creation so it covers the persisted turns — anything beyond
+            # this index is new in the current send_message_stream roundtrip.
+            try:
+                _afc_history_start = len(getattr(chat, "history", []) or [])
+            except Exception:
+                _afc_history_start = 0
+
             collected: list[str] = []
             _query_start = time.monotonic()
             _session_start = time.monotonic()
@@ -1423,8 +1435,13 @@ async def run_query(
             # backend_sdk_tool_duration_seconds. No-op when AFC did not run.
             if _live:
                 try:
+                    # Pass only the slice appended during this turn (#883)
+                    # so we don't duplicate every prior turn's AFC rows and
+                    # metric increments on every request.
+                    _full_history = list(chat.history or [])
+                    _new_history = _full_history[_afc_history_start:]
                     await _emit_afc_history(
-                        chat.history,
+                        _new_history,
                         session_id=session_id,
                         model=resolved_model,
                     )
