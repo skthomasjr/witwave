@@ -57,7 +57,9 @@ const { state, detail } = useHealth();
               ? "online"
               : state === "partial"
                 ? "degraded"
-                : "offline"
+                : state === "empty"
+                  ? "no agents"
+                  : "offline"
         }}
       </span>
       <span class="version" data-testid="dashboard-version">v0.1.0-alpha</span>

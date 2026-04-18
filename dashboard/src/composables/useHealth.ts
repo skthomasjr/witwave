@@ -13,12 +13,14 @@ import { useTeam } from "./useTeam";
 //   ok         — every team member's last probe succeeded
 //   partial    — some members ok, some failed (tooltip lists failing names)
 //   err        — every team member failed, or the directory itself failed
+//   empty      — directory fetch succeeded but the configured team is empty;
+//                terminal (#679) instead of latching to "connecting" forever
 //
 // Implementation note: we reuse useTeam rather than starting a second
 // poller to avoid doubling dashboard network traffic. Soft-dependency on
 // the per-agent error shape surfaced by #574.
 
-export type HealthState = "connecting" | "ok" | "partial" | "err";
+export type HealthState = "connecting" | "ok" | "partial" | "err" | "empty";
 
 export function useHealth(intervalMs = 10000) {
   const { members, error, loading } = useTeam({ intervalMs });
@@ -29,7 +31,10 @@ export function useHealth(intervalMs = 10000) {
     if (error.value && members.value.length === 0) return "err";
     // First fan-out still in flight, or no members resolved yet.
     if (loading.value && members.value.length === 0) return "connecting";
-    if (members.value.length === 0) return "connecting";
+    // Directory fetch succeeded and returned zero members — terminal
+    // "empty" state so the dot doesn't latch to "connecting" forever
+    // when the deployment has no configured team (#679).
+    if (members.value.length === 0) return "empty";
 
     const failing = members.value.filter((m) => m.error);
     if (failing.length === 0) return "ok";
@@ -39,6 +44,7 @@ export function useHealth(intervalMs = 10000) {
 
   const detail = computed<string>(() => {
     if (state.value === "ok" || state.value === "connecting") return "";
+    if (state.value === "empty") return "no agents configured";
     if (state.value === "err" && members.value.length === 0) {
       return error.value || "team directory unavailable";
     }
