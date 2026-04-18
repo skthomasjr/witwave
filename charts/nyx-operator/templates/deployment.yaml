@@ -106,18 +106,33 @@ spec:
                 # Drain window for in-flight reconciliations before SIGTERM (#465).
                 command: ["/bin/sh", "-c", "sleep {{ .Values.preStop.delaySeconds | default 5 }}"]
           {{- end }}
+          # startupProbe gives the manager a long grace window on
+          # cold-start (CRD conversion, webhook TLS wait, leader-lease
+          # acquisition) before readiness/liveness begin enforcing (#765).
+          startupProbe:
+            httpGet:
+              path: /readyz
+              port: probes
+            initialDelaySeconds: {{ .Values.probes.startup.initialDelaySeconds | default 0 }}
+            periodSeconds: {{ .Values.probes.startup.periodSeconds | default 10 }}
+            timeoutSeconds: {{ .Values.probes.startup.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold | default 30 }}
           livenessProbe:
             httpGet:
               path: /healthz
               port: probes
-            initialDelaySeconds: 15
-            periodSeconds: 20
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds | default 15 }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds | default 20 }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold | default 3 }}
           readinessProbe:
             httpGet:
               path: /readyz
               port: probes
-            initialDelaySeconds: 5
-            periodSeconds: 10
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds | default 5 }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds | default 10 }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold | default 3 }}
           {{- with .Values.resources }}
           resources:
             {{- toYaml . | nindent 12 }}

@@ -83,9 +83,28 @@ serviceMonitor:
     insecureSkipVerify: true
 
 # Health/liveness probe endpoint. Matches the --health-probe-bind-address
-# flag passed to the manager.
+# flag passed to the manager. Timings mirror the nyx chart's probes
+# block so operators can tune them from values (#765). startupProbe
+# gives the manager a long grace window on cold-start (CRD conversion,
+# webhook TLS wait, leader-lease acquisition) before readiness /
+# liveness begin enforcing.
 probes:
   port: 8081
+  startup:
+    initialDelaySeconds: 0
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 30
+  liveness:
+    initialDelaySeconds: 15
+    periodSeconds: 20
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readiness:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
 
 # Optional PodDisruptionBudget for the manager pod (#464). Default off; set
 # enabled: true to protect the operator from voluntary disruption (node drain,
