@@ -554,6 +554,50 @@ def _write_history_to_disk(tmp_path: str, path: str, raw: list) -> None:
 # file via os.replace after the remove.
 _history_write_done: dict[str, asyncio.Event] = {}
 
+# Per-session cleanup-epoch counter (#732). The timeout cleanup path
+# increments this before (and again after) ``os.remove``; every save
+# captures the pre-save epoch and refuses to ``os.replace`` when the
+# epoch advanced while its ``to_thread`` write was in flight.  That
+# covers the "5s wait elapsed, os.remove fired, writer completes its
+# write-to-tmp on disk pressure, replace resurrects file" race the
+# #674 done-Event alone couldn't fully close.  All access happens on
+# the event loop thread (the inner _write_history_to_disk blocking
+# call runs in a worker thread but reads a snapshot of the epoch
+# captured before it was dispatched, so no cross-thread visibility
+# hazard applies).
+_session_cleanup_epoch: dict[str, int] = {}
+
+
+def _bump_cleanup_epoch(session_id: str) -> int:
+    """Increment and return the cleanup epoch for ``session_id`` (#732)."""
+    nxt = _session_cleanup_epoch.get(session_id, 0) + 1
+    _session_cleanup_epoch[session_id] = nxt
+    return nxt
+
+
+def _write_history_respecting_epoch(
+    tmp_path: str, path: str, raw: list, session_id: str, expected_epoch: int
+) -> bool:
+    """Blocking write helper (#732) that aborts ``os.replace`` when the
+    cleanup epoch advanced since the writer was dispatched.
+
+    Returns True when the replace succeeded, False when the cleanup
+    epoch check tripped and the tmp file was cleaned up without
+    publishing.  The tmp file is always removed in the abort branch so
+    a sustained race cannot leak half-written ``*.tmp`` siblings.
+    """
+    with open(tmp_path, "w") as f:
+        json.dump(raw, f)
+    current_epoch = _session_cleanup_epoch.get(session_id, 0)
+    if current_epoch != expected_epoch:
+        try:
+            os.remove(tmp_path)
+        except FileNotFoundError:
+            pass
+        return False
+    os.replace(tmp_path, path)
+    return True
+
 
 async def _save_history(session_id: str, history: list[types.Content]) -> None:
     """Persist conversation history for a session.
@@ -607,10 +651,25 @@ async def _save_history(session_id: str, history: list[types.Content]) -> None:
     # Event for this session so we signal completion of *this* save only.
     done_event = asyncio.Event()
     _history_write_done[session_id] = done_event
+    # Snapshot the cleanup epoch we are writing against (#732). The
+    # blocking helper rechecks the current epoch before publishing so a
+    # cleanup that fires after our ``to_thread`` dispatched aborts the
+    # replace and purges the tmp file.
+    expected_epoch = _session_cleanup_epoch.get(session_id, 0)
     try:
         for attempt in range(_SAVE_HISTORY_MAX_RETRIES):
             try:
-                await asyncio.to_thread(_write_history_to_disk, tmp_path, path, raw)
+                published = await asyncio.to_thread(
+                    _write_history_respecting_epoch,
+                    tmp_path, path, raw, session_id, expected_epoch,
+                )
+                if not published:
+                    logger.info(
+                        "Session %r: cleanup epoch advanced during save — "
+                        "dropping this write to avoid resurrecting a removed "
+                        "history file (#732).",
+                        session_id,
+                    )
                 return
             except Exception as e:
                 last_exc = e
@@ -758,12 +817,19 @@ def _track_session(
             if backend_session_age_seconds is not None:
                 backend_session_age_seconds.labels(**_LABELS).observe(time.monotonic() - last_used_at)
             _evicted_path = os.path.join(SESSION_STORE_DIR, f"{_evicted_id}.json")
+            # Bump the cleanup epoch so any in-flight writer for the
+            # evicted session aborts before publishing (#732).
+            _bump_cleanup_epoch(_evicted_id)
             try:
                 os.remove(_evicted_path)
             except FileNotFoundError:
                 pass
             except OSError as e:
                 logger.warning("Could not remove evicted session file %s: %s", _evicted_path, e)
+            _bump_cleanup_epoch(_evicted_id)
+            # Drop the epoch counter entry itself so a fresh session with
+            # the same id starts from zero again.
+            _session_cleanup_epoch.pop(_evicted_id, None)
         sessions[session_id] = time.monotonic()
     if backend_active_sessions is not None:
         backend_active_sessions.labels(**_LABELS).set(len(sessions))
@@ -1214,6 +1280,13 @@ async def _run_inner(
         # Also remove the on-disk history file so the next request for this
         # session_id starts with empty history rather than reloading the
         # potentially stale or mid-stream snapshot written before the timeout.
+        # Bump the cleanup epoch BEFORE waiting + removing (#732) so any
+        # in-flight writer observes the advance and its
+        # _write_history_respecting_epoch helper refuses to os.replace
+        # after its to_thread returns — this closes the remaining race
+        # the done-Event 5s wait could not fully cover under I/O
+        # pressure (writer stuck between write-to-tmp and replace).
+        _bump_cleanup_epoch(session_id)
         # Wait (briefly) for any in-flight writer to signal completion so
         # the subsequent os.remove is not raced by a late os.replace that
         # resurrects the file (#674).
@@ -1224,8 +1297,8 @@ async def _run_inner(
             except asyncio.TimeoutError:
                 logger.warning(
                     "History save for timed-out session %r did not complete "
-                    "within 5s — removing file anyway; it may be re-created "
-                    "by the writer.",
+                    "within 5s — removing file anyway; the epoch guard "
+                    "(#732) will block any late os.replace.",
                     session_id,
                 )
         _timeout_path = _session_path(session_id)
@@ -1236,6 +1309,11 @@ async def _run_inner(
             pass
         except OSError as _e:
             logger.warning("Could not remove session file for timed-out session %r: %s", session_id, _e)
+        # Bump again AFTER os.remove so a writer that captured the
+        # pre-first-bump epoch but hasn't yet dispatched its to_thread
+        # still sees a mismatch on recheck.  Two bumps are cheap and
+        # make the "captured mid-cleanup" window impossible to hit.
+        _bump_cleanup_epoch(session_id)
         if backend_tasks_total is not None:
             backend_tasks_total.labels(**_LABELS, status="timeout").inc()
         if backend_task_error_duration_seconds is not None:
