@@ -205,6 +205,17 @@ def describe(
         {"k8s.kind": kind, "k8s.name": name, "k8s.namespace": namespace},
     ) as _h:
         try:
+            # Reject values that would break the comma/equals-delimited
+            # field selector syntax below. Kubernetes object names are
+            # DNS-1123 labels (no commas, equals, or whitespace) and kinds
+            # are PascalCase identifiers, so this only rejects invalid
+            # inputs that could otherwise smuggle extra selector clauses.
+            for _field, _value in (("name", name), ("kind", kind)):
+                if any(c in _value for c in (",", "=")) or any(c.isspace() for c in _value):
+                    raise ValueError(
+                        f"describe: {_field!r} must not contain ',', '=', or whitespace"
+                    )
+
             resource = _resolve(kind, api_version)
             kwargs: dict[str, Any] = {"name": name}
             if namespace:
