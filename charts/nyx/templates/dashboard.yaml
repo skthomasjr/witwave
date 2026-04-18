@@ -47,6 +47,18 @@ spec:
               drop:
                 - ALL
             runAsNonRoot: true
+          # Startup probe added (#768) for parity with harness + backends.
+          # Slow image pulls on low-spec nodes would otherwise let the liveness
+          # probe kill the pod after ~30s of unreadiness; startup suspends
+          # liveness/readiness until the container first passes.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: {{ .Values.probes.startup.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.startup.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
           livenessProbe:
             httpGet:
               path: /health
