@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { useAgentFanout } from "../composables/useAgentFanout";
 import type { TraceEntry } from "../types/chat";
 
@@ -18,7 +18,20 @@ import type { TraceEntry } from "../types/chat";
 type Row = TraceEntry & { _agent: string };
 
 const limit = ref<number>(100);
+// searchTerm is bound to the input directly; searchTermDebounced trails
+// by 200ms and is what the filtered computed reads (#953). Without the
+// debounce each keystroke re-ran the O(N) filter which JSON.stringified
+// every tool input per row — perceptible jank on a 500-row feed.
 const searchTerm = ref<string>("");
+const searchTermDebounced = ref<string>("");
+let _searchTimer: number | null = null;
+watch(searchTerm, (val) => {
+  if (_searchTimer !== null) window.clearTimeout(_searchTimer);
+  _searchTimer = window.setTimeout(() => {
+    searchTermDebounced.value = val;
+    _searchTimer = null;
+  }, 200);
+});
 const agentFilter = ref<string>("");
 const toolFilter = ref<string>("");
 const statusFilter = ref<string>("");
@@ -56,6 +69,11 @@ interface RenderRow {
   useRow: Row;
   resultRow?: Row;
   auditRow?: Row;
+  // Pre-lowercased concatenated haystack used by the search filter
+  // (#953). Computed once when the row is built so a keystroke only
+  // costs O(N) string.includes across rendered rows rather than
+  // O(N) JSON.stringify + toLowerCase on every tick.
+  _haystack: string;
 }
 
 const rendered = computed<RenderRow[]>(() => {
@@ -92,22 +110,27 @@ const rendered = computed<RenderRow[]>(() => {
         : res.is_error
           ? "error"
           : "ok";
+    const _tool = r.name ?? aud?.tool_name ?? "";
+    const _sid = r.session_id ?? "";
+    const _preview = (aud?.tool_response_preview ?? null) || null;
+    const _inputStr = JSON.stringify(r.input ?? r.tool_input ?? "");
     rows.push({
       key: `use|${r._agent}|${id || r.ts}`,
       kind: "tool_use",
       ts: r.ts,
       agent: r.agent ?? "",
       sourceTeam: r._agent,
-      tool: r.name ?? aud?.tool_name ?? "",
-      sessionId: r.session_id ?? "",
+      tool: _tool,
+      sessionId: _sid,
       durationMs: duration,
       status,
       decision,
       rule: (aud?.rule ?? null) || null,
-      preview: (aud?.tool_response_preview ?? null) || null,
+      preview: _preview,
       useRow: r,
       resultRow: res,
       auditRow: aud,
+      _haystack: `${_tool} ${r.agent ?? ""} ${_sid} ${_inputStr} ${_preview ?? ""}`.toLowerCase(),
     });
   }
   // Surface any orphan audit rows (e.g. denied by hook before the model
@@ -116,20 +139,24 @@ const rendered = computed<RenderRow[]>(() => {
   for (const [key, aud] of audits) {
     if (auditIdsConsumed.has(key)) continue;
     const decision = (aud.decision ?? null) || null;
+    const _aTool = aud.tool_name ?? "";
+    const _aSid = aud.session_id ?? "";
+    const _aPrev = (aud.tool_response_preview ?? null) || null;
     rows.push({
       key: `audit|${aud._agent}|${aud.tool_use_id ?? aud.ts}`,
       kind: "tool_audit",
       ts: aud.ts,
       agent: aud.agent ?? "",
       sourceTeam: aud._agent,
-      tool: aud.tool_name ?? "",
-      sessionId: aud.session_id ?? "",
+      tool: _aTool,
+      sessionId: _aSid,
       durationMs: null,
       status: decision === "deny" ? "denied" : "ok",
       decision,
       rule: (aud.rule ?? null) || null,
-      preview: (aud.tool_response_preview ?? null) || null,
+      preview: _aPrev,
       useRow: aud,
+      _haystack: `${_aTool} ${aud.agent ?? ""} ${_aSid} ${_aPrev ?? ""}`.toLowerCase(),
     });
   }
   // Newest first — trace views are debugging-oriented; most-recent-first is
@@ -151,16 +178,15 @@ const toolOptions = computed(() => {
 });
 
 const filtered = computed(() => {
-  const q = searchTerm.value.trim().toLowerCase();
+  // Uses the debounced value (#953) + precomputed row._haystack so the
+  // O(N) filter pass no longer JSON.stringifies inputs per keystroke.
+  const q = searchTermDebounced.value.trim().toLowerCase();
   return rendered.value.filter((row) => {
     if (agentFilter.value && row.sourceTeam !== agentFilter.value) return false;
     if (toolFilter.value && row.tool !== toolFilter.value) return false;
     if (statusFilter.value && row.status !== statusFilter.value) return false;
     if (typeFilter.value && row.kind !== typeFilter.value) return false;
-    if (q) {
-      const hay = `${row.tool} ${row.agent} ${row.sessionId} ${JSON.stringify(row.useRow.input ?? row.useRow.tool_input ?? "")} ${row.preview ?? ""}`.toLowerCase();
-      if (!hay.includes(q)) return false;
-    }
+    if (q && !row._haystack.includes(q)) return false;
     return true;
   });
 });
