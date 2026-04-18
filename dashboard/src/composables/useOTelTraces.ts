@@ -171,7 +171,11 @@ async function inClusterFetchList(
   // the merge step (#746). Without the cap, a deep retention buffer
   // on one agent dominates the merged result and every poll copies
   // every span across the wire.
+  // Also parsed into `totalLimit` (#895) so the merged list is
+  // re-sliced to the caller's requested limit — previously 3 agents
+  // with limit=10 each returned up to 30 rows in the outer list.
   let perAgentLimit = 500;
+  let totalLimit: number | null = null;
   try {
     const qIdx = path.indexOf("?");
     if (qIdx >= 0) {
@@ -179,7 +183,10 @@ async function inClusterFetchList(
       const l = params.get("limit");
       if (l !== null) {
         const n = Number.parseInt(l, 10);
-        if (Number.isFinite(n) && n > 0) perAgentLimit = n;
+        if (Number.isFinite(n) && n > 0) {
+          perAgentLimit = n;
+          totalLimit = n;
+        }
       }
     }
   } catch {
@@ -237,7 +244,20 @@ async function inClusterFetchList(
       }
     }
   }
-  return { data: [...byTid.values()], total: byTid.size };
+  let merged = [...byTid.values()];
+  // Re-slice the merged list to the caller's requested limit (#895).
+  // Sort by earliest span start time (newest first) to keep the cap
+  // consistent with the per-agent cap above and with refreshList's
+  // final sort order.
+  if (totalLimit !== null && merged.length > totalLimit) {
+    merged.sort((a, b) => {
+      const sa = Math.min(...a.spans.map((s) => s.startTime ?? 0));
+      const sb = Math.min(...b.spans.map((s) => s.startTime ?? 0));
+      return sb - sa;
+    });
+    merged = merged.slice(0, totalLimit);
+  }
+  return { data: merged, total: merged.length };
 }
 
 async function inClusterFetchDetail(
