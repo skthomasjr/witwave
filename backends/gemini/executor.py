@@ -2197,7 +2197,20 @@ class AgentExecutor(A2AAgentExecutor):
                 or (context.message.metadata or {}).get("session_id")
                 or ""
             ).strip()[:256]
-            _empty_sid = "".join(c for c in _empty_sid_raw if c >= " ") or "unknown"
+            _empty_sid_sanitized = (
+                "".join(c for c in _empty_sid_raw if c >= " ") or "unknown"
+            )
+            # Route through derive_session_id (#888) so the log entry and
+            # every metric label uses the HMAC-bound session id under
+            # SESSION_ID_SECRET — otherwise the rejected-prompt path
+            # lands rows under the raw caller-supplied id while the
+            # accepted path used the derived id, which leaks the
+            # resumption key and mis-bins the two request categories.
+            from session_binding import derive_session_id as _derive_session_id
+            _empty_caller_id = metadata.get("caller_id") if isinstance(metadata.get("caller_id"), str) else None
+            _empty_sid = _derive_session_id(
+                _empty_sid_sanitized, caller_identity=_empty_caller_id,
+            )
             logger.warning(
                 f"Session {_empty_sid!r}: rejected execute() — prompt was empty or whitespace-only (#544)."
             )
