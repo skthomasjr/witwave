@@ -429,18 +429,68 @@ def list_releases(namespace: str | None = None, all_namespaces: bool = False) ->
             raise
 
 
+def _get_values_impl(
+    name: str,
+    namespace: str,
+    all_values: bool = False,
+    redact: bool = True,
+) -> dict:
+    """Pure implementation for get_values — no handler span, no metrics.
+
+    Extracted so `get_release` can compose these helpers without
+    re-entering the MCP tool instrumentation surface (nested SERVER
+    spans + double-counted `mcp_tool_calls_total`). See #1030.
+    """
+    _reject_flag_like(name=name, namespace=namespace)
+    args = ["get", "values", name, "-n", namespace, "-o", "json"]
+    if all_values:
+        args.append("-a")
+    values = _helm(args, parse_json=True) or {}
+    if redact:
+        values = _redact_values(values)
+    return values
+
+
+def _get_manifest_impl(name: str, namespace: str, redact: bool = True) -> str:
+    """Pure implementation for get_manifest (#1030)."""
+    _reject_flag_like(name=name, namespace=namespace)
+    manifest = _helm(["get", "manifest", name, "-n", namespace])
+    if redact:
+        manifest = _redact_manifest(manifest)
+    return manifest
+
+
+def _history_impl(name: str, namespace: str, max_revisions: int = 10) -> list[dict]:
+    """Pure implementation for history (#1030)."""
+    _reject_flag_like(name=name, namespace=namespace)
+    if not isinstance(max_revisions, int) or isinstance(max_revisions, bool):
+        raise ValueError("helm: 'max_revisions' must be an int")
+    # Reject negative values so str(max_revisions) can't produce a
+    # leading "-" that helm would interpret as a flag (#772).
+    if max_revisions < 1:
+        raise ValueError("helm: 'max_revisions' must be >= 1")
+    return _helm(
+        ["history", name, "-n", namespace, "--max", str(max_revisions), "-o", "json"],
+        parse_json=True,
+    ) or []
+
+
 @mcp.tool()
 def get_release(name: str, namespace: str) -> dict:
     """Return metadata + values + manifest for a release."""
-    # Validate up front even though the inner calls (get_values/get_manifest/
-    # history) each re-check. Keeps the central guard pattern uniform across
-    # every tool entry point (#772).
+    # Validate up front even though the inner helpers also re-check.
+    # Keeps the central guard pattern uniform across every tool entry
+    # point (#772).
     _reject_flag_like(name=name, namespace=namespace)
     with _handler_span("get_release", {"helm.release": name, "helm.namespace": namespace}) as _h:
         try:
-            values = get_values(name=name, namespace=namespace, all_values=True)
-            manifest = get_manifest(name=name, namespace=namespace)
-            hist = history(name=name, namespace=namespace, max_revisions=1)
+            # Call the private impls rather than the @mcp.tool-decorated
+            # wrappers so we don't open nested SERVER spans or count
+            # each sub-call as a separate `mcp_tool_calls_total`
+            # increment (#1030).
+            values = _get_values_impl(name=name, namespace=namespace, all_values=True)
+            manifest = _get_manifest_impl(name=name, namespace=namespace)
+            hist = _history_impl(name=name, namespace=namespace, max_revisions=1)
             current = hist[-1] if hist else None
             return {
                 "name": name,
@@ -470,19 +520,14 @@ def get_values(
     values (e.g. a credential-rotation workflow); the opt-out must be
     explicit.
     """
-    _reject_flag_like(name=name, namespace=namespace)
     with _handler_span(
         "get_values",
         {"helm.release": name, "helm.namespace": namespace, "helm.redacted": redact},
     ) as _h:
         try:
-            args = ["get", "values", name, "-n", namespace, "-o", "json"]
-            if all_values:
-                args.append("-a")
-            values = _helm(args, parse_json=True) or {}
-            if redact:
-                values = _redact_values(values)
-            return values
+            return _get_values_impl(
+                name=name, namespace=namespace, all_values=all_values, redact=redact
+            )
         except Exception as exc:
             set_span_error(_h, exc)
             raise
@@ -496,16 +541,12 @@ def get_manifest(name: str, namespace: str, redact: bool = True) -> str:
     ``redact=False`` to retrieve the raw manifest when you explicitly need
     the secret payload (credential-rotation, debugging apiserver decode).
     """
-    _reject_flag_like(name=name, namespace=namespace)
     with _handler_span(
         "get_manifest",
         {"helm.release": name, "helm.namespace": namespace, "helm.redacted": redact},
     ) as _h:
         try:
-            manifest = _helm(["get", "manifest", name, "-n", namespace])
-            if redact:
-                manifest = _redact_manifest(manifest)
-            return manifest
+            return _get_manifest_impl(name=name, namespace=namespace, redact=redact)
         except Exception as exc:
             set_span_error(_h, exc)
             raise
@@ -514,19 +555,11 @@ def get_manifest(name: str, namespace: str, redact: bool = True) -> str:
 @mcp.tool()
 def history(name: str, namespace: str, max_revisions: int = 10) -> list[dict]:
     """Return revision history for a release."""
-    _reject_flag_like(name=name, namespace=namespace)
-    if not isinstance(max_revisions, int) or isinstance(max_revisions, bool):
-        raise ValueError("helm: 'max_revisions' must be an int")
-    # Reject negative values so str(max_revisions) can't produce a
-    # leading "-" that helm would interpret as a flag (#772).
-    if max_revisions < 1:
-        raise ValueError("helm: 'max_revisions' must be >= 1")
     with _handler_span("history", {"helm.release": name, "helm.namespace": namespace}) as _h:
         try:
-            return _helm(
-                ["history", name, "-n", namespace, "--max", str(max_revisions), "-o", "json"],
-                parse_json=True,
-            ) or []
+            return _history_impl(
+                name=name, namespace=namespace, max_revisions=max_revisions
+            )
         except Exception as exc:
             set_span_error(_h, exc)
             raise
