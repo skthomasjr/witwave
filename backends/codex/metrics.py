@@ -121,6 +121,15 @@ backend_codex_hooks_denials_total: prometheus_client.Counter | None = None
 # stays in place to avoid breaking existing scrapers; both increment on
 # each deny.
 backend_hooks_denials_total: prometheus_client.Counter | None = None
+# Peer-parity hook metric family (#800) — matches the claude superset so
+# cross-backend dashboards don't drop the series. codex's hook path is
+# shell-baseline-only today (#586/#799 deferred) so warnings/config-*
+# stay at their registered zero value until non-shell enforcement lands,
+# but declaring them keeps PromQL join(on=backend) from excluding codex
+# silently.
+backend_hooks_warnings_total: prometheus_client.Counter | None = None
+backend_hooks_config_reloads_total: prometheus_client.Counter | None = None
+backend_hooks_config_errors_total: prometheus_client.Counter | None = None
 backend_hooks_active_rules: prometheus_client.Gauge | None = None
 backend_hooks_evaluations_total: prometheus_client.Counter | None = None
 backend_tool_audit_entries_total: prometheus_client.Counter | None = None
@@ -607,6 +616,23 @@ if _enabled:
         "backend_hooks_active_rules",
         "Number of currently active hook rules, by rule source.",
         ["agent", "agent_id", "backend", "source"],
+    )
+    # Peer-parity placeholders (#800). Same label schema as claude so
+    # cross-backend dashboards can union by (agent, agent_id, backend).
+    backend_hooks_warnings_total = prometheus_client.Counter(
+        "backend_hooks_warnings_total",
+        "Total tool calls flagged (but not denied) by a PreToolUse hook.",
+        ["agent", "agent_id", "backend", "tool", "source", "rule"],
+    )
+    backend_hooks_config_reloads_total = prometheus_client.Counter(
+        "backend_hooks_config_reloads_total",
+        "Total reloads of hooks.yaml by the hooks config watcher.",
+        ["agent", "agent_id", "backend"],
+    )
+    backend_hooks_config_errors_total = prometheus_client.Counter(
+        "backend_hooks_config_errors_total",
+        "Total hooks.yaml parse/reload/validation errors by reason.",
+        ["agent", "agent_id", "backend", "reason"],
     )
     backend_hooks_evaluations_total = prometheus_client.Counter(
         "backend_hooks_evaluations_total",
