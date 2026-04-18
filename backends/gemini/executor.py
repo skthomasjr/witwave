@@ -15,6 +15,52 @@ from a2a.server.events import EventQueue
 from a2a.utils import new_agent_text_message
 from google import genai
 from google.genai import types
+
+# Pin guard (#737). google-genai only started attaching stable ``id``
+# attributes to function_call / function_response Parts in 1.73.x; on
+# older releases the AFC pairing in ``_emit_afc_history`` falls back to
+# FIFO-by-content-index, which can mispair parallel tool calls that
+# share a tool name and pollute ``backend_sdk_tool_duration_seconds``.
+#
+# ``requirements.txt`` pins ``google-genai==1.73.1`` — this module-load
+# assertion makes a drift by an operator (``pip install --upgrade`` in
+# a dev shell, a forgotten Dockerfile bump) surface as a loud warning
+# rather than silently regressing pairing accuracy.  We do not raise —
+# the FIFO fallback still produces correct totals, only individual
+# duration samples risk mislabelling.
+_MIN_GENAI_VERSION = "1.73.0"
+try:
+    from importlib.metadata import PackageNotFoundError, version as _pkg_version
+    _genai_version = _pkg_version("google-genai")
+except Exception as _exc:  # pragma: no cover - metadata access failure
+    _genai_version = None
+    logger_early = logging.getLogger(__name__)
+    logger_early.warning(
+        "google-genai package metadata unavailable (%s) — AFC id-based pairing check skipped.",
+        _exc,
+    )
+
+
+def _parse_version(v: str) -> tuple[int, ...]:
+    out: list[int] = []
+    for piece in v.split("."):
+        try:
+            out.append(int(piece.split("+", 1)[0].split("-", 1)[0]))
+        except ValueError:
+            break
+    return tuple(out)
+
+
+if _genai_version is not None:
+    _cur = _parse_version(_genai_version)
+    _min = _parse_version(_MIN_GENAI_VERSION)
+    if _cur < _min:
+        logging.getLogger(__name__).warning(
+            "google-genai %s < %s: function_call/response Parts may lack stable ids; "
+            "AFC metric pairing will fall back to FIFO and can mispair parallel "
+            "calls that share a tool name (#737). Pin google-genai>=%s in requirements.txt.",
+            _genai_version, _MIN_GENAI_VERSION, _MIN_GENAI_VERSION,
+        )
 from metrics import (
     backend_a2a_last_request_timestamp_seconds,
     backend_a2a_request_duration_seconds,
