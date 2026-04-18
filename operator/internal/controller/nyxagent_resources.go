@@ -1713,11 +1713,15 @@ func buildManifestJSON(members []manifestMember) string {
 			b.WriteString("\n  ")
 		}
 	}
-	if len(members) == 0 {
-		b.WriteString("]\n}\n")
-	} else {
-		b.WriteString("]\n}\n")
-	}
+	// Both empty-list and non-empty branches used to write the same
+	// "]\n}\n" string; folded to a single write (#904). The loop
+	// above already handles the trailing indent so no separate
+	// branch is needed. The output for an empty `members` slice is
+	//   {
+	//     "team": []
+	//   }
+	// which matches the chart's rendering byte-for-byte.
+	b.WriteString("]\n}\n")
 	return b.String()
 }
 
