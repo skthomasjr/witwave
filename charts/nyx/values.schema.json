@@ -306,6 +306,21 @@
                 "resources": { "type": "object" },
                 "env": { "type": "array" },
                 "envFrom": { "type": "array" },
+                "credentials": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "secretName": { "type": "string" },
+                    "secretRef": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "properties": {
+                        "name": { "type": "string" }
+                      }
+                    },
+                    "keys": { "type": "array", "items": { "type": "string" } }
+                  }
+                },
                 "gitMappings": {
                   "type": "array",
                   "items": {
@@ -364,6 +379,74 @@
               "minAvailable": { "type": ["integer", "string"] },
               "maxUnavailable": { "type": ["integer", "string"] }
             }
+          }
+        }
+      }
+    },
+    "certManager": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "issuer": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "name": { "type": "string" },
+            "kind": { "type": "string" }
+          }
+        }
+      }
+    },
+    "cors": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "allowOrigins": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" } }
+          ]
+        },
+        "allowWildcard": { "type": "boolean" }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "className": { "type": ["string", "null"] },
+        "size": { "type": "string" },
+        "accessModes": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "mcpTools": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "metricsPort": { "type": ["integer", "string"] }
+      },
+      "patternProperties": {
+        "^[a-z][a-z0-9-]*$": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "image": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "repository": { "type": "string" },
+                "tag": { "type": "string", "not": { "pattern": "^(latest|.*[:@]latest)$" } },
+                "pullPolicy": { "type": "string" }
+              }
+            },
+            "replicas": { "type": "integer", "minimum": 0 },
+            "resources": { "type": "object" },
+            "securityContext": { "type": "object" },
+            "serviceAccountName": { "type": "string" },
+            "env": { "type": "array" },
+            "envFrom": { "type": "array" }
           }
         }
       }
