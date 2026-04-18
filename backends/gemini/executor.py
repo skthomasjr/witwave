@@ -81,6 +81,7 @@ from metrics import (
     backend_log_bytes_total,
     backend_log_entries_total,
     backend_log_write_errors_total,
+    backend_tool_audit_entries_total,
     backend_lru_cache_utilization_percent,
     backend_mcp_command_rejected_total,
     backend_mcp_config_errors_total,
@@ -137,6 +138,15 @@ from hooks import (
 )
 
 from log_utils import _append_log
+# Shared PostToolUse audit helper (#809). Parity with codex's
+# _append_tool_audit path — emits event_type='tool_audit' rows into
+# tool-activity.jsonl so the dashboard Tool Trace tab sees gemini tool
+# invocations alongside claude/codex.
+from tool_audit import (  # type: ignore
+    ToolAuditContext as _ToolAuditContext,
+    ToolAuditMetrics as _ToolAuditMetrics,
+    log_tool_audit as _shared_log_tool_audit,
+)
 from exceptions import BudgetExceededError
 from validation import parse_max_tokens, sanitize_model_label
 from otel import start_span, set_span_error
@@ -587,6 +597,30 @@ async def _emit_afc_history(
                     await log_trace(json.dumps(entry))
                 except Exception as _e:
                     logger.debug("AFC tool_result log failed: %s", _e)
+                # PostToolUse audit row (#809). Mirrors codex / claude
+                # so the dashboard Tool Trace tab sees gemini tool
+                # invocations alongside the other backends. Fires on
+                # every paired function_call/function_response; under
+                # AFC the pair emits once per call (not per turn).
+                try:
+                    _audit_entry = {
+                        "ts": ts,
+                        "tool_name": name,
+                        "tool": name,
+                        "tool_use_id": tool_use_id,
+                        "decision": "error" if is_error else "allow",
+                        "is_error": is_error,
+                        "session_id": session_id,
+                        "agent": AGENT_NAME,
+                        "model": model,
+                        "result": response_j,
+                    }
+                    _tid2 = _current_trace_id_hex()
+                    if _tid2 is not None:
+                        _audit_entry["trace_id"] = _tid2
+                    await _append_tool_audit(_audit_entry)
+                except Exception as _audit_exc:
+                    logger.debug("AFC tool_audit emit failed: %s", _audit_exc)
                 # Per-call result payload size (#811). Peer parity with
                 # claude's backend_sdk_tool_result_size_bytes.
                 if backend_sdk_tool_result_size_bytes is not None:
@@ -618,6 +652,30 @@ async def _emit_afc_history(
                         backend_sdk_tool_duration_seconds.labels(**_LABELS, tool=name).observe(_dur)
                     except Exception:
                         pass
+
+
+async def _append_tool_audit(entry: dict) -> None:
+    """Append an ``event_type='tool_audit'`` row via the shared helper (#809).
+
+    Mirrors codex's _append_tool_audit so the dashboard Tool Trace tab
+    sees gemini tool invocations with consistent fields. Never raises —
+    the shared helper degrades via the log-write error counters if the
+    underlying tool-activity.jsonl write fails.
+    """
+    await _shared_log_tool_audit(
+        _ToolAuditContext(
+            trace_log_path=TRACE_LOG,
+            labels=_LABELS,
+            metrics=_ToolAuditMetrics(
+                tool_audit_entries_total=backend_tool_audit_entries_total,
+                log_entries_total=backend_log_entries_total,
+                log_bytes_total=backend_log_bytes_total,
+                log_write_errors_total=backend_log_write_errors_total,
+                log_write_errors_by_logger_total=None,
+            ),
+        ),
+        entry,
+    )
 
 
 async def log_trace(text: str) -> None:
