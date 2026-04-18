@@ -36,6 +36,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -1842,31 +1843,20 @@ func statusEqual(a, b nyxv1alpha1.NyxAgentStatus) bool {
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *NyxAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	// enqueueTeammates requeues every NyxAgent that shares a team
-	// (or namespace group) with the object that just changed, so
-	// team membership edits propagate into the manifest within one
-	// reconcile cycle regardless of which CR was mutated (#474).
-	enqueueTeammates := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
-		trigger, ok := obj.(*nyxv1alpha1.NyxAgent)
-		if !ok {
-			return nil
-		}
-		triggerTeam := ""
-		if trigger.Labels != nil {
-			triggerTeam = trigger.Labels[teamLabel]
-		}
-		// Scoped List via NyxAgentTeamIndex (#753) so every create/
-		// delete/label edit no longer fans out an O(namespace) List
-		// against the cache. The index is registered in
-		// cmd/main.go; when absent we fall back to a full-namespace
-		// List so the existing behaviour is preserved.
+	// enqueuePeersForTeam enqueues every NyxAgent in `namespace` whose
+	// team label matches `team`, excluding the self-reference at
+	// (namespace, skipName). Used by the Create/Delete/Generic paths
+	// below and — crucially — twice on an Update event that flipped
+	// team labels so BOTH the old and new team CMs converge within a
+	// single reconcile cycle (#899).
+	enqueuePeersForTeam := func(ctx context.Context, namespace, team, skipName string) []reconcile.Request {
 		peers := &nyxv1alpha1.NyxAgentList{}
 		err := mgr.GetClient().List(ctx, peers,
-			client.InNamespace(trigger.Namespace),
-			client.MatchingFields{NyxAgentTeamIndex: triggerTeam},
+			client.InNamespace(namespace),
+			client.MatchingFields{NyxAgentTeamIndex: team},
 		)
 		if err != nil {
-			if fbErr := mgr.GetClient().List(ctx, peers, client.InNamespace(trigger.Namespace)); fbErr != nil {
+			if fbErr := mgr.GetClient().List(ctx, peers, client.InNamespace(namespace)); fbErr != nil {
 				return nil
 			}
 		}
@@ -1877,10 +1867,10 @@ func (r *NyxAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			if p.Labels != nil {
 				peerTeam = p.Labels[teamLabel]
 			}
-			if peerTeam != triggerTeam {
+			if peerTeam != team {
 				continue
 			}
-			if p.Namespace == trigger.Namespace && p.Name == trigger.Name {
+			if p.Namespace == namespace && p.Name == skipName {
 				// The mutated CR already has its own
 				// reconcile queued via the primary For()
 				// watch — skip to avoid a duplicate entry.
@@ -1894,7 +1884,89 @@ func (r *NyxAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			})
 		}
 		return reqs
-	})
+	}
+
+	// enqueueTeammates fans out peer reconciles on Create/Delete/Generic
+	// events and on Update events that affect manifest content. For a
+	// team-label flip (#899) the handler must target BOTH the OLD and
+	// NEW team's peers: the new-team fan-out rewrites beta's CM to add
+	// the moved agent, and the old-team fan-out rewrites alpha's CM to
+	// drop it (without it alpha stays stale until an unrelated event
+	// happens to kick one of its members).
+	enqueueTeammates := handler.Funcs{
+		CreateFunc: func(ctx context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			trigger, ok := e.Object.(*nyxv1alpha1.NyxAgent)
+			if !ok {
+				return
+			}
+			team := ""
+			if trigger.Labels != nil {
+				team = trigger.Labels[teamLabel]
+			}
+			for _, r := range enqueuePeersForTeam(ctx, trigger.Namespace, team, trigger.Name) {
+				q.Add(r)
+			}
+		},
+		DeleteFunc: func(ctx context.Context, e event.DeleteEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			trigger, ok := e.Object.(*nyxv1alpha1.NyxAgent)
+			if !ok {
+				return
+			}
+			team := ""
+			if trigger.Labels != nil {
+				team = trigger.Labels[teamLabel]
+			}
+			for _, r := range enqueuePeersForTeam(ctx, trigger.Namespace, team, trigger.Name) {
+				q.Add(r)
+			}
+		},
+		UpdateFunc: func(ctx context.Context, e event.UpdateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			newObj, okNew := e.ObjectNew.(*nyxv1alpha1.NyxAgent)
+			oldObj, okOld := e.ObjectOld.(*nyxv1alpha1.NyxAgent)
+			if !okNew || !okOld {
+				return
+			}
+			newTeam, oldTeam := "", ""
+			if newObj.Labels != nil {
+				newTeam = newObj.Labels[teamLabel]
+			}
+			if oldObj.Labels != nil {
+				oldTeam = oldObj.Labels[teamLabel]
+			}
+			seen := map[types.NamespacedName]struct{}{}
+			emit := func(reqs []reconcile.Request) {
+				for _, r := range reqs {
+					if _, dup := seen[r.NamespacedName]; dup {
+						continue
+					}
+					seen[r.NamespacedName] = struct{}{}
+					q.Add(r)
+				}
+			}
+			// Always fan out to the current team so a port edit
+			// (or a non-team label tweak that slipped past the
+			// predicate in the future) still propagates.
+			emit(enqueuePeersForTeam(ctx, newObj.Namespace, newTeam, newObj.Name))
+			// On a team flip also fan out to the previous team
+			// so its manifest CM drops the moved agent.
+			if oldTeam != newTeam {
+				emit(enqueuePeersForTeam(ctx, newObj.Namespace, oldTeam, newObj.Name))
+			}
+		},
+		GenericFunc: func(ctx context.Context, e event.GenericEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			trigger, ok := e.Object.(*nyxv1alpha1.NyxAgent)
+			if !ok {
+				return
+			}
+			team := ""
+			if trigger.Labels != nil {
+				team = trigger.Labels[teamLabel]
+			}
+			for _, r := range enqueuePeersForTeam(ctx, trigger.Namespace, team, trigger.Name) {
+				q.Add(r)
+			}
+		},
+	}
 
 	// Only fan out on create/delete and on label-changing updates —
 	// spec churn on a teammate doesn't affect the manifest payload
