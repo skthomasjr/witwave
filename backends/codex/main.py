@@ -232,6 +232,11 @@ async def main():
     # (#378).  Initializing eagerly before any request arrives eliminates the
     # race in the former lazy check-and-assign inside _build_tools() (#402).
     _executor_module._computer_lock = asyncio.Lock()
+    # Mirror the eager init for _sessions_lock (#725) so the single
+    # _get_sessions_lock() helper is guaranteed to return the same
+    # instance from first request onwards — no double-checked lazy init
+    # duplicated across call sites.
+    _executor_module._get_sessions_lock()
 
     # Initialise OTel before the executor (#469). No-op when OTEL_ENABLED is falsy.
     from otel import init_otel_if_enabled

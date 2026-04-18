@@ -460,10 +460,31 @@ _computer_lock: asyncio.Lock | None = None
 # this, a concurrent caller can observe the shared OrderedDict in a
 # transient under-capacity state between popitem(last=False) and the
 # post-await sessions[session_id] = ... insertion — leading to
-# over-eviction, mis-counted metrics, and redundant SQLite deletes. Lazily
-# initialized on first use so it binds to the running event loop (same
-# rationale as _computer_lock above; #378).
+# over-eviction, mis-counted metrics, and redundant SQLite deletes.
+#
+# Historically this was double-checked-lazy-initialised at two call sites
+# (#506 / #668); that pattern risked two ``asyncio.Lock()`` instances under
+# concurrent initialisation and made it easy for a future caller to omit
+# the double-check (#725).  ``_get_sessions_lock`` is now the sole
+# constructor — ``main.py`` also eagerly seeds it inside ``asyncio.run``
+# for parity with ``_computer_lock``.  The helper remains safe to call
+# lazily from tests that skip the main() bootstrap.
 _sessions_lock: asyncio.Lock | None = None
+
+
+def _get_sessions_lock() -> asyncio.Lock:
+    """Return the process-wide ``_sessions_lock``, creating it if needed (#725).
+
+    Centralises the previously duplicated lazy-init so every future call
+    site goes through one path and we cannot end up with two Lock
+    instances racing each other under concurrent first-touch.  Relies on
+    CPython's GIL to make the ``is None`` → assignment pair effectively
+    atomic for the asyncio.Lock constructor (no I/O, no awaits).
+    """
+    global _sessions_lock
+    if _sessions_lock is None:
+        _sessions_lock = asyncio.Lock()
+    return _sessions_lock
 
 # Models known to support computer_use_preview
 _COMPUTER_SUPPORTED_MODELS = {"computer-use-preview"}
@@ -646,10 +667,7 @@ async def _track_session(sessions: OrderedDict[str, float], session_id: str) -> 
     # with the #522 per-session computer-tool pool and the #526
     # lifespan-scoped MCP server lock (both of which also serialise
     # await-crossing critical sections over shared state).
-    global _sessions_lock
-    if _sessions_lock is None:
-        _sessions_lock = asyncio.Lock()
-    async with _sessions_lock:
+    async with _get_sessions_lock():
         if session_id in sessions:
             sessions.move_to_end(session_id)
             sessions[session_id] = time.monotonic()
@@ -1147,12 +1165,9 @@ async def _run_inner(
         # Serialise the timeout eviction under _sessions_lock (#668) so
         # the pop + _release_computer + metric updates can't interleave
         # with _track_session's popitem/move_to_end over the shared
-        # OrderedDict. Lazy-init the lock the same way _track_session
-        # does, so first-call ordering is preserved.
-        global _sessions_lock
-        if _sessions_lock is None:
-            _sessions_lock = asyncio.Lock()
-        async with _sessions_lock:
+        # OrderedDict. Shares the single ``_get_sessions_lock`` helper
+        # with ``_track_session`` (#725).
+        async with _get_sessions_lock():
             # Evict the session from the LRU cache on timeout. The underlying
             # SQLiteSession may be in an inconsistent state after a mid-stream
             # cancellation; removing it ensures the next call for this session_id
