@@ -817,45 +817,69 @@ func (r *NyxAgentReconciler) reconcilePDB(ctx context.Context, agent *nyxv1alpha
 }
 
 // teardownDisabledAgent deletes every owned resource for an agent whose
-// spec.enabled has been flipped to false. The delete is gated on
-// IsControlledBy so we never touch resources we didn't create. Status
-// is left untouched — the next reconcile after re-enabling will rewrite
-// it from observed Deployment state.
+// spec.enabled has been flipped to false, and is also invoked from the
+// finalizer path. The delete is gated on IsControlledBy so we never
+// touch resources we didn't create. Status is left untouched — the
+// next reconcile after re-enabling will rewrite it from observed
+// Deployment state.
+//
+// Error handling (#754): every step is best-effort idempotent.  A
+// transient apiserver failure on, say, the PodMonitor delete must not
+// prevent the next step (the dashboard, or removing the finalizer)
+// from running.  All non-nil errors are accumulated via ``errors.Join``
+// and returned together.  Each failure also increments
+// ``nyxagent_teardown_step_errors_total{kind,reason}`` so operators can
+// alert on stuck-delete patterns without grepping reconcile logs.
 func (r *NyxAgentReconciler) teardownDisabledAgent(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
 	key := client.ObjectKey{Namespace: agent.Namespace, Name: agent.Name}
 
+	var teardownErrs []error
+	recordErr := func(kind, reason string, err error) {
+		if err == nil {
+			return
+		}
+		nyxagentTeardownStepErrorsTotal.WithLabelValues(kind, reason).Inc()
+		teardownErrs = append(teardownErrs, fmt.Errorf("%s %s: %w", reason, kind, err))
+	}
+
 	// Helper closure: fetch the resource at `key`, delete only if owned
-	// by this NyxAgent. Missing-object is not an error.
-	tryDelete := func(obj client.Object) error {
+	// by this NyxAgent. Missing-object is not an error.  Returns (getErr,
+	// delErr) so the caller can label the right metric reason.
+	tryDelete := func(obj client.Object) (getErr, delErr error) {
 		if err := r.Get(ctx, key, obj); err != nil {
 			if apierrors.IsNotFound(err) {
-				return nil
+				return nil, nil
 			}
-			return err
+			return err, nil
 		}
 		if !metav1.IsControlledBy(obj, agent) {
-			return nil
+			return nil, nil
 		}
 		if err := r.Delete(ctx, obj); err != nil && !apierrors.IsNotFound(err) {
-			return err
+			return nil, err
 		}
-		return nil
+		return nil, nil
 	}
 
 	// Order: Deployment → Service → optional resources. Doesn't matter
 	// for correctness (k8s GC handles dependents) but makes log streams
-	// easier to read.
-	if err := tryDelete(&appsv1.Deployment{}); err != nil {
-		return fmt.Errorf("delete Deployment: %w", err)
+	// easier to read.  Each step records its own metric + accumulates
+	// the error rather than short-circuiting (#754).
+	if gErr, dErr := tryDelete(&appsv1.Deployment{}); gErr != nil || dErr != nil {
+		recordErr("Deployment", "get", gErr)
+		recordErr("Deployment", "delete", dErr)
 	}
-	if err := tryDelete(&corev1.Service{}); err != nil {
-		return fmt.Errorf("delete Service: %w", err)
+	if gErr, dErr := tryDelete(&corev1.Service{}); gErr != nil || dErr != nil {
+		recordErr("Service", "get", gErr)
+		recordErr("Service", "delete", dErr)
 	}
-	if err := tryDelete(&autoscalingv2.HorizontalPodAutoscaler{}); err != nil {
-		return fmt.Errorf("delete HPA: %w", err)
+	if gErr, dErr := tryDelete(&autoscalingv2.HorizontalPodAutoscaler{}); gErr != nil || dErr != nil {
+		recordErr("HorizontalPodAutoscaler", "get", gErr)
+		recordErr("HorizontalPodAutoscaler", "delete", dErr)
 	}
-	if err := tryDelete(&policyv1.PodDisruptionBudget{}); err != nil {
-		return fmt.Errorf("delete PDB: %w", err)
+	if gErr, dErr := tryDelete(&policyv1.PodDisruptionBudget{}); gErr != nil || dErr != nil {
+		recordErr("PodDisruptionBudget", "get", gErr)
+		recordErr("PodDisruptionBudget", "delete", dErr)
 	}
 	// ConfigMaps and PVCs use per-backend naming, so they can't be
 	// addressed by the single `key` above. List every object carrying our
@@ -867,28 +891,30 @@ func (r *NyxAgentReconciler) teardownDisabledAgent(ctx context.Context, agent *n
 	}
 	cms := &corev1.ConfigMapList{}
 	if err := r.List(ctx, cms, client.InNamespace(agent.Namespace), labelSel); err != nil {
-		return fmt.Errorf("list owned ConfigMaps for teardown: %w", err)
-	}
-	for i := range cms.Items {
-		cm := &cms.Items[i]
-		if !metav1.IsControlledBy(cm, agent) {
-			continue
-		}
-		if err := r.Delete(ctx, cm); err != nil && !apierrors.IsNotFound(err) {
-			return fmt.Errorf("delete ConfigMap %s: %w", cm.Name, err)
+		recordErr("ConfigMap", "list", err)
+	} else {
+		for i := range cms.Items {
+			cm := &cms.Items[i]
+			if !metav1.IsControlledBy(cm, agent) {
+				continue
+			}
+			if err := r.Delete(ctx, cm); err != nil && !apierrors.IsNotFound(err) {
+				recordErr("ConfigMap", "delete", fmt.Errorf("%s: %w", cm.Name, err))
+			}
 		}
 	}
 	pvcs := &corev1.PersistentVolumeClaimList{}
 	if err := r.List(ctx, pvcs, client.InNamespace(agent.Namespace), labelSel); err != nil {
-		return fmt.Errorf("list owned PVCs for teardown: %w", err)
-	}
-	for i := range pvcs.Items {
-		pvc := &pvcs.Items[i]
-		if !metav1.IsControlledBy(pvc, agent) {
-			continue
-		}
-		if err := r.Delete(ctx, pvc); err != nil && !apierrors.IsNotFound(err) {
-			return fmt.Errorf("delete PVC %s: %w", pvc.Name, err)
+		recordErr("PersistentVolumeClaim", "list", err)
+	} else {
+		for i := range pvcs.Items {
+			pvc := &pvcs.Items[i]
+			if !metav1.IsControlledBy(pvc, agent) {
+				continue
+			}
+			if err := r.Delete(ctx, pvc); err != nil && !apierrors.IsNotFound(err) {
+				recordErr("PersistentVolumeClaim", "delete", fmt.Errorf("%s: %w", pvc.Name, err))
+			}
 		}
 	}
 	// Force the dashboard teardown regardless of spec.dashboard.enabled
@@ -898,7 +924,7 @@ func (r *NyxAgentReconciler) teardownDisabledAgent(ctx context.Context, agent *n
 	// Create would return Forbidden on an object with a
 	// DeletionTimestamp and leak the finalizer.
 	if err := r.reconcileDashboardInternal(ctx, agent, true); err != nil {
-		return fmt.Errorf("teardown dashboard: %w", err)
+		recordErr("Dashboard", "delete", err)
 	}
 	// ServiceMonitor follows the same pattern — its reconciler treats
 	// spec.metrics.enabled=false (which is implied when the agent is
@@ -906,47 +932,43 @@ func (r *NyxAgentReconciler) teardownDisabledAgent(ctx context.Context, agent *n
 	// delete, and gracefully no-ops when the Prometheus Operator CRD
 	// is absent (#476). Run it here so a disabled agent never leaves a
 	// stale ServiceMonitor pointing at a Service with no endpoints.
-	present, err := r.serviceMonitorCRDPresent(ctx)
-	if err != nil {
-		return fmt.Errorf("probe ServiceMonitor CRD for teardown: %w", err)
-	}
-	if present {
+	if present, err := r.serviceMonitorCRDPresent(ctx); err != nil {
+		recordErr("ServiceMonitor", "probe", err)
+	} else if present {
 		existing := &unstructured.Unstructured{}
 		existing.SetGroupVersionKind(serviceMonitorGVK)
 		if err := r.Get(ctx, key, existing); err == nil {
 			if metav1.IsControlledBy(existing, agent) {
 				if err := r.Delete(ctx, existing); err != nil && !apierrors.IsNotFound(err) {
-					return fmt.Errorf("delete ServiceMonitor: %w", err)
+					recordErr("ServiceMonitor", "delete", err)
 				}
 			}
 		} else if !apierrors.IsNotFound(err) {
-			return fmt.Errorf("get ServiceMonitor for teardown: %w", err)
+			recordErr("ServiceMonitor", "get", err)
 		}
 	}
 	// PodMonitor mirrors the ServiceMonitor block above (#683). Without
 	// this, toggling spec.enabled=false left an orphaned PodMonitor in
 	// the cluster — OwnerReferences GC only fires on full CR deletion.
-	pmPresent, err := r.podMonitorCRDPresent(ctx)
-	if err != nil {
-		return fmt.Errorf("probe PodMonitor CRD for teardown: %w", err)
-	}
-	if pmPresent {
+	if pmPresent, err := r.podMonitorCRDPresent(ctx); err != nil {
+		recordErr("PodMonitor", "probe", err)
+	} else if pmPresent {
 		existing := &unstructured.Unstructured{}
 		existing.SetGroupVersionKind(podMonitorGVK)
 		if err := r.Get(ctx, key, existing); err == nil {
 			if metav1.IsControlledBy(existing, agent) {
 				if err := r.Delete(ctx, existing); err != nil && !apierrors.IsNotFound(err) {
-					return fmt.Errorf("delete PodMonitor: %w", err)
+					recordErr("PodMonitor", "delete", err)
 				}
 			}
 		} else if !apierrors.IsNotFound(err) {
-			return fmt.Errorf("get PodMonitor for teardown: %w", err)
+			recordErr("PodMonitor", "get", err)
 		}
 	}
 	// Drop the per-CR dashboard gauge so the metric series doesn't
 	// linger across enable/disable cycles.
 	nyxagentDashboardEnabled.DeleteLabelValues(agent.Namespace, agent.Name)
-	return nil
+	return errors.Join(teardownErrs...)
 }
 
 // finalizeNyxAgent runs the explicit cleanup path invoked when a NyxAgent is

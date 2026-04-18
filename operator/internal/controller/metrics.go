@@ -65,6 +65,23 @@ var (
 		},
 		[]string{"namespace", "name"},
 	)
+
+	// nyxagentTeardownStepErrorsTotal counts individual resource-kind
+	// delete failures inside teardownDisabledAgent (#754). Rather than
+	// short-circuiting on the first kind that errors, the teardown
+	// accumulates all failures via errors.Join; each increment here
+	// records one (kind, reason) pair so a stuck CR's root cause is
+	// visible without grepping reconcile logs.  ``reason`` is one of
+	// {"get","list","delete","probe"} — coarse enough to avoid label
+	// cardinality blowup, specific enough to distinguish a failing
+	// apiserver probe from a delete that was rejected outright.
+	nyxagentTeardownStepErrorsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "nyxagent_teardown_step_errors_total",
+			Help: "Total teardown step errors on the spec.enabled=false / delete path, labelled by resource kind and reason.",
+		},
+		[]string{"kind", "reason"},
+	)
 )
 
 func init() {
@@ -72,5 +89,6 @@ func init() {
 		nyxagentPhaseTransitionsTotal,
 		nyxagentPVCBuildErrorsTotal,
 		nyxagentDashboardEnabled,
+		nyxagentTeardownStepErrorsTotal,
 	)
 }
