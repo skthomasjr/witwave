@@ -20,63 +20,63 @@ from agents.items import ToolCallItem, ToolCallOutputItem
 from computer import BrowserPool, PlaywrightComputer
 from agents.models.multi_provider import MultiProvider
 from metrics import (
-    a2_a2a_last_request_timestamp_seconds,
-    a2_a2a_request_duration_seconds,
-    a2_a2a_requests_total,
-    a2_active_sessions,
-    a2_budget_exceeded_total,
-    a2_concurrent_queries,
-    a2_context_exhaustion_total,
-    a2_context_tokens,
-    a2_context_tokens_remaining,
-    a2_context_usage_percent,
-    a2_context_warnings_total,
-    a2_empty_responses_total,
-    a2_log_bytes_total,
-    a2_log_entries_total,
-    a2_log_write_errors_total,
-    a2_lru_cache_utilization_percent,
-    a2_model_requests_total,
-    a2_prompt_length_bytes,
-    a2_response_length_bytes,
-    a2_running_tasks,
-    a2_sdk_messages_per_query,
-    a2_sdk_client_errors_total,
-    a2_sdk_errors_total,
-    a2_sdk_query_duration_seconds,
-    a2_sdk_query_error_duration_seconds,
-    a2_sdk_result_errors_total,
-    a2_sdk_session_duration_seconds,
-    a2_sdk_time_to_first_message_seconds,
-    a2_sdk_tool_call_input_size_bytes,
-    a2_sdk_tool_calls_per_query,
-    a2_sdk_tool_calls_total,
-    a2_sdk_tool_duration_seconds,
-    a2_sdk_tool_errors_total,
-    a2_sdk_tool_result_size_bytes,
-    a2_sdk_turns_per_query,
-    a2_session_age_seconds,
-    a2_session_evictions_total,
-    a2_session_idle_seconds,
-    a2_session_starts_total,
-    a2_task_cancellations_total,
-    a2_task_duration_seconds,
-    a2_task_error_duration_seconds,
-    a2_task_last_error_timestamp_seconds,
-    a2_task_last_success_timestamp_seconds,
-    a2_task_timeout_headroom_seconds,
-    a2_session_history_save_errors_total,
-    a2_tasks_total,
-    a2_mcp_config_errors_total,
-    a2_mcp_config_reloads_total,
-    a2_mcp_servers_active,
-    a2_streaming_events_emitted_total,
-    a2_sdk_tokens_per_query,
-    a2_text_blocks_per_query,
-    a2_watcher_events_total,
-    a2_file_watcher_restarts_total,
-    a2_codex_hooks_denials_total,
-    a2_tool_audit_entries_total,
+    backend_a2a_last_request_timestamp_seconds,
+    backend_a2a_request_duration_seconds,
+    backend_a2a_requests_total,
+    backend_active_sessions,
+    backend_budget_exceeded_total,
+    backend_concurrent_queries,
+    backend_context_exhaustion_total,
+    backend_context_tokens,
+    backend_context_tokens_remaining,
+    backend_context_usage_percent,
+    backend_context_warnings_total,
+    backend_empty_responses_total,
+    backend_log_bytes_total,
+    backend_log_entries_total,
+    backend_log_write_errors_total,
+    backend_lru_cache_utilization_percent,
+    backend_model_requests_total,
+    backend_prompt_length_bytes,
+    backend_response_length_bytes,
+    backend_running_tasks,
+    backend_sdk_messages_per_query,
+    backend_sdk_client_errors_total,
+    backend_sdk_errors_total,
+    backend_sdk_query_duration_seconds,
+    backend_sdk_query_error_duration_seconds,
+    backend_sdk_result_errors_total,
+    backend_sdk_session_duration_seconds,
+    backend_sdk_time_to_first_message_seconds,
+    backend_sdk_tool_call_input_size_bytes,
+    backend_sdk_tool_calls_per_query,
+    backend_sdk_tool_calls_total,
+    backend_sdk_tool_duration_seconds,
+    backend_sdk_tool_errors_total,
+    backend_sdk_tool_result_size_bytes,
+    backend_sdk_turns_per_query,
+    backend_session_age_seconds,
+    backend_session_evictions_total,
+    backend_session_idle_seconds,
+    backend_session_starts_total,
+    backend_task_cancellations_total,
+    backend_task_duration_seconds,
+    backend_task_error_duration_seconds,
+    backend_task_last_error_timestamp_seconds,
+    backend_task_last_success_timestamp_seconds,
+    backend_task_timeout_headroom_seconds,
+    backend_session_history_save_errors_total,
+    backend_tasks_total,
+    backend_mcp_config_errors_total,
+    backend_mcp_config_reloads_total,
+    backend_mcp_servers_active,
+    backend_streaming_events_emitted_total,
+    backend_sdk_tokens_per_query,
+    backend_text_blocks_per_query,
+    backend_watcher_events_total,
+    backend_file_watcher_restarts_total,
+    backend_codex_hooks_denials_total,
+    backend_tool_audit_entries_total,
 )
 
 from log_utils import _append_log
@@ -164,7 +164,7 @@ TOOL_AUDIT_LOG = os.environ.get(
 
 # PreToolUse deny baseline for LocalShellTool (#586, shell-only scope).
 # Mirrors claude's shell baseline. `pattern` is compiled once at module
-# load; `rule` name matches claude's a2_hooks_denials_total{rule=...}
+# load; `rule` name matches claude's backend_hooks_denials_total{rule=...}
 # label convention for cross-backend dashboard parity.
 _SHELL_DENY_RULES: tuple[tuple[str, "re.Pattern[str]", str], ...] = (
     (
@@ -223,9 +223,9 @@ def _append_tool_audit(entry: dict) -> None:
     except Exception:
         pass
     tool = str(entry.get("tool") or "")
-    if a2_tool_audit_entries_total is not None:
+    if backend_tool_audit_entries_total is not None:
         try:
-            a2_tool_audit_entries_total.labels(**_LABELS, tool=tool).inc()
+            backend_tool_audit_entries_total.labels(**_LABELS, tool=tool).inc()
         except Exception:
             pass
 
@@ -255,9 +255,9 @@ async def _shell_executor_inner(req: LocalShellCommandRequest) -> str:
     _denied = _evaluate_shell_baseline(cmd)
     if _denied is not None:
         rule, reason = _denied
-        if a2_codex_hooks_denials_total is not None:
+        if backend_codex_hooks_denials_total is not None:
             try:
-                a2_codex_hooks_denials_total.labels(**_LABELS, rule=rule).inc()
+                backend_codex_hooks_denials_total.labels(**_LABELS, rule=rule).inc()
             except Exception:
                 pass
         _append_tool_audit({
@@ -333,7 +333,7 @@ def _load_mcp_config() -> dict:
     Accepts both the Claude-native shape (`{"mcpServers": {...}}`) and a flat
     `{server_name: {...}}` dict, returning the inner dict in both cases.
     Missing file is treated as "no MCP servers" (returns {}). Parse / I/O
-    errors return {} AND increment a2_mcp_config_errors_total.
+    errors return {} AND increment backend_mcp_config_errors_total.
     """
     if not os.path.exists(MCP_CONFIG_PATH):
         return {}
@@ -347,8 +347,8 @@ def _load_mcp_config() -> dict:
         logger.warning("MCP config at %s is not a dict; ignoring.", MCP_CONFIG_PATH)
         return {}
     except Exception as e:
-        if a2_mcp_config_errors_total is not None:
-            a2_mcp_config_errors_total.labels(**_LABELS).inc()
+        if backend_mcp_config_errors_total is not None:
+            backend_mcp_config_errors_total.labels(**_LABELS).inc()
         logger.warning("Failed to load MCP config from %s: %s", MCP_CONFIG_PATH, e)
         return {}
 
@@ -519,8 +519,8 @@ def _sqlite_session_exists(session_id: str) -> bool:
             conn.close()
     except Exception as exc:
         logger.warning("_sqlite_session_exists(%r) failed: %s", session_id, exc)
-        if a2_session_history_save_errors_total is not None:
-            a2_session_history_save_errors_total.labels(**_LABELS).inc()
+        if backend_session_history_save_errors_total is not None:
+            backend_session_history_save_errors_total.labels(**_LABELS).inc()
         return False
 
 
@@ -585,26 +585,26 @@ async def log_entry(role: str, text: str, session_id: str, model: str | None = N
             entry["trace_id"] = _tid
         _line = json.dumps(entry)
         await asyncio.to_thread(_append_log, CONVERSATION_LOG, _line)
-        if a2_log_entries_total is not None:
-            a2_log_entries_total.labels(**_LABELS, logger="conversation").inc()
-        if a2_log_bytes_total is not None:
-            a2_log_bytes_total.labels(**_LABELS, logger="conversation").inc(len(_line.encode()))
+        if backend_log_entries_total is not None:
+            backend_log_entries_total.labels(**_LABELS, logger="conversation").inc()
+        if backend_log_bytes_total is not None:
+            backend_log_bytes_total.labels(**_LABELS, logger="conversation").inc(len(_line.encode()))
     except Exception as e:
-        if a2_log_write_errors_total is not None:
-            a2_log_write_errors_total.labels(**_LABELS).inc()
+        if backend_log_write_errors_total is not None:
+            backend_log_write_errors_total.labels(**_LABELS).inc()
         logger.error(f"log_entry error: {e}")
 
 
 async def log_trace(text: str) -> None:
     try:
         await asyncio.to_thread(_append_log, TRACE_LOG, text)
-        if a2_log_entries_total is not None:
-            a2_log_entries_total.labels(**_LABELS, logger="trace").inc()
-        if a2_log_bytes_total is not None:
-            a2_log_bytes_total.labels(**_LABELS, logger="trace").inc(len(text.encode()))
+        if backend_log_entries_total is not None:
+            backend_log_entries_total.labels(**_LABELS, logger="trace").inc()
+        if backend_log_bytes_total is not None:
+            backend_log_bytes_total.labels(**_LABELS, logger="trace").inc(len(text.encode()))
     except Exception as e:
-        if a2_log_write_errors_total is not None:
-            a2_log_write_errors_total.labels(**_LABELS).inc()
+        if backend_log_write_errors_total is not None:
+            backend_log_write_errors_total.labels(**_LABELS).inc()
         logger.error(f"log_trace error: {e}")
 
 
@@ -629,10 +629,10 @@ async def _track_session(sessions: OrderedDict[str, float], session_id: str) -> 
         else:
             if len(sessions) >= MAX_SESSIONS:
                 _evicted_id, last_used_at = sessions.popitem(last=False)
-                if a2_session_evictions_total is not None:
-                    a2_session_evictions_total.labels(**_LABELS).inc()
-                if a2_session_age_seconds is not None:
-                    a2_session_age_seconds.labels(**_LABELS).observe(time.monotonic() - last_used_at)
+                if backend_session_evictions_total is not None:
+                    backend_session_evictions_total.labels(**_LABELS).inc()
+                if backend_session_age_seconds is not None:
+                    backend_session_age_seconds.labels(**_LABELS).observe(time.monotonic() - last_used_at)
                 # Clean up the evicted session's SQLite record so the database does not
                 # grow unboundedly as sessions cycle through the LRU cache (#415).
                 # Run the delete in a thread pool so the event loop is not blocked
@@ -650,10 +650,10 @@ async def _track_session(sessions: OrderedDict[str, float], session_id: str) -> 
                 # used the computer tool.
                 await _release_computer(_evicted_id)
             sessions[session_id] = time.monotonic()
-        if a2_active_sessions is not None:
-            a2_active_sessions.labels(**_LABELS).set(len(sessions))
-        if a2_lru_cache_utilization_percent is not None:
-            a2_lru_cache_utilization_percent.labels(**_LABELS).set(len(sessions) / MAX_SESSIONS * 100)
+        if backend_active_sessions is not None:
+            backend_active_sessions.labels(**_LABELS).set(len(sessions))
+        if backend_lru_cache_utilization_percent is not None:
+            backend_lru_cache_utilization_percent.labels(**_LABELS).set(len(sessions) / MAX_SESSIONS * 100)
 
 
 async def run_query(
@@ -686,8 +686,8 @@ async def run_query(
         session = SQLiteSession(session_id, CODEX_SESSION_DB)
     except Exception as _sess_exc:
         logger.error("Failed to initialise SQLiteSession for %r: %s", session_id, _sess_exc)
-        if a2_session_history_save_errors_total is not None:
-            a2_session_history_save_errors_total.labels(**_LABELS).inc()
+        if backend_session_history_save_errors_total is not None:
+            backend_session_history_save_errors_total.labels(**_LABELS).inc()
         session = None
 
     run_config = RunConfig(model_provider=MultiProvider(openai_api_key=OPENAI_API_KEY)) if OPENAI_API_KEY else None
@@ -738,8 +738,8 @@ async def run_query(
                 if delta and hasattr(delta, "text") and delta.text:
                     if _first_chunk_at is None:
                         _first_chunk_at = time.monotonic()
-                        if a2_sdk_time_to_first_message_seconds is not None:
-                            a2_sdk_time_to_first_message_seconds.labels(**_LABELS, model=resolved_model).observe(
+                        if backend_sdk_time_to_first_message_seconds is not None:
+                            backend_sdk_time_to_first_message_seconds.labels(**_LABELS, model=resolved_model).observe(
                                 _first_chunk_at - _query_start
                             )
                     collected.append(delta.text)
@@ -776,8 +776,8 @@ async def run_query(
                     if _candidate is not None:
                         _total_tokens = max(_total_tokens, int(_candidate))
                         if max_tokens is not None and _total_tokens >= max_tokens:
-                            if a2_budget_exceeded_total is not None:
-                                a2_budget_exceeded_total.labels(**_LABELS).inc()
+                            if backend_budget_exceeded_total is not None:
+                                backend_budget_exceeded_total.labels(**_LABELS).inc()
                             raise BudgetExceededError(_total_tokens, max_tokens, list(collected))
             elif event.type == "agent_updated_stream_event":
                 _turn_count += 1
@@ -802,12 +802,12 @@ async def run_query(
                     _tool_call_names[call_id] = name
                     _tool_start_times[call_id] = time.monotonic()
                     _tool_call_count += 1
-                    if a2_sdk_tool_calls_total is not None:
-                        a2_sdk_tool_calls_total.labels(**_LABELS, tool=name).inc()
-                    if a2_sdk_tool_call_input_size_bytes is not None:
+                    if backend_sdk_tool_calls_total is not None:
+                        backend_sdk_tool_calls_total.labels(**_LABELS, tool=name).inc()
+                    if backend_sdk_tool_call_input_size_bytes is not None:
                         try:
                             _input_bytes = len(json.dumps(tool_input).encode())
-                            a2_sdk_tool_call_input_size_bytes.labels(**_LABELS, tool=name).observe(_input_bytes)
+                            backend_sdk_tool_call_input_size_bytes.labels(**_LABELS, tool=name).observe(_input_bytes)
                         except Exception:
                             pass
                     # tool.call / mcp.call span (#630). Emitted on the dispatch
@@ -888,15 +888,15 @@ async def run_query(
                     except Exception as e:
                         logger.error(f"log_trace tool_result error: {e}")
                     _tool_elapsed = time.monotonic() - _tool_start_times.pop(call_id, time.monotonic())
-                    if a2_sdk_tool_duration_seconds is not None:
-                        a2_sdk_tool_duration_seconds.labels(**_LABELS, tool=tool_name).observe(_tool_elapsed)
-                    if is_error and a2_sdk_tool_errors_total is not None:
-                        a2_sdk_tool_errors_total.labels(**_LABELS, tool=tool_name).inc()
-                    if a2_sdk_tool_result_size_bytes is not None:
-                        a2_sdk_tool_result_size_bytes.labels(**_LABELS, tool=tool_name).observe(len(content.encode()))
+                    if backend_sdk_tool_duration_seconds is not None:
+                        backend_sdk_tool_duration_seconds.labels(**_LABELS, tool=tool_name).observe(_tool_elapsed)
+                    if is_error and backend_sdk_tool_errors_total is not None:
+                        backend_sdk_tool_errors_total.labels(**_LABELS, tool=tool_name).inc()
+                    if backend_sdk_tool_result_size_bytes is not None:
+                        backend_sdk_tool_result_size_bytes.labels(**_LABELS, tool=tool_name).observe(len(content.encode()))
     except BudgetExceededError as exc:
-        if a2_sdk_session_duration_seconds is not None:
-            a2_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
+        if backend_sdk_session_duration_seconds is not None:
+            backend_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
                 time.monotonic() - _session_start
             )
         partial_response = "".join(exc.collected)
@@ -904,12 +904,12 @@ async def run_query(
             await log_entry("agent", partial_response, session_id, model=resolved_model, tokens=_total_tokens or None)
         raise
     except Exception as _run_exc:
-        if a2_sdk_query_error_duration_seconds is not None:
-            a2_sdk_query_error_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
+        if backend_sdk_query_error_duration_seconds is not None:
+            backend_sdk_query_error_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
                 time.monotonic() - _query_start
             )
-        if a2_sdk_session_duration_seconds is not None:
-            a2_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
+        if backend_sdk_session_duration_seconds is not None:
+            backend_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
                 time.monotonic() - _session_start
             )
         # Mark the llm.request span as errored so traces reflect the failure
@@ -921,21 +921,21 @@ async def run_query(
             pass
         # Classify by exception type to match claude's error metric surface
         # (#431). Best-effort — unknown exception types fall through to the
-        # generic a2_sdk_errors_total counter.
+        # generic backend_sdk_errors_total counter.
         try:
             import openai as _openai
             if isinstance(_run_exc, _openai.APIConnectionError):
-                if a2_sdk_client_errors_total is not None:
-                    a2_sdk_client_errors_total.labels(**_LABELS, model=resolved_model).inc()
+                if backend_sdk_client_errors_total is not None:
+                    backend_sdk_client_errors_total.labels(**_LABELS, model=resolved_model).inc()
             elif isinstance(_run_exc, _openai.APIError):
-                if a2_sdk_result_errors_total is not None:
-                    a2_sdk_result_errors_total.labels(**_LABELS, model=resolved_model).inc()
+                if backend_sdk_result_errors_total is not None:
+                    backend_sdk_result_errors_total.labels(**_LABELS, model=resolved_model).inc()
             else:
-                if a2_sdk_errors_total is not None:
-                    a2_sdk_errors_total.labels(**_LABELS, model=resolved_model).inc()
+                if backend_sdk_errors_total is not None:
+                    backend_sdk_errors_total.labels(**_LABELS, model=resolved_model).inc()
         except Exception:
-            if a2_sdk_errors_total is not None:
-                a2_sdk_errors_total.labels(**_LABELS, model=resolved_model).inc()
+            if backend_sdk_errors_total is not None:
+                backend_sdk_errors_total.labels(**_LABELS, model=resolved_model).inc()
         raise
     finally:
         # Close the llm.request span opened above (#630). Best-effort — if the
@@ -947,8 +947,8 @@ async def run_query(
             except Exception:
                 pass
 
-    if a2_sdk_session_duration_seconds is not None:
-        a2_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
+    if backend_sdk_session_duration_seconds is not None:
+        backend_sdk_session_duration_seconds.labels(**_LABELS, model=resolved_model).observe(
             time.monotonic() - _session_start
         )
 
@@ -974,31 +974,31 @@ async def run_query(
     if full_response:
         await log_entry("agent", full_response, session_id, model=resolved_model, tokens=_total_tokens or None)
 
-    if a2_sdk_query_duration_seconds is not None:
-        a2_sdk_query_duration_seconds.labels(**_LABELS, model=resolved_model).observe(time.monotonic() - _query_start)
-    if a2_sdk_messages_per_query is not None:
-        a2_sdk_messages_per_query.labels(**_LABELS, model=resolved_model).observe(_message_count)
-    if a2_sdk_turns_per_query is not None:
-        a2_sdk_turns_per_query.labels(**_LABELS, model=resolved_model).observe(_turn_count)
-    if a2_text_blocks_per_query is not None:
-        a2_text_blocks_per_query.labels(**_LABELS, model=resolved_model).observe(len(collected))
-    if a2_sdk_tokens_per_query is not None:
-        a2_sdk_tokens_per_query.labels(**_LABELS, model=resolved_model).observe(_total_tokens)
-    if a2_sdk_tool_calls_per_query is not None:
-        a2_sdk_tool_calls_per_query.labels(**_LABELS).observe(_tool_call_count)
+    if backend_sdk_query_duration_seconds is not None:
+        backend_sdk_query_duration_seconds.labels(**_LABELS, model=resolved_model).observe(time.monotonic() - _query_start)
+    if backend_sdk_messages_per_query is not None:
+        backend_sdk_messages_per_query.labels(**_LABELS, model=resolved_model).observe(_message_count)
+    if backend_sdk_turns_per_query is not None:
+        backend_sdk_turns_per_query.labels(**_LABELS, model=resolved_model).observe(_turn_count)
+    if backend_text_blocks_per_query is not None:
+        backend_text_blocks_per_query.labels(**_LABELS, model=resolved_model).observe(len(collected))
+    if backend_sdk_tokens_per_query is not None:
+        backend_sdk_tokens_per_query.labels(**_LABELS, model=resolved_model).observe(_total_tokens)
+    if backend_sdk_tool_calls_per_query is not None:
+        backend_sdk_tool_calls_per_query.labels(**_LABELS).observe(_tool_call_count)
     if _total_tokens:
-        if a2_context_tokens is not None:
-            a2_context_tokens.labels(**_LABELS).observe(_total_tokens)
+        if backend_context_tokens is not None:
+            backend_context_tokens.labels(**_LABELS).observe(_total_tokens)
         if max_tokens:
-            if a2_context_tokens_remaining is not None:
-                a2_context_tokens_remaining.labels(**_LABELS).observe(max(0, max_tokens - _total_tokens))
+            if backend_context_tokens_remaining is not None:
+                backend_context_tokens_remaining.labels(**_LABELS).observe(max(0, max_tokens - _total_tokens))
             _pct = _total_tokens / max_tokens * 100
-            if a2_context_usage_percent is not None:
-                a2_context_usage_percent.labels(**_LABELS).observe(_pct)
-            if _pct >= 100 and a2_context_exhaustion_total is not None:
-                a2_context_exhaustion_total.labels(**_LABELS).inc()
-            elif _pct >= CONTEXT_USAGE_WARN_THRESHOLD * 100 and a2_context_warnings_total is not None:
-                a2_context_warnings_total.labels(**_LABELS).inc()
+            if backend_context_usage_percent is not None:
+                backend_context_usage_percent.labels(**_LABELS).observe(_pct)
+            if _pct >= 100 and backend_context_exhaustion_total is not None:
+                backend_context_exhaustion_total.labels(**_LABELS).inc()
+            elif _pct >= CONTEXT_USAGE_WARN_THRESHOLD * 100 and backend_context_warnings_total is not None:
+                backend_context_warnings_total.labels(**_LABELS).inc()
 
     # Log a trace entry for the completed turn
     try:
@@ -1029,13 +1029,13 @@ async def run(
     live_mcp_servers: list | None = None,
     tool_config: dict | None = None,
 ) -> str:
-    if a2_concurrent_queries is not None:
-        a2_concurrent_queries.labels(**_LABELS).inc()
+    if backend_concurrent_queries is not None:
+        backend_concurrent_queries.labels(**_LABELS).inc()
     try:
         return await _run_inner(prompt, session_id, sessions, agent_md_content, model, max_tokens, on_chunk=on_chunk, live_mcp_servers=live_mcp_servers, tool_config=tool_config)
     finally:
-        if a2_concurrent_queries is not None:
-            a2_concurrent_queries.labels(**_LABELS).dec()
+        if backend_concurrent_queries is not None:
+            backend_concurrent_queries.labels(**_LABELS).dec()
 
 
 async def _run_inner(
@@ -1050,23 +1050,23 @@ async def _run_inner(
     tool_config: dict | None = None,
 ) -> str:
     resolved_model = model or CODEX_MODEL
-    if a2_model_requests_total is not None:
-        a2_model_requests_total.labels(**_LABELS, model=resolved_model).inc()
+    if backend_model_requests_total is not None:
+        backend_model_requests_total.labels(**_LABELS, model=resolved_model).inc()
 
     is_new = session_id not in sessions and not await asyncio.to_thread(_sqlite_session_exists, session_id)
-    if not is_new and a2_session_idle_seconds is not None:
+    if not is_new and backend_session_idle_seconds is not None:
         _last_used = sessions.get(session_id)
         if _last_used is not None:
-            a2_session_idle_seconds.labels(**_LABELS).observe(time.monotonic() - _last_used)
-    if a2_session_starts_total is not None:
-        a2_session_starts_total.labels(**_LABELS, type="new" if is_new else "resumed").inc()
+            backend_session_idle_seconds.labels(**_LABELS).observe(time.monotonic() - _last_used)
+    if backend_session_starts_total is not None:
+        backend_session_starts_total.labels(**_LABELS, type="new" if is_new else "resumed").inc()
 
     _prompt_preview = prompt[:LOG_PROMPT_MAX_BYTES] + ("[truncated]" if len(prompt) > LOG_PROMPT_MAX_BYTES else "") if LOG_PROMPT_MAX_BYTES > 0 else "[redacted]"
     logger.info(f"Session {session_id} ({'new' if is_new else 'existing'}) — prompt: {_prompt_preview!r}")
     await log_entry("user", prompt, session_id, model=resolved_model)
 
-    if a2_prompt_length_bytes is not None:
-        a2_prompt_length_bytes.labels(**_LABELS).observe(len(prompt.encode()))
+    if backend_prompt_length_bytes is not None:
+        backend_prompt_length_bytes.labels(**_LABELS).observe(len(prompt.encode()))
 
     _start = time.monotonic()
     _budget_exceeded = False
@@ -1096,12 +1096,12 @@ async def _run_inner(
         # Drop the per-session Playwright context so a later request reusing
         # this session_id does not inherit mid-stream browser state (#522).
         await _release_computer(session_id)
-        if a2_tasks_total is not None:
-            a2_tasks_total.labels(**_LABELS, status="timeout").inc()
-        if a2_task_error_duration_seconds is not None:
-            a2_task_error_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _start)
-        if a2_task_last_error_timestamp_seconds is not None:
-            a2_task_last_error_timestamp_seconds.labels(**_LABELS).set(time.time())
+        if backend_tasks_total is not None:
+            backend_tasks_total.labels(**_LABELS, status="timeout").inc()
+        if backend_task_error_duration_seconds is not None:
+            backend_task_error_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _start)
+        if backend_task_last_error_timestamp_seconds is not None:
+            backend_task_last_error_timestamp_seconds.labels(**_LABELS).set(time.time())
         raise
     except BudgetExceededError as _bexc:
         _budget_exceeded = True
@@ -1115,31 +1115,31 @@ async def _run_inner(
         collected = _bexc.collected
         await _track_session(sessions, session_id)
     except Exception:
-        if a2_tasks_total is not None:
-            a2_tasks_total.labels(**_LABELS, status="error").inc()
-        if a2_task_error_duration_seconds is not None:
-            a2_task_error_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _start)
-        if a2_task_last_error_timestamp_seconds is not None:
-            a2_task_last_error_timestamp_seconds.labels(**_LABELS).set(time.time())
+        if backend_tasks_total is not None:
+            backend_tasks_total.labels(**_LABELS, status="error").inc()
+        if backend_task_error_duration_seconds is not None:
+            backend_task_error_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _start)
+        if backend_task_last_error_timestamp_seconds is not None:
+            backend_task_last_error_timestamp_seconds.labels(**_LABELS).set(time.time())
         raise
 
     if not _budget_exceeded:
         await _track_session(sessions, session_id)
-    if a2_tasks_total is not None:
-        a2_tasks_total.labels(**_LABELS, status="budget_exceeded" if _budget_exceeded else "success").inc()
-    if a2_task_last_success_timestamp_seconds is not None:
-        a2_task_last_success_timestamp_seconds.labels(**_LABELS).set(time.time())
-    if a2_task_duration_seconds is not None:
-        a2_task_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _start)
-    if a2_task_timeout_headroom_seconds is not None:
-        a2_task_timeout_headroom_seconds.labels(**_LABELS).observe(TASK_TIMEOUT_SECONDS - (time.monotonic() - _start))
+    if backend_tasks_total is not None:
+        backend_tasks_total.labels(**_LABELS, status="budget_exceeded" if _budget_exceeded else "success").inc()
+    if backend_task_last_success_timestamp_seconds is not None:
+        backend_task_last_success_timestamp_seconds.labels(**_LABELS).set(time.time())
+    if backend_task_duration_seconds is not None:
+        backend_task_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _start)
+    if backend_task_timeout_headroom_seconds is not None:
+        backend_task_timeout_headroom_seconds.labels(**_LABELS).observe(TASK_TIMEOUT_SECONDS - (time.monotonic() - _start))
 
     response = "".join(collected) if collected else ""
     if not response:
-        if a2_empty_responses_total is not None:
-            a2_empty_responses_total.labels(**_LABELS).inc()
-    elif a2_response_length_bytes is not None:
-        a2_response_length_bytes.labels(**_LABELS).observe(len(response.encode()))
+        if backend_empty_responses_total is not None:
+            backend_empty_responses_total.labels(**_LABELS).inc()
+    elif backend_response_length_bytes is not None:
+        backend_response_length_bytes.labels(**_LABELS).observe(len(response.encode()))
     return response
 
 
@@ -1180,7 +1180,7 @@ class AgentExecutor(A2AAgentExecutor):
         Tears down any previously-entered stack first, then enters each server
         as an async context manager. Failures on individual servers are logged
         and skipped so one broken entry does not prevent others from starting.
-        The a2_mcp_servers_active gauge reflects the actually-running count,
+        The backend_mcp_servers_active gauge reflects the actually-running count,
         not the config-loaded count.
         """
         if self._mcp_servers_lock is None:
@@ -1232,8 +1232,8 @@ class AgentExecutor(A2AAgentExecutor):
 
             self._mcp_stack = new_stack
             self._live_mcp_servers = new_live
-            if a2_mcp_servers_active is not None:
-                a2_mcp_servers_active.labels(**_LABELS).set(len(new_live))
+            if backend_mcp_servers_active is not None:
+                backend_mcp_servers_active.labels(**_LABELS).set(len(new_live))
 
     async def _snapshot_live_mcp_servers(self) -> list:
         """Return a defensive copy of the currently-live MCP server list (#526).
@@ -1273,8 +1273,8 @@ class AgentExecutor(A2AAgentExecutor):
                 await asyncio.sleep(10)
                 continue
             async for changes in _awatch(watch_dir, recursive=False):
-                if a2_watcher_events_total is not None:
-                    a2_watcher_events_total.labels(**_LABELS, watcher="mcp").inc()
+                if backend_watcher_events_total is not None:
+                    backend_watcher_events_total.labels(**_LABELS, watcher="mcp").inc()
                 for _, path in changes:
                     if os.path.abspath(path) == os.path.abspath(MCP_CONFIG_PATH):
                         self._mcp_config = await asyncio.to_thread(_load_mcp_config)
@@ -1283,12 +1283,12 @@ class AgentExecutor(A2AAgentExecutor):
                             await self._apply_mcp_config(self._mcp_config)
                         except Exception as _apply_exc:
                             logger.warning("MCP stack reload failed: %s", _apply_exc)
-                        if a2_mcp_config_reloads_total is not None:
-                            a2_mcp_config_reloads_total.labels(**_LABELS).inc()
+                        if backend_mcp_config_reloads_total is not None:
+                            backend_mcp_config_reloads_total.labels(**_LABELS).inc()
                         break
             logger.warning("MCP config directory watcher exited — retrying in 10s.")
-            if a2_file_watcher_restarts_total is not None:
-                a2_file_watcher_restarts_total.labels(**_LABELS, watcher="mcp").inc()
+            if backend_file_watcher_restarts_total is not None:
+                backend_file_watcher_restarts_total.labels(**_LABELS, watcher="mcp").inc()
             await asyncio.sleep(10)
 
     async def agent_md_watcher(self) -> None:
@@ -1310,16 +1310,16 @@ class AgentExecutor(A2AAgentExecutor):
                 await asyncio.sleep(10)
                 continue
             async for changes in _awatch(watch_dir):
-                if a2_watcher_events_total is not None:
-                    a2_watcher_events_total.labels(**_LABELS, watcher="agent_md").inc()
+                if backend_watcher_events_total is not None:
+                    backend_watcher_events_total.labels(**_LABELS, watcher="agent_md").inc()
                 for _, path in changes:
                     if os.path.abspath(path) == os.path.abspath(AGENT_MD):
                         self._agent_md_content = _load_agent_md()
                         logger.info("AGENTS.md reloaded from %s", AGENT_MD)
                         break
             logger.warning("AGENTS.md directory watcher exited — retrying in 10s.")
-            if a2_file_watcher_restarts_total is not None:
-                a2_file_watcher_restarts_total.labels(**_LABELS, watcher="agent_md").inc()
+            if backend_file_watcher_restarts_total is not None:
+                backend_file_watcher_restarts_total.labels(**_LABELS, watcher="agent_md").inc()
             await asyncio.sleep(10)
 
     async def tool_config_watcher(self) -> None:
@@ -1347,16 +1347,16 @@ class AgentExecutor(A2AAgentExecutor):
                 await asyncio.sleep(10)
                 continue
             async for changes in _awatch(watch_dir, recursive=False):
-                if a2_watcher_events_total is not None:
-                    a2_watcher_events_total.labels(**_LABELS, watcher="tool_config").inc()
+                if backend_watcher_events_total is not None:
+                    backend_watcher_events_total.labels(**_LABELS, watcher="tool_config").inc()
                 for _, path in changes:
                     if os.path.abspath(path) == os.path.abspath(CODEX_CONFIG_TOML):
                         self._tool_config = await asyncio.to_thread(_load_tool_config)
                         logger.info("tool config reloaded from %s: %s", CODEX_CONFIG_TOML, dict(self._tool_config))
                         break
             logger.warning("tool config directory watcher exited — retrying in 10s.")
-            if a2_file_watcher_restarts_total is not None:
-                a2_file_watcher_restarts_total.labels(**_LABELS, watcher="tool_config").inc()
+            if backend_file_watcher_restarts_total is not None:
+                backend_file_watcher_restarts_total.labels(**_LABELS, watcher="tool_config").inc()
             await asyncio.sleep(10)
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
@@ -1390,8 +1390,8 @@ class AgentExecutor(A2AAgentExecutor):
             current = asyncio.current_task()
             if current:
                 self._running_tasks[task_id] = current
-                if a2_running_tasks is not None:
-                    a2_running_tasks.labels(**_LABELS).inc()
+                if backend_running_tasks is not None:
+                    backend_running_tasks.labels(**_LABELS).inc()
         _response = ""
         _success = False
         _error: str | None = None
@@ -1405,8 +1405,8 @@ class AgentExecutor(A2AAgentExecutor):
         async def _emit_chunk(text: str) -> None:
             nonlocal _chunks_emitted
             _chunks_emitted += 1
-            if a2_streaming_events_emitted_total is not None:
-                a2_streaming_events_emitted_total.labels(**_LABELS, model=_streaming_label_model).inc()
+            if backend_streaming_events_emitted_total is not None:
+                backend_streaming_events_emitted_total.labels(**_LABELS, model=_streaming_label_model).inc()
             # Await directly — see backends/claude/executor.py _emit_chunk for the
             # rationale (event ordering + exception surfacing).
             await event_queue.enqueue_event(new_agent_text_message(text))
@@ -1442,23 +1442,23 @@ class AgentExecutor(A2AAgentExecutor):
                 # tool-only or non-streamed runs.
                 if _response and _chunks_emitted == 0:
                     await event_queue.enqueue_event(new_agent_text_message(_response))
-                if a2_a2a_requests_total is not None:
-                    a2_a2a_requests_total.labels(**_LABELS, status="success").inc()
+                if backend_a2a_requests_total is not None:
+                    backend_a2a_requests_total.labels(**_LABELS, status="success").inc()
         except Exception as _exc:
             _error = repr(_exc)
             _set_span_error(_otel_span, _exc)
-            if a2_a2a_requests_total is not None:
-                a2_a2a_requests_total.labels(**_LABELS, status="error").inc()
+            if backend_a2a_requests_total is not None:
+                backend_a2a_requests_total.labels(**_LABELS, status="error").inc()
             raise
         finally:
-            if a2_a2a_request_duration_seconds is not None:
-                a2_a2a_request_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _exec_start)
-            if a2_a2a_last_request_timestamp_seconds is not None:
-                a2_a2a_last_request_timestamp_seconds.labels(**_LABELS).set(time.time())
+            if backend_a2a_request_duration_seconds is not None:
+                backend_a2a_request_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _exec_start)
+            if backend_a2a_last_request_timestamp_seconds is not None:
+                backend_a2a_last_request_timestamp_seconds.labels(**_LABELS).set(time.time())
             if task_id and task_id in self._running_tasks:
                 self._running_tasks.pop(task_id)
-                if a2_running_tasks is not None:
-                    a2_running_tasks.labels(**_LABELS).dec()
+                if backend_running_tasks is not None:
+                    backend_running_tasks.labels(**_LABELS).dec()
 
     async def close(self) -> None:
         """Cancel and drain all MCP watcher tasks, tear down the MCP server
@@ -1485,8 +1485,8 @@ class AgentExecutor(A2AAgentExecutor):
                 logger.warning("MCP stack aclose on shutdown: %s", _close_exc)
             self._mcp_stack = None
             self._live_mcp_servers = []
-            if a2_mcp_servers_active is not None:
-                a2_mcp_servers_active.labels(**_LABELS).set(0)
+            if backend_mcp_servers_active is not None:
+                backend_mcp_servers_active.labels(**_LABELS).set(0)
         global _browser_pool
         if _browser_pool is not None:
             try:
@@ -1497,8 +1497,8 @@ class AgentExecutor(A2AAgentExecutor):
         self.closed = True
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
-        if a2_task_cancellations_total is not None:
-            a2_task_cancellations_total.labels(**_LABELS).inc()
+        if backend_task_cancellations_total is not None:
+            backend_task_cancellations_total.labels(**_LABELS).inc()
         task_id = context.task_id
         task = self._running_tasks.get(task_id) if task_id else None
         if task:

@@ -29,10 +29,10 @@ constraints live there. The file is hot-reloaded on change — updating `GEMINI.
 without restarting the container.
 
 **Metrics** — Exposes the common `a2_*` Prometheus metrics: request count/latency, session starts/evictions, queue
-depth, error counts, and execution duration. Also includes context-window metrics (`a2_context_tokens`,
-`a2_context_usage_percent`, `a2_context_exhaustion_total`, etc.) tracked via `usage_metadata.total_token_count` on
-each response chunk, and SDK error classification metrics (`a2_sdk_errors_total`, `a2_sdk_result_errors_total`,
-`a2_sdk_client_errors_total`) that distinguish connection-level failures from result-level errors and catch-all
+depth, error counts, and execution duration. Also includes context-window metrics (`backend_context_tokens`,
+`backend_context_usage_percent`, `backend_context_exhaustion_total`, etc.) tracked via `usage_metadata.total_token_count` on
+each response chunk, and SDK error classification metrics (`backend_sdk_errors_total`, `backend_sdk_result_errors_total`,
+`backend_sdk_client_errors_total`) that distinguish connection-level failures from result-level errors and catch-all
 exceptions.
 
 ## Endpoints
@@ -127,7 +127,7 @@ hot-reloaded on `mcp.json` changes — the lifespan-scoped stack pattern is shar
 **AFC vs. hooks caveat.** google-genai's AFC runs the tool loop inside `generate_content`, so the #631 hooks
 skeleton (PreToolUse policy enforcement) **cannot intercept MCP tool calls**. Tool invocations are observable
 after the fact (via `tool_use` / `tool_result` rows on `trace.jsonl` and the
-`a2_sdk_tool_calls_total` / `a2_sdk_tool_duration_seconds` metrics), but a rule like "deny tool X on input
+`backend_sdk_tool_calls_total` / `backend_sdk_tool_duration_seconds` metrics), but a rule like "deny tool X on input
 pattern Y" cannot block the call because the decision point is inside the SDK. If policy enforcement is a
 hard requirement, the #640 issue body documents the alternate design (disable AFC and hand-roll the
 function-call dispatch loop); no operator toggle ships today.

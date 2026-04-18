@@ -5,7 +5,7 @@ predicate set, YAML extension loader, and evaluator) lives in
 ``shared/hooks_engine.py`` (#631). This module is now the Claude-specific
 facade: it re-exports the engine's public API (so existing imports like
 ``from hooks import BASELINE_RULES, evaluate_pre_tool_use`` keep working)
-and registers a claude-flavoured ``a2_hooks_config_errors_total`` reporter
+and registers a claude-flavoured ``backend_hooks_config_errors_total`` reporter
 so YAML parse/validation errors keep landing on the existing counter with
 the correct ``backend="claude"`` label.
 
@@ -48,7 +48,7 @@ from hooks_engine import (  # noqa: F401  (re-exported public API)
 
 
 def _bump_config_error(reason: str) -> None:
-    """Increment ``a2_hooks_config_errors_total{reason}`` for the claude backend (#623).
+    """Increment ``backend_hooks_config_errors_total{reason}`` for the claude backend (#623).
 
     Imported lazily so this module stays test-friendly when metrics are not
     wired up. The ``reason`` value is a closed enum — see ``metrics.py`` for
@@ -56,15 +56,15 @@ def _bump_config_error(reason: str) -> None:
     stays decoupled from the executor's ``_LABELS`` dict.
     """
     try:
-        from metrics import a2_hooks_config_errors_total
-        if a2_hooks_config_errors_total is None:
+        from metrics import backend_hooks_config_errors_total
+        if backend_hooks_config_errors_total is None:
             return
         labels = {
             "agent": os.environ.get("AGENT_OWNER", os.environ.get("AGENT_NAME", "a2-claude")),
             "agent_id": os.environ.get("AGENT_ID", "claude"),
             "backend": "claude",
         }
-        a2_hooks_config_errors_total.labels(**labels, reason=reason).inc()
+        backend_hooks_config_errors_total.labels(**labels, reason=reason).inc()
     except Exception:  # pragma: no cover — metrics must never break hook parsing
         pass
 

@@ -17,7 +17,7 @@ Design notes
 * Metrics are attached via an optional ``config_error_reporter`` callable so
   this module stays test-friendly and doesn't hard-bind to any one backend's
   ``metrics.py``. Backends pass a small closure that increments their own
-  ``a2_hooks_config_errors_total{reason}`` counter with their label set.
+  ``backend_hooks_config_errors_total{reason}`` counter with their label set.
 * Baseline predicates use parsed tool-input structure (not a JSON substring)
   so trivial encoding bypasses (unicode escapes, whitespace padding,
   absolute paths, home-shorthand, symbolic chmod) do not defeat matching

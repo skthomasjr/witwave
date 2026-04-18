@@ -51,13 +51,13 @@ def _observe_lock_wait(op: str, wait_seconds: float) -> None:
     Silently no-ops when metrics are disabled. Any bookkeeping failure is
     swallowed — observability must never break a task-store write.
     """
-    hist = _metrics.a2_sqlite_task_store_lock_wait_seconds
+    hist = _metrics.backend_sqlite_task_store_lock_wait_seconds
     if hist is None:
         return
     try:
         hist.labels(**_metric_labels(), op=op).observe(wait_seconds)
     except Exception:  # pragma: no cover — never let metrics break persistence
-        logger.debug("a2_sqlite_task_store_lock_wait_seconds observe failed", exc_info=True)
+        logger.debug("backend_sqlite_task_store_lock_wait_seconds observe failed", exc_info=True)
 
 
 def _open_db(path: str) -> sqlite3.Connection:
@@ -126,7 +126,7 @@ class SqliteTaskStore(TaskStore):
     alongside writers — so a future refactor to a per-call ``sqlite3.connect``
     or a small connection pool could split reader/writer contention without
     fear of shared-cache issues. We defer that refactor until telemetry
-    justifies it: the ``a2_sqlite_task_store_lock_wait_seconds`` histogram
+    justifies it: the ``backend_sqlite_task_store_lock_wait_seconds`` histogram
     (one observation per op, labelled by ``op``) is the signal to watch.
     """
 

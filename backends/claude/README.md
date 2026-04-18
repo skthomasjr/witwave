@@ -140,8 +140,8 @@ place so an editing mistake cannot accidentally disable policy.
 `tool_name`, `tool_input`, `tool_response_preview` (capped at 2 KiB). PostToolUse is not opt-outable — transparency
 is a guarantee, not a policy choice.
 
-**Metrics.** `a2_hooks_blocked_total{tool,source,rule}`, `a2_hooks_warnings_total{tool,source,rule}`,
-`a2_tool_audit_entries_total{tool}`, `a2_hooks_config_reloads_total`, and `a2_hooks_active_rules{source}`.
+**Metrics.** `backend_hooks_blocked_total{tool,source,rule}`, `backend_hooks_warnings_total{tool,source,rule}`,
+`backend_tool_audit_entries_total{tool}`, `backend_hooks_config_reloads_total`, and `backend_hooks_active_rules{source}`.
 
 ## Tracing (OpenTelemetry)
 

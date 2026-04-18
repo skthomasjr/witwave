@@ -2,7 +2,7 @@
 
 This module is the gemini-flavoured companion to ``backends/claude/hooks.py``. It
 re-exports the backend-agnostic engine from ``shared/hooks_engine.py`` and
-registers a gemini-specific ``a2_hooks_config_errors_total`` reporter so
+registers a gemini-specific ``backend_hooks_config_errors_total`` reporter so
 YAML parse/validation errors land on the counter with
 ``backend="gemini"``.
 
@@ -44,21 +44,21 @@ HOOKS_BASELINE_ENABLED = os.environ.get("HOOKS_BASELINE_ENABLED", "true").lower(
 
 
 def _bump_config_error(reason: str) -> None:
-    """Increment ``a2_hooks_config_errors_total{reason}`` for the gemini backend.
+    """Increment ``backend_hooks_config_errors_total{reason}`` for the gemini backend.
 
     Mirrors the claude reporter pattern. Any failure here is swallowed so
     malformed YAML can never crash the rule parser.
     """
     try:
-        from metrics import a2_hooks_config_errors_total
-        if a2_hooks_config_errors_total is None:
+        from metrics import backend_hooks_config_errors_total
+        if backend_hooks_config_errors_total is None:
             return
         labels = {
             "agent": os.environ.get("AGENT_OWNER", os.environ.get("AGENT_NAME", "a2-gemini")),
             "agent_id": os.environ.get("AGENT_ID", "gemini"),
             "backend": "gemini",
         }
-        a2_hooks_config_errors_total.labels(**labels, reason=reason).inc()
+        backend_hooks_config_errors_total.labels(**labels, reason=reason).inc()
     except Exception:  # pragma: no cover — metrics must never break hook parsing
         pass
 

@@ -26,15 +26,15 @@ from conversations import (
 from executor import AgentExecutor
 from validation import parse_max_tokens
 from metrics import (
-    a2_event_loop_lag_seconds,
-    a2_health_checks_total,
-    a2_info,
-    a2_mcp_request_duration_seconds,
-    a2_mcp_requests_total,
-    a2_startup_duration_seconds,
-    a2_task_restarts_total,
-    a2_up,
-    a2_uptime_seconds,
+    backend_event_loop_lag_seconds,
+    backend_health_checks_total,
+    backend_info,
+    backend_mcp_request_duration_seconds,
+    backend_mcp_requests_total,
+    backend_startup_duration_seconds,
+    backend_task_restarts_total,
+    backend_up,
+    backend_uptime_seconds,
 )
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -101,8 +101,8 @@ def build_agent_card() -> AgentCard:
 
 
 async def health(request: Request) -> JSONResponse:
-    if a2_health_checks_total is not None:
-        a2_health_checks_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="health").inc()
+    if backend_health_checks_total is not None:
+        backend_health_checks_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="health").inc()
     if _ready:
         elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
         return JSONResponse({"status": "ok", "agent": AGENT_NAME, "uptime_seconds": elapsed})
@@ -198,8 +198,8 @@ async def _guarded(coro_fn, *args, restart_delay: float = 5.0, critical: bool = 
                 consecutive_restarts = 0
             consecutive_restarts += 1
             logger.error(f"Task {coro_fn.__name__!r} crashed: {exc!r} — restarting in {restart_delay}s (consecutive restart #{consecutive_restarts})")
-            if a2_task_restarts_total is not None:
-                a2_task_restarts_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, task=coro_fn.__name__).inc()
+            if backend_task_restarts_total is not None:
+                backend_task_restarts_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, task=coro_fn.__name__).inc()
             if critical and consecutive_restarts >= WORKER_MAX_RESTARTS:
                 logger.error(f"Task {coro_fn.__name__!r} has crashed {consecutive_restarts} consecutive times — marking agent not ready")
                 _ready = False
@@ -212,8 +212,8 @@ async def _event_loop_monitor() -> None:
         _before = time.monotonic()
         await asyncio.sleep(_interval)
         lag = time.monotonic() - _before - _interval
-        if lag > 0 and a2_event_loop_lag_seconds is not None:
-            a2_event_loop_lag_seconds.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).observe(lag)
+        if lag > 0 and backend_event_loop_lag_seconds is not None:
+            backend_event_loop_lag_seconds.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).observe(lag)
 
 
 async def _set_ready_when_started(server: uvicorn.Server) -> None:
@@ -221,8 +221,8 @@ async def _set_ready_when_started(server: uvicorn.Server) -> None:
         await asyncio.sleep(0.05)
     global _ready
     _ready = True
-    if a2_startup_duration_seconds is not None:
-        a2_startup_duration_seconds.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).set(time.monotonic() - _startup_mono)
+    if backend_startup_duration_seconds is not None:
+        backend_startup_duration_seconds.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).set(time.monotonic() - _startup_mono)
     logger.info(f"Backend agent {AGENT_NAME} is ready")
 
 
@@ -260,12 +260,12 @@ async def main():
     a2a_built = a2a_app.build()
 
     if metrics_enabled:
-        if a2_up is not None:
-            a2_up.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).set(1.0)
-        if a2_info is not None:
-            a2_info.info({"version": AGENT_VERSION, "agent": AGENT_OWNER, "agent_id": AGENT_ID, "backend": _BACKEND_ID})
-        if a2_uptime_seconds is not None:
-            a2_uptime_seconds.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).set_function(lambda: (datetime.now(timezone.utc) - start_time).total_seconds())
+        if backend_up is not None:
+            backend_up.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).set(1.0)
+        if backend_info is not None:
+            backend_info.info({"version": AGENT_VERSION, "agent": AGENT_OWNER, "agent_id": AGENT_ID, "backend": _BACKEND_ID})
+        if backend_uptime_seconds is not None:
+            backend_uptime_seconds.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).set_function(lambda: (datetime.now(timezone.utc) - start_time).total_seconds())
         logger.info("Prometheus metrics enabled at /metrics")
     else:
         logger.warning(
@@ -410,16 +410,16 @@ async def main():
                 "error": {"code": -32601, "message": f"Method not found: {method!r}"},
             })
         finally:
-            if a2_mcp_requests_total is not None:
-                a2_mcp_requests_total.labels(
+            if backend_mcp_requests_total is not None:
+                backend_mcp_requests_total.labels(
                     agent=AGENT_OWNER,
                     agent_id=AGENT_ID,
                     backend=_BACKEND_ID,
                     method=_mcp_method,
                     status=_mcp_status,
                 ).inc()
-            if a2_mcp_request_duration_seconds is not None:
-                a2_mcp_request_duration_seconds.labels(
+            if backend_mcp_request_duration_seconds is not None:
+                backend_mcp_request_duration_seconds.labels(
                     agent=AGENT_OWNER,
                     agent_id=AGENT_ID,
                     backend=_BACKEND_ID,
