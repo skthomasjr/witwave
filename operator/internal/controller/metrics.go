@@ -120,6 +120,18 @@ var (
 		},
 		[]string{"namespace", "name"},
 	)
+
+	// nyxpromptStatusPatchConflictsTotal distinguishes benign 409s on
+	// NyxPrompt status subresource writes from real apiserver failures
+	// (#950). Previously conflicts were joined into the generic
+	// reconcileErrs chain so alert rules could not separate contention
+	// from a genuine apiserver outage.
+	nyxpromptStatusPatchConflictsTotal = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "nyxprompt_status_patch_conflicts_total",
+			Help: "Total 409 conflicts encountered on NyxPrompt status subresource writes; retried inline by patchStatusWithConflictRetry.",
+		},
+	)
 )
 
 func init() {
@@ -131,5 +143,6 @@ func init() {
 		nyxpromptBindingOutcomesTotal,
 		nyxpromptReadyCount,
 		nyxpromptDesiredCount,
+		nyxpromptStatusPatchConflictsTotal,
 	)
 }

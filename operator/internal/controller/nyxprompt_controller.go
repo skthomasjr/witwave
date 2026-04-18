@@ -315,6 +315,10 @@ func (r *NyxPromptReconciler) patchStatusWithConflictRetry(
 	if err == nil || !apierrors.IsConflict(err) {
 		return err
 	}
+	// Count the initial 409 so dashboards can alert on sustained
+	// contention rather than bucketing it into the generic reconcile
+	// error rate (#950).
+	nyxpromptStatusPatchConflictsTotal.Inc()
 
 	// Conflict path: re-Get and re-apply status (only), bounded.
 	for attempt := 2; attempt <= maxAttempts; attempt++ {
@@ -335,6 +339,7 @@ func (r *NyxPromptReconciler) patchStatusWithConflictRetry(
 		if !apierrors.IsConflict(err) {
 			return err
 		}
+		nyxpromptStatusPatchConflictsTotal.Inc()
 	}
 	return err
 }
