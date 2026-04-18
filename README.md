@@ -194,23 +194,23 @@ Each agent's `backend.yaml` (under `.nyx/`) controls where nyx routes each type 
 ```yaml
 backend:
   agents:
-    - id: iris-a2-claude
-      url: http://iris-a2-claude:8000
+    - id: claude
+      url: http://localhost:8010
 
-    - id: iris-a2-codex
-      url: http://iris-a2-codex:8000
+    - id: codex
+      url: http://localhost:8011
 
-    - id: iris-a2-gemini
-      url: http://iris-a2-gemini:8000
+    - id: gemini
+      url: http://localhost:8012
 
   routing:
-    default: iris-a2-claude # fallback backend when no per-concern override matches
-    a2a: iris-a2-claude # handles incoming A2A requests
-    heartbeat: iris-a2-claude # handles heartbeat-triggered work
-    job: iris-a2-claude # handles job execution
-    task: iris-a2-claude # handles task execution
-    trigger: iris-a2-claude # handles inbound HTTP trigger requests
-    continuation: iris-a2-claude # handles continuation-fired prompts
+    default: claude # fallback backend when no per-concern override matches
+    a2a: claude # handles incoming A2A requests
+    heartbeat: claude # handles heartbeat-triggered work
+    job: claude # handles job execution
+    task: claude # handles task execution
+    trigger: claude # handles inbound HTTP trigger requests
+    continuation: claude # handles continuation-fired prompts
 ```
 
 Routing values can be a plain agent ID string or an object with `agent:` and optional `model:` fields. Model resolution

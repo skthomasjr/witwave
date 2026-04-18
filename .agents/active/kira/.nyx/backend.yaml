@@ -1,15 +1,15 @@
 backend:
   agents:
     - id: claude
-      url: http://kira-a2-claude:8000
+      url: http://localhost:8010
       model: claude-opus-4-7
 
     - id: codex
-      url: http://kira-a2-codex:8000
+      url: http://localhost:8011
       model: gpt-5.1-codex
 
     - id: gemini
-      url: http://kira-a2-gemini:8000
+      url: http://localhost:8012
 
   routing:
     default:

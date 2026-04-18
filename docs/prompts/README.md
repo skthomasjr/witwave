@@ -25,10 +25,10 @@ override. An empty list (the default) disables consensus — the prompt is dispa
 
 ```yaml
 consensus:
-  - backend: "iris-a2-claude"           # exact backend ID
+  - backend: "claude"                   # exact backend ID
     model: "claude-opus-4-6"            # optional model override
-  - backend: "iris-a2-codex*"           # glob pattern — matches all codex backends
-  - backend: "iris-a2-claude"
+  - backend: "codex*"                   # glob pattern — matches all codex backends
+  - backend: "claude"
     model: "claude-haiku-4-5"           # same backend, different model = two parallel calls
 ```
 

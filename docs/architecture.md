@@ -438,16 +438,21 @@ This prevents concurrent outbound backend calls from the same harness process.
 ## Port Assignments
 
 | Agent       | harness | claude | codex | gemini |
-| ----------- | ----------- | --------- | -------- | --------- |
-| iris        | 8000        | 8010      | 8011     | 8012      |
-| nova        | 8001        | 8020      | 8021     | 8022      |
-| kira        | 8002        | 8030      | 8031     | 8032      |
-| bob         | 8099        | 8090      | 8091     | 8092      |
-| fred        | 8098        | 8089      | —        | —         |
-| ui (active) | 3002        | —         | —        | —         |
-| ui (test)   | 3001        | —         | —        | —         |
+| ----------- | ------- | ------ | ----- | ------ |
+| iris        | 8000    | 8010   | 8011  | 8012   |
+| nova        | 8001    | 8010   | 8011  | 8012   |
+| kira        | 8002    | 8010   | 8011  | 8012   |
+| bob         | 8099    | 8090   | 8091  | 8092   |
+| fred        | 8098    | 8089   | —     | —      |
+| ui (active) | 3002    | —      | —     | —      |
+| ui (test)   | 3001    | —      | —     | —      |
 
-Backend containers all listen on port 8000 internally; host port mappings are as above.
+Active agents (iris/nova/kira) each run in their own pod with their own
+localhost, so the backend ports are uniform across them (8010/8011/8012).
+The harness port differs per agent only because multiple active agents may
+share a host via `hostPort`/`NodePort`. Test agents (bob/fred) still use
+agent-unique backend ports because they're deployed together in
+`values-test.yaml` with `hostPort` exposed on the same host.
 
 ---
 
@@ -493,10 +498,10 @@ helm upgrade --install nyx ./charts/nyx -f ./charts/nyx/values-test.yaml -n nyx 
 Port assignments per agent:
 
 | Agent | harness | claude | codex | gemini |
-| ----- | ----------- | --------- | -------- | --------- |
-| iris  | 8000        | 8010      | 8011     | 8012      |
-| nova  | 8001        | 8020      | 8021     | 8022      |
-| kira  | 8002        | 8030      | 8031     | 8032      |
+| ----- | ------- | ------ | ----- | ------ |
+| iris  | 8000    | 8010   | 8011  | 8012   |
+| nova  | 8001    | 8010   | 8011  | 8012   |
+| kira  | 8002    | 8010   | 8011  | 8012   |
 
 ### Kubernetes (Target)
 
@@ -505,8 +510,8 @@ All infrastructure decisions are evaluated against Kubernetes compatibility:
 - Health probes follow the three-probe model (`/health/start`, `/health/live`, `/health/ready`) for harness;
   `/health` for backend containers
 - Configuration injected via env vars and mounted `ConfigMap`/`Secret` volumes
-- Backend URL configurable via `A2A_URL_<ID>` env var — supports sidecar (`http://localhost:8000`), separate pod
-  (`http://claude-svc:8000`), or Compose service DNS (`http://iris-a2-claude:8000`) without config file changes
+- Backend URL configurable via `A2A_URL_<ID>` env var — supports same-pod sidecar (`http://localhost:8010`) or
+  out-of-pod via Service DNS (`http://claude-svc:8000`) without config file changes
 - Stateless containers at the harness layer (all state lives in backends)
 - Standard HTTP endpoints suitable for `Service` and `Ingress`
 
@@ -598,7 +603,7 @@ containing an `agents:` list and a `routing:` block.
 backend:
   agents:
     - id: claude
-      url: http://iris-a2-claude:8000
+      url: http://localhost:8010
 
   routing:
     default: claude
@@ -610,15 +615,15 @@ backend:
 backend:
   agents:
     - id: claude
-      url: http://iris-a2-claude:8000
+      url: http://localhost:8010
       model: claude-opus-4-6
 
     - id: codex
-      url: http://iris-a2-codex:8000
+      url: http://localhost:8011
       model: gpt-5.1-codex
 
     - id: gemini
-      url: http://iris-a2-gemini:8000
+      url: http://localhost:8012
 
   routing:
     default:

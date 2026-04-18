@@ -139,38 +139,38 @@ and a `mcpTools.<name>` block in `charts/nyx/values.yaml`. Tag related issues/PR
 ```yaml
 backend:
   agents:
-    - id: iris-a2-claude
-      url: http://iris-a2-claude:8000
+    - id: claude
+      url: http://localhost:8010
       model: claude-opus-4-6
 
-    - id: iris-a2-codex
-      url: http://iris-a2-codex:8000
+    - id: codex
+      url: http://localhost:8011
       model: gpt-5.1-codex
 
-    - id: iris-a2-gemini
-      url: http://iris-a2-gemini:8000
+    - id: gemini
+      url: http://localhost:8012
 
   routing:
     default:
-      agent: iris-a2-claude
+      agent: claude
       model: claude-opus-4-6
     a2a:
-      agent: iris-a2-claude
+      agent: claude
       model: claude-opus-4-6
     heartbeat:
-      agent: iris-a2-claude
+      agent: claude
       model: claude-opus-4-6
     job:
-      agent: iris-a2-claude
+      agent: claude
       model: claude-opus-4-6
     task:
-      agent: iris-a2-claude
+      agent: claude
       model: claude-opus-4-6
     trigger:
-      agent: iris-a2-claude
+      agent: claude
       model: claude-opus-4-6
     continuation:
-      agent: iris-a2-claude
+      agent: claude
       model: claude-opus-4-6
 ```
 
@@ -339,15 +339,22 @@ docker build -f harness/Dockerfile -t harness:latest . \
 ## Interacting with Agents
 
 Use the `/remote` skill to interact with running agents. Always target the **nyx agent by name** — nyx routes the
-request internally to its configured backend (e.g. `iris-a2-claude`). Never target backend services directly.
+request internally to its configured backend. Never target backend services directly.
 
-| Agent | Port | claude | codex | gemini |
-| ----- | ---- | --------- | -------- | --------- |
-| iris  | 8000 | 8010      | 8011     | 8012      |
-| nova  | 8001 | 8020      | 8021     | 8022      |
-| kira  | 8002 | 8030      | 8031     | 8032      |
-| bob   | 8099 | 8090      | 8091     | 8092      |
-| fred  | 8098 | 8089      | —        | —         |
+| Agent | Harness | claude | codex | gemini |
+| ----- | ------- | ------ | ----- | ------ |
+| iris  | 8000    | 8010   | 8011  | 8012   |
+| nova  | 8001    | 8010   | 8011  | 8012   |
+| kira  | 8002    | 8010   | 8011  | 8012   |
+| bob   | 8099    | 8090   | 8091  | 8092   |
+| fred  | 8098    | 8089   | —     | —      |
+
+Active agents (iris/nova/kira) each run in their own pod with their own
+localhost, so the backend ports are uniform across them (8010/8011/8012).
+The harness port differs per agent only because multiple active agents may
+share a host via `hostPort`/`NodePort` mappings. Test agents (bob/fred)
+still use agent-unique backend ports because they're deployed together in
+`values-test.yaml` with `hostPort` exposed on the same host.
 
 Test agents `jack` (codex-only) and `luke` (gemini-only) exist as filesystem
 scaffolds under `.agents/test/` but are not wired into
