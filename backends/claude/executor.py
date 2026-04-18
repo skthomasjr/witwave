@@ -678,8 +678,13 @@ _INFLIGHT_HOOK_POSTS: set[asyncio.Task] = set()
 # causing memory growth, pool exhaustion, and eventually OOM.
 _HOOK_POST_MAX_INFLIGHT = int(os.environ.get("HOOK_POST_MAX_INFLIGHT", "32"))
 # One-shot warning guard for the "shed because at cap" log so bursts
-# don't spam the log per tool call.
+# don't spam the log per tool call. Both the set/re-arm paths write
+# this global from different callbacks — the done callback fires on
+# every task completion. Guard both writes with a threading.Lock so
+# concurrent completions can't race the re-arm (#873) and duplicate
+# the warning on a subsequent sustained-shed event.
 _HOOK_POST_SHED_WARNED = False
+_HOOK_POST_SHED_WARNED_LOCK = threading.Lock()
 
 
 async def _post_hook_event_to_harness(event_dict: dict) -> None:
@@ -813,12 +818,13 @@ def _make_pre_tool_use_hook(state: HookState):
             # above remains the authoritative record.
             if len(_INFLIGHT_HOOK_POSTS) >= _HOOK_POST_MAX_INFLIGHT:
                 global _HOOK_POST_SHED_WARNED
-                if not _HOOK_POST_SHED_WARNED:
-                    logger.warning(
-                        "hook.decision POST shed: %d in-flight at cap=%d (further shed suppressed until drain)",
-                        len(_INFLIGHT_HOOK_POSTS), _HOOK_POST_MAX_INFLIGHT,
-                    )
-                    _HOOK_POST_SHED_WARNED = True
+                with _HOOK_POST_SHED_WARNED_LOCK:
+                    if not _HOOK_POST_SHED_WARNED:
+                        logger.warning(
+                            "hook.decision POST shed: %d in-flight at cap=%d (further shed suppressed until drain)",
+                            len(_INFLIGHT_HOOK_POSTS), _HOOK_POST_MAX_INFLIGHT,
+                        )
+                        _HOOK_POST_SHED_WARNED = True
                 if backend_hooks_shed_total is not None:
                     try:
                         backend_hooks_shed_total.labels(**_LABELS).inc()
@@ -830,9 +836,13 @@ def _make_pre_tool_use_hook(state: HookState):
                 def _done(tt, _reset=_INFLIGHT_HOOK_POSTS):
                     _reset.discard(tt)
                     # Re-arm the warning once we drop back below cap.
+                    # Serialise with the same Lock so two concurrent
+                    # completions can't both flip the flag after one
+                    # task already did (#873).
                     if len(_reset) < _HOOK_POST_MAX_INFLIGHT // 2:
                         global _HOOK_POST_SHED_WARNED
-                        _HOOK_POST_SHED_WARNED = False
+                        with _HOOK_POST_SHED_WARNED_LOCK:
+                            _HOOK_POST_SHED_WARNED = False
                 _t.add_done_callback(_done)
         except Exception as _transport_exc:
             logger.debug("hook.decision transport scheduling failed: %r", _transport_exc)
