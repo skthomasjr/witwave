@@ -729,11 +729,14 @@ async def _post_hook_event_to_harness(event_dict: dict) -> None:
         logger.warning("hook.decision POST to %s failed: %r", url, exc)
 
 
-def _make_pre_tool_use_hook(state: HookState):
+def _make_pre_tool_use_hook(state: HookState, session_id_ref: dict | None = None):
     """Build the PreToolUse hook callable bound to *state*.
 
     The callable is closed over *state* so it always sees the latest rule
     set, even after ``hooks.yaml`` hot-reload mutates ``state.extensions``.
+    ``session_id_ref`` mirrors the PostToolUse pattern so the hook event
+    payload carries the backend-derived (HMAC-bound) session_id rather than
+    the SDK-internal id (#871).
     """
 
     async def _hook(input_data: dict, tool_use_id: str | None, context) -> dict:
@@ -802,7 +805,15 @@ def _make_pre_tool_use_hook(state: HookState):
         try:
             _event_dict = {
                 "agent": AGENT_OWNER or AGENT_NAME,
-                "session_id": input_data.get("session_id") or "",
+                # Prefer the backend-derived session_id (HMAC-bound via
+                # session_binding) so downstream subscribers correlate to
+                # persisted state; fall back to the SDK-supplied value only
+                # if no closure ref was passed (#871).
+                "session_id": (
+                    (session_id_ref.get("value") if session_id_ref else None)
+                    or input_data.get("session_id")
+                    or ""
+                ),
                 "tool": tool_name or "",
                 "decision": decision,
                 "rule_name": (matched.name if matched is not None else ""),
@@ -1165,7 +1176,10 @@ def _make_options(
         }
         if _active:
             hooks_cfg["PreToolUse"] = [
-                HookMatcher(matcher="*", hooks=[_make_pre_tool_use_hook(hook_state)]),
+                HookMatcher(
+                    matcher="*",
+                    hooks=[_make_pre_tool_use_hook(hook_state, _session_ref)],
+                ),
             ]
 
     return ClaudeAgentOptions(
