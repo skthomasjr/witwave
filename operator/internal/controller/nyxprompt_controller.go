@@ -122,11 +122,13 @@ func (r *NyxPromptReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			if apierrors.IsNotFound(err) {
 				binding.Message = "target NyxAgent not found (will retry when it appears)"
 				bindings = append(bindings, binding)
+				nyxpromptBindingOutcomesTotal.WithLabelValues(ref.Name, "agent_missing").Inc()
 				continue
 			}
 			reconcileErrs = append(reconcileErrs, fmt.Errorf("get NyxAgent %q: %w", ref.Name, err))
 			binding.Message = err.Error()
 			bindings = append(bindings, binding)
+			nyxpromptBindingOutcomesTotal.WithLabelValues(ref.Name, "agent_missing").Inc()
 			continue
 		}
 
@@ -135,12 +137,14 @@ func (r *NyxPromptReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			reconcileErrs = append(reconcileErrs, fmt.Errorf("build ConfigMap for %q: %w", ref.Name, err))
 			binding.Message = err.Error()
 			bindings = append(bindings, binding)
+			nyxpromptBindingOutcomesTotal.WithLabelValues(ref.Name, "build_error").Inc()
 			continue
 		}
 		if err := controllerutil.SetControllerReference(prompt, cm, r.Scheme); err != nil {
 			reconcileErrs = append(reconcileErrs, fmt.Errorf("set owner on ConfigMap %s: %w", cm.Name, err))
 			binding.Message = err.Error()
 			bindings = append(bindings, binding)
+			nyxpromptBindingOutcomesTotal.WithLabelValues(ref.Name, "owner_error").Inc()
 			continue
 		}
 
@@ -149,6 +153,7 @@ func (r *NyxPromptReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		binding.Filename = cm.Annotations[annotationNyxPromptFilename]
 		binding.Ready = true
 		bindings = append(bindings, binding)
+		nyxpromptBindingOutcomesTotal.WithLabelValues(ref.Name, "ready").Inc()
 	}
 
 	// Apply each desired ConfigMap.
@@ -161,6 +166,10 @@ func (r *NyxPromptReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				if bindings[i].ConfigMapName == cm.Name {
 					bindings[i].Ready = false
 					bindings[i].Message = err.Error()
+					// Re-classify — the earlier "ready" outcome counted
+					// the build; the apply failure now drives the binding
+					// back into an apply_error state for the dashboard.
+					nyxpromptBindingOutcomesTotal.WithLabelValues(bindings[i].AgentName, "apply_error").Inc()
 				}
 			}
 		}
@@ -204,6 +213,10 @@ func (r *NyxPromptReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	prompt.Status.ObservedGeneration = prompt.Generation
 	prompt.Status.Bindings = bindings
 	prompt.Status.ReadyCount = readyCount
+	// Publish ready/desired counts as gauges so dashboards can alert on
+	// partial-binding without scraping the CR status subresource (#837).
+	nyxpromptReadyCount.WithLabelValues(prompt.Namespace, prompt.Name).Set(float64(readyCount))
+	nyxpromptDesiredCount.WithLabelValues(prompt.Namespace, prompt.Name).Set(float64(len(prompt.Spec.AgentRefs)))
 
 	readyCond := metav1.Condition{
 		Type:               nyxv1alpha1.NyxPromptConditionReady,

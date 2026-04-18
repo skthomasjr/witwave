@@ -82,6 +82,44 @@ var (
 		},
 		[]string{"kind", "reason"},
 	)
+
+	// nyxpromptBindingOutcomesTotal counts individual (NyxPrompt, NyxAgent)
+	// binding outcomes per reconcile pass (#837). ``outcome`` is one of:
+	//   - "ready"          — ConfigMap built + applied, binding Ready=true
+	//   - "agent_missing"  — target NyxAgent not found; will retry on enqueue
+	//   - "build_error"    — buildNyxPromptConfigMap failed
+	//   - "owner_error"    — controllerutil.SetControllerReference failed
+	//   - "apply_error"    — applyNyxPromptConfigMap failed
+	// Labelled by agent so operators can see partial-binding hotspots.
+	nyxpromptBindingOutcomesTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "nyxprompt_binding_outcomes_total",
+			Help: "Total NyxPrompt→NyxAgent binding attempts, labelled by agent and outcome.",
+		},
+		[]string{"agent", "outcome"},
+	)
+
+	// nyxpromptReadyCount mirrors NyxPrompt.Status.ReadyCount per CR so
+	// dashboards can alert on "prompt has been partial for > N minutes"
+	// without scraping the CR subresource (#837).
+	nyxpromptReadyCount = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "nyxprompt_ready_count",
+			Help: "Number of NyxAgent refs on this NyxPrompt whose Binding.Ready=true.",
+		},
+		[]string{"namespace", "name"},
+	)
+
+	// nyxpromptDesiredCount reports len(spec.agentRefs); paired with
+	// nyxpromptReadyCount to compute "fully bound" via
+	// sum(ready)/sum(desired) in PromQL.
+	nyxpromptDesiredCount = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "nyxprompt_desired_count",
+			Help: "Number of NyxAgent refs declared in the NyxPrompt spec.",
+		},
+		[]string{"namespace", "name"},
+	)
 )
 
 func init() {
@@ -90,5 +128,8 @@ func init() {
 		nyxagentPVCBuildErrorsTotal,
 		nyxagentDashboardEnabled,
 		nyxagentTeardownStepErrorsTotal,
+		nyxpromptBindingOutcomesTotal,
+		nyxpromptReadyCount,
+		nyxpromptDesiredCount,
 	)
 }
