@@ -447,6 +447,16 @@ observability:
     # (e.g. "0.1" for 10% sampling with parentbased_traceidratio).
     samplerArg: ""
 
+# Global storage options applied across shared + per-backend PVCs (#767).
+storage:
+  # When true, every chart-owned PersistentVolumeClaim is annotated with
+  # helm.sh/resource-policy=keep so `helm uninstall` leaves the PVC in
+  # place — useful when the cluster's default StorageClass has
+  # ReclaimPolicy=Delete and you want to avoid destroying conversation
+  # logs / memory / sessions on accidental uninstall. Operators must
+  # clean the PVCs up manually if/when they choose to.
+  retainOnUninstall: false
+
 # Shared storage volume mounted into all agent pods and backend sidecars.
 sharedStorage:
   # Enable shared storage.
