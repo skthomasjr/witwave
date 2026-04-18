@@ -1441,12 +1441,81 @@ class AgentExecutor(A2AAgentExecutor):
         # hot-reload swaps in a new stack while this is > 0, the old stack is
         # parked in _mcp_old_stacks and only aclose()d when the last
         # user releases (#673, mirror of codex #667).
+        #
+        # Watchdog (#735): parked stacks also carry the monotonic time at
+        # which they were parked so the watchdog task can force-close any
+        # entry whose pairing failed (caller lost reference, exception
+        # skipped the release finally, etc.).  Without the watchdog a
+        # single refcount/release mismatch leaked a stdio subprocess +
+        # pipe pair indefinitely across reloads.
         self._mcp_stack_refcount: int = 0
-        self._mcp_old_stacks: list[tuple[AsyncExitStack, int]] = []
+        self._mcp_old_stacks: list[tuple[AsyncExitStack, int, float]] = []
+        # Max age a parked stack may linger before the watchdog force-
+        # closes it.  Longer than TASK_TIMEOUT_SECONDS so any genuinely
+        # in-flight request gets the natural release path; shorter than
+        # a workday so a leaked reference doesn't accumulate overnight.
+        self._mcp_parked_stack_max_age_s: float = max(
+            float(TASK_TIMEOUT_SECONDS) * 2.0, 600.0,
+        )
 
     def _mcp_watchers(self):
-        """Return callables for GEMINI.md, hooks.yaml, and mcp.json watching (#371, #631, #640)."""
-        return [self.agent_md_watcher, self.hooks_config_watcher, self.mcp_config_watcher]
+        """Return callables for GEMINI.md, hooks.yaml, mcp.json, and parked-stack watchdog (#371, #631, #640, #735)."""
+        return [
+            self.agent_md_watcher,
+            self.hooks_config_watcher,
+            self.mcp_config_watcher,
+            self.mcp_parked_stacks_watchdog,
+        ]
+
+    async def mcp_parked_stacks_watchdog(self) -> None:
+        """Periodic watchdog that force-closes parked MCP stacks older than
+        ``self._mcp_parked_stack_max_age_s`` (#735).
+
+        Guards against a caller that acquired the stack but never paired
+        ``_release_mcp_stack`` — an exception skipped the finally, a
+        future refactor lost the reference, etc.  Without this, every
+        such mismatch leaks a stdio subprocess plus its ClientSession
+        pipes for the lifetime of the process.
+
+        The watchdog respects the ``_mcp_servers_lock`` so it never
+        races a concurrent reload or release.  Entries it closes are
+        logged at WARNING so operators see leaks surface in the logs
+        instead of silently accumulating.
+        """
+        # Tick at a fraction of the max-age so a stuck stack is closed
+        # within ~1/4 of the budget regardless of when it was parked.
+        interval = max(30.0, self._mcp_parked_stack_max_age_s / 4.0)
+        while True:
+            try:
+                await asyncio.sleep(interval)
+            except asyncio.CancelledError:
+                return
+            if self._mcp_servers_lock is None:
+                continue
+            async with self._mcp_servers_lock:
+                now = time.monotonic()
+                still_parked: list[tuple[AsyncExitStack, int, float]] = []
+                to_close: list[tuple[AsyncExitStack, int, float]] = []
+                for entry in self._mcp_old_stacks:
+                    _old_stack, _old_ref, parked_at = entry
+                    if now - parked_at > self._mcp_parked_stack_max_age_s:
+                        to_close.append(entry)
+                    else:
+                        still_parked.append(entry)
+                self._mcp_old_stacks = still_parked
+            for old_stack, old_ref, parked_at in to_close:
+                logger.warning(
+                    "MCP watchdog: force-closing parked stack (refcount=%d, "
+                    "age=%.1fs) — acquire/release pairing failed (#735).",
+                    old_ref, now - parked_at,
+                )
+                try:
+                    await old_stack.aclose()
+                except Exception as _close_exc:
+                    logger.warning(
+                        "Watchdog aclose of parked MCP stack failed: %s",
+                        _close_exc,
+                    )
 
     async def _apply_mcp_config(self, mcp_config: dict) -> None:
         """Enter the given MCP config into a fresh lifespan-scoped stack (#640).
@@ -1486,7 +1555,9 @@ class AgentExecutor(A2AAgentExecutor):
                         "until %d in-flight request(s) release it.",
                         _prev_refcount,
                     )
-                    self._mcp_old_stacks.append((_prev_stack, _prev_refcount))
+                    self._mcp_old_stacks.append(
+                        (_prev_stack, _prev_refcount, time.monotonic()),
+                    )
 
             if not mcp_config:
                 if backend_mcp_servers_active is not None:
@@ -1598,7 +1669,7 @@ class AgentExecutor(A2AAgentExecutor):
                 if self._mcp_stack_refcount > 0:
                     self._mcp_stack_refcount -= 1
                 return
-            for i, (old_stack, old_ref) in enumerate(self._mcp_old_stacks):
+            for i, (old_stack, old_ref, parked_at) in enumerate(self._mcp_old_stacks):
                 if old_stack is stack:
                     new_ref = old_ref - 1
                     if new_ref <= 0:
@@ -1610,7 +1681,7 @@ class AgentExecutor(A2AAgentExecutor):
                                 "Deferred MCP stack aclose error: %s", _close_exc,
                             )
                     else:
-                        self._mcp_old_stacks[i] = (old_stack, new_ref)
+                        self._mcp_old_stacks[i] = (old_stack, new_ref, parked_at)
                     return
 
     async def _snapshot_live_mcp_servers(self) -> list:
@@ -1902,7 +1973,7 @@ class AgentExecutor(A2AAgentExecutor):
         # still had in-flight holders when swapped. On shutdown we force-
         # close them regardless of refcount.
         while self._mcp_old_stacks:
-            _old_stack, _ = self._mcp_old_stacks.pop()
+            _old_stack, _old_ref, _old_parked_at = self._mcp_old_stacks.pop()
             try:
                 await _old_stack.aclose()
             except Exception as _close_exc:
