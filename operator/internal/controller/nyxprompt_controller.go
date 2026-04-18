@@ -256,6 +256,14 @@ func (r *NyxPromptReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 // owned ConfigMap. Mirrors the simpler of the two patterns in the NyxAgent
 // reconciler (no content-hash short-circuit yet — prompts change infrequently
 // and are small).
+//
+// #949: Labels/Annotations are merged rather than full-overwritten. Previously
+// a bare `existing.Annotations = desired.Annotations` clobbered annotations
+// written by unrelated controllers (ArgoCD tracking, cost labellers, CSI
+// snapshotters) between our Get and Update, producing annotation flap and
+// noisy reconciles. We now only mutate the keys this controller owns
+// (see nyxPromptOwnedAnnotationKeys / nyxPromptOwnedLabelKeys) and preserve
+// any foreign keys already present on the object.
 func (r *NyxPromptReconciler) applyNyxPromptConfigMap(ctx context.Context, desired *corev1.ConfigMap) error {
 	existing := &corev1.ConfigMap{}
 	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
@@ -266,10 +274,56 @@ func (r *NyxPromptReconciler) applyNyxPromptConfigMap(ctx context.Context, desir
 		return err
 	}
 	existing.Data = desired.Data
-	existing.Labels = desired.Labels
-	existing.Annotations = desired.Annotations
+	existing.Labels = mergeOwnedStringMap(existing.Labels, desired.Labels, nyxPromptOwnedLabelKeys)
+	existing.Annotations = mergeOwnedStringMap(existing.Annotations, desired.Annotations, nyxPromptOwnedAnnotationKeys)
 	existing.OwnerReferences = desired.OwnerReferences
 	return r.Update(ctx, existing)
+}
+
+// nyxPromptOwnedLabelKeys enumerates the metadata.labels keys this
+// controller stamps onto prompt ConfigMaps. Any label key outside this set
+// is considered owned by another actor and is preserved on Update (#949).
+var nyxPromptOwnedLabelKeys = []string{
+	labelName,
+	labelComponent,
+	labelPartOf,
+	labelManagedBy,
+	labelNyxPromptName,
+	labelNyxPromptTargetAgent,
+	labelNyxPromptKind,
+}
+
+// nyxPromptOwnedAnnotationKeys enumerates the metadata.annotations keys
+// this controller stamps onto prompt ConfigMaps. Only these keys are
+// (re)written on Update; foreign annotations pass through (#949).
+var nyxPromptOwnedAnnotationKeys = []string{
+	annotationNyxPromptFilename,
+}
+
+// mergeOwnedStringMap returns a map that preserves every key in `existing`
+// except those the caller declares as owned. For owned keys, the value from
+// `desired` wins (or the key is removed if desired drops it). This is the
+// Go-map equivalent of a field-manager filter: we rewrite only what we own
+// and leave other controllers' writes untouched.
+func mergeOwnedStringMap(existing, desired map[string]string, ownedKeys []string) map[string]string {
+	owned := make(map[string]struct{}, len(ownedKeys))
+	for _, k := range ownedKeys {
+		owned[k] = struct{}{}
+	}
+	out := make(map[string]string, len(existing)+len(desired))
+	for k, v := range existing {
+		if _, isOwned := owned[k]; isOwned {
+			continue
+		}
+		out[k] = v
+	}
+	for k, v := range desired {
+		out[k] = v
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // patchStatusWithConflictRetry writes NyxPrompt status via Status().Patch
