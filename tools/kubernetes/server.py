@@ -296,7 +296,10 @@ def apply(manifest: str) -> list[dict]:
                 patch_kwargs: dict[str, Any] = {
                     "body": doc,
                     "name": name,
-                    "content_type": "application/apply-patch+yaml",
+                    # The dynamic client serializes dict bodies as JSON, so
+                    # advertise JSON to match the wire format. Supported by
+                    # the Kubernetes API server since 1.30 (#695).
+                    "content_type": "application/apply-patch+json",
                     "field_manager": FIELD_MANAGER,
                 }
                 if ns:
