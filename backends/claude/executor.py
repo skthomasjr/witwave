@@ -991,6 +991,12 @@ def _sanitize_mcp_servers(servers: dict) -> dict:
             continue
         # Apply env scrub first so the logged "rejected" set is meaningful
         # regardless of whether the command is later rejected.
+        # Build a shallow copy of cfg rather than mutating the caller's
+        # dict (#872). Previously the sanitised env was written back
+        # into the input cfg, so any caller reusing its input
+        # observed a silently scrubbed env. Returning a new dict is
+        # the expected pure-function shape.
+        new_cfg = dict(cfg)
         raw_env = cfg.get("env")
         if isinstance(raw_env, dict):
             sanitized_env = {k: v for k, v in raw_env.items() if k not in _SHELL_ENV_DENYLIST}
@@ -1001,11 +1007,11 @@ def _sanitize_mcp_servers(servers: dict) -> dict:
                     name,
                     sorted(rejected),
                 )
-            cfg["env"] = sanitized_env
+            new_cfg["env"] = sanitized_env
         # Only validate the command field when the entry is an stdio
         # transport (presence of ``command``). HTTP/SSE transports carry
         # ``url`` instead and are out of scope for the allow-list.
-        cmd = cfg.get("command")
+        cmd = new_cfg.get("command")
         if cmd is not None:
             ok, reason = _mcp_command_allowed(cmd)
             if not ok:
@@ -1023,7 +1029,7 @@ def _sanitize_mcp_servers(servers: dict) -> dict:
                     except Exception:
                         pass
                 continue
-        out[name] = cfg
+        out[name] = new_cfg
     return out
 
 
