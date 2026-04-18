@@ -1,0 +1,64 @@
+{{/*
+helm test for MCP tool Deployments (#841).
+
+When `mcpTools.<name>.enabled: true`, this template renders a test Pod
+that curls the tool's Service:8000/health endpoint — the unauthenticated
+liveness route added in #848 — to confirm:
+  1. The Service selector reaches a ready Pod.
+  2. The FastMCP streamable-http listener is actually bound on 8000.
+  3. The mcp_auth middleware exempts /health (otherwise the probe would
+     401 and a regression tying /health to the bearer check would fail).
+
+Skipped for tools that are disabled so `helm test` does not run empty
+pods for every unconfigured MCP entry. Stays in lockstep with
+mcp-tools.yaml — adding a new tool requires no edit here because the
+range walks `.Values.mcpTools` dynamically.
+*/}}
+{{- range $name, $tool := .Values.mcpTools }}
+{{- if and (kindIs "map" $tool) $tool.enabled }}
+{{- $fullName := printf "%s-mcp-%s" $.Release.Name $name }}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ $fullName }}-test-health
+  labels:
+    app.kubernetes.io/name: {{ $fullName }}
+    app.kubernetes.io/component: mcp-tool-test
+    app.kubernetes.io/part-of: nyx
+    app.kubernetes.io/managed-by: {{ $.Release.Service }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  activeDeadlineSeconds: 60
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 100
+    runAsGroup: 101
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: test
+      image: curlimages/curl:8.7.1
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+      command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          echo "Probing {{ $fullName }}:8000/health..."
+          body=$(curl -sf --connect-timeout 3 --max-time 10 \
+            http://{{ $fullName }}:8000/health)
+          echo "$body"
+          echo "$body" | grep -q '"status":"ok"' || {
+            echo "ERROR: {{ $fullName }} /health did not return expected status=ok" >&2
+            exit 1
+          }
+          echo "{{ $fullName }} /health OK."
+{{- end }}
+{{- end }}
