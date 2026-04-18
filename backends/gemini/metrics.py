@@ -465,20 +465,20 @@ if _enabled:
 
     # Hooks / tool-audit (#631). Label schema mirrors claude's superset
     # (#467) so dashboards can union across backends on (agent, agent_id,
-    # backend, tool, rule). The `rule` label on denials/warnings is the
-    # matched rule name from hooks_engine; `tool` is the tool-name string
-    # presented to ``evaluate_pre_tool_use``. No `source` label here — gemini
-    # ships skeleton-only for now; a future enhancement can bring it to full
-    # parity once #640 lands and the warn path is exercised.
+    # backend, tool, rule, source). The `rule` label is the matched rule
+    # name from hooks_engine; `tool` is the tool-name string presented to
+    # ``evaluate_pre_tool_use``; `source` is "baseline"|"extension" so
+    # operators can separate shipped deny rules from per-agent YAML
+    # extensions (#794 — was explicitly omitted pending #640 wiring).
     backend_hooks_denials_total = prometheus_client.Counter(
         "backend_hooks_denials_total",
         "Total tool calls denied by a PreToolUse hook.",
-        ["agent", "agent_id", "backend", "tool", "rule"],
+        ["agent", "agent_id", "backend", "tool", "rule", "source"],
     )
     backend_hooks_warnings_total = prometheus_client.Counter(
         "backend_hooks_warnings_total",
         "Total tool calls flagged (but not denied) by a PreToolUse hook.",
-        ["agent", "agent_id", "backend", "tool", "rule"],
+        ["agent", "agent_id", "backend", "tool", "rule", "source"],
     )
     backend_tool_audit_entries_total = prometheus_client.Counter(
         "backend_tool_audit_entries_total",
