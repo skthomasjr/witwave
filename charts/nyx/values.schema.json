@@ -445,8 +445,40 @@
             "resources": { "type": "object" },
             "securityContext": { "type": "object" },
             "serviceAccountName": { "type": "string" },
+            "automountServiceAccountToken": { "type": ["boolean", "null"] },
             "env": { "type": "array" },
-            "envFrom": { "type": "array" }
+            "envFrom": { "type": "array" },
+            "rbac": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "create": { "type": "boolean" },
+                "rules": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "apiGroups": { "type": "array", "items": { "type": "string" } },
+                      "resources": { "type": "array", "items": { "type": "string" } },
+                      "resourceNames": { "type": "array", "items": { "type": "string" } },
+                      "verbs": { "type": "array", "items": { "type": "string" } },
+                      "nonResourceURLs": { "type": "array", "items": { "type": "string" } }
+                    },
+                    "required": ["verbs"]
+                  }
+                }
+              }
+            },
+            "networkPolicy": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "egress": { "type": "string" },
+                "allowNamespaces": { "type": "array", "items": { "type": "string" } }
+              }
+            }
           }
         }
       }
