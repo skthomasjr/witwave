@@ -123,6 +123,7 @@ backend_hooks_config_reloads_total: prometheus_client.Counter | None = None
 backend_hooks_active_rules: prometheus_client.Gauge | None = None
 backend_hooks_evaluations_total: prometheus_client.Counter | None = None
 backend_hooks_shed_total: prometheus_client.Counter | None = None
+backend_allowed_tools_reload_total: prometheus_client.Counter | None = None
 backend_hooks_config_errors_total: prometheus_client.Counter | None = None
 
 # Per-logger log write errors (#626). Complementary to backend_log_write_errors_total
@@ -585,6 +586,21 @@ if _enabled:
         "rate indicates the harness is unreachable or slow while tool calls "
         "fire rapidly — the backend would otherwise OOM.",
         ["agent", "agent_id", "backend"],
+    )
+    # settings.json hot-reload of ALLOWED_TOOLS (#934). The reload
+    # mutates ALLOWED_TOOLS in place but pre-existing sessions retain
+    # the ClaudeAgentOptions built at first-turn — the new set only
+    # applies to sessions created after the reload. The `direction`
+    # label lets dashboards distinguish a tightening reload (prev set
+    # ⊋ new set) from a widening one, and `active_sessions` records
+    # how many live sessions still hold the old value at reload time.
+    backend_allowed_tools_reload_total = prometheus_client.Counter(
+        "backend_allowed_tools_reload_total",
+        "Total settings.json ALLOWED_TOOLS reloads observed, split by "
+        "direction (tighten|widen|rotate) so dashboards can alert when a "
+        "tightening reload coincides with a high active_sessions count — "
+        "those sessions keep the old permission set until they evict.",
+        ["agent", "agent_id", "backend", "direction"],
     )
     backend_tool_audit_entries_total = prometheus_client.Counter(
         "backend_tool_audit_entries_total",

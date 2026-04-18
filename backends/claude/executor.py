@@ -1971,10 +1971,30 @@ class AgentExecutor(A2AAgentExecutor):
                         else:
                             new_list = new_allow
                         if new_list != ALLOWED_TOOLS:
+                            old_set = set(ALLOWED_TOOLS)
+                            new_set = set(new_list)
+                            if new_set < old_set:
+                                direction = "tighten"
+                            elif new_set > old_set:
+                                direction = "widen"
+                            else:
+                                direction = "rotate"
+                            # Snapshot active session count BEFORE mutation so
+                            # the metric value reflects the population still
+                            # holding the old permission set (#934).
+                            _active_at_reload = len(self._sessions) if hasattr(self, "_sessions") else 0
                             ALLOWED_TOOLS[:] = new_list
+                            try:
+                                from metrics import backend_allowed_tools_reload_total as _bar
+                                if _bar is not None:
+                                    _bar.labels(**_LABELS, direction=direction).inc()
+                            except Exception:
+                                pass
                             logger.info(
-                                "settings.json reloaded: ALLOWED_TOOLS -> %s (takes effect on next session).",
+                                "settings.json reloaded: ALLOWED_TOOLS -> %s (direction=%s, %d active sessions still on old set; takes effect on next session).",
                                 ",".join(ALLOWED_TOOLS),
+                                direction,
+                                _active_at_reload,
                             )
                         break
             logger.warning("settings.json directory watcher exited — retrying in 10s.")
