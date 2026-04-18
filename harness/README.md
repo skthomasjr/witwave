@@ -135,6 +135,37 @@ container's environment. The `tracing.py` module re-exports the shared OTel help
 backends use the same bootstrap without code duplication. When `OTEL_ENABLED` is falsy, the OTel call sites are
 no-ops and only the lightweight W3C propagation runs.
 
+## Environment variables
+
+Operator-tunable knobs (#960). Unless noted, these are safe to leave at the default; they exist so production
+deployments can adjust behaviour without a code change.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `AGENT_NAME` | `local-agent` | Agent identity; surfaced in conversation logs, Prometheus labels, and cross-agent manifest entries. |
+| `HARNESS_PORT` | `8000` | App listener port. |
+| `METRICS_ENABLED` | `false` | Enable the dedicated Prometheus listener on `METRICS_PORT`. |
+| `METRICS_PORT` | `9000` | Dedicated metrics/internal-events listener port. `/internal/events/hook-decision` binds here when enabled (#924). |
+| `MANIFEST_PATH` | `/home/agent/manifest.json` | Team manifest JSON file listing all agents in the deployment. |
+| `BACKENDS_READY_WARN_AFTER` | `120` | Seconds of unready backends before the warmup watcher logs a warning; also shapes the warmup-shield 503 path (#785, #925). |
+| `HOOK_POST_MAX_INFLIGHT` | `64` | Cap on simultaneous hook.decision POSTs from backend → harness; excess calls are shed and counted (#878, #931). |
+| `HOOK_EVENTS_AUTH_TOKEN` | *(unset — fail-safe reject)* | Bearer token required on `/internal/events/hook-decision`. When unset every request is 401'd; no implicit fallback to `TRIGGERS_AUTH_TOKEN` (#700, #933). |
+| `TRIGGERS_AUTH_TOKEN` | *(unset)* | Bearer token required on `/triggers/{endpoint}` POSTs. |
+| `ADHOC_RUN_AUTH_TOKEN` | *(unset)* | Bearer token required on `/jobs/{n}/run`, `/tasks/{n}/run`, `/heartbeat/run`. |
+| `CONVERSATIONS_AUTH_TOKEN` | *(unset)* | Bearer token required on `/conversations`, `/trace`, `/mcp`. Empty token logs a startup warning (#517). |
+| `SESSION_ID_SECRET` | *(unset — permissive)* | Server-side HMAC key for `derive_session_id` (#867). When set, session IDs are bound to `caller_identity` so a caller cannot hijack another caller's session. Leave unset only in single-tenant dev; set to a 256-bit random value in production. Rotating the secret invalidates in-flight session IDs — coordinate rotation with a backend restart. |
+| `CORS_ALLOW_ORIGINS` | *(empty)* | Comma-separated list of allowed Origins on non-internal endpoints. Wildcard `*` is not accepted when ad-hoc-run / trigger tokens are in use (#927). |
+| `LOG_TRACE_CONTENT_MAX_BYTES` | `16384` | Per-entry cap on `tool_result` content serialised into trace logs (#939). |
+| `PROMPT_ENV_MAX_BYTES` | `65536` | Cap on the size of the resolved prompt environment variables merged into dispatched prompts. |
+| `OTEL_ENABLED` | `false` | Layer full OpenTelemetry span export on top of the W3C plumbing (#469). |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | OTLP/HTTP collector endpoint when `OTEL_ENABLED=true`. |
+| `OTEL_SERVICE_NAME` | `harness` | Service name on exported spans. |
+| `OTEL_TRACES_SAMPLER` | `parentbased_always_on` | OTel trace sampler configuration. |
+
+Backend-targeted URL overrides follow the `A2A_URL_<ID_UPPERCASED_WITH_UNDERSCORES>` convention (e.g.
+`A2A_URL_IRIS_CLAUDE`) and let a single `backend.yaml` work across Docker Compose, Kubernetes Service DNS, and
+localhost sidecars. See the repo root `AGENTS.md` under "Routing configuration" for the full list.
+
 ## Runtime
 
 harness is a Docker container. It mounts the agent's `.nyx/` directory for configuration and writes conversation and
