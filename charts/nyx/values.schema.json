@@ -232,6 +232,78 @@
         }
       }
     },
+    "mcpTools": {
+      "$comment": "MCP tool servers opted in per-tool (#954). additionalProperties:false at the tool level catches typos like `kubernates.enabled` that would otherwise pass validation, deploy silently, and only surface as a runtime 404/500 from the backend → MCP hop.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "metricsPort": { "type": ["integer", "string"] },
+        "kubernetes": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "automountServiceAccountToken": { "type": "boolean" },
+            "image": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "repository": { "type": "string" },
+                "tag": { "type": "string" },
+                "digest": { "type": "string" },
+                "pullPolicy": { "type": "string" }
+              }
+            },
+            "replicas": { "type": ["integer", "string"] },
+            "serviceAccountName": { "type": "string" },
+            "imagePullSecrets": { "type": "array" },
+            "resources": { "type": "object" },
+            "env": { "type": "array" },
+            "envFrom": { "type": "array" },
+            "rbac": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "create": { "type": "boolean" },
+                "rules": { "type": "array" }
+              }
+            }
+          }
+        },
+        "helm": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "automountServiceAccountToken": { "type": "boolean" },
+            "image": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "repository": { "type": "string" },
+                "tag": { "type": "string" },
+                "digest": { "type": "string" },
+                "pullPolicy": { "type": "string" }
+              }
+            },
+            "replicas": { "type": ["integer", "string"] },
+            "serviceAccountName": { "type": "string" },
+            "imagePullSecrets": { "type": "array" },
+            "resources": { "type": "object" },
+            "env": { "type": "array" },
+            "envFrom": { "type": "array" },
+            "rbac": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "create": { "type": "boolean" },
+                "rules": { "type": "array" }
+              }
+            }
+          }
+        }
+      }
+    },
     "agents": {
       "type": "array",
       "items": {
