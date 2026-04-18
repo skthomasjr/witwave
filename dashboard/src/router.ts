@@ -18,6 +18,16 @@ export const router = createRouter({
   routes: [
     { path: "/", name: "team", component: TeamView },
     { path: "/automation", name: "automation", component: AutomationView },
+    // Deep-link shape for the Automation drawer (#969). kind ∈
+    // {job,task,trigger,webhook,continuation,heartbeat}; name matches the
+    // item name the view already uses as a key. The view observes
+    // route.params and opens the corresponding card; the plain /automation
+    // route stays as the index. Mirrors the /otel-traces/:traceId pattern.
+    {
+      path: "/automation/:kind/:name",
+      name: "automation-detail",
+      component: AutomationView,
+    },
     // Legacy redirects — keep working for one release at minimum so any
     // bookmarks or linked docs don't 404 silently.
     { path: "/jobs", redirect: { name: "automation" } },
@@ -27,6 +37,14 @@ export const router = createRouter({
     { path: "/continuations", redirect: { name: "automation" } },
     { path: "/heartbeat", redirect: { name: "automation" } },
     { path: "/conversations", name: "conversations", component: ConversationsView },
+    // Deep-link shape for the Conversations drawer (#969). agent is the
+    // NyxAgent name; sessionId is the conversation session id the view
+    // already uses to build /api/agents/{agent}/conversations/{sessionId}.
+    {
+      path: "/conversations/:agent/:sessionId",
+      name: "conversations-detail",
+      component: ConversationsView,
+    },
     { path: "/trace", name: "trace", component: TraceView },
     // Tool audit rows now land in tool-activity.jsonl with event_type='tool_audit'
     // and render through the Tool Trace tab. Legacy path redirects so
