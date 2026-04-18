@@ -6,6 +6,8 @@ so no relabeling is needed at the proxy layer — raw text is concatenated as-is
 
 import asyncio
 import logging
+import os
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 
@@ -13,6 +15,28 @@ from backends.config import BackendConfig
 from metrics import agent_metrics_backend_fetch_errors_total
 
 logger = logging.getLogger(__name__)
+
+
+def _metrics_url(backend_url: str) -> str:
+    """Rewrite a backend's app-port URL to point at its metrics listener (#643).
+
+    Backends now serve /metrics on a dedicated port (METRICS_PORT, default
+    9000) instead of the app port. `backend.url` in backend.yaml still
+    carries the APP URL (so routing / A2A continue to work), so we swap
+    the port here at fetch time. Preserves scheme, host, and path — only
+    the port changes.
+    """
+    metrics_port = int(os.environ.get("METRICS_PORT", "9000"))
+    parsed = urlparse(backend_url.rstrip('/'))
+    hostname = parsed.hostname or parsed.netloc.split(':', 1)[0]
+    if parsed.username is not None or parsed.password is not None:
+        userinfo = parsed.username or ''
+        if parsed.password is not None:
+            userinfo += f":{parsed.password}"
+        new_netloc = f"{userinfo}@{hostname}:{metrics_port}"
+    else:
+        new_netloc = f"{hostname}:{metrics_port}"
+    return urlunparse((parsed.scheme, new_netloc, '/metrics', '', '', ''))
 
 
 async def fetch_backend_metrics(backends: list[BackendConfig]) -> str:
@@ -28,7 +52,7 @@ async def fetch_backend_metrics(backends: list[BackendConfig]) -> str:
     reachable = [b for b in backends if b.url]
 
     async def _fetch_one(client: httpx.AsyncClient, backend: BackendConfig) -> str:
-        metrics_url = backend.url.rstrip('/') + '/metrics'
+        metrics_url = _metrics_url(backend.url)
         try:
             resp = await client.get(metrics_url)
             if resp.status_code == 200:
