@@ -30,6 +30,15 @@ RUN pip install --no-cache-dir --user -r /home/tool/requirements.txt
 
 ENV PATH="/home/tool/.local/bin:$PATH"
 
+# helm-diff plugin (#854) — powers the `diff()` tool, which shows a
+# unified diff of what `helm upgrade` WOULD change. Pinned to a
+# known-good version for build reproducibility; bump in lockstep with
+# the Helm CLI pin above. Installs into ~/.local/share/helm/plugins
+# so the per-user default plugin home works without HELM_PLUGINS env
+# mutation.
+ARG HELM_DIFF_VERSION=v3.9.13
+RUN helm plugin install https://github.com/databus23/helm-diff --version "${HELM_DIFF_VERSION}"
+
 COPY --chown=tool:tool tools/helm/ /home/tool/
 # Shared helpers (#637, #643) — both mounted under /home/tool/shared so
 # server.py can `from otel import ...` and

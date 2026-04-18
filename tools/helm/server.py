@@ -430,19 +430,27 @@ def install(
     repo: str | None = None,
     wait: bool = False,
     timeout: str | None = None,
+    dry_run: bool = False,
 ) -> dict:
     """Install a chart as a new release.
 
     `chart` may be a chart reference (`repo/chart`), a local path, or a URL.
     If `repo` is set, it is passed as `--repo` (useful when not using a
     pre-added repo alias).
+
+    Set ``dry_run=True`` to preview the install without touching the
+    cluster — helm's client-side dry-run renders templates and returns
+    the same JSON shape as a real install with empty runtime status.
+    Useful for LLM-authored requests the operator wants to confirm
+    before committing (#854).
     """
     _reject_flag_like(
         name=name, chart=chart, namespace=namespace, version=version, repo=repo
     )
     with _handler_span(
         "install",
-        {"helm.release": name, "helm.chart": chart, "helm.namespace": namespace},
+        {"helm.release": name, "helm.chart": chart, "helm.namespace": namespace,
+         "helm.dry_run": dry_run},
     ) as _h:
         try:
             args = ["install", name, chart, "-n", namespace, "-o", "json"]
@@ -456,6 +464,8 @@ def install(
                 args.append("--wait")
             if timeout:
                 args += ["--timeout", timeout]
+            if dry_run:
+                args.append("--dry-run")
 
             vf = _write_values(values)
             try:
@@ -483,14 +493,21 @@ def upgrade(
     timeout: str | None = None,
     reset_values: bool = False,
     reuse_values: bool = False,
+    dry_run: bool = False,
 ) -> dict:
-    """Upgrade an existing release."""
+    """Upgrade an existing release.
+
+    Set ``dry_run=True`` to preview the upgrade without touching the
+    cluster (#854). Pair with :func:`diff` for a side-by-side view of
+    rendered manifest changes before committing.
+    """
     _reject_flag_like(
         name=name, chart=chart, namespace=namespace, version=version, repo=repo
     )
     with _handler_span(
         "upgrade",
-        {"helm.release": name, "helm.chart": chart, "helm.namespace": namespace},
+        {"helm.release": name, "helm.chart": chart, "helm.namespace": namespace,
+         "helm.dry_run": dry_run},
     ) as _h:
         try:
             args = ["upgrade", name, chart, "-n", namespace, "-o", "json"]
@@ -508,12 +525,64 @@ def upgrade(
                 args.append("--reset-values")
             if reuse_values:
                 args.append("--reuse-values")
+            if dry_run:
+                args.append("--dry-run")
 
             vf = _write_values(values)
             try:
                 if vf:
                     args += ["-f", str(vf)]
                 return _helm(args, parse_json=True) or {}
+            finally:
+                if vf:
+                    vf.unlink(missing_ok=True)
+        except Exception as exc:
+            set_span_error(_h, exc)
+            raise
+
+
+@mcp.tool()
+def diff(
+    name: str,
+    chart: str,
+    namespace: str,
+    values: dict | None = None,
+    version: str | None = None,
+    repo: str | None = None,
+    context: int = 3,
+) -> str:
+    """Show a unified diff of what ``helm upgrade`` WOULD change (#854).
+
+    Requires the `helm-diff` plugin to be installed in the tool image
+    (`helm plugin install https://github.com/databus23/helm-diff`). When
+    absent, returns a clear stderr message rather than silently
+    succeeding. Useful to let an LLM caller inspect a proposed upgrade
+    before running it.
+
+    Returns the raw text diff from ``helm diff upgrade`` — consumers
+    should treat an empty string as "no changes".
+    """
+    _reject_flag_like(
+        name=name, chart=chart, namespace=namespace, version=version, repo=repo
+    )
+    if not isinstance(context, int) or context < 0:
+        raise ValueError("helm: 'context' must be a non-negative int")
+    with _handler_span(
+        "diff",
+        {"helm.release": name, "helm.chart": chart, "helm.namespace": namespace},
+    ) as _h:
+        try:
+            args = ["diff", "upgrade", name, chart, "-n", namespace,
+                    "--context", str(context)]
+            if version:
+                args += ["--version", version]
+            if repo:
+                args += ["--repo", repo]
+            vf = _write_values(values)
+            try:
+                if vf:
+                    args += ["-f", str(vf)]
+                return _helm(args) or ""
             finally:
                 if vf:
                     vf.unlink(missing_ok=True)
@@ -551,17 +620,28 @@ def rollback(name: str, namespace: str, revision: int, wait: bool = False) -> st
 
 
 @mcp.tool()
-def uninstall(name: str, namespace: str, keep_history: bool = False) -> dict:
-    """Uninstall a release."""
+def uninstall(
+    name: str,
+    namespace: str,
+    keep_history: bool = False,
+    dry_run: bool = False,
+) -> dict:
+    """Uninstall a release.
+
+    Set ``dry_run=True`` to preview which resources would be removed
+    without actually deleting them (#854).
+    """
     _reject_flag_like(name=name, namespace=namespace)
     with _handler_span(
         "uninstall",
-        {"helm.release": name, "helm.namespace": namespace},
+        {"helm.release": name, "helm.namespace": namespace, "helm.dry_run": dry_run},
     ) as _h:
         try:
             args = ["uninstall", name, "-n", namespace]
             if keep_history:
                 args.append("--keep-history")
+            if dry_run:
+                args.append("--dry-run")
             out = _helm(args)
             return {"name": name, "namespace": namespace, "output": out.strip()}
         except Exception as exc:

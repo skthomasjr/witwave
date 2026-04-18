@@ -436,7 +436,11 @@ def logs(
 
 
 @mcp.tool()
-def apply(manifest: str, caller_id: str | None = None) -> list[dict]:
+def apply(
+    manifest: str,
+    caller_id: str | None = None,
+    dry_run: bool = False,
+) -> list[dict]:
     """Server-side apply a YAML or JSON manifest (supports multi-doc YAML).
 
     ``caller_id`` is appended to the SSA field_manager as a sanitised
@@ -444,11 +448,17 @@ def apply(manifest: str, caller_id: str | None = None) -> list[dict]:
     on the same resource surface distinct SSA conflict messages and
     audit trails (#776). Falls back to the AGENT_NAME env var, then
     the bare base manager when neither is supplied.
+
+    Set ``dry_run=True`` for server-side dry-run (#854): the apiserver
+    validates and resolves the apply as if it would commit, but skips
+    persistence. The returned objects reflect the resolved post-apply
+    state so LLM callers can inspect what WOULD change before running
+    for real.
     """
     field_manager = _resolve_field_manager(caller_id)
-    with _handler_span("apply", {"k8s.field_manager": field_manager}) as _h:
+    with _handler_span("apply", {"k8s.field_manager": field_manager, "k8s.dry_run": dry_run}) as _h:
         try:
-            log.info("apply: field_manager=%s", field_manager)
+            log.info("apply: field_manager=%s dry_run=%s", field_manager, dry_run)
             docs = [d for d in yaml.safe_load_all(manifest) if d]
             results: list[dict] = []
             for doc in docs:
@@ -474,6 +484,12 @@ def apply(manifest: str, caller_id: str | None = None) -> list[dict]:
                 }
                 if ns:
                     patch_kwargs["namespace"] = ns
+                if dry_run:
+                    # Server-side dry-run: the apiserver resolves the apply
+                    # end-to-end (admission, defaulting, conflicts) but
+                    # skips persistence. Exact field name expected by the
+                    # dynamic client's REST helper.
+                    patch_kwargs["dry_run"] = ["All"]
                 with _api_span(
                     "apply",
                     kind,
@@ -482,6 +498,7 @@ def apply(manifest: str, caller_id: str | None = None) -> list[dict]:
                         "k8s.namespace": ns,
                         "k8s.api_version": api_version,
                         "k8s.field_manager": field_manager,
+                        "k8s.dry_run": dry_run,
                     },
                 ):
                     applied = resource.patch(**patch_kwargs)
@@ -499,11 +516,20 @@ def delete(
     namespace: str | None = None,
     api_version: str | None = None,
     propagation_policy: str = "Background",
+    dry_run: bool = False,
 ) -> dict:
-    """Delete a resource by kind / namespace / name."""
+    """Delete a resource by kind / namespace / name.
+
+    Set ``dry_run=True`` to validate the delete without actually
+    removing the object (#854). The apiserver runs the full delete
+    flow (finalizer accounting, cascade resolution) but skips
+    persistence, so LLM callers can confirm cascade semantics before
+    running for real.
+    """
     with _handler_span(
         "delete",
-        {"k8s.kind": kind, "k8s.name": name, "k8s.namespace": namespace},
+        {"k8s.kind": kind, "k8s.name": name, "k8s.namespace": namespace,
+         "k8s.dry_run": dry_run},
     ) as _h:
         try:
             resource = _resolve(kind, api_version)
@@ -511,7 +537,9 @@ def delete(
             kwargs: dict[str, Any] = {"name": name, "body": body}
             if namespace:
                 kwargs["namespace"] = namespace
-            with _api_span("delete", kind, {"k8s.name": name, "k8s.namespace": namespace}):
+            if dry_run:
+                kwargs["dry_run"] = ["All"]
+            with _api_span("delete", kind, {"k8s.name": name, "k8s.namespace": namespace, "k8s.dry_run": dry_run}):
                 return _to_dict(resource.delete(**kwargs))
         except Exception as exc:
             set_span_error(_h, exc)
