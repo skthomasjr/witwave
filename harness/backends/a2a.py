@@ -240,6 +240,11 @@ class A2ABackend:
             "nyx.session_id": session_id,
             "http.request.method": "POST",
         }
+        # Gate this call against the circuit breaker (#655). When the
+        # breaker is open and still cooling off, _circuit_acquire raises
+        # ConnectionError before we spend any retry budget. When the
+        # cool-off has elapsed the call is allowed through as a probe.
+        await self._circuit_acquire()
         with start_span("a2a.backend.run_query", kind="client", attributes=_span_attrs) as _span:
             # When OTel is enabled, inject() overwrites the traceparent we
             # pre-computed from the bare TraceContext with one whose
@@ -267,6 +272,9 @@ class A2ABackend:
             try:
                 response_text = await self._post_with_retry(self._url, body, traceparent=_outbound_traceparent)
             except Exception as _exc:
+                # Record the failure so the breaker can open after
+                # _CIRCUIT_THRESHOLD consecutive failures (#655).
+                await self._circuit_record(ok=False)
                 set_span_error(_span, _exc)
                 raise
 
@@ -276,16 +284,21 @@ class A2ABackend:
             try:
                 data = json.loads(response_text)
             except Exception as exc:
+                await self._circuit_record(ok=False)
                 set_span_error(_span, exc)
                 raise ValueError(f"A2A backend '{self.id}' returned non-JSON response: {response_text!r}") from exc
 
             error = data.get("error")
             if error:
+                await self._circuit_record(ok=False)
                 _err = RuntimeError(f"A2A backend '{self.id}' returned error: {error}")
                 set_span_error(_span, _err)
                 raise _err
 
             result = data.get("result") or {}
+            # Record a successful outcome so the failure counter resets
+            # and the breaker closes from half_open if applicable.
+            await self._circuit_record(ok=True)
             return self._extract_text(result)
 
     def _observe_backend_request(self, start_monotonic: float, result: str) -> None:
