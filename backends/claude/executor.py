@@ -384,18 +384,40 @@ def _load_allowed_from_settings(path: str) -> list[str] | None:
 
 
 _ALLOWED_TOOLS_ENV = os.environ.get("ALLOWED_TOOLS")
-_settings_allow = _load_allowed_from_settings(_SETTINGS_PATH)
-if _ALLOWED_TOOLS_ENV is not None:
-    ALLOWED_TOOLS = [t.strip() for t in _ALLOWED_TOOLS_ENV.split(",") if t.strip()]
+
+
+def _resolve_allowed_tools() -> tuple[list[str], str]:
+    """Resolve ALLOWED_TOOLS following env → settings.json → default order.
+
+    Returns a (tools, source) tuple. ``source`` is one of ``"env"``,
+    ``"settings"``, or ``"default"`` — used by the hot-reload watcher to
+    build an informative log line without re-computing the resolution logic.
+    The env var is frozen at import time and always wins, so any
+    settings.json edit is silently shadowed until the env var is unset.
+    """
+    if _ALLOWED_TOOLS_ENV is not None:
+        return [t.strip() for t in _ALLOWED_TOOLS_ENV.split(",") if t.strip()], "env"
+    allow = _load_allowed_from_settings(_SETTINGS_PATH)
+    if allow is not None:
+        return allow, "settings"
+    return [t.strip() for t in _DEFAULT_TOOLS.split(",") if t.strip()], "default"
+
+
+_tools_initial, _tools_source = _resolve_allowed_tools()
+# ALLOWED_TOOLS is *mutated in place* by ``settings_watcher`` so
+# ``_make_options`` continues to read the module-level reference as it
+# always has.  The env-var branch yields a frozen result — the watcher
+# skips writes in that case to preserve the documented "env always wins"
+# contract (#717).
+ALLOWED_TOOLS: list[str] = list(_tools_initial)
+if _tools_source == "env":
     logger.info("ALLOWED_TOOLS resolved to: %s (from ALLOWED_TOOLS env).", ",".join(ALLOWED_TOOLS))
-elif _settings_allow is not None:
-    ALLOWED_TOOLS = _settings_allow
+elif _tools_source == "settings":
     logger.info(
         "ALLOWED_TOOLS resolved to: %s (from %s permissions.allow).",
         ",".join(ALLOWED_TOOLS), _SETTINGS_PATH,
     )
 else:
-    ALLOWED_TOOLS = [t.strip() for t in _DEFAULT_TOOLS.split(",") if t.strip()]
     logger.warning(
         "ALLOWED_TOOLS resolved to default (read-only): %s. "
         "Set ALLOWED_TOOLS env var or .claude/settings.json permissions.allow "
@@ -1526,8 +1548,13 @@ class AgentExecutor(A2AAgentExecutor):
         _session_path_self_test()
 
     def _mcp_watchers(self):
-        """Return callables for MCP config, CLAUDE.md, and hooks.yaml watching."""
-        return [self.mcp_config_watcher, self.agent_md_watcher, self.hooks_config_watcher]
+        """Return callables for MCP config, CLAUDE.md, hooks.yaml, and settings.json watching."""
+        return [
+            self.mcp_config_watcher,
+            self.agent_md_watcher,
+            self.hooks_config_watcher,
+            self.settings_watcher,
+        ]
 
     async def close(self) -> None:
         """Cancel and drain all in-flight execute() tasks and MCP watcher tasks (#587).
@@ -1687,6 +1714,69 @@ class AgentExecutor(A2AAgentExecutor):
             logger.warning("hooks.yaml directory watcher exited — retrying in 10s.")
             if backend_file_watcher_restarts_total is not None:
                 backend_file_watcher_restarts_total.labels(**_LABELS, watcher="hooks").inc()
+            await asyncio.sleep(10)
+
+    async def settings_watcher(self) -> None:
+        """Watch .claude/settings.json and hot-reload ``ALLOWED_TOOLS`` (#717).
+
+        Mirrors ``hooks_config_watcher`` — initial pass is a no-op (the
+        module-level resolution already ran at import) and subsequent edits
+        re-run ``_load_allowed_from_settings`` and mutate ``ALLOWED_TOOLS``
+        in place so subsequent calls to ``_make_options`` pick up the new
+        value without restarting the container.
+
+        When ``ALLOWED_TOOLS`` was resolved from the env var at import time,
+        edits to settings.json are ignored (the documented "env always wins"
+        contract) — the watcher logs one line explaining why and otherwise
+        stays quiet.  Malformed JSON keeps the prior list in place;
+        ``_load_allowed_from_settings`` already logs and returns ``None`` in
+        that case.
+        """
+        if _tools_source == "env":
+            logger.info(
+                "settings_watcher: ALLOWED_TOOLS env var is set — settings.json edits will be ignored "
+                "until the env var is unset (#717)."
+            )
+            return
+
+        watch_dir = os.path.dirname(os.path.abspath(_SETTINGS_PATH))
+        while True:
+            if not os.path.isdir(watch_dir):
+                logger.info("settings.json directory not found — retrying in 10s.")
+                await asyncio.sleep(10)
+                continue
+            async for changes in awatch(watch_dir, recursive=False):
+                if backend_watcher_events_total is not None:
+                    backend_watcher_events_total.labels(**_LABELS, watcher="settings").inc()
+                for _, path in changes:
+                    if os.path.abspath(path) == os.path.abspath(_SETTINGS_PATH):
+                        try:
+                            new_allow = await asyncio.to_thread(
+                                _load_allowed_from_settings, _SETTINGS_PATH,
+                            )
+                        except Exception as exc:
+                            logger.warning(
+                                "settings.json reload raised — keeping previous ALLOWED_TOOLS: %s",
+                                exc,
+                            )
+                            break
+                        if new_allow is None:
+                            # File disappeared or permissions.allow removed —
+                            # fall back to the built-in default so a bad edit
+                            # never silently widens the permission set.
+                            new_list = [t.strip() for t in _DEFAULT_TOOLS.split(",") if t.strip()]
+                        else:
+                            new_list = new_allow
+                        if new_list != ALLOWED_TOOLS:
+                            ALLOWED_TOOLS[:] = new_list
+                            logger.info(
+                                "settings.json reloaded: ALLOWED_TOOLS -> %s (takes effect on next session).",
+                                ",".join(ALLOWED_TOOLS),
+                            )
+                        break
+            logger.warning("settings.json directory watcher exited — retrying in 10s.")
+            if backend_file_watcher_restarts_total is not None:
+                backend_file_watcher_restarts_total.labels(**_LABELS, watcher="settings").inc()
             await asyncio.sleep(10)
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
