@@ -7,7 +7,7 @@ import time
 import httpx
 
 from backends.config import BackendConfig
-from metrics import agent_backend_proxy_fetch_errors_total
+from metrics import harness_backend_proxy_fetch_errors_total
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +32,8 @@ def _log_fetch_error(backend_id: str, endpoint: str, message: str) -> None:
 
 def _count_fetch_error(backend_id: str, endpoint: str) -> None:
     """Increment the proxy fetch-error counter when metrics are enabled."""
-    if agent_backend_proxy_fetch_errors_total is not None:
-        agent_backend_proxy_fetch_errors_total.labels(
+    if harness_backend_proxy_fetch_errors_total is not None:
+        harness_backend_proxy_fetch_errors_total.labels(
             backend=backend_id, endpoint=endpoint
         ).inc()
 
@@ -47,7 +47,7 @@ async def fetch_backend_conversations(
     """Fetch /conversations from each backend concurrently and return merged entries sorted by ts.
 
     Backends that are unreachable or return non-200 are skipped; failures are counted in
-    agent_backend_proxy_fetch_errors_total{backend, endpoint="conversations"} and logged at
+    harness_backend_proxy_fetch_errors_total{backend, endpoint="conversations"} and logged at
     warning (throttled per-backend per-endpoint) so silent degradation is visible (#579).
     When auth_token is provided, it is forwarded as a Bearer Authorization header.
     """
@@ -130,7 +130,7 @@ async def fetch_backend_tool_audit(
 
     Mirrors :func:`fetch_backend_conversations` / :func:`fetch_backend_trace`:
     unreachable or non-200 backends are skipped, failures counted in
-    ``agent_backend_proxy_fetch_errors_total{endpoint="tool_audit"}`` and logged
+    ``harness_backend_proxy_fetch_errors_total{endpoint="tool_audit"}`` and logged
     at warning (throttled). ``since`` / ``decision`` / ``tool`` / ``session`` are
     forwarded verbatim so the per-backend read does the filtering cheaply.
     """
@@ -220,7 +220,7 @@ async def fetch_backend_trace(
     """Fetch /trace from each backend concurrently and return merged entries sorted by ts.
 
     Backends that are unreachable or return non-200 are skipped; failures are counted in
-    agent_backend_proxy_fetch_errors_total{backend, endpoint="trace"} and logged at
+    harness_backend_proxy_fetch_errors_total{backend, endpoint="trace"} and logged at
     warning (throttled per-backend per-endpoint) so silent degradation is visible (#579).
     When auth_token is provided, it is forwarded as a Bearer Authorization header.
     """
