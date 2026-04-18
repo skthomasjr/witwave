@@ -156,17 +156,22 @@ def _to_dict(obj: Any) -> Any:
 _REDACTED = "***REDACTED***"
 
 
-def _redact_secret_payload(obj: Any) -> Any:
+def _redact_secret_payload(obj: Any, *, outer_kind: str | None = None) -> Any:
     """Replace .data / .stringData values on Secret objects with _REDACTED (#775).
 
-    Only triggers when the top-level object advertises kind == "Secret".
-    The keys themselves are retained (so callers can still see what
-    fields exist) — only the base64-encoded payload is removed.
+    Triggers when either the object advertises ``kind == "Secret"`` OR the
+    caller declares via ``outer_kind`` that it came from a list whose kind
+    is Secret (#916). The dynamic-client list path strips per-item .kind
+    from response items, so relying on obj.get('kind') alone silently
+    bypasses redaction on every list_resources(kind='Secret') response.
+    The keys themselves are retained (so callers can still see what fields
+    exist) — only the base64-encoded payload is removed.
     Non-Secret kinds pass through unchanged.
     """
     if not isinstance(obj, dict):
         return obj
-    if obj.get("kind") != "Secret":
+    _kind = obj.get("kind") or outer_kind
+    if _kind != "Secret":
         return obj
     redacted = dict(obj)
     for field in ("data", "string_data", "stringData"):
@@ -263,8 +268,14 @@ def list_resources(
             # Redact Secret payloads by default (#775). If the caller
             # really wants secret material they must go through
             # read_secret_value, which is audited separately.
+            # Pass the outer `kind` through so Secret items that lack
+            # per-item .kind (dynamic-client list responses strip it) are
+            # still redacted (#916).
             return {
-                "items": [_redact_secret_payload(_to_dict(item)) for item in items],
+                "items": [
+                    _redact_secret_payload(_to_dict(item), outer_kind=kind)
+                    for item in items
+                ],
                 "continue": next_token,
             }
         except Exception as exc:
