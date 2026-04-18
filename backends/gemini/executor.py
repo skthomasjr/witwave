@@ -62,6 +62,7 @@ if _genai_version is not None:
             _genai_version, _MIN_GENAI_VERSION, _MIN_GENAI_VERSION,
         )
 from metrics import (
+
     backend_a2a_last_request_timestamp_seconds,
     backend_a2a_request_duration_seconds,
     backend_a2a_requests_total,
@@ -86,6 +87,8 @@ from metrics import (
     backend_mcp_command_rejected_total,
     backend_mcp_config_errors_total,
     backend_mcp_config_reloads_total,
+    backend_mcp_server_exits_total,
+    backend_mcp_server_up,
     backend_mcp_servers_active,
     backend_model_requests_total,
     backend_prompt_length_bytes,
@@ -1882,12 +1885,36 @@ class AgentExecutor(A2AAgentExecutor):
                             session = await new_stack.enter_async_context(ClientSession(read, write))
                             await session.initialize()
                             new_live.append(session)
+                            # Per-server liveness gauge (#816). Set to 1 on
+                            # successful init; flipped to 0 when the stack
+                            # is torn down or replaced on hot-reload.
+                            if backend_mcp_server_up is not None:
+                                try:
+                                    backend_mcp_server_up.labels(
+                                        **_LABELS, server=name,
+                                    ).set(1)
+                                except Exception:
+                                    pass
                         except Exception as _mcp_exc:
                             set_span_error(_mcp_span, _mcp_exc)
                             logger.warning(
                                 "MCP server %r failed to start (%s); proceeding without it.",
                                 name, _mcp_exc,
                             )
+                            if backend_mcp_server_up is not None:
+                                try:
+                                    backend_mcp_server_up.labels(
+                                        **_LABELS, server=name,
+                                    ).set(0)
+                                except Exception:
+                                    pass
+                            if backend_mcp_server_exits_total is not None:
+                                try:
+                                    backend_mcp_server_exits_total.labels(
+                                        **_LABELS, server=name, reason="init_failed",
+                                    ).inc()
+                                except Exception:
+                                    pass
             except Exception:
                 try:
                     await new_stack.aclose()

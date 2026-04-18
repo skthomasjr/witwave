@@ -122,6 +122,11 @@ backend_mcp_config_errors_total: prometheus_client.Counter | None = None
 backend_mcp_command_rejected_total: prometheus_client.Counter | None = None
 backend_mcp_config_reloads_total: prometheus_client.Counter | None = None
 backend_mcp_servers_active: prometheus_client.Gauge | None = None
+# Per-server liveness gauge and exit counter (#816). Without these a
+# crashed MCP stdio subprocess silently disappears from operator
+# visibility until the next hot-reload observes missing capabilities.
+backend_mcp_server_up: prometheus_client.Gauge | None = None
+backend_mcp_server_exits_total: prometheus_client.Counter | None = None
 
 # Tool call metrics (#640 — parity with codex #445). Populated on each
 # function_call observed in the google-genai AFC history.
@@ -547,6 +552,21 @@ if _enabled:
         "backend_mcp_config_reloads_total",
         "Total successful reloads of mcp.json triggered by the file watcher.",
         ["agent", "agent_id", "backend"],
+    )
+    # Per-server up gauge + exits counter (#816). Operators alert on
+    # sum by(server)(backend_mcp_server_up) dropping to 0 or on
+    # rate(backend_mcp_server_exits_total[5m]) > 0.
+    backend_mcp_server_up = prometheus_client.Gauge(
+        "backend_mcp_server_up",
+        "1 when the MCP stdio ClientSession for this server initialised "
+        "and is live, 0 otherwise.",
+        ["agent", "agent_id", "backend", "server"],
+    )
+    backend_mcp_server_exits_total = prometheus_client.Counter(
+        "backend_mcp_server_exits_total",
+        "Total MCP stdio subprocess exits, partitioned by reason "
+        "(init_failed|normal_close|reload).",
+        ["agent", "agent_id", "backend", "server", "reason"],
     )
     backend_mcp_servers_active = prometheus_client.Gauge(
         "backend_mcp_servers_active",
