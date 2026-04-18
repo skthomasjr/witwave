@@ -44,16 +44,18 @@ const sharedLoading = ref<boolean>(true);
 
 // Poller configuration — the effective interval is min(intervalMs) across
 // *all* active subscribers so a later subscriber that needs tighter
-// cadence can always win (#891). The timer is restarted whenever the
-// effective interval changes. Member/directory timeouts take the latest
-// supplied value (still tight enough in practice).
+// cadence can always win (#891). Timeouts pick the MAX across subscribers
+// (most conservative) so a later view mounting with a tight timeout
+// doesn't cause spurious AbortError on a healthy but busy agent (#951).
+// All three values restart whenever the derived aggregate changes.
 let currentMemberTimeoutMs = 5000;
 let currentDirectoryTimeoutMs = 5000;
 
-// Multiset of requested interval values; we pick the min on every
-// subscribe/unsubscribe so dropping a tight subscriber relaxes the
-// cadence correctly.
+// Multiset of requested option values; we pick min(interval)/max(timeouts)
+// on every subscribe/unsubscribe so changes propagate in both directions.
 const subscriberIntervals: number[] = [];
+const subscriberMemberTimeouts: number[] = [];
+const subscriberDirectoryTimeouts: number[] = [];
 let effectiveIntervalMs = 5000;
 let subscriberCount = 0;
 let pollerTimer: ReturnType<typeof setInterval> | null = null;
@@ -63,6 +65,17 @@ function recomputeEffectiveInterval(): number {
   return subscriberIntervals.length === 0
     ? 5000
     : Math.min(...subscriberIntervals);
+}
+
+function recomputeTimeouts(): void {
+  currentMemberTimeoutMs =
+    subscriberMemberTimeouts.length === 0
+      ? 5000
+      : Math.max(...subscriberMemberTimeouts);
+  currentDirectoryTimeoutMs =
+    subscriberDirectoryTimeouts.length === 0
+      ? 5000
+      : Math.max(...subscriberDirectoryTimeouts);
 }
 
 async function fetchMember(
@@ -127,13 +140,15 @@ function startShared(
   memberTimeoutMs: number,
   directoryTimeoutMs: number,
 ): void {
-  // Register this subscriber's interval and recompute the effective
-  // (min) cadence. A later subscriber that needs a tighter interval
-  // than the current one restarts the timer (#891); one that requests
-  // a looser interval leaves the timer unchanged.
+  // Register this subscriber's interval + timeouts and recompute the
+  // effective (min) cadence + (max) timeouts. A later subscriber that
+  // needs a tighter interval than the current one restarts the timer
+  // (#891); a later subscriber with a tighter timeout is ignored so
+  // healthy-but-busy agents aren't aborted mid-poll (#951).
   subscriberIntervals.push(intervalMs);
-  currentMemberTimeoutMs = memberTimeoutMs;
-  currentDirectoryTimeoutMs = directoryTimeoutMs;
+  subscriberMemberTimeouts.push(memberTimeoutMs);
+  subscriberDirectoryTimeouts.push(directoryTimeoutMs);
+  recomputeTimeouts();
 
   const newEffective = recomputeEffectiveInterval();
 
@@ -160,9 +175,18 @@ function stopShared(): void {
   pollerAborter = null;
 }
 
-function unregisterSubscriber(intervalMs: number): void {
+function unregisterSubscriber(
+  intervalMs: number,
+  memberTimeoutMs: number,
+  directoryTimeoutMs: number,
+): void {
   const idx = subscriberIntervals.indexOf(intervalMs);
   if (idx !== -1) subscriberIntervals.splice(idx, 1);
+  const mIdx = subscriberMemberTimeouts.indexOf(memberTimeoutMs);
+  if (mIdx !== -1) subscriberMemberTimeouts.splice(mIdx, 1);
+  const dIdx = subscriberDirectoryTimeouts.indexOf(directoryTimeoutMs);
+  if (dIdx !== -1) subscriberDirectoryTimeouts.splice(dIdx, 1);
+  recomputeTimeouts();
 
   if (subscriberIntervals.length === 0 || pollerTimer === null) {
     return;
@@ -182,7 +206,11 @@ export function __resetSharedTeamPoller(): void {
   stopShared();
   subscriberCount = 0;
   subscriberIntervals.length = 0;
+  subscriberMemberTimeouts.length = 0;
+  subscriberDirectoryTimeouts.length = 0;
   effectiveIntervalMs = 5000;
+  currentMemberTimeoutMs = 5000;
+  currentDirectoryTimeoutMs = 5000;
   sharedMembers.value = [];
   sharedError.value = "";
   sharedLoading.value = true;
@@ -202,14 +230,19 @@ export function useTeam(opts: UseTeamOptions = {}) {
     subscriberCount = Math.max(0, subscriberCount - 1);
     if (subscriberCount === 0) {
       // Last subscriber leaving: tear everything down AND clear the
-      // interval multiset so the poller starts cleanly on next mount.
+      // multisets so the poller starts cleanly on next mount.
       stopShared();
       subscriberIntervals.length = 0;
+      subscriberMemberTimeouts.length = 0;
+      subscriberDirectoryTimeouts.length = 0;
       effectiveIntervalMs = 5000;
+      currentMemberTimeoutMs = 5000;
+      currentDirectoryTimeoutMs = 5000;
     } else {
-      // Recompute min — if this subscriber was the tightest, the poller
-      // should relax its cadence accordingly (#891).
-      unregisterSubscriber(intervalMs);
+      // Recompute min(interval) / max(timeouts). If this subscriber was
+      // the tightest-cadence one, the poller should relax (#891); if it
+      // was the longest-timeout one, timeouts contract back (#951).
+      unregisterSubscriber(intervalMs, memberTimeoutMs, directoryTimeoutMs);
     }
   });
 
