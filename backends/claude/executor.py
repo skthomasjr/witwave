@@ -570,6 +570,35 @@ async def log_tool_audit(entry: dict) -> None:
         logger.error(f"log_tool_audit error: {e}")
 
 
+# Module-level httpx.AsyncClient reused across hook POSTs so TCP/TLS
+# connections pool instead of opening a fresh handshake for every tool
+# invocation (#661). Lazy-init guarded by an asyncio.Lock so concurrent
+# first-call hooks do not race. Closed from AgentExecutor.close().
+_HOOK_HTTP_CLIENT: "httpx.AsyncClient | None" = None  # noqa: F821
+_HOOK_HTTP_CLIENT_LOCK = asyncio.Lock()
+
+
+async def _get_hook_http_client() -> "httpx.AsyncClient":  # noqa: F821
+    global _HOOK_HTTP_CLIENT
+    if _HOOK_HTTP_CLIENT is None:
+        async with _HOOK_HTTP_CLIENT_LOCK:
+            if _HOOK_HTTP_CLIENT is None:
+                import httpx
+                _HOOK_HTTP_CLIENT = httpx.AsyncClient(timeout=HARNESS_EVENTS_TIMEOUT)
+    return _HOOK_HTTP_CLIENT
+
+
+async def _close_hook_http_client() -> None:
+    global _HOOK_HTTP_CLIENT
+    client = _HOOK_HTTP_CLIENT
+    _HOOK_HTTP_CLIENT = None
+    if client is not None:
+        try:
+            await client.aclose()
+        except Exception as exc:  # pragma: no cover — best-effort shutdown
+            logger.debug("hook httpx client close failed: %r", exc)
+
+
 # Module-level strong-ref set for fire-and-forget hook.decision POST tasks.
 # asyncio.create_task only keeps a weak reference to the task from the event
 # loop, so without a strong reference the task may be garbage-collected before
@@ -596,15 +625,14 @@ async def _post_hook_event_to_harness(event_dict: dict) -> None:
         # anyway, so emitting would only generate noise in both directions.
         logger.debug("hook.decision transport skipped: HARNESS_EVENTS_AUTH_TOKEN not set.")
         return
-    import httpx
     url = HARNESS_EVENTS_URL.rstrip("/") + "/internal/events/hook-decision"
     try:
-        async with httpx.AsyncClient(timeout=HARNESS_EVENTS_TIMEOUT) as client:
-            await client.post(
-                url,
-                json=event_dict,
-                headers={"Authorization": f"Bearer {HARNESS_EVENTS_AUTH_TOKEN}"},
-            )
+        client = await _get_hook_http_client()
+        await client.post(
+            url,
+            json=event_dict,
+            headers={"Authorization": f"Bearer {HARNESS_EVENTS_AUTH_TOKEN}"},
+        )
     except Exception as exc:
         # Transport failures are expected during harness restarts or network
         # blips; the span event from #633 still captured the decision.
@@ -1453,6 +1481,9 @@ class AgentExecutor(A2AAgentExecutor):
         if self._mcp_watcher_tasks:
             await asyncio.gather(*self._mcp_watcher_tasks, return_exceptions=True)
         self._mcp_watcher_tasks.clear()
+
+        # Close the module-level httpx client used for hook POSTs (#661).
+        await _close_hook_http_client()
 
     async def mcp_config_watcher(self) -> None:
         # Initial load: fall back to an empty server set if the first parse
