@@ -178,8 +178,58 @@ async function inClusterFetchDetail(
   signal: AbortSignal,
   timeoutMs: number,
 ): Promise<JaegerResponse<JaegerTrace[]>> {
-  // Detail fetch is the same fan-out, filtered client-side. Saves us
-  // per-agent probing for which pod owns the trace root.
+  // First try per-agent GET /api/agents/<name>/api/traces/<traceId>: the
+  // harness in-memory store serves a single trace by ID even when it has
+  // fallen out of the ring-buffer list view (#681). Only if no agent
+  // returns it do we fall back to the broad list-scan below.
+  const team = await fetchTeam(signal);
+  if (team.length) {
+    const byTid = new Map<string, JaegerTrace>();
+    const perAgent = await Promise.all(
+      team.map(async (m) => {
+        const perCallSignal =
+          typeof (AbortSignal as { any?: unknown }).any === "function"
+            ? (AbortSignal as unknown as {
+                any: (signals: AbortSignal[]) => AbortSignal;
+              }).any([signal, AbortSignal.timeout(timeoutMs)])
+            : signal;
+        try {
+          const r = await fetch(
+            `/api/agents/${encodeURIComponent(m.name)}/api/traces/${encodeURIComponent(traceId)}`,
+            { signal: perCallSignal },
+          );
+          if (!r.ok) return [] as JaegerTrace[];
+          const body = (await r.json()) as JaegerResponse<JaegerTrace[]>;
+          return body.data ?? [];
+        } catch {
+          return [] as JaegerTrace[];
+        }
+      }),
+    );
+    for (const list of perAgent) {
+      for (const t of list) {
+        if (t.traceID !== traceId) continue;
+        const existing = byTid.get(t.traceID);
+        if (!existing) {
+          byTid.set(t.traceID, { ...t });
+        } else {
+          const seen = new Set(existing.spans.map((s) => s.spanID));
+          for (const s of t.spans) if (!seen.has(s.spanID)) existing.spans.push(s);
+          existing.processes = {
+            ...(existing.processes ?? {}),
+            ...(t.processes ?? {}),
+          };
+        }
+      }
+    }
+    if (byTid.size > 0) {
+      return { data: [...byTid.values()], total: byTid.size };
+    }
+  }
+
+  // Fallback: the list-scan. Saves us for older implementations that
+  // lack the per-ID endpoint and is the only path in browsers where
+  // AbortSignal.any is not available.
   const full = await inClusterFetchList(
     `/api/traces?limit=500`,
     signal,
