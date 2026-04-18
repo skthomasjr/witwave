@@ -22,6 +22,11 @@ is a two-line values change plus a new image build; no template edits.
 {{- $fullName := printf "%s-mcp-%s" $.Release.Name $name }}
 {{- $imageTag := default $.Chart.AppVersion $tool.image.tag }}
 {{- $pullPolicy := default "IfNotPresent" $tool.image.pullPolicy }}
+{{- /* MCP Service now exposes the metrics port when metrics.enabled so
+       ServiceMonitor / plain Prometheus scrape discovery can reach the
+       in-container listener (#688). */}}
+{{- $svcMetricsOn := $.Values.metrics.enabled }}
+{{- $svcMetricsPort := ($.Values.mcpTools.metricsPort | default ($.Values.metrics.port | default 9000)) }}
 ---
 apiVersion: v1
 kind: Service
@@ -41,6 +46,15 @@ spec:
       port: 8000
       targetPort: http
       protocol: TCP
+    {{- if $svcMetricsOn }}
+    # Dedicated metrics port (#688) — the in-container FastMCP
+    # metrics listener binds here so Prometheus can scrape the tool
+    # without piggybacking on the app port.
+    - name: metrics
+      port: {{ $svcMetricsPort }}
+      targetPort: metrics
+      protocol: TCP
+    {{- end }}
 ---
 apiVersion: apps/v1
 kind: Deployment
