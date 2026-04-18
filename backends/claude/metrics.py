@@ -142,6 +142,7 @@ if _enabled:
         "backend_event_loop_lag_seconds",
         "Excess delay beyond expected sleep duration, measuring asyncio event loop congestion.",
         ["agent", "agent_id", "backend"],
+        buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
     )
     backend_health_checks_total = prometheus_client.Counter(
         "backend_health_checks_total",
@@ -164,6 +165,7 @@ if _enabled:
         "backend_a2a_request_duration_seconds",
         "Wall-clock duration of each A2A execute() call.",
         ["agent", "agent_id", "backend"],
+        buckets=(0.1, 0.5, 1, 5, 10, 30, 60, 120, 300, 600),
     )
     backend_a2a_last_request_timestamp_seconds = prometheus_client.Gauge(
         "backend_a2a_last_request_timestamp_seconds",
@@ -181,11 +183,13 @@ if _enabled:
         "backend_task_duration_seconds",
         "Duration of agent tasks in seconds.",
         ["agent", "agent_id", "backend"],
+        buckets=(0.1, 0.5, 1, 5, 10, 30, 60, 120, 300, 600),
     )
     backend_task_error_duration_seconds = prometheus_client.Histogram(
         "backend_task_error_duration_seconds",
         "Wall-clock seconds for tasks that end in error or timeout.",
         ["agent", "agent_id", "backend"],
+        buckets=(0.1, 0.5, 1, 5, 10, 30, 60, 120, 300, 600),
     )
     backend_task_last_success_timestamp_seconds = prometheus_client.Gauge(
         "backend_task_last_success_timestamp_seconds",
@@ -201,6 +205,7 @@ if _enabled:
         "backend_task_timeout_headroom_seconds",
         "Remaining timeout budget when a task completes successfully.",
         ["agent", "agent_id", "backend"],
+        buckets=(0.1, 0.5, 1, 5, 10, 30, 60, 120, 300, 600),
     )
     backend_task_cancellations_total = prometheus_client.Counter(
         "backend_task_cancellations_total",
@@ -257,11 +262,13 @@ if _enabled:
         "backend_prompt_length_bytes",
         "Byte length of incoming prompts passed to run().",
         ["agent", "agent_id", "backend"],
+        buckets=(100, 500, 1_000, 5_000, 10_000, 50_000, 100_000, 500_000, 1_000_000, 5_000_000),
     )
     backend_response_length_bytes = prometheus_client.Histogram(
         "backend_response_length_bytes",
         "Byte length of responses returned by run().",
         ["agent", "agent_id", "backend"],
+        buckets=(100, 500, 1_000, 5_000, 10_000, 50_000, 100_000, 500_000, 1_000_000, 5_000_000),
     )
     backend_empty_responses_total = prometheus_client.Counter(
         "backend_empty_responses_total",
@@ -321,26 +328,31 @@ if _enabled:
         "backend_sdk_subprocess_spawn_duration_seconds",
         "Time to initialize the backend client/subprocess.",
         ["agent", "agent_id", "backend", "model"],
+        buckets=(0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60),
     )
     backend_sdk_query_duration_seconds = prometheus_client.Histogram(
         "backend_sdk_query_duration_seconds",
         "Raw backend query time in seconds inside run_query().",
         ["agent", "agent_id", "backend", "model"],
+        buckets=(0.1, 0.5, 1, 5, 10, 30, 60, 120, 300, 600),
     )
     backend_sdk_query_error_duration_seconds = prometheus_client.Histogram(
         "backend_sdk_query_error_duration_seconds",
         "Wall-clock seconds for run_query() calls that end in error.",
         ["agent", "agent_id", "backend", "model"],
+        buckets=(0.1, 0.5, 1, 5, 10, 30, 60, 120, 300, 600),
     )
     backend_sdk_time_to_first_message_seconds = prometheus_client.Histogram(
         "backend_sdk_time_to_first_message_seconds",
         "Seconds from query submission to the first response message.",
         ["agent", "agent_id", "backend", "model"],
+        buckets=(0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60),
     )
     backend_sdk_session_duration_seconds = prometheus_client.Histogram(
         "backend_sdk_session_duration_seconds",
         "Backend session/connection lifetime in seconds.",
         ["agent", "agent_id", "backend", "model"],
+        buckets=(0.1, 0.5, 1, 5, 10, 30, 60, 120, 300, 600),
     )
     backend_sdk_messages_per_query = prometheus_client.Histogram(
         "backend_sdk_messages_per_query",
@@ -358,6 +370,7 @@ if _enabled:
         "backend_sdk_tokens_per_query",
         "Aggregate token count per run_query() invocation.",
         ["agent", "agent_id", "backend", "model"],
+        buckets=(100, 500, 1_000, 5_000, 10_000, 25_000, 50_000, 100_000, 200_000, 500_000),
     )
     backend_sdk_errors_total = prometheus_client.Counter(
         "backend_sdk_errors_total",
@@ -396,6 +409,7 @@ if _enabled:
         "backend_sdk_tool_duration_seconds",
         "Wall-clock seconds per tool call.",
         ["agent", "agent_id", "backend", "tool"],
+        buckets=(0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60),
     )
     backend_sdk_tool_errors_total = prometheus_client.Counter(
         "backend_sdk_tool_errors_total",
@@ -406,11 +420,13 @@ if _enabled:
         "backend_sdk_tool_call_input_size_bytes",
         "Byte length of each tool call input payload by tool name.",
         ["agent", "agent_id", "backend", "tool"],
+        buckets=(100, 500, 1_000, 5_000, 10_000, 50_000, 100_000, 500_000, 1_000_000, 5_000_000),
     )
     backend_sdk_tool_result_size_bytes = prometheus_client.Histogram(
         "backend_sdk_tool_result_size_bytes",
         "Byte length of each tool result by tool name.",
         ["agent", "agent_id", "backend", "tool"],
+        buckets=(100, 500, 1_000, 5_000, 10_000, 50_000, 100_000, 500_000, 1_000_000, 5_000_000),
     )
     backend_text_blocks_per_query = prometheus_client.Histogram(
         "backend_text_blocks_per_query",
@@ -447,6 +463,7 @@ if _enabled:
         "backend_context_tokens",
         "Absolute token count from get_context_usage() per SDK turn.",
         ["agent", "agent_id", "backend"],
+        buckets=(100, 500, 1_000, 5_000, 10_000, 25_000, 50_000, 100_000, 200_000, 500_000),
     )
     backend_context_tokens_remaining = prometheus_client.Histogram(
         "backend_context_tokens_remaining",
