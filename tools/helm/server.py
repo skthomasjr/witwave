@@ -124,6 +124,25 @@ def _write_values(values: dict | None) -> Path | None:
     return Path(path)
 
 
+def _reject_flag_like(**named: str | None) -> None:
+    """Validate that each positional string argument does not begin with '-'
+    so an LLM-supplied value can't inject a helm flag (#693). Empty/None
+    values are allowed — caller may opt them out of the check by omitting
+    the keyword.
+    """
+    for label, value in named.items():
+        if value is None or value == "":
+            continue
+        if not isinstance(value, str):
+            raise ValueError(
+                f"helm: {label!r} must be a string (got {type(value).__name__})"
+            )
+        if value.startswith("-"):
+            raise ValueError(
+                f"helm: {label!r} must not start with '-' (got {value!r})"
+            )
+
+
 def _ns_args(namespace: str | None, all_namespaces: bool = False) -> list[str]:
     if all_namespaces:
         return ["-A"]
@@ -172,6 +191,7 @@ def get_release(name: str, namespace: str) -> dict:
 @mcp.tool()
 def get_values(name: str, namespace: str, all_values: bool = False) -> dict:
     """Return user-supplied values (or all computed values) for a release."""
+    _reject_flag_like(name=name, namespace=namespace)
     with _handler_span("get_values", {"helm.release": name, "helm.namespace": namespace}) as _h:
         try:
             args = ["get", "values", name, "-n", namespace, "-o", "json"]
@@ -186,6 +206,7 @@ def get_values(name: str, namespace: str, all_values: bool = False) -> dict:
 @mcp.tool()
 def get_manifest(name: str, namespace: str) -> str:
     """Return the rendered manifest for a release."""
+    _reject_flag_like(name=name, namespace=namespace)
     with _handler_span("get_manifest", {"helm.release": name, "helm.namespace": namespace}) as _h:
         try:
             return _helm(["get", "manifest", name, "-n", namespace])
@@ -197,6 +218,9 @@ def get_manifest(name: str, namespace: str) -> str:
 @mcp.tool()
 def history(name: str, namespace: str, max_revisions: int = 10) -> list[dict]:
     """Return revision history for a release."""
+    _reject_flag_like(name=name, namespace=namespace)
+    if not isinstance(max_revisions, int) or isinstance(max_revisions, bool):
+        raise ValueError("helm: 'max_revisions' must be an int")
     with _handler_span("history", {"helm.release": name, "helm.namespace": namespace}) as _h:
         try:
             return _helm(
@@ -226,6 +250,9 @@ def install(
     If `repo` is set, it is passed as `--repo` (useful when not using a
     pre-added repo alias).
     """
+    _reject_flag_like(
+        name=name, chart=chart, namespace=namespace, version=version, repo=repo
+    )
     with _handler_span(
         "install",
         {"helm.release": name, "helm.chart": chart, "helm.namespace": namespace},
@@ -271,6 +298,9 @@ def upgrade(
     reuse_values: bool = False,
 ) -> dict:
     """Upgrade an existing release."""
+    _reject_flag_like(
+        name=name, chart=chart, namespace=namespace, version=version, repo=repo
+    )
     with _handler_span(
         "upgrade",
         {"helm.release": name, "helm.chart": chart, "helm.namespace": namespace},
@@ -312,6 +342,13 @@ def rollback(name: str, namespace: str, revision: int, wait: bool = False) -> st
     Helm's `rollback` does not support `-o json`; the raw CLI output is
     returned.
     """
+    _reject_flag_like(name=name, namespace=namespace)
+    # Type-validate revision as int so an LLM-supplied "-1"-style string
+    # cannot flow into argv as a flag (#693).
+    if not isinstance(revision, int) or isinstance(revision, bool):
+        raise ValueError("helm: 'revision' must be an int")
+    if revision < 0:
+        raise ValueError("helm: 'revision' must be >= 0")
     with _handler_span(
         "rollback",
         {"helm.release": name, "helm.namespace": namespace, "helm.revision": revision},
@@ -329,6 +366,7 @@ def rollback(name: str, namespace: str, revision: int, wait: bool = False) -> st
 @mcp.tool()
 def uninstall(name: str, namespace: str, keep_history: bool = False) -> dict:
     """Uninstall a release."""
+    _reject_flag_like(name=name, namespace=namespace)
     with _handler_span(
         "uninstall",
         {"helm.release": name, "helm.namespace": namespace},
@@ -347,6 +385,7 @@ def uninstall(name: str, namespace: str, keep_history: bool = False) -> dict:
 @mcp.tool()
 def repo_add(name: str, url: str) -> str:
     """Add a chart repository."""
+    _reject_flag_like(name=name, url=url)
     with _handler_span("repo_add", {"helm.repo": name}) as _h:
         try:
             return _helm(["repo", "add", name, url])
