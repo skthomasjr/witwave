@@ -20,7 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
+	"regexp"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -420,19 +420,35 @@ func NyxPromptAgentRefExtractor(obj client.Object) []string {
 // each reconcile (#901). Real errors must propagate so they are
 // logged/retried; only index-missing is legitimately recoverable with
 // the fallback path.
+// fieldIndexMissingRe matches the two upstream error formats produced
+// when a scoped List references an index that isn't registered:
+//
+//	controller-runtime cache_reader: `index with name %s does not exist`
+//	client-go thread_safe_store:     `Index with name %s does not exist`
+//	                                 `indexer "%s" does not exist`
+//
+// The previous substring-pair check (`"index"` AND `"does not exist"`)
+// was loose enough to classify wrapped/joined errors like
+// `context deadline exceeded; index X does not exist` as recoverable
+// (#1014). The anchored regex below requires the exact upstream phrase
+// shape so unrelated errors that happen to mention both words no longer
+// trip the fallback path.
+var fieldIndexMissingRe = regexp.MustCompile(
+	`(?i)\b(?:index with name \S+|indexer "\S+")\s+does not exist\b`,
+)
+
 func isFieldIndexMissing(err error) bool {
 	if err == nil {
 		return false
 	}
-	// controller-runtime cache (byIndexes) uses:
-	//   "index with name %s does not exist"
-	// client-go thread_safe_store uses:
-	//   "indexer %q does not exist"
-	// Match on the lowercased substring pair so minor upstream edits
-	// (wrapping, trailing punctuation) don't silently reintroduce the
-	// error-swallowing bug.
-	m := strings.ToLower(err.Error())
-	return strings.Contains(m, "index") && strings.Contains(m, "does not exist")
+	// Walk the wrap chain first so a legitimately-wrapped upstream
+	// sentinel still matches even if surrounding context contains noise.
+	for e := err; e != nil; e = errors.Unwrap(e) {
+		if fieldIndexMissingRe.MatchString(e.Error()) {
+			return true
+		}
+	}
+	return false
 }
 
 // NyxAgentTeamIndex is the field-indexer key that maps every NyxAgent to
