@@ -14,10 +14,37 @@ shipping — closing the loop without a human in the hot path.
 ---
 
 Built on the [A2A protocol](https://a2a-protocol.org). Each named agent is a set of containers: a **harness**
-infrastructure layer (A2A relay, heartbeat scheduler, job scheduler) and one or more **backend** containers that do the
-actual LLM work (Claude Agent SDK via `claude`, OpenAI Agents SDK via `codex`, Google Gemini SDK via `gemini`).
+infrastructure layer (A2A relay, heartbeat scheduler, job scheduler) and one or more **backend agent** containers that
+do the actual LLM work (Claude Agent SDK via `claude`, OpenAI Agents SDK via `codex`, Google Gemini SDK via `gemini`).
 
-Multiple agents can collaborate as a team, but the named agent (nyx + its backends) is the deployable unit.
+Multiple agents can collaborate as a team, but the named agent (harness + its backend agents) is the deployable unit.
+
+## Agent Model
+
+Three tiers to keep straight:
+
+1. **A2A agent** — any server that publishes `/.well-known/agent.json`. The protocol's unit of identity. Both the
+   harness and each backend agent qualify.
+2. **Backend agent** — the LLM-wrapping worker. One image per LLM family (`claude`, `codex`, `gemini`). Each owns its
+   own session state, memory, conversation log, and metrics, and is callable standalone over A2A.
+3. **Named agent** — the deployable unit (`iris`, `nova`, `kira`, …). From outside it presents as a single A2A agent
+   via the harness's endpoint. Inside, the harness orchestrates one or more backend agents using routing rules in
+   `.nyx/backend.yaml`.
+
+A named agent is both an agent **and** an orchestrator of sub-agents. Because the harness treats any A2A URL as a
+valid dispatch target, peer named agents are reachable the same way local backend agents are — teams of named agents
+are just agents all the way down.
+
+The split of responsibilities:
+
+- **Autonomy** (when and why work happens) lives in the harness: heartbeats, jobs, tasks, triggers, continuations,
+  webhooks.
+- **Intelligence** (what to say, what to do) lives in the backend agents: LLM SDK wrappers that turn prompts into
+  responses.
+
+Remove the harness and you have reactive LLM servers that only respond when called — not autonomous. Remove the
+backend agents and you have a scheduler with nothing to dispatch to — no intelligence. Together they form an
+autonomous agent.
 
 ## Components
 
@@ -25,7 +52,7 @@ The platform has eight components, each with its own source directory:
 
 | Component          | Directory              | Type               | Description                                                                                                                 |
 | ------------------ | ---------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| **Orchestrator**   | `harness/`             | Orchestrator agent | harness: the infrastructure and routing layer. Owns scheduling, triggering, chaining, and A2A relay. No LLM of its own. |
+| **Harness**        | `harness/`             | Orchestrator agent | The infrastructure and routing layer for a named agent. Owns scheduling, triggering, chaining, and A2A relay. No LLM of its own. |
 | **Claude backend** | `backends/claude/`           | Backend agent      | Executes prompts via the Claude Agent SDK. Manages sessions, memory, conversation logs, and metrics.                        |
 | **Codex backend**  | `backends/codex/`            | Backend agent      | Executes prompts via the OpenAI Agents SDK. Supports web search and headless browser via Playwright.                        |
 | **Gemini backend** | `backends/gemini/`           | Backend agent      | Executes prompts via the Google Gemini SDK. Manages sessions and conversation history.                                      |
@@ -34,25 +61,19 @@ The platform has eight components, each with its own source directory:
 | **Agent chart**    | `charts/nyx/`          | Deployment         | Kubernetes Helm chart for deploying nyx agents via templated manifests (no CRDs).                                            |
 | **Operator chart** | `charts/nyx-operator/` | Deployment         | Kubernetes Helm chart that installs the operator and the `NyxAgent` CRD.                                                     |
 
-Each backend agent is a full A2A server. The orchestrator routes work to backends but does no LLM execution itself. The
-dashboard provides visibility only — it does not participate in agent workflows. The operator and its chart are an alternative
-install path to the agent chart; both target the same per-agent deployment shape.
+The harness routes work to backend agents but does no LLM execution itself. The dashboard provides visibility only —
+it does not participate in agent workflows. The operator and its chart are an alternative install path to the agent
+chart; both target the same per-agent deployment shape.
 
 ## How It Works
 
-Each agent:
+Operational details that complement the Agent Model above:
 
-- Runs as a harness container that receives A2A requests, fires heartbeats, and runs jobs
-- Forwards all LLM work to a dedicated backend container (`claude`, `codex`, or `gemini`)
-- Exposes an [A2A (Agent-to-Agent)](https://a2a-protocol.org) interface for communication
-- Has its own identity, memory, and configuration — none baked into the image
-
-Backend containers:
-
-- Are standalone A2A servers with their own session state, memory, and conversation logs
-- Receive behavioral instructions via a backend-specific file (`CLAUDE.md` for claude, `AGENTS.md` for codex,
-  `GEMINI.md` for gemini) and A2A identity from a mounted `agent-card.md` file
-- Expose `/health` and `/metrics` in addition to the A2A endpoints
+- Each named agent has its own identity, memory, and configuration — none baked into the image. Behavioral
+  instructions for each backend agent come from a mounted file (`CLAUDE.md` for claude, `AGENTS.md` for codex,
+  `GEMINI.md` for gemini), and A2A identity comes from a mounted `agent-card.md`.
+- Every container (harness and each backend agent) exposes `/health` for probes and `/metrics` for Prometheus on
+  a dedicated port (9000 by default) alongside its A2A endpoint.
 
 ## Requirements
 
