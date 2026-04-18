@@ -21,6 +21,7 @@ from computer import BrowserPool, PlaywrightComputer
 from agents.models.multi_provider import MultiProvider
 from metrics import (
     backend_a2a_last_request_timestamp_seconds,
+    backend_hooks_config_errors_total,
     backend_a2a_request_duration_seconds,
     backend_a2a_requests_total,
     backend_active_sessions,
@@ -267,6 +268,32 @@ _SHELL_DENY_RULES: tuple[tuple[str, "re.Pattern[str]", str], ...] = (
 )
 
 
+# Import the shared predicate-based baseline at module load so an import
+# failure is visible at backend startup rather than silently yielding an
+# empty list per-call (#938). A rename or bug in shared/hooks_engine.py
+# previously left the legacy regex table as the only line of defence —
+# while shell-baseline log lines still appeared normal — a false sense
+# of parity with claude.
+try:
+    from hooks_engine import BASELINE_RULES as _SHARED_BASELINE_RULES  # type: ignore
+except Exception as _baseline_import_exc:  # noqa: BLE001 — documented single-fail path
+    logger.warning(
+        "codex: failed to import shared BASELINE_RULES from hooks_engine: %r — "
+        "predicate baseline DISABLED; legacy regex table remains active (#938)",
+        _baseline_import_exc,
+    )
+    _SHARED_BASELINE_RULES: list = []
+    if backend_hooks_config_errors_total is not None:
+        try:
+            backend_hooks_config_errors_total.labels(
+                agent=AGENT_NAME, agent_id=AGENT_ID, backend="codex",
+                reason="baseline_import",
+            ).inc()
+        except Exception:
+            # Metric emission must never mask the import failure.
+            pass
+
+
 def _evaluate_shell_baseline(cmd_parts: list[str]) -> tuple[str, str] | None:
     """Return (rule, reason) for the first matching baseline rule, else None.
 
@@ -282,11 +309,9 @@ def _evaluate_shell_baseline(cmd_parts: list[str]) -> tuple[str, str] | None:
     joined = " ".join(cmd_parts)
     # Shared baseline (predicate-based). Pass the joined command through
     # as ``tool_input['command']`` so predicates matching claude's Bash
-    # shape accept codex's LocalShellTool argv transparently.
-    try:
-        from hooks_engine import BASELINE_RULES  # type: ignore
-    except Exception:
-        BASELINE_RULES = []  # type: ignore[assignment]
+    # shape accept codex's LocalShellTool argv transparently. Import
+    # happened at module load (#938); use the cached symbol.
+    BASELINE_RULES = _SHARED_BASELINE_RULES
     shared_input = {"command": joined}
     for rule in BASELINE_RULES:
         # Only Bash-scoped rules apply to the shell executor; Write/Edit
