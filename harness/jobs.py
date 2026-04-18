@@ -229,11 +229,24 @@ async def run_job(item: JobItem, bus: MessageBus, semaphore: asyncio.Semaphore |
         await _execute_job(item, bus, semaphore)
         return
 
-    cron = croniter(item.schedule, datetime.now(timezone.utc))
+    # Track the most recent scheduled tick so iterations can anchor the
+    # croniter forward rather than relying on a persistent cursor that
+    # drifts behind wall-clock under long reloads, suspended laptops, or
+    # NTP step adjustments (#860, matches heartbeat #659). Initialised to
+    # None; the first iteration anchors at wall-clock.
+    last_scheduled: datetime | None = None
     while True:
-        next_run = cron.get_next(datetime)
         now = datetime.now(timezone.utc)
-        delay = (next_run - now).total_seconds()
+        # Anchor cron from max(now, last_scheduled) every iteration so
+        # cumulative drift (overrunning runs, reload-error continues,
+        # system suspend/resume) cannot push subsequent ticks behind
+        # wall-clock — while last_scheduled prevents the same tick from
+        # firing twice if wall-clock skews backwards by a small amount
+        # between iterations (#860).
+        anchor = now if last_scheduled is None else max(now, last_scheduled)
+        next_run = croniter(item.schedule, anchor).get_next(datetime)
+        last_scheduled = next_run
+        delay = max(0.0, (next_run - now).total_seconds())
         logger.info(f"Job '{item.name}' next run in {delay:.0f}s at {next_run.isoformat()}")
         await asyncio.sleep(delay)
 
