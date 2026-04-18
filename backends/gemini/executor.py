@@ -940,16 +940,21 @@ async def _save_history(session_id: str, history: list[types.Content]) -> None:
                 break
     tmp_path = path + ".tmp"
     last_exc: Exception | None = None
+    # Enforce the single-loop invariant this function relies on (#890).
+    # _session_cleanup_epoch, _history_write_done, and done_event.set are
+    # mutated without locks — any off-loop call corrupts them.
+    _assert_event_loop_thread()
+    # Snapshot the cleanup epoch FIRST (#890). If a concurrent cleanup
+    # bump lands between the done_event install and the epoch read, the
+    # task that sees a stale epoch would publish on top of a cleaned-up
+    # session. Reading the epoch before any other bookkeeping lets the
+    # blocking helper's recheck-then-replace logic catch the cleanup.
+    expected_epoch = _session_cleanup_epoch.get(session_id, 0)
     # Announce that a save is in progress so a concurrent timeout cleanup
     # can await the done-Event before os.remove (#674). Replace any prior
     # Event for this session so we signal completion of *this* save only.
     done_event = asyncio.Event()
     _history_write_done[session_id] = done_event
-    # Snapshot the cleanup epoch we are writing against (#732). The
-    # blocking helper rechecks the current epoch before publishing so a
-    # cleanup that fires after our ``to_thread`` dispatched aborts the
-    # replace and purges the tmp file.
-    expected_epoch = _session_cleanup_epoch.get(session_id, 0)
     try:
         for attempt in range(_SAVE_HISTORY_MAX_RETRIES):
             try:
