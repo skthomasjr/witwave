@@ -574,12 +574,18 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string, prompts []n
 		Image:           imageRef(agent.Spec.Image, appVersion),
 		ImagePullPolicy: imagePullPolicy(agent.Spec.Image),
 		Ports:           harnessPorts,
-		Env: append([]corev1.EnvVar{
+		// #829: chart parity for observability.tracing.* — stamp OTEL_*
+		// env vars derived from spec.tracing onto every pod container so
+		// operator-managed agents don't require hand-crafted spec.env per
+		// container. serviceName mirrors the chart helper
+		// ("harness-<agent>" / "<agent>-<backend>").
+		Env: append(append([]corev1.EnvVar{
 			{Name: "AGENT_NAME", Value: agent.Name},
 			{Name: "HARNESS_PORT", Value: fmt.Sprintf("%d", harnessPort)},
 			{Name: "METRICS_ENABLED", Value: metricsEnabledValue(agent)},
 			{Name: "METRICS_PORT", Value: fmt.Sprintf("%d", harnessMetricsPort)},
-		}, agent.Spec.Env...),
+		}, otelEnv(agent, fmt.Sprintf("harness-%s", agent.Name))...),
+			agent.Spec.Env...),
 		EnvFrom:   agent.Spec.EnvFrom,
 		Resources: agent.Spec.Resources,
 		SecurityContext: &corev1.SecurityContext{
@@ -663,7 +669,9 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string, prompts []n
 			Image:           imageRef(b.Image, appVersion),
 			ImagePullPolicy: imagePullPolicy(b.Image),
 			Ports:           bPorts,
-			Env: append([]corev1.EnvVar{
+			// #829: OTEL_* env parity with chart helper — serviceName
+			// "<agent>-<backend>" matches nyx.otelEnv.
+			Env: append(append([]corev1.EnvVar{
 				{Name: "AGENT_NAME", Value: fmt.Sprintf("%s-%s", agent.Name, b.Name)},
 				{Name: "AGENT_OWNER", Value: agent.Name},
 				{Name: "AGENT_ID", Value: b.Name},
@@ -678,7 +686,8 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string, prompts []n
 				// operators only need to thread one secret through both
 				// harness and backend env.
 				{Name: "HARNESS_EVENTS_URL", Value: fmt.Sprintf("http://localhost:%d", harnessPort)},
-			}, b.Env...),
+			}, otelEnv(agent, fmt.Sprintf("%s-%s", agent.Name, b.Name))...),
+				b.Env...),
 			EnvFrom:   backendEnvFromWithCredentials(agent, b),
 			Resources: b.Resources,
 			SecurityContext: &corev1.SecurityContext{
@@ -1149,6 +1158,35 @@ func metricsEnabledValue(agent *nyxv1alpha1.NyxAgent) string {
 		return "true"
 	}
 	return "false"
+}
+
+// otelEnv renders the OTEL_* env-var list the operator should stamp onto
+// each harness/backend container when spec.tracing.enabled is true. Mirrors
+// the chart's nyx.otelEnv helper (#634) so operator-managed and
+// chart-managed pods present identical OTLP wiring to the collector.
+// Returns nil when tracing is disabled or unconfigured so callers can
+// unconditionally `append(..., otelEnv(...)...)`.
+func otelEnv(agent *nyxv1alpha1.NyxAgent, serviceName string) []corev1.EnvVar {
+	t := agent.Spec.Tracing
+	if t == nil || !t.Enabled {
+		return nil
+	}
+	env := []corev1.EnvVar{
+		{Name: "OTEL_ENABLED", Value: "true"},
+	}
+	if t.Endpoint != "" {
+		env = append(env, corev1.EnvVar{Name: "OTEL_EXPORTER_OTLP_ENDPOINT", Value: t.Endpoint})
+	}
+	if t.Sampler != "" {
+		env = append(env, corev1.EnvVar{Name: "OTEL_TRACES_SAMPLER", Value: t.Sampler})
+	}
+	if t.SamplerArg != "" {
+		env = append(env, corev1.EnvVar{Name: "OTEL_TRACES_SAMPLER_ARG", Value: t.SamplerArg})
+	}
+	if serviceName != "" {
+		env = append(env, corev1.EnvVar{Name: "OTEL_SERVICE_NAME", Value: serviceName})
+	}
+	return env
 }
 
 // containerMetricsPort resolves the per-container /metrics listener port

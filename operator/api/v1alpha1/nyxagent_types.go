@@ -754,6 +754,42 @@ type NyxAgentSpec struct {
 	// +kubebuilder:validation:Maximum=65535
 	// +optional
 	ServicePort *int32 `json:"servicePort,omitempty"`
+
+	// Tracing controls OTel env injection on harness and backend
+	// containers (#829). Mirrors the chart's `observability.tracing.*`
+	// block and the `nyx.otelEnv` helper so operator-managed and
+	// chart-managed agents emit identical OTEL_* env vars without
+	// operators hand-crafting `env:` entries per container.
+	// +optional
+	Tracing *TracingSpec `json:"tracing,omitempty"`
+}
+
+// TracingSpec mirrors the chart's observability.tracing.* values (#829).
+// When Enabled is true, the operator stamps the OTEL_* env vars produced
+// by `nyx.otelEnv` onto every harness and backend container, so chart and
+// operator deployments converge on the same OTLP wiring.
+type TracingSpec struct {
+	// Enabled turns on the OTEL_ENABLED master toggle on every
+	// operator-managed container. When false (the default) the operator
+	// injects nothing.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Endpoint is forwarded verbatim as OTEL_EXPORTER_OTLP_ENDPOINT.
+	// Required when Enabled is true AND the target OTel SDK does not
+	// inherit a collector endpoint from the cluster (most deployments).
+	// +optional
+	Endpoint string `json:"endpoint,omitempty"`
+
+	// Sampler is forwarded verbatim as OTEL_TRACES_SAMPLER.
+	// Omitted when empty.
+	// +optional
+	Sampler string `json:"sampler,omitempty"`
+
+	// SamplerArg is forwarded verbatim as OTEL_TRACES_SAMPLER_ARG.
+	// Omitted when empty.
+	// +optional
+	SamplerArg string `json:"samplerArg,omitempty"`
 }
 
 // DashboardSpec configures an optional dashboard Deployment + Service per
