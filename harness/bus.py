@@ -206,10 +206,96 @@ def unsubscribe_hook_decision(listener: Callable[[HookDecisionEvent], None]) -> 
         pass
 
 
+# Bounded queue drained by ``_hook_decision_dispatch_loop`` (#928). The
+# HTTP handler (hook_decision_event_handler) previously invoked listeners
+# synchronously; a listener that grew a sync-blocking step (URL
+# validation, metrics HTTP, later-added policy code) would stall the
+# /internal/events/hook-decision request and push backpressure up into
+# the backend's hook-posting thread. Dispatching via the queue severs
+# that chain: handler enqueues + returns 202 in O(1); the dispatcher
+# task invokes listeners one at a time on its own tick.
+#
+# maxsize is bounded so a stuck listener cannot consume unbounded memory
+# across a sustained flood — at the limit publish_hook_decision drops
+# the newest event and bumps a counter for operators. 1024 is 1 queued
+# event per millisecond of sustained 1k/s burst, well above normal
+# hook cadence.
+_HOOK_DECISION_QUEUE_MAX = 1024
+_hook_decision_queue: "asyncio.Queue[HookDecisionEvent] | None" = None
+_hook_decision_queue_loop: "asyncio.AbstractEventLoop | None" = None
+_hook_decision_dropped = 0
+
+
+def _ensure_hook_decision_queue() -> "tuple[asyncio.Queue[HookDecisionEvent] | None, asyncio.AbstractEventLoop | None]":
+    """Return (queue, loop) if the dispatcher has been wired, else (None, None).
+
+    The harness wires the queue + background task in main.py lifespan
+    via :func:`start_hook_decision_dispatcher`. Unit tests and callers
+    that never started a dispatcher get the legacy synchronous fan-out
+    so test coverage that predates #928 keeps working.
+    """
+    return _hook_decision_queue, _hook_decision_queue_loop
+
+
+def start_hook_decision_dispatcher(loop: "asyncio.AbstractEventLoop") -> "asyncio.Task":
+    """Create the bounded queue and return an asyncio task that drains it.
+
+    Callers should schedule the returned task into the harness lifespan
+    task list so it is cancelled on shutdown.
+    """
+    global _hook_decision_queue, _hook_decision_queue_loop
+    _hook_decision_queue = asyncio.Queue(maxsize=_HOOK_DECISION_QUEUE_MAX)
+    _hook_decision_queue_loop = loop
+
+    async def _dispatch_loop() -> None:
+        q = _hook_decision_queue
+        assert q is not None
+        while True:
+            event = await q.get()
+            for listener in list(_hook_decision_listeners):
+                try:
+                    listener(event)
+                except Exception as exc:  # pragma: no cover — best-effort side channel
+                    logger.warning("hook.decision listener %r raised: %r", listener, exc)
+
+    return loop.create_task(_dispatch_loop(), name="hook_decision_dispatcher")
+
+
 def publish_hook_decision(event: HookDecisionEvent) -> None:
-    """Fan ``event`` out to every registered listener. Never raises."""
+    """Fan ``event`` out to every registered listener. Never raises.
+
+    When :func:`start_hook_decision_dispatcher` has been called (i.e. the
+    harness is running its lifespan), enqueues into the bounded queue so
+    the HTTP handler returns 202 without waiting for listener fan-out.
+    Otherwise falls back to synchronous invocation (legacy path, unit
+    tests).
+    """
+    global _hook_decision_dropped
+    q, q_loop = _ensure_hook_decision_queue()
+    if q is not None and q_loop is not None:
+        try:
+            # call_soon_threadsafe-free enqueue: we're typically called
+            # from the handler's own loop, so put_nowait is safe. If the
+            # queue is full, drop the newest event and count it so
+            # operators can alarm on sustained backpressure.
+            q.put_nowait(event)
+        except asyncio.QueueFull:
+            _hook_decision_dropped += 1
+            logger.warning(
+                "hook.decision queue full (cap=%d, dropped=%d total) — "
+                "dropping event agent=%r session=%r tool=%r (#928).",
+                _HOOK_DECISION_QUEUE_MAX, _hook_decision_dropped,
+                event.agent, event.session_id, event.tool,
+            )
+        return
+    # Legacy synchronous fan-out when no dispatcher is running.
     for listener in list(_hook_decision_listeners):
         try:
             listener(event)
         except Exception as exc:  # pragma: no cover — best-effort side channel
             logger.warning("hook.decision listener %r raised: %r", listener, exc)
+
+
+def get_hook_decision_dropped_count() -> int:
+    """Return the cumulative count of dropped hook.decision events (#928)."""
+    return _hook_decision_dropped

@@ -1848,6 +1848,15 @@ async def main():
         asyncio.create_task(_guarded(continuation_runner.run), name="continuation_runner"),
         asyncio.create_task(_guarded(webhook_runner.run), name="webhook_runner"),
     ]
+    # Dedicated hook.decision dispatch task (#928): the /internal/events/
+    # hook-decision HTTP handler enqueues events and returns 202; this
+    # task drains the queue and fans out to listeners so a listener that
+    # grows a sync-blocking step cannot push backpressure upstream into
+    # the backend's hook-posting thread.
+    from bus import start_hook_decision_dispatcher as _start_hook_dispatch
+
+    _hook_decision_dispatch_task = _start_hook_dispatch(asyncio.get_running_loop())
+    scheduler_tasks.append(_hook_decision_dispatch_task)
     bus_task = asyncio.create_task(
         _guarded(bus_worker, bus, executor, critical=True),
         name="bus_worker",
