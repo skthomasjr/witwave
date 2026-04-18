@@ -622,8 +622,27 @@ async def main():
     # MCP servers / empty agent_md / baseline-only hooks. Running the initial
     # loads synchronously on this startup path guarantees the executor state
     # matches on-disk config by the time _set_ready_when_started flips ready.
+    #
+    # #985: bound total duration with a timeout so a wedged ConfigMap
+    # projection or stuck fs mount can't stall startup past the kubelet
+    # liveness deadline. On timeout we proceed with whatever the watchers
+    # pick up asynchronously — the worst case is a brief window where the
+    # executor sees partial config, which is strictly better than an
+    # indefinite bind-time hang + pod restart loop.
+    _INITIAL_LOADS_TIMEOUT_S = float(
+        os.environ.get("INITIAL_LOADS_TIMEOUT_SECONDS", "10")
+    )
     try:
-        await executor.perform_initial_loads()
+        await asyncio.wait_for(
+            executor.perform_initial_loads(),
+            timeout=_INITIAL_LOADS_TIMEOUT_S,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "perform_initial_loads exceeded %.1fs — proceeding with startup; "
+            "MCP/agent_md/hooks watchers will fill in asynchronously (#985).",
+            _INITIAL_LOADS_TIMEOUT_S,
+        )
     except Exception as exc:
         logger.error("perform_initial_loads failed: %r — watchers will retry", exc)
 
