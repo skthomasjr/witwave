@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sys
 from typing import Any
 
@@ -58,6 +59,18 @@ log = logging.getLogger("tools.kubernetes")
 mcp = FastMCP("kubernetes")
 
 FIELD_MANAGER = "nyx-mcp-kubernetes"
+
+# Positive allow-match patterns for values that flow into the Event
+# field-selector (#773). The field-selector is comma/equals delimited and
+# we want to prevent *any* character that could smuggle extra clauses,
+# now or in future client-go revisions. Rather than enumerate the
+# forbidden characters, we assert the grammar the apiserver actually
+# accepts: DNS-1123 subdomain for metadata.name and PascalCase
+# identifier for kind. Anything else is rejected.
+_DNS1123_SUBDOMAIN_RE = re.compile(
+    r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
+)
+_KIND_RE = re.compile(r"^[A-Z][A-Za-z0-9]*$")
 
 _api_client: client.ApiClient | None = None
 _dyn_client: dynamic.DynamicClient | None = None
@@ -226,16 +239,20 @@ def describe(
         {"k8s.kind": kind, "k8s.name": name, "k8s.namespace": namespace},
     ) as _h:
         try:
-            # Reject values that would break the comma/equals-delimited
-            # field selector syntax below. Kubernetes object names are
-            # DNS-1123 labels (no commas, equals, or whitespace) and kinds
-            # are PascalCase identifiers, so this only rejects invalid
-            # inputs that could otherwise smuggle extra selector clauses.
-            for _field, _value in (("name", name), ("kind", kind)):
-                if any(c in _value for c in (",", "=")) or any(c.isspace() for c in _value):
-                    raise ValueError(
-                        f"describe: {_field!r} must not contain ',', '=', or whitespace"
-                    )
+            # Positive allow-match guard (#773). The Event field-selector
+            # below is comma/equals delimited; rather than enumerate
+            # forbidden metacharacters (exclusion posture regresses if
+            # future client-go accepts new delimiters), assert that name
+            # is a DNS-1123 subdomain and kind is a PascalCase identifier
+            # — the grammars the apiserver itself validates.
+            if not isinstance(name, str) or not _DNS1123_SUBDOMAIN_RE.fullmatch(name):
+                raise ValueError(
+                    f"describe: 'name' must be a DNS-1123 subdomain (got {name!r})"
+                )
+            if not isinstance(kind, str) or not _KIND_RE.fullmatch(kind):
+                raise ValueError(
+                    f"describe: 'kind' must be PascalCase [A-Z][A-Za-z0-9]* (got {kind!r})"
+                )
 
             resource = _resolve(kind, api_version)
             kwargs: dict[str, Any] = {"name": name}
