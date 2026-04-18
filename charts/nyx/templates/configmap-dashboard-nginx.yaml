@@ -81,6 +81,13 @@ data:
       # Must come BEFORE the regex catch-all below for nginx to match
       # the exact path.
       {{- $agentMetricsPort := add (int ($agent.port | default 8000)) 1000 }}
+      {{- /* Only render this route when the agent's Service actually
+             exposes the metrics port — service.yaml uses the same
+             default+override computation (#689). Without this guard the
+             dashboard returned 502 for /api/agents/<name>/metrics when
+             metrics were disabled. */}}
+      {{- $agentMetricsEnabled := (($agent.metrics).enabled | default $.Values.metrics.enabled) }}
+      {{- if $agentMetricsEnabled }}
       location = /api/agents/{{ $agent.name }}/metrics {
         proxy_pass http://{{ $release }}-{{ $agent.name }}.{{ $.Release.Namespace }}.svc.{{ $clusterDomain }}:{{ $agentMetricsPort }}/metrics;
         proxy_set_header Host $host;
@@ -90,6 +97,7 @@ data:
         proxy_read_timeout 310s;
         client_max_body_size 1m;
       }
+      {{- end }}
 
       # Per-agent direct route — browser → dashboard nginx → {{ $release }}-{{ $agent.name }}
       # No cross-agent fan-out through another harness, no localhost-scoped
