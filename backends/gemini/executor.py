@@ -733,6 +733,13 @@ _SAVE_HISTORY_BACKOFF_BASE = float(os.environ.get("GEMINI_SAVE_HISTORY_BACKOFF",
 # per-turn save cost and file size stay bounded even for very long sessions (#349).
 # Set to 0 to disable truncation (keep full history).
 _SAVE_HISTORY_MAX_TURNS = int(os.environ.get("GEMINI_MAX_HISTORY_TURNS", "100"))
+# Byte cap on the serialised history file (#817). Prevents a single
+# large function_response from ballooning the saved session even when
+# the turn count is under the limit — reloading such a file on every
+# A2A request would inflate RAM usage and wire cost. Default 256 KiB;
+# set to 0 to disable the cap. Enforced AFTER the turn cap so the slice
+# still lands on a safe user-turn boundary.
+_SAVE_HISTORY_MAX_BYTES = int(os.environ.get("GEMINI_MAX_HISTORY_BYTES", str(256 * 1024)))
 
 
 def _write_history_to_disk(tmp_path: str, path: str, raw: list) -> None:
@@ -849,6 +856,43 @@ async def _save_history(session_id: str, history: list[types.Content]) -> None:
             )
         else:
             raw = raw[cut:]
+    # Byte-cap enforcement (#817). Drop oldest pairs one safe boundary
+    # at a time until the serialised payload fits under the cap, using
+    # the same user-role / non-function_response boundary rule the
+    # turn-cap branch relies on. Stops short of wiping history: if no
+    # smaller safe cut is available we preserve the current slice and
+    # log a warning — matches the correctness-over-size stance above.
+    if _SAVE_HISTORY_MAX_BYTES > 0 and raw:
+        try:
+            current_bytes = len(json.dumps(raw, default=str).encode("utf-8"))
+        except Exception:
+            current_bytes = 0
+        while current_bytes > _SAVE_HISTORY_MAX_BYTES and len(raw) > 1:
+            # Find the next safe cut boundary after index 0.
+            n = len(raw)
+            nxt = 1
+            while nxt < n:
+                entry = raw[nxt]
+                if entry.get("role") != "user":
+                    nxt += 1
+                    continue
+                first_part = (entry.get("parts") or [{}])[0]
+                if "function_response" in first_part:
+                    nxt += 1
+                    continue
+                break
+            if nxt >= n:
+                logger.warning(
+                    "Session %r: byte-cap trim found no safe boundary "
+                    "(payload=%dB cap=%dB); preserving current slice (#817).",
+                    session_id, current_bytes, _SAVE_HISTORY_MAX_BYTES,
+                )
+                break
+            raw = raw[nxt:]
+            try:
+                current_bytes = len(json.dumps(raw, default=str).encode("utf-8"))
+            except Exception:
+                break
     tmp_path = path + ".tmp"
     last_exc: Exception | None = None
     # Announce that a save is in progress so a concurrent timeout cleanup
