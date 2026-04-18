@@ -1304,6 +1304,31 @@ async def main():
         except Exception:
             return []
 
+    async def _fetch_remote_trace_by_id(url: str, trace_id: str) -> list[dict]:
+        """Fetch a single trace by id from one backend (#708).
+
+        Avoids the O(backends * 500 traces) fan-out the detail handler
+        used to do just to find one trace — backends expose
+        /api/traces/{id} so we ask for the specific trace instead.
+        """
+        import httpx
+        try:
+            async with httpx.AsyncClient(timeout=1.5) as client:
+                r = await client.get(f"{url.rstrip('/')}/api/traces/{trace_id}")
+                if r.status_code != 200:
+                    return []
+                return (r.json() or {}).get("data") or []
+        except Exception:
+            return []
+
+    # Short-TTL cache for /api/traces list responses (#708). Multiple
+    # dashboard tabs polling this endpoint used to fan out fresh HTTP
+    # GETs to every backend per request; a 2s cache collapses bursts
+    # into a single sweep while keeping the list fresh enough for UX.
+    OTEL_TRACES_LIST_CACHE_TTL = float(os.environ.get("OTEL_TRACES_LIST_CACHE_TTL", "2"))
+    _otel_traces_list_cache: "tuple[float, list[dict]] | None" = None
+    _otel_traces_list_lock = asyncio.Lock()
+
     def _merge_trace_lists(groups: list[list[dict]]) -> list[dict]:
         by_tid: dict[str, dict] = {}
         for group in groups:
@@ -1345,27 +1370,52 @@ async def main():
             return []
 
     async def otel_traces_list_handler(request: Request) -> JSONResponse:
+        nonlocal _otel_traces_list_cache
         try:
             limit_raw = request.query_params.get("limit")
             limit = int(limit_raw) if limit_raw else 20
         except ValueError:
             limit = 20
         service = request.query_params.get("service") or ""
-        try:
-            from otel import get_in_memory_traces  # type: ignore
-            local = get_in_memory_traces()
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.warning("otel_traces_list_handler failed: %r", exc)
-            local = []
+
+        # Serve merged trace list from a short-lived cache when fresh
+        # (#708). Cache holds the merged-across-backends result pre-
+        # filter/pre-sort so the hot path for limit/service variants
+        # still works without a fresh fan-out.
         import asyncio as _asyncio
-        backend_urls = _configured_backend_urls()
-        remote_lists: list[list[dict]] = []
-        if backend_urls:
-            remote_lists = list(await _asyncio.gather(
-                *[_fetch_remote_traces(u) for u in backend_urls],
-                return_exceptions=False,
-            ))
-        traces = _merge_trace_lists([local, *remote_lists])
+        now = time.monotonic()
+        traces: list[dict] | None = None
+        if _otel_traces_list_cache is not None:
+            exp, cached = _otel_traces_list_cache
+            if now < exp:
+                traces = cached
+
+        if traces is None:
+            async with _otel_traces_list_lock:
+                now = time.monotonic()
+                if _otel_traces_list_cache is not None:
+                    exp, cached = _otel_traces_list_cache
+                    if now < exp:
+                        traces = cached
+                if traces is None:
+                    try:
+                        from otel import get_in_memory_traces  # type: ignore
+                        local = get_in_memory_traces()
+                    except Exception as exc:  # pragma: no cover - defensive
+                        logger.warning("otel_traces_list_handler failed: %r", exc)
+                        local = []
+                    backend_urls = _configured_backend_urls()
+                    remote_lists: list[list[dict]] = []
+                    if backend_urls:
+                        remote_lists = list(await _asyncio.gather(
+                            *[_fetch_remote_traces(u) for u in backend_urls],
+                            return_exceptions=False,
+                        ))
+                    traces = _merge_trace_lists([local, *remote_lists])
+                    _otel_traces_list_cache = (
+                        time.monotonic() + OTEL_TRACES_LIST_CACHE_TTL,
+                        traces,
+                    )
         if service:
             traces = [
                 t for t in traces
@@ -1384,15 +1434,19 @@ async def main():
         trace_id = request.path_params.get("trace_id") or ""
         try:
             from otel import get_in_memory_traces  # type: ignore
-            local = get_in_memory_traces()
+            local_all = get_in_memory_traces()
         except Exception:
-            local = []
+            local_all = []
+        # Filter local to the requested trace up front — no need to
+        # merge the entire local ring just to find one id (#708).
+        local = [t for t in local_all if t.get("traceID") == trace_id]
         import asyncio as _asyncio
         backend_urls = _configured_backend_urls()
         remote_lists: list[list[dict]] = []
         if backend_urls:
+            # Per-id fetch instead of 500-trace fan-out (#708).
             remote_lists = list(await _asyncio.gather(
-                *[_fetch_remote_traces(u) for u in backend_urls],
+                *[_fetch_remote_trace_by_id(u, trace_id) for u in backend_urls],
                 return_exceptions=False,
             ))
         merged = _merge_trace_lists([local, *remote_lists])
