@@ -327,8 +327,14 @@ def _redact_diff(diff_text: str) -> str:
 
         stripped = content.strip()
 
-        # Reset state on doc separators / new kind headers.
-        if stripped == "---" or stripped.startswith("---"):
+        # Reset state only on a standalone YAML doc separator.
+        # Previously the check was ``stripped.startswith("---")`` which
+        # also matched unified-diff file-headers (``--- a/…``, ``+++ b/…``)
+        # and multi-line PEM bodies (``-----BEGIN CERTIFICATE-----``)
+        # inside stringData, resetting the state machine mid-Secret and
+        # leaking subsequent data leaf lines (#1028). ``+++ `` and
+        # ``@@ `` hunk headers are not doc separators either.
+        if stripped == "---":
             in_secret = False
             in_data_map = False
             out_lines.append(line)

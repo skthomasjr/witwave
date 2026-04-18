@@ -181,6 +181,52 @@ def test_write_values_unlinks_temp_on_dump_failure(monkeypatch):
     )
 
 
+# ----- _redact_diff state-machine guards (#1028) -----
+
+
+def test_redact_diff_does_not_reset_on_pem_dash_prefix():
+    """A multi-line PEM body inside stringData starts with ``-----BEGIN…``.
+    After stripping the leading diff ``+`` marker the content begins with
+    three dashes. The prior state-reset was ``stripped.startswith("---")``
+    which matched the PEM line and dropped in_secret mid-block, leaking
+    the cert payload on the following lines (#1028).
+    """
+    diff_text = (
+        "+kind: Secret\n"
+        "+stringData:\n"
+        "+  tls.crt: |\n"
+        "+    -----BEGIN CERTIFICATE-----\n"
+        "+    MIIExampleDataHerePlain==\n"
+        "+    -----END CERTIFICATE-----\n"
+        "+  other.key: s3cret\n"
+    )
+    out = server._redact_diff(diff_text)
+    # The secret value for other.key must be redacted — previously the
+    # PEM header reset state and this line emitted in the clear.
+    assert "s3cret" not in out, (
+        "_redact_diff must keep state across PEM-looking lines (#1028)"
+    )
+    assert server._REDACTED in out
+
+
+def test_redact_diff_still_resets_on_standalone_doc_separator():
+    """The exact ``---`` separator must still reset state so a Secret
+    in doc N doesn't suppress a non-Secret leaf in doc N+1."""
+    diff_text = (
+        " kind: Secret\n"
+        " data:\n"
+        "   pw: c2hoaA==\n"
+        "---\n"
+        " kind: ConfigMap\n"
+        " data:\n"
+        "   color: blue\n"
+    )
+    out = server._redact_diff(diff_text)
+    # pw is redacted, but color is left alone after the doc separator.
+    assert "c2hoaA==" not in out
+    assert "color: blue" in out
+
+
 # ----- diff redactor fail-closed logger binding (#1026) -----
 
 
