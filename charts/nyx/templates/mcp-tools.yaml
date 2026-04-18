@@ -1,0 +1,105 @@
+{{/*
+MCP tool Deployments + Services (#644).
+
+One entry in .Values.mcpTools produces one Deployment and one Service,
+both named "<release>-mcp-<name>". The container listens on port 8000
+(FastMCP streamable-http; see tools/../server.py). Agent backends reach
+the tool via the in-cluster DNS name and port that the Service exposes.
+
+Each tool keeps its own ServiceAccount/RBAC out of scope. The
+mcp-kubernetes tool typically needs cluster-read perms, mcp-helm
+typically needs release-management perms. Operators wire those up
+separately and point serviceAccountName at the matching SA; this chart
+does not render ServiceAccount or Role/RoleBinding.
+
+The templating walks .Values.mcpTools as a dict so adding a third tool
+is a two-line values change plus a new image build; no template edits.
+*/}}
+{{- range $name, $tool := .Values.mcpTools }}
+{{- if $tool.enabled }}
+{{- $fullName := printf "%s-mcp-%s" $.Release.Name $name }}
+{{- $imageTag := default $.Chart.AppVersion $tool.image.tag }}
+{{- $pullPolicy := default "IfNotPresent" $tool.image.pullPolicy }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullName }}
+  labels:
+    app.kubernetes.io/name: {{ $fullName }}
+    app.kubernetes.io/component: mcp-tool
+    app.kubernetes.io/part-of: nyx
+    app.kubernetes.io/managed-by: {{ $.Release.Service }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: {{ $fullName }}
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullName }}
+  labels:
+    app.kubernetes.io/name: {{ $fullName }}
+    app.kubernetes.io/component: mcp-tool
+    app.kubernetes.io/part-of: nyx
+    app.kubernetes.io/managed-by: {{ $.Release.Service }}
+spec:
+  replicas: {{ default 1 $tool.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $fullName }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ $fullName }}
+        app.kubernetes.io/component: mcp-tool
+        app.kubernetes.io/part-of: nyx
+        app.kubernetes.io/managed-by: {{ $.Release.Service }}
+    spec:
+      {{- if $tool.serviceAccountName }}
+      serviceAccountName: {{ $tool.serviceAccountName }}
+      automountServiceAccountToken: true
+      {{- else }}
+      automountServiceAccountToken: false
+      {{- end }}
+      {{- with $tool.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mcp
+          image: "{{ $tool.image.repository }}:{{ $imageTag }}"
+          imagePullPolicy: {{ $pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: 8000
+          {{- with $tool.env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $tool.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $tool.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}
+{{- end }}

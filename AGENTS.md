@@ -104,18 +104,33 @@ treated equally regardless of what it wraps. Current MCP components:
 
 Each MCP component:
 
+- Runs a long-lived HTTP server on port **`8000`** using FastMCP's `streamable-http` transport (#644). The
+  container `EXPOSE`s 8000 and Kubernetes addresses it via a per-tool Service (`<release>-mcp-<tool>:8000`).
 - Speaks the Model Context Protocol (not A2A) and is consumed by backends via their MCP configuration
   (`mcp.json` under `.claude/`, `.codex/`, or `.gemini/` — all three backends share the same wire format).
+  Entries point at the tool's Service URL, not at a local binary:
+
+  ```json
+  {
+    "mcpServers": {
+      "kubernetes": { "url": "http://nyx-mcp-kubernetes:8000" }
+    }
+  }
+  ```
+
   Codex additionally reads `.codex/config.toml` for built-in tool enablement flags; that file is unrelated to
   MCP server wiring.
 - Targets only the cluster where it is deployed; auth is in-cluster ServiceAccount + RBAC, not arbitrary
-  kubeconfigs.
-- Is independently deployable and typically **shared across all agents** in a cluster rather than replicated
-  per-agent. Agents opt into an MCP component by referencing it from their backend config.
+  kubeconfigs. Wire a `ServiceAccount` with appropriate RBAC via `mcpTools.<name>.serviceAccountName` in
+  `charts/nyx/values.yaml`.
+- Is independently deployable and **shared across all agents** in a cluster — one Deployment + Service per
+  enabled tool. Opt in per tool in the chart's `mcpTools` block (`kubernetes.enabled: true`,
+  `helm.enabled: true`); disabled by default.
 
-Add a new MCP component by creating `tools/<name>/` with a `Dockerfile`, `server.py`, and `requirements.txt`,
-then register a `mcp-<name>:latest` build in the [Building Images](#building-images) section. Tag related
-issues/PRs with the `mcp` GitHub label.
+Add a new MCP component by creating `tools/<name>/` with a `Dockerfile`, `server.py`, and `requirements.txt`
+(server must call `mcp.run(transport="streamable-http", host="0.0.0.0", port=8000)`), add an `EXPOSE 8000` to
+the Dockerfile, then register a `mcp-<name>:latest` build in the [Building Images](#building-images) section
+and a `mcpTools.<name>` block in `charts/nyx/values.yaml`. Tag related issues/PRs with the `mcp` GitHub label.
 
 ### Routing configuration
 

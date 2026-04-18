@@ -311,6 +311,40 @@ value was dropped. Combined with the backend's own `<NAME>_MODEL` env var (`CLAU
 `GEMINI_MODEL`) and per-request routing overrides in nyx-harness, this lets the chart set the default model for a
 backend without baking it into the image or a per-agent ConfigMap.
 
+## MCP tool Deployments (#644)
+
+The chart renders one `Deployment` + `Service` per entry in `mcpTools` that has `enabled: true`. Each tool container
+listens on port **`8000`** using FastMCP's `streamable-http` transport, so backends in other pods can reach it by
+Service URL (`http://<release>-mcp-<tool>:8000`) without needing a stdio fork/exec.
+
+```yaml
+mcpTools:
+  kubernetes:
+    enabled: true
+    serviceAccountName: mcp-kubernetes   # BYO SA with cluster-read RBAC
+  helm:
+    enabled: true
+    serviceAccountName: mcp-helm         # BYO SA with helm-release RBAC
+```
+
+In each agent's `.claude/mcp.json` / `.codex/mcp.json` / `.gemini/mcp.json`, reference the tools by URL:
+
+```json
+{
+  "mcpServers": {
+    "kubernetes": { "url": "http://<release>-mcp-kubernetes:8000" },
+    "helm":       { "url": "http://<release>-mcp-helm:8000" }
+  }
+}
+```
+
+The chart deliberately does **not** render the tools' `ServiceAccount` / `Role` / `RoleBinding` — cluster RBAC is a
+security decision that depends on the verbs each deployment actually needs. Create those resources separately and
+point `serviceAccountName` at the SA you made.
+
+Disabled by default. Leave `mcpTools.<name>.enabled: false` (or omit the entry entirely) to skip rendering; backends
+configured without the URL just don't call the tool.
+
 ## Enabling distributed tracing (#634)
 
 End-to-end OpenTelemetry tracing across harness + backends + operator is opt-in. The pod-side OTel bootstraps

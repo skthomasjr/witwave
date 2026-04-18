@@ -362,4 +362,12 @@ if __name__ == "__main__":
     init_otel_if_enabled(
         service_name=os.environ.get("OTEL_SERVICE_NAME") or "mcp-helm",
     )
-    mcp.run()
+    # Streamable-HTTP transport so the container is reachable across pod
+    # boundaries (#644). stdio mode (FastMCP's default) assumes a local
+    # fork/exec client and can't be consumed from a separate pod's
+    # backend container via `.claude/mcp.json` URL references.
+    mcp.run(
+        transport="streamable-http",
+        host="0.0.0.0",
+        port=int(os.environ.get("MCP_PORT", "8000")),
+    )

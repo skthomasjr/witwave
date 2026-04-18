@@ -17,4 +17,9 @@ COPY --chown=tool:tool tools/kubernetes/ /home/tool/
 # sys.path at runtime so server.py can import `otel` directly.
 COPY --chown=tool:tool shared/otel.py /home/tool/shared/otel.py
 
+# FastMCP streamable-http server (#644). Advertise the port so `docker run
+# -P` and Kubernetes Service targetPort discovery work the same way they
+# do for the agent containers. Override with MCP_PORT env var if needed.
+EXPOSE 8000
+
 CMD ["python", "/home/tool/server.py"]

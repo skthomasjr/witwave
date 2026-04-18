@@ -551,6 +551,49 @@ backends:
     secrets: {}                  # map of env-var-name → value; dev only
     acknowledgeInsecureInline: false
 
+# MCP tool servers (#644). Each enabled entry renders one Deployment +
+# Service in the release namespace, listening on port 8000 with
+# FastMCP's streamable-http transport. Agent backends reach them by URL
+# (http://<release>-mcp-<name>:8000) configured in each backend's
+# `.claude/mcp.json` / `.codex/mcp.json` / `.gemini/mcp.json`. This
+# matches the architectural intent in AGENTS.md that MCP components are
+# independently deployable and shared across agents.
+#
+# Disabled by default — opt in per tool. The `mcp-kubernetes` tool
+# reaches the cluster API in-cluster, so it needs a ServiceAccount with
+# appropriate RBAC (BYO via `serviceAccountName`); `mcp-helm` shells out
+# to the helm CLI and also typically needs cluster RBAC.
+mcpTools:
+  kubernetes:
+    enabled: false
+    image:
+      repository: ghcr.io/skthomasjr/images/mcp-kubernetes
+      # # Image tag. Defaults to .Chart.AppVersion when omitted.
+      # tag: ""
+      # pullPolicy: IfNotPresent
+    # # Number of replicas.
+    # replicas: 1
+    # # Pod-level ServiceAccount. The tool reads cluster state via the
+    # # in-cluster API; bind this SA to an appropriate (Cluster)Role.
+    # serviceAccountName: mcp-kubernetes
+    # # imagePullSecrets: []
+    # # resources: {}
+    # # env: []
+    # # envFrom: []
+
+  helm:
+    enabled: false
+    image:
+      repository: ghcr.io/skthomasjr/images/mcp-helm
+      # tag: ""
+      # pullPolicy: IfNotPresent
+    # replicas: 1
+    # serviceAccountName: mcp-helm
+    # imagePullSecrets: []
+    # resources: {}
+    # env: []
+    # envFrom: []
+
 # List of agents to deploy. Each agent runs as a single pod containing
 # the nyx-harness orchestrator and one or more backend sidecars.
 agents:
