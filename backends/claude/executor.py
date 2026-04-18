@@ -1222,7 +1222,15 @@ async def _run_inner(
     if backend_model_requests_total is not None:
         backend_model_requests_total.labels(**_LABELS, model=sanitize_model_label(resolved_model)).inc()
 
-    is_new = ctx.session_id not in sessions and not await asyncio.to_thread(_session_file_exists, ctx.session_id)
+    # The Claude CLI's `--resume <id>` mode requires a session file on
+    # disk; when the in-memory LRU cache has the session tracked but the
+    # file is missing (evicted, deleted, cwd drift — see
+    # backend_session_path_mismatch_total) `resume=` fails with an empty-
+    # stderr ProcessError. Ground truth is the disk: if there's no
+    # session file, treat as new regardless of what the cache says. The
+    # cache lookup below still drives the session-idle metric.
+    file_exists = await asyncio.to_thread(_session_file_exists, ctx.session_id)
+    is_new = not file_exists
     if not is_new and backend_session_idle_seconds is not None:
         _last_used = sessions.get(ctx.session_id)
         if _last_used is not None:
