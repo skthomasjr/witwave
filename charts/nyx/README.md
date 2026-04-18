@@ -338,9 +338,13 @@ In each agent's `.claude/mcp.json` / `.codex/mcp.json` / `.gemini/mcp.json`, ref
 }
 ```
 
-The chart deliberately does **not** render the tools' `ServiceAccount` / `Role` / `RoleBinding` — cluster RBAC is a
-security decision that depends on the verbs each deployment actually needs. Create those resources separately and
-point `serviceAccountName` at the SA you made.
+The chart renders a minimal default `ServiceAccount` + `ClusterRole` + `ClusterRoleBinding` per MCP tool whenever
+`mcpTools.<name>.rbac.create: true` (the default; see `values.yaml` for the baseline `rules`). If you prefer to
+manage RBAC out-of-band (e.g. central security team, out-of-cluster IAM, or a reduced verb surface), set
+`rbac.create: false`, provide `serviceAccountName: <your-SA>`, and apply the ready-to-use samples in
+[`samples/mcp-kubernetes-rbac.yaml`](samples/mcp-kubernetes-rbac.yaml) and
+[`samples/mcp-helm-rbac.yaml`](samples/mcp-helm-rbac.yaml) — both are least-privilege starting points that
+mirror the chart's in-tree baseline.
 
 Disabled by default. Leave `mcpTools.<name>.enabled: false` (or omit the entry entirely) to skip rendering; backends
 configured without the URL just don't call the tool.

@@ -1,0 +1,59 @@
+# Least-privilege ServiceAccount + ClusterRole + ClusterRoleBinding for
+# the mcp-helm tool (#845). Apply this before enabling the tool if you
+# want to manage RBAC out-of-band from the chart (i.e. set
+# `mcpTools.helm.rbac.create: false` and
+# `mcpTools.helm.serviceAccountName: mcp-helm`).
+#
+# Helm stores release state as Secrets in each release's namespace, so
+# the tool needs Secret CRUD. The read verbs on other resources allow
+# `helm get manifest` / `helm list` / `helm diff` to inspect rendered
+# objects without granting write access to arbitrary cluster state.
+# Scope down with a RoleBinding instead of ClusterRoleBinding if the
+# deployment only manages releases in a fixed namespace.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mcp-helm
+  # namespace: <release-namespace>
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mcp-helm
+rules:
+  # Helm release storage backend.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Read-only on resources helm inspects or renders.
+  - apiGroups: [""]
+    resources: ["configmaps", "namespaces", "services", "serviceaccounts"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+    verbs: ["get", "list", "watch"]
+  # Uncomment to allow `helm install` / `helm upgrade` to actually write
+  # rendered resources — add only the API groups your charts target.
+  # - apiGroups: [""]
+  #   resources: ["services", "serviceaccounts", "configmaps"]
+  #   verbs: ["create", "update", "patch", "delete"]
+  # - apiGroups: ["apps"]
+  #   resources: ["deployments", "statefulsets", "daemonsets"]
+  #   verbs: ["create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mcp-helm
+subjects:
+  - kind: ServiceAccount
+    name: mcp-helm
+    # namespace: <release-namespace>
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: mcp-helm

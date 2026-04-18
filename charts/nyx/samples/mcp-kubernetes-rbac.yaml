@@ -1,0 +1,74 @@
+# Least-privilege ServiceAccount + ClusterRole + ClusterRoleBinding for
+# the mcp-kubernetes tool (#845). Apply this before enabling the tool if
+# you want to manage RBAC out-of-band from the chart (i.e. set
+# `mcpTools.kubernetes.rbac.create: false` and
+# `mcpTools.kubernetes.serviceAccountName: mcp-kubernetes`).
+#
+# The chart's default in-tree rbac.rules mirror these verbs — copy this
+# file and adjust as needed; narrow to specific namespaces with Role /
+# RoleBinding instead of ClusterRole / ClusterRoleBinding if possible.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mcp-kubernetes
+  # namespace: <release-namespace>
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mcp-kubernetes
+rules:
+  # Core read — namespaces, pods, services, events, nodes, config +
+  # persistent volumes. Matches tools/kubernetes/server.py's list/get
+  # handlers.
+  - apiGroups: [""]
+    resources:
+      - namespaces
+      - pods
+      - services
+      - configmaps
+      - persistentvolumeclaims
+      - persistentvolumes
+      - events
+      - nodes
+    verbs: ["get", "list", "watch"]
+  # Pod logs are a sub-resource with its own verb surface.
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  # Workloads.
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  # Batch workloads.
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+  # Network.
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["get", "list", "watch"]
+  # Optional — uncomment to allow server-side apply / delete (destructive).
+  # The chart's default rbac.rules ships these verbs OFF to match the
+  # read-only baseline; flip individual blocks on if the deployment
+  # actually needs them.
+  # - apiGroups: ["*"]
+  #   resources: ["*"]
+  #   verbs: ["patch"]   # SSA via apply()
+  # - apiGroups: ["*"]
+  #   resources: ["*"]
+  #   verbs: ["delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mcp-kubernetes
+subjects:
+  - kind: ServiceAccount
+    name: mcp-kubernetes
+    # namespace: <release-namespace>
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: mcp-kubernetes
