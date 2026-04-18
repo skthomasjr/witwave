@@ -379,6 +379,15 @@ if __name__ == "__main__":
             )
 
     _load_kube_config()
+    # Eagerly initialise the shared ApiClient and DynamicClient at startup
+    # (#696). FastMCP streamable-http dispatches tool calls concurrently,
+    # so the previous check-then-set in _api()/_dyn() could let two
+    # simultaneous first requests each trigger a DynamicClient discovery
+    # pass. _api() and _dyn() remain safe for repeat callers once
+    # initialised because both globals are already populated by the time
+    # mcp.run() begins accepting requests.
+    _api()
+    _dyn()
     # Streamable-HTTP transport so the container is reachable across pod
     # boundaries (#644). stdio mode (FastMCP's default) assumes a local
     # fork/exec client and can't be consumed from a separate pod's
