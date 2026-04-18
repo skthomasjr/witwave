@@ -392,7 +392,13 @@ async def main():
                     executor._sessions.pop(session_id, None)
                 except Exception:
                     pass
-                _db_path = os.environ.get("CODEX_SESSION_DB", "")
+                # Import the already-resolved DB path from executor
+                # (#877): re-reading os.environ here drifts from the
+                # module-level constant captured at executor import
+                # time, so if CODEX_SESSION_DB was mutated in between
+                # (tests, reload paths) the cleanup would run against
+                # a DIFFERENT path than the writes.
+                from executor import CODEX_SESSION_DB as _db_path
                 if _db_path and _db_path != ":memory:":
                     try:
                         from executor import _delete_sqlite_session as _del_mcp
