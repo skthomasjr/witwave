@@ -26,10 +26,48 @@ export interface AgentMetrics {
 // are absent. Kept as a Record (not a Map) for easy template iteration.
 export type PerAgentErrors = Record<string, string>;
 
-async function fetchText(url: string, signal: AbortSignal): Promise<string> {
-  const resp = await fetch(url, { signal });
-  if (!resp.ok) throw new ApiError(resp.status, `HTTP ${resp.status}`);
-  return await resp.text();
+async function fetchText(
+  url: string,
+  signal: AbortSignal,
+  timeoutMs?: number,
+): Promise<string> {
+  // Combine the outer abort signal with a per-request timeout (#743).
+  // When AbortSignal.any is available we merge; otherwise we fall back
+  // to a manual timer.
+  let cleanup: () => void = () => {};
+  let effectiveSignal: AbortSignal = signal;
+  if (timeoutMs && timeoutMs > 0) {
+    const AnyAbortSignal = AbortSignal as unknown as {
+      any?: (signals: AbortSignal[]) => AbortSignal;
+      timeout?: (ms: number) => AbortSignal;
+    };
+    if (
+      typeof AnyAbortSignal.any === "function" &&
+      typeof AnyAbortSignal.timeout === "function"
+    ) {
+      effectiveSignal = AnyAbortSignal.any([
+        signal,
+        AnyAbortSignal.timeout(timeoutMs),
+      ]);
+    } else {
+      const controller = new AbortController();
+      const outerListener = () => controller.abort();
+      signal.addEventListener("abort", outerListener);
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      cleanup = () => {
+        clearTimeout(timer);
+        signal.removeEventListener("abort", outerListener);
+      };
+      effectiveSignal = controller.signal;
+    }
+  }
+  try {
+    const resp = await fetch(url, { signal: effectiveSignal });
+    if (!resp.ok) throw new ApiError(resp.status, `HTTP ${resp.status}`);
+    return await resp.text();
+  } finally {
+    cleanup();
+  }
 }
 
 export interface UseMetricsOptions {
@@ -38,6 +76,12 @@ export interface UseMetricsOptions {
   // works). Changes are observed: the timer is torn down and reinstalled
   // whenever the interval changes.
   intervalMs?: Ref<number> | number;
+  // Per-agent metrics-fetch timeout (ms). Default 5000 so one stuck
+  // backend never stalls the whole fan-out and stops the dashboard
+  // refreshing (#743).
+  memberTimeoutMs?: number;
+  // Timeout for the /team directory fetch (ms). Default 5000.
+  directoryTimeoutMs?: number;
 }
 
 export function useMetrics(options: UseMetricsOptions = {}) {
@@ -55,6 +99,8 @@ export function useMetrics(options: UseMetricsOptions = {}) {
   let timer: ReturnType<typeof setInterval> | null = null;
   let aborter: AbortController | null = null;
 
+  const memberTimeoutMs = options.memberTimeoutMs ?? 5000;
+  const directoryTimeoutMs = options.directoryTimeoutMs ?? 5000;
   const intervalSource = options.intervalMs ?? 5000;
   const intervalRef: Ref<number> =
     typeof intervalSource === "number" ? ref(intervalSource) : intervalSource;
@@ -78,13 +124,17 @@ export function useMetrics(options: UseMetricsOptions = {}) {
     aborter = new AbortController();
     const signal = aborter.signal;
     try {
-      const directory = await apiGet<TeamDirectoryEntry[]>("/team", { signal });
+      const directory = await apiGet<TeamDirectoryEntry[]>("/team", {
+        signal,
+        timeoutMs: directoryTimeoutMs,
+      });
       const results = await Promise.all(
         directory.map(async (entry): Promise<AgentMetrics> => {
           try {
             const text = await fetchText(
               `/api/agents/${encodeURIComponent(entry.name)}/metrics`,
               signal,
+              memberTimeoutMs,
             );
             // Clear any prior warn-suppression so a future failure warns again.
             warnedAgents.delete(entry.name);

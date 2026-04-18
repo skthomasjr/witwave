@@ -17,10 +17,18 @@ interface TeamDirectoryEntry {
 
 export interface UseTeamOptions {
   intervalMs?: number;
+  // Per-member timeout (ms) so one unreachable agent cannot stall the
+  // whole fan-out and stop the dashboard refreshing (#743). Default
+  // 5000ms; override per-caller if a specific view needs more slack.
+  memberTimeoutMs?: number;
+  // Timeout for the /team discovery call itself (#743). Default 5000ms.
+  directoryTimeoutMs?: number;
 }
 
 export function useTeam(opts: UseTeamOptions = {}) {
   const intervalMs = opts.intervalMs ?? 5000;
+  const memberTimeoutMs = opts.memberTimeoutMs ?? 5000;
+  const directoryTimeoutMs = opts.directoryTimeoutMs ?? 5000;
 
   const members = ref<TeamResponse>([]);
   const error = ref<string>("");
@@ -36,7 +44,7 @@ export function useTeam(opts: UseTeamOptions = {}) {
     try {
       const agents = await apiGet<Agent[]>(
         `/agents/${encodeURIComponent(entry.name)}/agents`,
-        { signal },
+        { signal, timeoutMs: memberTimeoutMs },
       );
       return { name: entry.name, url: entry.url, agents };
     } catch (e) {
@@ -51,7 +59,10 @@ export function useTeam(opts: UseTeamOptions = {}) {
     aborter = new AbortController();
     const signal = aborter.signal;
     try {
-      const directory = await apiGet<TeamDirectoryEntry[]>("/team", { signal });
+      const directory = await apiGet<TeamDirectoryEntry[]>("/team", {
+        signal,
+        timeoutMs: directoryTimeoutMs,
+      });
       const resolved = await Promise.all(
         directory.map((entry) => fetchMember(entry, signal)),
       );
