@@ -74,6 +74,25 @@ class A2ABackend:
         self._url = os.environ.get(_env_var) or config.url or ""
         if not self._url:
             raise ValueError(f"A2A backend '{config.id}' has no url configured.")
+        # Auth-env startup warning (#787). Parity with the backend-side
+        # CONVERSATIONS_AUTH_TOKEN warning (#517): when auth_env is unset or
+        # points at an empty env var, every forwarded request goes without
+        # an Authorization header and the backend will silently 401. Emit a
+        # one-shot WARNING at init so operators notice the misconfiguration
+        # in startup logs rather than discovering it from failed traffic.
+        if not self._auth_env:
+            logger.warning(
+                "A2A backend '%s' has no auth_env configured — outbound requests "
+                "will be sent without an Authorization header.",
+                config.id,
+            )
+        elif not os.environ.get(self._auth_env):
+            logger.warning(
+                "A2A backend '%s' auth_env=%s is empty or unset — outbound "
+                "requests will be sent without an Authorization header.",
+                config.id,
+                self._auth_env,
+            )
         # Shared AsyncClient with connection pooling; initialized eagerly so that
         # concurrent run_query calls all share the same client without racing on
         # a lazy None-check (#398).
