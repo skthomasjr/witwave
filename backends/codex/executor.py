@@ -1863,14 +1863,16 @@ class AgentExecutor(A2AAgentExecutor):
         _tp = metadata.get("traceparent") if isinstance(metadata.get("traceparent"), str) else None
         _otel_parent = _extract_ctx({"traceparent": _tp}) if _tp else None
         _raw_sid = "".join(c for c in str(context.context_id or metadata.get("session_id") or "").strip()[:256] if c >= " ")
-        if not _raw_sid:
-            session_id = str(uuid.uuid4())
-        else:
-            try:
-                uuid.UUID(_raw_sid)
-                session_id = _raw_sid
-            except ValueError:
-                session_id = str(uuid.uuid5(uuid.NAMESPACE_URL, _raw_sid))
+        # Per-caller session_id binding parity with claude (#710) and
+        # gemini (#733). The same risk applies to codex: raw session_id
+        # is caller-supplied and acts as a bearer secret when left
+        # unbound. The shared helper is backward compatible (no-op when
+        # SESSION_ID_SECRET is unset), so this merely closes the
+        # consistency gap across backends without changing default
+        # behaviour.
+        from session_binding import derive_session_id as _derive_session_id
+        _caller_id = metadata.get("caller_id") if isinstance(metadata.get("caller_id"), str) else None
+        session_id = _derive_session_id(_raw_sid, caller_identity=_caller_id)
         model = metadata.get("model") or None
         # Shared parser lives in shared/validation.py (#537, #428, #555).
         max_tokens = parse_max_tokens(
