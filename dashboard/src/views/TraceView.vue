@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useAgentFanout } from "../composables/useAgentFanout";
 import type { TraceEntry } from "../types/chat";
 
@@ -31,6 +31,16 @@ watch(searchTerm, (val) => {
     searchTermDebounced.value = val;
     _searchTimer = null;
   }, 200);
+});
+// #1008: clear any pending debounce on unmount so a late setTimeout
+// can't fire against a destroyed component (surfaced under Suspense
+// / KeepAlive teardown when the user types and navigates away within
+// the 200ms window).
+onBeforeUnmount(() => {
+  if (_searchTimer !== null) {
+    window.clearTimeout(_searchTimer);
+    _searchTimer = null;
+  }
 });
 const agentFilter = ref<string>("");
 const toolFilter = ref<string>("");
