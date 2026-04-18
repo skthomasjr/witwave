@@ -568,50 +568,21 @@ def _load_mcp_config() -> dict:
 # MCP stdio command allow-list (#720 — parity with claude #711). Without
 # this guard, a malicious mcp.json landed via gitSync or the NyxPrompt
 # path could spawn an arbitrary binary inside the codex backend pod.
-# Configuration knobs mirror the claude side so operators need to
-# manage one set of envs for the whole platform.
-_DEFAULT_CODEX_MCP_ALLOWED_COMMANDS = (
-    "mcp-kubernetes,mcp-helm,python,python3,node,npx,uv,uvx"
-)
-_DEFAULT_CODEX_MCP_ALLOWED_COMMAND_PREFIXES = "/home/agent/mcp-bin/,/usr/local/bin/"
-_CODEX_MCP_ALLOWED_COMMANDS: frozenset[str] = frozenset(
-    t.strip() for t in os.environ.get(
-        "MCP_ALLOWED_COMMANDS", _DEFAULT_CODEX_MCP_ALLOWED_COMMANDS,
-    ).split(",") if t.strip()
-)
-_CODEX_MCP_ALLOWED_COMMAND_PREFIXES: tuple[str, ...] = tuple(
-    t.strip() for t in os.environ.get(
-        "MCP_ALLOWED_COMMAND_PREFIXES", _DEFAULT_CODEX_MCP_ALLOWED_COMMAND_PREFIXES,
-    ).split(",") if t.strip()
-)
+#
+# #964: The rule now lives in shared/mcp_command_allowlist.py — the
+# three backends used to carry forked copies that drifted on defaults,
+# metric reasons, and the absolute-path fallback behaviour (#862). The
+# shared helper is the source of truth; codex keeps only its cwd
+# allow-list (cwd wasn't covered by the shared module at the time of
+# consolidation).
+from mcp_command_allowlist import mcp_command_allowed as _codex_mcp_command_allowed  # noqa: E402
+
 _DEFAULT_CODEX_MCP_ALLOWED_CWD_PREFIXES = "/home/agent/,/tmp/"
 _CODEX_MCP_ALLOWED_CWD_PREFIXES: tuple[str, ...] = tuple(
     t.strip() for t in os.environ.get(
         "MCP_ALLOWED_CWD_PREFIXES", _DEFAULT_CODEX_MCP_ALLOWED_CWD_PREFIXES,
     ).split(",") if t.strip()
 )
-
-
-def _codex_mcp_command_allowed(command: str) -> tuple[bool, str]:
-    """Return (ok, reason) for an MCP stdio ``command`` under the codex
-    allow-list (#720). reason is a short label suitable for the
-    ``backend_mcp_command_rejected_total`` counter."""
-    if not isinstance(command, str):
-        return False, "non_string"
-    cmd = command.strip()
-    if not cmd:
-        return False, "empty"
-    if cmd.startswith("/"):
-        for prefix in _CODEX_MCP_ALLOWED_COMMAND_PREFIXES:
-            if cmd.startswith(prefix):
-                return True, "absolute_prefix"
-        basename = os.path.basename(cmd)
-        if basename in _CODEX_MCP_ALLOWED_COMMANDS:
-            return True, "basename_allowed"
-        return False, "absolute_not_on_prefix"
-    if cmd in _CODEX_MCP_ALLOWED_COMMANDS or os.path.basename(cmd) in _CODEX_MCP_ALLOWED_COMMANDS:
-        return True, "basename_allowed"
-    return False, "basename_not_allowed"
 
 
 def _codex_mcp_cwd_allowed(cwd: str) -> tuple[bool, str]:

@@ -262,46 +262,20 @@ def _load_mcp_config() -> dict:
 # lifespan-scoped MCP stack is validated here first. Rejections are
 # dropped and counted via backend_mcp_command_rejected_total{reason} so
 # a mis-merged mcp.json can't reach google-genai AFC.
-_DEFAULT_GEMINI_MCP_ALLOWED_COMMANDS = (
-    "mcp-kubernetes,mcp-helm,python,python3,node,npx,uv,uvx"
-)
-_DEFAULT_GEMINI_MCP_ALLOWED_COMMAND_PREFIXES = "/home/agent/mcp-bin/,/usr/local/bin/"
+#
+# #964: Command checking now lives in shared/mcp_command_allowlist.py
+# so the three backends don't carry drifting forks (defaults, metric
+# reasons, and the absolute-path fallback differed before — see #862).
+# The cwd allow-list stays local until the shared module grows a
+# counterpart.
+from mcp_command_allowlist import mcp_command_allowed as _gemini_mcp_command_allowed  # noqa: E402
+
 _DEFAULT_GEMINI_MCP_ALLOWED_CWD_PREFIXES = "/home/agent/,/tmp/"
-_GEMINI_MCP_ALLOWED_COMMANDS: frozenset[str] = frozenset(
-    t.strip() for t in os.environ.get(
-        "MCP_ALLOWED_COMMANDS", _DEFAULT_GEMINI_MCP_ALLOWED_COMMANDS,
-    ).split(",") if t.strip()
-)
-_GEMINI_MCP_ALLOWED_COMMAND_PREFIXES: tuple[str, ...] = tuple(
-    t.strip() for t in os.environ.get(
-        "MCP_ALLOWED_COMMAND_PREFIXES", _DEFAULT_GEMINI_MCP_ALLOWED_COMMAND_PREFIXES,
-    ).split(",") if t.strip()
-)
 _GEMINI_MCP_ALLOWED_CWD_PREFIXES: tuple[str, ...] = tuple(
     t.strip() for t in os.environ.get(
         "MCP_ALLOWED_CWD_PREFIXES", _DEFAULT_GEMINI_MCP_ALLOWED_CWD_PREFIXES,
     ).split(",") if t.strip()
 )
-
-
-def _gemini_mcp_command_allowed(command: Any) -> tuple[bool, str]:
-    """Return (ok, reason) for an MCP stdio ``command`` (#730)."""
-    if not isinstance(command, str):
-        return False, "non_string"
-    cmd = command.strip()
-    if not cmd:
-        return False, "empty"
-    if cmd.startswith("/"):
-        for prefix in _GEMINI_MCP_ALLOWED_COMMAND_PREFIXES:
-            if cmd.startswith(prefix):
-                return True, "absolute_prefix"
-        basename = os.path.basename(cmd)
-        if basename in _GEMINI_MCP_ALLOWED_COMMANDS:
-            return True, "basename_allowed"
-        return False, "absolute_not_on_prefix"
-    if cmd in _GEMINI_MCP_ALLOWED_COMMANDS or os.path.basename(cmd) in _GEMINI_MCP_ALLOWED_COMMANDS:
-        return True, "basename_allowed"
-    return False, "basename_not_allowed"
 
 
 def _gemini_mcp_cwd_allowed(cwd: Any) -> tuple[bool, str]:
