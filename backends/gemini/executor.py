@@ -1825,8 +1825,28 @@ class AgentExecutor(A2AAgentExecutor):
                 to_close: list[tuple[AsyncExitStack, int, float]] = []
                 for entry in self._mcp_old_stacks:
                     _old_stack, _old_ref, parked_at = entry
+                    # Only force-close when stale AND no callers are still
+                    # using the parked stack (#885). Closing while in-use
+                    # aborts an in-flight AFC round-trip on the victim stack.
+                    # Stale-but-in-use entries stay parked; we log a one-shot
+                    # WARN so operators notice a caller that never released
+                    # rather than silently aborting their request.
                     if now - parked_at > self._mcp_parked_stack_max_age_s:
-                        to_close.append(entry)
+                        if _old_ref <= 0:
+                            to_close.append(entry)
+                        else:
+                            still_parked.append(entry)
+                            if not getattr(_old_stack, "_watchdog_stale_warned", False):
+                                try:
+                                    setattr(_old_stack, "_watchdog_stale_warned", True)
+                                except Exception:
+                                    pass
+                                logger.warning(
+                                    "MCP watchdog: parked stack stale (age=%.1fs) "
+                                    "but refcount=%d > 0 — leaving intact to "
+                                    "avoid aborting an in-flight call (#885).",
+                                    now - parked_at, _old_ref,
+                                )
                     else:
                         still_parked.append(entry)
                 self._mcp_old_stacks = still_parked
