@@ -15,12 +15,11 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: "Team", to: { name: "team" } },
-  { label: "Jobs", to: { name: "jobs" } },
-  { label: "Tasks", to: { name: "tasks" } },
-  { label: "Triggers", to: { name: "triggers" } },
-  { label: "Webhooks", to: { name: "webhooks" } },
-  { label: "Continuations", to: { name: "continuations" } },
-  { label: "Heartbeat", to: { name: "heartbeat" } },
+  // The previous Jobs / Tasks / Triggers / Webhooks / Continuations /
+  // Heartbeat tabs collapsed into a single card-grouped Automation view
+  // so the nav bar has room to breathe. Legacy routes redirect — see
+  // router.ts for the full list.
+  { label: "Automation", to: { name: "automation" } },
   { label: "Conversations", to: { name: "conversations" } },
   { label: "Trace", to: { name: "trace" } },
   { label: "Tool audit", to: { name: "tool-audit" } },

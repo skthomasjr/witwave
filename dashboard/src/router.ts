@@ -1,12 +1,7 @@
 import { createRouter, createWebHistory } from "vue-router";
 
 import TeamView from "./views/TeamView.vue";
-import JobsView from "./views/JobsView.vue";
-import TasksView from "./views/TasksView.vue";
-import TriggersView from "./views/TriggersView.vue";
-import WebhooksView from "./views/WebhooksView.vue";
-import ContinuationsView from "./views/ContinuationsView.vue";
-import HeartbeatView from "./views/HeartbeatView.vue";
+import AutomationView from "./views/AutomationView.vue";
 import ConversationsView from "./views/ConversationsView.vue";
 import TraceView from "./views/TraceView.vue";
 import ToolAuditView from "./views/ToolAuditView.vue";
@@ -15,16 +10,23 @@ import MetricsView from "./views/MetricsView.vue";
 
 // Route table backs the nav in App.vue one-to-one (#470). Add a view here
 // and a nav entry there; dashboard picks up the new link automatically.
+//
+// Jobs / Tasks / Triggers / Webhooks / Continuations / Heartbeat all
+// collapsed into `/automation` as card sections (#automation-v1). The
+// legacy paths redirect there so existing bookmarks still work.
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: "/", name: "team", component: TeamView },
-    { path: "/jobs", name: "jobs", component: JobsView },
-    { path: "/tasks", name: "tasks", component: TasksView },
-    { path: "/triggers", name: "triggers", component: TriggersView },
-    { path: "/webhooks", name: "webhooks", component: WebhooksView },
-    { path: "/continuations", name: "continuations", component: ContinuationsView },
-    { path: "/heartbeat", name: "heartbeat", component: HeartbeatView },
+    { path: "/automation", name: "automation", component: AutomationView },
+    // Legacy redirects — keep working for one release at minimum so any
+    // bookmarks or linked docs don't 404 silently.
+    { path: "/jobs", redirect: { name: "automation" } },
+    { path: "/tasks", redirect: { name: "automation" } },
+    { path: "/triggers", redirect: { name: "automation" } },
+    { path: "/webhooks", redirect: { name: "automation" } },
+    { path: "/continuations", redirect: { name: "automation" } },
+    { path: "/heartbeat", redirect: { name: "automation" } },
     { path: "/conversations", name: "conversations", component: ConversationsView },
     { path: "/trace", name: "trace", component: TraceView },
     { path: "/tool-audit", name: "tool-audit", component: ToolAuditView },
