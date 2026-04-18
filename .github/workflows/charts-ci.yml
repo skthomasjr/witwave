@@ -4,11 +4,13 @@ on:
   pull_request:
     paths:
       - "charts/**"
+      - "tools/**"
       - ".github/workflows/charts-ci.yml"
   push:
     branches: ["main"]
     paths:
       - "charts/**"
+      - "tools/**"
       - ".github/workflows/charts-ci.yml"
 
 # Lint + render + schema-validate every Helm chart in this repo on every
@@ -193,6 +195,32 @@ jobs:
             exit 1
           fi
           echo "fail-fast guards: OK"
+
+  mcp-tools-pytest:
+    # Unit-test coverage for tools/* pure helpers (#852). Runs against
+    # the real production source (no mocking the helpers) so argv
+    # injection guards, secret redaction rules, and tempfile lifecycle
+    # behaviour are exercised end-to-end. Heavy deps (mcp SDK,
+    # kubernetes, PyYAML) install via pip; no cluster is touched.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest pyyaml prometheus_client mcp kubernetes httpx
+
+      - name: pytest tools/helm
+        run: pytest -q tools/helm/test_server.py
+        env:
+          PYTHONPATH: shared
 
   psa-restricted:
     # Static PSS-restricted verification for the rendered chart (#847).

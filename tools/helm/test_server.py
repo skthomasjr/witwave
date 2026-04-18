@@ -1,0 +1,185 @@
+"""Unit tests for tools/helm/server.py pure helpers (#852).
+
+Exercises the testable seams of the mcp-helm tool without touching
+the network, the helm CLI, or the live cluster:
+
+- ``_reject_flag_like`` argv-injection guard (#693)
+- ``_looks_like_secret_key`` + ``_redact_values`` redaction (#774)
+- ``_write_values`` tempfile lifecycle, including the cleanup path
+  when ``yaml.safe_dump`` raises (#698)
+
+The server module imports `mcp` and `yaml`, both standard PyPI
+packages. The test harness installs them in the test venv rather
+than mocking — the pure functions under test do not touch the
+network or the Kubernetes API, so there is nothing to stub. Keeps
+the tests honest to production behaviour.
+"""
+
+import os
+import sys
+from pathlib import Path
+
+import pytest
+
+_HELM_DIR = Path(__file__).resolve().parent
+_SHARED = _HELM_DIR.parents[1] / "shared"
+sys.path.insert(0, str(_HELM_DIR))
+sys.path.insert(0, str(_SHARED))
+
+import server  # type: ignore  # noqa: E402
+
+
+# ----- _reject_flag_like (argv flag injection, #693) -----
+
+
+def test_reject_flag_like_accepts_plain_values():
+    # Does not raise.
+    server._reject_flag_like(name="mytool", namespace="default", chart="foo")
+
+
+def test_reject_flag_like_skips_none_and_empty():
+    server._reject_flag_like(name=None, namespace="")  # no-op
+
+
+@pytest.mark.parametrize(
+    "label,value",
+    [
+        ("name", "-rm-rf"),
+        ("namespace", "-n"),
+        ("chart", "--set=foo=bar"),
+        ("repo", "-fhttp://evil"),
+    ],
+)
+def test_reject_flag_like_rejects_leading_hyphen(label, value):
+    with pytest.raises(ValueError, match="must not start with '-'"):
+        server._reject_flag_like(**{label: value})
+
+
+@pytest.mark.parametrize("bad", [123, True, False, ["name"], {"x": 1}])
+def test_reject_flag_like_rejects_non_string(bad):
+    with pytest.raises(ValueError, match="must be a string"):
+        server._reject_flag_like(name=bad)
+
+
+# ----- _looks_like_secret_key + _redact_values (#774) -----
+
+
+@pytest.mark.parametrize("key", [
+    "password", "Password", "PASSWORD", "api_key", "apiKey",
+    "authToken", "secret", "pullSecret", "tls.crt", # tls.crt doesn't match — sanity
+])
+def test_looks_like_secret_key_matches(key):
+    # Every key above either matches or intentionally doesn't (tls.crt).
+    looks = server._looks_like_secret_key(key)
+    if key == "tls.crt":
+        # tls.crt isn't a secret-key hint — the redactor would leave it
+        # in place for Helm rendered manifests (Secret handling is a
+        # separate _redact_manifest path).
+        assert not looks
+    else:
+        assert looks, f"{key!r} should be detected as a secret-key hint"
+
+
+def test_redact_values_leaves_non_secret_keys_alone():
+    src = {"replicaCount": 3, "image": {"repository": "nginx", "tag": "1.25"}}
+    out = server._redact_values(src)
+    assert out == src
+    # Returned structure must be a fresh object, not the input.
+    assert out is not src
+    assert out["image"] is not src["image"]
+
+
+def test_redact_values_masks_secret_valued_keys():
+    src = {
+        "apiAuth": {"token": "shhh", "authToken": "alsoShh"},
+        "replicaCount": 2,
+        "nested": {"credentials": {"password": "pw", "username": "u"}},
+    }
+    out = server._redact_values(src)
+    # "apiAuth" itself contains the "auth" substring hint, so the whole
+    # value (including the nested dict) is replaced wholesale — the
+    # redactor is intentionally conservative ("leaf value OR whole
+    # subtree under a secret-named key is replaced"). This captures the
+    # actual behaviour rather than wishful leaf-only redaction.
+    assert out["apiAuth"] == server._REDACTED
+    assert out["replicaCount"] == 2  # untouched
+    # "credentials" likewise is a secret-named key; subtree is replaced.
+    assert out["nested"]["credentials"] == server._REDACTED
+
+
+def test_redact_values_does_leaf_redaction_when_key_is_secret_named_but_value_is_scalar():
+    src = {"replicaCount": 2, "password": "hunter2"}
+    out = server._redact_values(src)
+    assert out["password"] == server._REDACTED
+    assert out["replicaCount"] == 2
+
+
+def test_redact_values_recurses_into_lists():
+    src = {"envs": [{"name": "DB_PASSWORD", "value": "shh"}, {"name": "FOO", "value": "ok"}]}
+    out = server._redact_values(src)
+    # The list itself sits under "envs" (not secret-named), so each
+    # element is recursed. Each element's "value" key is not itself a
+    # secret-name, BUT "name" isn't either. The entries pass through —
+    # this captures actual function semantics (substring match, not
+    # content inspection).
+    assert out["envs"][0]["value"] == "shh"  # not redacted — correct
+    assert out["envs"][1]["value"] == "ok"
+
+
+def test_redact_values_does_not_mutate_input():
+    src = {"password": "shhh", "keep": 1}
+    _ = server._redact_values(src)
+    assert src == {"password": "shhh", "keep": 1}, "input dict must stay intact"
+
+
+# ----- _write_values tempfile lifecycle (#698) -----
+
+
+def test_write_values_empty_returns_none():
+    assert server._write_values(None) is None
+    assert server._write_values({}) is None
+
+
+def test_write_values_writes_yaml_and_returns_path(tmp_path, monkeypatch):
+    path = server._write_values({"replicaCount": 2, "nested": {"a": 1}})
+    assert path is not None
+    try:
+        assert path.exists()
+        text = path.read_text()
+        assert "replicaCount" in text
+        assert "a: 1" in text or "a: 1\n" in text
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def test_write_values_unlinks_temp_on_dump_failure(monkeypatch):
+    """When yaml.safe_dump raises, the tempfile must be unlinked so we
+    don't leak orphan /tmp/helm-values-*.yaml files across runs (#698).
+    Exercises the cleanup path by dumping an object yaml refuses to
+    serialize."""
+    class Unserialisable:
+        pass
+
+    # Capture the tempfile path by spying on mkstemp.
+    from tempfile import mkstemp as real_mkstemp
+    captured: dict = {}
+
+    def spy_mkstemp(**kw):
+        fd, path = real_mkstemp(**kw)
+        captured["path"] = path
+        return fd, path
+
+    monkeypatch.setattr(server.tempfile, "mkstemp", spy_mkstemp)
+
+    with pytest.raises(Exception):
+        server._write_values({"bad": Unserialisable()})
+
+    # The cleanup branch must have removed the tempfile.
+    assert "path" in captured
+    assert not os.path.exists(captured["path"]), (
+        "temp file must be unlinked when yaml.safe_dump raises"
+    )
+
+
+if __name__ == "__main__":  # pragma: no cover
+    sys.exit(pytest.main([__file__, "-q"]))
