@@ -1857,7 +1857,20 @@ class AgentExecutor(A2AAgentExecutor):
                 or (context.message.metadata or {}).get("session_id")
                 or ""
             ).strip()[:256]
-            _empty_sid = "".join(c for c in _empty_sid_raw if c >= " ") or "unknown"
+            _empty_sid_sanitized = (
+                "".join(c for c in _empty_sid_raw if c >= " ") or "unknown"
+            )
+            # Route through derive_session_id (#880) so log-entries and
+            # metric labels use the HMAC-bound id under SESSION_ID_SECRET,
+            # matching the accepted-prompt path below. Otherwise the
+            # rejected-prompt path writes under the raw caller id while
+            # the valid path uses the derived id, splitting rows for the
+            # same logical session across two ids.
+            from session_binding import derive_session_id as _derive_session_id
+            _empty_caller_id = metadata.get("caller_id") if isinstance(metadata.get("caller_id"), str) else None
+            _empty_sid = _derive_session_id(
+                _empty_sid_sanitized, caller_identity=_empty_caller_id,
+            )
             logger.warning(
                 f"Session {_empty_sid!r}: rejected execute() — prompt was empty or whitespace-only (#544)."
             )
