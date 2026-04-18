@@ -154,6 +154,12 @@ def _ns_args(namespace: str | None, all_namespaces: bool = False) -> list[str]:
 @mcp.tool()
 def list_releases(namespace: str | None = None, all_namespaces: bool = False) -> list[dict]:
     """List Helm releases."""
+    # Centralised flag-injection guard (#772) — every tool validates any
+    # string that flows into argv through _reject_flag_like, including this
+    # one. list_releases used to skip the check because namespace is
+    # Optional; the guard already tolerates None/"" so it's safe to call
+    # unconditionally.
+    _reject_flag_like(namespace=namespace)
     with _handler_span(
         "list_releases",
         {"helm.namespace": namespace, "helm.all_namespaces": all_namespaces},
@@ -170,6 +176,10 @@ def list_releases(namespace: str | None = None, all_namespaces: bool = False) ->
 @mcp.tool()
 def get_release(name: str, namespace: str) -> dict:
     """Return metadata + values + manifest for a release."""
+    # Validate up front even though the inner calls (get_values/get_manifest/
+    # history) each re-check. Keeps the central guard pattern uniform across
+    # every tool entry point (#772).
+    _reject_flag_like(name=name, namespace=namespace)
     with _handler_span("get_release", {"helm.release": name, "helm.namespace": namespace}) as _h:
         try:
             values = get_values(name=name, namespace=namespace, all_values=True)
@@ -221,6 +231,10 @@ def history(name: str, namespace: str, max_revisions: int = 10) -> list[dict]:
     _reject_flag_like(name=name, namespace=namespace)
     if not isinstance(max_revisions, int) or isinstance(max_revisions, bool):
         raise ValueError("helm: 'max_revisions' must be an int")
+    # Reject negative values so str(max_revisions) can't produce a
+    # leading "-" that helm would interpret as a flag (#772).
+    if max_revisions < 1:
+        raise ValueError("helm: 'max_revisions' must be >= 1")
     with _handler_span("history", {"helm.release": name, "helm.namespace": namespace}) as _h:
         try:
             return _helm(
