@@ -19,8 +19,9 @@ metadata:
     {{- include "nyx.agentLabels" (dict "name" .name "root" $) | nindent 4 }}
   {{- /* serviceAnnotations defaults to true, so use hasKey to detect an explicit
         per-agent `false` override — sprig's `default` would return the global
-        true and ignore the override (#472). */}}
-  {{- $metricsOn := ((.metrics).enabled | default $.Values.metrics.enabled) }}
+        true and ignore the override (#472, #1020). */}}
+  {{- $metricsOn := $.Values.metrics.enabled }}
+  {{- if (.metrics) }}{{- if hasKey .metrics "enabled" }}{{- $metricsOn = .metrics.enabled }}{{- end }}{{- end }}
   {{- $svcAnnOn := $.Values.metrics.serviceAnnotations }}
   {{- if (.metrics) }}{{- if hasKey .metrics "serviceAnnotations" }}{{- $svcAnnOn = .metrics.serviceAnnotations }}{{- end }}{{- end }}
   {{- /* Metrics port derived per-container: app_port + 1000. Service
