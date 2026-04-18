@@ -159,6 +159,67 @@ helm uninstall nyx --namespace nyx
 | `mcpTools.<name>.rbac.rules` | Baseline `ClusterRole` rules when `rbac.create=true`. Least-privilege reads by default; adjust to widen or narrow. | see `values.yaml` |
 | `mcpTools.<name>.automountServiceAccountToken` | Three-state override (#856). Omit to default to `true`. Set to `false` for IRSA / workload-identity setups where the projected in-pod SA token should be suppressed (the SA is still attached for annotations). | unset |
 
+### Additional values (completeness pass, #844)
+
+The table above was curated for the most-edited knobs; the entries below fill out the remaining values surface so
+`helm show values` is no longer the only discovery path. See `values.yaml` for inline comments on each knob.
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `dashboard.replicas` | Number of dashboard pods. Ignored when an HPA targets the dashboard deployment. | `1` |
+| `dashboard.clusterDomain` | Cluster DNS domain used by the dashboard's nginx proxy when resolving in-cluster Service names (e.g. `cluster.local`, `cluster.example`). | `cluster.local` |
+| `dashboard.image.tag` | Dashboard image tag. Defaults to `.Chart.AppVersion`. `latest`-tag patterns rejected by the schema (#766). | AppVersion |
+| `dashboard.image.pullPolicy` | Image pull policy. | unset (K8s default) |
+| `dashboard.imagePullSecrets` | Image pull secrets for the dashboard pod. | `[]` |
+| `dashboard.resources` | Dashboard container CPU/memory requests + limits. | `{}` |
+| `dashboard.securityContext` | Dashboard pod `securityContext`. Merged on top of chart defaults. | `{}` |
+| `agents[].image.repository` | Per-agent harness image repository override. | `ghcr.io/skthomasjr/images/harness` |
+| `agents[].image.tag` | Per-agent harness image tag. | AppVersion |
+| `agents[].image.pullPolicy` | Per-agent harness image pull policy. | unset |
+| `agents[].port` | Harness container port (metrics port derives as `port + 1000`). | `8000` |
+| `agents[].env` | Additional env vars appended to the harness container. Template fails render when a sensitive key carries a `REPLACE_ME` placeholder (#760). | `[]` |
+| `agents[].envFrom` | Additional `envFrom` sources (Secret/ConfigMap refs) for the harness container. | `[]` |
+| `agents[].metrics.enabled` | Per-agent metrics override. When unset inherits `.Values.metrics.enabled`. | unset |
+| `agents[].resources` | Per-agent harness resources. Replaces `defaults.resources.harness` when set. | unset |
+| `agents[].storage.*` | Per-agent shared-storage override block. Mirrors `sharedStorage.*` shape. | unset |
+| `agents[].podLabels` / `podAnnotations` | Extra labels / annotations on the harness pod. Reserved `app.kubernetes.io/*` keys are dropped (#477). | `{}` / `{}` |
+| `agents[].backends` | List of backend containers co-located in the agent pod. Each has `name`, `image`, `port`, `env`, `envFrom`, `credentials`, `storage`, `resources`, `config`, `gitMappings`. See `values.yaml` for the full schema. | `[]` |
+| `agents[].backends[].credentials` | Per-backend credentials: `existingSecret`, or inline `secrets` map with `acknowledgeInsecureInline: true`, or legacy `envFrom`. Admission rejects inline without the ack flag (#832). | unset |
+| `agents[].backends[].gitMappings[]` | Per-backend `{gitSync, src, dest}` entries that copy files from a named `agents[].gitSyncs[]` repo into the container. Validated by admission (#832). | unset |
+| `agents[].gitSyncs[]` | Per-agent gitSync sidecar definitions: `{name, repo, branch, sshKey, credentials, interval, depth}`. | `[]` |
+| `probes.startup.initialDelaySeconds` / `.periodSeconds` / `.timeoutSeconds` / `.failureThreshold` | Startup probe on the harness container. | `5` / `10` / `5` / `6` |
+| `probes.startup.path` | Startup-probe HTTP path. | `/health/start` |
+| `probes.liveness.path` | Liveness-probe HTTP path. | `/health/live` |
+| `probes.readiness.path` | Readiness-probe HTTP path. | `/health/ready` |
+| `gitSync.image.repository` / `.tag` / `.pullPolicy` | git-sync sidecar image. | ghcr.io image / AppVersion / unset |
+| `metrics.port` | **Deprecated** (#687). Ignored for harness + backends; they now use `app_port + 1000`. Still honoured by MCP tool pods via `mcpTools.metricsPort`. | unset |
+| `metrics.podAnnotations` | Render `prometheus.io/*` scrape annotations on every harness + backend pod (legacy scrape style). Off by default (#472). | `false` |
+| `metrics.serviceAnnotations` | Same idea on the Service. | `false` |
+| `metrics.authToken.existingSecret` | Existing Secret name carrying the metrics bearer token. | `""` |
+| `metrics.cacheTTL` | TTL in seconds for the harness's aggregated backend-metrics cache. | `15` |
+| `mcpTools.metricsPort` | Dedicated metrics port for MCP tool pods (previously named `metrics.port`; #687). | `9000` |
+| `mcpTools.<name>.image.repository` / `.tag` / `.pullPolicy` | MCP tool image fields. | per-tool / AppVersion / unset |
+| `mcpTools.<name>.resources` | MCP tool container resources. | `{}` |
+| `mcpTools.<name>.serviceAccountName` | Pre-created SA to reuse. When unset + `rbac.create=true` the chart renders one. | `""` |
+| `mcpTools.<name>.podSecurityContext` / `securityContext` | MCP tool Pod / container security contexts. | chart defaults |
+| `podMonitor.enabled` | Create one Prometheus Operator `PodMonitor` per agent (alternative to ServiceMonitor for headless / pod-level scrape). | `false` |
+| `podMonitor.scrapeInterval` / `.scrapeTimeout` / `.labels` / `.path` | PodMonitor knobs; same shape as ServiceMonitor. | `30s` / `10s` / `{}` / `/metrics` |
+| `serviceMonitor.path` | ServiceMonitor HTTP path. | `/metrics` |
+| `observability.tracing.enabled` | Enable OTel tracing wiring on every harness + backend container (#634). | `false` |
+| `observability.tracing.endpoint` | OTLP HTTP endpoint (`http://collector:4318`). | `""` |
+| `observability.tracing.sampler` / `.samplerArg` | OTel `OTEL_TRACES_SAMPLER` + `OTEL_TRACES_SAMPLER_ARG`. | `parentbased_traceidratio` / `0.1` |
+| `observability.tracing.collector.enabled` | Deploy an in-cluster OpenTelemetry Collector for the release. | `false` |
+| `observability.tracing.collector.image.repository` / `.tag` | Collector image. | otel/opentelemetry-collector-contrib / `0.119.0` |
+| `observability.tracing.collector.resources` | Collector resource requests/limits. | `{}` |
+| `networkPolicy.enabled` | Emit one NetworkPolicy per chart-rendered pod (#759). Default off. | `false` |
+| `networkPolicy.ingress.allowDashboard` / `allowSameNamespace` | Shortcut peers. | `true` / `false` |
+| `networkPolicy.ingress.metricsFrom` | Raw `NetworkPolicyPeer` list allowed on the metrics port. | `monitoring` namespace |
+| `networkPolicy.ingress.additionalFrom` | Raw peers applied to all ports. | `[]` |
+| `networkPolicy.egressOpen` / `networkPolicy.egress` | Egress mode: open by default; set `egressOpen: false` to enforce the explicit `egress` allow-list. | `true` / `[]` |
+| `defaults.resources.harness` | Chart-wide harness resource requests/limits defaults (#553). Set leaves to `null` to disable. | see `values.yaml` |
+| `defaults.resources.backend` | Chart-wide backend resource defaults. | see `values.yaml` |
+| `defaults.resources.backends.<name>` | Per-backend-type default keyed by backend name (`claude`, `codex`, `gemini`). | see `values.yaml` |
+
 To deploy multiple agents:
 
 ```yaml
