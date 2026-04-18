@@ -9,15 +9,10 @@ door, no cross-agent fan-out inside any one agent's pod.
 | View              | What it shows                                                                    |
 | ----------------- | -------------------------------------------------------------------------------- |
 | Team              | Agent cards with per-backend health bubbles + a chat panel on selection (send + history load are timeout-bounded with a cancel button, #535) |
-| Jobs              | Scheduled jobs across every agent, with search + refresh                         |
-| Tasks             | Day/window-scheduled tasks across every agent                                    |
-| Triggers          | Inbound HTTP triggers (endpoint, auth, enabled state)                            |
-| Webhooks          | Outbound webhook subscriptions and delivery counts                               |
-| Continuations     | Continues-after chains (jobs, triggers, other continuations)                     |
-| Heartbeat         | Per-agent heartbeat schedule + backend + model                                   |
+| Automation        | Unified view collapsing Jobs, Tasks, Triggers, Webhooks, Continuations, and Heartbeat into card sections (#automation-v1). The legacy paths — `/jobs`, `/tasks`, `/triggers`, `/webhooks`, `/continuations`, `/heartbeat` — all redirect to `/automation` so existing bookmarks keep working |
 | Conversations     | Aggregated conversation log with agent/role/search/limit filters                 |
-| Tool Trace        | Unified tool-activity feed across the team — tool_use rows paired with tool_result (duration/status) and folded with any matching tool_audit row (response preview, matched hook rule, `denied` status). Standalone audit rows surface hook-blocked calls that never produced a tool_use. Filter by agent, tool, status, or event type. |
-| OTel Traces       | Distributed trace viewer (#632): recent traces + span-tree drawer from an operator-configured Jaeger/Tempo HTTP API |
+| Tool Trace        | Unified tool-activity feed across the team — tool_use rows paired with tool_result (duration/status) and folded with any matching tool_audit row (response preview, matched hook rule, `denied` status). Standalone audit rows surface hook-blocked calls that never produced a tool_use. Filter by agent, tool, status, or event type. The legacy `/tool-audit` path redirects here. |
+| OTel Traces       | Distributed trace viewer (#632): recent traces + span-tree drawer from an operator-configured Jaeger/Tempo HTTP API. `/otel-traces/:traceId` deep-links straight into the detail drawer |
 | Metrics           | Label-breakdown bar/doughnut charts from each agent's /metrics                   |
 
 ## Development
