@@ -60,6 +60,37 @@ mcp = FastMCP("kubernetes")
 
 FIELD_MANAGER = "nyx-mcp-kubernetes"
 
+# Maximum length of a server-side-apply field manager string. The
+# apiserver caps manager names at 128 characters; we truncate rather
+# than fail so a long caller_id never breaks an apply.
+_FIELD_MANAGER_MAX = 128
+# DNS-1123-ish character allow-list for the caller-supplied suffix so
+# the field_manager string stays well-behaved in audit output and SSA
+# conflict messages. Everything else is replaced with '-'.
+_FIELD_MANAGER_ALLOWED_RE = re.compile(r"[^A-Za-z0-9._-]")
+
+
+def _resolve_field_manager(caller_id: str | None) -> str:
+    """Derive the SSA field_manager for a given caller (#776).
+
+    Base = FIELD_MANAGER. When ``caller_id`` is supplied (non-empty
+    string), append a sanitised ``:<caller_id>`` suffix so two agents
+    racing on the same resource land distinct SSA conflict messages
+    and their writes are independently debuggable. Falls back to the
+    AGENT_NAME env var, then the bare base when neither is available.
+    """
+    raw = caller_id
+    if raw is None or (isinstance(raw, str) and raw.strip() == ""):
+        raw = os.environ.get("AGENT_NAME") or ""
+    raw = (raw or "").strip()
+    if not raw:
+        return FIELD_MANAGER
+    sanitised = _FIELD_MANAGER_ALLOWED_RE.sub("-", raw)
+    combined = f"{FIELD_MANAGER}:{sanitised}"
+    if len(combined) > _FIELD_MANAGER_MAX:
+        combined = combined[:_FIELD_MANAGER_MAX]
+    return combined
+
 # Positive allow-match patterns for values that flow into the Event
 # field-selector (#773). The field-selector is comma/equals delimited and
 # we want to prevent *any* character that could smuggle extra clauses,
@@ -387,10 +418,19 @@ def logs(
 
 
 @mcp.tool()
-def apply(manifest: str) -> list[dict]:
-    """Server-side apply a YAML or JSON manifest (supports multi-doc YAML)."""
-    with _handler_span("apply") as _h:
+def apply(manifest: str, caller_id: str | None = None) -> list[dict]:
+    """Server-side apply a YAML or JSON manifest (supports multi-doc YAML).
+
+    ``caller_id`` is appended to the SSA field_manager as a sanitised
+    suffix (``nyx-mcp-kubernetes:<caller_id>``) so two agents racing
+    on the same resource surface distinct SSA conflict messages and
+    audit trails (#776). Falls back to the AGENT_NAME env var, then
+    the bare base manager when neither is supplied.
+    """
+    field_manager = _resolve_field_manager(caller_id)
+    with _handler_span("apply", {"k8s.field_manager": field_manager}) as _h:
         try:
+            log.info("apply: field_manager=%s", field_manager)
             docs = [d for d in yaml.safe_load_all(manifest) if d]
             results: list[dict] = []
             for doc in docs:
@@ -412,12 +452,19 @@ def apply(manifest: str) -> list[dict]:
                     # advertise JSON to match the wire format. Supported by
                     # the Kubernetes API server since 1.30 (#695).
                     "content_type": "application/apply-patch+json",
-                    "field_manager": FIELD_MANAGER,
+                    "field_manager": field_manager,
                 }
                 if ns:
                     patch_kwargs["namespace"] = ns
                 with _api_span(
-                    "apply", kind, {"k8s.name": name, "k8s.namespace": ns, "k8s.api_version": api_version}
+                    "apply",
+                    kind,
+                    {
+                        "k8s.name": name,
+                        "k8s.namespace": ns,
+                        "k8s.api_version": api_version,
+                        "k8s.field_manager": field_manager,
+                    },
                 ):
                     applied = resource.patch(**patch_kwargs)
                 results.append(_to_dict(applied))
