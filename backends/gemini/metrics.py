@@ -113,6 +113,7 @@ backend_hooks_enforcement_mode: prometheus_client.Gauge | None = None
 
 # MCP config watcher metrics (#640 — parity with codex #432, #526).
 backend_mcp_config_errors_total: prometheus_client.Counter | None = None
+backend_mcp_command_rejected_total: prometheus_client.Counter | None = None
 backend_mcp_config_reloads_total: prometheus_client.Counter | None = None
 backend_mcp_servers_active: prometheus_client.Gauge | None = None
 
@@ -493,6 +494,12 @@ if _enabled:
         "backend_mcp_servers_active",
         "Number of MCP servers currently live in the lifespan-scoped stack.",
         ["agent", "agent_id", "backend"],
+    )
+    # Command allow-list rejections (#730 — parity with claude #711 / codex #720).
+    backend_mcp_command_rejected_total = prometheus_client.Counter(
+        "backend_mcp_command_rejected_total",
+        "Total MCP server entries rejected by the command allow-list, by reason.",
+        ["agent", "agent_id", "backend", "reason"],
     )
 
     # Tool calls (#640 — parity with codex / claude). Emitted per

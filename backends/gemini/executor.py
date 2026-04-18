@@ -81,6 +81,7 @@ from metrics import (
     backend_log_entries_total,
     backend_log_write_errors_total,
     backend_lru_cache_utilization_percent,
+    backend_mcp_command_rejected_total,
     backend_mcp_config_errors_total,
     backend_mcp_config_reloads_total,
     backend_mcp_servers_active,
@@ -237,6 +238,68 @@ def _load_mcp_config() -> dict:
         return {}
 
 
+# MCP stdio command+cwd allow-list (#730 — parity with claude #711 /
+# codex #720). Every stdio command pushed into the gemini
+# lifespan-scoped MCP stack is validated here first. Rejections are
+# dropped and counted via backend_mcp_command_rejected_total{reason} so
+# a mis-merged mcp.json can't reach google-genai AFC.
+_DEFAULT_GEMINI_MCP_ALLOWED_COMMANDS = (
+    "mcp-kubernetes,mcp-helm,python,python3,node,npx,uv,uvx"
+)
+_DEFAULT_GEMINI_MCP_ALLOWED_COMMAND_PREFIXES = "/home/agent/mcp-bin/,/usr/local/bin/"
+_DEFAULT_GEMINI_MCP_ALLOWED_CWD_PREFIXES = "/home/agent/,/tmp/"
+_GEMINI_MCP_ALLOWED_COMMANDS: frozenset[str] = frozenset(
+    t.strip() for t in os.environ.get(
+        "MCP_ALLOWED_COMMANDS", _DEFAULT_GEMINI_MCP_ALLOWED_COMMANDS,
+    ).split(",") if t.strip()
+)
+_GEMINI_MCP_ALLOWED_COMMAND_PREFIXES: tuple[str, ...] = tuple(
+    t.strip() for t in os.environ.get(
+        "MCP_ALLOWED_COMMAND_PREFIXES", _DEFAULT_GEMINI_MCP_ALLOWED_COMMAND_PREFIXES,
+    ).split(",") if t.strip()
+)
+_GEMINI_MCP_ALLOWED_CWD_PREFIXES: tuple[str, ...] = tuple(
+    t.strip() for t in os.environ.get(
+        "MCP_ALLOWED_CWD_PREFIXES", _DEFAULT_GEMINI_MCP_ALLOWED_CWD_PREFIXES,
+    ).split(",") if t.strip()
+)
+
+
+def _gemini_mcp_command_allowed(command: Any) -> tuple[bool, str]:
+    """Return (ok, reason) for an MCP stdio ``command`` (#730)."""
+    if not isinstance(command, str):
+        return False, "non_string"
+    cmd = command.strip()
+    if not cmd:
+        return False, "empty"
+    if cmd.startswith("/"):
+        for prefix in _GEMINI_MCP_ALLOWED_COMMAND_PREFIXES:
+            if cmd.startswith(prefix):
+                return True, "absolute_prefix"
+        basename = os.path.basename(cmd)
+        if basename in _GEMINI_MCP_ALLOWED_COMMANDS:
+            return True, "basename_allowed"
+        return False, "absolute_not_on_prefix"
+    if cmd in _GEMINI_MCP_ALLOWED_COMMANDS or os.path.basename(cmd) in _GEMINI_MCP_ALLOWED_COMMANDS:
+        return True, "basename_allowed"
+    return False, "basename_not_allowed"
+
+
+def _gemini_mcp_cwd_allowed(cwd: Any) -> tuple[bool, str]:
+    """Return (ok, reason) for an MCP stdio ``cwd`` value (#730)."""
+    if not isinstance(cwd, str):
+        return False, "cwd_non_string"
+    c = cwd.strip()
+    if not c:
+        return False, "cwd_empty"
+    if not c.startswith("/"):
+        return False, "cwd_not_absolute"
+    for prefix in _GEMINI_MCP_ALLOWED_CWD_PREFIXES:
+        if c.startswith(prefix):
+            return True, "cwd_allowed"
+    return False, "cwd_not_on_prefix"
+
+
 def _build_mcp_stdio_params(name: str, cfg: dict) -> Any | None:
     """Construct an ``mcp.StdioServerParameters`` from a single config entry (#640).
 
@@ -244,6 +307,11 @@ def _build_mcp_stdio_params(name: str, cfg: dict) -> Any | None:
     the subprocess so a malicious config cannot hijack dynamic-linker /
     interpreter resolution of the spawned MCP server. Returns ``None`` on
     malformed entries (logged and skipped by the caller).
+
+    The command + cwd allow-list (#730) drops any entry whose ``command``
+    falls outside ``MCP_ALLOWED_COMMANDS`` / ``MCP_ALLOWED_COMMAND_PREFIXES``
+    or whose ``cwd`` isn't under ``MCP_ALLOWED_CWD_PREFIXES``. Rejected
+    entries are counted in ``backend_mcp_command_rejected_total``.
     """
     try:
         from mcp import StdioServerParameters  # type: ignore
@@ -260,6 +328,38 @@ def _build_mcp_stdio_params(name: str, cfg: dict) -> Any | None:
             name,
         )
         return None
+    cmd_ok, cmd_reason = _gemini_mcp_command_allowed(cfg["command"])
+    if not cmd_ok:
+        logger.warning(
+            "MCP server %r: command %r rejected by allow-list (%s) — "
+            "dropping entry. Set MCP_ALLOWED_COMMANDS / "
+            "MCP_ALLOWED_COMMAND_PREFIXES to widen. (#730)",
+            name, cfg.get("command"), cmd_reason,
+        )
+        if backend_mcp_command_rejected_total is not None:
+            try:
+                backend_mcp_command_rejected_total.labels(
+                    **_LABELS, reason=cmd_reason,
+                ).inc()
+            except Exception:
+                pass
+        return None
+    if "cwd" in cfg:
+        cwd_ok, cwd_reason = _gemini_mcp_cwd_allowed(cfg["cwd"])
+        if not cwd_ok:
+            logger.warning(
+                "MCP server %r: cwd %r rejected by allow-list (%s) — "
+                "dropping entry. Set MCP_ALLOWED_CWD_PREFIXES to widen. (#730)",
+                name, cfg.get("cwd"), cwd_reason,
+            )
+            if backend_mcp_command_rejected_total is not None:
+                try:
+                    backend_mcp_command_rejected_total.labels(
+                        **_LABELS, reason=cwd_reason,
+                    ).inc()
+                except Exception:
+                    pass
+            return None
     params_kwargs: dict = {"command": cfg["command"]}
     if "args" in cfg:
         params_kwargs["args"] = list(cfg["args"])
