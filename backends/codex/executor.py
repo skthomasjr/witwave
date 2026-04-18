@@ -265,8 +265,37 @@ def _evaluate_shell_baseline(cmd_parts: list[str]) -> tuple[str, str] | None:
 
     ``cmd_parts`` is the argv list as supplied by the SDK. Joined on single
     spaces before matching so the regex authors don't need to guess quoting.
+
+    Consults the shared ``BASELINE_RULES`` first (#807) so any rule added
+    to the canonical engine (used by claude's hook path) is picked up on
+    codex automatically rather than needing a manual back-port. Falls
+    back to the legacy in-file regex rules for coverage parity during
+    the transition.
     """
     joined = " ".join(cmd_parts)
+    # Shared baseline (predicate-based). Pass the joined command through
+    # as ``tool_input['command']`` so predicates matching claude's Bash
+    # shape accept codex's LocalShellTool argv transparently.
+    try:
+        from hooks_engine import BASELINE_RULES  # type: ignore
+    except Exception:
+        BASELINE_RULES = []  # type: ignore[assignment]
+    shared_input = {"command": joined}
+    for rule in BASELINE_RULES:
+        # Only Bash-scoped rules apply to the shell executor; Write/Edit
+        # rules are irrelevant to LocalShellTool argv.
+        if getattr(rule, "tool", None) != "Bash":
+            continue
+        predicate = getattr(rule, "predicate", None)
+        if predicate is None:
+            continue
+        try:
+            if predicate(shared_input):
+                return rule.name, rule.reason
+        except Exception:
+            # A predicate bug must not block a dispatch — fall through to
+            # the legacy table so operators still see the regex denials.
+            continue
     for rule, pattern, reason in _SHELL_DENY_RULES:
         if pattern.search(joined):
             return rule, reason
