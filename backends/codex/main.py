@@ -361,6 +361,8 @@ async def main():
                 source="MCP tools/call",
             )
             session_id = str(uuid.uuid4())
+            response: str | None = None
+            _failed = False
             try:
                 from executor import run as _run_for_mcp
                 response = await _run_for_mcp(
@@ -373,7 +375,34 @@ async def main():
                     live_mcp_servers=await executor._snapshot_live_mcp_servers(),
                 )
             except Exception as exc:
+                _failed = True
                 logger.error(f"MCP tools/call error: {exc!r}")
+            finally:
+                # MCP tools/call sessions are single-shot (#723): each
+                # request mints a fresh UUID, so the SQLite session row
+                # has no legitimate reuse on a subsequent call. Without
+                # explicit cleanup the LRU cache only kicks in for the
+                # in-memory dict — the on-disk agent_sessions table grows
+                # unbounded for every errored invocation (and at the
+                # MAX_SESSIONS cap for successful ones). Delete the row
+                # and drop the in-memory entry here so the storage
+                # footprint of /mcp tools/call stays O(1) regardless of
+                # success/failure.
+                try:
+                    executor._sessions.pop(session_id, None)
+                except Exception:
+                    pass
+                _db_path = os.environ.get("CODEX_SESSION_DB", "")
+                if _db_path and _db_path != ":memory:":
+                    try:
+                        from executor import _delete_sqlite_session as _del_mcp
+                        await asyncio.to_thread(_del_mcp, session_id, _db_path)
+                    except Exception as _cleanup_exc:
+                        logger.warning(
+                            "MCP tools/call: failed to clean up session row for %r: %s",
+                            session_id, _cleanup_exc,
+                        )
+            if _failed:
                 return JSONResponse({
                     "jsonrpc": "2.0",
                     "id": rpc_id,
