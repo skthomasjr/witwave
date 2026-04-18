@@ -392,7 +392,15 @@ async def health_ready(request: Request) -> JSONResponse:
         )
     backend_configs = [b._config for b in _executor._backends.values() if b._config.url] if _executor else []
     if not backend_configs:
-        return JSONResponse({"status": "ready"})
+        # Zero usable backend URLs means every A2A request will raise
+        # "No backend configured" — the pod is not ready for traffic
+        # (#864). Returning 200 here let the Service endpoint accept
+        # connections that could never succeed; flip to 503 so callers
+        # and the Service controller both see the degraded state.
+        return JSONResponse(
+            {"status": "degraded", "reason": "no-backends-configured"},
+            status_code=503,
+        )
 
     # Fast path: serve from cache when not yet expired.  Single-flight lock
     # serialises refreshes so N concurrent probes collapse into one sweep.
