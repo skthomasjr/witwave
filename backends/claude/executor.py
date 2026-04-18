@@ -1398,8 +1398,14 @@ async def run_query(
             )
             if backend_task_retries_total is not None:
                 backend_task_retries_total.labels(**_LABELS).inc()
-            if backend_sdk_query_error_duration_seconds is not None:
-                backend_sdk_query_error_duration_seconds.labels(**_LABELS, model=sanitize_model_label(effective_model)).observe(time.monotonic() - _query_start)
+            # Don't re-observe backend_sdk_query_error_duration_seconds
+            # here (#870) — the inner _run_query_inner already observed
+            # it on the error path (OSError/ConnectionError at 1339 or
+            # ResultMessage.is_error at 1330). A second observe at this
+            # outer site double-counted the histogram for every retried
+            # error, and also rebuilt the label shape from _LABELS+
+            # sanitize_model_label(effective_model) which could drift
+            # from the inner call's pre-computed _sdk_labels.
             return await _run_query_inner(
                 prompt,
                 _make_options(ctx.session_id, resume=True, stderr_fn=capture_stderr, mcp_servers=ctx.mcp_servers, model=ctx.model, agent_md_content=ctx.agent_md_content, hook_state=hook_state),
