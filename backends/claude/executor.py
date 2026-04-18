@@ -578,29 +578,48 @@ async def log_tool_audit(entry: dict) -> None:
         logger.error(f"log_tool_audit error: {e}")
 
 
-# Module-level httpx.AsyncClient reused across hook POSTs so TCP/TLS
-# connections pool instead of opening a fresh handshake for every tool
-# invocation (#661). Lazy-init guarded by an asyncio.Lock so concurrent
-# first-call hooks do not race. Closed from AgentExecutor.close().
-_HOOK_HTTP_CLIENT: "httpx.AsyncClient | None" = None  # noqa: F821
-_HOOK_HTTP_CLIENT_LOCK = asyncio.Lock()
+# Per-loop httpx.AsyncClient registry (#716). Keyed by id(loop) so the
+# thread-mode metrics server (running a second loop) or any future
+# caller on a non-main loop does not hang on a module-level Lock that
+# was bound to the first loop. Each loop gets its own lock + client
+# pair; clients from dead loops are pruned on next access.
+_HOOK_HTTP_CLIENTS: dict[int, tuple["httpx.AsyncClient", asyncio.Lock]] = {}  # noqa: F821
 
 
 async def _get_hook_http_client() -> "httpx.AsyncClient":  # noqa: F821
-    global _HOOK_HTTP_CLIENT
-    if _HOOK_HTTP_CLIENT is None:
-        async with _HOOK_HTTP_CLIENT_LOCK:
-            if _HOOK_HTTP_CLIENT is None:
+    loop = asyncio.get_running_loop()
+    key = id(loop)
+    entry = _HOOK_HTTP_CLIENTS.get(key)
+    if entry is None:
+        # New loop — construct inside the running loop so the Lock is
+        # created against the right asyncio context.
+        lock = asyncio.Lock()
+        async with lock:
+            # Re-check under the lock in case a concurrent first-call
+            # raced us. The dict read is CPython-atomic.
+            entry = _HOOK_HTTP_CLIENTS.get(key)
+            if entry is None:
                 import httpx
-                _HOOK_HTTP_CLIENT = httpx.AsyncClient(timeout=HARNESS_EVENTS_TIMEOUT)
-    return _HOOK_HTTP_CLIENT
+                client = httpx.AsyncClient(timeout=HARNESS_EVENTS_TIMEOUT)
+                entry = (client, lock)
+                _HOOK_HTTP_CLIENTS[key] = entry
+    return entry[0]
 
 
 async def _close_hook_http_client() -> None:
-    global _HOOK_HTTP_CLIENT
-    client = _HOOK_HTTP_CLIENT
-    _HOOK_HTTP_CLIENT = None
-    if client is not None:
+    """Close the hook httpx client for the current loop (#716).
+
+    Per-loop registry now, so close-on-shutdown only drops this loop's
+    entry. Other loops (e.g. a thread-mode metrics server) manage
+    their own lifecycles.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    entry = _HOOK_HTTP_CLIENTS.pop(id(loop), None)
+    if entry is not None:
+        client, _lock = entry
         try:
             await client.aclose()
         except Exception as exc:  # pragma: no cover — best-effort shutdown
