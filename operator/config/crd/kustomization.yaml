@@ -3,6 +3,7 @@
 # It should be run by config/default
 resources:
 - bases/nyx.ai_nyxagents.yaml
+- bases/nyx.ai_nyxprompts.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:
