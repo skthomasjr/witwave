@@ -70,6 +70,12 @@ _auth_warn_lock = threading.Lock()
 _auth_warned = False
 _shed_warn_lock = threading.Lock()
 _shed_warned = False
+# One-shot warning flag for non-2xx responses (#881). Distinct from
+# _auth_warned (which fires when the token is empty before the POST);
+# this one fires when the POST returned a 4xx/5xx, e.g. wrong bearer
+# or a misconfigured endpoint.
+_status_warn_lock = threading.Lock()
+_status_warned = False
 
 # Module-level strong-ref set. ``asyncio.create_task`` only keeps a weak
 # reference to the task from the event loop, so without a strong ref the
@@ -110,11 +116,35 @@ async def _post_once(event_dict: dict[str, Any]) -> None:
     url = HARNESS_EVENTS_URL.rstrip("/") + "/internal/events/hook-decision"
     try:
         client = await _get_client()
-        await client.post(
+        resp = await client.post(
             url,
             json=event_dict,
             headers={"Authorization": f"Bearer {HOOK_EVENTS_AUTH_TOKEN}"},
         )
+        # Branch on resp.status_code (#881). Previously the response
+        # was discarded; a wrong HOOK_EVENTS_AUTH_TOKEN (401/403) or a
+        # misconfigured harness endpoint (404/5xx) was silently
+        # swallowed — only the empty-token case was surfaced. Log the
+        # first non-2xx at WARNING and stay silent afterwards to avoid
+        # flooding logs on a sustained misconfig.
+        if resp.status_code >= 400:
+            global _status_warned
+            with _status_warn_lock:
+                if not _status_warned:
+                    _status_warned = True
+                    logger.warning(
+                        "hook.decision POST to %s returned HTTP %d (check "
+                        "HOOK_EVENTS_AUTH_TOKEN and harness endpoint config); "
+                        "further non-2xx responses will be suppressed until "
+                        "a 2xx re-arms the warning.",
+                        url,
+                        resp.status_code,
+                    )
+        else:
+            # Re-arm the warning so a subsequent sustained failure is
+            # visible without a process restart.
+            with _status_warn_lock:
+                _status_warned = False
     except Exception as exc:
         logger.warning("hook.decision POST to %s failed: %r", url, exc)
 
