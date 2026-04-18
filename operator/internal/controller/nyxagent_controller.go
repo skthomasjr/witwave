@@ -20,6 +20,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -1117,6 +1119,59 @@ func (r *NyxAgentReconciler) reconcileDashboardInternal(ctx context.Context, age
 	return nil
 }
 
+// crdProbeTTL is the maximum age of a cached CRD-presence probe result
+// before the next reconcile re-queries the RESTMapper (#756). 30s is
+// long enough that a high-churn NyxAgent workload stops hammering the
+// apiserver's discovery path on every reconcile, and short enough that
+// installing the Prometheus Operator CRDs mid-run is picked up in under
+// a minute without an operator restart.
+const crdProbeTTL = 30 * time.Second
+
+// crdProbeCache caches CRD-presence results across reconciles (#756). The
+// keys are the string form of a GVK; values are atomic.Pointer so the
+// struct literal below can be updated lock-free on the happy path. A
+// single sync.Map entry per tracked GVK is all that's needed — the
+// operator knows its set at compile time.
+var crdProbeCache sync.Map // map[string]*atomic.Pointer[crdProbeEntry]
+
+type crdProbeEntry struct {
+	present bool
+	at      time.Time
+}
+
+func getCachedCRDProbe(key string) (crdProbeEntry, bool) {
+	v, ok := crdProbeCache.Load(key)
+	if !ok {
+		return crdProbeEntry{}, false
+	}
+	p, ok := v.(*atomic.Pointer[crdProbeEntry])
+	if !ok || p == nil {
+		return crdProbeEntry{}, false
+	}
+	e := p.Load()
+	if e == nil {
+		return crdProbeEntry{}, false
+	}
+	if time.Since(e.at) > crdProbeTTL {
+		return crdProbeEntry{}, false
+	}
+	return *e, true
+}
+
+func setCachedCRDProbe(key string, present bool) {
+	entry := &crdProbeEntry{present: present, at: time.Now()}
+	v, ok := crdProbeCache.Load(key)
+	if !ok {
+		p := &atomic.Pointer[crdProbeEntry]{}
+		p.Store(entry)
+		crdProbeCache.Store(key, p)
+		return
+	}
+	if p, ok := v.(*atomic.Pointer[crdProbeEntry]); ok && p != nil {
+		p.Store(entry)
+	}
+}
+
 // serviceMonitorCRDPresent reports whether the cluster has the
 // monitoring.coreos.com/v1 ServiceMonitor REST mapping registered. Uses
 // the RESTMapper on the shared client so the probe is a cache lookup on
@@ -1124,8 +1179,17 @@ func (r *NyxAgentReconciler) reconcileDashboardInternal(ctx context.Context, age
 // NoKindMatchError (or any IsNoMatchError) means the CRD is not
 // installed — the reconciler treats that as a clean no-op. Other errors
 // propagate so they surface in status + the retry loop.
+//
+// Results are cached for ``crdProbeTTL`` (#756) so a high-churn
+// NyxAgent workload does not re-probe the RESTMapper on every
+// reconcile. A fresh install of the Prometheus Operator CRDs is
+// picked up within that TTL without operator restart.
 func (r *NyxAgentReconciler) serviceMonitorCRDPresent(ctx context.Context) (bool, error) {
 	_ = ctx // reserved — RESTMapper lookups are synchronous and don't need ctx
+	const cacheKey = "monitoring.coreos.com/v1/ServiceMonitor"
+	if e, ok := getCachedCRDProbe(cacheKey); ok {
+		return e.present, nil
+	}
 	mapper := r.Client.RESTMapper()
 	if mapper == nil {
 		return false, nil
@@ -1133,10 +1197,12 @@ func (r *NyxAgentReconciler) serviceMonitorCRDPresent(ctx context.Context) (bool
 	_, err := mapper.RESTMapping(serviceMonitorGVK.GroupKind(), serviceMonitorGVK.Version)
 	if err != nil {
 		if meta.IsNoMatchError(err) {
+			setCachedCRDProbe(cacheKey, false)
 			return false, nil
 		}
 		return false, err
 	}
+	setCachedCRDProbe(cacheKey, true)
 	return true, nil
 }
 
@@ -1246,9 +1312,14 @@ func (r *NyxAgentReconciler) reconcileServiceMonitor(ctx context.Context, agent 
 }
 
 // podMonitorCRDPresent reports whether the monitoring.coreos.com/v1
-// PodMonitor CRD is known to the cluster. Mirrors serviceMonitorCRDPresent.
+// PodMonitor CRD is known to the cluster. Mirrors serviceMonitorCRDPresent
+// and shares its short-TTL result cache (#756).
 func (r *NyxAgentReconciler) podMonitorCRDPresent(ctx context.Context) (bool, error) {
 	_ = ctx
+	const cacheKey = "monitoring.coreos.com/v1/PodMonitor"
+	if e, ok := getCachedCRDProbe(cacheKey); ok {
+		return e.present, nil
+	}
 	mapper := r.Client.RESTMapper()
 	if mapper == nil {
 		return false, nil
@@ -1256,10 +1327,12 @@ func (r *NyxAgentReconciler) podMonitorCRDPresent(ctx context.Context) (bool, er
 	_, err := mapper.RESTMapping(podMonitorGVK.GroupKind(), podMonitorGVK.Version)
 	if err != nil {
 		if meta.IsNoMatchError(err) {
+			setCachedCRDProbe(cacheKey, false)
 			return false, nil
 		}
 		return false, err
 	}
+	setCachedCRDProbe(cacheKey, true)
 	return true, nil
 }
 
