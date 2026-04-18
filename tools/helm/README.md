@@ -11,6 +11,12 @@ so every Python wrapper in the ecosystem ultimately execs `helm`. We do the
 same directly, using `--output json` where Helm supports it so results come
 back structured.
 
+The bundled `helm` CLI is pinned to **v3.20.2** (#769) to carry the CERT-Bund
+WID-SEC-2026-1048 fixes (file manipulation / security-control bypass / potential
+RCE, CVSS 8.6). Refresh the pin in `tools/helm/Dockerfile` at least quarterly
+and whenever a new Helm security advisory lands — every caller inherits the
+bundled CLI.
+
 ## Auth
 
 Helm picks up the in-cluster API server and ServiceAccount token from the

@@ -409,6 +409,48 @@ The agent chart's pod spec now sets `seccompProfile: RuntimeDefault` alongside t
 settings, and the dashboard pod runs as non-root. This keeps the chart compatible with the Pod Security Standards
 "restricted" profile out of the box.
 
+### MCP tool bearer-token auth (#771)
+
+Every MCP tool container (`mcp-kubernetes`, `mcp-helm`, and anything added under `tools/`) now enforces a bearer
+token via the shared `shared/mcp_auth.py` middleware. Set `MCP_TOOL_AUTH_TOKEN` on each tool container. When the
+token is unset/empty and `MCP_TOOL_AUTH_DISABLED` is not explicitly set, the server refuses every request. Use
+`MCP_TOOL_AUTH_DISABLED=true` only for local dev — the startup log is loud on purpose.
+
+### MCP command + cwd allow-list
+
+All three backends validate stdio entries in `mcp.json` against a per-backend allow-list of command basenames,
+absolute-path prefixes, and working-directory prefixes before spawning the subprocess (`MCP_ALLOWED_COMMANDS`,
+`MCP_ALLOWED_COMMAND_PREFIXES`, `MCP_ALLOWED_CWD_PREFIXES`). Rejections increment
+`backend_mcp_command_rejected_total{reason}` so operators can alert on sudden spikes without parsing logs
+(claude #711, codex #720, gemini #730).
+
+### Harness A2A ingress cap (#783)
+
+`A2A_MAX_PROMPT_BYTES` (default 1 MiB) rejects oversized A2A prompts at ingress before they hit a backend. Set
+to `0` to disable.
+
+### Continuation fan-out cap (#781)
+
+`CONTINUATION_MAX_CONCURRENT_FIRES_GLOBAL` caps in-flight continuation fires across all items to prevent a single
+high-branching event from driving the harness into memory pressure.
+
+### Conversation/trace auth escape hatch (#718)
+
+`CONVERSATIONS_AUTH_DISABLED=true` explicitly acknowledges running the `/conversations`, `/trace`, `/mcp`, and
+claude's `/api/traces` endpoints without a bearer token — the operator must set it to override the default
+fail-closed behaviour when `CONVERSATIONS_AUTH_TOKEN` is empty.
+
+### Log redaction (#714)
+
+`LOG_REDACT=true` on any backend wraps user-prompt and agent-response content with redaction before it lands in
+`conversation.jsonl`. Off by default; opt in per-agent.
+
+### Operator Secret RBAC split (#761)
+
+The `nyx-operator` chart now splits Secret read verbs from Secret write verbs. `rbac.secretsWrite: false` keeps
+`get`/`list`/`watch` but drops `create`/`delete`/`patch`/`update` — appropriate when all backend credentials are
+pre-provisioned Secrets referenced via `existingSecret` rather than the inline `credentials.secrets` path.
+
 ## Configuration
 
 ### harness environment variables
@@ -427,7 +469,12 @@ settings, and the dashboard pod runs as non-root. This keeps the chart compatibl
 | `CONVERSATIONS_AUTH_TOKEN`                  | _(unset)_                       | Bearer token required to access `/conversations` and `/trace` (inbound)                                                                               |
 | `BACKEND_CONVERSATIONS_AUTH_TOKEN`          | _(unset)_                       | Bearer token forwarded to backend `/conversations` and `/trace` endpoints (set if backends require auth)                                              |
 | `TRIGGERS_AUTH_TOKEN`                       | _(unset)_                       | Bearer token required for inbound trigger requests (fallback when no per-trigger HMAC secret is set)                                                  |
+| `HOOK_EVENTS_AUTH_TOKEN`                    | _(unset)_                       | Bearer token required on the internal hook-decision event endpoint backends POST to; unset = refuse (#712)                                            |
+| `ADHOC_RUN_AUTH_TOKEN`                      | _(unset)_                       | Bearer token required for `POST /jobs/<name>/run`, `/tasks/<name>/run`, `/triggers/<name>/run`; unset = refuse (#700)                                 |
 | `CORS_ALLOW_ORIGINS`                        | _(unset)_                       | Comma-separated list of allowed CORS origins; when unset, all cross-origin requests are denied (logs a warning)                                       |
+| `CORS_ALLOW_WILDCARD`                       | `false`                         | Explicit acknowledgement for `CORS_ALLOW_ORIGINS=*`; template refuses the wildcard otherwise (#701)                                                   |
+| `A2A_MAX_PROMPT_BYTES`                      | `1048576`                       | Reject inbound A2A prompts above this byte size at ingress; set to `0` to disable (#783)                                                              |
+| `CONTINUATION_MAX_CONCURRENT_FIRES_GLOBAL`  | `0` (unlimited)                 | Hard cap on in-flight continuation fires across all items; protects against fan-out storms (#781)                                                     |
 | `TASK_STORE_PATH`                           | _(unset)_                       | Path for SQLite A2A task store; defaults to in-memory (state lost on restart)                                                                         |
 | `WORKER_MAX_RESTARTS`                       | `5`                             | Consecutive crash limit before a critical worker marks the agent not-ready                                                                            |
 | `WEBHOOK_MAX_CONCURRENT_DELIVERIES`         | `50`                            | Maximum number of in-flight webhook delivery tasks across all subscriptions; deliveries beyond this cap are shed and counted                          |
@@ -454,7 +501,13 @@ settings, and the dashboard pod runs as non-root. This keeps the chart compatibl
 | `BACKEND_PORT`             | `8000`                             | HTTP port the backend listens on (internal)                                              |
 | `METRICS_ENABLED`          | _(unset)_                          | Set to any non-empty value to expose `/metrics`                                          |
 | `METRICS_PORT`             | `9000`                             | Dedicated port the metrics listener binds to (#643; same semantics as harness)           |
-| `CONVERSATIONS_AUTH_TOKEN` | _(unset — warn on empty)_          | Bearer token required to access `/conversations`, `/trace`, and `/mcp` on all three backends (#510, #516, #517, #518) |
+| `CONVERSATIONS_AUTH_TOKEN` | _(unset — warn on empty)_          | Bearer token required to access `/conversations`, `/trace`, `/mcp`, and claude's `/api/traces[/<id>]` on all three backends (#510, #516, #517, #518) |
+| `CONVERSATIONS_AUTH_DISABLED` | _(unset)_                       | Explicit escape hatch to run without the auth guard; loud startup log for visibility (#718). Intended for local dev only. |
+| `LOG_REDACT`               | _(unset)_                          | When truthy, conversation and response logs redact user-prompt / agent-response content (#714)                           |
+| `GEMINI_MAX_HISTORY_BYTES` | _(gemini only)_                    | Byte ceiling on the JSON session-history file gemini persists per session; older turns are truncated to fit              |
+| `MCP_ALLOWED_COMMANDS`     | _(per-backend default)_            | Comma-separated allow-list of basenames for stdio entries parsed from `mcp.json`                                         |
+| `MCP_ALLOWED_COMMAND_PREFIXES` | _(per-backend default)_        | Comma-separated allow-list of absolute-path prefixes for stdio entries                                                   |
+| `MCP_ALLOWED_CWD_PREFIXES` | _(per-backend default)_            | Comma-separated allow-list of working-directory prefixes for stdio entries (rejections counted on `backend_mcp_command_rejected_total`) |
 | `TASK_STORE_PATH`          | _(unset)_                          | Path for SQLite A2A task store; defaults to in-memory (state lost on restart)            |
 | `WORKER_MAX_RESTARTS`      | `5`                                | Consecutive crash limit before a critical worker marks the backend not-ready             |
 | `LOG_PROMPT_MAX_BYTES`     | `200`                              | Maximum bytes of the prompt logged at INFO level; `0` suppresses prompt logging entirely |
@@ -466,9 +519,16 @@ configurable via `METRICS_PORT`) on every container — harness, each backend, a
 listener is split from the app listener so NetworkPolicy and auth posture can diverge cleanly between app traffic
 (A2A, triggers, conversations) and monitoring scrapes.
 
-Backend containers (`claude`, `codex`, `gemini`) expose `a2_*`-prefixed metrics. `claude` exposes a superset
-that includes tool call, context window, and MCP metrics; `codex` also exposes tool-call and context-window metrics;
-`gemini` exposes context-window metrics. All three share the common `a2_*` baseline set.
+Backend containers (`claude`, `codex`, `gemini`) expose `backend_*`-prefixed metrics. `claude` exposes the
+superset (tool-call, context-window, MCP, hooks/tool-audit); `codex` and `gemini` track peer-parity
+placeholders for every series so cross-backend PromQL joins don't drop the codex/gemini label sets when a
+metric is baseline-only on those backends. Denials are counted on the canonical
+`backend_hooks_denials_total{tool,source,rule}` on every backend (claude's `backend_hooks_blocked_total` and
+codex's `backend_codex_hooks_denials_total` remain as deprecated aliases for one release cycle).
+`backend_sdk_tool_calls_per_query` carries the aligned `model` label on every backend (#795). Per-request
+`/mcp` observability (`backend_mcp_requests_total`, `backend_mcp_request_duration_seconds`) and the SQLite
+task-store lock-wait histogram (`backend_sqlite_task_store_lock_wait_seconds`) are available on claude and
+gemini with matching schemas.
 harness exposes `harness_*`-prefixed infrastructure metrics (bus, heartbeat, job, sessions, webhooks, etc.). The
 harness `/metrics` endpoint also aggregates all backend `/metrics` endpoints (fetched at each backend's `:9000`),
 injecting a `backend="<id>"` label on each sample so a single scrape target captures the full deployment. This is

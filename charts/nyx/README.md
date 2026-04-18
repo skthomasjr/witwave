@@ -150,6 +150,14 @@ helm uninstall nyx --namespace nyx
 | `sharedStorage.accessModes` | PVC access modes | `[ReadWriteMany]` |
 | `sharedStorage.existingClaim` | Use a pre-existing PVC instead of creating one | `""` |
 | `sharedStorage.hostPath` | Host path when `storageType: hostPath` | `""` |
+| `cors.allowOrigins` | Explicit list of allowed CORS Origin values for harness HTTP endpoints. Empty list ≡ CORS disabled (the safest default — browser origins are blocked unless explicitly allowed) (#763) | `[]` |
+| `cors.allowWildcard` | Explicit acknowledgement required when `cors.allowOrigins` contains `*` (#701). Template fails render when the wildcard is used without this flag AND ingress is enabled, since `Access-Control-Allow-Origin: *` with credentials is a disclosure hole across `/triggers` and `/conversations`. | `false` |
+| `storage.retainOnUninstall` | Annotate every chart-owned PVC with `helm.sh/resource-policy=keep` so `helm uninstall` leaves conversation logs / memory / sessions in place. Useful on clusters with delete-reclaim defaults (#767). Operators must clean the PVCs up manually. | `false` |
+| `mcpTools.<name>.enabled` | Deploy this MCP tool (`kubernetes`, `helm`, …) as a Deployment + Service in the release namespace | `false` |
+| `mcpTools.<name>.image.digest` | Immutable digest pin for the tool image (#855). When set (e.g. `sha256:abc123…`), the chart renders `repository@<digest>` and ignores `tag`. Prefer this in production: MCP pods typically hold a cluster ServiceAccount token. | `""` |
+| `mcpTools.<name>.rbac.create` | Render a minimal default `ServiceAccount` + `ClusterRole` + `ClusterRoleBinding` for this tool so enabling it does not 403 out of the box (#762). Set `false` + `serviceAccountName` to manage RBAC out-of-band. When both are unset chart render fails loudly. | `true` |
+| `mcpTools.<name>.rbac.rules` | Baseline `ClusterRole` rules when `rbac.create=true`. Least-privilege reads by default; adjust to widen or narrow. | see `values.yaml` |
+| `mcpTools.<name>.automountServiceAccountToken` | Three-state override (#856). Omit to default to `true`. Set to `false` for IRSA / workload-identity setups where the projected in-pod SA token should be suppressed (the SA is still attached for annotations). | unset |
 
 To deploy multiple agents:
 
@@ -300,9 +308,27 @@ additional values.
 
 ### Backend `/mcp` auth parity
 
-All three backends now require a bearer token on the `/mcp`, `/conversations`, and `/trace` endpoints (#510, #516,
-#518). Include `CONVERSATIONS_AUTH_TOKEN` in each backend's envFrom Secret. If it is unset or empty, the backend logs
-a startup warning (#517).
+All three backends now require a bearer token on the `/mcp`, `/conversations`, `/trace`, and (claude)
+`/api/traces[/<id>]` endpoints (#510, #516, #518). Include `CONVERSATIONS_AUTH_TOKEN` in each backend's envFrom
+Secret. If it is unset or empty, the backend logs a startup warning (#517) and the shared guard refuses to serve
+the protected endpoints unless the operator explicitly sets `CONVERSATIONS_AUTH_DISABLED=true` (#718).
+
+### MCP tool bearer-token auth (#771)
+
+Every MCP tool Deployment rendered by this chart picks up the shared `shared/mcp_auth.py` middleware. Set
+`MCP_TOOL_AUTH_TOKEN` on each tool via `mcpTools.<name>.env` or an `envFrom` secret; use `MCP_TOOL_AUTH_DISABLED=true`
+to acknowledge running without auth (local dev only).
+
+### MCP command + cwd allow-list
+
+Every backend validates stdio entries in `mcp.json` against per-backend allow-lists before spawning the subprocess
+(`MCP_ALLOWED_COMMANDS`, `MCP_ALLOWED_COMMAND_PREFIXES`, `MCP_ALLOWED_CWD_PREFIXES`). Rejections increment
+`backend_mcp_command_rejected_total{reason}`. Claude #711, codex #720, gemini #730.
+
+### Ingress-scoped A2A cap (#783)
+
+`A2A_MAX_PROMPT_BYTES` (default 1 MiB) caps inbound A2A prompts at the harness before they hit a backend; set to
+`0` to disable.
 
 ### Per-backend model override
 
@@ -321,6 +347,11 @@ Service URL (`http://<release>-mcp-<tool>:8000`) without needing a stdio fork/ex
 mcpTools:
   kubernetes:
     enabled: true
+    image:
+      # Pin immutably in production (#855) — MCP pods hold a cluster SA token.
+      digest: sha256:abc123...
+    # Three-state (#856); set false for IRSA / workload-identity setups.
+    # automountServiceAccountToken: true
     serviceAccountName: mcp-kubernetes   # BYO SA with cluster-read RBAC
   helm:
     enabled: true

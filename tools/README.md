@@ -32,6 +32,18 @@ per-agent.
 - Register new components in the `Building Images` section of `AGENTS.md` and
   tag related issues/PRs with the `mcp` GitHub label.
 
+## Bearer-token auth (#771)
+
+Every MCP tool server enforces bearer-token auth via the shared `shared/mcp_auth.py` middleware. Set
+`MCP_TOOL_AUTH_TOKEN` on each tool container; when the token is unset/empty and `MCP_TOOL_AUTH_DISABLED`
+is not explicitly set, the server refuses requests. Use `MCP_TOOL_AUTH_DISABLED=true` only for local dev —
+the startup log is loud on purpose.
+
+## Health endpoint
+
+Every MCP tool server exposes `GET /health` on the same port as the MCP endpoint (default `8000`) for
+liveness / readiness probes.
+
 ## Digest pinning (#855)
 
 The `nyx` Helm chart accepts a `digest` field alongside `repository`/`tag`

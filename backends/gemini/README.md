@@ -28,12 +28,21 @@ on the first request.
 constraints live there. The file is hot-reloaded on change — updating `GEMINI.md` takes effect for the next request
 without restarting the container.
 
-**Metrics** — Exposes the common `a2_*` Prometheus metrics: request count/latency, session starts/evictions, queue
-depth, error counts, and execution duration. Also includes context-window metrics (`backend_context_tokens`,
-`backend_context_usage_percent`, `backend_context_exhaustion_total`, etc.) tracked via `usage_metadata.total_token_count` on
-each response chunk, and SDK error classification metrics (`backend_sdk_errors_total`, `backend_sdk_result_errors_total`,
-`backend_sdk_client_errors_total`) that distinguish connection-level failures from result-level errors and catch-all
-exceptions.
+**Metrics** — Exposes the common `backend_*` Prometheus metrics: request count/latency, session starts/evictions,
+queue depth, error counts, and execution duration. Context-window metrics (`backend_context_tokens`,
+`backend_context_usage_percent`, `backend_context_exhaustion_total`, etc.) are tracked via
+`usage_metadata.total_token_count` on each response chunk; SDK error classification
+(`backend_sdk_errors_total`, `backend_sdk_result_errors_total`, `backend_sdk_client_errors_total`) distinguishes
+connection-level from result-level from catch-all exceptions. Additional metrics landed this cycle:
+`backend_empty_prompts_total` (#812), `backend_sdk_subprocess_spawn_duration_seconds` (genai client cold-start),
+`backend_sdk_tokens_per_query`, `backend_sdk_tool_call_input_size_bytes`, `backend_sdk_tool_result_size_bytes`
+(#811 — payload size histograms aligned with claude's buckets), per-stdio-server liveness
+`backend_mcp_server_up{server}` + `backend_mcp_server_exits_total{server,reason}` (#816), MCP per-request
+observability `backend_mcp_requests_total` + `backend_mcp_request_duration_seconds` (#560), and command
+allow-list rejections `backend_mcp_command_rejected_total{reason}` (#730). Hook counters carry a `source`
+label (`baseline`|`extension`) for schema parity with claude/codex. The `backend_hooks_enforcement_mode`
+gauge reports whether PreToolUse hooks are actually evaluated: `0`=skeleton (rules loaded but AFC bypasses
+them — today's state), `1`=enforcing, `-1`=disabled (#736).
 
 ## Endpoints
 
@@ -94,9 +103,14 @@ slot id, e.g. `gemini`), `AGENT_URL`, `BACKEND_PORT`, `GEMINI_API_KEY` (or `GOOG
 (model override, default `gemini-2.5-pro`), `SESSION_STORE_DIR` (directory for session JSON files, default
 `/home/agent/.gemini/memory/sessions`), `MAX_SESSIONS` (LRU cache size, default `10000`), `GEMINI_MAX_HISTORY_TURNS`
 (maximum number of conversation turns to persist per session; older turns are dropped to keep file sizes bounded;
-default `100`; set to `0` to disable truncation and keep full history), `METRICS_ENABLED`,
-`CONVERSATIONS_AUTH_TOKEN`, `TASK_STORE_PATH`, `WORKER_MAX_RESTARTS`, `LOG_PROMPT_MAX_BYTES` (max bytes of prompt logged
-at INFO; default 200; set to 0 to suppress).
+default `100`; set to `0` to disable truncation and keep full history), `GEMINI_MAX_HISTORY_BYTES` (byte ceiling
+on the JSON session-history file per session; older turns are truncated to fit when the file would otherwise
+exceed this size), `METRICS_ENABLED`, `CONVERSATIONS_AUTH_TOKEN`,
+`CONVERSATIONS_AUTH_DISABLED` (explicit escape hatch for no-auth mode, #718), `LOG_REDACT` (conversation
+redaction toggle, #714), `TASK_STORE_PATH`, `WORKER_MAX_RESTARTS`, `LOG_PROMPT_MAX_BYTES` (max bytes of
+prompt logged at INFO; default 200; set to 0 to suppress), `MCP_ALLOWED_COMMANDS` /
+`MCP_ALLOWED_COMMAND_PREFIXES` / `MCP_ALLOWED_CWD_PREFIXES` (stdio MCP entry allow-list, #730; rejections
+counted on `backend_mcp_command_rejected_total{reason}`).
 
 ## Tools / MCP
 

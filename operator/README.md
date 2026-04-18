@@ -231,6 +231,29 @@ The controller writes the following status fields:
 - `conditions` — `Available`, `Progressing`, and `ReconcileSuccess`
   following the standard Kubernetes condition convention.
 
+## Field indexers and controller-runtime wiring
+
+Two indexers feed the reconciler's reverse-lookup paths without triggering full-list fan-outs:
+
+- `NyxPromptAgentRefIndex` — indexes each `NyxPrompt.spec.agentRefs[].name`, so a `NyxAgent` reconcile can
+  enumerate every NyxPrompt bound to it in O(1) for rebind / teardown.
+- `NyxAgentTeamIndex` — indexes `NyxAgent` by team label so cross-agent views can resolve team membership
+  without listing every NyxAgent in the namespace.
+
+Leader election is on by default (`--leader-elect=true`). Multi-replica operator rollouts are safe without
+additional flags.
+
+## Per-container metrics port
+
+Every managed container (harness, backends, MCP tools) exposes `/metrics` on `app_port + 1000` by default,
+matching the chart (#687) and removing the need for per-container `MetricsPort` overrides on the NyxAgent
+CR. The CRD's `MetricsPort` field is deprecated — set only if you need to override the convention.
+
+## NyxPrompt CRD installation
+
+The NyxPrompt CRD is wired into `config/crd/kustomization.yaml` alongside NyxAgent, so `make install` now
+applies both CRDs in one pass.
+
 ## Chart / operator feature fidelity
 
 The Helm chart (`charts/nyx`) and this operator render equivalent
@@ -268,9 +291,13 @@ NyxAgent-specific domain metrics added on top (#471):
 | `nyxagent_phase_transitions_total`    | counter | `from`, `to`       | Status.phase transitions (Pending → Ready, Ready → Degraded, etc.)               |
 | `nyxagent_pvc_build_errors_total`     | counter | `backend`          | Backend PVC entries skipped due to invalid spec (e.g. `storage.size` parse fail) |
 | `nyxagent_dashboard_enabled`          | gauge   | `namespace`, `name`| 1 when `spec.dashboard.enabled=true`, 0 otherwise. `sum()` for cluster total.    |
+| `nyxagent_teardown_step_errors_total` | counter | `kind`, `reason`   | Per-kind teardown failures when `spec.enabled=false` or the CR is deleted; useful for alerting when cascade cleanup is partial |
 
-The dashboard gauge series is dropped on agent deletion; the two counters
-persist (Prometheus convention — counters are monotonic).
+NyxPrompt binding-outcome metrics (label schema `namespace`, `name`) track per-binding ConfigMap apply
+results so operators can alert on chronically unready bindings.
+
+The gauges (`nyxagent_dashboard_enabled`, NyxPrompt binding gauges) are dropped on resource deletion; the
+counters persist (Prometheus convention — counters are monotonic).
 
 ### Prometheus Operator integration
 

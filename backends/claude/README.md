@@ -32,8 +32,12 @@ Resolution order: per-message metadata → routing config model → default mode
 The agent's name, personality, and behavioral constraints all live there. The file is hot-reloaded on change — updating
 `CLAUDE.md` takes effect for the next request without restarting the container.
 
-**Metrics** — Exposes a superset of the common `a2_*` Prometheus metrics, plus Claude-specific metrics: context window
-token counts, context exhaustion events, tool call counts, MCP tool usage, and time-to-first-message.
+**Metrics** — Exposes the superset of `backend_*` metrics: context-window token counts, context exhaustion events,
+tool call counts, per-request `/mcp` observability (`backend_mcp_requests_total`,
+`backend_mcp_request_duration_seconds`), SQLite task-store lock-wait (`backend_sqlite_task_store_lock_wait_seconds`),
+and time-to-first-message. Hooks denials are counted on the canonical cross-backend
+`backend_hooks_denials_total{tool,source,rule}`; the legacy `backend_hooks_blocked_total` alias remains for one
+release cycle. All histograms declare explicit bucket tuples.
 
 **Hooks (PreToolUse / PostToolUse)** — A two-layer policy engine wraps every tool call the SDK makes. A conservative
 **baseline** of deny rules ships with the executor and blocks the most obvious-dangerous shell patterns (`rm -rf /`,
@@ -51,7 +55,9 @@ writes one row per tool call to `logs/tool-activity.jsonl` with `event_type: "to
 | `GET /health`                 | Health check                                                                                      |
 | `GET /metrics`                | Prometheus metrics                                                                                |
 | `GET /conversations`          | Conversation log (JSONL, filterable by `since`/`limit`)                                           |
-| `GET /trace`                  | Tool-activity feed (JSONL, filterable by `since`/`limit`) — carries `tool_use`, `tool_result`, and `tool_audit` event types. Requires `Authorization: Bearer $CONVERSATIONS_AUTH_TOKEN` (shared token gate with `/conversations`, `/mcp`) |
+| `GET /trace`                  | Tool-activity feed (JSONL, filterable by `since`/`limit`) — carries `tool_use`, `tool_result`, and `tool_audit` event types. Requires `Authorization: Bearer $CONVERSATIONS_AUTH_TOKEN` (shared token gate with `/conversations`, `/mcp`, `/api/traces`) |
+| `GET /api/traces`             | OTel trace listing for the dashboard. Requires `Authorization: Bearer $CONVERSATIONS_AUTH_TOKEN` (parity with the other protected endpoints) |
+| `GET /api/traces/{id}`        | Single-trace detail for the dashboard. Requires `Authorization: Bearer $CONVERSATIONS_AUTH_TOKEN` |
 | `POST /mcp`                   | MCP JSON-RPC server (`initialize`, `tools/list`, `tools/call`); exposes a single `ask_agent` tool. Requires `Authorization: Bearer $CONVERSATIONS_AUTH_TOKEN` (#518) |
 
 ## Key files
@@ -100,10 +106,13 @@ claude mounts:
 
 Key environment variables: `AGENT_NAME` (instance name), `AGENT_OWNER` (named agent, e.g. `iris`), `AGENT_ID` (backend
 slot id, e.g. `claude`), `AGENT_URL`, `BACKEND_PORT`, `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN` for
-Claude Max), `CLAUDE_MODEL` (model override), `METRICS_ENABLED`, `CONVERSATIONS_AUTH_TOKEN`, `TASK_STORE_PATH`,
-`WORKER_MAX_RESTARTS`, `LOG_PROMPT_MAX_BYTES` (max bytes of prompt logged at INFO; default 200; set to 0 to suppress),
-`HOOKS_CONFIG_PATH` (path to `hooks.yaml`; default `/home/agent/.claude/hooks.yaml`), `HOOKS_BASELINE_ENABLED`
-(default `true`; set to `false` to disable the baseline deny rules).
+Claude Max), `CLAUDE_MODEL` (model override), `METRICS_ENABLED`, `CONVERSATIONS_AUTH_TOKEN`,
+`CONVERSATIONS_AUTH_DISABLED` (explicit escape hatch for no-auth mode, #718), `LOG_REDACT` (conversation redaction
+toggle, #714), `TASK_STORE_PATH`, `WORKER_MAX_RESTARTS`, `LOG_PROMPT_MAX_BYTES` (max bytes of prompt logged at INFO;
+default 200; set to 0 to suppress), `HOOKS_CONFIG_PATH` (path to `hooks.yaml`; default `/home/agent/.claude/hooks.yaml`),
+`HOOKS_BASELINE_ENABLED` (default `true`; set to `false` to disable the baseline deny rules),
+`MCP_ALLOWED_COMMANDS` / `MCP_ALLOWED_COMMAND_PREFIXES` / `MCP_ALLOWED_CWD_PREFIXES` (stdio MCP entry allow-list,
+#711; rejections counted on `backend_mcp_command_rejected_total{reason}`).
 
 ## Hook configuration
 
@@ -143,8 +152,12 @@ and `tool_result` events so operators tail one feed for all tool activity; filte
 audit rows for SIEM/forensics. PostToolUse is not opt-outable — transparency is a guarantee, not a policy
 choice.
 
-**Metrics.** `backend_hooks_blocked_total{tool,source,rule}`, `backend_hooks_warnings_total{tool,source,rule}`,
-`backend_tool_audit_entries_total{tool}`, `backend_hooks_config_reloads_total`, and `backend_hooks_active_rules{source}`.
+**Metrics.** Canonical cross-backend deny counter `backend_hooks_denials_total{tool,source,rule}` (#789; the
+legacy claude-only `backend_hooks_blocked_total` alias is retained for one release cycle), plus
+`backend_hooks_warnings_total{tool,source,rule}`, `backend_tool_audit_entries_total{tool}`,
+`backend_hooks_evaluations_total{tool,decision}`, `backend_hooks_config_reloads_total`,
+`backend_hooks_config_errors_total{reason}`, `backend_hooks_shed_total` (hook POSTs shed at the in-flight cap,
+#712), and `backend_hooks_active_rules{source}`.
 
 ## Tracing (OpenTelemetry)
 

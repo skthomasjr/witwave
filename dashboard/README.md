@@ -82,6 +82,30 @@ Produces `dist/`, which the Dockerfile copies into `/usr/share/nginx/html`. The 
 returns 404 for `/api/*`; the Helm chart (charts/nyx/templates/configmap-dashboard-nginx.yaml) mounts a ConfigMap
 over `/etc/nginx/templates/` at deploy time with per-agent routes templated from `.Values.agents`.
 
+The baseline `nginx.conf` also sets `Content-Security-Policy`, `X-Content-Type-Options: nosniff`, and
+`Referrer-Policy` response headers so the SPA ships with sensible browser-side hardening out of the box —
+operators who terminate TLS elsewhere and strip headers should replicate these at the edge.
+
+## Accessibility baselines
+
+- `aria-live` announcements on load / error / empty states in list and chat views.
+- `aria-pressed` on toggle-style buttons (filter pills, view switchers).
+- `focus-visible` styling on every interactive element.
+- Skip-to-main-content link on the app shell.
+- Debounced search input on the Conversations view to cut screen-reader chatter.
+- Structured client-error sink (`src/utils/clientErrors.ts`) so errors surface one at a time, with context,
+  rather than as a toast storm.
+- Per-member timeouts on fan-out composables (`useAgentFanout`, `useHealth`, `useTeam`) so a single slow
+  harness doesn't stall the whole view.
+- `_read_jsonl` tail-read so `Conversations` / `Tool Trace` stream the last N entries without reading the
+  whole file into memory on large logs.
+
+## Runtime-config validation (`traceApiUrl`)
+
+`VITE_TRACE_API_URL` / `window.__NYX_CONFIG__.traceApiUrl` is validated at runtime — empty, non-URL, or
+non-`http(s)` values are rejected with a clear message in the OTel Traces view rather than silently issuing
+malformed requests.
+
 ## Deployment
 
 - **Helm (cluster-wide dashboard):** set `dashboard.enabled: true` in `charts/nyx` values. Renders one dashboard

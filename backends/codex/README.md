@@ -43,15 +43,26 @@ entered via `AsyncExitStack` per request and passed to `Agent(mcp_servers=[...])
 with the built-in shell / web search / Playwright computer tools. The file is hot-reloaded on change. Three
 metrics track config state: `backend_mcp_config_errors_total`, `backend_mcp_config_reloads_total`, `backend_mcp_servers_active`.
 
-**Metrics** — Exposes the common `a2_*` Prometheus metrics: request count/latency, session starts/evictions, queue
-depth, error counts, and execution duration. Also includes tool-call metrics (`backend_sdk_tool_calls_total`,
-`backend_sdk_tool_duration_seconds`, `backend_sdk_tool_errors_total`, `backend_sdk_tool_calls_per_query`, input/output size
-histograms), context-window metrics (`backend_context_tokens`, `backend_context_usage_percent`,
-`backend_context_exhaustion_total`, etc.), SDK error classification metrics (`backend_sdk_errors_total`,
-`backend_sdk_result_errors_total`, `backend_sdk_client_errors_total`) that distinguish connection-level failures from
-result-level errors and catch-all exceptions, and MCP config metrics (`backend_mcp_config_errors_total`,
-`backend_mcp_config_reloads_total`, `backend_mcp_servers_active`). `backend_session_history_save_errors_total` is incremented
-when the SQLite session store fails to initialize or when LRU eviction cleanup fails.
+**Metrics** — Exposes the common `backend_*` Prometheus metrics: request count/latency, session starts/evictions,
+queue depth, error counts, and execution duration. Tool-call metrics (`backend_sdk_tool_calls_total`,
+`backend_sdk_tool_duration_seconds`, `backend_sdk_tool_errors_total`,
+`backend_sdk_tool_calls_per_query{agent,agent_id,backend,model}` — `model` label aligned with claude/gemini in
+#795, input/output size histograms), context-window metrics, SDK error classification
+(`backend_sdk_errors_total`, `backend_sdk_result_errors_total`, `backend_sdk_client_errors_total`,
+`backend_sdk_context_fetch_errors_total`), per-task noise metrics
+(`backend_stderr_lines_per_task`, `backend_tasks_with_stderr_total`), retries (`backend_task_retries_total`),
+MCP config metrics (`backend_mcp_config_errors_total`, `backend_mcp_config_reloads_total`,
+`backend_mcp_servers_active`, `backend_mcp_command_rejected_total{reason}` — #720), streaming-chunk drops
+(`backend_streaming_chunks_dropped_total` — #724), empty-prompt rejections (`backend_empty_prompts_total` —
+#801), and a `backend_sdk_subprocess_spawn_duration_seconds` zero-value placeholder so cross-backend
+dashboards carry the series (codex's OpenAI Agents SDK runs in-process so nothing literal is measured).
+Hook denials are counted on the canonical cross-backend `backend_hooks_denials_total{tool,source,rule}`;
+the legacy `backend_codex_hooks_denials_total{rule}` alias is retained through one release cycle. Peer-parity
+placeholders for the rest of claude's hook metric family (`backend_hooks_warnings_total`,
+`backend_hooks_config_*`, `backend_hooks_active_rules`, `backend_hooks_evaluations_total`,
+`backend_tool_audit_entries_total`) register at zero until the non-shell hook path lands (#586 deferred).
+`backend_session_history_save_errors_total` increments when the SQLite session store fails to initialize or
+LRU eviction cleanup fails.
 
 ## Endpoints
 
@@ -109,9 +120,12 @@ codex mounts:
 
 Key environment variables: `AGENT_NAME` (instance name), `AGENT_OWNER` (named agent, e.g. `iris`), `AGENT_ID` (backend
 slot id, e.g. `codex`), `AGENT_URL`, `BACKEND_PORT`, `OPENAI_API_KEY`, `CODEX_MODEL` (model override,
-default `gpt-5.1-codex`), `METRICS_ENABLED`, `CONVERSATIONS_AUTH_TOKEN`, `TASK_STORE_PATH`, `WORKER_MAX_RESTARTS`,
-`COMPUTER_USE_ENABLED` (activates Playwright browser tool), `LOG_PROMPT_MAX_BYTES` (max bytes of prompt logged at INFO;
-default 200; set to 0 to suppress).
+default `gpt-5.1-codex`), `METRICS_ENABLED`, `CONVERSATIONS_AUTH_TOKEN`,
+`CONVERSATIONS_AUTH_DISABLED` (explicit escape hatch for no-auth mode, #718), `LOG_REDACT` (conversation
+redaction toggle, #714), `TASK_STORE_PATH`, `WORKER_MAX_RESTARTS`, `COMPUTER_USE_ENABLED` (activates
+Playwright browser tool), `LOG_PROMPT_MAX_BYTES` (max bytes of prompt logged at INFO; default 200; set to 0
+to suppress), `MCP_ALLOWED_COMMANDS` / `MCP_ALLOWED_COMMAND_PREFIXES` / `MCP_ALLOWED_CWD_PREFIXES` (stdio
+MCP entry allow-list, #720; rejections counted on `backend_mcp_command_rejected_total{reason}`).
 
 ## Tracing (OpenTelemetry)
 

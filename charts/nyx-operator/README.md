@@ -72,7 +72,8 @@ kubectl delete crd nyxagents.nyx.ai
 | `rbac.create`                | Create the ClusterRole/ClusterRoleBinding and leader-election Role/RoleBinding               | `true`                                      |
 | `rbac.scope`                 | `cluster` (install a ClusterRole + ClusterRoleBinding, operator watches all namespaces) or `namespace` (install a Role + RoleBinding per `rbac.watchNamespaces` entry; ClusterRole is skipped) (#532) | `cluster`                       |
 | `rbac.watchNamespaces`       | Namespaces the operator watches when `rbac.scope=namespace`. Each entry receives a per-namespace Role + RoleBinding. Empty falls back to the release namespace. Ignored when `rbac.scope=cluster` | `[]`                               |
-| `leaderElection.enabled`     | Pass `--leader-elect` to the manager and create a leader-election RoleBinding                | `true`                                      |
+| `rbac.secretsWrite`          | Toggle Secret write verbs (`create`/`delete`/`patch`/`update`) on the operator's Role/ClusterRole. Read verbs (`get`/`list`/`watch`) are always granted. Set to `false` when all backend credentials are pre-provisioned Secrets referenced via `existingSecret` — removes the biggest post-exploitation primitive from the operator's trust boundary (#761) | `true` |
+| `leaderElection.enabled`     | Pass `--leader-elect` to the manager and create a leader-election RoleBinding. Default is now `true` so multi-replica rollouts are safe by default | `true`                                      |
 | `metrics.enabled`            | Expose controller-runtime metrics and create a ClusterIP Service for them                    | `false`                                     |
 | `metrics.port`               | Metrics port                                                                                 | `8443`                                      |
 | `metrics.secure`             | Serve metrics over HTTPS (self-signed unless cert-manager is wired in)                       | `true`                                      |
@@ -175,6 +176,20 @@ identical knobs for `certManager.enabled`, `createIssuer`, `issuerKind`, and `is
 
 `webhooks.enabled=false` skips every webhook resource entirely; the controller runs without admission webhooks and
 `cmd/main.go` logs a note at startup. CR validation falls back to CRD structural-schema checks only.
+
+## Least-privilege Secret writes (#761)
+
+The operator's default RBAC includes Secret write verbs because the inline `BackendSpec.credentials.secrets` path
+asks the reconciler to create/update a chart-owned Secret per backend. If every agent in your cluster uses
+pre-provisioned Secrets referenced via `existingSecret`, drop the write verbs:
+
+```yaml
+rbac:
+  secretsWrite: false
+```
+
+Read verbs (`get`/`list`/`watch`) remain granted so the reconciler can still validate referenced Secrets exist.
+Any attempt to use the inline credentials path will fail loudly with an RBAC error at apply time.
 
 ## Namespace-scoped RBAC (#532)
 

@@ -91,8 +91,10 @@ Each backend:
 - Exposes `/` as the A2A JSON-RPC task endpoint
 - Exposes `/health` for health checks
 - Exposes `/metrics` for Prometheus scraping (when `METRICS_ENABLED` is set)
-- Exposes `/conversations`, `/trace`, and `/mcp` guarded by the same bearer token (`CONVERSATIONS_AUTH_TOKEN`) —
-  parity across all three backends (#510, #516, #518). An empty token logs a startup warning (#517)
+- Exposes `/conversations`, `/trace`, `/mcp`, and claude's `/api/traces[/<id>]` guarded by the same bearer token
+  (`CONVERSATIONS_AUTH_TOKEN`) — parity across all three backends (#510, #516, #518). An empty token logs a
+  startup warning (#517) and the shared guard refuses to serve protected endpoints unless the operator opts in
+  with `CONVERSATIONS_AUTH_DISABLED=true` (documented escape hatch for local dev, loud startup log)
 - Manages its own session state, conversation log (`conversation.jsonl`), and memory (`/memory/`)
 - Receives behavioral instructions via a mounted file (`CLAUDE.md` for claude, `AGENTS.md` for codex, `GEMINI.md` for gemini) and A2A identity via a mounted `agent-card.md`
 
@@ -112,6 +114,10 @@ Each MCP component:
 
 - Runs a long-lived HTTP server on port **`8000`** using FastMCP's `streamable-http` transport (#644). The
   container `EXPOSE`s 8000 and Kubernetes addresses it via a per-tool Service (`<release>-mcp-<tool>:8000`).
+  A `/health` endpoint is also served on the same port.
+- Enforces bearer-token auth via the shared `shared/mcp_auth.py` middleware: when `MCP_TOOL_AUTH_TOKEN` is
+  unset or empty and `MCP_TOOL_AUTH_DISABLED` is not explicitly set, the server refuses requests. Set
+  `MCP_TOOL_AUTH_DISABLED=true` to acknowledge no-auth mode for local dev (startup log is loud).
 - Speaks the Model Context Protocol (not A2A) and is consumed by backends via their MCP configuration
   (`mcp.json` under `.claude/`, `.codex/`, or `.gemini/` — all three backends share the same wire format).
   Entries point at the tool's Service URL, not at a local binary:
@@ -127,8 +133,11 @@ Each MCP component:
   Codex additionally reads `.codex/config.toml` for built-in tool enablement flags; that file is unrelated to
   MCP server wiring.
 - Targets only the cluster where it is deployed; auth is in-cluster ServiceAccount + RBAC, not arbitrary
-  kubeconfigs. Wire a `ServiceAccount` with appropriate RBAC via `mcpTools.<name>.serviceAccountName` in
-  `charts/nyx/values.yaml`.
+  kubeconfigs. The chart ships a least-privilege default ClusterRole/Binding per tool when
+  `mcpTools.<name>.rbac.create: true` (default). Override with `mcpTools.<name>.serviceAccountName` to reuse
+  an out-of-band SA. Pin the image immutably via `mcpTools.<name>.image.digest` in production (#855); toggle
+  the in-pod projected SA token per-tool via `mcpTools.<name>.automountServiceAccountToken` (three-state,
+  #856) to coexist with IRSA / workload-identity setups.
 - Is independently deployable and **shared across all agents** in a cluster — one Deployment + Service per
   enabled tool. Opt in per tool in the chart's `mcpTools` block (`kubernetes.enabled: true`,
   `helm.enabled: true`); disabled by default.
@@ -377,3 +386,104 @@ when you need to target a specific session.
 
 Each backend manages its own memory under `.agents/<env>/<name>/<backend>/memory/` (e.g.
 `.agents/active/iris/claude/memory/`). For `claude` and `codex`, memory files are markdown documents. For `gemini`, conversation history is stored as JSON in `memory/sessions/`. Memory files are not committed to source control. harness has no memory layer of its own.
+
+## Metrics landscape
+
+The three backends share a common `backend_*` metric baseline; per-backend extensions are aligned so
+cross-backend dashboards can union on `(agent, agent_id, backend)` without backend-specific names.
+
+- **claude (superset).** Adds `backend_hooks_denials_total` (canonical cross-backend deny counter, paired
+  with the legacy `backend_hooks_blocked_total` alias through one release cycle), `backend_mcp_requests_total`
+  / `backend_mcp_request_duration_seconds` (per-request `/mcp` observability, peer-parity with gemini),
+  `backend_sqlite_task_store_lock_wait_seconds` (mirrors gemini's series so lock pressure can be diffed),
+  `backend_empty_prompts_total`, `backend_stderr_lines_per_task`, `backend_tasks_with_stderr_total`,
+  `backend_task_retries_total`, `backend_sdk_context_fetch_errors_total`,
+  `backend_log_write_errors_by_logger_total`, and `backend_sdk_subprocess_spawn_duration_seconds`. All
+  histograms declare explicit bucket tuples rather than relying on Prometheus defaults.
+- **codex.** Adds `backend_empty_prompts_total`, `backend_stderr_lines_per_task`,
+  `backend_tasks_with_stderr_total`, `backend_task_retries_total`, `backend_sdk_context_fetch_errors_total`,
+  `backend_log_write_errors_by_logger_total`, `backend_sdk_subprocess_spawn_duration_seconds`
+  (zero-value placeholder — the Agents SDK runs in-process), and peer-parity placeholder hook metrics
+  (`backend_hooks_warnings_total`, `backend_hooks_config_*`, `backend_hooks_active_rules`,
+  `backend_hooks_evaluations_total`, `backend_tool_audit_entries_total`). The legacy
+  `backend_codex_hooks_denials_total` alias is retained alongside the canonical
+  `backend_hooks_denials_total` during migration.
+- **gemini.** Adds `backend_empty_prompts_total`, `backend_sdk_subprocess_spawn_duration_seconds`,
+  `backend_sdk_tokens_per_query`, `backend_sdk_tool_call_input_size_bytes`,
+  `backend_sdk_tool_result_size_bytes`, `backend_mcp_server_up`, and `backend_mcp_server_exits_total`
+  (per-stdio-server liveness and exit reasons, #816). Hook counters carry a `source` label for
+  baseline-vs-extension disambiguation, matching claude's schema.
+- **Cross-backend alignment.** `backend_sdk_tool_calls_per_query` now carries the `model` label on every
+  backend (#795). `backend_sdk_tool_calls_total` and `backend_sdk_tool_errors_total` share label schema
+  `(agent, agent_id, backend, tool)`. Command allow-list rejections surface on every backend as
+  `backend_mcp_command_rejected_total{reason}` (claude #711, codex #720, gemini #730).
+
+## Environment variables added this cycle
+
+Set on the **harness** container:
+
+| Variable                                   | Purpose                                                                                                         |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `HOOK_EVENTS_AUTH_TOKEN`                   | Bearer token required on the internal hook-decision event endpoint the backends POST to. Unset = refuse (#712). |
+| `ADHOC_RUN_AUTH_TOKEN`                     | Bearer token for `POST /jobs/<name>/run`, `/tasks/<name>/run`, `/triggers/<name>/run`. Unset = refuse (#700).   |
+| `CORS_ALLOW_WILDCARD`                      | Explicit ack for `CORS_ALLOW_ORIGINS=*`; template refuses the wildcard otherwise (#701).                        |
+| `A2A_MAX_PROMPT_BYTES`                     | Reject A2A prompts above this byte size at ingress; default 1 MiB, `0` disables (#783).                         |
+| `CONTINUATION_MAX_CONCURRENT_FIRES_GLOBAL` | Hard cap on in-flight continuation fires across all items; protects against fan-out storms (#781).              |
+
+Set on the **backend** containers:
+
+| Variable                                   | Purpose                                                                                                         |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `CONVERSATIONS_AUTH_DISABLED`              | Escape hatch to run without the `CONVERSATIONS_AUTH_TOKEN` guard; loud startup log for visibility (#718).       |
+| `LOG_REDACT`                               | When truthy, conversation and response logs wrap user-prompt / agent-response content in redaction (#714).      |
+| `GEMINI_MAX_HISTORY_BYTES`                 | Byte ceiling on the JSON session history file gemini persists per session; older turns truncated to fit.        |
+| `MCP_ALLOWED_COMMANDS` / `MCP_ALLOWED_COMMAND_PREFIXES` | Command allow-list for stdio MCP entries in `mcp.json`; configured per-backend (#711/#720/#730).   |
+| `MCP_ALLOWED_CWD_PREFIXES`                 | CWD allow-list for stdio MCP entries; rejections counted on `backend_mcp_command_rejected_total{reason}`.       |
+
+Set on **MCP tool** containers:
+
+| Variable                                   | Purpose                                                                                                         |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `MCP_TOOL_AUTH_TOKEN`                      | Bearer token required on every MCP tool HTTP request; unset + `MCP_TOOL_AUTH_DISABLED` unset = refuse (#771).   |
+| `MCP_TOOL_AUTH_DISABLED`                   | Explicit ack for running MCP tools with no auth (local dev).                                                    |
+
+## Chart values added this cycle
+
+- `cors.allowOrigins` + `cors.allowWildcard` (charts/nyx, #763/#701) — first-class harness CORS policy,
+  validated by `values.schema.json`.
+- `storage.retainOnUninstall` (#767) — annotates every chart-owned PVC with `helm.sh/resource-policy=keep`
+  so `helm uninstall` leaves conversation logs / memory intact on clusters with delete-reclaim defaults.
+- `mcpTools.<name>.image.digest` (#855) — immutable digest pin per MCP tool; when set the template renders
+  `repository@<digest>` and ignores `tag`.
+- `mcpTools.<name>.rbac.create` (#762) — default-on minimal baseline RBAC per MCP tool so enabling a tool
+  doesn't 403 out of the box; set `create: false` + `serviceAccountName` to manage RBAC out-of-band.
+- `mcpTools.<name>.automountServiceAccountToken` (#856) — three-state override for the in-pod SA token,
+  for IRSA / workload-identity setups where the projected token should be suppressed.
+- `rbac.secretsWrite` (charts/nyx-operator, #761) — toggles the Secret write verbs (`create`/`delete`/
+  `patch`/`update`) on the operator Role/ClusterRole. Read verbs are always granted. Set to `false` when
+  all backend credentials are pre-provisioned Secrets referenced via `existingSecret`.
+
+## Endpoint additions
+
+- **harness** — `GET /.well-known/agent-runs.json` discovery doc enumerates the ad-hoc run endpoints
+  (`/jobs/<name>/run`, `/tasks/<name>/run`, `/triggers/<name>/run`) that are now guarded by
+  `ADHOC_RUN_AUTH_TOKEN` (#700).
+- **claude** — `GET /api/traces` and `GET /api/traces/<id>` now require `CONVERSATIONS_AUTH_TOKEN` (parity
+  with the other protected endpoints).
+- **MCP tool servers** — `GET /health` on every tool container for liveness probes and a bearer-auth
+  middleware in front of every request.
+
+## Security hardening
+
+- **Webhook SSRF DNS pinning** — the URL guard in harness (#524) resolves webhook hostnames at delivery
+  time and refuses to send to the resolved IP when it is private / loopback / link-local / reserved,
+  catching DNS-rebind attacks that check the hostname once and then flip the A record.
+- **MCP command + cwd allow-list** — every stdio entry parsed out of `mcp.json` is checked against
+  `MCP_ALLOWED_COMMANDS` / `MCP_ALLOWED_COMMAND_PREFIXES` / `MCP_ALLOWED_CWD_PREFIXES` on all three
+  backends; rejections increment `backend_mcp_command_rejected_total{reason}`.
+- **Operator Secret RBAC split** — `rbac.secretsWrite=false` in charts/nyx-operator drops the Secret write
+  verbs while keeping reads. Credential Secrets carry `app.kubernetes.io/component: credentials` and are
+  dual-checked (label + `IsControlledBy`) before any update or delete so user-created Secrets are never
+  touched.
+- **PodMonitor teardown on operator-disable** — when `spec.enabled=false` on a NyxAgent, the reconciler
+  now tears down the optional `PodMonitor` and `ServiceMonitor` CRs alongside everything else.
