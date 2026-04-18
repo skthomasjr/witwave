@@ -41,7 +41,10 @@ agents:
       # token (security-by-default). Generate a local token before running
       # smoke tests (e.g. `openssl rand -hex 32`) and export it via the
       # CI secret that backs this env var; the placeholder below fails
-      # fast so nobody deploys with a known/published token.
+      # fast so nobody deploys with a known/published token. The chart's
+      # deployment.yaml render guard (#760) refuses any REPLACE_ME* value
+      # on security-sensitive env vars, so `helm install -f values-test.yaml`
+      # without editing will error out cleanly.
       - name: TRIGGERS_AUTH_TOKEN
         value: REPLACE_ME_WITH_GENERATED_TOKEN
       # Webhook tests use these to template URLs / headers / Authorization

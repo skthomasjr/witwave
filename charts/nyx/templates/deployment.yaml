@@ -14,6 +14,46 @@
 {{- $_ := set $seen .name true }}
 {{- end }}
 {{- end }}
+{{- /* Guard: reject unreplaced `REPLACE_ME*` placeholders on any security-
+       sensitive env var (#760). values-test.yaml ships literal REPLACE_ME_
+       tokens that are not empty strings — they pass the existing "is this
+       set?" checks and boot with a deterministic, publicly-known shared
+       secret. Fail-render instead so `helm install -f values-test.yaml`
+       without editing values refuses to produce output. Inspected keys are
+       the ones that gate trigger/webhook/CORS/hook endpoints; extend this
+       list whenever a new auth env var lands. */}}
+{{- $sensitiveEnvKeys := list
+    "TRIGGERS_AUTH_TOKEN"
+    "WEBHOOK_TEST_BEARER"
+    "HOOK_EVENTS_AUTH_TOKEN"
+    "HARNESS_EVENTS_AUTH_TOKEN"
+    "ADHOC_RUN_AUTH_TOKEN"
+    "CONVERSATIONS_AUTH_TOKEN"
+    "BACKEND_CONVERSATIONS_AUTH_TOKEN" }}
+{{- range .Values.agents }}
+{{- $agentName := .name }}
+{{- range .env }}
+{{- if and (hasKey . "name") (hasKey . "value") }}
+{{- if has .name $sensitiveEnvKeys }}
+{{- if hasPrefix "REPLACE_ME" (.value | toString) }}
+{{- fail (printf "agents[%q].env[%q] still carries a REPLACE_ME placeholder (%q) — generate a real token (e.g. `openssl rand -hex 32`) before deploying. See #760." $agentName .name (.value | toString)) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- range .backends }}
+{{- $backendName := .name }}
+{{- range (.env | default list) }}
+{{- if and (hasKey . "name") (hasKey . "value") }}
+{{- if has .name $sensitiveEnvKeys }}
+{{- if hasPrefix "REPLACE_ME" (.value | toString) }}
+{{- fail (printf "agents[%q].backends[%q].env[%q] still carries a REPLACE_ME placeholder (%q) — generate a real token before deploying. See #760." $agentName $backendName .name (.value | toString)) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- /* Guard: when preStop is enabled, preStop.delaySeconds must be strictly
        less than terminationGracePeriodSeconds so SIGTERM actually fires with
        enough remaining grace for A2A requests, jobs, and webhook deliveries
