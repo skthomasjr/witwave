@@ -551,8 +551,25 @@ if __name__ == "__main__":
     # boundaries (#644). stdio mode (FastMCP's default) assumes a local
     # fork/exec client and can't be consumed from a separate pod's
     # backend container via `.claude/mcp.json` URL references.
-    mcp.run(
-        transport="streamable-http",
-        host="0.0.0.0",
-        port=int(os.environ.get("MCP_PORT", "8000")),
-    )
+    #
+    # Wrap the FastMCP Starlette app with the shared bearer-token
+    # middleware (#771) so an MCP_TOOL_AUTH_TOKEN can gate invocation.
+    # Falls back to mcp.run() when the middleware cannot be imported
+    # (e.g. bare dev checkout) so no deployment surface breaks.
+    try:
+        import uvicorn  # type: ignore
+        from mcp_auth import require_bearer_token  # type: ignore
+        _app = mcp.streamable_http_app()
+        _app = require_bearer_token(_app)
+        uvicorn.run(
+            _app,
+            host="0.0.0.0",
+            port=int(os.environ.get("MCP_PORT", "8000")),
+            log_config=None,
+        )
+    except ImportError:
+        mcp.run(
+            transport="streamable-http",
+            host="0.0.0.0",
+            port=int(os.environ.get("MCP_PORT", "8000")),
+        )

@@ -18,6 +18,10 @@ COPY --chown=tool:tool tools/kubernetes/ /home/tool/
 # `from metrics_server import start_metrics_server_in_thread`.
 COPY --chown=tool:tool shared/otel.py /home/tool/shared/otel.py
 COPY --chown=tool:tool shared/metrics_server.py /home/tool/shared/metrics_server.py
+# Bearer-token auth middleware (#771) for the FastMCP streamable-http
+# listener. Imported opportunistically by server.py — the server falls
+# back to mcp.run() when the module is absent.
+COPY --chown=tool:tool shared/mcp_auth.py /home/tool/shared/mcp_auth.py
 
 # FastMCP streamable-http server (#644). Advertise the port so `docker run
 # -P` and Kubernetes Service targetPort discovery work the same way they

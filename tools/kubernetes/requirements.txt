@@ -10,3 +10,6 @@ opentelemetry-api==1.30.0
 opentelemetry-sdk==1.30.0
 opentelemetry-exporter-otlp-proto-http==1.30.0
 prometheus-client==0.24.1
+# Required for the bearer-token auth middleware wrapping the FastMCP
+# streamable-http app (#771).
+uvicorn==0.43.0

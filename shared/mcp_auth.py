@@ -1,0 +1,105 @@
+"""Bearer-token authentication middleware for MCP tool servers (#771).
+
+FastMCP's streamable-http listener binds 0.0.0.0 with no server-side
+authentication by default. Any pod reachable via the Service can
+invoke destructive tools (apply/delete, install/uninstall). This
+module provides a lightweight ASGI middleware + helper so tool
+servers can enforce a bearer token read from MCP_TOOL_AUTH_TOKEN.
+
+When MCP_TOOL_AUTH_TOKEN is unset or empty, the middleware logs a
+loud warning at first request and fails closed unless
+MCP_TOOL_AUTH_DISABLED is explicitly set — mirroring the
+fail-closed posture used by the backend /conversations endpoints
+(#517/#718).
+
+Usage (tool servers):
+
+    from mcp_auth import require_bearer_token
+    app = mcp.streamable_http_app()
+    app = require_bearer_token(app)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+"""
+
+from __future__ import annotations
+
+import hmac as hmac_mod
+import logging
+import os
+from typing import Awaitable, Callable
+
+logger = logging.getLogger(__name__)
+
+_FAIL_CLOSED_WARNED: set[int] = set()
+
+
+def _auth_disabled_escape_hatch() -> bool:
+    return os.environ.get("MCP_TOOL_AUTH_DISABLED", "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
+def require_bearer_token(app):  # type: ignore[no-untyped-def]
+    """Wrap an ASGI app so every request must carry a valid bearer token.
+
+    Token source: MCP_TOOL_AUTH_TOKEN env var. Compared with
+    hmac.compare_digest so the check is timing-safe. When unset /
+    empty the server fails closed (401) at first request; operators
+    who want to run without auth must set MCP_TOOL_AUTH_DISABLED=true.
+    """
+
+    async def middleware(scope, receive, send) -> None:  # type: ignore[no-untyped-def]
+        if scope.get("type") != "http":
+            await app(scope, receive, send)
+            return
+        token = os.environ.get("MCP_TOOL_AUTH_TOKEN", "").strip()
+        disabled = _auth_disabled_escape_hatch()
+        # One-shot warning per process per posture so operators see
+        # the misconfig in kubectl logs without per-request spam.
+        posture_key = (hash(("tok" if token else "none", disabled))) & 0xFFFFFFFF
+        if posture_key not in _FAIL_CLOSED_WARNED:
+            _FAIL_CLOSED_WARNED.add(posture_key)
+            if not token and not disabled:
+                logger.error(
+                    "mcp_auth: MCP_TOOL_AUTH_TOKEN is unset/empty and "
+                    "MCP_TOOL_AUTH_DISABLED is not set — refusing requests "
+                    "(HTTP 401). Set a non-empty token or opt out explicitly."
+                )
+            elif not token and disabled:
+                logger.error(
+                    "mcp_auth: MCP_TOOL_AUTH_DISABLED=true — authentication "
+                    "is DISABLED; any pod reachable on this Service can invoke "
+                    "tools. Use only for local development or inside a "
+                    "cluster-internal NetworkPolicy sandbox."
+                )
+        if disabled:
+            await app(scope, receive, send)
+            return
+        if not token:
+            await _send_401(send, "auth-not-configured")
+            return
+        headers = dict(scope.get("headers") or [])
+        raw = headers.get(b"authorization") or b""
+        if not raw.lower().startswith(b"bearer "):
+            await _send_401(send, "missing-or-malformed-authorization-header")
+            return
+        presented = raw[7:].decode("utf-8", errors="replace").strip()
+        if not hmac_mod.compare_digest(presented, token):
+            await _send_401(send, "invalid-token")
+            return
+        await app(scope, receive, send)
+
+    return middleware
+
+
+async def _send_401(send: Callable[[dict], Awaitable[None]], reason: str) -> None:
+    body = f'{{"error": "{reason}"}}'.encode("utf-8")
+    await send({
+        "type": "http.response.start",
+        "status": 401,
+        "headers": [
+            (b"content-type", b"application/json"),
+            (b"content-length", str(len(body)).encode("ascii")),
+            (b"www-authenticate", b'Bearer realm="mcp"'),
+        ],
+    })
+    await send({"type": "http.response.body", "body": body, "more_body": False})
