@@ -570,6 +570,14 @@ async def log_tool_audit(entry: dict) -> None:
         logger.error(f"log_tool_audit error: {e}")
 
 
+# Module-level strong-ref set for fire-and-forget hook.decision POST tasks.
+# asyncio.create_task only keeps a weak reference to the task from the event
+# loop, so without a strong reference the task may be garbage-collected before
+# it completes (Python asyncio docs). Entries are discarded via
+# add_done_callback so the set does not grow unboundedly (#660).
+_INFLIGHT_HOOK_POSTS: set[asyncio.Task] = set()
+
+
 async def _post_hook_event_to_harness(event_dict: dict) -> None:
     """Fire-and-forget POST of a hook.decision event to the harness (#641).
 
@@ -684,7 +692,9 @@ def _make_pre_tool_use_hook(state: HookState):
                 "source": (matched.source if matched is not None else ""),
                 "traceparent": _traceparent,
             }
-            asyncio.create_task(_post_hook_event_to_harness(_event_dict))
+            _t = asyncio.create_task(_post_hook_event_to_harness(_event_dict))
+            _INFLIGHT_HOOK_POSTS.add(_t)
+            _t.add_done_callback(_INFLIGHT_HOOK_POSTS.discard)
         except Exception as _transport_exc:
             logger.debug("hook.decision transport scheduling failed: %r", _transport_exc)
 
