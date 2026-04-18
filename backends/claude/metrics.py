@@ -101,6 +101,11 @@ backend_mcp_config_errors_total: prometheus_client.Counter | None = None
 backend_mcp_command_rejected_total: prometheus_client.Counter | None = None
 backend_mcp_config_reloads_total: prometheus_client.Counter | None = None
 backend_mcp_servers_active: prometheus_client.Gauge | None = None
+# Per-request metrics for the /mcp JSON-RPC endpoint (#790). Peer parity
+# with gemini so operators can alert on /mcp request rate and p95 latency
+# on every backend without special-casing.
+backend_mcp_requests_total: prometheus_client.Counter | None = None
+backend_mcp_request_duration_seconds: prometheus_client.Histogram | None = None
 
 # File watcher metrics
 backend_watcher_events_total: prometheus_client.Counter | None = None
@@ -514,6 +519,18 @@ if _enabled:
         "backend_mcp_servers_active",
         "Number of currently loaded MCP servers.",
         ["agent", "agent_id", "backend"],
+    )
+    # Peer parity with gemini (#790). Same label schema so dashboards
+    # union across backends without rewriting labels.
+    backend_mcp_requests_total = prometheus_client.Counter(
+        "backend_mcp_requests_total",
+        "Total MCP JSON-RPC requests received on the /mcp endpoint by method and outcome.",
+        ["agent", "agent_id", "backend", "method", "status"],
+    )
+    backend_mcp_request_duration_seconds = prometheus_client.Histogram(
+        "backend_mcp_request_duration_seconds",
+        "Wall-clock duration of each MCP JSON-RPC request handled on /mcp.",
+        ["agent", "agent_id", "backend", "method"],
     )
     # Command allow-list rejections (#711). Counts entries rejected by
     # the mcp.json validator because their ``command`` falls outside
