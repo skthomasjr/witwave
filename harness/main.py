@@ -46,6 +46,7 @@ from metrics import (
     harness_bus_wait_seconds,
     harness_event_loop_lag_seconds,
     harness_backend_reachable,
+    harness_backends_config_stale,
     harness_health_checks_total,
     harness_info,
     harness_startup_duration_seconds,
@@ -359,6 +360,19 @@ async def health_ready(request: Request) -> JSONResponse:
         harness_health_checks_total.labels(probe="ready").inc()
     if not _ready:
         return JSONResponse({"status": "starting"}, status_code=503)
+    # Surface stale backend.yaml (#702). After the reload watcher sees
+    # repeated parse/validation failures, readiness flips to 503 so the
+    # operator cannot miss the mis-config via HTTP probes alone.
+    _reload_failure_threshold = int(os.environ.get("BACKEND_RELOAD_FAILURE_THRESHOLD", "3"))
+    if _executor is not None and _executor.backends_reload_consecutive_failures >= _reload_failure_threshold:
+        return JSONResponse(
+            {
+                "status": "degraded",
+                "reason": "backends-config-stale",
+                "consecutive_failures": _executor.backends_reload_consecutive_failures,
+            },
+            status_code=503,
+        )
     backend_configs = [b._config for b in _executor._backends.values() if b._config.url] if _executor else []
     if not backend_configs:
         return JSONResponse({"status": "ready"})

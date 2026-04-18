@@ -59,6 +59,8 @@ from metrics import (
     harness_background_tasks,
     harness_background_tasks_shed_total,
     harness_background_tasks_timeout_total,
+    harness_backends_reload_errors_total,
+    harness_backends_config_stale,
 )
 
 logger = logging.getLogger(__name__)
@@ -474,6 +476,15 @@ class AgentExecutor(A2AAgentExecutor):
         self._continuation_runner = None
         self._webhook_runner = None
         self._bus = None
+        # Tracks how many consecutive backend.yaml reload attempts have
+        # failed. /health/ready flips to degraded once this crosses
+        # BACKEND_RELOAD_FAILURE_THRESHOLD so operators see the issue
+        # beyond a log line and a Prometheus counter (#702).
+        self._backends_reload_consecutive_failures: int = 0
+
+    @property
+    def backends_reload_consecutive_failures(self) -> int:
+        return self._backends_reload_consecutive_failures
 
     # Public read-only accessors for the two most-accessed private attributes
     # across executor-boundary call sites (narrow slice of #572). These are
@@ -688,8 +699,23 @@ class AgentExecutor(A2AAgentExecutor):
                                     else None
                                 )
                                 self._mcp_watcher_tasks.append(task)
+                            # Reload succeeded — clear the stale gauge + counter (#702).
+                            self._backends_reload_consecutive_failures = 0
+                            if harness_backends_config_stale is not None:
+                                harness_backends_config_stale.set(0)
                         except Exception as e:
                             logger.error("Failed to reload backends — keeping previous config: %s", e, exc_info=True)
+                            # Surface reload failure in metrics so a malformed
+                            # backend.yaml is visible beyond a single log line
+                            # (#702). Operators can alert on the counter rate
+                            # and on the stale gauge going hot; the harness
+                            # also exposes the consecutive failure count so
+                            # /health/ready can degrade after a threshold.
+                            self._backends_reload_consecutive_failures += 1
+                            if harness_backends_reload_errors_total is not None:
+                                harness_backends_reload_errors_total.inc()
+                            if harness_backends_config_stale is not None:
+                                harness_backends_config_stale.set(1)
                         break
             logger.warning("Backends watcher exited — retrying in 10s.")
             await asyncio.sleep(10)

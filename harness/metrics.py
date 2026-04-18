@@ -117,6 +117,8 @@ harness_a2a_backend_requests_total: prometheus_client.Counter | None = None
 harness_a2a_backend_request_duration_seconds: prometheus_client.Histogram | None = None
 harness_a2a_backend_circuit_state: prometheus_client.Gauge | None = None
 harness_a2a_backend_circuit_transitions_total: prometheus_client.Counter | None = None
+harness_backends_reload_errors_total: prometheus_client.Counter | None = None
+harness_backends_config_stale: prometheus_client.Gauge | None = None
 
 
 if _enabled:
@@ -551,6 +553,22 @@ if _enabled:
     harness_webhooks_reloads_total = prometheus_client.Counter(
         "harness_webhooks_reloads_total",
         "Total webhook file-change reload events.",
+    )
+    harness_backends_reload_errors_total = prometheus_client.Counter(
+        "harness_backends_reload_errors_total",
+        "Total backend.yaml reload attempts that failed to apply (#702). "
+        "Parse failures, routing-config validation errors, or backend "
+        "construction exceptions each increment this counter. Operators "
+        "should alert on a non-zero rate — the harness keeps running on "
+        "the last-known-good config, but updates stop flowing until the "
+        "file is fixed.",
+    )
+    harness_backends_config_stale = prometheus_client.Gauge(
+        "harness_backends_config_stale",
+        "Whether the currently loaded backend.yaml is stale because the "
+        "last file-change reload attempt failed (#702). 1 = stale (last "
+        "reload errored), 0 = fresh (last reload succeeded or no change "
+        "since startup).",
     )
     harness_webhooks_items_registered = prometheus_client.Gauge(
         "harness_webhooks_items_registered",
