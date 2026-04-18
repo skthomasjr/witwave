@@ -173,6 +173,15 @@ def record_tool_call(server: str, tool: str) -> Iterator[None]:
                     MCP_TOOL_RATE_LIMITED_TOTAL.labels(
                         server=server, tool=tool, reason="concurrency_cap"
                     ).inc()
+                    # Also bump mcp_tool_calls_total so dashboards showing
+                    # "attempted calls" reflect rate-limited attempts (#919).
+                    # Previously the raise happened before `start =
+                    # time.monotonic()` and the finally-block inc, so these
+                    # calls were invisible on the counter — exactly the
+                    # moment operators need the signal.
+                    MCP_TOOL_CALLS_TOTAL.labels(
+                        server=server, tool=tool, outcome="rate_limited"
+                    ).inc()
                 except Exception:
                     pass
             raise ConcurrencyCapExceeded(
