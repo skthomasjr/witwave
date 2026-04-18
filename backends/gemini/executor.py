@@ -2069,6 +2069,80 @@ class AgentExecutor(A2AAgentExecutor):
                             name, type(cfg).__name__,
                         )
                         continue
+                    # #814: URL-shaped MCP entries (production in-cluster
+                    # Services such as http://nyx-mcp-kubernetes:8000) now
+                    # map to FastMCP's streamable-http transport, with SSE
+                    # as a fallback for servers that predate streamable-http.
+                    # Claude and codex already branch on this shape; gemini
+                    # previously rejected every URL entry and silently ran
+                    # with zero MCP servers in operator-only installs.
+                    url_entry = cfg.get("url") if isinstance(cfg, dict) else None
+                    if isinstance(url_entry, str) and url_entry:
+                        with start_span(
+                            "mcp.call",
+                            kind="client",
+                            attributes={
+                                "mcp.server": name,
+                                "mcp.tool": "__start__",
+                                "mcp.transport": "streamable_http",
+                            },
+                        ) as _mcp_span:
+                            try:
+                                try:
+                                    from mcp.client.streamable_http import streamablehttp_client
+                                except ImportError:
+                                    streamablehttp_client = None  # type: ignore
+                                try:
+                                    from mcp.client.sse import sse_client
+                                except ImportError:
+                                    sse_client = None  # type: ignore
+                                if streamablehttp_client is not None:
+                                    read, write, _ = await new_stack.enter_async_context(
+                                        streamablehttp_client(url_entry)
+                                    )
+                                elif sse_client is not None:
+                                    read, write = await new_stack.enter_async_context(
+                                        sse_client(url_entry)
+                                    )
+                                else:
+                                    raise RuntimeError(
+                                        "neither streamablehttp_client nor sse_client available"
+                                    )
+                                session = await new_stack.enter_async_context(
+                                    ClientSession(read, write)
+                                )
+                                await session.initialize()
+                                new_live.append(session)
+                                if backend_mcp_server_up is not None:
+                                    try:
+                                        backend_mcp_server_up.labels(
+                                            **_LABELS, server=name,
+                                        ).set(1)
+                                    except Exception:
+                                        pass
+                                self._mcp_known_servers.add(name)
+                            except Exception as _mcp_exc:
+                                set_span_error(_mcp_span, _mcp_exc)
+                                logger.warning(
+                                    "MCP server %r (url=%s) failed to start (%s); proceeding without it.",
+                                    name, url_entry, _mcp_exc,
+                                )
+                                if backend_mcp_server_up is not None:
+                                    try:
+                                        backend_mcp_server_up.labels(
+                                            **_LABELS, server=name,
+                                        ).set(0)
+                                    except Exception:
+                                        pass
+                                self._mcp_known_servers.add(name)
+                                if backend_mcp_server_exits_total is not None:
+                                    try:
+                                        backend_mcp_server_exits_total.labels(
+                                            **_LABELS, server=name, reason="init_failed",
+                                        ).inc()
+                                    except Exception:
+                                        pass
+                        continue
                     params = _build_mcp_stdio_params(name, cfg)
                     if params is None:
                         continue
