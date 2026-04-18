@@ -66,6 +66,31 @@ class HelmError(RuntimeError):
     """Raised when a helm CLI invocation fails."""
 
 
+# Process-level timeout for `helm` subprocess invocations (#857). Without this,
+# a hung CLI (remote registry stall, stuck `--wait`, unreachable repo index)
+# pins the FastMCP handler task until the pod is killed, leaking the coroutine
+# and quietly dropping the client request. Default 300s is long enough for
+# normal install/upgrade --wait paths on a healthy cluster and short enough
+# that a wedged subprocess surfaces to operators.
+_HELM_SUBPROCESS_TIMEOUT_SECONDS = float(
+    os.environ.get("HELM_SUBPROCESS_TIMEOUT_SECONDS", "300")
+)
+
+# Prometheus counter for process-level timeouts (#857). Guarded so the server
+# still runs on machines without prometheus_client installed.
+try:
+    import prometheus_client as _prom
+
+    mcp_subprocess_timeouts_total = _prom.Counter(
+        "mcp_subprocess_timeouts_total",
+        "Total helm CLI subprocess invocations killed because they "
+        "exceeded HELM_SUBPROCESS_TIMEOUT_SECONDS (#857).",
+        ["tool", "command"],
+    )
+except Exception:  # pragma: no cover - metrics disabled
+    mcp_subprocess_timeouts_total = None  # type: ignore
+
+
 def _helm(args: list[str], parse_json: bool = False) -> Any:
     cmd = ["helm", *args]
     log.debug("exec: %s", " ".join(cmd))
@@ -78,7 +103,13 @@ def _helm(args: list[str], parse_json: bool = False) -> Any:
         attributes={"helm.command": args[0] if args else "", "helm.args": " ".join(args)},
     ) as _exec_span:
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=_HELM_SUBPROCESS_TIMEOUT_SECONDS,
+            )
             if proc.returncode != 0:
                 err = HelmError(
                     f"helm {' '.join(args)} exited {proc.returncode}: "
@@ -90,6 +121,23 @@ def _helm(args: list[str], parse_json: bool = False) -> Any:
                 out = proc.stdout.strip()
                 return json.loads(out) if out else None
             return proc.stdout
+        except subprocess.TimeoutExpired as exc:
+            # subprocess.run has already killed the child and reaped it by
+            # the time TimeoutExpired reaches us. Surface a HelmError so the
+            # outer handler span records the failure uniformly.
+            if mcp_subprocess_timeouts_total is not None:
+                try:
+                    mcp_subprocess_timeouts_total.labels(
+                        tool="helm", command=(args[0] if args else ""),
+                    ).inc()
+                except Exception:
+                    pass
+            err = HelmError(
+                f"helm {' '.join(args)} killed after "
+                f"{_HELM_SUBPROCESS_TIMEOUT_SECONDS}s (HELM_SUBPROCESS_TIMEOUT_SECONDS)"
+            )
+            set_span_error(_exec_span, err)
+            raise err from exc
         except HelmError:
             raise
         except Exception as exc:
