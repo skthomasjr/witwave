@@ -676,7 +676,18 @@ class AgentExecutor(A2AAgentExecutor):
         trace_context: TraceContext | None = None,
     ) -> None:
         if self._continuation_runner is not None:
-            self._continuation_runner.notify(kind, session_id, success, response or "", self._bus)
+            # Propagate upstream trace_context so the continuation's prompt
+            # joins the originating trace rather than surfacing as a new
+            # root (#784). Callers of on_prompt_completed already plumb
+            # trace_context through from the originating job/task/trigger.
+            self._continuation_runner.notify(
+                kind,
+                session_id,
+                success,
+                response or "",
+                self._bus,
+                trace_context=trace_context,
+            )
         if self._webhook_runner is not None:
             self._webhook_runner.fire(
                 source=source,

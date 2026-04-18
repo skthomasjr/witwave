@@ -5,6 +5,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from fnmatch import fnmatch
 from pathlib import Path
+from typing import Any
 
 from bus import Message, MessageBus
 from metrics import (
@@ -186,7 +187,12 @@ def parse_continuation_file(path: str) -> "ContinuationItem | object | None":
         return None
 
 
-async def _fire(item: ContinuationItem, session_id: str, bus: MessageBus) -> None:
+async def _fire(
+    item: ContinuationItem,
+    session_id: str,
+    bus: MessageBus,
+    trace_context: Any = None,
+) -> None:
     if item.delay is not None:
         await asyncio.sleep(item.delay)
     from prompt_env import resolve_prompt_env  # noqa: E402 — scoped import keeps startup simple
@@ -194,6 +200,11 @@ async def _fire(item: ContinuationItem, session_id: str, bus: MessageBus) -> Non
     prompt = resolve_prompt_env(f"Continuation: {item.name}\n\n{item.content}")
     resolved_session = item.session_id or session_id
     try:
+        # Propagate the upstream trace_context (#784) so the continuation
+        # span joins the same trace as its originating
+        # job/task/trigger/a2a/continuation rather than surfacing as a new
+        # root. Without this, every continuation in a chain shows up as
+        # an orphan trace in Tempo/Jaeger.
         response = await bus.send(Message(
             prompt=prompt,
             session_id=resolved_session,
@@ -202,6 +213,7 @@ async def _fire(item: ContinuationItem, session_id: str, bus: MessageBus) -> Non
             backend_id=item.backend_id,
             consensus=item.consensus,
             max_tokens=item.max_tokens,
+            trace_context=trace_context,
         ))
         if harness_continuation_runs_total is not None:
             harness_continuation_runs_total.labels(name=item.name, status="success").inc()
@@ -328,8 +340,22 @@ class ContinuationRunner:
             })
         return result
 
-    def notify(self, kind: str, session_id: str, success: bool, response: str, bus: MessageBus) -> None:
-        """Called by on_prompt_completed() when an upstream completes. Non-blocking."""
+    def notify(
+        self,
+        kind: str,
+        session_id: str,
+        success: bool,
+        response: str,
+        bus: MessageBus,
+        trace_context: Any = None,
+    ) -> None:
+        """Called by on_prompt_completed() when an upstream completes. Non-blocking.
+
+        ``trace_context`` is the W3C trace-context captured on the
+        upstream Message so the fired continuation inherits the same
+        trace_id (#784). ``None`` preserves the pre-#784 behaviour of
+        starting a new root.
+        """
         # Evict any stale partial fan-in state before processing this event so
         # sessions whose required upstream never fires cannot leak memory (#557).
         self._evict_stale_fanin()
@@ -428,7 +454,7 @@ class ContinuationRunner:
                 self._fanin_state.pop(fanin_key, None)
             if harness_continuation_fires_total is not None:
                 harness_continuation_fires_total.labels(upstream_kind=kind).inc()
-            _t = asyncio.ensure_future(_fire(item, session_id, bus))
+            _t = asyncio.ensure_future(_fire(item, session_id, bus, trace_context))
             self._active_fires.add(_t)
             fires.add(_t)
             def _cleanup(t: asyncio.Task, _name: str = item.name) -> None:
