@@ -63,6 +63,7 @@ backend_sdk_turns_per_query: prometheus_client.Histogram | None = None
 backend_text_blocks_per_query: prometheus_client.Histogram | None = None
 backend_sdk_tokens_per_query: prometheus_client.Histogram | None = None
 backend_streaming_events_emitted_total: prometheus_client.Counter | None = None
+backend_streaming_chunks_dropped_total: prometheus_client.Counter | None = None
 
 # MCP config metrics (parity with claude — #432)
 backend_mcp_config_errors_total: prometheus_client.Counter | None = None
@@ -337,6 +338,17 @@ if _enabled:
         "Total partial agent_text_message events enqueued during streaming. "
         "Equals the number of text deltas the executor pushed to the A2A "
         "event_queue mid-stream (#430).",
+        ["agent", "agent_id", "backend", "model"],
+    )
+    # Streaming chunks dropped due to the on_chunk consumer exceeding
+    # STREAM_CHUNK_TIMEOUT_SECONDS (#724). Label schema mirrors
+    # streaming_events_emitted so dashboards can union the two series.
+    backend_streaming_chunks_dropped_total = prometheus_client.Counter(
+        "backend_streaming_chunks_dropped_total",
+        "Total streaming chunks dropped because the A2A consumer's on_chunk "
+        "callback exceeded STREAM_CHUNK_TIMEOUT_SECONDS. The final-flush "
+        "aggregated text still fires at response completion so clients see "
+        "the complete output (#724).",
         ["agent", "agent_id", "backend", "model"],
     )
 

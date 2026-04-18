@@ -72,6 +72,7 @@ from metrics import (
     backend_mcp_config_reloads_total,
     backend_mcp_servers_active,
     backend_streaming_events_emitted_total,
+    backend_streaming_chunks_dropped_total,
     backend_sdk_tokens_per_query,
     backend_text_blocks_per_query,
     backend_watcher_events_total,
@@ -1014,6 +1015,23 @@ async def run_query(
                                 session_id,
                                 STREAM_CHUNK_TIMEOUT_SECONDS,
                             )
+                            # Signal the drop to the outer executor so it can
+                            # emit a final-flush aggregated event (#724). The
+                            # stream_state dict is attached to the on_chunk
+                            # callable by AgentExecutor.execute so the inner
+                            # loop doesn't need a separate kwarg on every
+                            # call site.
+                            _state = getattr(on_chunk, "stream_state", None)
+                            if isinstance(_state, dict):
+                                _state["dropped"] = _state.get("dropped", 0) + 1
+                            if backend_streaming_chunks_dropped_total is not None:
+                                try:
+                                    _lbl = getattr(on_chunk, "label_model", "") or _resolve_model_label(model)
+                                    backend_streaming_chunks_dropped_total.labels(
+                                        **_LABELS, model=_lbl,
+                                    ).inc()
+                                except Exception:
+                                    pass
                         except Exception as _e:
                             logger.warning("Session %r: on_chunk callback raised: %s", session_id, _e)
                 # Check usage on response events — response.completed carries usage
@@ -1761,7 +1779,18 @@ class AgentExecutor(A2AAgentExecutor):
         # event_queue as it arrives. Tracks emission count so the
         # post-completion aggregated enqueue can be skipped when chunks were
         # already delivered.
+        #
+        # Dropped-chunk tracking (#724): when on_chunk raises TimeoutError
+        # in _run_query_inner, the chunk text is dropped silently and
+        # iteration continues. We now count the drops on the outer
+        # executor via a shared state dict so the final-flush decision
+        # knows whether the partial-stream was actually complete or
+        # had gaps. When any chunk was dropped we emit the full
+        # aggregated _response at completion so the client sees
+        # complete text regardless of which mid-stream events were
+        # truncated.
         _chunks_emitted = 0
+        _stream_state = {"dropped": 0}
         _streaming_label_model = _resolve_model_label(model)
 
         async def _emit_chunk(text: str) -> None:
@@ -1772,6 +1801,13 @@ class AgentExecutor(A2AAgentExecutor):
             # Await directly — see backends/claude/executor.py _emit_chunk for the
             # rationale (event ordering + exception surfacing).
             await event_queue.enqueue_event(new_agent_text_message(text))
+
+        # Attach the stream state so _run_query_inner's TimeoutError
+        # handler can increment ``dropped`` and bump the dropped metric
+        # via a single shared reference instead of plumbing a separate
+        # callback through run -> run_query -> _run_query_inner (#724).
+        _emit_chunk.stream_state = _stream_state  # type: ignore[attr-defined]
+        _emit_chunk.label_model = _streaming_label_model  # type: ignore[attr-defined]
 
         from otel import start_span as _start_span, set_span_error as _set_span_error
         _otel_span = None
@@ -1807,8 +1843,18 @@ class AgentExecutor(A2AAgentExecutor):
                 _success = True
                 # Skip the final aggregated event when chunks were streamed —
                 # they already delivered the content. Keep it as a fallback for
-                # tool-only or non-streamed runs.
-                if _response and _chunks_emitted == 0:
+                # tool-only or non-streamed runs OR when any chunk was dropped
+                # mid-stream (#724): the aggregated response fills the gaps so
+                # the client never sees a silently-truncated reply.
+                _dropped_count = _stream_state["dropped"]
+                if _response and (_chunks_emitted == 0 or _dropped_count > 0):
+                    if _dropped_count > 0:
+                        logger.info(
+                            "Session %r: %d chunk(s) dropped during streaming — "
+                            "emitting final aggregated response so client sees "
+                            "complete text (#724).",
+                            session_id, _dropped_count,
+                        )
                     await event_queue.enqueue_event(new_agent_text_message(_response))
                 if backend_a2a_requests_total is not None:
                     backend_a2a_requests_total.labels(**_LABELS, status="success").inc()
