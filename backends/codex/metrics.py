@@ -55,6 +55,10 @@ backend_model_requests_total: prometheus_client.Counter | None = None
 backend_log_bytes_total: prometheus_client.Counter | None = None
 backend_log_entries_total: prometheus_client.Counter | None = None
 backend_log_write_errors_total: prometheus_client.Counter | None = None
+# Per-logger write errors (#626 / #804). Non-breaking complement to
+# backend_log_write_errors_total — carries a `logger` label so operators can
+# distinguish tool-audit vs conversation vs trace write failures.
+backend_log_write_errors_by_logger_total: prometheus_client.Counter | None = None
 
 # SDK metrics
 backend_sdk_query_duration_seconds: prometheus_client.Histogram | None = None
@@ -310,6 +314,14 @@ if _enabled:
         "backend_log_write_errors_total",
         "Total I/O failures in the conversation/trace logging subsystem.",
         ["agent", "agent_id", "backend"],
+    )
+    # Per-logger write errors (#626 / #804). Non-breaking complement to
+    # backend_log_write_errors_total — carries the `logger` label so operators
+    # can distinguish tool-audit vs conversation vs trace write failures.
+    backend_log_write_errors_by_logger_total = prometheus_client.Counter(
+        "backend_log_write_errors_by_logger_total",
+        "Total log write errors attributed to a specific logger.",
+        ["agent", "agent_id", "backend", "logger"],
     )
 
     # SDK

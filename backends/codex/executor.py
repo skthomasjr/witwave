@@ -35,6 +35,7 @@ from metrics import (
     backend_empty_responses_total,
     backend_log_bytes_total,
     backend_log_entries_total,
+    backend_log_write_errors_by_logger_total,
     backend_log_write_errors_total,
     backend_lru_cache_utilization_percent,
     backend_model_requests_total,
@@ -290,7 +291,16 @@ def _append_tool_audit(entry: dict) -> None:
         row = {**entry, "event_type": "tool_audit"}
         _append_log(TRACE_LOG, json.dumps(row))
     except Exception:
-        pass
+        if backend_log_write_errors_total is not None:
+            try:
+                backend_log_write_errors_total.labels(**_LABELS).inc()
+            except Exception:
+                pass
+        if backend_log_write_errors_by_logger_total is not None:
+            try:
+                backend_log_write_errors_by_logger_total.labels(**_LABELS, logger="tool_audit").inc()
+            except Exception:
+                pass
     tool = str(entry.get("tool") or "")
     if backend_tool_audit_entries_total is not None:
         try:
@@ -847,6 +857,11 @@ async def log_entry(role: str, text: str, session_id: str, model: str | None = N
     except Exception as e:
         if backend_log_write_errors_total is not None:
             backend_log_write_errors_total.labels(**_LABELS).inc()
+        if backend_log_write_errors_by_logger_total is not None:
+            try:
+                backend_log_write_errors_by_logger_total.labels(**_LABELS, logger="conversation").inc()
+            except Exception:
+                pass
         logger.error(f"log_entry error: {e}")
 
 
@@ -860,6 +875,11 @@ async def log_trace(text: str) -> None:
     except Exception as e:
         if backend_log_write_errors_total is not None:
             backend_log_write_errors_total.labels(**_LABELS).inc()
+        if backend_log_write_errors_by_logger_total is not None:
+            try:
+                backend_log_write_errors_by_logger_total.labels(**_LABELS, logger="trace").inc()
+            except Exception:
+                pass
         logger.error(f"log_trace error: {e}")
 
 
