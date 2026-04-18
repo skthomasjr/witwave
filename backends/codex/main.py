@@ -31,6 +31,8 @@ from metrics import (
     backend_event_loop_lag_seconds,
     backend_health_checks_total,
     backend_info,
+    backend_mcp_request_duration_seconds,
+    backend_mcp_requests_total,
     backend_startup_duration_seconds,
     backend_task_restarts_total,
     backend_up,
@@ -291,21 +293,74 @@ async def main():
 
     _agent_description = load_agent_description()
 
+    # #962: per-request /mcp observability — parity with the claude and
+    # gemini transports. The inner/outer split lets every early-return
+    # (auth, parse, method-not-found) still stamp
+    # backend_mcp_requests_total and observe
+    # backend_mcp_request_duration_seconds without peppering metric calls
+    # across each branch.
+    _MCP_METRIC_LABELS = {
+        "agent": AGENT_OWNER,
+        "agent_id": AGENT_ID,
+        "backend": _BACKEND_ID,
+    }
+
     async def mcp_handler(request: Request) -> JSONResponse:
-        """Minimal MCP JSON-RPC server: initialize / tools/list / tools/call."""
+        """Minimal MCP JSON-RPC server: initialize / tools/list / tools/call.
+
+        Wrapped with per-request metrics (#962): every return path records
+        ``backend_mcp_requests_total{method,status}`` and
+        ``backend_mcp_request_duration_seconds{method}`` so operators can
+        alert on rate / p95 latency using the same dashboard rules they
+        use for claude and gemini.
+        """
+        import time as _time_for_mcp
+        _mcp_start = _time_for_mcp.monotonic()
+        _method_box: list[str] = ["unknown"]
+        _status_box: list[str] = ["ok"]
+        try:
+            return await _mcp_handler_inner(request, _method_box, _status_box)
+        except Exception:
+            _status_box[0] = "error"
+            raise
+        finally:
+            _elapsed = _time_for_mcp.monotonic() - _mcp_start
+            try:
+                if backend_mcp_requests_total is not None:
+                    backend_mcp_requests_total.labels(
+                        **_MCP_METRIC_LABELS,
+                        method=_method_box[0],
+                        status=_status_box[0],
+                    ).inc()
+                if backend_mcp_request_duration_seconds is not None:
+                    backend_mcp_request_duration_seconds.labels(
+                        **_MCP_METRIC_LABELS,
+                        method=_method_box[0],
+                    ).observe(_elapsed)
+            except Exception:
+                pass
+
+    async def _mcp_handler_inner(
+        request: Request,
+        _method_box: list[str],
+        _status_box: list[str],
+    ) -> JSONResponse:
         # Gate on the same bearer token used by /conversations and /trace when
         # configured. Without this, any network caller could drive the LLM via
         # tools/call -> ask_agent and burn the operator's API key (#510).
         if CONVERSATIONS_AUTH_TOKEN:
             header = request.headers.get("Authorization", "")
             if not hmac_mod.compare_digest(f"Bearer {CONVERSATIONS_AUTH_TOKEN}", header):
+                _status_box[0] = "unauthorized"
                 return JSONResponse({"error": "unauthorized"}, status_code=401)
         try:
             body = await request.json()
         except Exception:
+            _status_box[0] = "parse_error"
             return JSONResponse({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}, status_code=400)
         rpc_id = body.get("id")
         method = body.get("method", "")
+        _method_box[0] = method or "unknown"
         params = body.get("params") or {}
 
         if method == "initialize":
@@ -433,6 +488,7 @@ async def main():
                             session_id, _cleanup_exc,
                         )
             if _failed:
+                _status_box[0] = "error"
                 return JSONResponse({
                     "jsonrpc": "2.0",
                     "id": rpc_id,
@@ -446,6 +502,7 @@ async def main():
                 "result": {"content": [{"type": "text", "text": response}]},
             })
 
+        _status_box[0] = "method_not_found"
         return JSONResponse({
             "jsonrpc": "2.0",
             "id": rpc_id,

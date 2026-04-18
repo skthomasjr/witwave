@@ -87,6 +87,9 @@ backend_mcp_config_errors_total: prometheus_client.Counter | None = None
 backend_mcp_config_reloads_total: prometheus_client.Counter | None = None
 backend_mcp_servers_active: prometheus_client.Gauge | None = None
 backend_mcp_command_rejected_total: prometheus_client.Counter | None = None
+# /mcp transport observability — parity with claude / gemini (#962).
+backend_mcp_requests_total: prometheus_client.Counter | None = None
+backend_mcp_request_duration_seconds: prometheus_client.Histogram | None = None
 
 # SDK error classification metrics (parity with claude — #431)
 backend_sdk_errors_total: prometheus_client.Counter | None = None
@@ -466,6 +469,18 @@ if _enabled:
         "backend_mcp_command_rejected_total",
         "Total MCP server entries rejected by the command allow-list, by reason.",
         ["agent", "agent_id", "backend", "reason"],
+    )
+    # /mcp transport observability (#962 — parity with claude's peer pair).
+    # Same label schema as claude so dashboards union without rewriting labels.
+    backend_mcp_requests_total = prometheus_client.Counter(
+        "backend_mcp_requests_total",
+        "Total MCP JSON-RPC requests received on the /mcp endpoint by method and outcome.",
+        ["agent", "agent_id", "backend", "method", "status"],
+    )
+    backend_mcp_request_duration_seconds = prometheus_client.Histogram(
+        "backend_mcp_request_duration_seconds",
+        "Wall-clock duration of each MCP JSON-RPC request handled on /mcp.",
+        ["agent", "agent_id", "backend", "method"],
     )
 
     # SDK error classification (parity with claude — #431)
