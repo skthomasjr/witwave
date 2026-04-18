@@ -20,9 +20,12 @@ from hooks import (
     DECISION_ALLOW,
     DECISION_DENY,
     DECISION_WARN,
+    HOOKS_BASELINE_ENABLED,
+    HOOKS_CONFIG_PATH,
     HookState,
     evaluate_pre_tool_use,
     load_extension_rules,
+    load_hooks_config_sync,
 )
 from metrics import (
     backend_a2a_last_request_timestamp_seconds,
@@ -334,8 +337,6 @@ CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversa
 TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/tool-activity.jsonl")
 MCP_CONFIG_PATH = os.environ.get("MCP_CONFIG_PATH", "/home/agent/.claude/mcp.json")
 AGENT_MD = os.environ.get("AGENT_MD_PATH", "/home/agent/.claude/CLAUDE.md")
-HOOKS_CONFIG_PATH = os.environ.get("HOOKS_CONFIG_PATH", "/home/agent/.claude/hooks.yaml")
-HOOKS_BASELINE_ENABLED = os.environ.get("HOOKS_BASELINE_ENABLED", "true").lower() not in ("0", "false", "no", "off")
 
 # Backend→harness hook.decision transport (#641).  Empty HARNESS_EVENTS_URL
 # disables the POST path cleanly — the in-process OTel span-event emission
@@ -907,11 +908,6 @@ def _make_post_tool_use_hook(session_id_ref: dict, model_ref: dict):
             return {}
 
     return _hook
-
-
-def _load_hooks_config_sync() -> list:
-    """Synchronous wrapper around ``load_extension_rules`` for ``asyncio.to_thread``."""
-    return load_extension_rules(HOOKS_CONFIG_PATH)
 
 
 async def _log_tool_event(event_type: str, block, session_id: str, model: str | None = None) -> None:
@@ -1771,7 +1767,7 @@ class AgentExecutor(A2AAgentExecutor):
         Failures during reload keep the previous rule set in place so a
         malformed edit cannot accidentally disable the policy.
         """
-        self._hook_state.extensions = await asyncio.to_thread(_load_hooks_config_sync)
+        self._hook_state.extensions = await asyncio.to_thread(load_hooks_config_sync)
         if backend_hooks_active_rules is not None:
             backend_hooks_active_rules.labels(**_LABELS, source="extension").set(len(self._hook_state.extensions))
         logger.info(
@@ -1793,7 +1789,7 @@ class AgentExecutor(A2AAgentExecutor):
                 for _, path in changes:
                     if os.path.abspath(path) == os.path.abspath(HOOKS_CONFIG_PATH):
                         try:
-                            new_rules = await asyncio.to_thread(_load_hooks_config_sync)
+                            new_rules = await asyncio.to_thread(load_hooks_config_sync)
                             self._hook_state.extensions = new_rules
                             if backend_hooks_active_rules is not None:
                                 backend_hooks_active_rules.labels(**_LABELS, source="extension").set(len(new_rules))

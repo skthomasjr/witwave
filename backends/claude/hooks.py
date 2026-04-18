@@ -47,6 +47,15 @@ from hooks_engine import (  # noqa: F401  (re-exported public API)
 )
 
 
+HOOKS_CONFIG_PATH = os.environ.get("HOOKS_CONFIG_PATH", "/home/agent/.claude/hooks.yaml")
+HOOKS_BASELINE_ENABLED = os.environ.get("HOOKS_BASELINE_ENABLED", "true").lower() not in (
+    "0",
+    "false",
+    "no",
+    "off",
+)
+
+
 def _bump_config_error(reason: str) -> None:
     """Increment ``backend_hooks_config_errors_total{reason}`` for the claude backend (#623).
 
@@ -72,3 +81,12 @@ def _bump_config_error(reason: str) -> None:
 # Register the claude reporter with the shared engine. Import-time side
 # effect, executed exactly once when ``backends/claude/hooks.py`` is first loaded.
 set_config_error_reporter(_bump_config_error)
+
+
+def load_hooks_config_sync() -> list:
+    """Synchronous wrapper around ``load_extension_rules`` for ``asyncio.to_thread``.
+
+    Mirrors gemini's ``load_hooks_config_sync`` so the executor's watcher
+    implementation can stay structurally identical across backends (#798).
+    """
+    return load_extension_rules(HOOKS_CONFIG_PATH)
