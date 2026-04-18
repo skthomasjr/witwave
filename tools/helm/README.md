@@ -20,31 +20,72 @@ inside this server.
 
 ## RBAC
 
-Helm stores release state as Secrets in the release namespace and must be
-able to create every resource in the charts it installs. For a tool that
-should manage any chart anywhere, bind its ServiceAccount to
-`cluster-admin`:
+**Do not bind this tool to `cluster-admin` by default.** Helm can install
+any chart, and with `cluster-admin` that means installing any workload
+anywhere — including ones that themselves hold `cluster-admin`. An
+LLM-driven caller should operate with the narrowest RBAC that lets the
+intended charts render, and only be widened deliberately. (See #770.)
+
+The example below is a **read-only** baseline scoped to a single
+namespace: it lets the tool enumerate releases and read the chart
+state Helm persists in Secrets, but cannot `install`, `upgrade`,
+`rollback`, or `uninstall`. Add the write verbs (and the kind-specific
+verbs each chart needs) only when you accept the LLM writing to the
+cluster.
 
 ```yaml
+# Scoped ServiceAccount (same namespace as the mcp-helm Deployment).
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: nyx-mcp-helm
   namespace: nyx
 ---
+# Minimum Role for read-only Helm: list_releases, get_release, get_values,
+# get_manifest, history. Helm stores release state as Secrets with
+# label owner=helm (v3); we restrict access to that kind via the Role
+# scope. For full install/upgrade/rollback/uninstall you MUST widen this
+# Role with the verbs the target chart needs — one Role per
+# namespace-of-concern is the right default, not cluster-admin.
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: Role
 metadata:
-  name: nyx-mcp-helm
+  name: nyx-mcp-helm-read
+  namespace: nyx
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+    # Limit further in production by resourceNames or a downstream
+    # admission policy (e.g. Kyverno) that matches owner=helm.
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: nyx-mcp-helm-read
+  namespace: nyx
 subjects:
   - kind: ServiceAccount
     name: nyx-mcp-helm
     namespace: nyx
 roleRef:
-  kind: ClusterRole
-  name: cluster-admin
+  kind: Role
+  name: nyx-mcp-helm-read
   apiGroup: rbac.authorization.k8s.io
 ```
+
+For write operations (`install`, `upgrade`, `rollback`, `uninstall`),
+extend this Role with the exact resources/verbs the target chart
+requires, or (when the chart spans namespaces) promote to a
+`ClusterRole` + `ClusterRoleBinding` and review carefully. Never
+grant `cluster-admin` as a shortcut — the blast radius of an LLM-driven
+misstep is then every workload in every namespace.
 
 ## Tools
 

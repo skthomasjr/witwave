@@ -18,30 +18,79 @@ kubeconfig when run outside a cluster for development.
 
 ## RBAC
 
-The tool's access is whatever its ServiceAccount can do. For a full-cluster
-tool, bind it to `cluster-admin` (or a narrower ClusterRole if you want to
-constrain what the LLM can reach):
+**Do not bind this tool to `cluster-admin` by default.** An LLM-driven tool
+with `cluster-admin` has the worst-case blast radius: read every Secret,
+delete every workload, escalate via aggregated APIs. Start from zero and
+grant only what a named caller demonstrably needs; add verbs and kinds as
+real traffic surfaces them. (See #770.)
+
+The example below is a conservative starting point for a **read-only**
+deployment scoped to a single namespace. Use it as a baseline and widen
+only deliberately (add `create`/`update`/`delete` when you accept the
+LLM writing; grant `secrets.get` only when you accept disclosure to any
+session that reaches the tool; widen to a `ClusterRole` only when the
+workload truly needs cross-namespace reach).
 
 ```yaml
+# Scoped ServiceAccount (same namespace as the mcp-kubernetes Deployment).
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: nyx-mcp-kubernetes
   namespace: nyx
 ---
+# Least-privilege Role: read core workload and config kinds, plus the
+# pods/log subresource so `logs` works. Does NOT include secrets, SA
+# token creation, RBAC kinds, CSRs, or impersonation. Does NOT grant
+# apply/delete; add explicit write verbs only if you need them.
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: Role
 metadata:
-  name: nyx-mcp-kubernetes
+  name: nyx-mcp-kubernetes-read
+  namespace: nyx
+rules:
+  - apiGroups: [""]
+    resources:
+      - pods
+      - services
+      - endpoints
+      - configmaps
+      - namespaces
+      - events
+      - persistentvolumeclaims
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: nyx-mcp-kubernetes-read
+  namespace: nyx
 subjects:
   - kind: ServiceAccount
     name: nyx-mcp-kubernetes
     namespace: nyx
 roleRef:
-  kind: ClusterRole
-  name: cluster-admin
+  kind: Role
+  name: nyx-mcp-kubernetes-read
   apiGroup: rbac.authorization.k8s.io
 ```
+
+For multi-namespace read, turn the `Role` into a `ClusterRole` and the
+`RoleBinding` into a `ClusterRoleBinding` — but keep the verb list
+narrow. Never add `secrets` without an explicit decision; Kubernetes
+Secrets are bearer-equivalent for whoever holds them.
 
 ## Tools
 
