@@ -503,6 +503,12 @@ def _write_history_to_disk(tmp_path: str, path: str, raw: list) -> None:
     os.replace(tmp_path, path)
 
 
+# Per-session "save is done" Events (#674). The timeout cleanup path
+# awaits these before os.remove so a writer thread cannot resurrect the
+# file via os.replace after the remove.
+_history_write_done: dict[str, asyncio.Event] = {}
+
+
 async def _save_history(session_id: str, history: list[types.Content]) -> None:
     """Persist conversation history for a session.
 
@@ -520,18 +526,32 @@ async def _save_history(session_id: str, history: list[types.Content]) -> None:
         raw = raw[-_SAVE_HISTORY_MAX_TURNS:]
     tmp_path = path + ".tmp"
     last_exc: Exception | None = None
-    for attempt in range(_SAVE_HISTORY_MAX_RETRIES):
-        try:
-            await asyncio.to_thread(_write_history_to_disk, tmp_path, path, raw)
-            return
-        except Exception as e:
-            last_exc = e
-            logger.warning(
-                f"Failed to save session history for {session_id!r} "
-                f"(attempt {attempt + 1}/{_SAVE_HISTORY_MAX_RETRIES}): {e}"
-            )
-            if attempt < _SAVE_HISTORY_MAX_RETRIES - 1:
-                await asyncio.sleep(_SAVE_HISTORY_BACKOFF_BASE * (2 ** attempt))
+    # Announce that a save is in progress so a concurrent timeout cleanup
+    # can await the done-Event before os.remove (#674). Replace any prior
+    # Event for this session so we signal completion of *this* save only.
+    done_event = asyncio.Event()
+    _history_write_done[session_id] = done_event
+    try:
+        for attempt in range(_SAVE_HISTORY_MAX_RETRIES):
+            try:
+                await asyncio.to_thread(_write_history_to_disk, tmp_path, path, raw)
+                return
+            except Exception as e:
+                last_exc = e
+                logger.warning(
+                    f"Failed to save session history for {session_id!r} "
+                    f"(attempt {attempt + 1}/{_SAVE_HISTORY_MAX_RETRIES}): {e}"
+                )
+                if attempt < _SAVE_HISTORY_MAX_RETRIES - 1:
+                    await asyncio.sleep(_SAVE_HISTORY_BACKOFF_BASE * (2 ** attempt))
+    finally:
+        # Always signal completion (success, permanent failure, or
+        # cancellation) so the timeout cleanup never blocks forever.
+        done_event.set()
+        # Only clear the mapping if it still points at our Event — a
+        # later save may have replaced it.
+        if _history_write_done.get(session_id) is done_event:
+            _history_write_done.pop(session_id, None)
     # All retries exhausted — raise so the caller can log at ERROR level.
     raise RuntimeError(
         f"Permanently failed to save session history for {session_id!r} "
@@ -1066,6 +1086,20 @@ async def _run_inner(
         # Also remove the on-disk history file so the next request for this
         # session_id starts with empty history rather than reloading the
         # potentially stale or mid-stream snapshot written before the timeout.
+        # Wait (briefly) for any in-flight writer to signal completion so
+        # the subsequent os.remove is not raced by a late os.replace that
+        # resurrects the file (#674).
+        _pending_save = _history_write_done.get(session_id)
+        if _pending_save is not None:
+            try:
+                await asyncio.wait_for(_pending_save.wait(), timeout=5.0)
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "History save for timed-out session %r did not complete "
+                    "within 5s — removing file anyway; it may be re-created "
+                    "by the writer.",
+                    session_id,
+                )
         _timeout_path = _session_path(session_id)
         try:
             os.remove(_timeout_path)
