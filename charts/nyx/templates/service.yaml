@@ -23,7 +23,11 @@ metadata:
   {{- $metricsOn := ((.metrics).enabled | default $.Values.metrics.enabled) }}
   {{- $svcAnnOn := $.Values.metrics.serviceAnnotations }}
   {{- if (.metrics) }}{{- if hasKey .metrics "serviceAnnotations" }}{{- $svcAnnOn = .metrics.serviceAnnotations }}{{- end }}{{- end }}
-  {{- $metricsPort := $.Values.metrics.port | default 9000 }}
+  {{- /* Metrics port derived per-container: app_port + 1000. Service
+         exposes the harness's metrics port (not the backends' — those
+         are scraped per-container via PodMonitor which targets the
+         named `metrics` port across all containers). #643 */}}
+  {{- $metricsPort := add $containerPort 1000 }}
   {{- if and $metricsOn $svcAnnOn }}
   annotations:
     prometheus.io/scrape: "true"

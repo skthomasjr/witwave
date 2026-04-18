@@ -73,14 +73,16 @@ data:
         return 200 '[{{- range $i, $agent := $enabledAgents -}}{{- if $i -}},{{- end -}}{"name":{{ $agent.name | quote }},"url":"http://{{ $release }}-{{ $agent.name }}:{{ $agent.port | default 8000 }}"}{{- end -}}]';
       }
 
-{{- $metricsPort := $.Values.metrics.port | default 9000 }}
 {{ range $agent := $enabledAgents }}
       # Per-agent metrics route — scraped at the dedicated metrics port
       # (#643), which is separate from the app port so NetworkPolicy /
-      # auth can differ. Must come BEFORE the regex catch-all below for
-      # nginx to match the exact path.
+      # auth can differ. Per-container offset: metrics_port = app_port +
+      # 1000, so colocated pod containers don't fight for a shared port.
+      # Must come BEFORE the regex catch-all below for nginx to match
+      # the exact path.
+      {{- $agentMetricsPort := add (int ($agent.port | default 8000)) 1000 }}
       location = /api/agents/{{ $agent.name }}/metrics {
-        proxy_pass http://{{ $release }}-{{ $agent.name }}.{{ $.Release.Namespace }}.svc.{{ $clusterDomain }}:{{ $metricsPort }}/metrics;
+        proxy_pass http://{{ $release }}-{{ $agent.name }}.{{ $.Release.Namespace }}.svc.{{ $clusterDomain }}:{{ $agentMetricsPort }}/metrics;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_http_version 1.1;

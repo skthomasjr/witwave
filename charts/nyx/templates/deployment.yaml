@@ -187,14 +187,17 @@ spec:
                 # and webhook deliveries a coordinated drain window (#447).
                 command: ["/bin/sh", "-c", "sleep {{ $.Values.preStop.delaySeconds | default 5 }}"]
           {{- end }}
+          {{- $harnessMetricsPort := add (int (.port | default 8000)) 1000 }}
           ports:
             - name: http
               containerPort: {{ .port | default 8000 }}
             {{- if $metricsOn }}
             # Dedicated Prometheus metrics listener (#643); split from the
-            # app port so NetworkPolicy / auth can differ.
+            # app port so NetworkPolicy / auth can differ. Per-container
+            # offset = app_port + 1000 so colocated containers in the same
+            # pod don't fight for a shared port.
             - name: metrics
-              containerPort: {{ $.Values.metrics.port | default 9000 }}
+              containerPort: {{ $harnessMetricsPort }}
             {{- end }}
           # startupProbe gives the harness a long grace window on cold-start
           # before readiness/liveness begin enforcing (#580). Points at the
@@ -237,7 +240,7 @@ spec:
             - name: METRICS_ENABLED
               value: {{ (.metrics).enabled | default $.Values.metrics.enabled | toString | quote }}
             - name: METRICS_PORT
-              value: {{ $.Values.metrics.port | default 9000 | quote }}
+              value: {{ $harnessMetricsPort | quote }}
             {{- include "nyx.otelEnv" (dict "root" $ "serviceName" (printf "harness-%s" .name)) | nindent 12 }}
             {{- if .env }}
             {{- toYaml .env | nindent 12 }}
@@ -290,15 +293,16 @@ spec:
                 # coordinated drain window (#447).
                 command: ["/bin/sh", "-c", "sleep {{ $.Values.preStop.delaySeconds | default 5 }}"]
           {{- end }}
+          {{- $backendMetricsPort := add (int .port) 1000 }}
           ports:
             - name: http
               containerPort: {{ .port }}
             {{- if $agentMetricsEnabled }}
-            # Dedicated Prometheus metrics listener (#643). Split from the
-            # app port so NetworkPolicy / auth can differ; PodMonitor
-            # endpoints target this named port.
+            # Dedicated Prometheus metrics listener (#643). Per-container
+            # offset = app_port + 1000 so colocated pod containers bind
+            # distinct ports within the shared network namespace.
             - name: metrics
-              containerPort: {{ $.Values.metrics.port | default 9000 }}
+              containerPort: {{ $backendMetricsPort }}
             {{- end }}
           # startupProbe gives the backend a long grace window on cold-start
           # before readiness/liveness begin enforcing (#580). Backends pay
@@ -347,7 +351,7 @@ spec:
             - name: METRICS_ENABLED
               value: {{ $agentMetricsEnabled | toString | quote }}
             - name: METRICS_PORT
-              value: {{ $.Values.metrics.port | default 9000 | quote }}
+              value: {{ $backendMetricsPort | quote }}
             # Backend→harness transport for hook.decision events (#641).
             # Points at the harness running in the same pod.  Empty string
             # disables the POST cleanly; the in-process OTel span event

@@ -17,18 +17,27 @@ from metrics import harness_metrics_backend_fetch_errors_total
 logger = logging.getLogger(__name__)
 
 
+_METRICS_PORT_OFFSET = 1000
+
+
 def _metrics_url(backend_url: str) -> str:
     """Rewrite a backend's app-port URL to point at its metrics listener (#643).
 
-    Backends now serve /metrics on a dedicated port (METRICS_PORT, default
-    9000) instead of the app port. `backend.url` in backend.yaml still
-    carries the APP URL (so routing / A2A continue to work), so we swap
-    the port here at fetch time. Preserves scheme, host, and path — only
-    the port changes.
+    Backends serve /metrics on a dedicated port. Since pod containers
+    share the network namespace, each container's metrics port differs
+    from every sibling's — the chart / operator derive it as
+    ``app_port + 1000`` to guarantee uniqueness without needing a
+    separate config value. This helper applies the same derivation so
+    the harness aggregator hits the right port for each backend.
+
+    `backend.url` in backend.yaml still carries the APP URL (so routing
+    / A2A continue to work), so we swap the port here at fetch time.
+    Preserves scheme, host, and path — only the port changes.
     """
-    metrics_port = int(os.environ.get("METRICS_PORT", "9000"))
     parsed = urlparse(backend_url.rstrip('/'))
     hostname = parsed.hostname or parsed.netloc.split(':', 1)[0]
+    app_port = parsed.port or 80
+    metrics_port = app_port + _METRICS_PORT_OFFSET
     if parsed.username is not None or parsed.password is not None:
         userinfo = parsed.username or ''
         if parsed.password is not None:
