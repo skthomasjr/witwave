@@ -128,6 +128,11 @@ CONTEXT_USAGE_WARN_THRESHOLD = float(os.environ.get("CONTEXT_USAGE_WARN_THRESHOL
 # Maximum number of bytes of prompt text included in INFO-level log messages.
 # Set to 0 to suppress prompt text from logs entirely; set higher for more context.
 LOG_PROMPT_MAX_BYTES = int(os.environ.get("LOG_PROMPT_MAX_BYTES", "200"))
+# Cap tool_result "content" payload written to TRACE_LOG (#939). Large
+# shell stdout, kubectl --all-namespaces, or MCP payloads would otherwise
+# blow the rotation budget and memory on /trace / the dashboard Tool
+# Activity tab. 16 KiB default; set to 0 to disable (legacy behaviour).
+LOG_TRACE_CONTENT_MAX_BYTES = int(os.environ.get("LOG_TRACE_CONTENT_MAX_BYTES", "16384"))
 
 CODEX_MODEL = os.environ.get("CODEX_MODEL") or "gpt-5.1-codex"
 OPENAI_API_KEY: str | None = os.environ.get("OPENAI_API_KEY") or None
@@ -1237,7 +1242,19 @@ async def run_query(
                     call_id = raw.get("call_id", "") if isinstance(raw, dict) else getattr(raw, "call_id", "")
                     tool_name = _tool_call_names.get(call_id, "unknown")
                     output = item.output
-                    content = str(output)
+                    content_full = str(output)
+                    # Observe metrics on the FULL size so operator dashboards
+                    # still see multi-MB outputs — but cap the JSONL payload
+                    # so a single tool_result row cannot blow the rotation
+                    # budget or the /trace endpoint's memory (#939).
+                    full_bytes = len(content_full.encode("utf-8"))
+                    if LOG_TRACE_CONTENT_MAX_BYTES > 0 and full_bytes > LOG_TRACE_CONTENT_MAX_BYTES:
+                        truncated_bytes = full_bytes - LOG_TRACE_CONTENT_MAX_BYTES
+                        content = content_full.encode("utf-8")[:LOG_TRACE_CONTENT_MAX_BYTES].decode(
+                            "utf-8", errors="replace"
+                        ) + f"\n[truncated {truncated_bytes} bytes]"
+                    else:
+                        content = content_full
                     is_error = bool(
                         getattr(item, "is_error", None)
                         or (isinstance(raw, dict) and raw.get("is_error"))
@@ -1264,7 +1281,7 @@ async def run_query(
                     if is_error and backend_sdk_tool_errors_total is not None:
                         backend_sdk_tool_errors_total.labels(**_LABELS, tool=tool_name).inc()
                     if backend_sdk_tool_result_size_bytes is not None:
-                        backend_sdk_tool_result_size_bytes.labels(**_LABELS, tool=tool_name).observe(len(content.encode()))
+                        backend_sdk_tool_result_size_bytes.labels(**_LABELS, tool=tool_name).observe(full_bytes)
     except BudgetExceededError as exc:
         _stderr_count += 1
         if backend_sdk_session_duration_seconds is not None:
