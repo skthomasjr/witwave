@@ -44,6 +44,7 @@ from metrics import (
     backend_running_tasks,
     backend_sdk_messages_per_query,
     backend_sdk_client_errors_total,
+    backend_sdk_context_fetch_errors_total,
     backend_sdk_errors_total,
     backend_sdk_query_duration_seconds,
     backend_sdk_query_error_duration_seconds,
