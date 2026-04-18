@@ -45,6 +45,8 @@ backend_prompt_length_bytes: prometheus_client.Histogram | None = None
 backend_response_length_bytes: prometheus_client.Histogram | None = None
 backend_empty_responses_total: prometheus_client.Counter | None = None
 backend_empty_prompts_total: prometheus_client.Counter | None = None
+backend_stderr_lines_per_task: prometheus_client.Histogram | None = None
+backend_tasks_with_stderr_total: prometheus_client.Counter | None = None
 
 # Model / backend routing metrics
 backend_model_requests_total: prometheus_client.Counter | None = None
@@ -263,6 +265,22 @@ if _enabled:
     backend_empty_prompts_total = prometheus_client.Counter(
         "backend_empty_prompts_total",
         "Total execute() invocations rejected because the resolved prompt was empty or whitespace-only (#544 / #801).",
+        ["agent", "agent_id", "backend"],
+    )
+    # Per-task SDK error/noise (#802). Parity with claude's subprocess-stderr
+    # metric surface. Codex runs the OpenAI Agents SDK in-process so there is
+    # no literal subprocess stderr; instead these metrics tally SDK-side
+    # error/exception events observed during a single run() invocation so
+    # operator dashboards can union across backends.
+    backend_stderr_lines_per_task = prometheus_client.Histogram(
+        "backend_stderr_lines_per_task",
+        "Number of SDK-side error/noise events captured per run() invocation.",
+        ["agent", "agent_id", "backend"],
+        buckets=(0, 1, 2, 5, 10, 20, 50, 100),
+    )
+    backend_tasks_with_stderr_total = prometheus_client.Counter(
+        "backend_tasks_with_stderr_total",
+        "Total task executions that produced any SDK-side error/noise output.",
         ["agent", "agent_id", "backend"],
     )
 

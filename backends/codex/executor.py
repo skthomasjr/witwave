@@ -60,6 +60,7 @@ from metrics import (
     backend_session_evictions_total,
     backend_session_idle_seconds,
     backend_session_starts_total,
+    backend_stderr_lines_per_task,
     backend_task_cancellations_total,
     backend_task_duration_seconds,
     backend_task_error_duration_seconds,
@@ -68,6 +69,7 @@ from metrics import (
     backend_task_timeout_headroom_seconds,
     backend_session_history_save_errors_total,
     backend_tasks_total,
+    backend_tasks_with_stderr_total,
     backend_mcp_command_rejected_total,
     backend_mcp_config_errors_total,
     backend_mcp_config_reloads_total,
@@ -951,6 +953,9 @@ async def run_query(
     _tool_call_names: dict[str, str] = {}  # call_id -> tool name
     _tool_start_times: dict[str, float] = {}  # call_id -> monotonic start time
     _tool_call_count = 0
+    # Per-task SDK error/noise tally (#802). Mirrors claude's subprocess-stderr
+    # line count; observed at end-of-task into backend_stderr_lines_per_task.
+    _stderr_count = 0
     _total_tokens = 0
     # Initialized before the try so the llm.request span's finally-close
     # handler always has a sentinel to test against even if Agent construction
@@ -1170,6 +1175,7 @@ async def run_query(
                     if backend_sdk_tool_result_size_bytes is not None:
                         backend_sdk_tool_result_size_bytes.labels(**_LABELS, tool=tool_name).observe(len(content.encode()))
     except BudgetExceededError as exc:
+        _stderr_count += 1
         if backend_sdk_session_duration_seconds is not None:
             backend_sdk_session_duration_seconds.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(
                 time.monotonic() - _session_start
@@ -1211,6 +1217,7 @@ async def run_query(
             logger.debug("per-query metrics emit on BudgetExceededError failed: %s", _mex)
         raise
     except Exception as _run_exc:
+        _stderr_count += 1
         if backend_sdk_query_error_duration_seconds is not None:
             backend_sdk_query_error_duration_seconds.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(
                 time.monotonic() - _query_start
@@ -1253,6 +1260,16 @@ async def run_query(
                 _llm_ctx.__exit__(None, None, None)
             except Exception:
                 pass
+        # Per-task SDK error/noise metrics (#802). Always fire — even for
+        # successful runs (histogram observation of 0) so the rate is
+        # interpretable.
+        try:
+            if backend_stderr_lines_per_task is not None:
+                backend_stderr_lines_per_task.labels(**_LABELS).observe(_stderr_count)
+            if _stderr_count and backend_tasks_with_stderr_total is not None:
+                backend_tasks_with_stderr_total.labels(**_LABELS).inc()
+        except Exception:
+            pass
 
     if backend_sdk_session_duration_seconds is not None:
         backend_sdk_session_duration_seconds.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(
