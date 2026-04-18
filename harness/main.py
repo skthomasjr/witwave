@@ -1520,25 +1520,63 @@ async def main():
             finally:
                 await executor.close()
 
-    if not CORS_ALLOW_ORIGINS:
+    # Fail-closed CORS policy (#701). CORS_ALLOW_ORIGINS="*" combined
+    # with the sensitive /triggers/*, /jobs/*/run, /trace, and
+    # /conversations endpoints is a CSRF liability: a victim's browser
+    # opening any page can fire authenticated-callers' credentials at
+    # this harness.  The wildcard path is therefore only permitted when
+    # the operator explicitly acknowledges it via
+    # CORS_ALLOW_WILDCARD=true.  With the default (false) a wildcard
+    # value is downgraded to "no origins allowed" AND a startup error
+    # is logged so the operator notices.  allow_headers is also
+    # tightened from "*" to an explicit small list so a hostile origin
+    # can't smuggle custom headers through preflight.
+    _cors_wildcard_ack = os.environ.get("CORS_ALLOW_WILDCARD", "").lower() in ("1", "true", "yes")
+    _effective_cors = CORS_ALLOW_ORIGINS
+    if CORS_ALLOW_ORIGINS == ["*"] and not _cors_wildcard_ack:
+        logger.error(
+            "CORS_ALLOW_ORIGINS=* refused without CORS_ALLOW_WILDCARD=true "
+            "acknowledgement (#701). Falling back to 'no origins allowed'. "
+            "Set CORS_ALLOW_ORIGINS to an explicit origin list, OR set "
+            "CORS_ALLOW_WILDCARD=true if you truly intend a public-browser "
+            "deployment."
+        )
+        _effective_cors = []
+    if not _effective_cors:
         logger.warning(
-            "CORS_ALLOW_ORIGINS is not set — cross-origin browser requests to this agent will be denied. "
+            "CORS_ALLOW_ORIGINS resolved to empty — cross-origin browser requests will be denied. "
             "Set CORS_ALLOW_ORIGINS to a comma-separated list of allowed origins "
             "(e.g. 'http://localhost:3002') to permit browser access."
         )
-    elif CORS_ALLOW_ORIGINS == ["*"]:
+    elif _effective_cors == ["*"]:
         logger.warning(
             "CORS is configured to allow all origins (CORS_ALLOW_ORIGINS=*). "
-            "Set CORS_ALLOW_ORIGINS to specific trusted origins to restrict access."
+            "CORS_ALLOW_WILDCARD=true acknowledged; /triggers/*, /jobs/*/run, "
+            "/trace, /conversations are reachable from ANY browser origin. "
+            "Prefer an explicit origin list for production."
         )
     else:
-        logger.info("CORS allowed origins: %s", CORS_ALLOW_ORIGINS)
+        logger.info("CORS allowed origins: %s", _effective_cors)
+
+    _CORS_ALLOWED_HEADERS = [
+        "Authorization",
+        "Content-Type",
+        "Accept",
+        "traceparent",
+        "tracestate",
+        "baggage",
+    ]
 
     full_app = Starlette(
         routes=_routes,
         lifespan=lifespan,
         middleware=[
-            Middleware(CORSMiddleware, allow_origins=CORS_ALLOW_ORIGINS, allow_methods=["GET", "POST", "OPTIONS"], allow_headers=["*"]),
+            Middleware(
+                CORSMiddleware,
+                allow_origins=_effective_cors,
+                allow_methods=["GET", "POST", "OPTIONS"],
+                allow_headers=_CORS_ALLOWED_HEADERS,
+            ),
         ],
     )
 
