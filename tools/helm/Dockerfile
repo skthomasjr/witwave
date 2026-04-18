@@ -1,8 +1,14 @@
 FROM python:3.12-slim-bookworm
 
+# Helm CLI version. Keep at or above v3.20.2 to carry the CERT-Bund
+# WID-SEC-2026-1048 fixes (file manipulation / security-control bypass /
+# potential RCE, CVSS 8.6) — see #769. Refresh this pin at least quarterly
+# and whenever a new Helm security advisory lands; the MCP tool shells
+# out to this binary on every helm.* call, so every caller inherits the
+# bundled CLI.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    HELM_VERSION=v3.16.3
+    HELM_VERSION=v3.20.2
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       curl \
