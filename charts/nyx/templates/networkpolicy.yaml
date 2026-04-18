@@ -51,20 +51,36 @@ Uses the typed networking/v1 API (GA since Kubernetes 1.21).
 {{- /* Render `ingress` entries for a given pod selector. `metricsPort`
        is the numeric metrics port — the template uses it to scope the
        metricsFrom rule to the right port rather than blanket-allowing
-       scrapers on every port of the selected pod. */ -}}
+       scrapers on every port of the selected pod. `appPort` (when
+       provided) scopes allowDashboard and allowSameNamespace to the
+       app listener only so those peers cannot also reach the metrics
+       port (#911). A documented opt-in (`allPortsDashboard` /
+       `allPortsSameNamespace`) preserves the old all-ports shape for
+       operators who really want it. */ -}}
 {{- define "nyx.np.ingressRules" -}}
 {{- $ing := .ing -}}
 {{- $dashboardEnabled := .dashboardEnabled -}}
 {{- $dashboardPeer := .dashboardPeer -}}
 {{- $sameNsPeer := .sameNsPeer -}}
 {{- $metricsPort := .metricsPort -}}
+{{- $appPort := .appPort -}}
 {{- if and $dashboardEnabled $ing.allowDashboard }}
     - from:
         - {{- toYaml $dashboardPeer | nindent 10 }}
+    {{- if and $appPort (not $ing.allPortsDashboard) }}
+      ports:
+        - protocol: TCP
+          port: {{ $appPort }}
+    {{- end }}
 {{- end }}
 {{- if $ing.allowSameNamespace }}
     - from:
         - {{- toYaml $sameNsPeer | nindent 10 }}
+    {{- if and $appPort (not $ing.allPortsSameNamespace) }}
+      ports:
+        - protocol: TCP
+          port: {{ $appPort }}
+    {{- end }}
 {{- end }}
 {{- if and $ing.metricsFrom $metricsPort }}
     - from:
@@ -125,7 +141,7 @@ spec:
     - Egress
     {{- end }}
   ingress:
-    {{- include "nyx.np.ingressRules" (dict "ing" $ing "dashboardEnabled" $dashboardEnabled "dashboardPeer" $dashboardPeer "sameNsPeer" $sameNsPeer "metricsPort" $metricsPort) }}
+    {{- include "nyx.np.ingressRules" (dict "ing" $ing "dashboardEnabled" $dashboardEnabled "dashboardPeer" $dashboardPeer "sameNsPeer" $sameNsPeer "metricsPort" $metricsPort "appPort" $containerPort) }}
   {{- if not $np.egressOpen }}
   egress:
     {{- include "nyx.np.egressRules" (dict "np" $np) }}
@@ -156,7 +172,9 @@ spec:
     {{- /* The dashboard is a user-facing web surface — allowSameNamespace
            and additionalFrom apply, but the "dashboard → dashboard" rule
            is a no-op so we omit it by skipping allowDashboard. */ -}}
-    {{- include "nyx.np.ingressRules" (dict "ing" (omit $ing "allowDashboard") "dashboardEnabled" false "dashboardPeer" $dashboardPeer "sameNsPeer" $sameNsPeer "metricsPort" 0) }}
+    {{- /* Dashboard http port (#911). Scope allowSameNamespace to this
+           port only rather than all-ports. */ -}}
+    {{- include "nyx.np.ingressRules" (dict "ing" (omit $ing "allowDashboard") "dashboardEnabled" false "dashboardPeer" $dashboardPeer "sameNsPeer" $sameNsPeer "metricsPort" 0 "appPort" (.Values.dashboard.port | default 80)) }}
   {{- if not $np.egressOpen }}
   egress:
     {{- include "nyx.np.egressRules" (dict "np" $np) }}
@@ -192,7 +210,9 @@ spec:
            (dashboards don't talk to MCP servers directly); metrics uses
            the mcpTools.metricsPort knob; additionalFrom can open extra
            agent namespaces if needed. */ -}}
-    {{- include "nyx.np.ingressRules" (dict "ing" (omit $ing "allowDashboard") "dashboardEnabled" false "dashboardPeer" $dashboardPeer "sameNsPeer" $sameNsPeer "metricsPort" $mcpMetricsPort) }}
+    {{- /* MCP app port is 8000 (FastMCP streamable-http listener, #644).
+           Scope allowSameNamespace to this port only (#911). */ -}}
+    {{- include "nyx.np.ingressRules" (dict "ing" (omit $ing "allowDashboard") "dashboardEnabled" false "dashboardPeer" $dashboardPeer "sameNsPeer" $sameNsPeer "metricsPort" $mcpMetricsPort "appPort" 8000) }}
   {{- if not $np.egressOpen }}
   egress:
     {{- include "nyx.np.egressRules" (dict "np" $np) }}
