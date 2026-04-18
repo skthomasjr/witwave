@@ -82,7 +82,14 @@ Uses the typed networking/v1 API (GA since Kubernetes 1.21).
           port: {{ $appPort }}
     {{- end }}
 {{- end }}
-{{- if and $ing.metricsFrom $metricsPort }}
+{{- /* Emit the metricsFrom rule whenever a metrics port is applicable.
+       Previously this gate was `and $ing.metricsFrom $metricsPort`, which
+       silently dropped the rule when a caller passed `metricsPort: 0`
+       (#1021) — conflating "no metrics on this NetworkPolicy" with "zero
+       is a real port". Callers that need to suppress the rule now pass
+       `metricsPort: nil`; a numeric value — including 0 — is treated as
+       applicable and emits the peer rule. */}}
+{{- if and $ing.metricsFrom (ne (kindOf $metricsPort) "invalid") }}
     - from:
       {{- toYaml $ing.metricsFrom | nindent 8 }}
       ports:
@@ -174,7 +181,11 @@ spec:
            is a no-op so we omit it by skipping allowDashboard. */ -}}
     {{- /* Dashboard http port (#911). Scope allowSameNamespace to this
            port only rather than all-ports. */ -}}
-    {{- include "nyx.np.ingressRules" (dict "ing" (omit $ing "allowDashboard") "dashboardEnabled" false "dashboardPeer" $dashboardPeer "sameNsPeer" $sameNsPeer "metricsPort" 0 "appPort" (.Values.dashboard.port | default 80)) }}
+    {{- /* metricsPort=nil is the explicit "no metrics rule on this NP"
+           sentinel (#1021); a prior `0` passed here conflated "not
+           applicable" with a real port value and suppressed any future
+           caller that genuinely wanted port 0. */ -}}
+    {{- include "nyx.np.ingressRules" (dict "ing" (omit $ing "allowDashboard") "dashboardEnabled" false "dashboardPeer" $dashboardPeer "sameNsPeer" $sameNsPeer "metricsPort" nil "appPort" (.Values.dashboard.port | default 80)) }}
   {{- if not $np.egressOpen }}
   egress:
     {{- include "nyx.np.egressRules" (dict "np" $np) }}
