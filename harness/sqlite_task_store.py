@@ -19,6 +19,7 @@ import asyncio
 import logging
 import os
 import sqlite3
+import time
 
 from a2a.server.context import ServerCallContext
 from a2a.server.tasks.task_store import TaskStore
@@ -26,11 +27,46 @@ from a2a.types import Task
 
 logger = logging.getLogger(__name__)
 
+# SQLite busy_timeout in milliseconds. Configures the amount of time a
+# call will spin waiting for a BUSY lock to clear before raising
+# OperationalError. 5000ms is a generous ceiling for the brief locks
+# seen under normal concurrency (and rsync-style backups that briefly
+# hold the main DB file). Overridable for extremely contended
+# deployments via TASK_STORE_BUSY_TIMEOUT_MS.
+_BUSY_TIMEOUT_MS = int(os.environ.get("TASK_STORE_BUSY_TIMEOUT_MS", "5000"))
+# Retry budget for transient OperationalError ("database is locked",
+# "disk I/O error"). Three retries with 100ms exponential backoff covers
+# the typical SQLite contention envelope without masking a genuine
+# outage. Overridable via TASK_STORE_RETRY_ATTEMPTS.
+_RETRY_ATTEMPTS = max(1, int(os.environ.get("TASK_STORE_RETRY_ATTEMPTS", "3")))
+_RETRY_BASE_SLEEP_S = 0.1
+
+try:  # optional metric wiring — falls back silently when prom client absent
+    from metrics import harness_task_store_errors_total  # type: ignore
+except Exception:  # pragma: no cover - defensive
+    harness_task_store_errors_total = None  # type: ignore
+
 
 def _open_db(path: str) -> sqlite3.Connection:
-    """Open (or create) the SQLite database and ensure the tasks table exists."""
+    """Open (or create) the SQLite database and ensure the tasks table exists.
+
+    Enables WAL journal mode and a busy_timeout so concurrent writers
+    and brief filesystem-level contention (rsync backups, disk sync)
+    cannot flip the store into the OperationalError path on every
+    concurrent save (#704).
+    """
     os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
     conn = sqlite3.connect(path, check_same_thread=False)
+    # WAL — readers never block writers and vice versa. Safe on POSIX
+    # filesystems; the WAL journal is opened alongside the DB file.
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.OperationalError as e:
+        # journal_mode=WAL is a no-op when the DB is on a filesystem
+        # that cannot mmap the WAL (some network mounts). Log and
+        # continue — the fallback delete-mode journal still works.
+        logger.warning("SqliteTaskStore: journal_mode=WAL failed (%s) — continuing on default", e)
+    conn.execute(f"PRAGMA busy_timeout={_BUSY_TIMEOUT_MS}")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS tasks (
@@ -43,22 +79,59 @@ def _open_db(path: str) -> sqlite3.Connection:
     return conn
 
 
+def _retry_on_operational(op: str, fn):
+    """Run fn with short exponential backoff on SQLite OperationalError (#704).
+
+    Covers the "database is locked" / "database is locked (5)" and
+    "disk I/O error (10)" flavours that are typically transient. A
+    genuine corruption / misconfig still surfaces after the retry
+    budget is spent. ``op`` is the logical operation label used for
+    metrics.
+    """
+    last: Exception | None = None
+    for attempt in range(_RETRY_ATTEMPTS):
+        try:
+            return fn()
+        except sqlite3.OperationalError as e:
+            last = e
+            if harness_task_store_errors_total is not None:
+                try:
+                    harness_task_store_errors_total.labels(
+                        op=op, retry=str(attempt > 0).lower()
+                    ).inc()
+                except Exception:
+                    pass
+            if attempt + 1 >= _RETRY_ATTEMPTS:
+                break
+            time.sleep(_RETRY_BASE_SLEEP_S * (2 ** attempt))
+    assert last is not None
+    logger.error("SqliteTaskStore op %s failed after %d attempts: %s",
+                 op, _RETRY_ATTEMPTS, last)
+    raise last
+
+
 def _db_save(conn: sqlite3.Connection, task_id: str, data: str) -> None:
-    conn.execute(
-        "INSERT INTO tasks (id, data) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
-        (task_id, data),
-    )
-    conn.commit()
+    def _do():
+        conn.execute(
+            "INSERT INTO tasks (id, data) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+            (task_id, data),
+        )
+        conn.commit()
+    _retry_on_operational("save", _do)
 
 
 def _db_get(conn: sqlite3.Connection, task_id: str) -> str | None:
-    row = conn.execute("SELECT data FROM tasks WHERE id = ?", (task_id,)).fetchone()
-    return row[0] if row else None
+    def _do():
+        row = conn.execute("SELECT data FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        return row[0] if row else None
+    return _retry_on_operational("get", _do)
 
 
 def _db_delete(conn: sqlite3.Connection, task_id: str) -> None:
-    conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
-    conn.commit()
+    def _do():
+        conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        conn.commit()
+    _retry_on_operational("delete", _do)
 
 
 class SqliteTaskStore(TaskStore):

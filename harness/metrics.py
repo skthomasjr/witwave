@@ -119,6 +119,7 @@ harness_a2a_backend_circuit_state: prometheus_client.Gauge | None = None
 harness_a2a_backend_circuit_transitions_total: prometheus_client.Counter | None = None
 harness_backends_reload_errors_total: prometheus_client.Counter | None = None
 harness_backends_config_stale: prometheus_client.Gauge | None = None
+harness_task_store_errors_total: prometheus_client.Counter | None = None
 
 
 if _enabled:
@@ -569,6 +570,14 @@ if _enabled:
         "last file-change reload attempt failed (#702). 1 = stale (last "
         "reload errored), 0 = fresh (last reload succeeded or no change "
         "since startup).",
+    )
+    harness_task_store_errors_total = prometheus_client.Counter(
+        "harness_task_store_errors_total",
+        "Total SqliteTaskStore OperationalError occurrences (#704), "
+        "labelled by operation (save/get/delete) and whether the call "
+        "was a retry attempt. Non-zero rate signals lock contention, "
+        "disk pressure, or a corrupt WAL.",
+        ["op", "retry"],
     )
     harness_webhooks_items_registered = prometheus_client.Gauge(
         "harness_webhooks_items_registered",
