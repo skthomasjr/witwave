@@ -1128,7 +1128,7 @@ async def _run_query_inner(
                         error_parts = list(message.errors or [])
                         if not error_parts and message.result:
                             error_parts = [message.result]
-                        raise RuntimeError("\n".join(error_parts) if error_parts else "Claude SDK returned an error result with no details")
+                        raise RuntimeError("\n".join(str(e) for e in error_parts) if error_parts else "Claude SDK returned an error result with no details")
     except (OSError, ConnectionError):
         if backend_sdk_client_errors_total is not None:
             backend_sdk_client_errors_total.labels(**_sdk_labels).inc()
