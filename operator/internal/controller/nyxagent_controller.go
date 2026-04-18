@@ -889,10 +889,13 @@ func (r *NyxAgentReconciler) teardownDisabledAgent(ctx context.Context, agent *n
 			return fmt.Errorf("delete PVC %s: %w", pvc.Name, err)
 		}
 	}
-	// reconcileDashboard already handles the dashboard delete path when
-	// spec.dashboard.enabled is false — call it so the dashboard
-	// resources get cleaned up as part of the agent disable.
-	if err := r.reconcileDashboard(ctx, agent); err != nil {
+	// Force the dashboard teardown regardless of spec.dashboard.enabled
+	// (#682). Without the forceDelete flag, reconcileDashboard's apply
+	// path would keep (or even create) the dashboard stack pointing at
+	// the harness Service we just removed, and on the finalize path
+	// Create would return Forbidden on an object with a
+	// DeletionTimestamp and leak the finalizer.
+	if err := r.reconcileDashboardInternal(ctx, agent, true); err != nil {
 		return fmt.Errorf("teardown dashboard: %w", err)
 	}
 	// ServiceMonitor follows the same pattern — its reconciler treats
@@ -960,16 +963,35 @@ func (r *NyxAgentReconciler) finalizeNyxAgent(ctx context.Context, agent *nyxv1a
 // The ConfigMap holds the nginx template that routes /api/agents/<name>/...
 // directly to the owned agent's service, matching the direct-routing
 // architecture the Helm chart uses cluster-wide.
-func (r *NyxAgentReconciler) reconcileDashboard(ctx context.Context, agent *nyxv1alpha1.NyxAgent) (err error) {
+func (r *NyxAgentReconciler) reconcileDashboard(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
+	return r.reconcileDashboardInternal(ctx, agent, false)
+}
+
+// reconcileDashboardInternal implements the dashboard reconcile with an
+// explicit forceDelete flag used by teardownDisabledAgent/finalizeNyxAgent
+// (#682). When forceDelete is true, the function skips the apply path and
+// runs the existing Delete block unconditionally, even when
+// spec.dashboard.enabled=true, so dashboard pods do not linger pointing at
+// an already-removed harness Service.
+func (r *NyxAgentReconciler) reconcileDashboardInternal(ctx context.Context, agent *nyxv1alpha1.NyxAgent, forceDelete bool) (err error) {
 	dashboardEnabled := agent.Spec.Dashboard != nil && agent.Spec.Dashboard.Enabled
 	ctx, _, finish := startStepSpan(ctx, "nyxagent.reconcileDashboard",
 		attribute.Bool("nyx.dashboard.enabled", dashboardEnabled),
+		attribute.Bool("nyx.dashboard.force_delete", forceDelete),
 	)
 	defer finish(&err)
 
 	desiredCM := buildDashboardConfigMap(agent)
 	desiredDep := buildDashboardDeployment(agent, DefaultImageTag)
 	desiredSvc := buildDashboardService(agent)
+	if forceDelete {
+		// Collapse the apply path so the existing desiredDep==nil
+		// delete branch below tears down every dashboard resource we
+		// own, regardless of spec.dashboard.enabled.
+		desiredCM = nil
+		desiredDep = nil
+		desiredSvc = nil
+	}
 	// Mirror spec.dashboard.enabled into the per-CR gauge so dashboards
 	// can sum() across all NyxAgents to count adoption (#471).
 	{
