@@ -181,5 +181,33 @@ def test_write_values_unlinks_temp_on_dump_failure(monkeypatch):
     )
 
 
+# ----- diff redactor fail-closed logger binding (#1026) -----
+
+
+def test_diff_redactor_failure_path_uses_log_binding():
+    """The fail-closed branch in ``diff()`` logs via the module-level
+    ``log`` binding. A prior revision referenced an undefined ``logger``
+    name, which turned the "redactor raised" safety net into a
+    ``NameError`` bubbling up to the caller (#1026).
+
+    This asserts the module exposes the ``log`` name used by the
+    fail-closed branch; the branch is in-line inside an ``@mcp.tool``
+    decorated coroutine wrapper, so we pin the binding contract here.
+    """
+    assert hasattr(server, "log"), "server.log binding required by diff()"
+    # Guard against a regression that re-introduces an undefined `logger`
+    # name. `logger` must NOT exist at module scope — if it does,
+    # somebody may have papered over the bug by aliasing it.
+    assert not hasattr(server, "logger"), (
+        "server.logger must not exist; use server.log (see #1026)"
+    )
+    import inspect
+    src = inspect.getsource(server.diff.fn) if hasattr(server.diff, "fn") else ""
+    if src:
+        assert "logger.warning" not in src, (
+            "diff() must not reference undefined logger.warning (#1026)"
+        )
+
+
 if __name__ == "__main__":  # pragma: no cover
     sys.exit(pytest.main([__file__, "-q"]))

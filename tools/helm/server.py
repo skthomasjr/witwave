@@ -713,7 +713,7 @@ def diff(
                     except Exception as _redact_exc:
                         # Fail-closed: if redaction itself blows up, return
                         # a placeholder rather than leak the raw diff (#915).
-                        logger.warning(
+                        log.warning(
                             "helm diff redaction failed (%s); suppressing output.",
                             _redact_exc,
                         )
