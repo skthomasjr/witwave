@@ -14,13 +14,37 @@ metadata:
   labels:
     {{- include "nyx-operator.labels" . | nindent 4 }}
 rules:
+  # configmaps / PVCs / services keep the full verb set — the operator
+  # needs to create/update/delete these as part of normal NyxAgent
+  # reconciliation.
   - apiGroups: [""]
     resources:
       - configmaps
       - persistentvolumeclaims
-      - secrets
       - services
     verbs: [create, delete, get, list, patch, update, watch]
+  # Secrets get the FULL verb set split from the other core/v1
+  # resources so the threat-model is explicit (#761).  The operator
+  # reconciles credential Secrets for inline backend credentials
+  # (reconcileCredentialsSecrets), so create/delete/patch/update are
+  # required — but they now sit in their own rule, clearly flagged as
+  # a known blast-radius item in the audit trail.  Operators who do
+  # NOT use inline backend credentials can drop the second rule and
+  # run with read-only secret access; the helper below only renders
+  # the write verbs when ``rbac.secretsWrite`` is true (default).
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list, watch]
+  {{- /* Render the Secret WRITE rule unless operators explicitly opt
+         out via rbac.secretsWrite=false. Helm `default` folds `false`
+         into its fallback so we compare strings directly. */}}
+  {{- $secretsWrite := "true" }}
+  {{- if hasKey .Values.rbac "secretsWrite" }}{{ $secretsWrite = toString .Values.rbac.secretsWrite }}{{ end }}
+  {{- if ne $secretsWrite "false" }}
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [create, delete, patch, update]
+  {{- end }}
   - apiGroups: [""]
     resources: [events]
     # NyxAgent CRs may live in any namespace; the leader-election Role only

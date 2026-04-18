@@ -31,9 +31,22 @@ rules:
     resources:
       - configmaps
       - persistentvolumeclaims
-      - secrets
       - services
     verbs: [create, delete, get, list, patch, update, watch]
+  # Secret verbs split for #761 parity with the ClusterRole variant.
+  # Namespace-scoped Role already limits blast radius to the watched
+  # namespace, but operators who don't use inline backend credentials
+  # can still drop write verbs by setting rbac.secretsWrite=false.
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list, watch]
+  {{- $secretsWrite := "true" }}
+  {{- if hasKey $.Values.rbac "secretsWrite" }}{{ $secretsWrite = toString $.Values.rbac.secretsWrite }}{{ end }}
+  {{- if ne $secretsWrite "false" }}
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [create, delete, patch, update]
+  {{- end }}
   - apiGroups: [""]
     resources: [events]
     verbs: [create, patch]

@@ -46,6 +46,14 @@ rbac:
   # receives its own Role + RoleBinding. When empty, the release namespace is
   # used. Ignored when scope=cluster.
   watchNamespaces: []
+  # secretsWrite (#761) toggles the Secret write verbs (create, delete,
+  # patch, update) on the Role/ClusterRole. Read verbs (get, list, watch)
+  # are always granted. Set this to false when operators do NOT use the
+  # inline backend credentials path (BackendSpec.credentials.secrets) and
+  # all credentials are pre-provisioned Secrets referenced via
+  # existingSecret — this removes the biggest post-exploitation primitive
+  # from the operator's trust boundary.
+  secretsWrite: true
 
 # Leader election — required when replicaCount > 1 to ensure a single
 # active controller. Harmless for replicaCount=1.
