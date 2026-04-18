@@ -72,6 +72,17 @@ WEBHOOK_MAX_CONCURRENT_DELIVERIES_PER_SUB = int(os.environ.get("WEBHOOK_MAX_CONC
 # indefinitely.  Override via WEBHOOK_EXTRACTION_TIMEOUT env var.
 WEBHOOK_EXTRACTION_TIMEOUT = float(os.environ.get("WEBHOOK_EXTRACTION_TIMEOUT", "120"))
 
+# Total wall-clock ceiling for a single delivery's retry chain (#786). A
+# stuck downstream receiver could otherwise hold a concurrency slot for
+# `retries * timeout_seconds + sum(backoffs)` — up to several minutes on
+# default settings. Bounding the whole chain with a single deadline keeps
+# one bad peer from starving legitimate traffic. Default 300 s (5 min) is
+# generous enough to accommodate a default retry chain (1 + 2 + 4 + 8 s
+# backoff + per-attempt timeouts) on a flaky-but-recovering receiver,
+# and short enough that a wedged receiver releases its slot promptly.
+# Set to 0 to disable the ceiling (legacy unbounded behaviour).
+WEBHOOK_TOTAL_TIMEOUT_SECONDS = float(os.environ.get("WEBHOOK_TOTAL_TIMEOUT_SECONDS", "300"))
+
 # Connection-pool limits for the shared outbound httpx.AsyncClient (#567).
 # Mirrors the A2ABackend shape so operators get consistent tuning knobs across
 # subsystems. max_connections caps total simultaneous sockets; keepalive lets
@@ -991,7 +1002,7 @@ async def deliver(
 
         async def _tracked_retry() -> None:
             await registered.wait()
-            await _retry_deliver(
+            _retry_coro = _retry_deliver(
                 sub=sub,
                 url=url,
                 body_bytes=body_bytes,
@@ -1000,6 +1011,24 @@ async def deliver(
                 max_attempts=1 + sub.retries,
                 client=client,
             )
+            # Total-chain timeout (#786): cap wall-clock across all retries
+            # + backoffs so a wedged downstream can't hold a concurrency
+            # slot indefinitely. 0 disables the ceiling (legacy behaviour).
+            if WEBHOOK_TOTAL_TIMEOUT_SECONDS > 0:
+                try:
+                    await asyncio.wait_for(_retry_coro, timeout=WEBHOOK_TOTAL_TIMEOUT_SECONDS)
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        f"Webhook '{sub.name}': retry chain exceeded "
+                        f"WEBHOOK_TOTAL_TIMEOUT_SECONDS={WEBHOOK_TOTAL_TIMEOUT_SECONDS:.0f}s — "
+                        f"abandoning remaining attempts for url={url}"
+                    )
+                    if harness_webhooks_delivery_total is not None:
+                        harness_webhooks_delivery_total.labels(
+                            result="timeout_total", subscription=sub.name
+                        ).inc()
+            else:
+                await _retry_coro
 
         _retry_task = asyncio.ensure_future(_tracked_retry())
         # Notify the caller (e.g. WebhookRunner.fire) so it can register the
