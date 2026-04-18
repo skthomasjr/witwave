@@ -56,8 +56,9 @@ export function useTeam(opts: UseTeamOptions = {}) {
 
   async function refresh(): Promise<void> {
     aborter?.abort();
-    aborter = new AbortController();
-    const signal = aborter.signal;
+    const localAborter = new AbortController();
+    aborter = localAborter;
+    const signal = localAborter.signal;
     try {
       const directory = await apiGet<TeamDirectoryEntry[]>("/team", {
         signal,
@@ -70,10 +71,19 @@ export function useTeam(opts: UseTeamOptions = {}) {
       members.value = resolved;
       error.value = "";
     } catch (e) {
-      if ((e as { name?: string }).name === "AbortError") return;
+      // Identity check (#744): when the active aborter has moved on,
+      // this rejection belongs to the OLD refresh cycle — stay silent
+      // regardless of the specific error, so bursty refreshes don't
+      // surface spurious AbortError toasts or 'degraded' badges.
+      if (aborter !== localAborter || (e as { name?: string }).name === "AbortError") {
+        return;
+      }
       error.value = e instanceof ApiError ? e.message : (e as Error).message;
     } finally {
-      loading.value = false;
+      // Only clear loading for the currently-active cycle. A stale
+      // refresh completing late should not flip the spinner off if a
+      // newer one is still in flight.
+      if (aborter === localAborter) loading.value = false;
     }
   }
 

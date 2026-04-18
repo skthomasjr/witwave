@@ -121,8 +121,9 @@ export function useMetrics(options: UseMetricsOptions = {}) {
 
   async function refresh(): Promise<void> {
     aborter?.abort();
-    aborter = new AbortController();
-    const signal = aborter.signal;
+    const localAborter = new AbortController();
+    aborter = localAborter;
+    const signal = localAborter.signal;
     try {
       const directory = await apiGet<TeamDirectoryEntry[]>("/team", {
         signal,
@@ -168,10 +169,15 @@ export function useMetrics(options: UseMetricsOptions = {}) {
       lastUpdated.value = Date.now();
       error.value = "";
     } catch (e) {
-      if ((e as { name?: string }).name === "AbortError") return;
+      // Identity check (#744): stale aborter → silently drop the
+      // rejection so a burst of refreshes doesn't flip the error
+      // banner or degrade-badge state on the still-running cycle.
+      if (aborter !== localAborter || (e as { name?: string }).name === "AbortError") {
+        return;
+      }
       error.value = e instanceof ApiError ? e.message : (e as Error).message;
     } finally {
-      loading.value = false;
+      if (aborter === localAborter) loading.value = false;
     }
   }
 
