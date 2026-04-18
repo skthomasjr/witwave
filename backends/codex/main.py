@@ -446,7 +446,22 @@ async def main():
                 if _bearer_token
                 else None
             )
-            session_id = derive_session_id(_raw_sid, caller_identity=_caller_identity)
+            # #986: codex /mcp sessions are single-shot (the finally block
+            # below deletes the SQLite row and pops _sessions), so two
+            # concurrent callers presenting the same bearer + same raw
+            # session_id would otherwise derive the SAME session id and
+            # race on state teardown — the second call sees state pulled
+            # out from under it. Mix a per-request nonce into the raw_sid
+            # so derive_session_id yields a distinct id per invocation
+            # while still preserving caller-identity binding for the
+            # (future) resumption case.
+            _request_nonce = uuid.uuid4().hex
+            _raw_sid_with_nonce = (
+                f"{_raw_sid}\x00{_request_nonce}" if _raw_sid else _raw_sid
+            )
+            session_id = derive_session_id(
+                _raw_sid_with_nonce, caller_identity=_caller_identity
+            )
             response: str | None = None
             _failed = False
             # #966: Named span nested under the inbound traceparent so
