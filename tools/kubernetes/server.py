@@ -362,6 +362,19 @@ def describe(
                 events = [ev.to_dict() for ev in ev_resp.items]
             except ApiException as e:
                 log.warning("failed to fetch events for %s/%s: %s", kind, name, e)
+            except Exception as e:
+                # Degraded-apiserver or urllib3/HTTP errors must not nuke
+                # the primary resource view — demote to a warning and
+                # return the object with an empty events list so the
+                # caller still sees what they asked for (#1029).
+                log.warning(
+                    "events fetch failed for %s/%s with non-ApiException %s: %s",
+                    kind,
+                    name,
+                    type(e).__name__,
+                    e,
+                )
+                events = []
 
             return {"object": obj, "events": events}
         except Exception as exc:

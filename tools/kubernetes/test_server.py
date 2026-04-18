@@ -147,6 +147,43 @@ def test_delete_resource_dry_run_passes_string_not_list():
                 )
 
 
+# ----- describe() events-fetch degraded-apiserver handling (#1029) -</
+
+
+def test_describe_preserves_resource_on_non_api_exception_events_error():
+    """When the events fetch raises a non-ApiException (urllib3 timeout,
+    generic network error), describe() must still return the resource
+    view with an empty events list instead of aborting (#1029)."""
+    with mock.patch.object(server, "_resolve") as mock_resolve, \
+            mock.patch.object(server, "_api"), \
+            mock.patch.object(server, "client") as mock_client:
+        fake_resource = mock.MagicMock()
+        # .get(**kwargs) returns a dict-like DynamicClient response
+        fake_resource.get.return_value = {
+            "kind": "Pod",
+            "metadata": {"name": "p"},
+            "spec": {},
+        }
+        mock_resolve.return_value = fake_resource
+
+        fake_core = mock.MagicMock()
+        # Simulate a urllib3 read-timeout — definitely not ApiException.
+        fake_core.list_namespaced_event.side_effect = RuntimeError(
+            "simulated urllib3 read timeout"
+        )
+        mock_client.CoreV1Api.return_value = fake_core
+
+        fn = server.describe.fn if hasattr(server.describe, "fn") else server.describe
+        result = fn(kind="Pod", name="p", namespace="default")
+
+        assert isinstance(result, dict)
+        assert "object" in result
+        assert result["events"] == [], (
+            "events must be [] when the events fetch fails with a "
+            "non-ApiException (#1029)"
+        )
+
+
 # ----- _REDACTED constant sanity -----------------------------------
 
 
