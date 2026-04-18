@@ -110,6 +110,13 @@ func (r *NyxPromptReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	desired := map[string]*corev1.ConfigMap{}
 	bindings := make([]nyxv1alpha1.NyxPromptBinding, 0, len(prompt.Spec.AgentRefs))
 	var reconcileErrs []error
+	// Deferred outcome tracking (#906). Previously outcomes were
+	// incremented inline and the apply-failure path incremented again
+	// for bindings already counted 'ready', so sum(outcomes) > bindings
+	// and 'percent ready' dashboards computed wrong denominators.
+	// Collect the final outcome per agent and flush once at the end so
+	// each binding contributes exactly one outcome.
+	finalOutcome := make(map[string]string, len(prompt.Spec.AgentRefs))
 
 	for _, ref := range prompt.Spec.AgentRefs {
 		binding := nyxv1alpha1.NyxPromptBinding{AgentName: ref.Name}
@@ -122,13 +129,13 @@ func (r *NyxPromptReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			if apierrors.IsNotFound(err) {
 				binding.Message = "target NyxAgent not found (will retry when it appears)"
 				bindings = append(bindings, binding)
-				nyxpromptBindingOutcomesTotal.WithLabelValues(ref.Name, "agent_missing").Inc()
+				finalOutcome[ref.Name] = "agent_missing"
 				continue
 			}
 			reconcileErrs = append(reconcileErrs, fmt.Errorf("get NyxAgent %q: %w", ref.Name, err))
 			binding.Message = err.Error()
 			bindings = append(bindings, binding)
-			nyxpromptBindingOutcomesTotal.WithLabelValues(ref.Name, "agent_missing").Inc()
+			finalOutcome[ref.Name] = "agent_missing"
 			continue
 		}
 
@@ -137,14 +144,14 @@ func (r *NyxPromptReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			reconcileErrs = append(reconcileErrs, fmt.Errorf("build ConfigMap for %q: %w", ref.Name, err))
 			binding.Message = err.Error()
 			bindings = append(bindings, binding)
-			nyxpromptBindingOutcomesTotal.WithLabelValues(ref.Name, "build_error").Inc()
+			finalOutcome[ref.Name] = "build_error"
 			continue
 		}
 		if err := controllerutil.SetControllerReference(prompt, cm, r.Scheme); err != nil {
 			reconcileErrs = append(reconcileErrs, fmt.Errorf("set owner on ConfigMap %s: %w", cm.Name, err))
 			binding.Message = err.Error()
 			bindings = append(bindings, binding)
-			nyxpromptBindingOutcomesTotal.WithLabelValues(ref.Name, "owner_error").Inc()
+			finalOutcome[ref.Name] = "owner_error"
 			continue
 		}
 
@@ -153,7 +160,7 @@ func (r *NyxPromptReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		binding.Filename = cm.Annotations[annotationNyxPromptFilename]
 		binding.Ready = true
 		bindings = append(bindings, binding)
-		nyxpromptBindingOutcomesTotal.WithLabelValues(ref.Name, "ready").Inc()
+		finalOutcome[ref.Name] = "ready"
 	}
 
 	// Apply each desired ConfigMap.
@@ -161,18 +168,23 @@ func (r *NyxPromptReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if err := r.applyNyxPromptConfigMap(ctx, cm); err != nil {
 			reconcileErrs = append(reconcileErrs, err)
 			// Flip the matching binding to Ready=false so status reflects
-			// the write failure instead of the build success.
+			// the write failure instead of the build success. Under a CM
+			// name collision multiple bindings may match — each flips
+			// independently. finalOutcome is overwritten (not double-
+			// incremented) so the counter stays per-binding.
 			for i := range bindings {
 				if bindings[i].ConfigMapName == cm.Name {
 					bindings[i].Ready = false
 					bindings[i].Message = err.Error()
-					// Re-classify — the earlier "ready" outcome counted
-					// the build; the apply failure now drives the binding
-					// back into an apply_error state for the dashboard.
-					nyxpromptBindingOutcomesTotal.WithLabelValues(bindings[i].AgentName, "apply_error").Inc()
+					finalOutcome[bindings[i].AgentName] = "apply_error"
 				}
 			}
 		}
+	}
+
+	// Flush outcomes exactly once per binding (#906).
+	for agentName, outcome := range finalOutcome {
+		nyxpromptBindingOutcomesTotal.WithLabelValues(agentName, outcome).Inc()
 	}
 
 	// GC any NyxPrompt-owned ConfigMaps whose (prompt, agent) pair is no
