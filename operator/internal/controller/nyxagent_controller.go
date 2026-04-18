@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -363,6 +364,32 @@ func NyxPromptAgentRefExtractor(obj client.Object) []string {
 	return out
 }
 
+// isFieldIndexMissing returns true for the specific error controller-
+// runtime / client-go return when a List requests a MatchingFields
+// value for an index that isn't registered — i.e. the operator never
+// called IndexField (common in unit tests that skip manager bootstrap).
+//
+// Without this precise check the fallback branch at the call sites
+// swallowed EVERY List error — context cancellations, RBAC denials,
+// apiserver 500s — and silently degraded to a full-namespace List on
+// each reconcile (#901). Real errors must propagate so they are
+// logged/retried; only index-missing is legitimately recoverable with
+// the fallback path.
+func isFieldIndexMissing(err error) bool {
+	if err == nil {
+		return false
+	}
+	// controller-runtime cache (byIndexes) uses:
+	//   "index with name %s does not exist"
+	// client-go thread_safe_store uses:
+	//   "indexer %q does not exist"
+	// Match on the lowercased substring pair so minor upstream edits
+	// (wrapping, trailing punctuation) don't silently reintroduce the
+	// error-swallowing bug.
+	m := strings.ToLower(err.Error())
+	return strings.Contains(m, "index") && strings.Contains(m, "does not exist")
+}
+
 // NyxAgentTeamIndex is the field-indexer key that maps every NyxAgent to
 // its team label value (#753). Agents without the label land under the
 // empty-string key — the same grouping teamKey() uses in-memory.
@@ -397,6 +424,13 @@ func (r *NyxAgentReconciler) listNyxPromptsForAgent(ctx context.Context, agent *
 	)
 	if err == nil {
 		return append([]nyxv1alpha1.NyxPrompt(nil), scoped.Items...), nil
+	}
+	// Distinguish "index not registered" from every other List error
+	// (#901 twin): fall back to the full-list path only for the
+	// specific case, propagate all others so RBAC denials and context
+	// cancellations aren't masked as "index missing".
+	if !isFieldIndexMissing(err) {
+		return nil, err
 	}
 	// Index missing — fall back to the legacy full-namespace scan.
 	all := &nyxv1alpha1.NyxPromptList{}
@@ -549,6 +583,14 @@ func (r *NyxAgentReconciler) reconcileManifestConfigMap(ctx context.Context, age
 		client.InNamespace(agent.Namespace),
 		client.MatchingFields{NyxAgentTeamIndex: wantTeam},
 	); err != nil {
+		// Distinguish "index not registered" from every other List
+		// error (#901). Previously any error fell through to the
+		// full-namespace List path, silently masking RBAC denials,
+		// context cancellations, and apiserver 500s as "index
+		// missing" and degrading every reconcile.
+		if !isFieldIndexMissing(err) {
+			return fmt.Errorf("list NyxAgents for manifest (scoped): %w", err)
+		}
 		// Index missing — full-namespace List keeps prior behaviour.
 		if err := r.List(ctx, allAgents, client.InNamespace(agent.Namespace)); err != nil {
 			return fmt.Errorf("list NyxAgents for manifest: %w", err)
