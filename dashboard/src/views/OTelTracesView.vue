@@ -79,9 +79,20 @@ interface FlatRow {
   leftPct: number;
 }
 
+// Share one buildSpanTree() invocation between flatSpans and
+// totalDuration (#898). Previously each computed called buildSpanTree
+// independently, duplicating O(span-count) work on every recompute of
+// the detail — compounds noticeably with the larger trace sizes
+// introduced by #746.
+const spanTree = computed(() => {
+  if (!detail.value) return null;
+  return buildSpanTree(detail.value);
+});
+
 const flatSpans = computed<FlatRow[]>(() => {
-  if (!detail.value) return [];
-  const { roots, traceStart, traceEnd } = buildSpanTree(detail.value);
+  const tree = spanTree.value;
+  if (!tree) return [];
+  const { roots, traceStart, traceEnd } = tree;
   const total = Math.max(traceEnd - traceStart, 1);
   const nodes = flattenSpanTree(roots);
   return nodes.map((node) => {
@@ -100,9 +111,9 @@ const selectedId = computed<string>(
 );
 
 const totalDuration = computed<number>(() => {
-  if (!detail.value) return 0;
-  const { traceStart, traceEnd } = buildSpanTree(detail.value);
-  return Math.max(traceEnd - traceStart, 0);
+  const tree = spanTree.value;
+  if (!tree) return 0;
+  return Math.max(tree.traceEnd - tree.traceStart, 0);
 });
 </script>
 
