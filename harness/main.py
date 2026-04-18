@@ -910,7 +910,13 @@ async def main():
             return JSONResponse({"error": "already running", "endpoint": endpoint}, status_code=409)
 
         # Claim the slot before any await to prevent concurrent requests from
-        # both passing the 409 check above.
+        # both passing the 409 check above. The body-read try below
+        # catches asyncio.CancelledError so a client disconnect
+        # during the streaming read releases the slot (#866);
+        # previously CancelledError propagated past the existing
+        # `except Exception` guard and left the endpoint pinned in
+        # _running forever, so every subsequent call returned 409
+        # until process restart.
         trigger_runner._running.add(endpoint)
 
         # Pre-auth gate (#529): before touching the body, require the caller to
@@ -957,6 +963,15 @@ async def main():
                     oversized = True
                     break
                 chunks.append(chunk)
+        except asyncio.CancelledError:
+            # Client disconnect mid-stream (#866). Release the slot so
+            # the endpoint doesn't stay pinned forever — subsequent
+            # calls would 409 until process restart. Don't bump the
+            # 500 counter: this is a client action, not a server
+            # fault. Re-raise so the request's cancellation framing
+            # semantics are unchanged.
+            trigger_runner._running.discard(endpoint)
+            raise
         except Exception:
             trigger_runner._running.discard(endpoint)
             if harness_triggers_requests_total is not None:
@@ -1071,6 +1086,9 @@ async def main():
                 if harness_triggers_requests_total is not None:
                     harness_triggers_requests_total.labels(method=request.method, code="503").inc()
                 return JSONResponse({"error": "overloaded"}, status_code=503)
+            # _fire() owns the slot release from here on via its own
+            # finally block.
+            _scheduled_fire = True
         except Exception as exc:
             trigger_runner._running.discard(endpoint)
             logger.error(f"Trigger '{item.name}': failed to schedule background task: {exc!r}")
