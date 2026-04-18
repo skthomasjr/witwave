@@ -540,6 +540,42 @@ async def _release_computer(session_id: str) -> None:
         )
 
 
+# SQLite busy_timeout in milliseconds. Matches the harness SqliteTaskStore
+# defaults (#704) — 5s tolerates brief rsync-style locks and concurrent
+# writers from the Codex SDK without flipping every resume into an
+# OperationalError. Overridable for extremely contended deployments via
+# CODEX_SQLITE_BUSY_TIMEOUT_MS (#727).
+_CODEX_SQLITE_BUSY_TIMEOUT_MS = int(os.environ.get("CODEX_SQLITE_BUSY_TIMEOUT_MS", "5000"))
+
+
+def _codex_sqlite_connect(db_path: str):
+    """Open a sqlite3 connection with WAL + busy_timeout applied (#727).
+
+    Mirrors the pattern used by ``harness/sqlite_task_store.py`` (#704) and
+    ``backends/claude``'s SqliteTaskStore (#713).  WAL lets readers proceed
+    in parallel with the single Codex SDK writer, and busy_timeout absorbs
+    transient contention without raising.  Both PRAGMAs are best-effort —
+    some network filesystems cannot host a WAL journal; in that case we log
+    and continue on the default delete-mode journal rather than failing the
+    caller (a missing WAL degrades is_new accuracy but does not lose
+    correctness).
+    """
+    import sqlite3 as _sqlite3
+    conn = _sqlite3.connect(db_path, check_same_thread=False)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    except _sqlite3.OperationalError as exc:
+        logger.warning(
+            "codex sqlite: journal_mode=WAL failed (%s) — continuing on default journal",
+            exc,
+        )
+    try:
+        conn.execute(f"PRAGMA busy_timeout={_CODEX_SQLITE_BUSY_TIMEOUT_MS}")
+    except _sqlite3.OperationalError as exc:
+        logger.warning("codex sqlite: busy_timeout pragma failed (%s)", exc)
+    return conn
+
+
 def _sqlite_session_exists(session_id: str) -> bool:
     """Check whether a session already has history in CODEX_SESSION_DB.
 
@@ -548,7 +584,6 @@ def _sqlite_session_exists(session_id: str) -> bool:
     even though the in-memory LRU cache is empty.  Returns False if the
     database file does not exist yet or if any error occurs.
     """
-    import sqlite3
     db_path = CODEX_SESSION_DB
     if db_path == ":memory:" or not db_path:
         return False
@@ -556,7 +591,7 @@ def _sqlite_session_exists(session_id: str) -> bool:
     if not _os.path.exists(db_path):
         return False
     try:
-        conn = sqlite3.connect(db_path, check_same_thread=False)
+        conn = _codex_sqlite_connect(db_path)
         try:
             cursor = conn.execute(
                 "SELECT 1 FROM agent_sessions WHERE session_id = ? LIMIT 1",
@@ -578,8 +613,7 @@ def _delete_sqlite_session(session_id: str, db_path: str) -> None:
     Intended to be called via asyncio.to_thread() so the event loop is not
     stalled by SQLite I/O during timeout cleanup (#361).
     """
-    import sqlite3 as _sqlite3
-    conn = _sqlite3.connect(db_path, check_same_thread=False)
+    conn = _codex_sqlite_connect(db_path)
     try:
         conn.execute("DELETE FROM agent_sessions WHERE session_id = ?", (session_id,))
         conn.commit()
