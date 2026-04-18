@@ -500,11 +500,32 @@ async def main():
         unauthorized = _require_traces_auth(request)
         if unauthorized is not None:
             return unauthorized
+        # /api/traces is a backend-operator endpoint (#932). The trace ring is
+        # backend-global and CONVERSATIONS_AUTH_TOKEN is a backend-wide bearer,
+        # not a per-A2A-principal credential — any caller holding the bearer
+        # can read every trace in the ring. This surface is intended for
+        # operator tooling (the harness fan-out aggregator and the dashboard
+        # running as the same operator); it is NOT safe to expose to untrusted
+        # multi-tenant A2A principals. Mitigations applied here:
+        #   * Clamp `limit` to the in-memory cap (OTEL_IN_MEMORY_SPANS, default
+        #     1000) so a caller cannot force arbitrarily large responses.
+        #   * Reject negative / zero limits that previously produced empty or
+        #     undefined slices.
+        try:
+            _cap = int(os.environ.get("OTEL_IN_MEMORY_SPANS") or 1000)
+        except ValueError:
+            _cap = 1000
+        if _cap <= 0:
+            _cap = 1000
         try:
             limit_raw = request.query_params.get("limit")
             limit = int(limit_raw) if limit_raw else 20
         except ValueError:
             limit = 20
+        if limit <= 0:
+            limit = 20
+        if limit > _cap:
+            limit = _cap
         try:
             from otel import get_in_memory_traces  # type: ignore
             traces = get_in_memory_traces()
