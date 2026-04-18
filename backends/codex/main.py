@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import hmac as hmac_mod
 import logging
 import os
@@ -24,6 +25,7 @@ from conversations import (
 )
 import executor as _executor_module
 from executor import AgentExecutor
+from session_binding import derive_session_id
 from validation import parse_max_tokens
 from metrics import (
     backend_event_loop_lag_seconds,
@@ -360,7 +362,29 @@ async def main():
                 logger=logger,
                 source="MCP tools/call",
             )
-            session_id = str(uuid.uuid4())
+            # Caller-bound session_id on codex /mcp (#935). Codex currently
+            # mints a fresh UUID per call (single-shot sessions — see the
+            # cleanup in `finally` below), so there's no ambient resumption.
+            # But without derive_session_id wiring, any future resumption
+            # work would re-introduce #710/#733 cross-caller hijack on this
+            # entrypoint. Route through derive_session_id with a bearer
+            # fingerprint caller_identity so the multi-tenant invariant
+            # holds uniformly with the A2A path and with claude/gemini /mcp.
+            _raw_sid = "".join(
+                c for c in str(arguments.get("session_id") or "").strip()[:256] if c >= " "
+            )
+            _bearer_header = request.headers.get("Authorization", "")
+            _bearer_token = (
+                _bearer_header[len("Bearer "):]
+                if _bearer_header.startswith("Bearer ")
+                else ""
+            )
+            _caller_identity = (
+                hashlib.sha256(_bearer_token.encode("utf-8")).hexdigest()
+                if _bearer_token
+                else None
+            )
+            session_id = derive_session_id(_raw_sid, caller_identity=_caller_identity)
             response: str | None = None
             _failed = False
             try:
