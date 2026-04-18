@@ -412,7 +412,23 @@ async def main():
     # OTel in-memory span store (#otel-in-cluster). Serves the Jaeger v1
     # shape so the harness's fan-out aggregator can merge backend spans
     # into the cross-pod trace view.
+    #
+    # Gated on CONVERSATIONS_AUTH_TOKEN (#709) to match /conversations, /trace,
+    # and /mcp. Span attributes carry session IDs (bearer-equivalent), tool
+    # input-derived fields, and agent identity — information disclosure across
+    # pods/tenants was possible when these routes were unauthenticated.
+    def _require_traces_auth(request: Request) -> JSONResponse | None:
+        if not CONVERSATIONS_AUTH_TOKEN:
+            return None
+        header = request.headers.get("Authorization", "")
+        if not hmac_mod.compare_digest(f"Bearer {CONVERSATIONS_AUTH_TOKEN}", header):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        return None
+
     async def otel_traces_list_handler(request: Request) -> JSONResponse:
+        unauthorized = _require_traces_auth(request)
+        if unauthorized is not None:
+            return unauthorized
         try:
             limit_raw = request.query_params.get("limit")
             limit = int(limit_raw) if limit_raw else 20
@@ -426,6 +442,9 @@ async def main():
         return JSONResponse({"data": traces[:limit], "total": len(traces)})
 
     async def otel_traces_detail_handler(request: Request) -> JSONResponse:
+        unauthorized = _require_traces_auth(request)
+        if unauthorized is not None:
+            return unauthorized
         trace_id = request.path_params.get("trace_id") or ""
         try:
             from otel import get_in_memory_traces  # type: ignore
