@@ -89,7 +89,18 @@ Uses the typed networking/v1 API (GA since Kubernetes 1.21).
 {{- /* Compose the reusable peers once so every rendered policy is
        consistent. Kubernetes ignores unknown keys inside a peer, so we
        strictly build peers that match the shipped schema. */ -}}
-{{- $dashboardPeer := dict "podSelector" (dict "matchLabels" (dict "app.kubernetes.io/name" $dashboardPodName)) }}
+{{- /* Pin the dashboard peer to the release namespace explicitly
+       (#914). Today the dashboard is always co-located with the
+       agents, but a future deploy-split that moves it to a dedicated
+       namespace would silently block traffic with no code change —
+       the implicit same-namespace match becomes a cross-namespace
+       mismatch. Passing namespaceSelector with the well-known
+       kubernetes.io/metadata.name label pins the match to the
+       release namespace and makes the intent explicit. */ -}}
+{{- $dashboardPeer := dict
+  "podSelector" (dict "matchLabels" (dict "app.kubernetes.io/name" $dashboardPodName))
+  "namespaceSelector" (dict "matchLabels" (dict "kubernetes.io/metadata.name" $.Release.Namespace))
+}}
 {{- $sameNsPeer := dict "podSelector" dict }}
 
 {{/* --- agents (harness + co-located backend containers) --- */}}
