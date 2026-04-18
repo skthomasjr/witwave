@@ -918,6 +918,26 @@ func (r *NyxAgentReconciler) teardownDisabledAgent(ctx context.Context, agent *n
 			return fmt.Errorf("get ServiceMonitor for teardown: %w", err)
 		}
 	}
+	// PodMonitor mirrors the ServiceMonitor block above (#683). Without
+	// this, toggling spec.enabled=false left an orphaned PodMonitor in
+	// the cluster — OwnerReferences GC only fires on full CR deletion.
+	pmPresent, err := r.podMonitorCRDPresent(ctx)
+	if err != nil {
+		return fmt.Errorf("probe PodMonitor CRD for teardown: %w", err)
+	}
+	if pmPresent {
+		existing := &unstructured.Unstructured{}
+		existing.SetGroupVersionKind(podMonitorGVK)
+		if err := r.Get(ctx, key, existing); err == nil {
+			if metav1.IsControlledBy(existing, agent) {
+				if err := r.Delete(ctx, existing); err != nil && !apierrors.IsNotFound(err) {
+					return fmt.Errorf("delete PodMonitor: %w", err)
+				}
+			}
+		} else if !apierrors.IsNotFound(err) {
+			return fmt.Errorf("get PodMonitor for teardown: %w", err)
+		}
+	}
 	// Drop the per-CR dashboard gauge so the metric series doesn't
 	// linger across enable/disable cycles.
 	nyxagentDashboardEnabled.DeleteLabelValues(agent.Namespace, agent.Name)
