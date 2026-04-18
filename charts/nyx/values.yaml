@@ -10,6 +10,10 @@ dashboard:
     # pullPolicy: IfNotPresent
   # Service port (the container always listens on 3000; this is the Service port).
   port: 80
+  # # Kubernetes cluster DNS domain (used by the dashboard's nginx reverse-proxy
+  # # to resolve per-agent backend Services). Override on clusters that use a
+  # # non-default service DNS domain.
+  # clusterDomain: cluster.local
   # Number of replicas.
   # replicas: 1
   # # Image pull secrets for private registries.
