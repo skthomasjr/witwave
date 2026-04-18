@@ -220,12 +220,19 @@ def _append_tool_audit(entry: dict) -> None:
     timestamp, tool name, decision (allow|deny), command, and reason
     when denied. Best-effort — a full disk or missing parent dir must
     not block the tool call.
+
+    Routed through ``log_utils._append_log`` (#721) so audit rows share
+    the fcntl lock + rotation with ``log_trace`` writes.  The previous
+    direct ``open(..., "a")`` had two failure modes under load: torn
+    lines when an audit write interleaved with a log_trace write on the
+    same fd, and unbounded file growth because rotation only fires
+    inside ``_append_log``.  The helper is synchronous — audit is
+    already on a best-effort fire-and-forget path so the tiny fcntl
+    wait under contention is acceptable.
     """
     try:
         row = {**entry, "event_type": "tool_audit"}
-        os.makedirs(os.path.dirname(TRACE_LOG), exist_ok=True)
-        with open(TRACE_LOG, "a") as f:
-            f.write(json.dumps(row) + "\n")
+        _append_log(TRACE_LOG, json.dumps(row))
     except Exception:
         pass
     tool = str(entry.get("tool") or "")
