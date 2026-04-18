@@ -736,13 +736,25 @@ async def _save_history(session_id: str, history: list[types.Content]) -> None:
                 continue
             break
         if cut >= n:
-            # Tail contained no safe cut point; keep the last entry only
-            # if it's a valid user turn, otherwise drop history entirely
-            # so the next send_message_stream starts fresh.
-            if n > 0 and raw[-1].get("role") == "user" and "function_response" not in (raw[-1].get("parts") or [{}])[0]:
-                raw = raw[-1:]
-            else:
-                raw = []
+            # Tail contained no safe cut point anywhere within the
+            # target window (#731).  Previously we either preserved the
+            # last entry alone when it happened to be a user turn or
+            # dropped history entirely — the second branch silently
+            # wiped the session when the trailing segment was still
+            # mid-AFC (MCP-heavy workloads hit this regularly).  The
+            # fix preserves the FULL history when no safe boundary
+            # exists, logs a warning so operators notice the elongated
+            # payload, and relies on the next truncation pass to find
+            # a boundary once the AFC chain finishes.  Correctness
+            # trumps size for persisted sessions — a one-off oversized
+            # file is recoverable; a silently wiped conversation is
+            # not.
+            logger.warning(
+                "Session %r: history truncation found no safe boundary within "
+                "the target window; preserving full history (%d entries) to "
+                "avoid silent session loss. Next save will retry truncation (#731).",
+                session_id, n,
+            )
         else:
             raw = raw[cut:]
     tmp_path = path + ".tmp"
