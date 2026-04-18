@@ -17,6 +17,7 @@ is unset, so non-tracing installs pay no runtime cost.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -56,6 +57,15 @@ except Exception:  # pragma: no cover - defensive fallback
 
     def set_span_error(*_a: Any, **_kw: Any) -> None:  # type: ignore
         return None
+
+try:
+    from mcp_metrics import record_tool_call  # type: ignore
+except Exception:  # pragma: no cover - defensive fallback
+    from contextlib import contextmanager as _cm
+
+    @_cm  # type: ignore
+    def record_tool_call(*_a: Any, **_kw: Any):
+        yield None
 
 log = logging.getLogger("tools.helm")
 
@@ -145,12 +155,20 @@ def _helm(args: list[str], parse_json: bool = False) -> Any:
             raise
 
 
+@contextlib.contextmanager
 def _handler_span(tool: str, attributes: dict[str, Any] | None = None):
-    """Open the outer ``mcp.handler`` SERVER span for a tool invocation."""
+    """Open the outer ``mcp.handler`` SERVER span for a tool invocation.
+
+    Also records the call against mcp_tool_calls_total /
+    mcp_tool_duration_seconds (#851) with outcome=ok|error so
+    operators can see per-tool rate and p95 latency alongside traces.
+    """
     attrs: dict[str, Any] = {"mcp.server": "helm", "mcp.tool": tool}
     if attributes:
         attrs.update({k: v for k, v in attributes.items() if v is not None})
-    return start_span("mcp.handler", kind=SPAN_KIND_SERVER, attributes=attrs)
+    with record_tool_call("helm", tool):
+        with start_span("mcp.handler", kind=SPAN_KIND_SERVER, attributes=attrs) as span:
+            yield span
 
 
 def _write_values(values: dict | None) -> Path | None:

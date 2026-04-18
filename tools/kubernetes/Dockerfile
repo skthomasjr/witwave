@@ -22,6 +22,9 @@ COPY --chown=tool:tool shared/metrics_server.py /home/tool/shared/metrics_server
 # listener. Imported opportunistically by server.py — the server falls
 # back to mcp.run() when the module is absent.
 COPY --chown=tool:tool shared/mcp_auth.py /home/tool/shared/mcp_auth.py
+# Prometheus tool-call metrics helper (#851). Imported opportunistically
+# by server.py — degrades to no-op context manager when absent.
+COPY --chown=tool:tool shared/mcp_metrics.py /home/tool/shared/mcp_metrics.py
 
 # FastMCP streamable-http server (#644). Advertise the port so `docker run
 # -P` and Kubernetes Service targetPort discovery work the same way they
