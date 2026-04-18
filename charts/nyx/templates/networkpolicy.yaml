@@ -1,0 +1,193 @@
+{{/*
+NetworkPolicy (#759). Ships disabled by default; when enabled, emits one
+NetworkPolicy per chart-rendered Deployment so operators can control
+pod-level reachability without bolting a second chart on top.
+
+Targets:
+
+  * Each entry in `.Values.agents` — the harness/backend combined pod.
+    Selector: app.kubernetes.io/name: <agent-name>.
+    Policy covers both the app port and the split metrics port.
+  * The dashboard pod when `.Values.dashboard.enabled`.
+    Selector: app.kubernetes.io/name: <release>-dashboard.
+  * Each enabled entry in `.Values.mcpTools.*` — one MCP tool
+    Deployment + Service pair.
+    Selector: app.kubernetes.io/name: <release>-mcp-<tool>.
+
+Rules built from `.Values.networkPolicy.ingress`:
+
+  allowDashboard=true ……… adds an ingress peer matching the dashboard
+                          pod (in the release namespace) on every port
+                          of the selected pod. Ignored when
+                          dashboard.enabled=false.
+  allowSameNamespace=true  adds an ingress peer matching every pod in
+                          the release namespace on every port.
+  metricsFrom             …  list of raw NetworkPolicyPeer entries
+                          permitted to reach the metrics port
+                          (app_port + 1000). Narrow scope by default.
+  additionalFrom          …  raw peers applied to every port.
+
+All rules are additive — Kubernetes treats multiple `ingress` entries
+as a union, so an operator listing three peers grants access to all
+three and nothing else. An empty ingress rule set (every knob off,
+every list empty) renders a default-closed NetworkPolicy: ingress
+fully denied. Egress stays open unless `egressOpen=false`, in which
+case only the `egress:` list is permitted.
+
+Uses the typed networking/v1 API (GA since Kubernetes 1.21).
+*/}}
+
+{{- define "nyx.np.egressRules" -}}
+{{- $np := .np -}}
+{{- if $np.egressOpen }}
+    - {}
+{{- else -}}
+{{- range $np.egress }}
+    - {{- toYaml . | nindent 6 }}
+{{- end }}
+{{- end -}}
+{{- end -}}
+
+{{- /* Render `ingress` entries for a given pod selector. `metricsPort`
+       is the numeric metrics port — the template uses it to scope the
+       metricsFrom rule to the right port rather than blanket-allowing
+       scrapers on every port of the selected pod. */ -}}
+{{- define "nyx.np.ingressRules" -}}
+{{- $ing := .ing -}}
+{{- $dashboardEnabled := .dashboardEnabled -}}
+{{- $dashboardPeer := .dashboardPeer -}}
+{{- $sameNsPeer := .sameNsPeer -}}
+{{- $metricsPort := .metricsPort -}}
+{{- if and $dashboardEnabled $ing.allowDashboard }}
+    - from:
+        - {{- toYaml $dashboardPeer | nindent 10 }}
+{{- end }}
+{{- if $ing.allowSameNamespace }}
+    - from:
+        - {{- toYaml $sameNsPeer | nindent 10 }}
+{{- end }}
+{{- if and $ing.metricsFrom $metricsPort }}
+    - from:
+      {{- toYaml $ing.metricsFrom | nindent 8 }}
+      ports:
+        - protocol: TCP
+          port: {{ $metricsPort }}
+{{- end }}
+{{- if $ing.additionalFrom }}
+    - from:
+      {{- toYaml $ing.additionalFrom | nindent 8 }}
+{{- end }}
+{{- end -}}
+
+{{- if .Values.networkPolicy.enabled }}
+
+{{- $np := .Values.networkPolicy }}
+{{- $ing := $np.ingress | default dict }}
+{{- $dashboardEnabled := .Values.dashboard.enabled }}
+{{- $dashboardPodName := printf "%s-dashboard" .Release.Name }}
+
+{{- /* Compose the reusable peers once so every rendered policy is
+       consistent. Kubernetes ignores unknown keys inside a peer, so we
+       strictly build peers that match the shipped schema. */ -}}
+{{- $dashboardPeer := dict "podSelector" (dict "matchLabels" (dict "app.kubernetes.io/name" $dashboardPodName)) }}
+{{- $sameNsPeer := dict "podSelector" dict }}
+
+{{/* --- agents (harness + co-located backend containers) --- */}}
+{{- range .Values.agents }}
+{{- $agentName := .name }}
+{{- $containerPort := .port | default 8000 }}
+{{- $metricsPort := add (int $containerPort) 1000 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $.Release.Name }}-{{ $agentName }}
+  labels:
+    {{- include "nyx.agentLabels" (dict "name" $agentName "root" $) | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $agentName }}
+  policyTypes:
+    - Ingress
+    {{- if not $np.egressOpen }}
+    - Egress
+    {{- end }}
+  ingress:
+    {{- include "nyx.np.ingressRules" (dict "ing" $ing "dashboardEnabled" $dashboardEnabled "dashboardPeer" $dashboardPeer "sameNsPeer" $sameNsPeer "metricsPort" $metricsPort) }}
+  {{- if not $np.egressOpen }}
+  egress:
+    {{- include "nyx.np.egressRules" (dict "np" $np) }}
+  {{- end }}
+{{- end }}
+
+{{/* --- dashboard --- */}}
+{{- if $dashboardEnabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $.Release.Name }}-dashboard
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/part-of: nyx
+    app.kubernetes.io/name: {{ $dashboardPodName }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $dashboardPodName }}
+  policyTypes:
+    - Ingress
+    {{- if not $np.egressOpen }}
+    - Egress
+    {{- end }}
+  ingress:
+    {{- /* The dashboard is a user-facing web surface — allowSameNamespace
+           and additionalFrom apply, but the "dashboard → dashboard" rule
+           is a no-op so we omit it by skipping allowDashboard. */ -}}
+    {{- include "nyx.np.ingressRules" (dict "ing" (omit $ing "allowDashboard") "dashboardEnabled" false "dashboardPeer" $dashboardPeer "sameNsPeer" $sameNsPeer "metricsPort" 0) }}
+  {{- if not $np.egressOpen }}
+  egress:
+    {{- include "nyx.np.egressRules" (dict "np" $np) }}
+  {{- end }}
+{{- end }}
+
+{{/* --- MCP tools (one NP per enabled tool) --- */}}
+{{- range $toolName, $toolSpec := .Values.mcpTools }}
+{{- if and (kindIs "map" $toolSpec) (hasKey $toolSpec "enabled") }}
+{{- if $toolSpec.enabled }}
+{{- $fullName := printf "%s-mcp-%s" $.Release.Name $toolName }}
+{{- $mcpMetricsPort := ($.Values.mcpTools.metricsPort | default 9000) }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullName }}
+  labels:
+    app.kubernetes.io/managed-by: {{ $.Release.Service }}
+    app.kubernetes.io/part-of: nyx
+    app.kubernetes.io/name: {{ $fullName }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $fullName }}
+  policyTypes:
+    - Ingress
+    {{- if not $np.egressOpen }}
+    - Egress
+    {{- end }}
+  ingress:
+    {{- /* MCP tools are cluster-shared infra. allowDashboard is ignored
+           (dashboards don't talk to MCP servers directly); metrics uses
+           the mcpTools.metricsPort knob; additionalFrom can open extra
+           agent namespaces if needed. */ -}}
+    {{- include "nyx.np.ingressRules" (dict "ing" (omit $ing "allowDashboard") "dashboardEnabled" false "dashboardPeer" $dashboardPeer "sameNsPeer" $sameNsPeer "metricsPort" $mcpMetricsPort) }}
+  {{- if not $np.egressOpen }}
+  egress:
+    {{- include "nyx.np.egressRules" (dict "np" $np) }}
+  {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{- end }}

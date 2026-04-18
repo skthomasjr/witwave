@@ -184,6 +184,25 @@
         }
       }
     },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "ingress": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "allowDashboard": { "type": "boolean" },
+            "allowSameNamespace": { "type": "boolean" },
+            "metricsFrom": { "type": "array" },
+            "additionalFrom": { "type": "array" }
+          }
+        },
+        "egressOpen": { "type": "boolean" },
+        "egress": { "type": "array" }
+      }
+    },
     "sharedStorage": {
       "type": "object",
       "additionalProperties": true,

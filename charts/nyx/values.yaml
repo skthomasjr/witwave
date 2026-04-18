@@ -460,6 +460,55 @@ cors:
   # across /triggers and /conversations.
   allowOrigins: []
 
+# Optional NetworkPolicy (#759). Default off, shipped off, documented.
+# Turn on in clusters that need pod-level isolation; the policies target
+# only chart-rendered Deployments (agents, dashboard, MCP tools), so an
+# operator can leave other workloads in the namespace untouched.
+networkPolicy:
+  # Toggle. When false, no NetworkPolicy objects are rendered and the
+  # chart's historical default-open posture is preserved.
+  enabled: false
+  # Ingress peers. When enabled=true AND ingress is empty, ALL ingress
+  # is denied — a deliberate default-closed posture operators must
+  # opt-out of peer-by-peer.
+  ingress:
+    # Allow the chart-rendered dashboard pod (when dashboard.enabled) to
+    # reach the harness + backend + MCP-tool app ports. Default true
+    # because the dashboard has no alternate reach path.
+    allowDashboard: true
+    # Allow every pod in the release namespace to reach every port on
+    # every chart-rendered pod. Useful for trusted-namespace deployments;
+    # keep false for the strict posture that matches the CIS Benchmarks.
+    allowSameNamespace: false
+    # Allowed sources for the metrics port (app_port+1000). Entries are
+    # raw NetworkPolicyPeer objects so operators can mix
+    # namespaceSelector, podSelector, or ipBlock without further
+    # templating gymnastics. Default: a single namespaceSelector keyed
+    # on the well-known `kubernetes.io/metadata.name=monitoring` label
+    # (the default label set by Kubernetes >=1.22 on every namespace).
+    metricsFrom:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: monitoring
+    # Additional peers applied to ALL ports on chart-rendered pods. Use
+    # sparingly — prefer scoping via metricsFrom for scrape traffic or
+    # allowDashboard for intra-release dashboard traffic.
+    additionalFrom: []
+  # Egress stays open by default because backends need to reach the
+  # Kubernetes API (MCP-kubernetes), the Helm release API
+  # (MCP-helm), harness webhook destinations, OTel collectors, DNS, and
+  # each other. Set egressOpen=false to enforce explicit egress rules,
+  # then populate `egress` with the peers you want to allow.
+  egressOpen: true
+  # Raw list of NetworkPolicyEgressRule entries applied when
+  # egressOpen=false. Empty = no egress allowed. Typical entries:
+  #   - to: [{namespaceSelector: {}}]  # allow all cluster egress
+  #   - to: [{ipBlock: {cidr: 10.0.0.0/8}}]
+  #     ports:
+  #       - protocol: TCP
+  #         port: 443
+  egress: []
+
 # Global storage options applied across shared + per-backend PVCs (#767).
 storage:
   # When true, every chart-owned PersistentVolumeClaim is annotated with

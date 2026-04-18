@@ -325,6 +325,25 @@ Every backend validates stdio entries in `mcp.json` against per-backend allow-li
 (`MCP_ALLOWED_COMMANDS`, `MCP_ALLOWED_COMMAND_PREFIXES`, `MCP_ALLOWED_CWD_PREFIXES`). Rejections increment
 `backend_mcp_command_rejected_total{reason}`. Claude #711, codex #720, gemini #730.
 
+### Optional NetworkPolicy (#759)
+
+`networkPolicy.enabled: true` renders one `NetworkPolicy` per chart-rendered pod (each agent, the dashboard, each
+enabled MCP tool). Default off — when enabled with no additional configuration, ingress is restricted to the
+monitoring namespace (via `kubernetes.io/metadata.name=monitoring`) for metrics scraping plus the in-release
+dashboard for app traffic. Everything else is denied.
+
+Knobs (all under `networkPolicy.ingress`):
+
+- `allowDashboard` — the dashboard pod may reach agent/backend app ports. Default `true`.
+- `allowSameNamespace` — any pod in the release namespace may reach any chart-rendered pod. Default `false`.
+- `metricsFrom` — raw `NetworkPolicyPeer` list permitted on the metrics port (app port + 1000). Default scopes to
+  the `monitoring` namespace.
+- `additionalFrom` — raw peers applied to **all** ports.
+
+Egress stays open by default (backends need to reach the Kubernetes API, Helm, harness-configured webhook targets,
+DNS, the OTel collector, and peer agents). Flip `networkPolicy.egressOpen: false` to enforce an explicit allow-list
+via `networkPolicy.egress`.
+
 ### Ingress-scoped A2A cap (#783)
 
 `A2A_MAX_PROMPT_BYTES` (default 1 MiB) caps inbound A2A prompts at the harness before they hit a backend; set to
