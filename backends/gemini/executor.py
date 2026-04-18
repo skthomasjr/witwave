@@ -101,6 +101,7 @@ from metrics import (
     backend_sdk_time_to_first_message_seconds,
     backend_sdk_tokens_per_query,
     backend_sdk_tool_calls_total,
+    backend_sdk_tool_errors_total,
     backend_sdk_tool_duration_seconds,
     backend_sdk_turns_per_query,
     backend_session_age_seconds,
@@ -570,11 +571,13 @@ async def _emit_afc_history(
                     await log_trace(json.dumps(entry))
                 except Exception as _e:
                     logger.debug("AFC tool_result log failed: %s", _e)
-                # Metrics: one sample per observed function_call (keyed on
-                # the response side so status="error" / "success" is known).
-                status = "error" if is_error else "success"
+                # Metrics: one sample per observed function_call (#793).
+                # Aligned with claude/codex — plain counter for calls,
+                # separate counter for errors.
                 if backend_sdk_tool_calls_total is not None:
-                    backend_sdk_tool_calls_total.labels(**_LABELS, tool=name, status=status).inc()
+                    backend_sdk_tool_calls_total.labels(**_LABELS, tool=name).inc()
+                if is_error and backend_sdk_tool_errors_total is not None:
+                    backend_sdk_tool_errors_total.labels(**_LABELS, tool=name).inc()
                 # Duration: the SDK does not expose per-call timings through
                 # AFC history. Fall back to wall-clock delta between the
                 # matched function_call row and this function_response row

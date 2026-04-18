@@ -123,6 +123,7 @@ backend_mcp_servers_active: prometheus_client.Gauge | None = None
 # Tool call metrics (#640 — parity with codex #445). Populated on each
 # function_call observed in the google-genai AFC history.
 backend_sdk_tool_calls_total: prometheus_client.Counter | None = None
+backend_sdk_tool_errors_total: prometheus_client.Counter | None = None
 # Per-query tool-call histogram (#795). Parity with claude / codex label
 # schema. Ships as a registered zero-value placeholder today since gemini
 # does not yet surface per-run_query tool-call counts; wiring lands with
@@ -527,14 +528,19 @@ if _enabled:
         ["agent", "agent_id", "backend", "reason"],
     )
 
-    # Tool calls (#640 — parity with codex / claude). Emitted per
-    # function_call observed in the google-genai AFC history. `status` is
-    # bounded to "success" | "error" so per-tool error rates are visible
-    # without blowing up cardinality.
+    # Tool calls (#640 — parity with codex / claude / #793). Emitted per
+    # function_call observed in the google-genai AFC history. Aligned to
+    # the claude/codex schema: a plain call-count counter; error rates come
+    # from the sibling backend_sdk_tool_errors_total (#793).
     backend_sdk_tool_calls_total = prometheus_client.Counter(
         "backend_sdk_tool_calls_total",
-        "Total tool calls dispatched via the backend SDK, by tool name and outcome.",
-        ["agent", "agent_id", "backend", "tool", "status"],
+        "Total tool calls dispatched via the backend SDK, by tool name.",
+        ["agent", "agent_id", "backend", "tool"],
+    )
+    backend_sdk_tool_errors_total = prometheus_client.Counter(
+        "backend_sdk_tool_errors_total",
+        "Total tool execution errors by tool name.",
+        ["agent", "agent_id", "backend", "tool"],
     )
     backend_sdk_tool_calls_per_query = prometheus_client.Histogram(
         "backend_sdk_tool_calls_per_query",
