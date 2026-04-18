@@ -311,7 +311,13 @@
         "additionalProperties": true,
         "required": ["name"],
         "properties": {
-          "name": { "type": "string", "minLength": 1 },
+          "name": {
+            "$comment": "DNS-1123 label (#1023). Agent name becomes part of Pod, Service, and ConfigMap names — uppercase or underscored names pass schema but fail at K8s admission with an unhelpful message. Enforce the shape here.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 63,
+            "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+          },
           "port": { "type": ["integer", "string"] },
           "image": { "type": "object" },
           "imagePullSecrets": { "type": "array" },
@@ -370,7 +376,13 @@
               "additionalProperties": true,
               "required": ["name"],
               "properties": {
-                "name": { "type": "string", "minLength": 1 },
+                "name": {
+                  "$comment": "DNS-1123 label (#1023). Backend name embeds into Service/PVC/ConfigMap names so it must match the label regex Kubernetes enforces at admission.",
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 63,
+                  "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+                },
                 "enabled": { "type": "boolean" },
                 "image": { "type": "object" },
                 "port": { "type": ["integer", "string"] },
