@@ -51,6 +51,22 @@ data:
       root /usr/share/nginx/html;
       index index.html;
 
+      # Baseline security headers (#739). The SPA renders agent output via v-html
+      # at six sites; DOMPurify is the in-process defense, these headers are the
+      # outer ring. `always` forces emission even on non-2xx responses.
+      # - default-src 'self'                 — every asset comes from the same origin
+      # - script-src 'self'                  — block inline/eval (Vite-built bundle)
+      # - style-src 'self' 'unsafe-inline'   — required by PrimeVue runtime styles
+      # - img-src 'self' data:               — base64 icons are inlined
+      # - connect-src 'self'                 — fetch only to same-origin /api/*
+      # - object-src 'none'                  — no <object>/<embed>
+      # - frame-ancestors 'none'             — clickjacking (supersedes XFO)
+      # - base-uri 'self'                    — prevent base tag hijack
+      # - form-action 'self'                 — no off-origin form posts
+      add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header Referrer-Policy "no-referrer" always;
+
       # History-mode fallback so deep-linked routes (e.g. /team) hit index.html
       # rather than returning 404 from nginx's static resolver.
       location / {
