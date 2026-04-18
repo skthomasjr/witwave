@@ -9,7 +9,13 @@ picture on multi-backend deployments.
 
 This module centralises the transport so any backend can share the same
 configuration surface (``HARNESS_EVENTS_URL`` /
-``HARNESS_EVENTS_AUTH_TOKEN``) and the same behavioural guarantees:
+``HOOK_EVENTS_AUTH_TOKEN``) and the same behavioural guarantees:
+
+The canonical env var for the bearer token is ``HOOK_EVENTS_AUTH_TOKEN``
+(matching ``harness/main.py``'s endpoint). ``HARNESS_EVENTS_AUTH_TOKEN``
+is retained as a back-compat alias so previously-deployed agents keep
+working during the rename (#859); ``TRIGGERS_AUTH_TOKEN`` remains as a
+second fallback for the pre-#700 deployments.
 
 * Fire-and-forget: scheduling a post never stalls tool execution.
 * Bounded in-flight: a single cap across all posts on this backend,
@@ -44,11 +50,18 @@ import httpx
 logger = logging.getLogger(__name__)
 
 HARNESS_EVENTS_URL = os.environ.get("HARNESS_EVENTS_URL", "") or ""
-HARNESS_EVENTS_AUTH_TOKEN = (
-    os.environ.get("HARNESS_EVENTS_AUTH_TOKEN")
+# Canonical: HOOK_EVENTS_AUTH_TOKEN (matches the harness endpoint #859).
+# Back-compat aliases preserve existing deployments during the rename:
+#   HARNESS_EVENTS_AUTH_TOKEN — historical name used by this module
+#   TRIGGERS_AUTH_TOKEN       — pre-#700 name
+HOOK_EVENTS_AUTH_TOKEN = (
+    os.environ.get("HOOK_EVENTS_AUTH_TOKEN")
+    or os.environ.get("HARNESS_EVENTS_AUTH_TOKEN")
     or os.environ.get("TRIGGERS_AUTH_TOKEN")
     or ""
 )
+# Back-compat alias for any external importer that grabs the old name.
+HARNESS_EVENTS_AUTH_TOKEN = HOOK_EVENTS_AUTH_TOKEN
 HOOK_POST_MAX_INFLIGHT = int(os.environ.get("HOOK_POST_MAX_INFLIGHT", "32"))
 
 # One-shot warning flags — guarded by a threading.Lock so two concurrent
@@ -81,16 +94,17 @@ async def _post_once(event_dict: dict[str, Any]) -> None:
     """Actual POST. Called from ``asyncio.create_task`` in post_event."""
     if not HARNESS_EVENTS_URL:
         return
-    if not HARNESS_EVENTS_AUTH_TOKEN:
+    if not HOOK_EVENTS_AUTH_TOKEN:
         global _auth_warned
         with _auth_warn_lock:
             if not _auth_warned:
                 _auth_warned = True
                 logger.warning(
                     "hook.decision transport DISABLED: HARNESS_EVENTS_URL is set "
-                    "but HARNESS_EVENTS_AUTH_TOKEN (and TRIGGERS_AUTH_TOKEN) are "
-                    "both empty. Set the token so the harness endpoint accepts "
-                    "the POST. Subsequent calls will early-return silently."
+                    "but HOOK_EVENTS_AUTH_TOKEN (and its HARNESS_EVENTS_AUTH_TOKEN/"
+                    "TRIGGERS_AUTH_TOKEN aliases) are all empty. Set the token so "
+                    "the harness endpoint accepts the POST. Subsequent calls will "
+                    "early-return silently."
                 )
         return
     url = HARNESS_EVENTS_URL.rstrip("/") + "/internal/events/hook-decision"
@@ -99,7 +113,7 @@ async def _post_once(event_dict: dict[str, Any]) -> None:
         await client.post(
             url,
             json=event_dict,
-            headers={"Authorization": f"Bearer {HARNESS_EVENTS_AUTH_TOKEN}"},
+            headers={"Authorization": f"Bearer {HOOK_EVENTS_AUTH_TOKEN}"},
         )
     except Exception as exc:
         logger.warning("hook.decision POST to %s failed: %r", url, exc)
