@@ -405,29 +405,44 @@ async def main():
                     else None
                 )
                 session_id = derive_session_id(_raw_sid, caller_identity=_caller_identity)
+                # Acquire the MCP stack under refcount for the entire
+                # call (#946). The previous snapshot-only pattern could
+                # have a hot-reload aclose the underlying stack mid-call,
+                # tearing down the stdio subprocess and surfacing an
+                # opaque BrokenResourceError as MCP -32603. Mirrors the
+                # A2A execute() path's acquire/release bracket.
+                _live_servers, _held_stack = await executor._acquire_mcp_stack()
                 try:
-                    from executor import run as _run_for_mcp
-                    response = await _run_for_mcp(
-                        prompt,
-                        session_id,
-                        executor._sessions,
-                        executor._agent_md_content,
-                        executor._session_locks,
-                        history_save_failed=executor._history_save_failed,
-                        model=None,
-                        max_tokens=mcp_max_tokens,
-                        live_mcp_servers=await executor._snapshot_live_mcp_servers(),
-                    )
-                except Exception as exc:
-                    logger.error(f"MCP tools/call error: {exc!r}")
-                    _mcp_status = "internal_error"
-                    return JSONResponse({
-                        "jsonrpc": "2.0",
-                        "id": rpc_id,
-                        # Generic message — full exception detail is logged server-side
-                        # (line above) but not leaked to MCP clients (#455).
-                        "error": {"code": -32603, "message": "Internal server error"},
-                    })
+                    try:
+                        from executor import run as _run_for_mcp
+                        response = await _run_for_mcp(
+                            prompt,
+                            session_id,
+                            executor._sessions,
+                            executor._agent_md_content,
+                            executor._session_locks,
+                            history_save_failed=executor._history_save_failed,
+                            model=None,
+                            max_tokens=mcp_max_tokens,
+                            live_mcp_servers=_live_servers,
+                        )
+                    except Exception as exc:
+                        logger.error(f"MCP tools/call error: {exc!r}")
+                        _mcp_status = "internal_error"
+                        return JSONResponse({
+                            "jsonrpc": "2.0",
+                            "id": rpc_id,
+                            # Generic message — full exception detail is logged server-side
+                            # (line above) but not leaked to MCP clients (#455).
+                            "error": {"code": -32603, "message": "Internal server error"},
+                        })
+                finally:
+                    try:
+                        await executor._release_mcp_stack(_held_stack)
+                    except Exception as _rel_exc:
+                        logger.warning(
+                            "MCP stack release error on /mcp call: %r", _rel_exc,
+                        )
                 _mcp_status = "success"
                 return JSONResponse({
                     "jsonrpc": "2.0",
