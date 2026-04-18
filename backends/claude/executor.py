@@ -350,7 +350,32 @@ AGENT_MD = os.environ.get("AGENT_MD_PATH", "/home/agent/.claude/CLAUDE.md")
 # from #633 still fires regardless.  Defaults the bearer token to
 # TRIGGERS_AUTH_TOKEN so operators don't need an additional secret.
 HARNESS_EVENTS_URL = os.environ.get("HARNESS_EVENTS_URL", "") or ""
-HARNESS_EVENTS_AUTH_TOKEN = os.environ.get("HARNESS_EVENTS_AUTH_TOKEN") or os.environ.get("TRIGGERS_AUTH_TOKEN", "")
+# Token source resolution (#933): prefer the dedicated
+# HARNESS_EVENTS_AUTH_TOKEN; fall back to TRIGGERS_AUTH_TOKEN only for
+# backward compatibility with deployments that predate #700. Log which
+# env var supplied the value at startup so operators notice when a
+# rotation of HARNESS_EVENTS_AUTH_TOKEN silently reverts to the legacy
+# fallback — previously this mis-routing surfaced only as 401s buried
+# in per-call DEBUG output.
+_HET_PRIMARY = os.environ.get("HARNESS_EVENTS_AUTH_TOKEN", "")
+_HET_FALLBACK = os.environ.get("TRIGGERS_AUTH_TOKEN", "")
+if _HET_PRIMARY:
+    HARNESS_EVENTS_AUTH_TOKEN = _HET_PRIMARY
+    _HET_SOURCE = "HARNESS_EVENTS_AUTH_TOKEN"
+elif _HET_FALLBACK:
+    HARNESS_EVENTS_AUTH_TOKEN = _HET_FALLBACK
+    _HET_SOURCE = "TRIGGERS_AUTH_TOKEN (legacy fallback — set HARNESS_EVENTS_AUTH_TOKEN to silence)"
+    logger.warning(
+        "hook.decision transport: HARNESS_EVENTS_AUTH_TOKEN is unset; "
+        "using the legacy TRIGGERS_AUTH_TOKEN fallback (#933). Rotating "
+        "HARNESS_EVENTS_AUTH_TOKEN without clearing TRIGGERS_AUTH_TOKEN "
+        "would silently keep the stale bearer — set a dedicated "
+        "HARNESS_EVENTS_AUTH_TOKEN in production."
+    )
+else:
+    HARNESS_EVENTS_AUTH_TOKEN = ""
+    _HET_SOURCE = "(unset)"
+logger.info("hook.decision transport: bearer source = %s", _HET_SOURCE)
 # Tight timeout — the hook is synchronous with tool execution; we never block
 # on the POST (fire-and-forget via asyncio.create_task) but still want any
 # connection the client opens to fail fast when the harness is unreachable.
