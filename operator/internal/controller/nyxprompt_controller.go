@@ -101,11 +101,6 @@ func (r *NyxPromptReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 		return ctrl.Result{}, err
 	}
-	// Snapshot for status Patch(MergeFrom) (#757) — captured before any
-	// in-memory mutation so the computed patch contains only the status
-	// delta, not unrelated server-side fields.
-	promptBeforeStatus := prompt.DeepCopy()
-
 	// Compute the desired ConfigMap set.
 	desired := map[string]*corev1.ConfigMap{}
 	bindings := make([]nyxv1alpha1.NyxPromptBinding, 0, len(prompt.Spec.AgentRefs))
@@ -222,36 +217,25 @@ func (r *NyxPromptReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			readyCount++
 		}
 	}
-	prompt.Status.ObservedGeneration = prompt.Generation
-	prompt.Status.Bindings = bindings
-	prompt.Status.ReadyCount = readyCount
 	// Publish ready/desired counts as gauges so dashboards can alert on
 	// partial-binding without scraping the CR status subresource (#837).
 	nyxpromptReadyCount.WithLabelValues(prompt.Namespace, prompt.Name).Set(float64(readyCount))
 	nyxpromptDesiredCount.WithLabelValues(prompt.Namespace, prompt.Name).Set(float64(len(prompt.Spec.AgentRefs)))
 
-	readyCond := metav1.Condition{
-		Type:               nyxv1alpha1.NyxPromptConditionReady,
-		LastTransitionTime: metav1.Now(),
-		ObservedGeneration: prompt.Generation,
-	}
-	if len(reconcileErrs) == 0 && readyCount == int32(len(prompt.Spec.AgentRefs)) {
-		readyCond.Status = metav1.ConditionTrue
-		readyCond.Reason = "AllBound"
-		readyCond.Message = fmt.Sprintf("%d/%d agents bound.", readyCount, len(prompt.Spec.AgentRefs))
-	} else {
-		readyCond.Status = metav1.ConditionFalse
-		readyCond.Reason = "PartialBinding"
-		readyCond.Message = fmt.Sprintf("%d/%d agents bound.", readyCount, len(prompt.Spec.AgentRefs))
-	}
-	setCondition(&prompt.Status.Conditions, readyCond)
-
 	// Status().Patch with MergeFrom (#757) so concurrent writers on the
 	// status subresource do not contend over the full object version;
-	// only contested fields raise a conflict. A 409 here still requeues
-	// via the returned error but no duplicate status-write is attempted
-	// inside this reconcile.
-	if err := r.Status().Patch(ctx, prompt, client.MergeFrom(promptBeforeStatus)); err != nil {
+	// only contested fields raise a conflict.
+	//
+	// 409 retry policy (#905): a conflict used to return to controller-
+	// runtime, which requeued the WHOLE reconcile — including the apply
+	// loop above — even though the CM Updates already succeeded. Under
+	// contention a single NyxPrompt could land the same Update dozens of
+	// times in the apiserver audit log. Retry the status patch inline
+	// with a bounded re-Get + re-apply-status loop so the apply work is
+	// not duplicated. Non-conflict errors still propagate to controller-
+	// runtime so its rate limiter can back off.
+	hasErr := len(reconcileErrs) > 0
+	if err := r.patchStatusWithConflictRetry(ctx, prompt, bindings, readyCount, hasErr); err != nil {
 		reconcileErrs = append(reconcileErrs, fmt.Errorf("update status: %w", err))
 	}
 
@@ -286,6 +270,73 @@ func (r *NyxPromptReconciler) applyNyxPromptConfigMap(ctx context.Context, desir
 	existing.Annotations = desired.Annotations
 	existing.OwnerReferences = desired.OwnerReferences
 	return r.Update(ctx, existing)
+}
+
+// patchStatusWithConflictRetry writes NyxPrompt status via Status().Patch
+// and re-Gets + re-applies the status fields on 409 conflicts, without
+// re-running the apply loop (#905). Bounded retries (5) avoid wedging the
+// reconciler on sustained contention — after the limit the error is
+// returned to controller-runtime so its rate limiter can space retries.
+func (r *NyxPromptReconciler) patchStatusWithConflictRetry(
+	ctx context.Context,
+	prompt *nyxv1alpha1.NyxPrompt,
+	bindings []nyxv1alpha1.NyxPromptBinding,
+	readyCount int32,
+	reconcileHadErrors bool,
+) error {
+	const maxAttempts = 5
+	// The ready condition content is recomputed fresh on each retry so
+	// its LastTransitionTime tracks the successful write, and so the
+	// bindings message stays in sync with the re-Get'd object.
+	apply := func(target *nyxv1alpha1.NyxPrompt) {
+		target.Status.ObservedGeneration = target.Generation
+		target.Status.Bindings = bindings
+		target.Status.ReadyCount = readyCount
+		cond := metav1.Condition{
+			Type:               nyxv1alpha1.NyxPromptConditionReady,
+			LastTransitionTime: metav1.Now(),
+			ObservedGeneration: target.Generation,
+		}
+		if !reconcileHadErrors && readyCount == int32(len(target.Spec.AgentRefs)) && len(target.Spec.AgentRefs) > 0 {
+			cond.Status = metav1.ConditionTrue
+			cond.Reason = "AllBound"
+		} else {
+			cond.Status = metav1.ConditionFalse
+			cond.Reason = "PartialBinding"
+		}
+		cond.Message = fmt.Sprintf("%d/%d agents bound.", readyCount, len(target.Spec.AgentRefs))
+		setCondition(&target.Status.Conditions, cond)
+	}
+
+	// First attempt uses the object we already have.
+	before := prompt.DeepCopy()
+	apply(prompt)
+	err := r.Status().Patch(ctx, prompt, client.MergeFrom(before))
+	if err == nil || !apierrors.IsConflict(err) {
+		return err
+	}
+
+	// Conflict path: re-Get and re-apply status (only), bounded.
+	for attempt := 2; attempt <= maxAttempts; attempt++ {
+		fresh := &nyxv1alpha1.NyxPrompt{}
+		if gErr := r.Get(ctx, client.ObjectKeyFromObject(prompt), fresh); gErr != nil {
+			return fmt.Errorf("refetch after conflict: %w", gErr)
+		}
+		freshBefore := fresh.DeepCopy()
+		apply(fresh)
+		err = r.Status().Patch(ctx, fresh, client.MergeFrom(freshBefore))
+		if err == nil {
+			// Echo the written status back onto the caller's copy so
+			// the rest of the reconcile (logs, metrics already flushed
+			// above) observes the committed state.
+			prompt.Status = fresh.Status
+			return nil
+		}
+		if !apierrors.IsConflict(err) {
+			return err
+		}
+	}
+	return err
 }
 
 // nyxPromptConfigMapName is the per-(prompt, agent) ConfigMap name. Keeping
