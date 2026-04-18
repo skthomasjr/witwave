@@ -1156,6 +1156,18 @@ func (r *NyxAgentReconciler) teardownDisabledAgent(ctx context.Context, agent *n
 			recordErr("PodMonitor", "get", err)
 		}
 	}
+	// Rewrite the shared team manifest CM with the terminating (or
+	// disabled) agent excluded (#902). The manifest reconciler already
+	// filters out agents with a non-zero DeletionTimestamp and those
+	// whose spec.enabled is false, so simply invoking it from the
+	// teardown path converges peer manifests in the same reconcile
+	// cycle that finalizes this agent — peer pods no longer see a stale
+	// entry pointing at a Service with no endpoints until K8s GC or a
+	// peer reconcile catches up. Errors are accumulated so any
+	// apiserver failure lands in the teardown-step metric set.
+	if err := r.reconcileManifestConfigMap(ctx, agent); err != nil {
+		recordErr("ManifestConfigMap", "rewrite", err)
+	}
 	// Drop the per-CR dashboard gauge so the metric series doesn't
 	// linger across enable/disable cycles.
 	nyxagentDashboardEnabled.DeleteLabelValues(agent.Namespace, agent.Name)
