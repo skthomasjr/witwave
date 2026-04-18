@@ -88,3 +88,110 @@ jobs:
             helm lint charts/nyx-operator --strict || true
             echo "nyx-operator has no schema.json yet; ran --strict anyway"
           fi
+
+  psa-restricted:
+    # Static PSS-restricted verification for the rendered chart (#847).
+    # Loads every Pod / PodTemplateSpec-bearing resource from the
+    # rendered output and asserts each container carries the four fields
+    # PSS-restricted enforces: runAsNonRoot=true, allowPrivilegeEscalation=false,
+    # seccompProfile.type in {RuntimeDefault, Localhost}, and
+    # capabilities.drop contains ALL. Values may be set at the Pod or
+    # container level; the check honours the pod-level inheritance so
+    # a pod-wide `seccompProfile` covers all containers.
+    #
+    # Runs statically (no cluster) so PR authors get the same signal
+    # `kubectl label ns … pod-security.kubernetes.io/enforce=restricted`
+    # would give them at apply time.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.0
+
+      - name: Install PyYAML
+        run: python3 -m pip install --user pyyaml
+
+      - name: Render charts (values-test with placeholder-token swap)
+        run: |
+          sed 's/REPLACE_ME_WITH_GENERATED_TOKEN/ci-fake-token/g' \
+            charts/nyx/values-test.yaml > /tmp/values-test-ci.yaml
+          helm template nyx charts/nyx -f /tmp/values-test-ci.yaml > /tmp/nyx.yaml
+          helm template op charts/nyx-operator > /tmp/nyx-operator.yaml
+
+      - name: PSS-restricted static check
+        run: |
+          python3 <<'PY'
+          import sys, yaml, pathlib
+
+          POD_BEARING = {
+              "Pod", "Deployment", "StatefulSet", "DaemonSet",
+              "Job", "CronJob", "ReplicaSet",
+          }
+
+          def find_pod_specs(obj):
+              """Yield every PodSpec contained in obj."""
+              if not isinstance(obj, dict):
+                  return
+              kind = obj.get("kind")
+              if kind == "Pod":
+                  yield obj.get("spec") or {}
+                  return
+              if kind == "CronJob":
+                  jt = (((obj.get("spec") or {}).get("jobTemplate") or {})
+                        .get("spec") or {})
+                  yield from find_template(jt)
+                  return
+              if kind in POD_BEARING:
+                  yield from find_template(obj.get("spec") or {})
+
+          def find_template(spec):
+              t = (spec.get("template") or {}).get("spec") or {}
+              if t:
+                  yield t
+
+          def violations_for_pod(pod_spec, src):
+              podSC = pod_spec.get("securityContext") or {}
+              pod_seccomp = (podSC.get("seccompProfile") or {}).get("type")
+              pod_runAsNonRoot = podSC.get("runAsNonRoot")
+              containers = (pod_spec.get("containers") or []) + \
+                           (pod_spec.get("initContainers") or [])
+              for c in containers:
+                  sc = c.get("securityContext") or {}
+                  seccomp = (sc.get("seccompProfile") or {}).get("type") or pod_seccomp
+                  runAsNonRoot = sc.get("runAsNonRoot")
+                  if runAsNonRoot is None:
+                      runAsNonRoot = pod_runAsNonRoot
+                  allowEsc = sc.get("allowPrivilegeEscalation")
+                  caps_drop = ((sc.get("capabilities") or {}).get("drop")) or []
+
+                  ctx = f"{src} container={c.get('name')}"
+                  if runAsNonRoot is not True:
+                      yield f"{ctx}: runAsNonRoot is not true"
+                  if allowEsc is not False:
+                      yield f"{ctx}: allowPrivilegeEscalation is not false"
+                  if seccomp not in {"RuntimeDefault", "Localhost"}:
+                      yield f"{ctx}: seccompProfile.type is {seccomp!r}, need RuntimeDefault|Localhost"
+                  if "ALL" not in caps_drop:
+                      yield f"{ctx}: capabilities.drop must contain ALL (got {caps_drop})"
+
+          violations = []
+          for path in ("/tmp/nyx.yaml", "/tmp/nyx-operator.yaml"):
+              raw = pathlib.Path(path).read_text()
+              for doc in yaml.safe_load_all(raw):
+                  if not doc:
+                      continue
+                  src = f"{pathlib.Path(path).name}:{doc.get('kind')}/{(doc.get('metadata') or {}).get('name')}"
+                  for spec in find_pod_specs(doc):
+                      violations.extend(violations_for_pod(spec, src))
+
+          if violations:
+              print("PSS-restricted violations detected:", file=sys.stderr)
+              for v in violations:
+                  print(f"  - {v}", file=sys.stderr)
+              sys.exit(1)
+          print("OK — all rendered pods satisfy PSS-restricted requirements.")
+          PY

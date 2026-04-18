@@ -18,6 +18,9 @@ spec:
     runAsNonRoot: true
     runAsUser: 100
     runAsGroup: 101
+    # PSS-restricted compatibility (#847).
+    seccompProfile:
+      type: RuntimeDefault
   containers:
     - name: test
       image: curlimages/curl:8.7.1
@@ -25,6 +28,8 @@ spec:
         allowPrivilegeEscalation: false
         capabilities:
           drop: ["ALL"]
+        seccompProfile:
+          type: RuntimeDefault
       command:
         - /bin/sh
         - -c

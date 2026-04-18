@@ -19,6 +19,11 @@ spec:
     runAsNonRoot: true
     runAsUser: 100
     runAsGroup: 101
+    # PSS-restricted compatibility (#847): the pod is rendered into a
+    # namespace that may enforce the restricted profile, so the
+    # chart-wide seccomp default applies here too.
+    seccompProfile:
+      type: RuntimeDefault
   containers:
     - name: test
       image: curlimages/curl:8.7.1
@@ -26,6 +31,8 @@ spec:
         allowPrivilegeEscalation: false
         capabilities:
           drop: ["ALL"]
+        seccompProfile:
+          type: RuntimeDefault
       command:
         - /bin/sh
         - -c
