@@ -19,12 +19,39 @@ import asyncio
 import logging
 import os
 import sqlite3
+import time
 
 from a2a.server.context import ServerCallContext
 from a2a.server.tasks.task_store import TaskStore
 from a2a.types import Task
 
+import metrics as _metrics
+
 logger = logging.getLogger(__name__)
+
+
+def _metric_labels() -> dict:
+    agent_name = os.environ.get("AGENT_NAME", "local-agent")
+    return {
+        "agent": os.environ.get("AGENT_OWNER", agent_name),
+        "agent_id": os.environ.get("AGENT_ID", "claude"),
+        "backend": "claude",
+    }
+
+
+def _observe_lock_wait(op: str, wait_seconds: float) -> None:
+    """Record lock-acquisition wait time for a store op (#552 / #791).
+
+    Silently no-ops when metrics are disabled. Any bookkeeping failure is
+    swallowed — observability must never break a task-store write.
+    """
+    hist = _metrics.backend_sqlite_task_store_lock_wait_seconds
+    if hist is None:
+        return
+    try:
+        hist.labels(**_metric_labels(), op=op).observe(wait_seconds)
+    except Exception:  # pragma: no cover — never let metrics break persistence
+        logger.debug("backend_sqlite_task_store_lock_wait_seconds observe failed", exc_info=True)
 
 
 def _open_db(path: str) -> sqlite3.Connection:
@@ -99,14 +126,18 @@ class SqliteTaskStore(TaskStore):
         self, task: Task, context: ServerCallContext | None = None
     ) -> None:
         data = task.model_dump_json()
+        _wait_start = time.perf_counter()
         async with self._lock:
+            _observe_lock_wait("save", time.perf_counter() - _wait_start)
             await asyncio.to_thread(_db_save, self._get_conn(), task.id, data)
         logger.debug("Task %s saved to SQLite store.", task.id)
 
     async def get(
         self, task_id: str, context: ServerCallContext | None = None
     ) -> Task | None:
+        _wait_start = time.perf_counter()
         async with self._lock:
+            _observe_lock_wait("get", time.perf_counter() - _wait_start)
             raw = await asyncio.to_thread(_db_get, self._get_conn(), task_id)
         if raw is None:
             logger.debug("Task %s not found in SQLite store.", task_id)
@@ -118,7 +149,9 @@ class SqliteTaskStore(TaskStore):
     async def delete(
         self, task_id: str, context: ServerCallContext | None = None
     ) -> None:
+        _wait_start = time.perf_counter()
         async with self._lock:
+            _observe_lock_wait("delete", time.perf_counter() - _wait_start)
             await asyncio.to_thread(_db_delete, self._get_conn(), task_id)
         logger.debug("Task %s deleted from SQLite store.", task_id)
 

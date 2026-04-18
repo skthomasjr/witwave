@@ -121,6 +121,10 @@ backend_hooks_config_errors_total: prometheus_client.Counter | None = None
 # without a `logger` label).
 backend_log_write_errors_by_logger_total: prometheus_client.Counter | None = None
 
+# SqliteTaskStore lock-wait histogram (#552 / #791). Mirrors gemini's metric so
+# dashboards can union across backends on (agent, agent_id, backend, op).
+backend_sqlite_task_store_lock_wait_seconds: prometheus_client.Histogram | None = None
+
 if _enabled:
     backend_up = prometheus_client.Gauge("backend_up", "Backend agent is running", ["agent", "agent_id", "backend"])
     backend_info = prometheus_client.Info("a2", "Static backend agent metadata.")
@@ -582,4 +586,15 @@ if _enabled:
         "backend_log_write_errors_by_logger_total",
         "Total log write errors attributed to a specific logger.",
         ["agent", "agent_id", "backend", "logger"],
+    )
+
+    # SqliteTaskStore lock-contention observability (#552 / #791). Measures
+    # wait time to acquire the single asyncio.Lock that serializes
+    # save/get/delete. claude sees more tool traffic than gemini — mirror
+    # gemini's metric so operators can diff lock pressure across backends.
+    backend_sqlite_task_store_lock_wait_seconds = prometheus_client.Histogram(
+        "backend_sqlite_task_store_lock_wait_seconds",
+        "Seconds waited to acquire the SqliteTaskStore asyncio.Lock, by operation.",
+        ["agent", "agent_id", "backend", "op"],
+        buckets=(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0),
     )
