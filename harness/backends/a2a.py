@@ -406,22 +406,16 @@ class A2ABackend:
                 )
                 last_exc = exc
                 _result_label = "error_timeout"
-                # Close client after a connection-level error; _get_client() will
-                # recreate it on the next attempt.
-                try:
-                    await self._client.aclose()
-                except Exception:
-                    pass
+                # Do NOT aclose() the shared client here — sibling concurrent
+                # requests reuse this pool and aclose() would cancel them too
+                # (#975). httpx recycles broken connections internally.
             except httpx.ConnectError as exc:
                 logger.warning(
                     f"A2A backend '{self.id}' transient error on attempt {attempt + 1}/{_MAX_RETRIES}: {exc!r}"
                 )
                 last_exc = exc
                 _result_label = "error_connection"
-                try:
-                    await self._client.aclose()
-                except Exception:
-                    pass
+                # See #975 — same rationale as the timeout branch above.
             except httpx.HTTPStatusError as exc:
                 # Non-retryable HTTP error — surface immediately.
                 logger.error(f"A2A backend '{self.id}' HTTP error: {exc!r}")
