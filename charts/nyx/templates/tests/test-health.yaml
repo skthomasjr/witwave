@@ -1,6 +1,17 @@
 {{- range .Values.agents }}
 {{- if eq (include "nyx.enabled" .) "true" }}
 {{- $agent := . }}
+{{- /* Resolve $svcPort the same way service.yaml does (#908): `port`
+       is the container port, `.service.port` (when present) overrides
+       the Service front port. The test pod connects via the Service,
+       so it must honor the Service port override — the previous code
+       always curled .port|default 8000 and hit connection-refused on
+       any deployment that set .service.port. */}}
+{{- $containerPort := .port | default 8000 }}
+{{- $svcPort := $containerPort }}
+{{- if and (.service) (hasKey .service "port") }}
+{{- $svcPort = .service.port }}
+{{- end }}
 ---
 apiVersion: v1
 kind: Pod
@@ -36,13 +47,13 @@ spec:
         - |
           set -e
           echo "Testing harness health/ready for {{ .name }}..."
-          curl -sf --connect-timeout 3 --max-time 10 http://{{ $.Release.Name }}-{{ .name }}:{{ .port | default 8000 }}/health/ready
+          curl -sf --connect-timeout 3 --max-time 10 http://{{ $.Release.Name }}-{{ .name }}:{{ $svcPort }}/health/ready
           echo ""
           echo "Testing A2A discovery for {{ .name }}..."
-          curl -sf --connect-timeout 3 --max-time 10 http://{{ $.Release.Name }}-{{ .name }}:{{ .port | default 8000 }}/.well-known/agent.json
+          curl -sf --connect-timeout 3 --max-time 10 http://{{ $.Release.Name }}-{{ .name }}:{{ $svcPort }}/.well-known/agent.json
           echo ""
           echo "Testing backend connectivity for {{ .name }}..."
-          agents=$(curl -sf --connect-timeout 3 --max-time 20 http://{{ $.Release.Name }}-{{ .name }}:{{ .port | default 8000 }}/agents)
+          agents=$(curl -sf --connect-timeout 3 --max-time 20 http://{{ $.Release.Name }}-{{ .name }}:{{ $svcPort }}/agents)
           echo "$agents"
           {{- range .backends }}
           {{- if eq (include "nyx.enabled" .) "true" }}
