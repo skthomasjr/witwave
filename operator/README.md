@@ -40,8 +40,8 @@ make run
 Build and push the manager image, then deploy it into the cluster:
 
 ```bash
-make docker-build docker-push IMG=<registry>/nyx-operator:<tag>
-make deploy IMG=<registry>/nyx-operator:<tag>
+make docker-build docker-push IMG=<registry>/operator:<tag>
+make deploy IMG=<registry>/operator:<tag>
 ```
 
 Apply the sample `NyxAgent`:

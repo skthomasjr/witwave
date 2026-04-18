@@ -63,7 +63,7 @@ kubectl delete crd nyxagents.nyx.ai
 
 | Parameter                    | Description                                                                                  | Default                                     |
 | ---------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| `image.repository`           | Controller manager image repository                                                          | `ghcr.io/skthomasjr/images/nyx-operator`    |
+| `image.repository`           | Controller manager image repository                                                          | `ghcr.io/skthomasjr/images/operator`        |
 | `image.tag`                  | Image tag (defaults to `.Chart.AppVersion`)                                                  | `""`                                        |
 | `image.pullPolicy`           | Image pull policy                                                                            | `IfNotPresent`                              |
 | `imagePullSecrets`           | Image pull secrets for the controller pod                                                    | `[]`                                        |

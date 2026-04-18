@@ -74,7 +74,7 @@ automatically on every release tag.
 | `codex`          | `ghcr.io/skthomasjr/images/codex:latest`          |
 | `gemini`         | `ghcr.io/skthomasjr/images/gemini:latest`         |
 | `dashboard`      | `ghcr.io/skthomasjr/images/dashboard:latest`      |
-| `nyx-operator`   | `ghcr.io/skthomasjr/images/nyx-operator:latest`   |
+| `operator`       | `ghcr.io/skthomasjr/images/operator:latest`       |
 | `git-sync`       | `ghcr.io/skthomasjr/images/git-sync:latest`       |
 | `mcp-kubernetes` | `ghcr.io/skthomasjr/images/mcp-kubernetes:latest` |
 | `mcp-helm`       | `ghcr.io/skthomasjr/images/mcp-helm:latest`       |

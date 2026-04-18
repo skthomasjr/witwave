@@ -31,7 +31,7 @@ jobs:
           - image: dashboard
             file: dashboard/Dockerfile
             context: .
-          - image: nyx-operator
+          - image: operator
             file: operator/Dockerfile
             context: operator
           - image: git-sync

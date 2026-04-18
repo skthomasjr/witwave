@@ -1,6 +1,6 @@
 # nyx-operator controller manager image.
 image:
-  repository: ghcr.io/skthomasjr/images/nyx-operator
+  repository: ghcr.io/skthomasjr/images/operator
   # Image tag. Defaults to .Chart.AppVersion when empty.
   tag: ""
   pullPolicy: IfNotPresent
