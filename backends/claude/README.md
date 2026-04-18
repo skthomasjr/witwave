@@ -21,7 +21,9 @@ utilization.
 request, so MCP servers can be added or reconfigured without restarting the container.
 
 **Tool tracing** — Every `tool_use` and `tool_result` event is captured from the SDK stream and written to `trace.jsonl`
-alongside summary response events. This gives full visibility into what tools Claude called and what they returned.
+alongside summary response events. `PostToolUse` hook rows land in the same file tagged
+`event_type: "tool_audit"`, giving operators one feed to tail for all tool activity (raw SDK events plus hook-level
+audit context like matched rule, decision, and response preview).
 
 **Model override** — The model used for a given request can be overridden via `metadata.model` in the A2A message.
 Resolution order: per-message metadata → routing config model → default model in `backend.yaml`.
@@ -37,8 +39,8 @@ token counts, context exhaustion events, tool call counts, MCP tool usage, and t
 **baseline** of deny rules ships with the executor and blocks the most obvious-dangerous shell patterns (`rm -rf /`,
 `git push --force main`, `curl | sh`, `chmod 777`, `dd of=/dev/sdX`). Per-agent **extensions** layered on top live in a
 `hooks.yaml` file mounted at `/home/agent/.claude/hooks.yaml` and are hot-reloaded. PostToolUse is always wired and
-writes one JSONL row per tool call to `logs/tool-audit.jsonl` for a forensic trail. See [Hook configuration](#hook-configuration)
-below.
+writes one row per tool call to `logs/trace.jsonl` with `event_type: "tool_audit"` for a forensic trail. See
+[Hook configuration](#hook-configuration) below.
 
 ## Endpoints
 
@@ -49,8 +51,7 @@ below.
 | `GET /health`                 | Health check                                                                                      |
 | `GET /metrics`                | Prometheus metrics                                                                                |
 | `GET /conversations`          | Conversation log (JSONL, filterable by `since`/`limit`)                                           |
-| `GET /trace`                  | Trace log (JSONL, filterable by `since`/`limit`)                                                  |
-| `GET /tool-audit`             | Tool-audit log (JSONL, filterable by `since`/`limit`/`decision`/`tool`/`session`) — dashboard viewer in #635. Requires `Authorization: Bearer $CONVERSATIONS_AUTH_TOKEN` (shared token gate with `/conversations`, `/trace`, `/mcp`) |
+| `GET /trace`                  | Tool-activity feed (JSONL, filterable by `since`/`limit`) — carries `tool_use`, `tool_result`, and `tool_audit` event types. Requires `Authorization: Bearer $CONVERSATIONS_AUTH_TOKEN` (shared token gate with `/conversations`, `/mcp`) |
 | `POST /mcp`                   | MCP JSON-RPC server (`initialize`, `tools/list`, `tools/call`); exposes a single `ask_agent` tool. Requires `Authorization: Bearer $CONVERSATIONS_AUTH_TOKEN` (#518) |
 
 ## Key files
@@ -102,8 +103,7 @@ slot id, e.g. `claude`), `AGENT_URL`, `BACKEND_PORT`, `ANTHROPIC_API_KEY` (or `C
 Claude Max), `CLAUDE_MODEL` (model override), `METRICS_ENABLED`, `CONVERSATIONS_AUTH_TOKEN`, `TASK_STORE_PATH`,
 `WORKER_MAX_RESTARTS`, `LOG_PROMPT_MAX_BYTES` (max bytes of prompt logged at INFO; default 200; set to 0 to suppress),
 `HOOKS_CONFIG_PATH` (path to `hooks.yaml`; default `/home/agent/.claude/hooks.yaml`), `HOOKS_BASELINE_ENABLED`
-(default `true`; set to `false` to disable the baseline deny rules), `TOOL_AUDIT_LOG` (path to the PostToolUse audit
-JSONL; default `/home/agent/logs/tool-audit.jsonl`).
+(default `true`; set to `false` to disable the baseline deny rules).
 
 ## Hook configuration
 
@@ -135,10 +135,13 @@ Each rule must have a `name` and exactly one of `deny_if_match` or `warn_if_matc
 serialisation of `tool_input`). Invalid rules are skipped with a warning; malformed YAML keeps the previous ruleset in
 place so an editing mistake cannot accidentally disable policy.
 
-**Audit log.** PostToolUse always writes one JSONL row per tool call to `TOOL_AUDIT_LOG` (default
-`/home/agent/logs/tool-audit.jsonl`) with fields: `ts`, `agent`, `agent_id`, `session_id`, `model`, `tool_use_id`,
-`tool_name`, `tool_input`, `tool_response_preview` (capped at 2 KiB). PostToolUse is not opt-outable — transparency
-is a guarantee, not a policy choice.
+**Audit log.** PostToolUse always appends one row per tool call to `TRACE_LOG` (default
+`/home/agent/logs/trace.jsonl`) tagged `event_type: "tool_audit"`, with fields: `ts`, `agent`, `agent_id`,
+`session_id`, `model`, `tool_use_id`, `tool_name`, `tool_input`, `tool_response_preview` (capped at 2 KiB), plus
+`decision`, `rule`, and `reason` when the hook blocked the call. The audit rows share a file with SDK `tool_use`
+and `tool_result` events so operators tail one feed for all tool activity; filter by `event_type` to isolate
+audit rows for SIEM/forensics. PostToolUse is not opt-outable — transparency is a guarantee, not a policy
+choice.
 
 **Metrics.** `backend_hooks_blocked_total{tool,source,rule}`, `backend_hooks_warnings_total{tool,source,rule}`,
 `backend_tool_audit_entries_total{tool}`, `backend_hooks_config_reloads_total`, and `backend_hooks_active_rules{source}`.

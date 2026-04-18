@@ -16,8 +16,7 @@ door, no cross-agent fan-out inside any one agent's pod.
 | Continuations     | Continues-after chains (jobs, triggers, other continuations)                     |
 | Heartbeat         | Per-agent heartbeat schedule + backend + model                                   |
 | Conversations     | Aggregated conversation log with agent/role/search/limit filters                 |
-| Trace             | Tool-use audit feed across the team (timestamp, tool, duration, status, input)   |
-| Tool audit        | Per-agent `tool-audit.jsonl` viewer (#635) with decision / tool / session filters; row click expands the raw JSON. URL-backed filters so links round-trip. |
+| Tool Trace        | Unified tool-activity feed across the team — tool_use rows paired with tool_result (duration/status) and folded with any matching tool_audit row (response preview, matched hook rule, `denied` status). Standalone audit rows surface hook-blocked calls that never produced a tool_use. Filter by agent, tool, status, or event type. |
 | OTel Traces       | Distributed trace viewer (#632): recent traces + span-tree drawer from an operator-configured Jaeger/Tempo HTTP API |
 | Metrics           | Label-breakdown bar/doughnut charts from each agent's /metrics                   |
 
