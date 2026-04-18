@@ -48,7 +48,7 @@ describe("ToolAuditView", () => {
           );
         }
         if (url.includes("/agents/bob/tool-audit")) {
-          // a2-claude-shaped row: ISO ts, tool_name, PostToolUse audit.
+          // claude-shaped row: ISO ts, tool_name, PostToolUse audit.
           return Promise.resolve(
             okJson([
               {
@@ -66,7 +66,7 @@ describe("ToolAuditView", () => {
           );
         }
         if (url.includes("/agents/fred/tool-audit")) {
-          // a2-codex-shaped row: numeric ts, tool + decision (deny).
+          // codex-shaped row: numeric ts, tool + decision (deny).
           return Promise.resolve(
             okJson([
               {

@@ -31,7 +31,7 @@ export interface ConversationEntry {
 }
 
 // Trace/tool-audit row emitted by backends and merged by the harness /trace
-// proxy (#592). Shape follows a2-claude/executor.py _log_tool_event: a
+// proxy (#592). Shape follows claude/executor.py _log_tool_event: a
 // tool_use event carries (id, name, input); the paired tool_result event
 // carries (tool_use_id, content, is_error). Other fields are shared.
 export interface TraceEntry {

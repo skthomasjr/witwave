@@ -622,7 +622,7 @@ type NyxAgentSpec struct {
 	// +optional
 	PodDisruptionBudget *PodDisruptionBudgetSpec `json:"podDisruptionBudget,omitempty"`
 
-	// Backends lists the backend sidecars (a2-claude, a2-codex, a2-gemini, …).
+	// Backends lists the backend sidecars (claude, codex, gemini, …).
 	// +kubebuilder:validation:MinItems=1
 	Backends []BackendSpec `json:"backends"`
 

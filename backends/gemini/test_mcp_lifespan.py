@@ -1,4 +1,4 @@
-"""Unit tests for a2-gemini MCP lifespan + AFC plumbing (#640).
+"""Unit tests for gemini MCP lifespan + AFC plumbing (#640).
 
 These tests stub out the external SDKs (``google-genai``, ``mcp``) and the
 a2a-sdk base classes so the executor module can be imported and exercised

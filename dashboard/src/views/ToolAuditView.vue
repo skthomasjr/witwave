@@ -86,7 +86,7 @@ function rowDecision(r: ToolAuditRow): string {
   return (r.decision || "").toLowerCase();
 }
 
-// Backends emit ts as either ISO-8601 (a2-claude) or epoch seconds (a2-codex).
+// Backends emit ts as either ISO-8601 (claude) or epoch seconds (codex).
 // Normalise to a millisecond number for sorting; render separately.
 function rowTimestampMs(r: ToolAuditRow): number {
   const t = r.ts;

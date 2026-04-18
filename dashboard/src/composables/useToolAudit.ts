@@ -14,7 +14,7 @@ export interface ToolAuditEntry {
   session_id?: string;
   model?: string;
   tool_use_id?: string;
-  // a2-claude writes tool_name; a2-codex writes tool. Expose both so the table
+  // claude writes tool_name; codex writes tool. Expose both so the table
   // stays honest instead of synthesising one.
   tool_name?: string;
   tool?: string;
