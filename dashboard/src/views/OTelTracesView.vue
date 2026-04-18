@@ -38,6 +38,7 @@ const {
   refreshList,
   loadDetail,
   clearDetail,
+  retryProbe,
 } = useOTelTraces({ limit: 20 });
 
 // Seed the service input from the composable's ref and keep them in sync —
@@ -148,7 +149,34 @@ const totalDuration = computed<number>(() => {
       </button>
     </div>
 
-    <div class="body">
+    <div v-if="!configured" class="state state-unconfigured" data-testid="otel-not-configured">
+      <h3>Trace viewer is not configured</h3>
+      <p>
+        No external trace backend is set and the in-cluster span source is not
+        reachable. The dashboard renders traces from one of two sources:
+      </p>
+      <ul>
+        <li>
+          <strong>External Jaeger / Tempo.</strong> Set
+          <code>VITE_TRACE_API_URL</code> at build time (or
+          <code>traceApiUrl</code> in the chart values) to point at your
+          collector's HTTP API.
+        </li>
+        <li>
+          <strong>In-cluster in-memory ring buffer.</strong> Ensure
+          <code>OTEL_IN_MEMORY_SPANS</code> is enabled on the backends and the
+          dashboard can reach <code>/api/team</code>. This path recovers
+          automatically once at least one backend responds.
+        </li>
+      </ul>
+      <p class="hint">
+        If you expect in-cluster mode to be active, the probe retries every
+        minute — or you can retry now.
+      </p>
+      <button class="btn" type="button" @click="retryProbe">Retry probe</button>
+    </div>
+
+    <div v-else class="body">
       <div class="list-pane" :class="{ 'has-detail': selectedId }">
         <div v-if="listLoading && list.length === 0" class="state">Loading…</div>
         <div v-else-if="listError && list.length === 0" class="state state-error">
