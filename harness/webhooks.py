@@ -29,6 +29,7 @@ import json
 import logging
 import os
 import re
+import socket
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -302,6 +303,19 @@ def _substitute_url(template: str, context: dict) -> str:
     return _VAR_RE.sub(_replacer, result)
 
 
+# Literal hostnames that always target loopback. Reject these outright in
+# _validate_url so a misconfigured or hostile resolver cannot let them
+# through by mapping to a non-loopback address (#654).
+_LOOPBACK_HOST_ALIASES = frozenset(
+    {
+        "localhost",
+        "localhost.localdomain",
+        "ip6-localhost",
+        "ip6-loopback",
+    }
+)
+
+
 def _host_is_private(host: str) -> bool:
     """Return True if host is an IP literal in a loopback/link-local/private/
     reserved range. Hostnames (non-IP) return False — DNS resolution is not
@@ -348,11 +362,39 @@ def _validate_url(url: str) -> str | None:
         host in _URL_ALLOWED_HOSTS or host_port in _URL_ALLOWED_HOSTS
     ):
         return None
+    # Reject known loopback aliases up front so a misconfigured resolver
+    # cannot let them through (#654).
+    if host in _LOOPBACK_HOST_ALIASES:
+        return (
+            f"host {host!r} is a loopback alias and is not in "
+            "WEBHOOK_URL_ALLOWED_HOSTS"
+        )
     if _host_is_private(host):
         return (
             f"host {host!r} is a loopback/link-local/private/reserved IP "
             "and is not in WEBHOOK_URL_ALLOWED_HOSTS"
         )
+    # Resolve the hostname and apply _host_is_private to each resolved
+    # address. Closes the SSRF gap where a DNS name (e.g. "localhost",
+    # "metadata.google.internal") mapped to a loopback/link-local/private
+    # address but the old string-only check let the URL through because
+    # ipaddress.ip_address(host) raised ValueError (#654).
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror as _dns_exc:
+        return f"host {host!r} failed DNS resolution: {_dns_exc}"
+    seen_addrs: set[str] = set()
+    for family, _type, _proto, _canon, sockaddr in infos:
+        addr = sockaddr[0] if sockaddr else ""
+        if not addr or addr in seen_addrs:
+            continue
+        seen_addrs.add(addr)
+        if _host_is_private(addr):
+            return (
+                f"host {host!r} resolves to {addr!r}, which is a "
+                "loopback/link-local/private/reserved IP and is not in "
+                "WEBHOOK_URL_ALLOWED_HOSTS"
+            )
     return None
 
 
