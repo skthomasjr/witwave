@@ -1203,12 +1203,34 @@ async def main():
         executor.track_background(_fire(), source="adhoc-task-fire")
         return delivery_id
 
+    def _adhoc_warmup_shield(kind: str, name: str) -> JSONResponse | None:
+        """Return 503+Retry-After when ad-hoc runs race the warmup gate (#925).
+
+        /triggers already had this shield (#785); the ad-hoc run endpoints
+        added in #788 bypassed it so an operator smoke-test during pod
+        warmup produced spurious 503s downstream and a confusing audit
+        trail. Applied uniformly to /jobs/{n}/run, /tasks/{n}/run, and
+        /heartbeat/run so all ad-hoc dispatch paths surface the same
+        structured 503 as external triggers.
+        """
+        if backends_ready.is_set():
+            return None
+        if harness_adhoc_fires_total is not None:
+            harness_adhoc_fires_total.labels(kind=kind, name=name, code="503").inc()
+        return JSONResponse(
+            {"error": "backends not ready", "kind": kind, "name": name},
+            status_code=503,
+            headers={"Retry-After": "5"},
+        )
+
     async def jobs_run_handler(request: Request) -> JSONResponse:
         name = request.path_params["name"]
         if not _check_adhoc_auth(request):
             if harness_adhoc_fires_total is not None:
                 harness_adhoc_fires_total.labels(kind="job", name=name, code="401").inc()
             return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if (resp := _adhoc_warmup_shield("job", name)) is not None:
+            return resp
         if not await _drain_adhoc_body(request):
             if harness_adhoc_fires_total is not None:
                 harness_adhoc_fires_total.labels(kind="job", name=name, code="413").inc()
@@ -1242,6 +1264,8 @@ async def main():
             if harness_adhoc_fires_total is not None:
                 harness_adhoc_fires_total.labels(kind="task", name=name, code="401").inc()
             return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if (resp := _adhoc_warmup_shield("task", name)) is not None:
+            return resp
         if not await _drain_adhoc_body(request):
             if harness_adhoc_fires_total is not None:
                 harness_adhoc_fires_total.labels(kind="task", name=name, code="413").inc()
@@ -1274,6 +1298,8 @@ async def main():
             if harness_adhoc_fires_total is not None:
                 harness_adhoc_fires_total.labels(kind="heartbeat", name="heartbeat", code="401").inc()
             return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if (resp := _adhoc_warmup_shield("heartbeat", "heartbeat")) is not None:
+            return resp
         if not await _drain_adhoc_body(request):
             if harness_adhoc_fires_total is not None:
                 harness_adhoc_fires_total.labels(kind="heartbeat", name="heartbeat", code="413").inc()
