@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/tls"
 	"flag"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -325,6 +326,33 @@ func main() {
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
+	}
+
+	// When webhooks are enabled, gate readyz on the cert pair actually
+	// being on disk (#750). Chart rollouts that land
+	// Mutating/ValidatingWebhookConfiguration with failurePolicy=Fail
+	// before the operator pod has a mounted cert would otherwise cause
+	// cluster-wide NyxAgent CRUD rejections: the Service endpoint is
+	// healthy (readyz returns 200 via healthz.Ping) so the apiserver
+	// routes admission calls to the pod, which then TLS-errors because
+	// the serving cert is missing. Holding readyz at 503 until both
+	// tls.crt and tls.key exist keeps the Service endpoint out of the
+	// kube-proxy rotation until the webhook server can actually answer.
+	if len(webhookCertPath) > 0 {
+		certFile := filepath.Join(webhookCertPath, webhookCertName)
+		keyFile := filepath.Join(webhookCertPath, webhookCertKey)
+		if err := mgr.AddReadyzCheck("webhook-cert", func(_ *http.Request) error {
+			if _, err := os.Stat(certFile); err != nil {
+				return err
+			}
+			if _, err := os.Stat(keyFile); err != nil {
+				return err
+			}
+			return nil
+		}); err != nil {
+			setupLog.Error(err, "unable to set up webhook cert ready check")
+			os.Exit(1)
+		}
 	}
 
 	setupLog.Info("starting manager")
