@@ -267,13 +267,21 @@ def _redact_manifest(manifest: str) -> str:
 
     Parses each YAML doc; when kind == Secret, replaces data/stringData
     values with ``_REDACTED``. Non-Secret docs pass through unchanged.
-    Falls back to the raw manifest on parse failure so operators don't
-    lose visibility into malformed templates.
+    On YAML parse failure, returns a redacted placeholder — previously
+    the raw manifest was returned "for visibility", which leaked Secret
+    contents whenever helm emitted a malformed template (trailing tab,
+    CRLF in a block scalar, pre-substitution helm partials, etc.)
+    (#918). Operators still see the failure mode in the placeholder
+    without the Secret payload.
     """
     try:
         docs = list(yaml.safe_load_all(manifest))
-    except Exception:
-        return manifest
+    except Exception as _parse_exc:
+        return (
+            "# manifest redacted: failed to parse as YAML "
+            f"({type(_parse_exc).__name__}) — raw output suppressed to "
+            "avoid leaking Secret contents (#918).\n"
+        )
     out_docs: list[Any] = []
     for doc in docs:
         if isinstance(doc, dict) and doc.get("kind") == "Secret":
