@@ -78,6 +78,37 @@ interface NyxRuntimeConfig {
   traceApiUrl?: string;
 }
 
+// Validate a candidate trace backend URL via `new URL()` and a protocol
+// allow-list (#740). A mis-set runtime config that pointed at, say,
+// `javascript:` or `file:` would otherwise be sent to `fetch()` and leak
+// traceIds/service names (or worse, be coerced by a credulous browser).
+// Returns the trimmed URL string when safe, null when not. Kept exported
+// at module scope so a future unit test can cover it directly.
+function validateTraceBaseUrl(raw: string | undefined | null): string | null {
+  if (typeof raw !== "string" || raw.length === 0) return null;
+  const trimmed = raw.replace(/\/+$/, "");
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[nyx] traceApiUrl rejected: not a valid absolute URL:",
+      trimmed,
+    );
+    return null;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[nyx] traceApiUrl rejected: protocol ${parsed.protocol} not in {http:, https:}`,
+      trimmed,
+    );
+    return null;
+  }
+  return trimmed;
+}
+
 function resolveBaseUrl(): string | null {
   // Runtime override wins so operators can change the backend without a
   // rebuild. Kept optional: when nginx hasn't injected anything we fall
@@ -86,12 +117,17 @@ function resolveBaseUrl(): string | null {
   const runtime = (window as unknown as { __NYX_CONFIG__?: NyxRuntimeConfig })
     .__NYX_CONFIG__;
   if (runtime && typeof runtime.traceApiUrl === "string" && runtime.traceApiUrl) {
-    return runtime.traceApiUrl.replace(/\/+$/, "");
+    const safe = validateTraceBaseUrl(runtime.traceApiUrl);
+    if (safe !== null) return safe;
+    // Fall through to build-time when the runtime value is rejected.
   }
   const env = (import.meta as unknown as { env?: Record<string, string | undefined> })
     .env;
   const build = env?.VITE_TRACE_API_URL;
-  if (build && build.length > 0) return build.replace(/\/+$/, "");
+  if (build && build.length > 0) {
+    const safe = validateTraceBaseUrl(build);
+    if (safe !== null) return safe;
+  }
   return null;
 }
 
