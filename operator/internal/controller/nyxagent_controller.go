@@ -556,6 +556,7 @@ func (r *NyxAgentReconciler) reconcileManifestConfigMap(ctx context.Context, age
 	}
 
 	var members []manifestMember
+	var memberAgents []*nyxv1alpha1.NyxAgent
 	for i := range allAgents.Items {
 		a := &allAgents.Items[i]
 		// Skip agents being deleted and agents explicitly disabled —
@@ -577,13 +578,21 @@ func (r *NyxAgentReconciler) reconcileManifestConfigMap(ctx context.Context, age
 			port = 8000
 		}
 		members = append(members, manifestMember{Name: a.Name, Port: port})
+		memberAgents = append(memberAgents, a)
 	}
 
-	desired, desiredHash := buildManifestConfigMap(agent, members)
+	// Shared-CM ownership (#684): the manifest CM carries one
+	// non-controller OwnerReference per live team member, not a single
+	// controller ref on `agent`. This way K8s garbage collection only
+	// removes the CM when the LAST team member is deleted — surviving
+	// pods keep their mount through any intermediate membership churn.
+	//
+	// Upgrade path: existing clusters whose CM still carries the old
+	// single controller ref get converged to the new shape on the next
+	// reconcile write, because we overwrite `existing.OwnerReferences`
+	// from `desired.OwnerReferences` below.
+	desired, desiredHash := buildManifestConfigMap(agent, memberAgents, members)
 	span.SetAttributes(attribute.Int("nyx.members.count", len(members)))
-	if err := controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
-		return fmt.Errorf("set owner on manifest ConfigMap: %w", err)
-	}
 
 	existing := &corev1.ConfigMap{}
 	err = r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
@@ -596,10 +605,10 @@ func (r *NyxAgentReconciler) reconcileManifestConfigMap(ctx context.Context, age
 	}
 
 	// Hash short-circuit: if the already-stored CM carries the same
-	// content hash, do nothing. This keeps the CM stable across
-	// reconciles that don't change team membership and avoids the
-	// kubelet's ~1 minute ConfigMap-refresh cycle firing on every
-	// pod in the team for no reason.
+	// content hash, do nothing. The hash input now includes the sorted
+	// set of owner UIDs, so a membership change that coincidentally
+	// leaves the rendered JSON unchanged still forces a refresh of the
+	// owner refs.
 	if existing.Annotations[manifestHashAnnotation] == desiredHash {
 		return nil
 	}
@@ -608,6 +617,11 @@ func (r *NyxAgentReconciler) reconcileManifestConfigMap(ctx context.Context, age
 	}
 	existing.Annotations[manifestHashAnnotation] = desiredHash
 	existing.Labels = desired.Labels
+	// Converge ownerRefs to the desired multi-owner shape. This is the
+	// critical write for migrating off the legacy single-controller
+	// shape — we replace the whole slice rather than appending so any
+	// stale ref (e.g. pointing at a deleted agent's UID) is dropped.
+	existing.OwnerReferences = desired.OwnerReferences
 	existing.Data = desired.Data
 	return r.Update(ctx, existing)
 }

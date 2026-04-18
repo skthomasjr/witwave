@@ -1737,20 +1737,38 @@ func manifestContentHash(body string) string {
 const manifestHashAnnotation = "nyx.ai/manifest-hash"
 
 // buildManifestConfigMap assembles the per-team manifest ConfigMap
-// covering the given members. `ownerAgent` is the NyxAgent whose
-// reconcile is producing the CM — it becomes the controller owner so
-// OwnerReferences GC still works when the last team member is
-// deleted. Returns the CM plus the hex hash so the caller can
-// annotate + compare.
-func buildManifestConfigMap(ownerAgent *nyxv1alpha1.NyxAgent, members []manifestMember) (*corev1.ConfigMap, string) {
+// covering the given members. `ownerAgent` supplies the namespace and
+// team key; `memberAgents` are all CURRENT live NyxAgent members of
+// that team, which the CM records as **non-controller** OwnerReferences
+// so Kubernetes garbage collection only removes the CM when every team
+// member has been deleted (#684).
+//
+// Prior implementations set a single controller OwnerReference pointing
+// at whichever agent's reconcile happened to create the CM. Deleting
+// that one agent then triggered cascade GC on the shared CM — breaking
+// mounts on every surviving pod until another reconcile could rebuild
+// it. Switching to multi-owner non-controller refs keeps K8s's GC
+// semantics correct: the CM survives until its LAST owner is removed.
+//
+// The returned hash covers both the JSON body AND the set of owner
+// UIDs so the reconciler's short-circuit still fires on membership
+// changes that leave the rendered JSON identical (e.g. a rename that
+// coincidentally produces the same set of entries).
+func buildManifestConfigMap(
+	ownerAgent *nyxv1alpha1.NyxAgent,
+	memberAgents []*nyxv1alpha1.NyxAgent,
+	members []manifestMember,
+) (*corev1.ConfigMap, string) {
 	body := buildManifestJSON(members)
-	hash := manifestContentHash(body)
+	ownerRefs := buildManifestOwnerRefs(memberAgents)
+	hash := manifestContentHash(body + manifestOwnerRefsHashInput(ownerRefs))
 	team := teamKey(ownerAgent)
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      manifestConfigMapName(ownerAgent),
-			Namespace: ownerAgent.Namespace,
-			Labels:    manifestLabels(team),
+			Name:            manifestConfigMapName(ownerAgent),
+			Namespace:       ownerAgent.Namespace,
+			Labels:          manifestLabels(team),
+			OwnerReferences: ownerRefs,
 			Annotations: map[string]string{
 				manifestHashAnnotation: hash,
 			},
@@ -1761,16 +1779,69 @@ func buildManifestConfigMap(ownerAgent *nyxv1alpha1.NyxAgent, members []manifest
 	}, hash
 }
 
+// buildManifestOwnerRefs returns one non-controller OwnerReference per
+// live team member. Entries are sorted by UID for stable ordering so the
+// hash short-circuit is deterministic. Agents without a UID (e.g. not
+// yet persisted) are skipped — they'll get their ref on the next
+// reconcile after the apiserver assigns the UID.
+func buildManifestOwnerRefs(agents []*nyxv1alpha1.NyxAgent) []metav1.OwnerReference {
+	refs := make([]metav1.OwnerReference, 0, len(agents))
+	for _, a := range agents {
+		if a == nil || a.UID == "" {
+			continue
+		}
+		no, block := false, false
+		refs = append(refs, metav1.OwnerReference{
+			APIVersion:         nyxv1alpha1.GroupVersion.String(),
+			Kind:               "NyxAgent",
+			Name:               a.Name,
+			UID:                a.UID,
+			Controller:         &no,
+			BlockOwnerDeletion: &block,
+		})
+	}
+	sort.Slice(refs, func(i, j int) bool { return refs[i].UID < refs[j].UID })
+	return refs
+}
+
+// manifestOwnerRefsHashInput renders owner refs deterministically so the
+// content-hash short-circuit detects membership-only edits that don't
+// change the rendered JSON.
+func manifestOwnerRefsHashInput(refs []metav1.OwnerReference) string {
+	if len(refs) == 0 {
+		return "|"
+	}
+	var b strings.Builder
+	b.WriteString("|owners=")
+	for i, r := range refs {
+		if i > 0 {
+			b.WriteString(",")
+		}
+		b.WriteString(string(r.UID))
+	}
+	return b.String()
+}
+
 // manifestVolumeAndMount returns the pod Volume + harness VolumeMount
 // that surface the per-team manifest CM at the path the chart uses.
 // Always attached — an empty CM still renders a valid `{"team": []}`
 // payload, so the harness's startup parse never breaks.
+//
+// The ConfigMap volume is marked Optional so a brief absence of the
+// team-wide manifest CM (e.g. the moment after a single-member team's
+// sole agent is deleted and the CM is GC'd, or during the upgrade from
+// the old controller-owner shape to the multi-owner shape (#684))
+// doesn't block kubelet from launching the pod. The harness opens the
+// manifest file defensively and tolerates a missing path as "empty
+// team", so an optional mount is strictly safer than a required one.
 func manifestVolumeAndMount(cmName string) (corev1.Volume, corev1.VolumeMount) {
+	optional := true
 	return corev1.Volume{
 			Name: manifestVolumeName,
 			VolumeSource: corev1.VolumeSource{
 				ConfigMap: &corev1.ConfigMapVolumeSource{
 					LocalObjectReference: corev1.LocalObjectReference{Name: cmName},
+					Optional:             &optional,
 				},
 			},
 		}, corev1.VolumeMount{
