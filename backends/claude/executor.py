@@ -103,6 +103,11 @@ from metrics import (
 )
 from watchfiles import awatch
 from log_utils import _append_log
+from tool_audit import (  # type: ignore
+    ToolAuditContext as _ToolAuditContext,
+    ToolAuditMetrics as _ToolAuditMetrics,
+    log_tool_audit as _shared_log_tool_audit,
+)
 from redact import redact_text, should_redact
 from exceptions import BudgetExceededError
 from validation import sanitize_model_label
@@ -572,34 +577,29 @@ async def log_trace(text: str) -> None:
 
 
 async def log_tool_audit(entry: dict) -> None:
-    """Append one audit row to ``tool-activity.jsonl`` with event_type='tool_audit'.
+    """Append one audit row via the shared helper (#858).
 
-    Previously this wrote to a separate ``tool-audit.jsonl`` file; the two
-    feeds were consolidated so one endpoint (``/trace``) carries both
-    SDK-level tool events and hook-level audit rows. Readers filter by
-    ``event_type``. Errors are logged but never raised — audit failure
-    must not break the agent's primary response path.
+    Delegates to ``shared/tool_audit.py::log_tool_audit`` so claude and
+    codex converge on one async implementation with identical row shape,
+    metric bookkeeping, and error handling. Previously this wrote to a
+    separate ``tool-audit.jsonl`` file; the two feeds were consolidated
+    so one endpoint (``/trace``) carries both SDK-level tool events and
+    hook-level audit rows. Readers filter by ``event_type``.
     """
-    try:
-        # Stamp the shared discriminator so downstream filters (dashboard
-        # "Tool Activity" tab, SIEM exports) can separate audit rows from
-        # raw SDK tool_use/tool_result events.
-        entry = {**entry, "event_type": "tool_audit"}
-        line = json.dumps(entry, default=str)
-        await asyncio.to_thread(_append_log, TRACE_LOG, line)
-        if backend_tool_audit_entries_total is not None:
-            _tool = entry.get("tool_name") or "unknown"
-            backend_tool_audit_entries_total.labels(**_LABELS, tool=_tool).inc()
-        if backend_log_entries_total is not None:
-            backend_log_entries_total.labels(**_LABELS, logger="trace").inc()
-        if backend_log_bytes_total is not None:
-            backend_log_bytes_total.labels(**_LABELS, logger="trace").inc(_utf8_byte_length(line))
-    except Exception as e:
-        if backend_log_write_errors_total is not None:
-            backend_log_write_errors_total.labels(**_LABELS).inc()
-        if backend_log_write_errors_by_logger_total is not None:
-            backend_log_write_errors_by_logger_total.labels(**_LABELS, logger="trace").inc()
-        logger.error(f"log_tool_audit error: {e}")
+    await _shared_log_tool_audit(
+        _ToolAuditContext(
+            trace_log_path=TRACE_LOG,
+            labels=_LABELS,
+            metrics=_ToolAuditMetrics(
+                tool_audit_entries_total=backend_tool_audit_entries_total,
+                log_entries_total=backend_log_entries_total,
+                log_bytes_total=backend_log_bytes_total,
+                log_write_errors_total=backend_log_write_errors_total,
+                log_write_errors_by_logger_total=backend_log_write_errors_by_logger_total,
+            ),
+        ),
+        entry,
+    )
 
 
 # Per-loop httpx.AsyncClient registry (#716). Keyed by id(loop) so the

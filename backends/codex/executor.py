@@ -86,6 +86,11 @@ from metrics import (
 )
 
 from log_utils import _append_log
+from tool_audit import (  # type: ignore
+    ToolAuditContext as _ToolAuditContext,
+    ToolAuditMetrics as _ToolAuditMetrics,
+    log_tool_audit as _shared_log_tool_audit,
+)
 from exceptions import BudgetExceededError
 from validation import parse_max_tokens, sanitize_model_label
 from otel import start_span, set_span_error
@@ -268,45 +273,29 @@ def _evaluate_shell_baseline(cmd_parts: list[str]) -> tuple[str, str] | None:
     return None
 
 
-def _append_tool_audit(entry: dict) -> None:
-    """Append an ``event_type='tool_audit'`` row to TRACE_LOG; swallow errors.
+async def _append_tool_audit(entry: dict) -> None:
+    """Append an ``event_type='tool_audit'`` row via the shared helper (#858).
 
-    Consolidated with SDK tool events into a single tool-activity.jsonl so
-    downstream UIs can render a single "Tool Activity" feed. Mirrors
-    claude's audit shape: one JSON object per line with a monotonic
-    timestamp, tool name, decision (allow|deny), command, and reason
-    when denied. Best-effort — a full disk or missing parent dir must
-    not block the tool call.
-
-    Routed through ``log_utils._append_log`` (#721) so audit rows share
-    the fcntl lock + rotation with ``log_trace`` writes.  The previous
-    direct ``open(..., "a")`` had two failure modes under load: torn
-    lines when an audit write interleaved with a log_trace write on the
-    same fd, and unbounded file growth because rotation only fires
-    inside ``_append_log``.  The helper is synchronous — audit is
-    already on a best-effort fire-and-forget path so the tiny fcntl
-    wait under contention is acceptable.
+    Delegates to ``shared/tool_audit.py::log_tool_audit`` so the codex and
+    claude write paths converge on one implementation: async via
+    ``asyncio.to_thread`` over ``_append_log`` (fcntl lock + rotation),
+    with the same metric bookkeeping, same error swallowing, and identical
+    row shape (``event_type`` stamp + JSON serialisation).
     """
-    try:
-        row = {**entry, "event_type": "tool_audit"}
-        _append_log(TRACE_LOG, json.dumps(row))
-    except Exception:
-        if backend_log_write_errors_total is not None:
-            try:
-                backend_log_write_errors_total.labels(**_LABELS).inc()
-            except Exception:
-                pass
-        if backend_log_write_errors_by_logger_total is not None:
-            try:
-                backend_log_write_errors_by_logger_total.labels(**_LABELS, logger="tool_audit").inc()
-            except Exception:
-                pass
-    tool = str(entry.get("tool") or "")
-    if backend_tool_audit_entries_total is not None:
-        try:
-            backend_tool_audit_entries_total.labels(**_LABELS, tool=tool).inc()
-        except Exception:
-            pass
+    await _shared_log_tool_audit(
+        _ToolAuditContext(
+            trace_log_path=TRACE_LOG,
+            labels=_LABELS,
+            metrics=_ToolAuditMetrics(
+                tool_audit_entries_total=backend_tool_audit_entries_total,
+                log_entries_total=backend_log_entries_total,
+                log_bytes_total=backend_log_bytes_total,
+                log_write_errors_total=backend_log_write_errors_total,
+                log_write_errors_by_logger_total=backend_log_write_errors_by_logger_total,
+            ),
+        ),
+        entry,
+    )
 
 
 class ShellBlockedError(RuntimeError):
@@ -355,7 +344,7 @@ async def _shell_executor_inner(req: LocalShellCommandRequest) -> str:
                 backend_codex_hooks_denials_total.labels(**_LABELS, rule=rule).inc()
             except Exception:
                 pass
-        _append_tool_audit({
+        await _append_tool_audit({
             "ts": time.time(),
             "tool": "LocalShell",
             "decision": "deny",
@@ -372,7 +361,7 @@ async def _shell_executor_inner(req: LocalShellCommandRequest) -> str:
         )
 
     # Audit allowed commands too so the log is a complete forensic trail.
-    _append_tool_audit({
+    await _append_tool_audit({
         "ts": time.time(),
         "tool": "LocalShell",
         "decision": "allow",
