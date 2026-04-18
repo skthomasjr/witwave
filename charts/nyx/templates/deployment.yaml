@@ -226,7 +226,7 @@ spec:
           env:
             - name: AGENT_NAME
               value: {{ .name }}
-            - name: AGENT_PORT
+            - name: HARNESS_PORT
               value: {{ .port | default 8000 | quote }}
             - name: METRICS_ENABLED
               value: {{ (.metrics).enabled | default $.Values.metrics.enabled | toString | quote }}

@@ -41,7 +41,7 @@ RUN mkdir -p /home/agent/.nyx /home/agent/workspace
 WORKDIR /home/agent/workspace
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:${AGENT_PORT:-8000}/health/live || exit 1
+    CMD curl -f http://localhost:${HARNESS_PORT:-8000}/health/live || exit 1
 
 EXPOSE 8000
 

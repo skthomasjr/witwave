@@ -88,9 +88,9 @@ install_trace_id_log_filter()
 logger = logging.getLogger(__name__)
 
 AGENT_NAME = os.environ.get("AGENT_NAME", "nyx")
-AGENT_HOST = os.environ.get("AGENT_HOST", "0.0.0.0")
-AGENT_PORT = int(os.environ.get("AGENT_PORT", "8000"))
-AGENT_URL = os.environ.get("AGENT_URL", f"http://localhost:{AGENT_PORT}/")
+HARNESS_HOST = os.environ.get("HARNESS_HOST", "0.0.0.0")
+HARNESS_PORT = int(os.environ.get("HARNESS_PORT", "8000"))
+HARNESS_URL = os.environ.get("HARNESS_URL", f"http://localhost:{HARNESS_PORT}/")
 AGENT_VERSION = os.environ.get("AGENT_VERSION", "0.1.0")
 metrics_enabled = bool(os.environ.get("METRICS_ENABLED"))
 WORKER_MAX_RESTARTS = int(os.environ.get("WORKER_MAX_RESTARTS", "5"))
@@ -290,7 +290,7 @@ def build_agent_card() -> AgentCard:
     return AgentCard(
         name=AGENT_NAME,
         description=load_agent_description(),
-        url=AGENT_URL,
+        url=HARNESS_URL,
         version=AGENT_VERSION,
         capabilities=AgentCapabilities(streaming=True),
         default_input_modes=["text/plain"],
@@ -658,7 +658,7 @@ async def main():
         own_card = build_agent_card()
         agents = [{
             "id": AGENT_NAME,
-            "url": AGENT_URL,
+            "url": HARNESS_URL,
             "role": "nyx",
             "card": own_card.model_dump() if hasattr(own_card, "model_dump") else vars(own_card),
         }]
@@ -1313,8 +1313,8 @@ async def main():
         ],
     )
 
-    logger.info(f"Starting {AGENT_NAME} on {AGENT_HOST}:{AGENT_PORT}")
-    config = uvicorn.Config(full_app, host=AGENT_HOST, port=AGENT_PORT)
+    logger.info(f"Starting {AGENT_NAME} on {HARNESS_HOST}:{HARNESS_PORT}")
+    config = uvicorn.Config(full_app, host=HARNESS_HOST, port=HARNESS_PORT)
     server = uvicorn.Server(config)
 
     executor.set_continuation_runner(continuation_runner, bus)

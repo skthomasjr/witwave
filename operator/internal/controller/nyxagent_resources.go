@@ -562,7 +562,7 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string, prompts []n
 		},
 		Env: append([]corev1.EnvVar{
 			{Name: "AGENT_NAME", Value: agent.Name},
-			{Name: "AGENT_PORT", Value: fmt.Sprintf("%d", harnessPort)},
+			{Name: "HARNESS_PORT", Value: fmt.Sprintf("%d", harnessPort)},
 			{Name: "METRICS_ENABLED", Value: metricsEnabledValue(agent)},
 		}, agent.Spec.Env...),
 		EnvFrom:   agent.Spec.EnvFrom,
