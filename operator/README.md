@@ -2,7 +2,7 @@
 
 A Kubernetes operator for the nyx platform. Provides the `NyxAgent` custom
 resource, which deploys one named agent — a harness orchestrator plus one
-or more backend sidecars (a2-claude, a2-codex, a2-gemini) — as a
+or more backend sidecars (claude, codex, gemini) — as a
 `Deployment` + `Service` + optional `ConfigMap`, `HPA`, `PDB`, and `PVC`.
 
 Built with Operator SDK v1.42 (Go). Mirrors the deployment shape of the

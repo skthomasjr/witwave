@@ -15,7 +15,7 @@ about: A missing capability, coverage hole, or unimplemented requirement that le
 
 **Skill:** <skill name> v<skill version>
 
-**Component:** harness | a2-claude | a2-codex | a2-gemini | ui | operator | charts | _(leave blank if cross-cutting or other)_
+**Component:** harness | claude | codex | gemini | ui | operator | charts | _(leave blank if cross-cutting or other)_
 
 **Category:** functionality | coverage | consistency | integration | observability
 

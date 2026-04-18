@@ -40,7 +40,7 @@ For each feature, establish:
 
 - **What** — what capability is being added and what it does
 - **Value** — why this is worth building; what problem it solves or what it enables, grounded in what the requester said
-- **Component** — which part of the system this touches (harness, a2-claude, a2-codex, a2-gemini, ui, operator, charts, or cross-cutting)
+- **Component** — which part of the system this touches (harness, claude, codex, gemini, ui, operator, charts, or cross-cutting)
 - **Design** — a suggested implementation approach based on how the codebase currently works; not a full spec, but enough to orient whoever picks it up
 - **Dependencies** — any other features or existing issues that must be resolved first
 

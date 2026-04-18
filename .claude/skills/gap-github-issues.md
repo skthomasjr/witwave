@@ -42,7 +42,7 @@ Once the body is ready, derive labels from the body fields:
 - **Priority** — from `**Priority:**`; must be one of `critical`, `high`, `medium`, `low` (required; default to `medium` if not supplied)
 - **Status** — from `**Status:**`; must be one of `pending`, `approved`, `in-progress`, `needs-more-info`, `implemented`, `wont-fix` (required; default to `pending` if not supplied)
 - **Category** — from `**Category:**`; must be one of `functionality`, `coverage`, `consistency`, `integration`, `observability` (required)
-- **Component** — from `**Component:**`; apply only if it is a known component (`harness`, `a2-claude`, `a2-codex`, `a2-gemini`, `ui`, `operator`, `charts`); omit if cross-cutting or blank (optional)
+- **Component** — from `**Component:**`; apply only if it is a known component (`harness`, `claude`, `codex`, `gemini`, `ui`, `operator`, `charts`); omit if cross-cutting or blank (optional)
 
 ```bash
 gh issue create --title "<title>" --body "<body>" --label "gap" --label "<priority>" --label "<status>" --label "<category>" [--label "<component>"]
