@@ -522,11 +522,43 @@ class AgentExecutor(A2AAgentExecutor):
         single stuck coroutine from pinning memory forever (#549).
 
         Returns the scheduled task, or ``None`` if the task was shed.
+
+        Shed policy is source-priority aware (#706): sources classed as
+        "critical" (webhook retries, continuation fan-outs) may exceed
+        the standard cap up to BACKGROUND_TASKS_CRITICAL_MAX so a
+        burst of A2A traffic cannot silently drop webhook deliveries.
+        Non-critical sources are shed at the lower cap. Every shed
+        decision is logged with both the shed source and the currently
+        occupying sources so operators can see which callers are
+        starving the bucket.
         """
-        if len(self._background_tasks) >= BACKGROUND_TASKS_MAX:
+        # Sources whose work represents durable at-most-once delivery
+        # semantics — losing them drops data that can't be recovered
+        # from a retry/reconcile loop. The default covers webhooks
+        # (incl. hook.decision) and continuations; other sources can be
+        # promoted via BACKGROUND_TASK_CRITICAL_SOURCES (comma-separated).
+        _critical_env = os.environ.get(
+            "BACKGROUND_TASK_CRITICAL_SOURCES",
+            "webhook,webhook_retry,hook_decision,continuation",
+        )
+        _critical_sources = {s.strip() for s in _critical_env.split(",") if s.strip()}
+        _critical_cap = int(os.environ.get(
+            "BACKGROUND_TASKS_CRITICAL_MAX",
+            str(BACKGROUND_TASKS_MAX * 2),
+        ))
+        is_critical = source in _critical_sources
+        effective_cap = _critical_cap if is_critical else BACKGROUND_TASKS_MAX
+        if len(self._background_tasks) >= effective_cap:
+            # Emit a distribution of currently-occupying sources so the
+            # operator can see which caller is starving the bucket.
+            _occupants: dict[str, int] = {}
+            for t in self._background_tasks:
+                tname = (t.get_name() or "").removeprefix("bg-")
+                _occupants[tname] = _occupants.get(tname, 0) + 1
             logger.warning(
-                "track_background: shedding %r task (in-flight=%d, cap=%d)",
-                source, len(self._background_tasks), BACKGROUND_TASKS_MAX,
+                "track_background: shedding %r task (in-flight=%d, cap=%d, critical=%s, occupants=%s)",
+                source, len(self._background_tasks), effective_cap, is_critical,
+                _occupants,
             )
             if harness_background_tasks_shed_total is not None:
                 harness_background_tasks_shed_total.labels(source=source).inc()
