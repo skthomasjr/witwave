@@ -96,15 +96,30 @@ def test_redact_values_masks_secret_valued_keys():
         "nested": {"credentials": {"password": "pw", "username": "u"}},
     }
     out = server._redact_values(src)
-    # "apiAuth" itself contains the "auth" substring hint, so the whole
-    # value (including the nested dict) is replaced wholesale — the
-    # redactor is intentionally conservative ("leaf value OR whole
-    # subtree under a secret-named key is replaced"). This captures the
-    # actual behaviour rather than wishful leaf-only redaction.
-    assert out["apiAuth"] == server._REDACTED
+    # Post-#1033 — container values under a secret-named key are
+    # recursed rather than wholesale-replaced so benign siblings
+    # (``username``) survive. Leaf scalars whose parent key matched a
+    # secret hint are still masked.
+    assert out["apiAuth"]["token"] == server._REDACTED
+    assert out["apiAuth"]["authToken"] == server._REDACTED
     assert out["replicaCount"] == 2  # untouched
-    # "credentials" likewise is a secret-named key; subtree is replaced.
-    assert out["nested"]["credentials"] == server._REDACTED
+    # credentials.password is redacted; credentials.username survives.
+    assert out["nested"]["credentials"]["password"] == server._REDACTED
+    assert out["nested"]["credentials"]["username"] == "u"
+
+
+def test_redact_values_preserves_non_secret_siblings_under_matched_container(
+):
+    """When the parent key matches a hint (``auth``) but the container
+    mixes sensitive and benign children (``url``, ``method``), the
+    benign siblings must survive — otherwise operators are forced into
+    redact=False to see config, which is strictly worse security
+    (#1033)."""
+    src = {"auth": {"url": "https://example.invalid", "method": "basic", "password": "p"}}
+    out = server._redact_values(src)
+    assert out["auth"]["url"] == "https://example.invalid"
+    assert out["auth"]["method"] == "basic"
+    assert out["auth"]["password"] == server._REDACTED
 
 
 def test_redact_values_does_leaf_redaction_when_key_is_secret_named_but_value_is_scalar():

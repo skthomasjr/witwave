@@ -274,17 +274,28 @@ def _looks_like_secret_key(key: str) -> bool:
 def _redact_values(obj: Any) -> Any:
     """Recursively redact values whose keys match _SECRET_KEY_HINTS (#774).
 
-    Leaves non-matching keys untouched. Lists/tuples are recursed into
-    with the parent key preserved (so a list of token-ish strings under
-    a matching key is redacted). The returned tree is a fresh structure
-    — original input is not mutated.
+    When a secret-named key holds a scalar (``password: hunter2``), the
+    value is replaced with ``_REDACTED``. When it holds a container
+    (``auth: {url, method, password}``), the container is recursed
+    rather than wholesale-replaced so benign siblings (``url``,
+    ``method``) stay visible to the LLM — prior behaviour forced
+    operators into ``redact=False`` to see config, which is strictly
+    worse security (#1033). Only scalar leaves directly under a
+    secret-named parent key are masked.
+
+    Leaves non-matching keys untouched. Lists/tuples are recursed into.
+    The returned tree is a fresh structure — original input is not
+    mutated.
     """
     if isinstance(obj, dict):
         out: dict[str, Any] = {}
         for k, v in obj.items():
             if isinstance(k, str) and _looks_like_secret_key(k):
-                # Redact scalar + container payloads under matching keys.
-                out[k] = _REDACTED
+                if isinstance(v, (dict, list, tuple)):
+                    # Recurse so nested non-secret keys survive (#1033).
+                    out[k] = _redact_values(v)
+                else:
+                    out[k] = _REDACTED
             else:
                 out[k] = _redact_values(v)
         return out
