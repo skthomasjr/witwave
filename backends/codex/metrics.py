@@ -68,6 +68,7 @@ backend_streaming_events_emitted_total: prometheus_client.Counter | None = None
 backend_mcp_config_errors_total: prometheus_client.Counter | None = None
 backend_mcp_config_reloads_total: prometheus_client.Counter | None = None
 backend_mcp_servers_active: prometheus_client.Gauge | None = None
+backend_mcp_command_rejected_total: prometheus_client.Counter | None = None
 
 # SDK error classification metrics (parity with claude — #431)
 backend_sdk_errors_total: prometheus_client.Counter | None = None
@@ -356,6 +357,12 @@ if _enabled:
         "backend_mcp_servers_active",
         "Number of MCP servers currently loaded from mcp.json (gauge).",
         ["agent", "agent_id", "backend"],
+    )
+    # Command allow-list rejections (#720 — parity with claude #711).
+    backend_mcp_command_rejected_total = prometheus_client.Counter(
+        "backend_mcp_command_rejected_total",
+        "Total MCP server entries rejected by the command allow-list, by reason.",
+        ["agent", "agent_id", "backend", "reason"],
     )
 
     # SDK error classification (parity with claude — #431)

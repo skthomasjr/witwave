@@ -67,6 +67,7 @@ from metrics import (
     backend_task_timeout_headroom_seconds,
     backend_session_history_save_errors_total,
     backend_tasks_total,
+    backend_mcp_command_rejected_total,
     backend_mcp_config_errors_total,
     backend_mcp_config_reloads_total,
     backend_mcp_servers_active,
@@ -438,6 +439,76 @@ def _load_mcp_config() -> dict:
         return {}
 
 
+# MCP stdio command allow-list (#720 — parity with claude #711). Without
+# this guard, a malicious mcp.json landed via gitSync or the NyxPrompt
+# path could spawn an arbitrary binary inside the codex backend pod.
+# Configuration knobs mirror the claude side so operators need to
+# manage one set of envs for the whole platform.
+_DEFAULT_CODEX_MCP_ALLOWED_COMMANDS = (
+    "mcp-kubernetes,mcp-helm,python,python3,node,npx,uv,uvx"
+)
+_DEFAULT_CODEX_MCP_ALLOWED_COMMAND_PREFIXES = "/home/agent/mcp-bin/,/usr/local/bin/"
+_CODEX_MCP_ALLOWED_COMMANDS: frozenset[str] = frozenset(
+    t.strip() for t in os.environ.get(
+        "MCP_ALLOWED_COMMANDS", _DEFAULT_CODEX_MCP_ALLOWED_COMMANDS,
+    ).split(",") if t.strip()
+)
+_CODEX_MCP_ALLOWED_COMMAND_PREFIXES: tuple[str, ...] = tuple(
+    t.strip() for t in os.environ.get(
+        "MCP_ALLOWED_COMMAND_PREFIXES", _DEFAULT_CODEX_MCP_ALLOWED_COMMAND_PREFIXES,
+    ).split(",") if t.strip()
+)
+_DEFAULT_CODEX_MCP_ALLOWED_CWD_PREFIXES = "/home/agent/,/tmp/"
+_CODEX_MCP_ALLOWED_CWD_PREFIXES: tuple[str, ...] = tuple(
+    t.strip() for t in os.environ.get(
+        "MCP_ALLOWED_CWD_PREFIXES", _DEFAULT_CODEX_MCP_ALLOWED_CWD_PREFIXES,
+    ).split(",") if t.strip()
+)
+
+
+def _codex_mcp_command_allowed(command: str) -> tuple[bool, str]:
+    """Return (ok, reason) for an MCP stdio ``command`` under the codex
+    allow-list (#720). reason is a short label suitable for the
+    ``backend_mcp_command_rejected_total`` counter."""
+    if not isinstance(command, str):
+        return False, "non_string"
+    cmd = command.strip()
+    if not cmd:
+        return False, "empty"
+    if cmd.startswith("/"):
+        for prefix in _CODEX_MCP_ALLOWED_COMMAND_PREFIXES:
+            if cmd.startswith(prefix):
+                return True, "absolute_prefix"
+        basename = os.path.basename(cmd)
+        if basename in _CODEX_MCP_ALLOWED_COMMANDS:
+            return True, "basename_allowed"
+        return False, "absolute_not_on_prefix"
+    if cmd in _CODEX_MCP_ALLOWED_COMMANDS or os.path.basename(cmd) in _CODEX_MCP_ALLOWED_COMMANDS:
+        return True, "basename_allowed"
+    return False, "basename_not_allowed"
+
+
+def _codex_mcp_cwd_allowed(cwd: str) -> tuple[bool, str]:
+    """Return (ok, reason) for an MCP stdio ``cwd`` value (#720).
+
+    Only absolute paths whose prefix matches MCP_ALLOWED_CWD_PREFIXES are
+    accepted.  Relative cwd is rejected — an attacker-controlled relative
+    path combined with a permitted command basename could still break
+    out of the intended working directory.
+    """
+    if not isinstance(cwd, str):
+        return False, "cwd_non_string"
+    c = cwd.strip()
+    if not c:
+        return False, "cwd_empty"
+    if not c.startswith("/"):
+        return False, "cwd_not_absolute"
+    for prefix in _CODEX_MCP_ALLOWED_CWD_PREFIXES:
+        if c.startswith(prefix):
+            return True, "cwd_allowed"
+    return False, "cwd_not_on_prefix"
+
+
 def _build_mcp_servers(mcp_config: dict) -> list:
     """Convert an MCP config dict into OpenAI Agents SDK MCPServer instances (#432).
 
@@ -449,6 +520,10 @@ def _build_mcp_servers(mcp_config: dict) -> list:
     responsible for entering them via AsyncExitStack before passing to
     Agent(mcp_servers=[...]). Each entry that fails to instantiate is logged
     and skipped so a single bad entry does not break unrelated MCP servers.
+
+    Every stdio entry runs through the command + cwd allow-list
+    (#720). Rejected entries are dropped so a mis-merged mcp.json
+    cannot trigger subprocess execution of an unauthorised binary.
     """
     if not mcp_config:
         return []
@@ -469,6 +544,42 @@ def _build_mcp_servers(mcp_config: dict) -> list:
             continue
         try:
             if "command" in cfg:
+                # Validate command against the allow-list BEFORE any
+                # other field processing so a rejection is logged and
+                # counted cheaply (#720).
+                cmd_ok, cmd_reason = _codex_mcp_command_allowed(cfg["command"])
+                if not cmd_ok:
+                    logger.warning(
+                        "MCP server %r: command %r rejected by allow-list "
+                        "(%s) — dropping entry. Set MCP_ALLOWED_COMMANDS "
+                        "/ MCP_ALLOWED_COMMAND_PREFIXES to widen. (#720)",
+                        name, cfg["command"], cmd_reason,
+                    )
+                    if backend_mcp_command_rejected_total is not None:
+                        try:
+                            backend_mcp_command_rejected_total.labels(
+                                **_LABELS, reason=cmd_reason,
+                            ).inc()
+                        except Exception:
+                            pass
+                    continue
+                if "cwd" in cfg:
+                    cwd_ok, cwd_reason = _codex_mcp_cwd_allowed(cfg["cwd"])
+                    if not cwd_ok:
+                        logger.warning(
+                            "MCP server %r: cwd %r rejected by allow-list "
+                            "(%s) — dropping entry. Set "
+                            "MCP_ALLOWED_CWD_PREFIXES to widen. (#720)",
+                            name, cfg["cwd"], cwd_reason,
+                        )
+                        if backend_mcp_command_rejected_total is not None:
+                            try:
+                                backend_mcp_command_rejected_total.labels(
+                                    **_LABELS, reason=cwd_reason,
+                                ).inc()
+                            except Exception:
+                                pass
+                        continue
                 params = {"command": cfg["command"]}
                 if "args" in cfg:
                     params["args"] = list(cfg["args"])
