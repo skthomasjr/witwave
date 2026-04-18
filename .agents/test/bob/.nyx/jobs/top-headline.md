@@ -4,4 +4,4 @@ description: Fetches the top news headline of the day. Exercises the WebSearch t
 enabled: true
 ---
 
-Use the WebSearch tool to find the top news headline of the day. Report back with exactly one headline and a one-sentence summary. Be concise.
+Use the WebSearch tool to find the top news headline of the day. Report back with exactly one headline, the date the headline occurred (YYYY-MM-DD), and a one-sentence summary. Be concise.
