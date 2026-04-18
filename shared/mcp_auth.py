@@ -84,14 +84,39 @@ def require_bearer_token(app):  # type: ignore[no-untyped-def]
         if not token:
             await _send_401(send, "auth-not-configured")
             return
-        headers = dict(scope.get("headers") or [])
-        raw = headers.get(b"authorization") or b""
-        if not raw.lower().startswith(b"bearer "):
+        # Enumerate every Authorization header (#921). The ASGI scope
+        # represents headers as a list of (name, value) tuples and duplicates
+        # are legal — proxies frequently append an empty Authorization when
+        # the client didn't send one. dict(scope headers) silently kept
+        # only the last value, which flipped a legitimate bearer request
+        # into a 401 behind such a proxy. Gather all values instead and
+        # accept if ANY non-empty value matches. Reject with a
+        # dedicated reason when every Authorization is empty/malformed.
+        auth_values: list[bytes] = [
+            v for (k, v) in (scope.get("headers") or []) if k == b"authorization"
+        ]
+        if not auth_values:
             await _send_401(send, "missing-or-malformed-authorization-header")
             return
-        presented = raw[7:].decode("utf-8", errors="replace").strip()
-        if not hmac_mod.compare_digest(presented, token):
-            await _send_401(send, "invalid-token")
+        non_empty = [v for v in auth_values if v and v.strip()]
+        if not non_empty:
+            await _send_401(send, "missing-or-malformed-authorization-header")
+            return
+        matched = False
+        for raw in non_empty:
+            if not raw.lower().startswith(b"bearer "):
+                continue
+            presented = raw[7:].decode("utf-8", errors="replace").strip()
+            if hmac_mod.compare_digest(presented, token):
+                matched = True
+                break
+        if not matched:
+            # Distinguish "had a Bearer, wrong value" from "no Bearer at all"
+            # for operator debuggability.
+            if any(v.lower().startswith(b"bearer ") for v in non_empty):
+                await _send_401(send, "invalid-token")
+            else:
+                await _send_401(send, "missing-or-malformed-authorization-header")
             return
         await app(scope, receive, send)
 
