@@ -54,6 +54,22 @@
 {{- end }}
 {{- end }}
 {{- end }}
+{{- /* Guard: CORS + ingress interaction (#763). `*` or wildcard origins
+       combined with `allow_credentials=true` (the harness's default when
+       any CORS origin is configured) let browser JS on arbitrary origins
+       call /triggers and /conversations with credentials. When ingress
+       is enabled we refuse to render a wildcard so operators can't copy
+       the dev-test pattern into production. Set `cors.allowOrigins: []`
+       (empty) to disable CORS entirely. */}}
+{{- if (.Values.cors).allowOrigins }}
+{{- if .Values.ingress.enabled }}
+{{- range .Values.cors.allowOrigins }}
+{{- if or (eq . "*") (hasPrefix "*" (. | toString)) }}
+{{- fail (printf "cors.allowOrigins[] contains %q while ingress.enabled is true — wildcard CORS with credentials is a disclosure hole (see #763). Use explicit origins (e.g. https://nyx.example) or disable ingress." .) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- /* Guard: when preStop is enabled, preStop.delaySeconds must be strictly
        less than terminationGracePeriodSeconds so SIGTERM actually fires with
        enough remaining grace for A2A requests, jobs, and webhook deliveries
@@ -287,6 +303,15 @@ spec:
             - name: METRICS_PORT
               value: {{ $harnessMetricsPort | quote }}
             {{- include "nyx.otelEnv" (dict "root" $ "serviceName" (printf "harness-%s" .name)) | nindent 12 }}
+            {{- /* Surface cors.allowOrigins as CORS_ALLOW_ORIGINS (#763) so
+                   operators set this via a first-class chart value rather
+                   than hand-rolling an env entry per agent. Per-agent .env
+                   still wins: the later-merged entry overrides this one
+                   when both are set. */}}
+            {{- if ($.Values.cors).allowOrigins }}
+            - name: CORS_ALLOW_ORIGINS
+              value: {{ join "," $.Values.cors.allowOrigins | quote }}
+            {{- end }}
             {{- if .env }}
             {{- toYaml .env | nindent 12 }}
             {{- end }}

@@ -447,6 +447,19 @@ observability:
     # (e.g. "0.1" for 10% sampling with parentbased_traceidratio).
     samplerArg: ""
 
+# Cross-origin Resource Sharing policy for harness HTTP endpoints (#763).
+# Surfaced as a first-class key rather than a stringly-typed env entry so
+# values.schema.json can validate it and the template can reject the
+# wildcard when ingress is enabled. Empty list ≡ CORS disabled (the
+# safest default; browser origins are blocked unless explicitly allowed).
+cors:
+  # Explicit list of allowed Origin values (e.g. "https://nyx.example").
+  # Wildcards may be permitted only when ingress.enabled is false — the
+  # deployment.yaml template fails render otherwise, since browsers treat
+  # `Access-Control-Allow-Origin: *` with credentials as a disclosure hole
+  # across /triggers and /conversations.
+  allowOrigins: []
+
 # Global storage options applied across shared + per-backend PVCs (#767).
 storage:
   # When true, every chart-owned PersistentVolumeClaim is annotated with
