@@ -34,7 +34,6 @@ def ok(cmd: str):
     "python3",                   # bare basename in allow-list
     "/home/agent/mcp-bin/foo",   # under allowed prefix
     "/usr/local/bin/anything",   # under allowed prefix
-    "/opt/custom/mcp-helm",      # outside prefix but basename matches
     "./mcp-kubernetes",          # basename extraction path
 ])
 def test_accepted(cmd):
@@ -49,6 +48,12 @@ def test_accepted(cmd):
     ("/bin/sh", "absolute_not_on_prefix"),           # classic RCE vector
     ("/bin/bash", "absolute_not_on_prefix"),
     ("/usr/bin/curl", "absolute_not_on_prefix"),     # prefix is /usr/local/bin/, not /usr/bin/
+    # #862 regression guard: an absolute path outside any allowed prefix
+    # must be rejected even if the basename matches the bare-name
+    # allow-list — otherwise /tmp/attacker/mcp-kubernetes would be
+    # accepted as "basename_allowed".
+    ("/opt/custom/mcp-helm", "absolute_not_on_prefix"),
+    ("/tmp/attacker/mcp-kubernetes", "absolute_not_on_prefix"),
     ("sh", "basename_not_allowed"),
     ("", "empty"),
     ("   ", "empty"),

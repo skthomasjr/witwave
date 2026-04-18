@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import os
 
-DEFAULT_MCP_ALLOWED_COMMANDS = "mcp-kubernetes,mcp-helm,python,python3,node,npx,uv,uvx"
+DEFAULT_MCP_ALLOWED_COMMANDS = "mcp-kubernetes,mcp-helm,uv,uvx"
 DEFAULT_MCP_ALLOWED_COMMAND_PREFIXES = "/home/agent/mcp-bin/,/usr/local/bin/"
 
 
@@ -73,12 +73,14 @@ def mcp_command_allowed(
     if not cmd:
         return False, "empty"
     if cmd.startswith("/"):
+        # Absolute paths MUST resolve under an allowed prefix. The
+        # basename fallback used to accept any /tmp/attacker/python
+        # whose basename happened to be in the allow-list, turning the
+        # allow-list into a per-file bypass (#862). Absolute paths now
+        # require an explicit prefix match.
         for prefix in prefixes:
             if cmd.startswith(prefix):
                 return True, "absolute_prefix"
-        basename = os.path.basename(cmd)
-        if basename in allowed:
-            return True, "basename_allowed"
         return False, "absolute_not_on_prefix"
     # Non-absolute path — allowed only when the bare basename matches.
     if cmd in allowed or os.path.basename(cmd) in allowed:
