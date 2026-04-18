@@ -339,6 +339,7 @@ class ContinuationRunner:
             if not matched_patterns or not outcome_matches or not content_matches:
                 continue
 
+            fanin_key: tuple[str, str] | None = None
             if len(item.continues_after) == 1:
                 # Single-upstream fast path — fire immediately (original behaviour).
                 ready = True
@@ -362,8 +363,11 @@ class ContinuationRunner:
                     for p in item.continues_after
                 )
                 if ready:
-                    # Clear state so the fan-in can fire again on the next cycle.
-                    del self._fanin_state[key]
+                    # Defer state clear until after the throttle check passes
+                    # (#656). Clearing before the throttle dropped accumulated
+                    # pattern state for shed fires, leaving the fan-in with no
+                    # replay path.
+                    fanin_key = key
 
             if not ready:
                 continue
@@ -378,7 +382,15 @@ class ContinuationRunner:
                 )
                 if harness_continuation_throttled_total is not None:
                     harness_continuation_throttled_total.labels(name=item.name).inc()
+                # Fan-in state intentionally preserved — a subsequent
+                # upstream event can re-enter the ready branch once the
+                # in-flight count drops below max_concurrent_fires.
                 continue
+
+            # Throttle passed — now it's safe to clear fan-in state so the
+            # next round of upstream events starts fresh.
+            if fanin_key is not None:
+                self._fanin_state.pop(fanin_key, None)
             if harness_continuation_fires_total is not None:
                 harness_continuation_fires_total.labels(upstream_kind=kind).inc()
             _t = asyncio.ensure_future(_fire(item, session_id, bus))
