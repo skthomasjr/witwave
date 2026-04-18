@@ -76,9 +76,16 @@ func main() {
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
-	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
+	// Default leader-elect=true (#752). An operator Deployment running
+	// replicas>1 without leader election produces two active reconcilers
+	// racing on the same CRs, yielding double-writes, OwnerReferences
+	// flapping, and duplicate Kubernetes Events. Users who explicitly
+	// want single-replica local runs can still pass --leader-elect=false.
+	flag.BoolVar(&enableLeaderElection, "leader-elect", true,
 		"Enable leader election for controller manager. "+
-			"Enabling this will ensure there is only one active controller manager.")
+			"Enabling this will ensure there is only one active controller manager. "+
+			"Default is true to make replicas>1 deployments safe out of the box (#752); "+
+			"pass --leader-elect=false for single-replica local runs.")
 	flag.BoolVar(&secureMetrics, "metrics-secure", true,
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	flag.StringVar(&webhookCertPath, "webhook-cert-path", "", "The directory that contains the webhook certificate.")
@@ -249,19 +256,16 @@ func main() {
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
 		Cache:                  cacheOpts,
-		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "2658b259.nyx.ai",
-		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
-		// when the Manager ends. This requires the binary to immediately end when the
-		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
-		// speeds up voluntary leader transitions as the new leader don't have to wait
-		// LeaseDuration time first.
-		//
-		// In the default scaffold provided, the program ends immediately after
-		// the manager stops, so would be fine to enable this option. However,
-		// if you are doing or is intended to do any operation such as perform cleanups
-		// after the manager stops then its usage might be unsafe.
-		// LeaderElectionReleaseOnCancel: true,
+		LeaderElection:   enableLeaderElection,
+		LeaderElectionID: "2658b259.nyx.ai",
+		// LeaderElectionReleaseOnCancel=true (#752): the binary exits
+		// immediately after mgr.Start returns (no external cleanup runs
+		// past that point), so it is safe to release the lease on
+		// cancel. Dropping the lease voluntarily lets a second replica
+		// promote in ~LeaseDuration/2 instead of the full LeaseDuration
+		// a crashed leader would take, which reduces the duplicate-
+		// reconcile blast window during a rolling restart.
+		LeaderElectionReleaseOnCancel: true,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")

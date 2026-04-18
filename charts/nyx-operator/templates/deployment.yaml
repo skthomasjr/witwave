@@ -41,8 +41,13 @@ spec:
           command:
             - /manager
           args:
+            {{- /* Manager default is --leader-elect=true (#752). Pass an
+                   explicit false to disable rather than omitting the flag,
+                   so single-replica local runs still opt out cleanly. */}}
             {{- if .Values.leaderElection.enabled }}
-            - --leader-elect
+            - --leader-elect=true
+            {{- else }}
+            - --leader-elect=false
             {{- end }}
             - --health-probe-bind-address=:{{ .Values.probes.port }}
             {{- if .Values.metrics.enabled }}
