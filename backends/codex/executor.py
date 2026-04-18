@@ -82,6 +82,7 @@ from metrics import (
     backend_watcher_events_total,
     backend_file_watcher_restarts_total,
     backend_codex_hooks_denials_total,
+    backend_hooks_denials_total,
     backend_tool_audit_entries_total,
 )
 
@@ -371,6 +372,15 @@ async def _shell_executor_inner(req: LocalShellCommandRequest) -> str:
         if backend_codex_hooks_denials_total is not None:
             try:
                 backend_codex_hooks_denials_total.labels(**_LABELS, rule=rule).inc()
+            except Exception:
+                pass
+        # Canonical cross-backend name (#789). codex's baseline is
+        # shell-only so tool='shell' and source='baseline' are fixed.
+        if backend_hooks_denials_total is not None:
+            try:
+                backend_hooks_denials_total.labels(
+                    **_LABELS, tool="shell", source="baseline", rule=rule,
+                ).inc()
             except Exception:
                 pass
         await _append_tool_audit({

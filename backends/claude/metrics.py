@@ -108,6 +108,10 @@ backend_file_watcher_restarts_total: prometheus_client.Counter | None = None
 
 # Hooks / tool-audit metrics (#467)
 backend_hooks_blocked_total: prometheus_client.Counter | None = None
+# Canonical cross-backend name for the same count (#789). Declared
+# alongside backend_hooks_blocked_total so existing claude dashboards
+# keep working while operators migrate to the backend-agnostic series.
+backend_hooks_denials_total: prometheus_client.Counter | None = None
 backend_hooks_warnings_total: prometheus_client.Counter | None = None
 backend_tool_audit_entries_total: prometheus_client.Counter | None = None
 backend_hooks_config_reloads_total: prometheus_client.Counter | None = None
@@ -537,8 +541,19 @@ if _enabled:
     # Hooks / tool-audit (#467)
     backend_hooks_blocked_total = prometheus_client.Counter(
         "backend_hooks_blocked_total",
+        "DEPRECATED alias for backend_hooks_denials_total (#789). Kept for "
+        "dashboards pinned to the claude-specific name pre-unification; "
+        "retain through one release cycle then delete.",
+        ["agent", "agent_id", "backend", "tool", "source", "rule"],
+    )
+    # Canonical cross-backend denial counter (#789) — same label schema as
+    # the legacy name above. Both counters increment on every deny so
+    # existing dashboards and migration queries read the same values.
+    backend_hooks_denials_total = prometheus_client.Counter(
+        "backend_hooks_denials_total",
         "Total tool calls denied by a PreToolUse hook, labelled by tool name, "
-        "rule source (baseline|extension), and the rule name that matched.",
+        "rule source (baseline|extension), and the rule name that matched. "
+        "Canonical name across claude/codex/gemini backends.",
         ["agent", "agent_id", "backend", "tool", "source", "rule"],
     )
     backend_hooks_warnings_total = prometheus_client.Counter(

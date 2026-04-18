@@ -115,6 +115,12 @@ backend_budget_exceeded_total: prometheus_client.Counter | None = None
 # Non-shell enforcement and the rest of the backend_hooks_* family stay deferred
 # until a tool-wrapping proxy design is validated against the Agents SDK.
 backend_codex_hooks_denials_total: prometheus_client.Counter | None = None
+# Canonical cross-backend denial counter (#789). Shares the same label
+# schema as claude/gemini so cross-backend dashboards can union by
+# (agent, agent_id, backend). The legacy backend_codex_hooks_denials_total
+# stays in place to avoid breaking existing scrapers; both increment on
+# each deny.
+backend_hooks_denials_total: prometheus_client.Counter | None = None
 backend_hooks_active_rules: prometheus_client.Gauge | None = None
 backend_hooks_evaluations_total: prometheus_client.Counter | None = None
 backend_tool_audit_entries_total: prometheus_client.Counter | None = None
@@ -571,8 +577,21 @@ if _enabled:
     # covered by this counter yet — see #586 for the deferred design.
     backend_codex_hooks_denials_total = prometheus_client.Counter(
         "backend_codex_hooks_denials_total",
-        "Total shell commands denied by the codex PreToolUse baseline, by rule.",
+        "DEPRECATED alias for backend_hooks_denials_total (#789). Kept for "
+        "dashboards pinned to the codex-specific name pre-unification; "
+        "retain through one release cycle then delete.",
         ["agent", "agent_id", "backend", "rule"],
+    )
+    # Canonical cross-backend denial counter (#789). Label schema matches
+    # claude's (tool, source, rule); codex's shell baseline always fills
+    # tool='shell' and source='baseline' since non-shell enforcement is
+    # still deferred (#586).
+    backend_hooks_denials_total = prometheus_client.Counter(
+        "backend_hooks_denials_total",
+        "Total tool calls denied by a PreToolUse hook, labelled by tool name, "
+        "rule source (baseline|extension), and the rule name that matched. "
+        "Canonical name across claude/codex/gemini backends.",
+        ["agent", "agent_id", "backend", "tool", "source", "rule"],
     )
     backend_tool_audit_entries_total = prometheus_client.Counter(
         "backend_tool_audit_entries_total",

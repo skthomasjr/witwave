@@ -36,6 +36,7 @@ from metrics import (
     backend_concurrent_queries,
     backend_hooks_active_rules,
     backend_hooks_blocked_total,
+    backend_hooks_denials_total,
     backend_hooks_shed_total,
     backend_hooks_config_errors_total,
     backend_hooks_config_reloads_total,
@@ -831,6 +832,13 @@ def _make_pre_tool_use_hook(state: HookState):
         if decision == DECISION_DENY and matched is not None:
             if backend_hooks_blocked_total is not None:
                 backend_hooks_blocked_total.labels(
+                    **_LABELS, tool=tool_name or "unknown",
+                    source=matched.source, rule=matched.name,
+                ).inc()
+            # Canonical cross-backend name (#789). Increment alongside
+            # the legacy series so dashboards can migrate incrementally.
+            if backend_hooks_denials_total is not None:
+                backend_hooks_denials_total.labels(
                     **_LABELS, tool=tool_name or "unknown",
                     source=matched.source, rule=matched.name,
                 ).inc()
