@@ -553,17 +553,29 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string, prompts []n
 		readinessProbe = probeDefaults(agent.Spec.Probes.Readiness, false)
 	}
 
+	metricsPort := agent.Spec.MetricsPort
+	if metricsPort == 0 {
+		metricsPort = 9000
+	}
+	metricsOn := agent.Spec.Metrics.Enabled
+	harnessPorts := []corev1.ContainerPort{{Name: "http", ContainerPort: harnessPort}}
+	if metricsOn {
+		harnessPorts = append(harnessPorts, corev1.ContainerPort{
+			Name:          "metrics",
+			ContainerPort: metricsPort,
+		})
+	}
+
 	harness := corev1.Container{
 		Name:            "harness",
 		Image:           imageRef(agent.Spec.Image, appVersion),
 		ImagePullPolicy: imagePullPolicy(agent.Spec.Image),
-		Ports: []corev1.ContainerPort{
-			{Name: "http", ContainerPort: harnessPort},
-		},
+		Ports:           harnessPorts,
 		Env: append([]corev1.EnvVar{
 			{Name: "AGENT_NAME", Value: agent.Name},
 			{Name: "HARNESS_PORT", Value: fmt.Sprintf("%d", harnessPort)},
 			{Name: "METRICS_ENABLED", Value: metricsEnabledValue(agent)},
+			{Name: "METRICS_PORT", Value: fmt.Sprintf("%d", metricsPort)},
 		}, agent.Spec.Env...),
 		EnvFrom:   agent.Spec.EnvFrom,
 		Resources: agent.Spec.Resources,
@@ -629,17 +641,22 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string, prompts []n
 		// helper returns nil.
 		bMounts = append(bMounts, backendGitMappingMounts(agent, b)...)
 
+		bPorts := []corev1.ContainerPort{{Name: "http", ContainerPort: bPort}}
+		if metricsOn {
+			// Dedicated Prometheus metrics listener (#643); mirrors chart.
+			// Every container in the pod exposes the same `metrics` port
+			// name, so PodMonitor's single endpoint targets them all.
+			bPorts = append(bPorts, corev1.ContainerPort{
+				Name:          "metrics",
+				ContainerPort: metricsPort,
+			})
+		}
+
 		bc := corev1.Container{
 			Name:            b.Name,
 			Image:           imageRef(b.Image, appVersion),
 			ImagePullPolicy: imagePullPolicy(b.Image),
-			Ports: []corev1.ContainerPort{
-				// Named so PodMonitor.endpoints[].port can reference the
-				// backend's /metrics port by name (#582). Truncated to 15
-				// chars per RFC 6335 / k8s IANA_SVC_NAME validation —
-				// matches the chart's port naming exactly.
-				{Name: backendMetricsPortName(b.Name), ContainerPort: bPort},
-			},
+			Ports:           bPorts,
 			Env: append([]corev1.EnvVar{
 				{Name: "AGENT_NAME", Value: fmt.Sprintf("%s-a2-%s", agent.Name, b.Name)},
 				{Name: "AGENT_OWNER", Value: agent.Name},
@@ -647,6 +664,7 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string, prompts []n
 				{Name: "AGENT_URL", Value: fmt.Sprintf("http://localhost:%d", bPort)},
 				{Name: "BACKEND_PORT", Value: fmt.Sprintf("%d", bPort)},
 				{Name: "METRICS_ENABLED", Value: metricsEnabledValue(agent)},
+				{Name: "METRICS_PORT", Value: fmt.Sprintf("%d", metricsPort)},
 				// Backend→harness transport for hook.decision events (#641).
 				// Points at the harness running in the same pod; an empty
 				// value disables the POST cleanly. HARNESS_EVENTS_AUTH_TOKEN
@@ -902,16 +920,40 @@ func buildService(agent *nyxv1alpha1.NyxAgent) *corev1.Service {
 		svcPort = *agent.Spec.ServicePort
 	}
 
+	metricsPort := agent.Spec.MetricsPort
+	if metricsPort == 0 {
+		metricsPort = 9000
+	}
+
 	annotations := map[string]string{}
 	if agent.Spec.Metrics.Enabled && metricsServiceAnnotationsEnabled(agent) {
 		annotations["prometheus.io/scrape"] = "true"
-		annotations["prometheus.io/port"] = fmt.Sprintf("%d", svcPort)
+		// Scrape the dedicated metrics listener (#643) rather than the
+		// app port.
+		annotations["prometheus.io/port"] = fmt.Sprintf("%d", metricsPort)
 		annotations["prometheus.io/path"] = "/metrics"
 	}
 
 	svcType := agent.Spec.ServiceType
 	if svcType == "" {
 		svcType = corev1.ServiceTypeClusterIP
+	}
+
+	servicePorts := []corev1.ServicePort{{
+		Name:       "http",
+		Port:       svcPort,
+		TargetPort: intstr.FromInt(int(port)),
+	}}
+	if agent.Spec.Metrics.Enabled {
+		// Expose the metrics port on the Service so ServiceMonitor can
+		// target it by name (#643). TargetPort is the container-port name
+		// `metrics` (not a number) so Service routing survives any future
+		// metrics-port override on the container side.
+		servicePorts = append(servicePorts, corev1.ServicePort{
+			Name:       "metrics",
+			Port:       metricsPort,
+			TargetPort: intstr.FromString("metrics"),
+		})
 	}
 
 	return &corev1.Service{
@@ -924,25 +966,9 @@ func buildService(agent *nyxv1alpha1.NyxAgent) *corev1.Service {
 		Spec: corev1.ServiceSpec{
 			Type:     svcType,
 			Selector: selectorLabels(agent),
-			Ports: []corev1.ServicePort{{
-				Name:       "http",
-				Port:       svcPort,
-				TargetPort: intstr.FromInt(int(port)),
-			}},
+			Ports:    servicePorts,
 		},
 	}
-}
-
-// backendMetricsPortName is the container-port name PodMonitor uses to
-// reference the backend's /metrics endpoint (#582). Mirrors the chart's
-// naming (`<backend>-metrics`, truncated to 15 chars per RFC 6335) so
-// chart-rendered and operator-rendered pods are scraped the same way.
-func backendMetricsPortName(backendName string) string {
-	name := backendName + "-metrics"
-	if len(name) > 15 {
-		name = name[:15]
-	}
-	return strings.TrimRight(name, "-")
 }
 
 // podMonitorGVK is the monitoring.coreos.com/v1 PodMonitor GroupVersionKind
@@ -985,19 +1011,16 @@ func buildPodMonitor(agent *nyxv1alpha1.NyxAgent) *unstructured.Unstructured {
 		labels[k] = v
 	}
 
-	endpoints := []interface{}{}
-	backends := append([]nyxv1alpha1.BackendSpec(nil), agent.Spec.Backends...)
-	sort.Slice(backends, func(i, j int) bool { return backends[i].Name < backends[j].Name })
-	for _, b := range backends {
-		if !backendEnabled(b) {
-			continue
-		}
-		endpoints = append(endpoints, map[string]interface{}{
-			"port":          backendMetricsPortName(b.Name),
+	// Single endpoint targeting the shared `metrics` container port name
+	// (#643). Prometheus discovers one target per container that exposes
+	// this port — harness + every enabled backend — in one sweep.
+	endpoints := []interface{}{
+		map[string]interface{}{
+			"port":          "metrics",
 			"path":          "/metrics",
 			"interval":      interval,
 			"scrapeTimeout": scrapeTimeout,
-		})
+		},
 	}
 
 	obj := &unstructured.Unstructured{}
@@ -1084,7 +1107,7 @@ func buildServiceMonitor(agent *nyxv1alpha1.NyxAgent) *unstructured.Unstructured
 		},
 		"endpoints": []interface{}{
 			map[string]interface{}{
-				"port":          "http",
+				"port":          "metrics",
 				"path":          "/metrics",
 				"interval":      interval,
 				"scrapeTimeout": scrapeTimeout,

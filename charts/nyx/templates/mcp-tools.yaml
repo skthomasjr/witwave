@@ -78,6 +78,8 @@ spec:
         runAsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
+      {{- $metricsOn := $.Values.metrics.enabled }}
+      {{- $metricsPort := $.Values.metrics.port | default 9000 }}
       containers:
         - name: mcp
           image: "{{ $tool.image.repository }}:{{ $imageTag }}"
@@ -89,10 +91,19 @@ spec:
           ports:
             - name: http
               containerPort: 8000
-          {{- with $tool.env }}
+            {{- if $metricsOn }}
+            # Dedicated Prometheus metrics listener (#643, #649/#650).
+            - name: metrics
+              containerPort: {{ $metricsPort }}
+            {{- end }}
           env:
+            - name: METRICS_ENABLED
+              value: {{ $metricsOn | toString | quote }}
+            - name: METRICS_PORT
+              value: {{ $metricsPort | quote }}
+            {{- with $tool.env }}
             {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{- end }}
           {{- with $tool.envFrom }}
           envFrom:
             {{- toYaml . | nindent 12 }}

@@ -1265,8 +1265,12 @@ async def main():
         Route("/trace", trace_handler, methods=["GET"]),
         Route("/tool-audit", tool_audit_handler, methods=["GET"]),
     ]
-    if metrics_enabled:
-        _routes.append(Route("/metrics", metrics_handler, methods=["GET"]))
+    # Metrics live on a dedicated port (:9000 by default, configurable via
+    # METRICS_PORT), NOT on the main app listener (#643). The split lets
+    # NetworkPolicy + auth posture diverge cleanly between app traffic
+    # (A2A/triggers/conversations) and monitoring scrapes. The listener is
+    # started inside the lifespan hook below; nothing is registered on the
+    # main app's route table here.
     _routes.append(Mount("/", app=a2a_built))
 
     @asynccontextmanager
@@ -1286,6 +1290,13 @@ async def main():
             for route in _routes:
                 if isinstance(route, Mount):
                     await stack.enter_async_context(_sub_app_lifespan(route.app))
+            # Start the dedicated :METRICS_PORT listener (#643). Started
+            # inside lifespan so it shares the main event loop and gets
+            # cancelled cleanly on shutdown.
+            if metrics_enabled:
+                from metrics_server import start_metrics_server
+
+                start_metrics_server(metrics_handler, logger=logger)
             try:
                 yield
             finally:

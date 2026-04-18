@@ -419,8 +419,9 @@ async def main():
         Route("/tool-audit", tool_audit_handler, methods=["GET"]),
         Route("/mcp", mcp_handler, methods=["GET", "POST"]),
     ]
-    if metrics_enabled:
-        _routes.append(Route("/metrics", metrics_handler))
+    # Metrics live on a dedicated port (:9000 by default, configurable via
+    # METRICS_PORT), NOT on the main app listener (#643, #646). Started
+    # inside the lifespan hook below.
     _routes.append(Mount("/", app=a2a_built))
 
     @asynccontextmanager
@@ -429,6 +430,10 @@ async def main():
             for route in _routes:
                 if isinstance(route, Mount) and route.path == "/":
                     await stack.enter_async_context(_sub_app_lifespan(route.app))
+            if metrics_enabled:
+                from metrics_server import start_metrics_server
+
+                start_metrics_server(metrics_handler, logger=logger)
             try:
                 yield
             finally:

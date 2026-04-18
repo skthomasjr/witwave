@@ -25,9 +25,10 @@ spec:
     matchNames:
       - {{ $.Release.Namespace }}
   endpoints:
-    # Reference the Service port by name so changes to .port flow through
-    # automatically (the Service template emits a port named "http").
-    - port: http
+    # Scrape the dedicated metrics listener (#643). Service exposes port
+    # "metrics" on .Values.metrics.port (default 9000), targetPort bound
+    # to the harness container's named `metrics` port.
+    - port: metrics
       path: /metrics
       interval: {{ $.Values.serviceMonitor.scrapeInterval }}
       scrapeTimeout: {{ $.Values.serviceMonitor.scrapeTimeout }}

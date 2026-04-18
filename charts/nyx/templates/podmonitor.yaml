@@ -5,15 +5,14 @@
 {{- if $agentMetricsEnabled }}
 ---
 # PodMonitor for the Prometheus Operator (#582). One per agent, gated on
-# both .Values.podMonitor.enabled and the agent's metrics flag (global or
-# per-agent override). PodMonitor scrapes backend /metrics endpoints
-# directly on the pod, avoiding the per-agent Service (which only
-# publishes the harness port). Each enabled backend contributes one
-# podMetricsEndpoints[] entry referencing its named container port.
+# both .Values.podMonitor.enabled and the agent's metrics flag. Scrapes
+# every container in the pod that exposes the named `metrics` port (#643)
+# — harness + every enabled backend — in a single endpoint definition.
+# Prometheus discovers one target per matching container port.
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
 metadata:
-  name: {{ $.Release.Name }}-{{ $agent.name }}-backends
+  name: {{ $.Release.Name }}-{{ $agent.name }}
   labels:
     {{- include "nyx.agentLabels" (dict "name" $agent.name "root" $) | nindent 4 }}
     {{- with $.Values.podMonitor.labels }}
@@ -27,14 +26,10 @@ spec:
     matchNames:
       - {{ $.Release.Namespace }}
   podMetricsEndpoints:
-    {{- range $backend := $agent.backends }}
-    {{- if eq (include "nyx.enabled" $backend) "true" }}
-    - port: {{ printf "%s-metrics" $backend.name | trunc 15 | trimSuffix "-" }}
+    - port: metrics
       path: /metrics
       interval: {{ $.Values.podMonitor.scrapeInterval }}
       scrapeTimeout: {{ $.Values.podMonitor.scrapeTimeout }}
-    {{- end }}
-    {{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

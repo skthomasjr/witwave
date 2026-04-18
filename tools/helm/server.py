@@ -362,6 +362,34 @@ if __name__ == "__main__":
     init_otel_if_enabled(
         service_name=os.environ.get("OTEL_SERVICE_NAME") or "mcp-helm",
     )
+
+    # Dedicated Prometheus metrics listener on :METRICS_PORT (default 9000)
+    # separate from the streamable-http MCP port (#643, #650). See
+    # tools/kubernetes/server.py for the rationale.
+    if os.environ.get("METRICS_ENABLED"):
+        try:
+            import prometheus_client
+            from starlette.requests import Request as _Request
+            from starlette.responses import Response as _Response
+
+            async def _metrics_handler(_request: _Request) -> _Response:
+                body = prometheus_client.exposition.generate_latest()
+                return _Response(
+                    content=body,
+                    media_type=prometheus_client.exposition.CONTENT_TYPE_LATEST,
+                )
+
+            from metrics_server import start_metrics_server_in_thread  # type: ignore
+
+            start_metrics_server_in_thread(
+                _metrics_handler,
+                logger=logging.getLogger("mcp-helm.metrics"),
+            )
+        except Exception as _e:  # pragma: no cover - defensive
+            logging.getLogger(__name__).warning(
+                "metrics listener failed to start — continuing without it: %r", _e
+            )
+
     # Streamable-HTTP transport so the container is reachable across pod
     # boundaries (#644). stdio mode (FastMCP's default) assumes a local
     # fork/exec client and can't be consumed from a separate pod's

@@ -667,6 +667,17 @@ type NyxAgentSpec struct {
 	// +optional
 	PodMonitor *PodMonitorSpec `json:"podMonitor,omitempty"`
 
+	// MetricsPort is the port every container in the agent pod serves
+	// Prometheus metrics on (#643). Split from the app port so
+	// NetworkPolicy + auth posture can differ between app traffic and
+	// monitoring scrapes. Matches the chart's metrics.port value and the
+	// container-side METRICS_PORT env var. Default 9000.
+	// +kubebuilder:default=9000
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	// +optional
+	MetricsPort int32 `json:"metricsPort,omitempty"`
+
 	// Dashboard optionally deploys the Vue 3 dashboard (#470) alongside the
 	// agent. The operator renders a per-agent dashboard (one per NyxAgent),
 	// independent of the cluster-wide dashboard the Helm chart deploys.

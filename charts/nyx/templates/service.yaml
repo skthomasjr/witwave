@@ -23,10 +23,11 @@ metadata:
   {{- $metricsOn := ((.metrics).enabled | default $.Values.metrics.enabled) }}
   {{- $svcAnnOn := $.Values.metrics.serviceAnnotations }}
   {{- if (.metrics) }}{{- if hasKey .metrics "serviceAnnotations" }}{{- $svcAnnOn = .metrics.serviceAnnotations }}{{- end }}{{- end }}
+  {{- $metricsPort := $.Values.metrics.port | default 9000 }}
   {{- if and $metricsOn $svcAnnOn }}
   annotations:
     prometheus.io/scrape: "true"
-    prometheus.io/port: {{ $svcPort | quote }}
+    prometheus.io/port: {{ $metricsPort | quote }}
     prometheus.io/path: "/metrics"
   {{- end }}
 spec:
@@ -37,5 +38,12 @@ spec:
     - name: http
       port: {{ $svcPort }}
       targetPort: {{ $containerPort }}
+    {{- if $metricsOn }}
+    # Dedicated metrics port (#643) — exposed on the Service so
+    # ServiceMonitor can scrape it via the `metrics` named endpoint.
+    - name: metrics
+      port: {{ $metricsPort }}
+      targetPort: metrics
+    {{- end }}
 {{- end }}
 {{- end }}

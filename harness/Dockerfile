@@ -44,5 +44,8 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:${HARNESS_PORT:-8000}/health/live || exit 1
 
 EXPOSE 8000
+# Dedicated Prometheus metrics listener (#643). Served on 9000 by default;
+# override with METRICS_PORT env var. Only active when METRICS_ENABLED is set.
+EXPOSE 9000
 
 CMD ["python3", "/home/agent/harness/main.py"]

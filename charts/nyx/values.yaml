@@ -344,6 +344,16 @@ metrics:
   # rendered.
   enabled: false
 
+  # Port the dedicated Prometheus metrics listener binds to, across every
+  # container type (harness, backends, MCP tools). Split from the app
+  # port so NetworkPolicy + auth posture can diverge between
+  # app traffic and monitoring scrapes (#643). 9000 matches the operator-
+  # sdk / cert-manager / Prometheus Operator convention.
+  #
+  # Injected into containers as the METRICS_PORT env var; the Python code
+  # falls back to 9000 internally if the env var is unset.
+  port: 9000
+
   # Where Prometheus scrape annotations land. Both can be true at the
   # same time — Prometheus configs that use both `kubernetes_sd_configs.
   # role: service` and `role: pod` will discover both targets and need

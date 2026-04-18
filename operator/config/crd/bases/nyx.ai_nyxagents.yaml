@@ -1436,8 +1436,7 @@ spec:
                 minItems: 1
                 type: array
               config:
-                description: Config mounts inline config files into the harness
-                  container.
+                description: Config mounts inline config files into the harness container.
                 items:
                   description: |-
                     ConfigFile represents a single inline config file mounted into a container.
@@ -2037,6 +2036,18 @@ spec:
                       historical chart behaviour).
                     type: boolean
                 type: object
+              metricsPort:
+                default: 9000
+                description: |-
+                  MetricsPort is the port every container in the agent pod serves
+                  Prometheus metrics on (#643). Split from the app port so
+                  NetworkPolicy + auth posture can differ between app traffic and
+                  monitoring scrapes. Matches the chart's metrics.port value and the
+                  container-side METRICS_PORT env var. Default 9000.
+                format: int32
+                maximum: 65535
+                minimum: 1
+                type: integer
               nodeSelector:
                 additionalProperties:
                   type: string
@@ -2126,8 +2137,8 @@ spec:
                 type: object
               port:
                 default: 8000
-                description: Port is the HTTP port harness listens on (Service
-                  + probe target).
+                description: Port is the HTTP port harness listens on (Service + probe
+                  target).
                 format: int32
                 maximum: 65535
                 minimum: 1

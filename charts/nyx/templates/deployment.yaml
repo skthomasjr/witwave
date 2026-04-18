@@ -71,7 +71,7 @@ spec:
       annotations:
         {{- if and $metricsOn $podAnnOn }}
         prometheus.io/scrape: "true"
-        prometheus.io/port: {{ .port | default 8000 | quote }}
+        prometheus.io/port: {{ $.Values.metrics.port | default 9000 | quote }}
         prometheus.io/path: "/metrics"
         {{- end }}
         {{- with .podAnnotations }}
@@ -190,6 +190,12 @@ spec:
           ports:
             - name: http
               containerPort: {{ .port | default 8000 }}
+            {{- if $metricsOn }}
+            # Dedicated Prometheus metrics listener (#643); split from the
+            # app port so NetworkPolicy / auth can differ.
+            - name: metrics
+              containerPort: {{ $.Values.metrics.port | default 9000 }}
+            {{- end }}
           # startupProbe gives the harness a long grace window on cold-start
           # before readiness/liveness begin enforcing (#580). Points at the
           # same endpoint as readiness; kubelet suspends readiness/liveness
@@ -230,6 +236,8 @@ spec:
               value: {{ .port | default 8000 | quote }}
             - name: METRICS_ENABLED
               value: {{ (.metrics).enabled | default $.Values.metrics.enabled | toString | quote }}
+            - name: METRICS_PORT
+              value: {{ $.Values.metrics.port | default 9000 | quote }}
             {{- include "nyx.otelEnv" (dict "root" $ "serviceName" (printf "harness-%s" .name)) | nindent 12 }}
             {{- if .env }}
             {{- toYaml .env | nindent 12 }}
@@ -283,12 +291,15 @@ spec:
                 command: ["/bin/sh", "-c", "sleep {{ $.Values.preStop.delaySeconds | default 5 }}"]
           {{- end }}
           ports:
-            # Named so PodMonitor can reference the backend's /metrics port by
-            # name (monitoring.coreos.com/v1 PodMonitor.endpoints[].port is a
-            # container-port name). Truncated to 15 chars per RFC 6335 / k8s
-            # IANA_SVC_NAME validation.
-            - name: {{ printf "%s-metrics" .name | trunc 15 | trimSuffix "-" }}
+            - name: http
               containerPort: {{ .port }}
+            {{- if $agentMetricsEnabled }}
+            # Dedicated Prometheus metrics listener (#643). Split from the
+            # app port so NetworkPolicy / auth can differ; PodMonitor
+            # endpoints target this named port.
+            - name: metrics
+              containerPort: {{ $.Values.metrics.port | default 9000 }}
+            {{- end }}
           # startupProbe gives the backend a long grace window on cold-start
           # before readiness/liveness begin enforcing (#580). Backends pay
           # SDK import cost + MCP server handshakes on first boot; without
@@ -335,6 +346,8 @@ spec:
               value: {{ .port | quote }}
             - name: METRICS_ENABLED
               value: {{ $agentMetricsEnabled | toString | quote }}
+            - name: METRICS_PORT
+              value: {{ $.Values.metrics.port | default 9000 | quote }}
             # Backend→harness transport for hook.decision events (#641).
             # Points at the harness running in the same pod.  Empty string
             # disables the POST cleanly; the in-process OTel span event
