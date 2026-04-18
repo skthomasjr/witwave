@@ -762,10 +762,27 @@ async def _retry_deliver(
     passed at `client.post(...)` time so behavior matches the pre-shared-
     client semantics.
     """
+    # Per-attempt metric emission (#865). Previously only the final chain
+    # result was recorded, so attempts 2..N were invisible when the outer
+    # total-chain wait_for cancelled mid-flight. Emit one
+    # harness_webhooks_delivery_total per attempt inside each branch and
+    # under CancelledError, so the counter sums to attempts_made rather
+    # than 1.
+    def _record(_result: str) -> None:
+        if harness_webhooks_delivery_total is not None:
+            harness_webhooks_delivery_total.labels(
+                result=_result, subscription=sub.name
+            ).inc()
+
     result = "unknown"
     while attempt < max_attempts:
         backoff = 2 ** (attempt - 1)  # 1s, 2s, 4s, ...
-        await asyncio.sleep(backoff)
+        try:
+            await asyncio.sleep(backoff)
+        except asyncio.CancelledError:
+            # Cancelled during backoff sleep → no attempt was made for
+            # this iteration; no metric to record for this step. Propagate.
+            raise
         attempt += 1
         try:
             # TOCTOU re-check before each retry (#699). A DNS-rebinding
@@ -776,6 +793,8 @@ async def _retry_deliver(
                 logger.error(
                     f"Webhook '{sub.name}': URL failed re-validation before retry {attempt} — {url_recheck}; aborting retry chain."
                 )
+                result = "url_revalidation_failed"
+                _record(result)
                 break
             resp = await client.post(
                 url,
@@ -786,9 +805,11 @@ async def _retry_deliver(
             if resp.status_code < 400:
                 result = "success"
                 logger.info(f"Webhook '{sub.name}' delivered to {url} — {resp.status_code} (attempt {attempt})")
+                _record(result)
                 break
             else:
                 result = f"http_{resp.status_code}"
+                _record(result)
                 if not _is_retryable_http(resp.status_code):
                     logger.warning(
                         f"Webhook '{sub.name}' attempt {attempt} got {resp.status_code} — "
@@ -796,12 +817,17 @@ async def _retry_deliver(
                     )
                     break
                 logger.warning(f"Webhook '{sub.name}' attempt {attempt} got {resp.status_code}")
+        except asyncio.CancelledError:
+            # Outer wait_for(total_timeout) cancelled this attempt after
+            # the POST was in flight. Count the abandoned attempt so the
+            # metric reflects work actually initiated (#865). The outer
+            # wrapper separately emits 'timeout_total' for the chain.
+            _record("cancelled")
+            raise
         except Exception as exc:
             result = "error"
             logger.warning(f"Webhook '{sub.name}' attempt {attempt} failed: {exc!r}")
-
-    if harness_webhooks_delivery_total is not None:
-        harness_webhooks_delivery_total.labels(result=result, subscription=sub.name).inc()
+            _record(result)
 
 
 async def deliver(
