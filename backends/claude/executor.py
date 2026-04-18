@@ -33,6 +33,7 @@ from metrics import (
     backend_concurrent_queries,
     backend_hooks_active_rules,
     backend_hooks_blocked_total,
+    backend_hooks_shed_total,
     backend_hooks_config_errors_total,
     backend_hooks_config_reloads_total,
     backend_hooks_evaluations_total,
@@ -612,6 +613,15 @@ _HARNESS_EVENTS_AUTH_TOKEN_WARNED = False
 # add_done_callback so the set does not grow unboundedly (#660).
 _INFLIGHT_HOOK_POSTS: set[asyncio.Task] = set()
 
+# Bounded cap on concurrent fire-and-forget hook.decision POSTs (#712).
+# When the harness is unreachable and tool calls fire rapidly, without
+# a cap the set would grow without bound along with httpx connections,
+# causing memory growth, pool exhaustion, and eventually OOM.
+_HOOK_POST_MAX_INFLIGHT = int(os.environ.get("HOOK_POST_MAX_INFLIGHT", "32"))
+# One-shot warning guard for the "shed because at cap" log so bursts
+# don't spam the log per tool call.
+_HOOK_POST_SHED_WARNED = False
+
 
 async def _post_hook_event_to_harness(event_dict: dict) -> None:
     """Fire-and-forget POST of a hook.decision event to the harness (#641).
@@ -736,9 +746,35 @@ def _make_pre_tool_use_hook(state: HookState):
                 "source": (matched.source if matched is not None else ""),
                 "traceparent": _traceparent,
             }
-            _t = asyncio.create_task(_post_hook_event_to_harness(_event_dict))
-            _INFLIGHT_HOOK_POSTS.add(_t)
-            _t.add_done_callback(_INFLIGHT_HOOK_POSTS.discard)
+            # Bounded-inflight shed (#712). Without this, a burst of
+            # tool calls while the harness is unreachable would spawn
+            # unbounded POST tasks, exhausting the httpx pool and
+            # driving the backend to OOM. When at cap we drop the
+            # event and bump a counter — the span event recorded
+            # above remains the authoritative record.
+            if len(_INFLIGHT_HOOK_POSTS) >= _HOOK_POST_MAX_INFLIGHT:
+                global _HOOK_POST_SHED_WARNED
+                if not _HOOK_POST_SHED_WARNED:
+                    logger.warning(
+                        "hook.decision POST shed: %d in-flight at cap=%d (further shed suppressed until drain)",
+                        len(_INFLIGHT_HOOK_POSTS), _HOOK_POST_MAX_INFLIGHT,
+                    )
+                    _HOOK_POST_SHED_WARNED = True
+                if backend_hooks_shed_total is not None:
+                    try:
+                        backend_hooks_shed_total.labels(**_LABELS).inc()
+                    except Exception:
+                        pass
+            else:
+                _t = asyncio.create_task(_post_hook_event_to_harness(_event_dict))
+                _INFLIGHT_HOOK_POSTS.add(_t)
+                def _done(tt, _reset=_INFLIGHT_HOOK_POSTS):
+                    _reset.discard(tt)
+                    # Re-arm the warning once we drop back below cap.
+                    if len(_reset) < _HOOK_POST_MAX_INFLIGHT // 2:
+                        global _HOOK_POST_SHED_WARNED
+                        _HOOK_POST_SHED_WARNED = False
+                _t.add_done_callback(_done)
         except Exception as _transport_exc:
             logger.debug("hook.decision transport scheduling failed: %r", _transport_exc)
 

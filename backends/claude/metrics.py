@@ -112,6 +112,7 @@ backend_tool_audit_entries_total: prometheus_client.Counter | None = None
 backend_hooks_config_reloads_total: prometheus_client.Counter | None = None
 backend_hooks_active_rules: prometheus_client.Gauge | None = None
 backend_hooks_evaluations_total: prometheus_client.Counter | None = None
+backend_hooks_shed_total: prometheus_client.Counter | None = None
 backend_hooks_config_errors_total: prometheus_client.Counter | None = None
 
 # Per-logger log write errors (#626). Complementary to backend_log_write_errors_total
@@ -512,6 +513,14 @@ if _enabled:
         "backend_hooks_warnings_total",
         "Total tool calls flagged (but not denied) by a PreToolUse hook.",
         ["agent", "agent_id", "backend", "tool", "source", "rule"],
+    )
+    backend_hooks_shed_total = prometheus_client.Counter(
+        "backend_hooks_shed_total",
+        "Total hook.decision POSTs shed because the bounded in-flight cap "
+        "(HOOK_POST_MAX_INFLIGHT, default 32) was reached (#712). Non-zero "
+        "rate indicates the harness is unreachable or slow while tool calls "
+        "fire rapidly — the backend would otherwise OOM.",
+        ["agent", "agent_id", "backend"],
     )
     backend_tool_audit_entries_total = prometheus_client.Counter(
         "backend_tool_audit_entries_total",
