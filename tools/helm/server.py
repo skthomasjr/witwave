@@ -230,11 +230,44 @@ _SECRET_KEY_HINTS = (
     "dockerconfig",
     ".dockerconfigjson",
 )
+# Keys that contain a hint as a substring but are configuration references
+# rather than credential leaves (#920). Suppressing these preserves useful
+# diff/values output while keeping actual credential leaves redacted.
+_SECRET_KEY_FALSE_POSITIVES = (
+    "authmode",        # Helm/Grafana: auth backend mode string
+    "authtype",        # generic: type of auth, not a credential
+    "authmethod",      # same — method name, not a credential
+    "authdomain",
+    "authhost",
+    "authurl",
+    "authendpoint",
+    "authissuer",
+    "authaudience",
+    "authprovider",
+    "authclass",
+    "secretkeyref",    # k8s: reference to a Secret, not a secret value
+    "secretref",       # k8s: reference
+    "secretname",      # k8s: name of a Secret, not its contents
+    "tokenaudience",   # OIDC audience claim, not a token
+    "tokenurl",        # OAuth token-endpoint URL
+    "tokenpath",       # Vault-agent config path
+    "tokenexpiry",
+    "tokenlifetime",
+    "tokenissuer",
+    "credentialmode",
+    "credentialtype",
+    "credentialprovider",
+)
 _REDACTED = "***REDACTED***"
 
 
 def _looks_like_secret_key(key: str) -> bool:
     k = key.lower()
+    # Strip a few word separators so 'secret_key_ref' and 'secretKeyRef' both
+    # collapse to 'secretkeyref' for the false-positive check.
+    k_flat = k.replace("_", "").replace("-", "").replace(".", "")
+    if any(fp in k_flat for fp in _SECRET_KEY_FALSE_POSITIVES):
+        return False
     return any(hint in k for hint in _SECRET_KEY_HINTS)
 
 
