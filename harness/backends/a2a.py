@@ -147,6 +147,20 @@ class A2ABackend:
             "A2A backend '%s' circuit %s -> %s (consecutive_failures=%d)",
             self.id, prev, new_state, self._circuit_consecutive_failures,
         )
+        # Invalidate the /health/ready cache when a backend flips
+        # unhealthy so the next probe re-sweeps instead of returning
+        # the cached "healthy" body for up to HEALTH_READY_CACHE_TTL
+        # seconds after a real backend crash (#703). Import locally to
+        # avoid a circular import at module load.
+        if new_state == "open":
+            try:
+                from main import invalidate_health_ready_cache
+                invalidate_health_ready_cache()
+            except Exception:
+                # Best-effort — cache invalidation is a latency optimisation,
+                # not a correctness requirement. A failure here just means
+                # the cache rides out its TTL.
+                pass
 
     async def _circuit_acquire(self) -> None:
         """Gate an outbound call against the circuit breaker.

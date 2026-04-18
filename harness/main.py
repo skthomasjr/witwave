@@ -121,13 +121,30 @@ _metrics_cache_lock: asyncio.Lock = asyncio.Lock()
 # Short-TTL cache for the health_ready backend sweep (#542).  Readiness probes
 # typically fire every 5-10s from Kubernetes plus dashboard polling and any
 # external monitor; without this cache each probe fans out a fresh HTTP GET to
-# every backend's /health.  2-3s TTL is short enough that real backend wobbles
-# surface quickly while collapsing bursts of concurrent probes into a single
-# sweep.  Override via HEALTH_READY_CACHE_TTL.
-HEALTH_READY_CACHE_TTL = float(os.environ.get("HEALTH_READY_CACHE_TTL", "3"))
+# every backend's /health.  1s TTL (tightened in #703) still collapses a burst
+# of concurrent probes into a single sweep while keeping the window in which a
+# freshly-dead backend can masquerade as healthy to ~1s. Override via
+# HEALTH_READY_CACHE_TTL. Cache is also invalidated explicitly via
+# invalidate_health_ready_cache() when an observed A2A error says a backend
+# just flipped unreachable.
+HEALTH_READY_CACHE_TTL = float(os.environ.get("HEALTH_READY_CACHE_TTL", "1"))
 _health_ready_cache: "tuple[int, dict] | None" = None
 _health_ready_expires: float = 0.0
 _health_ready_lock: asyncio.Lock = asyncio.Lock()
+
+
+def invalidate_health_ready_cache() -> None:
+    """Drop the health-ready cache so the next probe re-sweeps backends.
+
+    Called from A2A backend error paths (#703) so a downstream crash
+    surfaces on the very next readiness probe rather than waiting out
+    the TTL. Safe to call from any task — no await, no lock (we simply
+    reset the expiry sentinel; the single-flight lock is re-acquired
+    when the next probe runs).
+    """
+    global _health_ready_cache, _health_ready_expires
+    _health_ready_cache = None
+    _health_ready_expires = 0.0
 
 
 def _check_trigger_auth(request: Request, item: TriggerItem, body_bytes: bytes) -> bool:
