@@ -177,6 +177,21 @@ def _check_trigger_auth(request: Request, item: TriggerItem, body_bytes: bytes) 
     return False
 
 
+#: Anti-CSRF header required on all ad-hoc run endpoints (#927). Browsers
+#: treat this as a non-simple header, forcing a CORS preflight and — when the
+#: origin is not explicitly trusted — blocking the request before the bearer
+#: ever leaves the page. A stored-XSS payload on the dashboard origin can
+#: still mint this header, but combined with stricter CORS this closes the
+#: third-party CSRF path that existed when only the bearer was required.
+ADHOC_CSRF_HEADER = "X-Ad-Hoc-Run"
+ADHOC_CSRF_VALUE = "1"
+
+
+def _check_adhoc_csrf(request: Request) -> bool:
+    """Return True when the ad-hoc request carries the anti-CSRF header."""
+    return request.headers.get(ADHOC_CSRF_HEADER, "") == ADHOC_CSRF_VALUE
+
+
 def _check_adhoc_auth(request: Request) -> bool:
     """Validate ad-hoc run-endpoint auth.
 
@@ -1230,6 +1245,14 @@ async def main():
             if harness_adhoc_fires_total is not None:
                 harness_adhoc_fires_total.labels(kind="job", name=name, code="401").inc()
             return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if not _check_adhoc_csrf(request):
+            # #927: Missing anti-CSRF header → treat as forgery attempt. A
+            # browser cross-origin POST cannot add X-Ad-Hoc-Run without a
+            # CORS preflight; requiring it defangs XSS-to-CSRF chains even
+            # when the bearer is recoverable from the dashboard origin.
+            if harness_adhoc_fires_total is not None:
+                harness_adhoc_fires_total.labels(kind="job", name=name, code="403").inc()
+            return JSONResponse({"error": "missing anti-CSRF header"}, status_code=403)
         if (resp := _adhoc_warmup_shield("job", name)) is not None:
             return resp
         if not await _drain_adhoc_body(request):
@@ -1265,6 +1288,10 @@ async def main():
             if harness_adhoc_fires_total is not None:
                 harness_adhoc_fires_total.labels(kind="task", name=name, code="401").inc()
             return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if not _check_adhoc_csrf(request):
+            if harness_adhoc_fires_total is not None:
+                harness_adhoc_fires_total.labels(kind="task", name=name, code="403").inc()
+            return JSONResponse({"error": "missing anti-CSRF header"}, status_code=403)
         if (resp := _adhoc_warmup_shield("task", name)) is not None:
             return resp
         if not await _drain_adhoc_body(request):
@@ -1299,6 +1326,10 @@ async def main():
             if harness_adhoc_fires_total is not None:
                 harness_adhoc_fires_total.labels(kind="heartbeat", name="heartbeat", code="401").inc()
             return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if not _check_adhoc_csrf(request):
+            if harness_adhoc_fires_total is not None:
+                harness_adhoc_fires_total.labels(kind="heartbeat", name="heartbeat", code="403").inc()
+            return JSONResponse({"error": "missing anti-CSRF header"}, status_code=403)
         if (resp := _adhoc_warmup_shield("heartbeat", "heartbeat")) is not None:
             return resp
         if not await _drain_adhoc_body(request):
