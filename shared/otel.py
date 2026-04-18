@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections import deque
 from contextlib import contextmanager
 from typing import Any, Iterator
 
@@ -44,8 +45,12 @@ SPAN_KIND_INTERNAL = "internal"
 _IN_MEMORY_CAP_DEFAULT = 1000
 
 # Global ring buffer of finished ReadableSpan objects, newest last.
-# Populated by InMemorySpanProcessor below when OTel is enabled.
-_span_ring: list[Any] | None = None
+# Populated by InMemorySpanProcessor below when OTel is enabled. We use
+# collections.deque(maxlen=cap) so append + implicit eviction is a
+# single atomic op under CPython's GIL (#662) — the previous list +
+# `del ring[:excess]` composite was not atomic across on_end calls from
+# the BatchSpanProcessor worker thread.
+_span_ring: "deque[Any] | None" = None
 # Capacity snapshot for convenience; set at init time.
 _span_ring_cap: int = 0
 
@@ -305,7 +310,7 @@ def _install_in_memory_sink(provider: Any) -> None:
     if cap <= 0:
         logger.info("OTel in-memory span sink disabled (OTEL_IN_MEMORY_SPANS=%d).", cap)
         return
-    _span_ring = []
+    _span_ring = deque(maxlen=cap)
     _span_ring_cap = cap
     try:
         provider.add_span_processor(_InMemorySpanProcessor())
@@ -321,9 +326,9 @@ class _InMemorySpanProcessor:
 
     Implements the OTel SpanProcessor interface via duck typing; we don't
     inherit from SpanProcessor to keep this file free of SDK imports at
-    module scope. Thread-safe because list.append + bounded slicing are
-    atomic under CPython's GIL, which is fine for the backend's single
-    asyncio loop + BatchSpanProcessor worker thread access pattern.
+    module scope. Thread-safe because collections.deque(maxlen=cap).append
+    is atomic under CPython's GIL and performs implicit left-eviction —
+    no composite trim required (#662).
     """
 
     def on_start(self, span: Any, parent_context: Any | None = None) -> None:
@@ -333,12 +338,10 @@ class _InMemorySpanProcessor:
         ring = _span_ring
         if ring is None:
             return
+        # deque.append + maxlen eviction is a single atomic op under the
+        # GIL, so BatchSpanProcessor's worker thread can't interleave an
+        # append with the old manual trim.
         ring.append(span)
-        # Trim to capacity. Keeping the newest spans is more useful for
-        # debugging than the oldest.
-        excess = len(ring) - _span_ring_cap
-        if excess > 0:
-            del ring[:excess]
 
     def shutdown(self) -> None:
         return None
@@ -386,8 +389,12 @@ def get_in_memory_traces() -> list[dict]:
     ring = _span_ring
     if not ring:
         return []
+    # Snapshot the deque into a list so iteration is stable even if the
+    # BatchSpanProcessor worker thread appends concurrently — list(deque)
+    # is atomic under the GIL.
+    snapshot = list(ring)
     by_trace: dict[str, list[Any]] = {}
-    for span in ring:
+    for span in snapshot:
         try:
             ctx = span.get_span_context()
             tid = _format_span_id(ctx.trace_id)
