@@ -438,7 +438,13 @@ async def _shell_executor_inner(req: LocalShellCommandRequest) -> str:
     _base_env = {k: os.environ[k] for k in ("PATH", "HOME", "USER", "TMPDIR", "LANG", "LC_ALL") if k in os.environ}
     env = {**_base_env, **sanitized_extra}
     timeout_ms = req.data.action.timeout_ms
-    timeout_s = (timeout_ms / 1000.0) if timeout_ms else 30.0
+    # Clamp non-positive timeouts to the 30s default (#879). Previously
+    # `if timeout_ms else 30.0` accepted any truthy value — including
+    # negatives — so timeout_ms=-1 produced timeout_s=-0.001 which
+    # subprocess.run treats as already-expired and raises
+    # TimeoutExpired instantly. Prompt-injectable DoS via
+    # LocalShellCommandRequest.
+    timeout_s = (timeout_ms / 1000.0) if (timeout_ms and timeout_ms > 0) else 30.0
     try:
         result = await asyncio.to_thread(
             subprocess.run,
