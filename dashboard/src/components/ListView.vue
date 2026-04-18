@@ -101,11 +101,15 @@ function cellFor(row: T, col: Column<T>): { text: string; className: string } {
       >
         {{ updatedLabel }}
       </span>
+      <!-- Screen readers hear the degraded-count transition via role=status
+           + aria-live=polite (#820). -->
       <span
         v-if="degradedEntries.length > 0"
         class="degraded"
         :title="degradedTooltip"
         :data-testid="`list-${title.toLowerCase()}-degraded`"
+        role="status"
+        aria-live="polite"
       >
         <i class="pi pi-exclamation-triangle" aria-hidden="true" />
         {{ degradedEntries.length }} degraded
@@ -121,9 +125,24 @@ function cellFor(row: T, col: Column<T>): { text: string; className: string } {
       </button>
     </div>
 
-    <div class="feed">
-      <div v-if="loading && items.length === 0" class="state">Loading…</div>
-      <div v-else-if="error && items.length === 0" class="state state-error">
+    <!-- aria-busy flips while an inflight refresh is mutating the list (#820).
+         role=region + aria-label anchors the feed so screen readers can
+         jump directly to the data set being displayed. -->
+    <div
+      class="feed"
+      role="region"
+      :aria-label="`${title} list`"
+      :aria-busy="loading"
+    >
+      <div v-if="loading && items.length === 0" class="state" role="status" aria-live="polite">
+        Loading…
+      </div>
+      <div
+        v-else-if="error && items.length === 0"
+        class="state state-error"
+        role="status"
+        aria-live="polite"
+      >
         {{ error }}
       </div>
       <div v-else-if="filtered.length === 0" class="state">

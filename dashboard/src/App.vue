@@ -44,11 +44,17 @@ const { state, detail } = useHealth();
           {{ item.label }}
         </RouterLink>
       </nav>
+      <!-- Screen readers hear the team transitioning online/degraded/offline
+           via role=status + aria-live=polite (#820). Gated on same element
+           so downstream test hooks stay valid. -->
       <span
         class="status"
         :class="`status-${state}`"
         :title="detail || state"
         data-testid="header-status"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
       >
         {{
           state === "connecting"
