@@ -190,9 +190,13 @@ def schedule_post(event_dict: dict[str, Any], shed_counter: Any = None) -> bool:
     def _done(tt: asyncio.Task, _inflight: set = _INFLIGHT) -> None:
         _inflight.discard(tt)
         # Re-arm the shed warning once we drop back below half cap.
+        # Guard the write with the same _shed_warn_lock used by the
+        # set-path above (#882) so concurrent task completions can't
+        # both flip the flag after one has already cleared it.
         if len(_inflight) < HOOK_POST_MAX_INFLIGHT // 2:
             global _shed_warned
-            _shed_warned = False
+            with _shed_warn_lock:
+                _shed_warned = False
 
     t.add_done_callback(_done)
     return True
