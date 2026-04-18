@@ -19,6 +19,7 @@ from a2a.types import (
     AgentSkill,
 )
 from conversations import (
+    auth_disabled_escape_hatch,
     make_conversations_handler,
     make_trace_handler,
 )
@@ -272,10 +273,15 @@ async def main():
 
     async def mcp_handler(request: Request) -> JSONResponse:
         """Minimal MCP JSON-RPC server: initialize / tools/list / tools/call."""
-        # Gate on the same bearer token used by /conversations and /trace when
-        # configured. Without this, any network caller could drive the LLM via
-        # tools/call -> ask_agent and burn the operator's API key (#518).
-        if CONVERSATIONS_AUTH_TOKEN:
+        # Gate on the same bearer token used by /conversations and /trace.
+        # Fail-closed when the token is missing (#718) unless the operator
+        # explicitly set CONVERSATIONS_AUTH_DISABLED=true for local dev;
+        # previously an empty token silently disabled auth and any network
+        # caller could drive the LLM via tools/call -> ask_agent (#518).
+        if not CONVERSATIONS_AUTH_TOKEN:
+            if not auth_disabled_escape_hatch():
+                return JSONResponse({"error": "auth not configured"}, status_code=503)
+        else:
             header = request.headers.get("Authorization", "")
             if not hmac_mod.compare_digest(f"Bearer {CONVERSATIONS_AUTH_TOKEN}", header):
                 return JSONResponse({"error": "unauthorized"}, status_code=401)
@@ -418,8 +424,11 @@ async def main():
     # input-derived fields, and agent identity — information disclosure across
     # pods/tenants was possible when these routes were unauthenticated.
     def _require_traces_auth(request: Request) -> JSONResponse | None:
+        # Fail-closed when the token is missing unless the escape hatch is set (#718).
         if not CONVERSATIONS_AUTH_TOKEN:
-            return None
+            if auth_disabled_escape_hatch():
+                return None
+            return JSONResponse({"error": "auth not configured"}, status_code=503)
         header = request.headers.get("Authorization", "")
         if not hmac_mod.compare_digest(f"Bearer {CONVERSATIONS_AUTH_TOKEN}", header):
             return JSONResponse({"error": "unauthorized"}, status_code=401)

@@ -8,6 +8,7 @@ import asyncio
 import hmac as hmac_mod
 import json
 import logging
+import os
 from collections import deque
 from datetime import datetime
 
@@ -17,22 +18,54 @@ from starlette.responses import JSONResponse
 logger = logging.getLogger(__name__)
 
 
-def _warn_if_empty_token(auth_token: str | None, handler_name: str) -> None:
-    """Emit a clear warning when auth_token is an empty string.
+def auth_disabled_escape_hatch() -> bool:
+    """Return True iff the operator has explicitly opted out of auth (#718).
 
-    Distinguishes "unset" (None) from "set-but-empty" ("") so operators get a
-    loud signal that a misconfigured CONVERSATIONS_AUTH_TOKEN has silently
-    disabled authentication. Preserves the existing permissive behavior for
-    backward compatibility — the handler still skips auth — but the warning
-    surfaces the exposure at startup instead of leaving it silent.
+    Accepts ``CONVERSATIONS_AUTH_DISABLED`` in {"1", "true", "yes", "on"} to
+    allow local-dev and intentional public deployments to bypass the
+    fail-closed behavior for an empty/unset token. Any other value (including
+    "false"/"0"/unset) keeps auth required.
     """
-    if auth_token == "":
-        logger.warning(
-            "%s: CONVERSATIONS_AUTH_TOKEN is set but empty; authentication is DISABLED "
-            "and logs are readable by any caller. Set a non-empty token or unset the "
-            "variable entirely to acknowledge disabled auth.",
-            handler_name,
-        )
+    return os.environ.get("CONVERSATIONS_AUTH_DISABLED", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _log_missing_token(handler_name: str) -> None:
+    """Emit an ERROR when auth is missing without the explicit escape hatch (#718)."""
+    logger.error(
+        "%s: CONVERSATIONS_AUTH_TOKEN is unset or empty and CONVERSATIONS_AUTH_DISABLED "
+        "is not set — endpoint will fail closed (503). Set a non-empty token, or set "
+        "CONVERSATIONS_AUTH_DISABLED=true to acknowledge disabled auth for local dev.",
+        handler_name,
+    )
+
+
+def _log_escape_hatch(handler_name: str) -> None:
+    """Emit an ERROR when the escape hatch intentionally disables auth (#718)."""
+    logger.error(
+        "%s: CONVERSATIONS_AUTH_DISABLED=true — authentication is DISABLED and logs "
+        "are readable by any caller. Use only for local development.",
+        handler_name,
+    )
+
+
+def _warn_if_empty_token(auth_token: str | None, handler_name: str) -> None:
+    """Emit a loud diagnostic for missing tokens at handler-factory time (#718).
+
+    Fail-closed semantics now live in the handlers themselves; this function is
+    retained so the factory still logs at construction (before any request)
+    whether the deployment is configured safely.
+    """
+    if auth_token:
+        return
+    if auth_disabled_escape_hatch():
+        _log_escape_hatch(handler_name)
+    else:
+        _log_missing_token(handler_name)
 
 
 def _read_jsonl(path: str, since_dt: datetime | None, limit_n: int | None) -> list:
@@ -136,7 +169,15 @@ def make_conversations_handler(
     _warn_if_empty_token(auth_token, "make_conversations_handler")
 
     async def conversations_handler(request: Request) -> JSONResponse:
-        if auth_token:
+        # Fail-closed when the token is missing unless the operator explicitly
+        # opted out via CONVERSATIONS_AUTH_DISABLED=true (#718). An empty token
+        # previously short-circuited the gate, silently exposing logs.
+        if not auth_token:
+            if not auth_disabled_escape_hatch():
+                return JSONResponse(
+                    {"error": "auth not configured"}, status_code=503
+                )
+        else:
             header = request.headers.get("Authorization", "")
             if not hmac_mod.compare_digest(f"Bearer {auth_token}", header):
                 return JSONResponse({"error": "unauthorized"}, status_code=401)
@@ -166,7 +207,14 @@ def make_trace_handler(
     _warn_if_empty_token(auth_token, "make_trace_handler")
 
     async def trace_handler(request: Request) -> JSONResponse:
-        if auth_token:
+        # Fail-closed when the token is missing unless CONVERSATIONS_AUTH_DISABLED
+        # is explicitly set (#718).
+        if not auth_token:
+            if not auth_disabled_escape_hatch():
+                return JSONResponse(
+                    {"error": "auth not configured"}, status_code=503
+                )
+        else:
             header = request.headers.get("Authorization", "")
             if not hmac_mod.compare_digest(f"Bearer {auth_token}", header):
                 return JSONResponse({"error": "unauthorized"}, status_code=401)
@@ -202,7 +250,14 @@ def make_tool_audit_handler(
     _warn_if_empty_token(auth_token, "make_tool_audit_handler")
 
     async def tool_audit_handler(request: Request) -> JSONResponse:
-        if auth_token:
+        # Fail-closed when the token is missing unless CONVERSATIONS_AUTH_DISABLED
+        # is explicitly set (#718).
+        if not auth_token:
+            if not auth_disabled_escape_hatch():
+                return JSONResponse(
+                    {"error": "auth not configured"}, status_code=503
+                )
+        else:
             header = request.headers.get("Authorization", "")
             if not hmac_mod.compare_digest(f"Bearer {auth_token}", header):
                 return JSONResponse({"error": "unauthorized"}, status_code=401)
@@ -255,7 +310,14 @@ def make_proxy_tool_audit_handler(
     _warn_if_empty_token(auth_token, "make_proxy_tool_audit_handler")
 
     async def tool_audit_handler(request: Request) -> JSONResponse:
-        if auth_token:
+        # Fail-closed when the token is missing unless CONVERSATIONS_AUTH_DISABLED
+        # is explicitly set (#718).
+        if not auth_token:
+            if not auth_disabled_escape_hatch():
+                return JSONResponse(
+                    {"error": "auth not configured"}, status_code=503
+                )
+        else:
             header = request.headers.get("Authorization", "")
             if not hmac_mod.compare_digest(f"Bearer {auth_token}", header):
                 return JSONResponse({"error": "unauthorized"}, status_code=401)
@@ -296,7 +358,14 @@ def make_proxy_conversations_handler(
     _warn_if_empty_token(auth_token, "make_proxy_conversations_handler")
 
     async def conversations_handler(request: Request) -> JSONResponse:
-        if auth_token:
+        # Fail-closed when the token is missing unless CONVERSATIONS_AUTH_DISABLED
+        # is explicitly set (#718).
+        if not auth_token:
+            if not auth_disabled_escape_hatch():
+                return JSONResponse(
+                    {"error": "auth not configured"}, status_code=503
+                )
+        else:
             header = request.headers.get("Authorization", "")
             if not hmac_mod.compare_digest(f"Bearer {auth_token}", header):
                 return JSONResponse({"error": "unauthorized"}, status_code=401)
@@ -329,7 +398,14 @@ def make_proxy_trace_handler(
     _warn_if_empty_token(auth_token, "make_proxy_trace_handler")
 
     async def trace_handler(request: Request) -> JSONResponse:
-        if auth_token:
+        # Fail-closed when the token is missing unless CONVERSATIONS_AUTH_DISABLED
+        # is explicitly set (#718).
+        if not auth_token:
+            if not auth_disabled_escape_hatch():
+                return JSONResponse(
+                    {"error": "auth not configured"}, status_code=503
+                )
+        else:
             header = request.headers.get("Authorization", "")
             if not hmac_mod.compare_digest(f"Bearer {auth_token}", header):
                 return JSONResponse({"error": "unauthorized"}, status_code=401)
