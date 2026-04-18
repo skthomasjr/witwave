@@ -156,7 +156,7 @@ Each reconcile writes `.status` via the subresource:
 
 The reconciler tracks materialization (did the ConfigMap apply?) — NOT
 runtime execution (did the prompt actually fire?). Execution telemetry
-lives in Prometheus / conversation.jsonl / trace.jsonl / the dashboard
+lives in Prometheus / conversation.jsonl / tool-activity.jsonl / the dashboard
 views. See request
 [#642](https://github.com/skthomasjr/autonomous-agent/issues/642) for
 the runtime-status proposal.

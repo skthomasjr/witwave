@@ -52,8 +52,8 @@ BACKEND_PORT = int(os.environ.get("BACKEND_PORT", "8000"))
 AGENT_URL = os.environ.get("AGENT_URL", f"http://localhost:{BACKEND_PORT}/")
 AGENT_VERSION = os.environ.get("AGENT_VERSION", "0.1.0")
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
-TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/trace.jsonl")
-# gemini surfaces AFC tool_use / tool_result rows on trace.jsonl (#640).
+TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/tool-activity.jsonl")
+# gemini surfaces AFC tool_use / tool_result rows on tool-activity.jsonl (#640).
 # Audit rows would share the same file with event_type='tool_audit' once
 # a PostToolUse hook path is wired in (AFC runs inside the SDK — see #640).
 AGENT_OWNER = os.environ.get("AGENT_OWNER", AGENT_NAME)

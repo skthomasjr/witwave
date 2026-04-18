@@ -94,7 +94,7 @@ AGENT_NAME = os.environ.get("AGENT_NAME", "gemini")
 AGENT_OWNER = os.environ.get("AGENT_OWNER", AGENT_NAME)
 AGENT_ID = os.environ.get("AGENT_ID", "gemini")
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
-TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/trace.jsonl")
+TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/tool-activity.jsonl")
 AGENT_MD = "/home/agent/.gemini/GEMINI.md"
 SESSION_STORE_DIR = os.environ.get("SESSION_STORE_DIR", "/home/agent/.gemini/memory/sessions")
 
@@ -322,7 +322,7 @@ async def _emit_afc_history(
     ``chat.history`` (and to ``response.automatic_function_calling_history``
     on non-streaming calls). This helper walks that flat list, pairs each
     ``function_call`` with the matching ``function_response`` by tool name,
-    and writes one row per side into ``trace.jsonl`` using the same shape
+    and writes one row per side into ``tool-activity.jsonl`` using the same shape
     claude uses so the dashboard TraceView (#592) and OTel trace viewer
     (#632) can render them uniformly.
 
@@ -878,7 +878,7 @@ async def run_query(
             # AFC observability (#640): walk chat.history to surface any
             # function_call / function_response parts appended by the SDK
             # during this roundtrip. Emits one tool_use + tool_result row
-            # per pair into trace.jsonl (matching claude's shape for
+            # per pair into tool-activity.jsonl (matching claude's shape for
             # dashboard TraceView #592 and OTel trace viewer #632) and
             # increments backend_sdk_tool_calls_total / observes
             # backend_sdk_tool_duration_seconds. No-op when AFC did not run.

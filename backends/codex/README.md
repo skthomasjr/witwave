@@ -104,7 +104,7 @@ codex mounts:
 - `AGENTS.md` — agent identity (system prompt), at `/home/agent/.codex/AGENTS.md`
 - `config.toml` — tool enablement flags (optional)
 - `logs/conversation.jsonl` — conversation log file (must pre-exist as a file)
-- `logs/trace.jsonl` — trace log file (must pre-exist as a file)
+- `logs/tool-activity.jsonl` — trace log file (must pre-exist as a file)
 - `memory/` — persistent memory directory
 
 Key environment variables: `AGENT_NAME` (instance name), `AGENT_OWNER` (named agent, e.g. `iris`), `AGENT_ID` (backend

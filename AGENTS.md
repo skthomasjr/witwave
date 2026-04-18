@@ -218,7 +218,7 @@ Agent identity and behavior are file-based — nothing is baked into images.
 │   └── agent-card.md        # A2A identity description text
 ├── logs/                    # harness logs (runtime, not committed)
 ├── claude/               # Claude backend instance for this agent
-│   ├── logs/                # Backend conversation.jsonl + trace.jsonl (runtime, not committed)
+│   ├── logs/                # Backend conversation.jsonl + tool-activity.jsonl (runtime, not committed)
 │   └── memory/              # Backend persistent memory (runtime, not committed)
 ├── codex/                # Codex backend instance for this agent
 │   ├── logs/

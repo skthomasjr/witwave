@@ -86,7 +86,7 @@ gemini mounts:
 
 - `GEMINI.md` — agent identity (system prompt), at `/home/agent/.gemini/GEMINI.md`
 - `logs/conversation.jsonl` — conversation log file (must pre-exist as a file)
-- `logs/trace.jsonl` — trace log file (must pre-exist as a file)
+- `logs/tool-activity.jsonl` — trace log file (must pre-exist as a file)
 - `memory/` — persistent memory and session history directory (`memory/sessions/` for JSON session files)
 
 Key environment variables: `AGENT_NAME` (instance name), `AGENT_OWNER` (named agent, e.g. `iris`), `AGENT_ID` (backend
@@ -126,7 +126,7 @@ hot-reloaded on `mcp.json` changes — the lifespan-scoped stack pattern is shar
 
 **AFC vs. hooks caveat.** google-genai's AFC runs the tool loop inside `generate_content`, so the #631 hooks
 skeleton (PreToolUse policy enforcement) **cannot intercept MCP tool calls**. Tool invocations are observable
-after the fact (via `tool_use` / `tool_result` rows on `trace.jsonl` and the
+after the fact (via `tool_use` / `tool_result` rows on `tool-activity.jsonl` and the
 `backend_sdk_tool_calls_total` / `backend_sdk_tool_duration_seconds` metrics), but a rule like "deny tool X on input
 pattern Y" cannot block the call because the decision point is inside the SDK. If policy enforcement is a
 hard requirement, the #640 issue body documents the alternate design (disable AFC and hand-roll the

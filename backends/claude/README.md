@@ -20,7 +20,7 @@ utilization.
 **MCP server support** — Loads MCP server definitions from a mounted `mcp.json` file. The file is hot-reloaded on each
 request, so MCP servers can be added or reconfigured without restarting the container.
 
-**Tool tracing** — Every `tool_use` and `tool_result` event is captured from the SDK stream and written to `trace.jsonl`
+**Tool tracing** — Every `tool_use` and `tool_result` event is captured from the SDK stream and written to `tool-activity.jsonl`
 alongside summary response events. `PostToolUse` hook rows land in the same file tagged
 `event_type: "tool_audit"`, giving operators one feed to tail for all tool activity (raw SDK events plus hook-level
 audit context like matched rule, decision, and response preview).
@@ -39,7 +39,7 @@ token counts, context exhaustion events, tool call counts, MCP tool usage, and t
 **baseline** of deny rules ships with the executor and blocks the most obvious-dangerous shell patterns (`rm -rf /`,
 `git push --force main`, `curl | sh`, `chmod 777`, `dd of=/dev/sdX`). Per-agent **extensions** layered on top live in a
 `hooks.yaml` file mounted at `/home/agent/.claude/hooks.yaml` and are hot-reloaded. PostToolUse is always wired and
-writes one row per tool call to `logs/trace.jsonl` with `event_type: "tool_audit"` for a forensic trail. See
+writes one row per tool call to `logs/tool-activity.jsonl` with `event_type: "tool_audit"` for a forensic trail. See
 [Hook configuration](#hook-configuration) below.
 
 ## Endpoints
@@ -95,7 +95,7 @@ claude mounts:
 - `CLAUDE.md` — agent identity (system prompt), at `/home/agent/.claude/CLAUDE.md`
 - `mcp.json` — MCP server configuration (optional)
 - `logs/conversation.jsonl` — conversation log file (must pre-exist as a file)
-- `logs/trace.jsonl` — trace log file (must pre-exist as a file)
+- `logs/tool-activity.jsonl` — trace log file (must pre-exist as a file)
 - `memory/` — persistent memory directory
 
 Key environment variables: `AGENT_NAME` (instance name), `AGENT_OWNER` (named agent, e.g. `iris`), `AGENT_ID` (backend
@@ -136,7 +136,7 @@ serialisation of `tool_input`). Invalid rules are skipped with a warning; malfor
 place so an editing mistake cannot accidentally disable policy.
 
 **Audit log.** PostToolUse always appends one row per tool call to `TRACE_LOG` (default
-`/home/agent/logs/trace.jsonl`) tagged `event_type: "tool_audit"`, with fields: `ts`, `agent`, `agent_id`,
+`/home/agent/logs/tool-activity.jsonl`) tagged `event_type: "tool_audit"`, with fields: `ts`, `agent`, `agent_id`,
 `session_id`, `model`, `tool_use_id`, `tool_name`, `tool_input`, `tool_response_preview` (capped at 2 KiB), plus
 `decision`, `rule`, and `reason` when the hook blocked the call. The audit rows share a file with SDK `tool_use`
 and `tool_result` events so operators tail one feed for all tool activity; filter by `event_type` to isolate

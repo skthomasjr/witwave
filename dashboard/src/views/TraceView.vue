@@ -5,7 +5,7 @@ import type { TraceEntry } from "../types/chat";
 
 // Tool activity feed across the team (#592, consolidated in
 // #tool-audit-merge). Fans out per-agent to /api/agents/<name>/trace
-// and renders a chronological list. trace.jsonl carries three event
+// and renders a chronological list. tool-activity.jsonl carries three event
 // types; we show two visible kinds:
 //   • tool_use  — paired with its matching tool_result for duration
 //                 and status, enriched with response preview + hook

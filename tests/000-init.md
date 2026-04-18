@@ -17,7 +17,7 @@ Clear all test agent logs so tests start with a clean slate:
 
 ```
 rm -f .agents/test/bob/logs/conversation.jsonl
-rm -f .agents/test/bob/logs/trace.jsonl
+rm -f .agents/test/bob/logs/tool-activity.jsonl
 rm -f .agents/test/bob/logs/agent.log
 ```
 

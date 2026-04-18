@@ -28,7 +28,7 @@ export const router = createRouter({
     { path: "/heartbeat", redirect: { name: "automation" } },
     { path: "/conversations", name: "conversations", component: ConversationsView },
     { path: "/trace", name: "trace", component: TraceView },
-    // Tool audit rows now land in trace.jsonl with event_type='tool_audit'
+    // Tool audit rows now land in tool-activity.jsonl with event_type='tool_audit'
     // and render through the Tool Trace tab. Legacy path redirects so
     // deep links and bookmarks keep working for at least one release.
     { path: "/tool-audit", redirect: { name: "trace" } },

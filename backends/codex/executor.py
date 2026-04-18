@@ -91,7 +91,7 @@ AGENT_NAME = os.environ.get("AGENT_NAME", "codex")
 AGENT_OWNER = os.environ.get("AGENT_OWNER", AGENT_NAME)
 AGENT_ID = os.environ.get("AGENT_ID", "codex")
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
-TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/trace.jsonl")
+TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/tool-activity.jsonl")
 AGENT_MD = "/home/agent/.codex/AGENTS.md"
 CODEX_SESSION_DB = os.environ.get("CODEX_SESSION_DB", "/home/agent/logs/codex_sessions.db")
 
@@ -212,7 +212,7 @@ def _evaluate_shell_baseline(cmd_parts: list[str]) -> tuple[str, str] | None:
 def _append_tool_audit(entry: dict) -> None:
     """Append an ``event_type='tool_audit'`` row to TRACE_LOG; swallow errors.
 
-    Consolidated with SDK tool events into a single trace.jsonl so
+    Consolidated with SDK tool events into a single tool-activity.jsonl so
     downstream UIs can render a single "Tool Activity" feed. Mirrors
     claude's audit shape: one JSON object per line with a monotonic
     timestamp, tool name, decision (allow|deny), command, and reason

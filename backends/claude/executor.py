@@ -328,7 +328,7 @@ AGENT_NAME = os.environ.get("AGENT_NAME", "claude")
 AGENT_OWNER = os.environ.get("AGENT_OWNER", AGENT_NAME)
 AGENT_ID = os.environ.get("AGENT_ID", "claude")
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
-TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/trace.jsonl")
+TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/tool-activity.jsonl")
 MCP_CONFIG_PATH = os.environ.get("MCP_CONFIG_PATH", "/home/agent/.claude/mcp.json")
 AGENT_MD = os.environ.get("AGENT_MD_PATH", "/home/agent/.claude/CLAUDE.md")
 HOOKS_CONFIG_PATH = os.environ.get("HOOKS_CONFIG_PATH", "/home/agent/.claude/hooks.yaml")
@@ -540,7 +540,7 @@ async def log_trace(text: str) -> None:
 
 
 async def log_tool_audit(entry: dict) -> None:
-    """Append one audit row to ``trace.jsonl`` with event_type='tool_audit'.
+    """Append one audit row to ``tool-activity.jsonl`` with event_type='tool_audit'.
 
     Previously this wrote to a separate ``tool-audit.jsonl`` file; the two
     feeds were consolidated so one endpoint (``/trace``) carries both
@@ -745,7 +745,7 @@ def _make_post_tool_use_hook(session_id_ref: dict, model_ref: dict):
             try:
                 # ``tool_response`` can be large — capture only a preview so the
                 # audit log stays compact. Operators who need the full payload
-                # can read trace.jsonl.
+                # can read tool-activity.jsonl.
                 _resp = input_data.get("tool_response")
                 if isinstance(_resp, (dict, list)):
                     _resp_preview = json.dumps(_resp, default=str)[:2048]
@@ -1416,7 +1416,7 @@ class AgentExecutor(A2AAgentExecutor):
         Previously only the MCP/agent_md/hooks watchers were cancelled, leaving
         any in-flight A2A request tasks tracked in ``self._running_tasks`` to
         run to natural completion — or be SIGKILLed by uvicorn — which left
-        partial records in ``conversation.jsonl``, ``trace.jsonl``, and
+        partial records in ``conversation.jsonl``, ``tool-activity.jsonl``, and
         ``tool-audit.jsonl`` plus orphaned Claude CLI subprocesses.
 
         Cancellation order matters:

@@ -41,7 +41,7 @@ os.environ.setdefault("AGENT_ID", "gemini")
 import tempfile as _tempfile
 _log_tmp_dir = _tempfile.mkdtemp(prefix="gemini-test-")
 os.environ.setdefault("CONVERSATION_LOG", os.path.join(_log_tmp_dir, "conversation.jsonl"))
-os.environ.setdefault("TRACE_LOG", os.path.join(_log_tmp_dir, "trace.jsonl"))
+os.environ.setdefault("TRACE_LOG", os.path.join(_log_tmp_dir, "tool-activity.jsonl"))
 os.environ.setdefault("SESSION_STORE_DIR", os.path.join(_log_tmp_dir, "sessions"))
 
 

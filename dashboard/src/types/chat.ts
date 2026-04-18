@@ -33,7 +33,7 @@ export interface ConversationEntry {
 // Trace row emitted by backends and merged by the harness /trace proxy
 // (#592). Shape follows claude/executor.py _log_tool_event for SDK-level
 // events, and log_tool_audit for PostToolUse hook rows (consolidated
-// into trace.jsonl as event_type='tool_audit' in #tool-audit-merge).
+// into tool-activity.jsonl as event_type='tool_audit' in #tool-audit-merge).
 //
 //  - tool_use   : (id, name, input)
 //  - tool_result: (tool_use_id, content, is_error)
