@@ -405,16 +405,38 @@ export function useOTelTraces(opts: UseOTelTracesOptions = {}) {
 
   const baseUrl = resolveBaseUrl();
   // Configured when either an external Jaeger/Tempo URL is set OR the
-  // in-cluster in-memory span store is available (always the case — the
-  // harness exposes /api/traces unconditionally).
+  // in-cluster in-memory span store is available.
   const inClusterMode = baseUrl === null;
-  // "configured" reports whether we have at least one trace source to query
-  // — an external Jaeger/Tempo URL or the in-cluster /api/traces fallback.
-  // Kept as a computed so consumers can reactively toggle a "not configured"
-  // empty state and skip polling when neither source is available (#677).
+  // "configured" reports whether we have at least one trace source to
+  // query. The previous expression `baseUrl !== null || inClusterMode`
+  // was a tautology (#894): inClusterMode IS `baseUrl === null`, so
+  // the disjunction was always true and any future consumer that
+  // tried to use it as a polling guard would poll forever with no
+  // source available.
+  //
+  // External URL path: configured iff resolveBaseUrl() succeeded, which
+  // already runs validateTraceBaseUrl() (protocol + parse checks).
+  // In-cluster path: configured only once the /api/team fan-out has
+  // yielded at least one agent entry — otherwise the fallback branch
+  // has nothing to query. The probe is recomputed on team refresh so
+  // the flag goes true the first time a backend becomes reachable.
+  const inClusterReachable = ref<boolean>(false);
   const configured: ComputedRef<boolean> = computed(
-    () => baseUrl !== null || inClusterMode,
+    () => baseUrl !== null || inClusterReachable.value,
   );
+  // One-shot probe: fetch /api/team; a non-empty response means the
+  // dashboard can fan out to at least one agent's /api/traces endpoint.
+  // Errors leave configured=false so consumers render a "not
+  // configured" empty state instead of polling into the void.
+  void (async () => {
+    try {
+      const team = await fetchTeam(new AbortController().signal);
+      if (team.length > 0) inClusterReachable.value = true;
+    } catch {
+      // Leave configured=false; the polling loop will still attempt
+      // the fallback and surface any persistent error via listError.
+    }
+  })();
 
   const list = ref<TraceListRow[]>([]);
   const listError = ref<string>("");
