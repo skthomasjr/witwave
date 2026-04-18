@@ -8,19 +8,19 @@ import MetricsView from "../../src/views/MetricsView.vue";
 // textual surfaces (titles, stat labels, counts).
 
 const PROM_SAMPLE = `
-# HELP agent_uptime_seconds Uptime
-# TYPE agent_uptime_seconds gauge
-agent_uptime_seconds{agent="bob"} 120
-# HELP agent_active_sessions Active
-# TYPE agent_active_sessions gauge
-agent_active_sessions{agent="bob"} 3
-# HELP agent_tasks Total tasks
-# TYPE agent_tasks counter
-agent_tasks_total{status="ok"} 7
-agent_tasks_total{status="error"} 1
-# HELP agent_a2a_requests Total
-# TYPE agent_a2a_requests counter
-agent_a2a_requests_total{status="ok"} 5
+# HELP harness_uptime_seconds Uptime
+# TYPE harness_uptime_seconds gauge
+harness_uptime_seconds{agent="bob"} 120
+# HELP harness_active_sessions Active
+# TYPE harness_active_sessions gauge
+harness_active_sessions{agent="bob"} 3
+# HELP harness_tasks Total tasks
+# TYPE harness_tasks counter
+harness_tasks_total{status="ok"} 7
+harness_tasks_total{status="error"} 1
+# HELP harness_a2a_requests Total
+# TYPE harness_a2a_requests counter
+harness_a2a_requests_total{status="ok"} 5
 `;
 
 function okJson(data: unknown): Response {

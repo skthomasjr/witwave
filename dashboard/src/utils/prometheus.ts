@@ -84,7 +84,7 @@ export function scalarGauge(m: FamilyMap, key: string): number | null {
 }
 
 // Sum gauge samples across every agent in the merged family map. Use this
-// for additive cluster-wide gauges (e.g. agent_active_sessions) where each
+// for additive cluster-wide gauges (e.g. harness_active_sessions) where each
 // agent contributes its own value and the total is their sum.
 export function sumGauge(m: FamilyMap, key: string): number | null {
   const s = m.get(key)?.samples;
@@ -93,7 +93,7 @@ export function sumGauge(m: FamilyMap, key: string): number | null {
 }
 
 // Max gauge sample across every agent. Use this for non-additive gauges
-// like agent_uptime_seconds, where summing has no physical meaning but the
+// like harness_uptime_seconds, where summing has no physical meaning but the
 // cluster-wide longest-running agent is informative.
 export function maxGauge(m: FamilyMap, key: string): number | null {
   const s = m.get(key)?.samples;

@@ -8,18 +8,18 @@ from datetime import datetime, timezone
 from bus import Message, MessageBus
 from croniter import croniter
 from metrics import (
-    agent_file_watcher_restarts_total,
-    agent_heartbeat_duration_seconds,
-    agent_heartbeat_error_duration_seconds,
-    agent_heartbeat_lag_seconds,
-    agent_heartbeat_last_error_timestamp_seconds,
-    agent_heartbeat_last_run_timestamp_seconds,
-    agent_heartbeat_last_success_timestamp_seconds,
-    agent_heartbeat_load_errors_total,
-    agent_heartbeat_reloads_total,
-    agent_heartbeat_runs_total,
-    agent_heartbeat_skips_total,
-    agent_watcher_events_total,
+    harness_file_watcher_restarts_total,
+    harness_heartbeat_duration_seconds,
+    harness_heartbeat_error_duration_seconds,
+    harness_heartbeat_lag_seconds,
+    harness_heartbeat_last_error_timestamp_seconds,
+    harness_heartbeat_last_run_timestamp_seconds,
+    harness_heartbeat_last_success_timestamp_seconds,
+    harness_heartbeat_load_errors_total,
+    harness_heartbeat_reloads_total,
+    harness_heartbeat_runs_total,
+    harness_heartbeat_skips_total,
+    harness_watcher_events_total,
 )
 from utils import ConsensusEntry, parse_consensus, parse_frontmatter, parse_frontmatter_raw
 from watchfiles import awatch
@@ -103,9 +103,9 @@ async def _run_loop(
             except asyncio.TimeoutError:
                 pass
 
-            if agent_heartbeat_lag_seconds is not None:
+            if harness_heartbeat_lag_seconds is not None:
                 lag = (datetime.now(timezone.utc) - next_run).total_seconds()
-                agent_heartbeat_lag_seconds.observe(lag)
+                harness_heartbeat_lag_seconds.observe(lag)
 
             if stop_event.is_set():
                 return
@@ -114,8 +114,8 @@ async def _run_loop(
             try:
                 loaded = load_heartbeat()
             except Exception as e:
-                if agent_heartbeat_load_errors_total is not None:
-                    agent_heartbeat_load_errors_total.inc()
+                if harness_heartbeat_load_errors_total is not None:
+                    harness_heartbeat_load_errors_total.inc()
                 logger.warning(f"Heartbeat reload error — skipping this run: {e}")
                 continue
             if not loaded:
@@ -132,13 +132,13 @@ async def _run_loop(
             message = Message(prompt=prompt, session_id=HEARTBEAT_SESSION, kind="heartbeat", model=model, backend_id=backend_id, consensus=consensus, max_tokens=max_tokens)
             if not bus.try_send(message):
                 logger.info("Heartbeat skipped — previous heartbeat still pending.")
-                if agent_heartbeat_skips_total is not None:
-                    agent_heartbeat_skips_total.inc()
+                if harness_heartbeat_skips_total is not None:
+                    harness_heartbeat_skips_total.inc()
                 continue
             if message.result is not None:
                 logger.info("Heartbeat firing.")
-                if agent_heartbeat_last_run_timestamp_seconds is not None:
-                    agent_heartbeat_last_run_timestamp_seconds.set(time.time())
+                if harness_heartbeat_last_run_timestamp_seconds is not None:
+                    harness_heartbeat_last_run_timestamp_seconds.set(time.time())
                 try:
                     # Race the in-flight result against stop_event (#492). Shield
                     # the result future so asyncio.wait doesn't mark our local
@@ -158,22 +158,22 @@ async def _run_loop(
                         logger.info("Heartbeat stop requested mid-run — abandoning pending result.")
                         return
                     response = shielded_result.result()
-                    if agent_heartbeat_duration_seconds is not None:
-                        agent_heartbeat_duration_seconds.observe(time.monotonic() - _hb_start)
+                    if harness_heartbeat_duration_seconds is not None:
+                        harness_heartbeat_duration_seconds.observe(time.monotonic() - _hb_start)
                     if response and HEARTBEAT_OK not in response:
                         logger.info(f"Heartbeat response: {response}")
-                    if agent_heartbeat_runs_total is not None:
-                        agent_heartbeat_runs_total.labels(status="success").inc()
-                    if agent_heartbeat_last_success_timestamp_seconds is not None:
-                        agent_heartbeat_last_success_timestamp_seconds.set(time.time())
+                    if harness_heartbeat_runs_total is not None:
+                        harness_heartbeat_runs_total.labels(status="success").inc()
+                    if harness_heartbeat_last_success_timestamp_seconds is not None:
+                        harness_heartbeat_last_success_timestamp_seconds.set(time.time())
                 except Exception as e:
                     logger.error(f"Heartbeat executor error: {e}")
-                    if agent_heartbeat_runs_total is not None:
-                        agent_heartbeat_runs_total.labels(status="error").inc()
-                    if agent_heartbeat_error_duration_seconds is not None:
-                        agent_heartbeat_error_duration_seconds.observe(time.monotonic() - _hb_start)
-                    if agent_heartbeat_last_error_timestamp_seconds is not None:
-                        agent_heartbeat_last_error_timestamp_seconds.set(time.time())
+                    if harness_heartbeat_runs_total is not None:
+                        harness_heartbeat_runs_total.labels(status="error").inc()
+                    if harness_heartbeat_error_duration_seconds is not None:
+                        harness_heartbeat_error_duration_seconds.observe(time.monotonic() - _hb_start)
+                    if harness_heartbeat_last_error_timestamp_seconds is not None:
+                        harness_heartbeat_last_error_timestamp_seconds.set(time.time())
     finally:
         stop_waiter.cancel()
 
@@ -182,8 +182,8 @@ def _loop_task_done_callback(t: asyncio.Task) -> None:
     """Log and count unexpected exceptions from a _run_loop task."""
     if not t.cancelled() and t.exception() is not None:
         logger.error(f"Heartbeat loop_task crashed: {t.exception()!r}")
-        if agent_heartbeat_runs_total is not None:
-            agent_heartbeat_runs_total.labels(status="error").inc()
+        if harness_heartbeat_runs_total is not None:
+            harness_heartbeat_runs_total.labels(status="error").inc()
 
 
 async def _stop_and_join(loop_task: asyncio.Task, stop_event: asyncio.Event) -> None:
@@ -213,8 +213,8 @@ async def heartbeat_runner(bus: MessageBus) -> None:
     try:
         loaded = load_heartbeat()
     except Exception as e:
-        if agent_heartbeat_load_errors_total is not None:
-            agent_heartbeat_load_errors_total.inc()
+        if harness_heartbeat_load_errors_total is not None:
+            harness_heartbeat_load_errors_total.inc()
         logger.warning(f"Heartbeat load error at startup — treating as disabled: {e}")
         loaded = None
     if not loaded:
@@ -237,15 +237,15 @@ async def heartbeat_runner(bus: MessageBus) -> None:
             continue
 
         async for changes in awatch(HEARTBEAT_DIR):
-            if agent_watcher_events_total is not None:
-                agent_watcher_events_total.labels(watcher="heartbeat").inc()
+            if harness_watcher_events_total is not None:
+                harness_watcher_events_total.labels(watcher="heartbeat").inc()
             for _, path in changes:
                 if not path.endswith("HEARTBEAT.md"):
                     continue
 
                 logger.info("HEARTBEAT.md changed — reloading.")
-                if agent_heartbeat_reloads_total is not None:
-                    agent_heartbeat_reloads_total.inc()
+                if harness_heartbeat_reloads_total is not None:
+                    harness_heartbeat_reloads_total.inc()
                 if loop_task and not loop_task.done():
                     await _stop_and_join(loop_task, stop_event)
                     stop_event.clear()
@@ -253,8 +253,8 @@ async def heartbeat_runner(bus: MessageBus) -> None:
                 try:
                     loaded = load_heartbeat()
                 except Exception as e:
-                    if agent_heartbeat_load_errors_total is not None:
-                        agent_heartbeat_load_errors_total.inc()
+                    if harness_heartbeat_load_errors_total is not None:
+                        harness_heartbeat_load_errors_total.inc()
                     logger.warning(f"Heartbeat reload error after file change — skipping: {e}")
                     loop_task = None
                     continue
@@ -268,16 +268,16 @@ async def heartbeat_runner(bus: MessageBus) -> None:
                     loop_task.add_done_callback(_loop_task_done_callback)
 
         logger.warning("Heartbeat directory watcher exited — directory deleted or unavailable. Retrying in 10s.")
-        if agent_file_watcher_restarts_total is not None:
-            agent_file_watcher_restarts_total.labels(watcher="heartbeat").inc()
+        if harness_file_watcher_restarts_total is not None:
+            harness_file_watcher_restarts_total.labels(watcher="heartbeat").inc()
         if loop_task and not loop_task.done():
             await _stop_and_join(loop_task, stop_event)
         stop_event.clear()
         try:
             loaded = load_heartbeat()
         except Exception as e:
-            if agent_heartbeat_load_errors_total is not None:
-                agent_heartbeat_load_errors_total.inc()
+            if harness_heartbeat_load_errors_total is not None:
+                harness_heartbeat_load_errors_total.inc()
             logger.warning(f"Heartbeat reload error after watcher restart — skipping: {e}")
             loaded = None
         if loaded:

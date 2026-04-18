@@ -36,23 +36,23 @@ from bus import (
 from executor import AgentExecutor, _guarded as _guarded_from_executor, run as executor_run, run_consensus as executor_run_consensus
 from heartbeat import heartbeat_runner, load_heartbeat
 from metrics import (
-    agent_adhoc_fires_total,
-    agent_bus_consumer_idle_seconds,
-    agent_bus_error_processing_duration_seconds,
-    agent_bus_errors_total,
-    agent_bus_last_processed_timestamp_seconds,
-    agent_bus_messages_total,
-    agent_bus_processing_duration_seconds,
-    agent_bus_wait_seconds,
-    agent_event_loop_lag_seconds,
-    agent_backend_reachable,
-    agent_health_checks_total,
-    agent_info,
-    agent_startup_duration_seconds,
-    agent_task_restarts_total,
-    agent_triggers_requests_total,
-    agent_up,
-    agent_uptime_seconds,
+    harness_adhoc_fires_total,
+    harness_bus_consumer_idle_seconds,
+    harness_bus_error_processing_duration_seconds,
+    harness_bus_errors_total,
+    harness_bus_last_processed_timestamp_seconds,
+    harness_bus_messages_total,
+    harness_bus_processing_duration_seconds,
+    harness_bus_wait_seconds,
+    harness_event_loop_lag_seconds,
+    harness_backend_reachable,
+    harness_health_checks_total,
+    harness_info,
+    harness_startup_duration_seconds,
+    harness_task_restarts_total,
+    harness_triggers_requests_total,
+    harness_up,
+    harness_uptime_seconds,
 )
 from conversations import (
     make_proxy_conversations_handler,
@@ -307,24 +307,24 @@ def build_agent_card() -> AgentCard:
 
 
 async def health_start(request: Request) -> JSONResponse:
-    if agent_health_checks_total is not None:
-        agent_health_checks_total.labels(probe="start").inc()
+    if harness_health_checks_total is not None:
+        harness_health_checks_total.labels(probe="start").inc()
     if _ready:
         return JSONResponse({"status": "ok"})
     return JSONResponse({"status": "starting"}, status_code=503)
 
 
 async def health_live(request: Request) -> JSONResponse:
-    if agent_health_checks_total is not None:
-        agent_health_checks_total.labels(probe="live").inc()
+    if harness_health_checks_total is not None:
+        harness_health_checks_total.labels(probe="live").inc()
     elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
     return JSONResponse({"status": "ok", "agent": AGENT_NAME, "uptime_seconds": elapsed})
 
 
 async def health_ready(request: Request) -> JSONResponse:
     global _health_ready_cache, _health_ready_expires
-    if agent_health_checks_total is not None:
-        agent_health_checks_total.labels(probe="ready").inc()
+    if harness_health_checks_total is not None:
+        harness_health_checks_total.labels(probe="ready").inc()
     if not _ready:
         return JSONResponse({"status": "starting"}, status_code=503)
     backend_configs = [b._config for b in _executor._backends.values() if b._config.url] if _executor else []
@@ -357,9 +357,9 @@ async def health_ready(request: Request) -> JSONResponse:
         # Stamp per-backend reachability gauge (#619). This runs inside the
         # refresh critical section (once per TTL) rather than on every probe,
         # so the metric cost scales with refresh frequency, not probe rate.
-        if agent_backend_reachable is not None:
+        if harness_backend_reachable is not None:
             for b, ok in zip(backend_configs, results):
-                agent_backend_reachable.labels(backend=b.id).set(1 if ok else 0)
+                harness_backend_reachable.labels(backend=b.id).set(1 if ok else 0)
 
         if not all(results):
             unhealthy = [b.id for b, ok in zip(backend_configs, results) if not ok]
@@ -484,8 +484,8 @@ async def _event_loop_monitor() -> None:
         _before = time.monotonic()
         await asyncio.sleep(_interval)
         lag = time.monotonic() - _before - _interval
-        if lag > 0 and agent_event_loop_lag_seconds is not None:
-            agent_event_loop_lag_seconds.observe(lag)
+        if lag > 0 and harness_event_loop_lag_seconds is not None:
+            harness_event_loop_lag_seconds.observe(lag)
 
 
 async def bus_worker(bus: MessageBus, executor: AgentExecutor) -> None:
@@ -493,21 +493,21 @@ async def bus_worker(bus: MessageBus, executor: AgentExecutor) -> None:
     _idle_start = time.monotonic()
     while True:
         message = await bus.receive()
-        if agent_bus_consumer_idle_seconds is not None:
-            agent_bus_consumer_idle_seconds.observe(time.monotonic() - _idle_start)
-        if agent_bus_messages_total is not None:
-            agent_bus_messages_total.labels(kind=message.kind).inc()
-        if agent_bus_wait_seconds is not None and message.enqueued_at:
-            agent_bus_wait_seconds.labels(kind=message.kind).observe(time.monotonic() - message.enqueued_at)
+        if harness_bus_consumer_idle_seconds is not None:
+            harness_bus_consumer_idle_seconds.observe(time.monotonic() - _idle_start)
+        if harness_bus_messages_total is not None:
+            harness_bus_messages_total.labels(kind=message.kind).inc()
+        if harness_bus_wait_seconds is not None and message.enqueued_at:
+            harness_bus_wait_seconds.labels(kind=message.kind).observe(time.monotonic() - message.enqueued_at)
         t0 = time.monotonic()
         try:
             await executor.process_bus(message)
         except Exception as e:
             logger.error("Bus worker error processing message kind=%r: %s", message.kind, e, exc_info=True)
-            if agent_bus_errors_total is not None:
-                agent_bus_errors_total.inc()
-            if agent_bus_error_processing_duration_seconds is not None:
-                agent_bus_error_processing_duration_seconds.labels(kind=message.kind).observe(time.monotonic() - t0)
+            if harness_bus_errors_total is not None:
+                harness_bus_errors_total.inc()
+            if harness_bus_error_processing_duration_seconds is not None:
+                harness_bus_error_processing_duration_seconds.labels(kind=message.kind).observe(time.monotonic() - t0)
         finally:
             if message.result is not None and not message.result.done():
                 message.result.cancel()
@@ -517,10 +517,10 @@ async def bus_worker(bus: MessageBus, executor: AgentExecutor) -> None:
             # must run in finally so error paths also clear the slot; otherwise
             # a failed message would starve all future try_send for that kind.
             bus.release_pending(message.kind)
-            if agent_bus_processing_duration_seconds is not None:
-                agent_bus_processing_duration_seconds.labels(kind=message.kind).observe(time.monotonic() - t0)
-            if agent_bus_last_processed_timestamp_seconds is not None:
-                agent_bus_last_processed_timestamp_seconds.set(time.time())
+            if harness_bus_processing_duration_seconds is not None:
+                harness_bus_processing_duration_seconds.labels(kind=message.kind).observe(time.monotonic() - t0)
+            if harness_bus_last_processed_timestamp_seconds is not None:
+                harness_bus_last_processed_timestamp_seconds.set(time.time())
             _idle_start = time.monotonic()
 
 
@@ -529,8 +529,8 @@ async def _set_ready_when_started(server: uvicorn.Server) -> None:
         await asyncio.sleep(0.05)
     global _ready
     _ready = True
-    if agent_startup_duration_seconds is not None:
-        agent_startup_duration_seconds.set(time.monotonic() - _startup_mono)
+    if harness_startup_duration_seconds is not None:
+        harness_startup_duration_seconds.set(time.monotonic() - _startup_mono)
     logger.info(f"Agent {AGENT_NAME} is ready")
 
 
@@ -595,12 +595,12 @@ async def main():
     a2a_built = a2a_app.build()
 
     if metrics_enabled:
-        if agent_up is not None:
-            agent_up.labels(agent=AGENT_NAME).set(1.0)
-        if agent_info is not None:
-            agent_info.info({"version": AGENT_VERSION, "agent": AGENT_NAME})
-        if agent_uptime_seconds is not None:
-            agent_uptime_seconds.set_function(lambda: (datetime.now(timezone.utc) - start_time).total_seconds())
+        if harness_up is not None:
+            harness_up.labels(agent=AGENT_NAME).set(1.0)
+        if harness_info is not None:
+            harness_info.info({"version": AGENT_VERSION, "agent": AGENT_NAME})
+        if harness_uptime_seconds is not None:
+            harness_uptime_seconds.set_function(lambda: (datetime.now(timezone.utc) - start_time).total_seconds())
         logger.info("Prometheus metrics enabled at /metrics")
     else:
         logger.warning(
@@ -790,13 +790,13 @@ async def main():
         items = trigger_runner.items_by_endpoint()
         item = items.get(endpoint)
         if item is None:
-            if agent_triggers_requests_total is not None:
-                agent_triggers_requests_total.labels(method=request.method, code="404").inc()
+            if harness_triggers_requests_total is not None:
+                harness_triggers_requests_total.labels(method=request.method, code="404").inc()
             return JSONResponse({"error": "not found", "endpoint": endpoint}, status_code=404)
 
         if endpoint in trigger_runner._running:
-            if agent_triggers_requests_total is not None:
-                agent_triggers_requests_total.labels(method=request.method, code="409").inc()
+            if harness_triggers_requests_total is not None:
+                harness_triggers_requests_total.labels(method=request.method, code="409").inc()
             return JSONResponse({"error": "already running", "endpoint": endpoint}, status_code=409)
 
         # Claim the slot before any await to prevent concurrent requests from
@@ -815,8 +815,8 @@ async def main():
             auth_header_present = bool(request.headers.get("Authorization"))
         if not auth_header_present:
             trigger_runner._running.discard(endpoint)
-            if agent_triggers_requests_total is not None:
-                agent_triggers_requests_total.labels(method=request.method, code="401").inc()
+            if harness_triggers_requests_total is not None:
+                harness_triggers_requests_total.labels(method=request.method, code="401").inc()
             return JSONResponse({"error": "unauthorized"}, status_code=401)
 
         # Cheap Content-Length short-circuit: if the client advertised an
@@ -827,8 +827,8 @@ async def main():
             declared_len = -1
         if declared_len > MAX_TRIGGER_BODY_BYTES:
             trigger_runner._running.discard(endpoint)
-            if agent_triggers_requests_total is not None:
-                agent_triggers_requests_total.labels(method=request.method, code="413").inc()
+            if harness_triggers_requests_total is not None:
+                harness_triggers_requests_total.labels(method=request.method, code="413").inc()
             return JSONResponse({"error": "request body too large"}, status_code=413)
 
         # Streaming read with a hard cap: abort as soon as the accumulated size
@@ -849,22 +849,22 @@ async def main():
                 chunks.append(chunk)
         except Exception:
             trigger_runner._running.discard(endpoint)
-            if agent_triggers_requests_total is not None:
-                agent_triggers_requests_total.labels(method=request.method, code="500").inc()
+            if harness_triggers_requests_total is not None:
+                harness_triggers_requests_total.labels(method=request.method, code="500").inc()
             raise
 
         if oversized:
             trigger_runner._running.discard(endpoint)
-            if agent_triggers_requests_total is not None:
-                agent_triggers_requests_total.labels(method=request.method, code="413").inc()
+            if harness_triggers_requests_total is not None:
+                harness_triggers_requests_total.labels(method=request.method, code="413").inc()
             return JSONResponse({"error": "request body too large"}, status_code=413)
 
         body_bytes = b"".join(chunks)
 
         if not _check_trigger_auth(request, item, body_bytes):
             trigger_runner._running.discard(endpoint)
-            if agent_triggers_requests_total is not None:
-                agent_triggers_requests_total.labels(method=request.method, code="401").inc()
+            if harness_triggers_requests_total is not None:
+                harness_triggers_requests_total.labels(method=request.method, code="401").inc()
             return JSONResponse({"error": "unauthorized"}, status_code=401)
 
         # Build prompt from request
@@ -958,18 +958,18 @@ async def main():
                 logger.error(
                     f"Trigger '{item.name}': shed — background-task cap reached"
                 )
-                if agent_triggers_requests_total is not None:
-                    agent_triggers_requests_total.labels(method=request.method, code="503").inc()
+                if harness_triggers_requests_total is not None:
+                    harness_triggers_requests_total.labels(method=request.method, code="503").inc()
                 return JSONResponse({"error": "overloaded"}, status_code=503)
         except Exception as exc:
             trigger_runner._running.discard(endpoint)
             logger.error(f"Trigger '{item.name}': failed to schedule background task: {exc!r}")
-            if agent_triggers_requests_total is not None:
-                agent_triggers_requests_total.labels(method=request.method, code="500").inc()
+            if harness_triggers_requests_total is not None:
+                harness_triggers_requests_total.labels(method=request.method, code="500").inc()
             return JSONResponse({"error": "internal error"}, status_code=500)
 
-        if agent_triggers_requests_total is not None:
-            agent_triggers_requests_total.labels(method=request.method, code="202").inc()
+        if harness_triggers_requests_total is not None:
+            harness_triggers_requests_total.labels(method=request.method, code="202").inc()
         return JSONResponse(
             {"delivery_id": delivery_id, "session_id": item.session_id, "endpoint": endpoint},
             status_code=202,
@@ -1066,31 +1066,31 @@ async def main():
     async def jobs_run_handler(request: Request) -> JSONResponse:
         name = request.path_params["name"]
         if not _check_adhoc_auth(request):
-            if agent_adhoc_fires_total is not None:
-                agent_adhoc_fires_total.labels(kind="job", name=name, code="401").inc()
+            if harness_adhoc_fires_total is not None:
+                harness_adhoc_fires_total.labels(kind="job", name=name, code="401").inc()
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         if not await _drain_adhoc_body(request):
-            if agent_adhoc_fires_total is not None:
-                agent_adhoc_fires_total.labels(kind="job", name=name, code="413").inc()
+            if harness_adhoc_fires_total is not None:
+                harness_adhoc_fires_total.labels(kind="job", name=name, code="413").inc()
             return JSONResponse({"error": "request body too large"}, status_code=413)
         item = _find_job_item(name)
         if item is None:
-            if agent_adhoc_fires_total is not None:
-                agent_adhoc_fires_total.labels(kind="job", name=name, code="404").inc()
+            if harness_adhoc_fires_total is not None:
+                harness_adhoc_fires_total.labels(kind="job", name=name, code="404").inc()
             return JSONResponse({"error": "not found", "name": name}, status_code=404)
         if item.running:
-            if agent_adhoc_fires_total is not None:
-                agent_adhoc_fires_total.labels(kind="job", name=name, code="409").inc()
+            if harness_adhoc_fires_total is not None:
+                harness_adhoc_fires_total.labels(kind="job", name=name, code="409").inc()
             return JSONResponse({"error": "already running", "name": name}, status_code=409)
         try:
             delivery_id = await _dispatch_adhoc_job(item)
         except Exception as exc:
             logger.error(f"Ad-hoc job '{name}' dispatch failed: {exc!r}")
-            if agent_adhoc_fires_total is not None:
-                agent_adhoc_fires_total.labels(kind="job", name=name, code="500").inc()
+            if harness_adhoc_fires_total is not None:
+                harness_adhoc_fires_total.labels(kind="job", name=name, code="500").inc()
             return JSONResponse({"error": "internal error"}, status_code=500)
-        if agent_adhoc_fires_total is not None:
-            agent_adhoc_fires_total.labels(kind="job", name=name, code="202").inc()
+        if harness_adhoc_fires_total is not None:
+            harness_adhoc_fires_total.labels(kind="job", name=name, code="202").inc()
         return JSONResponse(
             {"delivery_id": delivery_id, "session_id": item.session_id, "kind": "job", "name": name},
             status_code=202,
@@ -1099,31 +1099,31 @@ async def main():
     async def tasks_run_handler(request: Request) -> JSONResponse:
         name = request.path_params["name"]
         if not _check_adhoc_auth(request):
-            if agent_adhoc_fires_total is not None:
-                agent_adhoc_fires_total.labels(kind="task", name=name, code="401").inc()
+            if harness_adhoc_fires_total is not None:
+                harness_adhoc_fires_total.labels(kind="task", name=name, code="401").inc()
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         if not await _drain_adhoc_body(request):
-            if agent_adhoc_fires_total is not None:
-                agent_adhoc_fires_total.labels(kind="task", name=name, code="413").inc()
+            if harness_adhoc_fires_total is not None:
+                harness_adhoc_fires_total.labels(kind="task", name=name, code="413").inc()
             return JSONResponse({"error": "request body too large"}, status_code=413)
         item = _find_task_item(name)
         if item is None:
-            if agent_adhoc_fires_total is not None:
-                agent_adhoc_fires_total.labels(kind="task", name=name, code="404").inc()
+            if harness_adhoc_fires_total is not None:
+                harness_adhoc_fires_total.labels(kind="task", name=name, code="404").inc()
             return JSONResponse({"error": "not found", "name": name}, status_code=404)
         if item.running:
-            if agent_adhoc_fires_total is not None:
-                agent_adhoc_fires_total.labels(kind="task", name=name, code="409").inc()
+            if harness_adhoc_fires_total is not None:
+                harness_adhoc_fires_total.labels(kind="task", name=name, code="409").inc()
             return JSONResponse({"error": "already running", "name": name}, status_code=409)
         try:
             delivery_id = await _dispatch_adhoc_task(item)
         except Exception as exc:
             logger.error(f"Ad-hoc task '{name}' dispatch failed: {exc!r}")
-            if agent_adhoc_fires_total is not None:
-                agent_adhoc_fires_total.labels(kind="task", name=name, code="500").inc()
+            if harness_adhoc_fires_total is not None:
+                harness_adhoc_fires_total.labels(kind="task", name=name, code="500").inc()
             return JSONResponse({"error": "internal error"}, status_code=500)
-        if agent_adhoc_fires_total is not None:
-            agent_adhoc_fires_total.labels(kind="task", name=name, code="202").inc()
+        if harness_adhoc_fires_total is not None:
+            harness_adhoc_fires_total.labels(kind="task", name=name, code="202").inc()
         return JSONResponse(
             {"delivery_id": delivery_id, "kind": "task", "name": name},
             status_code=202,
@@ -1131,12 +1131,12 @@ async def main():
 
     async def heartbeat_run_handler(request: Request) -> JSONResponse:
         if not _check_adhoc_auth(request):
-            if agent_adhoc_fires_total is not None:
-                agent_adhoc_fires_total.labels(kind="heartbeat", name="heartbeat", code="401").inc()
+            if harness_adhoc_fires_total is not None:
+                harness_adhoc_fires_total.labels(kind="heartbeat", name="heartbeat", code="401").inc()
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         if not await _drain_adhoc_body(request):
-            if agent_adhoc_fires_total is not None:
-                agent_adhoc_fires_total.labels(kind="heartbeat", name="heartbeat", code="413").inc()
+            if harness_adhoc_fires_total is not None:
+                harness_adhoc_fires_total.labels(kind="heartbeat", name="heartbeat", code="413").inc()
             return JSONResponse({"error": "request body too large"}, status_code=413)
         try:
             loaded = load_heartbeat()
@@ -1144,8 +1144,8 @@ async def main():
             logger.warning(f"Ad-hoc heartbeat: failed to load HEARTBEAT.md: {exc!r}")
             loaded = None
         if not loaded:
-            if agent_adhoc_fires_total is not None:
-                agent_adhoc_fires_total.labels(kind="heartbeat", name="heartbeat", code="404").inc()
+            if harness_adhoc_fires_total is not None:
+                harness_adhoc_fires_total.labels(kind="heartbeat", name="heartbeat", code="404").inc()
             return JSONResponse({"error": "heartbeat not configured or disabled"}, status_code=404)
         _schedule, content, model, backend_id, consensus, max_tokens = loaded
         from heartbeat import HEARTBEAT_SESSION
@@ -1168,11 +1168,11 @@ async def main():
         # already in-flight, reject the ad-hoc fire rather than stacking a
         # second one. Matches heartbeat.py:129.
         if not bus.try_send(message):
-            if agent_adhoc_fires_total is not None:
-                agent_adhoc_fires_total.labels(kind="heartbeat", name="heartbeat", code="409").inc()
+            if harness_adhoc_fires_total is not None:
+                harness_adhoc_fires_total.labels(kind="heartbeat", name="heartbeat", code="409").inc()
             return JSONResponse({"error": "heartbeat already pending"}, status_code=409)
-        if agent_adhoc_fires_total is not None:
-            agent_adhoc_fires_total.labels(kind="heartbeat", name="heartbeat", code="202").inc()
+        if harness_adhoc_fires_total is not None:
+            harness_adhoc_fires_total.labels(kind="heartbeat", name="heartbeat", code="202").inc()
         return JSONResponse(
             {"delivery_id": delivery_id, "session_id": HEARTBEAT_SESSION, "kind": "heartbeat"},
             status_code=202,

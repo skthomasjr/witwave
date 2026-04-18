@@ -8,15 +8,15 @@ from pathlib import Path
 
 from bus import Message, MessageBus
 from metrics import (
-    agent_continuation_fanin_evictions_total,
-    agent_continuation_fires_total,
-    agent_continuation_items_registered,
-    agent_continuation_parse_errors_total,
-    agent_continuation_reloads_total,
-    agent_continuation_runs_total,
-    agent_continuation_throttled_total,
-    agent_file_watcher_restarts_total,
-    agent_watcher_events_total,
+    harness_continuation_fanin_evictions_total,
+    harness_continuation_fires_total,
+    harness_continuation_items_registered,
+    harness_continuation_parse_errors_total,
+    harness_continuation_reloads_total,
+    harness_continuation_runs_total,
+    harness_continuation_throttled_total,
+    harness_file_watcher_restarts_total,
+    harness_watcher_events_total,
 )
 from utils import (
     ConsensusEntry,
@@ -163,8 +163,8 @@ def parse_continuation_file(path: str) -> "ContinuationItem | object | None":
         )
 
     except Exception as e:
-        if agent_continuation_parse_errors_total is not None:
-            agent_continuation_parse_errors_total.inc()
+        if harness_continuation_parse_errors_total is not None:
+            harness_continuation_parse_errors_total.inc()
         logger.error(f"Continuation file {path}: failed to parse — {e}, skipping.")
         return None
 
@@ -186,12 +186,12 @@ async def _fire(item: ContinuationItem, session_id: str, bus: MessageBus) -> Non
             consensus=item.consensus,
             max_tokens=item.max_tokens,
         ))
-        if agent_continuation_runs_total is not None:
-            agent_continuation_runs_total.labels(name=item.name, status="success").inc()
+        if harness_continuation_runs_total is not None:
+            harness_continuation_runs_total.labels(name=item.name, status="success").inc()
         logger.info(f"Continuation '{item.name}' completed successfully. Response: {response!r}")
     except Exception as e:
-        if agent_continuation_runs_total is not None:
-            agent_continuation_runs_total.labels(name=item.name, status="error").inc()
+        if harness_continuation_runs_total is not None:
+            harness_continuation_runs_total.labels(name=item.name, status="error").inc()
         logger.error(f"Continuation '{item.name}' error: {e}")
 
 
@@ -219,8 +219,8 @@ class ContinuationRunner:
         item = result
         self._unregister(path)
         self._items[path] = item
-        if agent_continuation_items_registered is not None:
-            agent_continuation_items_registered.set(len(self._items))
+        if harness_continuation_items_registered is not None:
+            harness_continuation_items_registered.set(len(self._items))
         logger.info(f"Continuation '{item.name}' registered (continues-after: {item.continues_after}).")
 
     def _unregister(self, path: str) -> None:
@@ -231,14 +231,14 @@ class ContinuationRunner:
             stale = [k for k in self._fanin_state if k[0] == existing.name]
             for k in stale:
                 del self._fanin_state[k]
-        if agent_continuation_items_registered is not None:
-            agent_continuation_items_registered.set(len(self._items))
+        if harness_continuation_items_registered is not None:
+            harness_continuation_items_registered.set(len(self._items))
 
     def _evict_stale_fanin(self, now: float | None = None) -> int:
         """Evict fan-in state entries older than CONTINUATION_FANIN_TTL.
 
         Returns the number of evicted entries.  Records each eviction on the
-        agent_continuation_fanin_evictions_total counter, labelled by
+        harness_continuation_fanin_evictions_total counter, labelled by
         continuation name.  Called opportunistically from notify() so stale
         partial fan-ins can never accumulate unboundedly (#557).
         """
@@ -255,8 +255,8 @@ class ContinuationRunner:
                 f"Continuation '{name}': evicted stale fan-in state "
                 f"(session={_session}) after {CONTINUATION_FANIN_TTL}s TTL."
             )
-            if agent_continuation_fanin_evictions_total is not None:
-                agent_continuation_fanin_evictions_total.labels(name=name).inc()
+            if harness_continuation_fanin_evictions_total is not None:
+                harness_continuation_fanin_evictions_total.labels(name=name).inc()
         return len(stale_keys)
 
     async def _scan(self) -> None:
@@ -345,11 +345,11 @@ class ContinuationRunner:
                     f"Continuation '{item.name}': max_concurrent_fires ({item.max_concurrent_fires}) "
                     f"reached — skipping fire for upstream '{kind}'."
                 )
-                if agent_continuation_throttled_total is not None:
-                    agent_continuation_throttled_total.labels(name=item.name).inc()
+                if harness_continuation_throttled_total is not None:
+                    harness_continuation_throttled_total.labels(name=item.name).inc()
                 continue
-            if agent_continuation_fires_total is not None:
-                agent_continuation_fires_total.labels(upstream_kind=kind).inc()
+            if harness_continuation_fires_total is not None:
+                harness_continuation_fires_total.labels(upstream_kind=kind).inc()
             _t = asyncio.ensure_future(_fire(item, session_id, bus))
             self._active_fires.add(_t)
             fires.add(_t)
@@ -370,14 +370,14 @@ class ContinuationRunner:
 
         def _on_change(path: str) -> None:
             logger.info(f"Continuation file changed: {path}")
-            if agent_continuation_reloads_total is not None:
-                agent_continuation_reloads_total.inc()
+            if harness_continuation_reloads_total is not None:
+                harness_continuation_reloads_total.inc()
             self._register(path)
 
         def _on_delete(path: str) -> None:
             logger.info(f"Continuation file removed: {path}")
-            if agent_continuation_reloads_total is not None:
-                agent_continuation_reloads_total.inc()
+            if harness_continuation_reloads_total is not None:
+                harness_continuation_reloads_total.inc()
             self._unregister(path)
 
         def _cleanup() -> None:
@@ -394,6 +394,6 @@ class ContinuationRunner:
             logger_=logger,
             not_found_message="Continuations directory not found — retrying in 10s.",
             watcher_exited_message="Continuations directory watcher exited — directory deleted or unavailable. Retrying in 10s.",
-            watcher_events_metric=agent_watcher_events_total,
-            file_watcher_restarts_metric=agent_file_watcher_restarts_total,
+            watcher_events_metric=harness_watcher_events_total,
+            file_watcher_restarts_metric=harness_file_watcher_restarts_total,
         )

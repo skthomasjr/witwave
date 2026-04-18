@@ -19,7 +19,7 @@ Two enqueue paths exist, and the choice between them is deliberate:
   continuation runners intentionally use ``send`` so overlapping
   schedules do not silently coalesce.
 
-Dedup usage is already observable via ``agent_bus_dedup_total{kind}``
+Dedup usage is already observable via ``harness_bus_dedup_total{kind}``
 so operators can see which kinds actually experience dedup without
 auditing call sites.
 """
@@ -31,7 +31,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from metrics import agent_bus_dedup_total, agent_bus_pending_kinds, agent_bus_queue_depth
+from metrics import harness_bus_dedup_total, harness_bus_pending_kinds, harness_bus_queue_depth
 from utils import ConsensusEntry
 
 BUS_MAX_QUEUE_DEPTH = int(os.environ.get("BUS_MAX_QUEUE_DEPTH", "100"))
@@ -69,66 +69,66 @@ class MessageBus:
         if message.result is None:
             message.result = asyncio.get_running_loop().create_future()
         self._pending_kinds.add(message.kind)
-        if agent_bus_pending_kinds is not None:
-            agent_bus_pending_kinds.set(len(self._pending_kinds))
+        if harness_bus_pending_kinds is not None:
+            harness_bus_pending_kinds.set(len(self._pending_kinds))
         message.enqueued_at = time.monotonic()
         try:
             try:
                 await asyncio.wait_for(self._queue.put(message), timeout=BUS_SEND_TIMEOUT)
             except asyncio.TimeoutError:
                 self._pending_kinds.discard(message.kind)
-                if agent_bus_pending_kinds is not None:
-                    agent_bus_pending_kinds.set(len(self._pending_kinds))
+                if harness_bus_pending_kinds is not None:
+                    harness_bus_pending_kinds.set(len(self._pending_kinds))
                 logger.error(f"Bus send timed out after {BUS_SEND_TIMEOUT}s — queue full (depth={self._queue.qsize()})")
                 raise asyncio.QueueFull()
             # Update queue depth unconditionally after put() succeeds. Placing
             # this update here (before awaiting result) ensures the gauge is
             # correct regardless of whether the awaiting coroutine is cancelled
             # or raises — the message is physically in the queue from this point.
-            if agent_bus_queue_depth is not None:
-                agent_bus_queue_depth.set(self._queue.qsize())
+            if harness_bus_queue_depth is not None:
+                harness_bus_queue_depth.set(self._queue.qsize())
             try:
                 return await message.result
             except BaseException:
                 self._pending_kinds.discard(message.kind)
-                if agent_bus_pending_kinds is not None:
-                    agent_bus_pending_kinds.set(len(self._pending_kinds))
+                if harness_bus_pending_kinds is not None:
+                    harness_bus_pending_kinds.set(len(self._pending_kinds))
                 raise
         except asyncio.CancelledError:
             self._pending_kinds.discard(message.kind)
-            if agent_bus_pending_kinds is not None:
-                agent_bus_pending_kinds.set(len(self._pending_kinds))
+            if harness_bus_pending_kinds is not None:
+                harness_bus_pending_kinds.set(len(self._pending_kinds))
             raise
 
     def try_send(self, message: Message) -> bool:
         """Enqueue message only if no message of the same kind is already pending. Returns True if enqueued."""
         if message.kind in self._pending_kinds:
-            if agent_bus_dedup_total is not None:
-                agent_bus_dedup_total.labels(kind=message.kind).inc()
-            if agent_bus_queue_depth is not None:
-                agent_bus_queue_depth.set(self._queue.qsize())
+            if harness_bus_dedup_total is not None:
+                harness_bus_dedup_total.labels(kind=message.kind).inc()
+            if harness_bus_queue_depth is not None:
+                harness_bus_queue_depth.set(self._queue.qsize())
             return False
         if message.result is None:
             message.result = asyncio.get_running_loop().create_future()
         self._pending_kinds.add(message.kind)
-        if agent_bus_pending_kinds is not None:
-            agent_bus_pending_kinds.set(len(self._pending_kinds))
+        if harness_bus_pending_kinds is not None:
+            harness_bus_pending_kinds.set(len(self._pending_kinds))
         message.enqueued_at = time.monotonic()
         try:
             self._queue.put_nowait(message)
         except asyncio.QueueFull:
             self._pending_kinds.discard(message.kind)
-            if agent_bus_pending_kinds is not None:
-                agent_bus_pending_kinds.set(len(self._pending_kinds))
+            if harness_bus_pending_kinds is not None:
+                harness_bus_pending_kinds.set(len(self._pending_kinds))
             return False
-        if agent_bus_queue_depth is not None:
-            agent_bus_queue_depth.set(self._queue.qsize())
+        if harness_bus_queue_depth is not None:
+            harness_bus_queue_depth.set(self._queue.qsize())
         return True
 
     async def receive(self) -> Message:
         message = await self._queue.get()
-        if agent_bus_queue_depth is not None:
-            agent_bus_queue_depth.set(self._queue.qsize())
+        if harness_bus_queue_depth is not None:
+            harness_bus_queue_depth.set(self._queue.qsize())
         return message
 
     def release_pending(self, kind: str) -> None:
@@ -142,8 +142,8 @@ class MessageBus:
         message would starve all future ``try_send`` for that kind.
         """
         self._pending_kinds.discard(kind)
-        if agent_bus_pending_kinds is not None:
-            agent_bus_pending_kinds.set(len(self._pending_kinds))
+        if harness_bus_pending_kinds is not None:
+            harness_bus_pending_kinds.set(len(self._pending_kinds))
 
 
 # ---------------------------------------------------------------------------

@@ -13,22 +13,22 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from bus import Message, MessageBus
 from croniter import croniter
 from metrics import (
-    agent_sched_task_checkpoint_stale_total,
-    agent_sched_task_duration_seconds,
-    agent_sched_task_error_duration_seconds,
-    agent_sched_task_item_last_error_timestamp_seconds,
-    agent_sched_task_item_last_run_timestamp_seconds,
-    agent_sched_task_item_last_success_timestamp_seconds,
-    agent_sched_task_items_registered,
-    agent_sched_task_lag_seconds,
-    agent_sched_task_parse_errors_total,
-    agent_sched_task_reloads_total,
-    agent_sched_task_running_items,
-    agent_sched_task_runs_total,
-    agent_sched_task_skips_total,
-    agent_checkpoint_write_errors_total,
-    agent_file_watcher_restarts_total,
-    agent_watcher_events_total,
+    harness_sched_task_checkpoint_stale_total,
+    harness_sched_task_duration_seconds,
+    harness_sched_task_error_duration_seconds,
+    harness_sched_task_item_last_error_timestamp_seconds,
+    harness_sched_task_item_last_run_timestamp_seconds,
+    harness_sched_task_item_last_success_timestamp_seconds,
+    harness_sched_task_items_registered,
+    harness_sched_task_lag_seconds,
+    harness_sched_task_parse_errors_total,
+    harness_sched_task_reloads_total,
+    harness_sched_task_running_items,
+    harness_sched_task_runs_total,
+    harness_sched_task_skips_total,
+    harness_checkpoint_write_errors_total,
+    harness_file_watcher_restarts_total,
+    harness_watcher_events_total,
 )
 from utils import (
     ConsensusEntry,
@@ -115,8 +115,8 @@ def parse_task_file(path: str) -> "TaskItem | object | None":
             tz = ZoneInfo(tz_str)
         except ZoneInfoNotFoundError:
             logger.warning(f"Task file {path}: unknown timezone {tz_str!r}, skipping.")
-            if agent_sched_task_parse_errors_total is not None:
-                agent_sched_task_parse_errors_total.inc()
+            if harness_sched_task_parse_errors_total is not None:
+                harness_sched_task_parse_errors_total.inc()
             return None
 
         # days
@@ -124,8 +124,8 @@ def parse_task_file(path: str) -> "TaskItem | object | None":
         days_expr = _translate_day_abbrevs(days_raw)
         if not croniter.is_valid(f"0 0 * * {days_expr}"):
             logger.warning(f"Task file {path}: invalid days expression {days_raw!r}, skipping.")
-            if agent_sched_task_parse_errors_total is not None:
-                agent_sched_task_parse_errors_total.inc()
+            if harness_sched_task_parse_errors_total is not None:
+                harness_sched_task_parse_errors_total.inc()
             return None
 
         # window-start (optional — omitting enables run-once mode)
@@ -137,8 +137,8 @@ def parse_task_file(path: str) -> "TaskItem | object | None":
                 window_start = dtime(int(h), int(m), tzinfo=None)
             except Exception:
                 logger.warning(f"Task file {path}: invalid 'window-start' {ws_raw!r}, skipping.")
-                if agent_sched_task_parse_errors_total is not None:
-                    agent_sched_task_parse_errors_total.inc()
+                if harness_sched_task_parse_errors_total is not None:
+                    harness_sched_task_parse_errors_total.inc()
                 return None
 
         # window-duration
@@ -148,15 +148,15 @@ def parse_task_file(path: str) -> "TaskItem | object | None":
         if wd_raw:
             if window_start is None:
                 logger.warning(f"Task file {path}: 'window-duration' requires 'window-start' — skipping.")
-                if agent_sched_task_parse_errors_total is not None:
-                    agent_sched_task_parse_errors_total.inc()
+                if harness_sched_task_parse_errors_total is not None:
+                    harness_sched_task_parse_errors_total.inc()
                 return None
             try:
                 duration_secs = parse_duration(str(wd_raw))
             except ValueError as e:
                 logger.warning(f"Task file {path}: invalid 'window-duration': {e}, skipping.")
-                if agent_sched_task_parse_errors_total is not None:
-                    agent_sched_task_parse_errors_total.inc()
+                if harness_sched_task_parse_errors_total is not None:
+                    harness_sched_task_parse_errors_total.inc()
                 return None
             _ref_date = datetime.now(tz).date()
             ws_dt = datetime.combine(_ref_date, window_start)
@@ -235,8 +235,8 @@ def parse_task_file(path: str) -> "TaskItem | object | None":
         )
 
     except Exception as e:
-        if agent_sched_task_parse_errors_total is not None:
-            agent_sched_task_parse_errors_total.inc()
+        if harness_sched_task_parse_errors_total is not None:
+            harness_sched_task_parse_errors_total.inc()
         logger.error(f"Task file {path}: failed to parse — {e}, skipping.")
         return None
 
@@ -345,8 +345,8 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
             await semaphore.acquire()
             _semaphore_acquired = True
         item.running = True
-        if agent_sched_task_running_items is not None:
-            agent_sched_task_running_items.inc()
+        if harness_sched_task_running_items is not None:
+            harness_sched_task_running_items.inc()
         session_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{AGENT_NAME}.{filename}"))
 
         # Write checkpoint so an interrupted run can be detected on restart
@@ -362,8 +362,8 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
                     f,
                 )
         except Exception as e:
-            if agent_checkpoint_write_errors_total is not None:
-                agent_checkpoint_write_errors_total.inc()
+            if harness_checkpoint_write_errors_total is not None:
+                harness_checkpoint_write_errors_total.inc()
             logger.error(f"Task '{item.name}' checkpoint write failed: {e}")
 
         try:
@@ -371,8 +371,8 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
 
             prompt = resolve_prompt_env(f"Task: {item.name}\n\n{item.content}")
             _task_start = time.monotonic()
-            if agent_sched_task_item_last_run_timestamp_seconds is not None:
-                agent_sched_task_item_last_run_timestamp_seconds.labels(name=item.name).set(time.time())
+            if harness_sched_task_item_last_run_timestamp_seconds is not None:
+                harness_sched_task_item_last_run_timestamp_seconds.labels(name=item.name).set(time.time())
             message = Message(prompt=prompt, session_id=session_id, kind=f"task:{item.name}", model=item.model, backend_id=item.backend_id, consensus=item.consensus, max_tokens=item.max_tokens)
             _send_task = asyncio.ensure_future(bus.send(message))
 
@@ -383,26 +383,26 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
 
             _send_task.add_done_callback(_log_send_result)
             await asyncio.shield(_send_task)
-            if agent_sched_task_duration_seconds is not None:
-                agent_sched_task_duration_seconds.labels(name=item.name).observe(time.monotonic() - _task_start)
-            if agent_sched_task_runs_total is not None:
-                agent_sched_task_runs_total.labels(name=item.name, status="success").inc()
-            if agent_sched_task_item_last_success_timestamp_seconds is not None:
-                agent_sched_task_item_last_success_timestamp_seconds.labels(name=item.name).set(time.time())
+            if harness_sched_task_duration_seconds is not None:
+                harness_sched_task_duration_seconds.labels(name=item.name).observe(time.monotonic() - _task_start)
+            if harness_sched_task_runs_total is not None:
+                harness_sched_task_runs_total.labels(name=item.name, status="success").inc()
+            if harness_sched_task_item_last_success_timestamp_seconds is not None:
+                harness_sched_task_item_last_success_timestamp_seconds.labels(name=item.name).set(time.time())
         except asyncio.CancelledError:
             raise
         except Exception as e:
             logger.error(f"Task '{item.name}' error: {e}")
-            if agent_sched_task_runs_total is not None:
-                agent_sched_task_runs_total.labels(name=item.name, status="error").inc()
-            if agent_sched_task_error_duration_seconds is not None:
-                agent_sched_task_error_duration_seconds.labels(name=item.name).observe(time.monotonic() - _task_start)
-            if agent_sched_task_item_last_error_timestamp_seconds is not None:
-                agent_sched_task_item_last_error_timestamp_seconds.labels(name=item.name).set(time.time())
+            if harness_sched_task_runs_total is not None:
+                harness_sched_task_runs_total.labels(name=item.name, status="error").inc()
+            if harness_sched_task_error_duration_seconds is not None:
+                harness_sched_task_error_duration_seconds.labels(name=item.name).observe(time.monotonic() - _task_start)
+            if harness_sched_task_item_last_error_timestamp_seconds is not None:
+                harness_sched_task_item_last_error_timestamp_seconds.labels(name=item.name).set(time.time())
         finally:
             item.running = False
-            if agent_sched_task_running_items is not None:
-                agent_sched_task_running_items.dec()
+            if harness_sched_task_running_items is not None:
+                harness_sched_task_running_items.dec()
             if semaphore is not None and _semaphore_acquired:
                 semaphore.release()
             try:
@@ -418,8 +418,8 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
     if stale_checkpoint:
         if _inside_window(item):
             logger.info(f"Task '{item.name}': stale checkpoint found — firing immediately (interrupted run).")
-            if agent_sched_task_checkpoint_stale_total is not None:
-                agent_sched_task_checkpoint_stale_total.inc()
+            if harness_sched_task_checkpoint_stale_total is not None:
+                harness_sched_task_checkpoint_stale_total.inc()
             # Remove checkpoint before re-firing so we don't double-count on next restart
             try:
                 os.remove(checkpoint_path)
@@ -429,8 +429,8 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
             _fire_now = True
         else:
             logger.warning(f"Task '{item.name}': stale checkpoint found but outside window — removing and skipping to next window.")
-            if agent_sched_task_checkpoint_stale_total is not None:
-                agent_sched_task_checkpoint_stale_total.inc()
+            if harness_sched_task_checkpoint_stale_total is not None:
+                harness_sched_task_checkpoint_stale_total.inc()
             try:
                 os.remove(checkpoint_path)
             except Exception:
@@ -464,8 +464,8 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
         # Skip if already running
         if item.running:
             logger.warning(f"Task '{item.name}' still running from previous window, skipping.")
-            if agent_sched_task_skips_total is not None:
-                agent_sched_task_skips_total.labels(name=item.name).inc()
+            if harness_sched_task_skips_total is not None:
+                harness_sched_task_skips_total.labels(name=item.name).inc()
             continue
 
         _semaphore_acquired = False
@@ -474,8 +474,8 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
             _semaphore_acquired = True
 
         item.running = True
-        if agent_sched_task_running_items is not None:
-            agent_sched_task_running_items.inc()
+        if harness_sched_task_running_items is not None:
+            harness_sched_task_running_items.inc()
 
         # Generate per-day session ID
         today = _now_in_tz(item.tz).date()
@@ -494,8 +494,8 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
                     f,
                 )
         except Exception as e:
-            if agent_checkpoint_write_errors_total is not None:
-                agent_checkpoint_write_errors_total.inc()
+            if harness_checkpoint_write_errors_total is not None:
+                harness_checkpoint_write_errors_total.inc()
             logger.error(f"Task '{item.name}' checkpoint write failed: {e}")
 
         try:
@@ -503,10 +503,10 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
                 # Record lag
                 scheduled_open = datetime.combine(_now_in_tz(item.tz).date(), item.window_start, tzinfo=item.tz)
                 lag = max(0.0, (_now_in_tz(item.tz) - scheduled_open).total_seconds())
-                if agent_sched_task_lag_seconds is not None:
-                    agent_sched_task_lag_seconds.observe(lag)
-                if agent_sched_task_item_last_run_timestamp_seconds is not None:
-                    agent_sched_task_item_last_run_timestamp_seconds.labels(name=item.name).set(time.time())
+                if harness_sched_task_lag_seconds is not None:
+                    harness_sched_task_lag_seconds.observe(lag)
+                if harness_sched_task_item_last_run_timestamp_seconds is not None:
+                    harness_sched_task_item_last_run_timestamp_seconds.labels(name=item.name).set(time.time())
 
                 from prompt_env import resolve_prompt_env  # noqa: E402 — scoped import keeps startup simple
 
@@ -536,12 +536,12 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
                     _send_task.add_done_callback(_log_send_result)
                     response = await asyncio.shield(_send_task)
 
-                    if agent_sched_task_duration_seconds is not None:
-                        agent_sched_task_duration_seconds.labels(name=item.name).observe(time.monotonic() - _task_start)
-                    if agent_sched_task_runs_total is not None:
-                        agent_sched_task_runs_total.labels(name=item.name, status="success").inc()
-                    if agent_sched_task_item_last_success_timestamp_seconds is not None:
-                        agent_sched_task_item_last_success_timestamp_seconds.labels(name=item.name).set(time.time())
+                    if harness_sched_task_duration_seconds is not None:
+                        harness_sched_task_duration_seconds.labels(name=item.name).observe(time.monotonic() - _task_start)
+                    if harness_sched_task_runs_total is not None:
+                        harness_sched_task_runs_total.labels(name=item.name, status="success").inc()
+                    if harness_sched_task_item_last_success_timestamp_seconds is not None:
+                        harness_sched_task_item_last_success_timestamp_seconds.labels(name=item.name).set(time.time())
 
                 except asyncio.CancelledError:
                     if _send_task is not None and not _send_task.done():
@@ -550,12 +550,12 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
                     raise
                 except Exception as e:
                     logger.error(f"Task '{item.name}' error: {e}")
-                    if agent_sched_task_runs_total is not None:
-                        agent_sched_task_runs_total.labels(name=item.name, status="error").inc()
-                    if agent_sched_task_error_duration_seconds is not None:
-                        agent_sched_task_error_duration_seconds.labels(name=item.name).observe(time.monotonic() - _task_start)
-                    if agent_sched_task_item_last_error_timestamp_seconds is not None:
-                        agent_sched_task_item_last_error_timestamp_seconds.labels(name=item.name).set(time.time())
+                    if harness_sched_task_runs_total is not None:
+                        harness_sched_task_runs_total.labels(name=item.name, status="error").inc()
+                    if harness_sched_task_error_duration_seconds is not None:
+                        harness_sched_task_error_duration_seconds.labels(name=item.name).observe(time.monotonic() - _task_start)
+                    if harness_sched_task_item_last_error_timestamp_seconds is not None:
+                        harness_sched_task_item_last_error_timestamp_seconds.labels(name=item.name).set(time.time())
                     break  # stop looping on error; go back to waiting for next window
 
                 # Loop logic
@@ -592,8 +592,8 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
             raise
         finally:
             item.running = False
-            if agent_sched_task_running_items is not None:
-                agent_sched_task_running_items.dec()
+            if harness_sched_task_running_items is not None:
+                harness_sched_task_running_items.dec()
             if semaphore is not None and _semaphore_acquired:
                 semaphore.release()
             try:
@@ -601,8 +601,8 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
             except FileNotFoundError:
                 pass
             except Exception as e:
-                if agent_checkpoint_write_errors_total is not None:
-                    agent_checkpoint_write_errors_total.inc()
+                if harness_checkpoint_write_errors_total is not None:
+                    harness_checkpoint_write_errors_total.inc()
                 logger.warning(f"Task '{item.name}' checkpoint delete failed: {e}")
 
 
@@ -637,14 +637,14 @@ class TaskRunner:
         def _task_done_callback(t: asyncio.Task, _name: str = item.name) -> None:
             if not t.cancelled() and t.exception() is not None:
                 logger.error(f"Task '{_name}' coroutine crashed: {t.exception()!r}")
-                if agent_sched_task_runs_total is not None:
-                    agent_sched_task_runs_total.labels(name=_name, status="error").inc()
+                if harness_sched_task_runs_total is not None:
+                    harness_sched_task_runs_total.labels(name=_name, status="error").inc()
 
         task.add_done_callback(_task_done_callback)
         item.task = task
         self._items[path] = item
-        if agent_sched_task_items_registered is not None:
-            agent_sched_task_items_registered.set(len(self._items))
+        if harness_sched_task_items_registered is not None:
+            harness_sched_task_items_registered.set(len(self._items))
         if item.window_start is not None:
             logger.info(f"Task '{item.name}' registered. Window: {item.window_start.strftime('%H:%M')}")
         else:
@@ -680,11 +680,11 @@ class TaskRunner:
             else:
                 logger.info(f"Task '{existing.name}' unregistered.")
             existing.task.cancel()
-            if agent_sched_task_items_registered is not None:
-                agent_sched_task_items_registered.set(len(self._items))
+            if harness_sched_task_items_registered is not None:
+                harness_sched_task_items_registered.set(len(self._items))
             return existing.task
-        if agent_sched_task_items_registered is not None:
-            agent_sched_task_items_registered.set(len(self._items))
+        if harness_sched_task_items_registered is not None:
+            harness_sched_task_items_registered.set(len(self._items))
         return None
 
     async def _scan(self) -> None:
@@ -703,8 +703,8 @@ class TaskRunner:
                     except Exception:
                         name = Path(cp_filename).stem
                     logger.warning(f"Task '{name}': stale checkpoint at {cp_path} — run may have been interrupted")
-                    if agent_sched_task_checkpoint_stale_total is not None:
-                        agent_sched_task_checkpoint_stale_total.inc()
+                    if harness_sched_task_checkpoint_stale_total is not None:
+                        harness_sched_task_checkpoint_stale_total.inc()
                     try:
                         os.remove(cp_path)
                     except Exception as rm_err:
@@ -724,14 +724,14 @@ class TaskRunner:
 
         async def _on_change(path: str) -> None:
             logger.info(f"Task file changed: {path}")
-            if agent_sched_task_reloads_total is not None:
-                agent_sched_task_reloads_total.inc()
+            if harness_sched_task_reloads_total is not None:
+                harness_sched_task_reloads_total.inc()
             await self._register(path)
 
         def _on_delete(path: str) -> None:
             logger.info(f"Task file removed: {path}")
-            if agent_sched_task_reloads_total is not None:
-                agent_sched_task_reloads_total.inc()
+            if harness_sched_task_reloads_total is not None:
+                harness_sched_task_reloads_total.inc()
             self._unregister(path)
 
         async def _cleanup() -> None:
@@ -749,6 +749,6 @@ class TaskRunner:
             logger_=logger,
             not_found_message="Tasks directory not found — retrying in 10s.",
             watcher_exited_message="Tasks directory watcher exited — directory deleted or unavailable. Retrying in 10s.",
-            watcher_events_metric=agent_watcher_events_total,
-            file_watcher_restarts_metric=agent_file_watcher_restarts_total,
+            watcher_events_metric=harness_watcher_events_total,
+            file_watcher_restarts_metric=harness_file_watcher_restarts_total,
         )

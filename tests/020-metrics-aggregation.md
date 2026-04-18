@@ -28,7 +28,7 @@ curl -s http://localhost:8099/metrics
 The test passes if ALL of the following are true:
 
 1. `GET http://localhost:8099/metrics` returns HTTP 200.
-2. The response body contains at least one `agent_` prefixed metric (e.g. `agent_a2a_requests_total`).
+2. The response body contains at least one `agent_` prefixed metric (e.g. `harness_a2a_requests_total`).
 3. The response body contains at least one `a2_` prefixed metric with a `backend=` label (e.g. a line matching `a2_.*backend="`).
 4. The response body does NOT contain a 500 error or HTML error page.
 

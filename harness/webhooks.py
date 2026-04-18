@@ -41,13 +41,13 @@ import yaml
 
 from tracing import inject_traceparent, set_span_error, start_span
 from metrics import (
-    agent_file_watcher_restarts_total,
-    agent_webhooks_delivery_shed_total,
-    agent_webhooks_delivery_total,
-    agent_webhooks_items_registered,
-    agent_webhooks_parse_errors_total,
-    agent_webhooks_reloads_total,
-    agent_watcher_events_total,
+    harness_file_watcher_restarts_total,
+    harness_webhooks_delivery_shed_total,
+    harness_webhooks_delivery_total,
+    harness_webhooks_items_registered,
+    harness_webhooks_parse_errors_total,
+    harness_webhooks_reloads_total,
+    harness_watcher_events_total,
 )
 from utils import parse_duration, parse_frontmatter, run_awatch_loop
 
@@ -523,8 +523,8 @@ def parse_webhook_file(path: str) -> "WebhookSubscription | object | None":
         )
 
     except Exception as e:
-        if agent_webhooks_parse_errors_total is not None:
-            agent_webhooks_parse_errors_total.inc()
+        if harness_webhooks_parse_errors_total is not None:
+            harness_webhooks_parse_errors_total.inc()
         logger.error(f"Webhook file {path}: failed to parse — {e}, skipping.")
         return None
 
@@ -712,8 +712,8 @@ async def _retry_deliver(
             result = "error"
             logger.warning(f"Webhook '{sub.name}' attempt {attempt} failed: {exc!r}")
 
-    if agent_webhooks_delivery_total is not None:
-        agent_webhooks_delivery_total.labels(result=result, subscription=sub.name).inc()
+    if harness_webhooks_delivery_total is not None:
+        harness_webhooks_delivery_total.labels(result=result, subscription=sub.name).inc()
 
 
 async def deliver(
@@ -885,8 +885,8 @@ async def deliver(
     if result != "success" and sub.retries > 0 and _is_retryable_result:
         # Record the initial failure before dispatching the retry chain so that
         # the first attempt's outcome is always visible in metrics (#375/#382).
-        if agent_webhooks_delivery_total is not None:
-            agent_webhooks_delivery_total.labels(result=result, subscription=sub.name).inc()
+        if harness_webhooks_delivery_total is not None:
+            harness_webhooks_delivery_total.labels(result=result, subscription=sub.name).inc()
         # Schedule retry as a new independent task so this task can exit now,
         # freeing its slot before the backoff delay begins.
         #
@@ -928,8 +928,8 @@ async def deliver(
             registered.set()
         return
 
-    if agent_webhooks_delivery_total is not None:
-        agent_webhooks_delivery_total.labels(result=result, subscription=sub.name).inc()
+    if harness_webhooks_delivery_total is not None:
+        harness_webhooks_delivery_total.labels(result=result, subscription=sub.name).inc()
 
 
 async def _deliver_hook_decision(
@@ -1007,8 +1007,8 @@ async def _deliver_hook_decision(
             set_span_error(_span, exc)
             logger.warning(f"Webhook '{sub.name}' hook.decision delivery failed: {exc!r}")
 
-    if agent_webhooks_delivery_total is not None:
-        agent_webhooks_delivery_total.labels(result=result, subscription=sub.name).inc()
+    if harness_webhooks_delivery_total is not None:
+        harness_webhooks_delivery_total.labels(result=result, subscription=sub.name).inc()
 
 
 class WebhookRunner:
@@ -1069,20 +1069,20 @@ class WebhookRunner:
         sub = result
         self._unregister(path)
         self._items[path] = sub
-        if agent_webhooks_items_registered is not None:
-            agent_webhooks_items_registered.set(len(self._items))
-        if count_reload and agent_webhooks_reloads_total is not None:
-            agent_webhooks_reloads_total.inc()
+        if harness_webhooks_items_registered is not None:
+            harness_webhooks_items_registered.set(len(self._items))
+        if count_reload and harness_webhooks_reloads_total is not None:
+            harness_webhooks_reloads_total.inc()
         logger.info(f"Webhook subscription '{sub.name}' registered.")
 
     def _unregister(self, path: str, *, count_reload: bool = False) -> None:
         existing = self._items.pop(path, None)
         if existing:
             logger.info(f"Webhook subscription '{existing.name}' unregistered.")
-            if agent_webhooks_items_registered is not None:
-                agent_webhooks_items_registered.set(len(self._items))
-            if count_reload and agent_webhooks_reloads_total is not None:
-                agent_webhooks_reloads_total.inc()
+            if harness_webhooks_items_registered is not None:
+                harness_webhooks_items_registered.set(len(self._items))
+            if count_reload and harness_webhooks_reloads_total is not None:
+                harness_webhooks_reloads_total.inc()
 
     async def _scan(self) -> None:
         if not os.path.isdir(WEBHOOKS_DIR):
@@ -1119,8 +1119,8 @@ class WebhookRunner:
                         f"Webhook '{sub.name}': per-subscription max concurrent deliveries "
                         f"({sub.max_concurrent_deliveries}) reached — shedding delivery for kind {kind!r}."
                     )
-                    if agent_webhooks_delivery_shed_total is not None:
-                        agent_webhooks_delivery_shed_total.labels(subscription=sub.name).inc()
+                    if harness_webhooks_delivery_shed_total is not None:
+                        harness_webhooks_delivery_shed_total.labels(subscription=sub.name).inc()
                     continue
                 # Global safety net: absolute cap across all subscriptions.
                 if len(self._active_deliveries) >= WEBHOOK_MAX_CONCURRENT_DELIVERIES:
@@ -1128,8 +1128,8 @@ class WebhookRunner:
                         f"Webhook '{sub.name}': global max concurrent deliveries "
                         f"({WEBHOOK_MAX_CONCURRENT_DELIVERIES}) reached — shedding delivery for kind {kind!r}."
                     )
-                    if agent_webhooks_delivery_shed_total is not None:
-                        agent_webhooks_delivery_shed_total.labels(subscription=sub.name).inc()
+                    if harness_webhooks_delivery_shed_total is not None:
+                        harness_webhooks_delivery_shed_total.labels(subscription=sub.name).inc()
                     continue
                 def _make_on_retry_task(
                     _sub_name: str = sub.name,
@@ -1238,16 +1238,16 @@ class WebhookRunner:
                     f"Webhook '{sub.name}': per-subscription max concurrent deliveries "
                     f"({sub.max_concurrent_deliveries}) reached — shedding hook.decision delivery."
                 )
-                if agent_webhooks_delivery_shed_total is not None:
-                    agent_webhooks_delivery_shed_total.labels(subscription=sub.name).inc()
+                if harness_webhooks_delivery_shed_total is not None:
+                    harness_webhooks_delivery_shed_total.labels(subscription=sub.name).inc()
                 continue
             if len(self._active_deliveries) >= WEBHOOK_MAX_CONCURRENT_DELIVERIES:
                 logger.warning(
                     f"Webhook '{sub.name}': global max concurrent deliveries "
                     f"({WEBHOOK_MAX_CONCURRENT_DELIVERIES}) reached — shedding hook.decision delivery."
                 )
-                if agent_webhooks_delivery_shed_total is not None:
-                    agent_webhooks_delivery_shed_total.labels(subscription=sub.name).inc()
+                if harness_webhooks_delivery_shed_total is not None:
+                    harness_webhooks_delivery_shed_total.labels(subscription=sub.name).inc()
                 continue
 
             _t = asyncio.create_task(
@@ -1294,8 +1294,8 @@ class WebhookRunner:
             logger_=logger,
             not_found_message="Webhooks directory not found — retrying in 10s.",
             watcher_exited_message="Webhooks directory watcher exited — retrying in 10s.",
-            watcher_events_metric=agent_watcher_events_total,
-            file_watcher_restarts_metric=agent_file_watcher_restarts_total,
+            watcher_events_metric=harness_watcher_events_total,
+            file_watcher_restarts_metric=harness_file_watcher_restarts_total,
         )
 
     async def close(self) -> None:

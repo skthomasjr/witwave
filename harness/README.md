@@ -105,7 +105,7 @@ external tracing SDK (#468). This is the smallest-viable building block for cros
 
 **Inbound.** On every A2A request, `executor.execute()` reads the `traceparent` value from `message.metadata` (the A2A
 SDK surfaces HTTP headers there, not on the raw request). If valid, the context is continued; otherwise a fresh
-`trace_id`/`span_id` pair is minted. The `agent_a2a_traces_received_total{has_inbound=true|false}` counter records
+`trace_id`/`span_id` pair is minted. The `harness_a2a_traces_received_total{has_inbound=true|false}` counter records
 which path was taken.
 
 **Internal.** Scheduled work (heartbeats, jobs, tasks, triggers, continuations) flows through the message bus. Each

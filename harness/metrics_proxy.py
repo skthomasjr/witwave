@@ -12,7 +12,7 @@ from urllib.parse import urlparse, urlunparse
 import httpx
 
 from backends.config import BackendConfig
-from metrics import agent_metrics_backend_fetch_errors_total
+from metrics import harness_metrics_backend_fetch_errors_total
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ async def fetch_backend_metrics(backends: list[BackendConfig]) -> str:
     """Fetch /metrics from each backend concurrently and return concatenated Prometheus text.
 
     Backends that are unreachable or return non-200 are skipped and counted in
-    agent_metrics_backend_fetch_errors_total so that silent omissions are visible
+    harness_metrics_backend_fetch_errors_total so that silent omissions are visible
     in Prometheus dashboards (#372).
 
     Backends are fetched concurrently via asyncio.gather so that one slow or
@@ -61,14 +61,14 @@ async def fetch_backend_metrics(backends: list[BackendConfig]) -> str:
                 logger.warning(
                     f"Backend {backend.id!r} /metrics returned {resp.status_code} — skipping"
                 )
-                if agent_metrics_backend_fetch_errors_total is not None:
-                    agent_metrics_backend_fetch_errors_total.labels(backend=backend.id).inc()
+                if harness_metrics_backend_fetch_errors_total is not None:
+                    harness_metrics_backend_fetch_errors_total.labels(backend=backend.id).inc()
         except Exception as exc:
             logger.warning(
                 f"Backend {backend.id!r} /metrics unreachable: {exc!r} — skipping"
             )
-            if agent_metrics_backend_fetch_errors_total is not None:
-                agent_metrics_backend_fetch_errors_total.labels(backend=backend.id).inc()
+            if harness_metrics_backend_fetch_errors_total is not None:
+                harness_metrics_backend_fetch_errors_total.labels(backend=backend.id).inc()
         return ''
 
     async with httpx.AsyncClient(timeout=5.0) as client:
@@ -83,8 +83,8 @@ async def fetch_backend_metrics(backends: list[BackendConfig]) -> str:
             logger.warning(
                 f"Backend {backend.id!r} /metrics gather error: {result!r} — skipping"
             )
-            if agent_metrics_backend_fetch_errors_total is not None:
-                agent_metrics_backend_fetch_errors_total.labels(backend=backend.id).inc()
+            if harness_metrics_backend_fetch_errors_total is not None:
+                harness_metrics_backend_fetch_errors_total.labels(backend=backend.id).inc()
         elif result:
             parts.append(result)
 

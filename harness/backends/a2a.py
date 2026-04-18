@@ -14,10 +14,10 @@ import httpx
 
 from backends.config import BackendConfig
 from metrics import (
-    agent_a2a_backend_circuit_state,
-    agent_a2a_backend_circuit_transitions_total,
-    agent_a2a_backend_request_duration_seconds,
-    agent_a2a_backend_requests_total,
+    harness_a2a_backend_circuit_state,
+    harness_a2a_backend_circuit_transitions_total,
+    harness_a2a_backend_request_duration_seconds,
+    harness_a2a_backend_requests_total,
 )
 from tracing import TraceContext, inject_traceparent, set_span_error, start_span
 
@@ -113,13 +113,13 @@ class A2ABackend:
 
         Each possible state has its own labelset; exactly one reports 1 and
         the rest report 0. This keeps alerting rules simple
-        (``max by (backend) (agent_a2a_backend_circuit_state{state="open"}) == 1``).
+        (``max by (backend) (harness_a2a_backend_circuit_state{state="open"}) == 1``).
         """
-        if agent_a2a_backend_circuit_state is None:
+        if harness_a2a_backend_circuit_state is None:
             return
         for _state in _CIRCUIT_STATES:
             try:
-                agent_a2a_backend_circuit_state.labels(
+                harness_a2a_backend_circuit_state.labels(
                     backend=self.id, state=_state
                 ).set(1.0 if _state == self._circuit_state else 0.0)
             except Exception:
@@ -135,9 +135,9 @@ class A2ABackend:
         if prev == new_state:
             return
         self._circuit_state = new_state
-        if agent_a2a_backend_circuit_transitions_total is not None:
+        if harness_a2a_backend_circuit_transitions_total is not None:
             try:
-                agent_a2a_backend_circuit_transitions_total.labels(
+                harness_a2a_backend_circuit_transitions_total.labels(
                     backend=self.id, **{"from": prev, "to": new_state}
                 ).inc()
             except Exception:
@@ -295,16 +295,16 @@ class A2ABackend:
         ``"error_connection"``, ``"error_timeout"``. Raw HTTP status codes
         are deliberately NOT used as label values to bound cardinality.
         """
-        if agent_a2a_backend_requests_total is not None:
+        if harness_a2a_backend_requests_total is not None:
             try:
-                agent_a2a_backend_requests_total.labels(
+                harness_a2a_backend_requests_total.labels(
                     backend=self.id, result=result
                 ).inc()
             except Exception:
                 pass
-        if agent_a2a_backend_request_duration_seconds is not None:
+        if harness_a2a_backend_request_duration_seconds is not None:
             try:
-                agent_a2a_backend_request_duration_seconds.labels(
+                harness_a2a_backend_request_duration_seconds.labels(
                     backend=self.id
                 ).observe(time.monotonic() - start_monotonic)
             except Exception:

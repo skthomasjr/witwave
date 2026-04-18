@@ -27,38 +27,38 @@ from tracing import (
 from utils import ConsensusEntry
 from log_utils import _append_log
 from metrics import (
-    agent_a2a_last_request_timestamp_seconds,
-    agent_a2a_request_duration_seconds,
-    agent_a2a_requests_total,
-    agent_a2a_traces_received_total,
-    agent_active_sessions,
-    agent_concurrent_queries,
-    agent_consensus_backend_errors_total,
-    agent_consensus_runs_total,
-    agent_empty_responses_total,
-    agent_lru_cache_utilization_percent,
-    agent_model_requests_total,
-    agent_prompt_length_bytes,
-    agent_response_length_bytes,
-    agent_running_tasks,
-    agent_session_age_seconds,
-    agent_session_evictions_total,
-    agent_session_idle_seconds,
-    agent_session_starts_total,
-    agent_task_cancellations_total,
-    agent_task_duration_seconds,
-    agent_task_error_duration_seconds,
-    agent_task_last_error_timestamp_seconds,
-    agent_task_last_success_timestamp_seconds,
-    agent_task_restarts_total,
-    agent_task_timeout_headroom_seconds,
-    agent_tasks_total,
-    agent_log_bytes_total,
-    agent_log_entries_total,
-    agent_log_write_errors_total,
-    agent_background_tasks,
-    agent_background_tasks_shed_total,
-    agent_background_tasks_timeout_total,
+    harness_a2a_last_request_timestamp_seconds,
+    harness_a2a_request_duration_seconds,
+    harness_a2a_requests_total,
+    harness_a2a_traces_received_total,
+    harness_active_sessions,
+    harness_concurrent_queries,
+    harness_consensus_backend_errors_total,
+    harness_consensus_runs_total,
+    harness_empty_responses_total,
+    harness_lru_cache_utilization_percent,
+    harness_model_requests_total,
+    harness_prompt_length_bytes,
+    harness_response_length_bytes,
+    harness_running_tasks,
+    harness_session_age_seconds,
+    harness_session_evictions_total,
+    harness_session_idle_seconds,
+    harness_session_starts_total,
+    harness_task_cancellations_total,
+    harness_task_duration_seconds,
+    harness_task_error_duration_seconds,
+    harness_task_last_error_timestamp_seconds,
+    harness_task_last_success_timestamp_seconds,
+    harness_task_restarts_total,
+    harness_task_timeout_headroom_seconds,
+    harness_tasks_total,
+    harness_log_bytes_total,
+    harness_log_entries_total,
+    harness_log_write_errors_total,
+    harness_background_tasks,
+    harness_background_tasks_shed_total,
+    harness_background_tasks_timeout_total,
 )
 
 logger = logging.getLogger(__name__)
@@ -81,7 +81,7 @@ ON_PROMPT_COMPLETED_TIMEOUT = float(
 )
 # Maximum number of background tasks tracked by AgentExecutor at any one time.
 # When the cap is hit new tasks are shed and counted in
-# agent_background_tasks_shed_total rather than growing the set without bound (#549).
+# harness_background_tasks_shed_total rather than growing the set without bound (#549).
 BACKGROUND_TASKS_MAX = int(os.environ.get("BACKGROUND_TASKS_MAX", "1000"))
 
 
@@ -112,13 +112,13 @@ async def log_entry(
             entry["span_id"] = trace_context.parent_id
         _line = json.dumps(entry)
         await asyncio.to_thread(_append_log, CONVERSATION_LOG, _line)
-        if agent_log_entries_total is not None:
-            agent_log_entries_total.labels(logger="conversation").inc()
-        if agent_log_bytes_total is not None:
-            agent_log_bytes_total.labels(logger="conversation").inc(len(_line.encode()))
+        if harness_log_entries_total is not None:
+            harness_log_entries_total.labels(logger="conversation").inc()
+        if harness_log_bytes_total is not None:
+            harness_log_bytes_total.labels(logger="conversation").inc(len(_line.encode()))
     except Exception as e:
-        if agent_log_write_errors_total is not None:
-            agent_log_write_errors_total.inc()
+        if harness_log_write_errors_total is not None:
+            harness_log_write_errors_total.inc()
         logger.error(f"log_entry error: {e}")
 
 
@@ -167,15 +167,15 @@ def _track_session(sessions: OrderedDict[str, float], session_id: str) -> None:
     else:
         if len(sessions) >= MAX_SESSIONS:
             _evicted_id, last_used_at = sessions.popitem(last=False)
-            if agent_session_evictions_total is not None:
-                agent_session_evictions_total.inc()
-            if agent_session_age_seconds is not None:
-                agent_session_age_seconds.observe(time.monotonic() - last_used_at)
+            if harness_session_evictions_total is not None:
+                harness_session_evictions_total.inc()
+            if harness_session_age_seconds is not None:
+                harness_session_age_seconds.observe(time.monotonic() - last_used_at)
         sessions[session_id] = time.monotonic()
-    if agent_active_sessions is not None:
-        agent_active_sessions.set(len(sessions))
-    if agent_lru_cache_utilization_percent is not None:
-        agent_lru_cache_utilization_percent.set(len(sessions) / MAX_SESSIONS * 100)
+    if harness_active_sessions is not None:
+        harness_active_sessions.set(len(sessions))
+    if harness_lru_cache_utilization_percent is not None:
+        harness_lru_cache_utilization_percent.set(len(sessions) / MAX_SESSIONS * 100)
 
 
 async def run(
@@ -189,16 +189,16 @@ async def run(
     max_tokens: int | None = None,
     trace_context: TraceContext | None = None,
 ) -> str:
-    if agent_concurrent_queries is not None:
-        agent_concurrent_queries.inc()
+    if harness_concurrent_queries is not None:
+        harness_concurrent_queries.inc()
     try:
         return await _run_inner(
             prompt, session_id, sessions, backends, default_backend_id,
             backend_id, model, max_tokens, trace_context=trace_context,
         )
     finally:
-        if agent_concurrent_queries is not None:
-            agent_concurrent_queries.dec()
+        if harness_concurrent_queries is not None:
+            harness_concurrent_queries.dec()
 
 
 async def _run_inner(
@@ -217,14 +217,14 @@ async def _run_inner(
     if backend is None:
         raise ValueError(f"No backend configured with id '{resolved_id}'")
 
-    if agent_model_requests_total is not None:
-        agent_model_requests_total.labels(model=model or "default").inc()
+    if harness_model_requests_total is not None:
+        harness_model_requests_total.labels(model=model or "default").inc()
 
     is_new = session_id not in sessions
-    if not is_new and agent_session_idle_seconds is not None:
-        agent_session_idle_seconds.observe(time.monotonic() - sessions[session_id])
-    if agent_session_starts_total is not None:
-        agent_session_starts_total.labels(type="new" if is_new else "resumed").inc()
+    if not is_new and harness_session_idle_seconds is not None:
+        harness_session_idle_seconds.observe(time.monotonic() - sessions[session_id])
+    if harness_session_starts_total is not None:
+        harness_session_starts_total.labels(type="new" if is_new else "resumed").inc()
     _track_session(sessions, session_id)
 
     _prompt_preview = prompt[:LOG_PROMPT_MAX_BYTES] + ("[truncated]" if len(prompt) > LOG_PROMPT_MAX_BYTES else "") if LOG_PROMPT_MAX_BYTES > 0 else "[redacted]"
@@ -232,8 +232,8 @@ async def _run_inner(
     logger.info(f"Session {session_id} ({'new' if is_new else 'existing'}) backend={resolved_id}{_trace_tag} — prompt: {_prompt_preview!r}")
     await log_entry("user", prompt, session_id, model=model, backend=resolved_id, trace_context=trace_context)
 
-    if agent_prompt_length_bytes is not None:
-        agent_prompt_length_bytes.observe(len(prompt.encode()))
+    if harness_prompt_length_bytes is not None:
+        harness_prompt_length_bytes.observe(len(prompt.encode()))
 
     _start = time.monotonic()
     try:
@@ -247,37 +247,37 @@ async def _run_inner(
         )
     except asyncio.TimeoutError:
         logger.error(f"Session {session_id!r}: backend {resolved_id!r} timed out after {TASK_TIMEOUT_SECONDS}s.")
-        if agent_tasks_total is not None:
-            agent_tasks_total.labels(status="timeout").inc()
-        if agent_task_error_duration_seconds is not None:
-            agent_task_error_duration_seconds.observe(time.monotonic() - _start)
-        if agent_task_last_error_timestamp_seconds is not None:
-            agent_task_last_error_timestamp_seconds.set(time.time())
+        if harness_tasks_total is not None:
+            harness_tasks_total.labels(status="timeout").inc()
+        if harness_task_error_duration_seconds is not None:
+            harness_task_error_duration_seconds.observe(time.monotonic() - _start)
+        if harness_task_last_error_timestamp_seconds is not None:
+            harness_task_last_error_timestamp_seconds.set(time.time())
         raise
     except Exception:
-        if agent_tasks_total is not None:
-            agent_tasks_total.labels(status="error").inc()
-        if agent_task_error_duration_seconds is not None:
-            agent_task_error_duration_seconds.observe(time.monotonic() - _start)
-        if agent_task_last_error_timestamp_seconds is not None:
-            agent_task_last_error_timestamp_seconds.set(time.time())
+        if harness_tasks_total is not None:
+            harness_tasks_total.labels(status="error").inc()
+        if harness_task_error_duration_seconds is not None:
+            harness_task_error_duration_seconds.observe(time.monotonic() - _start)
+        if harness_task_last_error_timestamp_seconds is not None:
+            harness_task_last_error_timestamp_seconds.set(time.time())
         raise
 
-    if agent_tasks_total is not None:
-        agent_tasks_total.labels(status="success").inc()
-    if agent_task_last_success_timestamp_seconds is not None:
-        agent_task_last_success_timestamp_seconds.set(time.time())
-    if agent_task_duration_seconds is not None:
-        agent_task_duration_seconds.observe(time.monotonic() - _start)
-    if agent_task_timeout_headroom_seconds is not None:
-        agent_task_timeout_headroom_seconds.observe(TASK_TIMEOUT_SECONDS - (time.monotonic() - _start))
+    if harness_tasks_total is not None:
+        harness_tasks_total.labels(status="success").inc()
+    if harness_task_last_success_timestamp_seconds is not None:
+        harness_task_last_success_timestamp_seconds.set(time.time())
+    if harness_task_duration_seconds is not None:
+        harness_task_duration_seconds.observe(time.monotonic() - _start)
+    if harness_task_timeout_headroom_seconds is not None:
+        harness_task_timeout_headroom_seconds.observe(TASK_TIMEOUT_SECONDS - (time.monotonic() - _start))
 
     response = "\n\n".join(collected) if collected else ""
     if not response:
-        if agent_empty_responses_total is not None:
-            agent_empty_responses_total.inc()
-    elif agent_response_length_bytes is not None:
-        agent_response_length_bytes.observe(len(response.encode()))
+        if harness_empty_responses_total is not None:
+            harness_empty_responses_total.inc()
+    elif harness_response_length_bytes is not None:
+        harness_response_length_bytes.observe(len(response.encode()))
     return response
 
 
@@ -353,8 +353,8 @@ async def run_consensus(
     for call_key, outcome in raw_results:
         if isinstance(outcome, Exception):
             logger.error(f"Consensus backend {call_key!r} failed: {outcome!r}")
-            if agent_consensus_backend_errors_total is not None:
-                agent_consensus_backend_errors_total.inc()
+            if harness_consensus_backend_errors_total is not None:
+                harness_consensus_backend_errors_total.inc()
         else:
             responses[call_key] = outcome
 
@@ -389,8 +389,8 @@ async def run_consensus(
                 )
                 winner = classifications[fallback_key]
         logger.info(f"Consensus (binary): yes={yes_count} no={no_count} → {winner}")
-        if agent_consensus_runs_total is not None:
-            agent_consensus_runs_total.labels(mode="binary", status="success").inc()
+        if harness_consensus_runs_total is not None:
+            harness_consensus_runs_total.labels(mode="binary", status="success").inc()
         return winner
 
     # Freeform: synthesis pass.
@@ -411,12 +411,12 @@ async def run_consensus(
         )
     except Exception as exc:
         logger.error(f"Consensus synthesis pass failed: {exc!r} — returning concatenated responses.")
-        if agent_consensus_runs_total is not None:
-            agent_consensus_runs_total.labels(mode="freeform", status="error").inc()
+        if harness_consensus_runs_total is not None:
+            harness_consensus_runs_total.labels(mode="freeform", status="error").inc()
         return parts
     logger.info(f"Consensus (freeform): synthesised from {len(responses)} backend(s).")
-    if agent_consensus_runs_total is not None:
-        agent_consensus_runs_total.labels(mode="freeform", status="success").inc()
+    if harness_consensus_runs_total is not None:
+        harness_consensus_runs_total.labels(mode="freeform", status="success").inc()
     return synthesised
 
 
@@ -457,8 +457,8 @@ async def _guarded(
                 f"Task {coro_fn.__name__!r} crashed: {exc!r} — "
                 f"restarting in {restart_delay}s (consecutive restart #{consecutive_restarts})"
             )
-            if agent_task_restarts_total is not None:
-                agent_task_restarts_total.labels(task=coro_fn.__name__).inc()
+            if harness_task_restarts_total is not None:
+                harness_task_restarts_total.labels(task=coro_fn.__name__).inc()
             if on_not_ready is not None and consecutive_restarts >= max_restarts:
                 on_not_ready()
             await asyncio.sleep(restart_delay)
@@ -506,7 +506,7 @@ class AgentExecutor(A2AAgentExecutor):
         when it finishes, so the set stays bounded even if the coroutine raises.
         A hard ceiling on in-flight tasks (``BACKGROUND_TASKS_MAX``) prevents the
         set from growing without bound when downstreams hang — excess tasks are
-        shed and the ``agent_background_tasks_shed_total`` counter is incremented.
+        shed and the ``harness_background_tasks_shed_total`` counter is incremented.
         A per-task timeout (``ON_PROMPT_COMPLETED_TIMEOUT`` by default) prevents a
         single stuck coroutine from pinning memory forever (#549).
 
@@ -517,8 +517,8 @@ class AgentExecutor(A2AAgentExecutor):
                 "track_background: shedding %r task (in-flight=%d, cap=%d)",
                 source, len(self._background_tasks), BACKGROUND_TASKS_MAX,
             )
-            if agent_background_tasks_shed_total is not None:
-                agent_background_tasks_shed_total.labels(source=source).inc()
+            if harness_background_tasks_shed_total is not None:
+                harness_background_tasks_shed_total.labels(source=source).inc()
             # Close the coroutine so we don't leak a 'coroutine was never awaited'
             # warning and any resources it holds are released immediately.
             try:
@@ -537,18 +537,18 @@ class AgentExecutor(A2AAgentExecutor):
                     "track_background: %r task exceeded timeout=%.1fs and was cancelled",
                     source, _effective_timeout,
                 )
-                if agent_background_tasks_timeout_total is not None:
-                    agent_background_tasks_timeout_total.labels(source=source).inc()
+                if harness_background_tasks_timeout_total is not None:
+                    harness_background_tasks_timeout_total.labels(source=source).inc()
 
         task = asyncio.create_task(_bounded(), name=name or f"bg-{source}")
         self._background_tasks.add(task)
-        if agent_background_tasks is not None:
-            agent_background_tasks.set(len(self._background_tasks))
+        if harness_background_tasks is not None:
+            harness_background_tasks.set(len(self._background_tasks))
 
         def _on_done(t: asyncio.Task, _tasks=self._background_tasks) -> None:
             _tasks.discard(t)
-            if agent_background_tasks is not None:
-                agent_background_tasks.set(len(_tasks))
+            if harness_background_tasks is not None:
+                harness_background_tasks.set(len(_tasks))
             if not t.cancelled():
                 exc = t.exception()
                 if exc is not None:
@@ -721,8 +721,8 @@ class AgentExecutor(A2AAgentExecutor):
         trace_context, _had_inbound = context_from_inbound(
             _tp_header if isinstance(_tp_header, str) else None
         )
-        if agent_a2a_traces_received_total is not None:
-            agent_a2a_traces_received_total.labels(has_inbound=str(_had_inbound).lower()).inc()
+        if harness_a2a_traces_received_total is not None:
+            harness_a2a_traces_received_total.labels(has_inbound=str(_had_inbound).lower()).inc()
         # Bridge to OTel (#469). When OTel is enabled the extracted context
         # becomes the parent of the server span below; when disabled this
         # returns None and start_span silently emits a no-op span.
@@ -733,8 +733,8 @@ class AgentExecutor(A2AAgentExecutor):
             current = asyncio.current_task()
             if current:
                 self._running_tasks[task_id] = current
-                if agent_running_tasks is not None:
-                    agent_running_tasks.inc()
+                if harness_running_tasks is not None:
+                    harness_running_tasks.inc()
         _response = ""
         _success = False
         _error: str | None = None
@@ -775,12 +775,12 @@ class AgentExecutor(A2AAgentExecutor):
                                 _existing["span_id"] = trace_context.parent_id
                             _msg.metadata = _existing
                         await event_queue.enqueue_event(_msg)
-                    if agent_a2a_requests_total is not None:
-                        agent_a2a_requests_total.labels(status="success").inc()
+                    if harness_a2a_requests_total is not None:
+                        harness_a2a_requests_total.labels(status="success").inc()
                 except Exception as _exc:
                     _error = repr(_exc)
-                    if agent_a2a_requests_total is not None:
-                        agent_a2a_requests_total.labels(status="error").inc()
+                    if harness_a2a_requests_total is not None:
+                        harness_a2a_requests_total.labels(status="error").inc()
                     set_span_error(_span, _exc)
                     raise
         finally:
@@ -798,14 +798,14 @@ class AgentExecutor(A2AAgentExecutor):
                 ),
                 source="a2a",
             )
-            if agent_a2a_request_duration_seconds is not None:
-                agent_a2a_request_duration_seconds.observe(time.monotonic() - _exec_start)
-            if agent_a2a_last_request_timestamp_seconds is not None:
-                agent_a2a_last_request_timestamp_seconds.set(time.time())
+            if harness_a2a_request_duration_seconds is not None:
+                harness_a2a_request_duration_seconds.observe(time.monotonic() - _exec_start)
+            if harness_a2a_last_request_timestamp_seconds is not None:
+                harness_a2a_last_request_timestamp_seconds.set(time.time())
             if task_id and task_id in self._running_tasks:
                 self._running_tasks.pop(task_id)
-                if agent_running_tasks is not None:
-                    agent_running_tasks.dec()
+                if harness_running_tasks is not None:
+                    harness_running_tasks.dec()
 
     async def close(self) -> None:
         """Coordinated shutdown: watchers, background tasks, backend clients (#604).
@@ -847,9 +847,9 @@ class AgentExecutor(A2AAgentExecutor):
             # anything that slipped through (e.g. callback scheduled after
             # loop close) so the set doesn't retain references.
             self._background_tasks.clear()
-            if agent_background_tasks is not None:
+            if harness_background_tasks is not None:
                 try:
-                    agent_background_tasks.set(0)
+                    harness_background_tasks.set(0)
                 except Exception:
                     pass
 
@@ -864,8 +864,8 @@ class AgentExecutor(A2AAgentExecutor):
                 logger.warning("backend %r close() failed: %r", _backend.id, _exc)
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
-        if agent_task_cancellations_total is not None:
-            agent_task_cancellations_total.inc()
+        if harness_task_cancellations_total is not None:
+            harness_task_cancellations_total.inc()
         task_id = context.task_id
         task = self._running_tasks.get(task_id) if task_id else None
         if task:

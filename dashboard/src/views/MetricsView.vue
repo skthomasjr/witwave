@@ -80,16 +80,16 @@ function fmtMs(n: number | null): string {
 const stats = computed(() => {
   const m = merged.value;
   return [
-    { label: "Max Uptime", val: fmtSec(maxGauge(m, "agent_uptime_seconds")) },
-    { label: "Active Sessions", val: fmtNum(sumGauge(m, "agent_active_sessions")) },
-    { label: "Running Tasks", val: fmtNum(sumGauge(m, "agent_running_tasks")) },
-    { label: "Running Sched Tasks", val: fmtNum(sumGauge(m, "agent_sched_task_running_items")) },
-    { label: "Tasks Total", val: fmtNum(sumTotal(m, "agent_tasks")) },
-    { label: "A2A Requests", val: fmtNum(sumTotal(m, "agent_a2a_requests")) },
-    { label: "Heartbeats", val: fmtNum(sumTotal(m, "agent_heartbeat_runs")) },
-    { label: "Job Runs", val: fmtNum(sumTotal(m, "agent_job_runs")) },
-    { label: "Bus Messages", val: fmtNum(sumTotal(m, "agent_bus_messages")) },
-    { label: "Webhooks Shed", val: fmtNum(sumTotal(m, "agent_webhooks_delivery_shed")) },
+    { label: "Max Uptime", val: fmtSec(maxGauge(m, "harness_uptime_seconds")) },
+    { label: "Active Sessions", val: fmtNum(sumGauge(m, "harness_active_sessions")) },
+    { label: "Running Tasks", val: fmtNum(sumGauge(m, "harness_running_tasks")) },
+    { label: "Running Sched Tasks", val: fmtNum(sumGauge(m, "harness_sched_task_running_items")) },
+    { label: "Tasks Total", val: fmtNum(sumTotal(m, "harness_tasks")) },
+    { label: "A2A Requests", val: fmtNum(sumTotal(m, "harness_a2a_requests")) },
+    { label: "Heartbeats", val: fmtNum(sumTotal(m, "harness_heartbeat_runs")) },
+    { label: "Job Runs", val: fmtNum(sumTotal(m, "harness_job_runs")) },
+    { label: "Bus Messages", val: fmtNum(sumTotal(m, "harness_bus_messages")) },
+    { label: "Webhooks Shed", val: fmtNum(sumTotal(m, "harness_webhooks_delivery_shed")) },
   ];
 });
 
@@ -101,7 +101,7 @@ interface ChartSpec {
 }
 
 const durationTitle = computed(() => {
-  const avg = histAvg(merged.value, "agent_a2a_request_duration_seconds");
+  const avg = histAvg(merged.value, "harness_a2a_request_duration_seconds");
   return `A2A Avg Request Duration${avg !== null ? `: ${fmtMs(avg)}` : ""}`;
 });
 
@@ -112,18 +112,18 @@ const chartSpecs = computed<ChartSpec[]>(() => {
     return { labels: Object.keys(bd), values: Object.values(bd) };
   }
   return [
-    { id: "tasks-outcome", title: "Tasks by Outcome", type: "bar", build: () => byLabel("agent_tasks", "status") },
-    { id: "a2a-outcome", title: "A2A Requests by Outcome", type: "bar", build: () => byLabel("agent_a2a_requests", "status") },
-    { id: "hb-outcome", title: "Heartbeat Runs by Outcome", type: "bar", build: () => byLabel("agent_heartbeat_runs", "status") },
-    { id: "job-runs", title: "Job Runs by Name", type: "bar", build: () => byLabel("agent_job_runs", "name") },
-    { id: "task-runs", title: "Task Runs by Name", type: "bar", build: () => byLabel("agent_sched_task_runs", "name") },
-    { id: "bus-kind", title: "Bus Messages by Kind", type: "doughnut", build: () => byLabel("agent_bus_messages", "kind") },
+    { id: "tasks-outcome", title: "Tasks by Outcome", type: "bar", build: () => byLabel("harness_tasks", "status") },
+    { id: "a2a-outcome", title: "A2A Requests by Outcome", type: "bar", build: () => byLabel("harness_a2a_requests", "status") },
+    { id: "hb-outcome", title: "Heartbeat Runs by Outcome", type: "bar", build: () => byLabel("harness_heartbeat_runs", "status") },
+    { id: "job-runs", title: "Job Runs by Name", type: "bar", build: () => byLabel("harness_job_runs", "name") },
+    { id: "task-runs", title: "Task Runs by Name", type: "bar", build: () => byLabel("harness_sched_task_runs", "name") },
+    { id: "bus-kind", title: "Bus Messages by Kind", type: "doughnut", build: () => byLabel("harness_bus_messages", "kind") },
     {
       id: "a2a-dur",
       title: durationTitle.value,
       type: "bar",
       build: () => {
-        const samples = (m.get("agent_a2a_request_duration_seconds")?.samples ?? []).filter(
+        const samples = (m.get("harness_a2a_request_duration_seconds")?.samples ?? []).filter(
           (s) => s.name.endsWith("_bucket") && s.labels.le !== "+Inf",
         );
         return {
@@ -132,12 +132,12 @@ const chartSpecs = computed<ChartSpec[]>(() => {
         };
       },
     },
-    { id: "model-reqs", title: "Requests by Model", type: "doughnut", build: () => byLabel("agent_model_requests", "model") },
-    { id: "trigger-codes", title: "Trigger Requests by Response Code", type: "bar", build: () => byLabel("agent_triggers_requests", "code") },
-    { id: "webhooks", title: "Webhook Deliveries by Result", type: "bar", build: () => byLabel("agent_webhooks_delivery", "result") },
-    { id: "cont-runs", title: "Continuation Runs by Outcome", type: "bar", build: () => byLabel("agent_continuation_runs", "status") },
-    { id: "task-restarts", title: "Agent Task Restarts by Task", type: "bar", build: () => byLabel("agent_task_restarts", "task") },
-    { id: "webhooks-shed", title: "Webhook Deliveries Shed by Subscription", type: "bar", build: () => byLabel("agent_webhooks_delivery_shed", "subscription") },
+    { id: "model-reqs", title: "Requests by Model", type: "doughnut", build: () => byLabel("harness_model_requests", "model") },
+    { id: "trigger-codes", title: "Trigger Requests by Response Code", type: "bar", build: () => byLabel("harness_triggers_requests", "code") },
+    { id: "webhooks", title: "Webhook Deliveries by Result", type: "bar", build: () => byLabel("harness_webhooks_delivery", "result") },
+    { id: "cont-runs", title: "Continuation Runs by Outcome", type: "bar", build: () => byLabel("harness_continuation_runs", "status") },
+    { id: "task-restarts", title: "Agent Task Restarts by Task", type: "bar", build: () => byLabel("harness_task_restarts", "task") },
+    { id: "webhooks-shed", title: "Webhook Deliveries Shed by Subscription", type: "bar", build: () => byLabel("harness_webhooks_delivery_shed", "subscription") },
   ];
 });
 

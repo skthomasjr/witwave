@@ -11,22 +11,22 @@ from pathlib import Path
 from bus import Message, MessageBus
 from croniter import croniter
 from metrics import (
-    agent_job_checkpoint_stale_total,
-    agent_job_duration_seconds,
-    agent_job_error_duration_seconds,
-    agent_job_item_last_error_timestamp_seconds,
-    agent_job_item_last_run_timestamp_seconds,
-    agent_job_item_last_success_timestamp_seconds,
-    agent_job_items_registered,
-    agent_job_lag_seconds,
-    agent_job_parse_errors_total,
-    agent_job_reloads_total,
-    agent_job_running_items,
-    agent_job_runs_total,
-    agent_job_skips_total,
-    agent_checkpoint_write_errors_total,
-    agent_file_watcher_restarts_total,
-    agent_watcher_events_total,
+    harness_job_checkpoint_stale_total,
+    harness_job_duration_seconds,
+    harness_job_error_duration_seconds,
+    harness_job_item_last_error_timestamp_seconds,
+    harness_job_item_last_run_timestamp_seconds,
+    harness_job_item_last_success_timestamp_seconds,
+    harness_job_items_registered,
+    harness_job_lag_seconds,
+    harness_job_parse_errors_total,
+    harness_job_reloads_total,
+    harness_job_running_items,
+    harness_job_runs_total,
+    harness_job_skips_total,
+    harness_checkpoint_write_errors_total,
+    harness_file_watcher_restarts_total,
+    harness_watcher_events_total,
 )
 from utils import (
     ConsensusEntry,
@@ -110,8 +110,8 @@ def parse_job_file(path: str) -> "JobItem | object | None":
         return JobItem(path=path, name=name, schedule=schedule, session_id=session_id, content=content, model=model, backend_id=backend_id, consensus=consensus, max_tokens=max_tokens)
 
     except Exception as e:
-        if agent_job_parse_errors_total is not None:
-            agent_job_parse_errors_total.inc()
+        if harness_job_parse_errors_total is not None:
+            harness_job_parse_errors_total.inc()
         logger.error(f"Job file {path}: failed to parse — {e}, skipping.")
         return None
 
@@ -124,8 +124,8 @@ async def _execute_job(item: JobItem, bus: MessageBus, semaphore: asyncio.Semaph
         _semaphore_acquired = True
 
     item.running = True
-    if agent_job_running_items is not None:
-        agent_job_running_items.inc()
+    if harness_job_running_items is not None:
+        harness_job_running_items.inc()
     checkpoint_path = None
     try:
         os.makedirs(CHECKPOINT_DIR, exist_ok=True)
@@ -140,8 +140,8 @@ async def _execute_job(item: JobItem, bus: MessageBus, semaphore: asyncio.Semaph
                 f,
             )
     except Exception as e:
-        if agent_checkpoint_write_errors_total is not None:
-            agent_checkpoint_write_errors_total.inc()
+        if harness_checkpoint_write_errors_total is not None:
+            harness_checkpoint_write_errors_total.inc()
         logger.error(f"Job '{item.name}' checkpoint write failed: {e}")
     _send_task: asyncio.Task | None = None
     try:
@@ -151,8 +151,8 @@ async def _execute_job(item: JobItem, bus: MessageBus, semaphore: asyncio.Semaph
         logger.info(f"Job '{item.name}' firing.")
         _job_start = time.monotonic()
         message = Message(prompt=prompt, session_id=item.session_id, kind=f"job:{item.name}", model=item.model, backend_id=item.backend_id, consensus=item.consensus, max_tokens=item.max_tokens)
-        if agent_job_item_last_run_timestamp_seconds is not None:
-            agent_job_item_last_run_timestamp_seconds.labels(name=item.name).set(time.time())
+        if harness_job_item_last_run_timestamp_seconds is not None:
+            harness_job_item_last_run_timestamp_seconds.labels(name=item.name).set(time.time())
         _send_task = asyncio.ensure_future(bus.send(message))
 
         def _log_send_result(t: asyncio.Task, _name: str = item.name) -> None:
@@ -162,12 +162,12 @@ async def _execute_job(item: JobItem, bus: MessageBus, semaphore: asyncio.Semaph
 
         _send_task.add_done_callback(_log_send_result)
         await asyncio.shield(_send_task)
-        if agent_job_duration_seconds is not None:
-            agent_job_duration_seconds.labels(name=item.name).observe(time.monotonic() - _job_start)
-        if agent_job_runs_total is not None:
-            agent_job_runs_total.labels(name=item.name, status="success").inc()
-        if agent_job_item_last_success_timestamp_seconds is not None:
-            agent_job_item_last_success_timestamp_seconds.labels(name=item.name).set(time.time())
+        if harness_job_duration_seconds is not None:
+            harness_job_duration_seconds.labels(name=item.name).observe(time.monotonic() - _job_start)
+        if harness_job_runs_total is not None:
+            harness_job_runs_total.labels(name=item.name, status="success").inc()
+        if harness_job_item_last_success_timestamp_seconds is not None:
+            harness_job_item_last_success_timestamp_seconds.labels(name=item.name).set(time.time())
     except asyncio.CancelledError:
         if _send_task is not None and not _send_task.done():
             logger.info(f"Job '{item.name}' cancelled — awaiting in-flight bus.send before clearing running flag.")
@@ -177,16 +177,16 @@ async def _execute_job(item: JobItem, bus: MessageBus, semaphore: asyncio.Semaph
         raise
     except Exception as e:
         logger.error(f"Job '{item.name}' error: {e}")
-        if agent_job_runs_total is not None:
-            agent_job_runs_total.labels(name=item.name, status="error").inc()
-        if agent_job_error_duration_seconds is not None:
-            agent_job_error_duration_seconds.labels(name=item.name).observe(time.monotonic() - _job_start)
-        if agent_job_item_last_error_timestamp_seconds is not None:
-            agent_job_item_last_error_timestamp_seconds.labels(name=item.name).set(time.time())
+        if harness_job_runs_total is not None:
+            harness_job_runs_total.labels(name=item.name, status="error").inc()
+        if harness_job_error_duration_seconds is not None:
+            harness_job_error_duration_seconds.labels(name=item.name).observe(time.monotonic() - _job_start)
+        if harness_job_item_last_error_timestamp_seconds is not None:
+            harness_job_item_last_error_timestamp_seconds.labels(name=item.name).set(time.time())
     finally:
         item.running = False
-        if agent_job_running_items is not None:
-            agent_job_running_items.dec()
+        if harness_job_running_items is not None:
+            harness_job_running_items.dec()
         if semaphore is not None and _semaphore_acquired:
             semaphore.release()
         if checkpoint_path is not None:
@@ -195,8 +195,8 @@ async def _execute_job(item: JobItem, bus: MessageBus, semaphore: asyncio.Semaph
             except FileNotFoundError:
                 pass
             except Exception as e:
-                if agent_checkpoint_write_errors_total is not None:
-                    agent_checkpoint_write_errors_total.inc()
+                if harness_checkpoint_write_errors_total is not None:
+                    harness_checkpoint_write_errors_total.inc()
                 logger.warning(f"Job '{item.name}' checkpoint delete failed: {e}")
 
 
@@ -218,14 +218,14 @@ async def run_job(item: JobItem, bus: MessageBus, semaphore: asyncio.Semaphore |
         logger.info(f"Job '{item.name}' next run in {delay:.0f}s at {next_run.isoformat()}")
         await asyncio.sleep(delay)
 
-        if agent_job_lag_seconds is not None:
+        if harness_job_lag_seconds is not None:
             lag = (datetime.now(timezone.utc) - next_run).total_seconds()
-            agent_job_lag_seconds.observe(lag)
+            harness_job_lag_seconds.observe(lag)
 
         if item.running:
             logger.warning(f"Job '{item.name}' still running from previous turn, skipping.")
-            if agent_job_skips_total is not None:
-                agent_job_skips_total.labels(name=item.name).inc()
+            if harness_job_skips_total is not None:
+                harness_job_skips_total.labels(name=item.name).inc()
             continue
 
         await _execute_job(item, bus, semaphore)
@@ -263,14 +263,14 @@ class JobRunner:
         def _task_done_callback(t: asyncio.Task, _name: str = item.name) -> None:
             if not t.cancelled() and t.exception() is not None:
                 logger.error(f"Job '{_name}' task crashed: {t.exception()!r}")
-                if agent_job_runs_total is not None:
-                    agent_job_runs_total.labels(name=_name, status="error").inc()
+                if harness_job_runs_total is not None:
+                    harness_job_runs_total.labels(name=_name, status="error").inc()
 
         task.add_done_callback(_task_done_callback)
         item.task = task
         self._items[path] = item
-        if agent_job_items_registered is not None:
-            agent_job_items_registered.set(len(self._items))
+        if harness_job_items_registered is not None:
+            harness_job_items_registered.set(len(self._items))
         if item.schedule:
             logger.info(f"Job '{item.name}' registered. Schedule: {item.schedule}")
         else:
@@ -300,11 +300,11 @@ class JobRunner:
             else:
                 logger.info(f"Job '{existing.name}' unregistered.")
             existing.task.cancel()
-            if agent_job_items_registered is not None:
-                agent_job_items_registered.set(len(self._items))
+            if harness_job_items_registered is not None:
+                harness_job_items_registered.set(len(self._items))
             return existing.task
-        if agent_job_items_registered is not None:
-            agent_job_items_registered.set(len(self._items))
+        if harness_job_items_registered is not None:
+            harness_job_items_registered.set(len(self._items))
         return None
 
     async def _scan(self) -> None:
@@ -323,8 +323,8 @@ class JobRunner:
                     except Exception:
                         name = Path(cp_filename).stem
                     logger.warning(f"Job '{name}': stale checkpoint at {cp_path} — run may have been interrupted")
-                    if agent_job_checkpoint_stale_total is not None:
-                        agent_job_checkpoint_stale_total.inc()
+                    if harness_job_checkpoint_stale_total is not None:
+                        harness_job_checkpoint_stale_total.inc()
                     try:
                         os.remove(cp_path)
                     except Exception as rm_err:
@@ -344,14 +344,14 @@ class JobRunner:
 
         async def _on_change(path: str) -> None:
             logger.info(f"Job file changed: {path}")
-            if agent_job_reloads_total is not None:
-                agent_job_reloads_total.inc()
+            if harness_job_reloads_total is not None:
+                harness_job_reloads_total.inc()
             await self._register(path)
 
         def _on_delete(path: str) -> None:
             logger.info(f"Job file removed: {path}")
-            if agent_job_reloads_total is not None:
-                agent_job_reloads_total.inc()
+            if harness_job_reloads_total is not None:
+                harness_job_reloads_total.inc()
             self._unregister(path)
 
         async def _cleanup() -> None:
@@ -369,6 +369,6 @@ class JobRunner:
             logger_=logger,
             not_found_message="Jobs directory not found — retrying in 10s.",
             watcher_exited_message="Jobs directory watcher exited — directory deleted or unavailable. Retrying in 10s.",
-            watcher_events_metric=agent_watcher_events_total,
-            file_watcher_restarts_metric=agent_file_watcher_restarts_total,
+            watcher_events_metric=harness_watcher_events_total,
+            file_watcher_restarts_metric=harness_file_watcher_restarts_total,
         )

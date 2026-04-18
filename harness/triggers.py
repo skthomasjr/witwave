@@ -7,11 +7,11 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from metrics import (
-    agent_file_watcher_restarts_total,
-    agent_triggers_items_registered,
-    agent_triggers_parse_errors_total,
-    agent_triggers_reloads_total,
-    agent_watcher_events_total,
+    harness_file_watcher_restarts_total,
+    harness_triggers_items_registered,
+    harness_triggers_parse_errors_total,
+    harness_triggers_reloads_total,
+    harness_watcher_events_total,
 )
 from utils import (
     ConsensusEntry,
@@ -113,8 +113,8 @@ def parse_trigger_file(path: str) -> TriggerItem | object | None:
         )
 
     except Exception as e:
-        if agent_triggers_parse_errors_total is not None:
-            agent_triggers_parse_errors_total.inc()
+        if harness_triggers_parse_errors_total is not None:
+            harness_triggers_parse_errors_total.inc()
         logger.error(f"Trigger file {path}: failed to parse — {e}, skipping.")
         return None
 
@@ -140,20 +140,20 @@ class TriggerRunner:
         item = result
         self._unregister(path)
         self._items[path] = item
-        if agent_triggers_items_registered is not None:
-            agent_triggers_items_registered.set(len(self._items))
-        if count_reload and agent_triggers_reloads_total is not None:
-            agent_triggers_reloads_total.inc()
+        if harness_triggers_items_registered is not None:
+            harness_triggers_items_registered.set(len(self._items))
+        if count_reload and harness_triggers_reloads_total is not None:
+            harness_triggers_reloads_total.inc()
         logger.info(f"Trigger '{item.name}' registered at endpoint /{item.endpoint}.")
 
     def _unregister(self, path: str, *, count_reload: bool = False) -> None:
         existing = self._items.pop(path, None)
         if existing:
             logger.info(f"Trigger '{existing.name}' unregistered.")
-            if agent_triggers_items_registered is not None:
-                agent_triggers_items_registered.set(len(self._items))
-            if count_reload and agent_triggers_reloads_total is not None:
-                agent_triggers_reloads_total.inc()
+            if harness_triggers_items_registered is not None:
+                harness_triggers_items_registered.set(len(self._items))
+            if count_reload and harness_triggers_reloads_total is not None:
+                harness_triggers_reloads_total.inc()
 
     async def _scan(self) -> None:
         if not os.path.isdir(TRIGGERS_DIR):
@@ -215,6 +215,6 @@ class TriggerRunner:
             logger_=logger,
             not_found_message="Triggers directory not found — retrying in 10s.",
             watcher_exited_message="Triggers directory watcher exited — directory deleted or unavailable. Retrying in 10s.",
-            watcher_events_metric=agent_watcher_events_total,
-            file_watcher_restarts_metric=agent_file_watcher_restarts_total,
+            watcher_events_metric=harness_watcher_events_total,
+            file_watcher_restarts_metric=harness_file_watcher_restarts_total,
         )
