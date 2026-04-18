@@ -12,6 +12,12 @@ metadata:
 spec:
   restartPolicy: Never
   activeDeadlineSeconds: 60
+  # Run under the operator's ServiceAccount so controller-runtime's
+  # metrics auth filter (authn/authz via TokenReview +
+  # SubjectAccessReview) accepts the projected token when
+  # metrics.secure=true (#690). The operator SA already holds the
+  # nonResourceURLs ["/metrics"] permission required for scrape.
+  serviceAccountName: {{ include "nyx-operator.serviceAccountName" . }}
   securityContext:
     runAsNonRoot: true
     runAsUser: 100
@@ -30,7 +36,10 @@ spec:
           set -e
           echo "Testing operator /metrics endpoint..."
           {{- if .Values.metrics.secure }}
-          curl -sf -k --connect-timeout 3 --max-time 10 https://{{ include "nyx-operator.fullname" . }}-metrics:{{ .Values.metrics.port }}/metrics >/dev/null
+          TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+          curl -sf -k --connect-timeout 3 --max-time 10 \
+            -H "Authorization: Bearer ${TOKEN}" \
+            https://{{ include "nyx-operator.fullname" . }}-metrics:{{ .Values.metrics.port }}/metrics >/dev/null
           {{- else }}
           curl -sf --connect-timeout 3 --max-time 10 http://{{ include "nyx-operator.fullname" . }}-metrics:{{ .Values.metrics.port }}/metrics >/dev/null
           {{- end }}
