@@ -27,8 +27,10 @@ package v1alpha1
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -97,6 +99,176 @@ func validateNyxAgent(agent *nyxv1alpha1.NyxAgent) error {
 	}
 	if err := validateInlineCredentialsAck(agent); err != nil {
 		return err
+	}
+	// Chart-side invariants surfaced at admission (#832) so misconfigs
+	// fail loudly on `kubectl apply` instead of silently leaving pods
+	// Pending or reconciler-retry-looping. Each validator targets a
+	// specific field so the error message points the operator at the
+	// exact knob to fix.
+	if err := validatePreStopGrace(agent); err != nil {
+		return err
+	}
+	if err := validatePodDisruptionBudget(agent); err != nil {
+		return err
+	}
+	if err := validateBackendStorageSize(agent); err != nil {
+		return err
+	}
+	if err := validateGitMappingRefs(agent); err != nil {
+		return err
+	}
+	if err := validateSharedStorageHostPath(agent); err != nil {
+		return err
+	}
+	return nil
+}
+
+// nyxagentGR is the GroupResource used on every Forbidden error so the
+// API server renders consistent error surfaces.
+var nyxagentGR = schema.GroupResource{Group: "nyx.ai", Resource: "nyxagents"}
+
+// validatePreStopGrace refuses a CR whose `preStop.enabled=true` with a
+// DelaySeconds that is not strictly less than TerminationGracePeriodSeconds
+// (or the K8s default of 30s when the CR omits the override). Without the
+// strict-less relationship, SIGKILL arrives while the preStop sleep is
+// still running and the drain window the feature was designed to provide
+// collapses to zero — exactly the failure mode the #447 scaffold warns
+// about in a comment but never enforced.
+func validatePreStopGrace(agent *nyxv1alpha1.NyxAgent) error {
+	ps := agent.Spec.PreStop
+	if ps == nil || !ps.Enabled {
+		return nil
+	}
+	graceSeconds := int64(30) // corev1 default when TerminationGracePeriodSeconds is nil
+	if agent.Spec.TerminationGracePeriodSeconds != nil {
+		graceSeconds = *agent.Spec.TerminationGracePeriodSeconds
+	}
+	if int64(ps.DelaySeconds) >= graceSeconds {
+		return apierrors.NewForbidden(nyxagentGR, agent.Name, fmt.Errorf(
+			"spec.preStop.delaySeconds=%d must be strictly less than "+
+				"spec.terminationGracePeriodSeconds=%d (K8s default 30 when unset); "+
+				"otherwise SIGKILL fires while preStop sleep is still running and "+
+				"the drain window is effectively zero",
+			ps.DelaySeconds, graceSeconds,
+		))
+	}
+	return nil
+}
+
+// validatePodDisruptionBudget enforces the exactly-one rule that the
+// PodDisruptionBudgetSpec doc comment promises — Kubernetes's PDB API
+// itself is permissive (accepts neither or both), and the reconciler
+// would silently pick one at reconcile time, so admission-time enforcement
+// surfaces the misconfig immediately.
+func validatePodDisruptionBudget(agent *nyxv1alpha1.NyxAgent) error {
+	pdb := agent.Spec.PodDisruptionBudget
+	if pdb == nil || !pdb.Enabled {
+		return nil
+	}
+	hasMin := pdb.MinAvailable != nil
+	hasMax := pdb.MaxUnavailable != nil
+	if hasMin == hasMax { // neither OR both
+		return apierrors.NewForbidden(nyxagentGR, agent.Name, fmt.Errorf(
+			"spec.podDisruptionBudget: exactly one of minAvailable or maxUnavailable "+
+				"must be set when enabled=true (have minAvailable=%v, maxUnavailable=%v)",
+			hasMin, hasMax,
+		))
+	}
+	return nil
+}
+
+// validateBackendStorageSize parses every enabled backend's Size through
+// resource.ParseQuantity so the operator doesn't silently skip a PVC at
+// reconcile time with only a Warning Event and a counter bump.
+func validateBackendStorageSize(agent *nyxv1alpha1.NyxAgent) error {
+	for i, b := range agent.Spec.Backends {
+		st := b.Storage
+		if st == nil || !st.Enabled {
+			continue
+		}
+		if st.ExistingClaim != "" {
+			continue
+		}
+		if strings.TrimSpace(st.Size) == "" {
+			return apierrors.NewForbidden(nyxagentGR, agent.Name, fmt.Errorf(
+				"spec.backends[%d].storage.size (backend=%q): required when enabled=true "+
+					"and existingClaim is empty — e.g. \"1Gi\"",
+				i, b.Name,
+			))
+		}
+		if _, err := resource.ParseQuantity(st.Size); err != nil {
+			return apierrors.NewForbidden(nyxagentGR, agent.Name, fmt.Errorf(
+				"spec.backends[%d].storage.size (backend=%q): invalid "+
+					"resource.Quantity %q: %v — must parse as a Kubernetes "+
+					"storage quantity (\"1Gi\", \"500Mi\", etc.)",
+				i, b.Name, st.Size, err,
+			))
+		}
+	}
+	return nil
+}
+
+// validateGitMappingRefs refuses a CR whose GitMapping entries reference
+// a GitSync name that isn't declared in Spec.GitSyncs. The reconciler
+// would otherwise silently fail to populate the emptyDir volume,
+// leaving the backend with a missing mount and no kubectl-visible signal.
+func validateGitMappingRefs(agent *nyxv1alpha1.NyxAgent) error {
+	declared := make(map[string]bool, len(agent.Spec.GitSyncs))
+	for _, gs := range agent.Spec.GitSyncs {
+		declared[gs.Name] = true
+	}
+	for bi, b := range agent.Spec.Backends {
+		for mi, gm := range b.GitMappings {
+			if !declared[gm.GitSync] {
+				return apierrors.NewForbidden(nyxagentGR, agent.Name, fmt.Errorf(
+					"spec.backends[%d].gitMappings[%d].gitSync=%q "+
+						"(backend=%q) does not name any entry in "+
+						"spec.gitSyncs — declared names are %v",
+					bi, mi, gm.GitSync, b.Name, gitSyncNameList(agent),
+				))
+			}
+		}
+	}
+	return nil
+}
+
+func gitSyncNameList(agent *nyxv1alpha1.NyxAgent) []string {
+	names := make([]string, 0, len(agent.Spec.GitSyncs))
+	for _, gs := range agent.Spec.GitSyncs {
+		names = append(names, gs.Name)
+	}
+	return names
+}
+
+// validateSharedStorageHostPath refuses a CR whose sharedStorage uses
+// storageType=hostPath without a non-empty absolute HostPath (and not
+// ".."-escaping). The CRD schema allows HostPath to be empty (pvc mode
+// doesn't use it), so we enforce the conditional requirement here.
+func validateSharedStorageHostPath(agent *nyxv1alpha1.NyxAgent) error {
+	ss := agent.Spec.SharedStorage
+	if ss == nil || !ss.Enabled {
+		return nil
+	}
+	if ss.StorageType != nyxv1alpha1.SharedStorageTypeHostPath {
+		return nil
+	}
+	hp := strings.TrimSpace(ss.HostPath)
+	switch {
+	case hp == "":
+		return apierrors.NewForbidden(nyxagentGR, agent.Name, fmt.Errorf(
+			"spec.sharedStorage.hostPath: required when storageType=hostPath",
+		))
+	case !strings.HasPrefix(hp, "/"):
+		return apierrors.NewForbidden(nyxagentGR, agent.Name, fmt.Errorf(
+			"spec.sharedStorage.hostPath=%q: must be an absolute path (start with '/')",
+			ss.HostPath,
+		))
+	case strings.Contains(hp, ".."):
+		return apierrors.NewForbidden(nyxagentGR, agent.Name, fmt.Errorf(
+			"spec.sharedStorage.hostPath=%q: must not contain '..' path elements "+
+				"(hostPath volumes bypass cluster-level isolation)",
+			ss.HostPath,
+		))
 	}
 	return nil
 }
