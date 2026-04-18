@@ -119,8 +119,10 @@ spec:
       {{- /* Resolve metrics + podAnnotations toggles. hasKey is required
             because sprig's `default` treats `false` as empty, so the
             obvious `((.metrics).podAnnotations | default $.Values.metrics.podAnnotations)`
-            pattern fails when the per-agent override is explicitly false (#472). */}}
-      {{- $metricsOn := ((.metrics).enabled | default $.Values.metrics.enabled) }}
+            pattern fails when the per-agent override is explicitly false
+            (#472, #1018). */}}
+      {{- $metricsOn := $.Values.metrics.enabled }}
+      {{- if (.metrics) }}{{- if hasKey .metrics "enabled" }}{{- $metricsOn = .metrics.enabled }}{{- end }}{{- end }}
       {{- $podAnnOn := $.Values.metrics.podAnnotations }}
       {{- if (.metrics) }}{{- if hasKey .metrics "podAnnotations" }}{{- $podAnnOn = .metrics.podAnnotations }}{{- end }}{{- end }}
       {{- if or .podAnnotations (and $metricsOn $podAnnOn) }}
@@ -302,7 +304,7 @@ spec:
             - name: HARNESS_PORT
               value: {{ .port | default 8000 | quote }}
             - name: METRICS_ENABLED
-              value: {{ (.metrics).enabled | default $.Values.metrics.enabled | toString | quote }}
+              value: {{ $metricsOn | toString | quote }}
             - name: METRICS_PORT
               value: {{ $harnessMetricsPort | quote }}
             {{- include "nyx.otelEnv" (dict "root" $ "serviceName" (printf "harness-%s" .name)) | nindent 12 }}
@@ -345,7 +347,12 @@ spec:
               mountPath: {{ $.Values.sharedStorage.mountPath }}
             {{- end }}
 {{- $agentName := .name }}
-{{- $agentMetricsEnabled := (.metrics).enabled | default $.Values.metrics.enabled }}
+{{- /* Per-agent metrics.enabled override must honour explicit `false` (#1018).
+       sprig's `default` treats `false` as empty so the obvious
+       `(.metrics).enabled | default $.Values.metrics.enabled` silently
+       re-enables metrics on an opted-out agent. */}}
+{{- $agentMetricsEnabled := $.Values.metrics.enabled }}
+{{- if (.metrics) }}{{- if hasKey .metrics "enabled" }}{{- $agentMetricsEnabled = .metrics.enabled }}{{- end }}{{- end }}
 {{- $hasGitSyncs := .gitSyncs }}
 {{- $harnessPort := .port | default 8000 }}
 {{- range .backends }}
