@@ -210,5 +210,27 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- /* Liveness + readiness probes (#848). The mcp_auth
+                 middleware exempts /health so kubelet can probe without
+                 a bearer token. Delays are overridable per tool via
+                 .probes.* to accommodate slow-starting cluster clients
+                 (e.g. mcp-kubernetes's DynamicClient discovery). */}}
+          {{- $probes := default dict $tool.probes }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: {{ default 10 $probes.livenessInitialDelaySeconds }}
+            periodSeconds: {{ default 20 $probes.livenessPeriodSeconds }}
+            timeoutSeconds: {{ default 3 $probes.livenessTimeoutSeconds }}
+            failureThreshold: {{ default 3 $probes.livenessFailureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: {{ default 2 $probes.readinessInitialDelaySeconds }}
+            periodSeconds: {{ default 10 $probes.readinessPeriodSeconds }}
+            timeoutSeconds: {{ default 2 $probes.readinessTimeoutSeconds }}
+            failureThreshold: {{ default 3 $probes.readinessFailureThreshold }}
 {{- end }}
 {{- end }}

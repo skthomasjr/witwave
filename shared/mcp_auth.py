@@ -51,6 +51,13 @@ def require_bearer_token(app):  # type: ignore[no-untyped-def]
         if scope.get("type") != "http":
             await app(scope, receive, send)
             return
+        # /health is an unauthenticated liveness/readiness probe target
+        # (#848). Kubernetes kubelet probes cannot carry bearer tokens,
+        # and the endpoint exposes only static JSON so gating it would
+        # add operational risk without security benefit.
+        if scope.get("path") == "/health" and scope.get("method", "GET") == "GET":
+            await _send_health(send)
+            return
         token = os.environ.get("MCP_TOOL_AUTH_TOKEN", "").strip()
         disabled = _auth_disabled_escape_hatch()
         # One-shot warning per process per posture so operators see
@@ -89,6 +96,21 @@ def require_bearer_token(app):  # type: ignore[no-untyped-def]
         await app(scope, receive, send)
 
     return middleware
+
+
+async def _send_health(send: Callable[[dict], Awaitable[None]]) -> None:
+    """Return 200 OK with a minimal JSON body for kubelet probes (#848)."""
+    body = b'{"status":"ok"}'
+    await send({
+        "type": "http.response.start",
+        "status": 200,
+        "headers": [
+            (b"content-type", b"application/json"),
+            (b"content-length", str(len(body)).encode("ascii")),
+            (b"cache-control", b"no-store"),
+        ],
+    })
+    await send({"type": "http.response.body", "body": body, "more_body": False})
 
 
 async def _send_401(send: Callable[[dict], Awaitable[None]], reason: str) -> None:
