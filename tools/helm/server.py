@@ -600,7 +600,12 @@ def install(
     before committing (#854).
     """
     _reject_flag_like(
-        name=name, chart=chart, namespace=namespace, version=version, repo=repo
+        name=name,
+        chart=chart,
+        namespace=namespace,
+        version=version,
+        repo=repo,
+        timeout=timeout,
     )
     with _handler_span(
         "install",
@@ -657,7 +662,12 @@ def upgrade(
     rendered manifest changes before committing.
     """
     _reject_flag_like(
-        name=name, chart=chart, namespace=namespace, version=version, repo=repo
+        name=name,
+        chart=chart,
+        namespace=namespace,
+        version=version,
+        repo=repo,
+        timeout=timeout,
     )
     with _handler_span(
         "upgrade",

@@ -181,6 +181,17 @@ def test_write_values_unlinks_temp_on_dump_failure(monkeypatch):
     )
 
 
+# ----- install/upgrade timeout argv guard (#1027) -----
+
+
+@pytest.mark.parametrize("bad_timeout", ["--malicious", "-fxxx", "--set=x=y"])
+def test_reject_flag_like_rejects_timeout(bad_timeout):
+    """timeout flows into argv after ``--timeout`` and must be guarded
+    like every other LLM-supplied string (#1027)."""
+    with pytest.raises(ValueError, match="must not start with '-'"):
+        server._reject_flag_like(timeout=bad_timeout)
+
+
 # ----- _redact_diff state-machine guards (#1028) -----
 
 
