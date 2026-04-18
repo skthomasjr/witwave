@@ -1879,7 +1879,21 @@ async def main():
         for t in (*watcher_tasks, *helper_tasks):
             t.cancel()
         await asyncio.gather(*watcher_tasks, *helper_tasks, return_exceptions=True)
-        # Phase 4: backend httpx clients (#861). Close only AFTER the
+        # Phase 4: drain in-flight webhook deliveries (#923). The
+        # scheduler_tasks cancel above stops WebhookRunner.run() (the
+        # dispatch loop), but the retry tasks it had spawned into
+        # webhook_runner._active_deliveries are NOT in scheduler_tasks
+        # — they were cancelled mid-POST only when the kubelet sent
+        # SIGKILL at the end of the termination grace. Call
+        # webhook_runner.close() so those tasks drain (with their own
+        # internal timeout) before we teardown the httpx clients below.
+        # close() is idempotent and safe to invoke even when
+        # scheduler_tasks cancellation already ended the dispatch loop.
+        try:
+            await webhook_runner.close()
+        except Exception as exc:  # noqa: BLE001 — shutdown must continue
+            logger.warning("webhook_runner.close() failed during shutdown: %r", exc)
+        # Phase 5: backend httpx clients (#861). Close only AFTER the
         # bus worker has drained — otherwise in-flight process_bus calls
         # see a closed client and surface as "client has been closed".
         try:
