@@ -410,6 +410,10 @@ export function useOTelTraces(opts: UseOTelTracesOptions = {}) {
   async function refreshList(): Promise<void> {
     listAborter?.abort();
     listAborter = new AbortController();
+    // Snapshot aborter identity (#893): a late non-AbortError rejection
+    // from a stale cycle must not overwrite a newer cycle's listError
+    // or flip listLoading off while the newer cycle is still running.
+    const localAborter = listAborter;
     const signal = listAborter.signal;
     listLoading.value = true;
     try {
@@ -429,6 +433,7 @@ export function useOTelTraces(opts: UseOTelTracesOptions = {}) {
             timeoutMs,
           );
       if (signal.aborted) return;
+      if (listAborter !== localAborter) return;
       const rows = (resp.data ?? [])
         .map(summariseTrace)
         // Newest-first by start time — matches the other dashboard lists.
@@ -437,15 +442,19 @@ export function useOTelTraces(opts: UseOTelTracesOptions = {}) {
       listError.value = "";
     } catch (e) {
       if ((e as { name?: string }).name === "AbortError") return;
+      if (listAborter !== localAborter) return;
       listError.value = (e as Error).message || "trace list failed";
     } finally {
-      listLoading.value = false;
+      if (listAborter === localAborter) listLoading.value = false;
     }
   }
 
   async function loadDetail(traceId: string): Promise<void> {
     detailAborter?.abort();
     detailAborter = new AbortController();
+    // Snapshot aborter identity (#893): stale detail cycle must not
+    // overwrite the newer cycle's detail/detailError/detailLoading.
+    const localAborter = detailAborter;
     const signal = detailAborter.signal;
     detailLoading.value = true;
     detailError.value = "";
@@ -459,14 +468,16 @@ export function useOTelTraces(opts: UseOTelTracesOptions = {}) {
             timeoutMs,
           );
       if (signal.aborted) return;
+      if (detailAborter !== localAborter) return;
       detail.value = resp.data?.[0] ?? null;
       if (!detail.value) detailError.value = `trace ${traceId} not found`;
     } catch (e) {
       if ((e as { name?: string }).name === "AbortError") return;
+      if (detailAborter !== localAborter) return;
       detailError.value = (e as Error).message || "trace detail failed";
       detail.value = null;
     } finally {
-      detailLoading.value = false;
+      if (detailAborter === localAborter) detailLoading.value = false;
     }
   }
 
