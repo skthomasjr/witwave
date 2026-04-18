@@ -838,6 +838,15 @@ def _track_session(
 
 
 _genai_client: genai.Client | None = None
+# threading.Lock (not asyncio.Lock) so both the sync ``_get_client`` and
+# the async ``_close_client`` can share the same serialisation primitive
+# (#734). Construction + teardown both finish in microseconds — no
+# event-loop blocking concern. Guards the read-env + construct + assign
+# sequence against a concurrent ``_close_client`` that nulls the
+# singleton between the ``if None`` check and the assignment during
+# key rotation.
+import threading as _threading
+_genai_client_lock = _threading.Lock()
 
 
 def _get_client() -> genai.Client:
@@ -852,14 +861,25 @@ def _get_client() -> genai.Client:
     since the container environment is not updated in-place. Setting
     _genai_client = None alone is not sufficient unless the process environment
     is also updated (e.g., via a secrets-manager sidecar that mutates os.environ).
+
+    Serialisation (#734): the read-env + construct + assign sequence runs
+    under ``_genai_client_lock`` so a concurrent ``_close_client`` during
+    an API-key rotation cannot produce a window where request A captures
+    the new client while request B's in-flight ``_get_client`` is still
+    using a stale reference.  The double-checked first read before the
+    lock keeps the steady-state fast path allocation-free.
     """
     global _genai_client
-    if _genai_client is None:
-        key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or None
-        if not key:
-            raise RuntimeError("No Gemini API key configured. Set GEMINI_API_KEY or GOOGLE_API_KEY.")
-        _genai_client = genai.Client(api_key=key)
-    return _genai_client
+    client = _genai_client
+    if client is not None:
+        return client
+    with _genai_client_lock:
+        if _genai_client is None:
+            key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or None
+            if not key:
+                raise RuntimeError("No Gemini API key configured. Set GEMINI_API_KEY or GOOGLE_API_KEY.")
+            _genai_client = genai.Client(api_key=key)
+        return _genai_client
 
 
 async def _close_client() -> None:
@@ -873,8 +893,16 @@ async def _close_client() -> None:
     by a transport quirk. Resets the singleton so a later ``_get_client()``
     call will construct a fresh instance.
     """
+    # Null the singleton reference *inside* _genai_client_lock so a
+    # concurrent _get_client cannot start using the old client after we
+    # begin tearing it down (#734). We do the actual aclose work outside
+    # the lock to avoid blocking the event loop; any subsequent
+    # _get_client call past the lock boundary constructs a fresh
+    # instance against the current env.
     global _genai_client
-    client = _genai_client
+    with _genai_client_lock:
+        client = _genai_client
+        _genai_client = None
     if client is None:
         return
     try:
@@ -896,8 +924,8 @@ async def _close_client() -> None:
                         close()
                     except Exception as e:  # pragma: no cover - defensive
                         logger.debug("genai sync httpx client close failed: %s", e)
-    finally:
-        _genai_client = None
+    except Exception:  # pragma: no cover — defensive wrapper
+        pass
 
 
 async def run_query(
