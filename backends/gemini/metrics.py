@@ -47,6 +47,7 @@ backend_lru_cache_utilization_percent: prometheus_client.Gauge | None = None
 backend_prompt_length_bytes: prometheus_client.Histogram | None = None
 backend_response_length_bytes: prometheus_client.Histogram | None = None
 backend_empty_responses_total: prometheus_client.Counter | None = None
+backend_empty_prompts_total: prometheus_client.Counter | None = None
 
 # Model / backend routing metrics
 backend_model_requests_total: prometheus_client.Counter | None = None
@@ -275,6 +276,11 @@ if _enabled:
     backend_empty_responses_total = prometheus_client.Counter(
         "backend_empty_responses_total",
         "Total tasks that produced no text output.",
+        ["agent", "agent_id", "backend"],
+    )
+    backend_empty_prompts_total = prometheus_client.Counter(
+        "backend_empty_prompts_total",
+        "Total execute() invocations rejected because the resolved prompt was empty or whitespace-only (#544 / #812).",
         ["agent", "agent_id", "backend"],
     )
 
