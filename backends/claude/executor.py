@@ -599,6 +599,12 @@ async def _close_hook_http_client() -> None:
             logger.debug("hook httpx client close failed: %r", exc)
 
 
+# One-shot guard for the "HARNESS_EVENTS_AUTH_TOKEN missing" warning
+# emitted from _post_hook_event_to_harness (#666). Keeps the misconfig
+# visible at default log levels without spamming once per tool call.
+_HARNESS_EVENTS_AUTH_TOKEN_WARNED = False
+
+
 # Module-level strong-ref set for fire-and-forget hook.decision POST tasks.
 # asyncio.create_task only keeps a weak reference to the task from the event
 # loop, so without a strong reference the task may be garbage-collected before
@@ -621,9 +627,19 @@ async def _post_hook_event_to_harness(event_dict: dict) -> None:
     if not HARNESS_EVENTS_URL:
         return
     if not HARNESS_EVENTS_AUTH_TOKEN:
-        # Fail silently but loudly in logs — the harness endpoint will reject
-        # anyway, so emitting would only generate noise in both directions.
-        logger.debug("hook.decision transport skipped: HARNESS_EVENTS_AUTH_TOKEN not set.")
+        # Surface the misconfiguration exactly once at WARNING: the harness
+        # endpoint will reject every POST, so hook events are silently
+        # dropped. Operators who set HARNESS_EVENTS_URL without the token
+        # need this visible at default log levels (#666). Subsequent calls
+        # still early-return but stay quiet to avoid log spam per tool use.
+        global _HARNESS_EVENTS_AUTH_TOKEN_WARNED
+        if not _HARNESS_EVENTS_AUTH_TOKEN_WARNED:
+            _HARNESS_EVENTS_AUTH_TOKEN_WARNED = True
+            logger.warning(
+                "hook.decision transport DISABLED: HARNESS_EVENTS_URL is set "
+                "but HARNESS_EVENTS_AUTH_TOKEN is empty. Set the token so the "
+                "harness endpoint accepts the POST."
+            )
         return
     url = HARNESS_EVENTS_URL.rstrip("/") + "/internal/events/hook-decision"
     try:
