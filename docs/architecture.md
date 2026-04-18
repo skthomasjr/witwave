@@ -32,26 +32,26 @@ protocol layer, a shift in deployment model — it should be discussed here firs
 │   │   │   ├── triggers/      # Inbound HTTP trigger definitions (*.md)
 │   │   │   ├── continuations/ # Continuation definitions (*.md)
 │   │   │   └── webhooks/      # Outbound webhook subscriptions (*.md)
-│   │   ├── .claude/           # Claude backend config (mounted into a2-claude)
+│   │   ├── .claude/           # Claude backend config (mounted into claude)
 │   │   │   ├── CLAUDE.md      # Behavioral instructions / system prompt
 │   │   │   ├── agent-card.md  # A2A identity description (Claude backend)
 │   │   │   ├── mcp.json       # MCP server configuration
 │   │   │   └── settings.json  # Claude Code settings
-│   │   ├── .codex/            # Codex backend config (mounted into a2-codex)
+│   │   ├── .codex/            # Codex backend config (mounted into codex)
 │   │   │   ├── AGENTS.md      # Behavioral instructions / system prompt
 │   │   │   ├── agent-card.md  # A2A identity description (Codex backend)
 │   │   │   └── config.toml
-│   │   ├── .gemini/           # Gemini backend config (mounted into a2-gemini)
+│   │   ├── .gemini/           # Gemini backend config (mounted into gemini)
 │   │   │   ├── GEMINI.md      # Behavioral instructions / system prompt
 │   │   │   └── agent-card.md  # A2A identity description (Gemini backend)
 │   │   ├── logs/              # harness logs
-│   │   ├── a2-claude/         # Claude backend instance
+│   │   ├── claude/         # Claude backend instance
 │   │   │   ├── logs/          # conversation.jsonl
 │   │   │   └── memory/        # Persistent markdown memory files
-│   │   ├── a2-codex/          # Codex backend instance
+│   │   ├── codex/          # Codex backend instance
 │   │   │   ├── logs/
 │   │   │   └── memory/
-│   │   └── a2-gemini/         # Gemini backend instance
+│   │   └── gemini/         # Gemini backend instance
 │   │       ├── logs/
 │   │       └── memory/        # Includes sessions/ subdir for JSON session history
 │   ├── nova/                  # Same structure as iris/
@@ -197,10 +197,10 @@ Each named agent is a cluster of containers:
 
 1. **harness** — the infrastructure layer. Receives external A2A requests, fires heartbeats, runs jobs/tasks,
    handles inbound triggers, fires outbound webhooks, and dispatches continuations. Owns no LLM itself.
-2. **a2-claude** (per agent) — a standalone A2A server backed by the Claude Agent SDK. Owns session state, memory, and
+2. **claude** (per agent) — a standalone A2A server backed by the Claude Agent SDK. Owns session state, memory, and
    conversation logging.
-3. **a2-codex** (per agent) — a standalone A2A server backed by the OpenAI Agents SDK. Same interface as a2-claude.
-4. **a2-gemini** (per agent) — a standalone A2A server backed by the Google Gemini SDK. Same interface as a2-claude.
+3. **codex** (per agent) — a standalone A2A server backed by the OpenAI Agents SDK. Same interface as claude.
+4. **gemini** (per agent) — a standalone A2A server backed by the Google Gemini SDK. Same interface as claude.
 
 ```text
 External A2A caller
@@ -232,7 +232,7 @@ External A2A caller
                │                │
                ▼                ▼
    ┌──────────────────┐  ┌──────────────────┐
-   │  a2-claude       │  │  a2-codex        │
+   │  claude       │  │  codex        │
    │  (Claude SDK)    │  │  (OpenAI SDK)    │
    │                  │  │                  │
    │  /.well-known/   │  │  /.well-known/   │
@@ -290,7 +290,7 @@ Docker Compose deployments without config file changes.
 Prometheus sample line. The harness `/metrics` endpoint merges its own metrics with all backend metrics, providing a
 single scrape target for the full deployment.
 
-### Backend Components (a2-claude, a2-codex, a2-gemini)
+### Backend Components (claude, codex, gemini)
 
 All three backends share identical structure and API surface; they differ only in their LLM SDK.
 
@@ -302,8 +302,8 @@ server).
 **`executor.py`** — Implements the A2A `AgentExecutor` interface. Manages session continuity using the session ID passed
 in the A2A request metadata. Writes `conversation.jsonl` to the mounted logs directory.
 
-**`metrics.py`** — Prometheus metric definitions with `a2_*` prefix. `a2-claude` exposes a superset including tool call,
-context window, and MCP metrics; `a2-codex` also exposes tool-call and context-window metrics; `a2-gemini` exposes
+**`metrics.py`** — Prometheus metric definitions with `a2_*` prefix. `claude` exposes a superset including tool call,
+context window, and MCP metrics; `codex` also exposes tool-call and context-window metrics; `gemini` exposes
 context-window metrics. All three share the common `a2_*` baseline set.
 
 ---
@@ -335,9 +335,9 @@ Agent identity and behavior are entirely file-based. No identity is baked into a
 | `CLAUDE.md`     | `/home/agent/.claude/`     | Behavioral instructions injected into the Claude backend at startup |
 | `AGENTS.md`     | `/home/agent/.codex/`      | Behavioral instructions injected into the Codex backend at startup  |
 | `GEMINI.md`     | `/home/agent/.gemini/`     | Behavioral instructions injected into the Gemini backend at startup |
-| `memory/`       | `<name>/a2-claude/memory/` | Persistent markdown memory files for Claude backend                 |
-| `memory/`       | `<name>/a2-codex/memory/`  | Persistent markdown memory files for Codex backend                  |
-| `memory/`       | `<name>/a2-gemini/memory/` | JSON session history for Gemini backend (`sessions/`)               |
+| `memory/`       | `<name>/claude/memory/` | Persistent markdown memory files for Claude backend                 |
+| `memory/`       | `<name>/codex/memory/`  | Persistent markdown memory files for Codex backend                  |
+| `memory/`       | `<name>/gemini/memory/` | JSON session history for Gemini backend (`sessions/`)               |
 
 ### Key environment variables
 
@@ -372,11 +372,11 @@ Agent identity and behavior are entirely file-based. No identity is baked into a
 | `A2A_BACKEND_RETRY_BACKOFF`                 | `1.0`                           | Base backoff in seconds for retry delay (exponential with jitter)                                                             |
 | `A2A_URL_<ID>`                              | _(unset)_                       | Per-backend URL override (e.g. `A2A_URL_IRIS_A2_CLAUDE`)                                                                       |
 
-**Backends (a2-claude / a2-codex / a2-gemini):**
+**Backends (claude / codex / gemini):**
 
 | Variable                   | Default                                | Description                                                                  |
 | -------------------------- | -------------------------------------- | ---------------------------------------------------------------------------- |
-| `AGENT_NAME`               | `a2-claude` / `a2-codex` / `a2-gemini` | Backend instance name (e.g. `iris-a2-claude`)                                |
+| `AGENT_NAME`               | `claude` / `codex` / `gemini` | Backend instance name (e.g. `iris-a2-claude`)                                |
 | `AGENT_OWNER`              | _(same as `AGENT_NAME`)_               | Named agent this backend belongs to (e.g. `iris`); used in metric labels     |
 | `AGENT_ID`                 | `claude` / `codex` / `gemini`          | Backend slot identifier; used in metric labels                               |
 | `AGENT_URL`                | `http://localhost:8000/`               | Public A2A endpoint URL reported in agent card                               |
@@ -437,7 +437,7 @@ This prevents concurrent outbound backend calls from the same harness process.
 
 ## Port Assignments
 
-| Agent       | harness | a2-claude | a2-codex | a2-gemini |
+| Agent       | harness | claude | codex | gemini |
 | ----------- | ----------- | --------- | -------- | --------- |
 | iris        | 8000        | 8010      | 8011     | 8012      |
 | nova        | 8001        | 8020      | 8021     | 8022      |
@@ -492,7 +492,7 @@ helm upgrade --install nyx ./charts/nyx -f ./charts/nyx/values-test.yaml -n nyx 
 
 Port assignments per agent:
 
-| Agent | harness | a2-claude | a2-codex | a2-gemini |
+| Agent | harness | claude | codex | gemini |
 | ----- | ----------- | --------- | -------- | --------- |
 | iris  | 8000        | 8010      | 8011     | 8012      |
 | nova  | 8001        | 8020      | 8021     | 8022      |
@@ -506,7 +506,7 @@ All infrastructure decisions are evaluated against Kubernetes compatibility:
   `/health` for backend containers
 - Configuration injected via env vars and mounted `ConfigMap`/`Secret` volumes
 - Backend URL configurable via `A2A_URL_<ID>` env var — supports sidecar (`http://localhost:8000`), separate pod
-  (`http://a2-claude-svc:8000`), or Compose service DNS (`http://iris-a2-claude:8000`) without config file changes
+  (`http://claude-svc:8000`), or Compose service DNS (`http://iris-a2-claude:8000`) without config file changes
 - Stateless containers at the harness layer (all state lives in backends)
 - Standard HTTP endpoints suitable for `Service` and `Ingress`
 

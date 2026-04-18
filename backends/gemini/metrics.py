@@ -1,4 +1,4 @@
-"""Prometheus metrics for the a2-gemini backend agent."""
+"""Prometheus metrics for the gemini backend agent."""
 
 import os
 
@@ -68,12 +68,12 @@ a2_sdk_messages_per_query: prometheus_client.Histogram | None = None
 a2_sdk_turns_per_query: prometheus_client.Histogram | None = None
 a2_text_blocks_per_query: prometheus_client.Histogram | None = None
 
-# SDK error classification (parity with a2-claude / a2-codex — #445)
+# SDK error classification (parity with claude / codex — #445)
 a2_sdk_errors_total: prometheus_client.Counter | None = None
 a2_sdk_result_errors_total: prometheus_client.Counter | None = None
 a2_sdk_client_errors_total: prometheus_client.Counter | None = None
 
-# Streaming events emitted (parity with a2-claude / a2-codex — #430)
+# Streaming events emitted (parity with claude / codex — #430)
 a2_streaming_events_emitted_total: prometheus_client.Counter | None = None
 
 # File watcher metrics
@@ -93,7 +93,7 @@ a2_budget_exceeded_total: prometheus_client.Counter | None = None
 # SqliteTaskStore lock-contention observability (#552)
 a2_sqlite_task_store_lock_wait_seconds: prometheus_client.Histogram | None = None
 
-# Hooks / tool-audit (#631 — parity with a2-claude #467). Populated lazily
+# Hooks / tool-audit (#631 — parity with claude #467). Populated lazily
 # when the gemini tool-call path is wired (currently blocked on #640);
 # declaring the module-level names now keeps import-time references safe
 # and gives operators a single known contract regardless of whether hooks
@@ -104,12 +104,12 @@ a2_tool_audit_entries_total: prometheus_client.Counter | None = None
 a2_hooks_config_errors_total: prometheus_client.Counter | None = None
 a2_hooks_config_reloads_total: prometheus_client.Counter | None = None
 
-# MCP config watcher metrics (#640 — parity with a2-codex #432, #526).
+# MCP config watcher metrics (#640 — parity with codex #432, #526).
 a2_mcp_config_errors_total: prometheus_client.Counter | None = None
 a2_mcp_config_reloads_total: prometheus_client.Counter | None = None
 a2_mcp_servers_active: prometheus_client.Gauge | None = None
 
-# Tool call metrics (#640 — parity with a2-codex #445). Populated on each
+# Tool call metrics (#640 — parity with codex #445). Populated on each
 # function_call observed in the google-genai AFC history.
 a2_sdk_tool_calls_total: prometheus_client.Counter | None = None
 a2_sdk_tool_duration_seconds: prometheus_client.Histogram | None = None
@@ -341,7 +341,7 @@ if _enabled:
         buckets=(0, 1, 2, 5, 10, 20, 50, 100),
     )
 
-    # SDK error classification (parity with a2-claude / a2-codex — #445)
+    # SDK error classification (parity with claude / codex — #445)
     a2_sdk_errors_total = prometheus_client.Counter(
         "a2_sdk_errors_total",
         "Total stderr/error lines emitted by the backend SDK.",
@@ -358,7 +358,7 @@ if _enabled:
         ["agent", "agent_id", "backend", "model"],
     )
 
-    # Streaming events emitted (parity with a2-claude / a2-codex — #430)
+    # Streaming events emitted (parity with claude / codex — #430)
     a2_streaming_events_emitted_total = prometheus_client.Counter(
         "a2_streaming_events_emitted_total",
         "Total partial agent_text_message events enqueued during streaming. "
@@ -429,7 +429,7 @@ if _enabled:
         buckets=(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0),
     )
 
-    # Hooks / tool-audit (#631). Label schema mirrors a2-claude's superset
+    # Hooks / tool-audit (#631). Label schema mirrors claude's superset
     # (#467) so dashboards can union across backends on (agent, agent_id,
     # backend, tool, rule). The `rule` label on denials/warnings is the
     # matched rule name from hooks_engine; `tool` is the tool-name string
@@ -462,7 +462,7 @@ if _enabled:
         ["agent", "agent_id", "backend"],
     )
 
-    # MCP config (parity with a2-codex — #432, #526; landed for gemini in #640).
+    # MCP config (parity with codex — #432, #526; landed for gemini in #640).
     a2_mcp_config_errors_total = prometheus_client.Counter(
         "a2_mcp_config_errors_total",
         "Total errors loading the MCP config file (mcp.json). Counts both "
@@ -481,7 +481,7 @@ if _enabled:
         ["agent", "agent_id", "backend"],
     )
 
-    # Tool calls (#640 — parity with a2-codex / a2-claude). Emitted per
+    # Tool calls (#640 — parity with codex / claude). Emitted per
     # function_call observed in the google-genai AFC history. `status` is
     # bounded to "success" | "error" so per-tool error rates are visible
     # without blowing up cardinality.

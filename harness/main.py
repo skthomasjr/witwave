@@ -182,7 +182,7 @@ def _check_adhoc_auth(request: Request) -> bool:
 async def hook_decision_event_handler(request: Request) -> JSONResponse:
     """Receive a backend-originated hook.decision event (#641).
 
-    Backends (a2-claude today, a2-codex/a2-gemini in a follow-up) POST
+    Backends (claude today, codex/gemini in a follow-up) POST
     the structured :class:`HookDecisionEvent` shape here whenever a
     PreToolUse hook finalises a decision.  The handler authenticates the
     caller with a bearer token, parses the body into the dataclass, and

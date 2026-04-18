@@ -144,8 +144,8 @@ def context_from_inbound(header_value: str | None) -> tuple[TraceContext, bool]:
 # ``logging.Filter`` reads it and exposes ``trace_id`` as a log record
 # attribute so the root formatter can append it.  When no context is
 # active the filter substitutes ``-`` so legacy log parsers keep seeing
-# a well-formed field.  Cross-backend rollout (a2-claude / a2-codex /
-# a2-gemini via ``shared/log_utils.py``) stays deferred.
+# a well-formed field.  Cross-backend rollout (claude / codex /
+# gemini via ``shared/log_utils.py``) stays deferred.
 # ---------------------------------------------------------------------------
 
 _current_trace_id: contextvars.ContextVar[str] = contextvars.ContextVar(
@@ -219,7 +219,7 @@ def install_trace_id_log_filter(logger: logging.Logger | None = None) -> TraceId
 
 # ---------------------------------------------------------------------------
 # OpenTelemetry layer (#469) — re-exported from ``shared/otel.py`` so the
-# harness, a2-claude, a2-codex, and a2-gemini all share the same bootstrap
+# harness, claude, codex, and gemini all share the same bootstrap
 # and propagator wiring. Existing call sites in the harness continue to
 # import from ``tracing`` without change.
 # ---------------------------------------------------------------------------

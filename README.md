@@ -15,7 +15,7 @@ shipping — closing the loop without a human in the hot path.
 
 Built on the [A2A protocol](https://a2a-protocol.org). Each named agent is a set of containers: a **harness**
 infrastructure layer (A2A relay, heartbeat scheduler, job scheduler) and one or more **backend** containers that do the
-actual LLM work (Claude Agent SDK via `a2-claude`, OpenAI Agents SDK via `a2-codex`, Google Gemini SDK via `a2-gemini`).
+actual LLM work (Claude Agent SDK via `claude`, OpenAI Agents SDK via `codex`, Google Gemini SDK via `gemini`).
 
 Multiple agents can collaborate as a team, but the named agent (nyx + its backends) is the deployable unit.
 
@@ -43,24 +43,24 @@ install path to the agent chart; both target the same per-agent deployment shape
 Each agent:
 
 - Runs as a harness container that receives A2A requests, fires heartbeats, and runs jobs
-- Forwards all LLM work to a dedicated backend container (`a2-claude`, `a2-codex`, or `a2-gemini`)
+- Forwards all LLM work to a dedicated backend container (`claude`, `codex`, or `gemini`)
 - Exposes an [A2A (Agent-to-Agent)](https://a2a-protocol.org) interface for communication
 - Has its own identity, memory, and configuration — none baked into the image
 
 Backend containers:
 
 - Are standalone A2A servers with their own session state, memory, and conversation logs
-- Receive behavioral instructions via a backend-specific file (`CLAUDE.md` for a2-claude, `AGENTS.md` for a2-codex,
-  `GEMINI.md` for a2-gemini) and A2A identity from a mounted `agent-card.md` file
+- Receive behavioral instructions via a backend-specific file (`CLAUDE.md` for claude, `AGENTS.md` for codex,
+  `GEMINI.md` for gemini) and A2A identity from a mounted `agent-card.md` file
 - Expose `/health` and `/metrics` in addition to the A2A endpoints
 
 ## Requirements
 
 - Docker
 - Docker Compose
-- A Claude Code OAuth token (`claude setup-token`) or Anthropic API key (for `a2-claude`)
-- An OpenAI API key (for `a2-codex`)
-- A Gemini API key (for `a2-gemini`)
+- A Claude Code OAuth token (`claude setup-token`) or Anthropic API key (for `claude`)
+- An OpenAI API key (for `codex`)
+- A Gemini API key (for `gemini`)
 
 ## Container Images
 
@@ -158,12 +158,12 @@ instances, logs, and memory.
 ```text
 .agents/
 ├── active/
-│   ├── iris/          # Iris (nyx: 8000 | a2-claude: 8010 | a2-codex: 8011 | a2-gemini: 8012)
-│   ├── nova/          # Nova (nyx: 8001 | a2-claude: 8020 | a2-codex: 8021 | a2-gemini: 8022)
-│   └── kira/          # Kira (nyx: 8002 | a2-claude: 8030 | a2-codex: 8031 | a2-gemini: 8032)
+│   ├── iris/          # Iris (nyx: 8000 | claude: 8010 | codex: 8011 | gemini: 8012)
+│   ├── nova/          # Nova (nyx: 8001 | claude: 8020 | codex: 8021 | gemini: 8022)
+│   └── kira/          # Kira (nyx: 8002 | claude: 8030 | codex: 8031 | gemini: 8032)
 └── test/
-    ├── bob/           # Bob  (nyx: 8099 | a2-claude: 8090 | a2-codex: 8091 | a2-gemini: 8092)
-    └── fred/          # Fred (nyx: 8098 | a2-claude: 8089 — single-backend test agent)
+    ├── bob/           # Bob  (nyx: 8099 | claude: 8090 | codex: 8091 | gemini: 8092)
+    └── fred/          # Fred (nyx: 8098 | claude: 8089 — single-backend test agent)
 ```
 
 Each agent directory contains:
@@ -175,13 +175,13 @@ Each agent directory contains:
 ├── .codex/            # Codex backend config (AGENTS.md, agent-card.md, config.toml)
 ├── .gemini/           # Gemini backend config (GEMINI.md, agent-card.md)
 ├── logs/              # harness logs (runtime, not committed)
-├── a2-claude/         # Claude backend instance
+├── claude/         # Claude backend instance
 │   ├── logs/          # Conversation log (runtime, not committed)
 │   └── memory/        # Persistent memory (runtime, not committed)
-├── a2-codex/          # Codex backend instance
+├── codex/          # Codex backend instance
 │   ├── logs/
 │   └── memory/
-└── a2-gemini/         # Gemini backend instance
+└── gemini/         # Gemini backend instance
     ├── logs/
     └── memory/
         └── sessions/  # JSON conversation history per session
@@ -260,9 +260,9 @@ sessions), so each job/task/trigger invocation gets a fresh budget. All three ba
 
 | Backend     | Token source                                       |
 | ----------- | -------------------------------------------------- |
-| `a2-claude` | `get_context_usage()` after each assistant turn    |
-| `a2-codex`  | `event.data.usage.total_tokens` on response events |
-| `a2-gemini` | `chunk.usage_metadata.total_token_count` per chunk |
+| `claude` | `get_context_usage()` after each assistant turn    |
+| `codex`  | `event.data.usage.total_tokens` on response events |
+| `gemini` | `chunk.usage_metadata.total_token_count` per chunk |
 
 ## Adding an Agent
 
@@ -331,18 +331,18 @@ Each backend container additionally exposes:
 
 ## Memory
 
-Each backend agent manages its own memory at `.agents/<env>/<name>/<backend>/memory/`. For `a2-claude` and `a2-codex`,
-memory files are markdown documents. For `a2-gemini`, conversation history is stored as JSON in `memory/sessions/`.
+Each backend agent manages its own memory at `.agents/<env>/<name>/<backend>/memory/`. For `claude` and `codex`,
+memory files are markdown documents. For `gemini`, conversation history is stored as JSON in `memory/sessions/`.
 Memory files are not committed to source control. harness has no memory layer of its own.
 
 ## Authentication
 
 | Service   | Method             | Environment variable                 |
 | --------- | ------------------ | ------------------------------------ |
-| a2-claude | Claude Max (OAuth) | `CLAUDE_CODE_OAUTH_TOKEN`            |
-| a2-claude | Anthropic API key  | `ANTHROPIC_API_KEY`                  |
-| a2-codex  | OpenAI API key     | `OPENAI_API_KEY`                     |
-| a2-gemini | Gemini API key     | `GEMINI_API_KEY` or `GOOGLE_API_KEY` |
+| claude | Claude Max (OAuth) | `CLAUDE_CODE_OAUTH_TOKEN`            |
+| claude | Anthropic API key  | `ANTHROPIC_API_KEY`                  |
+| codex  | OpenAI API key     | `OPENAI_API_KEY`                     |
+| gemini | Gemini API key     | `GEMINI_API_KEY` or `GOOGLE_API_KEY` |
 
 ## Security
 
@@ -351,7 +351,7 @@ default-closed but with a warning when left unconfigured so an oversight is loud
 
 ### Backend `/mcp`, `/conversations`, `/trace` bearer auth
 
-All three backends (`a2-claude`, `a2-codex`, `a2-gemini`) now require a bearer token on the `/mcp`, `/conversations`,
+All three backends (`claude`, `codex`, `gemini`) now require a bearer token on the `/mcp`, `/conversations`,
 and `/trace` endpoints — **parity across backends** (#510, #516, #518). Set `CONVERSATIONS_AUTH_TOKEN` on every backend
 container. If it is unset or empty the backend logs a startup warning (#517) and the shared guard in
 `shared/conversations.py` refuses to serve the protected endpoints.
@@ -421,11 +421,11 @@ settings, and the dashboard pod runs as non-root. This keeps the chart compatibl
 | `A2A_BACKEND_MAX_RETRIES`                   | `3`                             | Maximum retry attempts for transient backend errors (429, 502, 503, 504, connection errors); must be >= 1                                             |
 | `A2A_BACKEND_RETRY_BACKOFF`                 | `1.0`                           | Base backoff in seconds for retry delay (exponential with jitter); multiplied by 2^attempt                                                            |
 
-### Backend (a2-claude / a2-codex / a2-gemini) environment variables
+### Backend (claude / codex / gemini) environment variables
 
 | Variable                   | Default                            | Description                                                                              |
 | -------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------- |
-| `AGENT_NAME`               | `a2-claude`/`a2-codex`/`a2-gemini` | Backend instance name (e.g. `iris-a2-claude`)                                            |
+| `AGENT_NAME`               | `claude`/`codex`/`gemini` | Backend instance name (e.g. `iris-a2-claude`)                                            |
 | `AGENT_OWNER`              | _(same as `AGENT_NAME`)_           | Named agent this backend belongs to (e.g. `iris`); used in metric labels                 |
 | `AGENT_ID`                 | `claude`/`codex`/`gemini`          | Backend slot identifier (e.g. `claude`); used in metric labels                           |
 | `AGENT_URL`                | `http://localhost:8000/`           | Public A2A endpoint URL for the agent card                                               |
@@ -440,9 +440,9 @@ settings, and the dashboard pod runs as non-root. This keeps the chart compatibl
 
 When `METRICS_ENABLED` is set, Prometheus metrics are served at `/metrics` on both harness and backend containers.
 
-Backend containers (`a2-claude`, `a2-codex`, `a2-gemini`) expose `a2_*`-prefixed metrics. `a2-claude` exposes a superset
-that includes tool call, context window, and MCP metrics; `a2-codex` also exposes tool-call and context-window metrics;
-`a2-gemini` exposes context-window metrics. All three share the common `a2_*` baseline set.
+Backend containers (`claude`, `codex`, `gemini`) expose `a2_*`-prefixed metrics. `claude` exposes a superset
+that includes tool call, context window, and MCP metrics; `codex` also exposes tool-call and context-window metrics;
+`gemini` exposes context-window metrics. All three share the common `a2_*` baseline set.
 harness exposes `agent_*`-prefixed infrastructure metrics (bus, heartbeat, job, sessions, webhooks, etc.). The
 harness `/metrics` endpoint also aggregates all backend `/metrics` endpoints, injecting a `backend="<id>"` label on
 each sample so a single scrape target captures the full deployment.

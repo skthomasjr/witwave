@@ -375,7 +375,7 @@ _LABELS = {"agent": AGENT_OWNER, "agent_id": AGENT_ID, "backend": _BACKEND_ID}
 # Env var keys that must not be forwarded to MCP stdio subprocesses because
 # they influence binary resolution or dynamic-linker / interpreter behavior
 # and could be used for privilege escalation or code injection via a malicious
-# or poorly-audited ``mcp.json``. Mirrors the denylist a2-codex applies to
+# or poorly-audited ``mcp.json``. Mirrors the denylist codex applies to
 # both ``_shell_executor`` (#248) and ``_build_mcp_servers`` (#519); lifted
 # here verbatim so the two backends stay in lockstep (#606).
 _SHELL_ENV_DENYLIST: frozenset[str] = frozenset({
@@ -758,7 +758,7 @@ def _sanitize_mcp_servers(servers: dict) -> dict:
     the subprocess it spawns for stdio transport, so a malicious or poorly-
     audited ``mcp.json`` could drop e.g. ``LD_PRELOAD`` / ``PYTHONPATH`` into
     the MCP server process and achieve code execution — identical threat
-    model to a2-codex #519. Filter each entry's ``env`` through
+    model to codex #519. Filter each entry's ``env`` through
     ``_SHELL_ENV_DENYLIST`` and log any rejected keys at WARNING so
     operators notice misconfigurations. Non-dict entries, entries without
     an ``env`` key, and non-stdio transports are passed through untouched.
@@ -1185,7 +1185,7 @@ async def run(
     ``mcp_servers``, ``agent_md_content``) into a ``RunContext`` and forwards
     the per-layer params (``sessions``, ``max_tokens``, ``on_chunk``,
     ``hook_state``) explicitly to ``_run_inner``. Keeps all existing callers
-    (executor.execute, backends/a2-claude/main.py MCP tools/call path) working without
+    (executor.execute, backends/claude/main.py MCP tools/call path) working without
     signature churn.
     """
     ctx = RunContext(
@@ -1618,7 +1618,7 @@ class AgentExecutor(A2AAgentExecutor):
         from otel import start_span as _start_span, set_span_error as _set_span_error
         try:
             with _start_span(
-                "a2-claude.execute",
+                "claude.execute",
                 kind="server",
                 parent_context=_otel_parent,
                 attributes={

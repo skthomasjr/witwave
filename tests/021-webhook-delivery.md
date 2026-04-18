@@ -22,7 +22,7 @@ Wait for the A2A response to contain `WEBHOOK_FIRE` (poll the response or wait u
 
 ## Step 2 — Wait for the webhook chain to complete
 
-After `WEBHOOK_FIRE` appears in the response, the webhook runner will fire asynchronously. Poll the a2-codex conversation log until `WEBHOOK_CHAIN_OK` appears, or until 30 seconds have elapsed:
+After `WEBHOOK_FIRE` appears in the response, the webhook runner will fire asynchronously. Poll the codex conversation log until `WEBHOOK_CHAIN_OK` appears, or until 30 seconds have elapsed:
 
 ```
 .agents/test/bob/logs/conversation.jsonl

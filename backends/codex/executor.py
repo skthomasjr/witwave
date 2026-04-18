@@ -96,7 +96,7 @@ AGENT_MD = "/home/agent/.codex/AGENTS.md"
 CODEX_SESSION_DB = os.environ.get("CODEX_SESSION_DB", "/home/agent/logs/codex_sessions.db")
 
 CODEX_CONFIG_TOML = os.environ.get("CODEX_CONFIG_TOML", "/home/agent/.codex/config.toml")
-# MCP server config — same wire format as a2-claude's mcp.json so users can
+# MCP server config — same wire format as claude's mcp.json so users can
 # share the file shape between backends. Codex mounts the .codex/ tree by
 # default, so the path differs (#432).
 MCP_CONFIG_PATH = os.environ.get("MCP_CONFIG_PATH", "/home/agent/.codex/mcp.json")
@@ -110,7 +110,7 @@ TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
 STREAM_CHUNK_TIMEOUT_SECONDS = float(os.environ.get("STREAM_CHUNK_TIMEOUT_SECONDS", "5"))
 # Percent of max_tokens at which a context-window warning metric is incremented.
 # Tunable via env so operators can dial sensitivity without patching the
-# binary. Matches the a2-claude knob (#459).
+# binary. Matches the claude knob (#459).
 CONTEXT_USAGE_WARN_THRESHOLD = float(os.environ.get("CONTEXT_USAGE_WARN_THRESHOLD", "0.8"))
 # Maximum number of bytes of prompt text included in INFO-level log messages.
 # Set to 0 to suppress prompt text from logs entirely; set higher for more context.
@@ -163,8 +163,8 @@ TOOL_AUDIT_LOG = os.environ.get(
 
 
 # PreToolUse deny baseline for LocalShellTool (#586, shell-only scope).
-# Mirrors a2-claude's shell baseline. `pattern` is compiled once at module
-# load; `rule` name matches a2-claude's a2_hooks_denials_total{rule=...}
+# Mirrors claude's shell baseline. `pattern` is compiled once at module
+# load; `rule` name matches claude's a2_hooks_denials_total{rule=...}
 # label convention for cross-backend dashboard parity.
 _SHELL_DENY_RULES: tuple[tuple[str, "re.Pattern[str]", str], ...] = (
     (
@@ -211,7 +211,7 @@ def _evaluate_shell_baseline(cmd_parts: list[str]) -> tuple[str, str] | None:
 def _append_tool_audit(entry: dict) -> None:
     """Append a JSON line to tool-audit.jsonl; swallow errors.
 
-    Mirrors a2-claude's audit writer shape: one JSON object per line with
+    Mirrors claude's audit writer shape: one JSON object per line with
     a monotonic timestamp, tool name, decision (allow|deny), command, and
     reason when denied. Best-effort — a full disk or missing parent dir
     must not block the tool call.
@@ -637,7 +637,7 @@ async def _track_session(sessions: OrderedDict[str, float], session_id: str) -> 
                 # grow unboundedly as sessions cycle through the LRU cache (#415).
                 # Run the delete in a thread pool so the event loop is not blocked
                 # on slow/remote filesystems — same pattern the timeout-cleanup
-                # path at line 766 uses, and consistent with a2-claude #426 (#450).
+                # path at line 766 uses, and consistent with claude #426 (#450).
                 _db = CODEX_SESSION_DB
                 if _db and _db != ":memory:":
                     try:
@@ -919,7 +919,7 @@ async def run_query(
             set_span_error(_otel_cur, _run_exc)
         except Exception:
             pass
-        # Classify by exception type to match a2-claude's error metric surface
+        # Classify by exception type to match claude's error metric surface
         # (#431). Best-effort — unknown exception types fall through to the
         # generic a2_sdk_errors_total counter.
         try:
@@ -1249,7 +1249,7 @@ class AgentExecutor(A2AAgentExecutor):
     async def mcp_config_watcher(self) -> None:
         """Watch MCP_CONFIG_PATH for changes and hot-reload the MCP server config (#432, #526).
 
-        Mirrors the a2-claude pattern: load on startup, then watch the parent
+        Mirrors the claude pattern: load on startup, then watch the parent
         directory for any changes to the config file. Each reload restarts the
         lifespan-scoped MCP server stack so stdio subprocesses are respawned
         cleanly under the new config and existing request traffic sees a
@@ -1407,7 +1407,7 @@ class AgentExecutor(A2AAgentExecutor):
             _chunks_emitted += 1
             if a2_streaming_events_emitted_total is not None:
                 a2_streaming_events_emitted_total.labels(**_LABELS, model=_streaming_label_model).inc()
-            # Await directly — see backends/a2-claude/executor.py _emit_chunk for the
+            # Await directly — see backends/claude/executor.py _emit_chunk for the
             # rationale (event ordering + exception surfacing).
             await event_queue.enqueue_event(new_agent_text_message(text))
 
@@ -1415,7 +1415,7 @@ class AgentExecutor(A2AAgentExecutor):
         _otel_span = None
         try:
             with _start_span(
-                "a2-codex.execute",
+                "codex.execute",
                 kind="server",
                 parent_context=_otel_parent,
                 attributes={

@@ -10,8 +10,8 @@ file.
 
 ## Skills
 
-Skills under `.claude/skills/` are mounted directly into each backend container — `a2-claude` at
-`/home/agent/.claude/skills/` and `a2-codex` at `/home/agent/.codex/skills/`. Agents always have the same skills as
+Skills under `.claude/skills/` are mounted directly into each backend container — `claude` at
+`/home/agent/.claude/skills/` and `codex` at `/home/agent/.codex/skills/`. Agents always have the same skills as
 the local Claude Code session — no per-agent copying required.
 
 ## Agent Identity
@@ -31,7 +31,7 @@ autonomous-agent is a multi-container autonomous agent platform. Each named agen
 
 - A **harness** container — the infrastructure layer (A2A relay, heartbeat scheduler, job scheduler). It owns
   no LLM itself; it forwards all work to a backend.
-- One or more **backend** containers (`a2-claude`, `a2-codex`, `a2-gemini`) — the LLM execution layer. Each backend is a full A2A
+- One or more **backend** containers (`claude`, `codex`, `gemini`) — the LLM execution layer. Each backend is a full A2A
   server that manages its own sessions, memory, conversation logs, and Prometheus metrics.
 - Zero or more **MCP** containers (`mcp-kubernetes`, `mcp-helm`, …) — the tool layer. Each MCP server exposes a
   focused set of cluster- or system-level capabilities to backends over the Model Context Protocol. All entries
@@ -88,7 +88,7 @@ Each backend:
 - Exposes `/conversations`, `/trace`, and `/mcp` guarded by the same bearer token (`CONVERSATIONS_AUTH_TOKEN`) —
   parity across all three backends (#510, #516, #518). An empty token logs a startup warning (#517)
 - Manages its own session state, conversation log (`conversation.jsonl`), and memory (`/memory/`)
-- Receives behavioral instructions via a mounted file (`CLAUDE.md` for a2-claude, `AGENTS.md` for a2-codex, `GEMINI.md` for a2-gemini) and A2A identity via a mounted `agent-card.md`
+- Receives behavioral instructions via a mounted file (`CLAUDE.md` for claude, `AGENTS.md` for codex, `GEMINI.md` for gemini) and A2A identity via a mounted `agent-card.md`
 
 Each named agent has its own dedicated backend instances. For example, iris has `iris-a2-claude`, `iris-a2-codex`, and `iris-a2-gemini`.
 
@@ -196,28 +196,28 @@ Agent identity and behavior are file-based — nothing is baked into images.
 │   ├── triggers/            # Inbound HTTP trigger definitions (*.md with endpoint frontmatter)
 │   ├── continuations/       # Continuation definitions (*.md with continues-after frontmatter)
 │   └── webhooks/            # Outbound webhook subscriptions (*.md with url frontmatter)
-├── .claude/                 # Claude backend config (mounted into a2-claude)
+├── .claude/                 # Claude backend config (mounted into claude)
 │   ├── CLAUDE.md            # Behavioral instructions / system prompt
 │   ├── agent-card.md        # A2A identity description text
 │   ├── mcp.json             # MCP server configuration
 │   ├── hooks.yaml           # Optional PreToolUse/PostToolUse extension rules (#467)
 │   ├── settings.json        # Claude Code settings
 │   └── skills/              # Skill definitions (*.md)
-├── .codex/                  # Codex backend config (mounted into a2-codex)
+├── .codex/                  # Codex backend config (mounted into codex)
 │   ├── AGENTS.md            # Behavioral instructions / system prompt
 │   ├── agent-card.md        # A2A identity description text
 │   └── config.toml
-├── .gemini/                 # Gemini backend config (mounted into a2-gemini)
+├── .gemini/                 # Gemini backend config (mounted into gemini)
 │   ├── GEMINI.md            # Behavioral instructions / system prompt
 │   └── agent-card.md        # A2A identity description text
 ├── logs/                    # harness logs (runtime, not committed)
-├── a2-claude/               # Claude backend instance for this agent
+├── claude/               # Claude backend instance for this agent
 │   ├── logs/                # Backend conversation log + trace.jsonl + tool-audit.jsonl (runtime, not committed)
 │   └── memory/              # Backend persistent memory (runtime, not committed)
-├── a2-codex/                # Codex backend instance for this agent
+├── codex/                # Codex backend instance for this agent
 │   ├── logs/
 │   └── memory/
-└── a2-gemini/               # Gemini backend instance for this agent
+└── gemini/               # Gemini backend instance for this agent
     ├── logs/
     └── memory/              # Includes sessions/ subdir for JSON session history
 ```
@@ -257,21 +257,21 @@ backends/claude/                   # Claude backend source
 ├── main.py                  # A2A server entrypoint
 ├── executor.py              # Claude Agent SDK executor; owns sessions, logging, hooks (#467)
 ├── hooks.py                 # PreToolUse/PostToolUse policy engine + baseline deny rules (#467)
-├── metrics.py               # Prometheus metrics (superset of backends/a2-codex and backends/a2-gemini; adds tool, context, MCP, hooks metrics)
+├── metrics.py               # Prometheus metrics (superset of backends/codex and backends/gemini; adds tool, context, MCP, hooks metrics)
 └── requirements.txt
 
 backends/codex/                    # Codex backend source
 ├── Dockerfile
 ├── main.py                  # A2A server entrypoint
 ├── executor.py              # OpenAI Agents SDK executor; owns sessions and logging
-├── metrics.py               # Prometheus metrics (common a2_* set; subset of a2-claude)
+├── metrics.py               # Prometheus metrics (common a2_* set; subset of claude)
 └── requirements.txt
 
 backends/gemini/                   # Gemini backend source
 ├── Dockerfile
 ├── main.py                  # A2A server entrypoint
 ├── executor.py              # google-genai SDK executor; owns sessions and logging
-├── metrics.py               # Prometheus metrics (common a2_* set; subset of a2-claude)
+├── metrics.py               # Prometheus metrics (common a2_* set; subset of claude)
 └── requirements.txt
 
 tools/                       # MCP components (one directory per server)
@@ -341,7 +341,7 @@ docker build -f harness/Dockerfile -t harness:latest . \
 Use the `/remote` skill to interact with running agents. Always target the **nyx agent by name** — nyx routes the
 request internally to its configured backend (e.g. `iris-a2-claude`). Never target backend services directly.
 
-| Agent | Port | a2-claude | a2-codex | a2-gemini |
+| Agent | Port | claude | codex | gemini |
 | ----- | ---- | --------- | -------- | --------- |
 | iris  | 8000 | 8010      | 8011     | 8012      |
 | nova  | 8001 | 8020      | 8021     | 8022      |
@@ -360,4 +360,4 @@ when you need to target a specific session.
 ## Memory
 
 Each backend manages its own memory under `.agents/<env>/<name>/<backend>/memory/` (e.g.
-`.agents/active/iris/a2-claude/memory/`). For `a2-claude` and `a2-codex`, memory files are markdown documents. For `a2-gemini`, conversation history is stored as JSON in `memory/sessions/`. Memory files are not committed to source control. harness has no memory layer of its own.
+`.agents/active/iris/claude/memory/`). For `claude` and `codex`, memory files are markdown documents. For `gemini`, conversation history is stored as JSON in `memory/sessions/`. Memory files are not committed to source control. harness has no memory layer of its own.

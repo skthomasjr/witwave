@@ -1,11 +1,11 @@
-# a2-claude
+# claude
 
-a2-claude is the Claude backend for the autonomous agent platform. It is a standalone A2A server that wraps the Claude
+claude is the Claude backend for the autonomous agent platform. It is a standalone A2A server that wraps the Claude
 Agent SDK, managing its own sessions, conversation logs, trace logs, and Prometheus metrics.
 
 ## What it does
 
-a2-claude receives A2A JSON-RPC requests (forwarded by harness), runs them through Claude via the Claude Agent SDK
+claude receives A2A JSON-RPC requests (forwarded by harness), runs them through Claude via the Claude Agent SDK
 CLI, streams back the response, and logs everything to JSONL files.
 
 Each named agent that uses Claude gets its own dedicated instance of this image (e.g. `iris-a2-claude`,
@@ -14,7 +14,7 @@ Each named agent that uses Claude gets its own dedicated instance of this image 
 ## Key features
 
 **Session continuity** — Sessions are tracked in an in-process LRU cache keyed by session ID. Resuming a session carries
-conversation history forward. The SDK handles context window management; a2-claude monitors usage and warns at 90%
+conversation history forward. The SDK handles context window management; claude monitors usage and warns at 90%
 utilization.
 
 **MCP server support** — Loads MCP server definitions from a mounted `mcp.json` file. The file is hot-reloaded on each
@@ -89,7 +89,7 @@ backends:
 
 ## Runtime
 
-a2-claude mounts:
+claude mounts:
 
 - `CLAUDE.md` — agent identity (system prompt), at `/home/agent/.claude/CLAUDE.md`
 - `mcp.json` — MCP server configuration (optional)
@@ -145,7 +145,7 @@ is a guarantee, not a policy choice.
 
 ## Tracing (OpenTelemetry)
 
-When `OTEL_ENABLED=true` is set, a2-claude emits a server span for every `execute()` call and continues any trace
+When `OTEL_ENABLED=true` is set, claude emits a server span for every `execute()` call and continues any trace
 propagated by harness via the `metadata.traceparent` field (#469). The OTLP/HTTP exporter reads the standard
 `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_SERVICE_NAME` / `OTEL_TRACES_SAMPLER` env vars. Resource attributes
 (`service.name`, `agent`, `agent_id`, `backend`) are populated automatically. When `OTEL_ENABLED` is falsy

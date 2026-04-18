@@ -617,7 +617,7 @@ def _render_hook_decision_envelope(context: dict) -> str:
     The ``traceparent`` field carries the W3C trace-context header so webhook
     receivers can correlate with the trace that produced the decision. All
     fields match the attribute set stamped onto the OTel span event in
-    :func:`a2-claude/executor._make_pre_tool_use_hook._hook`, so operators
+    :func:`claude/executor._make_pre_tool_use_hook._hook`, so operators
     see the same shape whether they consume traces or webhooks.
     """
     envelope = {

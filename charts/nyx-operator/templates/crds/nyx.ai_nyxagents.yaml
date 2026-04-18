@@ -1006,8 +1006,8 @@ spec:
                     type: integer
                 type: object
               backends:
-                description: Backends lists the backend sidecars (a2-claude, a2-codex,
-                  a2-gemini, …).
+                description: Backends lists the backend sidecars (claude, codex,
+                  gemini, …).
                 items:
                   description: BackendSpec defines one backend sidecar container.
                   properties:

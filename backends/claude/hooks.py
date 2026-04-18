@@ -11,7 +11,7 @@ the correct ``backend="claude"`` label.
 
 See ``shared/hooks_engine.py`` for the full matching semantics and the
 ``hooks.yaml`` schema documentation. The rest of this file exists so that
-``a2-claude``'s executor doesn't need to know where the engine lives.
+``claude``'s executor doesn't need to know where the engine lives.
 
 Two layers of policy (unchanged by the refactor):
 
@@ -70,5 +70,5 @@ def _bump_config_error(reason: str) -> None:
 
 
 # Register the claude reporter with the shared engine. Import-time side
-# effect, executed exactly once when ``backends/a2-claude/hooks.py`` is first loaded.
+# effect, executed exactly once when ``backends/claude/hooks.py`` is first loaded.
 set_config_error_reporter(_bump_config_error)

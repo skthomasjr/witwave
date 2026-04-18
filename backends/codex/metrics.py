@@ -1,4 +1,4 @@
-"""Prometheus metrics for the a2-codex backend agent."""
+"""Prometheus metrics for the codex backend agent."""
 
 import os
 
@@ -64,12 +64,12 @@ a2_text_blocks_per_query: prometheus_client.Histogram | None = None
 a2_sdk_tokens_per_query: prometheus_client.Histogram | None = None
 a2_streaming_events_emitted_total: prometheus_client.Counter | None = None
 
-# MCP config metrics (parity with a2-claude — #432)
+# MCP config metrics (parity with claude — #432)
 a2_mcp_config_errors_total: prometheus_client.Counter | None = None
 a2_mcp_config_reloads_total: prometheus_client.Counter | None = None
 a2_mcp_servers_active: prometheus_client.Gauge | None = None
 
-# SDK error classification metrics (parity with a2-claude — #431)
+# SDK error classification metrics (parity with claude — #431)
 a2_sdk_errors_total: prometheus_client.Counter | None = None
 a2_sdk_result_errors_total: prometheus_client.Counter | None = None
 a2_sdk_client_errors_total: prometheus_client.Counter | None = None
@@ -327,7 +327,7 @@ if _enabled:
     )
     a2_sdk_tokens_per_query = prometheus_client.Histogram(
         "a2_sdk_tokens_per_query",
-        "Total tokens consumed per run_query() invocation (parity with a2-claude — #459).",
+        "Total tokens consumed per run_query() invocation (parity with claude — #459).",
         ["agent", "agent_id", "backend", "model"],
         buckets=(100, 500, 1_000, 5_000, 10_000, 25_000, 50_000, 100_000, 200_000, 500_000),
     )
@@ -339,7 +339,7 @@ if _enabled:
         ["agent", "agent_id", "backend", "model"],
     )
 
-    # MCP config (parity with a2-claude — #432)
+    # MCP config (parity with claude — #432)
     a2_mcp_config_errors_total = prometheus_client.Counter(
         "a2_mcp_config_errors_total",
         "Total errors loading the MCP config file (mcp.json). Counts both "
@@ -358,7 +358,7 @@ if _enabled:
         ["agent", "agent_id", "backend"],
     )
 
-    # SDK error classification (parity with a2-claude — #431)
+    # SDK error classification (parity with claude — #431)
     a2_sdk_errors_total = prometheus_client.Counter(
         "a2_sdk_errors_total",
         "Total stderr/error lines emitted by the backend subprocess.",
@@ -462,17 +462,17 @@ if _enabled:
 
     # Hooks / tool-audit (#586) — shell-only PreToolUse deny baseline.
     # Narrowly scoped: the `rule` label enumerates the shell baseline rule
-    # names that mirror a2-claude's baseline (baseline-rm-rf-root,
+    # names that mirror claude's baseline (baseline-rm-rf-root,
     # baseline-git-force-push-main, baseline-curl-pipe-shell,
     # baseline-chmod-777, baseline-dd-device). Non-shell enforcement is not
     # covered by this counter yet — see #586 for the deferred design.
     a2_codex_hooks_denials_total = prometheus_client.Counter(
         "a2_codex_hooks_denials_total",
-        "Total shell commands denied by the a2-codex PreToolUse baseline, by rule.",
+        "Total shell commands denied by the codex PreToolUse baseline, by rule.",
         ["agent", "agent_id", "backend", "rule"],
     )
     a2_tool_audit_entries_total = prometheus_client.Counter(
         "a2_tool_audit_entries_total",
-        "Total rows written to tool-audit.jsonl by a2-codex PostToolUse audit.",
+        "Total rows written to tool-audit.jsonl by codex PostToolUse audit.",
         ["agent", "agent_id", "backend", "tool"],
     )

@@ -1,11 +1,11 @@
-# a2-codex
+# codex
 
-a2-codex is the OpenAI/Codex backend for the autonomous agent platform. It is a standalone A2A server that wraps the
+codex is the OpenAI/Codex backend for the autonomous agent platform. It is a standalone A2A server that wraps the
 OpenAI Agents SDK, managing its own sessions, conversation logs, trace logs, and Prometheus metrics.
 
 ## What it does
 
-a2-codex receives A2A JSON-RPC requests (forwarded by harness), runs them through an OpenAI model via the Agents SDK
+codex receives A2A JSON-RPC requests (forwarded by harness), runs them through an OpenAI model via the Agents SDK
 with streaming, and logs everything to JSONL files.
 
 Each named agent that uses Codex gets its own dedicated instance of this image (e.g. `iris-a2-codex`, `bob-a2-codex`).
@@ -23,7 +23,7 @@ and assembled into the final text response.
 via OpenAI's search index), and optionally `ComputerTool` (headless browser via Playwright). Tools are enabled/disabled
 via environment variables and `config.toml`.
 
-**Headless browser** — When computer tool support is enabled, a2-codex manages a Playwright Chromium instance via
+**Headless browser** — When computer tool support is enabled, codex manages a Playwright Chromium instance via
 `computer.py`. The browser is initialized lazily on first use and reused across tool calls within a session. Each
 session gets its own **isolated browser context** (#522) — cookies, storage, and navigation history do not leak
 between sessions, even though the underlying Chromium process is shared. Supports screenshot, click, scroll, type,
@@ -37,7 +37,7 @@ constraints live there. The file is hot-reloaded on change — updating `AGENTS.
 without restarting the container.
 
 **MCP servers** — External tools can be wired in via `/home/agent/.codex/mcp.json` (override path with
-`MCP_CONFIG_PATH`). Same wire format as the a2-claude `mcp.json` — entries with a `command` field become
+`MCP_CONFIG_PATH`). Same wire format as the claude `mcp.json` — entries with a `command` field become
 `MCPServerStdio` instances, entries with a `url` field become `MCPServerStreamableHttp` instances. Servers are
 entered via `AsyncExitStack` per request and passed to `Agent(mcp_servers=[...])`, so MCP-provided tools coexist
 with the built-in shell / web search / Playwright computer tools. The file is hot-reloaded on change. Three
@@ -99,7 +99,7 @@ backends:
 
 ## Runtime
 
-a2-codex mounts:
+codex mounts:
 
 - `AGENTS.md` — agent identity (system prompt), at `/home/agent/.codex/AGENTS.md`
 - `config.toml` — tool enablement flags (optional)
@@ -115,7 +115,7 @@ default 200; set to 0 to suppress).
 
 ## Tracing (OpenTelemetry)
 
-When `OTEL_ENABLED=true` is set, a2-codex emits a server span for every `execute()` call and continues any trace
+When `OTEL_ENABLED=true` is set, codex emits a server span for every `execute()` call and continues any trace
 propagated by harness via the `metadata.traceparent` field (#469). The OTLP/HTTP exporter reads the standard
 `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_SERVICE_NAME` / `OTEL_TRACES_SAMPLER` env vars. When `OTEL_ENABLED` is falsy
 (default) the OTel call sites are no-ops. Bootstrap in `shared/otel.py` is shared with the harness and other backends.

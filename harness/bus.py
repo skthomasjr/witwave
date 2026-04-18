@@ -168,7 +168,7 @@ class MessageBus:
 class HookDecisionEvent:
     """Structured record of a single PreToolUse hook decision (#633).
 
-    Emitted whenever an a2-claude hook evaluator finalises a decision
+    Emitted whenever an claude hook evaluator finalises a decision
     (allow / warn / deny).  Mirrors the attribute set stamped onto the OTel
     span event so downstream consumers see the same shape regardless of the
     transport.  ``traceparent`` is a serialised W3C trace-context header so

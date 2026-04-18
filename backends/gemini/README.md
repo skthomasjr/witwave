@@ -1,11 +1,11 @@
-# a2-gemini
+# gemini
 
-a2-gemini is the Google Gemini backend for the autonomous agent platform. It is a standalone A2A server that wraps the
+gemini is the Google Gemini backend for the autonomous agent platform. It is a standalone A2A server that wraps the
 Google `google-genai` SDK, managing its own sessions, conversation logs, trace logs, and Prometheus metrics.
 
 ## What it does
 
-a2-gemini receives A2A JSON-RPC requests (forwarded by harness), runs them through a Gemini model via the
+gemini receives A2A JSON-RPC requests (forwarded by harness), runs them through a Gemini model via the
 `google-genai` SDK, and logs everything to JSONL files.
 
 Each named agent that uses Gemini gets its own dedicated instance of this image (e.g. `iris-a2-gemini`,
@@ -82,7 +82,7 @@ backends:
 
 ## Runtime
 
-a2-gemini mounts:
+gemini mounts:
 
 - `GEMINI.md` — agent identity (system prompt), at `/home/agent/.gemini/GEMINI.md`
 - `logs/conversation.jsonl` — conversation log file (must pre-exist as a file)
@@ -100,13 +100,13 @@ at INFO; default 200; set to 0 to suppress).
 
 ## Tools / MCP
 
-a2-gemini supports external tool invocation via the Model Context Protocol (MCP). The google-genai SDK's
+gemini supports external tool invocation via the Model Context Protocol (MCP). The google-genai SDK's
 experimental MCP-as-tool path accepts raw `mcp.ClientSession` objects in `GenerateContentConfig(tools=[...])`
 and handles the entire function_call / function_response ping-pong via its Automatic Function Calling (AFC)
 loop.
 
 **Enable MCP by mounting an `mcp.json`** at `/home/agent/.gemini/mcp.json` (override with the `MCP_CONFIG_PATH`
-environment variable). The file uses the same shape as a2-claude and a2-codex:
+environment variable). The file uses the same shape as claude and codex:
 
 ```json
 {
@@ -122,7 +122,7 @@ environment variable). The file uses the same shape as a2-claude and a2-codex:
 
 Only stdio transport is supported today (the `command` shape above). HTTP transport support can be added if a
 use case emerges. Each configured server is started once at process startup, reused across requests, and
-hot-reloaded on `mcp.json` changes — the lifespan-scoped stack pattern is shared with a2-codex (#526).
+hot-reloaded on `mcp.json` changes — the lifespan-scoped stack pattern is shared with codex (#526).
 
 **AFC vs. hooks caveat.** google-genai's AFC runs the tool loop inside `generate_content`, so the #631 hooks
 skeleton (PreToolUse policy enforcement) **cannot intercept MCP tool calls**. Tool invocations are observable
@@ -134,7 +134,7 @@ function-call dispatch loop); no operator toggle ships today.
 
 ## Tracing (OpenTelemetry)
 
-When `OTEL_ENABLED=true` is set, a2-gemini emits a server span for every `execute()` call and continues any trace
+When `OTEL_ENABLED=true` is set, gemini emits a server span for every `execute()` call and continues any trace
 propagated by harness via the `metadata.traceparent` field (#469). The OTLP/HTTP exporter reads the standard
 `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_SERVICE_NAME` / `OTEL_TRACES_SAMPLER` env vars. When `OTEL_ENABLED` is falsy
 (default) the OTel call sites are no-ops. Bootstrap in `shared/otel.py` is shared with the harness and other backends.

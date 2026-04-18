@@ -1,4 +1,4 @@
-"""Prometheus metrics for the a2-claude backend agent."""
+"""Prometheus metrics for the claude backend agent."""
 
 import os
 

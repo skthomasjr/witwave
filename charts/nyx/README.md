@@ -1,6 +1,6 @@
 # nyx
 
-Helm chart for the nyx platform — nyx harness and backends (a2-claude, a2-codex, a2-gemini).
+Helm chart for the nyx platform — nyx harness and backends (claude, codex, gemini).
 
 > **Note:** This chart is a work in progress. Templates and values will be added as the chart is built out.
 

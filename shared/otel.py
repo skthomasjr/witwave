@@ -1,6 +1,6 @@
 """Shared OpenTelemetry bootstrap + helper layer (#469).
 
-Used by harness and all three backends (a2-claude, a2-codex, a2-gemini).
+Used by harness and all three backends (claude, codex, gemini).
 The module is entirely optional: when ``OTEL_ENABLED`` is falsy,
 :func:`init_otel_if_enabled` does nothing and every helper below routes to
 the OTel API's built-in no-op tracer. Call sites can therefore use

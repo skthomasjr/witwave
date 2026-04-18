@@ -54,7 +54,7 @@ AGENT_URL = os.environ.get("AGENT_URL", f"http://localhost:{BACKEND_PORT}/")
 AGENT_VERSION = os.environ.get("AGENT_VERSION", "0.1.0")
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
 TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/trace.jsonl")
-# a2-gemini surfaces AFC tool_use / tool_result rows on trace.jsonl (#640).
+# gemini surfaces AFC tool_use / tool_result rows on trace.jsonl (#640).
 # tool-audit.jsonl is still declared so the dashboard fan-out receives an
 # empty list instead of a 404 when a PostToolUse hook path is wired in the
 # future (currently blocked by AFC running inside the SDK — see #640 issue

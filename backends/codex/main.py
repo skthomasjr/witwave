@@ -154,7 +154,7 @@ async def _sub_app_lifespan(app):
             pass
         raise
     if not supported:
-        # App does not implement lifespan — proceed normally, matching a2-claude
+        # App does not implement lifespan — proceed normally, matching claude
         # behaviour (#444). Cancel the helper task since there is nothing to await.
         task.cancel()
         try:

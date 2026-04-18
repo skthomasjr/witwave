@@ -118,8 +118,8 @@ GEMINI_API_KEY: str | None = os.environ.get("GEMINI_API_KEY") or os.environ.get(
 MCP_CONFIG_PATH = os.environ.get("MCP_CONFIG_PATH", "/home/agent/.gemini/mcp.json")
 
 # Env var keys that must not be overridden by caller-supplied MCP server env
-# entries. Mirrors a2-codex (#519): MCP stdio entries spawn a subprocess with
-# identical code-injection risk so keep the denylist symmetric. a2-gemini has
+# entries. Mirrors codex (#519): MCP stdio entries spawn a subprocess with
+# identical code-injection risk so keep the denylist symmetric. gemini has
 # no LocalShell path; this list is only used by ``_build_mcp_stdio_params``.
 _SHELL_ENV_DENYLIST: frozenset[str] = frozenset({
     "PATH",
@@ -169,7 +169,7 @@ def _load_mcp_config() -> dict:
     flat ``{server_name: {...}}`` dict, returning the inner dict in both
     cases. Missing file is treated as "no MCP servers" (returns ``{}``).
     Parse / I/O errors return ``{}`` AND increment
-    ``a2_mcp_config_errors_total``. Mirrors a2-codex._load_mcp_config for
+    ``a2_mcp_config_errors_total``. Mirrors codex._load_mcp_config for
     parity across backends.
     """
     if not os.path.exists(MCP_CONFIG_PATH):
@@ -208,7 +208,7 @@ def _build_mcp_stdio_params(name: str, cfg: dict) -> Any | None:
         return None
     if "command" not in cfg:
         logger.warning(
-            "MCP server %r: missing 'command' (a2-gemini only supports stdio transport "
+            "MCP server %r: missing 'command' (gemini only supports stdio transport "
             "via google-genai AFC); skipping.",
             name,
         )
@@ -323,7 +323,7 @@ async def _emit_afc_history(
     on non-streaming calls). This helper walks that flat list, pairs each
     ``function_call`` with the matching ``function_response`` by tool name,
     and writes one row per side into ``trace.jsonl`` using the same shape
-    a2-claude uses so the dashboard TraceView (#592) and OTel trace viewer
+    claude uses so the dashboard TraceView (#592) and OTel trace viewer
     (#632) can render them uniformly.
 
     Errors here are logged and swallowed — observability must never break
@@ -878,7 +878,7 @@ async def run_query(
             # AFC observability (#640): walk chat.history to surface any
             # function_call / function_response parts appended by the SDK
             # during this roundtrip. Emits one tool_use + tool_result row
-            # per pair into trace.jsonl (matching a2-claude's shape for
+            # per pair into trace.jsonl (matching claude's shape for
             # dashboard TraceView #592 and OTel trace viewer #632) and
             # increments a2_sdk_tool_calls_total / observes
             # a2_sdk_tool_duration_seconds. No-op when AFC did not run.
@@ -1136,7 +1136,7 @@ class AgentExecutor(A2AAgentExecutor):
             baseline=list(BASELINE_RULES) if HOOKS_BASELINE_ENABLED else [],
             extensions=[],
         )
-        # Lifespan-scoped MCP session stack (#640 — mirrors a2-codex #526).
+        # Lifespan-scoped MCP session stack (#640 — mirrors codex #526).
         # MCP stdio subprocesses are entered once at startup (or on
         # hot-reload) and reused across requests. The lock serialises
         # reload-vs-request access to ``_live_mcp_servers`` so an in-flight
@@ -1154,7 +1154,7 @@ class AgentExecutor(A2AAgentExecutor):
     async def _apply_mcp_config(self, mcp_config: dict) -> None:
         """Enter the given MCP config into a fresh lifespan-scoped stack (#640).
 
-        Mirrors a2-codex.AgentExecutor._apply_mcp_config (#526). Tears down
+        Mirrors codex.AgentExecutor._apply_mcp_config (#526). Tears down
         any previously-entered stack first, then opens a fresh
         ``stdio_client`` + ``ClientSession`` per server. Failures on
         individual servers are logged and skipped so one broken entry does
@@ -1249,7 +1249,7 @@ class AgentExecutor(A2AAgentExecutor):
                 self._hook_state.extensions or self._hook_state.baseline
             ):
                 logger.warning(
-                    "a2-gemini hooks skeleton (#631) cannot intercept MCP tool calls "
+                    "gemini hooks skeleton (#631) cannot intercept MCP tool calls "
                     "because google-genai's AFC runs the loop internally. "
                     "See #640 issue body option 2 to disable AFC and hand-roll the "
                     "loop if policy enforcement is required."
@@ -1269,7 +1269,7 @@ class AgentExecutor(A2AAgentExecutor):
     async def mcp_config_watcher(self) -> None:
         """Watch MCP_CONFIG_PATH and hot-reload the MCP server stack (#640).
 
-        Mirrors a2-codex.AgentExecutor.mcp_config_watcher (#432, #526): load
+        Mirrors codex.AgentExecutor.mcp_config_watcher (#432, #526): load
         on startup, then watch the parent directory for any changes to the
         config file. Each reload restarts the lifespan-scoped MCP server
         stack so stdio subprocesses are respawned cleanly under the new
@@ -1344,7 +1344,7 @@ class AgentExecutor(A2AAgentExecutor):
     async def hooks_config_watcher(self) -> None:
         """Watch hooks.yaml and hot-reload extension rules (#631).
 
-        Mirrors ``backends/a2-claude/executor.AgentExecutor.hooks_config_watcher`` so
+        Mirrors ``backends/claude/executor.AgentExecutor.hooks_config_watcher`` so
         operators see identical semantics across backends: an initial load,
         then an ``awatch`` over the containing directory, re-parsing on every
         change to the target file. Failures during reload keep the previous
@@ -1446,7 +1446,7 @@ class AgentExecutor(A2AAgentExecutor):
             _chunks_emitted += 1
             if a2_streaming_events_emitted_total is not None:
                 a2_streaming_events_emitted_total.labels(**_LABELS, model=_streaming_label_model).inc()
-            # Await directly — see backends/a2-claude/executor.py _emit_chunk for the
+            # Await directly — see backends/claude/executor.py _emit_chunk for the
             # rationale (event ordering + exception surfacing).
             await event_queue.enqueue_event(new_agent_text_message(text))
 
@@ -1454,7 +1454,7 @@ class AgentExecutor(A2AAgentExecutor):
         _otel_span = None
         try:
             with _start_span(
-                "a2-gemini.execute",
+                "gemini.execute",
                 kind="server",
                 parent_context=_otel_parent,
                 attributes={

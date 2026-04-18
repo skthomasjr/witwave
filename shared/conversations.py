@@ -75,8 +75,8 @@ def _read_tool_audit_jsonl(
 ) -> list:
     """Read tool-audit.jsonl with per-row filters for decision / tool / session (#635).
 
-    Accepts both ISO-8601 string timestamps (a2-claude) and numeric epoch seconds
-    (a2-codex) so the same reader serves every backend without coercion in the
+    Accepts both ISO-8601 string timestamps (claude) and numeric epoch seconds
+    (codex) so the same reader serves every backend without coercion in the
     caller. Entries whose ``ts`` can't be parsed are retained when no ``since``
     filter is active and skipped when one is, matching the existing
     ``_read_jsonl`` policy. Runs in a worker thread via ``asyncio.to_thread``.

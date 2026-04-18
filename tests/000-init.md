@@ -89,9 +89,9 @@ If any step fails, do your best to diagnose and fix the issue — for example, a
 Once the stack is up, poll each service until it reports ready or until 60 seconds have elapsed:
 
 - Bob nyx agent: GET http://localhost:8099/health/ready — expect 200 with `"status": "ready"`
-- Bob a2-claude backend: GET http://localhost:8090/health — expect 200 with `"status": "ok"`
-- Bob a2-codex backend: GET http://localhost:8091/health — expect 200 with `"status": "ok"`
-- Bob a2-gemini backend: GET http://localhost:8092/health — expect 200 with `"status": "ok"`
+- Bob claude backend: GET http://localhost:8090/health — expect 200 with `"status": "ok"`
+- Bob codex backend: GET http://localhost:8091/health — expect 200 with `"status": "ok"`
+- Bob gemini backend: GET http://localhost:8092/health — expect 200 with `"status": "ok"`
 
 If any service fails to become ready within 60 seconds, fail immediately with a clear message identifying which service failed. Do not proceed with the remaining tests.
 

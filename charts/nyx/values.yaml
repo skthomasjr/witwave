@@ -509,7 +509,7 @@ defaults:
         cpu: "1"
         memory: 1Gi
     # Per-backend-type overrides, keyed by backend.name. Users running heavy
-    # concurrency (especially on a2-claude, whose memory scales with active
+    # concurrency (especially on claude, whose memory scales with active
     # Claude Code subprocess sessions) should raise these on the specific
     # backend entry — these defaults are a soft ceiling, not a recommendation.
     backends:
@@ -554,7 +554,7 @@ defaults:
 # Chart-global defaults rarely make sense here because each backend type
 # takes different credentials — prefer per-backend `agents[].backends[].credentials`
 # over chart-global. This block exists mainly so single-backend-type
-# deployments (only a2-claude across all agents, say) can set one token once.
+# deployments (only claude across all agents, say) can set one token once.
 backends:
   credentials:
     existingSecret: ""
@@ -784,11 +784,11 @@ agents:
 
         # # Additional environment variables injected into the backend container.
         # # Common backend env vars:
-        # #   a2-gemini: GEMINI_MAX_HISTORY_TURNS (max turns persisted per session; default 100; 0 = unlimited)
+        # #   gemini: GEMINI_MAX_HISTORY_TURNS (max turns persisted per session; default 100; 0 = unlimited)
         # #              SESSION_STORE_DIR (session JSON directory; default /home/agent/.gemini/memory/sessions)
         # #              MAX_SESSIONS (LRU cache size; default 10000)
-        # #   a2-claude: LOG_PROMPT_MAX_BYTES (max bytes of prompt logged at INFO; default 200; 0 = suppress)
-        # #   a2-codex:  CODEX_MODEL (model override; default gpt-5.1-codex)
+        # #   claude: LOG_PROMPT_MAX_BYTES (max bytes of prompt logged at INFO; default 200; 0 = suppress)
+        # #   codex:  CODEX_MODEL (model override; default gpt-5.1-codex)
         # env:
         #   - name: GEMINI_MAX_HISTORY_TURNS
         #     value: "100"
@@ -801,7 +801,7 @@ agents:
         # #   # OR inline (dev only) — MUST also set acknowledgeInsecureInline=true.
         # #   # `secrets:` is a free-form map of env-var-name → value. The backend
         # #   # reads whichever env vars it needs (CLAUDE_CODE_OAUTH_TOKEN for
-        # #   # a2-claude, OPENAI_API_KEY for a2-codex, GEMINI_API_KEY for a2-gemini).
+        # #   # claude, OPENAI_API_KEY for codex, GEMINI_API_KEY for gemini).
         # #   secrets:
         # #     CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat-xxxxxxxxxxxxxxxxxxxx"
         # #   acknowledgeInsecureInline: true
