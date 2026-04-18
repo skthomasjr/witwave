@@ -17,7 +17,7 @@
           "additionalProperties": true,
           "properties": {
             "repository": { "type": "string" },
-            "tag": { "type": "string" },
+            "tag": { "type": "string", "not": { "pattern": "^(latest|.*[:@]latest)$" } },
             "pullPolicy": { "type": "string" }
           }
         },
@@ -107,7 +107,7 @@
           "additionalProperties": true,
           "properties": {
             "repository": { "type": "string" },
-            "tag": { "type": "string" }
+            "tag": { "type": "string", "not": { "pattern": "^(latest|.*[:@]latest)$" } }
           }
         }
       }
@@ -163,7 +163,7 @@
                   "additionalProperties": true,
                   "properties": {
                     "repository": { "type": "string" },
-                    "tag": { "type": "string" },
+                    "tag": { "type": "string", "not": { "pattern": "^(latest|.*[:@]latest)$" } },
                     "pullPolicy": { "type": "string" }
                   }
                 },
