@@ -89,6 +89,111 @@ jobs:
             echo "nyx-operator has no schema.json yet; ran --strict anyway"
           fi
 
+  operator-webhook-tls-modes:
+    # Coverage for the two webhook TLS branches in nyx-operator (#846):
+    #   * cert-manager — chart issues the serving cert, no caBundle needed.
+    #   * BYO Secret  — operator supplies a pre-created tls.crt + tls.key
+    #                   Secret and a base64-PEM caBundle.
+    # Both branches are load-bearing and have historically drifted
+    # (fail-fast guards added after BYO installs silently produced a
+    # webhook server with no serving cert). This job renders each mode
+    # with helm and asserts the rendered YAML matches expected-shape
+    # invariants.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.0
+
+      - name: Install PyYAML
+        run: python3 -m pip install --user pyyaml
+
+      - name: Render + verify cert-manager branch
+        run: |
+          helm template op charts/nyx-operator \
+            --set webhooks.enabled=true \
+            --set webhooks.certManager.enabled=true \
+            --set webhooks.certManager.createIssuer=true \
+            > /tmp/op-certmanager.yaml
+          python3 - <<'PY'
+          import sys, yaml
+          docs = [d for d in yaml.safe_load_all(open("/tmp/op-certmanager.yaml")) if d]
+          kinds = [d.get("kind") for d in docs]
+          assert "MutatingWebhookConfiguration" in kinds, kinds
+          assert "ValidatingWebhookConfiguration" in kinds, kinds
+          assert "Certificate" in kinds, "cert-manager branch must render a Certificate"
+          assert "Issuer" in kinds, "createIssuer=true branch must render an Issuer"
+          for d in docs:
+              if d.get("kind") in ("MutatingWebhookConfiguration", "ValidatingWebhookConfiguration"):
+                  anns = (d.get("metadata") or {}).get("annotations") or {}
+                  assert "cert-manager.io/inject-ca-from" in anns, (
+                      f"{d['kind']}: cert-manager branch must stamp the inject-ca-from annotation"
+                  )
+          print("cert-manager branch: OK")
+          PY
+
+      - name: Render + verify BYO Secret branch
+        run: |
+          CA_B64=$(printf 'FAKE CA BUNDLE' | base64 -w0)
+          helm template op charts/nyx-operator \
+            --set webhooks.enabled=true \
+            --set webhooks.existingSecret=my-tls-secret \
+            --set-string webhooks.caBundle="${CA_B64}" \
+            > /tmp/op-byo.yaml
+          CA_B64="${CA_B64}" python3 - <<'PY'
+          import os, yaml
+          ca_b64 = os.environ["CA_B64"]
+          docs = [d for d in yaml.safe_load_all(open("/tmp/op-byo.yaml")) if d]
+          kinds = [d.get("kind") for d in docs]
+          assert "MutatingWebhookConfiguration" in kinds, kinds
+          assert "ValidatingWebhookConfiguration" in kinds, kinds
+          assert "Certificate" not in kinds, (
+              "BYO branch must NOT render a cert-manager Certificate "
+              "(operator supplies the Secret out-of-band)"
+          )
+          for d in docs:
+              if d.get("kind") in ("MutatingWebhookConfiguration", "ValidatingWebhookConfiguration"):
+                  webhooks = d.get("webhooks") or []
+                  assert webhooks, f"{d['kind']}: no webhook entries rendered"
+                  for w in webhooks:
+                      cb = ((w.get("clientConfig") or {}).get("caBundle"))
+                      assert cb == ca_b64, (
+                          f"{d['kind']}: caBundle must be literally stamped, "
+                          f"got {cb!r} want {ca_b64!r}"
+                      )
+                  anns = (d.get("metadata") or {}).get("annotations") or {}
+                  assert "cert-manager.io/inject-ca-from" not in anns, (
+                      f"{d['kind']}: BYO branch must NOT stamp the cert-manager inject annotation"
+                  )
+          print("BYO Secret branch: OK")
+          PY
+
+      - name: Render + verify fail-fast guards
+        run: |
+          # BYO without caBundle → render must fail loudly.
+          if helm template op charts/nyx-operator \
+              --set webhooks.enabled=true \
+              --set webhooks.existingSecret=my-secret \
+              > /dev/null 2>&1; then
+            echo "ERROR: BYO branch without caBundle should fail but did not" >&2
+            exit 1
+          fi
+          # Neither cert-manager nor BYO → render must fail loudly.
+          # (cert-manager defaults to enabled in values.yaml, so we flip
+          # it off explicitly for this negative case.)
+          if helm template op charts/nyx-operator \
+              --set webhooks.enabled=true \
+              --set webhooks.certManager.enabled=false \
+              > /dev/null 2>&1; then
+            echo "ERROR: webhooks.enabled without any TLS mode should fail but did not" >&2
+            exit 1
+          fi
+          echo "fail-fast guards: OK"
+
   psa-restricted:
     # Static PSS-restricted verification for the rendered chart (#847).
     # Loads every Pod / PodTemplateSpec-bearing resource from the
