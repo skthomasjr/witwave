@@ -270,7 +270,13 @@ export function useOTelTraces(opts: UseOTelTracesOptions = {}) {
   // in-cluster in-memory span store is available (always the case — the
   // harness exposes /api/traces unconditionally).
   const inClusterMode = baseUrl === null;
-  const configured: ComputedRef<boolean> = computed(() => true);
+  // "configured" reports whether we have at least one trace source to query
+  // — an external Jaeger/Tempo URL or the in-cluster /api/traces fallback.
+  // Kept as a computed so consumers can reactively toggle a "not configured"
+  // empty state and skip polling when neither source is available (#677).
+  const configured: ComputedRef<boolean> = computed(
+    () => baseUrl !== null || inClusterMode,
+  );
 
   const list = ref<TraceListRow[]>([]);
   const listError = ref<string>("");
