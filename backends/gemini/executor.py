@@ -1114,16 +1114,58 @@ def _track_session(
             # Bump the cleanup epoch so any in-flight writer for the
             # evicted session aborts before publishing (#732).
             _bump_cleanup_epoch(_evicted_id)
+            # Defer the actual file removal to an asyncio task so it can
+            # (a) await the in-flight writer's done-event briefly and
+            # (b) call os.remove via asyncio.to_thread instead of blocking
+            # the event loop (#889). Mirrors the pattern already used on
+            # the timeout path at ~1670. _track_session itself is sync —
+            # the task is scheduled via create_task off the currently
+            # running loop; if no loop is running (unlikely but possible
+            # from a sync test), fall back to the old blocking remove.
             try:
-                os.remove(_evicted_path)
-            except FileNotFoundError:
-                pass
-            except OSError as e:
-                logger.warning("Could not remove evicted session file %s: %s", _evicted_path, e)
-            _bump_cleanup_epoch(_evicted_id)
-            # Drop the epoch counter entry itself so a fresh session with
-            # the same id starts from zero again.
-            _session_cleanup_epoch.pop(_evicted_id, None)
+                _loop = asyncio.get_running_loop()
+            except RuntimeError:
+                _loop = None
+            if _loop is not None:
+                async def _deferred_evict_remove(
+                    _ev_id: str = _evicted_id,
+                    _ev_path: str = _evicted_path,
+                ) -> None:
+                    _pending_save = _history_write_done.get(_ev_id)
+                    if _pending_save is not None:
+                        try:
+                            await asyncio.wait_for(_pending_save.wait(), timeout=5.0)
+                        except asyncio.TimeoutError:
+                            logger.warning(
+                                "History save for LRU-evicted session %r did not "
+                                "complete within 5s — removing file anyway; epoch "
+                                "guard (#732) blocks any late os.replace.",
+                                _ev_id,
+                            )
+                    try:
+                        await asyncio.to_thread(os.remove, _ev_path)
+                    except FileNotFoundError:
+                        pass
+                    except OSError as _e:
+                        logger.warning(
+                            "Could not remove evicted session file %s: %s",
+                            _ev_path, _e,
+                        )
+                    _bump_cleanup_epoch(_ev_id)
+                    _session_cleanup_epoch.pop(_ev_id, None)
+                _loop.create_task(_deferred_evict_remove())
+            else:
+                try:
+                    os.remove(_evicted_path)
+                except FileNotFoundError:
+                    pass
+                except OSError as e:
+                    logger.warning(
+                        "Could not remove evicted session file %s: %s",
+                        _evicted_path, e,
+                    )
+                _bump_cleanup_epoch(_evicted_id)
+                _session_cleanup_epoch.pop(_evicted_id, None)
         sessions[session_id] = time.monotonic()
     if backend_active_sessions is not None:
         backend_active_sessions.labels(**_LABELS).set(len(sessions))
