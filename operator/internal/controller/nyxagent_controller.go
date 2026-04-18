@@ -78,8 +78,16 @@ const nyxAgentFinalizer = "nyxagent.nyx.ai/finalizer"
 // NyxAgentReconciler reconciles a NyxAgent object.
 type NyxAgentReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	// APIReader is a cache-bypassing reader wired from mgr.GetAPIReader()
+	// (#900). The manifest reconciler uses it to List team members with
+	// read-your-writes consistency — the default cached Client can miss a
+	// just-created peer during rapid create bursts, dropping its ownerRef
+	// on the very next manifest Update. Optional: unit tests that skip
+	// the manager bootstrap leave this nil and fall back to the cached
+	// Client path.
+	APIReader client.Reader
+	Scheme    *runtime.Scheme
+	Recorder  record.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=nyx.ai,resources=nyxagents,verbs=get;list;watch;create;update;patch;delete
@@ -614,9 +622,25 @@ func (r *NyxAgentReconciler) reconcileManifestConfigMap(ctx context.Context, age
 	// so a namespace of hundreds of unrelated agents no longer lands a
 	// full-namespace List on every manifest reconcile.  Falls back to
 	// the legacy full-List path when the index is missing.
+	//
+	// Cache-bypass (#900): membership that drives the manifest CM must
+	// reflect the authoritative apiserver state, not the informer cache.
+	// During rapid create bursts (A and B created back-to-back) the
+	// cache delivery of B's add-event can lag the reconcile of A,
+	// causing A to rewrite the CM with {A} and drop B's ownerRef until
+	// an unrelated event re-fires. APIReader (mgr.GetAPIReader()) is a
+	// direct-from-apiserver client. Note: APIReader does not support
+	// field selectors over custom indices, so we always List by
+	// namespace and filter by teamKey() in memory on this path. The
+	// informer-cache path below is kept as a fallback for unit tests
+	// that construct the reconciler without an APIReader.
 	wantTeam := teamKey(agent)
 	allAgents := &nyxv1alpha1.NyxAgentList{}
-	if err := r.List(ctx, allAgents,
+	if r.APIReader != nil {
+		if err := r.APIReader.List(ctx, allAgents, client.InNamespace(agent.Namespace)); err != nil {
+			return fmt.Errorf("list NyxAgents for manifest (live): %w", err)
+		}
+	} else if err := r.List(ctx, allAgents,
 		client.InNamespace(agent.Namespace),
 		client.MatchingFields{NyxAgentTeamIndex: wantTeam},
 	); err != nil {
