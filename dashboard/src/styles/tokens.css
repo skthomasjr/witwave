@@ -40,3 +40,49 @@ body {
 *::after {
   box-sizing: border-box;
 }
+
+/* Accessibility: visible focus outline for keyboard-only users (#822).
+   Apply via :focus-visible so mouse-click focus does not flash an
+   outline that disrupts the dark-surface aesthetic. Outline uses the
+   accent token so it inherits any future palette re-theme. */
+:focus-visible {
+  outline: 2px solid var(--nyx-accent);
+  outline-offset: 2px;
+  border-radius: var(--nyx-radius);
+}
+
+/* Skip-to-main link — hidden off-screen until focused (#822). Rendered
+   in App.vue as the first focusable element so tabbing from the
+   browser chrome jumps straight into the main content region,
+   bypassing the repeated nav on every view. */
+.skip-to-main {
+  position: absolute;
+  top: -40px;
+  left: 6px;
+  z-index: 1000;
+  padding: 6px 10px;
+  background: var(--nyx-accent);
+  color: var(--nyx-bright);
+  text-decoration: none;
+  border-radius: var(--nyx-radius);
+  font-size: 12px;
+  transition: top 0.12s;
+}
+
+.skip-to-main:focus,
+.skip-to-main:focus-visible {
+  top: 6px;
+}
+
+/* Honor user preference for reduced motion (#822). Any transition /
+   animation authored elsewhere should be wrapped or degraded here. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

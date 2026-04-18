@@ -31,6 +31,10 @@ const { state, detail } = useHealth();
 
 <template>
   <div class="app-shell p-dark">
+    <!-- Skip-to-main link (#822): first focusable element in tab order so
+         keyboard users can jump past the nav rail. Hidden off-screen via
+         tokens.css until it receives focus. -->
+    <a href="#app-main" class="skip-to-main">Skip to main content</a>
     <header class="app-header">
       <h1 class="brand">nyx</h1>
       <nav class="app-nav">
@@ -70,7 +74,7 @@ const { state, detail } = useHealth();
       </span>
       <span class="version" data-testid="dashboard-version">v0.1.0-alpha</span>
     </header>
-    <main class="app-main">
+    <main id="app-main" class="app-main" tabindex="-1">
       <RouterView />
     </main>
   </div>
