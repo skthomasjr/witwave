@@ -36,9 +36,12 @@ async function fetchConversation() {
   loading.value = true;
   error.value = "";
   try {
+    // apiGet prepends the /api base internally (see api/client.ts).
+    // Using `query:` rather than an inline ?limit= keeps encoding in
+    // one place and avoids the doubled-prefix 404 I hit first pass.
     const raw = await apiGet<ConversationEntry[]>(
-      `/api/agents/${encodeURIComponent(props.agent)}/conversations?limit=500`,
-      { signal: aborter.signal },
+      `/agents/${encodeURIComponent(props.agent)}/conversations`,
+      { signal: aborter.signal, query: { limit: "500" } },
     );
     // Filter by session_id if we have one. Otherwise take the latest
     // 50 entries as a best-effort preview (keeps the drawer useful
