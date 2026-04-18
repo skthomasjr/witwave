@@ -1121,31 +1121,40 @@ async def _run_inner(
         )
     except asyncio.TimeoutError:
         logger.error(f"Session {session_id!r}: timed out after {TASK_TIMEOUT_SECONDS}s.")
-        # Evict the session from the LRU cache on timeout. The underlying
-        # SQLiteSession may be in an inconsistent state after a mid-stream
-        # cancellation; removing it ensures the next call for this session_id
-        # starts fresh rather than attempting to resume a broken session.
-        sessions.pop(session_id, None)
-        # Also remove the SQLite history row so the next request for this
-        # session_id starts with empty history rather than reloading the
-        # potentially stale snapshot stored before the timeout.
-        # Run in a thread to avoid blocking the event loop with SQLite I/O (#361).
-        _db_path = CODEX_SESSION_DB
-        if _db_path and _db_path != ":memory:":
-            try:
-                await asyncio.to_thread(_delete_sqlite_session, session_id, _db_path)
-                logger.info("Removed stale SQLite session for timed-out session %r", session_id)
-            except Exception as _e:
-                logger.warning("Could not remove SQLite session for timed-out session %r: %s", session_id, _e)
-        # Drop the per-session Playwright context so a later request reusing
-        # this session_id does not inherit mid-stream browser state (#522).
-        await _release_computer(session_id)
-        if backend_tasks_total is not None:
-            backend_tasks_total.labels(**_LABELS, status="timeout").inc()
-        if backend_task_error_duration_seconds is not None:
-            backend_task_error_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _start)
-        if backend_task_last_error_timestamp_seconds is not None:
-            backend_task_last_error_timestamp_seconds.labels(**_LABELS).set(time.time())
+        # Serialise the timeout eviction under _sessions_lock (#668) so
+        # the pop + _release_computer + metric updates can't interleave
+        # with _track_session's popitem/move_to_end over the shared
+        # OrderedDict. Lazy-init the lock the same way _track_session
+        # does, so first-call ordering is preserved.
+        global _sessions_lock
+        if _sessions_lock is None:
+            _sessions_lock = asyncio.Lock()
+        async with _sessions_lock:
+            # Evict the session from the LRU cache on timeout. The underlying
+            # SQLiteSession may be in an inconsistent state after a mid-stream
+            # cancellation; removing it ensures the next call for this session_id
+            # starts fresh rather than attempting to resume a broken session.
+            sessions.pop(session_id, None)
+            # Also remove the SQLite history row so the next request for this
+            # session_id starts with empty history rather than reloading the
+            # potentially stale snapshot stored before the timeout.
+            # Run in a thread to avoid blocking the event loop with SQLite I/O (#361).
+            _db_path = CODEX_SESSION_DB
+            if _db_path and _db_path != ":memory:":
+                try:
+                    await asyncio.to_thread(_delete_sqlite_session, session_id, _db_path)
+                    logger.info("Removed stale SQLite session for timed-out session %r", session_id)
+                except Exception as _e:
+                    logger.warning("Could not remove SQLite session for timed-out session %r: %s", session_id, _e)
+            # Drop the per-session Playwright context so a later request reusing
+            # this session_id does not inherit mid-stream browser state (#522).
+            await _release_computer(session_id)
+            if backend_tasks_total is not None:
+                backend_tasks_total.labels(**_LABELS, status="timeout").inc()
+            if backend_task_error_duration_seconds is not None:
+                backend_task_error_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _start)
+            if backend_task_last_error_timestamp_seconds is not None:
+                backend_task_last_error_timestamp_seconds.labels(**_LABELS).set(time.time())
         raise
     except BudgetExceededError as _bexc:
         _budget_exceeded = True
