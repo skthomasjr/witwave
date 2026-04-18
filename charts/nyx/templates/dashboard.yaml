@@ -10,7 +10,16 @@ metadata:
     app.kubernetes.io/part-of: nyx
     app.kubernetes.io/managed-by: helm
 spec:
-  replicas: {{ .Values.dashboard.replicas | default 1 }}
+  {{- /* hasKey branch so replicas: 0 is actually honored (#912).
+         sprig's `default` treats 0 as empty and falls back to the
+         default value — which breaks the common operator workflow of
+         temporarily scaling the dashboard to zero replicas without
+         flipping dashboard.enabled to false. */}}
+  {{- if hasKey .Values.dashboard "replicas" }}
+  replicas: {{ .Values.dashboard.replicas }}
+  {{- else }}
+  replicas: 1
+  {{- end }}
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ $.Release.Name }}-dashboard

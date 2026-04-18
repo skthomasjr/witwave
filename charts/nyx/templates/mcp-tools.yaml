@@ -135,7 +135,14 @@ metadata:
     app.kubernetes.io/part-of: nyx
     app.kubernetes.io/managed-by: {{ $.Release.Service }}
 spec:
-  replicas: {{ default 1 $tool.replicas }}
+  {{- /* hasKey branch so replicas: 0 is honored (#912, shared audit).
+         sprig's `default` treats 0 as empty and falls back to 1,
+         silently breaking the temporary-scale-to-zero workflow. */}}
+  {{- if hasKey $tool "replicas" }}
+  replicas: {{ $tool.replicas }}
+  {{- else }}
+  replicas: 1
+  {{- end }}
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ $fullName }}
