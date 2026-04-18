@@ -331,13 +331,69 @@ func (r *NyxAgentReconciler) applyDeployment(ctx context.Context, agent *nyxv1al
 	return err
 }
 
+// NyxPromptAgentRefIndex is the field-indexer key that maps every
+// NyxPrompt to its spec.agentRefs[].name values (#753). Indexing here
+// lets ``listNyxPromptsForAgent`` issue a single scoped List instead of
+// the full-namespace List + in-memory O(N*R) filter it used to run on
+// every reconcile.
+const NyxPromptAgentRefIndex = "spec.agentRefs.name"
+
+// NyxPromptAgentRefExtractor returns the agent-ref names of one
+// NyxPrompt. Empty ref names are dropped so missing fields don't
+// pollute the index.
+func NyxPromptAgentRefExtractor(obj client.Object) []string {
+	p, ok := obj.(*nyxv1alpha1.NyxPrompt)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(p.Spec.AgentRefs))
+	for _, ref := range p.Spec.AgentRefs {
+		if ref.Name != "" {
+			out = append(out, ref.Name)
+		}
+	}
+	return out
+}
+
+// NyxAgentTeamIndex is the field-indexer key that maps every NyxAgent to
+// its team label value (#753). Agents without the label land under the
+// empty-string key — the same grouping teamKey() uses in-memory.
+const NyxAgentTeamIndex = "metadata.labels.nyx.ai/team"
+
+// NyxAgentTeamExtractor returns the single-element team key for a
+// NyxAgent, including the empty-string case. Returning a single value
+// means the scoped List ``client.MatchingFields{NyxAgentTeamIndex: t}``
+// yields exactly the peers that share the team group.
+func NyxAgentTeamExtractor(obj client.Object) []string {
+	a, ok := obj.(*nyxv1alpha1.NyxAgent)
+	if !ok {
+		return nil
+	}
+	return []string{teamKey(a)}
+}
+
 // listNyxPromptsForAgent returns every NyxPrompt in the agent's namespace
 // whose spec.agentRefs contains this agent. The result is sorted by CR
 // name so buildDeployment renders pod volumes in a deterministic order.
+//
+// Performance (#753): uses ``client.MatchingFields`` against
+// ``NyxPromptAgentRefIndex`` so each call is O(k) in the number of
+// prompts bound to this agent rather than O(N) in the namespace prompt
+// count. Falls back to the legacy full-List path when the index is
+// missing (unit tests that skip the manager bootstrap).
 func (r *NyxAgentReconciler) listNyxPromptsForAgent(ctx context.Context, agent *nyxv1alpha1.NyxAgent) ([]nyxv1alpha1.NyxPrompt, error) {
+	scoped := &nyxv1alpha1.NyxPromptList{}
+	err := r.List(ctx, scoped,
+		client.InNamespace(agent.Namespace),
+		client.MatchingFields{NyxPromptAgentRefIndex: agent.Name},
+	)
+	if err == nil {
+		return append([]nyxv1alpha1.NyxPrompt(nil), scoped.Items...), nil
+	}
+	// Index missing — fall back to the legacy full-namespace scan.
 	all := &nyxv1alpha1.NyxPromptList{}
-	if err := r.List(ctx, all, client.InNamespace(agent.Namespace)); err != nil {
-		return nil, err
+	if lErr := r.List(ctx, all, client.InNamespace(agent.Namespace)); lErr != nil {
+		return nil, lErr
 	}
 	matched := make([]nyxv1alpha1.NyxPrompt, 0, len(all.Items))
 	for i := range all.Items {
@@ -473,15 +529,23 @@ func (r *NyxAgentReconciler) reconcileManifestConfigMap(ctx context.Context, age
 	)
 	defer finish(&err)
 
-	// List every NyxAgent in the namespace. Filtering by team label is
-	// done in-memory because an apiserver selector can't express "label
-	// absent OR label equals X" in one call — both the labelled team
-	// and the "no label" namespace group need the unified list.
-	allAgents := &nyxv1alpha1.NyxAgentList{}
-	if err := r.List(ctx, allAgents, client.InNamespace(agent.Namespace)); err != nil {
-		return fmt.Errorf("list NyxAgents for manifest: %w", err)
-	}
+	// Scoped List via NyxAgentTeamIndex (#753): the field indexer
+	// returns only NyxAgents that share this agent's team label
+	// (including the empty-string grouping when the label is absent),
+	// so a namespace of hundreds of unrelated agents no longer lands a
+	// full-namespace List on every manifest reconcile.  Falls back to
+	// the legacy full-List path when the index is missing.
 	wantTeam := teamKey(agent)
+	allAgents := &nyxv1alpha1.NyxAgentList{}
+	if err := r.List(ctx, allAgents,
+		client.InNamespace(agent.Namespace),
+		client.MatchingFields{NyxAgentTeamIndex: wantTeam},
+	); err != nil {
+		// Index missing — full-namespace List keeps prior behaviour.
+		if err := r.List(ctx, allAgents, client.InNamespace(agent.Namespace)); err != nil {
+			return fmt.Errorf("list NyxAgents for manifest: %w", err)
+		}
+	}
 
 	var members []manifestMember
 	for i := range allAgents.Items {
@@ -496,6 +560,8 @@ func (r *NyxAgentReconciler) reconcileManifestConfigMap(ctx context.Context, age
 			continue
 		}
 		if teamKey(a) != wantTeam {
+			// Defensive — when the indexer path succeeded every entry
+			// already matches; the fallback path still needs this filter.
 			continue
 		}
 		port := a.Spec.Port
@@ -1689,9 +1755,20 @@ func (r *NyxAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		if trigger.Labels != nil {
 			triggerTeam = trigger.Labels[teamLabel]
 		}
+		// Scoped List via NyxAgentTeamIndex (#753) so every create/
+		// delete/label edit no longer fans out an O(namespace) List
+		// against the cache. The index is registered in
+		// cmd/main.go; when absent we fall back to a full-namespace
+		// List so the existing behaviour is preserved.
 		peers := &nyxv1alpha1.NyxAgentList{}
-		if err := mgr.GetClient().List(ctx, peers, client.InNamespace(trigger.Namespace)); err != nil {
-			return nil
+		err := mgr.GetClient().List(ctx, peers,
+			client.InNamespace(trigger.Namespace),
+			client.MatchingFields{NyxAgentTeamIndex: triggerTeam},
+		)
+		if err != nil {
+			if fbErr := mgr.GetClient().List(ctx, peers, client.InNamespace(trigger.Namespace)); fbErr != nil {
+				return nil
+			}
 		}
 		reqs := make([]reconcile.Request, 0, len(peers.Items))
 		for i := range peers.Items {

@@ -272,6 +272,30 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Field indexers for the primary reconciler hot paths (#753). Register
+	// them *before* the reconciler is created so the first reconcile sees a
+	// populated index. Each indexer failure aborts startup — silently
+	// falling back to the legacy full-List path would mask the perf
+	// regression in production.
+	if err := mgr.GetFieldIndexer().IndexField(
+		context.Background(),
+		&nyxv1alpha1.NyxPrompt{},
+		controller.NyxPromptAgentRefIndex,
+		controller.NyxPromptAgentRefExtractor,
+	); err != nil {
+		setupLog.Error(err, "unable to register field indexer", "field", controller.NyxPromptAgentRefIndex)
+		os.Exit(1)
+	}
+	if err := mgr.GetFieldIndexer().IndexField(
+		context.Background(),
+		&nyxv1alpha1.NyxAgent{},
+		controller.NyxAgentTeamIndex,
+		controller.NyxAgentTeamExtractor,
+	); err != nil {
+		setupLog.Error(err, "unable to register field indexer", "field", controller.NyxAgentTeamIndex)
+		os.Exit(1)
+	}
+
 	if err := (&controller.NyxAgentReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
