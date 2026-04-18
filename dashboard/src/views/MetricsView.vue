@@ -61,6 +61,13 @@ const intervalMs = ref<number>(5000);
 const { merged, loading, error, lastUpdated, perAgentErrors, refresh } =
   useMetrics({ intervalMs });
 
+// Raw-metrics escape hatch (toggle off by default). Useful when the
+// curated sections don't show something the user needs to eyeball —
+// e.g. a very specific histogram bucket or a freshly-added metric the
+// dashboard hasn't been taught about yet. Renders the full parsed
+// families + their samples in a collapsible mono panel.
+const showRaw = ref<boolean>(false);
+
 const degradedEntries = computed<[string, string][]>(() =>
   Object.entries(perAgentErrors.value),
 );
@@ -548,6 +555,33 @@ const updatedLabel = computed(() => {
   if (lastUpdated.value === null) return "";
   return `updated ${new Date(lastUpdated.value).toLocaleTimeString()}`;
 });
+
+// Flattened raw-metrics list. Sorted so scanning is predictable.
+interface RawRow {
+  name: string;
+  help: string;
+  type: string;
+  samples: { labels: string; value: number }[];
+}
+const rawRows = computed<RawRow[]>(() => {
+  const out: RawRow[] = [];
+  for (const [name, fam] of merged.value.entries()) {
+    out.push({
+      name,
+      help: fam.help,
+      type: fam.type,
+      samples: fam.samples.map((s) => ({
+        labels: Object.entries(s.labels)
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([k, v]) => `${k}="${v}"`)
+          .join(","),
+        value: s.value,
+      })),
+    });
+  }
+  out.sort((a, b) => a.name.localeCompare(b.name));
+  return out;
+});
 </script>
 
 <template>
@@ -562,6 +596,10 @@ const updatedLabel = computed(() => {
         <option :value="60000">1m</option>
         <option :value="0">off</option>
       </select>
+      <label class="toggle" title="Show the full parsed Prometheus output">
+        <input v-model="showRaw" type="checkbox" />
+        <span>raw</span>
+      </label>
       <span class="ts">{{ updatedLabel }}</span>
       <span
         v-if="degradedEntries.length > 0"
@@ -608,6 +646,51 @@ const updatedLabel = computed(() => {
         <div v-if="preparedSections.length === 0" class="placeholder">
           No chart-able data yet — agents may still be warming up.
         </div>
+        <!-- Raw metrics escape hatch (#user-ask-raw). Opt-in via the
+             toolbar; rendered before the thematic sections so it's easy
+             to find but not imposing when closed. -->
+        <section v-if="showRaw" class="section raw-section">
+          <div class="section-header">
+            <h3 class="section-title">Raw Prometheus output</h3>
+            <p class="section-sub">
+              Every parsed metric family across the team, sorted by name.
+              Toggle off once you've found what you needed.
+            </p>
+          </div>
+          <div class="raw-table-wrap">
+            <table class="raw-table">
+              <thead>
+                <tr>
+                  <th>metric</th>
+                  <th>type</th>
+                  <th>labels</th>
+                  <th class="v">value</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template v-for="row in rawRows" :key="row.name">
+                  <tr v-if="row.samples.length === 0">
+                    <td>{{ row.name }}</td>
+                    <td>{{ row.type || "—" }}</td>
+                    <td colspan="2" class="empty">
+                      {{ row.help || "(no samples)" }}
+                    </td>
+                  </tr>
+                  <tr
+                    v-for="(s, i) in row.samples"
+                    :key="`${row.name}-${i}`"
+                  >
+                    <td>{{ i === 0 ? row.name : "" }}</td>
+                    <td>{{ i === 0 ? row.type || "—" : "" }}</td>
+                    <td class="labels">{{ s.labels || "—" }}</td>
+                    <td class="v">{{ fmtNum(s.value) }}</td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
         <div v-for="sec in preparedSections" :key="sec.id" class="section">
           <div class="section-header">
             <h3 class="section-title">{{ sec.title }}</h3>
@@ -685,10 +768,74 @@ const updatedLabel = computed(() => {
   border-color: var(--nyx-accent);
 }
 
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--nyx-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+.toggle input {
+  accent-color: var(--nyx-accent, #7c6af7);
+  cursor: pointer;
+}
+
 .ts {
   font-size: 11px;
   color: var(--nyx-dim);
   margin-left: auto;
+}
+
+.raw-section {
+  gap: 8px;
+}
+.raw-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--nyx-border);
+  border-radius: var(--nyx-radius);
+  background: var(--nyx-surface);
+}
+.raw-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--nyx-mono);
+  font-size: 10.5px;
+}
+.raw-table th,
+.raw-table td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--nyx-border);
+  text-align: left;
+  vertical-align: top;
+}
+.raw-table th {
+  position: sticky;
+  top: 0;
+  background: var(--nyx-bg);
+  color: var(--nyx-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  font-size: 9px;
+}
+.raw-table td.v {
+  text-align: right;
+  color: var(--nyx-bright);
+  white-space: nowrap;
+}
+.raw-table td.labels {
+  color: var(--nyx-dim);
+  word-break: break-word;
+}
+.raw-table td.empty {
+  color: var(--nyx-muted);
+  font-style: italic;
+}
+.raw-table tr:last-child td {
+  border-bottom: none;
 }
 
 .degraded {

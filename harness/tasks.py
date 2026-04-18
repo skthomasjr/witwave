@@ -79,6 +79,9 @@ class TaskItem:
     max_tokens: int | None = None
     task: asyncio.Task | None = field(default=None, compare=False)
     running: bool = False
+    # When False, the task is listed in /tasks for dashboard visibility
+    # but no schedule is armed. Flipping enabled:true triggers a reload.
+    enabled: bool = True
 
 
 # Sentinel distinguishing "file parsed cleanly but is disabled" from "parse
@@ -102,8 +105,33 @@ def parse_task_file(path: str) -> "TaskItem | object | None":
         if "enabled" in fields:
             enabled = str(fields["enabled"]).lower() not in ("false", "")
         if not enabled:
-            logger.info(f"Task file {path}: disabled, skipping.")
-            return _DISABLED
+            # Return a minimal TaskItem with enabled=False so the task is
+            # listed in /tasks for dashboard visibility but isn't armed.
+            # Fields that would fail validation (bad days_expr, malformed
+            # window times, etc.) are set to sentinel defaults — the
+            # validations only matter when the task is actually going to
+            # run. Flipping enabled:true triggers a reload that runs the
+            # full parse path.
+            filename = Path(path).stem
+            name = fields.get("name") or filename
+            days_raw = str(fields.get("days") or "—")
+            ws_raw = fields.get("window-start") or fields.get("window_start") or "—"
+            logger.info(f"Task '{name}' disabled — listed but not scheduled.")
+            return TaskItem(
+                path=path,
+                name=name,
+                days_expr=days_raw,
+                tz=ZoneInfo("UTC"),
+                window_start=None,
+                window_end=None,
+                loop=False,
+                loop_gap=None,
+                done_when=None,
+                content=content,
+                model=fields.get("model") or None,
+                backend_id=fields.get("agent") or None,
+                enabled=False,
+            )
 
         # name
         filename = Path(path).stem
@@ -619,12 +647,6 @@ class TaskRunner:
 
     async def _register(self, path: str) -> None:
         result = parse_task_file(path)
-        if result is _DISABLED:
-            # File went from enabled to disabled — stop the running schedule.
-            cancelled = self._unregister(path)
-            if cancelled is not None:
-                await asyncio.gather(cancelled, return_exceptions=True)
-            return
         if result is None:
             # Parse error — preserve last-known-good.
             return
@@ -632,6 +654,16 @@ class TaskRunner:
         cancelled = self._unregister(path)
         if cancelled is not None:
             await asyncio.gather(cancelled, return_exceptions=True)
+
+        # Disabled: listed for dashboard visibility, no schedule armed.
+        if not item.enabled:
+            self._items[path] = item
+            if harness_sched_task_items_registered is not None:
+                harness_sched_task_items_registered.set(
+                    sum(1 for i in self._items.values() if i.enabled)
+                )
+            return
+
         task = asyncio.create_task(run_task(item, self._bus, self._semaphore, self._backends_ready))
 
         def _task_done_callback(t: asyncio.Task, _name: str = item.name) -> None:
@@ -669,6 +701,7 @@ class TaskRunner:
                 "start": item.start.isoformat() if item.start else None,
                 "end": item.end.isoformat() if item.end else None,
                 "running": item.running,
+                "enabled": item.enabled,
             })
         return result
 

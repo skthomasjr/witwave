@@ -383,8 +383,22 @@ def parse_webhook_file(path: str) -> "WebhookSubscription | object | None":
         if "enabled" in fields:
             enabled = str(fields["enabled"]).lower() not in ("false", "")
         if not enabled:
-            logger.info(f"Webhook file {path}: disabled, skipping.")
-            return _DISABLED
+            # Return a minimal disabled subscription so the dashboard
+            # lists it; no delivery machinery is armed until the file
+            # flips enabled:true. URL / header validation is skipped —
+            # the webhook isn't going to fire, a bad URL on a parked
+            # subscription shouldn't prevent listing.
+            filename = Path(path).stem
+            name = fields.get("name") or filename
+            return WebhookSubscription(
+                path=path,
+                name=name,
+                url_template=fields.get("url") or "(disabled — url not validated)",
+                enabled=False,
+                description=fields.get("description") or None,
+                backend_id=fields.get("agent") or None,
+                model=fields.get("model") or None,
+            )
 
         # Resolve URL. The URL template is restricted to the documented
         # allow-list of built-in variables (see README "Outbound Webhooks");
@@ -1061,19 +1075,25 @@ class WebhookRunner:
 
     def _register(self, path: str, *, count_reload: bool = False) -> None:
         result = parse_webhook_file(path)
-        if result is _DISABLED:
-            self._unregister(path, count_reload=count_reload)
-            return
         if result is None:
             return
         sub = result
         self._unregister(path)
         self._items[path] = sub
+        # registered-count metric only includes active (enabled) subs —
+        # disabled entries are stored for display but aren't delivery
+        # targets. Future delivery paths that iterate _items must filter
+        # on sub.enabled.
         if harness_webhooks_items_registered is not None:
-            harness_webhooks_items_registered.set(len(self._items))
+            harness_webhooks_items_registered.set(
+                sum(1 for s in self._items.values() if s.enabled)
+            )
         if count_reload and harness_webhooks_reloads_total is not None:
             harness_webhooks_reloads_total.inc()
-        logger.info(f"Webhook subscription '{sub.name}' registered.")
+        if sub.enabled:
+            logger.info(f"Webhook subscription '{sub.name}' registered.")
+        else:
+            logger.info(f"Webhook subscription '{sub.name}' disabled — listed but not delivered.")
 
     def _unregister(self, path: str, *, count_reload: bool = False) -> None:
         existing = self._items.pop(path, None)
@@ -1110,6 +1130,9 @@ class WebhookRunner:
         """Evaluate all subscriptions and fire matching ones as background tasks."""
         response_preview = response[:2048] if response else ""
         for sub in self._items.values():
+            # Disabled subs are listed for dashboard visibility only.
+            if not sub.enabled:
+                continue
             if _matches_filters(sub, success, kind, response_preview):
                 # Per-subscription cap: prevents a single high-volume or slow
                 # subscription from consuming all global capacity and starving others.
@@ -1228,6 +1251,8 @@ class WebhookRunner:
         }
 
         for sub in self._items.values():
+            if not sub.enabled:
+                continue
             if not _events_match(sub.events, EVENT_KIND_HOOK_DECISION, qualifier):
                 continue
             # Per-subscription cap mirrors the completion path so a noisy

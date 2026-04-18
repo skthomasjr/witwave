@@ -151,16 +151,30 @@ const hasConversation = computed<boolean>(() => {
   if (props.kind === "heartbeat") return true;
   return !!props.item.session_id;
 });
+
+// Disabled items are listed so operators can see what's parked, but
+// visually they fade back (reduced opacity + desaturated chip colour)
+// so eye draws first to the active ones. Click-through still works so
+// the conversation history from the last active runs can be reviewed.
+const isDisabled = computed<boolean>(() => props.item.enabled === false);
 </script>
 
 <template>
   <button
     type="button"
     class="prompt-card"
-    :class="{ 'is-clickable': hasConversation }"
+    :class="{ 'is-clickable': hasConversation, 'is-disabled': isDisabled }"
     :style="{ '--kind-color': kindColor }"
     :disabled="!hasConversation"
-    :title="hasConversation ? 'Click to view conversation' : 'No conversation available for this kind'"
+    :title="
+      isDisabled
+        ? hasConversation
+          ? 'Disabled. Click to view last conversation.'
+          : 'Disabled.'
+        : hasConversation
+          ? 'Click to view conversation'
+          : 'No conversation available for this kind'
+    "
     @click="$emit('click')"
   >
     <header class="head">
@@ -208,6 +222,14 @@ const hasConversation = computed<boolean>(() => {
 }
 .prompt-card:disabled {
   opacity: 0.75;
+}
+.prompt-card.is-disabled {
+  opacity: 0.45;
+  filter: saturate(0.55);
+}
+.prompt-card.is-disabled.is-clickable:hover {
+  opacity: 0.8;
+  filter: saturate(0.85);
 }
 
 .head {

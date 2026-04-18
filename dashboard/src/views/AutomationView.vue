@@ -42,6 +42,11 @@ const heartbeatFan = useAgentFanout<Heartbeat>({ endpoint: "heartbeat" });
 
 // ── Toolbar filters ──────────────────────────────────────────────────────
 const searchTerm = ref("");
+const agentFilter = ref<string>("");
+// Disabled items are listed by default (users want visibility into what's
+// parked) but can be hidden via this toggle. Stored in component state,
+// not localStorage — we want every fresh visit to start inclusive.
+const showDisabled = ref<boolean>(true);
 const activeKinds = ref<Record<PromptKind, boolean>>({
   job: true,
   task: true,
@@ -65,8 +70,15 @@ function showOnly(kind: PromptKind) {
   });
 }
 
-// Predicate for the text filter — matches name, agent, schedule, url,
-// endpoint, or any stringy field we render on the card.
+// Predicate stack — order is: agent-filter → disabled-toggle → text search.
+function matchesAgent(item: Record<string, unknown>): boolean {
+  if (!agentFilter.value) return true;
+  return item._agent === agentFilter.value;
+}
+function matchesDisabled(item: Record<string, unknown>): boolean {
+  if (showDisabled.value) return true;
+  return item.enabled !== false;
+}
 function matchesSearch(item: Record<string, unknown>): boolean {
   const q = searchTerm.value.trim().toLowerCase();
   if (!q) return true;
@@ -84,6 +96,28 @@ function matchesSearch(item: Record<string, unknown>): boolean {
     .toLowerCase();
   return haystack.includes(q);
 }
+function passes(item: Record<string, unknown>): boolean {
+  return matchesAgent(item) && matchesDisabled(item) && matchesSearch(item);
+}
+
+// Union of all agent names across all six fan-outs so the agent filter
+// dropdown stays synced with whatever the team currently holds.
+const agentOptions = computed<string[]>(() => {
+  const set = new Set<string>();
+  for (const src of [
+    jobsFan.items.value,
+    tasksFan.items.value,
+    triggersFan.items.value,
+    webhooksFan.items.value,
+    continuationsFan.items.value,
+    heartbeatFan.items.value,
+  ]) {
+    for (const i of src as Array<{ _agent?: string }>) {
+      if (i._agent) set.add(i._agent);
+    }
+  }
+  return Array.from(set).sort();
+});
 
 // Per-section cards after filtering.
 const sections = computed(() => {
@@ -106,9 +140,7 @@ const sections = computed(() => {
   return raw.map((s) => ({
     ...s,
     items: activeKinds.value[s.kind]
-      ? s.items.filter((it) =>
-          matchesSearch(it as unknown as Record<string, unknown>),
-        )
+      ? s.items.filter((it) => passes(it as unknown as Record<string, unknown>))
       : [],
   }));
 });
@@ -225,6 +257,19 @@ const drawerAgent = computed<string | null>(
         type="text"
         placeholder="filter prompts…"
       />
+      <select
+        v-model="agentFilter"
+        class="select"
+        aria-label="agent filter"
+        title="Filter by agent"
+      >
+        <option value="">all agents</option>
+        <option v-for="a in agentOptions" :key="a" :value="a">{{ a }}</option>
+      </select>
+      <label class="toggle" title="Hide disabled prompts">
+        <input v-model="showDisabled" type="checkbox" />
+        <span>show disabled</span>
+      </label>
       <div class="kind-filters" role="group" aria-label="kind filters">
         <button
           v-for="k in ['job', 'task', 'trigger', 'webhook', 'continuation', 'heartbeat'] as PromptKind[]"
@@ -343,6 +388,36 @@ const drawerAgent = computed<string | null>(
 .search:focus {
   outline: none;
   border-color: var(--nyx-accent);
+}
+
+.select {
+  background: var(--nyx-bg);
+  border: 1px solid var(--nyx-border);
+  color: var(--nyx-text);
+  font-family: var(--nyx-mono);
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: var(--nyx-radius);
+  cursor: pointer;
+}
+.select:focus {
+  outline: none;
+  border-color: var(--nyx-accent);
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--nyx-dim);
+  font-family: var(--nyx-mono);
+  text-transform: lowercase;
+  cursor: pointer;
+}
+.toggle input {
+  accent-color: var(--nyx-accent, #7c6af7);
+  cursor: pointer;
 }
 
 .kind-filters {

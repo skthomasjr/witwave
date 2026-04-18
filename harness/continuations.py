@@ -63,6 +63,10 @@ class ContinuationItem:
     consensus: list[ConsensusEntry] = field(default_factory=list)
     max_tokens: int | None = None
     max_concurrent_fires: int = CONTINUATION_MAX_CONCURRENT_FIRES
+    # When False, the continuation is listed in /continuations for
+    # dashboard visibility but does not subscribe to upstream events —
+    # no fires. Flipping enabled:true re-arms on reload.
+    enabled: bool = True
 
 
 def parse_continuation_file(path: str) -> "ContinuationItem | object | None":
@@ -78,11 +82,9 @@ def parse_continuation_file(path: str) -> "ContinuationItem | object | None":
         fields, content = parse_frontmatter(raw)
         raw_fields, _ = parse_frontmatter_raw(raw)
 
+        enabled = True
         if "enabled" in fields:
             enabled = str(fields["enabled"]).lower() not in ("false", "")
-            if not enabled:
-                logger.info(f"Continuation file {path}: disabled, skipping.")
-                return _DISABLED
 
         continues_after_raw = fields.get("continues-after") or ""
         # Accepts a single string or a YAML list.  A comma-separated string is
@@ -92,10 +94,14 @@ def parse_continuation_file(path: str) -> "ContinuationItem | object | None":
         else:
             text = str(continues_after_raw).strip()
             if not text:
-                logger.warning(f"Continuation file {path}: missing required 'continues-after' field, skipping.")
-                return _DISABLED
-            continues_after = [p.strip() for p in text.split(",") if p.strip()]
-        if not continues_after:
+                continues_after = []
+            else:
+                continues_after = [p.strip() for p in text.split(",") if p.strip()]
+        # Missing continues-after is a hard parse failure for ENABLED
+        # continuations (nothing to subscribe to). For disabled ones it
+        # just means the display shows "—" — the user is parking the
+        # file while figuring out what it should chain off of.
+        if not continues_after and enabled:
             logger.warning(f"Continuation file {path}: missing required 'continues-after' field, skipping.")
             return _DISABLED
 
@@ -160,6 +166,7 @@ def parse_continuation_file(path: str) -> "ContinuationItem | object | None":
             consensus=consensus,
             max_tokens=max_tokens,
             max_concurrent_fires=max_concurrent_fires,
+            enabled=enabled,
         )
 
     except Exception as e:
@@ -211,6 +218,9 @@ class ContinuationRunner:
     def _register(self, path: str) -> None:
         result = parse_continuation_file(path)
         if result is _DISABLED:
+            # parse returned _DISABLED for "hard unregisterable" reasons
+            # (missing continues-after on an enabled continuation). Pull
+            # any previous registration.
             self._unregister(path)
             return
         if result is None:
@@ -219,9 +229,16 @@ class ContinuationRunner:
         item = result
         self._unregister(path)
         self._items[path] = item
+        # registered-count metric tracks only enabled continuations; the
+        # dispatcher filters on enabled so disabled entries never fire.
         if harness_continuation_items_registered is not None:
-            harness_continuation_items_registered.set(len(self._items))
-        logger.info(f"Continuation '{item.name}' registered (continues-after: {item.continues_after}).")
+            harness_continuation_items_registered.set(
+                sum(1 for i in self._items.values() if i.enabled)
+            )
+        if item.enabled:
+            logger.info(f"Continuation '{item.name}' registered (continues-after: {item.continues_after}).")
+        else:
+            logger.info(f"Continuation '{item.name}' disabled — listed but not subscribing.")
 
     def _unregister(self, path: str) -> None:
         existing = self._items.pop(path, None)
@@ -271,12 +288,21 @@ class ContinuationRunner:
                 self._register(os.path.join(CONTINUATIONS_DIR, filename))
 
     def items(self) -> list[dict]:
-        """Return a serializable snapshot of currently registered continuation items."""
+        """Return a serializable snapshot of all continuation items (enabled + disabled)."""
         result = []
         for item in self._items.values():
+            # Serialize continues_after: list when >1 entry, single
+            # string when 1, None for disabled entries that have no
+            # upstream specified (legal only when enabled=False).
+            if not item.continues_after:
+                ca: str | list[str] | None = None
+            elif len(item.continues_after) > 1:
+                ca = item.continues_after
+            else:
+                ca = item.continues_after[0]
             result.append({
                 "name": item.name,
-                "continues_after": item.continues_after if len(item.continues_after) > 1 else item.continues_after[0],
+                "continues_after": ca,
                 "on_success": item.on_success,
                 "on_error": item.on_error,
                 "trigger_when": item.trigger_when,
@@ -288,6 +314,7 @@ class ContinuationRunner:
                 "max_tokens": item.max_tokens,
                 "max_concurrent_fires": item.max_concurrent_fires,
                 "active_fires": len(self._fires_by_name.get(item.name, set())),
+                "enabled": item.enabled,
             })
         return result
 
@@ -297,6 +324,10 @@ class ContinuationRunner:
         # sessions whose required upstream never fires cannot leak memory (#557).
         self._evict_stale_fanin()
         for item in list(self._items.values()):
+            # Disabled continuations stay in _items for listing purposes
+            # only — never subscribe to upstream events.
+            if not item.enabled:
+                continue
             outcome_matches = (success and item.on_success) or (not success and item.on_error)
             content_matches = item.trigger_when is None or item.trigger_when in response
 

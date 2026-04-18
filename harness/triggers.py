@@ -65,11 +65,12 @@ def parse_trigger_file(path: str) -> TriggerItem | object | None:
         enabled = True
         if "enabled" in fields:
             enabled = str(fields["enabled"]).lower() not in ("false", "")
-        if not enabled:
-            logger.info(f"Trigger file {path}: disabled, skipping.")
-            return _DISABLED
 
         endpoint = fields.get("endpoint") or None
+        if not endpoint and not enabled:
+            # Disabled trigger with no endpoint — still list it so the
+            # dashboard can show it. Use a placeholder endpoint for display.
+            endpoint = f"disabled:{Path(path).stem}"
         if not endpoint:
             logger.warning(f"Trigger file {path}: missing 'endpoint' in frontmatter, skipping.")
             return None
@@ -131,20 +132,25 @@ class TriggerRunner:
 
     def _register(self, path: str, *, count_reload: bool = False) -> None:
         result = parse_trigger_file(path)
-        if result is _DISABLED:
-            self._unregister(path, count_reload=count_reload)
-            return
         if result is None:
             # Parse error — preserve the last known good registration.
             return
         item = result
         self._unregister(path)
         self._items[path] = item
+        # Registered-count metric reflects only enabled triggers (the
+        # ones that actually accept inbound POSTs); disabled are listed
+        # but not counted.
         if harness_triggers_items_registered is not None:
-            harness_triggers_items_registered.set(len(self._items))
+            harness_triggers_items_registered.set(
+                sum(1 for i in self._items.values() if i.enabled)
+            )
         if count_reload and harness_triggers_reloads_total is not None:
             harness_triggers_reloads_total.inc()
-        logger.info(f"Trigger '{item.name}' registered at endpoint /{item.endpoint}.")
+        if item.enabled:
+            logger.info(f"Trigger '{item.name}' registered at endpoint /{item.endpoint}.")
+        else:
+            logger.info(f"Trigger '{item.name}' disabled — listed but endpoint not served.")
 
     def _unregister(self, path: str, *, count_reload: bool = False) -> None:
         existing = self._items.pop(path, None)
@@ -188,7 +194,15 @@ class TriggerRunner:
         return result
 
     def items_by_endpoint(self) -> dict[str, TriggerItem]:
-        return {item.endpoint: item for item in self._items.values()}
+        # Only enabled triggers are routable; disabled ones stay in
+        # `_items` for listing purposes but must not accept inbound
+        # POSTs. Returning only enabled here means the dispatcher
+        # 404's on any endpoint whose trigger file is disabled.
+        return {
+            item.endpoint: item
+            for item in self._items.values()
+            if item.enabled
+        }
 
     async def run(self) -> None:
         logger.info(f"Trigger runner watching {TRIGGERS_DIR}")

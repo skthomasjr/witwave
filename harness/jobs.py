@@ -57,6 +57,10 @@ class JobItem:
     max_tokens: int | None = None
     task: asyncio.Task | None = field(default=None, compare=False)
     running: bool = False
+    # When False, the job is listed in /jobs for dashboard visibility but
+    # no cron/run-once task is created. Flipping enabled:true in the md
+    # frontmatter triggers a reload and the scheduler registers it.
+    enabled: bool = True
 
 
 # Sentinel distinguishing "file parsed cleanly but is disabled" from
@@ -93,11 +97,11 @@ def parse_job_file(path: str) -> "JobItem | object | None":
         if "enabled" in fields:
             enabled = str(fields["enabled"]).lower() not in ("false", "")
 
-        if not enabled:
-            logger.info(f"Job file {path}: disabled, skipping.")
-            return _DISABLED
-
-        if schedule and not croniter.is_valid(schedule):
+        # Disabled jobs bypass cron validation — a busted schedule on a
+        # job that isn't going to fire shouldn't be a parse error, and
+        # keeping them listed lets operators see what's parked without
+        # grepping .md files on the filesystem.
+        if enabled and schedule and not croniter.is_valid(schedule):
             logger.warning(f"Job file {path}: invalid cron expression '{schedule}', skipping.")
             return None
 
@@ -107,7 +111,18 @@ def parse_job_file(path: str) -> "JobItem | object | None":
             # Generate a deterministic UUID from the agent name and filename
             session_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{AGENT_NAME}.{filename}"))
 
-        return JobItem(path=path, name=name, schedule=schedule, session_id=session_id, content=content, model=model, backend_id=backend_id, consensus=consensus, max_tokens=max_tokens)
+        return JobItem(
+            path=path,
+            name=name,
+            schedule=schedule,
+            session_id=session_id,
+            content=content,
+            model=model,
+            backend_id=backend_id,
+            consensus=consensus,
+            max_tokens=max_tokens,
+            enabled=enabled,
+        )
 
     except Exception as e:
         if harness_job_parse_errors_total is not None:
@@ -244,12 +259,6 @@ class JobRunner:
 
     async def _register(self, path: str) -> None:
         result = parse_job_file(path)
-        if result is _DISABLED:
-            # File went from enabled to disabled — stop the running cron.
-            cancelled = self._unregister(path)
-            if cancelled is not None:
-                await asyncio.gather(cancelled, return_exceptions=True)
-            return
         if result is None:
             # Parse error — preserve the last known good registration so a
             # transient syntax issue doesn't drop a healthy job.
@@ -258,6 +267,19 @@ class JobRunner:
         cancelled = self._unregister(path)
         if cancelled is not None:
             await asyncio.gather(cancelled, return_exceptions=True)
+
+        # Disabled: listed for dashboard visibility but no cron. Flipping
+        # enabled:true triggers a file-watch reload and this method runs
+        # again to create the cron task.
+        if not item.enabled:
+            self._items[path] = item
+            if harness_job_items_registered is not None:
+                harness_job_items_registered.set(
+                    sum(1 for i in self._items.values() if i.enabled)
+                )
+            logger.info(f"Job '{item.name}' disabled — listed but not scheduled.")
+            return
+
         task = asyncio.create_task(run_job(item, self._bus, self._semaphore, self._backends_ready))
 
         def _task_done_callback(t: asyncio.Task, _name: str = item.name) -> None:
@@ -277,7 +299,7 @@ class JobRunner:
             logger.info(f"Job '{item.name}' registered. Mode: run-once")
 
     def items(self) -> list[dict]:
-        """Return a serializable snapshot of currently registered job items."""
+        """Return a serializable snapshot of all job items (enabled + disabled)."""
         result = []
         for item in self._items.values():
             result.append({
@@ -289,6 +311,7 @@ class JobRunner:
                 "consensus": [asdict(e) for e in item.consensus],
                 "max_tokens": item.max_tokens,
                 "running": item.running,
+                "enabled": item.enabled,
             })
         return result
 
