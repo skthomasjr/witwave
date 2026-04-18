@@ -112,6 +112,29 @@ def _to_dict(obj: Any) -> Any:
     return obj
 
 
+_REDACTED = "***REDACTED***"
+
+
+def _redact_secret_payload(obj: Any) -> Any:
+    """Replace .data / .stringData values on Secret objects with _REDACTED (#775).
+
+    Only triggers when the top-level object advertises kind == "Secret".
+    The keys themselves are retained (so callers can still see what
+    fields exist) — only the base64-encoded payload is removed.
+    Non-Secret kinds pass through unchanged.
+    """
+    if not isinstance(obj, dict):
+        return obj
+    if obj.get("kind") != "Secret":
+        return obj
+    redacted = dict(obj)
+    for field in ("data", "string_data", "stringData"):
+        payload = redacted.get(field)
+        if isinstance(payload, dict) and payload:
+            redacted[field] = {k: _REDACTED for k in payload}
+    return redacted
+
+
 def _handler_span(tool: str, attributes: dict[str, Any] | None = None):
     """Open the outer ``mcp.handler`` SERVER span for a tool invocation."""
     attrs: dict[str, Any] = {"mcp.server": "kubernetes", "mcp.tool": tool}
@@ -188,8 +211,11 @@ def list_resources(
             metadata = getattr(result, "metadata", None)
             if metadata is not None:
                 next_token = getattr(metadata, "continue_", None) or getattr(metadata, "_continue", "") or ""
+            # Redact Secret payloads by default (#775). If the caller
+            # really wants secret material they must go through
+            # read_secret_value, which is audited separately.
             return {
-                "items": [_to_dict(item) for item in items],
+                "items": [_redact_secret_payload(_to_dict(item)) for item in items],
                 "continue": next_token,
             }
         except Exception as exc:
@@ -215,7 +241,8 @@ def get_resource(
             if namespace:
                 kwargs["namespace"] = namespace
             with _api_span("get", kind, {"k8s.name": name, "k8s.namespace": namespace}):
-                return _to_dict(resource.get(**kwargs))
+                # Redact Secret payload before returning (#775).
+                return _redact_secret_payload(_to_dict(resource.get(**kwargs)))
         except Exception as exc:
             set_span_error(_h, exc)
             raise
@@ -259,7 +286,7 @@ def describe(
             if namespace:
                 kwargs["namespace"] = namespace
             with _api_span("get", kind, {"k8s.name": name, "k8s.namespace": namespace}):
-                obj = _to_dict(resource.get(**kwargs))
+                obj = _redact_secret_payload(_to_dict(resource.get(**kwargs)))
 
             events: list[dict] = []
             try:
@@ -277,6 +304,53 @@ def describe(
                 log.warning("failed to fetch events for %s/%s: %s", kind, name, e)
 
             return {"object": obj, "events": events}
+        except Exception as exc:
+            set_span_error(_h, exc)
+            raise
+
+
+@mcp.tool()
+def read_secret_value(
+    name: str,
+    namespace: str,
+    confirm: bool = False,
+) -> dict:
+    """Return the base64-encoded data payload of a Secret.
+
+    Explicit-opt-in audited read (#775). Separate tool so that the
+    default fetch paths (get_resource/list_resources/describe) redact
+    Secret payloads and only this tool — invoked with an explicit
+    ``confirm=True`` — exposes them. The span attributes mark the call
+    as secret-bearing so OTel/alerting can raise on usage.
+    """
+    if not isinstance(name, str) or not _DNS1123_SUBDOMAIN_RE.fullmatch(name):
+        raise ValueError(
+            f"read_secret_value: 'name' must be a DNS-1123 subdomain (got {name!r})"
+        )
+    if not isinstance(namespace, str) or not _DNS1123_SUBDOMAIN_RE.fullmatch(namespace):
+        raise ValueError(
+            f"read_secret_value: 'namespace' must be a DNS-1123 subdomain (got {namespace!r})"
+        )
+    if not confirm:
+        raise ValueError(
+            "read_secret_value: call requires confirm=True — this tool exposes "
+            "raw Secret material into logs and memory; pass confirm=True only "
+            "when the caller genuinely needs the payload."
+        )
+    with _handler_span(
+        "read_secret_value",
+        {"k8s.name": name, "k8s.namespace": namespace, "k8s.secret_read": True},
+    ) as _h:
+        try:
+            core = client.CoreV1Api(_api())
+            with _api_span("get", "Secret", {"k8s.name": name, "k8s.namespace": namespace}):
+                sec = core.read_namespaced_secret(name=name, namespace=namespace)
+            return {
+                "name": name,
+                "namespace": namespace,
+                "type": getattr(sec, "type", None),
+                "data": dict(getattr(sec, "data", None) or {}),
+            }
         except Exception as exc:
             set_span_error(_h, exc)
             raise
