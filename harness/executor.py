@@ -28,6 +28,7 @@ from utils import ConsensusEntry
 from log_utils import _append_log
 from metrics import (
     harness_a2a_last_request_timestamp_seconds,
+    harness_a2a_prompt_oversize_total,
     harness_a2a_request_duration_seconds,
     harness_a2a_requests_total,
     harness_a2a_traces_received_total,
@@ -70,6 +71,11 @@ CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversa
 
 MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "10000"))
 TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
+# A2A inbound prompt size cap (#783). Mirrors the trigger-side
+# MAX_TRIGGER_BODY_BYTES (#529) so the harness can't buffer an
+# arbitrarily large prompt, log it, and forward it to a backend.
+# Default 1 MiB; set A2A_MAX_PROMPT_BYTES=0 to disable.
+A2A_MAX_PROMPT_BYTES = int(os.environ.get("A2A_MAX_PROMPT_BYTES", str(1_048_576)))
 # Maximum number of bytes of prompt text included in INFO-level log messages.
 # Set to 0 to suppress prompt text from logs entirely; set higher for more context.
 LOG_PROMPT_MAX_BYTES = int(os.environ.get("LOG_PROMPT_MAX_BYTES", "200"))
@@ -756,6 +762,47 @@ class AgentExecutor(A2AAgentExecutor):
         _exec_start = time.monotonic()
         prompt = context.get_user_input()
         metadata = context.message.metadata or {}
+        # A2A inbound prompt size cap (#783). Check before logging,
+        # routing, or backend dispatch so an oversize payload never
+        # exercises the rest of the pipeline. Size is measured on the
+        # UTF-8 byte encoding so operators can reason about a fixed
+        # byte budget rather than a Python str length.
+        if A2A_MAX_PROMPT_BYTES > 0 and prompt:
+            try:
+                _prompt_bytes = len(prompt.encode("utf-8", errors="replace"))
+            except Exception:
+                _prompt_bytes = len(prompt)
+            if _prompt_bytes > A2A_MAX_PROMPT_BYTES:
+                logger.warning(
+                    "A2A execute() rejected: prompt %d bytes > A2A_MAX_PROMPT_BYTES=%d (#783).",
+                    _prompt_bytes, A2A_MAX_PROMPT_BYTES,
+                )
+                if harness_a2a_prompt_oversize_total is not None:
+                    try:
+                        harness_a2a_prompt_oversize_total.inc()
+                    except Exception:
+                        pass
+                if harness_a2a_requests_total is not None:
+                    try:
+                        harness_a2a_requests_total.labels(status="error").inc()
+                    except Exception:
+                        pass
+                if harness_a2a_request_duration_seconds is not None:
+                    try:
+                        harness_a2a_request_duration_seconds.observe(time.monotonic() - _exec_start)
+                    except Exception:
+                        pass
+                if harness_a2a_last_request_timestamp_seconds is not None:
+                    try:
+                        harness_a2a_last_request_timestamp_seconds.set(time.time())
+                    except Exception:
+                        pass
+                await event_queue.enqueue_event(
+                    new_agent_text_message(
+                        f"Error: prompt {_prompt_bytes} bytes exceeds A2A_MAX_PROMPT_BYTES={A2A_MAX_PROMPT_BYTES}."
+                    )
+                )
+                return
         _raw_sid = "".join(c for c in str(context.context_id or metadata.get("session_id") or "").strip()[:256] if c >= " ")
         session_id = _raw_sid or str(uuid.uuid4())
         # Explicit backend_id in metadata takes priority; otherwise use routing config.

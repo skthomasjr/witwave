@@ -58,6 +58,10 @@ harness_log_write_errors_total: prometheus_client.Counter | None = None
 harness_lru_cache_utilization_percent: prometheus_client.Gauge | None = None
 harness_model_requests_total: prometheus_client.Counter | None = None
 harness_prompt_length_bytes: prometheus_client.Histogram | None = None
+# A2A prompt-size cap rejections (#783). Counter — bumped once per
+# execute() rejection so operators can alert on clients attempting
+# to forward oversize prompts.
+harness_a2a_prompt_oversize_total: prometheus_client.Counter | None = None
 harness_running_tasks: prometheus_client.Gauge | None = None
 harness_response_length_bytes: prometheus_client.Histogram | None = None
 harness_startup_duration_seconds: prometheus_client.Gauge | None = None
@@ -135,6 +139,11 @@ if _enabled:
         "harness_a2a_requests_total",
         "Total A2A HTTP requests by outcome.",
         ["status"],
+    )
+    harness_a2a_prompt_oversize_total = prometheus_client.Counter(
+        "harness_a2a_prompt_oversize_total",
+        "Total A2A execute() calls rejected because the prompt exceeded "
+        "A2A_MAX_PROMPT_BYTES (#783).",
     )
     harness_a2a_traces_received_total = prometheus_client.Counter(
         "harness_a2a_traces_received_total",
