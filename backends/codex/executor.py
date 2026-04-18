@@ -1042,15 +1042,30 @@ async def run_query(
                             logger.warning("Session %r: on_chunk callback raised: %s", session_id, _e)
                 # Check usage on response events — response.completed carries usage
                 # in event.data.response (ResponseCompletedEvent.response = Response)
-                _usage = getattr(data, "usage", None) or getattr(getattr(data, "response", None), "usage", None)
-                if _usage is not None:
-                    _candidate = getattr(_usage, "total_tokens", None) or getattr(_usage, "output_tokens", None)
-                    if _candidate is not None:
-                        _total_tokens = max(_total_tokens, int(_candidate))
-                        if max_tokens is not None and _total_tokens >= max_tokens:
-                            if backend_budget_exceeded_total is not None:
-                                backend_budget_exceeded_total.labels(**_LABELS).inc()
-                            raise BudgetExceededError(_total_tokens, max_tokens, list(collected))
+                try:
+                    _usage = getattr(data, "usage", None) or getattr(getattr(data, "response", None), "usage", None)
+                    if _usage is not None:
+                        _candidate = getattr(_usage, "total_tokens", None) or getattr(_usage, "output_tokens", None)
+                        if _candidate is not None:
+                            _total_tokens = max(_total_tokens, int(_candidate))
+                            if max_tokens is not None and _total_tokens >= max_tokens:
+                                if backend_budget_exceeded_total is not None:
+                                    backend_budget_exceeded_total.labels(**_LABELS).inc()
+                                raise BudgetExceededError(_total_tokens, max_tokens, list(collected))
+                except BudgetExceededError:
+                    raise
+                except Exception as _usage_exc:
+                    # Context-usage fetch/parse failure (#803). Best-effort
+                    # counter bump; never let usage extraction break the
+                    # outer query.
+                    logger.debug("context usage extraction failed: %s", _usage_exc)
+                    if backend_sdk_context_fetch_errors_total is not None:
+                        try:
+                            backend_sdk_context_fetch_errors_total.labels(
+                                **_LABELS, model=sanitize_model_label(resolved_model)
+                            ).inc()
+                        except Exception:
+                            pass
             elif event.type == "agent_updated_stream_event":
                 _turn_count += 1
             elif event.type == "run_item_stream_event":

@@ -78,6 +78,10 @@ backend_mcp_command_rejected_total: prometheus_client.Counter | None = None
 backend_sdk_errors_total: prometheus_client.Counter | None = None
 backend_sdk_result_errors_total: prometheus_client.Counter | None = None
 backend_sdk_client_errors_total: prometheus_client.Counter | None = None
+backend_sdk_context_fetch_errors_total: prometheus_client.Counter | None = None
+
+# Retry / recovery metrics (parity with claude — #803)
+backend_task_retries_total: prometheus_client.Counter | None = None
 
 # File watcher metrics
 backend_watcher_events_total: prometheus_client.Counter | None = None
@@ -416,6 +420,23 @@ if _enabled:
         "backend_sdk_client_errors_total",
         "Total backend client connection-level failures (setup/teardown).",
         ["agent", "agent_id", "backend", "model"],
+    )
+    # Context-usage fetch failures (#803). Parity with claude. Codex currently
+    # reads token totals from the Agents SDK result object, so this counter
+    # bumps whenever that extraction raises or returns a malformed payload.
+    backend_sdk_context_fetch_errors_total = prometheus_client.Counter(
+        "backend_sdk_context_fetch_errors_total",
+        "Total context usage fetch failures.",
+        ["agent", "agent_id", "backend", "model"],
+    )
+    # Task retries (#803). Parity with claude's retry-on-session-collision
+    # path. Codex does not currently retry internally, so this counter ships
+    # as a zero-value placeholder so dashboards can union across backends
+    # without missing-label gaps; any future retry path can bump it.
+    backend_task_retries_total = prometheus_client.Counter(
+        "backend_task_retries_total",
+        "Total task retries due to session already in use.",
+        ["agent", "agent_id", "backend"],
     )
 
     # File watchers
