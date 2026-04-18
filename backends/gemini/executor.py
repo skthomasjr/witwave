@@ -1856,6 +1856,18 @@ class AgentExecutor(A2AAgentExecutor):
         # to 1 in one place.
         if backend_hooks_enforcement_mode is not None:
             backend_hooks_enforcement_mode.labels(**_LABELS).set(0)
+        # hook.decision harness side-channel (#963). Skeleton only: the
+        # AFC-off path that will actually evaluate PreToolUse denies
+        # lands in #640 / #808. Wiring the import + helper now means the
+        # eventual enforcement path calls a function that already exists
+        # and uses the same shared/hook_events.schedule_post transport as
+        # claude + codex, avoiding a drift window where gemini evaluates
+        # locally but the harness side-channel is silent.
+        try:
+            import hook_events as _hev  # noqa: F401
+            self._hook_events_ready = True
+        except Exception:  # pragma: no cover — shared mount failure
+            self._hook_events_ready = False
         # Lifespan-scoped MCP session stack (#640 — mirrors codex #526).
         # MCP stdio subprocesses are entered once at startup (or on
         # hot-reload) and reused across requests. The lock serialises
@@ -1893,6 +1905,46 @@ class AgentExecutor(A2AAgentExecutor):
         self._mcp_parked_stack_max_age_s: float = max(
             float(TASK_TIMEOUT_SECONDS) * 2.0, 600.0,
         )
+
+    def _post_hook_decision_event(
+        self,
+        *,
+        session_id: str,
+        tool: str,
+        decision: str,
+        rule_name: str,
+        reason: str,
+        source: str = "baseline",
+        traceparent: str | None = None,
+    ) -> None:
+        """Post a hook.decision event to the harness side-channel (#963).
+
+        Skeleton today — gemini's PreToolUse path is blocked on the
+        AFC-off work in #640/#808, so this helper has no inline caller
+        yet. Adding the full wiring now means the eventual enforcement
+        path can decide-then-post in one call without a second plumbing
+        change, keeping gemini consistent with claude (#779) and codex
+        (#937). Fire-and-forget via schedule_post so a transport stall
+        cannot back-pressure the evaluator.
+        """
+        if not getattr(self, "_hook_events_ready", False):
+            return
+        try:
+            import hook_events as _hev
+            _hev.schedule_post(
+                {
+                    "agent": AGENT_OWNER or AGENT_NAME,
+                    "session_id": session_id,
+                    "tool": tool,
+                    "decision": decision,
+                    "rule_name": rule_name,
+                    "reason": reason,
+                    "source": source,
+                    "traceparent": traceparent,
+                }
+            )
+        except Exception as _hev_exc:
+            logger.debug("hook.decision transport scheduling failed: %r", _hev_exc)
 
     def _mcp_watchers(self):
         """Return callables for GEMINI.md, hooks.yaml, mcp.json, and parked-stack watchdog (#371, #631, #640, #735)."""
