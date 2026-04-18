@@ -845,7 +845,11 @@ def _load_mcp_config() -> dict:
         # The SDK expects the inner servers dict directly, not the wrapper object.
         if isinstance(data, dict) and "mcpServers" in data and isinstance(data["mcpServers"], dict):
             return _sanitize_mcp_servers(data["mcpServers"])
-        return _sanitize_mcp_servers(data) if isinstance(data, dict) else data
+        if not isinstance(data, dict):
+            raise ValueError(
+                f"mcp.json must be a JSON object (got {type(data).__name__})"
+            )
+        return _sanitize_mcp_servers(data)
     except Exception as e:
         if backend_mcp_config_errors_total is not None:
             backend_mcp_config_errors_total.labels(**_LABELS).inc()
