@@ -54,7 +54,7 @@ them — today's state), `1`=enforcing, `-1`=disabled (#736).
 | `GET /metrics`                | Prometheus metrics                                                                                |
 | `GET /conversations`          | Conversation log (JSONL, filterable by `since`/`limit`)                                           |
 | `GET /trace`                  | Trace log (JSONL, filterable by `since`/`limit`)                                                  |
-| `POST /mcp`                   | MCP JSON-RPC server (`initialize`, `tools/list`, `tools/call`); exposes a single `ask_agent` tool. Requires `Authorization: Bearer $CONVERSATIONS_AUTH_TOKEN` (#516) |
+| `POST /mcp`                   | MCP JSON-RPC server (`initialize`, `tools/list`, `tools/call`); exposes a single `ask_agent` tool. Requires `Authorization: Bearer $CONVERSATIONS_AUTH_TOKEN` (#516). `session_id` is routed through `shared/session_binding.derive_session_id` with a bearer-token fingerprint before lookup/insert (#935/#941) for parity with claude and codex. OTel spans now cover the `/mcp` request flow (#966). |
 
 ## Key files
 
@@ -110,7 +110,10 @@ exceed this size), `METRICS_ENABLED`, `CONVERSATIONS_AUTH_TOKEN`,
 redaction toggle, #714), `TASK_STORE_PATH`, `WORKER_MAX_RESTARTS`, `LOG_PROMPT_MAX_BYTES` (max bytes of
 prompt logged at INFO; default 200; set to 0 to suppress), `MCP_ALLOWED_COMMANDS` /
 `MCP_ALLOWED_COMMAND_PREFIXES` / `MCP_ALLOWED_CWD_PREFIXES` (stdio MCP entry allow-list, #730; rejections
-counted on `backend_mcp_command_rejected_total{reason}`).
+counted on `backend_mcp_command_rejected_total{reason}`). Default allow-list pruned to
+`mcp-kubernetes,mcp-helm,uv,uvx` with the absolute-path basename fallback removed (#862); interpreter args
+are additionally vetted via `mcp_command_args_safe()` (#930). gemini AFC history duplication was fixed so
+turns are no longer written twice when AFC loops through multiple function calls (#883).
 
 ## Tools / MCP
 

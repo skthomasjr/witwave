@@ -37,7 +37,9 @@ tool call counts, per-request `/mcp` observability (`backend_mcp_requests_total`
 `backend_mcp_request_duration_seconds`), SQLite task-store lock-wait (`backend_sqlite_task_store_lock_wait_seconds`),
 and time-to-first-message. Hooks denials are counted on the canonical cross-backend
 `backend_hooks_denials_total{tool,source,rule}`; the legacy `backend_hooks_blocked_total` alias remains for one
-release cycle. All histograms declare explicit bucket tuples.
+release cycle. Added this cycle: `backend_webhook_timeout_total` (webhook delivery timeouts surfaced separately
+from generic errors) and `backend_allowed_tools_reload_total` (count of tool-allow-list hot-reloads). All
+histograms declare explicit bucket tuples.
 
 **Hooks (PreToolUse / PostToolUse)** — A two-layer policy engine wraps every tool call the SDK makes. A conservative
 **baseline** of deny rules ships with the executor and blocks the most obvious-dangerous shell patterns (`rm -rf /`,
@@ -58,7 +60,7 @@ writes one row per tool call to `logs/tool-activity.jsonl` with `event_type: "to
 | `GET /trace`                  | Tool-activity feed (JSONL, filterable by `since`/`limit`) — carries `tool_use`, `tool_result`, and `tool_audit` event types. Requires `Authorization: Bearer $CONVERSATIONS_AUTH_TOKEN` (shared token gate with `/conversations`, `/mcp`, `/api/traces`) |
 | `GET /api/traces`             | OTel trace listing for the dashboard. Requires `Authorization: Bearer $CONVERSATIONS_AUTH_TOKEN` (parity with the other protected endpoints) |
 | `GET /api/traces/{id}`        | Single-trace detail for the dashboard. Requires `Authorization: Bearer $CONVERSATIONS_AUTH_TOKEN` |
-| `POST /mcp`                   | MCP JSON-RPC server (`initialize`, `tools/list`, `tools/call`); exposes a single `ask_agent` tool. Requires `Authorization: Bearer $CONVERSATIONS_AUTH_TOKEN` (#518) |
+| `POST /mcp`                   | MCP JSON-RPC server (`initialize`, `tools/list`, `tools/call`); exposes a single `ask_agent` tool. Requires `Authorization: Bearer $CONVERSATIONS_AUTH_TOKEN` (#518). The request's `session_id` is routed through `shared/session_binding.derive_session_id` with a bearer-token fingerprint before lookup/insert (#867) so a caller cannot hijack another caller's session; `SESSION_ID_SECRET` HMAC-derives the bound ID when set. OTel spans are emitted for `/mcp` request flow (#966). |
 
 ## Key files
 
@@ -112,7 +114,11 @@ toggle, #714), `TASK_STORE_PATH`, `WORKER_MAX_RESTARTS`, `LOG_PROMPT_MAX_BYTES` 
 default 200; set to 0 to suppress), `HOOKS_CONFIG_PATH` (path to `hooks.yaml`; default `/home/agent/.claude/hooks.yaml`),
 `HOOKS_BASELINE_ENABLED` (default `true`; set to `false` to disable the baseline deny rules),
 `MCP_ALLOWED_COMMANDS` / `MCP_ALLOWED_COMMAND_PREFIXES` / `MCP_ALLOWED_CWD_PREFIXES` (stdio MCP entry allow-list,
-#711; rejections counted on `backend_mcp_command_rejected_total{reason}`).
+#711; rejections counted on `backend_mcp_command_rejected_total{reason}`). The default allow-list is pruned to
+`mcp-kubernetes,mcp-helm,uv,uvx` (#862); the absolute-path basename fallback was removed so a path like
+`/usr/local/bin/uvx` no longer passes on basename alone — the full path must match
+`MCP_ALLOWED_COMMAND_PREFIXES`. Interpreter invocations (`python -c`, `node -e`, …) are additionally vetted by
+`mcp_command_args_safe()` against an args deny-list (#930).
 
 ## Hook configuration
 

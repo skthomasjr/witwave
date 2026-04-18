@@ -66,6 +66,28 @@ Its spec mirrors the per-agent shape used by the Helm chart's `agents[]`
 list. See `config/samples/nyx_v1alpha1_nyxagent.yaml` for a minimal example
 and `api/v1alpha1/nyxagent_types.go` for the full schema.
 
+## Cycle 2 reconciler refinements
+
+- **Team-label flips enqueue peers in BOTH teams.** When `agent.team` changes, the reconciler now enqueues
+  every NyxAgent in the *old* team and every NyxAgent in the *new* team (#899). Without this, the agent
+  leaving a team would orphan the peers' manifest ConfigMap because their watch keyed on the new team never
+  fired.
+- **Live APIReader on manifest reconcile.** The team manifest ConfigMap path now reads with a direct
+  APIReader instead of the cache (#900) so a just-created or just-label-flipped NyxAgent is visible in the
+  same reconcile pass that triggered the rebuild — the cache lag used to produce a manifest CM that was
+  missing the triggering agent for ~one resync.
+- **Finalize rewrites the team manifest.** When a NyxAgent is being deleted, the finalize path rebuilds the
+  team manifest ConfigMap with the terminating agent excluded *before* removing the finalizer (#902) so
+  peers never briefly see a manifest that still references the dead pod.
+- **`teardown_complete_generation` annotation.** Disabled agents (`spec.enabled=false`) are short-circuited
+  on subsequent reconciles using a generation annotation (#903), so periodic resync doesn't re-run the
+  (idempotent but expensive) teardown logic against an already-terminated agent.
+- **409-retry on `NyxPrompt` status patches.** The status subresource writer retries with fresh
+  `resourceVersion` on 409 conflict (#905), and `nyxprompt_status_patch_conflicts_total` counts how often
+  the retry was exercised (#950) — useful for diagnosing a noisy controller-runtime cache under load.
+- **Manifest ConfigMap multi-owner flow.** The team manifest CM carries multiple `ownerReferences` (one per
+  NyxAgent in the team) so it GCs correctly only when the last member of the team is deleted (#899/#900/#902).
+
 Owned resources per `NyxAgent`:
 
 | Resource                    | When                                                     |
@@ -292,6 +314,7 @@ NyxAgent-specific domain metrics added on top (#471):
 | `nyxagent_pvc_build_errors_total`     | counter | `backend`          | Backend PVC entries skipped due to invalid spec (e.g. `storage.size` parse fail) |
 | `nyxagent_dashboard_enabled`          | gauge   | `namespace`, `name`| 1 when `spec.dashboard.enabled=true`, 0 otherwise. `sum()` for cluster total.    |
 | `nyxagent_teardown_step_errors_total` | counter | `kind`, `reason`   | Per-kind teardown failures when `spec.enabled=false` or the CR is deleted; useful for alerting when cascade cleanup is partial |
+| `nyxprompt_status_patch_conflicts_total` | counter | `namespace`, `name` | `NyxPrompt` status subresource patch 409 conflicts retried with fresh `resourceVersion` (#950). Sustained non-zero rate points at a noisy reconciler (too many concurrent writers) or cache lag under load. |
 
 NyxPrompt binding-outcome metrics (label schema `namespace`, `name`) track per-binding ConfigMap apply
 results so operators can alert on chronically unready bindings.

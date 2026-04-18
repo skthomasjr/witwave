@@ -92,6 +92,12 @@ For multi-namespace read, turn the `Role` into a `ClusterRole` and the
 narrow. Never add `secrets` without an explicit decision; Kubernetes
 Secrets are bearer-equivalent for whoever holds them.
 
+## Test coverage (#974)
+
+`tools/kubernetes/test_server.py` covers the tool handlers so regressions in the MCP server — shape of
+tool replies, error paths when the ServiceAccount lacks a verb, apply/delete propagation — surface in CI
+rather than first appearing at reconcile time. Run with `pytest tools/kubernetes/`.
+
 ## Tools
 
 | Tool              | Description                                                                     |

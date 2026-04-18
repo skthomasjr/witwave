@@ -149,9 +149,9 @@ deployments can adjust behaviour without a code change.
 | `MANIFEST_PATH` | `/home/agent/manifest.json` | Team manifest JSON file listing all agents in the deployment. |
 | `BACKENDS_READY_WARN_AFTER` | `120` | Seconds of unready backends before the warmup watcher logs a warning; also shapes the warmup-shield 503 path (#785, #925). |
 | `HOOK_POST_MAX_INFLIGHT` | `64` | Cap on simultaneous hook.decision POSTs from backend → harness; excess calls are shed and counted (#878, #931). |
-| `HOOK_EVENTS_AUTH_TOKEN` | *(unset — fail-safe reject)* | Bearer token required on `/internal/events/hook-decision`. When unset every request is 401'd; no implicit fallback to `TRIGGERS_AUTH_TOKEN` (#700, #933). |
+| `HOOK_EVENTS_AUTH_TOKEN` | *(unset — fail-safe reject)* | Canonical bearer token required on `/internal/events/hook-decision` (bound to the metrics listener, #924). `HARNESS_EVENTS_AUTH_TOKEN` is accepted as a back-compat alias with a deprecation warning (#859). When unset every request is 401'd; no implicit fallback to `TRIGGERS_AUTH_TOKEN` (#700, #933). |
 | `TRIGGERS_AUTH_TOKEN` | *(unset)* | Bearer token required on `/triggers/{endpoint}` POSTs. |
-| `ADHOC_RUN_AUTH_TOKEN` | *(unset)* | Bearer token required on `/jobs/{n}/run`, `/tasks/{n}/run`, `/heartbeat/run`. |
+| `ADHOC_RUN_AUTH_TOKEN` | *(unset)* | Bearer token required on `/heartbeat/run`, `/jobs/{n}/run`, `/tasks/{n}/run`, `/triggers/{n}/run`. Ad-hoc run handlers honour the `backends_ready` warmup shield — requests during startup return 503 rather than racing the executor (#925, #955). Advertised in `/.well-known/agent-runs.json` (#956). |
 | `CONVERSATIONS_AUTH_TOKEN` | *(unset)* | Bearer token required on `/conversations`, `/trace`, `/mcp`. Empty token logs a startup warning (#517). |
 | `SESSION_ID_SECRET` | *(unset — permissive)* | Server-side HMAC key for `derive_session_id` (#867). When set, session IDs are bound to `caller_identity` so a caller cannot hijack another caller's session. Leave unset only in single-tenant dev; set to a 256-bit random value in production. Rotating the secret invalidates in-flight session IDs — coordinate rotation with a backend restart. |
 | `CORS_ALLOW_ORIGINS` | *(empty)* | Comma-separated list of allowed Origins on non-internal endpoints. Wildcard `*` is not accepted when ad-hoc-run / trigger tokens are in use (#927). |
@@ -171,3 +171,38 @@ localhost sidecars. See the repo root `AGENTS.md` under "Routing configuration" 
 harness is a Docker container. It mounts the agent's `.nyx/` directory for configuration and writes conversation and
 trace logs to individual files under `logs/`. The `MANIFEST_PATH` environment variable points to the team manifest
 (`manifest.json`), which lists all agents in the deployment by name and URL.
+
+## Phased shutdown (#861, #923)
+
+`executor.close()` no longer runs as a single monolithic teardown. The shutdown path now splits cleanly into
+`drain_background()` (phases 1–3) and `close_backends()` (phase 4) so a misbehaving long-lived worker cannot wedge
+the whole process on SIGTERM:
+
+1. **Phase 1 — stop accepting new work.** The A2A listener, trigger handler, and ad-hoc run endpoints flip to 503
+   and the scheduler wakeup loops are cancelled.
+2. **Phase 2 — drain in-flight dispatches.** The heartbeat, job, task, continuation, and webhook bus consumers are
+   allowed to finish their current unit of work within `preStop.delaySeconds`.
+3. **Phase 3 — drain background runners.** `WebhookRunner.close()` was moved into this phase (#923) so pending
+   outbound deliveries either complete or are persisted as `pending` before the backend connections go away.
+4. **Phase 4 — close backends.** A2A HTTP clients, trace exporters, and the internal bus are closed last.
+
+Keep `terminationGracePeriodSeconds > preStop.delaySeconds` (the chart enforces this — see
+`charts/nyx/README.md`). Breaking the ordering — for example by teardown-ing `WebhookRunner` ahead of the bus
+consumers — dropped in-flight deliveries silently before #923.
+
+## Internal events (hook-decision) transport
+
+Backends POST tool-audit decisions back to the harness over an internal channel.
+
+- **Endpoint.** `POST /internal/events/hook-decision` is bound to the dedicated metrics listener on
+  `METRICS_PORT` (not the app port, #924). It is never exposed through the Service — traffic stays within the
+  pod's localhost.
+- **Auth.** Canonical env var is `HOOK_EVENTS_AUTH_TOKEN` (#859, #933). The old name `HARNESS_EVENTS_AUTH_TOKEN`
+  is still accepted as a back-compat alias and logs a deprecation warning on startup; remove the alias once a
+  rollout has completed. Unset / empty = every request is 401'd; there is no implicit fallback to
+  `TRIGGERS_AUTH_TOKEN`.
+- **Length caps.** Per-field byte caps on the POST body (`tool_name`, `tool_input`, `tool_response_preview`,
+  etc., #924) prevent an attacker-controlled tool output from driving harness memory pressure through the
+  internal channel.
+- **Backpressure.** `HOOK_POST_MAX_INFLIGHT` caps concurrent POSTs; the async dispatcher queue on codex
+  additionally sheds overflow into `backend_hook_post_shed_total` (#928).

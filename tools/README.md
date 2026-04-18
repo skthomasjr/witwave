@@ -39,6 +39,12 @@ Every MCP tool server enforces bearer-token auth via the shared `shared/mcp_auth
 is not explicitly set, the server refuses requests. Use `MCP_TOOL_AUTH_DISABLED=true` only for local dev —
 the startup log is loud on purpose.
 
+## Chart schema coverage (#973)
+
+`charts/nyx/values.schema.json` now validates `mcpTools.<name>.rbac.{create,rules}` so a typo in the RBAC
+block fails `helm template` / `helm install --dry-run` loudly instead of silently yielding a tool pod with
+a ServiceAccount but no Role binding.
+
 ## Health endpoint
 
 Every MCP tool server exposes `GET /health` on the same port as the MCP endpoint (default `8000`) for

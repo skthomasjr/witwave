@@ -95,6 +95,10 @@ Each backend:
   (`CONVERSATIONS_AUTH_TOKEN`) — parity across all three backends (#510, #516, #518). An empty token logs a
   startup warning (#517) and the shared guard refuses to serve protected endpoints unless the operator opts in
   with `CONVERSATIONS_AUTH_DISABLED=true` (documented escape hatch for local dev, loud startup log)
+- On `/mcp`, `session_id` is routed through `shared/session_binding.derive_session_id` with a bearer-token
+  fingerprint before lookup/insert — parity across all three backends (#867 claude, #929 codex, #935 gemini,
+  #941 shared path). When `SESSION_ID_SECRET` is set the bound ID is HMAC-derived from the caller identity so
+  one caller cannot hijack another's session. Leave unset only in single-tenant dev
 - Manages its own session state, conversation log (`conversation.jsonl`), and memory (`/memory/`)
 - Receives behavioral instructions via a mounted file (`CLAUDE.md` for claude, `AGENTS.md` for codex, `GEMINI.md` for gemini) and A2A identity via a mounted `agent-card.md`
 
@@ -400,14 +404,19 @@ cross-backend dashboards can union on `(agent, agent_id, backend)` without backe
   `backend_task_retries_total`, `backend_sdk_context_fetch_errors_total`,
   `backend_log_write_errors_by_logger_total`, and `backend_sdk_subprocess_spawn_duration_seconds`. All
   histograms declare explicit bucket tuples rather than relying on Prometheus defaults.
+- **claude.** Adds `backend_webhook_timeout_total` (webhook delivery timeouts surfaced separately from
+  generic errors), `backend_allowed_tools_reload_total` (count of allow-list hot-reloads), and
+  `nyxprompt_status_patch_conflicts_total` continues to be tracked on the operator side.
 - **codex.** Adds `backend_empty_prompts_total`, `backend_stderr_lines_per_task`,
   `backend_tasks_with_stderr_total`, `backend_task_retries_total`, `backend_sdk_context_fetch_errors_total`,
   `backend_log_write_errors_by_logger_total`, `backend_sdk_subprocess_spawn_duration_seconds`
-  (zero-value placeholder — the Agents SDK runs in-process), and peer-parity placeholder hook metrics
-  (`backend_hooks_warnings_total`, `backend_hooks_config_*`, `backend_hooks_active_rules`,
-  `backend_hooks_evaluations_total`, `backend_tool_audit_entries_total`). The legacy
-  `backend_codex_hooks_denials_total` alias is retained alongside the canonical
-  `backend_hooks_denials_total` during migration.
+  (zero-value placeholder — the Agents SDK runs in-process), `backend_hook_post_shed_total`
+  (hook.decision POSTs shed when the async dispatcher queue is saturated, #928), and peer-parity
+  placeholder hook metrics (`backend_hooks_warnings_total`, `backend_hooks_config_*`,
+  `backend_hooks_active_rules`, `backend_hooks_evaluations_total`, `backend_tool_audit_entries_total`).
+  The legacy `backend_codex_hooks_denials_total` alias is retained alongside the canonical
+  `backend_hooks_denials_total` during migration; emission is now gated by `EMIT_DEPRECATED_HOOK_METRICS`
+  (#940).
 - **gemini.** Adds `backend_empty_prompts_total`, `backend_sdk_subprocess_spawn_duration_seconds`,
   `backend_sdk_tokens_per_query`, `backend_sdk_tool_call_input_size_bytes`,
   `backend_sdk_tool_result_size_bytes`, `backend_mcp_server_up`, and `backend_mcp_server_exits_total`
@@ -424,8 +433,9 @@ Set on the **harness** container:
 
 | Variable                                   | Purpose                                                                                                         |
 | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| `HOOK_EVENTS_AUTH_TOKEN`                   | Bearer token required on the internal hook-decision event endpoint the backends POST to. Unset = refuse (#712). |
-| `ADHOC_RUN_AUTH_TOKEN`                     | Bearer token for `POST /jobs/<name>/run`, `/tasks/<name>/run`, `/triggers/<name>/run`. Unset = refuse (#700).   |
+| `HOOK_EVENTS_AUTH_TOKEN`                   | Canonical bearer token required on the internal hook-decision endpoint (`/internal/events/hook-decision`) backends POST to. Unset = refuse (#712, #933). `HARNESS_EVENTS_AUTH_TOKEN` is kept as a back-compat alias and logs a deprecation warning when only the old name is set (#859). The endpoint was moved onto the dedicated metrics listener and enforces per-field length caps on the POST body (#924). |
+| `ADHOC_RUN_AUTH_TOKEN`                     | Bearer token for `POST /heartbeat/run`, `/jobs/<name>/run`, `/tasks/<name>/run`, `/triggers/<name>/run`. Unset = refuse (#700). Ad-hoc run handlers now also honour the `backends_ready` warmup shield — calls during backend warmup return 503 instead of racing the executor (#925, #955). Advertised in `/.well-known/agent-runs.json` (#956). |
+| `SESSION_ID_SECRET`                        | Server-side HMAC key for `shared/session_binding.derive_session_id`. When set, session IDs on `/mcp` are bound to the caller identity so a caller cannot hijack another caller's session (#867/#929/#935/#941). Leave unset only in single-tenant dev. |
 | `CORS_ALLOW_WILDCARD`                      | Explicit ack for `CORS_ALLOW_ORIGINS=*`; template refuses the wildcard otherwise (#701).                        |
 | `A2A_MAX_PROMPT_BYTES`                     | Reject A2A prompts above this byte size at ingress; default 1 MiB, `0` disables (#783).                         |
 | `CONTINUATION_MAX_CONCURRENT_FIRES_GLOBAL` | Hard cap on in-flight continuation fires across all items; protects against fan-out storms (#781).              |
@@ -435,7 +445,9 @@ Set on the **backend** containers:
 | Variable                                   | Purpose                                                                                                         |
 | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
 | `CONVERSATIONS_AUTH_DISABLED`              | Escape hatch to run without the `CONVERSATIONS_AUTH_TOKEN` guard; loud startup log for visibility (#718).       |
-| `LOG_REDACT`                               | When truthy, conversation and response logs wrap user-prompt / agent-response content in redaction (#714).      |
+| `LOG_REDACT`                               | When truthy, conversation and response logs wrap user-prompt / agent-response content in redaction (#714). `_redact_manifest` returns a safe placeholder when an MCP manifest fails to parse (#918); `_looks_like_secret_key` skips common false-positives like `authMode` / `tokenAudience` (#920). |
+| `LOG_TRACE_CONTENT_MAX_BYTES`              | Per-entry cap on `tool_result` content serialised into trace logs; prevents a pathological tool output from bloating `tool-activity.jsonl` (#939). |
+| `EMIT_DEPRECATED_HOOK_METRICS`             | Codex-only. Gates emission of the legacy `backend_codex_hooks_denials_total` counter. Default off; set to `true` for one release cycle while dashboards migrate to `backend_hooks_denials_total` (#940). |
 | `GEMINI_MAX_HISTORY_BYTES`                 | Byte ceiling on the JSON session history file gemini persists per session; older turns truncated to fit.        |
 | `MCP_ALLOWED_COMMANDS` / `MCP_ALLOWED_COMMAND_PREFIXES` | Command allow-list for stdio MCP entries in `mcp.json`; configured per-backend (#711/#720/#730).   |
 | `MCP_ALLOWED_CWD_PREFIXES`                 | CWD allow-list for stdio MCP entries; rejections counted on `backend_mcp_command_rejected_total{reason}`.       |
@@ -480,7 +492,12 @@ Set on **MCP tool** containers:
   catching DNS-rebind attacks that check the hostname once and then flip the A record.
 - **MCP command + cwd allow-list** — every stdio entry parsed out of `mcp.json` is checked against
   `MCP_ALLOWED_COMMANDS` / `MCP_ALLOWED_COMMAND_PREFIXES` / `MCP_ALLOWED_CWD_PREFIXES` on all three
-  backends; rejections increment `backend_mcp_command_rejected_total{reason}`.
+  backends; rejections increment `backend_mcp_command_rejected_total{reason}`. The default allow-list is
+  pruned to `mcp-kubernetes,mcp-helm,uv,uvx` (#862) and the absolute-path basename fallback was removed —
+  an entry like `/usr/local/bin/uvx` no longer passes solely because `uvx` is allow-listed; the full path
+  must match a `MCP_ALLOWED_COMMAND_PREFIXES` entry. `mcp_command_args_safe()` additionally vets
+  interpreter invocations (`python -c`, `node -e`, etc.) against an args deny-list so the allow-list
+  cannot be bypassed via a permitted interpreter (#930).
 - **Operator Secret RBAC split** — `rbac.secretsWrite=false` in charts/nyx-operator drops the Secret write
   verbs while keeping reads. Credential Secrets carry `app.kubernetes.io/component: credentials` and are
   dual-checked (label + `IsControlledBy`) before any update or delete so user-created Secrets are never

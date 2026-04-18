@@ -348,7 +348,10 @@ Each backend container additionally exposes:
   MCP hosts (Claude Desktop, Cursor, VS Code extensions) to invoke the agent as a tool without going through
   harness. **All three backends require a bearer token** (`CONVERSATIONS_AUTH_TOKEN`) on `/mcp` (#510, #516, #518);
   the shared token guard also gates `/conversations` and `/trace`. If the env var is left empty the backend logs a
-  startup warning (#517) — set a non-empty token in production.
+  startup warning (#517) — set a non-empty token in production. The `session_id` attached to `/mcp` requests is
+  routed through `shared/session_binding.derive_session_id` with a bearer-token fingerprint before
+  lookup/insert on every backend (#867 claude, #929 codex, #935 gemini, #941 shared path) so a caller cannot
+  hijack another caller's session; set `SESSION_ID_SECRET` in production to HMAC-derive the bound ID.
 
 ## Memory
 
@@ -422,7 +425,11 @@ All three backends validate stdio entries in `mcp.json` against a per-backend al
 absolute-path prefixes, and working-directory prefixes before spawning the subprocess (`MCP_ALLOWED_COMMANDS`,
 `MCP_ALLOWED_COMMAND_PREFIXES`, `MCP_ALLOWED_CWD_PREFIXES`). Rejections increment
 `backend_mcp_command_rejected_total{reason}` so operators can alert on sudden spikes without parsing logs
-(claude #711, codex #720, gemini #730).
+(claude #711, codex #720, gemini #730). The default allow-list is pruned to `mcp-kubernetes,mcp-helm,uv,uvx`
+and the absolute-path basename fallback has been removed (#862): a path like `/usr/local/bin/uvx` no longer
+passes on basename alone — the full path must match `MCP_ALLOWED_COMMAND_PREFIXES`. Interpreter invocations
+(`python -c`, `node -e`, …) are additionally vetted by `mcp_command_args_safe()` against an args deny-list so
+the allow-list cannot be bypassed via a permitted interpreter (#930).
 
 ### Harness A2A ingress cap (#783)
 
@@ -469,7 +476,8 @@ pre-provisioned Secrets referenced via `existingSecret` rather than the inline `
 | `CONVERSATIONS_AUTH_TOKEN`                  | _(unset)_                       | Bearer token required to access `/conversations` and `/trace` (inbound)                                                                               |
 | `BACKEND_CONVERSATIONS_AUTH_TOKEN`          | _(unset)_                       | Bearer token forwarded to backend `/conversations` and `/trace` endpoints (set if backends require auth)                                              |
 | `TRIGGERS_AUTH_TOKEN`                       | _(unset)_                       | Bearer token required for inbound trigger requests (fallback when no per-trigger HMAC secret is set)                                                  |
-| `HOOK_EVENTS_AUTH_TOKEN`                    | _(unset)_                       | Bearer token required on the internal hook-decision event endpoint backends POST to; unset = refuse (#712)                                            |
+| `HOOK_EVENTS_AUTH_TOKEN`                    | _(unset)_                       | Canonical bearer token on `/internal/events/hook-decision` (bound to the metrics listener, #924). `HARNESS_EVENTS_AUTH_TOKEN` is a back-compat alias that logs a deprecation warning when used alone (#859). Unset = refuse (#712, #933) |
+| `SESSION_ID_SECRET`                         | _(unset — permissive)_          | HMAC key for `shared/session_binding.derive_session_id` used on `/mcp` session-id binding across all three backends (#867/#929/#935/#941). Leave unset only in single-tenant dev; set to a 256-bit random value in production |
 | `ADHOC_RUN_AUTH_TOKEN`                      | _(unset)_                       | Bearer token required for `POST /jobs/<name>/run`, `/tasks/<name>/run`, `/triggers/<name>/run`; unset = refuse (#700)                                 |
 | `CORS_ALLOW_ORIGINS`                        | _(unset)_                       | Comma-separated list of allowed CORS origins; when unset, all cross-origin requests are denied (logs a warning)                                       |
 | `CORS_ALLOW_WILDCARD`                       | `false`                         | Explicit acknowledgement for `CORS_ALLOW_ORIGINS=*`; template refuses the wildcard otherwise (#701)                                                   |

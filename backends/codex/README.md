@@ -57,7 +57,9 @@ MCP config metrics (`backend_mcp_config_errors_total`, `backend_mcp_config_reloa
 #801), and a `backend_sdk_subprocess_spawn_duration_seconds` zero-value placeholder so cross-backend
 dashboards carry the series (codex's OpenAI Agents SDK runs in-process so nothing literal is measured).
 Hook denials are counted on the canonical cross-backend `backend_hooks_denials_total{tool,source,rule}`;
-the legacy `backend_codex_hooks_denials_total{rule}` alias is retained through one release cycle. Peer-parity
+the legacy `backend_codex_hooks_denials_total{rule}` alias is retained through one release cycle and its
+emission is now gated by `EMIT_DEPRECATED_HOOK_METRICS` (off by default, #940). `backend_hook_post_shed_total`
+tracks hook.decision POSTs shed when the async dispatcher queue is saturated (#928). Peer-parity
 placeholders for the rest of claude's hook metric family (`backend_hooks_warnings_total`,
 `backend_hooks_config_*`, `backend_hooks_active_rules`, `backend_hooks_evaluations_total`,
 `backend_tool_audit_entries_total`) register at zero until the non-shell hook path lands (#586 deferred).
@@ -74,7 +76,7 @@ LRU eviction cleanup fails.
 | `GET /metrics`                | Prometheus metrics                                                                                |
 | `GET /conversations`          | Conversation log (JSONL, filterable by `since`/`limit`)                                           |
 | `GET /trace`                  | Trace log (JSONL, filterable by `since`/`limit`)                                                  |
-| `POST /mcp`                   | MCP JSON-RPC server (`initialize`, `tools/list`, `tools/call`); exposes a single `ask_agent` tool. Requires `Authorization: Bearer $CONVERSATIONS_AUTH_TOKEN` (#510) |
+| `POST /mcp`                   | MCP JSON-RPC server (`initialize`, `tools/list`, `tools/call`); exposes a single `ask_agent` tool. Requires `Authorization: Bearer $CONVERSATIONS_AUTH_TOKEN` (#510). `session_id` is routed through `shared/session_binding.derive_session_id` with a bearer-token fingerprint before lookup/insert (#929/#941) for parity with claude and gemini. OTel spans now cover the `/mcp` request flow (#966). |
 
 ## Key files
 
@@ -125,7 +127,9 @@ default `gpt-5.1-codex`), `METRICS_ENABLED`, `CONVERSATIONS_AUTH_TOKEN`,
 redaction toggle, #714), `TASK_STORE_PATH`, `WORKER_MAX_RESTARTS`, `COMPUTER_USE_ENABLED` (activates
 Playwright browser tool), `LOG_PROMPT_MAX_BYTES` (max bytes of prompt logged at INFO; default 200; set to 0
 to suppress), `MCP_ALLOWED_COMMANDS` / `MCP_ALLOWED_COMMAND_PREFIXES` / `MCP_ALLOWED_CWD_PREFIXES` (stdio
-MCP entry allow-list, #720; rejections counted on `backend_mcp_command_rejected_total{reason}`).
+MCP entry allow-list, #720; rejections counted on `backend_mcp_command_rejected_total{reason}`). Default
+allow-list pruned to `mcp-kubernetes,mcp-helm,uv,uvx` with the absolute-path basename fallback removed (#862);
+interpreter args are additionally vetted via `mcp_command_args_safe()` (#930).
 
 ## Tracing (OpenTelemetry)
 

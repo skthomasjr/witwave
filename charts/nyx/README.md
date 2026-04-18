@@ -158,6 +158,13 @@ helm uninstall nyx --namespace nyx
 | `mcpTools.<name>.rbac.create` | Render a minimal default `ServiceAccount` + `ClusterRole` + `ClusterRoleBinding` for this tool so enabling it does not 403 out of the box (#762). Set `false` + `serviceAccountName` to manage RBAC out-of-band. When both are unset chart render fails loudly. | `true` |
 | `mcpTools.<name>.rbac.rules` | Baseline `ClusterRole` rules when `rbac.create=true`. Least-privilege reads by default; adjust to widen or narrow. | see `values.yaml` |
 | `mcpTools.<name>.automountServiceAccountToken` | Three-state override (#856). Omit to default to `true`. Set to `false` for IRSA / workload-identity setups where the projected in-pod SA token should be suppressed (the SA is still attached for annotations). | unset |
+| `podSecurity.readOnlyRootFilesystem` | Toggle the container-level `readOnlyRootFilesystem: true` securityContext on harness + backend + dashboard + MCP-tool pods (#948). Default `false` for compatibility with tools that still need to write to `/tmp`; flip to `true` alongside appropriate `emptyDir` scratch mounts to narrow the post-exploit blast radius. | `false` |
+| `networkPolicy.ingress.allPortsDashboard` | Explicit opt-out: when `false`, the dashboard peer is restricted to the metrics port only (no app-port ingress). Default `true` preserves pre-#911 behaviour. | `true` |
+| `networkPolicy.ingress.allPortsSameNamespace` | Explicit opt-out: when `false` and `allowSameNamespace: true`, same-namespace peers are restricted to the metrics port only. Default `true` preserves pre-#911 behaviour. | `true` |
+| `networkPolicy.ingress.dashboardPeer.namespaceSelector` | Explicit `namespaceSelector` on the dashboard peer (#914) so cross-namespace dashboard deployments match correctly instead of relying on the empty-selector fallthrough. | unset (defaults to release namespace) |
+| `values.schema.json` coverage | `mcpTools.<name>.rbac.{create,rules}` and the full `networkPolicy` block now have schema coverage so typos fail `helm template` / `helm install --dry-run` loudly rather than surfacing at reconcile time (#973, #909). | — |
+| `dashboard.replicas` / `mcpTools.<name>.replicas` | `replicas: 0` is now a first-class value (#912): the templates use `hasKey` rather than truthiness so an explicit zero scales the Deployment down to 0 rather than falling back to `1`. Useful for maintenance windows without uninstalling. | see `values.yaml` |
+| `autoscaling.enabled` (target metrics) | HPA rendering now fails loudly when `autoscaling.enabled=true` but no CPU / memory / custom metric target is configured (#913). Previously the chart rendered an empty `metrics:` list, which some Kubernetes versions silently accepted. | — |
 
 ### Additional values (completeness pass, #844)
 
