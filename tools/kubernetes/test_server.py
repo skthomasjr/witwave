@@ -184,6 +184,26 @@ def test_describe_preserves_resource_on_non_api_exception_events_error():
         )
 
 
+# ----- logs() DNS-1123 guard (#1032) -------------------------------
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("pod", "BadName"),
+        ("pod", "pod--;rm -rf"),
+        ("namespace", "Default"),
+        ("container", "BadContainer"),
+    ],
+)
+def test_logs_rejects_invalid_dns1123(field, value):
+    fn = server.logs.fn if hasattr(server.logs, "fn") else server.logs
+    kwargs = {"pod": "p", "namespace": "n", "container": None}
+    kwargs[field] = value
+    with pytest.raises(ValueError, match="DNS-1123"):
+        fn(**kwargs)
+
+
 # ----- _REDACTED constant sanity -----------------------------------
 
 

@@ -439,6 +439,26 @@ def logs(
     previous: bool = False,
 ) -> str:
     """Return pod logs."""
+    # Defense-in-depth DNS-1123 guard (#1032). describe() and
+    # read_secret_value() already enforce this shape; logs() previously
+    # relied on the downstream client to reject malformed names, which
+    # drifts by client-go version. Apply the same positive allow-match
+    # at the tool boundary so every Pod/namespace string hitting the
+    # apiserver from MCP has the same validated shape.
+    if not isinstance(pod, str) or not _DNS1123_SUBDOMAIN_RE.fullmatch(pod):
+        raise ValueError(
+            f"logs: 'pod' must be a DNS-1123 subdomain (got {pod!r})"
+        )
+    if not isinstance(namespace, str) or not _DNS1123_SUBDOMAIN_RE.fullmatch(namespace):
+        raise ValueError(
+            f"logs: 'namespace' must be a DNS-1123 subdomain (got {namespace!r})"
+        )
+    if container is not None and (
+        not isinstance(container, str) or not _DNS1123_SUBDOMAIN_RE.fullmatch(container)
+    ):
+        raise ValueError(
+            f"logs: 'container' must be a DNS-1123 subdomain (got {container!r})"
+        )
     with _handler_span(
         "logs",
         {"k8s.pod": pod, "k8s.namespace": namespace, "k8s.container": container},
