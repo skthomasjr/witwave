@@ -30,14 +30,30 @@ RUN pip install --no-cache-dir --user -r /home/tool/requirements.txt
 
 ENV PATH="/home/tool/.local/bin:$PATH"
 
-# helm-diff plugin (#854) — powers the `diff()` tool, which shows a
+# helm-diff plugin (#854, #947) — powers the `diff()` tool, which shows a
 # unified diff of what `helm upgrade` WOULD change. Pinned to a
-# known-good version for build reproducibility; bump in lockstep with
-# the Helm CLI pin above. Installs into ~/.local/share/helm/plugins
-# so the per-user default plugin home works without HELM_PLUGINS env
-# mutation.
+# known-good version AND sha256 to defend against a compromised upstream
+# release tag (#947). The previous `helm plugin install <git-url>` flow
+# resolved the tag at build time and would silently accept whatever
+# content lived behind the tag; we now download the release tarball and
+# verify its digest before installation. Bump both HELM_DIFF_VERSION and
+# HELM_DIFF_SHA256 in lockstep, and always re-compute the digest from the
+# upstream release artifact — never copy it from a downstream mirror.
 ARG HELM_DIFF_VERSION=v3.9.13
-RUN helm plugin install https://github.com/databus23/helm-diff --version "${HELM_DIFF_VERSION}"
+ARG HELM_DIFF_SHA256=f8418ed04be8d69b35147040e18bc875964b3dd782c1fb6aaf321f667c09ae3f
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && curl -fsSL -o /tmp/helm-diff.tgz \
+         "https://github.com/databus23/helm-diff/releases/download/${HELM_DIFF_VERSION}/helm-diff-linux-amd64.tgz" \
+    && echo "${HELM_DIFF_SHA256}  /tmp/helm-diff.tgz" | sha256sum -c - \
+    && mkdir -p /home/tool/.local/share/helm/plugins/helm-diff \
+    && tar -xz -C /home/tool/.local/share/helm/plugins/helm-diff -f /tmp/helm-diff.tgz --strip-components=1 \
+    && chown -R tool:tool /home/tool/.local \
+    && rm -f /tmp/helm-diff.tgz \
+    && apt-get purge -y curl \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
+USER tool
 
 COPY --chown=tool:tool tools/helm/ /home/tool/
 # Shared helpers (#637, #643) — both mounted under /home/tool/shared so
