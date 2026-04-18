@@ -923,27 +923,14 @@ class AgentExecutor(A2AAgentExecutor):
                 if harness_running_tasks is not None:
                     harness_running_tasks.dec()
 
-    async def close(self) -> None:
-        """Coordinated shutdown: watchers, background tasks, backend clients (#604).
+    async def drain_background(self) -> None:
+        """Phase 1+2 of shutdown: MCP watchers and background tasks (#861).
 
-        Runs three phases in order so later phases can assume earlier ones
-        completed. Each phase swallows exceptions so a single stubborn task
-        can't block the rest of the teardown.
-
-        1. Cancel and drain MCP watcher tasks.
-        2. Cancel and drain in-flight background tasks tracked by
-           ``track_background`` — these are the webhook / trigger / continuation
-           fire-and-forget coroutines. Draining here prevents leaked sockets
-           and half-finished work on shutdown.
-        3. Close every backend client (``A2ABackend.close`` releases its
-           pooled ``httpx.AsyncClient``). The executor owns backends so it
-           owns their lifetime.
-
-        The bus worker and scheduler runner tasks are owned by the
-        ``main.py`` lifespan (not this executor) and stay under that layer's
-        control. Wiring the lifespan-level shutdown is a follow-up, tracked
-        as a separate narrower gap — this slice closes the leaks the
-        executor does own.
+        Split out of ``close()`` so the lifespan layer can drain executor-owned
+        background work *before* the bus worker is cancelled, while keeping
+        backend httpx clients alive for in-flight process_bus calls. The
+        bus_task cancellation and subsequent backend close now live in
+        ``main.py`` and call ``close_backends()`` after the bus has drained.
         """
         # Phase 1: MCP watchers.
         for task in self._mcp_watcher_tasks:
@@ -969,7 +956,13 @@ class AgentExecutor(A2AAgentExecutor):
                 except Exception:
                     pass
 
-        # Phase 3: Backend clients (pooled httpx).
+    async def close_backends(self) -> None:
+        """Phase 3 of shutdown: close pooled backend httpx clients (#861).
+
+        Must run *after* the bus worker has drained in-flight process_bus
+        calls — otherwise in-flight calls observe a closed httpx client and
+        surface "client has been closed" / connection-reset errors.
+        """
         for _backend in list(self._backends.values()):
             _close = getattr(_backend, "close", None)
             if _close is None:
@@ -978,6 +971,18 @@ class AgentExecutor(A2AAgentExecutor):
                 await _close()
             except Exception as _exc:  # noqa: BLE001 — shutdown must continue
                 logger.warning("backend %r close() failed: %r", _backend.id, _exc)
+
+    async def close(self) -> None:
+        """Coordinated shutdown: watchers, background tasks, backend clients (#604).
+
+        Retained for back-compat (tests and any direct callers). In the
+        harness's phased-shutdown path (#861), ``main.py`` calls
+        ``drain_background()`` inside the lifespan finally (before bus_task
+        cancel) and ``close_backends()`` after the bus has drained, so that
+        in-flight process_bus calls don't see closed httpx clients.
+        """
+        await self.drain_background()
+        await self.close_backends()
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         if harness_task_cancellations_total is not None:

@@ -1609,7 +1609,13 @@ async def main():
             try:
                 yield
             finally:
-                await executor.close()
+                # Phased-shutdown ordering (#861): drain executor-owned
+                # background work (MCP watchers + fire-and-forget tasks)
+                # while backend httpx clients are still open. The bus worker
+                # (owned by main's task supervisor below) drains AFTER the
+                # lifespan exits, then close_backends() runs last so
+                # in-flight process_bus calls never see a closed client.
+                await executor.drain_background()
                 if _metrics_task is not None and not _metrics_task.done():
                     _metrics_task.cancel()
                     try:
@@ -1803,6 +1809,13 @@ async def main():
         for t in (*watcher_tasks, *helper_tasks):
             t.cancel()
         await asyncio.gather(*watcher_tasks, *helper_tasks, return_exceptions=True)
+        # Phase 4: backend httpx clients (#861). Close only AFTER the
+        # bus worker has drained — otherwise in-flight process_bus calls
+        # see a closed client and surface as "client has been closed".
+        try:
+            await executor.close_backends()
+        except Exception as exc:  # noqa: BLE001 — shutdown must continue
+            logger.warning("executor.close_backends() failed during shutdown: %r", exc)
 
 
 if __name__ == "__main__":
