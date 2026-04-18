@@ -1218,7 +1218,29 @@ async def run_query(
     entry = _acquire_session_lock(session_id, session_locks)
     try:
         async with entry.lock:
-            history = await asyncio.to_thread(_load_history, session_id)
+            # Skip _load_history when this session is in the
+            # history_save_failed set (#886). A previous run's save
+            # permanently failed, so the on-disk file is either stale
+            # or partially written — replaying it would silently
+            # resume from inconsistent turn state. Start fresh and
+            # best-effort remove the stale file so the next successful
+            # save is not merged with a corrupt remainder.
+            _save_failed = (
+                history_save_failed is not None and session_id in history_save_failed
+            )
+            if _save_failed:
+                history = []
+                try:
+                    _stale_path = _session_path(session_id)
+                    if os.path.exists(_stale_path):
+                        os.remove(_stale_path)
+                except Exception as _rm_exc:
+                    logger.debug(
+                        "Gemini run_query: stale history removal for %r failed: %s",
+                        session_id, _rm_exc,
+                    )
+            else:
+                history = await asyncio.to_thread(_load_history, session_id)
 
             client = _get_client()
 
