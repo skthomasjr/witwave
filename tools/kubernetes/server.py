@@ -136,10 +136,18 @@ def list_resources(
     api_version: str | None = None,
     label_selector: str | None = None,
     field_selector: str | None = None,
-) -> list[dict]:
+    limit: int | None = None,
+    continue_token: str | None = None,
+) -> dict:
     """List resources of a given kind, optionally scoped to a namespace.
 
     api_version disambiguates kinds served by multiple groups (e.g. Ingress).
+
+    Pagination (#694): pass ``limit`` to cap the number of items returned
+    in one response, and feed ``continue_token`` back from the previous
+    response's ``continue`` field to fetch the next page. Returns a dict
+    with ``items`` (list[dict]) and ``continue`` (the next token, or
+    empty string when the list is exhausted).
     """
     with _handler_span(
         "list_resources",
@@ -154,10 +162,23 @@ def list_resources(
                 kwargs["label_selector"] = label_selector
             if field_selector:
                 kwargs["field_selector"] = field_selector
+            if limit is not None:
+                if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+                    raise ValueError("list_resources: 'limit' must be a positive int")
+                kwargs["limit"] = limit
+            if continue_token:
+                kwargs["_continue"] = continue_token
             with _api_span("list", kind, {"k8s.namespace": namespace}):
                 result = resource.get(**kwargs)
             items = getattr(result, "items", None) or []
-            return [_to_dict(item) for item in items]
+            next_token = ""
+            metadata = getattr(result, "metadata", None)
+            if metadata is not None:
+                next_token = getattr(metadata, "continue_", None) or getattr(metadata, "_continue", "") or ""
+            return {
+                "items": [_to_dict(item) for item in items],
+                "continue": next_token,
+            }
         except Exception as exc:
             set_span_error(_h, exc)
             raise
