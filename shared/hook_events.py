@@ -69,6 +69,11 @@ HOOK_POST_MAX_INFLIGHT = int(os.environ.get("HOOK_POST_MAX_INFLIGHT", "32"))
 _auth_warn_lock = threading.Lock()
 _auth_warned = False
 _shed_warn_lock = threading.Lock()
+# Serialises the cap check-and-add path in schedule_post (#878). Under
+# current single-loop asyncio this is redundant, but any future refactor
+# that introduces an await between `len(_INFLIGHT)` and `_INFLIGHT.add(t)`
+# could let two coroutines both observe len==cap-1 and push to cap+1.
+_inflight_lock = threading.Lock()
 _shed_warned = False
 # One-shot warning flag for non-2xx responses (#881). Distinct from
 # _auth_warned (which fires when the token is empty before the POST);
@@ -162,7 +167,23 @@ def schedule_post(event_dict: dict[str, Any], shed_counter: Any = None) -> bool:
         # shed counter bump: this is operator intent, not starvation.
         return False
 
-    if len(_INFLIGHT) >= HOOK_POST_MAX_INFLIGHT:
+    # Check-and-add under _inflight_lock (#878). Keeps len(_INFLIGHT) <=
+    # HOOK_POST_MAX_INFLIGHT even if a future refactor introduces an await
+    # between the check and the set mutation. The Lock is held across
+    # create_task so a second coroutine sees the post-add size.
+    with _inflight_lock:
+        if len(_INFLIGHT) >= HOOK_POST_MAX_INFLIGHT:
+            _over_cap = True
+        else:
+            try:
+                t = asyncio.create_task(_post_once(event_dict))
+            except RuntimeError:
+                # No running loop (e.g. module imported for tests). Silent drop.
+                return False
+            _INFLIGHT.add(t)
+            _over_cap = False
+
+    if _over_cap:
         global _shed_warned
         with _shed_warn_lock:
             if not _shed_warned:
@@ -179,13 +200,6 @@ def schedule_post(event_dict: dict[str, Any], shed_counter: Any = None) -> bool:
             except Exception:
                 pass
         return False
-
-    try:
-        t = asyncio.create_task(_post_once(event_dict))
-    except RuntimeError:
-        # No running loop (e.g. module imported for tests). Silent drop.
-        return False
-    _INFLIGHT.add(t)
 
     def _done(tt: asyncio.Task, _inflight: set = _INFLIGHT) -> None:
         _inflight.discard(tt)
