@@ -172,7 +172,23 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// down owned resources and skip reconciliation entirely. This mirrors
 	// the chart's per-agent toggle (#chart beta.32) and lets operators
 	// pause an agent without deleting the CR.
+	//
+	// Teardown is idempotent but every cache resync (default 10h, but
+	// configurable and often much shorter) re-ran every step — spinning
+	// reconciles, wasted List calls, and transient errors attributed to
+	// a disabled agent (#903). Stamp a teardown-complete annotation on
+	// success so subsequent reconciles short-circuit with no apiserver
+	// calls. Re-enabling the agent removes the annotation via the
+	// spec.enabled branch below (Generation changes clear state anyway,
+	// and the annotation is cleared explicitly on the enabled path).
+	const teardownAnnotation = "nyx.ai/teardown-complete-generation"
 	if agent.Spec.Enabled != nil && !*agent.Spec.Enabled {
+		if v := agent.Annotations[teardownAnnotation]; v == fmt.Sprintf("%d", agent.Generation) {
+			// Teardown already ran for this spec generation — nothing new
+			// to do. Controller-runtime's watch predicates ensure we'll
+			// be woken on the next spec change.
+			return ctrl.Result{}, nil
+		}
 		log.Info("NyxAgent disabled — tearing down owned resources", "name", agent.Name)
 		if err := r.teardownDisabledAgent(ctx, agent); err != nil {
 			// Return the error alone so controller-runtime's rate
@@ -180,7 +196,27 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			// defeating it with a fixed 30s interval (#548).
 			return ctrl.Result{}, err
 		}
+		// Stamp the generation on success so we short-circuit next time.
+		if agent.Annotations == nil {
+			agent.Annotations = map[string]string{}
+		}
+		agent.Annotations[teardownAnnotation] = fmt.Sprintf("%d", agent.Generation)
+		if err := r.Update(ctx, agent); err != nil {
+			// Non-fatal — the next reconcile will retry the stamp.
+			log.Info("teardown complete but annotation stamp failed; will retry",
+				"name", agent.Name, "err", err.Error())
+		}
 		return ctrl.Result{}, nil
+	}
+
+	// Re-enabled path: clear a prior teardown-complete annotation so a
+	// future disable picks up the then-current generation fresh.
+	if v, ok := agent.Annotations[teardownAnnotation]; ok && v != "" {
+		delete(agent.Annotations, teardownAnnotation)
+		if err := r.Update(ctx, agent); err != nil {
+			log.Info("failed to clear teardown-complete annotation on re-enable; non-fatal",
+				"name", agent.Name, "err", err.Error())
+		}
 	}
 
 	// Apply all desired resources, joining any errors so status and logs
