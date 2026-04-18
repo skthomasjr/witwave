@@ -303,6 +303,10 @@ docker build -f tools/helm/Dockerfile -t mcp-helm:latest .
 
 # Dashboard image — optional; only built/pushed when dashboard.enabled=true in the chart.
 docker build -f dashboard/Dockerfile -t dashboard:latest .
+
+# git-sync helper image (upstream git-sync + rsync). Built from the `helpers/`
+# folder alongside any future pod-level helper images (sidecar or init).
+docker build -f helpers/git-sync/Dockerfile -t git-sync:latest helpers/git-sync
 ```
 
 ## Running Locally

@@ -35,8 +35,8 @@ jobs:
             file: operator/Dockerfile
             context: operator
           - image: git-sync
-            file: git-sync/Dockerfile
-            context: git-sync
+            file: helpers/git-sync/Dockerfile
+            context: helpers/git-sync
           - image: mcp-kubernetes
             file: tools/kubernetes/Dockerfile
             context: .
