@@ -79,9 +79,9 @@ METRICS
 -------
 {{- if .Values.metrics.enabled }}
 {{- if .Values.agents }}
-Metrics are enabled. Each agent service has Prometheus scrape annotations:
+Metrics are enabled. Each agent exposes a dedicated metrics listener at app_port+1000:
 {{- range .Values.agents }}
-  • {{ $.Release.Name }}-{{ .name }}  →  port {{ .port | default 8000 }}
+  • {{ $.Release.Name }}-{{ .name }}  →  port {{ add (int (.port | default 8000)) 1000 }}
 {{- end }}
 {{- else }}
 Metrics are enabled, but no agents are configured.
