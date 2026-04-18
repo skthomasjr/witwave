@@ -7,6 +7,15 @@
 {{- $auto = $.Values.autoscaling }}
 {{- end }}
 {{- if $auto.enabled }}
+{{- /* Fail-render when both CPU and memory targets are unset/nulled
+       (#913). Previously each metric was gated on its own target, so
+       both-null produced `spec.metrics: []` — an invalid HPA that
+       admission-rejected with "spec.metrics: Required value" only at
+       apply time. Surfacing the mis-config at template-render time
+       gives a clear actionable error instead. */}}
+{{- if and (not $auto.targetCPUUtilizationPercentage) (not $auto.targetMemoryUtilizationPercentage) }}
+{{- fail (printf "autoscaling.enabled=true for agent %q requires at least one of autoscaling.targetCPUUtilizationPercentage or autoscaling.targetMemoryUtilizationPercentage" $agent.name) }}
+{{- end }}
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
