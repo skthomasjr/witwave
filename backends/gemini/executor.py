@@ -727,6 +727,7 @@ async def run_query(
     max_tokens: int | None = None,
     on_chunk: Callable[[str], Awaitable[None]] | None = None,
     live_mcp_servers: list | None = None,
+    sessions: OrderedDict[str, float] | None = None,
 ) -> list[str]:
     resolved_model = model or GEMINI_MODEL
     # Note: resolved_model carries the raw caller-supplied string (so we pass
@@ -988,6 +989,15 @@ async def run_query(
         except Exception as e:
             logger.error(f"log_trace error: {e}")
 
+        # Promote the session in the LRU while still holding the session
+        # lock so a concurrent request cannot trigger MAX_SESSIONS eviction
+        # (which calls os.remove on the on-disk history) between our save
+        # and promotion (#675). _run_inner also calls _track_session on
+        # the success path; that call is a no-op move_to_end when we've
+        # already registered the session here.
+        if sessions is not None:
+            _track_session(sessions, session_id, session_locks, history_save_failed)
+
         return collected
     finally:
         # Drop our refcount; the lock entry is evicted from session_locks only
@@ -1062,6 +1072,7 @@ async def _run_inner(
                 prompt, session_id, agent_md_content, session_locks,
                 history_save_failed, model=model, max_tokens=max_tokens,
                 on_chunk=on_chunk, live_mcp_servers=live_mcp_servers,
+                sessions=sessions,
             ),
             timeout=TASK_TIMEOUT_SECONDS,
         )
