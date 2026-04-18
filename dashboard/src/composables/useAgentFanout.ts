@@ -102,6 +102,12 @@ export function useAgentFanout<T>(opts: UseAgentFanoutOptions) {
   async function refresh(): Promise<void> {
     aborter?.abort();
     aborter = new AbortController();
+    // Snapshot the aborter identity so the catch/finally branches can
+    // verify this cycle is still the current one (#892). Without this
+    // guard a late non-AbortError rejection from an older cycle could
+    // overwrite the newer cycle's error.value, and loading.value would
+    // flip off mid-newer-cycle. Matches the useTeam pattern from #744.
+    const localAborter = aborter;
     const signal = aborter.signal;
     try {
       const directory = await apiGet<TeamDirectoryEntry[]>("/team", { signal });
@@ -119,9 +125,11 @@ export function useAgentFanout<T>(opts: UseAgentFanoutOptions) {
       error.value = "";
     } catch (e) {
       if ((e as { name?: string }).name === "AbortError") return;
+      // Stale cycle — silently drop. A newer cycle owns the UI state.
+      if (aborter !== localAborter) return;
       error.value = e instanceof ApiError ? e.message : (e as Error).message;
     } finally {
-      loading.value = false;
+      if (aborter === localAborter) loading.value = false;
     }
   }
 
