@@ -391,6 +391,27 @@ async def _shell_executor_inner(req: LocalShellCommandRequest) -> str:
             "reason": reason,
             "command": cmd,
         })
+        # Backend→harness hook.decision side-channel (#779). Claude's
+        # executor carries its own equivalent for the full PreToolUse
+        # surface; codex emits only on shell-baseline denials today
+        # since those are the only hooks it evaluates. gemini is
+        # blocked on #808 (AFC-disable) before it can emit similarly.
+        try:
+            import hook_events as _hook_events
+            _hook_events.schedule_post(
+                {
+                    "agent": AGENT_OWNER or AGENT_NAME,
+                    "session_id": "",  # shell denial fires before the SDK exposes the session id
+                    "tool": "shell",
+                    "decision": "deny",
+                    "rule_name": rule,
+                    "reason": reason,
+                    "source": "baseline",
+                    "traceparent": None,
+                }
+            )
+        except Exception as _hev_exc:
+            logger.debug("hook.decision transport scheduling failed: %r", _hev_exc)
         logger.warning("_shell_executor: baseline deny rule=%s cmd=%r", rule, cmd)
         # Raise so the SDK flags the tool result as is_error=True; the
         # denial counter above still increments before the exception
