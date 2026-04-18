@@ -352,9 +352,13 @@ metrics:
   # backend containers — those use app_port+1000 per-container so
   # colocated pod containers don't fight for a shared port. The value
   # was only ever honored by MCP tool pods; use `mcpTools.metricsPort`
-  # for that. Setting this key now emits a deprecation warning via
-  # NOTES.txt and is otherwise ignored.
-  port: 9000
+  # for that. Setting this key emits a deprecation warning via NOTES.txt
+  # and is otherwise ignored.
+  #
+  # Default intentionally left unset (#764) so the NOTES.txt `hasKey`
+  # guard only fires when the user explicitly keeps the deprecated key
+  # in their own values file — no warning on an unedited chart install.
+  # port: 9000
 
   # Where Prometheus scrape annotations land. Both can be true at the
   # same time — Prometheus configs that use both `kubernetes_sd_configs.
