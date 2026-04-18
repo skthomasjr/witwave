@@ -1950,15 +1950,24 @@ class AgentExecutor(A2AAgentExecutor):
         _chunks_emitted = 0
         _stream_state = {"dropped": 0}
         _streaming_label_model = _resolve_model_label(model)
+        # Track successfully-emitted text so the drop-fallback below can
+        # emit only the missing suffix rather than re-sending the whole
+        # aggregated response and duplicating content the client already
+        # has (#876).
+        _emitted_texts: list[str] = []
 
         async def _emit_chunk(text: str) -> None:
             nonlocal _chunks_emitted
-            _chunks_emitted += 1
             if backend_streaming_events_emitted_total is not None:
                 backend_streaming_events_emitted_total.labels(**_LABELS, model=_streaming_label_model).inc()
             # Await directly — see backends/claude/executor.py _emit_chunk for the
-            # rationale (event ordering + exception surfacing).
+            # rationale (event ordering + exception surfacing). Only record
+            # the text as emitted after enqueue_event succeeded; a failure
+            # here means the client never got it and the fallback is
+            # allowed to resend.
             await event_queue.enqueue_event(new_agent_text_message(text))
+            _chunks_emitted += 1
+            _emitted_texts.append(text)
 
         # Attach the stream state so _run_query_inner's TimeoutError
         # handler can increment ``dropped`` and bump the dropped metric
@@ -2005,15 +2014,44 @@ class AgentExecutor(A2AAgentExecutor):
                 # mid-stream (#724): the aggregated response fills the gaps so
                 # the client never sees a silently-truncated reply.
                 _dropped_count = _stream_state["dropped"]
-                if _response and (_chunks_emitted == 0 or _dropped_count > 0):
-                    if _dropped_count > 0:
-                        logger.info(
-                            "Session %r: %d chunk(s) dropped during streaming — "
-                            "emitting final aggregated response so client sees "
-                            "complete text (#724).",
+                if _response and _chunks_emitted == 0:
+                    # Pure non-streamed / tool-only path — send the full
+                    # aggregated response.
+                    await event_queue.enqueue_event(new_agent_text_message(_response))
+                elif _response and _dropped_count > 0:
+                    # Drop fallback (#724) — only emit the text that
+                    # streaming did NOT deliver (#876). Previously we
+                    # resent the full _response, which stacked on top of
+                    # the already-streamed chunks and ~2x-duplicated the
+                    # visible text for the client. If the streamed prefix
+                    # matches _response's prefix (the common case under
+                    # token-by-token streaming), send the missing suffix;
+                    # otherwise fall back to the full response so we never
+                    # silently truncate.
+                    _streamed = "".join(_emitted_texts)
+                    if _response.startswith(_streamed):
+                        _missing = _response[len(_streamed):]
+                        if _missing:
+                            logger.info(
+                                "Session %r: %d chunk(s) dropped during streaming — "
+                                "emitting %d-byte missing suffix so client sees "
+                                "complete text (#724, #876).",
+                                session_id, _dropped_count, len(_missing),
+                            )
+                            await event_queue.enqueue_event(
+                                new_agent_text_message(_missing)
+                            )
+                    else:
+                        logger.warning(
+                            "Session %r: streamed prefix does not match final "
+                            "response (%d chunks dropped); emitting full "
+                            "aggregated response — may duplicate streamed text "
+                            "but avoids silent truncation (#876 fallback).",
                             session_id, _dropped_count,
                         )
-                    await event_queue.enqueue_event(new_agent_text_message(_response))
+                        await event_queue.enqueue_event(
+                            new_agent_text_message(_response)
+                        )
                 if backend_a2a_requests_total is not None:
                     backend_a2a_requests_total.labels(**_LABELS, status="success").inc()
         except Exception as _exc:
