@@ -83,6 +83,8 @@ backend_sdk_errors_total: prometheus_client.Counter | None = None
 backend_sdk_result_errors_total: prometheus_client.Counter | None = None
 backend_sdk_client_errors_total: prometheus_client.Counter | None = None
 backend_sdk_context_fetch_errors_total: prometheus_client.Counter | None = None
+backend_sdk_subprocess_spawn_duration_seconds: prometheus_client.Histogram | None = None
+backend_session_path_mismatch_total: prometheus_client.Counter | None = None
 
 # Retry / recovery metrics (parity with claude — #803)
 backend_task_retries_total: prometheus_client.Counter | None = None
@@ -113,6 +115,8 @@ backend_budget_exceeded_total: prometheus_client.Counter | None = None
 # Non-shell enforcement and the rest of the backend_hooks_* family stay deferred
 # until a tool-wrapping proxy design is validated against the Agents SDK.
 backend_codex_hooks_denials_total: prometheus_client.Counter | None = None
+backend_hooks_active_rules: prometheus_client.Gauge | None = None
+backend_hooks_evaluations_total: prometheus_client.Counter | None = None
 backend_tool_audit_entries_total: prometheus_client.Counter | None = None
 
 if _enabled:
@@ -250,6 +254,27 @@ if _enabled:
         "backend_session_history_save_errors_total",
         "Total failures to initialise or write the session SQLite store.",
         ["agent", "agent_id", "backend"],
+    )
+    # Session path layout drift (#530 / #796). Registered as a zero-value
+    # placeholder so cross-backend dashboards filtering backend=~".*"
+    # don't drop a label set. codex does not currently self-probe SDK
+    # on-disk layout; a future self-test can bump this without touching
+    # dashboard schemas.
+    backend_session_path_mismatch_total = prometheus_client.Counter(
+        "backend_session_path_mismatch_total",
+        "Total startup self-test observations that the SDK on-disk layout "
+        "has drifted from the conventions the backend assumes (#530).",
+        ["agent", "agent_id", "backend", "reason"],
+    )
+    # SDK cold-start timing (#796). Registered as a zero-value placeholder
+    # today — codex uses the OpenAI Agents SDK in-process so there is no
+    # subprocess spawn; this exists so dashboards carry the series across
+    # all three backends.
+    backend_sdk_subprocess_spawn_duration_seconds = prometheus_client.Histogram(
+        "backend_sdk_subprocess_spawn_duration_seconds",
+        "Time to initialize the backend client/SDK (placeholder on codex).",
+        ["agent", "agent_id", "backend", "model"],
+        buckets=(0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60),
     )
 
     # Prompt / response
@@ -553,4 +578,19 @@ if _enabled:
         "backend_tool_audit_entries_total",
         "Total rows written to tool-audit.jsonl by codex PostToolUse audit.",
         ["agent", "agent_id", "backend", "tool"],
+    )
+    # Peer-parity placeholders (#796): claude's hook surface exposes
+    # backend_hooks_active_rules and backend_hooks_evaluations_total;
+    # register them on codex too so cross-backend dashboards don't drop
+    # the series. codex's hook path is baseline-only (#586 deferred) so
+    # today these sit at their registered zero value.
+    backend_hooks_active_rules = prometheus_client.Gauge(
+        "backend_hooks_active_rules",
+        "Number of currently active hook rules, by rule source.",
+        ["agent", "agent_id", "backend", "source"],
+    )
+    backend_hooks_evaluations_total = prometheus_client.Counter(
+        "backend_hooks_evaluations_total",
+        "Total PreToolUse hook evaluations, grouped by final decision.",
+        ["agent", "agent_id", "backend", "tool", "decision"],
     )

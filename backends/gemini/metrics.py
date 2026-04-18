@@ -113,6 +113,9 @@ backend_hooks_config_reloads_total: prometheus_client.Counter | None = None
 # Dashboards and alerts can read this gauge to tell the difference
 # between "hooks loaded and enforcing" and "hooks loaded but bypassed".
 backend_hooks_enforcement_mode: prometheus_client.Gauge | None = None
+backend_hooks_active_rules: prometheus_client.Gauge | None = None
+backend_hooks_evaluations_total: prometheus_client.Counter | None = None
+backend_session_path_mismatch_total: prometheus_client.Counter | None = None
 
 # MCP config watcher metrics (#640 — parity with codex #432, #526).
 backend_mcp_config_errors_total: prometheus_client.Counter | None = None
@@ -501,6 +504,30 @@ if _enabled:
         "AFC bypasses them), 1=enforcing, -1=disabled. Gemini reports 0 "
         "until #640 disables AFC and hand-rolls the tool loop (#736).",
         ["agent", "agent_id", "backend"],
+    )
+    # Peer-parity placeholders (#796): claude's hook surface exposes
+    # active_rules and evaluations_total; register them on gemini so
+    # cross-backend dashboards don't drop the series. Gemini's hook
+    # path is skeleton-only today (see enforcement_mode=0) so these
+    # stay at zero until #640 wires live evaluation.
+    backend_hooks_active_rules = prometheus_client.Gauge(
+        "backend_hooks_active_rules",
+        "Number of currently active hook rules, by rule source.",
+        ["agent", "agent_id", "backend", "source"],
+    )
+    backend_hooks_evaluations_total = prometheus_client.Counter(
+        "backend_hooks_evaluations_total",
+        "Total PreToolUse hook evaluations, grouped by final decision.",
+        ["agent", "agent_id", "backend", "tool", "decision"],
+    )
+    # Session path layout drift (#530 / #796). Registered so dashboards
+    # filtering backend=~".*" keep the series; gemini does not
+    # self-probe SDK on-disk layout today.
+    backend_session_path_mismatch_total = prometheus_client.Counter(
+        "backend_session_path_mismatch_total",
+        "Total startup self-test observations that the SDK on-disk layout "
+        "has drifted from the conventions the backend assumes (#530).",
+        ["agent", "agent_id", "backend", "reason"],
     )
 
     # MCP config (parity with codex — #432, #526; landed for gemini in #640).
