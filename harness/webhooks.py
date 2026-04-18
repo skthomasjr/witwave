@@ -91,6 +91,25 @@ WEBHOOK_TOTAL_TIMEOUT_SECONDS = float(os.environ.get("WEBHOOK_TOTAL_TIMEOUT_SECO
 WEBHOOK_CLIENT_MAX_CONNECTIONS = int(os.environ.get("WEBHOOK_CLIENT_MAX_CONNECTIONS", "50"))
 WEBHOOK_CLIENT_MAX_KEEPALIVE = int(os.environ.get("WEBHOOK_CLIENT_MAX_KEEPALIVE", "20"))
 
+# Byte-weighted ceiling on retry tasks held in memory at once (#926). A
+# wedged downstream receiver that TCP-accepts but never responds could
+# previously pin WEBHOOK_MAX_CONCURRENT_DELIVERIES × body_size (up to
+# ~256 KiB per delivery by the body cap elsewhere) for up to
+# WEBHOOK_TOTAL_TIMEOUT_SECONDS — tens of MB × hundreds of retries
+# drives the harness pod toward OOM. This cap is checked when a retry
+# task is scheduled: if pending retry bytes would exceed the ceiling,
+# we drop the retry (logged + counted) rather than accept unbounded
+# memory pressure. Default 64 MiB balances realistic multi-subscription
+# fan-out against the container memory limits in the default chart.
+# Set to 0 to disable (legacy unbounded behaviour).
+WEBHOOK_RETRY_BYTES_BUDGET = int(os.environ.get("WEBHOOK_RETRY_BYTES_BUDGET", str(64 * 1024 * 1024)))
+# Shared in-process accounting. Incremented when a retry task is
+# scheduled, decremented when it completes (success, timeout, or
+# cancellation). Lives at module scope so every WebhookRunner instance
+# in the harness process sees the same budget.
+_webhook_retry_bytes_inflight: int = 0
+_webhook_retry_bytes_lock = asyncio.Lock()
+
 # HTTP status codes that are safe to retry — mirrors the inbound A2A pattern
 # at backends/a2a.py:35 (#598). 408 (Request Timeout) and 429 (Too Many
 # Requests) are the only legitimately retryable 4xx codes; everything else in
@@ -1026,35 +1045,70 @@ async def deliver(
         # it cannot leak untracked.
         registered = asyncio.Event()
 
-        async def _tracked_retry() -> None:
-            await registered.wait()
-            _retry_coro = _retry_deliver(
-                sub=sub,
-                url=url,
-                body_bytes=body_bytes,
-                headers=headers,
-                attempt=1,
-                max_attempts=1 + sub.retries,
-                client=client,
-            )
-            # Total-chain timeout (#786): cap wall-clock across all retries
-            # + backoffs so a wedged downstream can't hold a concurrency
-            # slot indefinitely. 0 disables the ceiling (legacy behaviour).
-            if WEBHOOK_TOTAL_TIMEOUT_SECONDS > 0:
-                try:
-                    await asyncio.wait_for(_retry_coro, timeout=WEBHOOK_TOTAL_TIMEOUT_SECONDS)
-                except asyncio.TimeoutError:
+        # #926: Size-weighted admission control for retry tasks. Each scheduled
+        # retry pins body_bytes in memory for the duration of the chain; under
+        # a downstream outage the naive sum was
+        # WEBHOOK_MAX_CONCURRENT_DELIVERIES × body_size × retry_window and
+        # could OOM the harness pod. We track pending retry bytes in a
+        # module-global counter, reject new retries when the ceiling is hit,
+        # and release the slot in the retry task's finally block.
+        global _webhook_retry_bytes_inflight
+        _retry_bytes = len(body_bytes)
+        if WEBHOOK_RETRY_BYTES_BUDGET > 0:
+            async with _webhook_retry_bytes_lock:
+                if _webhook_retry_bytes_inflight + _retry_bytes > WEBHOOK_RETRY_BYTES_BUDGET:
                     logger.warning(
-                        f"Webhook '{sub.name}': retry chain exceeded "
-                        f"WEBHOOK_TOTAL_TIMEOUT_SECONDS={WEBHOOK_TOTAL_TIMEOUT_SECONDS:.0f}s — "
-                        f"abandoning remaining attempts for url={url}"
+                        f"Webhook '{sub.name}': retry dropped — retry bytes in-flight "
+                        f"({_webhook_retry_bytes_inflight}) + this body ({_retry_bytes}) "
+                        f"would exceed WEBHOOK_RETRY_BYTES_BUDGET={WEBHOOK_RETRY_BYTES_BUDGET}"
                     )
                     if harness_webhooks_delivery_total is not None:
                         harness_webhooks_delivery_total.labels(
-                            result="timeout_total", subscription=sub.name
+                            result="shed_retry_bytes", subscription=sub.name
                         ).inc()
-            else:
-                await _retry_coro
+                    return
+                _webhook_retry_bytes_inflight += _retry_bytes
+
+        async def _tracked_retry() -> None:
+            await registered.wait()
+            try:
+                _retry_coro = _retry_deliver(
+                    sub=sub,
+                    url=url,
+                    body_bytes=body_bytes,
+                    headers=headers,
+                    attempt=1,
+                    max_attempts=1 + sub.retries,
+                    client=client,
+                )
+                # Total-chain timeout (#786): cap wall-clock across all retries
+                # + backoffs so a wedged downstream can't hold a concurrency
+                # slot indefinitely. 0 disables the ceiling (legacy behaviour).
+                if WEBHOOK_TOTAL_TIMEOUT_SECONDS > 0:
+                    try:
+                        await asyncio.wait_for(_retry_coro, timeout=WEBHOOK_TOTAL_TIMEOUT_SECONDS)
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            f"Webhook '{sub.name}': retry chain exceeded "
+                            f"WEBHOOK_TOTAL_TIMEOUT_SECONDS={WEBHOOK_TOTAL_TIMEOUT_SECONDS:.0f}s — "
+                            f"abandoning remaining attempts for url={url}"
+                        )
+                        if harness_webhooks_delivery_total is not None:
+                            harness_webhooks_delivery_total.labels(
+                                result="timeout_total", subscription=sub.name
+                            ).inc()
+                else:
+                    await _retry_coro
+            finally:
+                # #926: Always release the byte budget, including the
+                # cancellation and timeout paths, so a stuck receiver
+                # cannot wedge the accounting long after its chain gives up.
+                if WEBHOOK_RETRY_BYTES_BUDGET > 0:
+                    global _webhook_retry_bytes_inflight
+                    async with _webhook_retry_bytes_lock:
+                        _webhook_retry_bytes_inflight = max(
+                            0, _webhook_retry_bytes_inflight - _retry_bytes
+                        )
 
         _retry_task = asyncio.ensure_future(_tracked_retry())
         # Notify the caller (e.g. WebhookRunner.fire) so it can register the
