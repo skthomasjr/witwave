@@ -130,46 +130,47 @@ async function inClusterFetchList(
 ): Promise<JaegerResponse<JaegerTrace[]>> {
   const team = await fetchTeam(signal);
   if (!team.length) return { data: [], total: 0 };
-  const timer = setTimeout(() => {
-    // Browser-side only; ctrl in this scope is per-request. Honouring
-    // the caller's signal is enough.
-  }, timeoutMs);
-  try {
-    const perAgent = await Promise.all(
-      team.map(async (m) => {
-        try {
-          const r = await fetch(
-            `/api/agents/${encodeURIComponent(m.name)}${path}`,
-            { signal },
-          );
-          if (!r.ok) return [] as JaegerTrace[];
-          const body = (await r.json()) as JaegerResponse<JaegerTrace[]>;
-          return body.data ?? [];
-        } catch {
-          return [] as JaegerTrace[];
-        }
-      }),
-    );
-    // Merge traces that share a traceID (cross-pod distributed traces).
-    const byTid = new Map<string, JaegerTrace>();
-    for (const list of perAgent) {
-      for (const t of list) {
-        const existing = byTid.get(t.traceID);
-        if (!existing) {
-          byTid.set(t.traceID, { ...t });
-        } else {
-          // Combine span lists; dedupe by spanID so if two agents
-          // happen to carry the same span (rare) we keep one.
-          const seen = new Set(existing.spans.map((s) => s.spanID));
-          for (const s of t.spans) if (!seen.has(s.spanID)) existing.spans.push(s);
-          existing.processes = { ...(existing.processes ?? {}), ...(t.processes ?? {}) };
-        }
+  // Honour timeoutMs per-agent so a single stalled pod does not hang the
+  // whole fan-out. AbortSignal.any combines the caller's abort with a
+  // per-call AbortSignal.timeout (#680).
+  const perAgent = await Promise.all(
+    team.map(async (m) => {
+      const perCallSignal =
+        typeof (AbortSignal as { any?: unknown }).any === "function"
+          ? (AbortSignal as unknown as {
+              any: (signals: AbortSignal[]) => AbortSignal;
+            }).any([signal, AbortSignal.timeout(timeoutMs)])
+          : signal;
+      try {
+        const r = await fetch(
+          `/api/agents/${encodeURIComponent(m.name)}${path}`,
+          { signal: perCallSignal },
+        );
+        if (!r.ok) return [] as JaegerTrace[];
+        const body = (await r.json()) as JaegerResponse<JaegerTrace[]>;
+        return body.data ?? [];
+      } catch {
+        return [] as JaegerTrace[];
+      }
+    }),
+  );
+  // Merge traces that share a traceID (cross-pod distributed traces).
+  const byTid = new Map<string, JaegerTrace>();
+  for (const list of perAgent) {
+    for (const t of list) {
+      const existing = byTid.get(t.traceID);
+      if (!existing) {
+        byTid.set(t.traceID, { ...t });
+      } else {
+        // Combine span lists; dedupe by spanID so if two agents
+        // happen to carry the same span (rare) we keep one.
+        const seen = new Set(existing.spans.map((s) => s.spanID));
+        for (const s of t.spans) if (!seen.has(s.spanID)) existing.spans.push(s);
+        existing.processes = { ...(existing.processes ?? {}), ...(t.processes ?? {}) };
       }
     }
-    return { data: [...byTid.values()], total: byTid.size };
-  } finally {
-    clearTimeout(timer);
   }
+  return { data: [...byTid.values()], total: byTid.size };
 }
 
 async function inClusterFetchDetail(
