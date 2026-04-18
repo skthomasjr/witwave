@@ -789,7 +789,15 @@ async def run_query(
                 item = event.item
                 if isinstance(item, ToolCallItem):
                     raw = item.raw_item
-                    call_id = getattr(raw, "call_id", None) or getattr(raw, "id", None) or ""
+                    # Synthesize a UUID when the SDK provides neither call_id
+                    # nor id so parallel calls don't collapse into a shared
+                    # "" key (which would reset start-time bookkeeping and
+                    # yield elapsed ≈ 0 for all but the first call, #671).
+                    call_id = (
+                        getattr(raw, "call_id", None)
+                        or getattr(raw, "id", None)
+                        or f"synth-{uuid.uuid4().hex}"
+                    )
                     name = getattr(raw, "name", None) or getattr(raw, "type", "unknown")
                     # For local_shell, extract command as input
                     if hasattr(raw, "action") and hasattr(raw.action, "command"):
