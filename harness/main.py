@@ -851,9 +851,10 @@ async def main():
 
         Clients can discover the heartbeat/jobs/tasks ad-hoc run endpoints
         from a single well-known document, the way /.well-known/agent-triggers.json
-        advertises inbound trigger endpoints.  All three endpoints share the
-        TRIGGERS_AUTH_TOKEN bearer-token auth plumbing used elsewhere in the
-        harness HTTP surface.
+        advertises inbound trigger endpoints.  All three endpoints require
+        the distinct ``ADHOC_RUN_AUTH_TOKEN`` bearer-token (#700) — advertising
+        TRIGGERS_AUTH_TOKEN here would send clients onto the wrong bearer and
+        every request would 401 (#956).
         """
         payload: list[dict] = [
             {
@@ -861,7 +862,7 @@ async def main():
                 "name": "heartbeat",
                 "endpoint": "/heartbeat/run",
                 "methods": ["POST"],
-                "auth": "bearer:TRIGGERS_AUTH_TOKEN",
+                "auth": "bearer:ADHOC_RUN_AUTH_TOKEN",
             },
         ]
         try:
@@ -872,7 +873,7 @@ async def main():
                     "name": name,
                     "endpoint": f"/jobs/{name}/run",
                     "methods": ["POST"],
-                    "auth": "bearer:TRIGGERS_AUTH_TOKEN",
+                    "auth": "bearer:ADHOC_RUN_AUTH_TOKEN",
                 })
         except Exception:
             pass
@@ -884,7 +885,7 @@ async def main():
                     "name": name,
                     "endpoint": f"/tasks/{name}/run",
                     "methods": ["POST"],
-                    "auth": "bearer:TRIGGERS_AUTH_TOKEN",
+                    "auth": "bearer:ADHOC_RUN_AUTH_TOKEN",
                 })
         except Exception:
             pass
