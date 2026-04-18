@@ -1711,13 +1711,12 @@ async def main():
             try:
                 yield
             finally:
-                # Phased-shutdown ordering (#861): drain executor-owned
-                # background work (MCP watchers + fire-and-forget tasks)
-                # while backend httpx clients are still open. The bus worker
-                # (owned by main's task supervisor below) drains AFTER the
-                # lifespan exits, then close_backends() runs last so
-                # in-flight process_bus calls never see a closed client.
-                await executor.drain_background()
+                # Phased-shutdown ordering (#861, #976): executor background
+                # drain moved to AFTER bus_task cancel in main's supervisor
+                # (see Phase 2.5 below). Draining here while the bus worker
+                # is still scheduling new on_prompt_completed tasks allowed
+                # late-added tasks to race close_backends() and hit a closed
+                # httpx client.
                 if _metrics_task is not None and not _metrics_task.done():
                     _metrics_task.cancel()
                     try:
@@ -1914,6 +1913,15 @@ async def main():
         # shut-down backend transport).
         bus_task.cancel()
         await asyncio.gather(bus_task, return_exceptions=True)
+        # Phase 2.5: drain executor-owned background work (MCP watchers
+        # + fire-and-forget on_prompt_completed continuations, webhook
+        # fan-outs, etc.) AFTER the bus worker has stopped scheduling
+        # new ones (#976). Running this in the lifespan finally allowed
+        # bus_worker to enqueue late tasks that then raced close_backends.
+        try:
+            await executor.drain_background()
+        except Exception as exc:  # noqa: BLE001 — shutdown must continue
+            logger.warning("executor.drain_background() failed during shutdown: %r", exc)
         # Phase 3: watchers and helper tasks. These observe filesystem
         # / health state and have nothing to drain once schedulers and
         # bus worker are done.
