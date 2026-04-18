@@ -1570,15 +1570,29 @@ async def main():
                     await stack.enter_async_context(_sub_app_lifespan(route.app))
             # Start the dedicated :METRICS_PORT listener (#643). Started
             # inside lifespan so it shares the main event loop and gets
-            # cancelled cleanly on shutdown.
+            # cancelled cleanly on shutdown. Capture the returned task
+            # (#863) and cancel+await it in the finally block so its
+            # socket releases before container exit — otherwise uvicorn
+            # emits "Task was destroyed but it is pending" on SIGTERM
+            # and the :9000 socket hangs briefly across restarts.
+            _metrics_task: asyncio.Task | None = None
             if metrics_enabled:
                 from metrics_server import start_metrics_server
 
-                start_metrics_server(metrics_handler, logger=logger)
+                _metrics_task = start_metrics_server(metrics_handler, logger=logger)
             try:
                 yield
             finally:
                 await executor.close()
+                if _metrics_task is not None and not _metrics_task.done():
+                    _metrics_task.cancel()
+                    try:
+                        await _metrics_task
+                    except (asyncio.CancelledError, Exception):
+                        # Metrics listener cancellation is best-effort; we
+                        # don't want a stray exception from uvicorn's
+                        # server.serve() to mask a real shutdown failure.
+                        pass
 
     # Fail-closed CORS policy (#701). CORS_ALLOW_ORIGINS="*" combined
     # with the sensitive /triggers/*, /jobs/*/run, /trace, and
