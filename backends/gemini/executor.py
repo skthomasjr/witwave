@@ -872,8 +872,15 @@ async def _save_history(session_id: str, history: list[types.Content]) -> None:
             if entry.get("role") != "user":
                 cut += 1
                 continue
-            first_part = (entry.get("parts") or [{}])[0]
-            if "function_response" in first_part:
+            # Scan EVERY part (#945). User-role Content can carry
+            # multiple parts where a later part is a function_response
+            # following an earlier text part — inspecting only parts[0]
+            # missed that case and produced a structurally invalid
+            # history that Gemini rejected on reload, bricking the
+            # session. Any part containing a function_response makes
+            # this boundary unsafe.
+            _parts = entry.get("parts") or []
+            if any("function_response" in (p or {}) for p in _parts):
                 # Splitting before a function_response would orphan the
                 # pair — keep walking until we clear it.
                 cut += 1
@@ -921,8 +928,10 @@ async def _save_history(session_id: str, history: list[types.Content]) -> None:
                 if entry.get("role") != "user":
                     nxt += 1
                     continue
-                first_part = (entry.get("parts") or [{}])[0]
-                if "function_response" in first_part:
+                # Scan EVERY part, not just parts[0] (#945). Mirrors the
+                # turn-cap branch above.
+                _parts = entry.get("parts") or []
+                if any("function_response" in (p or {}) for p in _parts):
                     nxt += 1
                     continue
                 break
