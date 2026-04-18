@@ -23,23 +23,70 @@ View logs for an agent:
 
 REQUIRED SECRETS
 ----------------
-Each backend requires a secret with API credentials. Example for a Claude backend:
-  kubectl create secret generic <agent>-claude-secrets \
+{{- /*
+  Per-backend credentials resolution (#1025). The previous NOTES block was
+  static and always told the operator to `kubectl create secret generic
+  <agent>-<backend>-secrets`, even when they had set `existingSecret:` (in
+  which case they'd end up with two Secrets holding the same env) or when
+  they had populated inline `secrets:` with `acknowledgeInsecureInline:
+  true` (in which case the chart already rendered the Secret and the
+  kubectl recipe was outright wrong).
+  We now walk every agent/backend, re-resolve credentials via the same
+  `nyx.resolveCredentials` helper the templates use, and emit one line per
+  backend describing how its credentials arrive.
+*/ -}}
+{{- $defaultBackendCreds := .Values.defaultBackendCredentials | default dict -}}
+{{- $needMissing := list -}}
+{{- range $agent := .Values.agents }}
+{{- if eq (include "nyx.enabled" $agent) "true" }}
+{{- range $b := $agent.backends }}
+{{- if eq (include "nyx.enabled" $b) "true" }}
+{{- $creds := $b.credentials | default dict -}}
+{{- $def := $defaultBackendCreds -}}
+{{- $secretName := printf "%s-%s-%s-backend-credentials" $.Release.Name $agent.name $b.name | trunc 253 -}}
+{{- $existing := or $creds.existingSecret $def.existingSecret -}}
+{{- $inlineSecs := $creds.secrets | default $def.secrets | default dict -}}
+{{- $hasInline := gt (len $inlineSecs) 0 -}}
+{{- if $existing }}
+  • {{ $agent.name }}/{{ $b.name }}: existingSecret → {{ $existing | quote }} (user-managed; do not re-create)
+{{- else if $hasInline }}
+  • {{ $agent.name }}/{{ $b.name }}: chart-rendered Secret {{ $secretName | quote }} (inline values; DO NOT run `kubectl create secret` — it already exists)
+{{- else }}
+  • {{ $agent.name }}/{{ $b.name }}: NO credentials resolved — see example below
+{{- $needMissing = append $needMissing (dict "agent" $agent.name "backend" $b.name "secretName" $secretName) -}}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if $needMissing }}
+
+The following backends have no `existingSecret` and no inline `secrets:` —
+create a Secret for each, or set `existingSecret:` / `secrets:` in values:
+{{- range $needMissing }}
+{{- if eq .backend "claude" }}
+  kubectl create secret generic {{ .secretName }} \
     --from-literal=CLAUDE_CODE_OAUTH_TOKEN=<token> \
-    -n {{ .Release.Namespace }}
-
-For a Codex backend (OpenAI):
-  kubectl create secret generic <agent>-codex-secrets \
+    -n {{ $.Release.Namespace }}
+{{- else if eq .backend "codex" }}
+  kubectl create secret generic {{ .secretName }} \
     --from-literal=OPENAI_API_KEY=<key> \
-    -n {{ .Release.Namespace }}
-
-For a Gemini backend (Google):
-  kubectl create secret generic <agent>-gemini-secrets \
+    -n {{ $.Release.Namespace }}
+{{- else if eq .backend "gemini" }}
+  kubectl create secret generic {{ .secretName }} \
     --from-literal=GEMINI_API_KEY=<key> \
-    -n {{ .Release.Namespace }}
+    -n {{ $.Release.Namespace }}
+{{- else }}
+  kubectl create secret generic {{ .secretName }} \
+    --from-literal=<KEY>=<value> \
+    -n {{ $.Release.Namespace }}
+{{- end }}
+{{- end }}
+{{- end }}
 
-If using git-sync, create the git credentials secret:
-  kubectl create secret generic git-sync-credentials \
+If using git-sync with inline credentials, the chart renders the Secret for you.
+For an `existingSecret:`-backed gitSync credentials, create it yourself:
+  kubectl create secret generic <my-gitsync-secret> \
     --from-literal=GITSYNC_USERNAME=<user> \
     --from-literal=GITSYNC_PASSWORD=<token> \
     -n {{ .Release.Namespace }}
