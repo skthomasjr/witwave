@@ -20,6 +20,7 @@ from a2a.types import (
     AgentSkill,
 )
 from conversations import (
+    auth_disabled_escape_hatch,
     make_conversations_handler,
     make_trace_handler,
 )
@@ -345,10 +346,16 @@ async def main():
         _method_box: list[str],
         _status_box: list[str],
     ) -> JSONResponse:
-        # Gate on the same bearer token used by /conversations and /trace when
-        # configured. Without this, any network caller could drive the LLM via
-        # tools/call -> ask_agent and burn the operator's API key (#510).
-        if CONVERSATIONS_AUTH_TOKEN:
+        # #961: Fail-closed parity with claude (#718). Previously an empty
+        # CONVERSATIONS_AUTH_TOKEN silently disabled auth and any network
+        # caller could drive the LLM via tools/call → ask_agent, burning
+        # operator API keys. The escape hatch (CONVERSATIONS_AUTH_DISABLED)
+        # is the only acknowledged path for local dev.
+        if not CONVERSATIONS_AUTH_TOKEN:
+            if not auth_disabled_escape_hatch():
+                _status_box[0] = "auth_not_configured"
+                return JSONResponse({"error": "auth not configured"}, status_code=503)
+        else:
             header = request.headers.get("Authorization", "")
             if not hmac_mod.compare_digest(f"Bearer {CONVERSATIONS_AUTH_TOKEN}", header):
                 _status_box[0] = "unauthorized"
@@ -511,7 +518,26 @@ async def main():
 
     # OTel in-memory span store (#otel-in-cluster). Serves the Jaeger v1
     # shape so the harness's fan-out aggregator can merge backend spans.
+    #
+    # #961: Gated on CONVERSATIONS_AUTH_TOKEN (parity with claude #709).
+    # Spans carry session IDs (bearer-equivalent), tool input-derived
+    # fields, and agent identity — leaving this open was an information
+    # disclosure surface across pods/tenants. Fail-closed on empty token
+    # unless CONVERSATIONS_AUTH_DISABLED=true is explicitly set.
+    def _require_traces_auth(request: Request) -> JSONResponse | None:
+        if not CONVERSATIONS_AUTH_TOKEN:
+            if auth_disabled_escape_hatch():
+                return None
+            return JSONResponse({"error": "auth not configured"}, status_code=503)
+        header = request.headers.get("Authorization", "")
+        if not hmac_mod.compare_digest(f"Bearer {CONVERSATIONS_AUTH_TOKEN}", header):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        return None
+
     async def otel_traces_list_handler(request: Request) -> JSONResponse:
+        unauthorized = _require_traces_auth(request)
+        if unauthorized is not None:
+            return unauthorized
         try:
             limit_raw = request.query_params.get("limit")
             limit = int(limit_raw) if limit_raw else 20
@@ -525,6 +551,9 @@ async def main():
         return JSONResponse({"data": traces[:limit], "total": len(traces)})
 
     async def otel_traces_detail_handler(request: Request) -> JSONResponse:
+        unauthorized = _require_traces_auth(request)
+        if unauthorized is not None:
+            return unauthorized
         trace_id = request.path_params.get("trace_id") or ""
         try:
             from otel import get_in_memory_traces  # type: ignore
