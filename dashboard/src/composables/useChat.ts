@@ -120,9 +120,16 @@ export function useChat(opts: UseChatOptions) {
           timeoutMs: historyTimeoutMs,
         },
       );
+      // Sort ascending by parsed timestamp before cap(): cap() keeps the
+      // tail via slice(-N), which only yields the "most recent" window when
+      // the list is chronologically ordered. Backend order is not
+      // guaranteed, so sort defensively (matches ConversationsView.vue,
+      // #678).
       messages.value = cap(
         entries
           .filter((e) => (e.text ?? "").trim().length > 0)
+          .slice()
+          .sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts))
           .map<ChatMessage>((e) => ({
             id: randomId(),
             role: e.role === "user" ? "user" : "agent",
