@@ -30,10 +30,15 @@ export interface ConversationEntry {
   trace_id?: string | null;
 }
 
-// Trace/tool-audit row emitted by backends and merged by the harness /trace
-// proxy (#592). Shape follows claude/executor.py _log_tool_event: a
-// tool_use event carries (id, name, input); the paired tool_result event
-// carries (tool_use_id, content, is_error). Other fields are shared.
+// Trace row emitted by backends and merged by the harness /trace proxy
+// (#592). Shape follows claude/executor.py _log_tool_event for SDK-level
+// events, and log_tool_audit for PostToolUse hook rows (consolidated
+// into trace.jsonl as event_type='tool_audit' in #tool-audit-merge).
+//
+//  - tool_use   : (id, name, input)
+//  - tool_result: (tool_use_id, content, is_error)
+//  - tool_audit : (tool_use_id, tool_name, tool_input, tool_response_preview,
+//                  decision?, rule?, reason?)
 export interface TraceEntry {
   ts: string;
   agent?: string;
@@ -49,6 +54,13 @@ export interface TraceEntry {
   tool_use_id?: string;
   content?: unknown;
   is_error?: boolean;
+  // tool_audit rows
+  tool_name?: string;
+  tool_input?: unknown;
+  tool_response_preview?: string;
+  decision?: string;
+  rule?: string;
+  reason?: string;
 }
 
 export interface A2AMessagePart {

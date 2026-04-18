@@ -3,11 +3,17 @@ import { computed, ref } from "vue";
 import { useAgentFanout } from "../composables/useAgentFanout";
 import type { TraceEntry } from "../types/chat";
 
-// Tool-audit trace feed across the team (#592). Fans out per-agent to
-// /api/agents/<name>/trace and renders a chronological list. The harness
-// /trace endpoint merges tool_use and tool_result events emitted by each
-// backend's PostToolUse hook. We pair each tool_use with its matching
-// tool_result (by id / tool_use_id) to derive duration and status.
+// Tool activity feed across the team (#592, consolidated in
+// #tool-audit-merge). Fans out per-agent to /api/agents/<name>/trace
+// and renders a chronological list. trace.jsonl carries three event
+// types; we show two visible kinds:
+//   • tool_use  — paired with its matching tool_result for duration
+//                 and status, enriched with response preview + hook
+//                 decision from any matching tool_audit row.
+//   • tool_audit — standalone only when there's no matching tool_use
+//                 (e.g. denied at the hook before the model saw it).
+// tool_result is never rendered on its own — it's folded into its
+// tool_use row.
 
 type Row = TraceEntry & { _agent: string };
 
@@ -16,6 +22,7 @@ const searchTerm = ref<string>("");
 const agentFilter = ref<string>("");
 const toolFilter = ref<string>("");
 const statusFilter = ref<string>("");
+const typeFilter = ref<string>("");
 
 const { items, perAgentErrors, loading, error, refresh } = useAgentFanout<TraceEntry>({
   endpoint: "trace",
@@ -29,56 +36,100 @@ const degradedTooltip = computed(() =>
   degradedEntries.value.map(([a, m]) => `${a}: ${m}`).join("\n"),
 );
 
-// Pair tool_use rows with their tool_result by id. The key is
-// "<_agent>|<id>" because backends only guarantee uniqueness within their
-// own stream; a naive id-only map would cross-contaminate between agents.
+// Pair tool_use rows with their tool_result (for duration) and any
+// matching tool_audit row (for response preview + hook decision).
+// Keyed by "<_agent>|<id>" because backends only guarantee uniqueness
+// within their own stream; a naive id-only map would cross-contaminate.
 interface RenderRow {
   key: string;
+  kind: "tool_use" | "tool_audit";
   ts: string;
   agent: string;
   sourceTeam: string;
   tool: string;
   sessionId: string;
   durationMs: number | null;
-  status: "ok" | "error" | "pending";
+  status: "ok" | "error" | "pending" | "denied";
+  decision: string | null;
+  rule: string | null;
+  preview: string | null;
   useRow: Row;
   resultRow?: Row;
+  auditRow?: Row;
 }
 
 const rendered = computed<RenderRow[]>(() => {
   const results = new Map<string, Row>();
+  const audits = new Map<string, Row>();
   for (const r of items.value) {
     if (r.event_type === "tool_result" && r.tool_use_id) {
       results.set(`${r._agent}|${r.tool_use_id}`, r);
+    } else if (r.event_type === "tool_audit") {
+      const id = r.tool_use_id ?? "";
+      if (id) audits.set(`${r._agent}|${id}`, r);
     }
   }
   const rows: RenderRow[] = [];
+  const auditIdsConsumed = new Set<string>();
   for (const r of items.value) {
     if (r.event_type !== "tool_use") continue;
     const id = r.id ?? "";
-    const res = id ? results.get(`${r._agent}|${id}`) : undefined;
+    const key = `${r._agent}|${id}`;
+    const res = id ? results.get(key) : undefined;
+    const aud = id ? audits.get(key) : undefined;
+    if (aud) auditIdsConsumed.add(key);
     let duration: number | null = null;
     if (res) {
       const a = Date.parse(r.ts);
       const b = Date.parse(res.ts);
       if (!Number.isNaN(a) && !Number.isNaN(b)) duration = b - a;
     }
-    const status: RenderRow["status"] = !res
-      ? "pending"
-      : res.is_error
-        ? "error"
-        : "ok";
+    const decision = (aud?.decision ?? null) || null;
+    const status: RenderRow["status"] = decision === "deny"
+      ? "denied"
+      : !res
+        ? "pending"
+        : res.is_error
+          ? "error"
+          : "ok";
     rows.push({
-      key: `${r._agent}|${id || r.ts}`,
+      key: `use|${r._agent}|${id || r.ts}`,
+      kind: "tool_use",
       ts: r.ts,
       agent: r.agent ?? "",
       sourceTeam: r._agent,
-      tool: r.name ?? "",
+      tool: r.name ?? aud?.tool_name ?? "",
       sessionId: r.session_id ?? "",
       durationMs: duration,
       status,
+      decision,
+      rule: (aud?.rule ?? null) || null,
+      preview: (aud?.tool_response_preview ?? null) || null,
       useRow: r,
       resultRow: res,
+      auditRow: aud,
+    });
+  }
+  // Surface any orphan audit rows (e.g. denied by hook before the model
+  // ever emitted a tool_use). They show up as their own rows so the
+  // operator can see blocked calls too.
+  for (const [key, aud] of audits) {
+    if (auditIdsConsumed.has(key)) continue;
+    const decision = (aud.decision ?? null) || null;
+    rows.push({
+      key: `audit|${aud._agent}|${aud.tool_use_id ?? aud.ts}`,
+      kind: "tool_audit",
+      ts: aud.ts,
+      agent: aud.agent ?? "",
+      sourceTeam: aud._agent,
+      tool: aud.tool_name ?? "",
+      sessionId: aud.session_id ?? "",
+      durationMs: null,
+      status: decision === "deny" ? "denied" : "ok",
+      decision,
+      rule: (aud.rule ?? null) || null,
+      preview: (aud.tool_response_preview ?? null) || null,
+      useRow: aud,
     });
   }
   // Newest first — trace views are debugging-oriented; most-recent-first is
@@ -105,8 +156,9 @@ const filtered = computed(() => {
     if (agentFilter.value && row.sourceTeam !== agentFilter.value) return false;
     if (toolFilter.value && row.tool !== toolFilter.value) return false;
     if (statusFilter.value && row.status !== statusFilter.value) return false;
+    if (typeFilter.value && row.kind !== typeFilter.value) return false;
     if (q) {
-      const hay = `${row.tool} ${row.agent} ${row.sessionId} ${JSON.stringify(row.useRow.input ?? "")}`.toLowerCase();
+      const hay = `${row.tool} ${row.agent} ${row.sessionId} ${JSON.stringify(row.useRow.input ?? row.useRow.tool_input ?? "")} ${row.preview ?? ""}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -165,6 +217,12 @@ function formatInput(v: unknown): string {
         <option value="ok">ok</option>
         <option value="error">error</option>
         <option value="pending">pending</option>
+        <option value="denied">denied</option>
+      </select>
+      <select v-model="typeFilter" class="select" aria-label="type">
+        <option value="">all types</option>
+        <option value="tool_use">tool_use</option>
+        <option value="tool_audit">tool_audit</option>
       </select>
       <select v-model.number="limit" class="select" aria-label="limit">
         <option :value="50">50</option>
@@ -197,12 +255,13 @@ function formatInput(v: unknown): string {
         <thead>
           <tr>
             <th>Timestamp</th>
+            <th>Type</th>
             <th>Tool</th>
             <th>Duration</th>
             <th>Status</th>
             <th>Agent</th>
             <th>Session</th>
-            <th>Input</th>
+            <th>Input / Preview</th>
           </tr>
         </thead>
         <tbody>
@@ -212,17 +271,24 @@ function formatInput(v: unknown): string {
             :class="`status-row-${row.status}`"
           >
             <td class="ts">{{ formatTs(row.ts) }}</td>
+            <td class="kind">
+              <span :class="`pill pill-kind-${row.kind}`">{{ row.kind }}</span>
+            </td>
             <td class="tool">{{ row.tool }}</td>
             <td class="dur">{{ formatDuration(row.durationMs) }}</td>
             <td class="status">
               <span :class="`pill pill-${row.status}`">{{ row.status }}</span>
+              <span v-if="row.rule" class="rule" :title="`rule: ${row.rule}`">·{{ row.rule }}</span>
             </td>
             <td class="agent">
               <span class="agent-name">{{ row.agent }}</span>
               <span class="team">@{{ row.sourceTeam }}</span>
             </td>
             <td class="session">{{ row.sessionId }}</td>
-            <td class="input">{{ formatInput(row.useRow.input) }}</td>
+            <td class="input">
+              <div>{{ formatInput(row.useRow.input ?? row.useRow.tool_input) }}</div>
+              <div v-if="row.preview" class="preview" :title="row.preview">→ {{ row.preview }}</div>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -440,5 +506,41 @@ function formatInput(v: unknown): string {
   background: color-mix(in srgb, var(--nyx-yellow) 20%, transparent);
   color: var(--nyx-yellow);
   border: 1px solid color-mix(in srgb, var(--nyx-yellow) 35%, var(--nyx-border));
+}
+
+.pill-denied {
+  background: color-mix(in srgb, var(--nyx-red) 14%, transparent);
+  color: var(--nyx-red);
+  border: 1px solid color-mix(in srgb, var(--nyx-red) 50%, var(--nyx-border));
+  font-weight: 600;
+}
+
+.pill-kind-tool_use {
+  background: var(--nyx-surface);
+  color: var(--nyx-dim);
+  border: 1px solid var(--nyx-border);
+}
+
+.pill-kind-tool_audit {
+  background: color-mix(in srgb, var(--nyx-accent) 14%, transparent);
+  color: var(--nyx-accent);
+  border: 1px solid color-mix(in srgb, var(--nyx-accent) 40%, var(--nyx-border));
+}
+
+.rule {
+  margin-left: 4px;
+  font-size: 10px;
+  color: var(--nyx-dim);
+  font-family: var(--nyx-mono);
+}
+
+.preview {
+  font-size: 10px;
+  color: var(--nyx-dim);
+  margin-top: 2px;
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>
