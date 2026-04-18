@@ -1913,7 +1913,23 @@ func (r *NyxAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			client.MatchingFields{NyxAgentTeamIndex: team},
 		)
 		if err != nil {
+			// Discriminate "index not registered" from every other
+			// List error (#1011). Previously any error — RBAC
+			// denial, context cancellation, apiserver 500 — was
+			// silently swallowed into the fallback full-namespace
+			// List, so peers never got enqueued during an apiserver
+			// blip and manifest CMs stayed stale. Fall back only
+			// when the index genuinely isn't registered (unit-test
+			// bootstrap); otherwise log and return nil so the
+			// caller's workqueue retry semantics kick in.
+			if !isFieldIndexMissing(err) {
+				logf.FromContext(ctx).Error(err, "enqueuePeersForTeam: scoped List failed",
+					"namespace", namespace, "team", team)
+				return nil
+			}
 			if fbErr := mgr.GetClient().List(ctx, peers, client.InNamespace(namespace)); fbErr != nil {
+				logf.FromContext(ctx).Error(fbErr, "enqueuePeersForTeam: fallback List failed",
+					"namespace", namespace, "team", team)
 				return nil
 			}
 		}
