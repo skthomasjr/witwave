@@ -6,6 +6,16 @@ import prometheus_client
 
 _enabled = bool(os.environ.get("METRICS_ENABLED"))
 
+# Deprecated-metrics emission gate (#940). Defaults ON so pre-migration
+# dashboards keep working; operators flip to "0"/"false" once they have
+# re-pointed panels and alerts at backend_hooks_denials_total. One release
+# after default flips to off, backend_codex_hooks_denials_total will be
+# removed outright. Print the resolved posture at import time so the
+# migration window is visible in kubectl logs.
+_EMIT_DEPRECATED_HOOK_METRICS = os.environ.get(
+    "EMIT_DEPRECATED_HOOK_METRICS", "true"
+).strip().lower() in {"1", "true", "yes", "on"}
+
 # Service-level metrics
 backend_up: prometheus_client.Gauge | None = None
 backend_info: prometheus_client.Info | None = None
@@ -585,13 +595,16 @@ if _enabled:
     # baseline-git-force-push-main, baseline-curl-pipe-shell,
     # baseline-chmod-777, baseline-dd-device). Non-shell enforcement is not
     # covered by this counter yet — see #586 for the deferred design.
-    backend_codex_hooks_denials_total = prometheus_client.Counter(
-        "backend_codex_hooks_denials_total",
-        "DEPRECATED alias for backend_hooks_denials_total (#789). Kept for "
-        "dashboards pinned to the codex-specific name pre-unification; "
-        "retain through one release cycle then delete.",
-        ["agent", "agent_id", "backend", "rule"],
-    )
+    if _EMIT_DEPRECATED_HOOK_METRICS:
+        backend_codex_hooks_denials_total = prometheus_client.Counter(
+            "backend_codex_hooks_denials_total",
+            "DEPRECATED alias for backend_hooks_denials_total (#789, #940). "
+            "Gated on EMIT_DEPRECATED_HOOK_METRICS (default true; flip off "
+            "after migrating dashboards). Label cardinality (agent, "
+            "agent_id, backend, rule) intentionally narrower than the "
+            "canonical series — non-shell enforcement will not backfill.",
+            ["agent", "agent_id", "backend", "rule"],
+        )
     # Canonical cross-backend denial counter (#789). Label schema matches
     # claude's (tool, source, rule); codex's shell baseline always fills
     # tool='shell' and source='baseline' since non-shell enforcement is
