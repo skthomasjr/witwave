@@ -65,10 +65,16 @@ describe("MetricsView", () => {
     expect(wrapper.text()).toContain("Metrics");
     expect(wrapper.text()).toContain("Max Uptime");
     expect(wrapper.text()).toContain("Active Sessions");
-    expect(wrapper.text()).toContain("Tasks Total");
+    // Stat card label for total task count. Renamed from "Tasks Total" to
+    // "Tasks Completed" in the Overview redesign (the new label makes it
+    // clearer that this counts finished tasks, not queue depth).
+    expect(wrapper.text()).toContain("Tasks Completed");
     // At least one chart should materialize from the sample payload. The
-    // stat "Tasks by Outcome" chart title is a chart-card <h3>, which the
-    // view renders unconditionally when its breakdown has labels.
+    // "Tasks by Outcome" doughnut renders under the Reliability section
+    // whenever the harness_tasks breakdown has labels.
     expect(wrapper.text()).toContain("Tasks by Outcome");
+    // Section headers should be visible too.
+    expect(wrapper.text()).toContain("Overview");
+    expect(wrapper.text()).toContain("Reliability");
   });
 });
