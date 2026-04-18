@@ -166,6 +166,25 @@ async function inClusterFetchList(
 ): Promise<JaegerResponse<JaegerTrace[]>> {
   const team = await fetchTeam(signal);
   if (!team.length) return { data: [], total: 0 };
+  // Extract the caller's ?limit= from the path so each per-agent
+  // result can be capped to the newest K traces before returning to
+  // the merge step (#746). Without the cap, a deep retention buffer
+  // on one agent dominates the merged result and every poll copies
+  // every span across the wire.
+  let perAgentLimit = 500;
+  try {
+    const qIdx = path.indexOf("?");
+    if (qIdx >= 0) {
+      const params = new URLSearchParams(path.slice(qIdx + 1));
+      const l = params.get("limit");
+      if (l !== null) {
+        const n = Number.parseInt(l, 10);
+        if (Number.isFinite(n) && n > 0) perAgentLimit = n;
+      }
+    }
+  } catch {
+    // keep default cap
+  }
   // Honour timeoutMs per-agent so a single stalled pod does not hang the
   // whole fan-out. AbortSignal.any combines the caller's abort with a
   // per-call AbortSignal.timeout (#680).
@@ -184,7 +203,19 @@ async function inClusterFetchList(
         );
         if (!r.ok) return [] as JaegerTrace[];
         const body = (await r.json()) as JaegerResponse<JaegerTrace[]>;
-        return body.data ?? [];
+        const traces = body.data ?? [];
+        // Cap per-agent to newest K (#746). Uses the earliest span
+        // start time as the trace start so the cap is consistent
+        // with the final sort in refreshList.
+        if (traces.length > perAgentLimit) {
+          traces.sort((a, b) => {
+            const sa = Math.min(...a.spans.map((s) => s.startTime ?? 0));
+            const sb = Math.min(...b.spans.map((s) => s.startTime ?? 0));
+            return sb - sa;
+          });
+          return traces.slice(0, perAgentLimit);
+        }
+        return traces;
       } catch {
         return [] as JaegerTrace[];
       }
