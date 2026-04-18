@@ -445,17 +445,37 @@ async def main():
                 else None
             )
             session_id = derive_session_id(_raw_sid, caller_identity=_caller_identity)
+            # #966: MCP-initiated invocations now get a named span nested
+            # under the inbound traceparent (TraceparentASGIMiddleware has
+            # already attached the caller's context). Previously the
+            # MCP→executor hop produced orphaned spans, so /api/traces
+            # cross-agent joins missed tools/call work entirely.
+            from otel import set_span_error as _set_span_error
+            from otel import start_span as _start_span
             try:
-                from executor import run as _run_query_for_mcp
-                response = await _run_query_for_mcp(
-                    prompt,
-                    session_id,
-                    executor._sessions,
-                    executor._mcp_servers,
-                    executor._agent_md_content,
-                    model=None,
-                    max_tokens=mcp_max_tokens,
-                )
+                with _start_span(
+                    "backend.mcp.tools_call",
+                    kind="server",
+                    attributes={
+                        "tool.name": tool_name,
+                        "session.id": session_id,
+                        "agent.id": AGENT_ID,
+                    },
+                ) as _mcp_span:
+                    try:
+                        from executor import run as _run_query_for_mcp
+                        response = await _run_query_for_mcp(
+                            prompt,
+                            session_id,
+                            executor._sessions,
+                            executor._mcp_servers,
+                            executor._agent_md_content,
+                            model=None,
+                            max_tokens=mcp_max_tokens,
+                        )
+                    except Exception as _exc:
+                        _set_span_error(_mcp_span, _exc)
+                        raise
             except Exception as exc:
                 logger.error(f"MCP tools/call error: {exc!r}")
                 return JSONResponse({

@@ -449,17 +449,35 @@ async def main():
             session_id = derive_session_id(_raw_sid, caller_identity=_caller_identity)
             response: str | None = None
             _failed = False
+            # #966: Named span nested under the inbound traceparent so
+            # cross-agent /api/traces joins see MCP-driven work rather
+            # than a dead-ended request-span.
+            from otel import set_span_error as _set_span_error
+            from otel import start_span as _start_span
             try:
-                from executor import run as _run_for_mcp
-                response = await _run_for_mcp(
-                    prompt,
-                    session_id,
-                    executor._sessions,
-                    executor._agent_md_content,
-                    model=None,
-                    max_tokens=mcp_max_tokens,
-                    live_mcp_servers=await executor._snapshot_live_mcp_servers(),
-                )
+                with _start_span(
+                    "backend.mcp.tools_call",
+                    kind="server",
+                    attributes={
+                        "tool.name": tool_name,
+                        "session.id": session_id,
+                        "agent.id": AGENT_ID,
+                    },
+                ) as _mcp_span:
+                    try:
+                        from executor import run as _run_for_mcp
+                        response = await _run_for_mcp(
+                            prompt,
+                            session_id,
+                            executor._sessions,
+                            executor._agent_md_content,
+                            model=None,
+                            max_tokens=mcp_max_tokens,
+                            live_mcp_servers=await executor._snapshot_live_mcp_servers(),
+                        )
+                    except Exception as exc:
+                        _set_span_error(_mcp_span, exc)
+                        raise
             except Exception as exc:
                 _failed = True
                 logger.error(f"MCP tools/call error: {exc!r}")

@@ -423,19 +423,37 @@ async def main():
                 # A2A execute() path's acquire/release bracket.
                 _live_servers, _held_stack = await executor._acquire_mcp_stack()
                 try:
+                    # #966: Named span nested under the inbound traceparent
+                    # so cross-agent /api/traces joins see MCP-driven work
+                    # instead of orphaned spans at the A2A boundary.
+                    from otel import set_span_error as _set_span_error
+                    from otel import start_span as _start_span
                     try:
-                        from executor import run as _run_for_mcp
-                        response = await _run_for_mcp(
-                            prompt,
-                            session_id,
-                            executor._sessions,
-                            executor._agent_md_content,
-                            executor._session_locks,
-                            history_save_failed=executor._history_save_failed,
-                            model=None,
-                            max_tokens=mcp_max_tokens,
-                            live_mcp_servers=_live_servers,
-                        )
+                        with _start_span(
+                            "backend.mcp.tools_call",
+                            kind="server",
+                            attributes={
+                                "tool.name": tool_name,
+                                "session.id": session_id,
+                                "agent.id": AGENT_ID,
+                            },
+                        ) as _mcp_span:
+                            try:
+                                from executor import run as _run_for_mcp
+                                response = await _run_for_mcp(
+                                    prompt,
+                                    session_id,
+                                    executor._sessions,
+                                    executor._agent_md_content,
+                                    executor._session_locks,
+                                    history_save_failed=executor._history_save_failed,
+                                    model=None,
+                                    max_tokens=mcp_max_tokens,
+                                    live_mcp_servers=_live_servers,
+                                )
+                            except Exception as _span_exc:
+                                _set_span_error(_mcp_span, _span_exc)
+                                raise
                     except Exception as exc:
                         logger.error(f"MCP tools/call error: {exc!r}")
                         _mcp_status = "internal_error"
