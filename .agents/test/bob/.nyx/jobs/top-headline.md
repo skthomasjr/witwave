@@ -1,7 +1,6 @@
 ---
 name: top-headline
 description: Fetches the top news headline of the day. Exercises the WebSearch tool so tool-trace/audit/OTel span feeds populate.
-agent: claude
 enabled: true
 ---
 
