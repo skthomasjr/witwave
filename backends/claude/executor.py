@@ -52,6 +52,7 @@ from metrics import (
     backend_log_entries_total,
     backend_log_write_errors_total,
     backend_lru_cache_utilization_percent,
+    backend_mcp_command_rejected_total,
     backend_mcp_config_errors_total,
     backend_mcp_config_reloads_total,
     backend_mcp_servers_active,
@@ -934,8 +935,72 @@ async def _log_tool_event(event_type: str, block, session_id: str, model: str | 
         logger.error(f"_log_tool_event error: {e}")
 
 
+# MCP stdio command allow-list (#711). ``mcp.json`` is hot-reloaded and the
+# Claude Agent SDK spawns whatever ``command`` an entry lists, so an attacker
+# with commit access — or a mis-merge — that lands ``command: "/bin/sh"``
+# achieves arbitrary code execution inside the backend container. The
+# allow-list caps that blast radius to a small, operator-curated set.
+#
+# Configuration:
+#   MCP_ALLOWED_COMMANDS  Comma-separated list. Each entry is either an
+#                         absolute path (``/usr/local/bin/mcp-kubernetes``)
+#                         or a bare basename (``mcp-kubernetes``). Empty
+#                         defaults to a conservative read-only set that
+#                         covers the MCP tools shipped in this repo.
+#   MCP_ALLOWED_COMMAND_PREFIXES  Comma-separated absolute-path prefixes.
+#                         Commands resolving to a real path that begins
+#                         with one of these prefixes are accepted even if
+#                         the basename isn't explicitly in the allow-list.
+#                         Default "/home/agent/mcp-bin/,/usr/local/bin/".
+_DEFAULT_MCP_ALLOWED_COMMANDS = (
+    "mcp-kubernetes,mcp-helm,python,python3,node,npx,uv,uvx"
+)
+_DEFAULT_MCP_ALLOWED_COMMAND_PREFIXES = "/home/agent/mcp-bin/,/usr/local/bin/"
+_MCP_ALLOWED_COMMANDS: frozenset[str] = frozenset(
+    t.strip() for t in os.environ.get("MCP_ALLOWED_COMMANDS", _DEFAULT_MCP_ALLOWED_COMMANDS).split(",") if t.strip()
+)
+_MCP_ALLOWED_COMMAND_PREFIXES: tuple[str, ...] = tuple(
+    t.strip() for t in os.environ.get(
+        "MCP_ALLOWED_COMMAND_PREFIXES", _DEFAULT_MCP_ALLOWED_COMMAND_PREFIXES,
+    ).split(",") if t.strip()
+)
+
+
+def _mcp_command_allowed(command: str) -> tuple[bool, str]:
+    """Return (ok, reason) for an ``mcp.json`` stdio ``command`` (#711).
+
+    reason is a short category key ("non_string", "empty",
+    "absolute_not_on_prefix", "basename_not_allowed") suitable for the
+    ``backend_mcp_command_rejected_total`` metric label.
+    """
+    if not isinstance(command, str):
+        return False, "non_string"
+    cmd = command.strip()
+    if not cmd:
+        return False, "empty"
+    if cmd.startswith("/"):
+        for prefix in _MCP_ALLOWED_COMMAND_PREFIXES:
+            if cmd.startswith(prefix):
+                return True, "absolute_prefix"
+        # Absolute but outside the allow-list prefixes — still allow if
+        # the basename is in the explicit allow-list so operators can
+        # point at e.g. /opt/my-mcp/bin/mcp-kubernetes without also
+        # adding /opt to the prefix list.
+        basename = os.path.basename(cmd)
+        if basename in _MCP_ALLOWED_COMMANDS:
+            return True, "basename_allowed"
+        return False, "absolute_not_on_prefix"
+    # Non-absolute path — only allowed if the bare basename matches an
+    # entry in the allow-list. PATH resolution still applies at spawn
+    # time, but the attacker can no longer wedge in ``/bin/sh``.
+    if cmd in _MCP_ALLOWED_COMMANDS or os.path.basename(cmd) in _MCP_ALLOWED_COMMANDS:
+        return True, "basename_allowed"
+    return False, "basename_not_allowed"
+
+
 def _sanitize_mcp_servers(servers: dict) -> dict:
-    """Strip loader/interpreter-hijack env vars from every stdio MCP server's ``env`` dict (#606).
+    """Strip loader/interpreter-hijack env vars and enforce the command
+    allow-list for every stdio MCP server entry (#606, #711).
 
     The Claude Agent SDK forwards each server entry's ``env`` dict verbatim to
     the subprocess it spawns for stdio transport, so a malicious or poorly-
@@ -945,25 +1010,56 @@ def _sanitize_mcp_servers(servers: dict) -> dict:
     ``_SHELL_ENV_DENYLIST`` and log any rejected keys at WARNING so
     operators notice misconfigurations. Non-dict entries, entries without
     an ``env`` key, and non-stdio transports are passed through untouched.
+
+    The command allow-list (#711) rejects entries whose ``command`` falls
+    outside ``MCP_ALLOWED_COMMANDS`` + ``MCP_ALLOWED_COMMAND_PREFIXES``
+    — the rejected entry is dropped from the returned dict entirely
+    (rather than silently mutating ``command`` to something safe) so a
+    mis-merged mcp.json can't achieve partial code execution.
     """
     if not isinstance(servers, dict):
         return servers
+    out: dict = {}
     for name, cfg in servers.items():
         if not isinstance(cfg, dict):
+            out[name] = cfg
             continue
+        # Apply env scrub first so the logged "rejected" set is meaningful
+        # regardless of whether the command is later rejected.
         raw_env = cfg.get("env")
-        if not isinstance(raw_env, dict):
-            continue
-        sanitized_env = {k: v for k, v in raw_env.items() if k not in _SHELL_ENV_DENYLIST}
-        rejected = set(raw_env) - set(sanitized_env)
-        if rejected:
-            logger.warning(
-                "MCP server %r: stripped dangerous env vars from config env: %s",
-                name,
-                sorted(rejected),
-            )
-        cfg["env"] = sanitized_env
-    return servers
+        if isinstance(raw_env, dict):
+            sanitized_env = {k: v for k, v in raw_env.items() if k not in _SHELL_ENV_DENYLIST}
+            rejected = set(raw_env) - set(sanitized_env)
+            if rejected:
+                logger.warning(
+                    "MCP server %r: stripped dangerous env vars from config env: %s",
+                    name,
+                    sorted(rejected),
+                )
+            cfg["env"] = sanitized_env
+        # Only validate the command field when the entry is an stdio
+        # transport (presence of ``command``). HTTP/SSE transports carry
+        # ``url`` instead and are out of scope for the allow-list.
+        cmd = cfg.get("command")
+        if cmd is not None:
+            ok, reason = _mcp_command_allowed(cmd)
+            if not ok:
+                logger.warning(
+                    "MCP server %r: command %r rejected by allow-list (%s) — "
+                    "dropping entry. Set MCP_ALLOWED_COMMANDS / "
+                    "MCP_ALLOWED_COMMAND_PREFIXES to widen. (#711)",
+                    name, cmd, reason,
+                )
+                if backend_mcp_command_rejected_total is not None:
+                    try:
+                        backend_mcp_command_rejected_total.labels(
+                            **_LABELS, reason=reason,
+                        ).inc()
+                    except Exception:
+                        pass
+                continue
+        out[name] = cfg
+    return out
 
 
 def _load_mcp_config() -> dict:

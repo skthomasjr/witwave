@@ -98,6 +98,7 @@ backend_budget_exceeded_total: prometheus_client.Counter | None = None
 
 # MCP metrics
 backend_mcp_config_errors_total: prometheus_client.Counter | None = None
+backend_mcp_command_rejected_total: prometheus_client.Counter | None = None
 backend_mcp_config_reloads_total: prometheus_client.Counter | None = None
 backend_mcp_servers_active: prometheus_client.Gauge | None = None
 
@@ -488,6 +489,16 @@ if _enabled:
         "backend_mcp_servers_active",
         "Number of currently loaded MCP servers.",
         ["agent", "agent_id", "backend"],
+    )
+    # Command allow-list rejections (#711). Counts entries rejected by
+    # the mcp.json validator because their ``command`` falls outside
+    # the configured allow-list (non-absolute path, basename not on
+    # MCP_ALLOWED_COMMANDS, etc.). `reason` is a short category key
+    # so operators can alert on sudden spikes without parsing logs.
+    backend_mcp_command_rejected_total = prometheus_client.Counter(
+        "backend_mcp_command_rejected_total",
+        "Total MCP server entries rejected by the command allow-list, by reason.",
+        ["agent", "agent_id", "backend", "reason"],
     )
 
     # File watchers
