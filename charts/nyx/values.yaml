@@ -619,13 +619,41 @@ mcpTools:
       # pullPolicy: IfNotPresent
     # # Number of replicas.
     # replicas: 1
-    # # Pod-level ServiceAccount. The tool reads cluster state via the
-    # # in-cluster API; bind this SA to an appropriate (Cluster)Role.
-    # serviceAccountName: mcp-kubernetes
+    # # Pod-level ServiceAccount. When rbac.create=true the chart renders
+    # # a dedicated SA ("<release>-mcp-kubernetes") plus a minimal
+    # # read-only ClusterRole/Binding. Override to reuse a pre-existing
+    # # SA; when set the chart skips ClusterRole/Binding render too.
+    # serviceAccountName: ""
     # # imagePullSecrets: []
     # # resources: {}
     # # env: []
     # # envFrom: []
+    #
+    # Ship minimal RBAC by default so enabling the tool does not 403 out
+    # of the box (#762). Baseline grants cluster-wide read on common
+    # core/apps/batch/networking resources — adjust `rules` to widen or
+    # narrow. When create=false and no serviceAccountName is provided,
+    # chart render fails loudly rather than silently deploying a broken
+    # tool that the operator would eventually work around with
+    # cluster-admin.
+    rbac:
+      create: true
+      rules:
+        - apiGroups: [""]
+          resources: ["namespaces", "pods", "services", "configmaps",
+                      "persistentvolumeclaims", "persistentvolumes",
+                      "events", "nodes"]
+          verbs: ["get", "list", "watch"]
+        - apiGroups: ["apps"]
+          resources: ["deployments", "statefulsets", "daemonsets",
+                      "replicasets"]
+          verbs: ["get", "list", "watch"]
+        - apiGroups: ["batch"]
+          resources: ["jobs", "cronjobs"]
+          verbs: ["get", "list", "watch"]
+        - apiGroups: ["networking.k8s.io"]
+          resources: ["ingresses", "networkpolicies"]
+          verbs: ["get", "list", "watch"]
 
   helm:
     enabled: false
@@ -634,11 +662,33 @@ mcpTools:
       # tag: ""
       # pullPolicy: IfNotPresent
     # replicas: 1
-    # serviceAccountName: mcp-helm
+    # serviceAccountName: ""
     # imagePullSecrets: []
     # resources: {}
     # env: []
     # envFrom: []
+    #
+    # Helm's storage backend is cluster Secrets, so the tool needs
+    # Secret CRUD on the namespaces it manages, plus read on rendered
+    # resources. Default is a cluster-wide ClusterRole; scope down via
+    # `rules` when only a subset of namespaces is managed. Enabling the
+    # tool without RBAC (create=false AND serviceAccountName empty)
+    # fails render (#762).
+    rbac:
+      create: true
+      rules:
+        - apiGroups: [""]
+          resources: ["secrets"]
+          verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+        - apiGroups: [""]
+          resources: ["configmaps", "namespaces", "services", "serviceaccounts"]
+          verbs: ["get", "list", "watch"]
+        - apiGroups: ["apps"]
+          resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+          verbs: ["get", "list", "watch"]
+        - apiGroups: ["rbac.authorization.k8s.io"]
+          resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+          verbs: ["get", "list", "watch"]
 
 # List of agents to deploy. Each agent runs as a single pod containing
 # the harness orchestrator and one or more backend sidecars.

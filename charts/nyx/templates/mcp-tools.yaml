@@ -20,6 +20,23 @@ is a two-line values change plus a new image build; no template edits.
        in #687). Only dict values with an enabled field are tools. */}}
 {{- if and (kindIs "map" $tool) $tool.enabled }}
 {{- $fullName := printf "%s-mcp-%s" $.Release.Name $name }}
+{{- /* RBAC resolution for MCP tools (#762). When rbac.create=true the
+       chart renders a dedicated SA + ClusterRole + ClusterRoleBinding
+       bound to it. The pod uses either the chart-rendered SA or a
+       user-supplied serviceAccountName. Fail render if BOTH sources
+       are absent — the tool will 403 at runtime otherwise and the
+       failure mode is invisible until someone looks at MCP errors. */}}
+{{- $rbac := default dict $tool.rbac }}
+{{- $rbacCreate := default false $rbac.create }}
+{{- $userSA := default "" $tool.serviceAccountName }}
+{{- if and (not $rbacCreate) (eq $userSA "") }}
+  {{- fail (printf "nyx chart: mcpTools.%s.enabled=true but no serviceAccount wiring is configured. Set mcpTools.%s.rbac.create=true to let the chart render a minimal default, or provide mcpTools.%s.serviceAccountName to reuse a pre-existing SA with the appropriate (Cluster)Role." $name $name $name) }}
+{{- end }}
+{{- $saName := ternary $userSA $fullName (ne $userSA "") }}
+{{- /* When rbacCreate is true and user did not override SA, the chart
+       renders $fullName as the SA. When user overrode, they own RBAC
+       (we skip ClusterRole/Binding so we do not widen their SA's
+       perms unexpectedly). */}}
 {{- $imageTag := default $.Chart.AppVersion $tool.image.tag }}
 {{- $pullPolicy := default "IfNotPresent" $tool.image.pullPolicy }}
 {{- /* MCP Service now exposes the metrics port when metrics.enabled so
@@ -27,6 +44,51 @@ is a two-line values change plus a new image build; no template edits.
        in-container listener (#688). */}}
 {{- $svcMetricsOn := $.Values.metrics.enabled }}
 {{- $svcMetricsPort := ($.Values.mcpTools.metricsPort | default ($.Values.metrics.port | default 9000)) }}
+{{- if and $rbacCreate (eq $userSA "") }}
+---
+# ServiceAccount for mcp-{{ $name }} (#762). Created when rbac.create=true
+# and no user-provided serviceAccountName; chart also renders the
+# ClusterRole + ClusterRoleBinding below.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $fullName }}
+  labels:
+    app.kubernetes.io/name: {{ $fullName }}
+    app.kubernetes.io/component: mcp-tool
+    app.kubernetes.io/part-of: nyx
+    app.kubernetes.io/managed-by: {{ $.Release.Service }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $fullName }}
+  labels:
+    app.kubernetes.io/name: {{ $fullName }}
+    app.kubernetes.io/component: mcp-tool
+    app.kubernetes.io/part-of: nyx
+    app.kubernetes.io/managed-by: {{ $.Release.Service }}
+rules:
+{{ toYaml ($rbac.rules | default list) | indent 2 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $fullName }}
+  labels:
+    app.kubernetes.io/name: {{ $fullName }}
+    app.kubernetes.io/component: mcp-tool
+    app.kubernetes.io/part-of: nyx
+    app.kubernetes.io/managed-by: {{ $.Release.Service }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $fullName }}
+    namespace: {{ $.Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $fullName }}
+{{- end }}
 ---
 apiVersion: v1
 kind: Service
@@ -78,12 +140,12 @@ spec:
         app.kubernetes.io/part-of: nyx
         app.kubernetes.io/managed-by: {{ $.Release.Service }}
     spec:
-      {{- if $tool.serviceAccountName }}
-      serviceAccountName: {{ $tool.serviceAccountName }}
+      {{- /* Use the resolved SA ($saName): chart-rendered when
+             rbac.create=true and no user override, user-supplied
+             otherwise. automountServiceAccountToken is on whenever an
+             SA is in effect (#762). */}}
+      serviceAccountName: {{ $saName }}
       automountServiceAccountToken: true
-      {{- else }}
-      automountServiceAccountToken: false
-      {{- end }}
       {{- with $tool.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
