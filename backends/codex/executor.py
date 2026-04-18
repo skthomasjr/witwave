@@ -165,25 +165,52 @@ _SHELL_ENV_DENYLIST: frozenset[str] = frozenset({
 # "Tool Activity" tab.
 
 
-# PreToolUse deny baseline for LocalShellTool (#586, shell-only scope).
-# Mirrors claude's shell baseline. `pattern` is compiled once at module
-# load; `rule` name matches claude's backend_hooks_denials_total{rule=...}
-# label convention for cross-backend dashboard parity.
+# PreToolUse deny EXAMPLES for LocalShellTool (#586, #722 — shell-only scope).
+#
+# IMPORTANT SCOPE NOTE (#722): these rules are textual regex matches
+# against the space-joined argv.  They provide ergonomic protection
+# against obvious fat-finger / prompt-injection patterns, NOT a
+# security boundary.  Any determined caller can bypass them with
+# trivial lexical rewrites (``sh -c 'rm -rf /'``, ``tee /dev/sda``,
+# ``bash <(curl ...)``, heredocs, paths like ``/etc/shadow``, chmod
+# g+w on a setuid binary, etc.).
+#
+# For real containment rely on the container's read-only filesystem
+# mounts, non-root UID, and CAP_DROP=ALL — not on this list.  The
+# rules below have been expanded beyond the initial five to cover a
+# handful of commonly-observed LLM fat-fingers (rm -rf /etc, ``sh -c``
+# wrapper, ``tee`` to block devices, chmod +s for setuid) but operators
+# should treat them as an opinionated deny-starter, not a baseline in
+# the audit sense.
+#
+# Mirrors claude's ``baseline-*`` rule-name prefix so the
+# ``backend_hooks_denials_total{rule=...}`` label keeps cross-backend
+# dashboard parity, while the comment block above documents the real
+# scope.
 _SHELL_DENY_RULES: tuple[tuple[str, "re.Pattern[str]", str], ...] = (
     (
         "baseline-rm-rf-root",
-        re.compile(r"\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*r)\s+(/|/\*|~|\$HOME|/\$)", re.IGNORECASE),
-        "rm -rf of /, ~, $HOME, or / glob",
+        # Widen the target set to include common system paths a fat-finger
+        # rm can still nuke — /etc, /var, /usr, /boot. The flag-parsing
+        # regex still handles -rf / -fr / -r -f variants.
+        re.compile(
+            r"\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*r|-r\s+-f|-f\s+-r)\s+"
+            r"(/|/\*|~|\$HOME|/\$|/etc\b|/var\b|/usr\b|/boot\b|/lib\b|/bin\b|/sbin\b)",
+            re.IGNORECASE,
+        ),
+        "rm -rf of /, ~, $HOME, or a critical system dir",
     ),
     (
         "baseline-git-force-push-main",
-        re.compile(r"\bgit\s+push\b.*\b--force\b.*\b(main|master)\b|\bgit\s+push\b.*\b(main|master)\b.*--force\b", re.IGNORECASE),
+        re.compile(r"\bgit\s+push\b.*\b--force\b.*\b(main|master)\b|\bgit\s+push\b.*\b(main|master)\b.*--force\b|\bgit\s+push\s+-f\b.*\b(main|master)\b", re.IGNORECASE),
         "git force-push to main/master",
     ),
     (
         "baseline-curl-pipe-shell",
-        re.compile(r"\bcurl\b[^|]*\|\s*(sh|bash|zsh|python3?)\b", re.IGNORECASE),
-        "curl | sh / bash / python pipeline",
+        # Add wget plus the bash <() process-substitution variant since
+        # both are common LLM-generated install commands.
+        re.compile(r"\b(curl|wget)\b[^|]*\|\s*(sh|bash|zsh|python3?)\b|\bbash\s+<\(\s*(curl|wget)\b", re.IGNORECASE),
+        "curl | sh / bash | zsh / python pipeline",
     ),
     (
         "baseline-chmod-777",
@@ -191,9 +218,33 @@ _SHELL_DENY_RULES: tuple[tuple[str, "re.Pattern[str]", str], ...] = (
         "chmod 777",
     ),
     (
+        "baseline-chmod-setuid",
+        re.compile(r"\bchmod\b\s+(-R\s+)?(u\+s|[24]7[0-7][0-7])\b"),
+        "chmod setuid bit",
+    ),
+    (
         "baseline-dd-device",
         re.compile(r"\bdd\b.*\bof=/dev/(sd|nvme|hd|xvd)", re.IGNORECASE),
         "dd of=/dev/<block-device>",
+    ),
+    (
+        "baseline-tee-device",
+        # Catches ``... | tee /dev/sda`` and friends — tee to a raw block
+        # device has the same blast radius as dd.
+        re.compile(r"\btee\b[^|&;]*\s/dev/(sd|nvme|hd|xvd)", re.IGNORECASE),
+        "tee to /dev/<block-device>",
+    ),
+    (
+        "baseline-sh-c-destructive-wrapper",
+        # ``sh -c 'rm -rf /'`` trivially bypassed the original argv
+        # match. Flag the wrapper when the inner command itself contains
+        # an obvious destructive token so we don't false-positive on
+        # benign sh -c helpers.
+        re.compile(
+            r"\b(sh|bash|zsh)\s+-c\b.*\b(rm\s+-rf?|mkfs|dd\s+of=/dev/|:\(\)\s*\{)",
+            re.IGNORECASE,
+        ),
+        "shell -c wrapping a destructive command",
     ),
 )
 
