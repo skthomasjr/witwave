@@ -29,10 +29,15 @@ is a two-line values change plus a new image build; no template edits.
 {{- $rbac := default dict $tool.rbac }}
 {{- $rbacCreate := default false $rbac.create }}
 {{- $userSA := default "" $tool.serviceAccountName }}
-{{- if and (not $rbacCreate) (eq $userSA "") }}
+{{- /* Trim before the empty check so a whitespace-only override
+       ("serviceAccountName: ' '") can't slip past the fail-render
+       guard and produce an obscure admission error at pod start
+       (#1024). */}}
+{{- $userSATrimmed := trim $userSA }}
+{{- if and (not $rbacCreate) (eq $userSATrimmed "") }}
   {{- fail (printf "nyx chart: mcpTools.%s.enabled=true but no serviceAccount wiring is configured. Set mcpTools.%s.rbac.create=true to let the chart render a minimal default, or provide mcpTools.%s.serviceAccountName to reuse a pre-existing SA with the appropriate (Cluster)Role." $name $name $name) }}
 {{- end }}
-{{- $saName := ternary $userSA $fullName (ne $userSA "") }}
+{{- $saName := ternary $userSATrimmed $fullName (ne $userSATrimmed "") }}
 {{- /* When rbacCreate is true and user did not override SA, the chart
        renders $fullName as the SA. When user overrode, they own RBAC
        (we skip ClusterRole/Binding so we do not widen their SA's
@@ -51,7 +56,7 @@ is a two-line values change plus a new image build; no template edits.
        in-container listener (#688). */}}
 {{- $svcMetricsOn := $.Values.metrics.enabled }}
 {{- $svcMetricsPort := ($.Values.mcpTools.metricsPort | default ($.Values.metrics.port | default 9000)) }}
-{{- if and $rbacCreate (eq $userSA "") }}
+{{- if and $rbacCreate (eq $userSATrimmed "") }}
 ---
 # ServiceAccount for mcp-{{ $name }} (#762). Created when rbac.create=true
 # and no user-provided serviceAccountName; chart also renders the
