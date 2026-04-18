@@ -36,6 +36,19 @@ SPAN_KIND_SERVER = "server"
 SPAN_KIND_CLIENT = "client"
 SPAN_KIND_INTERNAL = "internal"
 
+# Default capacity for the in-memory span ring buffer. Each span is
+# ~1-2 KB of structured data, so 1000 spans ≈ 1-2 MB per container.
+# Operators who want more (or less) history override via
+# OTEL_IN_MEMORY_SPANS. Setting to 0 disables the in-memory sink while
+# keeping OTLP export intact.
+_IN_MEMORY_CAP_DEFAULT = 1000
+
+# Global ring buffer of finished ReadableSpan objects, newest last.
+# Populated by InMemorySpanProcessor below when OTel is enabled.
+_span_ring: list[Any] | None = None
+# Capacity snapshot for convenience; set at init time.
+_span_ring_cap: int = 0
+
 
 def init_otel_if_enabled(
     service_name: str | None = None,
@@ -56,16 +69,28 @@ def init_otel_if_enabled(
     global _otel_enabled, _otel_tracer
     if _otel_enabled:
         return True
-    if os.environ.get("OTEL_ENABLED", "false").lower() in ("0", "false", "no", "off", ""):
+    # Two independent toggles:
+    #   - OTEL_ENABLED → controls OTLP export to an external collector
+    #   - OTEL_IN_MEMORY_SPANS → controls the in-cluster ring buffer
+    # We initialise a TracerProvider when EITHER is active so the dashboard's
+    # zero-config in-cluster Traces view works without requiring operators
+    # to wire up a collector first.
+    _otlp_on = os.environ.get("OTEL_ENABLED", "false").lower() not in (
+        "0", "false", "no", "off", "",
+    )
+    try:
+        _cap = int(os.environ.get("OTEL_IN_MEMORY_SPANS") or _IN_MEMORY_CAP_DEFAULT)
+    except ValueError:
+        _cap = _IN_MEMORY_CAP_DEFAULT
+    _in_memory_on = _cap > 0
+    if not _otlp_on and not _in_memory_on:
         return False
     try:
         from opentelemetry import trace as _otel_trace
-        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
         from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace import TracerProvider
-        from opentelemetry.sdk.trace.export import BatchSpanProcessor
     except ImportError as exc:
-        logger.warning("OTel enabled but opentelemetry packages missing: %s — staying disabled.", exc)
+        logger.warning("OTel requested but opentelemetry packages missing: %s — staying disabled.", exc)
         return False
 
     _service = service_name or os.environ.get("OTEL_SERVICE_NAME") or "nyx"
@@ -82,8 +107,22 @@ def init_otel_if_enabled(
     try:
         resource = Resource.create(attrs)
         provider = TracerProvider(resource=resource)
-        exporter = OTLPSpanExporter()  # reads OTEL_EXPORTER_OTLP_ENDPOINT and friends
-        provider.add_span_processor(BatchSpanProcessor(exporter))
+        if _otlp_on:
+            # Primary exporter: OTLP/HTTP to whatever OTEL_EXPORTER_OTLP_ENDPOINT
+            # points at. Failure to export is handled internally by the batch
+            # processor.
+            try:
+                from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+                from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+                provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+            except Exception as exc:  # pragma: no cover - optional dep path
+                logger.warning("OTel OTLP exporter unavailable: %s — in-memory sink still active.", exc)
+        # Secondary sink: in-memory ring buffer so the dashboard can render
+        # traces without requiring an external Jaeger/Tempo. Always installed
+        # unless OTEL_IN_MEMORY_SPANS=0.
+        if _in_memory_on:
+            _install_in_memory_sink(provider)
         _otel_trace.set_tracer_provider(provider)
         _otel_tracer = _otel_trace.get_tracer(_service)
     except Exception as exc:
@@ -91,7 +130,10 @@ def init_otel_if_enabled(
         return False
 
     _otel_enabled = True
-    logger.info("OTel tracing initialised: service=%s attrs=%s", _service, attrs)
+    logger.info(
+        "OTel tracing initialised: service=%s otlp=%s in_memory=%s attrs=%s",
+        _service, _otlp_on, _in_memory_on, attrs,
+    )
     return True
 
 
@@ -190,3 +232,215 @@ def set_span_error(span: Any, exc: BaseException) -> None:
         span.set_status(_otel_trace.Status(_otel_trace.StatusCode.ERROR, str(exc)))
     except Exception:
         pass
+
+
+# ── In-memory span sink (#643-followup, dashboard OTel-without-collector) ───
+#
+# A second span processor that captures finished spans into a bounded
+# ring buffer so the dashboard can query /otel/spans on each container.
+# Complements — does not replace — the OTLP exporter above: when both
+# are configured, spans go to both sinks, so wiring a real collector
+# later is additive, not a migration.
+
+
+def _install_in_memory_sink(provider: Any) -> None:
+    """Attach InMemorySpanProcessor to *provider* sized by env."""
+    global _span_ring, _span_ring_cap
+    try:
+        cap = int(os.environ.get("OTEL_IN_MEMORY_SPANS") or _IN_MEMORY_CAP_DEFAULT)
+    except ValueError:
+        cap = _IN_MEMORY_CAP_DEFAULT
+    if cap <= 0:
+        logger.info("OTel in-memory span sink disabled (OTEL_IN_MEMORY_SPANS=%d).", cap)
+        return
+    _span_ring = []
+    _span_ring_cap = cap
+    try:
+        provider.add_span_processor(_InMemorySpanProcessor())
+        logger.info("OTel in-memory span sink active (capacity=%d).", cap)
+    except Exception as exc:
+        logger.warning("OTel in-memory sink install failed — continuing without: %s", exc)
+        _span_ring = None
+        _span_ring_cap = 0
+
+
+class _InMemorySpanProcessor:
+    """Append finished spans to the global ring buffer.
+
+    Implements the OTel SpanProcessor interface via duck typing; we don't
+    inherit from SpanProcessor to keep this file free of SDK imports at
+    module scope. Thread-safe because list.append + bounded slicing are
+    atomic under CPython's GIL, which is fine for the backend's single
+    asyncio loop + BatchSpanProcessor worker thread access pattern.
+    """
+
+    def on_start(self, span: Any, parent_context: Any | None = None) -> None:
+        return None
+
+    def on_end(self, span: Any) -> None:
+        ring = _span_ring
+        if ring is None:
+            return
+        ring.append(span)
+        # Trim to capacity. Keeping the newest spans is more useful for
+        # debugging than the oldest.
+        excess = len(ring) - _span_ring_cap
+        if excess > 0:
+            del ring[:excess]
+
+    def shutdown(self) -> None:
+        return None
+
+    def force_flush(self, timeout_millis: int = 30000) -> bool:
+        return True
+
+
+def _format_span_id(val: Any) -> str:
+    """Render a span/trace id as a zero-padded hex string."""
+    try:
+        n = int(val)
+    except Exception:
+        return ""
+    # Trace ids are 128-bit → 32 hex; span ids are 64-bit → 16 hex.
+    width = 32 if n > 0xFFFFFFFFFFFFFFFF else 16
+    return format(n, f"0{width}x")
+
+
+def get_in_memory_traces() -> list[dict]:
+    """Return the in-memory spans grouped by trace_id, newest-first.
+
+    Shape matches the subset of Jaeger's v1 API the dashboard consumes:
+
+        [
+          {
+            "traceID": "<hex>",
+            "spans": [
+              {"spanID": "<hex>", "operationName": "...", "startTime": <us>,
+               "duration": <us>, "tags": [{"key": "...", "value": "..."}],
+               "references": [{"refType": "CHILD_OF",
+                               "traceID": "<hex>", "spanID": "<hex>"}],
+               "process": {"serviceName": "..."},
+               "status": {"code": "OK"|"ERROR", "message": "..."}}
+            ],
+            "processes": {"p1": {"serviceName": "..."}},
+          },
+          …
+        ]
+
+    The view flattens further; this module just hands over a JSON-able
+    list. Returns empty when in-memory capture is disabled or no spans
+    have been recorded yet.
+    """
+    ring = _span_ring
+    if not ring:
+        return []
+    by_trace: dict[str, list[Any]] = {}
+    for span in ring:
+        try:
+            ctx = span.get_span_context()
+            tid = _format_span_id(ctx.trace_id)
+        except Exception:
+            continue
+        by_trace.setdefault(tid, []).append(span)
+    # Newest first — trace ordering by most-recently-ended root.
+    def _max_end(spans: list[Any]) -> int:
+        try:
+            return max(s.end_time or 0 for s in spans)
+        except Exception:
+            return 0
+
+    traces = []
+    for tid, spans in by_trace.items():
+        json_spans = [_span_to_jaeger_json(s) for s in spans]
+        if not json_spans:
+            continue
+        service = ""
+        try:
+            res = spans[0].resource
+            if res is not None:
+                service = (res.attributes or {}).get("service.name", "") or ""
+        except Exception:
+            service = ""
+        traces.append(
+            {
+                "traceID": tid,
+                "spans": json_spans,
+                "processes": {"p1": {"serviceName": service}},
+                "_end_ns": _max_end(spans),
+            }
+        )
+    traces.sort(key=lambda t: t.pop("_end_ns", 0), reverse=True)
+    return traces
+
+
+def _span_to_jaeger_json(span: Any) -> dict:
+    """Map an OTel ReadableSpan to Jaeger's JSON wire shape."""
+    try:
+        ctx = span.get_span_context()
+        span_id = _format_span_id(ctx.span_id)
+        trace_id = _format_span_id(ctx.trace_id)
+    except Exception:
+        return {}
+    name = getattr(span, "name", "") or ""
+    start_ns = int(getattr(span, "start_time", 0) or 0)
+    end_ns = int(getattr(span, "end_time", 0) or 0)
+    # Jaeger times are microseconds.
+    start_us = start_ns // 1000
+    duration_us = max(0, (end_ns - start_ns) // 1000) if end_ns >= start_ns else 0
+
+    tags: list[dict] = []
+    attrs = dict(getattr(span, "attributes", {}) or {})
+    for k, v in attrs.items():
+        tags.append({"key": str(k), "type": "string", "value": str(v)})
+    kind = getattr(span, "kind", None)
+    if kind is not None:
+        tags.append({"key": "span.kind", "type": "string", "value": str(kind).split(".")[-1].lower()})
+
+    # Status → Jaeger-style "error" tag + status block.
+    status_code = "OK"
+    status_msg = ""
+    try:
+        status = span.status
+        if status is not None:
+            sc = getattr(status, "status_code", None)
+            if sc is not None and str(sc).endswith("ERROR"):
+                status_code = "ERROR"
+                tags.append({"key": "error", "type": "bool", "value": True})
+                status_msg = getattr(status, "description", "") or ""
+    except Exception:
+        pass
+
+    references: list[dict] = []
+    try:
+        parent = getattr(span, "parent", None)
+        if parent is not None:
+            references.append(
+                {
+                    "refType": "CHILD_OF",
+                    "traceID": _format_span_id(parent.trace_id),
+                    "spanID": _format_span_id(parent.span_id),
+                }
+            )
+    except Exception:
+        pass
+
+    service = ""
+    try:
+        res = span.resource
+        if res is not None:
+            service = (res.attributes or {}).get("service.name", "") or ""
+    except Exception:
+        pass
+
+    return {
+        "traceID": trace_id,
+        "spanID": span_id,
+        "operationName": name,
+        "startTime": start_us,
+        "duration": duration_us,
+        "tags": tags,
+        "references": references,
+        "processID": "p1",
+        "process": {"serviceName": service},
+        "status": {"code": status_code, "message": status_msg},
+    }

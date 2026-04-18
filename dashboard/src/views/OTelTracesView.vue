@@ -26,6 +26,7 @@ const serviceInput = ref<string>("");
 const {
   configured,
   baseUrl,
+  inClusterMode,
   limit,
   service,
   list,
@@ -108,7 +109,7 @@ const totalDuration = computed<number>(() => {
 <template>
   <div class="otel-view" data-testid="list-otel-traces">
     <div class="toolbar">
-      <h2 class="title">OTel Traces</h2>
+      <h2 class="title">Traces</h2>
       <input
         v-model="serviceInput"
         class="search"
@@ -125,33 +126,30 @@ const totalDuration = computed<number>(() => {
       </select>
       <span class="count">{{ list.length }} traces</span>
       <span v-if="baseUrl" class="endpoint" :title="baseUrl">endpoint: {{ baseUrl }}</span>
+      <span
+        v-else-if="inClusterMode"
+        class="badge-incluster"
+        title="Reading spans from the harness in-memory ring buffer. No external collector required."
+        >in-cluster</span
+      >
       <button class="refresh" type="button" :disabled="listLoading" @click="refreshList">
         <i class="pi pi-refresh" aria-hidden="true" />
       </button>
     </div>
 
-    <div v-if="!configured" class="state state-unconfigured" data-testid="otel-unconfigured">
-      <h3>Tracing not configured</h3>
-      <p>
-        Set <code>VITE_TRACE_API_URL</code> at build time, or inject
-        <code>window.__NYX_CONFIG__.traceApiUrl</code> at runtime via nginx, to point the
-        dashboard at a Jaeger or Tempo query API (typically
-        <code>http://&lt;jaeger-query&gt;:16686</code>). See <code>charts/nyx</code>
-        <code>observability.tracing</code> values once #634 lands.
-      </p>
-      <p class="hint">
-        Operators typically front the query API with their own auth proxy; this view
-        does not attach credentials.
-      </p>
-    </div>
-
-    <div v-else class="body">
+    <div class="body">
       <div class="list-pane" :class="{ 'has-detail': selectedId }">
         <div v-if="listLoading && list.length === 0" class="state">Loading…</div>
         <div v-else-if="listError && list.length === 0" class="state state-error">
           {{ listError }}
         </div>
-        <div v-else-if="list.length === 0" class="state">No traces returned.</div>
+        <div v-else-if="list.length === 0" class="state">
+          <div>No traces returned.</div>
+          <div v-if="inClusterMode" class="hint">
+            Spans accumulate only after workloads run. Ring buffer holds the last
+            <code>OTEL_IN_MEMORY_SPANS</code> spans (default 1000) per pod.
+          </div>
+        </div>
         <table v-else class="tbl">
           <thead>
             <tr>
@@ -303,6 +301,31 @@ const totalDuration = computed<number>(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.badge-incluster {
+  font-size: 10px;
+  font-family: var(--nyx-mono);
+  color: var(--nyx-accent);
+  background: color-mix(in srgb, var(--nyx-accent) 12%, var(--nyx-surface));
+  border: 1px solid color-mix(in srgb, var(--nyx-accent) 40%, var(--nyx-border));
+  border-radius: 3px;
+  padding: 1px 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.state .hint {
+  margin-top: 8px;
+  font-size: 10px;
+  color: var(--nyx-dim);
+}
+
+.state .hint code {
+  background: var(--nyx-bg);
+  border: 1px solid var(--nyx-border);
+  border-radius: 3px;
+  padding: 1px 4px;
 }
 
 .body {

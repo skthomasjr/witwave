@@ -4,8 +4,8 @@ import { createMemoryHistory, createRouter } from "vue-router";
 import OTelTracesView from "../../src/views/OTelTracesView.vue";
 
 // Smoke spec for OTelTracesView (#632). Two cases:
-//   1. VITE_TRACE_API_URL unset → renders the "tracing not configured" state
-//      and does NOT hit the network.
+//   1. No baseUrl configured → falls back to in-cluster mode, fans out to
+//      /api/team + /api/agents/<name>/api/traces, shows the "in-cluster" badge.
 //   2. Base URL set → fetches Jaeger list + detail; click opens the drawer.
 // The view depends on vue-router for deep-linking (/otel-traces/:traceId), so
 // the test provides a real in-memory router rather than stubbing RouterLink.
@@ -40,20 +40,53 @@ describe("OTelTracesView", () => {
     delete (window as unknown as { __NYX_CONFIG__?: unknown }).__NYX_CONFIG__;
   });
 
-  it("renders the unconfigured state when no trace URL is set", async () => {
-    const fetchSpy = vi.fn();
-    vi.stubGlobal("fetch", fetchSpy);
+  it("falls back to in-cluster mode when no trace URL is set", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : (input as URL).toString();
+        if (url === "/api/team") {
+          return Promise.resolve(okJson([{ name: "iris", url: "http://iris" }]));
+        }
+        if (url.startsWith("/api/agents/iris/api/traces")) {
+          return Promise.resolve(
+            okJson({
+              data: [
+                {
+                  traceID: "zzz999",
+                  spans: [
+                    {
+                      traceID: "zzz999",
+                      spanID: "s1",
+                      operationName: "heartbeat.fire",
+                      references: [],
+                      startTime: 1_700_000_000_000_000,
+                      duration: 500_000,
+                      processID: "p1",
+                      tags: [],
+                    },
+                  ],
+                  processes: { p1: { serviceName: "iris-harness" } },
+                },
+              ],
+            }),
+          );
+        }
+        return Promise.resolve(okJson({ data: [] }));
+      }),
+    );
 
     const router = makeRouter();
     router.push("/otel-traces");
     await router.isReady();
     const wrapper = mount(OTelTracesView, { global: { plugins: [router] } });
     await flushPromises();
+    await flushPromises();
 
-    expect(wrapper.find("[data-testid='otel-unconfigured']").exists()).toBe(true);
-    expect(wrapper.text()).toContain("Tracing not configured");
-    // No network traffic at all when the URL is unset.
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(wrapper.find("[data-testid='list-otel-traces']").exists()).toBe(true);
+    expect(wrapper.text()).toContain("in-cluster");
+    expect(wrapper.text()).toContain("heartbeat.fire");
+    expect(wrapper.text()).toContain("zzz999");
   });
 
   it("fetches a trace list from the Jaeger API when configured", async () => {

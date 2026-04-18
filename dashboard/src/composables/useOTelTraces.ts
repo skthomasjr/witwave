@@ -81,7 +81,8 @@ interface NyxRuntimeConfig {
 function resolveBaseUrl(): string | null {
   // Runtime override wins so operators can change the backend without a
   // rebuild. Kept optional: when nginx hasn't injected anything we fall
-  // through to the build-time env.
+  // through to the build-time env, and then to null — which triggers
+  // the in-cluster fallback below.
   const runtime = (window as unknown as { __NYX_CONFIG__?: NyxRuntimeConfig })
     .__NYX_CONFIG__;
   if (runtime && typeof runtime.traceApiUrl === "string" && runtime.traceApiUrl) {
@@ -92,6 +93,99 @@ function resolveBaseUrl(): string | null {
   const build = env?.VITE_TRACE_API_URL;
   if (build && build.length > 0) return build.replace(/\/+$/, "");
   return null;
+}
+
+// ── In-cluster source (#otel-in-cluster) ────────────────────────────────
+//
+// When neither the runtime nor build-time trace URL is set, fall back
+// to the harness's own in-memory span store at
+// /api/agents/<name>/api/traces. The harness's `shared/otel.py`
+// captures every span the OTLP exporter would send and serves them in
+// the Jaeger v1 query shape this composable already consumes.
+//
+// Fans out across every agent in the team directory so a cluster-wide
+// view merges harness + backend spans regardless of which pod started
+// the trace. Identical trace_ids from different agents are merged so
+// cross-pod distributed traces render as one.
+
+interface TeamDirectoryEntry {
+  name: string;
+  url: string;
+}
+
+async function fetchTeam(signal: AbortSignal): Promise<TeamDirectoryEntry[]> {
+  const resp = await fetch("/api/team", { signal });
+  if (!resp.ok) return [];
+  try {
+    return (await resp.json()) as TeamDirectoryEntry[];
+  } catch {
+    return [];
+  }
+}
+
+async function inClusterFetchList(
+  path: string,
+  signal: AbortSignal,
+  timeoutMs: number,
+): Promise<JaegerResponse<JaegerTrace[]>> {
+  const team = await fetchTeam(signal);
+  if (!team.length) return { data: [], total: 0 };
+  const timer = setTimeout(() => {
+    // Browser-side only; ctrl in this scope is per-request. Honouring
+    // the caller's signal is enough.
+  }, timeoutMs);
+  try {
+    const perAgent = await Promise.all(
+      team.map(async (m) => {
+        try {
+          const r = await fetch(
+            `/api/agents/${encodeURIComponent(m.name)}${path}`,
+            { signal },
+          );
+          if (!r.ok) return [] as JaegerTrace[];
+          const body = (await r.json()) as JaegerResponse<JaegerTrace[]>;
+          return body.data ?? [];
+        } catch {
+          return [] as JaegerTrace[];
+        }
+      }),
+    );
+    // Merge traces that share a traceID (cross-pod distributed traces).
+    const byTid = new Map<string, JaegerTrace>();
+    for (const list of perAgent) {
+      for (const t of list) {
+        const existing = byTid.get(t.traceID);
+        if (!existing) {
+          byTid.set(t.traceID, { ...t });
+        } else {
+          // Combine span lists; dedupe by spanID so if two agents
+          // happen to carry the same span (rare) we keep one.
+          const seen = new Set(existing.spans.map((s) => s.spanID));
+          for (const s of t.spans) if (!seen.has(s.spanID)) existing.spans.push(s);
+          existing.processes = { ...(existing.processes ?? {}), ...(t.processes ?? {}) };
+        }
+      }
+    }
+    return { data: [...byTid.values()], total: byTid.size };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function inClusterFetchDetail(
+  traceId: string,
+  signal: AbortSignal,
+  timeoutMs: number,
+): Promise<JaegerResponse<JaegerTrace[]>> {
+  // Detail fetch is the same fan-out, filtered client-side. Saves us
+  // per-agent probing for which pod owns the trace root.
+  const full = await inClusterFetchList(
+    `/api/traces?limit=500`,
+    signal,
+    timeoutMs,
+  );
+  const match = (full.data ?? []).find((t) => t.traceID === traceId);
+  return match ? { data: [match], total: 1 } : { data: [], total: 0 };
 }
 
 async function jaegerFetch<T>(
@@ -172,7 +266,11 @@ export function useOTelTraces(opts: UseOTelTracesOptions = {}) {
   const service = ref<string>(opts.service ?? "");
 
   const baseUrl = resolveBaseUrl();
-  const configured: ComputedRef<boolean> = computed(() => baseUrl !== null);
+  // Configured when either an external Jaeger/Tempo URL is set OR the
+  // in-cluster in-memory span store is available (always the case — the
+  // harness exposes /api/traces unconditionally).
+  const inClusterMode = baseUrl === null;
+  const configured: ComputedRef<boolean> = computed(() => true);
 
   const list = ref<TraceListRow[]>([]);
   const listError = ref<string>("");
@@ -186,7 +284,6 @@ export function useOTelTraces(opts: UseOTelTracesOptions = {}) {
   let detailAborter: AbortController | null = null;
 
   async function refreshList(): Promise<void> {
-    if (!baseUrl) return;
     listAborter?.abort();
     listAborter = new AbortController();
     const signal = listAborter.signal;
@@ -195,12 +292,18 @@ export function useOTelTraces(opts: UseOTelTracesOptions = {}) {
       const params = new URLSearchParams();
       params.set("limit", String(limit.value));
       if (service.value) params.set("service", service.value);
-      const resp = await jaegerFetch<JaegerResponse<JaegerTrace[]>>(
-        baseUrl,
-        `/api/traces?${params.toString()}`,
-        signal,
-        timeoutMs,
-      );
+      const resp = inClusterMode
+        ? await inClusterFetchList(
+            `/api/traces?${params.toString()}`,
+            signal,
+            timeoutMs,
+          )
+        : await jaegerFetch<JaegerResponse<JaegerTrace[]>>(
+            baseUrl as string,
+            `/api/traces?${params.toString()}`,
+            signal,
+            timeoutMs,
+          );
       if (signal.aborted) return;
       const rows = (resp.data ?? [])
         .map(summariseTrace)
@@ -217,22 +320,20 @@ export function useOTelTraces(opts: UseOTelTracesOptions = {}) {
   }
 
   async function loadDetail(traceId: string): Promise<void> {
-    if (!baseUrl) {
-      detailError.value = "tracing not configured";
-      return;
-    }
     detailAborter?.abort();
     detailAborter = new AbortController();
     const signal = detailAborter.signal;
     detailLoading.value = true;
     detailError.value = "";
     try {
-      const resp = await jaegerFetch<JaegerResponse<JaegerTrace[]>>(
-        baseUrl,
-        `/api/traces/${encodeURIComponent(traceId)}`,
-        signal,
-        timeoutMs,
-      );
+      const resp = inClusterMode
+        ? await inClusterFetchDetail(traceId, signal, timeoutMs)
+        : await jaegerFetch<JaegerResponse<JaegerTrace[]>>(
+            baseUrl as string,
+            `/api/traces/${encodeURIComponent(traceId)}`,
+            signal,
+            timeoutMs,
+          );
       if (signal.aborted) return;
       detail.value = resp.data?.[0] ?? null;
       if (!detail.value) detailError.value = `trace ${traceId} not found`;
@@ -253,7 +354,6 @@ export function useOTelTraces(opts: UseOTelTracesOptions = {}) {
   }
 
   onMounted(() => {
-    if (!baseUrl) return;
     void refreshList();
     timer = setInterval(() => void refreshList(), intervalMs);
   });
@@ -267,6 +367,7 @@ export function useOTelTraces(opts: UseOTelTracesOptions = {}) {
   return {
     configured,
     baseUrl,
+    inClusterMode,
     limit,
     service,
     list,

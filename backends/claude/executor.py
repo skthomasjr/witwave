@@ -347,19 +347,60 @@ HARNESS_EVENTS_AUTH_TOKEN = os.environ.get("HARNESS_EVENTS_AUTH_TOKEN") or os.en
 HARNESS_EVENTS_TIMEOUT = float(os.environ.get("HARNESS_EVENTS_TIMEOUT", "5.0"))
 
 # Conservative secure-by-default tool set: read-only filesystem + search, no Bash/Write/Edit/WebFetch.
-# Operators who need broader capabilities must opt in explicitly via the ALLOWED_TOOLS env var.
+# Resolution order:
+#   1. ALLOWED_TOOLS env var (deploy-time override, always wins)
+#   2. .claude/settings.json `permissions.allow` (file-based config,
+#      matches Claude Code's native schema so shared tooling works)
+#   3. Conservative built-in default (Read,Grep,Glob)
 _DEFAULT_TOOLS = "Read,Grep,Glob"
+_SETTINGS_PATH = os.environ.get("CLAUDE_SETTINGS_PATH", "/home/agent/.claude/settings.json")
+
+
+def _load_allowed_from_settings(path: str) -> list[str] | None:
+    """Return permissions.allow from .claude/settings.json, or None when absent.
+
+    Returns ``None`` when the file is missing or malformed so the caller falls
+    back to its next resolution step.  An empty permissions.allow list is
+    treated as "no tools" and returned as ``[]`` — absence is distinct from
+    explicit emptiness.
+    """
+    try:
+        if not os.path.exists(path):
+            return None
+        with open(path) as fh:
+            data = json.load(fh)
+    except Exception as exc:
+        logger.warning("Could not parse %s — ignoring permissions.allow: %s", path, exc)
+        return None
+    perms = (data or {}).get("permissions") or {}
+    allow = perms.get("allow")
+    if allow is None:
+        return None
+    if not isinstance(allow, list):
+        logger.warning("%s permissions.allow must be a list, got %r — ignoring.", path, type(allow))
+        return None
+    return [str(t).strip() for t in allow if str(t).strip()]
+
+
 _ALLOWED_TOOLS_ENV = os.environ.get("ALLOWED_TOOLS")
-_ALLOWED_TOOLS_IS_DEFAULT = _ALLOWED_TOOLS_ENV is None
-ALLOWED_TOOLS: list[str] = [t.strip() for t in (_ALLOWED_TOOLS_ENV or _DEFAULT_TOOLS).split(",") if t.strip()]
-if _ALLOWED_TOOLS_IS_DEFAULT:
-    logger.warning(
-        "ALLOWED_TOOLS resolved to default (read-only): %s. "
-        "Set ALLOWED_TOOLS env var to override (e.g. to enable Bash/Write/Edit/WebFetch).",
-        ",".join(ALLOWED_TOOLS),
+_settings_allow = _load_allowed_from_settings(_SETTINGS_PATH)
+if _ALLOWED_TOOLS_ENV is not None:
+    ALLOWED_TOOLS = [t.strip() for t in _ALLOWED_TOOLS_ENV.split(",") if t.strip()]
+    logger.info("ALLOWED_TOOLS resolved to: %s (from ALLOWED_TOOLS env).", ",".join(ALLOWED_TOOLS))
+elif _settings_allow is not None:
+    ALLOWED_TOOLS = _settings_allow
+    logger.info(
+        "ALLOWED_TOOLS resolved to: %s (from %s permissions.allow).",
+        ",".join(ALLOWED_TOOLS), _SETTINGS_PATH,
     )
 else:
-    logger.info("ALLOWED_TOOLS resolved to: %s (from env override).", ",".join(ALLOWED_TOOLS))
+    ALLOWED_TOOLS = [t.strip() for t in _DEFAULT_TOOLS.split(",") if t.strip()]
+    logger.warning(
+        "ALLOWED_TOOLS resolved to default (read-only): %s. "
+        "Set ALLOWED_TOOLS env var or .claude/settings.json permissions.allow "
+        "to override (e.g. to enable Bash/Write/Edit/WebFetch).",
+        ",".join(ALLOWED_TOOLS),
+    )
 
 CONTEXT_USAGE_WARN_THRESHOLD = float(os.environ.get("CONTEXT_USAGE_WARN_THRESHOLD", "0.8"))
 MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "10000"))

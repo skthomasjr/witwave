@@ -426,12 +426,41 @@ async def main():
                     method=_mcp_method,
                 ).observe(time.monotonic() - _mcp_start)
 
+    # OTel in-memory span store (#otel-in-cluster). Serves the Jaeger v1
+    # shape so the harness's fan-out aggregator can merge backend spans.
+    async def otel_traces_list_handler(request: Request) -> JSONResponse:
+        try:
+            limit_raw = request.query_params.get("limit")
+            limit = int(limit_raw) if limit_raw else 20
+        except ValueError:
+            limit = 20
+        try:
+            from otel import get_in_memory_traces  # type: ignore
+            traces = get_in_memory_traces()
+        except Exception:
+            traces = []
+        return JSONResponse({"data": traces[:limit], "total": len(traces)})
+
+    async def otel_traces_detail_handler(request: Request) -> JSONResponse:
+        trace_id = request.path_params.get("trace_id") or ""
+        try:
+            from otel import get_in_memory_traces  # type: ignore
+            traces = get_in_memory_traces()
+        except Exception:
+            traces = []
+        match = next((t for t in traces if t.get("traceID") == trace_id), None)
+        if match is None:
+            return JSONResponse({"data": [], "total": 0}, status_code=404)
+        return JSONResponse({"data": [match], "total": 1})
+
     _routes = [
         Route("/health", health),
         Route("/conversations", conversations_handler, methods=["GET"]),
         Route("/trace", trace_handler, methods=["GET"]),
         Route("/tool-audit", tool_audit_handler, methods=["GET"]),
         Route("/mcp", mcp_handler, methods=["GET", "POST"]),
+        Route("/api/traces", otel_traces_list_handler, methods=["GET"]),
+        Route("/api/traces/{trace_id}", otel_traces_detail_handler, methods=["GET"]),
     ]
     # Metrics on dedicated :METRICS_PORT listener (#643, #648).
     _routes.append(Mount("/", app=a2a_built))

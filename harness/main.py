@@ -1243,6 +1243,121 @@ async def main():
             "routing": _routing_json,
         })
 
+    # OTel Traces — in-cluster span store (#otel-in-cluster). Serves
+    # the Jaeger v1 query shape the dashboard's Traces view already
+    # understands (/api/traces[?limit=N&service=…], /api/traces/<id>).
+    # Aggregates spans from the harness's own ring buffer AND from every
+    # configured sibling backend (claude/codex/gemini) by fetching their
+    # /api/traces endpoints. Backends run in the same pod, so the fan-out
+    # is localhost-only and fast.
+    async def _fetch_remote_traces(url: str) -> list[dict]:
+        import httpx
+        try:
+            async with httpx.AsyncClient(timeout=1.5) as client:
+                r = await client.get(f"{url.rstrip('/')}/api/traces", params={"limit": 500})
+                if r.status_code != 200:
+                    return []
+                return (r.json() or {}).get("data") or []
+        except Exception:
+            return []
+
+    def _merge_trace_lists(groups: list[list[dict]]) -> list[dict]:
+        by_tid: dict[str, dict] = {}
+        for group in groups:
+            for t in group:
+                tid = t.get("traceID")
+                if not tid:
+                    continue
+                existing = by_tid.get(tid)
+                if not existing:
+                    by_tid[tid] = {
+                        "traceID": tid,
+                        "spans": list(t.get("spans") or []),
+                        "processes": dict(t.get("processes") or {}),
+                    }
+                    continue
+                seen = {s.get("spanID") for s in existing["spans"]}
+                for s in t.get("spans") or []:
+                    if s.get("spanID") not in seen:
+                        existing["spans"].append(s)
+                existing["processes"].update(t.get("processes") or {})
+        return list(by_tid.values())
+
+    def _configured_backend_urls() -> list[str]:
+        try:
+            if _executor is None:
+                return []
+            be = _executor._backends  # type: ignore[attr-defined]
+            urls: list[str] = []
+            # _backends is a dict[id, backend]; each backend exposes ._config
+            # or is itself a BackendConfig. Handle both shapes defensively.
+            iterable = be.values() if hasattr(be, "values") else be
+            for entry in iterable:
+                cfg = getattr(entry, "_config", entry)
+                u = getattr(cfg, "url", None)
+                if u:
+                    urls.append(u)
+            return urls
+        except Exception:
+            return []
+
+    async def otel_traces_list_handler(request: Request) -> JSONResponse:
+        try:
+            limit_raw = request.query_params.get("limit")
+            limit = int(limit_raw) if limit_raw else 20
+        except ValueError:
+            limit = 20
+        service = request.query_params.get("service") or ""
+        try:
+            from otel import get_in_memory_traces  # type: ignore
+            local = get_in_memory_traces()
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("otel_traces_list_handler failed: %r", exc)
+            local = []
+        import asyncio as _asyncio
+        backend_urls = _configured_backend_urls()
+        remote_lists: list[list[dict]] = []
+        if backend_urls:
+            remote_lists = list(await _asyncio.gather(
+                *[_fetch_remote_traces(u) for u in backend_urls],
+                return_exceptions=False,
+            ))
+        traces = _merge_trace_lists([local, *remote_lists])
+        if service:
+            traces = [
+                t for t in traces
+                if any(
+                    (s.get("process") or {}).get("serviceName") == service
+                    for s in t.get("spans") or []
+                )
+            ]
+        # Newest-first by the earliest span start time in each trace.
+        def _start(t: dict) -> int:
+            return min((s.get("startTime") or 0) for s in (t.get("spans") or [{"startTime": 0}]))
+        traces.sort(key=_start, reverse=True)
+        return JSONResponse({"data": traces[:limit], "total": len(traces)})
+
+    async def otel_traces_detail_handler(request: Request) -> JSONResponse:
+        trace_id = request.path_params.get("trace_id") or ""
+        try:
+            from otel import get_in_memory_traces  # type: ignore
+            local = get_in_memory_traces()
+        except Exception:
+            local = []
+        import asyncio as _asyncio
+        backend_urls = _configured_backend_urls()
+        remote_lists: list[list[dict]] = []
+        if backend_urls:
+            remote_lists = list(await _asyncio.gather(
+                *[_fetch_remote_traces(u) for u in backend_urls],
+                return_exceptions=False,
+            ))
+        merged = _merge_trace_lists([local, *remote_lists])
+        match = next((t for t in merged if t.get("traceID") == trace_id), None)
+        if match is None:
+            return JSONResponse({"data": [], "total": 0}, status_code=404)
+        return JSONResponse({"data": [match], "total": 1})
+
     _routes = [
         Route("/health/start", health_start),
         Route("/health/live", health_live),
@@ -1264,6 +1379,13 @@ async def main():
         Route("/conversations", conversations_handler, methods=["GET"]),
         Route("/trace", trace_handler, methods=["GET"]),
         Route("/tool-audit", tool_audit_handler, methods=["GET"]),
+        # OTel in-memory span store (#otel-in-cluster). Serves the
+        # Jaeger-compatible JSON shape the dashboard's OTel Traces view
+        # expects, so operators see distributed traces without needing
+        # an external Jaeger/Tempo. Returns empty when OTEL_ENABLED is
+        # off or OTEL_IN_MEMORY_SPANS=0.
+        Route("/api/traces", otel_traces_list_handler, methods=["GET"]),
+        Route("/api/traces/{trace_id}", otel_traces_detail_handler, methods=["GET"]),
     ]
     # Metrics live on a dedicated port (:9000 by default, configurable via
     # METRICS_PORT), NOT on the main app listener (#643). The split lets

@@ -21,9 +21,9 @@ const navItems: NavItem[] = [
   // router.ts for the full list.
   { label: "Automation", to: { name: "automation" } },
   { label: "Conversations", to: { name: "conversations" } },
-  { label: "Trace", to: { name: "trace" } },
+  { label: "Tool Trace", to: { name: "trace" } },
   { label: "Tool audit", to: { name: "tool-audit" } },
-  { label: "OTel Traces", to: { name: "otel-traces" } },
+  { label: "Traces", to: { name: "otel-traces" } },
   { label: "Metrics", to: { name: "metrics" } },
 ];
 
