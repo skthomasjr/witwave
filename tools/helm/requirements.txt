@@ -1,6 +1,10 @@
-mcp>=1.0.0
-PyYAML>=6.0
+# Constrained to remove build-time drift (#777). OTel + prometheus_client +
+# PyYAML pins match backends/{claude,codex,gemini}/requirements.txt so the
+# harness, backends, and tools all share one OTel SDK. Tool-unique deps
+# carry an upper bound to prevent accidental major bumps on rebuild.
+mcp>=1.0.0,<2.0.0
+PyYAML==6.0.2
 opentelemetry-api==1.30.0
 opentelemetry-sdk==1.30.0
 opentelemetry-exporter-otlp-proto-http==1.30.0
-prometheus_client>=0.19.0
+prometheus-client==0.24.1
