@@ -88,9 +88,24 @@ async def _run_loop(
     backend_id: str | None = None,
     consensus: list[ConsensusEntry] | None = None,
     max_tokens: int | None = None,
+    backends_ready: asyncio.Event | None = None,
 ) -> None:
     cron = croniter(schedule, datetime.now(timezone.utc))
     stop_waiter = asyncio.create_task(stop_event.wait())
+    # Wait for backends to pass /health before firing the first heartbeat
+    # (#785). Without this, a */1 schedule would dispatch at *:00 while
+    # the backend container was still warming up and the prompt would
+    # 503 before any work could start.
+    if backends_ready is not None and not backends_ready.is_set():
+        logger.info("Heartbeat waiting for backends_ready before first run.")
+        _ready_waiter = asyncio.create_task(backends_ready.wait())
+        done, _pending = await asyncio.wait(
+            {_ready_waiter, stop_waiter},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if stop_waiter in done:
+            _ready_waiter.cancel()
+            return
     try:
         while not stop_event.is_set():
             next_run = cron.get_next(datetime)
@@ -209,7 +224,10 @@ async def _stop_and_join(loop_task: asyncio.Task, stop_event: asyncio.Event) -> 
             pass
 
 
-async def heartbeat_runner(bus: MessageBus) -> None:
+async def heartbeat_runner(
+    bus: MessageBus,
+    backends_ready: asyncio.Event | None = None,
+) -> None:
     try:
         loaded = load_heartbeat()
     except Exception as e:
@@ -227,7 +245,7 @@ async def heartbeat_runner(bus: MessageBus) -> None:
     loop_task: asyncio.Task | None = None
 
     if loaded:
-        loop_task = asyncio.create_task(_run_loop(bus, schedule, content, stop_event, model=model, backend_id=backend_id, consensus=consensus, max_tokens=max_tokens))
+        loop_task = asyncio.create_task(_run_loop(bus, schedule, content, stop_event, model=model, backend_id=backend_id, consensus=consensus, max_tokens=max_tokens, backends_ready=backends_ready))
         loop_task.add_done_callback(_loop_task_done_callback)
 
     while True:
@@ -264,7 +282,7 @@ async def heartbeat_runner(bus: MessageBus) -> None:
                 else:
                     schedule, content, model, backend_id, consensus, max_tokens = loaded
                     logger.info(f"Heartbeat reloaded. Schedule: {schedule}")
-                    loop_task = asyncio.create_task(_run_loop(bus, schedule, content, stop_event, model=model, backend_id=backend_id, consensus=consensus, max_tokens=max_tokens))
+                    loop_task = asyncio.create_task(_run_loop(bus, schedule, content, stop_event, model=model, backend_id=backend_id, consensus=consensus, max_tokens=max_tokens, backends_ready=backends_ready))
                     loop_task.add_done_callback(_loop_task_done_callback)
 
         logger.warning("Heartbeat directory watcher exited — directory deleted or unavailable. Retrying in 10s.")
@@ -282,7 +300,7 @@ async def heartbeat_runner(bus: MessageBus) -> None:
             loaded = None
         if loaded:
             schedule, content, model, backend_id, consensus, max_tokens = loaded
-            loop_task = asyncio.create_task(_run_loop(bus, schedule, content, stop_event, model=model, backend_id=backend_id, consensus=consensus, max_tokens=max_tokens))
+            loop_task = asyncio.create_task(_run_loop(bus, schedule, content, stop_event, model=model, backend_id=backend_id, consensus=consensus, max_tokens=max_tokens, backends_ready=backends_ready))
             loop_task.add_done_callback(_loop_task_done_callback)
         else:
             loop_task = None

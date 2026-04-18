@@ -874,6 +874,21 @@ async def main():
         endpoint = request.path_params["endpoint"]
         # TODO(#71): HEAD /triggers/{endpoint} returns 405 (Starlette default). Should it return 200 with metadata?
 
+        # Warmup shield (#785): while backends_ready is unset, return 503
+        # with Retry-After so load balancers back off rather than
+        # dispatching into a backend that is still /health-warming and
+        # would 503 downstream anyway. Triggers fire from external
+        # systems (webhooks / GitHub Apps) whose retry semantics make a
+        # structured 503 the safer response.
+        if not backends_ready.is_set():
+            if harness_triggers_requests_total is not None:
+                harness_triggers_requests_total.labels(method=request.method, code="503").inc()
+            return JSONResponse(
+                {"error": "backends not ready", "endpoint": endpoint},
+                status_code=503,
+                headers={"Retry-After": "5"},
+            )
+
         items = trigger_runner.items_by_endpoint()
         item = items.get(endpoint)
         if item is None:
@@ -1697,7 +1712,11 @@ async def main():
     await asyncio.gather(
         server.serve(),
         _guarded(bus_worker, bus, executor, critical=True),
-        _guarded(heartbeat_runner, bus),
+        # Pass backends_ready so the heartbeat loop blocks its first
+        # fire until /health passes (#785). Without this, a */1
+        # schedule would dispatch at *:00 while the backend was still
+        # warming and the prompt would 503 before any work started.
+        _guarded(heartbeat_runner, bus, backends_ready),
         _guarded(job_runner.run),
         _guarded(task_runner.run),
         _guarded(trigger_runner.run),
