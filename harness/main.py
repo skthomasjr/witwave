@@ -162,16 +162,35 @@ def _check_trigger_auth(request: Request, item: TriggerItem, body_bytes: bytes) 
 def _check_adhoc_auth(request: Request) -> bool:
     """Validate ad-hoc run-endpoint auth.
 
-    Uses the shared ``TRIGGERS_AUTH_TOKEN`` Bearer token as fallback so operators
-    don't need a second secret to fire scheduled items out-of-schedule. When the
-    env var is unset the request is rejected — these endpoints are never open by
-    default.
+    Requires a distinct ``ADHOC_RUN_AUTH_TOKEN`` bearer token (#700). Falling
+    back to ``TRIGGERS_AUTH_TOKEN`` previously let the compromise of a single
+    shared secret unlock heterogeneous privileged endpoints; the dedicated
+    env var keeps blast radii scoped per endpoint family. When neither the
+    dedicated token is configured nor the legacy variable is present the
+    request is rejected so these endpoints are never open by default.
     """
-    auth_token = os.environ.get("TRIGGERS_AUTH_TOKEN", "")
+    auth_token = os.environ.get("ADHOC_RUN_AUTH_TOKEN", "")
     if not auth_token:
-        logger.warning(
-            "Ad-hoc run endpoint rejected: TRIGGERS_AUTH_TOKEN is not configured."
-        )
+        # Migration aid (#700): surface an ERROR if the caller presents a
+        # bearer that only matches the legacy shared TRIGGERS_AUTH_TOKEN so
+        # operators notice the dropped fallback before rollout.
+        legacy = os.environ.get("TRIGGERS_AUTH_TOKEN", "")
+        if legacy:
+            header = request.headers.get("Authorization", "")
+            if header and hmac_mod.compare_digest(f"Bearer {legacy}", header):
+                logger.error(
+                    "Ad-hoc run endpoint rejected: ADHOC_RUN_AUTH_TOKEN is not "
+                    "configured and the implicit TRIGGERS_AUTH_TOKEN fallback "
+                    "was removed in #700. Set ADHOC_RUN_AUTH_TOKEN to re-enable."
+                )
+            else:
+                logger.warning(
+                    "Ad-hoc run endpoint rejected: ADHOC_RUN_AUTH_TOKEN is not configured."
+                )
+        else:
+            logger.warning(
+                "Ad-hoc run endpoint rejected: ADHOC_RUN_AUTH_TOKEN is not configured."
+            )
         return False
     header = request.headers.get("Authorization", "")
     return hmac_mod.compare_digest(f"Bearer {auth_token}", header)
@@ -192,9 +211,23 @@ async def hook_decision_event_handler(request: Request) -> JSONResponse:
     every request rather than silently accepting internal traffic.
     """
     if not HOOK_EVENTS_AUTH_TOKEN:
+        # #700: log ERROR when the caller presents a bearer that only matches
+        # the legacy TRIGGERS_AUTH_TOKEN fallback so operators notice the
+        # dropped implicit fallback before rollout.
+        legacy = os.environ.get("TRIGGERS_AUTH_TOKEN", "")
+        if legacy:
+            header = request.headers.get("Authorization", "")
+            if header and hmac_mod.compare_digest(f"Bearer {legacy}", header):
+                logger.error(
+                    "POST /internal/events/hook-decision rejected: "
+                    "HOOK_EVENTS_AUTH_TOKEN is not configured and the implicit "
+                    "TRIGGERS_AUTH_TOKEN fallback was removed in #700. Set "
+                    "HOOK_EVENTS_AUTH_TOKEN to re-enable."
+                )
+                return JSONResponse({"error": "unauthorized"}, status_code=401)
         logger.warning(
             "POST /internal/events/hook-decision rejected: no auth token configured "
-            "(set HOOK_EVENTS_AUTH_TOKEN or TRIGGERS_AUTH_TOKEN)."
+            "(set HOOK_EVENTS_AUTH_TOKEN)."
         )
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     header = request.headers.get("Authorization", "")
@@ -261,11 +294,12 @@ async def hook_decision_event_handler(request: Request) -> JSONResponse:
 # payloads while rejecting anything that could only be abusive.
 MAX_HOOK_EVENT_BODY_BYTES = 65_536
 
-# Bearer token expected on POST /internal/events/hook-decision (#641).  Falls
-# back to ``TRIGGERS_AUTH_TOKEN`` so operators don't need a second secret; the
-# endpoint is fail-safe — when no token is configured, every request is
-# rejected rather than silently open.
-HOOK_EVENTS_AUTH_TOKEN = os.environ.get("HOOK_EVENTS_AUTH_TOKEN") or os.environ.get("TRIGGERS_AUTH_TOKEN", "")
+# Bearer token expected on POST /internal/events/hook-decision (#641, #700).
+# Requires a dedicated env var with no implicit fallback to TRIGGERS_AUTH_TOKEN —
+# compromise of one shared secret must not unlock heterogeneous privileged
+# endpoints.  The endpoint is fail-safe: when no token is configured every
+# request is rejected rather than silently open.
+HOOK_EVENTS_AUTH_TOKEN = os.environ.get("HOOK_EVENTS_AUTH_TOKEN", "")
 
 
 # Hard cap on the body size the ad-hoc run endpoints will buffer. These endpoints
