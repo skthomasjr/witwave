@@ -72,7 +72,7 @@ function fallbackFromId(id: string): BackendType {
   const s = id.toLowerCase();
 
   // Prefer a structured suffix match first (the canonical naming scheme used
-  // by nyx-harness-deployed backends).
+  // by harness-deployed backends).
   for (const [suffix, type] of BACKEND_ID_SUFFIXES) {
     if (s.endsWith(suffix)) return type;
   }

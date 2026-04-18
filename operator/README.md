@@ -1,7 +1,7 @@
 # nyx-operator
 
 A Kubernetes operator for the nyx platform. Provides the `NyxAgent` custom
-resource, which deploys one named agent — a nyx-harness orchestrator plus one
+resource, which deploys one named agent — a harness orchestrator plus one
 or more backend sidecars (a2-claude, a2-codex, a2-gemini) — as a
 `Deployment` + `Service` + optional `ConfigMap`, `HPA`, `PDB`, and `PVC`.
 

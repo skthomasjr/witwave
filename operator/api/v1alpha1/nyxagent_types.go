@@ -425,7 +425,7 @@ const (
 )
 
 // SharedStorageSpec configures a volume mounted into every container of the
-// agent pod (nyx-harness + every backend sidecar). Mirrors the chart's
+// agent pod (harness + every backend sidecar). Mirrors the chart's
 // `sharedStorage.*` block (charts/nyx/values.yaml) so the operator path has
 // feature parity with the chart path (#481, #611).
 //
@@ -518,7 +518,7 @@ type NyxAgentSpec struct {
 	// +optional
 	Enabled *bool `json:"enabled,omitempty"`
 
-	// Port is the HTTP port nyx-harness listens on (Service + probe target).
+	// Port is the HTTP port harness listens on (Service + probe target).
 	// +kubebuilder:default=8000
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=65535
@@ -551,7 +551,7 @@ type NyxAgentSpec struct {
 	// +optional
 	PreStop *PreStopSpec `json:"preStop,omitempty"`
 
-	// Image is the nyx-harness orchestrator image.
+	// Image is the harness orchestrator image.
 	Image ImageSpec `json:"image"`
 
 	// ImagePullSecrets used by the agent pod.
@@ -568,7 +568,7 @@ type NyxAgentSpec struct {
 	// When this field is set, AutomountServiceAccountToken flips to true
 	// automatically so the SA token is projected into every container in
 	// the pod. Note: the token is visible to every sibling container
-	// (nyx-harness + all backend sidecars + any MCP sidecars) — there is
+	// (harness + all backend sidecars + any MCP sidecars) — there is
 	// no per-container scoping. When unset, the pod retains the hardened
 	// default (no SA, no token mounted).
 	//
@@ -589,16 +589,16 @@ type NyxAgentSpec struct {
 	// +optional
 	AutomountServiceAccountToken *bool `json:"automountServiceAccountToken,omitempty"`
 
-	// Resources are CPU/memory requests and limits for the nyx-harness container.
+	// Resources are CPU/memory requests and limits for the harness container.
 	// +optional
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 
-	// Env adds environment variables to the nyx-harness container.
+	// Env adds environment variables to the harness container.
 	// +optional
 	Env []corev1.EnvVar `json:"env,omitempty"`
 
 	// EnvFrom sources env vars from Secrets or ConfigMaps for the
-	// nyx-harness container.
+	// harness container.
 	// +optional
 	EnvFrom []corev1.EnvFromSource `json:"envFrom,omitempty"`
 
@@ -606,7 +606,7 @@ type NyxAgentSpec struct {
 	// +optional
 	Metrics MetricsSpec `json:"metrics,omitempty"`
 
-	// Config mounts inline config files into the nyx-harness container.
+	// Config mounts inline config files into the harness container.
 	// +optional
 	Config []ConfigFile `json:"config,omitempty"`
 
@@ -643,7 +643,7 @@ type NyxAgentSpec struct {
 	GitSyncs []GitSyncSpec `json:"gitSyncs,omitempty"`
 
 	// GitMappings materialise files or directories from named GitSyncs
-	// into the nyx-harness container. A referenced GitSync name must
+	// into the harness container. A referenced GitSync name must
 	// exist in GitSyncs. Per-backend overrides live in
 	// BackendSpec.GitMappings. Mirrors the chart's per-agent
 	// `gitMappings` block (#475).

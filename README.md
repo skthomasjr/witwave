@@ -13,7 +13,7 @@ shipping — closing the loop without a human in the hot path.
 
 ---
 
-Built on the [A2A protocol](https://a2a-protocol.org). Each named agent is a set of containers: a **nyx-harness**
+Built on the [A2A protocol](https://a2a-protocol.org). Each named agent is a set of containers: a **harness**
 infrastructure layer (A2A relay, heartbeat scheduler, job scheduler) and one or more **backend** containers that do the
 actual LLM work (Claude Agent SDK via `a2-claude`, OpenAI Agents SDK via `a2-codex`, Google Gemini SDK via `a2-gemini`).
 
@@ -25,7 +25,7 @@ The platform has eight components, each with its own source directory:
 
 | Component          | Directory              | Type               | Description                                                                                                                 |
 | ------------------ | ---------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| **Orchestrator**   | `harness/`             | Orchestrator agent | nyx-harness: the infrastructure and routing layer. Owns scheduling, triggering, chaining, and A2A relay. No LLM of its own. |
+| **Orchestrator**   | `harness/`             | Orchestrator agent | harness: the infrastructure and routing layer. Owns scheduling, triggering, chaining, and A2A relay. No LLM of its own. |
 | **Claude backend** | `backends/a2-claude/`           | Backend agent      | Executes prompts via the Claude Agent SDK. Manages sessions, memory, conversation logs, and metrics.                        |
 | **Codex backend**  | `backends/a2-codex/`            | Backend agent      | Executes prompts via the OpenAI Agents SDK. Supports web search and headless browser via Playwright.                        |
 | **Gemini backend** | `backends/a2-gemini/`           | Backend agent      | Executes prompts via the Google Gemini SDK. Manages sessions and conversation history.                                      |
@@ -42,7 +42,7 @@ install path to the agent chart; both target the same per-agent deployment shape
 
 Each agent:
 
-- Runs as a nyx-harness container that receives A2A requests, fires heartbeats, and runs jobs
+- Runs as a harness container that receives A2A requests, fires heartbeats, and runs jobs
 - Forwards all LLM work to a dedicated backend container (`a2-claude`, `a2-codex`, or `a2-gemini`)
 - Exposes an [A2A (Agent-to-Agent)](https://a2a-protocol.org) interface for communication
 - Has its own identity, memory, and configuration — none baked into the image
@@ -69,7 +69,7 @@ automatically on every release tag.
 
 | Image            | Registry path                                     |
 | ---------------- | ------------------------------------------------- |
-| `nyx-harness`    | `ghcr.io/skthomasjr/images/nyx-harness:latest`    |
+| `harness`        | `ghcr.io/skthomasjr/images/harness:latest`        |
 | `a2-claude`      | `ghcr.io/skthomasjr/images/a2-claude:latest`      |
 | `a2-codex`       | `ghcr.io/skthomasjr/images/a2-codex:latest`       |
 | `a2-gemini`      | `ghcr.io/skthomasjr/images/a2-gemini:latest`      |
@@ -79,7 +79,7 @@ automatically on every release tag.
 | `mcp-kubernetes` | `ghcr.io/skthomasjr/images/mcp-kubernetes:latest` |
 | `mcp-helm`       | `ghcr.io/skthomasjr/images/mcp-helm:latest`       |
 
-Pull a specific version with a semver tag, e.g. `ghcr.io/skthomasjr/images/nyx-harness:0.2.0-beta.37`.
+Pull a specific version with a semver tag, e.g. `ghcr.io/skthomasjr/images/harness:0.2.0-beta.37`.
 The latest released tag is visible in the [GitHub Releases](https://github.com/skthomasjr/autonomous-agent/releases) page; substitute it for the version below.
 
 ## Helm Charts
@@ -104,7 +104,7 @@ See [charts/nyx/README.md](charts/nyx/README.md) and
 Pull published images:
 
 ```bash
-docker pull ghcr.io/skthomasjr/images/nyx-harness:latest
+docker pull ghcr.io/skthomasjr/images/harness:latest
 docker pull ghcr.io/skthomasjr/images/a2-claude:latest
 docker pull ghcr.io/skthomasjr/images/a2-codex:latest
 docker pull ghcr.io/skthomasjr/images/a2-gemini:latest
@@ -113,7 +113,7 @@ docker pull ghcr.io/skthomasjr/images/a2-gemini:latest
 Or build locally:
 
 ```bash
-docker build -f harness/Dockerfile -t nyx-harness:latest .
+docker build -f harness/Dockerfile -t harness:latest .
 docker build -f backends/a2-claude/Dockerfile -t a2-claude:latest .
 docker build -f backends/a2-codex/Dockerfile -t a2-codex:latest .
 docker build -f backends/a2-gemini/Dockerfile -t a2-gemini:latest .
@@ -136,7 +136,7 @@ helm upgrade --install nyx ./charts/nyx -f ./charts/nyx/values-test.yaml -n nyx 
 ### 4. Verify
 
 ```bash
-# nyx-harness (router layer)
+# harness (router layer)
 curl http://localhost:8000/.well-known/agent.json
 
 # Claude backend for iris
@@ -174,7 +174,7 @@ Each agent directory contains:
 ├── .claude/           # Claude backend config (CLAUDE.md, agent-card.md, mcp.json, settings.json)
 ├── .codex/            # Codex backend config (AGENTS.md, agent-card.md, config.toml)
 ├── .gemini/           # Gemini backend config (GEMINI.md, agent-card.md)
-├── logs/              # nyx-harness logs (runtime, not committed)
+├── logs/              # harness logs (runtime, not committed)
 ├── a2-claude/         # Claude backend instance
 │   ├── logs/          # Conversation log (runtime, not committed)
 │   └── memory/        # Persistent memory (runtime, not committed)
@@ -325,7 +325,7 @@ Each backend container additionally exposes:
 - `GET /metrics` — Prometheus metrics (when `METRICS_ENABLED` is set)
 - `POST /mcp` — MCP JSON-RPC server (`initialize`, `tools/list`, `tools/call` with a single `ask_agent` tool); allows
   MCP hosts (Claude Desktop, Cursor, VS Code extensions) to invoke the agent as a tool without going through
-  nyx-harness. **All three backends require a bearer token** (`CONVERSATIONS_AUTH_TOKEN`) on `/mcp` (#510, #516, #518);
+  harness. **All three backends require a bearer token** (`CONVERSATIONS_AUTH_TOKEN`) on `/mcp` (#510, #516, #518);
   the shared token guard also gates `/conversations` and `/trace`. If the env var is left empty the backend logs a
   startup warning (#517) — set a non-empty token in production.
 
@@ -333,7 +333,7 @@ Each backend container additionally exposes:
 
 Each backend agent manages its own memory at `.agents/<env>/<name>/<backend>/memory/`. For `a2-claude` and `a2-codex`,
 memory files are markdown documents. For `a2-gemini`, conversation history is stored as JSON in `memory/sessions/`.
-Memory files are not committed to source control. nyx-harness has no memory layer of its own.
+Memory files are not committed to source control. harness has no memory layer of its own.
 
 ## Authentication
 
@@ -356,7 +356,7 @@ and `/trace` endpoints — **parity across backends** (#510, #516, #518). Set `C
 container. If it is unset or empty the backend logs a startup warning (#517) and the shared guard in
 `shared/conversations.py` refuses to serve the protected endpoints.
 
-nyx-harness forwards inbound `/conversations` and `/trace` reads to the backends — set
+harness forwards inbound `/conversations` and `/trace` reads to the backends — set
 `BACKEND_CONVERSATIONS_AUTH_TOKEN` on the harness to match so the aggregated reads continue to work. See the
 environment variable tables below.
 
@@ -366,7 +366,7 @@ Outbound webhooks now go through an SSRF-resistant URL check. See [URL safety (#
 Webhooks for the full rules. Migration: any webhook markdown that previously used `url: http://{{env.FOO}}/…` must be
 rewritten to use `url-env-var: FOO` — `{{env.*}}` substitutions in the `url:` field are no longer honoured. Private /
 loopback / link-local / reserved destinations can be explicitly opted in via the `WEBHOOK_URL_ALLOWED_HOSTS` env var
-on nyx-harness (comma-separated `host` or `host:port` entries).
+on harness (comma-separated `host` or `host:port` entries).
 
 ### Dashboard Ingress (#528)
 
@@ -390,7 +390,7 @@ settings, and the dashboard pod runs as non-root. This keeps the chart compatibl
 
 ## Configuration
 
-### nyx-harness environment variables
+### harness environment variables
 
 | Variable                                    | Default                         | Description                                                                                                                                           |
 | ------------------------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -438,13 +438,13 @@ settings, and the dashboard pod runs as non-root. This keeps the chart compatibl
 
 ## Metrics
 
-When `METRICS_ENABLED` is set, Prometheus metrics are served at `/metrics` on both nyx-harness and backend containers.
+When `METRICS_ENABLED` is set, Prometheus metrics are served at `/metrics` on both harness and backend containers.
 
 Backend containers (`a2-claude`, `a2-codex`, `a2-gemini`) expose `a2_*`-prefixed metrics. `a2-claude` exposes a superset
 that includes tool call, context window, and MCP metrics; `a2-codex` also exposes tool-call and context-window metrics;
 `a2-gemini` exposes context-window metrics. All three share the common `a2_*` baseline set.
-nyx-harness exposes `agent_*`-prefixed infrastructure metrics (bus, heartbeat, job, sessions, webhooks, etc.). The
-nyx-harness `/metrics` endpoint also aggregates all backend `/metrics` endpoints, injecting a `backend="<id>"` label on
+harness exposes `agent_*`-prefixed infrastructure metrics (bus, heartbeat, job, sessions, webhooks, etc.). The
+harness `/metrics` endpoint also aggregates all backend `/metrics` endpoints, injecting a `backend="<id>"` label on
 each sample so a single scrape target captures the full deployment.
 
 ## Prompt env-var interpolation (#473)
@@ -461,7 +461,7 @@ Send a daily status update. Environment: {{env.DEPLOYMENT_ENV}}.
 Dashboard: https://{{env.DASHBOARD_HOST}}/team.
 ```
 
-Two env vars control the feature, both set on the nyx-harness container:
+Two env vars control the feature, both set on the harness container:
 
 | Variable                 | Default   | Description                                                                                              |
 | ------------------------ | --------- | -------------------------------------------------------------------------------------------------------- |
@@ -501,7 +501,7 @@ frontmatter fields:
 - URLs whose host is a loopback / link-local / private / reserved IP literal (e.g. `127.0.0.1`,
   `169.254.169.254`, `10.0.0.5`) are rejected to prevent SSRF to cloud metadata endpoints and internal
   services. Operators can opt specific internal hosts into the allow-list via the
-  `WEBHOOK_URL_ALLOWED_HOSTS` env var on nyx-harness (comma-separated `host` or `host:port` entries).
+  `WEBHOOK_URL_ALLOWED_HOSTS` env var on harness (comma-separated `host` or `host:port` entries).
 
 The markdown body is the POST payload. Use `{{variable}}` placeholders for substitution in the body and
 header values (not in the URL — see above):

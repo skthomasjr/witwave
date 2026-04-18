@@ -95,7 +95,7 @@ Derive each item's section from its issue labels (`feature`, `gap`, `bug`, `risk
 Show:
 - The new version number and release type (beta or full)
 - The release notes draft
-- The images that will be built (all five: nyx-harness, a2-claude, a2-codex, a2-gemini, ui)
+- The images that will be built (all five: harness, a2-claude, a2-codex, a2-gemini, ui)
 
 Ask the user to confirm before proceeding.
 

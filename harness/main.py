@@ -565,7 +565,7 @@ async def main():
     # through the configured OTLP pipeline (#469). No-op when OTEL_ENABLED
     # is falsy, which is the default.
     from tracing import init_otel_if_enabled
-    init_otel_if_enabled(service_name=os.environ.get("OTEL_SERVICE_NAME") or "nyx-harness")
+    init_otel_if_enabled(service_name=os.environ.get("OTEL_SERVICE_NAME") or "harness")
 
     bus = MessageBus()
     agent_card = build_agent_card()

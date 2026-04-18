@@ -16,7 +16,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - image: nyx-harness
+          - image: harness
             file: harness/Dockerfile
             context: .
           - image: a2-claude

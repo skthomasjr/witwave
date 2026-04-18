@@ -79,7 +79,7 @@ variable.
 `body:` template, and header values. **Rejected in the `url:` field** — env-derived URLs must be placed
 in a single environment variable and referenced via `url-env-var` instead (#524). Only `http`/`https`
 schemes are accepted, and hosts resolving to loopback/link-local/private/reserved IP literals are blocked
-unless explicitly opted in via the nyx-harness `WEBHOOK_URL_ALLOWED_HOSTS` env var.
+unless explicitly opted in via the harness `WEBHOOK_URL_ALLOWED_HOSTS` env var.
 
 Extracted variables (defined under `extract:`) are also available in the `body:` template and header values.
 

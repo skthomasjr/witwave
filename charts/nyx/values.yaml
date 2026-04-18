@@ -157,7 +157,7 @@ ingress:
 # Replica topology — single-replica default is INTENTIONAL (#559).
 #
 # Each agent's Deployment renders `replicas: 1` by default (see the Deployment
-# template). This is deliberate for per-agent workloads: nyx-harness owns the
+# template). This is deliberate for per-agent workloads: harness owns the
 # heartbeat scheduler, job scheduler, task scheduler, trigger handler, and
 # continuation runner, and running two harness pods for the same agent would
 # cause those schedulers to fire twice. Backends are mostly stateless but
@@ -277,7 +277,7 @@ priorityClassName: ""
 # × periodSeconds 10 = 5 minutes) are strictly additive: once startup succeeds
 # once, kubelet switches to the readiness/liveness cadence below. Point the
 # probe at the same health endpoint used by readiness (hardcoded per-container
-# in the template: /health/ready for nyx-harness, /health for backends). Bump
+# in the template: /health/ready for harness, /health for backends). Bump
 # failureThreshold if your cold-start genuinely exceeds 5 minutes.
 probes:
   liveness:
@@ -336,7 +336,7 @@ gitSync:
 
 # Enable Prometheus metrics for all agents and their backends.
 # When enabled, prometheus.io scrape annotations are added to each agent Service
-# and the /metrics endpoint is activated on both nyx-harness and backend containers.
+# and the /metrics endpoint is activated on both harness and backend containers.
 # Override per agent with agents[].metrics.enabled.
 metrics:
   # Master toggle for Prometheus metrics. When false, the harness still
@@ -473,13 +473,13 @@ sharedStorage:
 #   defaults.resources.backend                    → shared fallback for any
 #                                                    backend name not listed
 #                                                    under .backends above
-#   defaults.resources.harness                    → nyx-harness container
+#   defaults.resources.harness                    → harness container
 #
 # Set any leaf to null (`~`) to disable the default and render no resources
 # block for that container (back to pre-#553 BestEffort behaviour).
 defaults:
   resources:
-    # nyx-harness orchestrator is pure-Python infrastructure (no LLM): small,
+    # harness orchestrator is pure-Python infrastructure (no LLM): small,
     # bursty CPU and a low-memory steady state.
     harness:
       requests:
@@ -490,7 +490,7 @@ defaults:
         memory: 512Mi
     # Shared default for any backend sidecar whose name is not listed under
     # `backends` below. Backends run LLM clients and scale with concurrent
-    # sessions, so they need more headroom than nyx-harness.
+    # sessions, so they need more headroom than harness.
     backend:
       requests:
         cpu: 250m
@@ -595,19 +595,19 @@ mcpTools:
     # envFrom: []
 
 # List of agents to deploy. Each agent runs as a single pod containing
-# the nyx-harness orchestrator and one or more backend sidecars.
+# the harness orchestrator and one or more backend sidecars.
 agents:
   - # Agent name. Used as the pod name prefix, service name, and AGENT_NAME env var.
     name: adam
 
-    # Port the nyx-harness listens on. Also used for the Service and health probes.
+    # Port the harness listens on. Also used for the Service and health probes.
     # Must be unique per agent when multiple agents share a namespace with hostPort.
     port: 8000
 
-    # nyx-harness orchestrator image.
+    # harness orchestrator image.
     image:
       # Image repository.
-      repository: ghcr.io/skthomasjr/images/nyx-harness
+      repository: ghcr.io/skthomasjr/images/harness
       # # Image tag. Defaults to .Chart.AppVersion when omitted.
       # tag: ""
       # Image pull policy. Use Always for mutable tags (e.g. latest, beta).
@@ -646,8 +646,8 @@ agents:
     #         app.kubernetes.io/name: adam
     # priorityClassName: system-cluster-critical
 
-    # # Resource requests and limits for the nyx-harness orchestrator container.
-    # # Overrides `defaults.resources.harness` above. nyx-harness is lightweight
+    # # Resource requests and limits for the harness orchestrator container.
+    # # Overrides `defaults.resources.harness` above. harness is lightweight
     # # (pure Python, no LLM) — CPU and memory needs are low; only raise if a
     # # single agent hosts a very large number of jobs/triggers/webhooks.
     # resources:
@@ -711,12 +711,12 @@ agents:
     #     dest: /home/agent/.nyx/
 
     # # Environment variables sourced from Secrets or ConfigMaps, injected into
-    # # the nyx-harness container.
+    # # the harness container.
     # envFrom:
     #   - secretRef:
     #       name: adam-secrets
 
-    # # Inline config files mounted into the nyx-harness container.
+    # # Inline config files mounted into the harness container.
     # # Each entry is added as a key in a ConfigMap and mounted at mountPath.
     # config:
     #   - name: HEARTBEAT.md
@@ -731,7 +731,7 @@ agents:
     #     content: |
     #       An autonomous agent.
 
-    # Backend sidecars. Each entry deploys one backend container alongside nyx-harness.
+    # Backend sidecars. Each entry deploys one backend container alongside harness.
     backends:
       - # Backend name. Used as the sidecar container name and backend ID in routing.
         name: claude

@@ -1,12 +1,12 @@
-# nyx-harness
+# harness
 
-nyx-harness is the orchestration layer for the autonomous agent platform. It owns no LLM of its own — its job is to
+harness is the orchestration layer for the autonomous agent platform. It owns no LLM of its own — its job is to
 receive work, route it to the right backend, and coordinate everything around that: scheduling, triggering, chaining,
 webhooks, and observability.
 
 ## What it does
 
-Every named agent (iris, nova, kira, …) runs one instance of this image alongside its backend containers. nyx-harness
+Every named agent (iris, nova, kira, …) runs one instance of this image alongside its backend containers. harness
 acts as the single entry point for all inbound requests and all scheduled work.
 
 **A2A relay** — Receives A2A JSON-RPC requests and forwards them to the backend configured for the `a2a` routing slot.
@@ -99,7 +99,7 @@ budget), `max-concurrent-fires` (cap on simultaneous in-flight fires; default `5
 
 ## Tracing
 
-nyx-harness propagates W3C [Trace Context](https://www.w3.org/TR/trace-context/) end-to-end without depending on any
+harness propagates W3C [Trace Context](https://www.w3.org/TR/trace-context/) end-to-end without depending on any
 external tracing SDK (#468). This is the smallest-viable building block for cross-agent correlation; a later issue
 (#469) can layer full OpenTelemetry on top without changing call sites.
 
@@ -127,7 +127,7 @@ backend call and webhook delivery, and the per-backend `execute()` continues the
 Spans are exported using the standard OTel env vars:
 
 - `OTEL_EXPORTER_OTLP_ENDPOINT` — default `http://localhost:4318`
-- `OTEL_SERVICE_NAME` — default `nyx-harness`
+- `OTEL_SERVICE_NAME` — default `harness`
 - `OTEL_TRACES_SAMPLER` — default `parentbased_always_on`
 
 Resource attributes `service.name`, `agent`, `agent_id`, and `backend` are populated automatically from the
@@ -137,6 +137,6 @@ no-ops and only the lightweight W3C propagation runs.
 
 ## Runtime
 
-nyx-harness is a Docker container. It mounts the agent's `.nyx/` directory for configuration and writes conversation and
+harness is a Docker container. It mounts the agent's `.nyx/` directory for configuration and writes conversation and
 trace logs to individual files under `logs/`. The `MANIFEST_PATH` environment variable points to the team manifest
 (`manifest.json`), which lists all agents in the deployment by name and URL.

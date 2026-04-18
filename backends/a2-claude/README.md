@@ -5,7 +5,7 @@ Agent SDK, managing its own sessions, conversation logs, trace logs, and Prometh
 
 ## What it does
 
-a2-claude receives A2A JSON-RPC requests (forwarded by nyx-harness), runs them through Claude via the Claude Agent SDK
+a2-claude receives A2A JSON-RPC requests (forwarded by harness), runs them through Claude via the Claude Agent SDK
 CLI, streams back the response, and logs everything to JSONL files.
 
 Each named agent that uses Claude gets its own dedicated instance of this image (e.g. `iris-a2-claude`,
@@ -146,7 +146,7 @@ is a guarantee, not a policy choice.
 ## Tracing (OpenTelemetry)
 
 When `OTEL_ENABLED=true` is set, a2-claude emits a server span for every `execute()` call and continues any trace
-propagated by nyx-harness via the `metadata.traceparent` field (#469). The OTLP/HTTP exporter reads the standard
+propagated by harness via the `metadata.traceparent` field (#469). The OTLP/HTTP exporter reads the standard
 `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_SERVICE_NAME` / `OTEL_TRACES_SAMPLER` env vars. Resource attributes
 (`service.name`, `agent`, `agent_id`, `backend`) are populated automatically. When `OTEL_ENABLED` is falsy
 (default) the OTel call sites are no-ops. The bootstrap lives in `shared/otel.py` and is shared with the other

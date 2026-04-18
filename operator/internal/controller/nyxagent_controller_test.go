@@ -46,7 +46,7 @@ func newTestAgent(name string) *nyxv1alpha1.NyxAgent {
 		},
 		Spec: nyxv1alpha1.NyxAgentSpec{
 			Image: nyxv1alpha1.ImageSpec{
-				Repository: "ghcr.io/skthomasjr/images/nyx-harness",
+				Repository: "ghcr.io/skthomasjr/images/harness",
 				Tag:        "test",
 			},
 			Backends: []nyxv1alpha1.BackendSpec{{
@@ -134,7 +134,7 @@ var _ = Describe("NyxAgent Controller", func() {
 			for _, c := range dep.Spec.Template.Spec.Containers {
 				containerNames = append(containerNames, c.Name)
 			}
-			Expect(containerNames).To(ContainElement("nyx-harness"))
+			Expect(containerNames).To(ContainElement("harness"))
 			Expect(containerNames).To(ContainElement("claude"))
 
 			// Service — same name, ClusterIP, port from spec default (8000).

@@ -521,7 +521,7 @@ func gitSyncSidecarContainers(agent *nyxv1alpha1.NyxAgent, appVersion string) []
 	return sidecars
 }
 
-// agentGitMappingMounts returns the VolumeMounts the nyx-harness container
+// agentGitMappingMounts returns the VolumeMounts the harness container
 // needs: the shared /git volume plus one emptyDir mount per agent-scoped
 // GitMapping at the declared `dest`. Per-backend mappings are handled by
 // backendGitMappingMounts.

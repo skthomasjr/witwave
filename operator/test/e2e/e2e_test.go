@@ -274,7 +274,7 @@ var _ = Describe("Manager", Ordered, func() {
 		const (
 			nyxAgentName      = "e2e-nyxagent"
 			nyxAgentNamespace = "operator-system"
-			harnessImage      = "ghcr.io/skthomasjr/images/nyx-harness:latest"
+			harnessImage      = "ghcr.io/skthomasjr/images/harness:latest"
 			backendImage      = "ghcr.io/skthomasjr/images/a2-claude:latest"
 		)
 

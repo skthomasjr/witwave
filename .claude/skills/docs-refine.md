@@ -14,7 +14,7 @@ The documents covered by this skill are:
 
 - `<repo-root>/README.md` — root project overview
 - `<repo-root>/CONTRIBUTING.md` — contribution model (issue-only)
-- `<repo-root>/harness/README.md` — nyx-harness orchestrator component (was `agent/README.md`)
+- `<repo-root>/harness/README.md` — harness orchestrator component (was `agent/README.md`)
 - `<repo-root>/backends/a2-claude/README.md` — Claude backend component
 - `<repo-root>/backends/a2-codex/README.md` — Codex backend component
 - `<repo-root>/backends/a2-gemini/README.md` — Gemini backend component

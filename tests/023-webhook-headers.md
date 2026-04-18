@@ -5,7 +5,7 @@ enabled: true
 
 This test verifies that a webhook with a `headers:` map — including a header whose value contains
 `{{env.WEBHOOK_TEST_TOKEN}}` — delivers successfully. Correct header transmission is confirmed indirectly: the
-trigger endpoint returns 202 (meaning nyx-harness accepted the POST), and the backend produces `FEATURE_SINK_OK`,
+trigger endpoint returns 202 (meaning harness accepted the POST), and the backend produces `FEATURE_SINK_OK`,
 confirming the full delivery path completed.
 
 The webhook fixture is `.agents/test/bob/.nyx/webhooks/test-headers.md`. It fires when a response contains

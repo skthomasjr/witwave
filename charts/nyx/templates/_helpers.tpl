@@ -23,7 +23,7 @@ Usage: {{ include "nyx.chart" . }}
 {{- end }}
 
 {{/*
-Agent component labels (nyx-harness).
+Agent component labels (harness).
 Emits the full Kubernetes Recommended Labels set. NOT suitable for use in
 selector.matchLabels (includes `app.kubernetes.io/version` and `helm.sh/chart`,
 which change on chart upgrade). For selectors, use `nyx.agentSelectorLabels`.
@@ -36,7 +36,7 @@ Legacy (no recommended labels): {{- include "nyx.agentLabels" .name | nindent 4 
 helm.sh/chart: {{ include "nyx.chart" $root }}
 app.kubernetes.io/name: {{ .name }}
 app.kubernetes.io/instance: {{ $root.Release.Name }}
-app.kubernetes.io/component: nyx-harness
+app.kubernetes.io/component: harness
 app.kubernetes.io/part-of: nyx
 app.kubernetes.io/managed-by: {{ $root.Release.Service }}
 {{- if $root.Chart.AppVersion }}
@@ -44,7 +44,7 @@ app.kubernetes.io/version: {{ $root.Chart.AppVersion | quote }}
 {{- end }}
 {{- else -}}
 app.kubernetes.io/name: {{ . }}
-app.kubernetes.io/component: nyx-harness
+app.kubernetes.io/component: harness
 app.kubernetes.io/part-of: nyx
 app.kubernetes.io/managed-by: helm
 {{- end -}}
@@ -57,7 +57,7 @@ Usage: {{- include "nyx.agentSelectorLabels" .name | nindent 6 }}
 */}}
 {{- define "nyx.agentSelectorLabels" -}}
 app.kubernetes.io/name: {{ . }}
-app.kubernetes.io/component: nyx-harness
+app.kubernetes.io/component: harness
 app.kubernetes.io/part-of: nyx
 {{- end }}
 
@@ -195,7 +195,7 @@ Usage: {{- include "nyx.gitMappingVolumes" (dict "agent" . "release" $.Release.N
 {{- end }}
 
 {{/*
-Resolve resources for the nyx-harness container (#553). Order of precedence:
+Resolve resources for the harness container (#553). Order of precedence:
   1. agent.resources (per-agent override in values.yaml)
   2. .Values.defaults.resources.harness (chart-shipped default)
 Returns the empty string when neither is set, so the caller can branch on it.
@@ -268,7 +268,7 @@ Wiring:
                               default from AGENT_OWNER)
 
 Usage:
-  {{- include "nyx.otelEnv" (dict "root" $ "serviceName" (printf "nyx-harness-%s" .name)) | nindent 12 }}
+  {{- include "nyx.otelEnv" (dict "root" $ "serviceName" (printf "harness-%s" .name)) | nindent 12 }}
 */}}
 {{- define "nyx.otelEnv" -}}
 {{- $root := .root -}}

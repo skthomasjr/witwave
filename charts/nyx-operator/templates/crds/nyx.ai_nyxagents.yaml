@@ -1436,7 +1436,7 @@ spec:
                 minItems: 1
                 type: array
               config:
-                description: Config mounts inline config files into the nyx-harness
+                description: Config mounts inline config files into the harness
                   container.
                 items:
                   description: |-
@@ -1605,7 +1605,7 @@ spec:
                   Mirrors the per-agent `enabled` flag in the Helm chart (#chart beta.32).
                 type: boolean
               env:
-                description: Env adds environment variables to the nyx-harness container.
+                description: Env adds environment variables to the harness container.
                 items:
                   description: EnvVar represents an environment variable present in
                     a Container.
@@ -1725,7 +1725,7 @@ spec:
               envFrom:
                 description: |-
                   EnvFrom sources env vars from Secrets or ConfigMaps for the
-                  nyx-harness container.
+                  harness container.
                 items:
                   description: EnvFromSource represents the source of a set of ConfigMaps
                     or Secrets
@@ -1773,7 +1773,7 @@ spec:
               gitMappings:
                 description: |-
                   GitMappings materialise files or directories from named GitSyncs
-                  into the nyx-harness container. A referenced GitSync name must
+                  into the harness container. A referenced GitSync name must
                   exist in GitSyncs. Per-backend overrides live in
                   BackendSpec.GitMappings. Mirrors the chart's per-agent
                   `gitMappings` block (#475).
@@ -1970,7 +1970,7 @@ spec:
                   type: object
                 type: array
               image:
-                description: Image is the nyx-harness orchestrator image.
+                description: Image is the harness orchestrator image.
                 properties:
                   pullPolicy:
                     description: PullPolicy controls when the image is pulled.
@@ -2126,7 +2126,7 @@ spec:
                 type: object
               port:
                 default: 8000
-                description: Port is the HTTP port nyx-harness listens on (Service
+                description: Port is the HTTP port harness listens on (Service
                   + probe target).
                 format: int32
                 maximum: 65535
@@ -2210,7 +2210,7 @@ spec:
                 type: object
               resources:
                 description: Resources are CPU/memory requests and limits for the
-                  nyx-harness container.
+                  harness container.
                 properties:
                   claims:
                     description: |-
@@ -2280,7 +2280,7 @@ spec:
                   When this field is set, AutomountServiceAccountToken flips to true
                   automatically so the SA token is projected into every container in
                   the pod. Note: the token is visible to every sibling container
-                  (nyx-harness + all backend sidecars + any MCP sidecars) — there is
+                  (harness + all backend sidecars + any MCP sidecars) — there is
                   no per-container scoping. When unset, the pod retains the hardened
                   default (no SA, no token mounted).
 

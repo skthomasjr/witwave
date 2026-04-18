@@ -30,7 +30,7 @@ spec:
         - -c
         - |
           set -e
-          echo "Testing nyx-harness health/ready for {{ .name }}..."
+          echo "Testing harness health/ready for {{ .name }}..."
           curl -sf --connect-timeout 3 --max-time 10 http://{{ $.Release.Name }}-{{ .name }}:{{ .port | default 8000 }}/health/ready
           echo ""
           echo "Testing A2A discovery for {{ .name }}..."

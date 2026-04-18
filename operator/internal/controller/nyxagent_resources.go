@@ -45,14 +45,14 @@ const (
 	labelManagedBy = "app.kubernetes.io/managed-by"
 
 	// componentAgent matches the chart's nyx.agentLabels component value
-	// ("nyx-harness") so Prometheus rules, ServiceMonitors, and Grafana
-	// panels that select on `app.kubernetes.io/component=nyx-harness`
+	// ("harness") so Prometheus rules, ServiceMonitors, and Grafana
+	// panels that select on `app.kubernetes.io/component=harness`
 	// match operator-rendered agents the same way they match Helm-rendered
 	// agents (#575). managedBy stays "nyx-operator" (vs the chart's "helm")
 	// on purpose — it's the one label that is semantically different
 	// between the two install paths and consumers should be able to tell
 	// the rendering path apart.
-	componentAgent   = "nyx-harness"
+	componentAgent   = "harness"
 	componentBackend = "backend"
 	partOf           = "nyx"
 	managedBy        = "nyx-operator"
@@ -472,7 +472,7 @@ func backendStorageVolumeAndMounts(agent *nyxv1alpha1.NyxAgent, b nyxv1alpha1.Ba
 	return vol, mounts
 }
 
-// buildDeployment assembles the agent Deployment: one nyx-harness container
+// buildDeployment assembles the agent Deployment: one harness container
 // plus one container per backend. AppVersion is the chart/operator app version
 // used as a default image tag when an ImageSpec omits Tag. Prompts lists the
 // NyxPrompt CRs bound to this agent; one pod-level Volume + harness-level
@@ -541,7 +541,7 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string, prompts []n
 	volumes = append(volumes, pv...)
 	harnessMounts = append(harnessMounts, pm...)
 
-	// nyx-harness container.
+	// harness container.
 	harnessPort := agent.Spec.Port
 	if harnessPort == 0 {
 		harnessPort = 8000
@@ -554,7 +554,7 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string, prompts []n
 	}
 
 	harness := corev1.Container{
-		Name:            "nyx-harness",
+		Name:            "harness",
 		Image:           imageRef(agent.Spec.Image, appVersion),
 		ImagePullPolicy: imagePullPolicy(agent.Spec.Image),
 		Ports: []corev1.ContainerPort{
@@ -882,7 +882,7 @@ func mergeStringMap(base, overlay map[string]string) map[string]string {
 	return out
 }
 
-// buildService constructs the Service exposing the agent's nyx-harness
+// buildService constructs the Service exposing the agent's harness
 // HTTP port. Service.spec.type defaults to ClusterIP and is overridable
 // via spec.serviceType (#chart beta.31 / #466). Prometheus scrape
 // annotations honour spec.metrics.serviceAnnotations (default true)

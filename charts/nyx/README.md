@@ -84,7 +84,7 @@ helm uninstall nyx --namespace nyx
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `agents` | List of agents to deploy, each as a nyx-harness pod | `[{name: adam}]` |
+| `agents` | List of agents to deploy, each as a harness pod | `[{name: adam}]` |
 | `agents[].name` | Agent name — used for pod name, service name, and `AGENT_NAME` env var | `adam` |
 | `agents[].imagePullSecrets` | Image pull secrets for the agent pod | `[]` |
 | `dashboard.enabled` | Deploy the nyx web dashboard | `false` |
@@ -167,7 +167,7 @@ agents:
 Each agent's Deployment renders `replicas: 1` by default, and both `autoscaling.enabled` and
 `podDisruptionBudget.enabled` default to `false`. This is deliberate — not an oversight:
 
-- **nyx-harness runs singleton schedulers.** The harness owns the heartbeat scheduler, job scheduler, task
+- **harness runs singleton schedulers.** The harness owns the heartbeat scheduler, job scheduler, task
   scheduler, trigger handler, and continuation runner. Running two harness pods for the same agent would
   cause every scheduled item to fire twice.
 - **Backends keep local session state.** Conversation logs and per-session memory live on a local volume
@@ -308,7 +308,7 @@ a startup warning (#517).
 
 `backends[].model` is now rendered into the backend container as the `BACKEND_MODEL` env var (#489) — previously the
 value was dropped. Combined with the backend's own `<NAME>_MODEL` env var (`CLAUDE_MODEL`, `CODEX_MODEL`,
-`GEMINI_MODEL`) and per-request routing overrides in nyx-harness, this lets the chart set the default model for a
+`GEMINI_MODEL`) and per-request routing overrides in harness, this lets the chart set the default model for a
 backend without baking it into the image or a per-agent ConfigMap.
 
 ## MCP tool Deployments (#644)

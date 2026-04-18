@@ -1,9 +1,9 @@
 ---
-description: Verifies that the nyx-harness /metrics endpoint returns both its own metrics and relabelled backend metrics in a single scrape.
+description: Verifies that the harness /metrics endpoint returns both its own metrics and relabelled backend metrics in a single scrape.
 enabled: true
 ---
 
-Bob's nyx-harness aggregates Prometheus metrics from itself and all reachable backends into a single `/metrics` endpoint. This test verifies the aggregation is working correctly.
+Bob's harness aggregates Prometheus metrics from itself and all reachable backends into a single `/metrics` endpoint. This test verifies the aggregation is working correctly.
 
 ## Verification
 

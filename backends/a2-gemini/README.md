@@ -5,7 +5,7 @@ Google `google-genai` SDK, managing its own sessions, conversation logs, trace l
 
 ## What it does
 
-a2-gemini receives A2A JSON-RPC requests (forwarded by nyx-harness), runs them through a Gemini model via the
+a2-gemini receives A2A JSON-RPC requests (forwarded by harness), runs them through a Gemini model via the
 `google-genai` SDK, and logs everything to JSONL files.
 
 Each named agent that uses Gemini gets its own dedicated instance of this image (e.g. `iris-a2-gemini`,
@@ -135,6 +135,6 @@ function-call dispatch loop); no operator toggle ships today.
 ## Tracing (OpenTelemetry)
 
 When `OTEL_ENABLED=true` is set, a2-gemini emits a server span for every `execute()` call and continues any trace
-propagated by nyx-harness via the `metadata.traceparent` field (#469). The OTLP/HTTP exporter reads the standard
+propagated by harness via the `metadata.traceparent` field (#469). The OTLP/HTTP exporter reads the standard
 `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_SERVICE_NAME` / `OTEL_TRACES_SAMPLER` env vars. When `OTEL_ENABLED` is falsy
 (default) the OTel call sites are no-ops. Bootstrap in `shared/otel.py` is shared with the harness and other backends.

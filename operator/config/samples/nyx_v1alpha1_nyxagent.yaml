@@ -8,7 +8,7 @@ metadata:
 spec:
   port: 8000
   image:
-    repository: ghcr.io/skthomasjr/images/nyx-harness
+    repository: ghcr.io/skthomasjr/images/harness
     # tag defaults to the operator's DefaultImageTag when unset
   metrics:
     enabled: false

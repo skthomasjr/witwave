@@ -172,7 +172,7 @@ spec:
             {{- end }}
         {{- end }}
         {{- end }}
-        - name: nyx-harness
+        - name: harness
           image: {{ .image.repository }}:{{ .image.tag | default $.Chart.AppVersion }}
           imagePullPolicy: {{ .image.pullPolicy | default "IfNotPresent" }}
           securityContext:
@@ -230,7 +230,7 @@ spec:
               value: {{ .port | default 8000 | quote }}
             - name: METRICS_ENABLED
               value: {{ (.metrics).enabled | default $.Values.metrics.enabled | toString | quote }}
-            {{- include "nyx.otelEnv" (dict "root" $ "serviceName" (printf "nyx-harness-%s" .name)) | nindent 12 }}
+            {{- include "nyx.otelEnv" (dict "root" $ "serviceName" (printf "harness-%s" .name)) | nindent 12 }}
             {{- if .env }}
             {{- toYaml .env | nindent 12 }}
             {{- end }}
@@ -252,7 +252,7 @@ spec:
               mountPath: {{ .dest }}
             {{- end }}
             {{- range .config }}
-            - name: nyx-harness-config
+            - name: harness-config
               mountPath: {{ .mountPath }}
               subPath: {{ .name }}
             {{- end }}
@@ -417,7 +417,7 @@ spec:
           emptyDir: {}
         {{- end }}
         {{- if .config }}
-        - name: nyx-harness-config
+        - name: harness-config
           configMap:
             name: {{ $.Release.Name }}-{{ .name }}-config
         {{- end }}
