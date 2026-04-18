@@ -3,6 +3,7 @@ import { computed, ref } from "vue";
 import { useAgentFanout } from "../composables/useAgentFanout";
 import PromptCard, { type PromptKind } from "../components/PromptCard.vue";
 import ConversationDrawer from "../components/ConversationDrawer.vue";
+import { formatShortTime, toIsoDateTime } from "../utils/intl";
 import type {
   Continuation,
   Heartbeat,
@@ -190,8 +191,16 @@ const latestUpdate = computed<number | null>(() => {
   ].filter((x): x is number => x !== null);
   return xs.length ? Math.max(...xs) : null;
 });
+// Locale-aware "updated HH:MM" label (#827). Formatters live in
+// src/utils/intl.ts so a future i18n wiring (#819) can thread an
+// explicit locale in at one seam.
 const updatedLabel = computed(() =>
-  latestUpdate.value ? `updated ${new Date(latestUpdate.value).toLocaleTimeString()}` : "",
+  latestUpdate.value ? `updated ${formatShortTime(latestUpdate.value)}` : "",
+);
+// ISO-8601 datetime for the <time datetime="..."> attribute so screen
+// readers and tools that ingest HTML semantics can parse the timestamp.
+const updatedIso = computed(() =>
+  latestUpdate.value ? toIsoDateTime(latestUpdate.value) : "",
 );
 
 const degradedEntries = computed<[string, string][]>(() =>
@@ -292,7 +301,7 @@ const drawerAgent = computed<string | null>(
           all
         </button>
       </div>
-      <span class="ts">{{ updatedLabel }}</span>
+      <time v-if="updatedLabel" class="ts" :datetime="updatedIso">{{ updatedLabel }}</time>
       <span
         v-if="degradedEntries.length > 0"
         class="degraded"
