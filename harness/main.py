@@ -284,16 +284,28 @@ async def hook_decision_event_handler(request: Request) -> JSONResponse:
     # Required fields.  Missing or non-string values are rejected so the
     # downstream listener (WebhookRunner.fire_hook_decision) always sees
     # the shape it documents.
+    #
+    # Per-field length caps (#924): even with bearer auth, the body
+    # fields flow into webhook payloads and structured logs. Cap each
+    # string so a compromised/abusive backend cannot drive
+    # log-injection or swell outbound webhook bodies. 4 KiB per field
+    # is well above any legitimate tool / rule / reason string.
+    def _cap(raw: object, limit: int = 4096) -> str:
+        s = str(raw or "")
+        if len(s) > limit:
+            return s[:limit] + "...[truncated]"
+        return s
+
     try:
         event = HookDecisionEvent(
-            agent=str(payload.get("agent") or ""),
-            session_id=str(payload.get("session_id") or ""),
-            tool=str(payload.get("tool") or ""),
-            decision=str(payload.get("decision") or ""),
-            rule_name=str(payload.get("rule_name") or ""),
-            reason=str(payload.get("reason") or ""),
-            source=str(payload.get("source") or ""),
-            traceparent=(str(payload["traceparent"]) if payload.get("traceparent") else None),
+            agent=_cap(payload.get("agent"), 256),
+            session_id=_cap(payload.get("session_id"), 256),
+            tool=_cap(payload.get("tool"), 256),
+            decision=_cap(payload.get("decision"), 64),
+            rule_name=_cap(payload.get("rule_name"), 256),
+            reason=_cap(payload.get("reason"), 4096),
+            source=_cap(payload.get("source"), 256),
+            traceparent=(_cap(payload["traceparent"], 256) if payload.get("traceparent") else None),
         )
     except Exception as exc:  # defensive — dataclass construction is trivial
         logger.warning("hook-decision event: failed to build HookDecisionEvent: %r", exc)
@@ -1547,7 +1559,6 @@ async def main():
         Route("/.well-known/agent-triggers.json", triggers_discovery, methods=["GET"]),
         Route("/.well-known/agent-runs.json", runs_discovery, methods=["GET"]),
         Route("/triggers/{endpoint}", trigger_handler, methods=["POST"]),
-        Route("/internal/events/hook-decision", hook_decision_event_handler, methods=["POST"]),
         Route("/jobs/{name}/run", jobs_run_handler, methods=["POST"]),
         Route("/tasks/{name}/run", tasks_run_handler, methods=["POST"]),
         Route("/heartbeat/run", heartbeat_run_handler, methods=["POST"]),
@@ -1605,7 +1616,40 @@ async def main():
             if metrics_enabled:
                 from metrics_server import start_metrics_server
 
-                _metrics_task = start_metrics_server(metrics_handler, logger=logger)
+                # Host /internal/events/hook-decision on the dedicated
+                # metrics listener (#924) so a NetworkPolicy that restricts
+                # the metrics port to the Prometheus scraper + same-pod
+                # backends cannot be bypassed by in-pod peers spoofing the
+                # bearer on the public app port. When metrics is disabled
+                # the route remains on the app listener for backward
+                # compatibility (register_app_internal_route below).
+                _metrics_task = start_metrics_server(
+                    metrics_handler,
+                    logger=logger,
+                    extra_routes=[
+                        Route(
+                            "/internal/events/hook-decision",
+                            hook_decision_event_handler,
+                            methods=["POST"],
+                        ),
+                    ],
+                )
+            else:
+                # Metrics disabled — fall back to exposing the hook
+                # event receiver on the app listener so backend→harness
+                # hook.decision forwarding still works. Operators who
+                # care about the spoofing exposure (#924) should enable
+                # the metrics port so the route moves off the app port.
+                app.router.add_route(
+                    "/internal/events/hook-decision",
+                    hook_decision_event_handler,
+                    methods=["POST"],
+                )
+                logger.warning(
+                    "METRICS_ENABLED=0: /internal/events/hook-decision is "
+                    "bound to the public app listener. Enable the metrics "
+                    "listener to move the route off the app port (#924)."
+                )
             try:
                 yield
             finally:

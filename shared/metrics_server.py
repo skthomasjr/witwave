@@ -130,6 +130,7 @@ def start_metrics_server(
     logger: Optional[logging.Logger] = None,
     port: Optional[int] = None,
     path: str = "/metrics",
+    extra_routes: Optional[list] = None,
 ) -> asyncio.Task:
     """Start a uvicorn server hosting ``handler`` at ``path`` in the background.
 
@@ -140,6 +141,12 @@ def start_metrics_server(
     ``port`` overrides the resolved ``METRICS_PORT`` when supplied (useful
     for tests). ``path`` defaults to ``/metrics``; override for custom
     scrape paths.
+
+    ``extra_routes`` are appended to the listener's route table (#924).
+    Callers use this to host privileged internal endpoints (e.g. the
+    harness ``/internal/events/hook-decision`` receiver) on the dedicated
+    metrics port so a restrictive NetworkPolicy on the app port cannot be
+    bypassed by in-pod peers spoofing the internal bearer token.
 
     The ``/health`` endpoint on this port responds with 200 OK so that a
     Kubernetes readiness probe pointed at the metrics port works without
@@ -154,12 +161,13 @@ def start_metrics_server(
     async def _health(_request: Request) -> Response:
         return Response(content=b"ok", media_type="text/plain")
 
-    app = Starlette(
-        routes=[
-            Route(path, handler, methods=["GET"]),
-            Route("/health", _health, methods=["GET"]),
-        ]
-    )
+    routes = [
+        Route(path, handler, methods=["GET"]),
+        Route("/health", _health, methods=["GET"]),
+    ]
+    if extra_routes:
+        routes.extend(extra_routes)
+    app = Starlette(routes=routes)
 
     # Import uvicorn lazily so containers that don't enable metrics never
     # pay the import cost.
