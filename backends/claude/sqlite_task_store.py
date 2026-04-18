@@ -121,3 +121,30 @@ class SqliteTaskStore(TaskStore):
         async with self._lock:
             await asyncio.to_thread(_db_delete, self._get_conn(), task_id)
         logger.debug("Task %s deleted from SQLite store.", task_id)
+
+    async def close(self) -> None:
+        """Close the underlying SQLite connection, committing WAL.
+
+        Invoked from the backend shutdown path so a graceful SIGTERM
+        flushes the WAL and releases the file handle (#713). Subsequent
+        operations will re-open on demand via _get_conn. Idempotent.
+        """
+        async with self._lock:
+            conn = self._conn
+            self._conn = None
+        if conn is not None:
+            def _do_close() -> None:
+                try:
+                    # PRAGMA wal_checkpoint(TRUNCATE) rolls the WAL
+                    # into the main DB so a subsequent cold open is
+                    # short — avoids "elongated startup" on restart
+                    # after a long-running process (#713).
+                    try:
+                        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                    except sqlite3.OperationalError:
+                        pass
+                    conn.close()
+                except Exception as exc:  # pragma: no cover - defensive
+                    logger.warning("SqliteTaskStore close error: %r", exc)
+            await asyncio.to_thread(_do_close)
+            logger.info("SqliteTaskStore closed at %s", self._path)

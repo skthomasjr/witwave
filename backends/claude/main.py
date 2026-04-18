@@ -492,6 +492,15 @@ async def main():
                 yield
             finally:
                 await executor.close()
+                # Flush the SQLite WAL and release the connection on
+                # graceful shutdown (#713). Guarded on close() presence
+                # so InMemoryTaskStore (no close method) still works.
+                _close = getattr(task_store, "close", None)
+                if callable(_close):
+                    try:
+                        await _close()
+                    except Exception as _close_exc:
+                        logger.warning("task_store close error: %r", _close_exc)
 
     full_app = Starlette(routes=_routes, lifespan=lifespan)
     # Wrap with the ASGI middleware that extracts the inbound traceparent
