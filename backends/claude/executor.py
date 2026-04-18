@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import threading
 import time
 import uuid
 from collections import OrderedDict
@@ -609,6 +610,14 @@ async def log_tool_audit(entry: dict) -> None:
 # was bound to the first loop. Each loop gets its own lock + client
 # pair; clients from dead loops are pruned on next access.
 _HOOK_HTTP_CLIENTS: dict[int, tuple["httpx.AsyncClient", asyncio.Lock]] = {}  # noqa: F821
+# Guard first-touch of _HOOK_HTTP_CLIENTS with a threading.Lock (#868).
+# Two concurrent first-touches each created their own asyncio.Lock
+# and entered separate critical sections, so two AsyncClient instances
+# could be built — one got overwritten in the dict and was never
+# closed, leaking httpx sockets. A threading.Lock works across all
+# loops (the only data we serialise is the dict insert) and keeps the
+# hot path lock-free once the loop entry exists.
+_HOOK_HTTP_CLIENTS_LOCK = threading.Lock()
 
 
 async def _get_hook_http_client() -> "httpx.AsyncClient":  # noqa: F821
@@ -617,16 +626,15 @@ async def _get_hook_http_client() -> "httpx.AsyncClient":  # noqa: F821
     entry = _HOOK_HTTP_CLIENTS.get(key)
     if entry is None:
         # New loop — construct inside the running loop so the Lock is
-        # created against the right asyncio context.
-        lock = asyncio.Lock()
-        async with lock:
-            # Re-check under the lock in case a concurrent first-call
-            # raced us. The dict read is CPython-atomic.
+        # created against the right asyncio context. The
+        # threading.Lock guarantees that two concurrent first-touches
+        # cannot each create a separate client (#868).
+        with _HOOK_HTTP_CLIENTS_LOCK:
             entry = _HOOK_HTTP_CLIENTS.get(key)
             if entry is None:
                 import httpx
                 client = httpx.AsyncClient(timeout=HARNESS_EVENTS_TIMEOUT)
-                entry = (client, lock)
+                entry = (client, asyncio.Lock())
                 _HOOK_HTTP_CLIENTS[key] = entry
     return entry[0]
 
