@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import hmac as hmac_mod
 import logging
 import os
@@ -24,6 +25,7 @@ from conversations import (
     make_trace_handler,
 )
 from executor import AgentExecutor
+from session_binding import derive_session_id
 from metrics import (
     backend_event_loop_lag_seconds,
     backend_health_checks_total,
@@ -421,23 +423,28 @@ async def main():
                         mcp_max_tokens = _parsed
                 except (ValueError, TypeError):
                     logger.warning("MCP tools/call: invalid max_tokens %r; ignoring.", _max_tokens_raw)
-            # Session continuity (#596). Mirror the A2A validation pattern in
-            # executor.execute(): accept a caller-supplied session_id from
-            # arguments — UUID passthrough, else uuid5(NAMESPACE_URL, raw) —
-            # so repeated /mcp tools/call invocations can resume context
-            # instead of starting a fresh session every time. Fall back to a
-            # random UUID when no session_id is provided.
+            # Session continuity (#596) + caller-bound derivation (#867).
+            # Route /mcp session_id through shared.session_binding.derive_session_id
+            # with a bearer-token fingerprint as caller_identity so two /mcp
+            # callers presenting the same raw session_id do NOT collide when
+            # SESSION_ID_SECRET is set. On endpoints without caller auth, or
+            # without the secret, derive_session_id falls back to the legacy
+            # uuid5 derivation for backward compatibility.
             _raw_sid = "".join(
                 c for c in str(arguments.get("session_id") or "").strip()[:256] if c >= " "
             )
-            if not _raw_sid:
-                session_id = str(uuid.uuid4())
-            else:
-                try:
-                    uuid.UUID(_raw_sid)
-                    session_id = _raw_sid
-                except ValueError:
-                    session_id = str(uuid.uuid5(uuid.NAMESPACE_URL, _raw_sid))
+            _bearer_header = request.headers.get("Authorization", "")
+            _bearer_token = (
+                _bearer_header[len("Bearer "):]
+                if _bearer_header.startswith("Bearer ")
+                else ""
+            )
+            _caller_identity = (
+                hashlib.sha256(_bearer_token.encode("utf-8")).hexdigest()
+                if _bearer_token
+                else None
+            )
+            session_id = derive_session_id(_raw_sid, caller_identity=_caller_identity)
             try:
                 from executor import run as _run_query_for_mcp
                 response = await _run_query_for_mcp(
