@@ -295,6 +295,78 @@ def _redact_values(obj: Any) -> Any:
     return obj
 
 
+def _redact_diff(diff_text: str) -> str:
+    """Redact Secret data/stringData values inside a helm-diff output (#915).
+
+    helm-diff emits unified diffs of rendered manifests; when a Secret's
+    data/stringData is added/changed/removed, the before/after values
+    appear inline (lines prefixed with ``+``/``-``). Parsing diff hunks
+    back into YAML is unreliable, so we scan line-by-line with a small
+    state machine: once we see a ``kind: Secret`` line we enter a
+    'secret block' until the next ``kind:`` header or a blank document
+    separator; while inside, we redact the *value* portion of
+    ``data:``/``stringData:`` leaf lines and any indented leaf under
+    those maps.
+
+    Trades precision for safety: false-positives merely hide a legitimate
+    change; false-negatives leak credentials. Keeping this here rather
+    than in _redact_manifest because the input shape is textual diff,
+    not a parseable manifest.
+    """
+    out_lines: list[str] = []
+    in_secret = False
+    in_data_map = False
+    for line in diff_text.splitlines():
+        # Strip the leading diff prefix for content inspection but keep
+        # it for the emitted line.
+        content = line
+        prefix = ""
+        if line[:1] in ("+", "-", " "):
+            prefix = line[:1]
+            content = line[1:]
+
+        stripped = content.strip()
+
+        # Reset state on doc separators / new kind headers.
+        if stripped == "---" or stripped.startswith("---"):
+            in_secret = False
+            in_data_map = False
+            out_lines.append(line)
+            continue
+        if stripped.startswith("kind:"):
+            _kind_val = stripped.split(":", 1)[1].strip()
+            in_secret = _kind_val == "Secret"
+            in_data_map = False
+            out_lines.append(line)
+            continue
+
+        if not in_secret:
+            out_lines.append(line)
+            continue
+
+        # Inside a Secret block. Entering data:/stringData: map?
+        if stripped in ("data:", "stringData:"):
+            in_data_map = True
+            out_lines.append(line)
+            continue
+
+        # Leaf inside data: map — indented key: value under data/stringData.
+        if in_data_map and ":" in stripped and content.startswith(("  ", "\t")):
+            indent = len(content) - len(content.lstrip())
+            # Still inside the data/stringData map while indent > 0; an
+            # un-indented line would end the map (handled below).
+            key, _, _value = content[indent:].partition(":")
+            out_lines.append(f"{prefix}{' ' * indent}{key}: {_REDACTED}")
+            continue
+
+        # Un-indented line inside the Secret but outside data map — exit data map.
+        if in_data_map and stripped and not content.startswith(("  ", "\t")):
+            in_data_map = False
+
+        out_lines.append(line)
+    return "\n".join(out_lines)
+
+
 def _redact_manifest(manifest: str) -> str:
     """Redact Secret data/stringData payloads inside a rendered manifest (#774).
 
@@ -591,6 +663,7 @@ def diff(
     version: str | None = None,
     repo: str | None = None,
     context: int = 3,
+    redact: bool = True,
 ) -> str:
     """Show a unified diff of what ``helm upgrade`` WOULD change (#854).
 
@@ -602,9 +675,16 @@ def diff(
     (#922 corrected the previous docstring which claimed the error
     was returned inline).
 
-    Returns the raw text diff from ``helm diff upgrade`` — consumers
-    should treat an empty string as "no changes". Non-zero exit codes
-    from the wrapped CLI bubble up as ``HelmError``.
+    When ``redact=True`` (the default), the output is passed through a
+    Secret-aware diff redactor (#915) — Secret ``data``/``stringData``
+    values are replaced with ``_REDACTED`` so the `diff() then upgrade()`
+    workflow does not leak Secret payloads into conversation.jsonl,
+    memory, or OTel spans. Pass ``redact=False`` only for short-lived
+    operator-side tooling where the caller accepts the exposure.
+
+    Returns the text diff from ``helm diff upgrade`` — consumers should
+    treat an empty string as "no changes". Non-zero exit codes from
+    the wrapped CLI bubble up as ``HelmError``.
     """
     _reject_flag_like(
         name=name, chart=chart, namespace=namespace, version=version, repo=repo
@@ -626,7 +706,23 @@ def diff(
             try:
                 if vf:
                     args += ["-f", str(vf)]
-                return _helm(args) or ""
+                raw = _helm(args) or ""
+                if redact and raw:
+                    try:
+                        return _redact_diff(raw)
+                    except Exception as _redact_exc:
+                        # Fail-closed: if redaction itself blows up, return
+                        # a placeholder rather than leak the raw diff (#915).
+                        logger.warning(
+                            "helm diff redaction failed (%s); suppressing output.",
+                            _redact_exc,
+                        )
+                        return (
+                            "# diff redacted: Secret-aware redactor raised "
+                            f"{type(_redact_exc).__name__} — output "
+                            "suppressed to avoid leaking Secret contents (#915).\n"
+                        )
+                return raw
             finally:
                 if vf:
                     vf.unlink(missing_ok=True)
