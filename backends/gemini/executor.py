@@ -657,6 +657,31 @@ class _RefCountedLock:
         self.refcount: int = 0
 
 
+def _assert_event_loop_thread() -> None:
+    """Assert we're running on the executor's asyncio event loop (#729).
+
+    ``_acquire_session_lock`` / ``_release_session_lock`` mutate the shared
+    ``session_locks`` dict without any async-level guard — correctness
+    depends entirely on the single-event-loop invariant.  The invariant has
+    held for every call site in the repo so far, but a future refactor that
+    schedules a session helper from ``asyncio.to_thread`` (or any worker
+    thread) would silently corrupt the refcount.  This assertion surfaces
+    such a regression as an obvious ``RuntimeError`` at the offending call
+    site instead of leaking stale entries for days.
+
+    ``asyncio.get_running_loop`` raises when called off-loop — we catch
+    ``RuntimeError`` specifically to turn it into a message that references
+    this issue so operators can grep the codebase.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError as exc:
+        raise RuntimeError(
+            "session_locks mutated off the asyncio event loop thread — "
+            "gemini refcounted-lock invariant requires single-loop access (#729)"
+        ) from exc
+
+
 def _acquire_session_lock(
     session_id: str, session_locks: dict[str, "_RefCountedLock"]
 ) -> "_RefCountedLock":
@@ -667,7 +692,13 @@ def _acquire_session_lock(
     safe to call without holding any async-level lock because ``session_locks``
     is mutated only from the single asyncio event loop thread; the refcount
     bump and dict insertion happen synchronously in one step.
+
+    The ``_assert_event_loop_thread`` call makes the documented
+    single-loop invariant enforceable (#729): a future refactor that
+    accidentally schedules this from a worker thread raises immediately
+    instead of corrupting the refcount.
     """
+    _assert_event_loop_thread()
     entry = session_locks.get(session_id)
     if entry is None:
         entry = _RefCountedLock()
@@ -679,7 +710,17 @@ def _acquire_session_lock(
 def _release_session_lock(
     session_id: str, session_locks: dict[str, "_RefCountedLock"]
 ) -> None:
-    """Drop this task's reference; evict the dict entry when no waiters remain."""
+    """Drop this task's reference; evict the dict entry when no waiters remain.
+
+    The ``session_locks.get(session_id) is entry`` identity check below is
+    load-bearing (#729): if the entry pointer was replaced since our
+    ``acquire`` — which cannot happen on the current single-loop code
+    path but is exactly the regression the assertion above guards
+    against — we must not pop the newer entry out from under another
+    waiter.  The ``is`` comparison preserves the invariant even if a
+    future code path ever violates the single-loop contract.
+    """
+    _assert_event_loop_thread()
     entry = session_locks.get(session_id)
     if entry is None:
         return
