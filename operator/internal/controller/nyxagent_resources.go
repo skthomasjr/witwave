@@ -553,16 +553,19 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string, prompts []n
 		readinessProbe = probeDefaults(agent.Spec.Probes.Readiness, false)
 	}
 
-	metricsPort := agent.Spec.MetricsPort
-	if metricsPort == 0 {
-		metricsPort = 9000
-	}
+	// Per-container metrics port (#836 / chart #687): each container's
+	// metrics listener is `appPort + 1000` so two containers in the same
+	// pod don't collide on a single fixed port. agent.Spec.MetricsPort
+	// remains a legacy override — when non-zero, every container falls
+	// back to it. containerMetricsPort encapsulates the rule so harness
+	// and backend rendering stay aligned.
+	harnessMetricsPort := containerMetricsPort(agent.Spec.MetricsPort, harnessPort)
 	metricsOn := agent.Spec.Metrics.Enabled
 	harnessPorts := []corev1.ContainerPort{{Name: "http", ContainerPort: harnessPort}}
 	if metricsOn {
 		harnessPorts = append(harnessPorts, corev1.ContainerPort{
 			Name:          "metrics",
-			ContainerPort: metricsPort,
+			ContainerPort: harnessMetricsPort,
 		})
 	}
 
@@ -575,7 +578,7 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string, prompts []n
 			{Name: "AGENT_NAME", Value: agent.Name},
 			{Name: "HARNESS_PORT", Value: fmt.Sprintf("%d", harnessPort)},
 			{Name: "METRICS_ENABLED", Value: metricsEnabledValue(agent)},
-			{Name: "METRICS_PORT", Value: fmt.Sprintf("%d", metricsPort)},
+			{Name: "METRICS_PORT", Value: fmt.Sprintf("%d", harnessMetricsPort)},
 		}, agent.Spec.Env...),
 		EnvFrom:   agent.Spec.EnvFrom,
 		Resources: agent.Spec.Resources,
@@ -641,6 +644,9 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string, prompts []n
 		// helper returns nil.
 		bMounts = append(bMounts, backendGitMappingMounts(agent, b)...)
 
+		// Per-container metrics port (#836): backend listener is
+		// `bPort + 1000` unless MetricsPort is explicitly set on the CR.
+		bMetricsPort := containerMetricsPort(agent.Spec.MetricsPort, bPort)
 		bPorts := []corev1.ContainerPort{{Name: "http", ContainerPort: bPort}}
 		if metricsOn {
 			// Dedicated Prometheus metrics listener (#643); mirrors chart.
@@ -648,7 +654,7 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string, prompts []n
 			// name, so PodMonitor's single endpoint targets them all.
 			bPorts = append(bPorts, corev1.ContainerPort{
 				Name:          "metrics",
-				ContainerPort: metricsPort,
+				ContainerPort: bMetricsPort,
 			})
 		}
 
@@ -664,7 +670,7 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string, prompts []n
 				{Name: "AGENT_URL", Value: fmt.Sprintf("http://localhost:%d", bPort)},
 				{Name: "BACKEND_PORT", Value: fmt.Sprintf("%d", bPort)},
 				{Name: "METRICS_ENABLED", Value: metricsEnabledValue(agent)},
-				{Name: "METRICS_PORT", Value: fmt.Sprintf("%d", metricsPort)},
+				{Name: "METRICS_PORT", Value: fmt.Sprintf("%d", bMetricsPort)},
 				// Backend→harness transport for hook.decision events (#641).
 				// Points at the harness running in the same pod; an empty
 				// value disables the POST cleanly. HARNESS_EVENTS_AUTH_TOKEN
@@ -920,10 +926,11 @@ func buildService(agent *nyxv1alpha1.NyxAgent) *corev1.Service {
 		svcPort = *agent.Spec.ServicePort
 	}
 
-	metricsPort := agent.Spec.MetricsPort
-	if metricsPort == 0 {
-		metricsPort = 9000
-	}
+	// Service prometheus.io/* annotation points at the harness metrics
+	// listener (#836 / chart #687): harness app port + 1000 unless
+	// spec.metricsPort is explicitly set, in which case it overrides for
+	// backward compatibility.
+	metricsPort := containerMetricsPort(agent.Spec.MetricsPort, port)
 
 	annotations := map[string]string{}
 	if agent.Spec.Metrics.Enabled && metricsServiceAnnotationsEnabled(agent) {
@@ -1142,6 +1149,33 @@ func metricsEnabledValue(agent *nyxv1alpha1.NyxAgent) string {
 		return "true"
 	}
 	return "false"
+}
+
+// containerMetricsPort resolves the per-container /metrics listener port
+// following chart #687 + CRD #836 semantics:
+//
+//   - When overrideMetricsPort is non-zero (legacy spec.metricsPort is set),
+//     every container in the pod falls back to that single value.
+//   - Otherwise each container computes its own listener as appPort + 1000
+//     so harness (8000 -> 9000) and backends (8010 -> 9010, 8011 -> 9011,
+//     ...) don't collide on a fixed port.
+//
+// Returning a Max-capped int32 keeps us safe if an operator ever wires
+// an absurd appPort like 65000; app_port + 1000 would overflow the port
+// space, so we cap at 65535 and let the caller surface any downstream
+// bind error.
+func containerMetricsPort(overrideMetricsPort int32, appPort int32) int32 {
+	if overrideMetricsPort > 0 {
+		return overrideMetricsPort
+	}
+	p := appPort + 1000
+	if p > 65535 {
+		return 65535
+	}
+	if p <= 0 {
+		return 9000
+	}
+	return p
 }
 
 // backendEnabled reports the per-backend enabled flag with default-true

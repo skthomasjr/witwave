@@ -667,13 +667,17 @@ type NyxAgentSpec struct {
 	// +optional
 	PodMonitor *PodMonitorSpec `json:"podMonitor,omitempty"`
 
-	// MetricsPort is the port every container in the agent pod serves
-	// Prometheus metrics on (#643). Split from the app port so
-	// NetworkPolicy + auth posture can differ between app traffic and
-	// monitoring scrapes. Matches the chart's metrics.port value and the
-	// container-side METRICS_PORT env var. Default 9000.
-	// +kubebuilder:default=9000
-	// +kubebuilder:validation:Minimum=1
+	// MetricsPort is DEPRECATED (#836). Chart #687 moved harness and backend
+	// containers to a per-container metrics port = app_port + 1000 so two
+	// containers in the same pod no longer collide on :9000. The operator
+	// follows the same rule: when MetricsPort is zero (the default), each
+	// container computes its own metrics listener as `port + 1000` (harness
+	// port for harness; backend port for each backend container). When
+	// MetricsPort is non-zero it overrides the computation for every
+	// container in the pod — this is kept for backward compatibility with
+	// existing NyxAgent manifests and for MCP-tool-style pods that want a
+	// single fixed port. Prefer leaving it unset on new deployments.
+	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:Maximum=65535
 	// +optional
 	MetricsPort int32 `json:"metricsPort,omitempty"`
