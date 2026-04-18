@@ -68,34 +68,82 @@ def _warn_if_empty_token(auth_token: str | None, handler_name: str) -> None:
         _log_missing_token(handler_name)
 
 
+# Per-file tail cache for _read_jsonl (#715). Maps path → (stat key, offset,
+# buffered entries). When the file hasn't changed since last call, we
+# short-circuit out. When it has grown, we seek to the cached offset and
+# parse only the new tail. On rotation (size decreased / inode changed),
+# we drop the cache and re-parse from the top. The cache is bounded
+# per-path at _TAIL_CACHE_ENTRY_CAP entries so a very long-lived file does
+# not hold the whole history in RAM — the deque(maxlen=limit_n) at
+# request-time still clips to the caller's limit.
+_TAIL_CACHE: dict[str, tuple[tuple[int, int, float], int, list]] = {}
+_TAIL_CACHE_ENTRY_CAP = int(os.environ.get("JSONL_TAIL_CACHE_ENTRIES", "5000"))
+
+
 def _read_jsonl(path: str, since_dt: datetime | None, limit_n: int | None) -> list:
     """Read a JSONL log file, optionally filtering by timestamp and limiting results.
 
     Designed to be called via asyncio.to_thread to avoid blocking the event loop.
     Uses deque(maxlen=limit_n) so only the last limit_n entries are kept in memory.
+
+    Incremental tail read (#715): maintains an in-process cache keyed by
+    (path, inode, size, mtime) so subsequent dashboard polls pay only
+    the cost of the newly appended lines. Log rotation (size shrink /
+    inode change) transparently invalidates and re-reads from the top.
     """
-    entries: deque = deque(maxlen=limit_n)
+    try:
+        st = os.stat(path)
+    except FileNotFoundError:
+        return []
+    stat_key = (st.st_ino, st.st_size, st.st_mtime)
+    cached = _TAIL_CACHE.get(path)
+    if cached is not None:
+        cached_key, cached_offset, cached_entries = cached
+        # Same file identity + unchanged → serve directly.
+        if cached_key == stat_key:
+            return _filter_and_limit(cached_entries, since_dt, limit_n)
+        # File shrank or inode changed → rotated; drop cache and re-read.
+        if st.st_ino != cached_key[0] or st.st_size < cached_key[1]:
+            cached = None
+
+    entries: list = list(cached[2]) if cached else []
+    offset = cached[1] if cached else 0
     try:
         with open(path) as f:
+            if offset > 0:
+                f.seek(offset)
             for line in f:
-                line = line.strip()
-                if not line:
+                line_stripped = line.strip()
+                if not line_stripped:
                     continue
                 try:
-                    entry = json.loads(line)
+                    entry = json.loads(line_stripped)
                 except json.JSONDecodeError:
                     continue
-                if since_dt:
-                    try:
-                        ts = datetime.fromisoformat(entry.get("ts", "").replace("Z", "+00:00"))
-                        if ts < since_dt:
-                            continue
-                    except ValueError:
-                        continue
                 entries.append(entry)
+            new_offset = f.tell()
     except FileNotFoundError:
-        pass
-    return list(entries)
+        return []
+    # Trim buffered entries to cap so memory stays bounded on long-lived files.
+    if len(entries) > _TAIL_CACHE_ENTRY_CAP:
+        entries = entries[-_TAIL_CACHE_ENTRY_CAP:]
+    _TAIL_CACHE[path] = (stat_key, new_offset, entries)
+    return _filter_and_limit(entries, since_dt, limit_n)
+
+
+def _filter_and_limit(entries: list, since_dt: datetime | None, limit_n: int | None) -> list:
+    """Apply since_dt filter + limit to a pre-parsed entry list (#715)."""
+    out: deque = deque(maxlen=limit_n)
+    for entry in entries:
+        if since_dt:
+            try:
+                ts = datetime.fromisoformat((entry.get("ts") or "").replace("Z", "+00:00"))
+                if ts < since_dt:
+                    continue
+            except (ValueError, AttributeError, TypeError):
+                continue
+        out.append(entry)
+    return list(out)
 
 
 def _read_tool_audit_jsonl(
