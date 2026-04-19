@@ -213,6 +213,20 @@ def test_redacted_sentinel_is_nonempty_string():
     assert isinstance(server._REDACTED, str) and server._REDACTED
 
 
+# ----- /info provider (#1122) -------------------------------------
+
+
+def test_get_info_doc_shape():
+    doc = server._get_info_doc()
+    assert doc["server"] == "mcp-kubernetes"
+    assert "image_version" in doc
+    assert "kube_client_version" in doc
+    assert isinstance(doc["features"], dict)
+    assert isinstance(doc["tools"], list)
+    for k, v in doc["features"].items():
+        assert isinstance(v, bool), f"feature flag {k} must be bool, got {type(v).__name__}"
+
+
 # ----- with_kube_retry 401 auto-reload (#1082) --------------------
 
 

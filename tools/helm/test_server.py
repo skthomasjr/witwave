@@ -345,6 +345,22 @@ def test_diff_redactor_failure_path_uses_log_binding():
         )
 
 
+# ----- /info provider (#1122) -----
+
+
+def test_get_info_doc_shape():
+    doc = server._get_info_doc()
+    assert doc["server"] == "mcp-helm"
+    assert "image_version" in doc
+    assert "helm_version" in doc
+    assert "helm_diff_present" in doc
+    assert isinstance(doc["features"], dict)
+    assert isinstance(doc["tools"], list)
+    # features must be boolean flags, not arbitrary strings.
+    for k, v in doc["features"].items():
+        assert isinstance(v, bool), f"feature flag {k} must be bool, got {type(v).__name__}"
+
+
 # ----- stdin-based values delivery + janitor (#1081) -----
 
 

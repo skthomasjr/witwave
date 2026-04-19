@@ -960,6 +960,71 @@ def repo_update() -> str:
             raise
 
 
+def _get_info_doc() -> dict[str, Any]:
+    """Build the /info document for the helm tool server (#1122).
+
+    Light-weight — probes image env vars, shells out to ``helm version``
+    once (cached via subprocess capture), detects the helm-diff plugin
+    presence, and enumerates registered tools. Intentionally skips
+    anything that could leak cluster state.
+    """
+    image_version = (
+        os.environ.get("IMAGE_VERSION")
+        or os.environ.get("IMAGE_TAG")
+        or os.environ.get("VERSION")
+        or "unknown"
+    )
+    helm_version: Any = "unknown"
+    try:
+        proc = subprocess.run(
+            ["helm", "version", "--short"],
+            capture_output=True, text=True, check=False, timeout=5,
+        )
+        if proc.returncode == 0:
+            helm_version = proc.stdout.strip()
+    except Exception:
+        helm_version = "unavailable"
+
+    helm_diff_present = False
+    try:
+        proc = subprocess.run(
+            ["helm", "plugin", "list"],
+            capture_output=True, text=True, check=False, timeout=5,
+        )
+        if proc.returncode == 0:
+            helm_diff_present = any(
+                line.split()[:1] == ["diff"] for line in proc.stdout.splitlines()
+            )
+    except Exception:
+        helm_diff_present = False
+
+    read_only = os.environ.get("MCP_READ_ONLY", "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+    # Enumerate tool handlers registered via @mcp.tool(). FastMCP stores
+    # them on the internal tool manager; fall back to a static list
+    # lookup if the attribute shape changes.
+    try:
+        tool_names = sorted(mcp._tool_manager._tools.keys())  # type: ignore[attr-defined]
+    except Exception:
+        tool_names = []
+
+    return {
+        "server": "mcp-helm",
+        "image_version": image_version,
+        "helm_version": helm_version,
+        "helm_diff_present": helm_diff_present,
+        "features": {
+            "read_only": read_only,
+            "otel": bool(os.environ.get("OTEL_ENABLED")),
+            "metrics": bool(os.environ.get("METRICS_ENABLED")),
+            "values_stdin": True,  # #1081
+        },
+        "tools": tool_names,
+    }
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     # Initialise OTel up-front; no-op unless OTEL_ENABLED is truthy (#637).
@@ -1007,7 +1072,7 @@ if __name__ == "__main__":
         import uvicorn  # type: ignore
         from mcp_auth import require_bearer_token  # type: ignore
         _app = mcp.streamable_http_app()
-        _app = require_bearer_token(_app)
+        _app = require_bearer_token(_app, info_provider=_get_info_doc)
         uvicorn.run(
             _app,
             host="0.0.0.0",

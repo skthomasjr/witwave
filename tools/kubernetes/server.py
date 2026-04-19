@@ -703,6 +703,49 @@ def delete(
             raise
 
 
+def _get_info_doc() -> dict[str, Any]:
+    """Build the /info document for the kubernetes tool server (#1122).
+
+    Reports image version, kubernetes client version, enabled feature
+    flags, and the registered tool list. Deliberately avoids any API
+    call that would leak cluster state.
+    """
+    image_version = (
+        os.environ.get("IMAGE_VERSION")
+        or os.environ.get("IMAGE_TAG")
+        or os.environ.get("VERSION")
+        or "unknown"
+    )
+    try:
+        import kubernetes as _k8s  # type: ignore
+        kube_client_version = getattr(_k8s, "__version__", "unknown")
+    except Exception:
+        kube_client_version = "unavailable"
+
+    read_only = os.environ.get("MCP_READ_ONLY", "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+    try:
+        tool_names = sorted(mcp._tool_manager._tools.keys())  # type: ignore[attr-defined]
+    except Exception:
+        tool_names = []
+
+    return {
+        "server": "mcp-kubernetes",
+        "image_version": image_version,
+        "kube_client_version": kube_client_version,
+        "features": {
+            "read_only": read_only,
+            "otel": bool(os.environ.get("OTEL_ENABLED")),
+            "metrics": bool(os.environ.get("METRICS_ENABLED")),
+            "token_reload_on_401": True,  # #1082
+            "discovery_reload_on_404": True,  # #1083
+        },
+        "tools": tool_names,
+    }
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     # Initialise OTel up-front; no-op unless OTEL_ENABLED is truthy (#637).
@@ -763,7 +806,7 @@ if __name__ == "__main__":
         import uvicorn  # type: ignore
         from mcp_auth import require_bearer_token  # type: ignore
         _app = mcp.streamable_http_app()
-        _app = require_bearer_token(_app)
+        _app = require_bearer_token(_app, info_provider=_get_info_doc)
         uvicorn.run(
             _app,
             host="0.0.0.0",

@@ -23,9 +23,10 @@ Usage (tool servers):
 from __future__ import annotations
 
 import hmac as hmac_mod
+import json
 import logging
 import os
-from typing import Awaitable, Callable
+from typing import Any, Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -38,13 +39,22 @@ def _auth_disabled_escape_hatch() -> bool:
     }
 
 
-def require_bearer_token(app):  # type: ignore[no-untyped-def]
+def require_bearer_token(
+    app,
+    info_provider: Callable[[], dict[str, Any]] | None = None,
+):  # type: ignore[no-untyped-def]
     """Wrap an ASGI app so every request must carry a valid bearer token.
 
     Token source: MCP_TOOL_AUTH_TOKEN env var. Compared with
     hmac.compare_digest so the check is timing-safe. When unset /
     empty the server fails closed (401) at first request; operators
     who want to run without auth must set MCP_TOOL_AUTH_DISABLED=true.
+
+    When ``info_provider`` is supplied, ``GET /info`` is served
+    directly from the middleware as a bearer-gated JSON surface
+    describing image / SDK / plugin versions and enabled features
+    (#1122). Probe endpoints, dashboard triage, and CI preflight can
+    then verify the pod is wired correctly without invoking a tool.
     """
 
     async def middleware(scope, receive, send) -> None:  # type: ignore[no-untyped-def]
@@ -118,6 +128,16 @@ def require_bearer_token(app):  # type: ignore[no-untyped-def]
             else:
                 await _send_401(send, "missing-or-malformed-authorization-header")
             return
+        # /info is handled after auth so unauthenticated callers can't
+        # scrape image SHAs / feature flags. Served from the middleware
+        # so tool servers don't need to register a custom Starlette route.
+        if (
+            info_provider is not None
+            and scope.get("path") == "/info"
+            and scope.get("method", "GET") == "GET"
+        ):
+            await _send_info(send, info_provider)
+            return
         await app(scope, receive, send)
 
     return middleware
@@ -129,6 +149,38 @@ async def _send_health(send: Callable[[dict], Awaitable[None]]) -> None:
     await send({
         "type": "http.response.start",
         "status": 200,
+        "headers": [
+            (b"content-type", b"application/json"),
+            (b"content-length", str(len(body)).encode("ascii")),
+            (b"cache-control", b"no-store"),
+        ],
+    })
+    await send({"type": "http.response.body", "body": body, "more_body": False})
+
+
+async def _send_info(
+    send: Callable[[dict], Awaitable[None]],
+    provider: Callable[[], dict[str, Any]],
+) -> None:
+    """Return the tool server's /info document as JSON (#1122).
+
+    The provider is invoked per request so it picks up any state that
+    changes at runtime (e.g. helm-diff is reinstalled without a pod
+    restart). A failure in the provider is logged and surfaced as a
+    500 with a terse error body rather than propagating the exception
+    up the ASGI stack.
+    """
+    try:
+        doc = provider() or {}
+        body = json.dumps(doc, default=str).encode("utf-8")
+        status = 200
+    except Exception as exc:
+        logger.warning("mcp /info provider raised: %r", exc)
+        body = b'{"error":"info-provider-failed"}'
+        status = 500
+    await send({
+        "type": "http.response.start",
+        "status": status,
         "headers": [
             (b"content-type", b"application/json"),
             (b"content-length", str(len(body)).encode("ascii")),
