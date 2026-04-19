@@ -10,6 +10,7 @@ from pathlib import Path
 
 from bus import Message, MessageBus
 from croniter import croniter
+from events import get_event_stream
 from metrics import (
     harness_job_checkpoint_stale_total,
     harness_job_duration_seconds,
@@ -213,6 +214,38 @@ async def _execute_job(item: JobItem, bus: MessageBus, semaphore: asyncio.Semaph
             harness_job_error_duration_seconds.labels(name=item.name).observe(time.monotonic() - _job_start)
         if harness_job_item_last_error_timestamp_seconds is not None:
             harness_job_item_last_error_timestamp_seconds.labels(name=item.name).set(time.time())
+        # Publish job.fired (error outcome) on the SSE event stream (#1110).
+        try:
+            get_event_stream().publish(
+                "job.fired",
+                {
+                    "name": item.name,
+                    "schedule": item.schedule or "",
+                    "duration_ms": int((time.monotonic() - _job_start) * 1000),
+                    "outcome": "error",
+                    "error": repr(e)[:512],
+                },
+                agent_id=AGENT_NAME,
+            )
+        except Exception:  # pragma: no cover — fan-out is best-effort
+            pass
+    else:
+        # Success-path publish (#1110). Reaches here only when bus.send
+        # completed without raising; the duration spans the whole
+        # dispatch including the backend response.
+        try:
+            get_event_stream().publish(
+                "job.fired",
+                {
+                    "name": item.name,
+                    "schedule": item.schedule or "",
+                    "duration_ms": int((time.monotonic() - _job_start) * 1000),
+                    "outcome": "success",
+                },
+                agent_id=AGENT_NAME,
+            )
+        except Exception:  # pragma: no cover — fan-out is best-effort
+            pass
     finally:
         item.running = False
         if harness_job_running_items is not None:

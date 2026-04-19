@@ -142,6 +142,15 @@ harness_hook_decision_dropped_total: prometheus_client.Counter | None = None
 # a rotated token expanding empty manifests as a non-zero rate on
 # result="missing" without a single new log line.
 harness_prompt_env_substitutions_total: prometheus_client.Counter | None = None
+# Event stream (SSE) observability (#1110). Wired in harness/events.py
+# via EventStream.attach_metrics() once main.py has instantiated the
+# singleton. When METRICS_ENABLED is unset every bump no-ops.
+harness_event_stream_subscribers: prometheus_client.Gauge | None = None
+harness_event_stream_events_published_total: prometheus_client.Counter | None = None
+harness_event_stream_events_dropped_total: prometheus_client.Counter | None = None
+harness_event_stream_overruns_total: prometheus_client.Counter | None = None
+harness_event_stream_validation_errors_total: prometheus_client.Counter | None = None
+harness_event_stream_ring_size: prometheus_client.Gauge | None = None
 
 
 if _enabled:
@@ -712,5 +721,41 @@ if _enabled:
         "Labels `from` and `to` identify the transition; both take values "
         "closed | open | half_open.",
         ["backend", "from", "to"],
+    )
+    harness_event_stream_subscribers = prometheus_client.Gauge(
+        "harness_event_stream_subscribers",
+        "Current number of live GET /events/stream subscribers (#1110).",
+    )
+    harness_event_stream_events_published_total = prometheus_client.Counter(
+        "harness_event_stream_events_published_total",
+        "Total events successfully fanned out on the SSE event stream (#1110), "
+        "labelled by envelope type.",
+        ["type"],
+    )
+    harness_event_stream_events_dropped_total = prometheus_client.Counter(
+        "harness_event_stream_events_dropped_total",
+        "Total events dropped before or during fan-out on the SSE event stream "
+        "(#1110). reason is one of validation | overrun | backpressure.",
+        ["reason"],
+    )
+    harness_event_stream_overruns_total = prometheus_client.Counter(
+        "harness_event_stream_overruns_total",
+        "Total slow-subscriber evictions on the SSE event stream (#1110). "
+        "A non-zero rate means a client's consume loop cannot keep up with "
+        "the publish rate and is being disconnected with a terminal "
+        "stream.overrun event.",
+    )
+    harness_event_stream_validation_errors_total = prometheus_client.Counter(
+        "harness_event_stream_validation_errors_total",
+        "Total events rejected at publish time because the payload failed "
+        "schema validation (#1110). Non-zero rate means a publisher is "
+        "emitting malformed payloads; the event is dropped rather than "
+        "forwarded to subscribers.",
+        ["type"],
+    )
+    harness_event_stream_ring_size = prometheus_client.Gauge(
+        "harness_event_stream_ring_size",
+        "Current depth of the SSE event stream replay ring (#1110). Bounded "
+        "by EVENT_STREAM_RING_MAX (default 1000).",
     )
 

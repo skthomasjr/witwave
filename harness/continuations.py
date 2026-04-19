@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from bus import Message, MessageBus
+from events import get_event_stream
 from metrics import (
     harness_continuation_fanin_evictions_total,
     harness_continuation_fires_shed_total,
@@ -197,6 +198,7 @@ async def _fire(
     session_id: str,
     bus: MessageBus,
     trace_context: Any = None,
+    upstream_kind_label: str = "",
 ) -> None:
     if item.delay is not None:
         await asyncio.sleep(item.delay)
@@ -205,6 +207,21 @@ async def _fire(
     prompt = resolve_prompt_env(f"Continuation: {item.name}\n\n{item.content}")
     resolved_session = item.session_id or session_id
     item.last_fire = time.time()  # #1087
+    _start = time.monotonic()
+    # Parse kind like "job:daily-report" → ("job", "daily-report") for the
+    # event payload's (upstream_kind, upstream_name) split. Legacy callers
+    # that didn't pass a label default to upstream_kind="continuation",
+    # upstream_name=session_id slice so the envelope still validates.
+    _parsed_kind = "continuation"
+    _parsed_name = resolved_session[:32]
+    if upstream_kind_label and ":" in upstream_kind_label:
+        _base, _, _rest = upstream_kind_label.partition(":")
+        if _base in {"job", "task", "trigger", "a2a", "continuation"}:
+            _parsed_kind = _base
+            _parsed_name = _rest or _parsed_name
+    elif upstream_kind_label in {"job", "task", "trigger", "a2a", "continuation"}:
+        _parsed_kind = upstream_kind_label
+    _agent_name = os.environ.get("AGENT_NAME", "nyx")
     try:
         # Propagate the upstream trace_context (#784) so the continuation
         # span joins the same trace as its originating
@@ -225,10 +242,39 @@ async def _fire(
             harness_continuation_runs_total.labels(name=item.name, status="success").inc()
         item.last_success = time.time()  # #1087
         logger.info(f"Continuation '{item.name}' completed successfully. Response: {response!r}")
+        try:
+            get_event_stream().publish(
+                "continuation.fired",
+                {
+                    "name": item.name,
+                    "upstream_kind": _parsed_kind,
+                    "upstream_name": _parsed_name,
+                    "duration_ms": int((time.monotonic() - _start) * 1000),
+                    "outcome": "success",
+                },
+                agent_id=_agent_name,
+            )
+        except Exception:  # pragma: no cover
+            pass
     except Exception as e:
         if harness_continuation_runs_total is not None:
             harness_continuation_runs_total.labels(name=item.name, status="error").inc()
         logger.error(f"Continuation '{item.name}' error: {e}")
+        try:
+            get_event_stream().publish(
+                "continuation.fired",
+                {
+                    "name": item.name,
+                    "upstream_kind": _parsed_kind,
+                    "upstream_name": _parsed_name,
+                    "duration_ms": int((time.monotonic() - _start) * 1000),
+                    "outcome": "error",
+                    "error": repr(e)[:512],
+                },
+                agent_id=_agent_name,
+            )
+        except Exception:  # pragma: no cover
+            pass
 
 
 class ContinuationRunner:
@@ -474,7 +520,7 @@ class ContinuationRunner:
                 self._fanin_state.pop(fanin_key, None)
             if harness_continuation_fires_total is not None:
                 harness_continuation_fires_total.labels(upstream_kind=kind).inc()
-            _t = asyncio.ensure_future(_fire(item, session_id, bus, trace_context))
+            _t = asyncio.ensure_future(_fire(item, session_id, bus, trace_context, upstream_kind_label=kind))
             self._active_fires.add(_t)
             fires.add(_t)
             def _cleanup(t: asyncio.Task, _name: str = item.name) -> None:

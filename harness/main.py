@@ -30,6 +30,7 @@ from bus import (
     HookDecisionEvent,
     Message,
     MessageBus,
+    _emit_hook_decision_event_stream,
     publish_hook_decision,
     subscribe_hook_decision,
 )
@@ -856,6 +857,10 @@ async def main():
         )
 
     subscribe_hook_decision(_fanout_hook_decision)
+    # Re-emit each hook.decision onto the SSE event stream (#1110). Added
+    # alongside the webhook fan-out so dashboards see the same decision
+    # the existing subscription sink sees, just on the live event channel.
+    subscribe_hook_decision(_emit_hook_decision_event_stream)
 
     async def triggers_discovery(request: Request) -> JSONResponse:
         items = trigger_runner.items_by_endpoint()
@@ -1123,6 +1128,20 @@ async def main():
                 logger.error(f"Trigger '{item.name}' execution error: {exc!r}")
             finally:
                 trigger_runner._running.discard(endpoint)
+                # Fan a trigger.fired event onto the SSE event stream (#1110).
+                try:
+                    _tg_payload: dict = {
+                        "name": item.name,
+                        "endpoint": endpoint,
+                        "duration_ms": int((time.monotonic() - _fire_start) * 1000),
+                        "outcome": "success" if _success else "error",
+                    }
+                    if not _success and _error:
+                        _tg_payload["error"] = _error[:512]
+                    from events import get_event_stream as _ges
+                    _ges().publish("trigger.fired", _tg_payload, agent_id=AGENT_NAME)
+                except Exception:  # pragma: no cover
+                    pass
                 executor.track_background(
                     executor.on_prompt_completed(
                         source="trigger",
@@ -1748,6 +1767,114 @@ async def main():
             return JSONResponse({"data": [], "total": 0}, status_code=404)
         return JSONResponse({"data": [match], "total": 1})
 
+    # ---- SSE event stream (#1110) -----------------------------------
+    # Publishes the phase-1 event set documented in docs/events/README.md
+    # over a long-lived Server-Sent Events connection. Clients reconnect
+    # with Last-Event-ID to resume from the in-memory ring. Shares the
+    # CONVERSATIONS_AUTH_TOKEN bearer so dashboards don't need a separate
+    # credential to browse live events alongside /conversations + /trace.
+    from events import get_event_stream as _get_event_stream  # noqa: E402
+    from metrics import (  # noqa: E402
+        harness_event_stream_events_dropped_total,
+        harness_event_stream_events_published_total,
+        harness_event_stream_overruns_total,
+        harness_event_stream_ring_size,
+        harness_event_stream_subscribers,
+        harness_event_stream_validation_errors_total,
+    )
+    _get_event_stream().attach_metrics(
+        subscribers=harness_event_stream_subscribers,
+        published_total=harness_event_stream_events_published_total,
+        dropped_total=harness_event_stream_events_dropped_total,
+        overruns_total=harness_event_stream_overruns_total,
+        validation_errors_total=harness_event_stream_validation_errors_total,
+        ring_size=harness_event_stream_ring_size,
+    )
+
+    EVENT_STREAM_KEEPALIVE_SEC = float(os.environ.get("EVENT_STREAM_KEEPALIVE_SEC", "15"))
+
+    async def events_stream_handler(request: Request):
+        from starlette.responses import StreamingResponse  # local import keeps startup path identical on older Starlette
+
+        # Auth: reuse CONVERSATIONS_AUTH_TOKEN. Fail-closed unless the
+        # explicit escape hatch is set, matching the parity pattern used
+        # by /conversations and /trace.
+        if not _conversations_auth_token:
+            try:
+                from conversations import auth_disabled_escape_hatch  # type: ignore[attr-defined]
+            except Exception:
+                auth_disabled_escape_hatch = None  # type: ignore[assignment]
+            if auth_disabled_escape_hatch is None or not auth_disabled_escape_hatch():
+                return JSONResponse({"error": "auth not configured"}, status_code=503)
+        else:
+            header = request.headers.get("Authorization", "")
+            if not hmac_mod.compare_digest(f"Bearer {_conversations_auth_token}", header):
+                return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+        last_id = request.headers.get("Last-Event-ID") or request.query_params.get("last_event_id")
+        stream = _get_event_stream()
+
+        async def _gen():
+            import json as _json
+            # Replay first — any envelope whose id > last_id still in the
+            # ring. Clients receive them in publish order before any live
+            # fanout begins so monotonic ordering from the client's PoV is
+            # preserved.
+            for envelope in stream.replay_from(last_id):
+                yield (
+                    f"event: {envelope.type}\n"
+                    f"id: {envelope.id}\n"
+                    f"data: {_json.dumps(envelope.to_dict(), separators=(',', ':'))}\n\n"
+                ).encode("utf-8")
+
+            # Live subscription with a keepalive ticker running alongside.
+            sub_iter = stream.subscribe()
+            sub_task: asyncio.Task = asyncio.ensure_future(sub_iter.__anext__())
+            ka_task: asyncio.Task = asyncio.ensure_future(
+                asyncio.sleep(EVENT_STREAM_KEEPALIVE_SEC)
+            )
+            try:
+                while True:
+                    done, _pending = await asyncio.wait(
+                        {sub_task, ka_task},
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                    if sub_task in done:
+                        try:
+                            envelope = sub_task.result()
+                        except StopAsyncIteration:
+                            # Subscriber closed (evicted or shutdown).
+                            return
+                        yield (
+                            f"event: {envelope.type}\n"
+                            f"id: {envelope.id}\n"
+                            f"data: {_json.dumps(envelope.to_dict(), separators=(',', ':'))}\n\n"
+                        ).encode("utf-8")
+                        sub_task = asyncio.ensure_future(sub_iter.__anext__())
+                    if ka_task in done:
+                        yield b": keepalive\n\n"
+                        ka_task = asyncio.ensure_future(
+                            asyncio.sleep(EVENT_STREAM_KEEPALIVE_SEC)
+                        )
+            except asyncio.CancelledError:
+                raise
+            finally:
+                for t in (sub_task, ka_task):
+                    if not t.done():
+                        t.cancel()
+                try:
+                    await sub_iter.aclose()  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+
+        headers = {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+        return StreamingResponse(_gen(), headers=headers, media_type="text/event-stream")
+
     _routes = [
         Route("/health/start", health_start),
         Route("/health/live", health_live),
@@ -1776,6 +1903,9 @@ async def main():
         # off or OTEL_IN_MEMORY_SPANS=0.
         Route("/api/traces", otel_traces_list_handler, methods=["GET"]),
         Route("/api/traces/{trace_id}", otel_traces_detail_handler, methods=["GET"]),
+        # SSE event stream (#1110). Long-lived text/event-stream; shares
+        # the CONVERSATIONS_AUTH_TOKEN bearer with /conversations + /trace.
+        Route("/events/stream", events_stream_handler, methods=["GET"]),
     ]
     # Metrics live on a dedicated port (:9000 by default, configurable via
     # METRICS_PORT), NOT on the main app listener (#643). The split lets

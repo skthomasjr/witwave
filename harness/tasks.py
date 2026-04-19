@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from bus import Message, MessageBus
 from croniter import croniter
+from events import get_event_stream
 from metrics import (
     harness_sched_task_checkpoint_stale_total,
     harness_sched_task_duration_seconds,
@@ -440,6 +441,32 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
                 harness_sched_task_error_duration_seconds.labels(name=item.name).observe(time.monotonic() - _task_start)
             if harness_sched_task_item_last_error_timestamp_seconds is not None:
                 harness_sched_task_item_last_error_timestamp_seconds.labels(name=item.name).set(time.time())
+            try:
+                get_event_stream().publish(
+                    "task.fired",
+                    {
+                        "name": item.name,
+                        "duration_ms": int((time.monotonic() - _task_start) * 1000),
+                        "outcome": "error",
+                        "error": repr(e)[:512],
+                    },
+                    agent_id=AGENT_NAME,
+                )
+            except Exception:  # pragma: no cover
+                pass
+        else:
+            try:
+                get_event_stream().publish(
+                    "task.fired",
+                    {
+                        "name": item.name,
+                        "duration_ms": int((time.monotonic() - _task_start) * 1000),
+                        "outcome": "success",
+                    },
+                    agent_id=AGENT_NAME,
+                )
+            except Exception:  # pragma: no cover
+                pass
         finally:
             item.running = False
             if harness_sched_task_running_items is not None:
@@ -587,6 +614,24 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
                     item.last_success = _success_ts  # #1087
                     if harness_sched_task_item_last_success_timestamp_seconds is not None:
                         harness_sched_task_item_last_success_timestamp_seconds.labels(name=item.name).set(_success_ts)
+                    try:
+                        _window_str = (
+                            f"{item.window_start.strftime('%H:%M')}-"
+                            f"{item.window_end.strftime('%H:%M')}"
+                            if item.window_start and item.window_end else ""
+                        )
+                        _p: dict = {
+                            "name": item.name,
+                            "duration_ms": int((time.monotonic() - _task_start) * 1000),
+                            "outcome": "success",
+                        }
+                        if _window_str:
+                            _p["window"] = _window_str
+                        get_event_stream().publish(
+                            "task.fired", _p, agent_id=AGENT_NAME
+                        )
+                    except Exception:  # pragma: no cover
+                        pass
 
                 except asyncio.CancelledError:
                     if _send_task is not None and not _send_task.done():
@@ -601,6 +646,25 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
                         harness_sched_task_error_duration_seconds.labels(name=item.name).observe(time.monotonic() - _task_start)
                     if harness_sched_task_item_last_error_timestamp_seconds is not None:
                         harness_sched_task_item_last_error_timestamp_seconds.labels(name=item.name).set(time.time())
+                    try:
+                        _window_str = (
+                            f"{item.window_start.strftime('%H:%M')}-"
+                            f"{item.window_end.strftime('%H:%M')}"
+                            if item.window_start and item.window_end else ""
+                        )
+                        _p2: dict = {
+                            "name": item.name,
+                            "duration_ms": int((time.monotonic() - _task_start) * 1000),
+                            "outcome": "error",
+                            "error": repr(e)[:512],
+                        }
+                        if _window_str:
+                            _p2["window"] = _window_str
+                        get_event_stream().publish(
+                            "task.fired", _p2, agent_id=AGENT_NAME
+                        )
+                    except Exception:  # pragma: no cover
+                        pass
                     break  # stop looping on error; go back to waiting for next window
 
                 # Loop logic

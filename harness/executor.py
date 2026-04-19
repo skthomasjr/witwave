@@ -16,6 +16,7 @@ from a2a.utils import new_agent_text_message
 from backends.a2a import A2ABackend
 from backends.config import BACKEND_CONFIG_PATH, BackendConfig, RoutingConfig, RoutingEntry, load_backends_config, load_routing_config
 from bus import Message, MessageBus
+from events import get_event_stream
 from tracing import (
     TraceContext,
     context_from_inbound,
@@ -857,6 +858,17 @@ class AgentExecutor(A2AAgentExecutor):
         )
         if harness_a2a_traces_received_total is not None:
             harness_a2a_traces_received_total.labels(has_inbound=str(_had_inbound).lower()).inc()
+        # Emit a2a.request.received onto the SSE event stream (#1110).
+        try:
+            _rcv_payload: dict = {"concern": "a2a"}
+            if model:
+                _rcv_payload["model"] = model
+            _agent_name = os.environ.get("AGENT_NAME", "nyx")
+            get_event_stream().publish(
+                "a2a.request.received", _rcv_payload, agent_id=_agent_name
+            )
+        except Exception:  # pragma: no cover
+            pass
         # Bridge to OTel (#469). When OTel is enabled the extracted context
         # becomes the parent of the server span below; when disabled this
         # returns None and start_span silently emits a no-op span.
@@ -937,6 +949,21 @@ class AgentExecutor(A2AAgentExecutor):
                 harness_a2a_request_duration_seconds.observe(time.monotonic() - _exec_start)
             if harness_a2a_last_request_timestamp_seconds is not None:
                 harness_a2a_last_request_timestamp_seconds.set(time.time())
+            # Emit a2a.request.completed onto the SSE event stream (#1110).
+            try:
+                _comp_payload: dict = {
+                    "concern": "a2a",
+                    "outcome": "success" if _success else "error",
+                    "duration_ms": int((time.monotonic() - _exec_start) * 1000),
+                }
+                if not _success and _error:
+                    _comp_payload["error"] = _error[:512]
+                _agent_name = os.environ.get("AGENT_NAME", "nyx")
+                get_event_stream().publish(
+                    "a2a.request.completed", _comp_payload, agent_id=_agent_name
+                )
+            except Exception:  # pragma: no cover
+                pass
             if task_id and task_id in self._running_tasks:
                 self._running_tasks.pop(task_id)
                 if harness_running_tasks is not None:

@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from bus import Message, MessageBus
 from croniter import croniter
+from events import get_event_stream
 from metrics import (
     harness_file_watcher_restarts_total,
     harness_heartbeat_duration_seconds,
@@ -223,6 +224,18 @@ async def _run_loop(
                     last_success = _success_ts  # #1087
                     if harness_heartbeat_last_success_timestamp_seconds is not None:
                         harness_heartbeat_last_success_timestamp_seconds.set(_success_ts)
+                    try:
+                        _hb_payload: dict = {
+                            "duration_ms": int((time.monotonic() - _hb_start) * 1000),
+                            "outcome": "success",
+                        }
+                        if schedule:
+                            _hb_payload["schedule"] = schedule
+                        get_event_stream().publish(
+                            "heartbeat.fired", _hb_payload, agent_id=AGENT_NAME
+                        )
+                    except Exception:  # pragma: no cover
+                        pass
                 except Exception as e:
                     logger.error(f"Heartbeat executor error: {e}")
                     if harness_heartbeat_runs_total is not None:
@@ -231,6 +244,19 @@ async def _run_loop(
                         harness_heartbeat_error_duration_seconds.observe(time.monotonic() - _hb_start)
                     if harness_heartbeat_last_error_timestamp_seconds is not None:
                         harness_heartbeat_last_error_timestamp_seconds.set(time.time())
+                    try:
+                        _hb_err: dict = {
+                            "duration_ms": int((time.monotonic() - _hb_start) * 1000),
+                            "outcome": "error",
+                            "error": repr(e)[:512],
+                        }
+                        if schedule:
+                            _hb_err["schedule"] = schedule
+                        get_event_stream().publish(
+                            "heartbeat.fired", _hb_err, agent_id=AGENT_NAME
+                        )
+                    except Exception:  # pragma: no cover
+                        pass
     finally:
         stop_waiter.cancel()
 

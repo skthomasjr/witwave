@@ -30,6 +30,7 @@ import logging
 import os
 import re
 import socket
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -40,6 +41,7 @@ from urllib.parse import urlsplit
 import httpx
 import yaml
 
+from events import get_event_stream
 from tracing import inject_traceparent, set_span_error, start_span
 from metrics import (
     harness_file_watcher_restarts_total,
@@ -56,6 +58,77 @@ logger = logging.getLogger(__name__)
 
 WEBHOOKS_DIR = os.environ.get("WEBHOOKS_DIR", "/home/agent/.nyx/webhooks")
 AGENT_NAME = os.environ.get("AGENT_NAME", "nyx")
+
+
+def _publish_webhook_event(
+    *,
+    sub_name: str,
+    url: str,
+    result: str,
+    duration_seconds: float,
+) -> None:
+    """Translate a delivery ``result`` string into an SSE event (#1110).
+
+    ``result`` is the internal webhooks.py label used by metrics — one of
+    ``success``, ``http_<code>``, ``error``, ``timeout_total``,
+    ``url_validation_failed``, ``url_revalidation_failed``, ``cancelled``,
+    ``shed_retry_bytes``. Only the URL host is carried in the event to
+    avoid leaking path / query / credential fragments; full URLs live in
+    the local tool-activity audit log.
+    """
+    try:
+        host = urlsplit(url).hostname or ""
+    except Exception:  # pragma: no cover — urlsplit never raises on str
+        host = ""
+    duration_ms = int(max(0.0, duration_seconds) * 1000)
+    try:
+        if result == "success":
+            get_event_stream().publish(
+                "webhook.delivered",
+                {
+                    "name": sub_name,
+                    "url_host": host,
+                    "status_code": 200,
+                    "duration_ms": duration_ms,
+                },
+                agent_id=None,
+            )
+            return
+        # Map result → (reason, optional status_code).
+        if result.startswith("http_"):
+            try:
+                code = int(result.split("_", 1)[1])
+            except (ValueError, IndexError):
+                code = 0
+            payload: dict = {
+                "name": sub_name,
+                "url_host": host,
+                "reason": "http_error",
+                "duration_ms": duration_ms,
+            }
+            if 100 <= code <= 599:
+                payload["status_code"] = code
+            get_event_stream().publish("webhook.failed", payload, agent_id=None)
+            return
+        if result in ("timeout_total", "cancelled"):
+            reason = "timeout"
+        elif result in ("url_validation_failed", "url_revalidation_failed"):
+            reason = "dns_denied"
+        else:
+            reason = "exception"
+        get_event_stream().publish(
+            "webhook.failed",
+            {
+                "name": sub_name,
+                "url_host": host,
+                "reason": reason,
+                "duration_ms": duration_ms,
+                "error": result,
+            },
+            agent_id=None,
+        )
+    except Exception:  # pragma: no cover — fan-out is best-effort
+        pass
 
 # Global cap on total in-flight webhook delivery tasks across all subscriptions.
 # When the cap is reached, new deliveries are shed (logged and counted).
@@ -825,6 +898,22 @@ async def _retry_deliver(
                 result = "success"
                 logger.info(f"Webhook '{sub.name}' delivered to {url} — {resp.status_code} (attempt {attempt})")
                 _record(result)
+                # Retry chain recovered; emit the SSE webhook.delivered
+                # envelope so dashboards see the eventual success rather
+                # than only the pre-retry failure event (#1110). Duration
+                # cannot be reconstructed here — we don't carry the
+                # original deliver() _deliver_started_mono through the
+                # chain — so emit 0 and rely on status_code to signal
+                # recovery.
+                try:
+                    _publish_webhook_event(
+                        sub_name=sub.name,
+                        url=url,
+                        result=f"http_{resp.status_code}" if resp.status_code >= 400 else "success",
+                        duration_seconds=0.0,
+                    )
+                except Exception:  # pragma: no cover
+                    pass
                 break
             else:
                 result = f"http_{resp.status_code}"
@@ -874,6 +963,10 @@ async def deliver(
     delivery_id = str(uuid.uuid4())
     timestamp = datetime.now(timezone.utc).isoformat()
     response_preview = response[:2048] if response else ""
+    # Wall-clock budget for the SSE webhook.delivered/webhook.failed
+    # event (#1110). Measured around the full deliver() call so dashboards
+    # see the real end-to-end time for a single attempt.
+    _deliver_started_mono = time.monotonic()
 
     context: dict = {
         "agent": AGENT_NAME,
@@ -1133,6 +1226,12 @@ async def deliver(
 
     if harness_webhooks_delivery_total is not None:
         harness_webhooks_delivery_total.labels(result=result, subscription=sub.name).inc()
+    _publish_webhook_event(
+        sub_name=sub.name,
+        url=url,
+        result=result,
+        duration_seconds=time.monotonic() - _deliver_started_mono,
+    )
 
 
 async def _deliver_hook_decision(

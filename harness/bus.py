@@ -25,6 +25,7 @@ auditing call sites.
 """
 
 import asyncio
+import hashlib
 import logging
 import os
 import time
@@ -348,6 +349,41 @@ def publish_hook_decision(event: HookDecisionEvent) -> None:
         except Exception as exc:  # pragma: no cover — best-effort side channel
             logger.warning("hook.decision listener %r raised: %r", listener, exc)
             _bump_listener_error(listener, exc)
+
+
+def _emit_hook_decision_event_stream(event: HookDecisionEvent) -> None:
+    """Re-emit a HookDecisionEvent onto the SSE event stream (#1110).
+
+    session_id is hashed to a SHA-256 prefix so dashboards can group by
+    session without ever seeing the HMAC-bound raw id. agent field on the
+    HookDecisionEvent is the backend name (claude/codex/gemini); the
+    envelope's agent_id is the named Nyx agent (iris/nova/…) taken from
+    AGENT_NAME.
+    """
+    try:
+        from events import get_event_stream  # scoped import — avoid import cycle
+    except Exception:  # pragma: no cover — harness context required
+        return
+    try:
+        sid_hash = hashlib.sha256(
+            (event.session_id or "").encode("utf-8")
+        ).hexdigest()[:12]
+        payload: dict = {
+            "backend": event.agent if event.agent in ("claude", "codex", "gemini") else "claude",
+            "session_id_hash": sid_hash or "0" * 12,
+            "tool": event.tool or "",
+            "decision": event.decision if event.decision in ("allow", "deny", "warn") else "allow",
+        }
+        if event.rule_name:
+            payload["rule_id"] = event.rule_name
+        if event.reason:
+            payload["reason"] = event.reason
+        agent_name = os.environ.get("AGENT_NAME", "nyx")
+        get_event_stream().publish(
+            "hook.decision", payload, agent_id=agent_name
+        )
+    except Exception:  # pragma: no cover — fan-out is best-effort
+        logger.debug("hook.decision SSE publish failed", exc_info=True)
 
 
 def _bump_listener_error(listener: Callable[..., object], exc: BaseException) -> None:
