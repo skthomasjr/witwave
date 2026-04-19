@@ -1050,15 +1050,39 @@ class AgentExecutor(A2AAgentExecutor):
         Must run *after* the bus worker has drained in-flight process_bus
         calls — otherwise in-flight calls observe a closed httpx client and
         surface "client has been closed" / connection-reset errors.
+
+        Also closes any backend constructed by ``backends_watcher`` that may
+        not yet have been swapped into ``self._backends`` — or that was swapped
+        out and is awaiting gc — via the module-level ``_pending_backends``
+        WeakSet (#1279). A reload that finishes building new backends after
+        this lifespan `finally` has already snapshotted ``self._backends``
+        would otherwise leak their pooled ``httpx.AsyncClient``s.
         """
+        # De-duplicate across the live dict and the pending WeakSet while
+        # preserving identity (don't rely on ==, use id() keys).
+        _seen_ids: set[int] = set()
+        _targets: list[object] = []
         for _backend in list(self._backends.values()):
+            if id(_backend) not in _seen_ids:
+                _seen_ids.add(id(_backend))
+                _targets.append(_backend)
+        try:
+            from backends.a2a import _pending_backends as _pending
+        except Exception:
+            _pending = None  # type: ignore[assignment]
+        if _pending is not None:
+            for _backend in list(_pending):
+                if id(_backend) not in _seen_ids:
+                    _seen_ids.add(id(_backend))
+                    _targets.append(_backend)
+        for _backend in _targets:
             _close = getattr(_backend, "close", None)
             if _close is None:
                 continue
             try:
                 await _close()
             except Exception as _exc:  # noqa: BLE001 — shutdown must continue
-                logger.warning("backend %r close() failed: %r", _backend.id, _exc)
+                logger.warning("backend %r close() failed: %r", getattr(_backend, "id", "?"), _exc)
 
     async def close(self) -> None:
         """Coordinated shutdown: watchers, background tasks, backend clients (#604).

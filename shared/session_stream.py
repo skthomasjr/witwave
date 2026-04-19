@@ -427,10 +427,14 @@ def sweep_idle_streams(
             # Terminate any stragglers before dropping the broadcaster.
             for sub in list(stream._subscribers):  # noqa: SLF001 — intentional
                 sub.closed = True
+                # #1294: increment per subscriber so each terminal envelope
+                # carries a unique id; otherwise N subscribers all see the
+                # same Last-Event-ID on close.
+                stream._next_id += 1  # noqa: SLF001
                 overrun = SessionStreamEnvelope(
                     type="stream.overrun",
                     version=1,
-                    id=str(stream._next_id + 1),  # noqa: SLF001
+                    id=str(stream._next_id),  # noqa: SLF001
                     ts=_now_iso_ms(),
                     agent_id=stream._agent_id,  # noqa: SLF001
                     payload={

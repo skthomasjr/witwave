@@ -61,6 +61,19 @@ if _CIRCUIT_COOLOFF_SECONDS < 0:
 _CIRCUIT_STATES: tuple[str, ...] = ("closed", "open", "half_open")
 
 
+# Registry of all live A2ABackend instances ever constructed (#1279). Every
+# __init__ registers into this set and close() removes itself. The harness's
+# close_backends() path walks this set in addition to executor._backends so that
+# backends freshly constructed by backends_watcher mid-shutdown — or otherwise
+# not yet swapped into the live dict — still get their pooled httpx.AsyncClient
+# closed. Without it, a reload that finishes building new backends after the
+# lifespan `finally` has already snapshotted executor._backends leaks those
+# clients. Using a WeakSet keeps this from extending backend lifetimes.
+import weakref as _weakref
+
+_pending_backends: "_weakref.WeakSet[A2ABackend]" = _weakref.WeakSet()
+
+
 class A2ABackend:
     """Backend that forwards run_query calls to a remote A2A agent."""
 
@@ -110,10 +123,21 @@ class A2ABackend:
         self._circuit_consecutive_failures: int = 0
         self._circuit_opened_at: float = 0.0
         self._circuit_lock: asyncio.Lock = asyncio.Lock()
+        # #1289: track whether the remote backend has minted a context_id
+        # for each session_id yet. A2A semantics say the caller omits
+        # contextId on the first turn of a new context and echoes the
+        # server-minted value on subsequent turns. Previously every
+        # outbound call reused session_id as contextId, which collides
+        # with whatever id the remote backend would have chosen itself.
+        self._session_has_context: set[str] = set()
         # Initialize gauge labels so scrapes see this backend even before its
         # first request — absent series are harder to alert on than 0-valued
         # ones.
         self._publish_circuit_state_gauge()
+        # Register into the module-level pending set (#1279) so close_backends()
+        # reaches instances that the backends_watcher constructed after the
+        # lifespan finally snapshot.
+        _pending_backends.add(self)
 
     def _get_client(self) -> httpx.AsyncClient:
         if self._client.is_closed:
@@ -246,17 +270,34 @@ class A2ABackend:
         _start = time.monotonic()
         message_id = str(uuid.uuid4())
 
+        # #1289: omit contextId on the first turn of a session so the
+        # remote backend can mint its own id; include it on subsequent
+        # turns so the backend resumes the same conversation. We treat
+        # the local session_id as an opaque correlation key for the
+        # "have we seen this session before?" check.
+        _message: dict = {
+            "messageId": message_id,
+            "role": "user",
+            "parts": [{"kind": "text", "text": prompt}],
+        }
+        if session_id in self._session_has_context:
+            _message["contextId"] = session_id
+        # #1287: use the freshly minted message_id as the JSON-RPC id
+        # rather than a hardcoded 1. The id is echoed in the response,
+        # so concurrent requests sharing the same outbound connection
+        # can now be correlated request-to-response unambiguously.
         payload = {
             "jsonrpc": "2.0",
             "method": "message/send",
-            "id": 1,
+            "id": message_id,
             "params": {
-                "message": {
-                    "messageId": message_id,
-                    "contextId": session_id,
-                    "role": "user",
-                    "parts": [{"kind": "text", "text": prompt}],
-                }
+                "message": _message,
+                # #1289: declare accepted output modes so servers that
+                # branch on the streaming capability know this caller
+                # wants plain text / JSON rather than, say, SSE frames.
+                "configuration": {
+                    "acceptedOutputModes": ["text/plain", "application/json"],
+                },
             },
         }
         # Mint the child traceparent once so the HTTP header and the JSON-RPC
@@ -338,6 +379,13 @@ class A2ABackend:
                 raise _err
 
             result = data.get("result") or {}
+            # #1289: remember that the remote backend has now minted /
+            # accepted a context for this session so the next call
+            # echoes contextId instead of omitting it. We only mark the
+            # session on a successful response; failures don't promote
+            # the session to "has context" since the server may not have
+            # persisted anything.
+            self._session_has_context.add(session_id)
             # Record a successful outcome so the failure counter resets
             # and the breaker closes from half_open if applicable.
             await self._circuit_record(ok=True)

@@ -414,12 +414,25 @@ async def main():
             _method_box[0] = method
 
         if method == "initialize":
+            # #1288: negotiate protocolVersion with the caller. Echo
+            # whichever supported version the caller asked for, else
+            # respond with the highest we support so clients pinned to an
+            # older spec still interoperate and newer clients get the
+            # latest shape. #1297: advertise tools.listChanged explicitly
+            # so clients know whether to poll — we currently never notify
+            # on tool-list change, so declare false.
+            SUPPORTED_MCP_VERSIONS = ("2024-11-05", "2025-03-26")
+            _client_version = params.get("protocolVersion")
+            if _client_version in SUPPORTED_MCP_VERSIONS:
+                _negotiated_version = _client_version
+            else:
+                _negotiated_version = SUPPORTED_MCP_VERSIONS[-1]
             return JSONResponse({
                 "jsonrpc": "2.0",
                 "id": rpc_id,
                 "result": {
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {"tools": {}},
+                    "protocolVersion": _negotiated_version,
+                    "capabilities": {"tools": {"listChanged": False}},
                     "serverInfo": {"name": AGENT_NAME, "version": AGENT_VERSION},
                 },
             })
@@ -460,10 +473,20 @@ async def main():
         if method == "tools/call":
             tool_name = params.get("name", "")
             if tool_name != "ask_agent":
+                # #1281: MCP tools/call conveys tool-level failures as
+                # result.isError=true with a content block, not a
+                # JSON-RPC error object (JSON-RPC errors are reserved
+                # for protocol-level failures like bad method / bad
+                # params). Clients that branch on isError see the
+                # failure; clients that ignore it still see a well-formed
+                # result payload.
                 return JSONResponse({
                     "jsonrpc": "2.0",
                     "id": rpc_id,
-                    "error": {"code": -32602, "message": f"Unknown tool: {tool_name!r}"},
+                    "result": {
+                        "isError": True,
+                        "content": [{"type": "text", "text": f"Unknown tool: {tool_name!r}"}],
+                    },
                 })
             arguments = params.get("arguments") or {}
             prompt = arguments.get("prompt", "")
@@ -576,12 +599,17 @@ async def main():
                         raise
             except Exception as exc:
                 logger.error(f"MCP tools/call error: {exc!r}")
+                # #1281: tool execution failure is a tool-level error;
+                # report it as result.isError=true with a generic text
+                # block. The full exception detail is logged server-side
+                # above but not leaked to MCP clients (#455).
                 return JSONResponse({
                     "jsonrpc": "2.0",
                     "id": rpc_id,
-                    # Generic message — full exception detail is logged server-side
-                    # (line above) but not leaked to MCP clients (#455).
-                    "error": {"code": -32603, "message": "Internal server error"},
+                    "result": {
+                        "isError": True,
+                        "content": [{"type": "text", "text": "Internal server error"}],
+                    },
                 })
             return JSONResponse({
                 "jsonrpc": "2.0",

@@ -5,7 +5,7 @@
   "description": "Phase-1 event types for GET /events/stream on the harness. See ./README.md for wire format and rationale.",
   "type": "object",
   "required": ["type", "version", "id", "ts", "agent_id", "payload"],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "properties": {
     "type": {
       "type": "string",
@@ -76,7 +76,7 @@
     "JobFired": {
       "type": "object",
       "required": ["name", "schedule", "duration_ms", "outcome"],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "properties": {
         "name": { "type": "string" },
         "schedule": { "type": "string" },
@@ -88,7 +88,7 @@
     "TaskFired": {
       "type": "object",
       "required": ["name", "duration_ms", "outcome"],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "properties": {
         "name": { "type": "string" },
         "window": { "type": "string" },
@@ -100,7 +100,7 @@
     "HeartbeatFired": {
       "type": "object",
       "required": ["duration_ms", "outcome"],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "properties": {
         "schedule": { "type": "string" },
         "duration_ms": { "type": "integer", "minimum": 0 },
@@ -111,7 +111,7 @@
     "ContinuationFired": {
       "type": "object",
       "required": ["name", "upstream_kind", "upstream_name", "duration_ms", "outcome"],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "properties": {
         "name": { "type": "string" },
         "upstream_kind": { "type": "string", "enum": ["job", "task", "trigger", "a2a", "continuation"] },
@@ -124,7 +124,7 @@
     "TriggerFired": {
       "type": "object",
       "required": ["name", "endpoint", "duration_ms", "outcome"],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "properties": {
         "name": { "type": "string" },
         "endpoint": { "type": "string" },
@@ -136,7 +136,7 @@
     "WebhookDelivered": {
       "type": "object",
       "required": ["name", "url_host", "status_code", "duration_ms"],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "properties": {
         "name": { "type": "string" },
         "url_host": { "type": "string" },
@@ -147,7 +147,7 @@
     "WebhookFailed": {
       "type": "object",
       "required": ["name", "url_host", "reason", "duration_ms"],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "properties": {
         "name": { "type": "string" },
         "url_host": { "type": "string" },
@@ -160,7 +160,7 @@
     "HookDecision": {
       "type": "object",
       "required": ["backend", "session_id_hash", "tool", "decision"],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "properties": {
         "backend": { "type": "string", "enum": ["claude", "codex", "gemini"] },
         "session_id_hash": { "type": "string", "minLength": 1 },
@@ -173,7 +173,7 @@
     "A2ARequestReceived": {
       "type": "object",
       "required": ["concern"],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "properties": {
         "concern": { "type": "string", "enum": ["a2a", "heartbeat", "job", "task", "trigger", "continuation"] },
         "model": { "type": "string" }
@@ -182,7 +182,7 @@
     "A2ARequestCompleted": {
       "type": "object",
       "required": ["concern", "outcome", "duration_ms"],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "properties": {
         "concern": { "type": "string", "enum": ["a2a", "heartbeat", "job", "task", "trigger", "continuation"] },
         "outcome": { "$ref": "#/$defs/Outcome" },
@@ -193,7 +193,7 @@
     "AgentLifecycle": {
       "type": "object",
       "required": ["backend", "event"],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "properties": {
         "backend": { "type": "string", "enum": ["claude", "codex", "gemini"] },
         "event": { "type": "string", "enum": ["started", "stopped", "config_reloaded", "credential_rotated"] },
@@ -203,7 +203,7 @@
     "ConversationTurn": {
       "type": "object",
       "required": ["session_id_hash", "role", "content_bytes"],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "properties": {
         "session_id_hash": { "type": "string", "minLength": 12, "maxLength": 12 },
         "role": { "type": "string", "enum": ["user", "assistant"] },
@@ -214,7 +214,7 @@
     "ConversationChunk": {
       "type": "object",
       "required": ["session_id_hash", "role", "seq", "content", "final"],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "properties": {
         "session_id_hash": { "type": "string", "minLength": 12, "maxLength": 12 },
         "role": { "type": "string", "enum": ["user", "assistant"] },
@@ -226,7 +226,7 @@
     "ToolUse": {
       "type": "object",
       "required": ["session_id_hash", "tool", "duration_ms", "outcome"],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "properties": {
         "session_id_hash": { "type": "string", "minLength": 12, "maxLength": 12 },
         "tool": { "type": "string" },
@@ -239,7 +239,7 @@
     "TraceSpan": {
       "type": "object",
       "required": ["span_name", "duration_ms", "status", "service"],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "properties": {
         "session_id_hash": { "type": "string", "minLength": 12, "maxLength": 12 },
         "span_name": { "type": "string" },
@@ -251,7 +251,7 @@
     "StreamGap": {
       "type": "object",
       "required": ["last_seen_id", "resume_id"],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "properties": {
         "last_seen_id": { "type": "string" },
         "resume_id": { "type": "string" },
@@ -261,7 +261,7 @@
     "StreamOverrun": {
       "type": "object",
       "required": ["queue_depth", "queue_max"],
-      "additionalProperties": false,
+      "additionalProperties": true,
       "properties": {
         "queue_depth": { "type": "integer", "minimum": 0 },
         "queue_max": { "type": "integer", "minimum": 0 },

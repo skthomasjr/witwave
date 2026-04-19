@@ -21,6 +21,7 @@ import contextlib
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -103,6 +104,90 @@ def _refuse_if_read_only(tool: str) -> None:
 
 class HelmError(RuntimeError):
     """Raised when a helm CLI invocation fails."""
+
+
+# Inline credential redaction for HelmError messages (#1271). The shared
+# `shared/redact.py` module is not copied into this tool container (see
+# Dockerfile), so we duplicate the minimum-viable subset here: mask any
+# `--set KEY=VALUE` / `--set-string KEY=VALUE` / `--set-file KEY=VALUE` /
+# `--set-json KEY=VALUE` occurrences (the common vectors for leaking
+# credentials passed as chart values) plus a small set of well-anchored
+# secret shapes that helm itself or child processes might echo into
+# stderr on a failed install/upgrade (bearer tokens, AWS keys, basic-auth
+# URLs). The goal is defence-in-depth for error messages, not a full DLP
+# pipeline — keep the pattern list short and well-anchored.
+_REDACTED = "[REDACTED]"
+
+_HELM_SET_FLAGS = ("--set", "--set-string", "--set-file", "--set-json")
+
+# `--set foo.bar=secret` (space-separated)
+_HELM_SET_SPACE_RE = re.compile(
+    r"(--set(?:-string|-file|-json)?)(\s+)([^\s=]+)=([^\s]+)"
+)
+# `--set=foo.bar=secret` (equals-joined)
+_HELM_SET_EQUALS_RE = re.compile(
+    r"(--set(?:-string|-file|-json)?)=([^\s=]+)=([^\s]+)"
+)
+# Authorization: Bearer <token>
+_BEARER_RE = re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._\-]+")
+# AWS access key IDs
+_AWS_AKID_RE = re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")
+# basic-auth credentials inside URLs: scheme://user:pass@host
+_BASIC_AUTH_URL_RE = re.compile(r"([a-zA-Z][a-zA-Z0-9+.\-]*://)[^\s:/@]+:[^\s@]+@")
+
+
+def _redact_helm_error_text(text: str, argv: list[str] | None = None) -> str:
+    """Mask credentials likely to appear in helm stderr/stdout (#1271).
+
+    Covers the `--set*=KEY=VALUE` argv echo path (the primary leak
+    vector — helm often reprints the offending flag on error) plus a
+    handful of secret shapes that can appear in transitive errors from
+    chart hooks, registries, or cloud SDK init. ``argv`` is the
+    original subprocess argv; when provided, any literal value that
+    appeared in a `--set*` flag is masked wherever it reappears in the
+    output (defensive against helm rewriting the flag before printing).
+    """
+    if not text:
+        return text
+    out = text
+    out = _HELM_SET_SPACE_RE.sub(
+        lambda m: f"{m.group(1)}{m.group(2)}{m.group(3)}={_REDACTED}", out
+    )
+    out = _HELM_SET_EQUALS_RE.sub(
+        lambda m: f"{m.group(1)}={m.group(2)}={_REDACTED}", out
+    )
+    out = _BEARER_RE.sub(lambda m: f"{m.group(1)}{_REDACTED}", out)
+    out = _AWS_AKID_RE.sub(_REDACTED, out)
+    out = _BASIC_AUTH_URL_RE.sub(lambda m: f"{m.group(1)}{_REDACTED}@", out)
+
+    if argv:
+        # Walk argv and mask any value that came in via --set*. This
+        # catches cases where stderr quotes the raw value without the
+        # preceding flag (e.g. "error: invalid value 'hunter2'").
+        i = 0
+        while i < len(argv):
+            tok = argv[i]
+            value: str | None = None
+            if tok in _HELM_SET_FLAGS and i + 1 < len(argv):
+                kv = argv[i + 1]
+                if "=" in kv:
+                    value = kv.split("=", 1)[1]
+                i += 2
+                continue
+            for flag in _HELM_SET_FLAGS:
+                prefix = flag + "="
+                if tok.startswith(prefix):
+                    rest = tok[len(prefix):]
+                    if "=" in rest:
+                        value = rest.split("=", 1)[1]
+                    break
+            if value:
+                # Only substitute non-trivial values to avoid masking
+                # harmless short tokens that collide with real output.
+                if len(value) >= 4:
+                    out = out.replace(value, _REDACTED)
+            i += 1
+    return out
 
 
 # Process-level timeout for `helm` subprocess invocations (#857, #778).
@@ -343,9 +428,18 @@ def _helm(
             returncode = proc.returncode if proc.returncode is not None else -1
 
             if returncode != 0:
+                # #1271: redact credentials from helm stderr/stdout before
+                # formatting them into the HelmError message. helm echoes
+                # `--set key=value` flags in many error paths; without
+                # redaction those values land in caller-visible errors and
+                # downstream logs.
+                safe_args = _redact_helm_error_text(" ".join(args), args)
+                safe_body = _redact_helm_error_text(
+                    (stderr_text or stdout_text).strip(), args
+                )
                 err = HelmError(
-                    f"helm {' '.join(args)} exited {returncode}: "
-                    f"{(stderr_text or stdout_text).strip()}"
+                    f"helm {safe_args} exited {returncode}: "
+                    f"{safe_body}"
                     + (f" (output truncated at {_subp_cap} bytes, #1204)"
                        if truncated else "")
                 )
@@ -390,8 +484,12 @@ def _helm(
                     ).inc()
                 except Exception:
                     pass
+            # #1271: redact credentials from the echoed argv — timeout
+            # messages are surfaced to callers and logs the same way the
+            # non-zero-exit path is.
+            safe_args = _redact_helm_error_text(" ".join(args), args)
             err = HelmError(
-                f"helm {' '.join(args)} killed after "
+                f"helm {safe_args} killed after "
                 f"{_HELM_SUBPROCESS_TIMEOUT_SECONDS}s (HELM_SUBPROCESS_TIMEOUT_SECONDS)"
             )
             set_span_error(_exec_span, err)

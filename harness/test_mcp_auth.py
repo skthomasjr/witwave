@@ -91,7 +91,11 @@ def _http_scope(path: str = "/mcp", method: str = "POST", headers=None) -> dict:
 
 
 def _run(coro):
-    return asyncio.get_event_loop_policy().new_event_loop().run_until_complete(coro)
+    # #1300: use asyncio.run so every call gets a fresh loop that is closed
+    # on exit. The prior implementation built a loop via get_event_loop_policy
+    # and never closed it, leaking unclosed selectors across every test that
+    # called _run.
+    return asyncio.run(coro)
 
 
 # ----- 1. /health bypass -----------------------------------------

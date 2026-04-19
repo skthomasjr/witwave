@@ -18,6 +18,7 @@ from metrics import (
     harness_continuation_reloads_total,
     harness_continuation_runs_total,
     harness_continuation_throttled_total,
+    harness_continuations_shed_on_shutdown_total,
     harness_file_watcher_restarts_total,
     harness_watcher_events_total,
 )
@@ -211,7 +212,25 @@ async def _fire(
     upstream_kind_label: str = "",
 ) -> None:
     if item.delay is not None:
-        await asyncio.sleep(item.delay)
+        try:
+            await asyncio.sleep(item.delay)
+        except asyncio.CancelledError:
+            # Shutdown cancelled the delay before the fire landed (#1280).
+            # Log loudly so operators know the continuation was dropped, bump
+            # the shed-on-shutdown counter, then re-raise so the runner still
+            # unwinds its task tree cleanly.
+            logger.warning(
+                "continuation %r cancelled during delay (session_id=%s, upstream=%s)",
+                item.name,
+                session_id,
+                upstream_kind_label or "",
+            )
+            if harness_continuations_shed_on_shutdown_total is not None:
+                try:
+                    harness_continuations_shed_on_shutdown_total.labels(name=item.name).inc()
+                except Exception:
+                    pass
+            raise
     from prompt_env import resolve_prompt_env  # noqa: E402 — scoped import keeps startup simple
 
     prompt = resolve_prompt_env(f"Continuation: {item.name}\n\n{item.content}")
@@ -288,6 +307,29 @@ async def _fire(
 
 
 class ContinuationRunner:
+    async def close(self, timeout: float = 5.0) -> None:
+        """Drain in-flight continuation fires under a timeout (#1275).
+
+        Called during harness shutdown so CancelledError does not kill
+        in-flight bus.send POSTs mid-flight (parity with webhook_runner.close()).
+        """
+        if not self._active_fires:
+            return
+        _fires = list(self._active_fires)
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*_fires, return_exceptions=True),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "continuations: drain timed out after %.1fs; %d fire(s) abandoned.",
+                timeout, len(self._active_fires),
+            )
+            for _t in list(self._active_fires):
+                if not _t.done():
+                    _t.cancel()
+
     def __init__(self):
         self._items: dict[str, ContinuationItem] = {}
         self._active_fires: set[asyncio.Task] = set()

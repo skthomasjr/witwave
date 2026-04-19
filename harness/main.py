@@ -177,10 +177,18 @@ def _check_trigger_auth(request: Request, item: TriggerItem, body_bytes: bytes) 
         expected = "sha256=" + hmac_mod.new(secret.encode(), body_bytes, hashlib.sha256).hexdigest()
         return hmac_mod.compare_digest(expected, request.headers.get("X-Hub-Signature-256", ""))
 
+    # #1272: fail-closed on whitespace-only values (common operator footgun
+    # via `kubectl create secret --from-literal` with a trailing newline).
     auth_token = os.environ.get("TRIGGERS_AUTH_TOKEN", "")
-    if auth_token:
+    auth_token_effective = auth_token.strip()
+    if auth_token and not auth_token_effective:
+        logger.warning(
+            f"Trigger '{item.name}': TRIGGERS_AUTH_TOKEN is whitespace-only — "
+            "treating as unset (fail-closed). Fix the env var to enable auth."
+        )
+    if auth_token_effective:
         header = request.headers.get("Authorization", "")
-        return hmac_mod.compare_digest(f"Bearer {auth_token}", header)
+        return hmac_mod.compare_digest(f"Bearer {auth_token_effective}", header)
 
     logger.warning(
         f"Trigger '{item.name}': no authentication is configured (set secret-env-var in the "
@@ -1143,9 +1151,15 @@ async def main():
                 harness_triggers_requests_total.labels(method=request.method, code="401").inc()
             return JSONResponse({"error": "unauthorized"}, status_code=401)
 
-        # Build prompt from request
+        # Build prompt from request.
+        # #1269: Strip CR/LF from header values and wrap headers in their
+        # own <untrusted-request-headers> fence so a caller-controlled
+        # header value cannot smuggle instructions into the system prompt
+        # outside a fenced block.
+        def _scrub_header_value(_v: str) -> str:
+            return _v.replace("\r", " ").replace("\n", " ")
         filtered_headers = "\n".join(
-            f"{k}: {v}"
+            f"{k}: {_scrub_header_value(v)}"
             for k, v in request.headers.items()
             if k.lower() not in ("authorization", "x-hub-signature-256", "cookie")
         )
@@ -1163,8 +1177,10 @@ async def main():
         prompt = (
             f"Trigger: {item.name}\n\n"
             f"Request:\n"
-            f"{request.method} {request.url.path}\n"
-            f"{filtered_headers}\n\n"
+            f"{request.method} {request.url.path}\n\n"
+            f"<untrusted-request-headers>\n"
+            f"{filtered_headers}\n"
+            f"</untrusted-request-headers>\n\n"
             f"<untrusted-request-body>\n"
             f"{body_text}\n"
             f"</untrusted-request-body>\n\n"
@@ -1304,56 +1320,40 @@ async def main():
         return None
 
     async def _dispatch_adhoc_job(item) -> str:
-        from prompt_env import resolve_prompt_env  # noqa: E402
+        """Route ad-hoc job runs through the same _execute_job pipeline the
+        cron loop uses (#1293).
+
+        Previously this path built a Message and called bus.send directly,
+        bypassing checkpoint writes, running-gauge increments, semaphore
+        gating, and the full success/error telemetry _execute_job emits.
+        Routing through _execute_job keeps ad-hoc fires indistinguishable
+        from scheduled fires at the observability layer.
+        """
+        from jobs import _execute_job  # noqa: E402 — scoped import keeps import graph lazy
 
         delivery_id = str(uuid.uuid4())
-        message = Message(
-            prompt=resolve_prompt_env(f"Job: {item.name}\n\n{item.content}"),
-            session_id=item.session_id,
-            kind=f"job:{item.name}",
-            model=item.model,
-            backend_id=item.backend_id,
-            consensus=item.consensus,
-            max_tokens=item.max_tokens,
+        executor.track_background(
+            _execute_job(item, bus, getattr(job_runner, "_semaphore", None)),
+            source="adhoc-job-fire",
         )
-
-        async def _fire() -> None:
-            try:
-                await bus.send(message)
-            except Exception as exc:
-                logger.error(f"Ad-hoc job '{item.name}' bus.send failed: {exc!r}")
-
-        executor.track_background(_fire(), source="adhoc-job-fire")
         return delivery_id
 
     async def _dispatch_adhoc_task(item) -> str:
+        """Route ad-hoc task runs through tasks.run_task (#1298).
+
+        Mirrors #1293 for tasks: the previous path constructed a Message and
+        called bus.send directly, bypassing the checkpoint, running-gauge,
+        semaphore, and telemetry run_task owns. run_task derives the
+        session_id itself (run-once vs. day-window), so we no longer
+        compute it inline here.
+        """
+        from tasks import run_task  # noqa: E402 — scoped import keeps import graph lazy
+
         delivery_id = str(uuid.uuid4())
-        from pathlib import Path as _Path
-        filename = _Path(item.path).stem
-        if item.window_start is None:
-            session_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{AGENT_NAME}.{filename}"))
-        else:
-            from tasks import _day_session_id, _now_in_tz
-            session_id = _day_session_id(item, _now_in_tz(item.tz).date())
-        from prompt_env import resolve_prompt_env  # noqa: E402
-
-        message = Message(
-            prompt=resolve_prompt_env(f"Task: {item.name}\n\n{item.content}"),
-            session_id=session_id,
-            kind=f"task:{item.name}",
-            model=item.model,
-            backend_id=item.backend_id,
-            consensus=item.consensus,
-            max_tokens=item.max_tokens,
+        executor.track_background(
+            run_task(item, bus, getattr(task_runner, "_semaphore", None)),
+            source="adhoc-task-fire",
         )
-
-        async def _fire() -> None:
-            try:
-                await bus.send(message)
-            except Exception as exc:
-                logger.error(f"Ad-hoc task '{item.name}' bus.send failed: {exc!r}")
-
-        executor.track_background(_fire(), source="adhoc-task-fire")
         return delivery_id
 
     def _adhoc_warmup_shield(kind: str, name: str) -> JSONResponse | None:
@@ -1767,6 +1767,14 @@ async def main():
             return []
 
     async def otel_traces_list_handler(request: Request) -> JSONResponse:
+        # #1267: bearer-gate parity with /conversations + /trace + sibling
+        # backend /api/traces endpoints (CONVERSATIONS_AUTH_TOKEN).
+        if _conversations_auth_token:
+            header = request.headers.get("Authorization", "")
+            if not hmac_mod.compare_digest(
+                f"Bearer {_conversations_auth_token}", header
+            ):
+                return JSONResponse({"error": "unauthorized"}, status_code=401)
         nonlocal _otel_traces_list_cache
         try:
             limit_raw = request.query_params.get("limit")
@@ -1828,7 +1836,22 @@ async def main():
         return JSONResponse({"data": traces[:limit], "total": len(traces)})
 
     async def otel_traces_detail_handler(request: Request) -> JSONResponse:
+        # #1267: bearer-gate parity.
+        if _conversations_auth_token:
+            header = request.headers.get("Authorization", "")
+            if not hmac_mod.compare_digest(
+                f"Bearer {_conversations_auth_token}", header
+            ):
+                return JSONResponse({"error": "unauthorized"}, status_code=401)
         trace_id = request.path_params.get("trace_id") or ""
+        # #1268: refuse anything that isn't a 32-hex W3C trace_id to close
+        # the path-smuggling surface that otherwise lets callers inject
+        # query/fragment/path segments into the backend URL template.
+        import re as _re
+        if not _re.fullmatch(r"[0-9a-fA-F]{32}", trace_id):
+            return JSONResponse(
+                {"error": "trace_id must be 32 hex chars"}, status_code=400
+            )
         try:
             from otel import get_in_memory_traces  # type: ignore
             local_all = get_in_memory_traces()
@@ -1966,6 +1989,13 @@ async def main():
                 for t in (sub_task, ka_task):
                     if not t.done():
                         t.cancel()
+                # #1276: await the cancelled tasks so cleanup runs
+                # synchronously and the subscriber slot in EventStream
+                # is released before aclose().
+                try:
+                    await asyncio.gather(sub_task, ka_task, return_exceptions=True)
+                except Exception:  # pragma: no cover
+                    pass
                 try:
                     await sub_iter.aclose()  # type: ignore[attr-defined]
                 except Exception:
@@ -2208,40 +2238,49 @@ async def main():
         _attempt = 0
         _BACKOFF_BASE = 2.0
         _BACKOFF_MAX = 30.0
-        while True:
-            backend_configs = [b._config for b in executor._backends.values() if b._config.url]
-            if not backend_configs:
-                # No backends configured yet — wait for backends_watcher to load them.
-                await asyncio.sleep(1)
-                continue
-            async with httpx.AsyncClient(timeout=3.0) as client:
+        # Share a single AsyncClient across sweeps (#1277). Prior code created and
+        # tore down an httpx client every iteration, paying per-attempt TCP+TLS
+        # cost and losing connection pooling. One client, closed once at exit.
+        client = httpx.AsyncClient(
+            timeout=3.0,
+            limits=httpx.Limits(max_keepalive_connections=16, max_connections=32),
+        )
+        try:
+            while True:
+                backend_configs = [b._config for b in executor._backends.values() if b._config.url]
+                if not backend_configs:
+                    # No backends configured yet — wait for backends_watcher to load them.
+                    await asyncio.sleep(1)
+                    continue
                 results = await asyncio.gather(
                     *[client.get(b.url.rstrip("/") + "/health") for b in backend_configs],
                     return_exceptions=True,
                 )
-            all_ok = all(
-                not isinstance(r, Exception) and r.status_code == 200
-                for r in results
-            )
-            if all_ok:
-                logger.info("All backends healthy — releasing run-once jobs/tasks.")
-                backends_ready.set()
-                return
-            if not _warned and time.monotonic() >= warn_deadline:
-                _warned = True
-                unhealthy = [
-                    b.id for b, r in zip(backend_configs, results)
-                    if isinstance(r, Exception) or r.status_code != 200
-                ]
-                logger.warning(
-                    "Backends not healthy after %.0fs — still waiting. Unhealthy: %s",
-                    _backends_ready_warn_after,
-                    unhealthy,
+                all_ok = all(
+                    not isinstance(r, Exception) and r.status_code == 200
+                    for r in results
                 )
-            delay = min(_BACKOFF_BASE * (2 ** _attempt), _BACKOFF_MAX)
-            delay += random.uniform(0, delay * 0.1)
-            _attempt += 1
-            await asyncio.sleep(delay)
+                if all_ok:
+                    logger.info("All backends healthy — releasing run-once jobs/tasks.")
+                    backends_ready.set()
+                    return
+                if not _warned and time.monotonic() >= warn_deadline:
+                    _warned = True
+                    unhealthy = [
+                        b.id for b, r in zip(backend_configs, results)
+                        if isinstance(r, Exception) or r.status_code != 200
+                    ]
+                    logger.warning(
+                        "Backends not healthy after %.0fs — still waiting. Unhealthy: %s",
+                        _backends_ready_warn_after,
+                        unhealthy,
+                    )
+                delay = min(_BACKOFF_BASE * (2 ** _attempt), _BACKOFF_MAX)
+                delay += random.uniform(0, delay * 0.1)
+                _attempt += 1
+                await asyncio.sleep(delay)
+        finally:
+            await client.aclose()
 
     # Coordinated shutdown (#780). Previously `asyncio.gather` ran
     # server.serve() alongside the bus worker, scheduler runners, and
@@ -2329,6 +2368,15 @@ async def main():
             await webhook_runner.close()
         except Exception as exc:  # noqa: BLE001 — shutdown must continue
             logger.warning("webhook_runner.close() failed during shutdown: %r", exc)
+        # #1275: drain in-flight continuation fires before bus-worker exit.
+        try:
+            await continuation_runner.close(
+                timeout=float(os.environ.get("CONTINUATIONS_SHUTDOWN_DRAIN_TIMEOUT", "5"))
+            )
+        except Exception as exc:  # noqa: BLE001 — shutdown must continue
+            logger.warning(
+                "continuation_runner.close() failed during shutdown: %r", exc
+            )
         # Phase 5: backend httpx clients (#861). Close only AFTER the
         # bus worker has drained — otherwise in-flight process_bus calls
         # see a closed client and surface as "client has been closed".

@@ -43,6 +43,14 @@ The server never emits a `type` its running config doesn't know how to
 validate; validation is best-effort at emit time with a `WARN` + counter
 bump on failure rather than a hard error.
 
+**Forward compatibility (#1286, matches runtime validator from #1145):**
+Both the envelope and every per-type payload use
+`additionalProperties: true` in `events.schema.json`. A publisher that
+adds a new optional field does NOT require a lockstep validator update
+— older clients still validate the envelope and ignore fields they do
+not recognise. Renaming, removing, or retyping a field remains a
+version bump per the rules below.
+
 ## Versioning
 
 - `version` is a per-`type` integer. Clients match on `type` + fall

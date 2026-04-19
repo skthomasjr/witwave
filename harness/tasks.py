@@ -635,8 +635,26 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
 
                 except asyncio.CancelledError:
                     if _send_task is not None and not _send_task.done():
-                        logger.info(f"Task '{item.name}' cancelled — awaiting in-flight bus.send.")
-                        await asyncio.gather(_send_task, return_exceptions=True)
+                        # #1274: bounded drain, prevents SIGTERM hang.
+                        _drain_timeout = float(
+                            os.environ.get("TASKS_SHUTDOWN_DRAIN_TIMEOUT", "5")
+                        )
+                        logger.info(
+                            f"Task '{item.name}' cancelled — awaiting in-flight bus.send "
+                            f"(up to {_drain_timeout}s)."
+                        )
+                        try:
+                            await asyncio.wait_for(
+                                asyncio.gather(_send_task, return_exceptions=True),
+                                timeout=_drain_timeout,
+                            )
+                        except asyncio.TimeoutError:
+                            logger.warning(
+                                f"Task '{item.name}' drain timed out after "
+                                f"{_drain_timeout}s — abandoning in-flight send."
+                            )
+                            if _send_task is not None and not _send_task.done():
+                                _send_task.cancel()
                     raise
                 except Exception as e:
                     logger.error(f"Task '{item.name}' error: {e}")

@@ -201,8 +201,25 @@ async def _execute_job(item: JobItem, bus: MessageBus, semaphore: asyncio.Semaph
             harness_job_item_last_success_timestamp_seconds.labels(name=item.name).set(_success_ts)
     except asyncio.CancelledError:
         if _send_task is not None and not _send_task.done():
-            logger.info(f"Job '{item.name}' cancelled — awaiting in-flight bus.send before clearing running flag.")
-            await asyncio.gather(_send_task, return_exceptions=True)
+            # #1273: bound the drain so SIGTERM cannot hang past kubelet grace
+            # on a wedged A2A relay.
+            _drain_timeout = float(os.environ.get("JOBS_SHUTDOWN_DRAIN_TIMEOUT", "5"))
+            logger.info(
+                f"Job '{item.name}' cancelled — awaiting in-flight bus.send "
+                f"(up to {_drain_timeout}s) before clearing running flag."
+            )
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(_send_task, return_exceptions=True),
+                    timeout=_drain_timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"Job '{item.name}' drain timed out after {_drain_timeout}s — "
+                    "abandoning in-flight bus.send on shutdown."
+                )
+                if _send_task is not None and not _send_task.done():
+                    _send_task.cancel()
         else:
             logger.info(f"Job '{item.name}' cancelled.")
         raise

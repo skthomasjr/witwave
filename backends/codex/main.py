@@ -160,12 +160,11 @@ async def _sub_app_lifespan(app):
         raise
     if not supported:
         # App does not implement lifespan — proceed normally, matching claude
-        # behaviour (#444). Cancel the helper task since there is nothing to await.
-        task.cancel()
-        try:
-            await task
-        except (asyncio.CancelledError, Exception):
-            pass
+        # behaviour (#444, #1278). Do NOT cancel the helper task here: _run()
+        # already reached the `finally` that set startup(False) and shutdown(None)
+        # before exiting, so the task will complete on its own. Cancelling it
+        # races the natural completion and can surface as a spurious
+        # CancelledError in logs.
         yield
         return
 
@@ -418,12 +417,25 @@ async def main():
         params = body.get("params") or {}
 
         if method == "initialize":
+            # #1288: negotiate protocolVersion with the caller. Echo
+            # whichever supported version the caller asked for, else
+            # respond with the highest we support so clients pinned to an
+            # older spec still interoperate and newer clients get the
+            # latest shape. #1297: advertise tools.listChanged explicitly
+            # so clients know whether to poll — we currently never notify
+            # on tool-list change, so declare false.
+            SUPPORTED_MCP_VERSIONS = ("2024-11-05", "2025-03-26")
+            _client_version = params.get("protocolVersion")
+            if _client_version in SUPPORTED_MCP_VERSIONS:
+                _negotiated_version = _client_version
+            else:
+                _negotiated_version = SUPPORTED_MCP_VERSIONS[-1]
             return JSONResponse({
                 "jsonrpc": "2.0",
                 "id": rpc_id,
                 "result": {
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {"tools": {}},
+                    "protocolVersion": _negotiated_version,
+                    "capabilities": {"tools": {"listChanged": False}},
                     "serverInfo": {"name": AGENT_NAME, "version": AGENT_VERSION},
                 },
             })
@@ -467,10 +479,16 @@ async def main():
         if method == "tools/call":
             tool_name = params.get("name", "")
             if tool_name != "ask_agent":
+                # #1282: tool-level failures use result.isError=true with
+                # a content block, not a JSON-RPC error envelope. Keeps
+                # the MCP contract uniform across claude/codex/gemini.
                 return JSONResponse({
                     "jsonrpc": "2.0",
                     "id": rpc_id,
-                    "error": {"code": -32602, "message": f"Unknown tool: {tool_name!r}"},
+                    "result": {
+                        "isError": True,
+                        "content": [{"type": "text", "text": f"Unknown tool: {tool_name!r}"}],
+                    },
                 })
             arguments = params.get("arguments") or {}
             prompt = arguments.get("prompt", "")
@@ -599,12 +617,17 @@ async def main():
                             )
             if _failed:
                 _status_box[0] = "error"
+                # #1282: tool execution failure is a tool-level error;
+                # report as result.isError=true with a generic text block.
+                # Full exception detail is logged server-side (above) but
+                # not leaked to MCP clients (#455).
                 return JSONResponse({
                     "jsonrpc": "2.0",
                     "id": rpc_id,
-                    # Generic message — full exception detail is logged server-side
-                    # (line above) but not leaked to MCP clients (#455).
-                    "error": {"code": -32603, "message": "Internal server error"},
+                    "result": {
+                        "isError": True,
+                        "content": [{"type": "text", "text": "Internal server error"}],
+                    },
                 })
             return JSONResponse({
                 "jsonrpc": "2.0",

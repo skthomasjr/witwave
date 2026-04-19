@@ -106,23 +106,28 @@ var (
 		[]string{"outcome"},
 	)
 
-	// nyxpromptReadyCount mirrors NyxPrompt.Status.ReadyCount per CR so
+	// nyxpromptReadyAgents mirrors NyxPrompt.Status.ReadyCount per CR so
 	// dashboards can alert on "prompt has been partial for > N minutes"
-	// without scraping the CR subresource (#837).
-	nyxpromptReadyCount = prometheus.NewGaugeVec(
+	// without scraping the CR subresource (#837). Renamed from
+	// nyxprompt_ready_count to nyxprompt_ready_agents (#1299): the gauge
+	// reports a count of agents in the ready state, and the _count suffix
+	// collides with Prometheus convention for counter-derived series.
+	nyxpromptReadyAgents = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "nyxprompt_ready_count",
+			Name: "nyxprompt_ready_agents",
 			Help: "Number of NyxAgent refs on this NyxPrompt whose Binding.Ready=true.",
 		},
 		[]string{"namespace", "name"},
 	)
 
-	// nyxpromptDesiredCount reports len(spec.agentRefs); paired with
-	// nyxpromptReadyCount to compute "fully bound" via
-	// sum(ready)/sum(desired) in PromQL.
-	nyxpromptDesiredCount = prometheus.NewGaugeVec(
+	// nyxpromptDesiredAgents reports len(spec.agentRefs); paired with
+	// nyxpromptReadyAgents to compute "fully bound" via
+	// sum(ready)/sum(desired) in PromQL. Renamed from
+	// nyxprompt_desired_count (#1299) for the same reason as
+	// nyxprompt_ready_agents above.
+	nyxpromptDesiredAgents = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "nyxprompt_desired_count",
+			Name: "nyxprompt_desired_agents",
 			Help: "Number of NyxAgent refs declared in the NyxPrompt spec.",
 		},
 		[]string{"namespace", "name"},
@@ -233,8 +238,8 @@ func init() {
 		nyxagentDashboardEnabled,
 		nyxagentTeardownStepErrorsTotal,
 		nyxpromptBindingOutcomesTotal,
-		nyxpromptReadyCount,
-		nyxpromptDesiredCount,
+		nyxpromptReadyAgents,
+		nyxpromptDesiredAgents,
 		nyxpromptStatusPatchConflictsTotal,
 		NyxPromptWebhookIndexFallbackTotal,
 		NyxAgentLeader,

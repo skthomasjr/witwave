@@ -838,6 +838,26 @@ def _sign_body(body_bytes: bytes, secret: str) -> str:
     return f"sha256={mac.hexdigest()}"
 
 
+def _sanitize_header_value(name: str, value: str, sub_name: str) -> str:
+    """Strip C0 control chars from a rendered header value and log if any were removed (#1270).
+
+    Rejects CR/LF outright by stripping them to defuse response-splitting/header-injection from
+    template-substituted values. Tab (0x09) is preserved since it is legal in header folding.
+    """
+    had_crlf = "\r" in value or "\n" in value
+    cleaned = "".join(ch for ch in value if ch == "\t" or ord(ch) >= 0x20)
+    if cleaned != value:
+        if had_crlf:
+            logger.warning(
+                f"Webhook '{sub_name}': header {name!r} contained CR/LF after substitution — stripped."
+            )
+        else:
+            logger.warning(
+                f"Webhook '{sub_name}': header {name!r} contained C0 control chars after substitution — stripped."
+            )
+    return cleaned
+
+
 async def _run_extraction(
     prompt: str,
     backends: dict,
@@ -1069,7 +1089,7 @@ async def deliver(
     # Build headers — resolve {{env.VAR}} and context variables
     headers = {"Content-Type": sub.content_type}
     for k, v in sub.headers.items():
-        headers[k] = _substitute(v, context)
+        headers[k] = _sanitize_header_value(k, _substitute(v, context), sub.name)
     if sub.signing_secret:
         headers["X-Hub-Signature-256"] = _sign_body(body_bytes, sub.signing_secret)
     # Propagate W3C trace context to webhook receivers (#468). Each outbound
@@ -1301,7 +1321,7 @@ async def _deliver_hook_decision(
 
     headers = {"Content-Type": sub.content_type}
     for k, v in sub.headers.items():
-        headers[k] = _substitute(v, context)
+        headers[k] = _sanitize_header_value(k, _substitute(v, context), sub.name)
     if sub.signing_secret:
         headers["X-Hub-Signature-256"] = _sign_body(body_bytes, sub.signing_secret)
     # Forward the trace-context header that arrived with the event so the

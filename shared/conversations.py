@@ -102,9 +102,10 @@ def _read_jsonl(path: str, since_dt: datetime | None, limit_n: int | None) -> li
         # Same file identity + unchanged → serve directly.
         if cached_key == stat_key:
             return _filter_and_limit(cached_entries, since_dt, limit_n)
-        # File shrank or inode changed → rotated; drop cache and re-read.
-        if st.st_ino != cached_key[0] or st.st_size < cached_key[1]:
-            cached = None
+        # #1296: any identity change invalidates — covers truncate+rewrite
+        # to the same size (mtime changed but size stable). Previous code
+        # only noticed inode change or size shrink.
+        cached = None
 
     entries: list = list(cached[2]) if cached else []
     offset = cached[1] if cached else 0
@@ -161,52 +162,86 @@ def _read_tool_audit_jsonl(
     caller. Entries whose ``ts`` can't be parsed are retained when no ``since``
     filter is active and skipped when one is, matching the existing
     ``_read_jsonl`` policy. Runs in a worker thread via ``asyncio.to_thread``.
+
+    #1295: use the same `_TAIL_CACHE` tail-read that `_read_jsonl` uses so a
+    polling dashboard pays O(new-rows) per tick, not O(total-rows). The cache
+    stores unfiltered parsed entries; per-request filters run against the
+    cached list.
     """
-    entries: deque = deque(maxlen=limit_n)
+    # Load parsed entries via the shared tail-cache machinery.
     try:
-        with open(path) as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    entry = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if since_dt:
-                    ts_raw = entry.get("ts")
-                    ts_ok = False
-                    if isinstance(ts_raw, (int, float)):
-                        try:
-                            from datetime import timezone as _tz
-                            ts = datetime.fromtimestamp(float(ts_raw), tz=_tz.utc)
-                            ts_ok = ts >= since_dt
-                        except (OverflowError, OSError, ValueError):
-                            ts_ok = False
-                    elif isinstance(ts_raw, str):
-                        try:
-                            ts = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
-                            ts_ok = ts >= since_dt
-                        except ValueError:
-                            ts_ok = False
-                    if not ts_ok:
-                        continue
-                if decision:
-                    row_decision = str(entry.get("decision") or "").lower()
-                    if row_decision != decision.lower():
-                        continue
-                if tool:
-                    row_tool = str(entry.get("tool_name") or entry.get("tool") or "")
-                    if row_tool != tool:
-                        continue
-                if session:
-                    row_session = str(entry.get("session_id") or "")
-                    if row_session != session:
-                        continue
-                entries.append(entry)
+        st = os.stat(path)
     except FileNotFoundError:
-        pass
-    return list(entries)
+        return []
+    stat_key = (st.st_ino, st.st_size, st.st_mtime)
+    cached = _TAIL_CACHE.get(path)
+    if cached is not None:
+        cached_key, cached_offset, cached_entries = cached
+        if cached_key == stat_key:
+            parsed_entries = cached_entries
+        else:
+            cached = None
+            parsed_entries = None
+    else:
+        parsed_entries = None
+
+    if parsed_entries is None:
+        parsed_entries = list(cached[2]) if cached else []
+        offset = cached[1] if cached else 0
+        try:
+            with open(path) as f:
+                if offset > 0:
+                    f.seek(offset)
+                for line in f:
+                    stripped = line.strip()
+                    if not stripped:
+                        continue
+                    try:
+                        parsed_entries.append(json.loads(stripped))
+                    except json.JSONDecodeError:
+                        continue
+                new_offset = f.tell()
+        except FileNotFoundError:
+            return []
+        if len(parsed_entries) > _TAIL_CACHE_ENTRY_CAP:
+            parsed_entries = parsed_entries[-_TAIL_CACHE_ENTRY_CAP:]
+        _TAIL_CACHE[path] = (stat_key, new_offset, parsed_entries)
+
+    # Apply per-request filters against the (cached) parsed list.
+    out: deque = deque(maxlen=limit_n)
+    for entry in parsed_entries:
+        if since_dt:
+            ts_raw = entry.get("ts")
+            ts_ok = False
+            if isinstance(ts_raw, (int, float)):
+                try:
+                    from datetime import timezone as _tz
+                    ts = datetime.fromtimestamp(float(ts_raw), tz=_tz.utc)
+                    ts_ok = ts >= since_dt
+                except (OverflowError, OSError, ValueError):
+                    ts_ok = False
+            elif isinstance(ts_raw, str):
+                try:
+                    ts = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+                    ts_ok = ts >= since_dt
+                except ValueError:
+                    ts_ok = False
+            if not ts_ok:
+                continue
+        if decision:
+            row_decision = str(entry.get("decision") or "").lower()
+            if row_decision != decision.lower():
+                continue
+        if tool:
+            row_tool = str(entry.get("tool_name") or entry.get("tool") or "")
+            if row_tool != tool:
+                continue
+        if session:
+            row_session = str(entry.get("session_id") or "")
+            if row_session != session:
+                continue
+        out.append(entry)
+    return list(out)
 
 
 def make_conversations_handler(

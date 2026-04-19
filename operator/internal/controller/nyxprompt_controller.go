@@ -100,8 +100,8 @@ func (r *NyxPromptReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			// ConfigMap GC is handled by OwnerReferences. Drain
 			// per-prompt timeseries (#1070) so Prometheus doesn't
 			// carry stale (namespace, name) labels for a deleted CR.
-			nyxpromptReadyCount.DeleteLabelValues(req.Namespace, req.Name)
-			nyxpromptDesiredCount.DeleteLabelValues(req.Namespace, req.Name)
+			nyxpromptReadyAgents.DeleteLabelValues(req.Namespace, req.Name)
+			nyxpromptDesiredAgents.DeleteLabelValues(req.Namespace, req.Name)
 			nyxpromptStatusPatchConflictsTotal.DeleteLabelValues(req.Namespace, req.Name)
 			return ctrl.Result{}, nil
 		}
@@ -252,8 +252,8 @@ func (r *NyxPromptReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// the next reconcile (triggered by the resource version watch) will
 	// re-try the whole update.
 	if statusErr == nil {
-		nyxpromptReadyCount.WithLabelValues(prompt.Namespace, prompt.Name).Set(float64(readyCount))
-		nyxpromptDesiredCount.WithLabelValues(prompt.Namespace, prompt.Name).Set(float64(desiredCount))
+		nyxpromptReadyAgents.WithLabelValues(prompt.Namespace, prompt.Name).Set(float64(readyCount))
+		nyxpromptDesiredAgents.WithLabelValues(prompt.Namespace, prompt.Name).Set(float64(desiredCount))
 		// #1228: flush outcomes exactly once per binding AFTER status
 		// patch success. The per-outcome counter carries no agent label
 		// (#1070) to avoid unbounded cardinality from malformed specs.

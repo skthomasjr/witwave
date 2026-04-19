@@ -99,12 +99,29 @@ def init_otel_if_enabled(
         return False
 
     _service = service_name or os.environ.get("OTEL_SERVICE_NAME") or "nyx"
+    # #1291: Populate OTel semantic-convention Resource attributes
+    # (service.name, service.namespace, service.instance.id) alongside
+    # the legacy flat attributes (agent, agent_id, backend). Downstream
+    # collectors that key off the OTel standard attrs (Tempo, Jaeger's
+    # OTLP ingress, many SaaS offerings) now get a clean service tree
+    # without forcing operators to relabel. We keep the legacy attrs so
+    # pre-existing dashboards keep resolving — dropping them would be a
+    # breaking change.
     attrs: dict[str, str] = {
         "service.name": _service,
+        "service.namespace": os.environ.get("AGENT_OWNER") or os.environ.get("AGENT_NAME") or "",
+        "service.instance.id": os.environ.get("AGENT_ID", ""),
         "agent": os.environ.get("AGENT_OWNER") or os.environ.get("AGENT_NAME") or "",
         "agent_id": os.environ.get("AGENT_ID", ""),
         "backend": os.environ.get("BACKEND_ID", ""),
     }
+    # When running inside a backend container, prefer BACKEND_NAME /
+    # BACKEND_ID for service.name so emitted spans self-identify as
+    # (e.g.) "iris-claude" rather than the generic "nyx" fallback.
+    _backend_name = os.environ.get("BACKEND_NAME") or os.environ.get("BACKEND_ID") or ""
+    if _backend_name and not service_name and not os.environ.get("OTEL_SERVICE_NAME"):
+        attrs["service.name"] = _backend_name
+        _service = _backend_name
     if resource_attributes:
         attrs.update({k: str(v) for k, v in resource_attributes.items()})
     attrs = {k: v for k, v in attrs.items() if v}
@@ -424,14 +441,20 @@ class _InMemorySpanProcessor:
         return True
 
 
-def _format_span_id(val: Any) -> str:
-    """Render a span/trace id as a zero-padded hex string."""
+def _format_span_id(val: Any, width: int) -> str:
+    """Render a span/trace id as a zero-padded hex string.
+
+    *width* must be explicit — 32 for trace_id (128-bit), 16 for span_id
+    (64-bit). #1285: an earlier magnitude-based heuristic treated any
+    trace_id whose integer value happened to fit in 64 bits as a
+    span_id, producing malformed 16-char trace IDs whenever the leading
+    64 bits of a trace_id were zero. Forcing callers to pass width
+    removes that ambiguity.
+    """
     try:
         n = int(val)
     except Exception:
         return ""
-    # Trace ids are 128-bit → 32 hex; span ids are 64-bit → 16 hex.
-    width = 32 if n > 0xFFFFFFFFFFFFFFFF else 16
     return format(n, f"0{width}x")
 
 
@@ -471,7 +494,7 @@ def get_in_memory_traces() -> list[dict]:
     for span in snapshot:
         try:
             ctx = span.get_span_context()
-            tid = _format_span_id(ctx.trace_id)
+            tid = _format_span_id(ctx.trace_id, 32)
         except Exception:
             continue
         by_trace.setdefault(tid, []).append(span)
@@ -510,8 +533,8 @@ def _span_to_jaeger_json(span: Any) -> dict:
     """Map an OTel ReadableSpan to Jaeger's JSON wire shape."""
     try:
         ctx = span.get_span_context()
-        span_id = _format_span_id(ctx.span_id)
-        trace_id = _format_span_id(ctx.trace_id)
+        span_id = _format_span_id(ctx.span_id, 16)
+        trace_id = _format_span_id(ctx.trace_id, 32)
     except Exception:
         return {}
     name = getattr(span, "name", "") or ""
@@ -550,8 +573,8 @@ def _span_to_jaeger_json(span: Any) -> dict:
             references.append(
                 {
                     "refType": "CHILD_OF",
-                    "traceID": _format_span_id(parent.trace_id),
-                    "spanID": _format_span_id(parent.span_id),
+                    "traceID": _format_span_id(parent.trace_id, 32),
+                    "spanID": _format_span_id(parent.span_id, 16),
                 }
             )
     except Exception:

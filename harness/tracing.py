@@ -101,8 +101,17 @@ def parse_traceparent(header_value: str | None) -> TraceContext | None:
     """
     if not header_value:
         return None
-    m = _TRACEPARENT_RE.match(header_value.strip())
+    # #1290: Per RFC 7230, a header field may be received as multiple comma-
+    # concatenated values. W3C trace-context only carries one traceparent,
+    # so we take the first value and strip whitespace before regex match.
+    value = header_value.split(",")[0].strip()
+    m = _TRACEPARENT_RE.match(value)
     if not m:
+        return None
+    # #1284: Per the W3C spec, version "ff" is reserved and denotes an
+    # invalid traceparent — treat it as absent so the caller mints a
+    # fresh context rather than propagating a dead version.
+    if m.group("version") == "ff":
         return None
     trace_id = m.group("trace_id")
     parent_id = m.group("parent_id")

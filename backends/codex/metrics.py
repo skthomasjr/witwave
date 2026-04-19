@@ -306,7 +306,10 @@ if _enabled:
     )
     backend_lru_cache_utilization_percent = prometheus_client.Gauge(
         "backend_lru_cache_utilization_percent",
-        "LRU session cache utilization as a percentage of MAX_SESSIONS.",
+        "LRU session cache utilization as a percentage of MAX_SESSIONS. "
+        "Values range 0..100 (percent), not 0..1 (ratio) — the metric name "
+        "uses the `_percent` suffix per the established convention (#1292). "
+        "Divide by 100 in PromQL if a ratio is required.",
         ["agent", "agent_id", "backend"],
     )
     backend_session_history_save_errors_total = prometheus_client.Counter(
@@ -588,7 +591,10 @@ if _enabled:
     )
     backend_context_usage_percent = prometheus_client.Histogram(
         "backend_context_usage_percent",
-        "Context window utilization percentage per query.",
+        "Context window utilization percentage per query. "
+        "Values range 0..100 (percent), not 0..1 (ratio) — the metric name "
+        "uses the `_percent` suffix per the established convention (#1292); "
+        "the histogram buckets are chosen on that 0..100 scale.",
         ["agent", "agent_id", "backend"],
         buckets=(50, 70, 80, 90, 95, 99, 100),
     )
