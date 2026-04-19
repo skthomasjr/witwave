@@ -1,0 +1,357 @@
+package client
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"math/rand"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+)
+
+// Exit codes aligned with README contract.
+const (
+	ExitOK        = 0
+	ExitLogical   = 1
+	ExitTransport = 2
+)
+
+// Config holds everything the HTTP client needs to talk to a harness
+// (or a direct agent URL).
+type Config struct {
+	BaseURL    string        // e.g. http://localhost:8000
+	Token      string        // CONVERSATIONS_AUTH_TOKEN
+	RunToken   string        // ADHOC_RUN_AUTH_TOKEN (optional)
+	Timeout    time.Duration // non-stream request timeout
+	Verbose    int           // 0 silent, 1 line, 2 dump
+	UserAgent  string
+	HTTPClient *http.Client // defaults to a fresh client with Timeout
+	// Logger receives verbose traces. Defaults to stderr-bound writer
+	// when nil.
+	Logger io.Writer
+}
+
+// Client is a thin HTTP helper with bearer-token auth, retries on 5xx /
+// transport errors, and streaming helpers for SSE endpoints.
+type Client struct {
+	cfg Config
+	hc  *http.Client
+}
+
+// New constructs a Client from cfg. Mutations to cfg after New have no
+// effect on the returned instance.
+func New(cfg Config) *Client {
+	if cfg.UserAgent == "" {
+		cfg.UserAgent = "ww/0.1"
+	}
+	if cfg.Timeout == 0 {
+		cfg.Timeout = 30 * time.Second
+	}
+	hc := cfg.HTTPClient
+	if hc == nil {
+		hc = &http.Client{Timeout: cfg.Timeout}
+	}
+	return &Client{cfg: cfg, hc: hc}
+}
+
+// BaseURL returns the configured base URL.
+func (c *Client) BaseURL() string { return c.cfg.BaseURL }
+
+// Token returns the conversations/session bearer token.
+func (c *Client) Token() string { return c.cfg.Token }
+
+// RunToken returns the ad-hoc run bearer token (may be empty).
+func (c *Client) RunToken() string { return c.cfg.RunToken }
+
+// Verbose returns the verbosity level (0/1/2).
+func (c *Client) Verbose() int { return c.cfg.Verbose }
+
+// Logger returns the configured logger (nil allowed).
+func (c *Client) Logger() io.Writer { return c.cfg.Logger }
+
+// HTTP returns the underlying http.Client so stream helpers can reuse
+// the same connection pool.
+func (c *Client) HTTP() *http.Client { return c.hc }
+
+// Resolve joins a path onto the configured base URL. If path already
+// has a scheme, path is returned as-is (enables targeting a direct
+// agent URL pulled from /agents).
+func (c *Client) Resolve(path string) (string, error) {
+	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		return path, nil
+	}
+	if c.cfg.BaseURL == "" {
+		return "", errors.New("base URL is empty; set WW_BASE_URL or --base-url")
+	}
+	base, err := url.Parse(c.cfg.BaseURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid base URL %q: %w", c.cfg.BaseURL, err)
+	}
+	u, err := base.Parse(path)
+	if err != nil {
+		return "", fmt.Errorf("invalid path %q: %w", path, err)
+	}
+	return u.String(), nil
+}
+
+// DoJSON issues a request with JSON body (nil → no body) and decodes
+// the response into out (if non-nil). Retries on 5xx / transport errors
+// up to 3 attempts. 4xx is terminal.
+func (c *Client) DoJSON(ctx context.Context, method, path string, body, out any, useRunToken bool) error {
+	u, err := c.Resolve(path)
+	if err != nil {
+		return err
+	}
+	var buf []byte
+	if body != nil {
+		buf, err = json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("encode body: %w", err)
+		}
+	}
+
+	var lastErr error
+	backoff := 200 * time.Millisecond
+	const maxAttempts = 3
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, method, u, bytesReader(buf))
+		if err != nil {
+			return err
+		}
+		c.applyHeaders(req, useRunToken, buf != nil)
+		if c.cfg.Verbose >= 1 {
+			c.logLine(fmt.Sprintf("--> %s %s", method, u))
+		}
+		if c.cfg.Verbose >= 2 && len(buf) > 0 {
+			c.logBody(">>", buf)
+		}
+
+		resp, err := c.hc.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("transport: %w", err)
+			if attempt < maxAttempts && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+				c.sleep(ctx, backoff)
+				backoff *= 2
+				continue
+			}
+			return lastErr
+		}
+		respBody, readErr := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if c.cfg.Verbose >= 1 {
+			c.logLine(fmt.Sprintf("<-- %d %s", resp.StatusCode, resp.Status))
+		}
+		if c.cfg.Verbose >= 2 && len(respBody) > 0 {
+			c.logBody("<<", respBody)
+		}
+		if readErr != nil {
+			lastErr = fmt.Errorf("read body: %w", readErr)
+			if attempt < maxAttempts {
+				c.sleep(ctx, backoff)
+				backoff *= 2
+				continue
+			}
+			return lastErr
+		}
+
+		if resp.StatusCode >= 500 {
+			lastErr = &HTTPError{StatusCode: resp.StatusCode, Status: resp.Status, Body: string(respBody), Method: method, URL: u}
+			if attempt < maxAttempts {
+				c.sleep(ctx, backoff)
+				backoff *= 2
+				continue
+			}
+			return lastErr
+		}
+		if resp.StatusCode >= 400 {
+			return &HTTPError{StatusCode: resp.StatusCode, Status: resp.Status, Body: string(respBody), Method: method, URL: u}
+		}
+
+		if out != nil && len(respBody) > 0 {
+			if err := json.Unmarshal(respBody, out); err != nil {
+				return fmt.Errorf("decode response: %w (body: %s)", err, truncate(string(respBody), 512))
+			}
+		}
+		return nil
+	}
+	return lastErr
+}
+
+// GetBytes does a GET and returns the raw response body on 2xx.
+func (c *Client) GetBytes(ctx context.Context, path string) ([]byte, error) {
+	u, err := c.Resolve(path)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	c.applyHeaders(req, false, false)
+	if c.cfg.Verbose >= 1 {
+		c.logLine(fmt.Sprintf("--> GET %s", u))
+	}
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("transport: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
+	}
+	if c.cfg.Verbose >= 1 {
+		c.logLine(fmt.Sprintf("<-- %d %s", resp.StatusCode, resp.Status))
+	}
+	if resp.StatusCode >= 400 {
+		return body, &HTTPError{StatusCode: resp.StatusCode, Status: resp.Status, Body: string(body), Method: "GET", URL: u}
+	}
+	return body, nil
+}
+
+// OpenStream issues a GET and hands back the response body as an
+// io.ReadCloser. Used by SSE / streaming POST paths. Stream callers are
+// responsible for closing the body.
+//
+// The request bypasses the http.Client Timeout by cloning it with
+// Timeout=0 so long-lived streams don't get killed at 30s.
+func (c *Client) OpenStream(ctx context.Context, method, path string, body any, extraHeaders http.Header, useRunToken bool) (*http.Response, error) {
+	u, err := c.Resolve(path)
+	if err != nil {
+		return nil, err
+	}
+	var buf []byte
+	if body != nil {
+		buf, err = json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("encode body: %w", err)
+		}
+	}
+	req, err := http.NewRequestWithContext(ctx, method, u, bytesReader(buf))
+	if err != nil {
+		return nil, err
+	}
+	c.applyHeaders(req, useRunToken, buf != nil)
+	req.Header.Set("Accept", "text/event-stream")
+	for k, vs := range extraHeaders {
+		for _, v := range vs {
+			req.Header.Add(k, v)
+		}
+	}
+	// Clone the client with no overall timeout for streams; context
+	// controls cancellation.
+	streamClient := *c.hc
+	streamClient.Timeout = 0
+	if c.cfg.Verbose >= 1 {
+		c.logLine(fmt.Sprintf("--> %s %s [stream]", method, u))
+	}
+	resp, err := streamClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("transport: %w", err)
+	}
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		return nil, &HTTPError{StatusCode: resp.StatusCode, Status: resp.Status, Body: string(body), Method: method, URL: u}
+	}
+	return resp, nil
+}
+
+func (c *Client) applyHeaders(req *http.Request, useRunToken, hasBody bool) {
+	tok := c.cfg.Token
+	if useRunToken && c.cfg.RunToken != "" {
+		tok = c.cfg.RunToken
+	}
+	if tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
+	req.Header.Set("User-Agent", c.cfg.UserAgent)
+	req.Header.Set("Accept", "application/json")
+	if hasBody {
+		req.Header.Set("Content-Type", "application/json")
+	}
+}
+
+func (c *Client) sleep(ctx context.Context, d time.Duration) {
+	// Add +/- 25% jitter so stampedes don't synchronise.
+	jitter := time.Duration(rand.Int63n(int64(d / 2)))
+	wait := d/2 + jitter
+	t := time.NewTimer(wait)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+	case <-t.C:
+	}
+}
+
+func (c *Client) logLine(s string) {
+	if c.cfg.Logger != nil {
+		fmt.Fprintln(c.cfg.Logger, s)
+	}
+}
+
+func (c *Client) logBody(prefix string, body []byte) {
+	if c.cfg.Logger == nil {
+		return
+	}
+	const cap = 4096
+	b := body
+	truncated := false
+	if len(b) > cap {
+		b = b[:cap]
+		truncated = true
+	}
+	fmt.Fprintf(c.cfg.Logger, "%s %s", prefix, string(b))
+	if truncated {
+		fmt.Fprintf(c.cfg.Logger, "… [truncated %d bytes]", len(body)-cap)
+	}
+	fmt.Fprintln(c.cfg.Logger)
+}
+
+// HTTPError wraps a non-2xx HTTP response.
+type HTTPError struct {
+	Method     string
+	URL        string
+	StatusCode int
+	Status     string
+	Body       string
+}
+
+func (e *HTTPError) Error() string {
+	body := truncate(e.Body, 256)
+	return fmt.Sprintf("%s %s: %s%s", e.Method, e.URL, e.Status, func() string {
+		if body == "" {
+			return ""
+		}
+		return " (" + body + ")"
+	}())
+}
+
+// IsHTTPError reports whether err (or any wrapped error) is an HTTPError
+// and returns it if so.
+func IsHTTPError(err error) (*HTTPError, bool) {
+	var he *HTTPError
+	if errors.As(err, &he) {
+		return he, true
+	}
+	return nil, false
+}
+
+func bytesReader(b []byte) io.Reader {
+	if len(b) == 0 {
+		return nil
+	}
+	return bytes.NewReader(b)
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
+}

@@ -1,3 +1,8 @@
+# ww CLI build artifacts
+/ww
+/bin/
+dist/
+
 # macOS
 .DS_Store
 .AppleDouble

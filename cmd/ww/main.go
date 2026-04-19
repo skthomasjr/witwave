@@ -1,0 +1,22 @@
+// Command ww is the command-line companion for the Nyx / witwave agent
+// platform. It talks to a harness over the shared event + REST surface:
+// tail the live event stream, send A2A prompts, inspect scheduler
+// configuration, and validate scheduler files — all without a browser.
+//
+// Version info is injected at build time via -ldflags:
+//
+//	go build -ldflags "-X 'github.com/skthomasjr/autonomous-agent/cmd/ww/cmd.Version=0.1.0' \
+//	                   -X 'github.com/skthomasjr/autonomous-agent/cmd/ww/cmd.Commit=<sha>' \
+//	                   -X 'github.com/skthomasjr/autonomous-agent/cmd/ww/cmd.BuildDate=<iso>'" \
+//	  ./cmd/ww
+package main
+
+import (
+	"os"
+
+	"github.com/skthomasjr/autonomous-agent/cmd/ww/cmd"
+)
+
+func main() {
+	os.Exit(cmd.Execute())
+}

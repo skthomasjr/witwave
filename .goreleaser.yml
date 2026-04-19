@@ -1,0 +1,92 @@
+# goreleaser config for the ww CLI.
+# Run `goreleaser release --clean` from repo root; requires GITHUB_TOKEN
+# and HOMEBREW_TAP_GITHUB_TOKEN env vars at release time.
+#
+# The tap repo (skthomasjr/homebrew-ww) does not exist yet — the
+# Homebrew publish step will fail cleanly until it's created.
+version: 2
+
+project_name: ww
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: ww
+    main: ./cmd/ww
+    binary: ww
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X 'github.com/skthomasjr/autonomous-agent/cmd/ww/cmd.Version={{.Version}}'
+      - -X 'github.com/skthomasjr/autonomous-agent/cmd/ww/cmd.Commit={{.ShortCommit}}'
+      - -X 'github.com/skthomasjr/autonomous-agent/cmd/ww/cmd.BuildDate={{.Date}}'
+
+archives:
+  - id: ww
+    ids:
+      - ww
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - cmd/ww/README.md
+      - LICENSE*
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - Merge pull request
+      - Merge branch
+
+release:
+  github:
+    owner: skthomasjr
+    name: autonomous-agent
+  draft: false
+  prerelease: auto
+  mode: replace
+
+brews:
+  - name: ww
+    ids:
+      - ww
+    # Tap repo — will be created in a follow-up; release will fail at
+    # this step until the repo exists + token has write access.
+    repository:
+      owner: skthomasjr
+      name: homebrew-ww
+      branch: main
+    directory: Formula
+    homepage: https://github.com/skthomasjr/autonomous-agent
+    description: witwave CLI for the Nyx multi-container agent platform
+    license: Apache-2.0
+    test: |
+      system "#{bin}/ww", "version"
+    install: |
+      bin.install "ww"
