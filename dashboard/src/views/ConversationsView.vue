@@ -94,6 +94,50 @@ const filtered = computed(() => {
   });
 });
 
+// Stable per-row v-for key (#1064). The previous key combined
+// (agent|session_id|ts|role), which collided on legitimate duplicate
+// turns — two retries sharing a ms timestamp, or coarse-clock hosts —
+// making Vue reuse the first DOM node and silently drop the second
+// row's content. Walk the filtered list once per recompute and append
+// an incrementing suffix whenever the base key repeats. WeakMap-cached
+// off the row identity so stable-identity rows keep the same key
+// across recomputes (no flicker from filter changes).
+const _rowKeyCache = new WeakMap<Row, string>();
+// Track the next free suffix per base across the component's lifetime
+// (in addition to the per-row WeakMap cache) so a late-arriving row
+// that shares a base with an already-cached row gets a fresh suffix
+// instead of colliding on the unsuffixed form. Strings are cheap and
+// we only add one entry per unique base.
+const _usedKeys = new Set<string>();
+const _nextSuffix = new Map<string, number>();
+const rowKeys = computed(() => {
+  const out = new Map<Row, string>();
+  for (const row of filtered.value) {
+    const cached = _rowKeyCache.get(row);
+    if (cached !== undefined) {
+      out.set(row, cached);
+      continue;
+    }
+    const base = `${row._agent}|${row.session_id ?? ""}|${row.ts}|${row.role}`;
+    let key: string;
+    if (!_usedKeys.has(base)) {
+      key = base;
+    } else {
+      let n = _nextSuffix.get(base) ?? 1;
+      while (_usedKeys.has(`${base}#${n}`)) n += 1;
+      key = `${base}#${n}`;
+      _nextSuffix.set(base, n + 1);
+    }
+    _usedKeys.add(key);
+    _rowKeyCache.set(row, key);
+    out.set(row, key);
+  }
+  return out;
+});
+function keyForRow(row: Row): string {
+  return rowKeys.value.get(row) ?? "";
+}
+
 // Format the date part via toLocaleString, then splice ms into the time
 // between seconds and the AM/PM marker. toLocaleString's plain concatenation
 // put ms *after* AM/PM (e.g. "1:50:00 AM.070") which read wrong; this puts
@@ -161,7 +205,7 @@ function formatTs(ts: string): string {
       <div v-else-if="filtered.length === 0" class="state">No messages.</div>
       <div
         v-for="row in filtered"
-        :key="`${row._agent}|${row.session_id ?? ''}|${row.ts}|${row.role}`"
+        :key="keyForRow(row)"
         class="cm"
         :class="row.role === 'user' ? 'user' : row.role === 'agent' ? 'agent' : 'other'"
       >
