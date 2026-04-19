@@ -106,14 +106,14 @@ spec:
         {{- if .enabled }}
         - alert: NyxWebhookTimeout
           expr: |
-            sum by (agent) (rate(backend_webhook_timeout_total[5m])) > {{ .rateThreshold }}
+            sum by (subscription) (rate(harness_webhooks_delivery_total{result="timeout_total"}[5m])) > {{ .rateThreshold }}
           for: {{ .forMinutes }}m
           labels:
             severity: {{ .severity | quote }}
             part_of: nyx
           annotations:
-            summary: "nyx webhook deliveries timing out on {{`{{ $labels.agent }}`}}"
-            description: "backend_webhook_timeout_total 5m rate > {{ .rateThreshold }}/s. Webhook sink is slow or unreachable; downstream automation is missing events."
+            summary: "nyx webhook deliveries timing out on {{`{{ $labels.subscription }}`}}"
+            description: "harness_webhooks_delivery_total{result=\"timeout_total\"} 5m rate > {{ .rateThreshold }}/s. Webhook sink is slow or unreachable; downstream automation is missing events. (#1423: metric was `backend_webhook_timeout_total` in older docs but only ever existed on the harness side.)"
         {{- end }}
         {{- end }}
     - name: nyx.storage

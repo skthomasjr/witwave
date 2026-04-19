@@ -41,4 +41,4 @@ CMD ["python", "/home/tool/server.py"]
 # uses its own probes; this helps docker-compose / swarm operators see
 # tool health in `docker ps`.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)" || exit 1
+    CMD python3 -c "import os,urllib.request as u; u.urlopen(f'http://localhost:{os.environ.get(\"MCP_PORT\",\"8000\")}/health', timeout=3)" || exit 1

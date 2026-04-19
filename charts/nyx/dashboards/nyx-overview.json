@@ -306,8 +306,8 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (agent) (rate(backend_webhook_timeout_total[5m]))",
-          "legendFormat": "{{agent}}",
+          "expr": "sum by (subscription) (rate(harness_webhooks_delivery_total{result=\"timeout_total\"}[5m]))",
+          "legendFormat": "{{subscription}}",
           "range": true,
           "refId": "A"
         }
