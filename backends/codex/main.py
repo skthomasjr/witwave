@@ -26,13 +26,14 @@ from conversations import (
 )
 import executor as _executor_module
 from executor import AgentExecutor
-from session_binding import derive_session_id
+from session_binding import derive_session_id, set_fallback_counter as _set_session_binding_fallback_counter
 from validation import parse_max_tokens
 from metrics import (
     backend_event_loop_lag_seconds,
     backend_health_checks_total,
     backend_info,
     backend_sdk_info,
+    backend_session_binding_fallback_total,
     backend_mcp_request_duration_seconds,
     backend_mcp_requests_total,
     backend_startup_duration_seconds,
@@ -277,6 +278,12 @@ async def main():
             backend_up.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).set(1.0)
         if backend_info is not None:
             backend_info.info({"version": AGENT_VERSION, "agent": AGENT_OWNER, "agent_id": AGENT_ID, "backend": _BACKEND_ID})
+        # Register the shared session-binding fallback counter (#1103).
+        if backend_session_binding_fallback_total is not None:
+            _set_session_binding_fallback_counter(
+                backend_session_binding_fallback_total,
+                {"agent": AGENT_OWNER, "agent_id": AGENT_ID, "backend": _BACKEND_ID},
+            )
         # Resolve the underlying SDK version once at startup (#1092) so
         # dashboards can catch openai-agents drift without shelling in.
         if backend_sdk_info is not None:
