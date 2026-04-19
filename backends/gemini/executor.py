@@ -1989,6 +1989,18 @@ class AgentExecutor(A2AAgentExecutor):
         self._mcp_parked_stack_max_age_s: float = max(
             float(TASK_TIMEOUT_SECONDS) * 2.0, 600.0,
         )
+        # Hard grace factor (#995): after _PARKED_STACK_HARD_GRACE_FACTOR
+        # × max_age_s have elapsed, the watchdog force-closes even when
+        # refcount > 0. #885 introduced the refcount>0 skip to protect
+        # in-flight callers, but a genuinely leaked refcount (exception
+        # skipped finally, reference lost in a refactor) now stayed
+        # parked forever with a one-shot WARN and then silent leak.
+        # 4× gives an already-generous in-flight request another ~40
+        # minutes beyond TASK_TIMEOUT_SECONDS × 2 before the subprocess
+        # + pipes are finally reclaimed.
+        self._mcp_parked_stack_hard_grace_factor: float = float(
+            os.environ.get("MCP_PARKED_STACK_HARD_GRACE_FACTOR", "4.0")
+        )
 
     def _post_hook_decision_event(
         self,
@@ -2162,8 +2174,29 @@ class AgentExecutor(A2AAgentExecutor):
                     # Stale-but-in-use entries stay parked; we log a one-shot
                     # WARN so operators notice a caller that never released
                     # rather than silently aborting their request.
-                    if now - parked_at > self._mcp_parked_stack_max_age_s:
+                    age = now - parked_at
+                    hard_grace_s = (
+                        self._mcp_parked_stack_max_age_s
+                        * max(1.0, self._mcp_parked_stack_hard_grace_factor)
+                    )
+                    if age > self._mcp_parked_stack_max_age_s:
                         if _old_ref <= 0:
+                            to_close.append(entry)
+                        elif age > hard_grace_s:
+                            # #995: refcount never dropped to 0 despite
+                            # the generous grace window — treat as a
+                            # leaked reference and force-close to
+                            # reclaim the subprocess + pipes. The
+                            # in-flight caller (if any) is already
+                            # beyond the protection budget; the
+                            # alternative is indefinite leak.
+                            logger.warning(
+                                "MCP watchdog: parked stack age=%.1fs exceeded "
+                                "hard-grace (%.1fs) with refcount=%d > 0 — "
+                                "force-closing to reclaim subprocess and pipes "
+                                "(#995). Original refcount protection: #885.",
+                                age, hard_grace_s, _old_ref,
+                            )
                             to_close.append(entry)
                         else:
                             still_parked.append(entry)
@@ -2175,8 +2208,9 @@ class AgentExecutor(A2AAgentExecutor):
                                 logger.warning(
                                     "MCP watchdog: parked stack stale (age=%.1fs) "
                                     "but refcount=%d > 0 — leaving intact to "
-                                    "avoid aborting an in-flight call (#885).",
-                                    now - parked_at, _old_ref,
+                                    "avoid aborting an in-flight call (#885); "
+                                    "hard-grace force-close at age %.1fs (#995).",
+                                    age, _old_ref, hard_grace_s,
                                 )
                     else:
                         still_parked.append(entry)
