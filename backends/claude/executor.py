@@ -44,6 +44,8 @@ from metrics import (
     backend_hooks_evaluations_total,
     backend_hooks_warnings_total,
     backend_log_write_errors_by_logger_total,
+    backend_mcp_outbound_duration_seconds,
+    backend_mcp_outbound_requests_total,
     backend_tool_audit_bytes_per_entry,
     backend_tool_audit_entries_total,
     backend_tool_audit_rotation_pressure_total,
@@ -1438,10 +1440,24 @@ async def _run_query_inner(
                                 if block.is_error and backend_sdk_tool_errors_total is not None:
                                     backend_sdk_tool_errors_total.labels(**_LABELS, tool=tool_name).inc()
                                 _t_start = _tool_start_times.pop(block.tool_use_id, None)
+                                _tool_dur = (time.monotonic() - _t_start) if _t_start is not None else 0.0
                                 if _t_start is not None and backend_sdk_tool_duration_seconds is not None:
-                                    backend_sdk_tool_duration_seconds.labels(**_LABELS, tool=tool_name).observe(
-                                        time.monotonic() - _t_start
+                                    backend_sdk_tool_duration_seconds.labels(**_LABELS, tool=tool_name).observe(_tool_dur)
+                                # Outbound MCP tool metric family (#1104) —
+                                # no-op for non-mcp__ tools so we don't
+                                # inflate series with SDK-internal tools.
+                                try:
+                                    from mcp_metrics import observe_outbound_mcp_call as _obs_outbound_mcp
+                                    _obs_outbound_mcp(
+                                        backend_mcp_outbound_requests_total,
+                                        backend_mcp_outbound_duration_seconds,
+                                        dict(_LABELS),
+                                        tool_name,
+                                        _tool_dur,
+                                        bool(block.is_error),
                                     )
+                                except Exception:
+                                    pass
                                 if backend_sdk_tool_result_size_bytes is not None:
                                     backend_sdk_tool_result_size_bytes.labels(**_LABELS, tool=tool_name).observe(
                                         _utf8_byte_length(str(block.content))

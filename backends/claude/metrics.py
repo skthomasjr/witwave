@@ -138,6 +138,13 @@ backend_tool_audit_bytes_per_entry: prometheus_client.Histogram | None = None
 backend_tool_audit_rotation_pressure_total: prometheus_client.Counter | None = None
 # shared/session_binding fallback counter — #1103.
 backend_session_binding_fallback_total: prometheus_client.Counter | None = None
+# Outbound MCP tool HTTP metric family (#1104). Distinct from
+# backend_sdk_tool_calls_total (which lumps SDK-internal tools with
+# mcp__* tools) and from the MCP-tool-server-side family in
+# shared/mcp_metrics.py (which observes work on the tool server, not
+# the caller). Labelled by {server, tool, outcome}.
+backend_mcp_outbound_requests_total: prometheus_client.Counter | None = None
+backend_mcp_outbound_duration_seconds: prometheus_client.Histogram | None = None
 backend_hooks_config_reloads_total: prometheus_client.Counter | None = None
 backend_hooks_active_rules: prometheus_client.Gauge | None = None
 backend_hooks_evaluations_total: prometheus_client.Counter | None = None
@@ -674,6 +681,22 @@ if _enabled:
         "Total derive_session_id() calls that fell back to legacy uuid5 "
         "derivation instead of the HMAC-bound per-caller binding. See #1103.",
         ["agent", "agent_id", "backend", "reason"],
+    )
+    # #1104: outbound MCP tool request metric family.
+    backend_mcp_outbound_requests_total = prometheus_client.Counter(
+        "backend_mcp_outbound_requests_total",
+        "Total outbound MCP tool invocations issued by this backend as an "
+        "MCP client (i.e. ToolUseBlocks with names of the form "
+        "mcp__<server>__<tool>). Separate from backend_sdk_tool_calls_total, "
+        "which lumps SDK-internal tools with MCP tools. See #1104.",
+        ["agent", "agent_id", "backend", "server", "tool", "outcome"],
+    )
+    backend_mcp_outbound_duration_seconds = prometheus_client.Histogram(
+        "backend_mcp_outbound_duration_seconds",
+        "Wall-clock duration of an outbound MCP tool call from ToolUseBlock "
+        "to ToolResultBlock. See #1104.",
+        ["agent", "agent_id", "backend", "server", "tool", "outcome"],
+        buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0),
     )
     backend_hooks_config_reloads_total = prometheus_client.Counter(
         "backend_hooks_config_reloads_total",

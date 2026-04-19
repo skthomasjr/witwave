@@ -97,6 +97,8 @@ from metrics import (
     backend_codex_hooks_denials_total,
     backend_hooks_denials_total,
     backend_hooks_shed_total,
+    backend_mcp_outbound_duration_seconds,
+    backend_mcp_outbound_requests_total,
     backend_tool_audit_bytes_per_entry,
     backend_tool_audit_entries_total,
     backend_tool_audit_rotation_pressure_total,
@@ -1309,6 +1311,20 @@ async def run_query(
                         backend_sdk_tool_errors_total.labels(**_LABELS, tool=tool_name).inc()
                     if backend_sdk_tool_result_size_bytes is not None:
                         backend_sdk_tool_result_size_bytes.labels(**_LABELS, tool=tool_name).observe(full_bytes)
+                    # Outbound MCP tool metric family (#1104) — no-op for
+                    # non-mcp__ tool names.
+                    try:
+                        from mcp_metrics import observe_outbound_mcp_call as _obs_outbound_mcp
+                        _obs_outbound_mcp(
+                            backend_mcp_outbound_requests_total,
+                            backend_mcp_outbound_duration_seconds,
+                            dict(_LABELS),
+                            tool_name,
+                            _tool_elapsed,
+                            bool(is_error),
+                        )
+                    except Exception:
+                        pass
     except BudgetExceededError as exc:
         _stderr_count += 1
         if backend_sdk_session_duration_seconds is not None:

@@ -82,6 +82,8 @@ from metrics import (
     backend_log_bytes_total,
     backend_log_entries_total,
     backend_log_write_errors_total,
+    backend_mcp_outbound_duration_seconds,
+    backend_mcp_outbound_requests_total,
     backend_tool_audit_bytes_per_entry,
     backend_tool_audit_entries_total,
     backend_tool_audit_rotation_pressure_total,
@@ -665,14 +667,29 @@ async def _emit_afc_history(
                 # AFC history. Fall back to wall-clock delta between the
                 # matched function_call row and this function_response row
                 # — an approximation that still catches runaway tool calls.
-                if matched is not None and backend_sdk_tool_duration_seconds is not None:
+                _dur_seconds: float = 0.0
+                if matched is not None:
                     try:
                         _start = datetime.fromisoformat(matched["ts"])
                         _end = datetime.fromisoformat(ts)
-                        _dur = max(0.0, (_end - _start).total_seconds())
-                        backend_sdk_tool_duration_seconds.labels(**_LABELS, tool=name).observe(_dur)
+                        _dur_seconds = max(0.0, (_end - _start).total_seconds())
+                        if backend_sdk_tool_duration_seconds is not None:
+                            backend_sdk_tool_duration_seconds.labels(**_LABELS, tool=name).observe(_dur_seconds)
                     except Exception:
                         pass
+                # Outbound MCP tool metric family (#1104) — no-op for non-mcp__ names.
+                try:
+                    from mcp_metrics import observe_outbound_mcp_call as _obs_outbound_mcp
+                    _obs_outbound_mcp(
+                        backend_mcp_outbound_requests_total,
+                        backend_mcp_outbound_duration_seconds,
+                        dict(_LABELS),
+                        name,
+                        _dur_seconds,
+                        bool(is_error),
+                    )
+                except Exception:
+                    pass
 
 
 async def _append_tool_audit(entry: dict) -> None:

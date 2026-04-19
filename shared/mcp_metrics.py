@@ -99,6 +99,57 @@ else:  # pragma: no cover - import-time fallback
     MCP_TOOL_BUDGET_EXHAUSTED_TOTAL = None  # type: ignore[assignment]
 
 
+def parse_mcp_tool_name(name: str) -> tuple[str, str]:
+    """Split an ``mcp__<server>__<tool>`` name into (server, tool) (#1104).
+
+    Returns (``""``, ``""``) for any non-MCP tool name so the caller can
+    decide whether the metric emission applies. The parser is
+    intentionally permissive — SDKs occasionally surface tools with two
+    underscores inside the tool component (e.g. ``mcp__helm__install_or_upgrade``)
+    — so the split uses ``maxsplit=2`` and treats the remainder as the
+    tool name.
+    """
+    if not isinstance(name, str) or not name.startswith("mcp__"):
+        return ("", "")
+    parts = name.split("__", 2)
+    server = parts[1] if len(parts) > 1 else ""
+    tool = parts[2] if len(parts) > 2 else ""
+    return (server, tool)
+
+
+def observe_outbound_mcp_call(
+    requests_counter,
+    duration_histogram,
+    labels: dict[str, str],
+    mcp_tool_name: str,
+    duration_seconds: float,
+    is_error: bool,
+) -> None:
+    """Emit backend_mcp_outbound_{requests_total,duration_seconds} (#1104).
+
+    Safe to call with either metric None (counters degrade to no-op).
+    ``labels`` supplies the ``{agent, agent_id, backend}`` dict; the
+    ``server`` / ``tool`` / ``outcome`` labels are derived here so every
+    backend instruments the same way.
+    """
+    server, tool = parse_mcp_tool_name(mcp_tool_name)
+    if not server:
+        return
+    outcome = "error" if is_error else "ok"
+    try:
+        if requests_counter is not None:
+            requests_counter.labels(**labels, server=server, tool=tool, outcome=outcome).inc()
+    except Exception:
+        pass
+    try:
+        if duration_histogram is not None:
+            duration_histogram.labels(
+                **labels, server=server, tool=tool, outcome=outcome
+            ).observe(max(0.0, float(duration_seconds)))
+    except Exception:
+        pass
+
+
 # Rolling-window call budget (#1124).
 # Key = (server, tool). Value = list of monotonic timestamps for calls
 # that landed within the current window. Trimmed on every check; grows
