@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/skthomasjr/autonomous-agent/docs/events/events.schema.json",
+  "title": "Nyx event stream envelope and per-type payloads",
+  "description": "Phase-1 event types for GET /events/stream on the harness. See ./README.md for wire format and rationale.",
+  "type": "object",
+  "required": ["type", "version", "id", "ts", "agent_id", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "job.fired",
+        "task.fired",
+        "heartbeat.fired",
+        "continuation.fired",
+        "trigger.fired",
+        "webhook.delivered",
+        "webhook.failed",
+        "hook.decision",
+        "a2a.request.received",
+        "a2a.request.completed",
+        "agent.lifecycle",
+        "stream.gap",
+        "stream.overrun"
+      ]
+    },
+    "version": { "type": "integer", "minimum": 1 },
+    "id": { "type": "string", "minLength": 1 },
+    "ts": { "type": "string", "format": "date-time" },
+    "agent_id": { "type": ["string", "null"] },
+    "payload": { "type": "object" }
+  },
+  "allOf": [
+    { "if": { "properties": { "type": { "const": "job.fired" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/JobFired" } } } },
+    { "if": { "properties": { "type": { "const": "task.fired" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/TaskFired" } } } },
+    { "if": { "properties": { "type": { "const": "heartbeat.fired" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/HeartbeatFired" } } } },
+    { "if": { "properties": { "type": { "const": "continuation.fired" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/ContinuationFired" } } } },
+    { "if": { "properties": { "type": { "const": "trigger.fired" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/TriggerFired" } } } },
+    { "if": { "properties": { "type": { "const": "webhook.delivered" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/WebhookDelivered" } } } },
+    { "if": { "properties": { "type": { "const": "webhook.failed" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/WebhookFailed" } } } },
+    { "if": { "properties": { "type": { "const": "hook.decision" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/HookDecision" } } } },
+    { "if": { "properties": { "type": { "const": "a2a.request.received" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/A2ARequestReceived" } } } },
+    { "if": { "properties": { "type": { "const": "a2a.request.completed" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/A2ARequestCompleted" } } } },
+    { "if": { "properties": { "type": { "const": "agent.lifecycle" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/AgentLifecycle" } } } },
+    { "if": { "properties": { "type": { "const": "stream.gap" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/StreamGap" } } } },
+    { "if": { "properties": { "type": { "const": "stream.overrun" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/StreamOverrun" } } } }
+  ],
+  "$defs": {
+    "Outcome": { "type": "string", "enum": ["success", "error", "timeout", "skipped"] },
+    "JobFired": {
+      "type": "object",
+      "required": ["name", "schedule", "duration_ms", "outcome"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "schedule": { "type": "string" },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "outcome": { "$ref": "#/$defs/Outcome" },
+        "error": { "type": "string" }
+      }
+    },
+    "TaskFired": {
+      "type": "object",
+      "required": ["name", "duration_ms", "outcome"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "window": { "type": "string" },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "outcome": { "$ref": "#/$defs/Outcome" },
+        "error": { "type": "string" }
+      }
+    },
+    "HeartbeatFired": {
+      "type": "object",
+      "required": ["duration_ms", "outcome"],
+      "additionalProperties": false,
+      "properties": {
+        "schedule": { "type": "string" },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "outcome": { "$ref": "#/$defs/Outcome" },
+        "error": { "type": "string" }
+      }
+    },
+    "ContinuationFired": {
+      "type": "object",
+      "required": ["name", "upstream_kind", "upstream_name", "duration_ms", "outcome"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "upstream_kind": { "type": "string", "enum": ["job", "task", "trigger", "a2a", "continuation"] },
+        "upstream_name": { "type": "string" },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "outcome": { "$ref": "#/$defs/Outcome" },
+        "error": { "type": "string" }
+      }
+    },
+    "TriggerFired": {
+      "type": "object",
+      "required": ["name", "endpoint", "duration_ms", "outcome"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "endpoint": { "type": "string" },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "outcome": { "$ref": "#/$defs/Outcome" },
+        "error": { "type": "string" }
+      }
+    },
+    "WebhookDelivered": {
+      "type": "object",
+      "required": ["name", "url_host", "status_code", "duration_ms"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "url_host": { "type": "string" },
+        "status_code": { "type": "integer", "minimum": 100, "maximum": 599 },
+        "duration_ms": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "WebhookFailed": {
+      "type": "object",
+      "required": ["name", "url_host", "reason", "duration_ms"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "url_host": { "type": "string" },
+        "reason": { "type": "string", "enum": ["timeout", "dns_denied", "http_error", "exception"] },
+        "status_code": { "type": "integer", "minimum": 100, "maximum": 599 },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "error": { "type": "string" }
+      }
+    },
+    "HookDecision": {
+      "type": "object",
+      "required": ["backend", "session_id_hash", "tool", "decision"],
+      "additionalProperties": false,
+      "properties": {
+        "backend": { "type": "string", "enum": ["claude", "codex", "gemini"] },
+        "session_id_hash": { "type": "string", "minLength": 1 },
+        "tool": { "type": "string" },
+        "decision": { "type": "string", "enum": ["allow", "deny", "warn"] },
+        "rule_id": { "type": "string" },
+        "reason": { "type": "string" }
+      }
+    },
+    "A2ARequestReceived": {
+      "type": "object",
+      "required": ["concern"],
+      "additionalProperties": false,
+      "properties": {
+        "concern": { "type": "string", "enum": ["a2a", "heartbeat", "job", "task", "trigger", "continuation"] },
+        "model": { "type": "string" }
+      }
+    },
+    "A2ARequestCompleted": {
+      "type": "object",
+      "required": ["concern", "outcome", "duration_ms"],
+      "additionalProperties": false,
+      "properties": {
+        "concern": { "type": "string", "enum": ["a2a", "heartbeat", "job", "task", "trigger", "continuation"] },
+        "outcome": { "$ref": "#/$defs/Outcome" },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "error": { "type": "string" }
+      }
+    },
+    "AgentLifecycle": {
+      "type": "object",
+      "required": ["backend", "event"],
+      "additionalProperties": false,
+      "properties": {
+        "backend": { "type": "string", "enum": ["claude", "codex", "gemini"] },
+        "event": { "type": "string", "enum": ["started", "stopped", "config_reloaded", "credential_rotated"] },
+        "detail": { "type": "string" }
+      }
+    },
+    "StreamGap": {
+      "type": "object",
+      "required": ["last_seen_id", "resume_id"],
+      "additionalProperties": false,
+      "properties": {
+        "last_seen_id": { "type": "string" },
+        "resume_id": { "type": "string" },
+        "reason": { "type": "string" }
+      }
+    },
+    "StreamOverrun": {
+      "type": "object",
+      "required": ["queue_depth", "queue_max"],
+      "additionalProperties": false,
+      "properties": {
+        "queue_depth": { "type": "integer", "minimum": 0 },
+        "queue_max": { "type": "integer", "minimum": 0 },
+        "reason": { "type": "string" }
+      }
+    }
+  }
+}
