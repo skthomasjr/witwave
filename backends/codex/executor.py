@@ -560,8 +560,16 @@ async def _shell_executor_inner(req: LocalShellCommandRequest) -> str:
     # negatives — so timeout_ms=-1 produced timeout_s=-0.001 which
     # subprocess.run treats as already-expired and raises
     # TimeoutExpired instantly. Prompt-injectable DoS via
-    # LocalShellCommandRequest.
-    timeout_s = (timeout_ms / 1000.0) if (timeout_ms and timeout_ms > 0) else 30.0
+    # LocalShellCommandRequest. Additionally enforce a 1s floor so a
+    # legitimately tiny-positive value (e.g. timeout_ms=1) still gives
+    # the subprocess enough time to execute — otherwise every
+    # invocation raises ShellTimeoutError regardless of the command
+    # (#987).
+    _SHELL_TIMEOUT_MIN_S = 1.0
+    if timeout_ms and timeout_ms > 0:
+        timeout_s = max(_SHELL_TIMEOUT_MIN_S, timeout_ms / 1000.0)
+    else:
+        timeout_s = 30.0
     try:
         result = await asyncio.to_thread(
             subprocess.run,
