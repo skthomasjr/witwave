@@ -4,6 +4,7 @@ import { useI18n } from "vue-i18n";
 import { RouterLink, RouterView } from "vue-router";
 import { useHealth } from "./composables/useHealth";
 import { usePollingControl } from "./composables/usePollingControl";
+import { useTheme } from "./composables/useTheme";
 import AlertBanner from "./components/AlertBanner.vue";
 
 // App shell. Simple button-style nav matching the legacy ui/ pattern —
@@ -41,10 +42,34 @@ const { state, detail } = useHealth();
 // composable to skip its tick; the tab-visibility guard auto-pauses when
 // the tab isn't visible so background tabs don't spam fan-out requests.
 const { paused, visible, toggle: togglePolling } = usePollingControl();
+
+// Theme toggle (#1106). Cycles through auto → light → dark; the
+// composable also resolves the effective palette so the button icon
+// can reflect the currently-applied appearance in auto mode.
+const { theme, resolved: resolvedTheme, cycleTheme } = useTheme();
+
+const themeIcon = computed(() => {
+  if (theme.value === "auto") return "pi pi-desktop";
+  return resolvedTheme.value === "light" ? "pi pi-sun" : "pi pi-moon";
+});
+
+const themeTitle = computed(() => {
+  if (theme.value === "auto") {
+    return t("theme.autoTitle", { resolved: resolvedTheme.value });
+  }
+  if (theme.value === "light") return t("theme.lightTitle");
+  return t("theme.darkTitle");
+});
+
+const themeLabel = computed(() => {
+  if (theme.value === "auto") return t("theme.autoLabel");
+  if (theme.value === "light") return t("theme.lightLabel");
+  return t("theme.darkLabel");
+});
 </script>
 
 <template>
-  <div class="app-shell p-dark">
+  <div class="app-shell">
     <!-- Skip-to-main link (#822): first focusable element in tab order so
          keyboard users can jump past the nav rail. Hidden off-screen via
          tokens.css until it receives focus. -->
@@ -108,6 +133,17 @@ const { paused, visible, toggle: togglePolling } = usePollingControl();
         <span class="pause-label">
           {{ paused ? "paused" : !visible ? "hidden" : "live" }}
         </span>
+      </button>
+      <button
+        class="theme-toggle"
+        type="button"
+        :title="themeTitle"
+        :aria-label="themeTitle"
+        data-testid="header-theme-toggle"
+        @click="cycleTheme"
+      >
+        <i :class="themeIcon" aria-hidden="true" />
+        <span class="theme-label">{{ themeLabel }}</span>
       </button>
       <span class="version" data-testid="dashboard-version">v0.1.0-alpha</span>
     </header>
@@ -257,6 +293,31 @@ const { paused, visible, toggle: togglePolling } = usePollingControl();
 }
 
 .pause-label {
+  font-size: 11px;
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: 1px solid var(--nyx-border);
+  border-radius: var(--nyx-radius);
+  color: var(--nyx-dim);
+  cursor: pointer;
+  padding: 3px 8px;
+  font-family: var(--nyx-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  transition: color 0.12s, background 0.12s, border-color 0.12s;
+}
+
+.theme-toggle:hover {
+  color: var(--nyx-text);
+  background: var(--nyx-bg);
+}
+
+.theme-label {
   font-size: 11px;
 }
 

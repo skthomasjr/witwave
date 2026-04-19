@@ -24,5 +24,13 @@
   },
   "alert": {
     "dismiss": "Dismiss alert"
+  },
+  "theme": {
+    "autoLabel": "auto",
+    "lightLabel": "light",
+    "darkLabel": "dark",
+    "autoTitle": "Theme: auto (currently {resolved}) — click to switch to light",
+    "lightTitle": "Theme: light — click to switch to dark",
+    "darkTitle": "Theme: dark — click to switch to auto"
   }
 }

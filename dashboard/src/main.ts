@@ -21,7 +21,12 @@ app.use(PrimeVue, {
   theme: {
     preset: Aura,
     options: {
-      darkModeSelector: ".p-dark",
+      // Theme toggle (#1106) — align PrimeVue's dark-mode selector with
+      // the `[data-theme="dark"]` attribute written by `useTheme`. When
+      // the user hasn't picked a theme we leave the attribute unset and
+      // rely on the `prefers-color-scheme: light` media query to drive
+      // the OS-following "auto" state.
+      darkModeSelector: '[data-theme="dark"]',
     },
   },
 });

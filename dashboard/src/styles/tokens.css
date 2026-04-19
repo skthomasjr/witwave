@@ -1,9 +1,22 @@
-/* Legacy ui/ palette. Kept byte-identical so the dashboard reaches visual
-   parity with the existing UI before we consider restyling. PrimeVue Aura
-   still provides component-level tokens; these are the nyx-specific overlays
-   the legacy UI used directly (accent, backend brand colors, status dots). */
+/* Legacy ui/ palette. Kept byte-identical for dark mode so the dashboard
+   reaches visual parity with the existing UI. PrimeVue Aura still
+   provides component-level tokens; these are the nyx-specific overlays
+   the legacy UI used directly (accent, backend brand colors, status
+   dots).
 
-:root {
+   Theme switching (#1106) is driven by `data-theme="light"|"dark"` on
+   <html>. The `useTheme` composable writes the attribute based on the
+   user's stored choice or the OS `prefers-color-scheme` query. The
+   `:root` block supplies the dark defaults so a document with no
+   attribute still renders correctly during the brief window before the
+   Vue app mounts; a sibling `@media (prefers-color-scheme: light)`
+   block flips tokens to the light palette when the OS advertises a
+   light preference AND the user hasn't picked a theme (auto). Explicit
+   `[data-theme="light"]` / `[data-theme="dark"]` rules override the
+   media query when the user has made a choice. */
+
+:root,
+[data-theme="dark"] {
   --nyx-bg: #0d0d0d;
   --nyx-surface: #161616;
   --nyx-border: #262626;
@@ -23,6 +36,59 @@
   --nyx-brand-claude: #da7756;
   --nyx-brand-codex: #74aa9c;
   --nyx-brand-gemini: #8e44ec;
+}
+
+/* Light palette. Inversions are hand-tuned rather than pure hue flips:
+   backgrounds sit just under pure white so large surfaces read as
+   "paper" not "screen"; borders and muted text are dark-on-light
+   greys with ~4.5:1 contrast against both --nyx-bg and --nyx-surface
+   per WCAG AA. Brand + status colors are darkened slightly so they
+   keep a usable contrast ratio on a light background. */
+[data-theme="light"] {
+  --nyx-bg: #f7f7f8;
+  --nyx-surface: #ffffff;
+  --nyx-border: #d9d9de;
+  --nyx-muted: #b4b4bb;
+  --nyx-dim: #5c5c65;
+  --nyx-text: #1f1f23;
+  --nyx-bright: #0a0a0d;
+  --nyx-accent: #5b48d9;
+  --nyx-teal: #1f8a8a;
+  --nyx-green: #137a3a;
+  --nyx-yellow: #a16207;
+  --nyx-red: #b91c1c;
+  --nyx-radius: 6px;
+  --nyx-mono: "SF Mono", "Fira Code", "Menlo", monospace;
+
+  --nyx-brand-claude: #b85a3b;
+  --nyx-brand-codex: #4f8a7b;
+  --nyx-brand-gemini: #6f2fc9;
+}
+
+/* Auto mode — no `data-theme` attribute means the user hasn't chosen.
+   Honour the OS `prefers-color-scheme: light` query by mirroring the
+   light token block onto :root. An explicit `[data-theme="..."]`
+   attribute set by the composable takes precedence because attribute
+   selectors have higher specificity than the bare `:root`. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --nyx-bg: #f7f7f8;
+    --nyx-surface: #ffffff;
+    --nyx-border: #d9d9de;
+    --nyx-muted: #b4b4bb;
+    --nyx-dim: #5c5c65;
+    --nyx-text: #1f1f23;
+    --nyx-bright: #0a0a0d;
+    --nyx-accent: #5b48d9;
+    --nyx-teal: #1f8a8a;
+    --nyx-green: #137a3a;
+    --nyx-yellow: #a16207;
+    --nyx-red: #b91c1c;
+
+    --nyx-brand-claude: #b85a3b;
+    --nyx-brand-codex: #4f8a7b;
+    --nyx-brand-gemini: #6f2fc9;
+  }
 }
 
 html,
