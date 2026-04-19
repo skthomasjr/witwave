@@ -68,6 +68,29 @@ log = logging.getLogger("tools.kubernetes")
 
 mcp = FastMCP("kubernetes")
 
+
+# Read-only / maintenance-mode gate (#1123). Mutating tools check this
+# at handler entry and raise PermissionError with a clear message so
+# the operator sees "MCP_READ_ONLY refused this call" rather than a
+# confusing downstream apiserver rejection. Evaluated per-call so
+# toggling the env var on a running pod takes effect without restart.
+_READ_ONLY_ENV_VARS = {"MCP_READ_ONLY", "MCP_KUBERNETES_READ_ONLY"}
+
+
+def _is_read_only() -> bool:
+    for name in _READ_ONLY_ENV_VARS:
+        if os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}:
+            return True
+    return False
+
+
+def _refuse_if_read_only(tool: str) -> None:
+    if _is_read_only():
+        raise PermissionError(
+            f"kubernetes {tool}: refused because MCP_READ_ONLY is set (#1123). "
+            "Unset the env var or restart the pod without it to allow mutations."
+        )
+
 FIELD_MANAGER = "nyx-mcp-kubernetes"
 
 # Maximum length of a server-side-apply field manager string. The
@@ -604,6 +627,12 @@ def apply(
     state so LLM callers can inspect what WOULD change before running
     for real.
     """
+    # Respect MCP_READ_ONLY even for server-side dry-run (#1123): a
+    # dry-run still opens a write-path discovery and can mutate CR
+    # defaulting/validation state in some CRDs, and — more importantly —
+    # operators asking for read-only want a hard surface, not "well it
+    # depends on the flag".
+    _refuse_if_read_only("apply")
     field_manager = _resolve_field_manager(caller_id)
     with _handler_span("apply", {"k8s.field_manager": field_manager, "k8s.dry_run": dry_run}) as _h:
         try:
@@ -679,6 +708,7 @@ def delete(
     persistence, so LLM callers can confirm cascade semantics before
     running for real.
     """
+    _refuse_if_read_only("delete")
     with _handler_span(
         "delete",
         {"k8s.kind": kind, "k8s.name": name, "k8s.namespace": namespace,

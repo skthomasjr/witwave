@@ -213,6 +213,23 @@ def test_redacted_sentinel_is_nonempty_string():
     assert isinstance(server._REDACTED, str) and server._REDACTED
 
 
+# ----- MCP_READ_ONLY gate (#1123) ---------------------------------
+
+
+def test_is_read_only_respects_env(monkeypatch):
+    monkeypatch.delenv("MCP_READ_ONLY", raising=False)
+    monkeypatch.delenv("MCP_KUBERNETES_READ_ONLY", raising=False)
+    assert server._is_read_only() is False
+    monkeypatch.setenv("MCP_READ_ONLY", "on")
+    assert server._is_read_only() is True
+
+
+def test_refuse_if_read_only_raises_permission_error(monkeypatch):
+    monkeypatch.setenv("MCP_READ_ONLY", "true")
+    with pytest.raises(PermissionError, match="MCP_READ_ONLY"):
+        server._refuse_if_read_only("apply")
+
+
 # ----- /info provider (#1122) -------------------------------------
 
 

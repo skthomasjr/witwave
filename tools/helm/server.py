@@ -72,6 +72,29 @@ log = logging.getLogger("tools.helm")
 mcp = FastMCP("helm")
 
 
+# Read-only / maintenance-mode gate (#1123). Mutating tools check this
+# at the top of each handler and raise a HelmError with a clear message
+# so the operator-visible reason is "read-only mode", not a confusing
+# CLI exit. Evaluated per-call so toggling the env var on a running
+# pod takes effect without restart.
+_READ_ONLY_ENV_VARS = {"MCP_READ_ONLY", "MCP_HELM_READ_ONLY"}
+
+
+def _is_read_only() -> bool:
+    for name in _READ_ONLY_ENV_VARS:
+        if os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}:
+            return True
+    return False
+
+
+def _refuse_if_read_only(tool: str) -> None:
+    if _is_read_only():
+        raise HelmError(
+            f"helm {tool}: refused because MCP_READ_ONLY is set (#1123). "
+            "Unset the env var or restart the pod without it to allow mutations."
+        )
+
+
 class HelmError(RuntimeError):
     """Raised when a helm CLI invocation fails."""
 
@@ -700,6 +723,7 @@ def install(
     Useful for LLM-authored requests the operator wants to confirm
     before committing (#854).
     """
+    _refuse_if_read_only("install")
     _reject_flag_like(
         name=name,
         chart=chart,
@@ -761,6 +785,7 @@ def upgrade(
     cluster (#854). Pair with :func:`diff` for a side-by-side view of
     rendered manifest changes before committing.
     """
+    _refuse_if_read_only("upgrade")
     _reject_flag_like(
         name=name,
         chart=chart,
@@ -886,6 +911,7 @@ def rollback(name: str, namespace: str, revision: int, wait: bool = False) -> st
     Helm's `rollback` does not support `-o json`; the raw CLI output is
     returned.
     """
+    _refuse_if_read_only("rollback")
     _reject_flag_like(name=name, namespace=namespace)
     # Type-validate revision as int so an LLM-supplied "-1"-style string
     # cannot flow into argv as a flag (#693).
@@ -919,6 +945,7 @@ def uninstall(
     Set ``dry_run=True`` to preview which resources would be removed
     without actually deleting them (#854).
     """
+    _refuse_if_read_only("uninstall")
     _reject_flag_like(name=name, namespace=namespace)
     with _handler_span(
         "uninstall",

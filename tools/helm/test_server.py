@@ -345,6 +345,32 @@ def test_diff_redactor_failure_path_uses_log_binding():
         )
 
 
+# ----- MCP_READ_ONLY gate (#1123) -----
+
+
+def test_is_read_only_respects_both_env_names(monkeypatch):
+    monkeypatch.delenv("MCP_READ_ONLY", raising=False)
+    monkeypatch.delenv("MCP_HELM_READ_ONLY", raising=False)
+    assert server._is_read_only() is False
+    monkeypatch.setenv("MCP_READ_ONLY", "true")
+    assert server._is_read_only() is True
+    monkeypatch.delenv("MCP_READ_ONLY", raising=False)
+    monkeypatch.setenv("MCP_HELM_READ_ONLY", "1")
+    assert server._is_read_only() is True
+
+
+def test_refuse_if_read_only_noop_when_unset(monkeypatch):
+    monkeypatch.delenv("MCP_READ_ONLY", raising=False)
+    monkeypatch.delenv("MCP_HELM_READ_ONLY", raising=False)
+    server._refuse_if_read_only("install")  # must not raise
+
+
+def test_refuse_if_read_only_raises_helm_error(monkeypatch):
+    monkeypatch.setenv("MCP_READ_ONLY", "true")
+    with pytest.raises(server.HelmError, match="read-only|MCP_READ_ONLY"):
+        server._refuse_if_read_only("install")
+
+
 # ----- /info provider (#1122) -----
 
 
