@@ -65,5 +65,8 @@ export const router = createRouter({
     // (#1110). Keep near the end of the nav order so the default "/"
     // team landing page still wins the first visit.
     { path: "/timeline", name: "timeline", component: TimelineView },
+    // #1414: catch-all so unknown URLs redirect to the team landing
+    // page instead of rendering an empty router-view shell.
+    { path: "/:pathMatch(.*)*", redirect: { name: "team" } },
   ],
 });

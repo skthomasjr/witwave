@@ -547,9 +547,16 @@ def make_session_stream_handler(
         # client disconnect before body starts), release the slot.
         # Without this, ~8 errored connects from the same bearer
         # permanently lock the caller out at 429.
+        # #1415: make idempotent via a closure flag so the body-generator
+        # finally + BackgroundTask fallback can't double-decrement.
+        _released = [False]
+
         def _release_slot() -> None:
             if _per_caller_max <= 0:
                 return
+            if _released[0]:
+                return
+            _released[0] = True
             try:
                 _cur = _per_caller_counts.get(_caller_fp, 0)
                 if _cur <= 1:
@@ -599,20 +606,26 @@ def make_session_stream_handler(
                         await _aclose()
                     except Exception:
                         pass
-                # #1399: release the per-caller cap slot.
-                if _per_caller_max > 0:
-                    try:
-                        cur = _per_caller_counts.get(_caller_fp, 0)
-                        if cur <= 1:
-                            _per_caller_counts.pop(_caller_fp, None)
-                        else:
-                            _per_caller_counts[_caller_fp] = cur - 1
-                    except Exception:
-                        pass
+                # #1399/#1415: release the per-caller cap slot via
+                # the shared idempotent helper so the BackgroundTask
+                # fallback can't double-decrement.
+                _release_slot()
+
+        # #1415: attach _release_slot as a Starlette BackgroundTask so
+        # the slot is released unconditionally — covering the case where
+        # the client disconnects between handler return and the body
+        # generator's first yield (and the generator is never invoked).
+        # The finally inside _body() ALSO releases, but the per-fp
+        # counter's decrement is idempotent (bounded at 0 via `cur <= 1`).
+        from starlette.background import BackgroundTask
+
+        async def _release_slot_async() -> None:
+            _release_slot()
 
         return StreamingResponse(
             _body(),
             media_type="text/event-stream",
+            background=BackgroundTask(_release_slot_async),
             headers={
                 "Cache-Control": "no-cache",
                 "X-Accel-Buffering": "no",

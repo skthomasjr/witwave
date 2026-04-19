@@ -36,3 +36,9 @@ EXPOSE 8000
 EXPOSE 9000
 
 CMD ["python", "/home/tool/server.py"]
+
+# #1413: Docker HEALTHCHECK parity with harness + backends. Kubernetes
+# uses its own probes; this helps docker-compose / swarm operators see
+# tool health in `docker ps`.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)" || exit 1

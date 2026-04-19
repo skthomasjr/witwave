@@ -1820,6 +1820,10 @@ async def main():
             limit = int(limit_raw) if limit_raw else 20
         except ValueError:
             limit = 20
+        # #1412: clamp limit so ?limit=-5 doesn't slice traces[:-5]
+        # (drops newest) and ?limit=99999999 can't cause memory pressure
+        # on a long-lived harness. Match the OTEL_IN_MEMORY_SPANS ring cap.
+        limit = max(1, min(limit, 1000))
         service = request.query_params.get("service") or ""
 
         # Serve merged trace list from a short-lived cache when fresh

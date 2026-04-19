@@ -1393,6 +1393,13 @@ func buildHPA(agent *nyxv1alpha1.NyxAgent) *autoscalingv2.HorizontalPodAutoscale
 	if maxR == 0 {
 		maxR = 3
 	}
+	// #1411: apiserver rejects HPA with minReplicas > maxReplicas.
+	// When a user sets MinReplicas=5 but leaves MaxReplicas unset
+	// (defaults to 3), lift the max to the min so the render produces
+	// a valid HPA instead of a reconcile loop on invalid-spec.
+	if minR > maxR {
+		maxR = minR
+	}
 	var metrics []autoscalingv2.MetricSpec
 	if a.TargetCPUUtilizationPercentage != nil {
 		metrics = append(metrics, autoscalingv2.MetricSpec{
