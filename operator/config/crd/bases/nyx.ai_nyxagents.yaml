@@ -30,6 +30,14 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
+    - jsonPath: .status.reconcileHistory[-1:].time
+      name: LastReconcile
+      priority: 1
+      type: date
+    - jsonPath: .status.reconcileHistory[-1:].phase
+      name: LastOutcome
+      priority: 1
+      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -3260,6 +3268,68 @@ spec:
                 description: ReadyReplicas mirrors the agent Deployment's status.readyReplicas.
                 format: int32
                 type: integer
+              reconcileHistory:
+                description: |-
+                  ReconcileHistory is a capped ring of the last ReconcileHistoryMax
+                  reconcile outcomes (#1112). Newest entry last. Surfaces past phase
+                  flaps, reconcile durations, and error reasons to `kubectl describe`
+                  without needing Prometheus or a workqueue log tail. Writes happen
+                  inside updateStatus on the same Status().Patch that records the
+                  phase/conditions, so no extra round-trip to the apiserver.
+                items:
+                  description: |-
+                    ReconcileHistoryEntry is a single reconcile outcome persisted on
+                    NyxAgentStatus.ReconcileHistory (#1112). Fields are deliberately
+                    primitive so the entries serialise cleanly into the status subresource
+                    and render usefully under `kubectl describe`.
+                  properties:
+                    duration:
+                      description: |-
+                        Duration is the reconcile wall-clock duration, serialised as the
+                        Go time.Duration string (e.g. "123ms", "2.4s"). Kept as a string
+                        rather than int64 nanoseconds so the field is self-describing in
+                        `kubectl get -o yaml` without dashboard tooling.
+                      minLength: 1
+                      type: string
+                    message:
+                      description: |-
+                        Message is a human-readable summary, truncated to
+                        ReconcileHistoryMessageMax bytes with a trailing "…" when the full
+                        error overflows. Empty on Success outcomes where the Reason alone
+                        is enough.
+                      maxLength: 128
+                      type: string
+                    phase:
+                      description: Phase classifies the outcome. See ReconcileHistoryPhase.
+                      enum:
+                      - Success
+                      - Error
+                      - Partial
+                      type: string
+                    reason:
+                      description: |-
+                        Reason is a short machine-readable code — same convention as
+                        metav1.Condition.Reason (CamelCase, no punctuation). Typical values:
+                        "Reconciled", "ReconcileFailed".
+                      maxLength: 64
+                      minLength: 1
+                      type: string
+                    time:
+                      description: |-
+                        Time is the apiserver-visible wall-clock at which reconcile
+                        finished. Indexed by the ring's natural order; included as a field
+                        so `kubectl describe` surfaces it without forcing readers to infer
+                        ordering from array position.
+                      format: date-time
+                      type: string
+                  required:
+                  - duration
+                  - phase
+                  - reason
+                  - time
+                  type: object
+                type: array
+                x-kubernetes-list-type: atomic
             type: object
         type: object
     served: true

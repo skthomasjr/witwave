@@ -121,6 +121,12 @@ type NyxAgentReconciler struct {
 // Reconcile is the control loop's entry point. It brings owned resources into
 // alignment with the NyxAgent spec and writes status.
 func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	// Capture reconcile start wall-clock for the ReconcileHistory ring
+	// (#1112). Using time.Now() here rather than the OTel span's start
+	// keeps the duration readable in `kubectl describe` regardless of
+	// whether tracing is enabled.
+	reconcileStart := time.Now()
+
 	// OTel server span around the full reconcile (#471 part B). When OTel
 	// isn't enabled the tracer is a no-op so the overhead is a single
 	// branch + interface dispatch — safe to leave on always.
@@ -387,7 +393,7 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	reconcileErr := errors.Join(reconcileErrs...)
 
 	// Observe Deployment status and update our own status subresource.
-	if err := r.updateStatus(ctx, agent, reconcileErr); err != nil {
+	if err := r.updateStatus(ctx, agent, reconcileErr, reconcileStart); err != nil {
 		log.Error(err, "failed to update NyxAgent status")
 		// Don't mask the primary reconcile error.
 		if reconcileErr == nil {
@@ -1939,7 +1945,7 @@ func (r *NyxAgentReconciler) reconcilePodMonitor(ctx context.Context, agent *nyx
 
 // ── Status ────────────────────────────────────────────────────────────────────
 
-func (r *NyxAgentReconciler) updateStatus(ctx context.Context, agent *nyxv1alpha1.NyxAgent, reconcileErr error) (err error) {
+func (r *NyxAgentReconciler) updateStatus(ctx context.Context, agent *nyxv1alpha1.NyxAgent, reconcileErr error, reconcileStart time.Time) (err error) {
 	ctx, _, finish := startStepSpan(ctx, "nyxagent.updateStatus",
 		attribute.Bool("nyx.reconcile.had_error", reconcileErr != nil),
 	)
@@ -2059,10 +2065,25 @@ func (r *NyxAgentReconciler) updateStatus(ctx context.Context, agent *nyxv1alpha
 	setCondition(&newStatus.Conditions, availCond)
 	setCondition(&newStatus.Conditions, progCond)
 
-	// Skip the write if nothing changed (avoids status churn).
+	// Skip the write if nothing changed (avoids status churn). Compared
+	// before appending ReconcileHistory so an idempotent no-op reconcile
+	// doesn't rotate a fresh entry through the ring on every pass — the
+	// ring would otherwise fill with identical "Reconciled/Reconciled/…"
+	// entries and hide the flap the field was added to help diagnose.
 	if statusEqual(agent.Status, *newStatus) {
 		return nil
 	}
+
+	// Record this reconcile in the capped ReconcileHistory ring (#1112).
+	// Runs only when we're going to write status anyway, so every entry
+	// marks a meaningful change (phase flip, condition flip, reconcile
+	// error, or the first observation after controller start).
+	newStatus.ReconcileHistory = appendReconcileHistory(
+		newStatus.ReconcileHistory,
+		reconcileStart,
+		time.Since(reconcileStart),
+		reconcileErr,
+	)
 	// Use Status().Patch with MergeFrom(before) (#757) rather than
 	// Status().Update: a server-side optimistic-concurrency conflict on
 	// the subresource now only fails the single field that contended,
@@ -2138,6 +2159,59 @@ func setCondition(conds *[]metav1.Condition, newCond metav1.Condition) {
 		}
 	}
 	*conds = append(*conds, newCond)
+}
+
+// appendReconcileHistory returns the history ring with a new
+// ReconcileHistoryEntry appended at the end, truncated so at most
+// nyxv1alpha1.ReconcileHistoryMax entries remain. The caller passes the
+// pre-existing ring so the function is safe to use against newStatus
+// (which already carries a DeepCopy of the prior entries). Messages are
+// truncated to nyxv1alpha1.ReconcileHistoryMessageMax bytes with a
+// trailing "…" so a pathological downstream error never bloats the
+// status subresource.
+func appendReconcileHistory(
+	ring []nyxv1alpha1.ReconcileHistoryEntry,
+	reconcileStart time.Time,
+	duration time.Duration,
+	reconcileErr error,
+) []nyxv1alpha1.ReconcileHistoryEntry {
+	entry := nyxv1alpha1.ReconcileHistoryEntry{
+		Time:     metav1.NewTime(reconcileStart),
+		Duration: duration.Round(time.Millisecond).String(),
+	}
+	if reconcileErr != nil {
+		entry.Phase = nyxv1alpha1.ReconcileHistoryPhaseError
+		entry.Reason = "ReconcileFailed"
+		entry.Message = truncateMessage(reconcileErr.Error(), nyxv1alpha1.ReconcileHistoryMessageMax)
+	} else {
+		entry.Phase = nyxv1alpha1.ReconcileHistoryPhaseSuccess
+		entry.Reason = "Reconciled"
+	}
+	ring = append(ring, entry)
+	if overflow := len(ring) - nyxv1alpha1.ReconcileHistoryMax; overflow > 0 {
+		// Drop oldest entries. Copy rather than reslice so the underlying
+		// array shrinks and we don't pin a 10-entry array of stale values
+		// indefinitely through status DeepCopies.
+		trimmed := make([]nyxv1alpha1.ReconcileHistoryEntry, nyxv1alpha1.ReconcileHistoryMax)
+		copy(trimmed, ring[overflow:])
+		ring = trimmed
+	}
+	return ring
+}
+
+// truncateMessage clips s to max bytes, appending "…" when truncated.
+// Returns s unchanged when already within the cap.
+func truncateMessage(s string, max int) string {
+	if max <= 0 || len(s) <= max {
+		return s
+	}
+	// Reserve three bytes for the ellipsis "…" (UTF-8 encoded) so the
+	// emitted message never exceeds max bytes on the wire.
+	const ellipsis = "…"
+	if max <= len(ellipsis) {
+		return ellipsis[:max]
+	}
+	return s[:max-len(ellipsis)] + ellipsis
 }
 
 // statusEqual is a shallow equality check sufficient for deciding whether to

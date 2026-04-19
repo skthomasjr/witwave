@@ -1124,6 +1124,86 @@ type NyxAgentStatus struct {
 	// +listType=map
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// ReconcileHistory is a capped ring of the last ReconcileHistoryMax
+	// reconcile outcomes (#1112). Newest entry last. Surfaces past phase
+	// flaps, reconcile durations, and error reasons to `kubectl describe`
+	// without needing Prometheus or a workqueue log tail. Writes happen
+	// inside updateStatus on the same Status().Patch that records the
+	// phase/conditions, so no extra round-trip to the apiserver.
+	// +optional
+	// +listType=atomic
+	ReconcileHistory []ReconcileHistoryEntry `json:"reconcileHistory,omitempty"`
+}
+
+// ReconcileHistoryMax caps the ring of ReconcileHistory entries kept on
+// NyxAgentStatus. Ten entries is small enough to fit inside a status
+// subresource PATCH comfortably (well under the 1 MiB etcd object limit
+// even with maximum-length Messages) while still giving operators enough
+// scrollback to see a recent flap plus the reconcile that recovered from
+// it.
+const ReconcileHistoryMax = 10
+
+// ReconcileHistoryMessageMax caps the Message length on each
+// ReconcileHistoryEntry. Longer messages are truncated with a trailing
+// ellipsis in updateStatus so a pathological multi-paragraph error from a
+// downstream apply never inflates status.
+const ReconcileHistoryMessageMax = 128
+
+// ReconcileHistoryPhase is the outcome bucket stamped onto a single
+// ReconcileHistoryEntry. Distinct from NyxAgentPhase (which tracks the
+// agent's Deployment readiness): a reconcile can complete Successfully
+// while the agent remains Degraded because pods are still rolling.
+// +kubebuilder:validation:Enum=Success;Error;Partial
+type ReconcileHistoryPhase string
+
+const (
+	// ReconcileHistoryPhaseSuccess — reconcile completed with no errors.
+	ReconcileHistoryPhaseSuccess ReconcileHistoryPhase = "Success"
+	// ReconcileHistoryPhaseError — reconcile returned a fatal error.
+	ReconcileHistoryPhaseError ReconcileHistoryPhase = "Error"
+	// ReconcileHistoryPhasePartial — reconcile completed but at least one
+	// optional sub-resource apply failed (errors.Join aggregated more than
+	// one err; reserved for future use). Kept in the enum so the CRD
+	// schema is forward-compatible.
+	ReconcileHistoryPhasePartial ReconcileHistoryPhase = "Partial"
+)
+
+// ReconcileHistoryEntry is a single reconcile outcome persisted on
+// NyxAgentStatus.ReconcileHistory (#1112). Fields are deliberately
+// primitive so the entries serialise cleanly into the status subresource
+// and render usefully under `kubectl describe`.
+type ReconcileHistoryEntry struct {
+	// Time is the apiserver-visible wall-clock at which reconcile
+	// finished. Indexed by the ring's natural order; included as a field
+	// so `kubectl describe` surfaces it without forcing readers to infer
+	// ordering from array position.
+	Time metav1.Time `json:"time"`
+
+	// Duration is the reconcile wall-clock duration, serialised as the
+	// Go time.Duration string (e.g. "123ms", "2.4s"). Kept as a string
+	// rather than int64 nanoseconds so the field is self-describing in
+	// `kubectl get -o yaml` without dashboard tooling.
+	// +kubebuilder:validation:MinLength=1
+	Duration string `json:"duration"`
+
+	// Phase classifies the outcome. See ReconcileHistoryPhase.
+	Phase ReconcileHistoryPhase `json:"phase"`
+
+	// Reason is a short machine-readable code — same convention as
+	// metav1.Condition.Reason (CamelCase, no punctuation). Typical values:
+	// "Reconciled", "ReconcileFailed".
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=64
+	Reason string `json:"reason"`
+
+	// Message is a human-readable summary, truncated to
+	// ReconcileHistoryMessageMax bytes with a trailing "…" when the full
+	// error overflows. Empty on Success outcomes where the Reason alone
+	// is enough.
+	// +kubebuilder:validation:MaxLength=128
+	// +optional
+	Message string `json:"message,omitempty"`
 }
 
 // Standard condition types for NyxAgent.
@@ -1183,6 +1263,8 @@ type MCPToolSpec struct {
 // +kubebuilder:printcolumn:name="Ready",type=integer,JSONPath=`.status.readyReplicas`
 // +kubebuilder:printcolumn:name="Backends",type=string,JSONPath=`.spec.backends[*].name`,priority=1
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+// +kubebuilder:printcolumn:name="LastReconcile",type=date,JSONPath=`.status.reconcileHistory[-1:].time`,priority=1
+// +kubebuilder:printcolumn:name="LastOutcome",type=string,JSONPath=`.status.reconcileHistory[-1:].phase`,priority=1
 
 // NyxAgent is the Schema for the nyxagents API.
 type NyxAgent struct {
