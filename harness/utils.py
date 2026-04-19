@@ -64,6 +64,45 @@ def parse_consensus(value) -> list[ConsensusEntry]:
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?(.*)", re.DOTALL)
 
+# Hard cap on the YAML-frontmatter portion fed into safe_load (#1038).
+# Frontmatter is typed config — cron, endpoints, schedule windows — so
+# 64 KiB is already ample for every real use. Anything above that is
+# either a bug in the authoring tool or a YAML-bomb attempt; we reject
+# before calling safe_load so a malicious pin cannot pin RAM on
+# repeated watcher ticks.
+PARSE_FRONTMATTER_MAX_YAML_BYTES = int(
+    os.environ.get("PARSE_FRONTMATTER_MAX_YAML_BYTES", str(64 * 1024))
+)
+# Cap on the whole .md file passed through read_md_bounded() (#1038).
+# Runners scan dirs on every watcher tick so a 50 MB .md tab-completed
+# by accident would pin significant RAM across all 6 runners. 128 KiB
+# matches the largest real HEARTBEAT/jobs corpus by 3 orders of
+# magnitude and still leaves headroom.
+PARSE_FRONTMATTER_MAX_FILE_BYTES = int(
+    os.environ.get("PARSE_FRONTMATTER_MAX_FILE_BYTES", str(128 * 1024))
+)
+
+
+class FrontmatterTooLarge(ValueError):
+    """Raised when the frontmatter YAML block exceeds the byte cap (#1038)."""
+
+
+def _safe_load_bounded(yaml_text: str) -> Any:
+    """safe_load *yaml_text* under a hard byte cap (#1038).
+
+    PyYAML's safe_load has no depth / alias-expansion / byte-budget
+    knob, so the only practical guard against YAML-bombs is to refuse
+    obviously-too-large inputs before the parser sees them. Callers
+    handle the ``FrontmatterTooLarge`` exception by logging and
+    skipping the file — same behaviour as a yaml.YAMLError.
+    """
+    if len(yaml_text.encode("utf-8", errors="replace")) > PARSE_FRONTMATTER_MAX_YAML_BYTES:
+        raise FrontmatterTooLarge(
+            f"frontmatter YAML exceeds {PARSE_FRONTMATTER_MAX_YAML_BYTES} bytes "
+            f"(see PARSE_FRONTMATTER_MAX_YAML_BYTES)"
+        )
+    return yaml.safe_load(yaml_text)
+
 
 def parse_frontmatter(raw: str) -> tuple[dict[str, str], str]:
     """Parse YAML-like frontmatter from a markdown string.
@@ -74,12 +113,16 @@ def parse_frontmatter(raw: str) -> tuple[dict[str, str], str]:
     closing ``---`` delimiter, stripped of leading and trailing whitespace.  If
     no frontmatter block is detected the returned dict is empty and *body* is
     the original *raw* string unchanged.
+
+    Raises :class:`FrontmatterTooLarge` when the YAML block exceeds the
+    size cap (#1038) so callers can log-and-skip rather than feeding a
+    YAML-bomb to ``safe_load``.
     """
     match = _FRONTMATTER_RE.match(raw)
     if not match:
         return {}, raw
 
-    parsed = yaml.safe_load(match.group(1))
+    parsed = _safe_load_bounded(match.group(1))
     if not isinstance(parsed, dict):
         parsed = {}
     fields: dict[str, str] = {k: str(v) if v is not None else "" for k, v in parsed.items()}
@@ -92,10 +135,77 @@ def parse_frontmatter_raw(raw: str) -> tuple[dict, str]:
     match = _FRONTMATTER_RE.match(raw)
     if not match:
         return {}, raw
-    parsed = yaml.safe_load(match.group(1))
+    parsed = _safe_load_bounded(match.group(1))
     if not isinstance(parsed, dict):
         parsed = {}
     return parsed, match.group(2).strip()
+
+
+# (path, mtime_ns, size) -> cached raw text. Short-circuits the repeated
+# full re-read each runner did on every watcher tick (#1038). The cache
+# keys include both mtime and size so a writer that patches a file
+# without bumping mtime (rare) still invalidates correctly.
+_MD_CACHE: dict[str, tuple[int, int, str]] = {}
+_MD_CACHE_MAX = int(os.environ.get("PARSE_FRONTMATTER_CACHE_MAX", "1024"))
+
+
+def read_md_bounded(path: str) -> str | None:
+    """Read a markdown file with size cap + mtime/size short-circuit (#1038).
+
+    Returns the file's raw text, or ``None`` when:
+
+    * the file is gone (runners already log-and-skip ``None``),
+    * the file exceeds :data:`PARSE_FRONTMATTER_MAX_FILE_BYTES` — a
+      WARNING is emitted so operators see the skip.
+
+    Subsequent calls with an unchanged ``(mtime_ns, size)`` return the
+    cached text directly instead of re-opening and re-reading the file.
+    This is the main CPU/RAM win on watcher-tick storms.
+    """
+    try:
+        st = os.stat(path)
+    except FileNotFoundError:
+        _MD_CACHE.pop(path, None)
+        return None
+    except OSError:
+        return None
+
+    if st.st_size > PARSE_FRONTMATTER_MAX_FILE_BYTES:
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "read_md_bounded: %r is %d bytes (>%d cap); skipping. "
+            "Raise PARSE_FRONTMATTER_MAX_FILE_BYTES if the file is "
+            "legitimate or trim it upstream.",
+            path, st.st_size, PARSE_FRONTMATTER_MAX_FILE_BYTES,
+        )
+        _MD_CACHE.pop(path, None)
+        return None
+
+    cached = _MD_CACHE.get(path)
+    if cached is not None and cached[0] == st.st_mtime_ns and cached[1] == st.st_size:
+        return cached[2]
+
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            raw = fh.read(PARSE_FRONTMATTER_MAX_FILE_BYTES + 1)
+    except OSError:
+        return None
+
+    # A write-race between stat and read could return a longer string;
+    # refuse to trust that and force a fresh stat on the next call.
+    if len(raw.encode("utf-8", errors="replace")) > PARSE_FRONTMATTER_MAX_FILE_BYTES:
+        _MD_CACHE.pop(path, None)
+        return None
+
+    # Evict oldest entry on overflow (simple FIFO — cache is mostly
+    # warm-on-startup and stable across ticks, so LRU would be overkill).
+    if len(_MD_CACHE) >= _MD_CACHE_MAX:
+        try:
+            _MD_CACHE.pop(next(iter(_MD_CACHE)))
+        except StopIteration:
+            pass
+    _MD_CACHE[path] = (st.st_mtime_ns, st.st_size, raw)
+    return raw
 
 
 async def _maybe_await(value: Any) -> None:
