@@ -491,29 +491,34 @@ async def _guarded(
                 _recovery_watch(restart_delay, on_recovered)
             )
         try:
-            await coro_fn(*args)
-            return  # clean exit — do not restart
-        except asyncio.CancelledError:
+            try:
+                await coro_fn(*args)
+                return  # clean exit — do not restart
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                if time.monotonic() - _attempt_start >= restart_delay:
+                    # Reset the streak after a stable run (#1311: on_recovered
+                    # was already dispatched by the watchdog, so don't double-fire).
+                    consecutive_restarts = 0
+                consecutive_restarts += 1
+                logger.error(
+                    f"Task {coro_fn.__name__!r} crashed: {exc!r} — "
+                    f"restarting in {restart_delay}s (consecutive restart #{consecutive_restarts})"
+                )
+                if harness_task_restarts_total is not None:
+                    harness_task_restarts_total.labels(task=coro_fn.__name__).inc()
+                if on_not_ready is not None and consecutive_restarts >= max_restarts:
+                    on_not_ready()
+                await asyncio.sleep(restart_delay)
+        finally:
+            # #1345: cancel the watchdog on EVERY exit path — clean return,
+            # CancelledError, or exception. The previous shape only
+            # cancelled in the except branches, leaking the watchdog when
+            # coro_fn returns cleanly (time-bomb: on_recovered would fire
+            # later for a task that won't restart).
             if _recovery_watchdog is not None and not _recovery_watchdog.done():
                 _recovery_watchdog.cancel()
-            raise
-        except Exception as exc:
-            if _recovery_watchdog is not None and not _recovery_watchdog.done():
-                _recovery_watchdog.cancel()
-            if time.monotonic() - _attempt_start >= restart_delay:
-                # Reset the streak after a stable run (#1311: on_recovered
-                # was already dispatched by the watchdog, so don't double-fire).
-                consecutive_restarts = 0
-            consecutive_restarts += 1
-            logger.error(
-                f"Task {coro_fn.__name__!r} crashed: {exc!r} — "
-                f"restarting in {restart_delay}s (consecutive restart #{consecutive_restarts})"
-            )
-            if harness_task_restarts_total is not None:
-                harness_task_restarts_total.labels(task=coro_fn.__name__).inc()
-            if on_not_ready is not None and consecutive_restarts >= max_restarts:
-                on_not_ready()
-            await asyncio.sleep(restart_delay)
 
 
 class AgentExecutor(A2AAgentExecutor):

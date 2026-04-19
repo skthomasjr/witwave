@@ -2651,9 +2651,19 @@ class AgentExecutor(A2AAgentExecutor):
                                         streamablehttp_client(url_entry, headers=_headers or None)
                                     )
                                 elif sse_client is not None:
-                                    read, write = await new_stack.enter_async_context(
-                                        sse_client(url_entry)
-                                    )
+                                    # #1344: forward auth headers on the SSE fallback
+                                    # path too (matches the streamable branch). Older
+                                    # mcp.client.sse.sse_client signatures may not
+                                    # accept `headers=`; fall back to the 1-arg form
+                                    # in that case.
+                                    try:
+                                        read, write = await new_stack.enter_async_context(
+                                            sse_client(url_entry, headers=_headers or None)
+                                        )
+                                    except TypeError:
+                                        read, write = await new_stack.enter_async_context(
+                                            sse_client(url_entry)
+                                        )
                                 else:
                                     raise RuntimeError(
                                         "neither streamablehttp_client nor sse_client available"
