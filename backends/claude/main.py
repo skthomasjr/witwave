@@ -32,6 +32,7 @@ from metrics import (
     backend_info,
     backend_mcp_request_duration_seconds,
     backend_mcp_requests_total,
+    backend_session_caller_cardinality,
     backend_startup_duration_seconds,
     backend_task_restarts_total,
     backend_up,
@@ -65,6 +66,13 @@ CONVERSATIONS_AUTH_TOKEN = os.environ.get("CONVERSATIONS_AUTH_TOKEN", "")
 _ready: bool = False
 _startup_mono: float = 0.0
 start_time: datetime = datetime.now(timezone.utc)
+
+# /mcp caller-identity cardinality tracker (#1049).  Holds the hex SHA256
+# fingerprints of distinct caller bearer tokens observed since process
+# start, capped to prevent unbounded growth on per-request tokens. The
+# gauge is updated each request to reflect len(_mcp_caller_identities).
+_MCP_CALLER_CARDINALITY_CAP: int = 10_000
+_mcp_caller_identities: set[str] = set()
 
 
 def load_agent_description() -> str:
@@ -444,6 +452,22 @@ async def main():
                 if _bearer_token
                 else None
             )
+            # Update caller-cardinality gauge so operators can detect
+            # single-tenant token collapse (gauge == 1 with non-trivial
+            # /mcp traffic means SESSION_ID_SECRET's per-caller binding
+            # is a no-op; migrate to per-caller tokens). See #1049.
+            if _caller_identity is not None and backend_session_caller_cardinality is not None:
+                try:
+                    if (
+                        _caller_identity not in _mcp_caller_identities
+                        and len(_mcp_caller_identities) < _MCP_CALLER_CARDINALITY_CAP
+                    ):
+                        _mcp_caller_identities.add(_caller_identity)
+                    backend_session_caller_cardinality.labels(
+                        agent=AGENT_NAME, agent_id=AGENT_ID, backend=_BACKEND_ID
+                    ).set(len(_mcp_caller_identities))
+                except Exception:
+                    pass
             session_id = derive_session_id(_raw_sid, caller_identity=_caller_identity)
             # #966: MCP-initiated invocations now get a named span nested
             # under the inbound traceparent (TraceparentASGIMiddleware has

@@ -33,6 +33,13 @@ backend_concurrent_queries: prometheus_client.Gauge | None = None
 
 # Session metrics
 backend_active_sessions: prometheus_client.Gauge | None = None
+# Cardinality of distinct caller_identity values observed on /mcp (#1049).
+# When CONVERSATIONS_AUTH_TOKEN is deployed as a single backend-wide token,
+# every caller hashes to the same bucket and this gauge sits at 1 — the
+# session-hijack protection in derive_session_id degrades to a no-op.
+# Operators can alert on "gauge == 1 with non-trivial /mcp traffic" to
+# flag deployments that need per-caller tokens.
+backend_session_caller_cardinality: prometheus_client.Gauge | None = None
 backend_session_starts_total: prometheus_client.Counter | None = None
 backend_session_evictions_total: prometheus_client.Counter | None = None
 backend_session_age_seconds: prometheus_client.Histogram | None = None
@@ -237,6 +244,16 @@ if _enabled:
     backend_active_sessions = prometheus_client.Gauge(
         "backend_active_sessions",
         "Number of active sessions tracked in the LRU cache.",
+        ["agent", "agent_id", "backend"],
+    )
+    backend_session_caller_cardinality = prometheus_client.Gauge(
+        "backend_session_caller_cardinality",
+        "Distinct caller_identity values observed on /mcp since process start. "
+        "Dependency signal for SESSION_ID_SECRET: when CONVERSATIONS_AUTH_TOKEN "
+        "is backend-wide every caller collapses to a single bucket and this "
+        "gauge sits at 1 — derive_session_id's caller-bound protection is "
+        "nominal. Operators should alert on prolonged 1 with non-trivial /mcp "
+        "traffic and migrate to per-caller tokens. See #1049.",
         ["agent", "agent_id", "backend"],
     )
     backend_session_starts_total = prometheus_client.Counter(
