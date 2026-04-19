@@ -345,5 +345,42 @@ def test_diff_redactor_failure_path_uses_log_binding():
         )
 
 
+# ----- stdin-based values delivery + janitor (#1081) -----
+
+
+def test_values_to_yaml_returns_none_for_empty():
+    assert server._values_to_yaml(None) is None
+    assert server._values_to_yaml({}) is None
+
+
+def test_values_to_yaml_round_trips():
+    import yaml as _yaml
+    rendered = server._values_to_yaml({"a": 1, "nested": {"b": "two"}})
+    assert rendered is not None
+    parsed = _yaml.safe_load(rendered)
+    assert parsed == {"a": 1, "nested": {"b": "two"}}
+
+
+def test_sweep_orphan_values_files_removes_old(tmp_path, monkeypatch):
+    """Janitor sweeps stale helm-values-*.yaml in the configured dir (#1081)."""
+    import time as _time
+
+    target = tmp_path / "stale.helm-values-abc.yaml"
+    # name must start with the prefix used by _write_values
+    stale = tmp_path / "helm-values-abc.yaml"
+    stale.write_text("foo: bar\n")
+    old = _time.time() - 7200
+    os.utime(str(stale), (old, old))
+
+    fresh = tmp_path / "helm-values-xyz.yaml"
+    fresh.write_text("foo: bar\n")
+
+    monkeypatch.setattr(server, "_HELM_VALUES_DIR", str(tmp_path))
+    removed = server._sweep_orphan_values_files(max_age_seconds=3600)
+    assert removed == 1
+    assert not stale.exists()
+    assert fresh.exists()
+
+
 if __name__ == "__main__":  # pragma: no cover
     sys.exit(pytest.main([__file__, "-q"]))

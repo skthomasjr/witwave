@@ -101,7 +101,11 @@ except Exception:  # pragma: no cover - metrics disabled
     mcp_subprocess_timeouts_total = None  # type: ignore
 
 
-def _helm(args: list[str], parse_json: bool = False) -> Any:
+def _helm(
+    args: list[str],
+    parse_json: bool = False,
+    stdin: str | None = None,
+) -> Any:
     cmd = ["helm", *args]
     log.debug("exec: %s", " ".join(cmd))
     # helm.exec child span — captures subprocess latency independent of the
@@ -119,6 +123,7 @@ def _helm(args: list[str], parse_json: bool = False) -> Any:
                 text=True,
                 check=False,
                 timeout=_HELM_SUBPROCESS_TIMEOUT_SECONDS,
+                input=stdin,
             )
             if proc.returncode != 0:
                 err = HelmError(
@@ -171,10 +176,33 @@ def _handler_span(tool: str, attributes: dict[str, Any] | None = None):
             yield span
 
 
+def _values_to_yaml(values: dict | None) -> str | None:
+    """Serialise a values dict for passing to ``helm --values=-`` on stdin.
+
+    Preferred over :func:`_write_values` because it avoids writing secret
+    material to the pod filesystem entirely (#1081). Callers should pass
+    the returned string as ``stdin=`` to :func:`_helm` together with a
+    ``["--values", "-"]`` argument.
+    """
+    if not values:
+        return None
+    return yaml.safe_dump(values)
+
+
+# Tempfile prefix + directory policy for the legacy on-disk fallback
+# (#1081). Operators deploying on a tmpfs-backed emptyDir can point
+# ``HELM_VALUES_TMPDIR`` at it so the cleartext rendering never touches
+# persistent disk; default behaviour preserves the historical /tmp path.
+_HELM_VALUES_PREFIX = "helm-values-"
+_HELM_VALUES_DIR = os.environ.get("HELM_VALUES_TMPDIR") or None
+
+
 def _write_values(values: dict | None) -> Path | None:
     if not values:
         return None
-    fd, path = tempfile.mkstemp(suffix=".yaml", prefix="helm-values-")
+    fd, path = tempfile.mkstemp(
+        suffix=".yaml", prefix=_HELM_VALUES_PREFIX, dir=_HELM_VALUES_DIR
+    )
     try:
         with os.fdopen(fd, "w") as f:
             yaml.safe_dump(values, f)
@@ -188,6 +216,52 @@ def _write_values(values: dict | None) -> Path | None:
             pass
         raise
     return Path(path)
+
+
+def _sweep_orphan_values_files(max_age_seconds: int = 3600) -> int:
+    """Remove stale ``helm-values-*.yaml`` tempfiles older than the cap.
+
+    A coroutine cancellation between ``_write_values`` and the cleanup
+    in ``finally`` can orphan the file; while the ``finally`` path is
+    usually hit, a hard task cancel or SIGKILL can skip it. Running a
+    janitor sweep at module import time keeps the pod filesystem from
+    accumulating cleartext value renderings across restarts (#1081).
+
+    Returns the number of files removed. Failures swallowed — this is a
+    best-effort cleanup, not a correctness gate.
+    """
+    import time as _time
+    removed = 0
+    directory = _HELM_VALUES_DIR or tempfile.gettempdir()
+    try:
+        entries = os.listdir(directory)
+    except OSError:
+        return 0
+    now = _time.time()
+    for entry in entries:
+        if not entry.startswith(_HELM_VALUES_PREFIX) or not entry.endswith(".yaml"):
+            continue
+        full = os.path.join(directory, entry)
+        try:
+            st = os.stat(full)
+        except OSError:
+            continue
+        if now - st.st_mtime < max_age_seconds:
+            continue
+        try:
+            os.unlink(full)
+            removed += 1
+        except OSError:
+            pass
+    if removed:
+        log.info("helm values janitor removed %d orphaned tempfile(s)", removed)
+    return removed
+
+
+try:
+    _sweep_orphan_values_files()
+except Exception:  # pragma: no cover - best effort
+    pass
 
 
 def _reject_flag_like(**named: str | None) -> None:
@@ -654,14 +728,13 @@ def install(
             if dry_run:
                 args.append("--dry-run")
 
-            vf = _write_values(values)
-            try:
-                if vf:
-                    args += ["-f", str(vf)]
-                return _helm(args, parse_json=True) or {}
-            finally:
-                if vf:
-                    vf.unlink(missing_ok=True)
+            # Prefer stdin delivery of values so secret material never
+            # touches the pod filesystem (#1081). Falls back to _helm's
+            # stdin= kwarg when ``values`` is provided.
+            values_yaml = _values_to_yaml(values)
+            if values_yaml is not None:
+                args += ["--values", "-"]
+            return _helm(args, parse_json=True, stdin=values_yaml) or {}
         except Exception as exc:
             set_span_error(_h, exc)
             raise
@@ -720,14 +793,12 @@ def upgrade(
             if dry_run:
                 args.append("--dry-run")
 
-            vf = _write_values(values)
-            try:
-                if vf:
-                    args += ["-f", str(vf)]
-                return _helm(args, parse_json=True) or {}
-            finally:
-                if vf:
-                    vf.unlink(missing_ok=True)
+            # Prefer stdin delivery of values so secret material never
+            # touches the pod filesystem (#1081).
+            values_yaml = _values_to_yaml(values)
+            if values_yaml is not None:
+                args += ["--values", "-"]
+            return _helm(args, parse_json=True, stdin=values_yaml) or {}
         except Exception as exc:
             set_span_error(_h, exc)
             raise
@@ -781,30 +852,28 @@ def diff(
                 args += ["--version", version]
             if repo:
                 args += ["--repo", repo]
-            vf = _write_values(values)
-            try:
-                if vf:
-                    args += ["-f", str(vf)]
-                raw = _helm(args) or ""
-                if redact and raw:
-                    try:
-                        return _redact_diff(raw)
-                    except Exception as _redact_exc:
-                        # Fail-closed: if redaction itself blows up, return
-                        # a placeholder rather than leak the raw diff (#915).
-                        log.warning(
-                            "helm diff redaction failed (%s); suppressing output.",
-                            _redact_exc,
-                        )
-                        return (
-                            "# diff redacted: Secret-aware redactor raised "
-                            f"{type(_redact_exc).__name__} — output "
-                            "suppressed to avoid leaking Secret contents (#915).\n"
-                        )
-                return raw
-            finally:
-                if vf:
-                    vf.unlink(missing_ok=True)
+            # Prefer stdin delivery of values so secret material never
+            # touches the pod filesystem (#1081).
+            values_yaml = _values_to_yaml(values)
+            if values_yaml is not None:
+                args += ["--values", "-"]
+            raw = _helm(args, stdin=values_yaml) or ""
+            if redact and raw:
+                try:
+                    return _redact_diff(raw)
+                except Exception as _redact_exc:
+                    # Fail-closed: if redaction itself blows up, return
+                    # a placeholder rather than leak the raw diff (#915).
+                    log.warning(
+                        "helm diff redaction failed (%s); suppressing output.",
+                        _redact_exc,
+                    )
+                    return (
+                        "# diff redacted: Secret-aware redactor raised "
+                        f"{type(_redact_exc).__name__} — output "
+                        "suppressed to avoid leaking Secret contents (#915).\n"
+                    )
+            return raw
         except Exception as exc:
             set_span_error(_h, exc)
             raise
