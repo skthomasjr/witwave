@@ -710,6 +710,17 @@ mcpTools:
     # # env: []
     # # envFrom: []
     #
+    # # Scheduling overrides (#1116). Each field defaults to the chart-
+    # # global value of the same name (nodeSelector / tolerations /
+    # # affinity / topologySpreadConstraints / priorityClassName); set
+    # # here to override per MCP tool. Pre-#1116 these fields were
+    # # documented but silently dropped by templates/mcp-tools.yaml.
+    # nodeSelector: {}
+    # tolerations: []
+    # affinity: {}
+    # topologySpreadConstraints: []
+    # priorityClassName: ""
+    #
     # Ship minimal RBAC by default so enabling the tool does not 403 out
     # of the box (#762). Baseline grants read on common core/apps/batch/
     # networking resources — adjust `rules` to widen or narrow. When

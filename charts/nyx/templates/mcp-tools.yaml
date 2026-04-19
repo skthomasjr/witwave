@@ -229,6 +229,33 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- /* Scheduling knobs (#1116). Each honours per-tool override
+             first, then falls back to the chart-global default so the
+             documented values.yaml shape (nodeSelector / tolerations /
+             affinity / topologySpreadConstraints / priorityClassName)
+             actually takes effect for MCP tool pods. Pre-#1116 the
+             templates silently dropped every one of these — operators
+             set them and watched pods land wherever. Matches the
+             agent-pod wiring in templates/deployment.yaml. */}}
+      {{- with ($tool.nodeSelector | default $.Values.nodeSelector) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with ($tool.tolerations | default $.Values.tolerations) }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with ($tool.affinity | default $.Values.affinity) }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with ($tool.topologySpreadConstraints | default $.Values.topologySpreadConstraints) }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with ($tool.priorityClassName | default $.Values.priorityClassName) }}
+      priorityClassName: {{ . }}
+      {{- end }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
