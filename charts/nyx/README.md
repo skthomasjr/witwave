@@ -226,6 +226,12 @@ The table above was curated for the most-edited knobs; the entries below fill ou
 | `defaults.resources.harness` | Chart-wide harness resource requests/limits defaults (#553). Set leaves to `null` to disable. | see `values.yaml` |
 | `defaults.resources.backend` | Chart-wide backend resource defaults. | see `values.yaml` |
 | `defaults.resources.backends.<name>` | Per-backend-type default keyed by backend name (`claude`, `codex`, `gemini`). | see `values.yaml` |
+| `grafanaDashboards.enabled` | Render a ConfigMap containing default Grafana dashboards (the "nyx — Overview" panel set pulled from `charts/nyx/dashboards/*.json`) labelled for a kube-prometheus-stack / grafana-operator sidecar (#1118). | `false` |
+| `grafanaDashboards.label` | Label key→value map the grafana sidecar watches. Override for operator conventions other than kube-prometheus-stack's (`grafana_dashboard: "true"`, tenancy labels, etc.). | `{grafana_dashboard: "1"}` |
+| `grafanaDashboards.additionalLabels` / `.annotations` | Extra labels/annotations merged onto the ConfigMap (e.g. `grafana_folder: "nyx"` for grafana-operator). | `{}` / `{}` |
+| `vpa.enabled` | Render a `VerticalPodAutoscaler` per agent Deployment (#1120). Requires the VerticalPodAutoscaler CRD from the kubernetes-sigs/autoscaler addon — the chart does **not** install it. Template is inert until the CRD is present. | `false` |
+| `vpa.updateMode` | VPA update mode. `Off` (recommend-only, default), `Initial`, `Recreate`, or `Auto`. Start with `Off` and inspect `kubectl describe vpa` before letting the VPA move the pod — LLM backends have wildly divergent memory envelopes per model. | `"Off"` |
+| `vpa.resourcePolicy` | Passthrough for `spec.resourcePolicy` — scope the VPA to specific containers / resources via `containerPolicies`. Avoid targeting the same resource the HPA targets (`autoscaling.targetCPUUtilizationPercentage`) or they will fight. | `{}` |
 
 To deploy multiple agents:
 

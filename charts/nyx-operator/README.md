@@ -110,6 +110,9 @@ kubectl delete crd nyxagents.nyx.ai
 | `webhooks.certManager.issuerKind` | Kind of Issuer to render when `createIssuer=true`. `Issuer` or `ClusterIssuer`           | `Issuer`                                    |
 | `webhooks.certManager.issuerRef.name` | Name of an external (Cluster)Issuer to use instead of a chart-owned one              | `""`                                        |
 | `webhooks.certManager.issuerRef.kind` | Kind of the external issuer                                                          | `""`                                        |
+| `vpa.enabled`                | Render a `VerticalPodAutoscaler` for the operator Deployment (#1120). Requires the VerticalPodAutoscaler CRD from the kubernetes-sigs/autoscaler addon — the chart does **not** install it. Template is inert until the CRD is present. | `false` |
+| `vpa.updateMode`             | VPA update mode. `Off` (recommend-only, default), `Initial`, `Recreate`, or `Auto`.          | `"Off"`                                     |
+| `vpa.resourcePolicy`         | Passthrough for `spec.resourcePolicy` — scope the VPA via `containerPolicies`.               | `{}`                                        |
 
 ## Admission webhook (#624)
 

@@ -511,6 +511,70 @@ prometheusRule:
       forMinutes: 10
       severity: warning
 
+# Grafana dashboards (#1118). Ships a default "nyx — Overview" dashboard
+# as a ConfigMap labelled for kube-prometheus-stack's grafana sidecar
+# (`grafana_dashboard: "1"` by default). Panels source from the backend_*
+# / harness_* / nyxprompt_* metric surface documented in AGENTS.md.
+#
+# Disabled by default because the sidecar convention assumes Grafana is
+# already deployed and watching a specific label selector — shipping the
+# ConfigMap unconditionally would pollute clusters that don't have a
+# sidecar listening.
+#
+# Drop additional JSON dashboards into charts/nyx/dashboards/ and they are
+# picked up automatically via .Files.Glob.
+grafanaDashboards:
+  enabled: false
+  # Label key → value map the grafana sidecar watches. kube-prometheus-stack
+  # defaults to `grafana_dashboard: "1"`; override per your operator's
+  # convention (e.g. `grafana_dashboard: "true"` or a tenancy label).
+  label:
+    grafana_dashboard: "1"
+  # Extra labels merged onto the ConfigMap (e.g. for tenancy selectors the
+  # sidecar ANDs against its primary label).
+  additionalLabels: {}
+  # Annotations merged onto the ConfigMap (e.g. grafana folder metadata:
+  # `grafana_folder: "nyx"` for the grafana-operator sidecar).
+  annotations: {}
+
+# VerticalPodAutoscaler per agent (#1120). Disabled by default. Requires
+# the VerticalPodAutoscaler CRD from the kubernetes-sigs/autoscaler addon;
+# this chart does NOT install the addon.
+#
+# LLM backends have wildly divergent memory envelopes per model, so
+# recommend-mode (`updateMode: Off`) is the sensible default: VPA emits
+# recommendations visible via `kubectl describe vpa`, humans apply them.
+# Flip `updateMode: Initial` / `Recreate` / `Auto` when you're comfortable
+# letting the VPA actually move the pod.
+#
+# HPA + VPA on the same resource is only safe when the VPA's resourcePolicy
+# omits the metric the HPA targets (or vice versa). If you enable both
+# `autoscaling.enabled=true` (CPU-target HPA) and VPA on CPU, they will
+# fight. Scope the VPA to memory via containerPolicies.controlledResources
+# when using both.
+vpa:
+  enabled: false
+  # Off | Initial | Recreate | Auto
+  updateMode: "Off"
+  # # Optional: floor on the number of replicas the VPA will update.
+  # # Ignored when updateMode=Off.
+  # minReplicas: 1
+  # Passthrough for spec.resourcePolicy. Most commonly used to scope which
+  # containers or resources the VPA manages. Examples:
+  #
+  # resourcePolicy:
+  #   containerPolicies:
+  #     - containerName: harness
+  #       controlledResources: ["memory"]
+  #     - containerName: '*'
+  #       minAllowed:
+  #         cpu: 10m
+  #         memory: 64Mi
+  #       maxAllowed:
+  #         cpu: 2
+  #         memory: 4Gi
+  resourcePolicy: {}
+
 # OpenTelemetry tracing (#634). End-to-end opt-in wiring for distributed
 # traces across harness, backends, and operator. Disabled by default so
 # existing deployments are unaffected.

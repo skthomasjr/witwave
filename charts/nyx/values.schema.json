@@ -169,6 +169,29 @@
         }
       }
     },
+    "grafanaDashboards": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "label": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "additionalLabels": { "type": "object" },
+        "annotations": { "type": "object" }
+      }
+    },
+    "vpa": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "updateMode": { "type": "string", "enum": ["Off", "Initial", "Recreate", "Auto"] },
+        "minReplicas": { "type": ["integer", "string"] },
+        "resourcePolicy": { "type": "object" }
+      }
+    },
     "observability": {
       "type": "object",
       "additionalProperties": true,

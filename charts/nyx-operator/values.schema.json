@@ -74,6 +74,16 @@
         "maxUnavailable": { "type": ["integer", "string"] }
       }
     },
+    "vpa": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "updateMode": { "type": "string", "enum": ["Off", "Initial", "Recreate", "Auto"] },
+        "minReplicas": { "type": ["integer", "string"] },
+        "resourcePolicy": { "type": "object" }
+      }
+    },
     "terminationGracePeriodSeconds": { "type": "integer", "minimum": 0 },
     "preStop": {
       "type": "object",

@@ -128,6 +128,32 @@ podDisruptionBudget:
   minAvailable: 1
   # maxUnavailable: 1   # mutually exclusive with minAvailable
 
+# VerticalPodAutoscaler for the operator deployment (#1120). Disabled by
+# default. Requires the VerticalPodAutoscaler CRD from the kubernetes-sigs/
+# autoscaler addon; this chart does NOT install the addon.
+#
+# The operator is a singleton controller-manager with modest, bursty CPU/
+# memory usage (reconcile loops during NyxAgent churn). Recommend-mode
+# (`updateMode: Off`) keeps VPA observing without touching the running pod.
+vpa:
+  enabled: false
+  # Off | Initial | Recreate | Auto
+  updateMode: "Off"
+  # # Optional: floor on the number of replicas the VPA will update.
+  # minReplicas: 1
+  # Passthrough for spec.resourcePolicy. Example:
+  #
+  # resourcePolicy:
+  #   containerPolicies:
+  #     - containerName: manager
+  #       minAllowed:
+  #         cpu: 10m
+  #         memory: 64Mi
+  #       maxAllowed:
+  #         cpu: 1
+  #         memory: 512Mi
+  resourcePolicy: {}
+
 # Pod termination grace period (#512). Must be greater than
 # preStop.delaySeconds so the manager has time to receive SIGTERM and run
 # controller-runtime's graceful shutdown (leader-lease release, in-flight
