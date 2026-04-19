@@ -762,6 +762,15 @@ type NyxAgentSpec struct {
 	// operators hand-crafting `env:` entries per container.
 	// +optional
 	Tracing *TracingSpec `json:"tracing,omitempty"`
+
+	// MCPTools configures cluster-wide MCP tool Deployments + Services
+	// the operator renders alongside the agent so operator-only installs
+	// can expose the same `mcp-kubernetes` / `mcp-helm` surface the Helm
+	// chart's `mcpTools` block provides (#830). Scaffold scope: the three
+	// most load-bearing knobs (enabled, image, replicas) are wired end-to-
+	// end; RBAC/clusterWide/resources are follow-up work.
+	// +optional
+	MCPTools *MCPToolsSpec `json:"mcpTools,omitempty"`
 }
 
 // TracingSpec mirrors the chart's observability.tracing.* values (#829).
@@ -977,6 +986,49 @@ const (
 	ConditionProgressing      = "Progressing"
 	ConditionReconcileSuccess = "ReconcileSuccess"
 )
+
+// MCPToolsSpec is the top-level block mirroring the chart's `mcpTools`
+// values (#830). Each named tool is rendered as its own Deployment +
+// Service in the agent's namespace when Enabled is true. Only a subset
+// of the chart's full value surface is modelled here; the remaining
+// knobs (resources, nodeSelector, rbac, clusterWide, automountServiceAccountToken,
+// image.digest, image.pullPolicy) are follow-up scaffolding — the CRD
+// schema was designed so those fields can be added additively without
+// a breaking version bump.
+type MCPToolsSpec struct {
+	// Kubernetes renders the `mcp-kubernetes` tool (Kubernetes API access
+	// via the official Python client). Off by default.
+	// +optional
+	Kubernetes *MCPToolSpec `json:"kubernetes,omitempty"`
+
+	// Helm renders the `mcp-helm` tool (Helm release management via the
+	// `helm` CLI). Off by default.
+	// +optional
+	Helm *MCPToolSpec `json:"helm,omitempty"`
+}
+
+// MCPToolSpec is the per-tool knob set. Scaffold scope (#830): Enabled,
+// Image, and Replicas are honoured by the operator's renderer; richer
+// fields (RBAC, per-tool SA, resources, scheduling) are intentionally
+// deferred so the CRD schema can settle before the controller grows a
+// full multi-tool renderer.
+type MCPToolSpec struct {
+	// Enabled toggles rendering of this tool's Deployment + Service.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Image is the tool container image. Repository defaults to the
+	// canonical ghcr.io path when the field is omitted on a tool whose
+	// Enabled=true (the controller supplies the default).
+	// +optional
+	Image *ImageSpec `json:"image,omitempty"`
+
+	// Replicas controls the rendered Deployment's replica count. The
+	// controller clamps negative values to 1. Defaults to 1 when unset.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	Replicas *int32 `json:"replicas,omitempty"`
+}
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status

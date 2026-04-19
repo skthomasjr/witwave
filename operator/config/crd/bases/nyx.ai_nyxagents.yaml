@@ -2009,6 +2009,100 @@ spec:
                   type: object
                   x-kubernetes-map-type: atomic
                 type: array
+              mcpTools:
+                description: |-
+                  MCPTools configures cluster-wide MCP tool Deployments + Services
+                  the operator renders alongside the agent so operator-only installs
+                  can expose the same `mcp-kubernetes` / `mcp-helm` surface the Helm
+                  chart's `mcpTools` block provides (#830). Scaffold scope: the three
+                  most load-bearing knobs (enabled, image, replicas) are wired end-to-
+                  end; RBAC/clusterWide/resources are follow-up work.
+                properties:
+                  helm:
+                    description: |-
+                      Helm renders the `mcp-helm` tool (Helm release management via the
+                      `helm` CLI). Off by default.
+                    properties:
+                      enabled:
+                        description: Enabled toggles rendering of this tool's Deployment
+                          + Service.
+                        type: boolean
+                      image:
+                        description: |-
+                          Image is the tool container image. Repository defaults to the
+                          canonical ghcr.io path when the field is omitted on a tool whose
+                          Enabled=true (the controller supplies the default).
+                        properties:
+                          pullPolicy:
+                            description: PullPolicy controls when the image is pulled.
+                            enum:
+                            - Always
+                            - IfNotPresent
+                            - Never
+                            type: string
+                          repository:
+                            description: Repository is the image repository without
+                              tag or digest.
+                            minLength: 1
+                            type: string
+                          tag:
+                            description: Tag is the image tag. If empty, the operator
+                              may fill in a default.
+                            type: string
+                        required:
+                        - repository
+                        type: object
+                      replicas:
+                        description: |-
+                          Replicas controls the rendered Deployment's replica count. The
+                          controller clamps negative values to 1. Defaults to 1 when unset.
+                        format: int32
+                        minimum: 0
+                        type: integer
+                    type: object
+                  kubernetes:
+                    description: |-
+                      Kubernetes renders the `mcp-kubernetes` tool (Kubernetes API access
+                      via the official Python client). Off by default.
+                    properties:
+                      enabled:
+                        description: Enabled toggles rendering of this tool's Deployment
+                          + Service.
+                        type: boolean
+                      image:
+                        description: |-
+                          Image is the tool container image. Repository defaults to the
+                          canonical ghcr.io path when the field is omitted on a tool whose
+                          Enabled=true (the controller supplies the default).
+                        properties:
+                          pullPolicy:
+                            description: PullPolicy controls when the image is pulled.
+                            enum:
+                            - Always
+                            - IfNotPresent
+                            - Never
+                            type: string
+                          repository:
+                            description: Repository is the image repository without
+                              tag or digest.
+                            minLength: 1
+                            type: string
+                          tag:
+                            description: Tag is the image tag. If empty, the operator
+                              may fill in a default.
+                            type: string
+                        required:
+                        - repository
+                        type: object
+                      replicas:
+                        description: |-
+                          Replicas controls the rendered Deployment's replica count. The
+                          controller clamps negative values to 1. Defaults to 1 when unset.
+                        format: int32
+                        minimum: 0
+                        type: integer
+                    type: object
+                type: object
               metrics:
                 description: Metrics toggles Prometheus scrape annotations on the
                   Service.
@@ -2667,6 +2761,37 @@ spec:
                   - whenUnsatisfiable
                   type: object
                 type: array
+              tracing:
+                description: |-
+                  Tracing controls OTel env injection on harness and backend
+                  containers (#829). Mirrors the chart's `observability.tracing.*`
+                  block and the `nyx.otelEnv` helper so operator-managed and
+                  chart-managed agents emit identical OTEL_* env vars without
+                  operators hand-crafting `env:` entries per container.
+                properties:
+                  enabled:
+                    description: |-
+                      Enabled turns on the OTEL_ENABLED master toggle on every
+                      operator-managed container. When false (the default) the operator
+                      injects nothing.
+                    type: boolean
+                  endpoint:
+                    description: |-
+                      Endpoint is forwarded verbatim as OTEL_EXPORTER_OTLP_ENDPOINT.
+                      Required when Enabled is true AND the target OTel SDK does not
+                      inherit a collector endpoint from the cluster (most deployments).
+                    type: string
+                  sampler:
+                    description: |-
+                      Sampler is forwarded verbatim as OTEL_TRACES_SAMPLER.
+                      Omitted when empty.
+                    type: string
+                  samplerArg:
+                    description: |-
+                      SamplerArg is forwarded verbatim as OTEL_TRACES_SAMPLER_ARG.
+                      Omitted when empty.
+                    type: string
+                type: object
             required:
             - backends
             - image

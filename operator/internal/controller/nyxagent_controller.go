@@ -363,6 +363,13 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	if err := r.reconcilePodMonitor(ctx, agent); err != nil {
 		reconcileErrs = append(reconcileErrs, err)
 	}
+	// MCP tools (#830). Scaffold: render enabled tool Deployment + Service
+	// pairs so operator-only installs have the mcp-kubernetes / mcp-helm
+	// endpoints the backends' mcp.json entries point at. Full chart-values
+	// parity (RBAC, resources, scheduling) is follow-up work.
+	if err := r.reconcileMCPTools(ctx, agent); err != nil {
+		reconcileErrs = append(reconcileErrs, err)
+	}
 	reconcileErr := errors.Join(reconcileErrs...)
 
 	// Observe Deployment status and update our own status subresource.
