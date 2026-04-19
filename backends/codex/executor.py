@@ -1754,10 +1754,62 @@ class AgentExecutor(A2AAgentExecutor):
         # callers (e.g. main.py's lifespan) can safely avoid double-close of
         # shared resources like the module-level _browser_pool (#555).
         self.closed: bool = False
+        # #1095: perform_initial_loads() flips these to True so the watcher
+        # bodies skip their redundant first parse once readiness has been
+        # gated on a synchronous initial load. Mirrors claude #869.
+        self._initial_mcp_loaded = False
+        self._initial_agent_md_loaded = False
+        self._initial_tool_config_loaded = False
 
     def _mcp_watchers(self):
         """Return callables for AGENTS.md, mcp.json, and config.toml watching (#371, #432, #561)."""
         return [self.agent_md_watcher, self.mcp_config_watcher, self.tool_config_watcher]
+
+    async def perform_initial_loads(self) -> None:
+        """Pre-load AGENTS.md, mcp.json, and config.toml before readiness (#1095).
+
+        Mirrors the claude peer added in #869: run the first parse of every
+        hot-reloadable config file synchronously on the lifespan/startup path
+        so a request arriving in the first ~100ms after readiness flips sees
+        a populated executor rather than an empty ``_agent_md_content`` or
+        empty ``_mcp_config``. Watchers detect the pre-loaded flags below
+        and skip their own first parse before entering ``awatch()``.
+        """
+        # AGENTS.md — __init__ already loaded it synchronously, but refresh
+        # here so any content written between import time and lifespan start
+        # is picked up before readiness flips.
+        try:
+            self._agent_md_content = _load_agent_md()
+            logger.info("AGENTS.md loaded (initial) from %s", AGENT_MD)
+        except Exception as exc:
+            logger.warning("AGENTS.md initial load failed: %r (keeping __init__ value)", exc)
+        self._initial_agent_md_loaded = True
+
+        # MCP config — load + enter the initial stack so requests land on
+        # live servers.
+        try:
+            self._mcp_config = await asyncio.to_thread(_load_mcp_config)
+        except Exception as exc:
+            logger.warning("MCP config initial load failed: %r", exc)
+            self._mcp_config = {}
+        if self._mcp_config:
+            logger.info("MCP config loaded (initial): %s", list(self._mcp_config.keys()))
+        try:
+            await self._apply_mcp_config(self._mcp_config)
+        except Exception as exc:
+            logger.warning("Initial MCP stack start failed: %r", exc)
+        self._initial_mcp_loaded = True
+
+        # [tools] table from config.toml.
+        try:
+            self._tool_config = await asyncio.to_thread(_load_tool_config)
+            logger.info(
+                "tool config loaded (initial) from %s: %s",
+                CODEX_CONFIG_TOML, dict(self._tool_config),
+            )
+        except Exception as exc:
+            logger.warning("tool config initial load failed: %r", exc)
+        self._initial_tool_config_loaded = True
 
     async def _apply_mcp_config(self, mcp_config: dict) -> None:
         """Enter the given MCP config into a fresh lifespan-scoped stack (#526).
@@ -1904,14 +1956,18 @@ class AgentExecutor(A2AAgentExecutor):
         """
         from watchfiles import awatch as _awatch
 
-        # Initial load + first stack entry.
-        self._mcp_config = await asyncio.to_thread(_load_mcp_config)
-        if self._mcp_config:
-            logger.info("MCP config loaded: %s", list(self._mcp_config.keys()))
-        try:
-            await self._apply_mcp_config(self._mcp_config)
-        except Exception as _apply_exc:
-            logger.warning("Initial MCP stack start failed: %s", _apply_exc)
+        # Initial load + first stack entry. Skipped when
+        # perform_initial_loads already ran on the lifespan startup path
+        # (#1095) — the state is populated and readiness has been gated
+        # on it, so re-parsing here would be redundant work.
+        if not self._initial_mcp_loaded:
+            self._mcp_config = await asyncio.to_thread(_load_mcp_config)
+            if self._mcp_config:
+                logger.info("MCP config loaded: %s", list(self._mcp_config.keys()))
+            try:
+                await self._apply_mcp_config(self._mcp_config)
+            except Exception as _apply_exc:
+                logger.warning("Initial MCP stack start failed: %s", _apply_exc)
 
         watch_dir = os.path.dirname(os.path.abspath(MCP_CONFIG_PATH))
         while True:
@@ -1947,8 +2003,10 @@ class AgentExecutor(A2AAgentExecutor):
         from watchfiles import awatch as _awatch
 
         # Perform an initial load so the watcher starts with current content.
-        self._agent_md_content = _load_agent_md()
-        logger.info("AGENTS.md loaded from %s", AGENT_MD)
+        # Skipped when perform_initial_loads already ran (#1095).
+        if not self._initial_agent_md_loaded:
+            self._agent_md_content = _load_agent_md()
+            logger.info("AGENTS.md loaded from %s", AGENT_MD)
 
         watch_dir = os.path.dirname(os.path.abspath(AGENT_MD))
         while True:
@@ -1984,8 +2042,10 @@ class AgentExecutor(A2AAgentExecutor):
         # Initial load so the cache is populated before the first request
         # arrives. Run in a thread so slow/remote filesystems do not stall the
         # event loop at startup (same rationale as mcp_config_watcher).
-        self._tool_config = await asyncio.to_thread(_load_tool_config)
-        logger.info("tool config loaded from %s: %s", CODEX_CONFIG_TOML, dict(self._tool_config))
+        # Skipped when perform_initial_loads already ran (#1095).
+        if not self._initial_tool_config_loaded:
+            self._tool_config = await asyncio.to_thread(_load_tool_config)
+            logger.info("tool config loaded from %s: %s", CODEX_CONFIG_TOML, dict(self._tool_config))
 
         watch_dir = os.path.dirname(os.path.abspath(CODEX_CONFIG_TOML))
         while True:

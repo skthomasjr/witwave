@@ -702,6 +702,28 @@ async def main():
     config = uvicorn.Config(full_app, host=AGENT_HOST, port=BACKEND_PORT)
     server = uvicorn.Server(config)
 
+    # #1095: synchronously populate AGENTS.md + mcp.json + tool config
+    # before readiness/server.serve() so a request landing in the first
+    # ~100ms after bind doesn't observe empty executor state. Mirrors
+    # claude #869. Bounded so a slow/stuck filesystem can't indefinitely
+    # delay startup — the watchers will fill in asynchronously on timeout.
+    _INITIAL_LOADS_TIMEOUT_S = float(
+        os.environ.get("INITIAL_LOADS_TIMEOUT_SECONDS", "10")
+    )
+    try:
+        await asyncio.wait_for(
+            executor.perform_initial_loads(),
+            timeout=_INITIAL_LOADS_TIMEOUT_S,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "perform_initial_loads exceeded %.1fs — proceeding with startup; "
+            "AGENTS.md/mcp.json/tool_config watchers will fill in asynchronously (#1095).",
+            _INITIAL_LOADS_TIMEOUT_S,
+        )
+    except Exception as exc:
+        logger.error("perform_initial_loads failed: %r — watchers will retry", exc)
+
     # Start MCP watcher tasks (none for codex, but kept for structural parity)
     for _w in executor._mcp_watchers():
         _mcp_task = asyncio.create_task(_guarded(_w))
