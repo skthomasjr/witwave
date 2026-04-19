@@ -347,17 +347,37 @@ func (r *NyxPromptReconciler) patchStatusWithConflictRetry(
 	reconcileHadErrors bool,
 ) error {
 	const maxAttempts = 5
+	// The bindings / readyCount values passed in were computed against the
+	// spec generation we observed at the top of Reconcile. If a 409 retry
+	// re-Gets the object and finds a newer spec generation, we must NOT
+	// stamp ObservedGeneration with the fresh generation — that would
+	// falsely advertise "fresh spec reconciled" while bindings still
+	// reflect the old spec (#1012). In that case we preserve the prior
+	// ObservedGeneration and the Ready condition's ObservedGeneration so
+	// the next reconcile (triggered by the spec-generation watch) recomputes
+	// bindings against the current spec.
+	reconciledGeneration := prompt.Generation
 	// The ready condition content is recomputed fresh on each retry so
 	// its LastTransitionTime tracks the successful write, and so the
 	// bindings message stays in sync with the re-Get'd object.
 	apply := func(target *nyxv1alpha1.NyxPrompt) {
-		target.Status.ObservedGeneration = target.Generation
+		// Only stamp ObservedGeneration when the spec we reconciled
+		// against still matches the object we're patching. Otherwise
+		// keep whatever was there so status doesn't lie about which
+		// generation produced these bindings.
+		stampGen := reconciledGeneration
+		if target.Generation != reconciledGeneration {
+			// Preserve prior ObservedGeneration; do not overwrite.
+			stampGen = target.Status.ObservedGeneration
+		} else {
+			target.Status.ObservedGeneration = reconciledGeneration
+		}
 		target.Status.Bindings = bindings
 		target.Status.ReadyCount = readyCount
 		cond := metav1.Condition{
 			Type:               nyxv1alpha1.NyxPromptConditionReady,
 			LastTransitionTime: metav1.Now(),
-			ObservedGeneration: target.Generation,
+			ObservedGeneration: stampGen,
 		}
 		if !reconcileHadErrors && readyCount == int32(len(target.Spec.AgentRefs)) && len(target.Spec.AgentRefs) > 0 {
 			cond.Status = metav1.ConditionTrue
