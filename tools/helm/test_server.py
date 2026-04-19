@@ -271,6 +271,52 @@ def test_redact_diff_still_resets_on_standalone_doc_separator():
     assert "color: blue" in out
 
 
+# ----- _redact_diff unified-diff header handling (#1078) -----
+
+
+def test_redact_diff_ignores_unified_diff_file_headers():
+    """``--- a/path`` and ``+++ b/path`` lines are unified-diff file
+    headers, not YAML doc separators. They must not participate in
+    the state machine — otherwise the Secret block they introduce
+    would be torn down before any data leaf is redacted (#1078)."""
+    diff_text = (
+        "--- a/templates/secret.yaml\n"
+        "+++ b/templates/secret.yaml\n"
+        "@@ -1,4 +1,4 @@\n"
+        " kind: Secret\n"
+        " data:\n"
+        "-  pw: b2xkcHc=\n"
+        "+  pw: bmV3cHc=\n"
+    )
+    out = server._redact_diff(diff_text)
+    # Neither before nor after value should leak.
+    assert "b2xkcHc=" not in out
+    assert "bmV3cHc=" not in out
+    assert server._REDACTED in out
+    # File headers pass through untouched.
+    assert "--- a/templates/secret.yaml" in out
+    assert "+++ b/templates/secret.yaml" in out
+    assert "@@ -1,4 +1,4 @@" in out
+
+
+def test_redact_diff_handles_git_diff_headers():
+    """``diff --git`` and ``index`` lines are git-diff preamble. They
+    must not reset state either (#1078)."""
+    diff_text = (
+        "diff --git a/templates/secret.yaml b/templates/secret.yaml\n"
+        "index abc123..def456 100644\n"
+        "--- a/templates/secret.yaml\n"
+        "+++ b/templates/secret.yaml\n"
+        " kind: Secret\n"
+        " data:\n"
+        "-  token: b2xk\n"
+        "+  token: bmV3\n"
+    )
+    out = server._redact_diff(diff_text)
+    assert "b2xk" not in out
+    assert "bmV3" not in out
+
+
 # ----- diff redactor fail-closed logger binding (#1026) -----
 
 

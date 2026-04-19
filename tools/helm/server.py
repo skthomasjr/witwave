@@ -328,6 +328,21 @@ def _redact_diff(diff_text: str) -> str:
     in_secret = False
     in_data_map = False
     for line in diff_text.splitlines():
+        # Explicitly skip unified-diff file-header + hunk-header lines
+        # before any prefix-stripping so they never participate in state
+        # transitions (#1078). These markers appear at column 0 with no
+        # context prefix and cannot legitimately be YAML doc separators,
+        # ``kind:`` headers, or ``data:`` leaves.
+        if (
+            line.startswith("--- ")
+            or line.startswith("+++ ")
+            or line.startswith("@@ ")
+            or line.startswith("diff --git ")
+            or line.startswith("index ")
+        ):
+            out_lines.append(line)
+            continue
+
         # Strip the leading diff prefix for content inspection but keep
         # it for the emitted line.
         content = line
@@ -344,7 +359,8 @@ def _redact_diff(diff_text: str) -> str:
         # and multi-line PEM bodies (``-----BEGIN CERTIFICATE-----``)
         # inside stringData, resetting the state machine mid-Secret and
         # leaking subsequent data leaf lines (#1028). ``+++ `` and
-        # ``@@ `` hunk headers are not doc separators either.
+        # ``@@ `` hunk headers are not doc separators either — those
+        # are now filtered above (#1078) before we get here.
         if stripped == "---":
             in_secret = False
             in_data_map = False
