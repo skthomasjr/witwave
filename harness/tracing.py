@@ -193,27 +193,47 @@ class TraceIdLogFilter(logging.Filter):
         return True
 
 
-def install_trace_id_log_filter(logger: logging.Logger | None = None) -> TraceIdLogFilter:
-    """Install :class:`TraceIdLogFilter` on *logger* (root by default).
+# Module-level guard so multiple install_trace_id_log_filter() calls
+# don't stack record-factory wrappers on top of each other (each wrapper
+# would keep its own reference to the previous factory). Idempotent.
+_LOG_FACTORY_INSTALLED = False
+_ORIGINAL_LOG_FACTORY = None
 
-    Attaching the filter to the root logger — plus to every handler on
-    the root logger — guarantees the ``trace_id`` attribute is present
-    before formatters render.  Attaching to the logger alone is
-    insufficient because ``logging.basicConfig`` handlers run their own
-    filter chain after propagation.  Safe to call more than once; the
-    filter is idempotent per (logger|handler, instance) pair.
+
+def install_trace_id_log_filter(logger: logging.Logger | None = None) -> TraceIdLogFilter:
+    """Ensure ``trace_id`` is present on every :class:`logging.LogRecord`.
+
+    Historical behaviour (#469) attached a :class:`TraceIdLogFilter` to
+    the root logger and to every handler iterated at call time. Any
+    handler attached afterwards — lazy Sentry/OTLP exporters, child
+    loggers wired via :func:`logging.basicConfig` during a reconfigure
+    — bypassed the filter chain, so formatters referencing
+    ``%(trace_id)s`` silently rendered ``-`` from that point onwards.
+
+    Under #1041 we install a :func:`logging.setLogRecordFactory` wrapper
+    so the attribute is stamped on the record itself when it's
+    constructed, before any handler or filter sees it. Late-attached
+    handlers therefore always resolve ``%(trace_id)s`` correctly. The
+    legacy filter is still returned (and still attached to the target
+    logger) for back-compat with callers that expect a handle.
     """
     target = logger or logging.getLogger()
     flt = TraceIdLogFilter()
-    # Attach to the logger itself so logger-level filters see it.
     if not any(isinstance(f, TraceIdLogFilter) for f in target.filters):
         target.addFilter(flt)
-    # Attach to every existing handler so handler-level formatters
-    # always resolve %(trace_id)s even when the record was emitted on
-    # a child logger that bypasses the root filter chain.
-    for handler in target.handlers:
-        if not any(isinstance(f, TraceIdLogFilter) for f in handler.filters):
-            handler.addFilter(flt)
+
+    global _LOG_FACTORY_INSTALLED, _ORIGINAL_LOG_FACTORY
+    if not _LOG_FACTORY_INSTALLED:
+        _ORIGINAL_LOG_FACTORY = logging.getLogRecordFactory()
+
+        def _trace_id_record_factory(*args: object, **kwargs: object) -> logging.LogRecord:
+            record = _ORIGINAL_LOG_FACTORY(*args, **kwargs)  # type: ignore[misc]
+            if not getattr(record, "trace_id", None):
+                record.trace_id = _current_trace_id.get() or "-"
+            return record
+
+        logging.setLogRecordFactory(_trace_id_record_factory)
+        _LOG_FACTORY_INSTALLED = True
     return flt
 
 
