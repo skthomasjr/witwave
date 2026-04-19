@@ -195,6 +195,30 @@ interface TeamDirectoryEntry {
   url: string;
 }
 
+// Compute the earliest span start time for a trace without spreading the
+// span array into Math.min (#1062). Iterative scan is O(n), avoids the
+// Function.apply arg-count cap that trips RangeError on wide traces, and
+// skips the intermediate map() allocation that the spread variant forced.
+function earliestStartOfTrace(trace: JaegerTrace): number {
+  let min = Number.POSITIVE_INFINITY;
+  const spans = trace.spans;
+  for (let i = 0; i < spans.length; i += 1) {
+    const st = spans[i]?.startTime ?? 0;
+    if (st < min) min = st;
+  }
+  return Number.isFinite(min) ? min : 0;
+}
+
+// In-place sort by earliest span start, newest first. Uses the
+// Decorate-Sort-Undecorate pattern so the earliest-start scalar is
+// computed exactly once per trace regardless of how many times the
+// comparator revisits a given pair (#1062).
+function sortTracesByEarliestStartDesc(traces: JaegerTrace[]): void {
+  const decorated = traces.map((t) => ({ t, k: earliestStartOfTrace(t) }));
+  decorated.sort((a, b) => b.k - a.k);
+  for (let i = 0; i < decorated.length; i += 1) traces[i] = decorated[i].t;
+}
+
 async function fetchTeam(signal: AbortSignal): Promise<TeamDirectoryEntry[]> {
   const resp = await fetch("/api/team", { signal });
   if (!resp.ok) return [];
@@ -266,12 +290,14 @@ async function inClusterFetchList(
         // Cap per-agent to newest K (#746). Uses the earliest span
         // start time as the trace start so the cap is consistent
         // with the final sort in refreshList.
+        //
+        // #1062: the comparator used to spread a per-trace span array
+        // into Math.min twice per comparison, making the sort O(n log n
+        // × span-count) and risking a Function.apply arg-cap RangeError
+        // on traces with many spans. Precompute the scalar sort key
+        // once per trace via a Decorate-Sort-Undecorate helper.
         if (traces.length > perAgentLimit) {
-          traces.sort((a, b) => {
-            const sa = Math.min(...a.spans.map((s) => s.startTime ?? 0));
-            const sb = Math.min(...b.spans.map((s) => s.startTime ?? 0));
-            return sb - sa;
-          });
+          sortTracesByEarliestStartDesc(traces);
           return traces.slice(0, perAgentLimit);
         }
         return traces;
@@ -302,11 +328,9 @@ async function inClusterFetchList(
   // consistent with the per-agent cap above and with refreshList's
   // final sort order.
   if (totalLimit !== null && merged.length > totalLimit) {
-    merged.sort((a, b) => {
-      const sa = Math.min(...a.spans.map((s) => s.startTime ?? 0));
-      const sb = Math.min(...b.spans.map((s) => s.startTime ?? 0));
-      return sb - sa;
-    });
+    // #1062: precompute the scalar sort key instead of spreading span
+    // arrays into Math.min from inside the comparator.
+    sortTracesByEarliestStartDesc(merged);
     merged = merged.slice(0, totalLimit);
   }
   return { data: merged, total: merged.length };
