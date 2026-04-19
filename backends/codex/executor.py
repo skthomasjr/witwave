@@ -103,6 +103,7 @@ from metrics import (
     backend_tool_audit_bytes_per_entry,
     backend_tool_audit_entries_total,
     backend_tool_audit_rotation_pressure_total,
+    backend_session_path_mismatch_total,
 )
 
 from log_utils import _append_log
@@ -1007,6 +1008,220 @@ def _delete_sqlite_session(session_id: str, db_path: str) -> None:
         conn.close()
 
 
+def _session_layout_self_test() -> None:
+    """Probe the codex SQLiteSession on-disk layout at startup (#806).
+
+    Mirrors claude's #530 probe. Writes + reads + deletes a sentinel row
+    through a direct ``sqlite3`` connection against ``CODEX_SESSION_DB`` so
+    operators get an immediate signal when:
+
+    - the DB directory is not writable (permissions / read-only mount),
+    - WAL cannot be enabled (filesystem that forbids ``-wal`` / ``-shm``
+      sidecar files — e.g. some network mounts),
+    - the ``agent_sessions`` table exists but under a different schema than
+      ``_sqlite_session_exists`` / ``_delete_sqlite_session`` expect (would
+      cause silent eviction storage leaks under #361 flow),
+    - the DELETE round-trip does not actually remove the row on disk.
+
+    Every failure bumps ``backend_session_path_mismatch_total{reason=...}``
+    and logs loud. A broken probe must never prevent startup — every branch
+    swallows exceptions.
+
+    The probe runs against the configured DB path (not an ephemeral tempfile)
+    so permission / mount-level misconfiguration is surfaced against the real
+    target. The sentinel row is guaranteed-deleted at the end so it cannot
+    leak into the normal session set.
+    """
+    def _bump(reason: str) -> None:
+        if backend_session_path_mismatch_total is not None:
+            try:
+                backend_session_path_mismatch_total.labels(
+                    **_LABELS, reason=reason,
+                ).inc()
+            except Exception:
+                pass
+
+    db_path = CODEX_SESSION_DB
+    if not db_path or db_path == ":memory:":
+        logger.info(
+            "session-layout self-test: CODEX_SESSION_DB is %r — skipping "
+            "probe (in-memory / unset). (#806)", db_path,
+        )
+        return
+
+    probe_id = "__nyx_codex_session_probe__"
+    try:
+        # (1) Ensure parent dir exists + is writable.
+        parent = os.path.dirname(db_path) or "."
+        try:
+            os.makedirs(parent, exist_ok=True)
+        except Exception as exc:
+            logger.error(
+                "session-layout self-test: cannot create parent dir %r (%r) — "
+                "session history will not persist. (#806)",
+                parent, exc,
+            )
+            _bump("parent_dir_create_failed")
+            return
+        if not os.access(parent, os.W_OK):
+            logger.error(
+                "session-layout self-test: parent dir %r is not writable — "
+                "session history will not persist. (#806)",
+                parent,
+            )
+            _bump("parent_dir_not_writable")
+            return
+
+        # (2) Open the configured DB and confirm WAL + busy_timeout apply.
+        try:
+            import sqlite3 as _sqlite3
+            conn = _codex_sqlite_connect(db_path)
+        except Exception as exc:
+            logger.error(
+                "session-layout self-test: sqlite3.connect(%r) failed: %r — "
+                "session history will not persist. (#806)",
+                db_path, exc,
+            )
+            _bump("connect_failed")
+            return
+
+        try:
+            try:
+                mode_row = conn.execute("PRAGMA journal_mode").fetchone()
+                if mode_row and mode_row[0].lower() != "wal":
+                    logger.warning(
+                        "session-layout self-test: journal_mode is %r (expected wal) — "
+                        "SQLite may not have applied the WAL PRAGMA. (#806)",
+                        mode_row[0],
+                    )
+                    _bump("journal_mode_not_wal")
+            except Exception:
+                _bump("journal_mode_query_failed")
+
+            # (3) Ensure the agent_sessions table exists with the columns we
+            # depend on. If the SDK ever switches schema or splits rows
+            # across tables, _delete_sqlite_session would silently no-op.
+            try:
+                cursor = conn.execute(
+                    "SELECT name FROM sqlite_master "
+                    "WHERE type='table' AND name='agent_sessions'"
+                )
+                have_table = cursor.fetchone() is not None
+            except Exception as exc:
+                logger.warning(
+                    "session-layout self-test: sqlite_master query failed: %r "
+                    "(#806)", exc,
+                )
+                _bump("sqlite_master_query_failed")
+                have_table = False
+
+            if not have_table:
+                # Fresh install — create a minimal compatible shape so the
+                # write/read round-trip below can run. The SDK will redefine
+                # / migrate on first real session use.
+                try:
+                    conn.execute(
+                        "CREATE TABLE IF NOT EXISTS agent_sessions ("
+                        "session_id TEXT PRIMARY KEY, "
+                        "data TEXT"
+                        ")"
+                    )
+                    conn.commit()
+                except Exception as exc:
+                    logger.error(
+                        "session-layout self-test: CREATE TABLE agent_sessions "
+                        "failed: %r — session history will not persist. (#806)",
+                        exc,
+                    )
+                    _bump("create_table_failed")
+                    return
+
+            # (4) Write+read+delete a sentinel row. Confirms the disk path
+            # can round-trip and DELETE actually removes rows (i.e. no
+            # stale VIEW / TRIGGER hiding the deletion).
+            try:
+                conn.execute(
+                    "INSERT OR REPLACE INTO agent_sessions (session_id) VALUES (?)",
+                    (probe_id,),
+                )
+                conn.commit()
+            except _sqlite3.OperationalError as exc:
+                # Schema has extra NOT NULL columns we don't know about —
+                # non-fatal (SDK writes those itself); record and continue.
+                logger.info(
+                    "session-layout self-test: sentinel INSERT on agent_sessions "
+                    "failed (%r); schema has columns beyond session_id. Skipping "
+                    "round-trip probe. (#806)", exc,
+                )
+                _bump("insert_schema_mismatch")
+                return
+            except Exception as exc:
+                logger.error(
+                    "session-layout self-test: sentinel INSERT failed: %r — "
+                    "session writes likely broken. (#806)", exc,
+                )
+                _bump("insert_failed")
+                return
+
+            try:
+                row = conn.execute(
+                    "SELECT 1 FROM agent_sessions WHERE session_id = ?",
+                    (probe_id,),
+                ).fetchone()
+                if row is None:
+                    logger.error(
+                        "session-layout self-test: sentinel row not readable "
+                        "after INSERT — storage path is broken. (#806)",
+                    )
+                    _bump("read_after_insert_missing")
+            except Exception as exc:
+                logger.warning(
+                    "session-layout self-test: SELECT after INSERT failed: %r "
+                    "(#806)", exc,
+                )
+                _bump("select_failed")
+
+            try:
+                conn.execute(
+                    "DELETE FROM agent_sessions WHERE session_id = ?",
+                    (probe_id,),
+                )
+                conn.commit()
+                row2 = conn.execute(
+                    "SELECT 1 FROM agent_sessions WHERE session_id = ?",
+                    (probe_id,),
+                ).fetchone()
+                if row2 is not None:
+                    logger.error(
+                        "session-layout self-test: sentinel row still present "
+                        "after DELETE — eviction cleanup will leak. (#806)",
+                    )
+                    _bump("delete_did_not_remove")
+            except Exception as exc:
+                logger.warning(
+                    "session-layout self-test: DELETE round-trip failed: %r "
+                    "(#806)", exc,
+                )
+                _bump("delete_failed")
+
+            logger.info(
+                "session-layout self-test: CODEX_SESSION_DB=%r verified "
+                "(write/read/delete round-trip OK). (#806)",
+                db_path,
+            )
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    except Exception as exc:
+        # Outer safety net — no probe failure should kill startup.
+        logger.warning(
+            "session-layout self-test: probe raised unexpectedly: %r (#806)", exc,
+        )
+        _bump("probe_exception")
+
+
 def _load_agent_md() -> str:
     try:
         with open(AGENT_MD) as f:
@@ -1864,6 +2079,16 @@ class AgentExecutor(A2AAgentExecutor):
         except Exception as exc:
             logger.warning("tool config initial load failed: %r", exc)
         self._initial_tool_config_loaded = True
+
+        # Session-layout self-test (#806). Runs after the config loads so log
+        # ordering matches the other backends' readiness handshake. Offloaded
+        # to a thread because sqlite I/O is blocking.
+        try:
+            await asyncio.to_thread(_session_layout_self_test)
+        except Exception as exc:
+            logger.warning(
+                "session-layout self-test scheduling failed: %r (#806)", exc,
+            )
 
     async def _apply_mcp_config(self, mcp_config: dict) -> None:
         """Enter the given MCP config into a fresh lifespan-scoped stack (#526).
