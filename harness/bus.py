@@ -31,7 +31,14 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from metrics import harness_bus_dedup_total, harness_bus_pending_kinds, harness_bus_queue_depth
+from metrics import (
+    harness_bus_dedup_total,
+    harness_bus_pending_kinds,
+    harness_bus_queue_depth,
+    harness_hook_decision_dropped_total,
+    harness_hook_decision_listener_dup_rejects_total,
+    harness_hook_decision_listener_errors_total,
+)
 from utils import ConsensusEntry
 
 BUS_MAX_QUEUE_DEPTH = int(os.environ.get("BUS_MAX_QUEUE_DEPTH", "100"))
@@ -192,9 +199,47 @@ class HookDecisionEvent:
 # propagate out of ``publish_hook_decision``.
 _hook_decision_listeners: list[Callable[[HookDecisionEvent], None]] = []
 
+# Identity set used to reject duplicate registrations across module
+# reloads (#1036). Without this guard an `importlib.reload(bus)` or a
+# misbehaving test fixture that re-imports the harness can silently
+# double every downstream fan-out. We key on the callable object so a
+# re-registration of the exact same function is a no-op; a different
+# function with the same qualname is still allowed.
+_hook_decision_listener_ids: set[int] = set()
+
+# Error counter surface (#1036). Callers (harness/metrics.py) set
+# :data:`listener_errors_total` to a prometheus Counter with labels
+# ``(listener, error)`` — we bump it on every listener exception so
+# dashboards can alert on silent listener-level outages.  Left None
+# when metrics are disabled / the harness didn't wire it.
+listener_errors_total = None  # type: ignore[assignment]
+# Dup-registration counter surface. Bumped when subscribe_hook_decision
+# rejects a duplicate; operators can alert on a non-zero rate which
+# almost always indicates an unintended module reload.
+listener_dup_rejects_total = None  # type: ignore[assignment]
+
 
 def subscribe_hook_decision(listener: Callable[[HookDecisionEvent], None]) -> None:
-    """Register *listener* for future :class:`HookDecisionEvent` publications."""
+    """Register *listener* for future :class:`HookDecisionEvent` publications.
+
+    Duplicate registrations of the same callable are rejected (#1036) to
+    prevent double-dispatch after module reloads. The rejection bumps
+    :data:`listener_dup_rejects_total` when wired.
+    """
+    key = id(listener)
+    if key in _hook_decision_listener_ids:
+        logger.warning(
+            "subscribe_hook_decision: listener %r is already registered; "
+            "ignoring duplicate (likely an unintended module reload).",
+            listener,
+        )
+        if listener_dup_rejects_total is not None:
+            try:
+                listener_dup_rejects_total.inc()
+            except Exception:
+                pass
+        return
+    _hook_decision_listener_ids.add(key)
     _hook_decision_listeners.append(listener)
 
 
@@ -204,6 +249,7 @@ def unsubscribe_hook_decision(listener: Callable[[HookDecisionEvent], None]) -> 
         _hook_decision_listeners.remove(listener)
     except ValueError:
         pass
+    _hook_decision_listener_ids.discard(id(listener))
 
 
 # Bounded queue drained by ``_hook_decision_dispatch_loop`` (#928). The
@@ -257,6 +303,7 @@ def start_hook_decision_dispatcher(loop: "asyncio.AbstractEventLoop") -> "asynci
                     listener(event)
                 except Exception as exc:  # pragma: no cover — best-effort side channel
                     logger.warning("hook.decision listener %r raised: %r", listener, exc)
+                    _bump_listener_error(listener, exc)
 
     return loop.create_task(_dispatch_loop(), name="hook_decision_dispatcher")
 
@@ -294,6 +341,26 @@ def publish_hook_decision(event: HookDecisionEvent) -> None:
             listener(event)
         except Exception as exc:  # pragma: no cover — best-effort side channel
             logger.warning("hook.decision listener %r raised: %r", listener, exc)
+            _bump_listener_error(listener, exc)
+
+
+def _bump_listener_error(listener: Callable[..., object], exc: BaseException) -> None:
+    """Increment the optional Prometheus error counter (#1036).
+
+    Surfaced as ``harness_hook_decision_listener_errors_total`` by the
+    harness metrics module when wired. Best-effort: a mis-wired counter
+    must never break fan-out.
+    """
+    if listener_errors_total is None:
+        return
+    try:
+        name = getattr(listener, "__qualname__", None) or getattr(listener, "__name__", "<unknown>")
+        listener_errors_total.labels(
+            listener=name,
+            error=type(exc).__name__,
+        ).inc()
+    except Exception:
+        pass
 
 
 def get_hook_decision_dropped_count() -> int:

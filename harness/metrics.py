@@ -125,6 +125,16 @@ harness_a2a_backend_circuit_transitions_total: prometheus_client.Counter | None 
 harness_backends_reload_errors_total: prometheus_client.Counter | None = None
 harness_backends_config_stale: prometheus_client.Gauge | None = None
 harness_task_store_errors_total: prometheus_client.Counter | None = None
+# Hook decision listener errors + duplicate-registration rejects (#1036).
+# bus.py fans each HookDecisionEvent out to its registered listeners
+# under a try/except; without a counter a broken listener fell silent
+# after its first WARN. Dashboards alert on the rate of either series.
+harness_hook_decision_listener_errors_total: prometheus_client.Counter | None = None
+harness_hook_decision_listener_dup_rejects_total: prometheus_client.Counter | None = None
+# Hook decision dispatcher queue drops (#1085). Bumped when the bounded
+# queue in bus.py is full and an event is shed. Pair with existing
+# backend_hook_post_shed_total for end-to-end visibility.
+harness_hook_decision_dropped_total: prometheus_client.Counter | None = None
 
 
 if _enabled:
@@ -594,6 +604,25 @@ if _enabled:
         "was a retry attempt. Non-zero rate signals lock contention, "
         "disk pressure, or a corrupt WAL.",
         ["op", "retry"],
+    )
+    harness_hook_decision_listener_errors_total = prometheus_client.Counter(
+        "harness_hook_decision_listener_errors_total",
+        "Total exceptions raised inside hook.decision listeners in bus.py "
+        "(#1036). Pre-#1036 these were swallowed with a single WARN; the "
+        "counter lets dashboards alert on silent listener outages.",
+        ["listener", "error"],
+    )
+    harness_hook_decision_listener_dup_rejects_total = prometheus_client.Counter(
+        "harness_hook_decision_listener_dup_rejects_total",
+        "Total duplicate subscribe_hook_decision() calls rejected in bus.py "
+        "(#1036). A sustained non-zero rate almost always indicates an "
+        "unintended module reload that would have doubled fan-out.",
+    )
+    harness_hook_decision_dropped_total = prometheus_client.Counter(
+        "harness_hook_decision_dropped_total",
+        "Total hook.decision events shed because the bounded dispatcher "
+        "queue was full (#928/#1085). Paired with backend_hook_post_shed_total "
+        "for end-to-end shed visibility.",
     )
     harness_webhooks_items_registered = prometheus_client.Gauge(
         "harness_webhooks_items_registered",
