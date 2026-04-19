@@ -1,8 +1,9 @@
 # Competitive Landscape
 
-Last updated: 2026-04-07 by local-agent (seventh pass — Microsoft Agent Governance Toolkit + OWASP Agentic Top 10,
-Hermes Agent auto-generated skills + SQLite FTS5 memory, OpenTelemetry as 2026 distributed tracing standard, OpenHands
-v1.6.0 Kubernetes + hook support, LangGraph v1.1 node caching + deferred nodes, Gap Analysis section added)
+Last updated: 2026-04-19 by local-agent (eighth pass — Gap Analysis corrected for shipped observability
+(#1110 event stream + W3C traceparent propagation), `ALLOWED_TOOLS` + `hooks.yaml` declarative policy
+reconciled against current state, event-stream positioning added. Reference Products + Research Themes
+sections not re-verified in this pass — flag claims older than 30 days before quoting them.)
 
 ---
 
@@ -23,6 +24,15 @@ That distinction shapes the comparison below. Each reference product is labeled 
 
 Most reference products are human-driven tools that happen to use agents internally. This project targets the autonomous
 tier — infrastructure that hosts agents rather than a tool a developer runs.
+
+A secondary positioning axis: **real-time observability with a pinned wire contract**. Because agents run as
+services rather than developer sessions, operators need a live window into fleet behaviour — not periodic
+pulls or webhook fan-out. The platform exposes a versioned Server-Sent Events stream (`/events/stream`) with
+14 typed event shapes (`job.fired`, `webhook.delivered`, `conversation.turn`, `tool.use`, `trace.span`, …),
+`Last-Event-ID` resume, and per-session drill-down streams that carry token-level `conversation.chunk`
+events. Every client (web dashboard, `ww` CLI, future mobile) consumes the same schema documented in
+`docs/events/`. Most reference products either don't ship a live observability stream or couple it to a
+proprietary UI; publishing the schema as a first-class client contract is a differentiator.
 
 ---
 
@@ -526,22 +536,37 @@ _Last updated: 2026-04-07 by local-agent_
   extraction, retry, and HMAC signing. Devin's self-scheduling validates the agenda model. The remaining gap is dynamic
   tooling and deeper external system integrations.
 
-- **Observability and debuggability:** This project leads with 70+ Prometheus metrics. The next frontier is
-  OpenTelemetry distributed tracing — LangGraph emits OTel-compatible spans; 89% of organizations have implemented agent
-  observability in 2026 (industry finding). Cross-agent trace propagation (W3C `traceparent` header) is unimplemented
-  and represents the clearest observability gap for multi-agent workflows.
+- **Observability and debuggability:** Now a strength, not a gap. 100+ Prometheus metrics across harness,
+  backends, operator, and MCP tools with a shared `backend_*` baseline (claude is the superset; peers fill
+  placeholders so cross-backend PromQL joins stay clean). OpenTelemetry distributed tracing is wired
+  end-to-end — Python SDK bootstrap in `shared/otel.py`, Go operator instrumentation, and W3C `traceparent`
+  propagation across every service boundary (harness → backends → MCP tools → operator reconciles).
+  Beyond metrics and traces, `/events/stream` gives real-time event-level observability with a published
+  schema (`docs/events/events.schema.json`) — the observability-first story is the differentiator now,
+  not the catch-up. Remaining gap at the frontier: per-agent RED-method + USE-method dashboards bundled
+  as default Grafana JSON (partially started via `charts/nyx/dashboards/` at the "Overview" level).
 
 - **Safety and guardrails:** Microsoft released the Agent Governance Toolkit (April 2, 2026, MIT license) — the first
   toolkit to address all 10 OWASP Agentic Top 10 risks with deterministic, sub-millisecond policy enforcement. OWASP
   published the Top 10 for Agentic Applications in December 2025. EU AI Act high-risk obligations take effect
-  August 2026. This project's SDK hook integration (#68) addresses the callback layer but not the declarative policy
-  layer that operators can configure without writing Python. The gap is a file-based policy DSL (JSON/YAML) that maps
-  OWASP risk categories to enforcement rules, evaluated before every tool call.
+  August 2026. This project has a two-layer declarative policy system: a conservative built-in **baseline** of
+  deny rules (shipped in the claude executor) plus **per-agent extensions** loaded from `hooks.yaml` and
+  hot-reloaded at runtime. PostToolUse audit writes one row per tool call to `tool-activity.jsonl` for a
+  forensic trail. MCP transport is separately gated by command + cwd allow-lists
+  (`MCP_ALLOWED_COMMANDS` / `MCP_ALLOWED_COMMAND_PREFIXES` / `MCP_ALLOWED_CWD_PREFIXES` + positional-script
+  rejection in `mcp_command_args_safe()`). The remaining gap is **OWASP-category labelling** — rules in
+  `hooks.yaml` are ad-hoc-named today; mapping each to the OWASP Agentic Top 10 categories (`A01:
+  prompt-injection`, `A02: tool-misuse`, etc.) would turn the declarative layer into a direct comparable
+  with Microsoft's toolkit.
 
-- **Tooling and integrations (MCP, webhooks, APIs):** MCP configuration is implemented (F-004, closed). Outbound
-  webhooks and inbound triggers are implemented. Dynamic tool injection (CrewAI's tool search, which loads only the
-  tools relevant to the current task rather than all tools upfront) is not yet explored; this project does not have a
-  static `ALLOWED_TOOLS` equivalent at the harness layer.
+- **Tooling and integrations (MCP, webhooks, APIs):** MCP configuration is implemented (F-004, closed).
+  Outbound webhooks and inbound triggers are implemented. **Static `ALLOWED_TOOLS` is implemented on
+  claude** (hot-reloadable via `settings.json`) and **scaffolded on gemini** (env + reload counter in
+  place, pending the hand-rolled AFC loop). Three MCP tool servers ship (`mcp-kubernetes`, `mcp-helm`,
+  `mcp-prometheus`); each enforces its own bearer auth and a per-(server, tool) call-budget knob
+  (`mcp_tool_budget_exhausted_total`). Dynamic *task-aware* tool injection (CrewAI's tool search —
+  loading only the tools relevant to the current prompt rather than the full allow-list) is still the
+  open frontier.
 
 - **Cost and resource management:** `task_budget` env var is proposed (#69, open) but not implemented. Industry finding:
   90% of production agents are over-resourced in 2026; cost control is treated as a first-class architectural concern.
