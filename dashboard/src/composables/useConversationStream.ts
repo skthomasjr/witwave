@@ -1,0 +1,335 @@
+import { getCurrentInstance, onBeforeUnmount, ref, watch, type Ref } from "vue";
+import {
+  useEventStream,
+  type EventEnvelope,
+  type UseEventStreamOptions,
+} from "./useEventStream";
+
+// Phase-5 per-session conversation SSE consumer (#1110). Wraps the shared
+// `useEventStream` client pointed at a backend's
+// `GET /api/sessions/<session_id>/stream` endpoint (shipped phase 4) and
+// reassembles `conversation.chunk` / `conversation.turn` envelopes into
+// the `ConversationTurn[]` shape the ConversationsView renders.
+//
+// Why a dedicated composable and not a direct store subscription:
+//   - Chunk reassembly needs per-turn state (running content buffer, seq
+//     tracking) that's meaningless outside the drill-down view.
+//   - The backend stream is scoped to a single `(agent, session_id)` pair;
+//     there is no shared fleet ring to merge into, so a module-level
+//     store would waste teardown ceremony on a per-mount connection.
+//   - The view still wants connection-pill state + a clean `close()` hook;
+//     exposing those directly keeps view code small.
+//
+// Accumulation rules (from the task scope for phase 5):
+//   - `conversation.chunk` role=user: push a fresh user turn (complete=true).
+//   - `conversation.chunk` role=assistant seq>0 AND last turn is an
+//     in-progress assistant turn: append chunk content to that turn and
+//     carry `complete` from the envelope's `final`.
+//   - Otherwise (seq=0, previous assistant turn already complete, or last
+//     turn is user): push a new assistant turn.
+//   - `conversation.turn` role=assistant: mark the most-recent in-progress
+//     assistant turn complete=true (the finalise signal from the backend).
+//   - `stream.overrun`: reported via the existing `error` ref; the
+//     underlying event stream handles reconnect/resume on its own.
+
+export type ConversationTurnRole = "user" | "assistant";
+
+export interface ConversationTurn {
+  // Stable key across chunk updates of the same turn so Vue's v-for
+  // reuses the same DOM node while content grows.
+  turnId: string;
+  role: ConversationTurnRole;
+  // Accumulated content. For assistant turns this grows as chunks land;
+  // for user turns it's the single chunk text.
+  content: string;
+  // `true` once the turn is closed either by a chunk with `final=true`
+  // or by a `conversation.turn` envelope. `false` while content is
+  // still streaming.
+  complete: boolean;
+  // Timestamp of the FIRST chunk of this turn. Stays stable across
+  // appends so merging against backlog rows stays consistent.
+  ts: string;
+}
+
+export interface ToolUseEvent {
+  id: string;
+  name: string;
+  ts: string;
+  payload: Record<string, unknown>;
+}
+
+export interface UseConversationStreamOptions
+  extends Pick<
+    UseEventStreamOptions,
+    "token" | "autoConnect" | "fetchImpl" | "initialDelayMs" | "maxDelayMs"
+  > {
+  // Maximum number of turns to retain. The backlog call owns history;
+  // the stream only supplies live tail, so a modest cap is fine.
+  maxTurns?: number;
+}
+
+export interface UseConversationStreamReturn {
+  turns: Ref<ConversationTurn[]>;
+  toolUses: Ref<ToolUseEvent[]>;
+  connected: Ref<boolean>;
+  reconnecting: Ref<boolean>;
+  error: Ref<string>;
+  close: () => void;
+}
+
+// Note: `window.__NYX_CONFIG__` is declared globally in
+// `src/stores/timeline.ts`; declaring it again here with a differently-
+// shaped intersection type trips TS2717, so we read the field through
+// an indirected access pattern instead.
+
+const DEFAULT_MAX_TURNS = 500;
+
+function resolveToken(explicit?: string): string | undefined {
+  if (explicit) return explicit;
+  if (typeof window === "undefined") return undefined;
+  const cfg = (window as unknown as {
+    __NYX_CONFIG__?: { harnessBearerToken?: string };
+  }).__NYX_CONFIG__;
+  const tok = cfg?.harnessBearerToken;
+  return typeof tok === "string" && tok.length > 0 ? tok : undefined;
+}
+
+// Per-session stream URL. Each backend (claude/codex/gemini) exposes
+// `/api/sessions/<session_id>/stream` mounted inside the
+// `/api/agents/<agent>/` proxy, so the dashboard-facing path is:
+//   /api/agents/<agent>/api/sessions/<session_id>/stream
+export function conversationStreamUrl(
+  agent: string,
+  sessionId: string,
+): string {
+  return `/api/agents/${encodeURIComponent(agent)}/api/sessions/${encodeURIComponent(
+    sessionId,
+  )}/stream`;
+}
+
+interface ChunkPayload {
+  session_id_hash?: string;
+  role?: string;
+  seq?: number;
+  content?: string;
+  final?: boolean;
+}
+
+interface TurnPayload {
+  session_id_hash?: string;
+  role?: string;
+  content_bytes?: number;
+  model?: string;
+}
+
+interface ToolUsePayload {
+  id?: string;
+  name?: string;
+  [k: string]: unknown;
+}
+
+function makeTurnId(
+  role: ConversationTurnRole,
+  ts: string,
+  sessionHash: string | undefined,
+  counter: number,
+): string {
+  // Stable across chunks for one turn. `counter` disambiguates
+  // back-to-back same-role turns that happen to share the ms-truncated ts.
+  const hashPart = (sessionHash ?? "").slice(0, 6);
+  return `${role}-${ts}-${hashPart}-${counter}`;
+}
+
+export function useConversationStream(
+  agent: string,
+  sessionId: string,
+  options: UseConversationStreamOptions = {},
+): UseConversationStreamReturn {
+  const maxTurns = options.maxTurns ?? DEFAULT_MAX_TURNS;
+  const token = resolveToken(options.token);
+
+  const stream = useEventStream(conversationStreamUrl(agent, sessionId), {
+    token,
+    autoConnect: options.autoConnect,
+    fetchImpl: options.fetchImpl,
+    initialDelayMs: options.initialDelayMs,
+    maxDelayMs: options.maxDelayMs,
+    // Large enough to hold a bursty assistant turn with many small
+    // chunks; the composable downstream trims by turn count, not event
+    // count, so this just bounds the intermediate buffer.
+    maxEvents: Math.max(maxTurns * 8, 200),
+  });
+
+  const turns = ref<ConversationTurn[]>([]) as Ref<ConversationTurn[]>;
+  const toolUses = ref<ToolUseEvent[]>([]) as Ref<ToolUseEvent[]>;
+  // Counter drives unique turnIds even when two turns share the same
+  // first-chunk timestamp (rare but possible with coarse-clock hosts).
+  let turnCounter = 0;
+  // Last envelope id processed into the turn list. Lets us diff forward
+  // without re-running accumulation on every reactive flush.
+  let lastSeenIndex = 0;
+
+  function pushTurn(turn: ConversationTurn): void {
+    const next = turns.value.slice();
+    next.push(turn);
+    if (next.length > maxTurns) {
+      next.splice(0, next.length - maxTurns);
+    }
+    turns.value = next;
+  }
+
+  function appendToLastAssistant(content: string, final: boolean): void {
+    const next = turns.value.slice();
+    const last = next[next.length - 1];
+    if (!last || last.role !== "assistant" || last.complete) return;
+    next[next.length - 1] = {
+      ...last,
+      content: last.content + content,
+      complete: last.complete || final,
+    };
+    turns.value = next;
+  }
+
+  function markLastAssistantComplete(): void {
+    const next = turns.value.slice();
+    for (let i = next.length - 1; i >= 0; i -= 1) {
+      if (next[i].role !== "assistant") continue;
+      if (next[i].complete) return; // already finalised
+      next[i] = { ...next[i], complete: true };
+      turns.value = next;
+      return;
+    }
+  }
+
+  function handleChunk(env: EventEnvelope): void {
+    const p = (env.payload ?? {}) as ChunkPayload;
+    const role = p.role === "user" ? "user" : "assistant";
+    const content = typeof p.content === "string" ? p.content : "";
+    const seq = typeof p.seq === "number" ? p.seq : 0;
+    const final = p.final === true;
+    const sessionHash = p.session_id_hash;
+
+    if (role === "user") {
+      // User chunks are always single-shot turns — the backends don't
+      // split user prompts across chunks today, but if one ever does we
+      // still surface each chunk as its own row rather than silently
+      // concatenating into the previous user turn.
+      turnCounter += 1;
+      pushTurn({
+        turnId: makeTurnId("user", env.ts, sessionHash, turnCounter),
+        role: "user",
+        content,
+        complete: true,
+        ts: env.ts,
+      });
+      return;
+    }
+
+    // Assistant chunk. Decide: append to the open assistant turn, or
+    // start a fresh one.
+    const last = turns.value[turns.value.length - 1];
+    const canAppend =
+      !!last &&
+      last.role === "assistant" &&
+      !last.complete &&
+      seq > 0;
+
+    if (canAppend) {
+      appendToLastAssistant(content, final);
+      return;
+    }
+
+    turnCounter += 1;
+    pushTurn({
+      turnId: makeTurnId("assistant", env.ts, sessionHash, turnCounter),
+      role: "assistant",
+      content,
+      complete: final,
+      ts: env.ts,
+    });
+  }
+
+  function handleTurn(env: EventEnvelope): void {
+    const p = (env.payload ?? {}) as TurnPayload;
+    if (p.role !== "assistant") return;
+    markLastAssistantComplete();
+  }
+
+  function handleToolUse(env: EventEnvelope): void {
+    const p = (env.payload ?? {}) as ToolUsePayload;
+    const id = typeof p.id === "string" ? p.id : env.id;
+    const name = typeof p.name === "string" ? p.name : "";
+    const next = toolUses.value.slice();
+    next.push({ id, name, ts: env.ts, payload: p as Record<string, unknown> });
+    if (next.length > maxTurns) {
+      next.splice(0, next.length - maxTurns);
+    }
+    toolUses.value = next;
+  }
+
+  function handleOverrun(env: EventEnvelope): void {
+    // Surface for operator visibility; the stream layer handles resume.
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[useConversationStream] stream.overrun — reconnecting",
+      env.payload,
+    );
+  }
+
+  // Diff-forward on every reactive flush so we only process fresh
+  // envelopes. The underlying stream trims its ring from the left on
+  // eviction; if that happens our index would be past the array end —
+  // fall back to a full scan in that case.
+  watch(
+    stream.events,
+    (arr) => {
+      const events = arr as EventEnvelope[];
+      const startAt = events.length >= lastSeenIndex ? lastSeenIndex : 0;
+      for (let i = startAt; i < events.length; i += 1) {
+        const env = events[i];
+        switch (env.type) {
+          case "conversation.chunk":
+            handleChunk(env);
+            break;
+          case "conversation.turn":
+            handleTurn(env);
+            break;
+          case "tool.use":
+            handleToolUse(env);
+            break;
+          case "stream.overrun":
+            handleOverrun(env);
+            break;
+          default:
+            // Ignore event types unrelated to the per-session view; the
+            // backend may publish other envelopes (e.g. trace.span) on
+            // the same stream and we let them pass silently.
+            break;
+        }
+      }
+      lastSeenIndex = events.length;
+    },
+    { immediate: true, deep: false },
+  );
+
+  function close(): void {
+    try {
+      stream.close();
+    } catch {
+      // ignore — close is best-effort.
+    }
+  }
+
+  if (getCurrentInstance()) {
+    onBeforeUnmount(() => close());
+  }
+
+  return {
+    turns,
+    toolUses,
+    connected: stream.connected,
+    reconnecting: stream.reconnecting,
+    error: stream.error,
+    close,
+  };
+}

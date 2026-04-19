@@ -34,6 +34,12 @@
     "lightTitle": "Theme: light — click to switch to dark",
     "darkTitle": "Theme: dark — click to switch to auto"
   },
+  "conversations": {
+    "streaming": "Streaming live",
+    "reconnecting": "Reconnecting…",
+    "polling": "Polling fallback",
+    "typing": "…"
+  },
   "timeline": {
     "title": "Timeline",
     "empty": "Waiting for activity …",

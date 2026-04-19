@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch, onBeforeUnmount } from "vue";
 import { RouterLink } from "vue-router";
+import { useI18n } from "vue-i18n";
 import { useAgentFanout } from "../composables/useAgentFanout";
+import {
+  useConversationStream,
+  type ConversationTurn,
+  type UseConversationStreamReturn,
+} from "../composables/useConversationStream";
+import { apiGet, ApiError } from "../api/client";
 import { renderMarkdown } from "../utils/markdown";
 import { exportCsv, exportJson, timestamped } from "../utils/export";
 import type { ConversationEntry } from "../types/chat";
@@ -10,8 +17,18 @@ import type { ConversationEntry } from "../types/chat";
 // the front-door agent's log; with direct routing we fan out and merge.
 // Filters mirror the legacy ones minus the tool filter (no tool data on the
 // line level today — re-add when the harness exposes it).
+//
+// #1110 phase 5: when an operator narrows the view to a specific
+// (agent, session_id) the feed switches from /api/agents/<name>/conversations
+// polling to the per-session SSE stream shipped in phase 4. One-shot fetch
+// seeds the backlog, then `useConversationStream` supplies the live tail
+// with assistant-turn chunk reassembly. Dropping back to the fleet view
+// (clearing either filter) falls back to the polling fanout so the
+// cross-agent overview stays intact.
 
 type Row = ConversationEntry & { _agent: string };
+
+const { t } = useI18n();
 
 const limit = ref<number>(100);
 const searchTerm = ref<string>("");
@@ -33,7 +50,14 @@ onBeforeUnmount(() => {
 });
 const agentFilter = ref<string>("");
 const roleFilter = ref<string>("");
+const sessionFilter = ref<string>("");
 
+// Fleet fanout — still the source of truth when no single session is
+// selected. The composable handles per-agent polling, error tagging, and
+// visibility-aware pause. When we're in stream mode (both agent + session
+// selected) we ignore `items` and surface merged backlog+stream rows
+// instead; this keeps the existing empty/loading/degraded affordances
+// wired for the overview case.
 const { items, perAgentErrors, loading, error, refresh } = useAgentFanout<ConversationEntry>({
   endpoint: "conversations",
   // Pass the computed itself (not `.value`) so the composable can watch the
@@ -55,14 +79,222 @@ const agentOptions = computed(() => {
   return Array.from(set).sort();
 });
 
+// Session dropdown is populated from the current fanout so the operator
+// can pick one without having to remember the id. When an agent filter
+// is active we show only that agent's sessions; otherwise we show
+// sessions across the fleet prefixed with the agent name.
+const sessionOptions = computed<{ value: string; label: string }[]>(() => {
+  const agent = agentFilter.value;
+  const seen = new Map<string, string>();
+  for (const row of items.value) {
+    const sid = row.session_id ?? "";
+    if (!sid) continue;
+    if (agent && row._agent !== agent) continue;
+    const label = agent ? sid : `${row._agent} · ${sid}`;
+    if (!seen.has(sid)) seen.set(sid, label);
+  }
+  return Array.from(seen.entries())
+    .sort((a, b) => (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0))
+    .map(([value, label]) => ({ value, label }));
+});
+
+// Stream mode is active iff we can address a single backend + session.
+const streamMode = computed(
+  () => agentFilter.value !== "" && sessionFilter.value !== "",
+);
+
+// -- Stream + backlog state (only used when streamMode is true) -----------
+
+const backlogRows = ref<Row[]>([]);
+const backlogError = ref<string>("");
+const backlogLoading = ref<boolean>(false);
+let backlogAborter: AbortController | null = null;
+let convStream: UseConversationStreamReturn | null = null;
+const streamConnected = ref<boolean>(false);
+const streamReconnecting = ref<boolean>(false);
+const streamError = ref<string>("");
+const streamTurns = ref<ConversationTurn[]>([]);
+// Polling-fallback latch: once the stream has been disconnected for >15s
+// we flip this true and show the "polling fallback" pill. Flips back
+// false as soon as the stream reconnects.
+const pollingFallback = ref<boolean>(false);
+let disconnectTimer: ReturnType<typeof setTimeout> | null = null;
+const DISCONNECT_GRACE_MS = 15_000;
+
+function clearDisconnectTimer(): void {
+  if (disconnectTimer !== null) {
+    clearTimeout(disconnectTimer);
+    disconnectTimer = null;
+  }
+}
+
+function teardownStream(): void {
+  clearDisconnectTimer();
+  if (convStream) {
+    try {
+      convStream.close();
+    } catch {
+      // ignore
+    }
+    convStream = null;
+  }
+  streamConnected.value = false;
+  streamReconnecting.value = false;
+  streamError.value = "";
+  streamTurns.value = [];
+  pollingFallback.value = false;
+}
+
+async function loadBacklog(agent: string, session: string): Promise<void> {
+  backlogAborter?.abort();
+  backlogAborter = new AbortController();
+  backlogLoading.value = true;
+  backlogError.value = "";
+  try {
+    const raw = await apiGet<ConversationEntry | ConversationEntry[]>(
+      `/agents/${encodeURIComponent(agent)}/conversations`,
+      {
+        signal: backlogAborter.signal,
+        query: { session_id: session, limit: String(limit.value) },
+      },
+    );
+    const arr = Array.isArray(raw) ? raw : [raw];
+    backlogRows.value = arr.map((e) => ({ ...e, _agent: agent }));
+  } catch (e) {
+    if ((e as { name?: string }).name === "AbortError") return;
+    backlogError.value = e instanceof ApiError ? e.message : (e as Error).message;
+    backlogRows.value = [];
+  } finally {
+    backlogLoading.value = false;
+  }
+}
+
+function openStream(agent: string, session: string): void {
+  teardownStream();
+  const stream = useConversationStream(agent, session);
+  convStream = stream;
+  // Bridge the composable's refs onto component-owned refs so watchers in
+  // the view react to both the stream lifecycle and to mode toggles.
+  watch(
+    stream.connected,
+    (v) => {
+      streamConnected.value = v;
+      if (v) {
+        pollingFallback.value = false;
+        clearDisconnectTimer();
+      } else if (disconnectTimer === null) {
+        disconnectTimer = setTimeout(() => {
+          pollingFallback.value = true;
+          disconnectTimer = null;
+          // While in fallback, re-fetch the backlog on each grace window
+          // so the list still advances even if the stream remains down.
+          // The fanout itself keeps polling on its own cadence, so we
+          // only need to nudge the backlog view.
+          if (streamMode.value && convStream === stream) {
+            void loadBacklog(agent, session);
+          }
+        }, DISCONNECT_GRACE_MS);
+      }
+    },
+    { immediate: true },
+  );
+  watch(stream.reconnecting, (v) => (streamReconnecting.value = v), {
+    immediate: true,
+  });
+  watch(stream.error, (v) => (streamError.value = v), { immediate: true });
+  watch(
+    stream.turns,
+    (v) => {
+      streamTurns.value = v.slice();
+    },
+    { immediate: true, deep: true },
+  );
+}
+
+// Mode orchestration — open/close the stream as the (agent, session)
+// selection changes. Switching sessions tears the previous stream down
+// first so we never double-subscribe.
+watch(
+  [agentFilter, sessionFilter],
+  async ([agent, session], _prev, onCleanup) => {
+    if (!agent || !session) {
+      teardownStream();
+      backlogRows.value = [];
+      return;
+    }
+    onCleanup(() => {
+      // If the selection changes again before backlog lands, abort.
+      backlogAborter?.abort();
+    });
+    // One-shot backlog, then open the stream. The order matters so that
+    // `streamTurns` only starts accumulating after the backlog snapshot
+    // lands — otherwise a chunk that overlaps the final backlog row
+    // could render twice before the de-dupe pass runs.
+    await loadBacklog(agent, session);
+    openStream(agent, session);
+  },
+  { immediate: false },
+);
+
+onBeforeUnmount(() => {
+  backlogAborter?.abort();
+  teardownStream();
+});
+
+// -- Row assembly ----------------------------------------------------------
+
+// Convert streaming turns into the row shape the template renders. The
+// first-chunk `ts` is stable so backlog de-dupe on (agent|session|ts|role)
+// can skip stream rows that the backlog already contains.
+function streamTurnsAsRows(agent: string, session: string): Row[] {
+  return streamTurns.value.map((turn) => ({
+    ts: turn.ts,
+    agent,
+    session_id: session,
+    role: turn.role === "assistant" ? "agent" : "user",
+    text: turn.content,
+    _agent: agent,
+    // Attach the turn id + in-progress flag so the template can show a
+    // typing indicator and so the v-for key survives chunk appends.
+    // Not part of the ConversationEntry wire shape; we carry it as
+    // extra own-properties and cast on use.
+    __turnId: turn.turnId,
+    __incomplete: !turn.complete,
+  }) as Row & { __turnId: string; __incomplete: boolean });
+}
+
 // Pure chronological order. Within a session, a response's ts is always
 // >= the matching request's ts, so the two rows land adjacent naturally —
 // no session grouping needed. session_id breaks ties deterministically in
 // the (rare) case two rows share a ts down to the microsecond.
 // Use Date.parse so timezone-offset vs Z-formatted timestamps compare by
 // actual instant instead of string shape.
+const merged = computed<Row[]>(() => {
+  if (!streamMode.value) return items.value;
+  // Stream mode: backlog + stream turns, de-duped on (agent|session|ts|role).
+  const backlog = backlogRows.value;
+  const stream = streamTurnsAsRows(agentFilter.value, sessionFilter.value);
+  const seen = new Set<string>();
+  const out: Row[] = [];
+  const keyOf = (r: Row): string =>
+    `${r._agent}|${r.session_id ?? ""}|${r.ts}|${r.role}`;
+  for (const r of backlog) {
+    const k = keyOf(r);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(r);
+  }
+  for (const r of stream) {
+    const k = keyOf(r);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(r);
+  }
+  return out;
+});
+
 const sorted = computed(() =>
-  [...items.value].sort((a, b) => {
+  [...merged.value].sort((a, b) => {
     const ta = Date.parse(a.ts);
     const tb = Date.parse(b.ts);
     if (ta !== tb) return ta - tb;
@@ -90,6 +322,7 @@ const filtered = computed(() => {
   return sorted.value.filter((row) => {
     if (agentFilter.value && row._agent !== agentFilter.value) return false;
     if (roleFilter.value && row.role !== roleFilter.value) return false;
+    if (sessionFilter.value && row.session_id !== sessionFilter.value) return false;
     if (q && !_rowText(row).includes(q)) return false;
     return true;
   });
@@ -103,12 +336,12 @@ const filtered = computed(() => {
 // an incrementing suffix whenever the base key repeats. WeakMap-cached
 // off the row identity so stable-identity rows keep the same key
 // across recomputes (no flicker from filter changes).
+//
+// Streaming rows carry a `__turnId` that is stable across chunk
+// appends; we fold it into the base so growing assistant turns keep
+// the same key (no DOM reuse collision) while completed-turn rows
+// still disambiguate off (agent|session|ts|role).
 const _rowKeyCache = new WeakMap<Row, string>();
-// Track the next free suffix per base across the component's lifetime
-// (in addition to the per-row WeakMap cache) so a late-arriving row
-// that shares a base with an already-cached row gets a fresh suffix
-// instead of colliding on the unsuffixed form. Strings are cheap and
-// we only add one entry per unique base.
 const _usedKeys = new Set<string>();
 const _nextSuffix = new Map<string, number>();
 const rowKeys = computed(() => {
@@ -119,7 +352,10 @@ const rowKeys = computed(() => {
       out.set(row, cached);
       continue;
     }
-    const base = `${row._agent}|${row.session_id ?? ""}|${row.ts}|${row.role}`;
+    const turnId = (row as Row & { __turnId?: string }).__turnId;
+    const base = turnId
+      ? `turn:${turnId}`
+      : `${row._agent}|${row.session_id ?? ""}|${row.ts}|${row.role}`;
     let key: string;
     if (!_usedKeys.has(base)) {
       key = base;
@@ -139,10 +375,35 @@ function keyForRow(row: Row): string {
   return rowKeys.value.get(row) ?? "";
 }
 
-// Format the date part via toLocaleString, then splice ms into the time
-// between seconds and the AM/PM marker. toLocaleString's plain concatenation
-// put ms *after* AM/PM (e.g. "1:50:00 AM.070") which read wrong; this puts
-// it where seconds normally would end up ("1:50:00.070 AM").
+function isIncomplete(row: Row): boolean {
+  return (row as Row & { __incomplete?: boolean }).__incomplete === true;
+}
+
+// Connection-pill state — only meaningful in stream mode. Green when the
+// per-session stream is live; yellow while reconnecting (short blip);
+// red once the disconnect grace window has lapsed and the view is
+// falling back to the backlog refetch path.
+type PillState = "live" | "reconnecting" | "polling" | "idle";
+const pillState = computed<PillState>(() => {
+  if (!streamMode.value) return "idle";
+  if (pollingFallback.value) return "polling";
+  if (streamConnected.value) return "live";
+  if (streamReconnecting.value) return "reconnecting";
+  return "reconnecting";
+});
+const pillLabel = computed(() => {
+  switch (pillState.value) {
+    case "live":
+      return t("conversations.streaming");
+    case "reconnecting":
+      return t("conversations.reconnecting");
+    case "polling":
+      return t("conversations.polling");
+    default:
+      return "";
+  }
+});
+
 // Export handlers (#1105). Exports the currently-filtered view so the
 // downloaded file reflects what the operator is looking at on screen
 // (agent/role/search filters, current limit). For post-mortem use.
@@ -168,6 +429,10 @@ function onExportCsv(): void {
   );
 }
 
+// Format the date part via toLocaleString, then splice ms into the time
+// between seconds and the AM/PM marker. toLocaleString's plain concatenation
+// put ms *after* AM/PM (e.g. "1:50:00 AM.070") which read wrong; this puts
+// it where seconds normally would end up ("1:50:00.070 AM").
 function formatTs(ts: string): string {
   try {
     const d = new Date(ts);
@@ -180,6 +445,21 @@ function formatTs(ts: string): string {
     return ts;
   }
 }
+
+// Computed views mostly used by the existing "empty/loading/error" block.
+// In stream mode the backlog is authoritative for the initial render so
+// we prefer its loading/error state when available.
+const activeLoading = computed(() =>
+  streamMode.value ? backlogLoading.value : loading.value,
+);
+const activeError = computed(() =>
+  streamMode.value
+    ? backlogError.value || streamError.value
+    : error.value,
+);
+const activeItemCount = computed(() =>
+  streamMode.value ? merged.value.length : items.value.length,
+);
 </script>
 
 <template>
@@ -202,15 +482,38 @@ function formatTs(ts: string): string {
         <option value="agent">agent</option>
         <option value="system">system</option>
       </select>
+      <select v-model="sessionFilter" class="select" aria-label="session">
+        <option value="">all sessions</option>
+        <option
+          v-for="s in sessionOptions"
+          :key="s.value"
+          :value="s.value"
+        >
+          {{ s.label }}
+        </option>
+      </select>
       <select v-model.number="limit" class="select" aria-label="limit">
         <option :value="50">50</option>
         <option :value="100">100</option>
         <option :value="250">250</option>
         <option :value="500">500</option>
       </select>
-      <span class="count">{{ filtered.length }} / {{ items.length }}</span>
+      <span class="count">{{ filtered.length }} / {{ activeItemCount }}</span>
       <span
-        v-if="degradedEntries.length > 0"
+        v-if="streamMode"
+        class="pill"
+        :class="`pill-${pillState}`"
+        data-testid="conversations-stream-pill"
+      >
+        <i
+          class="pi"
+          :class="pillState === 'live' ? 'pi-circle-fill' : 'pi-sync'"
+          aria-hidden="true"
+        />
+        {{ pillLabel }}
+      </span>
+      <span
+        v-if="!streamMode && degradedEntries.length > 0"
         class="degraded"
         :title="degradedTooltip"
         data-testid="list-conversations-degraded"
@@ -218,7 +521,16 @@ function formatTs(ts: string): string {
         <i class="pi pi-exclamation-triangle" aria-hidden="true" />
         {{ degradedEntries.length }} degraded
       </span>
-      <button class="refresh" type="button" :disabled="loading" @click="refresh">
+      <button
+        class="refresh"
+        type="button"
+        :disabled="activeLoading"
+        @click="
+          streamMode
+            ? loadBacklog(agentFilter, sessionFilter)
+            : refresh()
+        "
+      >
         <i class="pi pi-refresh" aria-hidden="true" />
       </button>
       <button
@@ -244,16 +556,19 @@ function formatTs(ts: string): string {
     </div>
 
     <div class="feed">
-      <div v-if="loading && items.length === 0" class="state">Loading…</div>
-      <div v-else-if="error && items.length === 0" class="state state-error">
-        {{ error }}
+      <div v-if="activeLoading && activeItemCount === 0" class="state">Loading…</div>
+      <div v-else-if="activeError && activeItemCount === 0" class="state state-error">
+        {{ activeError }}
       </div>
       <div v-else-if="filtered.length === 0" class="state">No messages.</div>
       <div
         v-for="row in filtered"
         :key="keyForRow(row)"
         class="cm"
-        :class="row.role === 'user' ? 'user' : row.role === 'agent' ? 'agent' : 'other'"
+        :class="[
+          row.role === 'user' ? 'user' : row.role === 'agent' ? 'agent' : 'other',
+          { 'cm-typing': isIncomplete(row) },
+        ]"
       >
         <div class="meta">
           <span class="meta-ts">{{ formatTs(row.ts) }}</span>
@@ -277,6 +592,16 @@ function formatTs(ts: string): string {
           v-html="renderMarkdown(row.text ?? '')"
         />
         <div v-else class="bbl">{{ row.text ?? "" }}</div>
+        <div
+          v-if="isIncomplete(row)"
+          class="typing"
+          data-testid="conversation-typing"
+          :aria-label="t('conversations.typing')"
+        >
+          <span class="typing-dot" />
+          <span class="typing-dot" />
+          <span class="typing-dot" />
+        </div>
       </div>
     </div>
   </div>
@@ -342,6 +667,33 @@ function formatTs(ts: string): string {
 .count {
   font-size: 10px;
   color: var(--nyx-dim);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  border-radius: var(--nyx-radius);
+  padding: 2px 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.pill-live {
+  color: var(--nyx-green, #3fb950);
+  border: 1px solid var(--nyx-green, #3fb950);
+}
+
+.pill-reconnecting {
+  color: var(--nyx-yellow, #d29922);
+  border: 1px solid var(--nyx-yellow, #d29922);
+}
+
+.pill-polling {
+  color: var(--nyx-red, #f85149);
+  border: 1px solid var(--nyx-red, #f85149);
 }
 
 .degraded {
@@ -496,5 +848,41 @@ function formatTs(ts: string): string {
 .cm.agent .bbl :deep(a) {
   color: var(--nyx-accent);
   text-decoration: none;
+}
+
+/* Typing indicator — three dots that pulse out of phase, positioned
+   under the assistant bubble while the turn is still streaming. */
+.typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 4px;
+}
+
+.typing-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--nyx-muted);
+  animation: typing-pulse 1.2s infinite ease-in-out;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing-pulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.2;
+  }
+  40% {
+    opacity: 1;
+  }
 }
 </style>
