@@ -11,6 +11,7 @@ import {
   useOTelTraces,
 } from "../composables/useOTelTraces";
 import type { SpanNode } from "../composables/useOTelTraces";
+import { exportCsv, exportJson, timestamped } from "../utils/export";
 
 // OTel distributed-trace viewer (#632). Queries an operator-configured
 // Jaeger/Tempo HTTP API for recent traces and renders the span tree on
@@ -60,6 +61,36 @@ function openTrace(traceID: string): void {
 function closeDrawer(): void {
   clearDetail();
   router.push({ name: "otel-traces" });
+}
+
+// Export handlers (#1105). The list tab exports the TraceListRow summary
+// (one row per trace) in the order currently rendered; the detail drawer
+// exports the span tree of the open trace as JSON. CSV on the detail
+// view would lose the span-tree structure, so it's JSON-only.
+const otelListColumns = [
+  "traceID",
+  "startTime",
+  "duration",
+  "spanCount",
+  "rootService",
+  "rootOperation",
+];
+function onExportListJson(): void {
+  exportJson(list.value, timestamped("nyx-otel-traces", "json"));
+}
+function onExportListCsv(): void {
+  exportCsv(
+    list.value as unknown as Record<string, unknown>[],
+    otelListColumns,
+    timestamped("nyx-otel-traces", "csv"),
+  );
+}
+function onExportDetailJson(): void {
+  if (!detail.value) return;
+  exportJson(
+    [detail.value],
+    timestamped(`nyx-otel-trace-${detail.value.traceID}`, "json"),
+  );
 }
 
 watch(
@@ -147,6 +178,26 @@ const totalDuration = computed<number>(() => {
       <button class="refresh" type="button" :disabled="listLoading" @click="refreshList">
         <i class="pi pi-refresh" aria-hidden="true" />
       </button>
+      <button
+        class="export"
+        type="button"
+        :disabled="list.length === 0"
+        title="Download trace list as JSON"
+        data-testid="export-otel-list-json"
+        @click="onExportListJson"
+      >
+        <i class="pi pi-download" aria-hidden="true" /> JSON
+      </button>
+      <button
+        class="export"
+        type="button"
+        :disabled="list.length === 0"
+        title="Download trace list as CSV"
+        data-testid="export-otel-list-csv"
+        @click="onExportListCsv"
+      >
+        <i class="pi pi-download" aria-hidden="true" /> CSV
+      </button>
     </div>
 
     <div v-if="!configured" class="state state-unconfigured" data-testid="otel-not-configured">
@@ -227,7 +278,19 @@ const totalDuration = computed<number>(() => {
               {{ detail ? `${detail.spans.length} spans, ${formatMicros(totalDuration)}` : "" }}
             </div>
           </div>
-          <button class="btn" type="button" @click="closeDrawer">Close</button>
+          <div class="drawer-actions">
+            <button
+              class="btn"
+              type="button"
+              :disabled="!detail"
+              title="Download trace detail as JSON"
+              data-testid="export-otel-detail-json"
+              @click="onExportDetailJson"
+            >
+              <i class="pi pi-download" aria-hidden="true" /> JSON
+            </button>
+            <button class="btn" type="button" @click="closeDrawer">Close</button>
+          </div>
         </div>
         <div v-if="detailLoading" class="state">Loading trace…</div>
         <div v-else-if="detailError" class="state state-error">{{ detailError }}</div>

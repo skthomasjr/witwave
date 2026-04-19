@@ -1,0 +1,79 @@
+// Blob-download helpers for the Conversations / Trace / OTelTraces views
+// (#1105). Keeps all the browser-only quirks in one place so the views can
+// stay declarative and the helpers can be unit-tested in isolation.
+
+// Trigger a download for an in-memory Blob via a transient <a download>
+// element. Works in every browser we target; no third-party dep.
+export function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    // appendChild + click so Firefox respects the download attribute.
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    // revokeObjectURL immediately to free the URL; the browser has
+    // already started the download off the in-memory blob by this point.
+    // Defer one tick so Safari's download pipeline can resolve first.
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+}
+
+// Serialise `rows` to a JSON file and download it.
+export function exportJson(rows: unknown[], filename: string): void {
+  const json = JSON.stringify(rows, null, 2);
+  downloadBlob(new Blob([json], { type: "application/json" }), filename);
+}
+
+// Escape a single CSV cell per RFC 4180 — quote fields that contain the
+// delimiter, a quote, a newline, or start/end whitespace (the last one
+// avoids spreadsheet tools silently trimming). Nested quotes are doubled.
+export function csvEscape(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  const s = typeof value === "string" ? value : JSON.stringify(value);
+  const needsQuoting =
+    s.includes(",") ||
+    s.includes('"') ||
+    s.includes("\n") ||
+    s.includes("\r") ||
+    /^\s|\s$/.test(s);
+  if (!needsQuoting) return s;
+  return `"${s.replace(/"/g, '""')}"`;
+}
+
+// Serialise `rows` to a CSV file whose columns are the provided `columns`
+// list (in order). Missing fields render as empty cells. Values are
+// JSON-stringified when they aren't primitive strings so nested structures
+// survive the round-trip instead of rendering as `[object Object]`.
+export function exportCsv(
+  rows: Record<string, unknown>[],
+  columns: string[],
+  filename: string,
+): void {
+  const header = columns.map(csvEscape).join(",");
+  const body = rows
+    .map((row) => columns.map((c) => csvEscape(row[c])).join(","))
+    .join("\n");
+  // Prepend a UTF-8 BOM so Excel on Windows opens the file as UTF-8
+  // instead of Windows-1252; harmless for other consumers.
+  const csv = body.length > 0 ? `${header}\n${body}\n` : `${header}\n`;
+  downloadBlob(
+    new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" }),
+    filename,
+  );
+}
+
+// Timestamped filename helper so export files sort chronologically in
+// the user's Downloads folder without relying on filesystem mtime.
+export function timestamped(prefix: string, ext: string): string {
+  const d = new Date();
+  const pad = (n: number): string => String(n).padStart(2, "0");
+  const stamp =
+    `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}` +
+    `-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  return `${prefix}-${stamp}.${ext}`;
+}

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useAgentFanout } from "../composables/useAgentFanout";
+import { exportCsv, exportJson, timestamped } from "../utils/export";
 import type { TraceEntry } from "../types/chat";
 
 // Tool activity feed across the team (#592, consolidated in
@@ -213,6 +214,58 @@ function formatTs(ts: string): string {
   }
 }
 
+// Export handlers (#1105). Serialise the filtered view so the download
+// matches what's on screen. JSON preserves nested tool_input/preview
+// structures; CSV surfaces the flat columns incident reviewers typically
+// paste into spreadsheets.
+const traceExportColumns = [
+  "ts",
+  "sourceTeam",
+  "agent",
+  "sessionId",
+  "kind",
+  "tool",
+  "status",
+  "durationMs",
+  "decision",
+  "rule",
+  "preview",
+];
+function exportRowToPlain(row: RenderRow): Record<string, unknown> {
+  // Flatten to the columns CSV cares about; JSON callers also get this
+  // shape (with useRow/resultRow/auditRow included below) so the two
+  // file formats are consistent per event.
+  return {
+    ts: row.ts,
+    sourceTeam: row.sourceTeam,
+    agent: row.agent,
+    sessionId: row.sessionId,
+    kind: row.kind,
+    tool: row.tool,
+    status: row.status,
+    durationMs: row.durationMs,
+    decision: row.decision,
+    rule: row.rule,
+    preview: row.preview,
+    useRow: row.useRow,
+    resultRow: row.resultRow,
+    auditRow: row.auditRow,
+  };
+}
+function onExportTraceJson(): void {
+  exportJson(
+    filtered.value.map(exportRowToPlain),
+    timestamped("nyx-trace", "json"),
+  );
+}
+function onExportTraceCsv(): void {
+  exportCsv(
+    filtered.value.map(exportRowToPlain),
+    traceExportColumns,
+    timestamped("nyx-trace", "csv"),
+  );
+}
+
 function formatDuration(ms: number | null): string {
   if (ms === null) return "–";
   if (ms < 1000) return `${ms} ms`;
@@ -278,6 +331,26 @@ function formatInput(v: unknown): string {
       </span>
       <button class="refresh" type="button" :disabled="loading" @click="refresh">
         <i class="pi pi-refresh" aria-hidden="true" />
+      </button>
+      <button
+        class="export"
+        type="button"
+        :disabled="filtered.length === 0"
+        title="Download filtered trace rows as JSON"
+        data-testid="export-trace-json"
+        @click="onExportTraceJson"
+      >
+        <i class="pi pi-download" aria-hidden="true" /> JSON
+      </button>
+      <button
+        class="export"
+        type="button"
+        :disabled="filtered.length === 0"
+        title="Download filtered trace rows as CSV"
+        data-testid="export-trace-csv"
+        @click="onExportTraceCsv"
+      >
+        <i class="pi pi-download" aria-hidden="true" /> CSV
       </button>
     </div>
 

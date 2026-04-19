@@ -3,6 +3,7 @@ import { computed, ref, watch, onBeforeUnmount } from "vue";
 import { RouterLink } from "vue-router";
 import { useAgentFanout } from "../composables/useAgentFanout";
 import { renderMarkdown } from "../utils/markdown";
+import { exportCsv, exportJson, timestamped } from "../utils/export";
 import type { ConversationEntry } from "../types/chat";
 
 // Aggregated conversation feed across all team members. Legacy ui read only
@@ -142,6 +143,31 @@ function keyForRow(row: Row): string {
 // between seconds and the AM/PM marker. toLocaleString's plain concatenation
 // put ms *after* AM/PM (e.g. "1:50:00 AM.070") which read wrong; this puts
 // it where seconds normally would end up ("1:50:00.070 AM").
+// Export handlers (#1105). Exports the currently-filtered view so the
+// downloaded file reflects what the operator is looking at on screen
+// (agent/role/search filters, current limit). For post-mortem use.
+const exportColumns = [
+  "ts",
+  "_agent",
+  "agent",
+  "session_id",
+  "role",
+  "model",
+  "tokens",
+  "trace_id",
+  "text",
+];
+function onExportJson(): void {
+  exportJson(filtered.value, timestamped("nyx-conversations", "json"));
+}
+function onExportCsv(): void {
+  exportCsv(
+    filtered.value as unknown as Record<string, unknown>[],
+    exportColumns,
+    timestamped("nyx-conversations", "csv"),
+  );
+}
+
 function formatTs(ts: string): string {
   try {
     const d = new Date(ts);
@@ -194,6 +220,26 @@ function formatTs(ts: string): string {
       </span>
       <button class="refresh" type="button" :disabled="loading" @click="refresh">
         <i class="pi pi-refresh" aria-hidden="true" />
+      </button>
+      <button
+        class="export"
+        type="button"
+        :disabled="filtered.length === 0"
+        title="Download filtered rows as JSON"
+        data-testid="export-conversations-json"
+        @click="onExportJson"
+      >
+        <i class="pi pi-download" aria-hidden="true" /> JSON
+      </button>
+      <button
+        class="export"
+        type="button"
+        :disabled="filtered.length === 0"
+        title="Download filtered rows as CSV"
+        data-testid="export-conversations-csv"
+        @click="onExportCsv"
+      >
+        <i class="pi pi-download" aria-hidden="true" /> CSV
       </button>
     </div>
 
