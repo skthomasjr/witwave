@@ -99,6 +99,7 @@ from metrics import (
     backend_task_timeout_headroom_seconds,
     backend_tasks_total,
     backend_tasks_with_stderr_total,
+    backend_streaming_chunks_dropped_total,
     backend_streaming_events_emitted_total,
     backend_text_blocks_per_query,
     backend_watcher_events_total,
@@ -374,6 +375,14 @@ CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversa
 TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/tool-activity.jsonl")
 MCP_CONFIG_PATH = os.environ.get("MCP_CONFIG_PATH", "/home/agent/.claude/mcp.json")
 AGENT_MD = os.environ.get("AGENT_MD_PATH", "/home/agent/.claude/CLAUDE.md")
+
+# Per-chunk timeout on the on_chunk SSE consumer (#1091 — parity with
+# codex #724). When the A2A event_queue stalls past this deadline, drop
+# the chunk and bump backend_streaming_chunks_dropped_total rather than
+# blocking the executor on a back-pressured consumer. The final
+# aggregated response still fires at completion so clients see the
+# complete output.
+STREAM_CHUNK_TIMEOUT_SECONDS = float(os.environ.get("STREAM_CHUNK_TIMEOUT_SECONDS", "5"))
 
 # Backend→harness hook.decision transport (#641).  Empty HARNESS_EVENTS_URL
 # disables the POST path cleanly — the in-process OTel span-event emission
@@ -1330,6 +1339,13 @@ async def _run_query_inner(
                                 # rather than being swallowed by a fire-and-forget
                                 # task object.
                                 if on_chunk is not None and block.text:
+                                    # Wrap on_chunk dispatch with an asyncio
+                                    # timeout (#1091) — parity with codex
+                                    # #724. A stalled A2A consumer must not
+                                    # block the executor indefinitely; drop
+                                    # the chunk and bump the drop counter so
+                                    # operators can alert on back-pressure.
+                                    _chunk_label_model = sanitize_model_label(effective_model)
                                     try:
                                         # Insert "\n\n" separator before any subsequent
                                         # non-empty TextBlock so streaming clients see
@@ -1340,9 +1356,28 @@ async def _run_query_inner(
                                         # keeping the _chunks_emitted==0 final-enqueue
                                         # guard accurate.
                                         if _streamed_text_emitted:
-                                            await on_chunk("\n\n")
-                                        await on_chunk(block.text)
+                                            await asyncio.wait_for(
+                                                on_chunk("\n\n"),
+                                                timeout=STREAM_CHUNK_TIMEOUT_SECONDS,
+                                            )
+                                        await asyncio.wait_for(
+                                            on_chunk(block.text),
+                                            timeout=STREAM_CHUNK_TIMEOUT_SECONDS,
+                                        )
                                         _streamed_text_emitted = True
+                                    except asyncio.TimeoutError:
+                                        logger.warning(
+                                            "Session %r: on_chunk callback timed out after %.3fs; "
+                                            "dropping chunk and continuing stream (#1091)",
+                                            session_id, STREAM_CHUNK_TIMEOUT_SECONDS,
+                                        )
+                                        if backend_streaming_chunks_dropped_total is not None:
+                                            try:
+                                                backend_streaming_chunks_dropped_total.labels(
+                                                    **_LABELS, model=_chunk_label_model,
+                                                ).inc()
+                                            except Exception:
+                                                pass
                                     except Exception as _e:
                                         # Never let a streaming-side error abort the
                                         # SDK iteration; log and continue buffering.

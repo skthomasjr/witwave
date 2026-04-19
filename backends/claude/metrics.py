@@ -89,6 +89,9 @@ backend_sdk_tool_call_input_size_bytes: prometheus_client.Histogram | None = Non
 backend_sdk_tool_result_size_bytes: prometheus_client.Histogram | None = None
 backend_text_blocks_per_query: prometheus_client.Histogram | None = None
 backend_streaming_events_emitted_total: prometheus_client.Counter | None = None
+# Streaming chunks dropped due to on_chunk consumer exceeding
+# STREAM_CHUNK_TIMEOUT_SECONDS — parity with codex #724, added #1091.
+backend_streaming_chunks_dropped_total: prometheus_client.Counter | None = None
 backend_stderr_lines_per_task: prometheus_client.Histogram | None = None
 backend_tasks_with_stderr_total: prometheus_client.Counter | None = None
 backend_task_retries_total: prometheus_client.Counter | None = None
@@ -466,6 +469,19 @@ if _enabled:
         "Total partial agent_text_message events enqueued during streaming. "
         "Equals the number of TextBlocks/chunks the executor pushed to the "
         "A2A event_queue mid-stream — see #430.",
+        ["agent", "agent_id", "backend", "model"],
+    )
+    # Back-pressure signal — parity with codex (#724/#1091). A non-zero
+    # rate here means the SSE consumer (A2A event_queue) stalled and the
+    # executor dropped chunks. The final aggregated response still fires
+    # at completion so clients see the full output, but intermediate
+    # streaming is lossy while the drops are elevated.
+    backend_streaming_chunks_dropped_total = prometheus_client.Counter(
+        "backend_streaming_chunks_dropped_total",
+        "Total streaming chunks dropped because the A2A consumer's on_chunk "
+        "callback exceeded STREAM_CHUNK_TIMEOUT_SECONDS. The final-flush "
+        "aggregated text still fires at response completion so clients see "
+        "the complete output — see #724/#1091.",
         ["agent", "agent_id", "backend", "model"],
     )
     backend_stderr_lines_per_task = prometheus_client.Histogram(
