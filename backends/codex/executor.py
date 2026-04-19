@@ -1348,6 +1348,30 @@ async def run_query(
                     _tool_ctx.__enter__()
                     try:
                         ts = datetime.now(timezone.utc).isoformat()
+                        # Apply the same LOG_TRACE_CONTENT_MAX_BYTES cap
+                        # to tool_use.input as tool_result.content
+                        # (#989). Previously the cap bounded only the
+                        # result side, so a multi-MB tool_input from an
+                        # MCP call could blow the tool-activity.jsonl
+                        # rotation budget and /trace memory even though
+                        # the paired result was neatly truncated.
+                        _input_for_log: object = tool_input
+                        if LOG_TRACE_CONTENT_MAX_BYTES > 0:
+                            try:
+                                _input_json = json.dumps(tool_input, default=str)
+                            except Exception:
+                                _input_json = str(tool_input)
+                            _input_bytes_full = len(_input_json.encode("utf-8"))
+                            if _input_bytes_full > LOG_TRACE_CONTENT_MAX_BYTES:
+                                _truncated = _input_bytes_full - LOG_TRACE_CONTENT_MAX_BYTES
+                                _clipped = _input_json.encode("utf-8")[:LOG_TRACE_CONTENT_MAX_BYTES].decode(
+                                    "utf-8", errors="replace"
+                                )
+                                # Store a stringified, marked-truncated form
+                                # under the "input" field so downstream
+                                # consumers (dashboard /trace) still parse
+                                # cleanly and see the truncation marker.
+                                _input_for_log = f"{_clipped}\n[truncated {_truncated} bytes]"
                         entry = {
                             "ts": ts,
                             "agent": AGENT_NAME, "agent_id": AGENT_ID,
@@ -1356,7 +1380,7 @@ async def run_query(
                             "model": resolved_model,
                             "id": call_id,
                             "name": name,
-                            "input": tool_input,
+                            "input": _input_for_log,
                         }
                         await log_trace(json.dumps(entry))
                     except Exception as e:
