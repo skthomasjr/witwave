@@ -232,6 +232,21 @@ observability:
 nodeSelector: {}
 tolerations: []
 affinity: {}
+# Pod scheduling parity with the nyx chart (#1119). The operator is a
+# control-plane singleton that reconciles every NyxAgent — pin it to
+# system-cluster-critical (or your equivalent) so it isn't evicted first
+# under node pressure.
+#
+# topologySpreadConstraints:
+#   - maxSkew: 1
+#     topologyKey: topology.kubernetes.io/zone
+#     whenUnsatisfiable: ScheduleAnyway
+#     labelSelector:
+#       matchLabels:
+#         app.kubernetes.io/component: manager
+# priorityClassName: system-cluster-critical
+topologySpreadConstraints: []
+priorityClassName: ""
 
 # ----------------------------------------------------------------------------
 # Admission webhook (#624).

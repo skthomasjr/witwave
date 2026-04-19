@@ -154,6 +154,19 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- /* Scheduling parity with the nyx chart (#1119). The operator is
+             a control-plane singleton that reconciles every NyxAgent and
+             admits every CR — surviving node pressure matters. Wire
+             topologySpreadConstraints + priorityClassName so operators
+             can pin it to system-cluster-critical and spread replicas
+             across zones when leaderElection is enabled. */}}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
       {{- if .Values.webhooks.enabled }}
       {{- /* Webhook serving cert Secret. Two sources:
              - BYO mode: webhooks.existingSecret references a user-

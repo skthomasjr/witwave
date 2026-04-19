@@ -99,6 +99,8 @@ kubectl delete crd nyxagents.nyx.ai
 | `nodeSelector`               | Node selector for the controller pod                                                         | `{}`                                        |
 | `tolerations`                | Tolerations for the controller pod                                                           | `[]`                                        |
 | `affinity`                   | Affinity rules for the controller pod                                                        | `{}`                                        |
+| `topologySpreadConstraints`  | Pod-level topologySpreadConstraints on the controller pod. Parity with the nyx chart (#1119). Useful for spreading leader-elected replicas across zones.  | `[]` |
+| `priorityClassName`          | PriorityClassName on the controller pod (#1119). Set to `system-cluster-critical` (or your equivalent) so the operator isn't evicted first under node pressure — it reconciles every NyxAgent. | `""` |
 | `webhooks.enabled`           | Render the admission webhook Service, Mutating/Validating webhook configs, and cert-manager resources. Requires cert-manager installed in the cluster (#624) | `false` |
 | `webhooks.port`              | Container port for the webhook server (matches controller-runtime default)                   | `9443`                                      |
 | `webhooks.certDir`           | Directory the cert-manager-issued TLS pair is mounted at inside the container                | `/tmp/k8s-webhook-server/serving-certs`     |
