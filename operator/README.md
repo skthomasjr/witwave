@@ -66,28 +66,6 @@ Its spec mirrors the per-agent shape used by the Helm chart's `agents[]`
 list. See `config/samples/nyx_v1alpha1_nyxagent.yaml` for a minimal example
 and `api/v1alpha1/nyxagent_types.go` for the full schema.
 
-## Cycle 2 reconciler refinements
-
-- **Team-label flips enqueue peers in BOTH teams.** When `agent.team` changes, the reconciler now enqueues
-  every NyxAgent in the *old* team and every NyxAgent in the *new* team (#899). Without this, the agent
-  leaving a team would orphan the peers' manifest ConfigMap because their watch keyed on the new team never
-  fired.
-- **Live APIReader on manifest reconcile.** The team manifest ConfigMap path now reads with a direct
-  APIReader instead of the cache (#900) so a just-created or just-label-flipped NyxAgent is visible in the
-  same reconcile pass that triggered the rebuild — the cache lag used to produce a manifest CM that was
-  missing the triggering agent for ~one resync.
-- **Finalize rewrites the team manifest.** When a NyxAgent is being deleted, the finalize path rebuilds the
-  team manifest ConfigMap with the terminating agent excluded *before* removing the finalizer (#902) so
-  peers never briefly see a manifest that still references the dead pod.
-- **`teardown_complete_generation` annotation.** Disabled agents (`spec.enabled=false`) are short-circuited
-  on subsequent reconciles using a generation annotation (#903), so periodic resync doesn't re-run the
-  (idempotent but expensive) teardown logic against an already-terminated agent.
-- **409-retry on `NyxPrompt` status patches.** The status subresource writer retries with fresh
-  `resourceVersion` on 409 conflict (#905), and `nyxprompt_status_patch_conflicts_total` counts how often
-  the retry was exercised (#950) — useful for diagnosing a noisy controller-runtime cache under load.
-- **Manifest ConfigMap multi-owner flow.** The team manifest CM carries multiple `ownerReferences` (one per
-  NyxAgent in the team) so it GCs correctly only when the last member of the team is deleted (#899/#900/#902).
-
 Owned resources per `NyxAgent`:
 
 | Resource                    | When                                                     |
@@ -292,13 +270,6 @@ Tracked open requests (not gaps):
 | Topic                                            | Issue | State |
 | ------------------------------------------------ | ----- | ----- |
 | NyxPrompt runtime execution status on CR         | [#642](https://github.com/skthomasjr/autonomous-agent/issues/642) | request, Ready: false |
-
-Recently closed — shipped in the operator:
-
-| Topic                                            | Issue | Landed |
-| ------------------------------------------------ | ----- | ------ |
-| MCP tools streamable-http + chart-deployed       | [#644](https://github.com/skthomasjr/autonomous-agent/issues/644) | `564ae83` |
-| Metrics on dedicated :9000 listener (9-gap series) | [#643](https://github.com/skthomasjr/autonomous-agent/issues/643) (→ [#645-#653](https://github.com/skthomasjr/autonomous-agent/issues/645)) | `9b935e7` + `2c571c4` |
 
 ## Metrics
 
