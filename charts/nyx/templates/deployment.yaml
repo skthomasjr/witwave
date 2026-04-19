@@ -50,57 +50,96 @@
 {{- end }}
 {{- range .Values.agents }}
 {{- $agentName := .name }}
-{{- range .env }}
-{{- if and (hasKey . "name") (hasKey . "value") }}
-{{- if has .name $sensitiveEnvKeys }}
-{{- if hasPrefix "REPLACE_ME" (.value | toString) }}
-{{- fail (printf "agents[%q].env[%q] still carries a REPLACE_ME placeholder (%q) — generate a real token (e.g. `openssl rand -hex 32`) before deploying. See #760." $agentName .name (.value | toString)) }}
+{{- range $i, $e := .env }}
+{{- if and (hasKey $e "name") (hasKey $e "value") }}
+{{- if has $e.name $sensitiveEnvKeys }}
+{{- if hasPrefix "REPLACE_ME" ($e.value | toString) }}
+{{- fail (printf "agents[%q].env[%q] still carries a REPLACE_ME placeholder (%q) — generate a real token (e.g. `openssl rand -hex 32`) before deploying. See #760." $agentName $e.name ($e.value | toString)) }}
 {{- end }}
 {{- end }}
 {{- end }}
-{{- /* #1022: valueFrom.secretKeyRef bypass. When a sensitive env var is
-       wired via an existingSecret, inspect the reference for a
-       REPLACE_ME* shape on either the Secret name or the key so a
-       deliberately-named placeholder Secret fails render instead of
-       booting a pod with an unrevoked token. */}}
-{{- if and (hasKey . "name") (hasKey . "valueFrom") }}
-{{- if has .name $sensitiveEnvKeys }}
-{{- $vf := .valueFrom }}
+{{- /* #1022 + #1072: valueFrom.secretKeyRef bypass. Any env entry (not
+       just the sensitive-key allow-list) may reference a denylisted
+       placeholder Secret; #1072 widened this from REPLACE_ME-only to
+       REPLACE_ME + *-test-* + nyx-test-credentials because operators
+       rename the env key but leave the Secret name unchanged. */}}
+{{- if and (hasKey $e "name") (hasKey $e "valueFrom") }}
+{{- $vf := $e.valueFrom }}
 {{- if $vf.secretKeyRef }}
 {{- $skr := $vf.secretKeyRef }}
 {{- $refName := ($skr.name | default "" | toString) }}
 {{- $refKey := ($skr.key | default "" | toString) }}
+{{- if has $e.name $sensitiveEnvKeys }}
 {{- if or (hasPrefix "REPLACE_ME" $refName) (hasPrefix "REPLACE_ME" $refKey) }}
-{{- fail (printf "agents[%q].env[%q].valueFrom.secretKeyRef points at a REPLACE_ME-shaped reference (name=%q, key=%q) — replace the placeholder Secret/key with a real one before deploying. See #1022." $agentName .name $refName $refKey) }}
+{{- fail (printf "agents[%q].env[%q].valueFrom.secretKeyRef points at a REPLACE_ME-shaped reference (name=%q, key=%q) — replace the placeholder Secret/key with a real one before deploying. See #1022." $agentName $e.name $refName $refKey) }}
+{{- end }}
+{{- end }}
+{{- include "nyx.assertSecretRefSafe" (dict "name" $refName "context" (printf "agents[%q].env[%d] (%q).valueFrom.secretKeyRef" $agentName $i $e.name)) }}
 {{- end }}
 {{- end }}
 {{- end }}
+{{- /* #1072: envFrom[].secretRef.name denylist. envFrom pulls every key
+       from a Secret into the container environment, so a
+       placeholder-named Secret is the most obvious production-vs-test
+       bypass and it was not inspected at all before #1072. */}}
+{{- range $i, $ef := (.envFrom | default list) }}
+{{- if $ef.secretRef }}
+{{- $refName := ($ef.secretRef.name | default "" | toString) }}
+{{- include "nyx.assertSecretRefSafe" (dict "name" $refName "context" (printf "agents[%q].envFrom[%d].secretRef" $agentName $i)) }}
+{{- end }}
+{{- end }}
+{{- /* #1072: gitSyncs[].envFrom[].secretRef.name denylist. gitSync
+       credentials land as GITSYNC_USERNAME/PASSWORD in the sidecar
+       container; a placeholder Secret there leaks repo access. */}}
+{{- range $gsi, $gs := (.gitSyncs | default list) }}
+{{- range $i, $ef := ($gs.envFrom | default list) }}
+{{- if $ef.secretRef }}
+{{- $refName := ($ef.secretRef.name | default "" | toString) }}
+{{- include "nyx.assertSecretRefSafe" (dict "name" $refName "context" (printf "agents[%q].gitSyncs[%d].envFrom[%d].secretRef" $agentName $gsi $i)) }}
+{{- end }}
+{{- end }}
+{{- if $gs.credentials }}
+{{- $existing := ($gs.credentials.existingSecret | default "" | toString) }}
+{{- include "nyx.assertSecretRefSafe" (dict "name" $existing "context" (printf "agents[%q].gitSyncs[%d].credentials.existingSecret" $agentName $gsi)) }}
 {{- end }}
 {{- end }}
 {{- range .backends }}
 {{- $backendName := .name }}
-{{- range (.env | default list) }}
-{{- if and (hasKey . "name") (hasKey . "value") }}
-{{- if has .name $sensitiveEnvKeys }}
-{{- if hasPrefix "REPLACE_ME" (.value | toString) }}
-{{- fail (printf "agents[%q].backends[%q].env[%q] still carries a REPLACE_ME placeholder (%q) — generate a real token before deploying. See #760." $agentName $backendName .name (.value | toString)) }}
+{{- range $i, $e := (.env | default list) }}
+{{- if and (hasKey $e "name") (hasKey $e "value") }}
+{{- if has $e.name $sensitiveEnvKeys }}
+{{- if hasPrefix "REPLACE_ME" ($e.value | toString) }}
+{{- fail (printf "agents[%q].backends[%q].env[%q] still carries a REPLACE_ME placeholder (%q) — generate a real token before deploying. See #760." $agentName $backendName $e.name ($e.value | toString)) }}
 {{- end }}
 {{- end }}
 {{- end }}
-{{- /* #1022: same valueFrom.secretKeyRef check on backend env. */}}
-{{- if and (hasKey . "name") (hasKey . "valueFrom") }}
-{{- if has .name $sensitiveEnvKeys }}
-{{- $vf := .valueFrom }}
+{{- /* #1022 + #1072: valueFrom.secretKeyRef check on backend env. */}}
+{{- if and (hasKey $e "name") (hasKey $e "valueFrom") }}
+{{- $vf := $e.valueFrom }}
 {{- if $vf.secretKeyRef }}
 {{- $skr := $vf.secretKeyRef }}
 {{- $refName := ($skr.name | default "" | toString) }}
 {{- $refKey := ($skr.key | default "" | toString) }}
+{{- if has $e.name $sensitiveEnvKeys }}
 {{- if or (hasPrefix "REPLACE_ME" $refName) (hasPrefix "REPLACE_ME" $refKey) }}
-{{- fail (printf "agents[%q].backends[%q].env[%q].valueFrom.secretKeyRef points at a REPLACE_ME-shaped reference (name=%q, key=%q) — replace the placeholder Secret/key with a real one before deploying. See #1022." $agentName $backendName .name $refName $refKey) }}
+{{- fail (printf "agents[%q].backends[%q].env[%q].valueFrom.secretKeyRef points at a REPLACE_ME-shaped reference (name=%q, key=%q) — replace the placeholder Secret/key with a real one before deploying. See #1022." $agentName $backendName $e.name $refName $refKey) }}
+{{- end }}
+{{- end }}
+{{- include "nyx.assertSecretRefSafe" (dict "name" $refName "context" (printf "agents[%q].backends[%q].env[%d] (%q).valueFrom.secretKeyRef" $agentName $backendName $i $e.name)) }}
 {{- end }}
 {{- end }}
 {{- end }}
+{{- /* #1072: backend envFrom[].secretRef denylist. */}}
+{{- range $i, $ef := (.envFrom | default list) }}
+{{- if $ef.secretRef }}
+{{- $refName := ($ef.secretRef.name | default "" | toString) }}
+{{- include "nyx.assertSecretRefSafe" (dict "name" $refName "context" (printf "agents[%q].backends[%q].envFrom[%d].secretRef" $agentName $backendName $i)) }}
 {{- end }}
+{{- end }}
+{{- /* #1072: backends[].credentials.existingSecret denylist. */}}
+{{- if .credentials }}
+{{- $existing := (.credentials.existingSecret | default "" | toString) }}
+{{- include "nyx.assertSecretRefSafe" (dict "name" $existing "context" (printf "agents[%q].backends[%q].credentials.existingSecret" $agentName $backendName)) }}
 {{- end }}
 {{- /* #1022: inline backend credentials (stringData in the chart-rendered
        Secret) bypass the `.env` guard because they land in the pod via

@@ -1,4 +1,43 @@
 {{/*
+nyx.assertSecretRefSafe — refuse to render when a Secret reference uses a
+name that matches the REPLACE_ME / test-artifact denylist (#1072). Used
+wherever secret material lands in a pod (envFrom.secretRef.name,
+valueFrom.secretKeyRef.name, credentials.existingSecret). Bypass vectors
+closed: valueFrom / envFrom / existingSecret pointing at Secrets named
+`nyx-test-credentials`, `bob-claude-test-secrets`, or anything still
+stamped with a `REPLACE_ME` marker.
+
+Patterns refused (case-insensitive):
+  - contains "REPLACE_ME"
+  - contains "test" (word-ish — "-test-", "test-", "-test", equals "test")
+  - equals "nyx-test-credentials"
+
+Caller passes:
+  .name     — the Secret reference name (empty string is allowed and ignored)
+  .context  — string used in the failure message (e.g. "agents[bob].envFrom[0].secretRef")
+
+Usage:
+  {{- include "nyx.assertSecretRefSafe" (dict "name" $refName "context" $ctx) }}
+*/}}
+{{- define "nyx.assertSecretRefSafe" -}}
+{{- $name := (.name | default "" | toString) -}}
+{{- $ctx := .context | default "(unknown)" -}}
+{{- if $name -}}
+{{- $lc := lower $name -}}
+{{- if contains "replace_me" $lc -}}
+{{- fail (printf "charts/nyx: %s references Secret %q which matches the REPLACE_ME denylist (#1072). Rename the Secret to a real production name (not a placeholder) before deploying." $ctx $name) -}}
+{{- end -}}
+{{- if eq $lc "nyx-test-credentials" -}}
+{{- fail (printf "charts/nyx: %s references Secret %q which is reserved for smoke tests (#1072). Provision a per-deployment Secret instead." $ctx $name) -}}
+{{- end -}}
+{{/* Word-ish match on "test": standalone, leading, trailing, or hyphen-wrapped. */}}
+{{- if or (eq $lc "test") (hasPrefix "test-" $lc) (hasSuffix "-test" $lc) (contains "-test-" $lc) -}}
+{{- fail (printf "charts/nyx: %s references Secret %q which matches the *test* denylist (#1072). Rename the Secret to a real production name before deploying. Set the Secret name to something without leading/trailing/interior `-test-` segments." $ctx $name) -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Default git-sync image, resolved as repository:tag where tag falls back to
 .Chart.AppVersion (matching every other image in this chart). Per-entry
 .gitSyncs[].image overrides still take precedence and accept any string.
