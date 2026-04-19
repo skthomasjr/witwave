@@ -9,6 +9,8 @@ _enabled = bool(os.environ.get("METRICS_ENABLED"))
 # Service-level metrics
 backend_up: prometheus_client.Gauge | None = None
 backend_info: prometheus_client.Info | None = None
+# Underlying SDK version info (#1092).
+backend_sdk_info: prometheus_client.Info | None = None
 backend_uptime_seconds: prometheus_client.Gauge | None = None
 backend_startup_duration_seconds: prometheus_client.Gauge | None = None
 backend_event_loop_lag_seconds: prometheus_client.Histogram | None = None
@@ -147,6 +149,12 @@ backend_sdk_tool_result_size_bytes: prometheus_client.Histogram | None = None
 if _enabled:
     backend_up = prometheus_client.Gauge("backend_up", "Backend agent is running", ["agent", "agent_id", "backend"])
     backend_info = prometheus_client.Info("a2", "Static backend agent metadata.")
+    backend_sdk_info = prometheus_client.Info(
+        "backend_sdk",
+        "Underlying SDK package + version (resolved via importlib.metadata). "
+        "Lets dashboards catch SDK drift across backends without shelling "
+        "in. See #1092.",
+    )
     backend_uptime_seconds = prometheus_client.Gauge(
         "backend_uptime_seconds",
         "Backend agent uptime in seconds, computed on each Prometheus scrape.",

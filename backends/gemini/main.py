@@ -31,6 +31,7 @@ from metrics import (
     backend_event_loop_lag_seconds,
     backend_health_checks_total,
     backend_info,
+    backend_sdk_info,
     backend_mcp_request_duration_seconds,
     backend_mcp_requests_total,
     backend_startup_duration_seconds,
@@ -277,6 +278,18 @@ async def main():
             backend_up.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).set(1.0)
         if backend_info is not None:
             backend_info.info({"version": AGENT_VERSION, "agent": AGENT_OWNER, "agent_id": AGENT_ID, "backend": _BACKEND_ID})
+        # Resolve the underlying SDK version once at startup (#1092) so
+        # dashboards can catch google-genai drift without shelling in.
+        if backend_sdk_info is not None:
+            try:
+                from importlib.metadata import version as _pkg_version, PackageNotFoundError
+                try:
+                    _sdk_ver = _pkg_version("google-genai")
+                except PackageNotFoundError:
+                    _sdk_ver = "unknown"
+                backend_sdk_info.info({"sdk": "google-genai", "version": _sdk_ver})
+            except Exception as _exc:
+                logger.warning("backend_sdk_info: failed to resolve google-genai version: %r", _exc)
         if backend_uptime_seconds is not None:
             backend_uptime_seconds.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID).set_function(lambda: (datetime.now(timezone.utc) - start_time).total_seconds())
         logger.info("Prometheus metrics enabled at /metrics")
