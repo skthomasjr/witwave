@@ -32,19 +32,75 @@ PreToolUse deny, the hook callable returns
 """
 from __future__ import annotations
 
+import logging
 import os
 
-from hooks_engine import (  # noqa: F401  (re-exported public API)
-    BASELINE_RULES,
-    DECISION_ALLOW,
-    DECISION_DENY,
-    DECISION_WARN,
-    HookState,
-    Rule,
-    evaluate_pre_tool_use,
-    load_extension_rules,
-    set_config_error_reporter,
-)
+logger = logging.getLogger(__name__)
+
+# Guard the shared hooks_engine import so a parse/syntax/import error in
+# shared/hooks_engine.py does NOT crash-loop the entire claude backend
+# (#1050). Mirrors the pattern codex adopted in #938. On failure we log
+# at WARNING, fall back to an empty baseline (BASELINE_RULES = []), and
+# supply no-op replacements for the public symbols the rest of the
+# backend imports. The hooks layer then becomes permissive — the SDK
+# permission prompts and other controls remain — but the process stays
+# up so operators can observe the error and ship a fix.
+try:
+    from hooks_engine import (  # noqa: F401  (re-exported public API)
+        BASELINE_RULES,
+        DECISION_ALLOW,
+        DECISION_DENY,
+        DECISION_WARN,
+        HookState,
+        Rule,
+        evaluate_pre_tool_use,
+        load_extension_rules,
+        set_config_error_reporter,
+    )
+except Exception as _hooks_engine_import_exc:  # noqa: BLE001 — documented single-fail path
+    logger.warning(
+        "claude: failed to import shared hooks_engine: %r — baseline DISABLED, "
+        "hook evaluator permissive; backend is up but operator must fix "
+        "shared/hooks_engine.py. See #1050.",
+        _hooks_engine_import_exc,
+    )
+    BASELINE_RULES: list = []  # type: ignore[no-redef]
+    DECISION_ALLOW = "allow"  # type: ignore[assignment]
+    DECISION_DENY = "deny"  # type: ignore[assignment]
+    DECISION_WARN = "warn"  # type: ignore[assignment]
+
+    class HookState:  # type: ignore[no-redef]
+        """Fallback stub when hooks_engine import fails (#1050)."""
+        def __init__(self, *args, **kwargs) -> None:
+            self.rules: list = []
+
+    class Rule:  # type: ignore[no-redef]
+        """Fallback stub when hooks_engine import fails (#1050)."""
+        pass
+
+    def evaluate_pre_tool_use(tool_name, tool_input, rules):  # type: ignore[no-redef]
+        return (DECISION_ALLOW, None)
+
+    def load_extension_rules(path: str):  # type: ignore[no-redef]
+        return []
+
+    def set_config_error_reporter(fn) -> None:  # type: ignore[no-redef]
+        return None
+
+    # Bump backend_hooks_config_errors_total{reason='baseline_import'} so
+    # the failure surfaces in dashboards the same way as a YAML parse error.
+    try:
+        from metrics import backend_hooks_config_errors_total
+        if backend_hooks_config_errors_total is not None:
+            backend_hooks_config_errors_total.labels(
+                agent=os.environ.get("AGENT_OWNER", os.environ.get("AGENT_NAME", "claude")),
+                agent_id=os.environ.get("AGENT_ID", "claude"),
+                backend="claude",
+                reason="baseline_import",
+            ).inc()
+    except Exception:
+        # Metric emission must never mask the underlying import failure.
+        pass
 
 
 HOOKS_CONFIG_PATH = os.environ.get("HOOKS_CONFIG_PATH", "/home/agent/.claude/hooks.yaml")
