@@ -58,7 +58,7 @@ AGENT_URL = os.environ.get("AGENT_URL", f"http://localhost:{BACKEND_PORT}/")
 AGENT_VERSION = os.environ.get("AGENT_VERSION", "0.1.0")
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
 TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/tool-activity.jsonl")
-AGENT_OWNER = os.environ.get("AGENT_OWNER", AGENT_NAME)
+AGENT_OWNER = os.environ.get("AGENT_OWNER") or AGENT_NAME
 # #1340: fall back to HOSTNAME for uniqueness instead of the literal
 # backend name; multiple agents (iris-claude/nova-claude/kira-claude)
 # with env misconfig would otherwise all report agent_id="claude" and

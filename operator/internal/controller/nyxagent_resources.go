@@ -893,12 +893,14 @@ func nyxPromptVolumesAndMounts(agent *nyxv1alpha1.NyxAgent, prompts []nyxv1alpha
 		// same prompt binding twice with different FilenameSuffix values,
 		// don't produce duplicate Volume.Name entries (apiserver rejects).
 		_vhash := sha256.Sum256([]byte(b.prompt.Namespace + "/" + b.ref.FilenameSuffix))
-		volName := fmt.Sprintf("nyxprompt-%s-%s", b.prompt.Name, hex.EncodeToString(_vhash[:])[:8])
-		// Truncate to DNS-1123-label compatibility (63 chars max) — each
-		// Volume.Name must match that pattern.
+		// #1346: hash-first layout so DNS-1123-label truncation never
+		// severs the hash. Also trim any trailing '-' that could result
+		// from a name ending on a hyphen-boundary after clamp.
+		volName := fmt.Sprintf("np-%s-%s", hex.EncodeToString(_vhash[:])[:8], b.prompt.Name)
 		if len(volName) > 63 {
 			volName = volName[:63]
 		}
+		volName = strings.TrimRight(volName, "-")
 		filename := nyxPromptFilename(b.prompt, b.ref)
 		dir := nyxPromptMountDir(b.prompt.Spec.Kind)
 		if dir == "" {

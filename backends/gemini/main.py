@@ -61,7 +61,7 @@ TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/tool-activity.jsonl")
 # gemini surfaces AFC tool_use / tool_result rows on tool-activity.jsonl (#640).
 # Audit rows would share the same file with event_type='tool_audit' once
 # a PostToolUse hook path is wired in (AFC runs inside the SDK — see #640).
-AGENT_OWNER = os.environ.get("AGENT_OWNER", AGENT_NAME)
+AGENT_OWNER = os.environ.get("AGENT_OWNER") or AGENT_NAME
 # #1340: fall back to HOSTNAME for uniqueness (see claude comment).
 AGENT_ID = os.environ.get("AGENT_ID") or os.environ.get("HOSTNAME") or "gemini"
 _BACKEND_ID = "gemini"
