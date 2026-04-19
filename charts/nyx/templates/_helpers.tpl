@@ -1,4 +1,37 @@
 {{/*
+nyx.hardenedContainerSecurityContext — PSS-restricted-compliant container
+securityContext applied to every container and initContainer across the
+chart (#1073). PSS-restricted evaluates per-container: missing fields
+(runAsNonRoot, seccompProfile, allowPrivilegeEscalation:false,
+capabilities.drop:ALL) are a per-container reject even when the
+pod-level securityContext sets them. This helper makes the full set
+explicit on the container so the chart installs cleanly under
+restricted enforcement.
+
+readOnlyRootFilesystem toggles off (.Values.podSecurity.readOnlyRootFilesystem)
+which defaults to true under #1073. Write-happy paths that need rw
+access (e.g. helm's cache dir) get an emptyDir volume from the caller.
+
+Caller passes:
+  .root               — top-level .Values (for .Values.podSecurity lookup)
+
+Usage:
+  {{- include "nyx.hardenedContainerSecurityContext" (dict "root" $) | nindent 12 }}
+*/}}
+{{- define "nyx.hardenedContainerSecurityContext" -}}
+{{- $root := .root -}}
+allowPrivilegeEscalation: false
+runAsNonRoot: true
+capabilities:
+  drop: ["ALL"]
+seccompProfile:
+  type: RuntimeDefault
+{{- if (($root.Values).podSecurity).readOnlyRootFilesystem }}
+readOnlyRootFilesystem: true
+{{- end }}
+{{- end }}
+
+{{/*
 nyx.assertSecretRefSafe — refuse to render when a Secret reference uses a
 name that matches the REPLACE_ME / test-artifact denylist (#1072). Used
 wherever secret material lands in a pod (envFrom.secretRef.name,

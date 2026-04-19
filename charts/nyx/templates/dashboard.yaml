@@ -51,14 +51,7 @@ spec:
             - name: http
               containerPort: 3000
           securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop:
-                - ALL
-            runAsNonRoot: true
-            {{- if (.Values.podSecurity).readOnlyRootFilesystem }}
-            readOnlyRootFilesystem: true
-            {{- end }}
+            {{- include "nyx.hardenedContainerSecurityContext" (dict "root" $) | nindent 12 }}
           # Startup probe added (#768) for parity with harness + backends.
           # Slow image pulls on low-spec nodes would otherwise let the liveness
           # probe kill the pod after ~30s of unreadiness; startup suspends
@@ -104,10 +97,29 @@ spec:
             - name: nginx-template
               mountPath: /etc/nginx/templates
               readOnly: true
+            {{- /* #1073: emptyDir carve-outs for readOnlyRootFilesystem=true.
+                   nginx writes to /var/cache/nginx (proxy/fastcgi/client caches),
+                   /var/run/nginx.pid, and the rendered /etc/nginx/conf.d config. */}}
+            - name: nyx-tmp
+              mountPath: /tmp
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d
       volumes:
         - name: nginx-template
           configMap:
             name: {{ $.Release.Name }}-dashboard-nginx
+        - name: nyx-tmp
+          emptyDir: {}
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
+        - name: nginx-conf
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

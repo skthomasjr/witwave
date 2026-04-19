@@ -232,15 +232,15 @@ preStop:
   delaySeconds: 5
 
 # Pod security hardening (#948). Applied uniformly to every operator-rendered
-# container (harness, backends, dashboard, mcp tools). Off by default because
-# some MCP tools (helm) write cache dirs at runtime — operators on PSS-
-# restricted clusters should enable this and verify their MCP tool set still
-# functions (or side-mount an emptyDir for their tool's cache path). Leaving
-# the knob off keeps behaviour identical to pre-#948.
+# container (harness, backends, dashboard, mcp tools). ON by default as of
+# #1073 so the chart is PSS-restricted-compliant out of the box. MCP tools
+# that need a writable cache dir (e.g. helm) receive emptyDir carve-outs at
+# the correct mountPath automatically; set this to `false` if you run a
+# custom tool that writes outside any mounted volume and cannot be fixed.
 podSecurity:
   # When true, sets securityContext.readOnlyRootFilesystem on each managed
   # container so a code-exec attacker cannot overwrite binaries in /.
-  readOnlyRootFilesystem: false
+  readOnlyRootFilesystem: true
 
 # Scheduling controls applied to every agent pod unless the per-agent entry
 # overrides them (#603). Mirrors the nyx-operator chart's value names exactly

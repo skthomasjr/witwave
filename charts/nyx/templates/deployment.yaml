@@ -277,9 +277,7 @@ spec:
         - name: git-sync-init-{{ .name }}
           image: {{ .image | default (include "nyx.gitSyncImage" $) }}
           securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: ["ALL"]
+            {{- include "nyx.hardenedContainerSecurityContext" (dict "root" $) | nindent 12 }}
           args:
             - --repo={{ .repo }}
             - --root=/git
@@ -294,18 +292,20 @@ spec:
           volumeMounts:
             - name: git-sync-data
               mountPath: /git
+            - name: nyx-tmp
+              mountPath: /tmp
         {{- end }}
         {{- if include "nyx.hasMappings" $agent }}
         - name: git-map-init
           image: {{ include "nyx.gitSyncImage" $ }}
           securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: ["ALL"]
+            {{- include "nyx.hardenedContainerSecurityContext" (dict "root" $) | nindent 12 }}
           command: ["/bin/sh", "/nyx-scripts/git-sync.sh"]
           volumeMounts:
             - name: git-sync-data
               mountPath: /git
+            - name: nyx-tmp
+              mountPath: /tmp
             {{- include "nyx.gitMappingMounts" (dict "agent" $agent "release" $.Release.Name) | nindent 12 }}
         {{- end }}
       {{- end }}
@@ -315,6 +315,8 @@ spec:
         {{- range .gitSyncs }}
         - name: git-sync-{{ .name }}
           image: {{ .image | default (include "nyx.gitSyncImage" $) }}
+          securityContext:
+            {{- include "nyx.hardenedContainerSecurityContext" (dict "root" $) | nindent 12 }}
           args:
             - --repo={{ .repo }}
             - --root=/git
@@ -332,6 +334,8 @@ spec:
           volumeMounts:
             - name: git-sync-data
               mountPath: /git
+            - name: nyx-tmp
+              mountPath: /tmp
             {{- if include "nyx.hasMappings" $agent }}
             {{- include "nyx.gitMappingMounts" (dict "agent" $agent "release" $.Release.Name) | nindent 12 }}
             {{- end }}
@@ -341,12 +345,7 @@ spec:
           image: {{ .image.repository }}:{{ .image.tag | default $.Chart.AppVersion }}
           imagePullPolicy: {{ .image.pullPolicy | default "IfNotPresent" }}
           securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: ["ALL"]
-            {{- if ($.Values.podSecurity).readOnlyRootFilesystem }}
-            readOnlyRootFilesystem: true
-            {{- end }}
+            {{- include "nyx.hardenedContainerSecurityContext" (dict "root" $) | nindent 12 }}
           {{- if $.Values.preStop.enabled }}
           lifecycle:
             preStop:
@@ -427,6 +426,8 @@ spec:
             {{- toYaml .envFrom | nindent 12 }}
           {{- end }}
           volumeMounts:
+            - name: nyx-tmp
+              mountPath: /tmp
             - name: manifest
               mountPath: /home/agent/manifest.json
               subPath: manifest.json
@@ -464,12 +465,7 @@ spec:
           image: {{ .image.repository }}:{{ .image.tag | default $.Chart.AppVersion }}
           imagePullPolicy: {{ .image.pullPolicy | default "IfNotPresent" }}
           securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: ["ALL"]
-            {{- if ($.Values.podSecurity).readOnlyRootFilesystem }}
-            readOnlyRootFilesystem: true
-            {{- end }}
+            {{- include "nyx.hardenedContainerSecurityContext" (dict "root" $) | nindent 12 }}
           {{- if $.Values.preStop.enabled }}
           lifecycle:
             preStop:
@@ -557,6 +553,8 @@ spec:
             {{- end }}
           {{- include "nyx.renderBackendEnvFrom" (dict "backend" . "agent" (dict "name" $agentName) "default" (($.Values.backends).credentials | default dict) "release" $.Release.Name) | nindent 10 }}
           volumeMounts:
+            - name: nyx-tmp
+              mountPath: /tmp
             {{- if $storageEnabled }}
             {{- $backendNameForStorage := .name }}
             {{- range (.storage).mounts }}
@@ -614,6 +612,11 @@ spec:
         - name: manifest
           configMap:
             name: {{ $.Release.Name }}-manifest
+        {{- /* #1073: emptyDir for /tmp so readOnlyRootFilesystem=true
+               doesn't break Python's tempfile / uv / git-sync temp writes.
+               Mounted on every container/initContainer in the pod. */}}
+        - name: nyx-tmp
+          emptyDir: {}
         {{- if .gitSyncs }}
         - name: git-sync-data
           emptyDir: {}

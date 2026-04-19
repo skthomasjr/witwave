@@ -159,11 +159,21 @@ podSecurityContext:
     type: RuntimeDefault
 
 # Container-level security context.
+# Defaults satisfy the Pod Security Standards "restricted" profile per
+# container (#1073) — PSS evaluates per-container, so these fields must
+# be set at the container level even when the pod-level block declares
+# them. readOnlyRootFilesystem is included because the operator binary
+# doesn't write to rootfs; override to false if you ship an extension
+# that needs a writable /.
 securityContext:
   allowPrivilegeEscalation: false
+  runAsNonRoot: true
+  readOnlyRootFilesystem: true
   capabilities:
     drop:
       - ALL
+  seccompProfile:
+    type: RuntimeDefault
 
 # Resource requests and limits for the controller-manager container.
 # Defaults match kubebuilder's recommended baseline for small clusters.

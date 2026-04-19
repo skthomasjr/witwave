@@ -195,12 +195,7 @@ spec:
           image: "{{ $imageRef }}"
           imagePullPolicy: {{ $pullPolicy }}
           securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: ["ALL"]
-            {{- if ($.Values.podSecurity).readOnlyRootFilesystem }}
-            readOnlyRootFilesystem: true
-            {{- end }}
+            {{- include "nyx.hardenedContainerSecurityContext" (dict "root" $) | nindent 12 }}
           ports:
             - name: http
               containerPort: 8000
@@ -247,5 +242,19 @@ spec:
             periodSeconds: {{ default 10 $probes.readinessPeriodSeconds }}
             timeoutSeconds: {{ default 2 $probes.readinessTimeoutSeconds }}
             failureThreshold: {{ default 3 $probes.readinessFailureThreshold }}
+          {{- /* #1073: emptyDir carve-outs for readOnlyRootFilesystem=true.
+                 /tmp covers generic Python tempfile writes; /home/agent/.cache
+                 covers helm's repo + plugin cache (mcp-helm shells out to the
+                 helm CLI, which refuses to run without a writable HELM_CACHE). */}}
+          volumeMounts:
+            - name: nyx-tmp
+              mountPath: /tmp
+            - name: nyx-home-cache
+              mountPath: /home/agent/.cache
+      volumes:
+        - name: nyx-tmp
+          emptyDir: {}
+        - name: nyx-home-cache
+          emptyDir: {}
 {{- end }}
 {{- end }}
