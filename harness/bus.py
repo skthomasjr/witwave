@@ -207,16 +207,12 @@ _hook_decision_listeners: list[Callable[[HookDecisionEvent], None]] = []
 # function with the same qualname is still allowed.
 _hook_decision_listener_ids: set[int] = set()
 
-# Error counter surface (#1036). Callers (harness/metrics.py) set
-# :data:`listener_errors_total` to a prometheus Counter with labels
-# ``(listener, error)`` — we bump it on every listener exception so
-# dashboards can alert on silent listener-level outages.  Left None
-# when metrics are disabled / the harness didn't wire it.
-listener_errors_total = None  # type: ignore[assignment]
-# Dup-registration counter surface. Bumped when subscribe_hook_decision
-# rejects a duplicate; operators can alert on a non-zero rate which
-# almost always indicates an unintended module reload.
-listener_dup_rejects_total = None  # type: ignore[assignment]
+# Error / dup-reject / dropped counter surfaces. Wired at import time
+# from ``harness/metrics.py`` — when METRICS_ENABLED is unset the
+# imports resolve to ``None`` and the bump helpers below no-op.
+listener_errors_total = harness_hook_decision_listener_errors_total
+listener_dup_rejects_total = harness_hook_decision_listener_dup_rejects_total
+_hook_decision_dropped_counter = harness_hook_decision_dropped_total
 
 
 def subscribe_hook_decision(listener: Callable[[HookDecisionEvent], None]) -> None:
@@ -334,6 +330,16 @@ def publish_hook_decision(event: HookDecisionEvent) -> None:
                 _HOOK_DECISION_QUEUE_MAX, _hook_decision_dropped,
                 event.agent, event.session_id, event.tool,
             )
+            # Export to Prometheus (#1085). Previously the drop was
+            # tracked only in _hook_decision_dropped without a scrape
+            # path, so the #928 safety valve had no operator alert
+            # surface. Now dashboards can:
+            #   rate(harness_hook_decision_dropped_total[5m]) > 0.
+            if _hook_decision_dropped_counter is not None:
+                try:
+                    _hook_decision_dropped_counter.inc()
+                except Exception:
+                    pass
         return
     # Legacy synchronous fan-out when no dispatcher is running.
     for listener in list(_hook_decision_listeners):
