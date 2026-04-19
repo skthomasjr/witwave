@@ -487,8 +487,13 @@ async def _guarded(
                     cb()
                 except asyncio.CancelledError:
                     pass
+            # #1402: align the watchdog threshold with the streak reset
+            # threshold (#1367). Previously fired at 1× restart_delay
+            # while reset required 3×, so dashboards reported "recovered"
+            # while consecutive_restarts kept climbing — contradictory
+            # signals to alert rules.
             _recovery_watchdog = asyncio.ensure_future(
-                _recovery_watch(restart_delay, on_recovered)
+                _recovery_watch(restart_delay * 3, on_recovered)
             )
         try:
             try:
@@ -541,7 +546,15 @@ class AgentExecutor(A2AAgentExecutor):
                 "valid config.",
                 exc,
             )
-            self._backends, self._default_backend_id, self._routing = {}, None, {}
+            # #1401: `_routing` must be a RoutingConfig dataclass (not {})
+            # so `_routing_entry_for_kind` attribute access (.a2a /
+            # .heartbeat / …) doesn't AttributeError on the first request
+            # before the watcher reloads a valid config. The #1328 fallback
+            # used {} and defeated its own graceful-start guarantee.
+            from backends.config import RoutingConfig
+            self._backends = {}
+            self._default_backend_id = None
+            self._routing = RoutingConfig()
         self._mcp_watcher_tasks: list[asyncio.Task] = []
         self._background_tasks: set[asyncio.Task] = set()
         self._continuation_runner = None

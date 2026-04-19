@@ -266,11 +266,17 @@ jobs:
       # PSA audits new flags before they hit a real cluster. Append to
       # /tmp/nyx.yaml so the PSS walker below picks them up.
       - name: Render PSA-audit variant (all features on)
+        # #1405: fail loudly on values-psa-audit.yaml render errors.
+        # The prior `|| echo "failed; continuing"` suppressed the exit
+        # status and defeated the stated purpose (catch new optional
+        # components before they hit a real cluster).
         run: |
           if [ -f charts/nyx/values-psa-audit.yaml ]; then
             echo "---" >> /tmp/nyx.yaml
             helm template nyx charts/nyx -f charts/nyx/values-psa-audit.yaml \
-              >> /tmp/nyx.yaml || echo "[PSA] render of values-psa-audit.yaml failed; continuing"
+              >> /tmp/nyx.yaml
+          else
+            echo "[PSA] no values-psa-audit.yaml present — skipping"
           fi
 
       - name: PSS-restricted static check

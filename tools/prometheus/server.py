@@ -125,16 +125,24 @@ _MCP_REQUEST_TIMEOUT_SECONDS = float(
 # #1398: module-level shared httpx.Client so TLS handshakes + connection
 # pool amortise across queries. Lazy init keeps import-time cheap and
 # defers failure to first use.
+# #1407: double-checked locking so concurrent first-touches from the
+# FastMCP thread-pool can't each build + orphan a client.
+import threading as _threading
 _SHARED_HTTPX_CLIENT: "httpx.Client | None" = None
+_SHARED_HTTPX_CLIENT_LOCK = _threading.Lock()
 
 
 def _get_shared_httpx_client() -> "httpx.Client":
     global _SHARED_HTTPX_CLIENT
     if _SHARED_HTTPX_CLIENT is None:
-        _SHARED_HTTPX_CLIENT = httpx.Client(
-            timeout=_MCP_REQUEST_TIMEOUT_SECONDS,
-            limits=httpx.Limits(max_connections=50, max_keepalive_connections=10),
-        )
+        with _SHARED_HTTPX_CLIENT_LOCK:
+            if _SHARED_HTTPX_CLIENT is None:
+                _SHARED_HTTPX_CLIENT = httpx.Client(
+                    timeout=_MCP_REQUEST_TIMEOUT_SECONDS,
+                    limits=httpx.Limits(
+                        max_connections=50, max_keepalive_connections=10
+                    ),
+                )
     return _SHARED_HTTPX_CLIENT
 
 # Per-response byte cap on tool output (#778 parity). Prometheus query
@@ -489,10 +497,15 @@ def _get_info_doc() -> dict[str, Any]:
         try:
             tool_names = sorted(mcp._tool_manager._tools.keys())  # type: ignore[attr-defined]
         except AttributeError:
-            try:
-                tool_names = sorted(mcp.list_tools().keys())  # type: ignore[attr-defined]
-            except Exception:
-                tool_names = []  # fall through; operators see empty tool list
+            # #1404: mcp.list_tools() is async in current FastMCP; calling
+            # .keys() on the coroutine raised silently in the prior fallback.
+            # Log the attribute shape change so operators notice, rather
+            # than silently emitting an empty tool list.
+            log.warning(
+                'mcp server: FastMCP internal _tool_manager._tools attr missing — '
+                'falling back to empty tool_names (#1400/#1404). Upgrade guard needed.'
+            )
+            tool_names = []
     except Exception:
         tool_names = []
     return {

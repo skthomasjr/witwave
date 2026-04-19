@@ -62,7 +62,7 @@ func (r *NyxAgentReconciler) reconcileMCPTools(ctx context.Context, agent *nyxv1
 		candidates := map[string]*nyxv1alpha1.MCPToolSpec{
 			"kubernetes": agent.Spec.MCPTools.Kubernetes,
 			"helm":       agent.Spec.MCPTools.Helm,
-			"prometheus": agent.Spec.MCPTools.Prometheus,  // #1354
+			"prometheus": agent.Spec.MCPTools.Prometheus, // #1354
 		}
 		for name, tool := range candidates {
 			if tool != nil && tool.Enabled {

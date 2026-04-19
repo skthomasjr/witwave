@@ -542,10 +542,30 @@ def make_session_stream_handler(
                 )
             _per_caller_counts[_caller_fp] = cur + 1
 
-        stream = get_session_stream(session_id, agent_id=agent_id, create=True)
+        # #1403: if any setup step between cap-reservation and the
+        # body generator raises (get_session_stream, replay_from,
+        # client disconnect before body starts), release the slot.
+        # Without this, ~8 errored connects from the same bearer
+        # permanently lock the caller out at 429.
+        def _release_slot() -> None:
+            if _per_caller_max <= 0:
+                return
+            try:
+                _cur = _per_caller_counts.get(_caller_fp, 0)
+                if _cur <= 1:
+                    _per_caller_counts.pop(_caller_fp, None)
+                else:
+                    _per_caller_counts[_caller_fp] = _cur - 1
+            except Exception:
+                pass
 
-        last_event_id = request.headers.get("Last-Event-ID") or request.query_params.get("last_event_id")
-        replay = stream.replay_from(last_event_id) if last_event_id else []
+        try:
+            stream = get_session_stream(session_id, agent_id=agent_id, create=True)
+            last_event_id = request.headers.get("Last-Event-ID") or request.query_params.get("last_event_id")
+            replay = stream.replay_from(last_event_id) if last_event_id else []
+        except Exception:
+            _release_slot()
+            raise
 
         async def _body():
             # Initial comment so proxies flush headers early.

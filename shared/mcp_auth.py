@@ -36,6 +36,11 @@ _FAIL_CLOSED_WARNED: set[int] = set()
 # logs. Parity with shared/hook_events.py warn pattern.
 _FAIL_CLOSED_REARM_EVERY = 500
 _FAIL_CLOSED_COUNT_SINCE_WARN: int = 0
+# #1406: check-and-reset on counter is not atomic under the GIL;
+# protect the full sequence with a threading.Lock so concurrent
+# rejects can't double-fire or skip the 500-threshold warn.
+import threading as _threading
+_FAIL_CLOSED_LOCK = _threading.Lock()
 
 
 def _auth_disabled_escape_hatch() -> bool:
@@ -78,17 +83,20 @@ def require_bearer_token(
         # One-shot warning per process per posture so operators see
         # the misconfig in kubectl logs without per-request spam.
         posture_key = (hash(("tok" if token else "none", disabled))) & 0xFFFFFFFF
-        # #1359: periodic re-arm so sustained misconfig surfaces again.
+        # #1359 + #1406: periodic re-arm, protected by a lock so concurrent
+        # rejects can't double-fire or skip the threshold.
         global _FAIL_CLOSED_COUNT_SINCE_WARN
-        should_warn = posture_key not in _FAIL_CLOSED_WARNED
-        if not token and not disabled:
-            _FAIL_CLOSED_COUNT_SINCE_WARN += 1
-            if _FAIL_CLOSED_COUNT_SINCE_WARN >= _FAIL_CLOSED_REARM_EVERY:
-                should_warn = True
-                _FAIL_CLOSED_COUNT_SINCE_WARN = 0
-                _FAIL_CLOSED_WARNED.discard(posture_key)
+        with _FAIL_CLOSED_LOCK:
+            should_warn = posture_key not in _FAIL_CLOSED_WARNED
+            if not token and not disabled:
+                _FAIL_CLOSED_COUNT_SINCE_WARN += 1
+                if _FAIL_CLOSED_COUNT_SINCE_WARN >= _FAIL_CLOSED_REARM_EVERY:
+                    should_warn = True
+                    _FAIL_CLOSED_COUNT_SINCE_WARN = 0
+                    _FAIL_CLOSED_WARNED.discard(posture_key)
+            if should_warn:
+                _FAIL_CLOSED_WARNED.add(posture_key)
         if should_warn:
-            _FAIL_CLOSED_WARNED.add(posture_key)
             if not token and not disabled:
                 logger.error(
                     "mcp_auth: MCP_TOOL_AUTH_TOKEN is unset/empty and "

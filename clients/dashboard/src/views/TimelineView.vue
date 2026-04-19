@@ -64,10 +64,13 @@ function persistPinned(): void {
   if (typeof window === "undefined" || !window.localStorage) return;
   try {
     let arr = Array.from(pinnedIds.value);
+    // #1408: clamp the serialised array only; don't mutate
+    // `pinnedIds.value` inside this watcher callback. Reassigning the
+    // Set re-triggers the watcher and risks a persist/clamp loop near
+    // the 1000 boundary. Accept a 1-cycle drift between localStorage
+    // and in-memory state; the next pin/unpin will reconcile.
     if (arr.length > PINNED_PERSIST_CAP) {
       arr = arr.slice(-PINNED_PERSIST_CAP);
-      // Update the in-memory Set too so the UI and the store agree.
-      pinnedIds.value = new Set(arr);
     }
     window.localStorage.setItem(
       PINNED_STORAGE_KEY,

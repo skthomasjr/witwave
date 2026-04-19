@@ -1073,10 +1073,15 @@ def _get_info_doc() -> dict[str, Any]:
         try:
             tool_names = sorted(mcp._tool_manager._tools.keys())  # type: ignore[attr-defined]
         except AttributeError:
-            try:
-                tool_names = sorted(mcp.list_tools().keys())  # type: ignore[attr-defined]
-            except Exception:
-                tool_names = []  # fall through; operators see empty tool list
+            # #1404: mcp.list_tools() is async in current FastMCP; calling
+            # .keys() on the coroutine raised silently in the prior fallback.
+            # Log the attribute shape change so operators notice, rather
+            # than silently emitting an empty tool list.
+            log.warning(
+                'mcp server: FastMCP internal _tool_manager._tools attr missing — '
+                'falling back to empty tool_names (#1400/#1404). Upgrade guard needed.'
+            )
+            tool_names = []
     except Exception:
         tool_names = []
 
