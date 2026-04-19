@@ -418,6 +418,54 @@ podMonitor:
   # (e.g. release: kube-prometheus-stack).
   labels: {}
 
+# Prometheus Operator PrometheusRule (#1117). Ships opinionated default
+# alerts so a fresh install has usable paging day one: backend pod down,
+# hook-denial spike, MCP auth failure, webhook timeouts, SQLite
+# task-store lock-wait saturation. Disabled by default (like every
+# other monitor resource in this chart); enable + tune the individual
+# alert thresholds as needed.
+#
+# The template renders under the `additionalLabels` you provide so
+# kube-prometheus-stack's default rule selector (`release:
+# kube-prometheus-stack`) picks it up without further templating.
+prometheusRule:
+  enabled: false
+  # Extra labels merged into the PrometheusRule metadata. Set to
+  # `release: kube-prometheus-stack` (or whatever your stack uses)
+  # so the Prometheus CR picks these rules up.
+  additionalLabels: {}
+  # Per-alert thresholds. Set to null to suppress that alert entirely.
+  alerts:
+    backendDown:
+      enabled: true
+      # Minutes the pod must report absent before the alert fires.
+      forMinutes: 5
+      severity: critical
+    hookDenialSpike:
+      enabled: true
+      # Rate (denials/sec over 5m) at which the alert fires.
+      rateThreshold: 0.5
+      forMinutes: 10
+      severity: warning
+    mcpAuthFailure:
+      enabled: true
+      # Rate (rejected requests/sec over 5m) at which the alert fires.
+      rateThreshold: 0.1
+      forMinutes: 5
+      severity: warning
+    webhookTimeout:
+      enabled: true
+      # Rate (timeouts/sec over 5m) at which the alert fires.
+      rateThreshold: 0.05
+      forMinutes: 10
+      severity: warning
+    lockWaitSaturation:
+      enabled: true
+      # 99th-percentile lock-wait seconds over 5m that triggers the alert.
+      p99Seconds: 1.0
+      forMinutes: 10
+      severity: warning
+
 # OpenTelemetry tracing (#634). End-to-end opt-in wiring for distributed
 # traces across harness, backends, and operator. Disabled by default so
 # existing deployments are unaffected.

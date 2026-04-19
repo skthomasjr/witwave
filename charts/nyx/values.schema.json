@@ -141,6 +141,18 @@
         "labels": { "type": "object" }
       }
     },
+    "prometheusRule": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "additionalLabels": { "type": "object" },
+        "alerts": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
     "observability": {
       "type": "object",
       "additionalProperties": true,
