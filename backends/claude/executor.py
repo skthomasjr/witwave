@@ -943,23 +943,24 @@ def _make_pre_tool_use_hook(state: HookState, session_id_ref: dict | None = None
             # driving the backend to OOM. When at cap we drop the
             # event and bump a counter — the span event recorded
             # above remains the authoritative record.
-            # Check-and-add under _INFLIGHT_HOOK_POSTS_LOCK (#931) so
-            # the cap holds under secondary-loop topologies.
-            _t_created: asyncio.Task | None = None
+            # Check-only under _INFLIGHT_HOOK_POSTS_LOCK (#931 retained
+            # under secondary-loop topologies). asyncio.create_task is
+            # invoked *outside* the lock so a loop-shutdown RuntimeError
+            # (or any other scheduler exception) doesn't surface as an
+            # AssertionError downstream — and so the blocking
+            # threading.Lock never wraps an asyncio-scheduler call
+            # (#983). If create_task raises or returns, we defensively
+            # reconcile the in-flight set afterwards.
             with _INFLIGHT_HOOK_POSTS_LOCK:
-                _over_cap = len(_INFLIGHT_HOOK_POSTS) >= _HOOK_POST_MAX_INFLIGHT
-                if not _over_cap:
-                    _t_created = asyncio.create_task(
-                        _post_hook_event_to_harness(_event_dict)
-                    )
-                    _INFLIGHT_HOOK_POSTS.add(_t_created)
+                _size_before = len(_INFLIGHT_HOOK_POSTS)
+                _over_cap = _size_before >= _HOOK_POST_MAX_INFLIGHT
             if _over_cap:
                 global _HOOK_POST_SHED_WARNED
                 with _HOOK_POST_SHED_WARNED_LOCK:
                     if not _HOOK_POST_SHED_WARNED:
                         logger.warning(
                             "hook.decision POST shed: %d in-flight at cap=%d (further shed suppressed until drain)",
-                            len(_INFLIGHT_HOOK_POSTS), _HOOK_POST_MAX_INFLIGHT,
+                            _size_before, _HOOK_POST_MAX_INFLIGHT,
                         )
                         _HOOK_POST_SHED_WARNED = True
                 if backend_hooks_shed_total is not None:
@@ -968,20 +969,36 @@ def _make_pre_tool_use_hook(state: HookState, session_id_ref: dict | None = None
                     except Exception:
                         pass
             else:
-                def _done(tt, _reset=_INFLIGHT_HOOK_POSTS):
+                _t_created: asyncio.Task | None = None
+                try:
+                    _t_created = asyncio.create_task(
+                        _post_hook_event_to_harness(_event_dict)
+                    )
+                except RuntimeError as _rt_exc:
+                    # Event loop closing / no running loop. Not fatal —
+                    # the span event above already captured the decision.
+                    logger.debug(
+                        "hook.decision transport scheduling skipped (loop not running): %r",
+                        _rt_exc,
+                    )
+                    _t_created = None
+                if _t_created is not None:
                     with _INFLIGHT_HOOK_POSTS_LOCK:
-                        _reset.discard(tt)
-                        _size = len(_reset)
-                    # Re-arm the warning once we drop back below cap.
-                    # Serialise with the same Lock so two concurrent
-                    # completions can't both flip the flag after one
-                    # task already did (#873).
-                    if _size < _HOOK_POST_MAX_INFLIGHT // 2:
-                        global _HOOK_POST_SHED_WARNED
-                        with _HOOK_POST_SHED_WARNED_LOCK:
-                            _HOOK_POST_SHED_WARNED = False
-                assert _t_created is not None
-                _t_created.add_done_callback(_done)
+                        _INFLIGHT_HOOK_POSTS.add(_t_created)
+
+                    def _done(tt, _reset=_INFLIGHT_HOOK_POSTS):
+                        with _INFLIGHT_HOOK_POSTS_LOCK:
+                            _reset.discard(tt)
+                            _size = len(_reset)
+                        # Re-arm the warning once we drop back below cap.
+                        # Serialise with the same Lock so two concurrent
+                        # completions can't both flip the flag after one
+                        # task already did (#873).
+                        if _size < _HOOK_POST_MAX_INFLIGHT // 2:
+                            global _HOOK_POST_SHED_WARNED
+                            with _HOOK_POST_SHED_WARNED_LOCK:
+                                _HOOK_POST_SHED_WARNED = False
+                    _t_created.add_done_callback(_done)
         except Exception as _transport_exc:
             logger.debug("hook.decision transport scheduling failed: %r", _transport_exc)
 
