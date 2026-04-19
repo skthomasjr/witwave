@@ -75,6 +75,7 @@ stream:
 | `a2a.request.completed`   | harness A2A relay       | `{concern, outcome, duration_ms}`                                           |
 | `agent.lifecycle`         | harness or backends     | `{backend, event: started|stopped|config_reloaded|credential_rotated}`      |
 | `conversation.turn`       | backends (claude/codex/gemini) | `{session_id_hash, role: user|assistant, content_bytes, model?}`     |
+| `conversation.chunk`      | backends (claude/codex/gemini) | `{session_id_hash, role: user|assistant, seq, content, final}` — per-session drill-down stream only (not on `/events/stream`) |
 | `tool.use`                | backends (claude/codex/gemini) | `{session_id_hash, tool, duration_ms, outcome: ok|error|denied, result_size_bytes?, error?}` |
 | `trace.span`              | backends (claude/codex/gemini) | `{session_id_hash?, span_name, duration_ms, status: ok|error, service}` — only emitted for `{llm.request, shell, mcp.handler, backend.mcp.tools_call}` |
 
@@ -85,8 +86,43 @@ See `events.schema.json` for the full JSON Schema.
 - Per-token conversation chunks — drill-down surface, per-backend stream.
   Phase 3 emits a single `conversation.turn` summary event (content_bytes,
   not raw content) per turn; raw token streams remain per-backend.
+  Phase 4 (#1110) surfaces them on a per-session endpoint,
+  `GET /api/sessions/<session_id>/stream` on each backend — same SSE envelope,
+  type `conversation.chunk`, scoped to one session and backend-local (no
+  fan-out to harness). See below.
 - Prometheus metrics — polled over `/metrics`, not event-shaped.
 - Team / config / schedule snapshots — polled REST surfaces.
+
+## Per-session backend stream (phase 4)
+
+Each backend (`claude`, `codex`, `gemini`) additionally serves
+`GET /api/sessions/<session_id>/stream` for real-time drill-down into a
+single session. Wire format is identical to the harness event stream
+(SSE, same envelope) but the published types are limited to
+`conversation.chunk`, `conversation.turn`, `tool.use`, `trace.span`, and
+the `stream.overrun` terminal envelope.
+
+- Auth: `Authorization: Bearer <CONVERSATIONS_AUTH_TOKEN>`, same token
+  used by `/conversations`, `/trace`, `/mcp`, `/api/traces`.
+  `CONVERSATIONS_AUTH_DISABLED=true` acts as the documented local-dev
+  escape hatch (loud startup warning).
+- Scope: backend-local (per pod replica). No cross-pod session sharing
+  — the same session ID routed to a different replica will not see
+  events emitted on this replica.
+- Ring: bounded by `CONVERSATION_STREAM_RING_MAX` (default 200) for
+  `Last-Event-ID` resume.
+- Backpressure: bounded per-subscriber queue
+  `CONVERSATION_STREAM_QUEUE_MAX` (default 500); slow subscriber →
+  terminal `stream.overrun` and close.
+- Keepalive: `CONVERSATION_STREAM_KEEPALIVE_SEC` (default 15).
+- Grace window: after the last subscriber disconnects, the broadcaster
+  lingers for `CONVERSATION_STREAM_GRACE_SEC` seconds (default 60) so
+  a brief reconnect can resume without losing the ring. After that the
+  registry entry is evicted.
+
+Payloads continue to use `session_id_hash` (SHA-256 prefix, 12 chars)
+rather than the raw session id; the URL path carries the actual id
+because the caller already knows it in order to construct the URL.
 
 Phase 3 (#1110) added backend-emitted `conversation.turn`, `tool.use`,
 and `trace.span` events over the backend→harness event channel

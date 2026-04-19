@@ -311,6 +311,11 @@ async def main():
 
     conversations_handler = make_conversations_handler(CONVERSATIONS_AUTH_TOKEN, CONVERSATION_LOG)
     trace_handler = make_trace_handler(CONVERSATIONS_AUTH_TOKEN, TRACE_LOG)
+    # Per-session SSE drill-down stream (#1110 phase 4).
+    from session_stream import make_session_stream_handler
+    session_stream_handler = make_session_stream_handler(
+        CONVERSATIONS_AUTH_TOKEN, agent_id=AGENT_OWNER
+    )
 
     _agent_description = load_agent_description()
 
@@ -675,6 +680,7 @@ async def main():
         Route("/mcp", mcp_handler, methods=["GET", "POST"]),
         Route("/api/traces", otel_traces_list_handler, methods=["GET"]),
         Route("/api/traces/{trace_id}", otel_traces_detail_handler, methods=["GET"]),
+        Route("/api/sessions/{session_id}/stream", session_stream_handler, methods=["GET"]),
     ]
     # Metrics on dedicated :METRICS_PORT listener (#643, #647).
     _routes.append(Mount("/", app=a2a_built))

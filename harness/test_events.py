@@ -393,6 +393,78 @@ class EventSchemaTests(unittest.TestCase):
         ))
         self.assertIsNone(ok)
 
+    # ---- Phase-4 conversation.chunk (#1110) -----------------------
+
+    def test_conversation_chunk_ok(self) -> None:
+        from event_schema import validate_envelope
+        ok = validate_envelope(self._env(
+            "conversation.chunk",
+            {
+                "session_id_hash": "abcdef012345",
+                "role": "assistant",
+                "seq": 3,
+                "content": "hello world",
+                "final": False,
+            },
+        ))
+        self.assertIsNone(ok)
+
+    def test_conversation_chunk_final_flag_required(self) -> None:
+        from event_schema import validate_envelope
+        err = validate_envelope(self._env(
+            "conversation.chunk",
+            {
+                "session_id_hash": "abcdef012345",
+                "role": "assistant",
+                "seq": 3,
+                "content": "hi",
+                # missing final
+            },
+        ))
+        self.assertIsNotNone(err)
+
+    def test_conversation_chunk_role_enum(self) -> None:
+        from event_schema import validate_envelope
+        err = validate_envelope(self._env(
+            "conversation.chunk",
+            {
+                "session_id_hash": "abcdef012345",
+                "role": "system",  # not in enum
+                "seq": 0,
+                "content": "",
+                "final": True,
+            },
+        ))
+        self.assertIsNotNone(err)
+
+    def test_conversation_chunk_final_must_be_bool(self) -> None:
+        from event_schema import validate_envelope
+        err = validate_envelope(self._env(
+            "conversation.chunk",
+            {
+                "session_id_hash": "abcdef012345",
+                "role": "user",
+                "seq": 0,
+                "content": "hi",
+                "final": "true",  # string, not bool
+            },
+        ))
+        self.assertIsNotNone(err)
+
+    def test_conversation_chunk_seq_nonneg(self) -> None:
+        from event_schema import validate_envelope
+        err = validate_envelope(self._env(
+            "conversation.chunk",
+            {
+                "session_id_hash": "abcdef012345",
+                "role": "assistant",
+                "seq": -1,
+                "content": "x",
+                "final": False,
+            },
+        ))
+        self.assertIsNotNone(err)
+
     def test_trace_span_bad_status(self) -> None:
         from event_schema import validate_envelope
         err = validate_envelope(self._env(

@@ -3077,11 +3077,37 @@ class AgentExecutor(A2AAgentExecutor):
         # emit and guarantees a single canonical value for the whole request.
         _streaming_label_model = _sanitize_model_label(model or GEMINI_MODEL or "")
 
+        # Per-session SSE drill-down stream (#1110 phase 4). Best-effort
+        # — a broadcaster fault must not break the A2A response path.
+        try:
+            from session_stream import get_session_stream as _get_session_stream
+            _sess_stream = _get_session_stream(session_id, agent_id=AGENT_OWNER)
+            _sess_stream.reset_assistant_seq()
+            _sess_stream.publish_chunk(
+                role="user", seq=0, content=prompt, final=True
+            )
+        except Exception as _sess_exc:  # pragma: no cover
+            logger.warning("session_stream: user prompt publish failed: %r", _sess_exc)
+            _sess_stream = None
+
         async def _emit_chunk(text: str) -> None:
             nonlocal _chunks_emitted
             _chunks_emitted += 1
             if backend_streaming_events_emitted_total is not None:
                 backend_streaming_events_emitted_total.labels(**_LABELS, model=_streaming_label_model).inc()
+            # Per-session SSE drill-down (#1110 phase 4).
+            if _sess_stream is not None:
+                try:
+                    _sess_stream.publish_chunk(
+                        role="assistant",
+                        seq=_sess_stream.next_assistant_seq(),
+                        content=text,
+                        final=False,
+                    )
+                except Exception as _s_exc:  # pragma: no cover
+                    logger.warning(
+                        "session_stream: chunk publish failed: %r", _s_exc
+                    )
             # Await directly — see backends/claude/executor.py _emit_chunk for the
             # rationale (event ordering + exception surfacing).
             await event_queue.enqueue_event(new_agent_text_message(text))
@@ -3122,6 +3148,19 @@ class AgentExecutor(A2AAgentExecutor):
                 # they already delivered the content.
                 if _response and _chunks_emitted == 0:
                     await event_queue.enqueue_event(new_agent_text_message(_response))
+                # Per-session stream: final marker chunk (#1110 phase 4).
+                if _sess_stream is not None:
+                    try:
+                        _sess_stream.publish_chunk(
+                            role="assistant",
+                            seq=_sess_stream.next_assistant_seq(),
+                            content="",
+                            final=True,
+                        )
+                    except Exception as _f_exc:  # pragma: no cover
+                        logger.warning(
+                            "session_stream: final chunk publish failed: %r", _f_exc
+                        )
                 if backend_a2a_requests_total is not None:
                     backend_a2a_requests_total.labels(**_LABELS, status="success").inc()
         except Exception as _exc:

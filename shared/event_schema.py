@@ -339,6 +339,30 @@ def _validate_conversation_turn(p: dict) -> str | None:
     return None
 
 
+def _validate_conversation_chunk(p: dict) -> str | None:
+    err = _require_keys(
+        p,
+        ("session_id_hash", "role", "seq", "content", "final"),
+        (),
+        "conversation.chunk",
+    )
+    if err:
+        return err
+    if not _is_session_hash(p["session_id_hash"]):
+        return _err("conversation.chunk: session_id_hash must be a 12-char string")
+    if p["role"] not in _CONVERSATION_ROLES:
+        return _err(
+            f"conversation.chunk: role must be one of {sorted(_CONVERSATION_ROLES)}"
+        )
+    if not _is_nonneg_int(p["seq"]):
+        return _err("conversation.chunk: seq must be a non-negative integer")
+    if not isinstance(p["content"], str):
+        return _err("conversation.chunk: content must be a string")
+    if not isinstance(p["final"], bool):
+        return _err("conversation.chunk: final must be a boolean")
+    return None
+
+
 _TOOL_OUTCOMES = {"ok", "error", "denied"}
 
 
@@ -433,6 +457,7 @@ _VALIDATORS: dict[str, Callable[[dict], str | None]] = {
     "a2a.request.completed": _validate_a2a_completed,
     "agent.lifecycle": _validate_agent_lifecycle,
     "conversation.turn": _validate_conversation_turn,
+    "conversation.chunk": _validate_conversation_chunk,
     "tool.use": _validate_tool_use,
     "trace.span": _validate_trace_span,
     "stream.gap": _validate_stream_gap,
