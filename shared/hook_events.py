@@ -86,6 +86,13 @@ _shed_warned = False
 # or a misconfigured endpoint.
 _status_warn_lock = threading.Lock()
 _status_warned = False
+# Counter + re-arm threshold (#1044). Mirrors _AUTH_REARM_EVERY so a
+# sustained non-2xx misconfig (e.g. mistyped HARNESS_EVENTS_URL) doesn't
+# go silent after the first WARN — re-emit every N dropped non-2xx
+# responses. Previously _status_warned flipped once and only reset on a
+# 2xx, which never arrived on a wrong-path deployment.
+_status_dropped_since_warn = 0
+_STATUS_REARM_EVERY = int(os.environ.get("HOOK_EVENTS_STATUS_REARM_EVERY", "500"))
 
 # Module-level strong-ref set. ``asyncio.create_task`` only keeps a weak
 # reference to the task from the event loop, so without a strong ref the
@@ -152,23 +159,33 @@ async def _post_once(event_dict: dict[str, Any]) -> None:
         # first non-2xx at WARNING and stay silent afterwards to avoid
         # flooding logs on a sustained misconfig.
         if resp.status_code >= 400:
-            global _status_warned
+            global _status_warned, _status_dropped_since_warn
             with _status_warn_lock:
-                if not _status_warned:
+                _status_dropped_since_warn += 1
+                _should_warn = (
+                    not _status_warned
+                    or _status_dropped_since_warn >= _STATUS_REARM_EVERY
+                )
+                if _should_warn:
                     _status_warned = True
+                    _count = _status_dropped_since_warn
+                    _status_dropped_since_warn = 0
                     logger.warning(
                         "hook.decision POST to %s returned HTTP %d (check "
                         "HOOK_EVENTS_AUTH_TOKEN and harness endpoint config); "
-                        "further non-2xx responses will be suppressed until "
-                        "a 2xx re-arms the warning.",
+                        "%d non-2xx response(s) since last warning; will "
+                        "re-warn every %d dropped events.",
                         url,
                         resp.status_code,
+                        _count,
+                        _STATUS_REARM_EVERY,
                     )
         else:
             # Re-arm the warning so a subsequent sustained failure is
             # visible without a process restart.
             with _status_warn_lock:
                 _status_warned = False
+                _status_dropped_since_warn = 0
     except Exception as exc:
         logger.warning("hook.decision POST to %s failed: %r", url, exc)
 
