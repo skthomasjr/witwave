@@ -638,6 +638,13 @@ Operator:
   conflicts surface as explicit apply errors (#751).
 - **`readyz` tied to webhook certwatcher** — operator pod isn't ready until `GetCertificate` returns a
   valid leaf (parses + checks `NotBefore` / `NotAfter`) (#758).
+- **MCP hot-reload atomicity (claude)** — `AgentExecutor._swap_mcp_servers` now serialises every
+  `self._mcp_servers` mutation under a reload lock, bumps `self._mcp_generation`, and logs the
+  old-vs-new key transition. `_load_mcp_config` additionally runs a structural validator
+  (`backends/claude/mcp_shape.validate_mcp_servers_shape`) after sanitisation so a malformed entry
+  (both or neither of `command`/`url`; non-string command; URL missing scheme/host) is dropped with a
+  WARNING before the swap rather than silently lost by the SDK at spawn time — the executor's dict
+  now agrees with what the SDK will actually attempt to start (#1051).
 
 ### New components
 

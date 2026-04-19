@@ -1211,13 +1211,23 @@ def _sanitize_mcp_servers(servers: dict) -> dict:
     return out
 
 
+# Structural validation extracted to mcp_shape.py so it can be
+# unit-tested without importing the full executor surface (#1051).
+from mcp_shape import validate_mcp_servers_shape as _validate_mcp_servers_shape  # noqa: E402
+
+
 def _load_mcp_config() -> dict:
-    """Load and sanitize mcp.json.
+    """Load, sanitize, and validate mcp.json.
 
     Returns ``{}`` when the file is absent (legitimate "no MCP servers"
     state). Raises on parse/validation errors so hot-reload callers can
     distinguish "successfully empty" from "unparseable" and keep the
     previous server set in the latter case (#591).
+
+    Structural validation (#1051) happens after the command allow-list
+    and env denylist pass in :func:`_sanitize_mcp_servers`. Entries that
+    don't match the SDK's minimum shape (``command`` OR ``url``, typed
+    correctly) are dropped and logged at WARNING.
     """
     if not os.path.exists(MCP_CONFIG_PATH):
         return {}
@@ -1227,12 +1237,21 @@ def _load_mcp_config() -> dict:
         # mcp.json may be in Claude's native format {"mcpServers": {...}}.
         # The SDK expects the inner servers dict directly, not the wrapper object.
         if isinstance(data, dict) and "mcpServers" in data and isinstance(data["mcpServers"], dict):
-            return _sanitize_mcp_servers(data["mcpServers"])
-        if not isinstance(data, dict):
+            sanitized = _sanitize_mcp_servers(data["mcpServers"])
+        elif not isinstance(data, dict):
             raise ValueError(
                 f"mcp.json must be a JSON object (got {type(data).__name__})"
             )
-        return _sanitize_mcp_servers(data)
+        else:
+            sanitized = _sanitize_mcp_servers(data)
+        valid, rejected = _validate_mcp_servers_shape(sanitized)
+        for name, reason in rejected:
+            logger.warning(
+                "MCP server %r: rejected by shape validation (%s) — "
+                "dropping entry so executor view matches SDK runtime. (#1051)",
+                name, reason,
+            )
+        return valid
     except Exception as e:
         if backend_mcp_config_errors_total is not None:
             backend_mcp_config_errors_total.labels(**_LABELS).inc()
@@ -1845,6 +1864,13 @@ class AgentExecutor(A2AAgentExecutor):
         self._sessions: OrderedDict[str, float] = OrderedDict()
         self._running_tasks: dict[str, asyncio.Task] = {}
         self._mcp_servers: dict = {}
+        # Serialise MCP reloads so a rapid burst of file events can't
+        # interleave parses and swap out-of-order (#1051). All mutations
+        # of ``self._mcp_servers`` go through ``_swap_mcp_servers`` under
+        # this lock. Created lazily when the event loop is available —
+        # __init__ runs before the lifespan context on some shapes.
+        self._mcp_reload_lock: asyncio.Lock | None = None
+        self._mcp_generation: int = 0
         self._agent_md_content: str = _load_agent_md()
         self._mcp_watcher_tasks: list[asyncio.Task] = []
         # Hook policy state (#467). The baseline is loaded eagerly; the
@@ -1874,6 +1900,45 @@ class AgentExecutor(A2AAgentExecutor):
             self.settings_watcher,
         ]
 
+    def _get_mcp_reload_lock(self) -> asyncio.Lock:
+        """Lazily create the MCP reload lock (#1051).
+
+        Deferring creation until first use avoids pinning the lock to
+        whatever loop happens to be active at ``__init__`` time (which
+        in some pytest harnesses is a throw-away loop).
+        """
+        if self._mcp_reload_lock is None:
+            self._mcp_reload_lock = asyncio.Lock()
+        return self._mcp_reload_lock
+
+    async def _swap_mcp_servers(self, new_servers: dict, *, source: str) -> None:
+        """Atomically replace ``self._mcp_servers`` with ``new_servers`` (#1051).
+
+        Holds the reload lock across the pointer swap and the companion
+        metric / generation bookkeeping so a concurrent reload can't
+        interleave and leave the executor observing a stale
+        ``_mcp_generation`` for the latest server set. ``source`` is a
+        short label (``"initial"`` / ``"watcher"``) used in the
+        transition log so operators see which path applied the change.
+        """
+        async with self._get_mcp_reload_lock():
+            old_keys = sorted(self._mcp_servers.keys())
+            new_keys = sorted(new_servers.keys())
+            self._mcp_servers = new_servers
+            self._mcp_generation += 1
+            if backend_mcp_servers_active is not None:
+                backend_mcp_servers_active.labels(**_LABELS).set(len(new_servers))
+            if old_keys != new_keys:
+                logger.info(
+                    "MCP config swapped (%s, gen=%d): %s -> %s",
+                    source, self._mcp_generation, old_keys, new_keys,
+                )
+            else:
+                logger.info(
+                    "MCP config reloaded (%s, gen=%d, keys unchanged): %s",
+                    source, self._mcp_generation, new_keys,
+                )
+
     async def perform_initial_loads(self) -> None:
         """Pre-load MCP config, CLAUDE.md, and hooks.yaml before readiness (#869).
 
@@ -1891,16 +1956,15 @@ class AgentExecutor(A2AAgentExecutor):
         # (#978). On failure, leave _initial_mcp_loaded falsy; the watcher's
         # `if not _initial_mcp_loaded` branch will retry the parse on first
         # awatch event instead of skipping it as a redundant re-parse.
+        # Route the swap through _swap_mcp_servers so the watcher's later
+        # reloads share the same serialisation point (#1051).
         try:
-            self._mcp_servers = await asyncio.to_thread(_load_mcp_config)
+            _initial = await asyncio.to_thread(_load_mcp_config)
         except Exception:
-            self._mcp_servers = {}
+            await self._swap_mcp_servers({}, source="initial-failed")
         else:
+            await self._swap_mcp_servers(_initial, source="initial")
             self._initial_mcp_loaded = True
-        if backend_mcp_servers_active is not None:
-            backend_mcp_servers_active.labels(**_LABELS).set(len(self._mcp_servers))
-        if self._mcp_servers:
-            logger.info(f"MCP config loaded (initial): {list(self._mcp_servers.keys())}")
 
         # CLAUDE.md — __init__ already loaded this synchronously, but refresh
         # here so any content written between import time and lifespan start is
@@ -1970,16 +2034,16 @@ class AgentExecutor(A2AAgentExecutor):
         # fails — there is no previous value to keep. The warning log and
         # ``backend_mcp_config_errors_total`` increment are already emitted by
         # ``_load_mcp_config`` itself (#591). Skipped when perform_initial_loads
-        # already ran on the lifespan startup path (#869).
+        # already ran on the lifespan startup path (#869). Route through
+        # ``_swap_mcp_servers`` so the reload lock serialises this with the
+        # post-awatch reloads below (#1051).
         if not getattr(self, "_initial_mcp_loaded", False):
             try:
-                self._mcp_servers = await asyncio.to_thread(_load_mcp_config)
+                _initial = await asyncio.to_thread(_load_mcp_config)
             except Exception:
-                self._mcp_servers = {}
-            if backend_mcp_servers_active is not None:
-                backend_mcp_servers_active.labels(**_LABELS).set(len(self._mcp_servers))
-            if self._mcp_servers:
-                logger.info(f"MCP config loaded: {list(self._mcp_servers.keys())}")
+                await self._swap_mcp_servers({}, source="watcher-initial-failed")
+            else:
+                await self._swap_mcp_servers(_initial, source="watcher-initial")
 
         watch_dir = os.path.dirname(MCP_CONFIG_PATH)
         while True:
@@ -1994,7 +2058,11 @@ class AgentExecutor(A2AAgentExecutor):
                     if os.path.abspath(path) == os.path.abspath(MCP_CONFIG_PATH):
                         # Load into a temp and only swap on success. A
                         # malformed edit must not wipe the live server set —
-                        # mirrors ``hooks_config_watcher`` (#591).
+                        # mirrors ``hooks_config_watcher`` (#591). The swap
+                        # itself is serialised by ``_swap_mcp_servers``
+                        # under the reload lock (#1051), so a rapid burst
+                        # of file events can't interleave parses and
+                        # publish an older parse after a newer one.
                         try:
                             new_servers = await asyncio.to_thread(_load_mcp_config)
                         except Exception as exc:
@@ -2003,10 +2071,7 @@ class AgentExecutor(A2AAgentExecutor):
                                 exc,
                             )
                             break
-                        self._mcp_servers = new_servers
-                        if backend_mcp_servers_active is not None:
-                            backend_mcp_servers_active.labels(**_LABELS).set(len(self._mcp_servers))
-                        logger.info(f"MCP config reloaded: {list(self._mcp_servers.keys())}")
+                        await self._swap_mcp_servers(new_servers, source="watcher")
                         if backend_mcp_config_reloads_total is not None:
                             backend_mcp_config_reloads_total.labels(**_LABELS).inc()
                         break
