@@ -33,6 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	nyxv1alpha1 "github.com/nyx-ai/nyx-operator/api/v1alpha1"
 )
@@ -1826,10 +1827,26 @@ func buildManifestConfigMap(
 // hash short-circuit is deterministic. Agents without a UID (e.g. not
 // yet persisted) are skipped — they'll get their ref on the next
 // reconcile after the apiserver assigns the UID.
+//
+// The skip is the narrow race documented on #1016: APIReader is expected
+// to return fully-persisted objects (cache bypass → direct apiserver
+// read), so a nil/empty-UID member here means the manifest body lists a
+// team peer whose OwnerReference we didn't add to the CM. To keep that
+// race observable we increment a metric and emit a warning log per
+// skipped member rather than silently dropping the entry.
 func buildManifestOwnerRefs(agents []*nyxv1alpha1.NyxAgent) []metav1.OwnerReference {
 	refs := make([]metav1.OwnerReference, 0, len(agents))
 	for _, a := range agents {
-		if a == nil || a.UID == "" {
+		if a == nil {
+			continue
+		}
+		if a.UID == "" {
+			nyxagentManifestOwnerRefSkippedNoUIDTotal.WithLabelValues(a.Namespace).Inc()
+			logf.Log.WithName("nyxagent-manifest").Info(
+				"skipping manifest OwnerReference: member has empty UID (APIReader race?)",
+				"namespace", a.Namespace,
+				"name", a.Name,
+			)
 			continue
 		}
 		no, block := false, false

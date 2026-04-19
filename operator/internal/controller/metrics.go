@@ -176,6 +176,23 @@ var (
 		[]string{"pod"},
 	)
 
+	// nyxagentManifestOwnerRefSkippedNoUIDTotal counts team-manifest
+	// OwnerReference entries dropped because the member NyxAgent had an
+	// empty UID when buildManifestOwnerRefs ran (#1016). APIReader is
+	// expected to return fully-persisted objects, so a non-zero rate
+	// signals a narrow race where a newly-created NyxAgent contributes
+	// to the manifest body but not to the CM's OwnerReferences — which
+	// can confuse GC timing if the race persists across reconciles.
+	// Labelled by the agent namespace so operators can attribute spikes
+	// to a specific tenant without exploding cardinality on Name.
+	nyxagentManifestOwnerRefSkippedNoUIDTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "nyxagent_manifest_owner_ref_skipped_no_uid_total",
+			Help: "Total team-manifest OwnerReference entries skipped because the member NyxAgent had no UID yet; expected to be 0 in steady state.",
+		},
+		[]string{"namespace"},
+	)
+
 	// NyxAgentCredentialRotationsTotal counts observed changes to the
 	// credential-Secret checksum stamped on each agent's pod template
 	// (#1114). One increment per (namespace, name) per detected rotation:
@@ -208,5 +225,6 @@ func init() {
 		NyxPromptWebhookIndexFallbackTotal,
 		NyxAgentLeader,
 		NyxAgentCredentialRotationsTotal,
+		nyxagentManifestOwnerRefSkippedNoUIDTotal,
 	)
 }
