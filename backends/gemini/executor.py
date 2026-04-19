@@ -67,6 +67,7 @@ from metrics import (
     backend_a2a_request_duration_seconds,
     backend_a2a_requests_total,
     backend_active_sessions,
+    backend_allowed_tools_reload_total,
     backend_budget_exceeded_total,
     backend_concurrent_queries,
     backend_context_exhaustion_total,
@@ -187,6 +188,41 @@ GEMINI_MODEL = os.environ.get("GEMINI_MODEL") or "gemini-2.5-pro"
 GEMINI_API_KEY: str | None = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or None
 
 MCP_CONFIG_PATH = os.environ.get("MCP_CONFIG_PATH", "/home/agent/.gemini/mcp.json")
+
+# #1100: scaffold for the eventual gemini allow-list enforcement. The
+# AFC tool loop inside send_message_stream today runs every bound tool
+# without consulting a deny/allow surface; once #640 hand-rolls the
+# loop, this parsed list will gate each tool call. Landing the env var
+# + metric now means dashboards already have series registered when the
+# enforcement flips on, avoiding a churn wave.
+#
+# Semantics:
+#   * Unset / empty => no restriction (current behaviour; AFC unchanged).
+#   * Comma-separated list => only named tools are permitted.
+#
+# Exposed as a module-level list so a future ``settings_watcher`` can
+# mutate it in place and bump ``backend_allowed_tools_reload_total``.
+_ALLOWED_TOOLS_ENV = os.environ.get("ALLOWED_TOOLS")
+ALLOWED_TOOLS: list[str] = (
+    [t.strip() for t in _ALLOWED_TOOLS_ENV.split(",") if t.strip()]
+    if _ALLOWED_TOOLS_ENV
+    else []
+)
+
+
+def _bump_allowed_tools_reload(direction: str) -> None:
+    """Bump backend_allowed_tools_reload_total (#1100).
+
+    Safe to call before the metric is registered (labels() returns ``None``
+    when the Counter is still ``None``). ``direction`` is one of
+    ``initial|tighten|widen|rotate`` to match claude's label schema.
+    """
+    if backend_allowed_tools_reload_total is None:
+        return
+    try:
+        backend_allowed_tools_reload_total.labels(**_LABELS, direction=direction).inc()
+    except Exception:
+        pass
 
 # Env var keys that must not be overridden by caller-supplied MCP server env
 # entries. Mirrors codex (#519): MCP stdio entries spawn a subprocess with

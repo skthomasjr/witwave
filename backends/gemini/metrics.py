@@ -106,6 +106,12 @@ backend_sqlite_task_store_lock_wait_seconds: prometheus_client.Histogram | None 
 backend_hooks_denials_total: prometheus_client.Counter | None = None
 backend_hooks_warnings_total: prometheus_client.Counter | None = None
 backend_tool_audit_entries_total: prometheus_client.Counter | None = None
+# #1100: scaffold for the eventual gemini allow-list enforcement. Once
+# #640 hand-rolls the AFC tool loop, this counter will fire on every
+# ALLOWED_TOOLS hot-reload. Parity with claude's backend_allowed_tools_reload_total
+# label schema so cross-backend dashboards can union by (agent, agent_id,
+# backend, direction).
+backend_allowed_tools_reload_total: prometheus_client.Counter | None = None
 # Per-entry byte histogram + rotation-pressure counter for tool-activity.jsonl (#1102).
 backend_tool_audit_bytes_per_entry: prometheus_client.Histogram | None = None
 backend_tool_audit_rotation_pressure_total: prometheus_client.Counter | None = None
@@ -513,6 +519,18 @@ if _enabled:
         "backend_tool_audit_entries_total",
         "Total rows written to tool-audit.jsonl by the PostToolUse hook.",
         ["agent", "agent_id", "backend", "tool"],
+    )
+    # #1100: ALLOWED_TOOLS hot-reload counter. Label schema matches
+    # claude's so cross-backend dashboards can union by (agent, agent_id,
+    # backend, direction). Gemini currently increments on parse-time
+    # allow-list construction so operators can see the scaffold wired;
+    # the reload pathway lands with the hand-rolled AFC loop (#640).
+    backend_allowed_tools_reload_total = prometheus_client.Counter(
+        "backend_allowed_tools_reload_total",
+        "Total ALLOWED_TOOLS hot-reloads observed; direction label "
+        "distinguishes tighten/widen/rotate. Parity with claude's "
+        "counter. See #1100.",
+        ["agent", "agent_id", "backend", "direction"],
     )
     # Size / rotation observability on tool-activity.jsonl (#1102).
     backend_tool_audit_bytes_per_entry = prometheus_client.Histogram(
