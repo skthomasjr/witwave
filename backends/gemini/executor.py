@@ -161,6 +161,71 @@ from exceptions import BudgetExceededError
 from validation import parse_max_tokens, sanitize_model_label
 from otel import start_span, set_span_error
 
+
+def _pre_tool_use_gate(
+    tool_name: str,
+    tool_input: dict,
+    *,
+    state: "HookState | None" = None,
+) -> tuple[str, str] | None:
+    """PreToolUse gate for gemini tool calls (#808, SCAFFOLD).
+
+    Centralises the ``hooks_engine.evaluate_pre_tool_use`` call so a future
+    AFC-off path can invoke deny/warn evaluation between the SDK's
+    ``function_call`` emission and ``ClientSession.call_tool``. Returns
+    ``None`` on allow, ``(rule_name, reason)`` on deny.
+
+    STATUS — scaffold only. The google-genai SDK's Automatic Function
+    Calling (AFC) runs the tool ping-pong inside ``generate_content`` /
+    ``send_message_stream``; there is no pre-invoke callback exposed, so
+    this helper cannot be wired into the live tool path yet. Fully closing
+    #808 requires either:
+
+      1. Disabling AFC and hand-rolling the ``function_call`` /
+         ``function_response`` loop (issue #640 option 2) so there is an
+         interposition point, or
+      2. A wrapper around ``ClientSession.call_tool`` that every gemini
+         MCP invocation must route through — non-trivial because AFC owns
+         the dispatch.
+
+    Until one of those lands, this helper exists so the evaluate site is
+    consistent across backends (codex has the same-shaped scaffold from
+    #799). Baseline rules and hooks.yaml extensions continue to load via
+    ``hooks_config_watcher`` so ``self._hook_state`` is always current;
+    wiring is the only missing piece.
+
+    TODO(#808): switch to AFC-off + hand-rolled tool loop, call this gate
+    between SDK emission and ``ClientSession.call_tool``, and add coverage
+    under ``backends/gemini/tests/``.
+    """
+    try:
+        from hooks_engine import evaluate_pre_tool_use  # type: ignore
+    except Exception as _imp_exc:
+        logger.warning(
+            "_pre_tool_use_gate: hooks_engine import failed (%r); "
+            "fail-open for %s.", _imp_exc, tool_name,
+        )
+        return None
+    try:
+        decision = evaluate_pre_tool_use(tool_name, tool_input, state=state)
+    except Exception as _eval_exc:
+        logger.warning(
+            "_pre_tool_use_gate: evaluate raised for %s: %r — fail-open.",
+            tool_name, _eval_exc,
+        )
+        return None
+    if decision is None:
+        return None
+    try:
+        verdict = getattr(decision, "decision", None) or decision[0]
+        rule = getattr(decision, "rule", None) or decision[1]
+        reason = getattr(decision, "reason", None) or decision[2]
+    except Exception:
+        return None
+    if str(verdict).lower() == "deny":
+        return str(rule), str(reason)
+    return None
+
 logger = logging.getLogger(__name__)
 
 
