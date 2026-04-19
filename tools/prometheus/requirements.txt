@@ -1,0 +1,14 @@
+# Constrained to remove build-time drift (#853). OTel + prometheus_client +
+# PyYAML pins match the other MCP tool requirements.txt files so every
+# image in the stack runs the same OTel SDK. Tool-unique deps carry an
+# upper bound so an unrelated rebuild cannot silently pull a new major.
+mcp>=1.0.0,<2.0.0
+httpx>=0.27.0,<0.29.0
+PyYAML==6.0.2
+opentelemetry-api==1.30.0
+opentelemetry-sdk==1.30.0
+opentelemetry-exporter-otlp-proto-http==1.30.0
+prometheus-client==0.24.1
+# Required for the bearer-token auth middleware wrapping the FastMCP
+# streamable-http app (#771).
+uvicorn==0.43.0

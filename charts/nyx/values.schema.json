@@ -336,6 +336,46 @@
               }
             }
           }
+        },
+        "prometheus": {
+          "$comment": "mcp-prometheus (#853): PromQL query surface for agents. Grafana/Loki/OTel wrappers are follow-ups.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "automountServiceAccountToken": { "type": "boolean" },
+            "image": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "repository": { "type": "string" },
+                "tag": { "type": "string" },
+                "digest": { "type": "string" },
+                "pullPolicy": { "type": "string" }
+              }
+            },
+            "replicas": { "type": ["integer", "string"] },
+            "serviceAccountName": { "type": "string" },
+            "imagePullSecrets": { "type": "array" },
+            "resources": { "type": "object" },
+            "env": { "type": "array" },
+            "envFrom": { "type": "array" },
+            "nodeSelector": { "type": "object" },
+            "tolerations": { "type": "array" },
+            "affinity": { "type": "object" },
+            "topologySpreadConstraints": { "type": "array" },
+            "priorityClassName": { "type": "string" },
+            "probes": { "type": "object" },
+            "rbac": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "create": { "type": "boolean" },
+                "clusterWide": { "type": "boolean" },
+                "rules": { "type": "array" }
+              }
+            }
+          }
         }
       }
     },

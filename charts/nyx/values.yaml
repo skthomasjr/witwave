@@ -866,6 +866,52 @@ mcpTools:
           resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
           verbs: ["get", "list", "watch"]
 
+  # mcp-prometheus (#853). Wraps a Prometheus HTTP API endpoint so
+  # agents can issue PromQL queries against a deployed Prometheus
+  # instance. Unlike mcp-kubernetes / mcp-helm, this tool speaks to an
+  # out-of-cluster-or-in-cluster HTTP endpoint (set via env.PROMETHEUS_URL)
+  # rather than the apiserver — no cluster RBAC required. The chart still
+  # renders an SA for pod identity; rbac.rules is left empty by default.
+  #
+  # Grafana / Loki / OTel query surfaces are tracked as follow-up tools
+  # (#853 close comment); this entry ships only Prometheus scaffolding.
+  prometheus:
+    enabled: false
+    # # Three-state override (#856). See kubernetes.automountServiceAccountToken.
+    # automountServiceAccountToken: true
+    image:
+      repository: ghcr.io/skthomasjr/images/mcp-prometheus
+      # tag: ""
+      # # Immutable digest pin (#855).
+      # digest: ""
+      # pullPolicy: IfNotPresent
+    # replicas: 1
+    # serviceAccountName: ""
+    # imagePullSecrets: []
+    # resources: {}
+    #
+    # Point at the cluster Prometheus HTTP endpoint. Required — the tool
+    # refuses every call with a clear error until this is set.
+    env:
+      - name: PROMETHEUS_URL
+        value: ""
+      # # Optional bearer token when Prometheus is fronted by a gateway.
+      # - name: PROMETHEUS_BEARER_TOKEN
+      #   valueFrom:
+      #     secretKeyRef:
+      #       name: mcp-prometheus-auth
+      #       key: token
+    # envFrom: []
+    #
+    # Minimal RBAC — the tool does not touch the apiserver itself. An
+    # empty rules list keeps the SA in place (for logging/audit) without
+    # granting any cluster verbs. Operators who front Prometheus via an
+    # in-cluster Service can leave this untouched.
+    rbac:
+      create: true
+      clusterWide: false
+      rules: []
+
 # List of agents to deploy. Each agent runs as a single pod containing
 # the harness orchestrator and one or more backend sidecars.
 agents:

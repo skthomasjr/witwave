@@ -113,6 +113,9 @@ treated equally regardless of what it wraps. Current MCP components:
   Image: `mcp-kubernetes:latest`.
 - **`mcp-helm`** — Helm release management via the `helm` CLI (Helm has no Python/REST API). Source in
   `tools/helm/`. Image: `mcp-helm:latest`.
+- **`mcp-prometheus`** — PromQL query surface wrapping the standard Prometheus HTTP API (#853). Source in
+  `tools/prometheus/`. Image: `mcp-prometheus:latest`. Grafana / Loki / OTel surfaces are tracked as
+  follow-ups.
 
 Each MCP component:
 
@@ -337,6 +340,9 @@ docker build -f tools/kubernetes/Dockerfile -t mcp-kubernetes:latest .
 
 # Helm MCP tool
 docker build -f tools/helm/Dockerfile -t mcp-helm:latest .
+
+# Prometheus MCP tool (#853)
+docker build -f tools/prometheus/Dockerfile -t mcp-prometheus:latest .
 
 # Dashboard image — optional; only built/pushed when dashboard.enabled=true in the chart.
 docker build -f dashboard/Dockerfile -t dashboard:latest .
