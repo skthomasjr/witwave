@@ -124,6 +124,12 @@ func selectorLabels(agent *nyxv1alpha1.NyxAgent) map[string]string {
 // imageRef assembles a container image reference from an ImageSpec, falling
 // back to the provided default tag when the spec omits one.
 func imageRef(img nyxv1alpha1.ImageSpec, fallbackTag string) string {
+	// #1352: digest pinning takes precedence over tag so production
+	// deployments protect against registry re-tagging / supply-chain
+	// compromise.
+	if img.Digest != "" {
+		return fmt.Sprintf("%s@%s", img.Repository, img.Digest)
+	}
 	tag := img.Tag
 	if tag == "" {
 		tag = fallbackTag

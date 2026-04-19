@@ -396,7 +396,8 @@ func main() {
 				leaf = parsed
 			}
 			now := time.Now()
-			if now.Before(leaf.NotBefore) {
+				// #1356: 60s grace absorbs NTP skew on cert rotation.
+			if now.Before(leaf.NotBefore.Add(-60 * time.Second)) {
 				return fmt.Errorf("webhook cert not yet valid (NotBefore=%s)", leaf.NotBefore.Format(time.RFC3339))
 			}
 			if now.After(leaf.NotAfter) {

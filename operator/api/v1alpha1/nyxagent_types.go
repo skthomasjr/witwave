@@ -29,8 +29,17 @@ type ImageSpec struct {
 	Repository string `json:"repository"`
 
 	// Tag is the image tag. If empty, the operator may fill in a default.
+	// Ignored when Digest is set — digest pinning takes precedence (#1352).
 	// +optional
 	Tag string `json:"tag,omitempty"`
+
+	// Digest pins the image by sha256:... digest. When set, the rendered
+	// image reference is ``<Repository>@<Digest>`` and ``Tag`` is ignored.
+	// Production deployments should digest-pin to protect against
+	// registry re-tagging or supply-chain compromise (#1352).
+	// +kubebuilder:validation:Pattern=`^sha256:[a-f0-9]{64}$`
+	// +optional
+	Digest string `json:"digest,omitempty"`
 
 	// PullPolicy controls when the image is pulled.
 	// +kubebuilder:validation:Enum=Always;IfNotPresent;Never

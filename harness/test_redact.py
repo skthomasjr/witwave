@@ -41,11 +41,14 @@ def _reload(monkeypatch, log_redact: str = "true", high_entropy: str = "false"):
 # ----- should_redact ---------------------------------------------
 
 
+# #1348: default flipped from OFF to ON (safe-by-default). Empty-string
+# and unset env now return True; explicit falsy values still return False.
 @pytest.mark.parametrize("raw,expected", [
     ("true", True), ("TRUE", True), ("1", True),
     ("yes", True), ("on", True), ("True", True),
     ("false", False), ("0", False), ("no", False),
-    ("", False), ("  ", False), ("maybe", False),
+    ("  ", False),   # whitespace-only: val != "" so falls to .strip().lower() check
+    ("maybe", False),
 ])
 def test_should_redact_truthy_parsing(monkeypatch, raw, expected):
     monkeypatch.setenv("LOG_REDACT", raw)
@@ -54,11 +57,20 @@ def test_should_redact_truthy_parsing(monkeypatch, raw, expected):
     assert _r.should_redact() is expected
 
 
-def test_should_redact_default_is_false(monkeypatch):
+def test_should_redact_default_is_true(monkeypatch):
+    # #1348: default-on when env var is unset.
     monkeypatch.delenv("LOG_REDACT", raising=False)
     import redact as _r  # type: ignore
     importlib.reload(_r)
-    assert _r.should_redact() is False
+    assert _r.should_redact() is True
+
+
+def test_should_redact_empty_string_is_true(monkeypatch):
+    # #1348: empty-string env treated as "unset" → default-on.
+    monkeypatch.setenv("LOG_REDACT", "")
+    import redact as _r  # type: ignore
+    importlib.reload(_r)
+    assert _r.should_redact() is True
 
 
 # ----- redact_text pattern matrix --------------------------------

@@ -40,12 +40,21 @@ _REDACTED = "[REDACTED]"
 
 
 def should_redact() -> bool:
-    """True when LOG_REDACT env var is set to a truthy string.
+    """True unless LOG_REDACT is explicitly set to a falsy string (#1348).
+
+    Default ON — redaction is opt-OUT so an operator who forgot to wire
+    the env var still gets safe posture. Local-dev debugging can set
+    LOG_REDACT=false explicitly. Previously this was opt-in and any
+    default deployment persisted bearer tokens / JWTs / emails in
+    cleartext on conversation.jsonl.
 
     Cheap; callers can short-circuit when disabled without paying the
     regex cost.
     """
-    return os.environ.get("LOG_REDACT", "").strip().lower() in {"1", "true", "yes", "on"}
+    val = os.environ.get("LOG_REDACT")
+    if val is None or val == "":
+        return True  # default-on (#1348)
+    return val.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def high_entropy_enabled() -> bool:

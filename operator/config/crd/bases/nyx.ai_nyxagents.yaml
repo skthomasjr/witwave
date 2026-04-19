@@ -1298,6 +1298,14 @@ spec:
                     image:
                       description: Image is the backend container image.
                       properties:
+                        digest:
+                          description: |-
+                            Digest pins the image by sha256:... digest. When set, the rendered
+                            image reference is ``<Repository>@<Digest>`` and ``Tag`` is ignored.
+                            Production deployments should digest-pin to protect against
+                            registry re-tagging or supply-chain compromise (#1352).
+                          pattern: ^sha256:[a-f0-9]{64}$
+                          type: string
                         pullPolicy:
                           description: PullPolicy controls when the image is pulled.
                           enum:
@@ -1311,8 +1319,9 @@ spec:
                           minLength: 1
                           type: string
                         tag:
-                          description: Tag is the image tag. If empty, the operator
-                            may fill in a default.
+                          description: |-
+                            Tag is the image tag. If empty, the operator may fill in a default.
+                            Ignored when Digest is set — digest pinning takes precedence (#1352).
                           type: string
                       required:
                       - repository
@@ -1519,6 +1528,14 @@ spec:
                   image:
                     description: Image is the dashboard container image.
                     properties:
+                      digest:
+                        description: |-
+                          Digest pins the image by sha256:... digest. When set, the rendered
+                          image reference is ``<Repository>@<Digest>`` and ``Tag`` is ignored.
+                          Production deployments should digest-pin to protect against
+                          registry re-tagging or supply-chain compromise (#1352).
+                        pattern: ^sha256:[a-f0-9]{64}$
+                        type: string
                       pullPolicy:
                         description: PullPolicy controls when the image is pulled.
                         enum:
@@ -1532,8 +1549,9 @@ spec:
                         minLength: 1
                         type: string
                       tag:
-                        description: Tag is the image tag. If empty, the operator
-                          may fill in a default.
+                        description: |-
+                          Tag is the image tag. If empty, the operator may fill in a default.
+                          Ignored when Digest is set — digest pinning takes precedence (#1352).
                         type: string
                     required:
                     - repository
@@ -2007,6 +2025,14 @@ spec:
                         entry. When unset, the operator's default git-sync image is used
                         (ghcr.io/skthomasjr/images/git-sync:<appVersion>).
                       properties:
+                        digest:
+                          description: |-
+                            Digest pins the image by sha256:... digest. When set, the rendered
+                            image reference is ``<Repository>@<Digest>`` and ``Tag`` is ignored.
+                            Production deployments should digest-pin to protect against
+                            registry re-tagging or supply-chain compromise (#1352).
+                          pattern: ^sha256:[a-f0-9]{64}$
+                          type: string
                         pullPolicy:
                           description: PullPolicy controls when the image is pulled.
                           enum:
@@ -2020,8 +2046,9 @@ spec:
                           minLength: 1
                           type: string
                         tag:
-                          description: Tag is the image tag. If empty, the operator
-                            may fill in a default.
+                          description: |-
+                            Tag is the image tag. If empty, the operator may fill in a default.
+                            Ignored when Digest is set — digest pinning takes precedence (#1352).
                           type: string
                       required:
                       - repository
@@ -2055,6 +2082,14 @@ spec:
               image:
                 description: Image is the harness orchestrator image.
                 properties:
+                  digest:
+                    description: |-
+                      Digest pins the image by sha256:... digest. When set, the rendered
+                      image reference is ``<Repository>@<Digest>`` and ``Tag`` is ignored.
+                      Production deployments should digest-pin to protect against
+                      registry re-tagging or supply-chain compromise (#1352).
+                    pattern: ^sha256:[a-f0-9]{64}$
+                    type: string
                   pullPolicy:
                     description: PullPolicy controls when the image is pulled.
                     enum:
@@ -2068,8 +2103,9 @@ spec:
                     minLength: 1
                     type: string
                   tag:
-                    description: Tag is the image tag. If empty, the operator may
-                      fill in a default.
+                    description: |-
+                      Tag is the image tag. If empty, the operator may fill in a default.
+                      Ignored when Digest is set — digest pinning takes precedence (#1352).
                     type: string
                 required:
                 - repository
@@ -2107,6 +2143,41 @@ spec:
                       Helm renders the `mcp-helm` tool (Helm release management via the
                       `helm` CLI). Off by default.
                     properties:
+                      authDisabled:
+                        description: |-
+                          AuthDisabled acknowledges that MCP_TOOL_AUTH_TOKEN is intentionally
+                          not set for this tool. Useful for local dev. The mcp_auth middleware
+                          logs a loud WARN at startup when this is true. (#1331)
+                        type: boolean
+                      authTokenSecretRef:
+                        description: |-
+                          AuthTokenSecretRef references the Secret holding MCP_TOOL_AUTH_TOKEN
+                          for this tool. When set, the operator projects the token into the
+                          container env so backends can reach the tool with Authorization:
+                          Bearer auth. When unset AND AuthDisabled is false, the tool's
+                          shared/mcp_auth middleware fails closed on every request (#1331).
+                        properties:
+                          key:
+                            description: The key of the secret to select from.  Must
+                              be a valid secret key.
+                            type: string
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                          optional:
+                            description: Specify whether the Secret or its key must
+                              be defined
+                            type: boolean
+                        required:
+                        - key
+                        type: object
+                        x-kubernetes-map-type: atomic
                       enabled:
                         description: Enabled toggles rendering of this tool's Deployment
                           + Service.
@@ -2117,6 +2188,14 @@ spec:
                           canonical ghcr.io path when the field is omitted on a tool whose
                           Enabled=true (the controller supplies the default).
                         properties:
+                          digest:
+                            description: |-
+                              Digest pins the image by sha256:... digest. When set, the rendered
+                              image reference is ``<Repository>@<Digest>`` and ``Tag`` is ignored.
+                              Production deployments should digest-pin to protect against
+                              registry re-tagging or supply-chain compromise (#1352).
+                            pattern: ^sha256:[a-f0-9]{64}$
+                            type: string
                           pullPolicy:
                             description: PullPolicy controls when the image is pulled.
                             enum:
@@ -2130,8 +2209,9 @@ spec:
                             minLength: 1
                             type: string
                           tag:
-                            description: Tag is the image tag. If empty, the operator
-                              may fill in a default.
+                            description: |-
+                              Tag is the image tag. If empty, the operator may fill in a default.
+                              Ignored when Digest is set — digest pinning takes precedence (#1352).
                             type: string
                         required:
                         - repository
@@ -2149,6 +2229,41 @@ spec:
                       Kubernetes renders the `mcp-kubernetes` tool (Kubernetes API access
                       via the official Python client). Off by default.
                     properties:
+                      authDisabled:
+                        description: |-
+                          AuthDisabled acknowledges that MCP_TOOL_AUTH_TOKEN is intentionally
+                          not set for this tool. Useful for local dev. The mcp_auth middleware
+                          logs a loud WARN at startup when this is true. (#1331)
+                        type: boolean
+                      authTokenSecretRef:
+                        description: |-
+                          AuthTokenSecretRef references the Secret holding MCP_TOOL_AUTH_TOKEN
+                          for this tool. When set, the operator projects the token into the
+                          container env so backends can reach the tool with Authorization:
+                          Bearer auth. When unset AND AuthDisabled is false, the tool's
+                          shared/mcp_auth middleware fails closed on every request (#1331).
+                        properties:
+                          key:
+                            description: The key of the secret to select from.  Must
+                              be a valid secret key.
+                            type: string
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                          optional:
+                            description: Specify whether the Secret or its key must
+                              be defined
+                            type: boolean
+                        required:
+                        - key
+                        type: object
+                        x-kubernetes-map-type: atomic
                       enabled:
                         description: Enabled toggles rendering of this tool's Deployment
                           + Service.
@@ -2159,6 +2274,14 @@ spec:
                           canonical ghcr.io path when the field is omitted on a tool whose
                           Enabled=true (the controller supplies the default).
                         properties:
+                          digest:
+                            description: |-
+                              Digest pins the image by sha256:... digest. When set, the rendered
+                              image reference is ``<Repository>@<Digest>`` and ``Tag`` is ignored.
+                              Production deployments should digest-pin to protect against
+                              registry re-tagging or supply-chain compromise (#1352).
+                            pattern: ^sha256:[a-f0-9]{64}$
+                            type: string
                           pullPolicy:
                             description: PullPolicy controls when the image is pulled.
                             enum:
@@ -2172,8 +2295,9 @@ spec:
                             minLength: 1
                             type: string
                           tag:
-                            description: Tag is the image tag. If empty, the operator
-                              may fill in a default.
+                            description: |-
+                              Tag is the image tag. If empty, the operator may fill in a default.
+                              Ignored when Digest is set — digest pinning takes precedence (#1352).
                             type: string
                         required:
                         - repository

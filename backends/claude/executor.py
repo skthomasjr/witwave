@@ -609,16 +609,29 @@ _SHELL_ENV_DENYLIST: frozenset[str] = frozenset({
 })
 
 CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL") or None
-CLAUDE_CREDENTIAL = (
-    os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
-    or os.environ.get("ANTHROPIC_API_KEY")
-    or None
-)
-CLAUDE_AUTH_ENV = (
-    "CLAUDE_CODE_OAUTH_TOKEN" if os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
-    else "ANTHROPIC_API_KEY" if os.environ.get("ANTHROPIC_API_KEY")
-    else None
-)
+
+
+def _current_claude_credential() -> tuple[str | None, str | None]:
+    """Read credential + env-var-name live each call (#1351).
+
+    Secret rotation via cert-manager / external-secrets swaps the env
+    values in place; capturing them at import time produced a silent
+    fallback to the OLD credential indefinitely. Mirror codex's
+    ``_current_openai_api_key()`` pattern (#728).
+    """
+    tok = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
+    if tok:
+        return tok, "CLAUDE_CODE_OAUTH_TOKEN"
+    tok = os.environ.get("ANTHROPIC_API_KEY")
+    if tok:
+        return tok, "ANTHROPIC_API_KEY"
+    return None, None
+
+
+# Legacy module-level snapshot kept for backward compatibility — tests
+# and logs may still reference these. They track the state at IMPORT
+# time; use ``_current_claude_credential()`` for fresh reads.
+CLAUDE_CREDENTIAL, CLAUDE_AUTH_ENV = _current_claude_credential()
 
 
 def _load_agent_md() -> str:
@@ -1404,8 +1417,10 @@ def _make_options(
     hook_state: HookState | None = None,
 ) -> ClaudeAgentOptions:
     env: dict | None = None
-    if CLAUDE_CREDENTIAL and CLAUDE_AUTH_ENV:
-        env = {CLAUDE_AUTH_ENV: CLAUDE_CREDENTIAL}
+    # #1351: re-read per call so Secret rotation reaches the SDK.
+    _cred, _cred_env = _current_claude_credential()
+    if _cred and _cred_env:
+        env = {_cred_env: _cred}
 
     system_prompt = f"Your name is {AGENT_NAME}. Your session ID is {session_id}."
     if agent_md_content:

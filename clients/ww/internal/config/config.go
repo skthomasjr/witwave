@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -77,7 +78,20 @@ func Load(cfgPath string, overrides FlagOverrides, getenv func(string) string) (
 		path = defaultConfigPath(getenv)
 	}
 	if path != "" {
-		if _, err := os.Stat(path); err == nil {
+		if st, err := os.Stat(path); err == nil {
+			// #1358: warn (but proceed) when config.toml is readable by
+			// others — bearer tokens live plaintext inside. Unix-only
+			// check; Windows permission model differs and this block
+			// is a no-op there (Mode().Perm() returns a best-effort
+			// value).
+			if runtime.GOOS != "windows" && st.Mode().Perm()&0o077 != 0 {
+				fmt.Fprintf(os.Stderr,
+					"ww: warning: config %s has permissive mode %04o; "+
+						"bearer tokens are readable by other users. "+
+						"Run: chmod 600 %s\n",
+					path, st.Mode().Perm(), path,
+				)
+			}
 			if _, err := toml.DecodeFile(path, &file); err != nil {
 				return Resolved{}, fmt.Errorf("parse %s: %w", path, err)
 			}

@@ -367,7 +367,17 @@ class A2ABackend:
             except Exception as _exc:
                 # Record the failure so the breaker can open after
                 # _CIRCUIT_THRESHOLD consecutive failures (#655).
-                await self._circuit_record(ok=False)
+                # #1349: only count network/timeout/5xx/429 as breaker
+                # failures. 4xx is caller-side (auth typo, malformed
+                # request); a 30s cool-off for every session on a token
+                # typo masks the real 401 with ConnectionError.
+                _exc_msg = str(_exc)
+                _is_client_side = any(
+                    f"HTTP {code}" in _exc_msg
+                    for code in (400, 401, 403, 404, 405, 406, 409, 410, 413, 414, 415, 422)
+                )
+                if not _is_client_side:
+                    await self._circuit_record(ok=False)
                 set_span_error(_span, _exc)
                 raise
 
