@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
 import { computed, ref, watch } from "vue";
+import { useTeam } from "../composables/useTeam";
 import {
   useEventStream,
   type EventEnvelope,
@@ -19,19 +20,52 @@ import {
 // The store keeps a separate, larger ring (default 1000) than the
 // composable's in-memory default (500). The composable is the live
 // tail; the store is the fleet-visible buffer that feeds the view.
+//
+// -----------------------------------------------------------------------
+// Fanout model (phase 1.5, #1110)
+//
+// In a fleet deployment the dashboard faces N agents, each with its own
+// harness and its own `/events/stream` SSE endpoint. Rather than run a
+// single stream against one "lead" harness, we open one
+// `useEventStream` per team member (discovered via `useTeam().members`)
+// and merge their envelopes into a single authoritative ring ordered by
+// `ts`. The per-agent stream URL follows the existing proxy convention
+// `/api/agents/<name>/events/stream`, which nginx / vite dev-proxy
+// forwards to that agent's harness.
+//
+// Stream lifecycle is reactive: streams are opened when a member enters
+// the team directory and closed when a member leaves, so adding / removing
+// agents at runtime does not require a page reload.
+//
+// Auth sharing: every agent stream uses the same bearer pulled from
+// `__NYX_CONFIG__.harnessBearerToken`. Single-secret deployments are the
+// common case today; per-agent tokens can be layered in later without
+// touching the merge path (add a `tokenFor(name)` hook, flow it into
+// `openStreamFor`, done).
+//
+// Agent-id tagging: harness-wide events carry `agent_id: null`. At
+// merge-time we stamp the originating member name onto those envelopes
+// so `filterByAgent` behaves uniformly across scoped and global events
+// — the view never has to special-case "which harness did this null-
+// scoped event come from".
+//
+// Override path: if a caller passes `opts.url` to `start()` we skip
+// fanout entirely and run a single stream against that URL. This
+// preserves the phase-1 single-harness behaviour that test fixtures
+// (and `values-test.yaml` single-agent setups) rely on.
+// -----------------------------------------------------------------------
 
 const DEFAULT_RING_SIZE = 1000;
 // Relative URL — nginx / dev proxy forwards to the harness at /events/stream.
-// Phase 1 targets a single harness (first agent in the deployment). Multi-
-// agent fanout (one stream per team member, merged client-side) is a
-// phase-1.5 follow-up tracked at the end of this module.
+// Used only when the override `opts.url` path is taken; the fanout path
+// derives per-agent URLs from `useTeam().members`.
 const DEFAULT_EVENTS_URL = "/events/stream";
 
 // Runtime-injected operator config (mirrors the #1061 traceApiUrl pattern).
 // Set via the dashboard nginx ConfigMap so operators can inject:
 //   - harnessBearerToken: the harness CONVERSATIONS_AUTH_TOKEN value
-//   - timelineEventsUrl : override the default /events/stream (e.g. when
-//                         the dashboard pod sits behind its own ingress).
+//   - timelineEventsUrl : override the single-stream URL when a caller
+//                         passes `opts.url` (fanout path ignores this).
 declare global {
   interface Window {
     __NYX_CONFIG__?: {
@@ -50,7 +84,7 @@ function resolveBearerToken(explicit?: string): string | undefined {
   return typeof tok === "string" && tok.length > 0 ? tok : undefined;
 }
 
-function resolveEventsUrl(explicit?: string): string {
+function resolveSingleEventsUrl(explicit?: string): string {
   if (explicit) return explicit;
   if (typeof window !== "undefined") {
     const cfg = window.__NYX_CONFIG__;
@@ -61,19 +95,82 @@ function resolveEventsUrl(explicit?: string): string {
   return DEFAULT_EVENTS_URL;
 }
 
+// Per-agent stream URL — nginx proxies /api/agents/<name>/* straight to
+// that agent's harness. Path parity with the rest of the dashboard's
+// per-agent API surface.
+export function agentStreamUrl(name: string): string {
+  return `/api/agents/${encodeURIComponent(name)}/events/stream`;
+}
+
 export interface TimelineStoreInitOptions extends UseEventStreamOptions {
   ringSize?: number;
+  // When set, bypasses fanout and runs a single stream against this URL.
+  // Preserves the phase-1 single-harness behaviour for tests + dev.
   url?: string;
 }
 
-// Expose the stream handle for tests so they can push events through a
-// fake fetch without touching private store internals.
-let activeStream: UseEventStreamReturn | null = null;
-let activeWatcherStop: (() => void) | null = null;
+// Per-agent stream handle. We track the stream return alongside the
+// watcher teardown so a member leaving the team shuts both down cleanly.
+interface AgentStreamHandle {
+  name: string;
+  stream: UseEventStreamReturn;
+  stopWatcher: () => void;
+  // Snapshot of the last merged length of events for this agent, so the
+  // merge path can diff forward instead of re-scanning the whole ref on
+  // every tick.
+  lastSeenLength: number;
+}
+
+// Module-level state (exposed only through the store surface below).
+// A Map keyed by member name carries per-agent streams; the override
+// path uses `singleStream` instead.
+const agentStreams = new Map<string, AgentStreamHandle>();
+let singleStream: UseEventStreamReturn | null = null;
+let singleWatcherStop: (() => void) | null = null;
+let teamWatcherStop: (() => void) | null = null;
+let teamHandle: ReturnType<typeof useTeam> | null = null;
+// Cached token for fanout streams — resolved once at `start()` time.
+let sharedBearerToken: string | undefined;
 
 function clampRing(size: number | undefined): number {
   if (!size || !Number.isFinite(size) || size <= 0) return DEFAULT_RING_SIZE;
   return Math.floor(size);
+}
+
+// Parse an ISO timestamp to a millis number for ordered insert. Falls
+// back to 0 on parse failure so a malformed `ts` lands at the oldest
+// end rather than breaking insertion.
+function tsMillis(ts: string): number {
+  const n = Date.parse(ts);
+  return Number.isFinite(n) ? n : 0;
+}
+
+// Binary-search the insert position for `candidate` in a ts-sorted
+// `arr`. Returns the smallest index `i` such that `arr[i].ts >
+// candidate.ts`. Ties append after equal-ts entries (stable arrival
+// order within a millisecond).
+function insertIndexByTs(arr: EventEnvelope[], candidate: EventEnvelope): number {
+  const target = tsMillis(candidate.ts);
+  let lo = 0;
+  let hi = arr.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (tsMillis(arr[mid].ts) <= target) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+  return lo;
+}
+
+// Stamp the originating member name onto a harness-global envelope. We
+// clone before mutating so the composable's own ref stays untouched —
+// re-entering the merge path with the same envelope must not double-
+// stamp (and must not race other subscribers of the composable's ref).
+function tagEnvelope(env: EventEnvelope, member: string): EventEnvelope {
+  if (env.agent_id !== null) return env;
+  return { ...env, agent_id: member };
 }
 
 export const useTimelineStore = defineStore("timeline", () => {
@@ -83,66 +180,265 @@ export const useTimelineStore = defineStore("timeline", () => {
   const error = ref("");
   const ringSize = ref(DEFAULT_RING_SIZE);
   const started = ref(false);
+  // Track which envelope ids we've already merged so we don't re-insert
+  // on every tick — the composable's ref is append-only within its own
+  // window, but ring eviction there can truncate from the left and the
+  // merge path mustn't confuse "left-truncated" with "new".
+  const seenIds = new Set<string>();
+
+  function trimRing(): void {
+    const max = ringSize.value;
+    if (events.value.length <= max) return;
+    const drop = events.value.length - max;
+    const removed = events.value.slice(0, drop);
+    events.value = events.value.slice(drop);
+    for (const e of removed) {
+      seenIds.delete(e.id);
+    }
+  }
+
+  function mergeBatch(batch: EventEnvelope[]): void {
+    if (batch.length === 0) return;
+    // Cheap path: if the batch is already newer than everything in the
+    // ring (common for a single agent with monotonic ts), append in one
+    // shot and skip binary search entirely.
+    const lastExisting =
+      events.value.length > 0
+        ? tsMillis(events.value[events.value.length - 1].ts)
+        : -Infinity;
+    let allAppend = true;
+    for (const env of batch) {
+      if (tsMillis(env.ts) < lastExisting) {
+        allAppend = false;
+        break;
+      }
+    }
+
+    if (allAppend) {
+      const next = events.value.slice();
+      for (const env of batch) {
+        if (seenIds.has(env.id)) continue;
+        seenIds.add(env.id);
+        next.push(env);
+      }
+      events.value = next;
+    } else {
+      // Interleaved arrival — binary-search the insert slot per event.
+      // N*log(M) in the worst case but the batch is typically ≤ a
+      // handful of events per tick.
+      const next = events.value.slice();
+      for (const env of batch) {
+        if (seenIds.has(env.id)) continue;
+        seenIds.add(env.id);
+        const idx = insertIndexByTs(next, env);
+        next.splice(idx, 0, env);
+      }
+      events.value = next;
+    }
+    trimRing();
+  }
+
+  function recomputeAggregateState(): void {
+    if (singleStream) {
+      connected.value = singleStream.connected.value;
+      reconnecting.value = singleStream.reconnecting.value;
+      error.value = singleStream.error.value;
+      return;
+    }
+    const handles = Array.from(agentStreams.values());
+    if (handles.length === 0) {
+      connected.value = false;
+      reconnecting.value = false;
+      error.value = "";
+      return;
+    }
+    connected.value = handles.every((h) => h.stream.connected.value);
+    reconnecting.value = handles.some((h) => h.stream.reconnecting.value);
+    // First non-empty error across streams wins, prefixed with the
+    // agent name so UX can attribute the failure.
+    let firstError = "";
+    for (const h of handles) {
+      const e = h.stream.error.value;
+      if (e) {
+        firstError = `${h.name}: ${e}`;
+        break;
+      }
+    }
+    error.value = firstError;
+  }
+
+  function openStreamFor(name: string, baseOpts: UseEventStreamOptions): void {
+    if (agentStreams.has(name)) return;
+    const stream = useEventStream(agentStreamUrl(name), {
+      ...baseOpts,
+      token: sharedBearerToken,
+      // Per-agent live window sized to the store's ring — the authoritative
+      // ring downstream trims; this just prevents unbounded growth within
+      // the composable between reactive flushes.
+      maxEvents: Math.min(ringSize.value, baseOpts.maxEvents ?? ringSize.value),
+    });
+    const handle: AgentStreamHandle = {
+      name,
+      stream,
+      stopWatcher: () => {},
+      lastSeenLength: 0,
+    };
+    agentStreams.set(name, handle);
+
+    handle.stopWatcher = watch(
+      [stream.events, stream.connected, stream.reconnecting, stream.error],
+      ([ev]) => {
+        if (Array.isArray(ev)) {
+          const arr = ev as EventEnvelope[];
+          // Diff forward — slice off what we've already merged. If the
+          // composable ring evicted from the left since last tick, fall
+          // back to a full scan (seenIds will de-dupe).
+          const startAt =
+            arr.length >= handle.lastSeenLength ? handle.lastSeenLength : 0;
+          const fresh = arr.slice(startAt);
+          handle.lastSeenLength = arr.length;
+          if (fresh.length > 0) {
+            const tagged = fresh.map((env) => tagEnvelope(env, name));
+            mergeBatch(tagged);
+          }
+        }
+        recomputeAggregateState();
+      },
+      { immediate: true, deep: false },
+    );
+  }
+
+  function closeStreamFor(name: string): void {
+    const handle = agentStreams.get(name);
+    if (!handle) return;
+    try {
+      handle.stopWatcher();
+    } catch {
+      // ignore — watcher teardown should not block stream close.
+    }
+    try {
+      handle.stream.close();
+    } catch {
+      // ignore — close is best-effort.
+    }
+    agentStreams.delete(name);
+  }
 
   function start(opts: TimelineStoreInitOptions = {}): void {
     if (started.value) return;
     started.value = true;
     ringSize.value = clampRing(opts.ringSize);
 
-    const url = resolveEventsUrl(opts.url);
-    const token = resolveBearerToken(opts.token);
-    // Let the composable hold a smaller live window — the store keeps
-    // the authoritative ring. maxEvents on the composable trims rapid
-    // in-memory growth between reactive flushes.
-    const stream = useEventStream(url, {
-      ...opts,
-      token,
-      maxEvents: Math.min(ringSize.value, opts.maxEvents ?? ringSize.value),
-    });
-    activeStream = stream;
+    // -- Override path: single stream, preserves phase-1 behaviour. -----
+    if (opts.url) {
+      const token = resolveBearerToken(opts.token);
+      const stream = useEventStream(resolveSingleEventsUrl(opts.url), {
+        ...opts,
+        token,
+        maxEvents: Math.min(ringSize.value, opts.maxEvents ?? ringSize.value),
+      });
+      singleStream = stream;
 
-    // Mirror connection state. Direct assignment to .value is fine —
-    // the composable exposes refs whose values we copy through.
-    activeWatcherStop = watch(
-      [stream.events, stream.connected, stream.reconnecting, stream.error],
-      ([ev, conn, rec, err]) => {
-        connected.value = conn as boolean;
-        reconnecting.value = rec as boolean;
-        error.value = err as string;
-        if (Array.isArray(ev)) {
-          const arr = ev as EventEnvelope[];
-          if (arr.length <= ringSize.value) {
-            events.value = arr.slice();
-          } else {
-            events.value = arr.slice(arr.length - ringSize.value);
+      // The single-stream path does not need ts-ordered merging (one
+      // source, monotonic ts within it), but we still route through
+      // `mergeBatch` so seenIds / ring trimming stay uniform. Events
+      // keep their original agent_id — no tagging in override mode,
+      // because there's no "originating member" identity for this URL.
+      let lastLen = 0;
+      singleWatcherStop = watch(
+        [stream.events, stream.connected, stream.reconnecting, stream.error],
+        ([ev]) => {
+          if (Array.isArray(ev)) {
+            const arr = ev as EventEnvelope[];
+            const startAt = arr.length >= lastLen ? lastLen : 0;
+            const fresh = arr.slice(startAt);
+            lastLen = arr.length;
+            if (fresh.length > 0) mergeBatch(fresh);
+          }
+          recomputeAggregateState();
+        },
+        { immediate: true, deep: false },
+      );
+      return;
+    }
+
+    // -- Fanout path: one stream per team member. -----------------------
+    sharedBearerToken = resolveBearerToken(opts.token);
+    const baseOpts: UseEventStreamOptions = { ...opts };
+    // Strip per-request token / url from the template — we inject
+    // `token` per stream and URL is derived from the member name.
+    delete baseOpts.token;
+
+    teamHandle = useTeam();
+    // Use a getter as the watch source so test mocks that hand back a
+    // plain `{ value: [] }` instead of a real Ref still work — Vue
+    // refuses non-ref/non-reactive objects as sources and we want the
+    // fanout loop to be forgiving of both shapes. Unwrapping ourselves
+    // also means we always hand the callback a plain array.
+    const readMembers = (): readonly { name?: string }[] => {
+      const raw = teamHandle?.members as unknown;
+      if (Array.isArray(raw)) return raw as { name?: string }[];
+      const inner = (raw as { value?: unknown })?.value;
+      if (Array.isArray(inner)) return inner as { name?: string }[];
+      return [];
+    };
+    teamWatcherStop = watch(
+      readMembers,
+      (list) => {
+        const alive = new Set<string>();
+        for (const m of list) {
+          // A member without a reachable URL is still addressable via
+          // the `/api/agents/<name>/` proxy — the proxy is a dashboard-
+          // side concern, not a direct-to-harness one — so we key off
+          // name alone and let the stream's own reconnect handle
+          // transient unreachability.
+          if (!m.name) continue;
+          alive.add(m.name);
+          if (!agentStreams.has(m.name)) {
+            openStreamFor(m.name, baseOpts);
           }
         }
+        // Close streams for members that have left the directory.
+        for (const existing of Array.from(agentStreams.keys())) {
+          if (!alive.has(existing)) {
+            closeStreamFor(existing);
+          }
+        }
+        recomputeAggregateState();
       },
       { immediate: true, deep: false },
     );
   }
 
   function stop(): void {
-    if (activeWatcherStop) {
-      activeWatcherStop();
-      activeWatcherStop = null;
+    if (singleWatcherStop) {
+      singleWatcherStop();
+      singleWatcherStop = null;
     }
-    if (activeStream) {
-      activeStream.close();
-      activeStream = null;
+    if (singleStream) {
+      try {
+        singleStream.close();
+      } catch {
+        // ignore
+      }
+      singleStream = null;
+    }
+    if (teamWatcherStop) {
+      teamWatcherStop();
+      teamWatcherStop = null;
+    }
+    teamHandle = null;
+    for (const name of Array.from(agentStreams.keys())) {
+      closeStreamFor(name);
     }
     started.value = false;
+    recomputeAggregateState();
   }
 
   // Test-only injection. Lets specs feed events through the same
   // reactive pipeline without standing up a fake fetch + ReadableStream.
   function __pushForTest(envelope: EventEnvelope): void {
-    const next = events.value.slice();
-    next.push(envelope);
-    if (next.length > ringSize.value) {
-      next.splice(0, next.length - ringSize.value);
-    }
-    events.value = next;
+    mergeBatch([envelope]);
   }
 
   function __resetForTest(): void {
@@ -152,6 +448,7 @@ export const useTimelineStore = defineStore("timeline", () => {
     reconnecting.value = false;
     error.value = "";
     ringSize.value = DEFAULT_RING_SIZE;
+    seenIds.clear();
   }
 
   // --- Selectors ---------------------------------------------------------
@@ -217,18 +514,23 @@ export const useTimelineStore = defineStore("timeline", () => {
 export type { EventEnvelope } from "../composables/useEventStream";
 
 // -----------------------------------------------------------------------------
-// TODO(#1110 phase 1.5) — multi-agent fanout
+// Phase 1.5 landed (#1110)
 //
-// Phase 1 targets a single harness (default /events/stream, or an override
-// via __NYX_CONFIG__.timelineEventsUrl). For fleet deployments where the
-// dashboard faces N agents with their own harnesses, replace `activeStream`
-// with a Map<agentName, UseEventStreamReturn> indexed off `useTeam().members`.
-// Add/remove streams as the team directory changes, tag each emitted event
-// with the originating agent name at merge time, and preserve a single ring
-// ordered by ts. The selectors (`filterByAgent`, etc.) already assume this
-// per-agent labelling so the API surface doesn't need to change.
+// The store now opens one `useEventStream` per team member (discovered via
+// `useTeam().members`) and merges their envelopes into a single ts-ordered
+// ring. Members entering / leaving the directory open / close their streams
+// reactively. The override path (`start({ url })`) still runs a single
+// stream, so existing test fixtures and single-agent dev setups are
+// unchanged.
 //
-// Auth stays bearer-based; each per-agent stream can either share
-// __NYX_CONFIG__.harnessBearerToken (single-secret deployments) or pull
-// from a per-agent token map that the team directory carries.
+// Future work:
+//   - Per-agent bearer tokens. Today every stream shares
+//     `__NYX_CONFIG__.harnessBearerToken`. If a deployment rotates tokens
+//     independently per agent, add a `tokenFor(name)` hook and flow it
+//     through `openStreamFor`.
+//   - Backpressure feedback. If one agent's stream produces events
+//     dramatically faster than the others, the single ring could evict
+//     a slow agent's history prematurely. Per-agent caps (ring allocated
+//     by agent then merged at query time) would address that without
+//     giving up the unified `events` ref.
 // -----------------------------------------------------------------------------
