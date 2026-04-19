@@ -1345,7 +1345,7 @@ spec:
                       description: Port is the HTTP port the backend listens on inside
                         the pod.
                       format: int32
-                      maximum: 65535
+                      maximum: 64535
                       minimum: 1
                       type: integer
                     resources:
@@ -1627,7 +1627,7 @@ spec:
                     description: Port is the Service port (the container always listens
                       on 3000).
                     format: int32
-                    maximum: 65535
+                    maximum: 64535
                     minimum: 1
                     type: integer
                   replicas:
@@ -2145,6 +2145,17 @@ spec:
                     properties:
                       authDisabled:
                         description: |-
+                          #1355 SECURITY NOTE: The cluster-scoped ServiceAccount pattern
+                          (when NyxAgent uses an SA with apiserver permissions for MCP
+                          tool access) mounts the SA token into EVERY pod container —
+                          including the backend containers (claude/codex/gemini). A
+                          prompt-injection compromise of a backend can read
+                          /var/run/secrets/kubernetes.io/serviceaccount/token and make
+                          authenticated apiserver calls directly, bypassing every MCP
+                          tool allow-list. PREFERRED recipe: deploy MCP tools as their
+                          own separately-scoped pods (chart default) and have backends
+                          reach them via the cluster-shared Service. Document this in
+                          operator/README.md §security-posture.
                           AuthDisabled acknowledges that MCP_TOOL_AUTH_TOKEN is intentionally
                           not set for this tool. Useful for local dev. The mcp_auth middleware
                           logs a loud WARN at startup when this is true. (#1331)
@@ -2608,6 +2619,17 @@ spec:
                     properties:
                       authDisabled:
                         description: |-
+                          #1355 SECURITY NOTE: The cluster-scoped ServiceAccount pattern
+                          (when NyxAgent uses an SA with apiserver permissions for MCP
+                          tool access) mounts the SA token into EVERY pod container —
+                          including the backend containers (claude/codex/gemini). A
+                          prompt-injection compromise of a backend can read
+                          /var/run/secrets/kubernetes.io/serviceaccount/token and make
+                          authenticated apiserver calls directly, bypassing every MCP
+                          tool allow-list. PREFERRED recipe: deploy MCP tools as their
+                          own separately-scoped pods (chart default) and have backends
+                          reach them via the cluster-shared Service. Document this in
+                          operator/README.md §security-posture.
                           AuthDisabled acknowledges that MCP_TOOL_AUTH_TOKEN is intentionally
                           not set for this tool. Useful for local dev. The mcp_auth middleware
                           logs a loud WARN at startup when this is true. (#1331)
@@ -3072,6 +3094,17 @@ spec:
                     properties:
                       authDisabled:
                         description: |-
+                          #1355 SECURITY NOTE: The cluster-scoped ServiceAccount pattern
+                          (when NyxAgent uses an SA with apiserver permissions for MCP
+                          tool access) mounts the SA token into EVERY pod container —
+                          including the backend containers (claude/codex/gemini). A
+                          prompt-injection compromise of a backend can read
+                          /var/run/secrets/kubernetes.io/serviceaccount/token and make
+                          authenticated apiserver calls directly, bypassing every MCP
+                          tool allow-list. PREFERRED recipe: deploy MCP tools as their
+                          own separately-scoped pods (chart default) and have backends
+                          reach them via the cluster-shared Service. Document this in
+                          operator/README.md §security-posture.
                           AuthDisabled acknowledges that MCP_TOOL_AUTH_TOKEN is intentionally
                           not set for this tool. Useful for local dev. The mcp_auth middleware
                           logs a loud WARN at startup when this is true. (#1331)
@@ -3568,6 +3601,12 @@ spec:
                   container in the pod — this is kept for backward compatibility with
                   existing NyxAgent manifests and for MCP-tool-style pods that want a
                   single fixed port. Prefer leaving it unset on new deployments.
+
+                  DEPRECATED (#1374): non-zero values in multi-container pods collide
+                  (harness:9000 + backend:9000) and mask the intent of the #1249 /
+                  #1322 unique-named-port work. New deployments should leave this
+                  unset; future v1 may reject non-zero values on multi-container
+                  pods via the webhook.
                 format: int32
                 maximum: 65535
                 minimum: 0
@@ -3982,7 +4021,7 @@ spec:
                 description: Port is the HTTP port harness listens on (Service + probe
                   target).
                 format: int32
-                maximum: 65535
+                maximum: 64535
                 minimum: 1
                 type: integer
               preStop:
@@ -4184,7 +4223,7 @@ spec:
                   container port (`Spec.Port`). Mirrors the chart's `service.yaml`
                   which already separates Service port from target port.
                 format: int32
-                maximum: 65535
+                maximum: 64535
                 minimum: 1
                 type: integer
               serviceType:
@@ -4680,6 +4719,7 @@ spec:
                   - reason
                   - time
                   type: object
+                maxItems: 10
                 type: array
                 x-kubernetes-list-type: atomic
             type: object

@@ -467,7 +467,15 @@ AGENTS.md is deliberately high-level. For specifics, go to the source of truth:
 
 - **Chart values + env var reference** — `charts/nyx/values.yaml` and `charts/nyx-operator/values.yaml`
   carry inline comments on every field. Service-specific env vars are declared in each Dockerfile's
-  `ENV` directives.
+  `ENV` directives. Env vars added in later fix cycles that aren't yet surfaced as chart values
+  (tracked by #1416 — documented but needs values plumbing):
+  `SESSION_STREAM_MAX_PER_CALLER`, `CONVERSATION_STREAM_{QUEUE_MAX,RING_MAX,GRACE_SEC,KEEPALIVE_SEC}`,
+  `WEBHOOK_RETRY_BYTES_PER_SUB`, `WEBHOOK_ALLOW_LOOPBACK_HOSTS`,
+  `A2A_SESSION_CONTEXT_CACHE_MAX`, `TASKS_SHUTDOWN_DRAIN_TIMEOUT`,
+  `JOBS_SHUTDOWN_DRAIN_TIMEOUT`, `CONTINUATIONS_SHUTDOWN_DRAIN_TIMEOUT`,
+  `MCP_HELM_REPO_URL_ALLOWLIST`, `MCP_HELM_ALLOW_ANY_REPO`,
+  `MCP_K8S_READ_SECRETS_DISABLED`, `MCP_PROM_MAX_RESPONSE_BYTES`.
+  All read via `os.environ.get(...)` at startup; no hot-reload.
 - **Metric catalog** — per-service `metrics.py`; rendered dashboards at `charts/nyx/dashboards/`;
   default alert thresholds at `charts/nyx/templates/prometheusrule.yaml`.
 - **Event stream wire contract** — `docs/events/README.md` + `docs/events/events.schema.json`.

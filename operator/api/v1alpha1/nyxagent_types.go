@@ -220,7 +220,7 @@ type BackendSpec struct {
 	// Port is the HTTP port the backend listens on inside the pod.
 	// +kubebuilder:default=8000
 	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=65535
+	// +kubebuilder:validation:Maximum=64535
 	// +optional
 	Port int32 `json:"port,omitempty"`
 
@@ -540,7 +540,7 @@ type NyxAgentSpec struct {
 	// Port is the HTTP port harness listens on (Service + probe target).
 	// +kubebuilder:default=8000
 	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=65535
+	// +kubebuilder:validation:Maximum=64535
 	// +optional
 	Port int32 `json:"port,omitempty"`
 
@@ -776,7 +776,7 @@ type NyxAgentSpec struct {
 	// container port (`Spec.Port`). Mirrors the chart's `service.yaml`
 	// which already separates Service port from target port.
 	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=65535
+	// +kubebuilder:validation:Maximum=64535
 	// +optional
 	ServicePort *int32 `json:"servicePort,omitempty"`
 
@@ -910,7 +910,7 @@ type DashboardSpec struct {
 	// Port is the Service port (the container always listens on 3000).
 	// +kubebuilder:default=80
 	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=65535
+	// +kubebuilder:validation:Maximum=64535
 	// +optional
 	Port int32 `json:"port,omitempty"`
 

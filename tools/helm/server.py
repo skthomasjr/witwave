@@ -322,6 +322,35 @@ except Exception:  # pragma: no cover - metrics disabled
     helm_subprocess_duration_seconds = None  # type: ignore
 
 
+_ENV_ALLOWLIST = frozenset({
+    # Path + runtime basics
+    "PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "TZ",
+    "HOSTNAME", "TMPDIR",
+    # Helm-owned
+    "HELM_CACHE_HOME", "HELM_CONFIG_HOME", "HELM_DATA_HOME",
+    "HELM_DEBUG", "HELM_DRIVER", "HELM_DRIVER_SQL_CONNECTION_STRING",
+    "HELM_KUBEAPISERVER", "HELM_KUBEASUSER", "HELM_KUBECAFILE",
+    "HELM_KUBECONTEXT", "HELM_KUBETOKEN", "HELM_MAX_HISTORY",
+    "HELM_NAMESPACE", "HELM_NO_PLUGINS", "HELM_PLUGINS",
+    "HELM_REGISTRY_CONFIG", "HELM_REPOSITORY_CACHE",
+    "HELM_REPOSITORY_CONFIG", "HELM_ROOT",
+    # Kubernetes config
+    "KUBECONFIG",
+    # OTel — allowed so helm's outbound telemetry (if any) is traceable
+    "OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_SERVICE_NAME",
+})
+
+
+def _filtered_env() -> dict[str, str]:
+    """Return a minimal env for helm subprocesses (#1419).
+
+    Filters out CONVERSATIONS_AUTH_TOKEN / MCP_TOOL_AUTH_TOKEN /
+    harness-scoped secrets so a compromised or malicious helm plugin
+    with an `exec` hook cannot read them from the inherited environment.
+    """
+    return {k: v for k, v in os.environ.items() if k in _ENV_ALLOWLIST}
+
+
 def _helm(
     args: list[str],
     parse_json: bool = False,
@@ -353,11 +382,15 @@ def _helm(
             _subp_cap = min(max(_MCP_RESPONSE_MAX_BYTES, 0) * 4, 32 * 1024 * 1024)
             if _subp_cap <= 0:
                 _subp_cap = 32 * 1024 * 1024
+            # #1419: pass an explicit minimal env so helm plugins with
+            # `exec` hooks can't read CONVERSATIONS_AUTH_TOKEN or other
+            # harness-scoped secrets via process-env inheritance.
             proc = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 stdin=subprocess.PIPE if stdin is not None else None,
+                env=_filtered_env(),
             )
             import threading as _threading
             _stdout_buf = bytearray()
@@ -1311,7 +1344,7 @@ def _kubectl_present() -> bool:
     try:
         proc = subprocess.run(
             ["kubectl", "version", "--client=true", "--output=yaml"],
-            capture_output=True, text=True, check=False, timeout=5,
+            capture_output=True, text=True, check=False, timeout=5, env=_filtered_env(),
         )
         return proc.returncode == 0
     except FileNotFoundError:
@@ -1365,6 +1398,7 @@ def diff_manifest(manifest: str, redact: bool = True) -> str:
                 input=manifest,
                 capture_output=True, text=True, check=False,
                 timeout=_HELM_SUBPROCESS_TIMEOUT_SECONDS,
+                env=_filtered_env(),
             )
             if proc.returncode not in (0, 1):
                 err = HelmError(
@@ -1587,7 +1621,7 @@ def _get_info_doc() -> dict[str, Any]:
     try:
         proc = subprocess.run(
             ["helm", "version", "--short"],
-            capture_output=True, text=True, check=False, timeout=5,
+            capture_output=True, text=True, check=False, timeout=5, env=_filtered_env(),
         )
         if proc.returncode == 0:
             helm_version = proc.stdout.strip()
@@ -1598,7 +1632,7 @@ def _get_info_doc() -> dict[str, Any]:
     try:
         proc = subprocess.run(
             ["helm", "plugin", "list"],
-            capture_output=True, text=True, check=False, timeout=5,
+            capture_output=True, text=True, check=False, timeout=5, env=_filtered_env(),
         )
         if proc.returncode == 0:
             helm_diff_present = any(

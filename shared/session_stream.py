@@ -416,7 +416,33 @@ def sweep_idle_streams(
     — their queue would go unreferenced, their ``_iterate`` coroutine
     would leak, and their HTTP connection would sit open until the
     client-side timeout.
+
+    #1418 INVARIANT: the `_registry` dict mutations here + in
+    `get_session_stream` assume single-asyncio-loop discipline. If a
+    future refactor dispatches this sweeper from a worker thread (or
+    adds a concurrent asyncio.to_thread(sweep_idle_streams) caller),
+    add a lock around _registry mutations to prevent half-popped
+    entries being observed by concurrent publish/subscribe.
     """
+    # #1418: assert event-loop affinity so a future threaded call
+    # path fails loudly instead of silently racing the registry.
+    try:
+        import asyncio as _asyncio
+        _asyncio.get_running_loop()
+    except RuntimeError:
+        # Called outside a running asyncio loop — OK for tests that
+        # drive the sweeper synchronously, but emit a once-per-process
+        # WARN so operators notice if this fires in production.
+        if not getattr(sweep_idle_streams, "_no_loop_warned", False):
+            logger.warning(
+                "sweep_idle_streams: called outside running asyncio loop. "
+                "_registry mutations assume single-loop discipline; "
+                "threaded callers must add a lock. (#1418)"
+            )
+            try:
+                sweep_idle_streams._no_loop_warned = True  # type: ignore[attr-defined]
+            except Exception:
+                pass
     dropped: list[str] = []
     for sid, stream in list(_registry.items()):
         if stream.is_idle_past(grace_sec):

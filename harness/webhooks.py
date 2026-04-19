@@ -188,10 +188,24 @@ _webhook_retry_bytes_lock = asyncio.Lock()
 # others. Default is 25% of the global budget; override via
 # WEBHOOK_RETRY_BYTES_PER_SUB. Counters live here + access is guarded
 # by the same lock as the global counter.
-WEBHOOK_RETRY_BYTES_PER_SUB = int(
-    os.environ.get("WEBHOOK_RETRY_BYTES_PER_SUB",
-                   str(max(1, WEBHOOK_RETRY_BYTES_BUDGET // 4)))
-)
+#
+# #1420: when WEBHOOK_RETRY_BYTES_BUDGET=0 (legacy "no global cap"
+# regime), the old derivation `max(1, 0 // 4) = 1` starved every sub
+# to a 1-byte budget. New derivation: per-sub default is 0 when the
+# global is 0 — the per-sub check is also gated by `PER_SUB > 0` at
+# the call site, so 0 means "disabled" consistently.
+def _resolve_per_sub_budget() -> int:
+    raw = os.environ.get("WEBHOOK_RETRY_BYTES_PER_SUB")
+    if raw is not None and raw.strip() != "":
+        try:
+            return int(raw)
+        except ValueError:
+            return max(0, WEBHOOK_RETRY_BYTES_BUDGET // 4)
+    # Derived default: scale to the global budget. 0 → 0.
+    return 0 if WEBHOOK_RETRY_BYTES_BUDGET == 0 else max(1, WEBHOOK_RETRY_BYTES_BUDGET // 4)
+
+
+WEBHOOK_RETRY_BYTES_PER_SUB = _resolve_per_sub_budget()
 _webhook_retry_bytes_per_sub: dict[str, int] = {}
 
 # HTTP status codes that are safe to retry — mirrors the inbound A2A pattern
