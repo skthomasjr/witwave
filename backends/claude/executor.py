@@ -2094,6 +2094,12 @@ class AgentExecutor(A2AAgentExecutor):
                                 direction = "tighten"
                             elif new_set > old_set:
                                 direction = "widen"
+                            elif new_set == old_set:
+                                # Same membership, only list order changed.
+                                # Report this distinctly so 'rotate' retains
+                                # its meaning of "set differs but is neither a
+                                # strict subset nor superset" (#979).
+                                direction = "reorder"
                             else:
                                 direction = "rotate"
                             # Snapshot active session count BEFORE mutation so
