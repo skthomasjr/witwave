@@ -2279,9 +2279,14 @@ func (r *NyxAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// the agent Deployment pod-spec in sync with prompt adds/removes
 	// without waiting for a future unrelated reconcile to pick up the
 	// new prompt list.
-	enqueueAgentsBoundByPrompt := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
-		p, ok := obj.(*nyxv1alpha1.NyxPrompt)
-		if !ok {
+	//
+	// Update events must inspect BOTH ObjectOld and ObjectNew so that an
+	// agent being REMOVED from spec.agentRefs is enqueued too — otherwise
+	// the dropped agent keeps the stale prompt ConfigMap mounted until an
+	// unrelated reconcile fires on it (#1013, mirrors the #899 pattern
+	// used above for team-label flips on NyxAgent).
+	promptAgentRequests := func(p *nyxv1alpha1.NyxPrompt) []reconcile.Request {
+		if p == nil {
 			return nil
 		}
 		reqs := make([]reconcile.Request, 0, len(p.Spec.AgentRefs))
@@ -2291,7 +2296,58 @@ func (r *NyxAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			})
 		}
 		return reqs
-	})
+	}
+	enqueueAgentsBoundByPrompt := handler.Funcs{
+		CreateFunc: func(ctx context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			p, ok := e.Object.(*nyxv1alpha1.NyxPrompt)
+			if !ok {
+				return
+			}
+			for _, r := range promptAgentRequests(p) {
+				q.Add(r)
+			}
+		},
+		DeleteFunc: func(ctx context.Context, e event.DeleteEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			p, ok := e.Object.(*nyxv1alpha1.NyxPrompt)
+			if !ok {
+				return
+			}
+			for _, r := range promptAgentRequests(p) {
+				q.Add(r)
+			}
+		},
+		UpdateFunc: func(ctx context.Context, e event.UpdateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			newObj, okNew := e.ObjectNew.(*nyxv1alpha1.NyxPrompt)
+			oldObj, okOld := e.ObjectOld.(*nyxv1alpha1.NyxPrompt)
+			if !okNew || !okOld {
+				return
+			}
+			seen := map[types.NamespacedName]struct{}{}
+			emit := func(reqs []reconcile.Request) {
+				for _, r := range reqs {
+					if _, dup := seen[r.NamespacedName]; dup {
+						continue
+					}
+					seen[r.NamespacedName] = struct{}{}
+					q.Add(r)
+				}
+			}
+			// Enqueue the union of old and new agent refs so agents
+			// dropped from spec.agentRefs also reconcile and unmount
+			// the stale prompt ConfigMap.
+			emit(promptAgentRequests(newObj))
+			emit(promptAgentRequests(oldObj))
+		},
+		GenericFunc: func(ctx context.Context, e event.GenericEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			p, ok := e.Object.(*nyxv1alpha1.NyxPrompt)
+			if !ok {
+				return
+			}
+			for _, r := range promptAgentRequests(p) {
+				q.Add(r)
+			}
+		},
+	}
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&nyxv1alpha1.NyxAgent{}).
