@@ -652,6 +652,61 @@ Operator:
   `query`, `query_range`, `series`, `labels`, `label_values` via FastMCP streamable-http on `:8000`.
   Disabled by default in the chart; enable via `mcpTools.prometheus.enabled=true` (#853 scaffold; Grafana /
   Loki / OTel wrappers are follow-up).
+- **Event stream** — harness `GET /events/stream` Server-Sent Events endpoint plus a dashboard
+  Timeline view that subscribes to every team member's stream and merges envelopes in time order
+  (#1110). The wire contract is pinned in `docs/events/README.md` + `docs/events/events.schema.json`:
+  14 event types in phase 1+3 (schedulers, bus, A2A relay observability, agent lifecycle,
+  `conversation.turn`, `tool.use`, `trace.span`, `stream.gap`, `stream.overrun`). Resume via
+  `Last-Event-ID` from a 1000-event in-memory ring; backpressure evicts slow subscribers with a
+  terminal `stream.overrun`. Backend events reach the shared stream via a new
+  `schedule_event_post` POST channel (reuses the `hook_events.py` transport + circuit breaker)
+  landing at harness `POST /internal/events/publish`. `AlertBanner` consumes the stream with
+  dedup + re-arm for webhook failures, hook-denial spikes, lifecycle stops, and stream gaps.
+
+### New environment variables — #1110
+
+Backend:
+
+| Variable                       | Purpose                                                                                                         |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `HARNESS_EVENTS_PUBLISH_URL`   | Explicit override for the backend→harness event POST target (default: derive from `HARNESS_EVENTS_URL`).        |
+
+Harness:
+
+| Variable                                      | Purpose                                                                                                         |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `EVENT_STREAM_QUEUE_MAX`                      | Per-subscriber bounded queue depth on `/events/stream` (default 1000).                                          |
+| `EVENT_STREAM_RING_MAX`                       | In-memory event ring size for `Last-Event-ID` resume (default 1000).                                            |
+| `EVENT_STREAM_KEEPALIVE_SEC`                  | SSE keepalive cadence (default 15s).                                                                            |
+
+Dashboard pod (set by the chart when `harnessBearerTokenSecret.name` is non-empty):
+
+| Variable                       | Purpose                                                                                                         |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `HARNESS_BEARER_TOKEN`         | Bearer token for the harness timeline stream, populated via `secretKeyRef`. Substituted into the nginx sub_filter at container start via envsubst so the literal token never appears in the rendered ConfigMap. |
+| `NGINX_ENVSUBST_FILTER`        | Auto-set regex `^(HARNESS_BEARER_TOKEN\|NGINX_LOCAL_RESOLVERS)$` so envsubst doesn't substitute other `${...}` patterns in the nginx config.                                                   |
+
+### New chart values — #1110
+
+- `dashboard.runtimeConfig.{traceApiUrl,traceApiAllowCrossOrigin,timelineEventsUrl,locale}` — injected
+  into `window.__NYX_CONFIG__` via an nginx `sub_filter` on every HTML response. Closes the
+  pre-existing gap where composables read this object but no chart path wrote it.
+- `dashboard.harnessBearerTokenSecret.{name,key}` — Secret-backed harness bearer token. When `name`
+  is set, the dashboard pod mounts the Secret value as `HARNESS_BEARER_TOKEN` env and nginx's
+  sub_filter carries a literal `${HARNESS_BEARER_TOKEN}` placeholder that envsubst substitutes at
+  container start. Token lives in the pod's `/etc/nginx/conf.d/default.conf`, not in the chart-
+  rendered ConfigMap visible to `kubectl get cm`.
+
+### New metrics — #1110
+
+- `harness_event_stream_subscribers` (gauge)
+- `harness_event_stream_events_published_total{type}`
+- `harness_event_stream_events_dropped_total{reason}` — reasons: `validation`, `overrun`, `backpressure`
+- `harness_event_stream_overruns_total`
+- `harness_event_stream_validation_errors_total{type}`
+- `harness_event_stream_ring_size` (gauge)
+- `harness_event_stream_inbound_rejected_total{reason}` — inbound `/internal/events/publish`
+  rejections (`auth`, `validation`, `over_cap`, `malformed_json`)
 
 ### New operator CRD surfaces (scaffolded, not complete parity)
 
