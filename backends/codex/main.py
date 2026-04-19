@@ -483,21 +483,24 @@ async def main():
                 if _bearer_token
                 else None
             )
-            # #986: codex /mcp sessions are single-shot (the finally block
-            # below deletes the SQLite row and pops _sessions), so two
-            # concurrent callers presenting the same bearer + same raw
-            # session_id would otherwise derive the SAME session id and
-            # race on state teardown — the second call sees state pulled
-            # out from under it. Mix a per-request nonce into the raw_sid
-            # so derive_session_id yields a distinct id per invocation
-            # while still preserving caller-identity binding for the
-            # (future) resumption case.
-            _request_nonce = uuid.uuid4().hex
-            _raw_sid_with_nonce = (
-                f"{_raw_sid}\x00{_request_nonce}" if _raw_sid else _raw_sid
-            )
+            # #1096: multi-turn /mcp parity with claude. When a caller
+            # provides an explicit session_id, honour it as a continuation
+            # — skip the single-shot nonce-mix and the post-call cleanup
+            # so the next call with the same bound session_id resumes the
+            # same conversation. When the caller omits session_id, preserve
+            # the pre-#1096 single-shot behaviour (nonce-mix + cleanup) so
+            # ephemeral MCP clients don't accumulate SQLite rows (#986).
+            _caller_requested_continuation = bool(_raw_sid)
+            if _caller_requested_continuation:
+                _raw_sid_for_derive = _raw_sid
+            else:
+                # Mix a per-request nonce into the empty raw_sid so
+                # derive_session_id yields a distinct id per invocation,
+                # matching the pre-#1096 single-shot semantics.
+                _request_nonce = uuid.uuid4().hex
+                _raw_sid_for_derive = f"\x00{_request_nonce}"
             session_id = derive_session_id(
-                _raw_sid_with_nonce, caller_identity=_caller_identity
+                _raw_sid_for_derive, caller_identity=_caller_identity
             )
             response: str | None = None
             _failed = False
@@ -534,36 +537,39 @@ async def main():
                 _failed = True
                 logger.error(f"MCP tools/call error: {exc!r}")
             finally:
-                # MCP tools/call sessions are single-shot (#723): each
-                # request mints a fresh UUID, so the SQLite session row
-                # has no legitimate reuse on a subsequent call. Without
-                # explicit cleanup the LRU cache only kicks in for the
-                # in-memory dict — the on-disk agent_sessions table grows
-                # unbounded for every errored invocation (and at the
-                # MAX_SESSIONS cap for successful ones). Delete the row
-                # and drop the in-memory entry here so the storage
-                # footprint of /mcp tools/call stays O(1) regardless of
-                # success/failure.
-                try:
-                    executor._sessions.pop(session_id, None)
-                except Exception:
-                    pass
-                # Import the already-resolved DB path from executor
-                # (#877): re-reading os.environ here drifts from the
-                # module-level constant captured at executor import
-                # time, so if CODEX_SESSION_DB was mutated in between
-                # (tests, reload paths) the cleanup would run against
-                # a DIFFERENT path than the writes.
-                from executor import CODEX_SESSION_DB as _db_path
-                if _db_path and _db_path != ":memory:":
+                # MCP tools/call sessions are single-shot (#723) by default:
+                # each request without a caller-supplied session_id mints
+                # a fresh id, so the SQLite session row has no legitimate
+                # reuse on a subsequent call. Without explicit cleanup the
+                # LRU cache only kicks in for the in-memory dict — the
+                # on-disk agent_sessions table grows unbounded for every
+                # errored invocation. Delete the row + drop the in-memory
+                # entry here so the storage footprint stays O(1).
+                #
+                # #1096: when the caller opted in to continuation by
+                # supplying a session_id, preserve the session state for
+                # the next call — skip cleanup on that path.
+                if not _caller_requested_continuation:
                     try:
-                        from executor import _delete_sqlite_session as _del_mcp
-                        await asyncio.to_thread(_del_mcp, session_id, _db_path)
-                    except Exception as _cleanup_exc:
-                        logger.warning(
-                            "MCP tools/call: failed to clean up session row for %r: %s",
-                            session_id, _cleanup_exc,
-                        )
+                        executor._sessions.pop(session_id, None)
+                    except Exception:
+                        pass
+                    # Import the already-resolved DB path from executor
+                    # (#877): re-reading os.environ here drifts from the
+                    # module-level constant captured at executor import
+                    # time, so if CODEX_SESSION_DB was mutated in between
+                    # (tests, reload paths) the cleanup would run against
+                    # a DIFFERENT path than the writes.
+                    from executor import CODEX_SESSION_DB as _db_path
+                    if _db_path and _db_path != ":memory:":
+                        try:
+                            from executor import _delete_sqlite_session as _del_mcp
+                            await asyncio.to_thread(_del_mcp, session_id, _db_path)
+                        except Exception as _cleanup_exc:
+                            logger.warning(
+                                "MCP tools/call: failed to clean up session row for %r: %s",
+                                session_id, _cleanup_exc,
+                            )
             if _failed:
                 _status_box[0] = "error"
                 return JSONResponse({
