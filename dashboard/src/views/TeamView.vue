@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed } from "vue";
+import { storeToRefs } from "pinia";
 import Splitter from "primevue/splitter";
 import SplitterPanel from "primevue/splitterpanel";
 import { useTeam } from "../composables/useTeam";
 import { useTeamPreferences } from "../composables/useTeamPreferences";
+import { useSelectionStore } from "../stores/selection";
 import AgentList from "../components/AgentList.vue";
 import AgentDetail from "../components/AgentDetail.vue";
 import type { TeamMember } from "../types/team";
@@ -11,14 +13,16 @@ import type { TeamMember } from "../types/team";
 // Team view — two-pane layout matching legacy ui/ #agents-view.
 // Left: scrollable agent cards with per-backend health bubbles.
 // Right: details for the selected member (chat lands in a follow-up pass, #470).
-// Polling is handled by useTeam(); selection state lives here.
+// Polling is handled by useTeam(); selection state lives in the Pinia
+// selection store (#748) so other views (e.g. Conversations) can
+// surface the currently-selected agent without re-threading props.
 
 const { members, loading, error } = useTeam();
 const { pinnedAgents, onlyDegraded, isPinned, togglePin, setOnlyDegraded } =
   useTeamPreferences();
 
-const selectedName = ref<string | null>(null);
-const activeBackendId = ref<string | null>(null);
+const selectionStore = useSelectionStore();
+const { selectedName, activeBackendId } = storeToRefs(selectionStore);
 
 // Derived list applied to the presentational AgentList (#1109):
 //   1. Optionally filter out healthy agents so only degraded/failing
@@ -51,15 +55,13 @@ const selectedMember = computed(
 );
 
 function selectAgent(name: string) {
-  selectedName.value = name;
   // Drop backend selection when switching agents — the legacy UI syncs a
   // dropdown instead, but since chat isn't wired yet we just clear.
-  activeBackendId.value = null;
+  selectionStore.selectAgent(name);
 }
 
 function selectBackend(name: string, backendId: string) {
-  selectedName.value = name;
-  activeBackendId.value = backendId;
+  selectionStore.selectBackend(name, backendId);
 }
 
 function onTogglePin(name: string): void {
@@ -108,7 +110,7 @@ function onTogglePin(name: string): void {
       <AgentDetail
         :member="selectedMember"
         :active-backend-id="activeBackendId"
-        @select-backend="(id) => (activeBackendId = id)"
+        @select-backend="(id) => selectionStore.setActiveBackend(id)"
       />
     </SplitterPanel>
   </Splitter>

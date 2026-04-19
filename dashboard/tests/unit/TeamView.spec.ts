@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import PrimeVue from "primevue/config";
+import { createPinia, setActivePinia } from "pinia";
 import TeamView from "../../src/views/TeamView.vue";
 
 // Dashboard TeamView smoke tests. Shape matches harness /team contract
@@ -12,7 +13,7 @@ import TeamView from "../../src/views/TeamView.vue";
 function mountView() {
   return mount(TeamView, {
     global: {
-      plugins: [PrimeVue],
+      plugins: [PrimeVue, createPinia()],
     },
   });
 }
@@ -71,6 +72,8 @@ function mockEndpoints(team: MockTeamMember[]) {
 describe("TeamView", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    // Reset Pinia between tests so the selection store starts clean.
+    setActivePinia(createPinia());
   });
 
   afterEach(() => {
