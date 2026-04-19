@@ -2113,8 +2113,15 @@ class AgentExecutor(A2AAgentExecutor):
                 or (context.message.metadata or {}).get("session_id")
                 or ""
             ).strip()[:256]
+            # Do NOT default the sanitised raw to "unknown" here: the
+            # accepted-prompt path below passes "" for the same input,
+            # which derive_session_id maps to a fresh uuid4, while
+            # "unknown" would deterministically collapse every such
+            # caller onto the same derived id (#990). Route the raw ""
+            # through derive_session_id directly so both paths fracture
+            # identically under SESSION_ID_SECRET.
             _empty_sid_sanitized = (
-                "".join(c for c in _empty_sid_raw if c >= " ") or "unknown"
+                "".join(c for c in _empty_sid_raw if c >= " ")
             )
             # Route through derive_session_id (#880) so log-entries and
             # metric labels use the HMAC-bound id under SESSION_ID_SECRET,
