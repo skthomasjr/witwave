@@ -42,11 +42,9 @@ dashboard:
   # Rendered verbatim as JSON into the index.html response via
   # `sub_filter` in the ConfigMap.
   #
-  # Non-secret values only. The harness CONVERSATIONS_AUTH_TOKEN bearer
-  # is NOT rendered here (a plain `kubectl get cm` would leak it) —
-  # until the Secret-backed env-var injection lands, operators wanting
-  # an authenticated timeline stream must inject
-  # `__NYX_CONFIG__.harnessBearerToken` via their own index.html override.
+  # Non-secret values only. The harness bearer token goes through the
+  # separate harnessBearerTokenSecret block below — a plain
+  # `kubectl get cm` must not leak it.
   runtimeConfig: {}
     # # External trace backend URL (Jaeger / Tempo / Grafana). Empty
     # # disables the OTelTraces view. Must be same-origin OR operators
@@ -62,6 +60,29 @@ dashboard:
     # # Default locale for the dashboard i18n layer. Falls back to
     # # navigator.language then "en" when unset (#819).
     # locale: "en"
+
+  # Secret-backed harness bearer token for the timeline SSE stream
+  # (#1110 phase 3.5). When `name` is set, the dashboard pod gains:
+  #   - an env var `HARNESS_BEARER_TOKEN` sourced from the Secret
+  #   - an nginx sub_filter that injects `window.__NYX_CONFIG__
+  #     .harnessBearerToken = "${HARNESS_BEARER_TOKEN}"` into every
+  #     HTML response, substituted at container start via envsubst
+  # The literal token therefore lives in the pod's
+  # /etc/nginx/conf.d/default.conf (readable only via pod shell) —
+  # NOT in the Helm-rendered ConfigMap visible to `kubectl get cm`.
+  #
+  # The Secret's key defaults to `token`. The `NGINX_ENVSUBST_FILTER`
+  # env var is auto-set so envsubst only substitutes this and
+  # NGINX_LOCAL_RESOLVERS, preventing accidental substitution of
+  # other `${...}` patterns in the nginx config.
+  #
+  # Leave `name` empty (default) to skip all of the above — the
+  # timeline stream then runs unauthenticated (CONVERSATIONS_AUTH_DISABLED
+  # on the harness) or authenticated via an operator-supplied
+  # __NYX_CONFIG__ override.
+  harnessBearerTokenSecret:
+    name: ""
+    key: "token"
 
 # Ingress for the dashboard. Disabled by default — enable to expose the dashboard externally (#424).
 #

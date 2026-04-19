@@ -93,14 +93,22 @@ data:
       # template time; operators update values.yaml and the next rollout
       # publishes new config.
       #
-      # Non-secret values only. The harness bearer token is intentionally
-      # NOT rendered here — a follow-up will mount it as a Secret-backed
-      # env var and use `envsubst` (like `${NGINX_LOCAL_RESOLVERS}` above)
-      # so a plain `kubectl get cm` doesn't leak the token. Until that
-      # lands, operators wanting authenticated timeline streams inject
-      # `window.__NYX_CONFIG__.harnessBearerToken` through their own
-      # index.html override or an additional sub_filter.
+      # Secret-backed bearer (#1110 phase 3.5). When
+      # `dashboard.harnessBearerTokenSecret.name` is set, this template
+      # emits `"harnessBearerToken":"${HARNESS_BEARER_TOKEN}"` into the
+      # sub_filter literal. The nginx-unprivileged image's envsubst pass
+      # on /etc/nginx/templates/* substitutes `${HARNESS_BEARER_TOKEN}`
+      # from the container env (populated via a secretKeyRef in
+      # dashboard.yaml) when writing /etc/nginx/conf.d/default.conf, so
+      # the rendered ConfigMap visible to `kubectl get cm` carries the
+      # literal placeholder, NOT the token.
+      #
+      # Non-secret fields from `.Values.dashboard.runtimeConfig` are
+      # merged in verbatim — those are ConfigMap-safe by design.
       {{- $rc := .Values.dashboard.runtimeConfig | default dict }}
+      {{- if .Values.dashboard.harnessBearerTokenSecret.name }}
+      {{- $rc = merge (dict "harnessBearerToken" "${HARNESS_BEARER_TOKEN}") $rc }}
+      {{- end }}
       location / {
         try_files $uri $uri/ /index.html;
         sub_filter_once on;

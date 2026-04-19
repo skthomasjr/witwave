@@ -97,6 +97,26 @@ spec:
             # runtime (needed for proxy_pass URLs with captured variables).
             - name: NGINX_ENTRYPOINT_LOCAL_RESOLVERS
               value: "1"
+            {{- /* Secret-backed harness bearer token (#1110 phase 3.5).
+                   The ConfigMap template emits `${HARNESS_BEARER_TOKEN}`
+                   in its sub_filter directive when `harnessBearerTokenSecret.name`
+                   is set; nginx-unprivileged's envsubst pass substitutes
+                   this env var at container start so the token only lives
+                   in the pod's /etc/nginx/conf.d — never in the rendered
+                   ConfigMap visible to `kubectl get cm`. See the paired
+                   comment block in configmap-dashboard-nginx.yaml. */}}
+            {{- if .Values.dashboard.harnessBearerTokenSecret.name }}
+            - name: HARNESS_BEARER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.dashboard.harnessBearerTokenSecret.name | quote }}
+                  key: {{ .Values.dashboard.harnessBearerTokenSecret.key | default "token" | quote }}
+            {{- /* Restrict envsubst to this single variable so the ConfigMap's
+                   own `${NGINX_LOCAL_RESOLVERS}` + any future `${...}` patterns
+                   in the nginx config don't accidentally get substituted. */}}
+            - name: NGINX_ENVSUBST_FILTER
+              value: "^(HARNESS_BEARER_TOKEN|NGINX_LOCAL_RESOLVERS)$"
+            {{- end }}
           volumeMounts:
             # Overrides the baseline template baked into the image with the
             # Helm-rendered config that knows about every enabled agent.
