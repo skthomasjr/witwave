@@ -1,6 +1,10 @@
 import { onMounted, onUnmounted, ref } from "vue";
 import { apiGet, ApiError } from "../api/client";
 import type { Agent, TeamMember, TeamResponse } from "../types/team";
+import {
+  ensureVisibilityListenerInstalled,
+  pollingShouldSkipTick,
+} from "./usePollingControl";
 
 // Team state — discovery + per-agent fan-out.
 //
@@ -154,15 +158,31 @@ function startShared(
 
   if (pollerTimer === null) {
     effectiveIntervalMs = newEffective;
+    // Ensure the global visibility listener exists so tab-hidden gating
+    // takes effect on the shared poller even if no component has yet
+    // mounted usePollingControl() (#1107).
+    ensureVisibilityListenerInstalled();
     void sharedRefresh();
-    pollerTimer = setInterval(() => void sharedRefresh(), effectiveIntervalMs);
+    pollerTimer = setInterval(() => {
+      // #1107: skip the tick (but don't tear the timer down) when the
+      // user has paused auto-refresh or the tab is hidden. An explicit
+      // refresh() call still fires via the manual path.
+      if (pollingShouldSkipTick()) return;
+      void sharedRefresh();
+    }, effectiveIntervalMs);
     return;
   }
 
   if (newEffective !== effectiveIntervalMs) {
     clearInterval(pollerTimer);
     effectiveIntervalMs = newEffective;
-    pollerTimer = setInterval(() => void sharedRefresh(), effectiveIntervalMs);
+    pollerTimer = setInterval(() => {
+      // #1107: skip the tick (but don't tear the timer down) when the
+      // user has paused auto-refresh or the tab is hidden. An explicit
+      // refresh() call still fires via the manual path.
+      if (pollingShouldSkipTick()) return;
+      void sharedRefresh();
+    }, effectiveIntervalMs);
   }
 }
 
@@ -195,7 +215,13 @@ function unregisterSubscriber(
   if (newEffective !== effectiveIntervalMs) {
     clearInterval(pollerTimer);
     effectiveIntervalMs = newEffective;
-    pollerTimer = setInterval(() => void sharedRefresh(), effectiveIntervalMs);
+    pollerTimer = setInterval(() => {
+      // #1107: skip the tick (but don't tear the timer down) when the
+      // user has paused auto-refresh or the tab is hidden. An explicit
+      // refresh() call still fires via the manual path.
+      if (pollingShouldSkipTick()) return;
+      void sharedRefresh();
+    }, effectiveIntervalMs);
   }
 }
 

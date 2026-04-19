@@ -2,6 +2,7 @@ import { onMounted, onUnmounted, ref, unref, watch } from "vue";
 import type { Ref } from "vue";
 import { apiGet, ApiError } from "../api/client";
 import { useTeam } from "./useTeam";
+import { pollingShouldSkipTick } from "./usePollingControl";
 
 // Generic per-agent fan-out + polling. Hits /api/agents/<name>/<endpoint> for
 // every team member in parallel, tags each item with its source agent name,
@@ -156,7 +157,11 @@ export function useAgentFanout<T>(opts: UseAgentFanoutOptions) {
 
   onMounted(() => {
     void refresh();
-    timer = setInterval(() => void refresh(), intervalMs);
+    timer = setInterval(() => {
+      // #1107: skip ticks when polling is paused or the tab is hidden.
+      if (pollingShouldSkipTick()) return;
+      void refresh();
+    }, intervalMs);
   });
 
   // Re-fetch when the shared team directory changes (agent added/removed).

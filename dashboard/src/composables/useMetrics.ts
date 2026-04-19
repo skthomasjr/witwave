@@ -1,6 +1,7 @@
 import { computed, onMounted, onUnmounted, ref, watch, type Ref } from "vue";
 import { apiGet, ApiError } from "../api/client";
 import { mergeFamilies, parseProm, type FamilyMap } from "../utils/prometheus";
+import { pollingShouldSkipTick } from "./usePollingControl";
 
 // Polls /api/agents/<name>/metrics for each team member, parses the
 // Prometheus text into per-agent FamilyMaps, and exposes a merged
@@ -179,7 +180,12 @@ export function useMetrics(options: UseMetricsOptions = {}) {
   function installTimer(ms: number): void {
     clearTimer();
     if (ms > 0) {
-      timer = setInterval(() => void refresh(), ms);
+      timer = setInterval(() => {
+        // #1107: skip ticks while paused or tab hidden. Keeps the timer
+        // running so resume is immediate on next tick.
+        if (pollingShouldSkipTick()) return;
+        void refresh();
+      }, ms);
     }
   }
 

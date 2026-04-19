@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { RouterLink, RouterView } from "vue-router";
 import { useHealth } from "./composables/useHealth";
+import { usePollingControl } from "./composables/usePollingControl";
 
 // App shell. Simple button-style nav matching the legacy ui/ pattern —
 // compact, dark-surface, one entry per view. Status dot in the header
@@ -27,6 +28,10 @@ const navItems: NavItem[] = [
 ];
 
 const { state, detail } = useHealth();
+// Global pause toggle (#1107). Setting `paused=true` tells every polling
+// composable to skip its tick; the tab-visibility guard auto-pauses when
+// the tab isn't visible so background tabs don't spam fan-out requests.
+const { paused, visible, toggle: togglePolling } = usePollingControl();
 </script>
 
 <template>
@@ -72,6 +77,29 @@ const { state, detail } = useHealth();
                   : "offline"
         }}
       </span>
+      <button
+        class="pause-toggle"
+        type="button"
+        :class="{ 'is-paused': paused, 'is-hidden': !visible }"
+        :aria-pressed="paused"
+        :title="
+          paused
+            ? 'Auto-refresh paused — click to resume'
+            : visible
+              ? 'Auto-refresh on — click to pause'
+              : 'Auto-refresh paused (tab hidden)'
+        "
+        data-testid="header-pause-toggle"
+        @click="togglePolling"
+      >
+        <i
+          :class="paused || !visible ? 'pi pi-pause' : 'pi pi-play'"
+          aria-hidden="true"
+        />
+        <span class="pause-label">
+          {{ paused ? "paused" : !visible ? "hidden" : "live" }}
+        </span>
+      </button>
       <span class="version" data-testid="dashboard-version">v0.1.0-alpha</span>
     </header>
     <main id="app-main" class="app-main" tabindex="-1">
@@ -185,6 +213,40 @@ const { state, detail } = useHealth();
 
 .version {
   color: var(--nyx-dim);
+  font-size: 11px;
+}
+
+.pause-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: 1px solid var(--nyx-border);
+  border-radius: var(--nyx-radius);
+  color: var(--nyx-dim);
+  cursor: pointer;
+  padding: 3px 8px;
+  font-family: var(--nyx-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  transition: color 0.12s, background 0.12s, border-color 0.12s;
+}
+
+.pause-toggle:hover {
+  color: var(--nyx-text);
+  background: var(--nyx-bg);
+}
+
+.pause-toggle.is-paused {
+  color: var(--nyx-yellow);
+  border-color: var(--nyx-yellow);
+}
+
+.pause-toggle.is-hidden {
+  color: var(--nyx-muted);
+}
+
+.pause-label {
   font-size: 11px;
 }
 
