@@ -82,6 +82,11 @@ class TaskItem:
     # When False, the task is listed in /tasks for dashboard visibility
     # but no schedule is armed. Flipping enabled:true triggers a reload.
     enabled: bool = True
+    # Fire bookkeeping exposed via /tasks and the #1086 discovery doc
+    # (#1087). Epoch seconds — None when never computed / fired.
+    next_fire: float | None = field(default=None, compare=False)
+    last_fire: float | None = field(default=None, compare=False)
+    last_success: float | None = field(default=None, compare=False)
 
 
 # Sentinel distinguishing "file parsed cleanly but is disabled" from "parse
@@ -403,8 +408,10 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
 
             prompt = resolve_prompt_env(f"Task: {item.name}\n\n{item.content}")
             _task_start = time.monotonic()
+            _fire_ts = time.time()
+            item.last_fire = _fire_ts  # #1087
             if harness_sched_task_item_last_run_timestamp_seconds is not None:
-                harness_sched_task_item_last_run_timestamp_seconds.labels(name=item.name).set(time.time())
+                harness_sched_task_item_last_run_timestamp_seconds.labels(name=item.name).set(_fire_ts)
             message = Message(prompt=prompt, session_id=session_id, kind=f"task:{item.name}", model=item.model, backend_id=item.backend_id, consensus=item.consensus, max_tokens=item.max_tokens)
             _send_task = asyncio.ensure_future(bus.send(message))
 
@@ -419,8 +426,10 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
                 harness_sched_task_duration_seconds.labels(name=item.name).observe(time.monotonic() - _task_start)
             if harness_sched_task_runs_total is not None:
                 harness_sched_task_runs_total.labels(name=item.name, status="success").inc()
+            _success_ts = time.time()
+            item.last_success = _success_ts  # #1087
             if harness_sched_task_item_last_success_timestamp_seconds is not None:
-                harness_sched_task_item_last_success_timestamp_seconds.labels(name=item.name).set(time.time())
+                harness_sched_task_item_last_success_timestamp_seconds.labels(name=item.name).set(_success_ts)
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -537,8 +546,10 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
                 lag = max(0.0, (_now_in_tz(item.tz) - scheduled_open).total_seconds())
                 if harness_sched_task_lag_seconds is not None:
                     harness_sched_task_lag_seconds.observe(lag)
+                _fire_ts = time.time()
+                item.last_fire = _fire_ts  # #1087
                 if harness_sched_task_item_last_run_timestamp_seconds is not None:
-                    harness_sched_task_item_last_run_timestamp_seconds.labels(name=item.name).set(time.time())
+                    harness_sched_task_item_last_run_timestamp_seconds.labels(name=item.name).set(_fire_ts)
 
                 from prompt_env import resolve_prompt_env  # noqa: E402 — scoped import keeps startup simple
 
@@ -572,8 +583,10 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
                         harness_sched_task_duration_seconds.labels(name=item.name).observe(time.monotonic() - _task_start)
                     if harness_sched_task_runs_total is not None:
                         harness_sched_task_runs_total.labels(name=item.name, status="success").inc()
+                    _success_ts = time.time()
+                    item.last_success = _success_ts  # #1087
                     if harness_sched_task_item_last_success_timestamp_seconds is not None:
-                        harness_sched_task_item_last_success_timestamp_seconds.labels(name=item.name).set(time.time())
+                        harness_sched_task_item_last_success_timestamp_seconds.labels(name=item.name).set(_success_ts)
 
                 except asyncio.CancelledError:
                     if _send_task is not None and not _send_task.done():
@@ -706,6 +719,11 @@ class TaskRunner:
                 "end": item.end.isoformat() if item.end else None,
                 "running": item.running,
                 "enabled": item.enabled,
+                # #1087 — fire bookkeeping (epoch seconds, None when
+                # never computed / fired).
+                "next_fire": item.next_fire,
+                "last_fire": item.last_fire,
+                "last_success": item.last_success,
             })
         return result
 

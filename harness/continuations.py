@@ -78,6 +78,11 @@ class ContinuationItem:
     # dashboard visibility but does not subscribe to upstream events —
     # no fires. Flipping enabled:true re-arms on reload.
     enabled: bool = True
+    # Fire bookkeeping surfaced on /continuations (#1087). Epoch
+    # seconds; None = never fired. next_fire stays None for
+    # continuations because they're reactive — no cron schedule.
+    last_fire: float | None = field(default=None, compare=False)
+    last_success: float | None = field(default=None, compare=False)
 
 
 def parse_continuation_file(path: str) -> "ContinuationItem | object | None":
@@ -199,6 +204,7 @@ async def _fire(
 
     prompt = resolve_prompt_env(f"Continuation: {item.name}\n\n{item.content}")
     resolved_session = item.session_id or session_id
+    item.last_fire = time.time()  # #1087
     try:
         # Propagate the upstream trace_context (#784) so the continuation
         # span joins the same trace as its originating
@@ -217,6 +223,7 @@ async def _fire(
         ))
         if harness_continuation_runs_total is not None:
             harness_continuation_runs_total.labels(name=item.name, status="success").inc()
+        item.last_success = time.time()  # #1087
         logger.info(f"Continuation '{item.name}' completed successfully. Response: {response!r}")
     except Exception as e:
         if harness_continuation_runs_total is not None:
@@ -337,6 +344,11 @@ class ContinuationRunner:
                 "max_concurrent_fires": item.max_concurrent_fires,
                 "active_fires": len(self._fires_by_name.get(item.name, set())),
                 "enabled": item.enabled,
+                # #1087 — reactive runner has no next_fire, but the
+                # observed fire timestamps still answer "did it fire?".
+                "next_fire": None,
+                "last_fire": item.last_fire,
+                "last_success": item.last_success,
             })
         return result
 

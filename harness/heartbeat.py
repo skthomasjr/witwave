@@ -39,6 +39,27 @@ HEARTBEAT_STOP_JOIN_TIMEOUT = float(os.environ.get("HEARTBEAT_STOP_JOIN_TIMEOUT"
 # Sentinel token: heartbeat prompts should include this string to suppress response logging.
 HEARTBEAT_OK = "HEARTBEAT_OK"
 
+# Fire bookkeeping for /heartbeat snapshot responses (#1087). Epoch
+# seconds; None until populated by the first iteration / fire / success
+# respectively. These live at module level because the runner itself
+# is module-level (no runner instance to hang state off).
+next_fire: float | None = None
+last_fire: float | None = None
+last_success: float | None = None
+
+
+def snapshot() -> dict[str, float | None]:
+    """Return the current fire-schedule bookkeeping dict (#1087).
+
+    Intended for the /heartbeat HTTP handler to fold into its JSON
+    response.  Read-only snapshot — callers must not mutate.
+    """
+    return {
+        "next_fire": next_fire,
+        "last_fire": last_fire,
+        "last_success": last_success,
+    }
+
 
 def load_heartbeat() -> tuple[str, str, str | None, str | None, list[ConsensusEntry], int | None] | None:
     if not os.path.exists(HEARTBEAT_PATH):
@@ -123,6 +144,8 @@ async def _run_loop(
             anchor = now if last_scheduled is None else max(now, last_scheduled)
             next_run = croniter(schedule, anchor).get_next(datetime)
             last_scheduled = next_run
+            global next_fire
+            next_fire = next_run.timestamp()  # #1087
             delay = max(0.0, (next_run - now).total_seconds())
             logger.info(f"Heartbeat next run in {delay:.0f}s at {next_run.isoformat()}")
             try:
@@ -165,8 +188,11 @@ async def _run_loop(
                 continue
             if message.result is not None:
                 logger.info("Heartbeat firing.")
+                _fire_ts = time.time()
+                global last_fire
+                last_fire = _fire_ts  # #1087
                 if harness_heartbeat_last_run_timestamp_seconds is not None:
-                    harness_heartbeat_last_run_timestamp_seconds.set(time.time())
+                    harness_heartbeat_last_run_timestamp_seconds.set(_fire_ts)
                 try:
                     # Race the in-flight result against stop_event (#492). Shield
                     # the result future so asyncio.wait doesn't mark our local
@@ -192,8 +218,11 @@ async def _run_loop(
                         logger.info(f"Heartbeat response: {response}")
                     if harness_heartbeat_runs_total is not None:
                         harness_heartbeat_runs_total.labels(status="success").inc()
+                    _success_ts = time.time()
+                    global last_success
+                    last_success = _success_ts  # #1087
                     if harness_heartbeat_last_success_timestamp_seconds is not None:
-                        harness_heartbeat_last_success_timestamp_seconds.set(time.time())
+                        harness_heartbeat_last_success_timestamp_seconds.set(_success_ts)
                 except Exception as e:
                     logger.error(f"Heartbeat executor error: {e}")
                     if harness_heartbeat_runs_total is not None:

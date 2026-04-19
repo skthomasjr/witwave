@@ -61,6 +61,13 @@ class JobItem:
     # no cron/run-once task is created. Flipping enabled:true in the md
     # frontmatter triggers a reload and the scheduler registers it.
     enabled: bool = True
+    # Timestamps surfaced via /jobs and /.well-known/agent-runs.json (#1087).
+    # Populated by the cron loop and _execute_job respectively so dashboards
+    # can render 'when next / when last?' without cross-referencing cron
+    # strings. All three are Unix epoch seconds (None = never).
+    next_fire: float | None = field(default=None, compare=False)
+    last_fire: float | None = field(default=None, compare=False)
+    last_success: float | None = field(default=None, compare=False)
 
 
 # Sentinel distinguishing "file parsed cleanly but is disabled" from
@@ -170,8 +177,10 @@ async def _execute_job(item: JobItem, bus: MessageBus, semaphore: asyncio.Semaph
         logger.info(f"Job '{item.name}' firing.")
         _job_start = time.monotonic()
         message = Message(prompt=prompt, session_id=item.session_id, kind=f"job:{item.name}", model=item.model, backend_id=item.backend_id, consensus=item.consensus, max_tokens=item.max_tokens)
+        _fire_ts = time.time()
+        item.last_fire = _fire_ts  # #1087 — surface last_fire on /jobs snapshot
         if harness_job_item_last_run_timestamp_seconds is not None:
-            harness_job_item_last_run_timestamp_seconds.labels(name=item.name).set(time.time())
+            harness_job_item_last_run_timestamp_seconds.labels(name=item.name).set(_fire_ts)
         _send_task = asyncio.ensure_future(bus.send(message))
 
         def _log_send_result(t: asyncio.Task, _name: str = item.name) -> None:
@@ -185,8 +194,10 @@ async def _execute_job(item: JobItem, bus: MessageBus, semaphore: asyncio.Semaph
             harness_job_duration_seconds.labels(name=item.name).observe(time.monotonic() - _job_start)
         if harness_job_runs_total is not None:
             harness_job_runs_total.labels(name=item.name, status="success").inc()
+        _success_ts = time.time()
+        item.last_success = _success_ts  # #1087 — surface last_success on /jobs snapshot
         if harness_job_item_last_success_timestamp_seconds is not None:
-            harness_job_item_last_success_timestamp_seconds.labels(name=item.name).set(time.time())
+            harness_job_item_last_success_timestamp_seconds.labels(name=item.name).set(_success_ts)
     except asyncio.CancelledError:
         if _send_task is not None and not _send_task.done():
             logger.info(f"Job '{item.name}' cancelled — awaiting in-flight bus.send before clearing running flag.")
@@ -246,6 +257,8 @@ async def run_job(item: JobItem, bus: MessageBus, semaphore: asyncio.Semaphore |
         anchor = now if last_scheduled is None else max(now, last_scheduled)
         next_run = croniter(item.schedule, anchor).get_next(datetime)
         last_scheduled = next_run
+        # Expose the next scheduled fire on the snapshot payload (#1087).
+        item.next_fire = next_run.timestamp()
         delay = max(0.0, (next_run - now).total_seconds())
         logger.info(f"Job '{item.name}' next run in {delay:.0f}s at {next_run.isoformat()}")
         await asyncio.sleep(delay)
@@ -329,6 +342,12 @@ class JobRunner:
                 "max_tokens": item.max_tokens,
                 "running": item.running,
                 "enabled": item.enabled,
+                # Fire-schedule bookkeeping (#1087). None when the runner
+                # hasn't yet computed the next cron tick or the job has
+                # never fired, respectively. Epoch seconds.
+                "next_fire": item.next_fire,
+                "last_fire": item.last_fire,
+                "last_success": item.last_success,
             })
         return result
 

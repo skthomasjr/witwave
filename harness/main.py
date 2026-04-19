@@ -1422,11 +1422,23 @@ async def main():
         except Exception as exc:
             logger.warning("heartbeat_handler: failed to load HEARTBEAT.md: %s", exc)
             loaded = None
+        import heartbeat as _hb_module  # late import — matches load_heartbeat pattern
+        _fire_snap = _hb_module.snapshot() if hasattr(_hb_module, "snapshot") else {}
         if not loaded:
-            return JSONResponse({"enabled": False, "schedule": None, "model": None, "backend_id": None, "consensus": [], "max_tokens": None})
+            return JSONResponse({
+                "enabled": False, "schedule": None, "model": None,
+                "backend_id": None, "consensus": [], "max_tokens": None,
+                **_fire_snap,
+            })
         schedule, _content, model, backend_id, consensus, max_tokens = loaded
         from dataclasses import asdict
-        return JSONResponse({"enabled": True, "schedule": schedule, "model": model, "backend_id": backend_id, "consensus": [asdict(e) for e in consensus], "max_tokens": max_tokens})
+        return JSONResponse({
+            "enabled": True, "schedule": schedule, "model": model,
+            "backend_id": backend_id, "consensus": [asdict(e) for e in consensus],
+            "max_tokens": max_tokens,
+            # #1087 — fire bookkeeping for dashboard "when next?" column.
+            **_fire_snap,
+        })
 
     async def triggers_handler(request: Request) -> JSONResponse:
         """Return a snapshot of currently registered trigger endpoints."""
