@@ -27,7 +27,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # the full runtime. Only what the module touches at import time is stubbed.
 # ---------------------------------------------------------------------------
 _HERE = Path(__file__).resolve().parent
-_REPO_ROOT = _HERE.parent
+# _HERE is backends/gemini/ — the repo root is two levels up, not one.
+_REPO_ROOT = _HERE.parent.parent
 sys.path.insert(0, str(_HERE))
 sys.path.insert(0, str(_REPO_ROOT / "shared"))
 
@@ -43,6 +44,10 @@ _log_tmp_dir = _tempfile.mkdtemp(prefix="gemini-test-")
 os.environ.setdefault("CONVERSATION_LOG", os.path.join(_log_tmp_dir, "conversation.jsonl"))
 os.environ.setdefault("TRACE_LOG", os.path.join(_log_tmp_dir, "tool-activity.jsonl"))
 os.environ.setdefault("SESSION_STORE_DIR", os.path.join(_log_tmp_dir, "sessions"))
+# Widen the MCP command allow-list so the stdio fixture (/bin/echo) passes
+# the #730 / #862 guard in apply_mcp_config. The test only verifies lifespan
+# plumbing — the allow-list itself has dedicated coverage elsewhere.
+os.environ.setdefault("MCP_ALLOWED_COMMAND_PREFIXES", "/bin/echo,/usr/bin/,/bin/")
 
 
 def _install_stub_module(name: str, module: types.ModuleType) -> None:
