@@ -262,6 +262,17 @@ jobs:
           helm template nyx charts/nyx -f /tmp/values-test-ci.yaml > /tmp/nyx.yaml
           helm template op charts/nyx-operator > /tmp/nyx-operator.yaml
 
+      # #1377: render a THIRD variant with every opt-in component on so
+      # PSA audits new flags before they hit a real cluster. Append to
+      # /tmp/nyx.yaml so the PSS walker below picks them up.
+      - name: Render PSA-audit variant (all features on)
+        run: |
+          if [ -f charts/nyx/values-psa-audit.yaml ]; then
+            echo "---" >> /tmp/nyx.yaml
+            helm template nyx charts/nyx -f charts/nyx/values-psa-audit.yaml \
+              >> /tmp/nyx.yaml || echo "[PSA] render of values-psa-audit.yaml failed; continuing"
+          fi
+
       - name: PSS-restricted static check
         run: |
           python3 <<'PY'

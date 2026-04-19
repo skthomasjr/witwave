@@ -184,6 +184,16 @@ WEBHOOK_RETRY_BYTES_BUDGET = int(os.environ.get("WEBHOOK_RETRY_BYTES_BUDGET", st
 _webhook_retry_bytes_inflight: int = 0
 _webhook_retry_bytes_lock = asyncio.Lock()
 
+# #1385: per-subscription budget so one pathological sub can't starve
+# others. Default is 25% of the global budget; override via
+# WEBHOOK_RETRY_BYTES_PER_SUB. Counters live here + access is guarded
+# by the same lock as the global counter.
+WEBHOOK_RETRY_BYTES_PER_SUB = int(
+    os.environ.get("WEBHOOK_RETRY_BYTES_PER_SUB",
+                   str(max(1, WEBHOOK_RETRY_BYTES_BUDGET // 4)))
+)
+_webhook_retry_bytes_per_sub: dict[str, int] = {}
+
 # HTTP status codes that are safe to retry — mirrors the inbound A2A pattern
 # at backends/a2a.py:35 (#598). 408 (Request Timeout) and 429 (Too Many
 # Requests) are the only legitimately retryable 4xx codes; everything else in
@@ -1236,6 +1246,22 @@ async def deliver(
         _retry_bytes = len(body_bytes)
         if WEBHOOK_RETRY_BYTES_BUDGET > 0:
             async with _webhook_retry_bytes_lock:
+                # #1385: per-sub ceiling checked FIRST so one pathological
+                # sub can't consume the global budget and starve peers.
+                _sub_inflight = _webhook_retry_bytes_per_sub.get(sub.name, 0)
+                if (WEBHOOK_RETRY_BYTES_PER_SUB > 0
+                        and _sub_inflight + _retry_bytes > WEBHOOK_RETRY_BYTES_PER_SUB):
+                    logger.warning(
+                        f"Webhook '{sub.name}': retry dropped — per-sub retry "
+                        f"bytes in-flight ({_sub_inflight}) + this body "
+                        f"({_retry_bytes}) would exceed "
+                        f"WEBHOOK_RETRY_BYTES_PER_SUB={WEBHOOK_RETRY_BYTES_PER_SUB}"
+                    )
+                    if harness_webhooks_delivery_total is not None:
+                        harness_webhooks_delivery_total.labels(
+                            result="shed_retry_bytes_per_sub", subscription=sub.name
+                        ).inc()
+                    return
                 if _webhook_retry_bytes_inflight + _retry_bytes > WEBHOOK_RETRY_BYTES_BUDGET:
                     logger.warning(
                         f"Webhook '{sub.name}': retry dropped — retry bytes in-flight "
@@ -1248,6 +1274,7 @@ async def deliver(
                         ).inc()
                     return
                 _webhook_retry_bytes_inflight += _retry_bytes
+                _webhook_retry_bytes_per_sub[sub.name] = _sub_inflight + _retry_bytes
 
         async def _tracked_retry() -> None:
             await registered.wait()
@@ -1293,6 +1320,13 @@ async def deliver(
                         _webhook_retry_bytes_inflight = max(
                             0, _webhook_retry_bytes_inflight - _retry_bytes
                         )
+                        # #1385: release the per-sub slot too.
+                        _cur = _webhook_retry_bytes_per_sub.get(sub.name, 0)
+                        _new = max(0, _cur - _retry_bytes)
+                        if _new == 0:
+                            _webhook_retry_bytes_per_sub.pop(sub.name, None)
+                        else:
+                            _webhook_retry_bytes_per_sub[sub.name] = _new
 
         _retry_task = asyncio.ensure_future(_tracked_retry())
         # Notify the caller (e.g. WebhookRunner.fire) so it can register the

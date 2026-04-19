@@ -62,6 +62,16 @@ rbac:
   # all credentials are pre-provisioned Secrets referenced via
   # existingSecret — this removes the biggest post-exploitation primitive
   # from the operator's trust boundary.
+  #
+  # #1372 WARNING: setting secretsWrite=false while any NyxAgent uses
+  # BackendCredentialsSpec.Secrets (even with
+  # acknowledgeInsecureInline=true) produces a permanent reconcile
+  # loop — the operator will 403 on every Secret Create/Patch and
+  # never reach Ready. There is no pre-flight admission check for this
+  # combination; operators must either flip secretsWrite=true OR migrate
+  # all inline credentials to existingSecret references before setting
+  # secretsWrite=false. A future webhook SelfSubjectAccessReview check
+  # is tracked.
   secretsWrite: true
 
 # Leader election — required when replicaCount > 1 to ensure a single
