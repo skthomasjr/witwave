@@ -70,6 +70,10 @@ WORKER_MAX_RESTARTS = int(os.environ.get("WORKER_MAX_RESTARTS", "5"))
 CONVERSATIONS_AUTH_TOKEN = os.environ.get("CONVERSATIONS_AUTH_TOKEN", "")
 
 _ready: bool = False
+# #1368: surface boot-degraded state on /health so operators can alert
+# on backends that came up with empty MCP/agent_md/hooks after the
+# perform_initial_loads timeout path.
+_boot_degraded_reason: str | None = None
 _startup_mono: float = 0.0
 start_time: datetime = datetime.now(timezone.utc)
 
@@ -118,13 +122,18 @@ async def health(request: Request) -> JSONResponse:
         # Prometheus metric labels (which use AGENT_OWNER as `agent`) can
         # join cleanly. `agent` preserves the container-local name for
         # backwards compat; `agent_owner` + `agent_id` match metric labels.
-        return JSONResponse({
+        _resp = {
             "status": "ok",
             "agent": AGENT_NAME,
             "agent_owner": AGENT_OWNER,
             "agent_id": AGENT_ID,
             "uptime_seconds": elapsed,
-        })
+        }
+        # #1368: surface boot-degraded state so operators alert on
+        # backends that came up with empty MCP/agent_md/hooks.
+        if _boot_degraded_reason is not None:
+            _resp["boot_degraded"] = _boot_degraded_reason
+        return JSONResponse(_resp)
     return JSONResponse({"status": "starting"}, status_code=503)
 
 
@@ -187,28 +196,40 @@ async def _sub_app_lifespan(app):
         yield
     finally:
         do_shutdown.set()
+        # #1370: collect shutdown + task exceptions separately and raise
+        # as ExceptionGroup so operators see BOTH when a cascading
+        # shutdown fails on multiple legs. Previously only the first
+        # exception propagated and the underlying cause was masked.
+        _errs: list[BaseException] = []
         try:
             await shutdown
         except Exception as exc:
             logger.warning("Sub-app lifespan shutdown error: %s", exc)
-        # Drain the _run task, then propagate any exception it captured
-        # so the main lifespan fails loud instead of silently swallowing
-        # an error inside the sub-app's shutdown path (#1197).
+            _errs.append(exc)
         try:
             await task
-        except Exception:
-            # The _run wrapper catches exceptions and records them on the
-            # task; a direct re-raise here is uncommon but don't let it
-            # mask the check below.
-            pass
+        except Exception as exc:
+            _errs.append(exc)
         _task_exc: BaseException | None = None
         if task.done() and not task.cancelled():
             try:
                 _task_exc = task.exception()
             except (asyncio.CancelledError, asyncio.InvalidStateError):
                 _task_exc = None
-        if _task_exc is not None:
-            raise _task_exc
+        if _task_exc is not None and _task_exc not in _errs:
+            _errs.append(_task_exc)
+        if len(_errs) == 1:
+            raise _errs[0]
+        elif len(_errs) > 1:
+            # ExceptionGroup is py3.11+; fall back to first exception with
+            # others chained via __context__ on older runtimes.
+            try:
+                raise ExceptionGroup("sub-app lifespan errors", _errs)  # noqa: F821
+            except NameError:
+                _primary = _errs[0]
+                for _e in _errs[1:]:
+                    logger.error("sub-app lifespan additional error: %r", _e)
+                raise _primary
 
 
 async def _guarded(coro_fn, *args, restart_delay: float = 5.0, critical: bool = False) -> None:
@@ -802,6 +823,10 @@ async def main():
     _INITIAL_LOADS_TIMEOUT_S = float(
         os.environ.get("INITIAL_LOADS_TIMEOUT_SECONDS", "10")
     )
+    # #1368: track boot-degraded state so operators can alert on
+    # backends that came up with empty MCP/agent_md/hooks. Dashboard
+    # reads this via /health.
+    global _boot_degraded_reason
     try:
         await asyncio.wait_for(
             executor.perform_initial_loads(),
@@ -813,8 +838,10 @@ async def main():
             "MCP/agent_md/hooks watchers will fill in asynchronously (#985).",
             _INITIAL_LOADS_TIMEOUT_S,
         )
+        _boot_degraded_reason = "initial_loads_timeout"
     except Exception as exc:
         logger.error("perform_initial_loads failed: %r — watchers will retry", exc)
+        _boot_degraded_reason = f"initial_loads_error:{type(exc).__name__}"
 
     # Start MCP watcher tasks
     # These watchers (hooks/MCP/agent_md reloaders) are required for correct

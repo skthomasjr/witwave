@@ -39,8 +39,10 @@ jobs:
       # goreleaser needs contents:write to create the release + upload
       # assets. packages:write reserved for future container-based
       # goreleaser steps if we ever add one.
+      # #1357: id-token:write grants OIDC to cosign keyless signing.
       contents: write
       packages: write
+      id-token: write
 
     steps:
       - name: Checkout
@@ -55,6 +57,14 @@ jobs:
           go-version-file: clients/ww/go.mod
           cache: true
           cache-dependency-path: clients/ww/go.sum
+
+      # #1357: install cosign so goreleaser's sign stanza can emit
+      # keyless signatures + SBOM attestations.
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Install syft (for SBOM)
+        uses: anchore/sbom-action/download-syft@v0
 
       - name: Run goreleaser
         uses: goreleaser/goreleaser-action@v6

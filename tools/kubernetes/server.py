@@ -327,11 +327,20 @@ def _load_kube_config() -> None:
 # not needed because neither helper awaits.
 _api_lock = threading.Lock()
 _dyn_lock = threading.Lock()
+# #1371: composite lock acquired during _reload_kube_clients so a 401
+# retry can't race concurrent first-touches in _api()/_dyn() that
+# might otherwise build a fresh ApiClient against the stale config.
+_reload_lock = threading.Lock()
 
 
 def _api() -> client.ApiClient:
     global _api_client
     if _api_client is None:
+        # #1371: take the reload lock in SHARED mode conceptually — reader
+        # path; but threading.Lock is exclusive-only, so briefly acquire
+        # it to wait for any in-progress reload to finish.
+        with _reload_lock:
+            pass
         with _api_lock:
             if _api_client is None:
                 _api_client = client.ApiClient()
@@ -341,6 +350,9 @@ def _api() -> client.ApiClient:
 def _dyn() -> dynamic.DynamicClient:
     global _dyn_client
     if _dyn_client is None:
+        # #1371: same wait-for-reload pattern as _api().
+        with _reload_lock:
+            pass
         with _dyn_lock:
             if _dyn_client is None:
                 _dyn_client = dynamic.DynamicClient(_api())
@@ -348,11 +360,18 @@ def _dyn() -> dynamic.DynamicClient:
 
 
 def _reload_kube_clients() -> None:
-    """Drop cached ApiClient/DynamicClient and reload kube config (#1082)."""
+    """Drop cached ApiClient/DynamicClient and reload kube config (#1082).
+
+    #1371: hold the composite reload lock across the nil-assign and
+    the _load_kube_config() call so a concurrent _api()/_dyn() call
+    waits for the reload to complete instead of constructing a fresh
+    client against the stale config.
+    """
     global _api_client, _dyn_client
-    _api_client = None
-    _dyn_client = None
-    _load_kube_config()
+    with _reload_lock:
+        _api_client = None
+        _dyn_client = None
+        _load_kube_config()
 
 
 # TODO(#1208): describe() resource.get, describe() list_namespaced_event /

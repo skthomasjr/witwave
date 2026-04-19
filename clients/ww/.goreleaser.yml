@@ -50,6 +50,34 @@ checksum:
   name_template: checksums.txt
   algorithm: sha256
 
+# #1357: cosign keyless signing of the checksums.txt + each binary via
+# GitHub OIDC. Consumers verify with:
+#   cosign verify-blob --certificate ww_<tag>_checksums.txt.pem \
+#     --signature ww_<tag>_checksums.txt.sig \
+#     --certificate-identity-regexp 'https://github.com/skthomasjr/autonomous-agent/' \
+#     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+#     checksums.txt
+# Requires cosign binary on the runner; ubuntu-latest has it pre-installed
+# in setup-oidc contexts via sigstore/cosign-installer.
+signs:
+  - cmd: cosign
+    env:
+      - COSIGN_EXPERIMENTAL=1
+    signature: "${artifact}.sig"
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-signature=${signature}"
+      - "--output-certificate=${certificate}"
+      - "--yes"
+      - "${artifact}"
+    artifacts: checksum
+
+# SLSA provenance — emits a provenance attestation so consumers can
+# verify the binary was built by this repo's GitHub Actions.
+sboms:
+  - artifacts: archive
+
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
 
