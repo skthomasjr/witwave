@@ -888,7 +888,17 @@ func nyxPromptVolumesAndMounts(agent *nyxv1alpha1.NyxAgent, prompts []nyxv1alpha
 	var mounts []corev1.VolumeMount
 	for _, b := range bindings {
 		cmName := nyxPromptConfigMapName(b.prompt.Name, b.ref.Name)
-		volName := fmt.Sprintf("nyxprompt-%s", b.prompt.Name)
+		// #1338: include namespace AND a deterministic suffix hash so two
+		// NyxPrompts with the same name in different namespaces, or the
+		// same prompt binding twice with different FilenameSuffix values,
+		// don't produce duplicate Volume.Name entries (apiserver rejects).
+		_vhash := sha256.Sum256([]byte(b.prompt.Namespace + "/" + b.ref.FilenameSuffix))
+		volName := fmt.Sprintf("nyxprompt-%s-%s", b.prompt.Name, hex.EncodeToString(_vhash[:])[:8])
+		// Truncate to DNS-1123-label compatibility (63 chars max) — each
+		// Volume.Name must match that pattern.
+		if len(volName) > 63 {
+			volName = volName[:63]
+		}
 		filename := nyxPromptFilename(b.prompt, b.ref)
 		dir := nyxPromptMountDir(b.prompt.Spec.Kind)
 		if dir == "" {

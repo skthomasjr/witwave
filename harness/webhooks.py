@@ -1105,8 +1105,14 @@ async def deliver(
     # Propagate W3C trace context to webhook receivers (#468). Each outbound
     # delivery gets a fresh child span_id so retries/replays can be
     # distinguished downstream while staying correlated to the same trace_id.
-    if trace_context is not None:
-        headers["traceparent"] = trace_context.child().to_header()
+    #
+    # #1335: align priority with harness/backends/a2a.py — let OTel's active
+    # span inject the traceparent so receiver-side tracing links to the
+    # correct ancestor. Only fall back to the bare trace_context.child()
+    # carrier when OTel is disabled (inject_traceparent is a no-op then).
+    _bare_traceparent = (
+        trace_context.child().to_header() if trace_context is not None else ""
+    )
 
     # First delivery attempt — make one HTTP POST without holding a retry slot.
     # If it fails and retries are configured, schedule the next attempt as a
@@ -1125,14 +1131,12 @@ async def deliver(
             "http.url": url,
         },
     ) as _span:
-        # Stamp OTel traceparent into the outbound headers if enabled.
-        # When OTel is off, the trace_context carrier header set above
-        # remains in place unchanged (#469). Only stamp when no caller-
-        # supplied traceparent is present — otherwise we'd overwrite
-        # the forwarded trace_id with the harness's active span and
-        # break end-to-end correlation (#977).
-        if not headers.get("traceparent"):
-            inject_traceparent(headers)
+        # #1335: OTel wins when enabled (matches a2a.py). When OTel is
+        # disabled, inject_traceparent is a no-op and we fall back to the
+        # bare trace_context.child() carrier computed above.
+        inject_traceparent(headers)
+        if not headers.get("traceparent") and _bare_traceparent:
+            headers["traceparent"] = _bare_traceparent
         try:
             # TOCTOU re-check against DNS rebinding (#699). Revalidate
             # the resolved addresses immediately before the POST so an

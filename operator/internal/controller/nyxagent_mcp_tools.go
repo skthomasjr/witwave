@@ -230,11 +230,26 @@ func (r *NyxAgentReconciler) applyMCPToolDeployment(ctx context.Context, agent *
 						Name:            fmt.Sprintf("mcp-%s", tool),
 						Image:           imageRef(img, DefaultImageTag),
 						ImagePullPolicy: img.PullPolicy,
-						Ports: []corev1.ContainerPort{{
-							Name:          "http",
-							ContainerPort: mcpToolPort,
-							Protocol:      corev1.ProtocolTCP,
-						}},
+						Ports: []corev1.ContainerPort{
+							{
+								Name:          "http",
+								ContainerPort: mcpToolPort,
+								Protocol:      corev1.ProtocolTCP,
+							},
+							{
+								// #1339: metrics port for PodMonitor/ServiceMonitor
+								// discovery (chart parity).
+								Name:          "metrics",
+								ContainerPort: 9000,
+								Protocol:      corev1.ProtocolTCP,
+							},
+						},
+						// #1331: project MCP_TOOL_AUTH_TOKEN from
+						// AuthTokenSecretRef when set, or signal
+						// explicit dev-mode via MCP_TOOL_AUTH_DISABLED.
+						// #1339: also set METRICS_ENABLED + METRICS_PORT
+						// so the container's /metrics listener starts.
+						Env: mcpToolEnv(spec),
 						// Readiness probe posture (#1173): Kubernetes does
 						// NOT expand env vars inside HTTPGet.HTTPHeaders, so
 						// we can't stamp `Authorization: Bearer $(MCP_TOOL_AUTH_TOKEN)`
@@ -269,6 +284,38 @@ func (r *NyxAgentReconciler) applyMCPToolDeployment(ctx context.Context, agent *
 	// the MCP render path too; the agent controller owns only the fields
 	// it stamps, leaving HPA / GitOps free to claim others.
 	return applySSA(ctx, r.Client, desired)
+}
+
+// mcpToolEnv builds the env slice for an MCP tool container. Projects
+// MCP_TOOL_AUTH_TOKEN from AuthTokenSecretRef when set; or stamps
+// MCP_TOOL_AUTH_DISABLED=true when the operator explicitly opted out.
+// When neither is configured, returns nil — mcp_auth middleware then
+// fails closed on every request (visible via backend_mcp_command_rejected_total).
+func mcpToolEnv(spec *nyxv1alpha1.MCPToolSpec) []corev1.EnvVar {
+	if spec == nil {
+		return nil
+	}
+	var env []corev1.EnvVar
+	if spec.AuthTokenSecretRef != nil {
+		env = append(env, corev1.EnvVar{
+			Name: "MCP_TOOL_AUTH_TOKEN",
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: spec.AuthTokenSecretRef,
+			},
+		})
+	} else if spec.AuthDisabled {
+		env = append(env, corev1.EnvVar{
+			Name:  "MCP_TOOL_AUTH_DISABLED",
+			Value: "true",
+		})
+	}
+	// #1339: enable the metrics listener so Prometheus scrape via
+	// PodMonitor/ServiceMonitor finds operator-managed MCP tools too.
+	env = append(env,
+		corev1.EnvVar{Name: "METRICS_ENABLED", Value: "true"},
+		corev1.EnvVar{Name: "METRICS_PORT", Value: "9000"},
+	)
+	return env
 }
 
 func (r *NyxAgentReconciler) applyMCPToolService(ctx context.Context, agent *nyxv1alpha1.NyxAgent, tool string) error {

@@ -62,7 +62,8 @@ TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/tool-activity.jsonl")
 # Audit rows would share the same file with event_type='tool_audit' once
 # a PostToolUse hook path is wired in (AFC runs inside the SDK — see #640).
 AGENT_OWNER = os.environ.get("AGENT_OWNER", AGENT_NAME)
-AGENT_ID = os.environ.get("AGENT_ID", "gemini")
+# #1340: fall back to HOSTNAME for uniqueness (see claude comment).
+AGENT_ID = os.environ.get("AGENT_ID") or os.environ.get("HOSTNAME") or "gemini"
 _BACKEND_ID = "gemini"
 metrics_enabled = bool(os.environ.get("METRICS_ENABLED"))
 WORKER_MAX_RESTARTS = int(os.environ.get("WORKER_MAX_RESTARTS", "5"))
@@ -157,9 +158,12 @@ async def health(request: Request) -> JSONResponse:
     }
     if _ready:
         elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+        # #1341: surface agent_owner + agent_id for metric-label parity.
         return JSONResponse({
             "status": "ok",
             "agent": AGENT_NAME,
+            "agent_owner": AGENT_OWNER,
+            "agent_id": AGENT_ID,
             "uptime_seconds": elapsed,
             **subsystem,
         })
@@ -553,21 +557,22 @@ async def main():
                 _raw_sid = "".join(
                     c for c in str(arguments.get("session_id") or "").strip()[:256] if c >= " "
                 )
-                _explicit_caller_id = arguments.get("caller_id")
-                if isinstance(_explicit_caller_id, str) and _explicit_caller_id:
-                    _caller_identity: str | None = _explicit_caller_id
-                else:
-                    _bearer_header = request.headers.get("Authorization", "")
-                    _bearer_token = (
-                        _bearer_header[len("Bearer "):]
-                        if _bearer_header.startswith("Bearer ")
-                        else ""
-                    )
-                    _caller_identity = (
-                        hashlib.sha256(_bearer_token.encode("utf-8")).hexdigest()
-                        if _bearer_token
-                        else None
-                    )
+                # #1333: caller_identity is derived from the bearer ONLY
+                # (parity with claude/codex). The previous code accepted
+                # arguments["caller_id"] which let any bearer-holding
+                # caller hijack another caller's session binding, defeating
+                # #935/#941 HMAC binding.
+                _bearer_header = request.headers.get("Authorization", "")
+                _bearer_token = (
+                    _bearer_header[len("Bearer "):]
+                    if _bearer_header.startswith("Bearer ")
+                    else ""
+                )
+                _caller_identity: str | None = (
+                    hashlib.sha256(_bearer_token.encode("utf-8")).hexdigest()
+                    if _bearer_token
+                    else None
+                )
                 session_id = derive_session_id(_raw_sid, caller_identity=_caller_identity)
                 # Acquire the MCP stack under refcount for the entire
                 # call (#946). The previous snapshot-only pattern could

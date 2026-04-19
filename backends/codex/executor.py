@@ -879,8 +879,19 @@ def _build_mcp_servers(mcp_config: dict) -> list:
                 servers.append(MCPServerStdio(name=name, params=params))
             elif "url" in cfg:
                 params = {"url": cfg["url"]}
-                if "headers" in cfg:
-                    raw_headers = dict(cfg["headers"])
+                # #1332: if the entry has no Authorization header and an
+                # MCP_TOOL_AUTH_TOKEN env var is set, auto-stamp a Bearer
+                # header so operators don't have to embed the token in
+                # mcp.json. Explicit headers still win.
+                raw_headers = dict(cfg.get("headers") or {})
+                _mcp_env_token = os.environ.get("MCP_TOOL_AUTH_TOKEN", "").strip()
+                _has_auth = any(
+                    isinstance(k, str) and k.strip().lower() == "authorization"
+                    for k in raw_headers
+                )
+                if _mcp_env_token and not _has_auth:
+                    raw_headers["Authorization"] = f"Bearer {_mcp_env_token}"
+                if raw_headers:
                     # #1056: restrict allowed header names to a safe set so
                     # mcp.json can't inject arbitrary request headers
                     # (Host override, Forwarded-For spoof, caller impersonation

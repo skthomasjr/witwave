@@ -1294,8 +1294,7 @@ async def main():
                     harness_triggers_requests_total.labels(method=request.method, code="503").inc()
                 return JSONResponse({"error": "overloaded"}, status_code=503)
             # _fire() owns the slot release from here on via its own
-            # finally block.
-            _scheduled_fire = True
+            # finally block. (#1344: dead _scheduled_fire removed.)
         except Exception as exc:
             trigger_runner._running.discard(endpoint)
             logger.error(f"Trigger '{item.name}': failed to schedule background task: {exc!r}")

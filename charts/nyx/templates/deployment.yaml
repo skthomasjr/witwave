@@ -595,15 +595,20 @@ spec:
             - name: METRICS_PORT
               value: {{ $backendMetricsPort | quote }}
             # Backend→harness transport for hook.decision events (#641).
-            # Points at the harness running in the same pod.  Empty string
+            # #1329: points at the harness metrics port because the
+            # receiving route /internal/events/hook-decision is bound
+            # to the dedicated metrics listener (#924) when
+            # metrics.enabled=true (the default). Prior default pointed
+            # at the app port and 404'd every POST.  Empty string
             # disables the POST cleanly; the in-process OTel span event
-            # emission from #633 still fires regardless.  HARNESS_EVENTS_AUTH_TOKEN
-            # is not set here — the backend falls back to TRIGGERS_AUTH_TOKEN
-            # (pass it through the agent's existing `env:` block on the harness
-            # and the backend's `env:`/`envFrom:` so both ends share the same
-            # secret), matching the harness-side env-var semantics.
+            # emission from #633 still fires regardless.
+            # #1330: HOOK_EVENTS_AUTH_TOKEN must be set on BOTH the
+            # harness (receiver) and the backend (sender) — the
+            # harness explicitly refuses a TRIGGERS_AUTH_TOKEN fallback
+            # (see harness/main.py line 266, related #700). Pass the
+            # shared secret via envFrom/SecretRef on both containers.
             - name: HARNESS_EVENTS_URL
-              value: http://localhost:{{ $harnessPort }}
+              value: http://localhost:{{ $harnessMetricsPort }}
             {{- if .model }}
             - name: BACKEND_MODEL
               value: {{ .model | quote }}

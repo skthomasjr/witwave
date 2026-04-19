@@ -83,6 +83,16 @@ class A2ABackend:
         self._auth_env = config.auth_env
         # Allow per-backend URL override via env var: A2A_URL_<ID_UPPERCASED>
         # e.g. for id "iris-claude" the env var is "A2A_URL_IRIS_CLAUDE"
+        # #1342: validate the id shape up-front. Without this, ids like
+        # "iris.claude" produce shell-invalid env-var names; and two ids
+        # that differ only in '-' vs '_' (iris-claude vs iris_claude)
+        # collide under the upper+replace mapping.
+        import re as _re
+        if not _re.fullmatch(r"[a-z0-9][a-z0-9-]*", config.id):
+            raise ValueError(
+                f"Backend id {config.id!r}: must match ^[a-z0-9][a-z0-9-]*$ so "
+                "the derived A2A_URL_<ID> env-var name is shell-safe."
+            )
         _env_var = "A2A_URL_" + config.id.upper().replace("-", "_")
         self._url = os.environ.get(_env_var) or config.url or ""
         if not self._url:

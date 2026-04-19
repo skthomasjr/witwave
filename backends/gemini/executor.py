@@ -2635,9 +2635,20 @@ class AgentExecutor(A2AAgentExecutor):
                                     from mcp.client.sse import sse_client
                                 except ImportError:
                                     sse_client = None  # type: ignore
+                                # #1332: auto-stamp Authorization: Bearer when
+                                # MCP_TOOL_AUTH_TOKEN is set and no explicit
+                                # header was supplied by the mcp.json entry.
+                                _headers = dict((cfg.get("headers") if isinstance(cfg, dict) else None) or {})
+                                _mcp_env_token = os.environ.get("MCP_TOOL_AUTH_TOKEN", "").strip()
+                                _has_auth = any(
+                                    isinstance(k, str) and k.strip().lower() == "authorization"
+                                    for k in _headers
+                                )
+                                if _mcp_env_token and not _has_auth:
+                                    _headers["Authorization"] = f"Bearer {_mcp_env_token}"
                                 if streamablehttp_client is not None:
                                     read, write, _ = await new_stack.enter_async_context(
-                                        streamablehttp_client(url_entry)
+                                        streamablehttp_client(url_entry, headers=_headers or None)
                                     )
                                 elif sse_client is not None:
                                     read, write = await new_stack.enter_async_context(

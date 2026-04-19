@@ -59,7 +59,11 @@ AGENT_VERSION = os.environ.get("AGENT_VERSION", "0.1.0")
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
 TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/tool-activity.jsonl")
 AGENT_OWNER = os.environ.get("AGENT_OWNER", AGENT_NAME)
-AGENT_ID = os.environ.get("AGENT_ID", "claude")
+# #1340: fall back to HOSTNAME for uniqueness instead of the literal
+# backend name; multiple agents (iris-claude/nova-claude/kira-claude)
+# with env misconfig would otherwise all report agent_id="claude" and
+# collide on cross-agent metric joins.
+AGENT_ID = os.environ.get("AGENT_ID") or os.environ.get("HOSTNAME") or "claude"
 _BACKEND_ID = "claude"
 metrics_enabled = bool(os.environ.get("METRICS_ENABLED"))
 WORKER_MAX_RESTARTS = int(os.environ.get("WORKER_MAX_RESTARTS", "5"))
@@ -110,7 +114,17 @@ async def health(request: Request) -> JSONResponse:
         backend_health_checks_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="health").inc()
     if _ready:
         elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
-        return JSONResponse({"status": "ok", "agent": AGENT_NAME, "uptime_seconds": elapsed})
+        # #1341: expose both fields so consumers that cross-reference with
+        # Prometheus metric labels (which use AGENT_OWNER as `agent`) can
+        # join cleanly. `agent` preserves the container-local name for
+        # backwards compat; `agent_owner` + `agent_id` match metric labels.
+        return JSONResponse({
+            "status": "ok",
+            "agent": AGENT_NAME,
+            "agent_owner": AGENT_OWNER,
+            "agent_id": AGENT_ID,
+            "uptime_seconds": elapsed,
+        })
     return JSONResponse({"status": "starting"}, status_code=503)
 
 

@@ -1263,6 +1263,20 @@ type MCPToolSpec struct {
 	// +kubebuilder:validation:Minimum=0
 	// +optional
 	Replicas *int32 `json:"replicas,omitempty"`
+
+	// AuthTokenSecretRef references the Secret holding MCP_TOOL_AUTH_TOKEN
+	// for this tool. When set, the operator projects the token into the
+	// container env so backends can reach the tool with Authorization:
+	// Bearer auth. When unset AND AuthDisabled is false, the tool's
+	// shared/mcp_auth middleware fails closed on every request (#1331).
+	// +optional
+	AuthTokenSecretRef *corev1.SecretKeySelector `json:"authTokenSecretRef,omitempty"`
+
+	// AuthDisabled acknowledges that MCP_TOOL_AUTH_TOKEN is intentionally
+	// not set for this tool. Useful for local dev. The mcp_auth middleware
+	// logs a loud WARN at startup when this is true. (#1331)
+	// +optional
+	AuthDisabled bool `json:"authDisabled,omitempty"`
 }
 
 // +kubebuilder:object:root=true

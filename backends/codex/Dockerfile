@@ -16,19 +16,13 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     python3-venv \
-    libnss3 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libcups2 \
-    libdrm2 \
-    libxkbcommon0 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxrandr2 \
-    libgbm1 \
-    libasound2 \
     && rm -rf /var/lib/apt/lists/*
+# #1336: chromium runtime libs (libnss3, libatk*, libcups2, libdrm2,
+# libxkbcommon0, libx*, libgbm1, libasound2) removed from this apt
+# list — `playwright install chromium --with-deps` below invokes
+# apt-get for the version-matched set playwright depends on. The
+# upfront list duplicated that work, wasted build time, and drifted
+# silently when playwright updated its dep set.
 # Note: iptables was removed (#1260). The container runs without NET_ADMIN
 # (PSS-restricted drops ALL caps in charts/nyx/templates/deployment.yaml),
 # so the binary couldn't modify kernel tables anyway — it was just dead
