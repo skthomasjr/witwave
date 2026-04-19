@@ -116,6 +116,7 @@ type NyxAgentReconciler struct {
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=podmonitors,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies;ingresses,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is the control loop's entry point. It brings owned resources into
 // alignment with the NyxAgent spec and writes status.
@@ -375,6 +376,12 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// is a follow-up so the CRD schema can settle before the controller
 	// grows per-ingress-class adapters.
 	if err := r.reconcileDashboardIngress(ctx, agent); err != nil {
+		reconcileErrs = append(reconcileErrs, err)
+	}
+	// NetworkPolicy (#971). Scaffold: renders a per-agent NetworkPolicy
+	// when spec.networkPolicy.enabled=true — MCP-tool NetworkPolicies and
+	// explicit egress rules are follow-up work.
+	if err := r.reconcileNetworkPolicy(ctx, agent); err != nil {
 		reconcileErrs = append(reconcileErrs, err)
 	}
 	reconcileErr := errors.Join(reconcileErrs...)

@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -771,6 +772,70 @@ type NyxAgentSpec struct {
 	// end; RBAC/clusterWide/resources are follow-up work.
 	// +optional
 	MCPTools *MCPToolsSpec `json:"mcpTools,omitempty"`
+
+	// NetworkPolicy mirrors the chart's networkPolicy block (#759, #971).
+	// When Enabled=true the operator renders a namespaced
+	// networking.k8s.io/v1 NetworkPolicy targeting the agent pod. Scaffold
+	// scope: a minimal default-closed ingress policy with opt-in peers
+	// (dashboard, same-namespace, metrics scrapers) is wired end-to-end;
+	// MCP-tool NetworkPolicies (the `allowNyxAgents` knob) are follow-up.
+	// +optional
+	NetworkPolicy *NetworkPolicySpec `json:"networkPolicy,omitempty"`
+}
+
+// NetworkPolicySpec mirrors charts/nyx/values.yaml `networkPolicy.*` so
+// operator-rendered agents enforce the same pod-level isolation the chart
+// provides (#759, #971). When Enabled=true and Ingress is empty, all
+// ingress to the agent pod is denied — explicit fail-closed posture.
+type NetworkPolicySpec struct {
+	// Enabled toggles rendering of the per-agent NetworkPolicy. Off by
+	// default — the cluster's historical default-open posture is
+	// preserved unless an operator opts in.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Ingress configures inbound peer rules. Empty with Enabled=true is
+	// a deliberate deny-all ingress policy; populate the sub-fields to
+	// open specific paths.
+	// +optional
+	Ingress *NetworkPolicyIngressSpec `json:"ingress,omitempty"`
+
+	// EgressOpen keeps the pod's egress unrestricted. Defaults to true,
+	// matching the chart (backends need outbound reach to the apiserver,
+	// OTel collectors, webhook destinations, DNS, and each other).
+	// +kubebuilder:default=true
+	// +optional
+	EgressOpen *bool `json:"egressOpen,omitempty"`
+}
+
+// NetworkPolicyIngressSpec mirrors charts/nyx/values.yaml
+// `networkPolicy.ingress.*`. Peers are expressed as raw v1 types so
+// operators can mix namespaceSelector / podSelector / ipBlock without
+// extra templating.
+type NetworkPolicyIngressSpec struct {
+	// AllowDashboard authorises the dashboard Service pods to reach the
+	// agent pod on its app port. Defaults to true so the in-cluster
+	// dashboard -> harness path works out of the box.
+	// +kubebuilder:default=true
+	// +optional
+	AllowDashboard *bool `json:"allowDashboard,omitempty"`
+
+	// AllowSameNamespace authorises every pod in the same namespace as
+	// the NyxAgent to reach the agent pod on every port. Defaults to
+	// false (stricter CIS-style posture).
+	// +optional
+	AllowSameNamespace bool `json:"allowSameNamespace,omitempty"`
+
+	// MetricsFrom authorises traffic to the metrics port (app_port+1000)
+	// from the listed peers. Entries are raw NetworkPolicyPeer objects.
+	// +optional
+	MetricsFrom []networkingv1.NetworkPolicyPeer `json:"metricsFrom,omitempty"`
+
+	// AdditionalFrom applies to every port on the agent pod. Use
+	// sparingly — prefer MetricsFrom for scrape traffic and AllowDashboard
+	// for intra-release traffic.
+	// +optional
+	AdditionalFrom []networkingv1.NetworkPolicyPeer `json:"additionalFrom,omitempty"`
 }
 
 // TracingSpec mirrors the chart's observability.tracing.* values (#829).
