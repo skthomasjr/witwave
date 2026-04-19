@@ -30,6 +30,14 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
+    - jsonPath: .status.reconcileHistory[-1:].time
+      name: LastReconcile
+      priority: 1
+      type: date
+    - jsonPath: .status.reconcileHistory[-1:].phase
+      name: LastOutcome
+      priority: 1
+      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -1290,6 +1298,14 @@ spec:
                     image:
                       description: Image is the backend container image.
                       properties:
+                        digest:
+                          description: |-
+                            Digest pins the image by sha256:... digest. When set, the rendered
+                            image reference is ``<Repository>@<Digest>`` and ``Tag`` is ignored.
+                            Production deployments should digest-pin to protect against
+                            registry re-tagging or supply-chain compromise (#1352).
+                          pattern: ^sha256:[a-f0-9]{64}$
+                          type: string
                         pullPolicy:
                           description: PullPolicy controls when the image is pulled.
                           enum:
@@ -1303,8 +1319,9 @@ spec:
                           minLength: 1
                           type: string
                         tag:
-                          description: Tag is the image tag. If empty, the operator
-                            may fill in a default.
+                          description: |-
+                            Tag is the image tag. If empty, the operator may fill in a default.
+                            Ignored when Digest is set — digest pinning takes precedence (#1352).
                           type: string
                       required:
                       - repository
@@ -1316,7 +1333,11 @@ spec:
                     name:
                       description: |-
                         Name identifies the backend (e.g. claude, codex, gemini). Used as the
-                        container name and the backend ID in routing.
+                        container name and the backend ID in routing. MaxLength caps the
+                        name well under the Kubernetes container-name limit (63) so the
+                        downstream container name `<agent>-<backend>` still fits comfortably
+                        even for long agent names (#1253).
+                      maxLength: 30
                       pattern: ^[a-z0-9][a-z0-9-]*$
                       type: string
                     port:
@@ -1324,7 +1345,7 @@ spec:
                       description: Port is the HTTP port the backend listens on inside
                         the pod.
                       format: int32
-                      maximum: 65535
+                      maximum: 64535
                       minimum: 1
                       type: integer
                     resources:
@@ -1425,6 +1446,12 @@ spec:
                             type: object
                           type: array
                         size:
+                          description: |-
+                            Size is a Kubernetes resource.Quantity string (e.g. "10Gi", "500M").
+                            The pattern matches the syntax accepted by resource.ParseQuantity so
+                            typos like "10 GB" or "10gibs" are rejected at admission rather than
+                            surfacing as a PVC `ProvisioningFailed` event on the cluster (#1254).
+                          pattern: ^([+-]?[0-9.]+)([eEinumkKMGTP]*[-+]?[0-9]*)?$
                           type: string
                         storageClassName:
                           type: string
@@ -1501,6 +1528,14 @@ spec:
                   image:
                     description: Image is the dashboard container image.
                     properties:
+                      digest:
+                        description: |-
+                          Digest pins the image by sha256:... digest. When set, the rendered
+                          image reference is ``<Repository>@<Digest>`` and ``Tag`` is ignored.
+                          Production deployments should digest-pin to protect against
+                          registry re-tagging or supply-chain compromise (#1352).
+                        pattern: ^sha256:[a-f0-9]{64}$
+                        type: string
                       pullPolicy:
                         description: PullPolicy controls when the image is pulled.
                         enum:
@@ -1514,8 +1549,9 @@ spec:
                         minLength: 1
                         type: string
                       tag:
-                        description: Tag is the image tag. If empty, the operator
-                          may fill in a default.
+                        description: |-
+                          Tag is the image tag. If empty, the operator may fill in a default.
+                          Ignored when Digest is set — digest pinning takes precedence (#1352).
                         type: string
                     required:
                     - repository
@@ -1591,7 +1627,7 @@ spec:
                     description: Port is the Service port (the container always listens
                       on 3000).
                     format: int32
-                    maximum: 65535
+                    maximum: 64535
                     minimum: 1
                     type: integer
                   replicas:
@@ -1989,6 +2025,14 @@ spec:
                         entry. When unset, the operator's default git-sync image is used
                         (ghcr.io/skthomasjr/images/git-sync:<appVersion>).
                       properties:
+                        digest:
+                          description: |-
+                            Digest pins the image by sha256:... digest. When set, the rendered
+                            image reference is ``<Repository>@<Digest>`` and ``Tag`` is ignored.
+                            Production deployments should digest-pin to protect against
+                            registry re-tagging or supply-chain compromise (#1352).
+                          pattern: ^sha256:[a-f0-9]{64}$
+                          type: string
                         pullPolicy:
                           description: PullPolicy controls when the image is pulled.
                           enum:
@@ -2002,8 +2046,9 @@ spec:
                           minLength: 1
                           type: string
                         tag:
-                          description: Tag is the image tag. If empty, the operator
-                            may fill in a default.
+                          description: |-
+                            Tag is the image tag. If empty, the operator may fill in a default.
+                            Ignored when Digest is set — digest pinning takes precedence (#1352).
                           type: string
                       required:
                       - repository
@@ -2037,6 +2082,14 @@ spec:
               image:
                 description: Image is the harness orchestrator image.
                 properties:
+                  digest:
+                    description: |-
+                      Digest pins the image by sha256:... digest. When set, the rendered
+                      image reference is ``<Repository>@<Digest>`` and ``Tag`` is ignored.
+                      Production deployments should digest-pin to protect against
+                      registry re-tagging or supply-chain compromise (#1352).
+                    pattern: ^sha256:[a-f0-9]{64}$
+                    type: string
                   pullPolicy:
                     description: PullPolicy controls when the image is pulled.
                     enum:
@@ -2050,8 +2103,9 @@ spec:
                     minLength: 1
                     type: string
                   tag:
-                    description: Tag is the image tag. If empty, the operator may
-                      fill in a default.
+                    description: |-
+                      Tag is the image tag. If empty, the operator may fill in a default.
+                      Ignored when Digest is set — digest pinning takes precedence (#1352).
                     type: string
                 required:
                 - repository
@@ -2089,6 +2143,52 @@ spec:
                       Helm renders the `mcp-helm` tool (Helm release management via the
                       `helm` CLI). Off by default.
                     properties:
+                      authDisabled:
+                        description: |-
+                          #1355 SECURITY NOTE: The cluster-scoped ServiceAccount pattern
+                          (when NyxAgent uses an SA with apiserver permissions for MCP
+                          tool access) mounts the SA token into EVERY pod container —
+                          including the backend containers (claude/codex/gemini). A
+                          prompt-injection compromise of a backend can read
+                          /var/run/secrets/kubernetes.io/serviceaccount/token and make
+                          authenticated apiserver calls directly, bypassing every MCP
+                          tool allow-list. PREFERRED recipe: deploy MCP tools as their
+                          own separately-scoped pods (chart default) and have backends
+                          reach them via the cluster-shared Service. Document this in
+                          operator/README.md §security-posture.
+                          AuthDisabled acknowledges that MCP_TOOL_AUTH_TOKEN is intentionally
+                          not set for this tool. Useful for local dev. The mcp_auth middleware
+                          logs a loud WARN at startup when this is true. (#1331)
+                        type: boolean
+                      authTokenSecretRef:
+                        description: |-
+                          AuthTokenSecretRef references the Secret holding MCP_TOOL_AUTH_TOKEN
+                          for this tool. When set, the operator projects the token into the
+                          container env so backends can reach the tool with Authorization:
+                          Bearer auth. When unset AND AuthDisabled is false, the tool's
+                          shared/mcp_auth middleware fails closed on every request (#1331).
+                        properties:
+                          key:
+                            description: The key of the secret to select from.  Must
+                              be a valid secret key.
+                            type: string
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                          optional:
+                            description: Specify whether the Secret or its key must
+                              be defined
+                            type: boolean
+                        required:
+                        - key
+                        type: object
+                        x-kubernetes-map-type: atomic
                       enabled:
                         description: Enabled toggles rendering of this tool's Deployment
                           + Service.
@@ -2099,6 +2199,14 @@ spec:
                           canonical ghcr.io path when the field is omitted on a tool whose
                           Enabled=true (the controller supplies the default).
                         properties:
+                          digest:
+                            description: |-
+                              Digest pins the image by sha256:... digest. When set, the rendered
+                              image reference is ``<Repository>@<Digest>`` and ``Tag`` is ignored.
+                              Production deployments should digest-pin to protect against
+                              registry re-tagging or supply-chain compromise (#1352).
+                            pattern: ^sha256:[a-f0-9]{64}$
+                            type: string
                           pullPolicy:
                             description: PullPolicy controls when the image is pulled.
                             enum:
@@ -2112,11 +2220,326 @@ spec:
                             minLength: 1
                             type: string
                           tag:
-                            description: Tag is the image tag. If empty, the operator
-                              may fill in a default.
+                            description: |-
+                              Tag is the image tag. If empty, the operator may fill in a default.
+                              Ignored when Digest is set — digest pinning takes precedence (#1352).
                             type: string
                         required:
                         - repository
+                        type: object
+                      livenessProbe:
+                        description: LivenessProbe overrides the default. Absent by
+                          default. (#1353)
+                        properties:
+                          exec:
+                            description: Exec specifies a command to execute in the
+                              container.
+                            properties:
+                              command:
+                                description: |-
+                                  Command is the command line to execute inside the container, the working directory for the
+                                  command  is root ('/') in the container's filesystem. The command is simply exec'd, it is
+                                  not run inside a shell, so traditional shell instructions ('|', etc) won't work. To use
+                                  a shell, you need to explicitly call out to that shell.
+                                  Exit status of 0 is treated as live/healthy and non-zero is unhealthy.
+                                items:
+                                  type: string
+                                type: array
+                                x-kubernetes-list-type: atomic
+                            type: object
+                          failureThreshold:
+                            description: |-
+                              Minimum consecutive failures for the probe to be considered failed after having succeeded.
+                              Defaults to 3. Minimum value is 1.
+                            format: int32
+                            type: integer
+                          grpc:
+                            description: GRPC specifies a GRPC HealthCheckRequest.
+                            properties:
+                              port:
+                                description: Port number of the gRPC service. Number
+                                  must be in the range 1 to 65535.
+                                format: int32
+                                type: integer
+                              service:
+                                default: ""
+                                description: |-
+                                  Service is the name of the service to place in the gRPC HealthCheckRequest
+                                  (see https://github.com/grpc/grpc/blob/master/doc/health-checking.md).
+
+                                  If this is not specified, the default behavior is defined by gRPC.
+                                type: string
+                            required:
+                            - port
+                            type: object
+                          httpGet:
+                            description: HTTPGet specifies an HTTP GET request to
+                              perform.
+                            properties:
+                              host:
+                                description: |-
+                                  Host name to connect to, defaults to the pod IP. You probably want to set
+                                  "Host" in httpHeaders instead.
+                                type: string
+                              httpHeaders:
+                                description: Custom headers to set in the request.
+                                  HTTP allows repeated headers.
+                                items:
+                                  description: HTTPHeader describes a custom header
+                                    to be used in HTTP probes
+                                  properties:
+                                    name:
+                                      description: |-
+                                        The header field name.
+                                        This will be canonicalized upon output, so case-variant names will be understood as the same header.
+                                      type: string
+                                    value:
+                                      description: The header field value
+                                      type: string
+                                  required:
+                                  - name
+                                  - value
+                                  type: object
+                                type: array
+                                x-kubernetes-list-type: atomic
+                              path:
+                                description: Path to access on the HTTP server.
+                                type: string
+                              port:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                description: |-
+                                  Name or number of the port to access on the container.
+                                  Number must be in the range 1 to 65535.
+                                  Name must be an IANA_SVC_NAME.
+                                x-kubernetes-int-or-string: true
+                              scheme:
+                                description: |-
+                                  Scheme to use for connecting to the host.
+                                  Defaults to HTTP.
+                                type: string
+                            required:
+                            - port
+                            type: object
+                          initialDelaySeconds:
+                            description: |-
+                              Number of seconds after the container has started before liveness probes are initiated.
+                              More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
+                            format: int32
+                            type: integer
+                          periodSeconds:
+                            description: |-
+                              How often (in seconds) to perform the probe.
+                              Default to 10 seconds. Minimum value is 1.
+                            format: int32
+                            type: integer
+                          successThreshold:
+                            description: |-
+                              Minimum consecutive successes for the probe to be considered successful after having failed.
+                              Defaults to 1. Must be 1 for liveness and startup. Minimum value is 1.
+                            format: int32
+                            type: integer
+                          tcpSocket:
+                            description: TCPSocket specifies a connection to a TCP
+                              port.
+                            properties:
+                              host:
+                                description: 'Optional: Host name to connect to, defaults
+                                  to the pod IP.'
+                                type: string
+                              port:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                description: |-
+                                  Number or name of the port to access on the container.
+                                  Number must be in the range 1 to 65535.
+                                  Name must be an IANA_SVC_NAME.
+                                x-kubernetes-int-or-string: true
+                            required:
+                            - port
+                            type: object
+                          terminationGracePeriodSeconds:
+                            description: |-
+                              Optional duration in seconds the pod needs to terminate gracefully upon probe failure.
+                              The grace period is the duration in seconds after the processes running in the pod are sent
+                              a termination signal and the time when the processes are forcibly halted with a kill signal.
+                              Set this value longer than the expected cleanup time for your process.
+                              If this value is nil, the pod's terminationGracePeriodSeconds will be used. Otherwise, this
+                              value overrides the value provided by the pod spec.
+                              Value must be non-negative integer. The value zero indicates stop immediately via
+                              the kill signal (no opportunity to shut down).
+                              This is a beta field and requires enabling ProbeTerminationGracePeriod feature gate.
+                              Minimum value is 1. spec.terminationGracePeriodSeconds is used if unset.
+                            format: int64
+                            type: integer
+                          timeoutSeconds:
+                            description: |-
+                              Number of seconds after which the probe times out.
+                              Defaults to 1 second. Minimum value is 1.
+                              More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
+                            format: int32
+                            type: integer
+                        type: object
+                      readinessProbe:
+                        description: |-
+                          ReadinessProbe overrides the default HTTP GET on /health with no
+                          initialDelaySeconds. Large-cluster kube discovery can take >1s at
+                          cold start; the default probe times out and CrashLoops the pod
+                          before discovery completes. Chart-rendered parity ships tunable
+                          probes; operator path now does too. (#1353)
+                        properties:
+                          exec:
+                            description: Exec specifies a command to execute in the
+                              container.
+                            properties:
+                              command:
+                                description: |-
+                                  Command is the command line to execute inside the container, the working directory for the
+                                  command  is root ('/') in the container's filesystem. The command is simply exec'd, it is
+                                  not run inside a shell, so traditional shell instructions ('|', etc) won't work. To use
+                                  a shell, you need to explicitly call out to that shell.
+                                  Exit status of 0 is treated as live/healthy and non-zero is unhealthy.
+                                items:
+                                  type: string
+                                type: array
+                                x-kubernetes-list-type: atomic
+                            type: object
+                          failureThreshold:
+                            description: |-
+                              Minimum consecutive failures for the probe to be considered failed after having succeeded.
+                              Defaults to 3. Minimum value is 1.
+                            format: int32
+                            type: integer
+                          grpc:
+                            description: GRPC specifies a GRPC HealthCheckRequest.
+                            properties:
+                              port:
+                                description: Port number of the gRPC service. Number
+                                  must be in the range 1 to 65535.
+                                format: int32
+                                type: integer
+                              service:
+                                default: ""
+                                description: |-
+                                  Service is the name of the service to place in the gRPC HealthCheckRequest
+                                  (see https://github.com/grpc/grpc/blob/master/doc/health-checking.md).
+
+                                  If this is not specified, the default behavior is defined by gRPC.
+                                type: string
+                            required:
+                            - port
+                            type: object
+                          httpGet:
+                            description: HTTPGet specifies an HTTP GET request to
+                              perform.
+                            properties:
+                              host:
+                                description: |-
+                                  Host name to connect to, defaults to the pod IP. You probably want to set
+                                  "Host" in httpHeaders instead.
+                                type: string
+                              httpHeaders:
+                                description: Custom headers to set in the request.
+                                  HTTP allows repeated headers.
+                                items:
+                                  description: HTTPHeader describes a custom header
+                                    to be used in HTTP probes
+                                  properties:
+                                    name:
+                                      description: |-
+                                        The header field name.
+                                        This will be canonicalized upon output, so case-variant names will be understood as the same header.
+                                      type: string
+                                    value:
+                                      description: The header field value
+                                      type: string
+                                  required:
+                                  - name
+                                  - value
+                                  type: object
+                                type: array
+                                x-kubernetes-list-type: atomic
+                              path:
+                                description: Path to access on the HTTP server.
+                                type: string
+                              port:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                description: |-
+                                  Name or number of the port to access on the container.
+                                  Number must be in the range 1 to 65535.
+                                  Name must be an IANA_SVC_NAME.
+                                x-kubernetes-int-or-string: true
+                              scheme:
+                                description: |-
+                                  Scheme to use for connecting to the host.
+                                  Defaults to HTTP.
+                                type: string
+                            required:
+                            - port
+                            type: object
+                          initialDelaySeconds:
+                            description: |-
+                              Number of seconds after the container has started before liveness probes are initiated.
+                              More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
+                            format: int32
+                            type: integer
+                          periodSeconds:
+                            description: |-
+                              How often (in seconds) to perform the probe.
+                              Default to 10 seconds. Minimum value is 1.
+                            format: int32
+                            type: integer
+                          successThreshold:
+                            description: |-
+                              Minimum consecutive successes for the probe to be considered successful after having failed.
+                              Defaults to 1. Must be 1 for liveness and startup. Minimum value is 1.
+                            format: int32
+                            type: integer
+                          tcpSocket:
+                            description: TCPSocket specifies a connection to a TCP
+                              port.
+                            properties:
+                              host:
+                                description: 'Optional: Host name to connect to, defaults
+                                  to the pod IP.'
+                                type: string
+                              port:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                description: |-
+                                  Number or name of the port to access on the container.
+                                  Number must be in the range 1 to 65535.
+                                  Name must be an IANA_SVC_NAME.
+                                x-kubernetes-int-or-string: true
+                            required:
+                            - port
+                            type: object
+                          terminationGracePeriodSeconds:
+                            description: |-
+                              Optional duration in seconds the pod needs to terminate gracefully upon probe failure.
+                              The grace period is the duration in seconds after the processes running in the pod are sent
+                              a termination signal and the time when the processes are forcibly halted with a kill signal.
+                              Set this value longer than the expected cleanup time for your process.
+                              If this value is nil, the pod's terminationGracePeriodSeconds will be used. Otherwise, this
+                              value overrides the value provided by the pod spec.
+                              Value must be non-negative integer. The value zero indicates stop immediately via
+                              the kill signal (no opportunity to shut down).
+                              This is a beta field and requires enabling ProbeTerminationGracePeriod feature gate.
+                              Minimum value is 1. spec.terminationGracePeriodSeconds is used if unset.
+                            format: int64
+                            type: integer
+                          timeoutSeconds:
+                            description: |-
+                              Number of seconds after which the probe times out.
+                              Defaults to 1 second. Minimum value is 1.
+                              More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
+                            format: int32
+                            type: integer
                         type: object
                       replicas:
                         description: |-
@@ -2125,12 +2548,121 @@ spec:
                         format: int32
                         minimum: 0
                         type: integer
+                      resources:
+                        description: |-
+                          Resources sets the container's resource requests/limits. When unset
+                          the operator emits BestEffort QoS; noisy-neighbour evictions hit
+                          MCP tools first. Chart-rendered MCP tools already expose this via
+                          mcpTools.<name>.resources. (#1353)
+                        properties:
+                          claims:
+                            description: |-
+                              Claims lists the names of resources, defined in spec.resourceClaims,
+                              that are used by this container.
+
+                              This is an alpha field and requires enabling the
+                              DynamicResourceAllocation feature gate.
+
+                              This field is immutable. It can only be set for containers.
+                            items:
+                              description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                              properties:
+                                name:
+                                  description: |-
+                                    Name must match the name of one entry in pod.spec.resourceClaims of
+                                    the Pod where this field is used. It makes that resource available
+                                    inside a container.
+                                  type: string
+                                request:
+                                  description: |-
+                                    Request is the name chosen for a request in the referenced claim.
+                                    If empty, everything from the claim is made available, otherwise
+                                    only the result of this request.
+                                  type: string
+                              required:
+                              - name
+                              type: object
+                            type: array
+                            x-kubernetes-list-map-keys:
+                            - name
+                            x-kubernetes-list-type: map
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              Limits describes the maximum amount of compute resources allowed.
+                              More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              Requests describes the minimum amount of compute resources required.
+                              If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                              otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                              More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                            type: object
+                        type: object
                     type: object
                   kubernetes:
                     description: |-
                       Kubernetes renders the `mcp-kubernetes` tool (Kubernetes API access
                       via the official Python client). Off by default.
                     properties:
+                      authDisabled:
+                        description: |-
+                          #1355 SECURITY NOTE: The cluster-scoped ServiceAccount pattern
+                          (when NyxAgent uses an SA with apiserver permissions for MCP
+                          tool access) mounts the SA token into EVERY pod container —
+                          including the backend containers (claude/codex/gemini). A
+                          prompt-injection compromise of a backend can read
+                          /var/run/secrets/kubernetes.io/serviceaccount/token and make
+                          authenticated apiserver calls directly, bypassing every MCP
+                          tool allow-list. PREFERRED recipe: deploy MCP tools as their
+                          own separately-scoped pods (chart default) and have backends
+                          reach them via the cluster-shared Service. Document this in
+                          operator/README.md §security-posture.
+                          AuthDisabled acknowledges that MCP_TOOL_AUTH_TOKEN is intentionally
+                          not set for this tool. Useful for local dev. The mcp_auth middleware
+                          logs a loud WARN at startup when this is true. (#1331)
+                        type: boolean
+                      authTokenSecretRef:
+                        description: |-
+                          AuthTokenSecretRef references the Secret holding MCP_TOOL_AUTH_TOKEN
+                          for this tool. When set, the operator projects the token into the
+                          container env so backends can reach the tool with Authorization:
+                          Bearer auth. When unset AND AuthDisabled is false, the tool's
+                          shared/mcp_auth middleware fails closed on every request (#1331).
+                        properties:
+                          key:
+                            description: The key of the secret to select from.  Must
+                              be a valid secret key.
+                            type: string
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                          optional:
+                            description: Specify whether the Secret or its key must
+                              be defined
+                            type: boolean
+                        required:
+                        - key
+                        type: object
+                        x-kubernetes-map-type: atomic
                       enabled:
                         description: Enabled toggles rendering of this tool's Deployment
                           + Service.
@@ -2141,6 +2673,14 @@ spec:
                           canonical ghcr.io path when the field is omitted on a tool whose
                           Enabled=true (the controller supplies the default).
                         properties:
+                          digest:
+                            description: |-
+                              Digest pins the image by sha256:... digest. When set, the rendered
+                              image reference is ``<Repository>@<Digest>`` and ``Tag`` is ignored.
+                              Production deployments should digest-pin to protect against
+                              registry re-tagging or supply-chain compromise (#1352).
+                            pattern: ^sha256:[a-f0-9]{64}$
+                            type: string
                           pullPolicy:
                             description: PullPolicy controls when the image is pulled.
                             enum:
@@ -2154,11 +2694,326 @@ spec:
                             minLength: 1
                             type: string
                           tag:
-                            description: Tag is the image tag. If empty, the operator
-                              may fill in a default.
+                            description: |-
+                              Tag is the image tag. If empty, the operator may fill in a default.
+                              Ignored when Digest is set — digest pinning takes precedence (#1352).
                             type: string
                         required:
                         - repository
+                        type: object
+                      livenessProbe:
+                        description: LivenessProbe overrides the default. Absent by
+                          default. (#1353)
+                        properties:
+                          exec:
+                            description: Exec specifies a command to execute in the
+                              container.
+                            properties:
+                              command:
+                                description: |-
+                                  Command is the command line to execute inside the container, the working directory for the
+                                  command  is root ('/') in the container's filesystem. The command is simply exec'd, it is
+                                  not run inside a shell, so traditional shell instructions ('|', etc) won't work. To use
+                                  a shell, you need to explicitly call out to that shell.
+                                  Exit status of 0 is treated as live/healthy and non-zero is unhealthy.
+                                items:
+                                  type: string
+                                type: array
+                                x-kubernetes-list-type: atomic
+                            type: object
+                          failureThreshold:
+                            description: |-
+                              Minimum consecutive failures for the probe to be considered failed after having succeeded.
+                              Defaults to 3. Minimum value is 1.
+                            format: int32
+                            type: integer
+                          grpc:
+                            description: GRPC specifies a GRPC HealthCheckRequest.
+                            properties:
+                              port:
+                                description: Port number of the gRPC service. Number
+                                  must be in the range 1 to 65535.
+                                format: int32
+                                type: integer
+                              service:
+                                default: ""
+                                description: |-
+                                  Service is the name of the service to place in the gRPC HealthCheckRequest
+                                  (see https://github.com/grpc/grpc/blob/master/doc/health-checking.md).
+
+                                  If this is not specified, the default behavior is defined by gRPC.
+                                type: string
+                            required:
+                            - port
+                            type: object
+                          httpGet:
+                            description: HTTPGet specifies an HTTP GET request to
+                              perform.
+                            properties:
+                              host:
+                                description: |-
+                                  Host name to connect to, defaults to the pod IP. You probably want to set
+                                  "Host" in httpHeaders instead.
+                                type: string
+                              httpHeaders:
+                                description: Custom headers to set in the request.
+                                  HTTP allows repeated headers.
+                                items:
+                                  description: HTTPHeader describes a custom header
+                                    to be used in HTTP probes
+                                  properties:
+                                    name:
+                                      description: |-
+                                        The header field name.
+                                        This will be canonicalized upon output, so case-variant names will be understood as the same header.
+                                      type: string
+                                    value:
+                                      description: The header field value
+                                      type: string
+                                  required:
+                                  - name
+                                  - value
+                                  type: object
+                                type: array
+                                x-kubernetes-list-type: atomic
+                              path:
+                                description: Path to access on the HTTP server.
+                                type: string
+                              port:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                description: |-
+                                  Name or number of the port to access on the container.
+                                  Number must be in the range 1 to 65535.
+                                  Name must be an IANA_SVC_NAME.
+                                x-kubernetes-int-or-string: true
+                              scheme:
+                                description: |-
+                                  Scheme to use for connecting to the host.
+                                  Defaults to HTTP.
+                                type: string
+                            required:
+                            - port
+                            type: object
+                          initialDelaySeconds:
+                            description: |-
+                              Number of seconds after the container has started before liveness probes are initiated.
+                              More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
+                            format: int32
+                            type: integer
+                          periodSeconds:
+                            description: |-
+                              How often (in seconds) to perform the probe.
+                              Default to 10 seconds. Minimum value is 1.
+                            format: int32
+                            type: integer
+                          successThreshold:
+                            description: |-
+                              Minimum consecutive successes for the probe to be considered successful after having failed.
+                              Defaults to 1. Must be 1 for liveness and startup. Minimum value is 1.
+                            format: int32
+                            type: integer
+                          tcpSocket:
+                            description: TCPSocket specifies a connection to a TCP
+                              port.
+                            properties:
+                              host:
+                                description: 'Optional: Host name to connect to, defaults
+                                  to the pod IP.'
+                                type: string
+                              port:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                description: |-
+                                  Number or name of the port to access on the container.
+                                  Number must be in the range 1 to 65535.
+                                  Name must be an IANA_SVC_NAME.
+                                x-kubernetes-int-or-string: true
+                            required:
+                            - port
+                            type: object
+                          terminationGracePeriodSeconds:
+                            description: |-
+                              Optional duration in seconds the pod needs to terminate gracefully upon probe failure.
+                              The grace period is the duration in seconds after the processes running in the pod are sent
+                              a termination signal and the time when the processes are forcibly halted with a kill signal.
+                              Set this value longer than the expected cleanup time for your process.
+                              If this value is nil, the pod's terminationGracePeriodSeconds will be used. Otherwise, this
+                              value overrides the value provided by the pod spec.
+                              Value must be non-negative integer. The value zero indicates stop immediately via
+                              the kill signal (no opportunity to shut down).
+                              This is a beta field and requires enabling ProbeTerminationGracePeriod feature gate.
+                              Minimum value is 1. spec.terminationGracePeriodSeconds is used if unset.
+                            format: int64
+                            type: integer
+                          timeoutSeconds:
+                            description: |-
+                              Number of seconds after which the probe times out.
+                              Defaults to 1 second. Minimum value is 1.
+                              More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
+                            format: int32
+                            type: integer
+                        type: object
+                      readinessProbe:
+                        description: |-
+                          ReadinessProbe overrides the default HTTP GET on /health with no
+                          initialDelaySeconds. Large-cluster kube discovery can take >1s at
+                          cold start; the default probe times out and CrashLoops the pod
+                          before discovery completes. Chart-rendered parity ships tunable
+                          probes; operator path now does too. (#1353)
+                        properties:
+                          exec:
+                            description: Exec specifies a command to execute in the
+                              container.
+                            properties:
+                              command:
+                                description: |-
+                                  Command is the command line to execute inside the container, the working directory for the
+                                  command  is root ('/') in the container's filesystem. The command is simply exec'd, it is
+                                  not run inside a shell, so traditional shell instructions ('|', etc) won't work. To use
+                                  a shell, you need to explicitly call out to that shell.
+                                  Exit status of 0 is treated as live/healthy and non-zero is unhealthy.
+                                items:
+                                  type: string
+                                type: array
+                                x-kubernetes-list-type: atomic
+                            type: object
+                          failureThreshold:
+                            description: |-
+                              Minimum consecutive failures for the probe to be considered failed after having succeeded.
+                              Defaults to 3. Minimum value is 1.
+                            format: int32
+                            type: integer
+                          grpc:
+                            description: GRPC specifies a GRPC HealthCheckRequest.
+                            properties:
+                              port:
+                                description: Port number of the gRPC service. Number
+                                  must be in the range 1 to 65535.
+                                format: int32
+                                type: integer
+                              service:
+                                default: ""
+                                description: |-
+                                  Service is the name of the service to place in the gRPC HealthCheckRequest
+                                  (see https://github.com/grpc/grpc/blob/master/doc/health-checking.md).
+
+                                  If this is not specified, the default behavior is defined by gRPC.
+                                type: string
+                            required:
+                            - port
+                            type: object
+                          httpGet:
+                            description: HTTPGet specifies an HTTP GET request to
+                              perform.
+                            properties:
+                              host:
+                                description: |-
+                                  Host name to connect to, defaults to the pod IP. You probably want to set
+                                  "Host" in httpHeaders instead.
+                                type: string
+                              httpHeaders:
+                                description: Custom headers to set in the request.
+                                  HTTP allows repeated headers.
+                                items:
+                                  description: HTTPHeader describes a custom header
+                                    to be used in HTTP probes
+                                  properties:
+                                    name:
+                                      description: |-
+                                        The header field name.
+                                        This will be canonicalized upon output, so case-variant names will be understood as the same header.
+                                      type: string
+                                    value:
+                                      description: The header field value
+                                      type: string
+                                  required:
+                                  - name
+                                  - value
+                                  type: object
+                                type: array
+                                x-kubernetes-list-type: atomic
+                              path:
+                                description: Path to access on the HTTP server.
+                                type: string
+                              port:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                description: |-
+                                  Name or number of the port to access on the container.
+                                  Number must be in the range 1 to 65535.
+                                  Name must be an IANA_SVC_NAME.
+                                x-kubernetes-int-or-string: true
+                              scheme:
+                                description: |-
+                                  Scheme to use for connecting to the host.
+                                  Defaults to HTTP.
+                                type: string
+                            required:
+                            - port
+                            type: object
+                          initialDelaySeconds:
+                            description: |-
+                              Number of seconds after the container has started before liveness probes are initiated.
+                              More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
+                            format: int32
+                            type: integer
+                          periodSeconds:
+                            description: |-
+                              How often (in seconds) to perform the probe.
+                              Default to 10 seconds. Minimum value is 1.
+                            format: int32
+                            type: integer
+                          successThreshold:
+                            description: |-
+                              Minimum consecutive successes for the probe to be considered successful after having failed.
+                              Defaults to 1. Must be 1 for liveness and startup. Minimum value is 1.
+                            format: int32
+                            type: integer
+                          tcpSocket:
+                            description: TCPSocket specifies a connection to a TCP
+                              port.
+                            properties:
+                              host:
+                                description: 'Optional: Host name to connect to, defaults
+                                  to the pod IP.'
+                                type: string
+                              port:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                description: |-
+                                  Number or name of the port to access on the container.
+                                  Number must be in the range 1 to 65535.
+                                  Name must be an IANA_SVC_NAME.
+                                x-kubernetes-int-or-string: true
+                            required:
+                            - port
+                            type: object
+                          terminationGracePeriodSeconds:
+                            description: |-
+                              Optional duration in seconds the pod needs to terminate gracefully upon probe failure.
+                              The grace period is the duration in seconds after the processes running in the pod are sent
+                              a termination signal and the time when the processes are forcibly halted with a kill signal.
+                              Set this value longer than the expected cleanup time for your process.
+                              If this value is nil, the pod's terminationGracePeriodSeconds will be used. Otherwise, this
+                              value overrides the value provided by the pod spec.
+                              Value must be non-negative integer. The value zero indicates stop immediately via
+                              the kill signal (no opportunity to shut down).
+                              This is a beta field and requires enabling ProbeTerminationGracePeriod feature gate.
+                              Minimum value is 1. spec.terminationGracePeriodSeconds is used if unset.
+                            format: int64
+                            type: integer
+                          timeoutSeconds:
+                            description: |-
+                              Number of seconds after which the probe times out.
+                              Defaults to 1 second. Minimum value is 1.
+                              More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
+                            format: int32
+                            type: integer
                         type: object
                       replicas:
                         description: |-
@@ -2167,6 +3022,544 @@ spec:
                         format: int32
                         minimum: 0
                         type: integer
+                      resources:
+                        description: |-
+                          Resources sets the container's resource requests/limits. When unset
+                          the operator emits BestEffort QoS; noisy-neighbour evictions hit
+                          MCP tools first. Chart-rendered MCP tools already expose this via
+                          mcpTools.<name>.resources. (#1353)
+                        properties:
+                          claims:
+                            description: |-
+                              Claims lists the names of resources, defined in spec.resourceClaims,
+                              that are used by this container.
+
+                              This is an alpha field and requires enabling the
+                              DynamicResourceAllocation feature gate.
+
+                              This field is immutable. It can only be set for containers.
+                            items:
+                              description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                              properties:
+                                name:
+                                  description: |-
+                                    Name must match the name of one entry in pod.spec.resourceClaims of
+                                    the Pod where this field is used. It makes that resource available
+                                    inside a container.
+                                  type: string
+                                request:
+                                  description: |-
+                                    Request is the name chosen for a request in the referenced claim.
+                                    If empty, everything from the claim is made available, otherwise
+                                    only the result of this request.
+                                  type: string
+                              required:
+                              - name
+                              type: object
+                            type: array
+                            x-kubernetes-list-map-keys:
+                            - name
+                            x-kubernetes-list-type: map
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              Limits describes the maximum amount of compute resources allowed.
+                              More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              Requests describes the minimum amount of compute resources required.
+                              If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                              otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                              More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                            type: object
+                        type: object
+                    type: object
+                  prometheus:
+                    description: |-
+                      Prometheus renders the `mcp-prometheus` tool (PromQL query surface).
+                      Off by default. (#1354 stopgap — a future v1 should reshape to
+                      map[string]*MCPToolSpec so new tools are additive without CRD bumps.)
+                    properties:
+                      authDisabled:
+                        description: |-
+                          #1355 SECURITY NOTE: The cluster-scoped ServiceAccount pattern
+                          (when NyxAgent uses an SA with apiserver permissions for MCP
+                          tool access) mounts the SA token into EVERY pod container —
+                          including the backend containers (claude/codex/gemini). A
+                          prompt-injection compromise of a backend can read
+                          /var/run/secrets/kubernetes.io/serviceaccount/token and make
+                          authenticated apiserver calls directly, bypassing every MCP
+                          tool allow-list. PREFERRED recipe: deploy MCP tools as their
+                          own separately-scoped pods (chart default) and have backends
+                          reach them via the cluster-shared Service. Document this in
+                          operator/README.md §security-posture.
+                          AuthDisabled acknowledges that MCP_TOOL_AUTH_TOKEN is intentionally
+                          not set for this tool. Useful for local dev. The mcp_auth middleware
+                          logs a loud WARN at startup when this is true. (#1331)
+                        type: boolean
+                      authTokenSecretRef:
+                        description: |-
+                          AuthTokenSecretRef references the Secret holding MCP_TOOL_AUTH_TOKEN
+                          for this tool. When set, the operator projects the token into the
+                          container env so backends can reach the tool with Authorization:
+                          Bearer auth. When unset AND AuthDisabled is false, the tool's
+                          shared/mcp_auth middleware fails closed on every request (#1331).
+                        properties:
+                          key:
+                            description: The key of the secret to select from.  Must
+                              be a valid secret key.
+                            type: string
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                          optional:
+                            description: Specify whether the Secret or its key must
+                              be defined
+                            type: boolean
+                        required:
+                        - key
+                        type: object
+                        x-kubernetes-map-type: atomic
+                      enabled:
+                        description: Enabled toggles rendering of this tool's Deployment
+                          + Service.
+                        type: boolean
+                      image:
+                        description: |-
+                          Image is the tool container image. Repository defaults to the
+                          canonical ghcr.io path when the field is omitted on a tool whose
+                          Enabled=true (the controller supplies the default).
+                        properties:
+                          digest:
+                            description: |-
+                              Digest pins the image by sha256:... digest. When set, the rendered
+                              image reference is ``<Repository>@<Digest>`` and ``Tag`` is ignored.
+                              Production deployments should digest-pin to protect against
+                              registry re-tagging or supply-chain compromise (#1352).
+                            pattern: ^sha256:[a-f0-9]{64}$
+                            type: string
+                          pullPolicy:
+                            description: PullPolicy controls when the image is pulled.
+                            enum:
+                            - Always
+                            - IfNotPresent
+                            - Never
+                            type: string
+                          repository:
+                            description: Repository is the image repository without
+                              tag or digest.
+                            minLength: 1
+                            type: string
+                          tag:
+                            description: |-
+                              Tag is the image tag. If empty, the operator may fill in a default.
+                              Ignored when Digest is set — digest pinning takes precedence (#1352).
+                            type: string
+                        required:
+                        - repository
+                        type: object
+                      livenessProbe:
+                        description: LivenessProbe overrides the default. Absent by
+                          default. (#1353)
+                        properties:
+                          exec:
+                            description: Exec specifies a command to execute in the
+                              container.
+                            properties:
+                              command:
+                                description: |-
+                                  Command is the command line to execute inside the container, the working directory for the
+                                  command  is root ('/') in the container's filesystem. The command is simply exec'd, it is
+                                  not run inside a shell, so traditional shell instructions ('|', etc) won't work. To use
+                                  a shell, you need to explicitly call out to that shell.
+                                  Exit status of 0 is treated as live/healthy and non-zero is unhealthy.
+                                items:
+                                  type: string
+                                type: array
+                                x-kubernetes-list-type: atomic
+                            type: object
+                          failureThreshold:
+                            description: |-
+                              Minimum consecutive failures for the probe to be considered failed after having succeeded.
+                              Defaults to 3. Minimum value is 1.
+                            format: int32
+                            type: integer
+                          grpc:
+                            description: GRPC specifies a GRPC HealthCheckRequest.
+                            properties:
+                              port:
+                                description: Port number of the gRPC service. Number
+                                  must be in the range 1 to 65535.
+                                format: int32
+                                type: integer
+                              service:
+                                default: ""
+                                description: |-
+                                  Service is the name of the service to place in the gRPC HealthCheckRequest
+                                  (see https://github.com/grpc/grpc/blob/master/doc/health-checking.md).
+
+                                  If this is not specified, the default behavior is defined by gRPC.
+                                type: string
+                            required:
+                            - port
+                            type: object
+                          httpGet:
+                            description: HTTPGet specifies an HTTP GET request to
+                              perform.
+                            properties:
+                              host:
+                                description: |-
+                                  Host name to connect to, defaults to the pod IP. You probably want to set
+                                  "Host" in httpHeaders instead.
+                                type: string
+                              httpHeaders:
+                                description: Custom headers to set in the request.
+                                  HTTP allows repeated headers.
+                                items:
+                                  description: HTTPHeader describes a custom header
+                                    to be used in HTTP probes
+                                  properties:
+                                    name:
+                                      description: |-
+                                        The header field name.
+                                        This will be canonicalized upon output, so case-variant names will be understood as the same header.
+                                      type: string
+                                    value:
+                                      description: The header field value
+                                      type: string
+                                  required:
+                                  - name
+                                  - value
+                                  type: object
+                                type: array
+                                x-kubernetes-list-type: atomic
+                              path:
+                                description: Path to access on the HTTP server.
+                                type: string
+                              port:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                description: |-
+                                  Name or number of the port to access on the container.
+                                  Number must be in the range 1 to 65535.
+                                  Name must be an IANA_SVC_NAME.
+                                x-kubernetes-int-or-string: true
+                              scheme:
+                                description: |-
+                                  Scheme to use for connecting to the host.
+                                  Defaults to HTTP.
+                                type: string
+                            required:
+                            - port
+                            type: object
+                          initialDelaySeconds:
+                            description: |-
+                              Number of seconds after the container has started before liveness probes are initiated.
+                              More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
+                            format: int32
+                            type: integer
+                          periodSeconds:
+                            description: |-
+                              How often (in seconds) to perform the probe.
+                              Default to 10 seconds. Minimum value is 1.
+                            format: int32
+                            type: integer
+                          successThreshold:
+                            description: |-
+                              Minimum consecutive successes for the probe to be considered successful after having failed.
+                              Defaults to 1. Must be 1 for liveness and startup. Minimum value is 1.
+                            format: int32
+                            type: integer
+                          tcpSocket:
+                            description: TCPSocket specifies a connection to a TCP
+                              port.
+                            properties:
+                              host:
+                                description: 'Optional: Host name to connect to, defaults
+                                  to the pod IP.'
+                                type: string
+                              port:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                description: |-
+                                  Number or name of the port to access on the container.
+                                  Number must be in the range 1 to 65535.
+                                  Name must be an IANA_SVC_NAME.
+                                x-kubernetes-int-or-string: true
+                            required:
+                            - port
+                            type: object
+                          terminationGracePeriodSeconds:
+                            description: |-
+                              Optional duration in seconds the pod needs to terminate gracefully upon probe failure.
+                              The grace period is the duration in seconds after the processes running in the pod are sent
+                              a termination signal and the time when the processes are forcibly halted with a kill signal.
+                              Set this value longer than the expected cleanup time for your process.
+                              If this value is nil, the pod's terminationGracePeriodSeconds will be used. Otherwise, this
+                              value overrides the value provided by the pod spec.
+                              Value must be non-negative integer. The value zero indicates stop immediately via
+                              the kill signal (no opportunity to shut down).
+                              This is a beta field and requires enabling ProbeTerminationGracePeriod feature gate.
+                              Minimum value is 1. spec.terminationGracePeriodSeconds is used if unset.
+                            format: int64
+                            type: integer
+                          timeoutSeconds:
+                            description: |-
+                              Number of seconds after which the probe times out.
+                              Defaults to 1 second. Minimum value is 1.
+                              More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
+                            format: int32
+                            type: integer
+                        type: object
+                      readinessProbe:
+                        description: |-
+                          ReadinessProbe overrides the default HTTP GET on /health with no
+                          initialDelaySeconds. Large-cluster kube discovery can take >1s at
+                          cold start; the default probe times out and CrashLoops the pod
+                          before discovery completes. Chart-rendered parity ships tunable
+                          probes; operator path now does too. (#1353)
+                        properties:
+                          exec:
+                            description: Exec specifies a command to execute in the
+                              container.
+                            properties:
+                              command:
+                                description: |-
+                                  Command is the command line to execute inside the container, the working directory for the
+                                  command  is root ('/') in the container's filesystem. The command is simply exec'd, it is
+                                  not run inside a shell, so traditional shell instructions ('|', etc) won't work. To use
+                                  a shell, you need to explicitly call out to that shell.
+                                  Exit status of 0 is treated as live/healthy and non-zero is unhealthy.
+                                items:
+                                  type: string
+                                type: array
+                                x-kubernetes-list-type: atomic
+                            type: object
+                          failureThreshold:
+                            description: |-
+                              Minimum consecutive failures for the probe to be considered failed after having succeeded.
+                              Defaults to 3. Minimum value is 1.
+                            format: int32
+                            type: integer
+                          grpc:
+                            description: GRPC specifies a GRPC HealthCheckRequest.
+                            properties:
+                              port:
+                                description: Port number of the gRPC service. Number
+                                  must be in the range 1 to 65535.
+                                format: int32
+                                type: integer
+                              service:
+                                default: ""
+                                description: |-
+                                  Service is the name of the service to place in the gRPC HealthCheckRequest
+                                  (see https://github.com/grpc/grpc/blob/master/doc/health-checking.md).
+
+                                  If this is not specified, the default behavior is defined by gRPC.
+                                type: string
+                            required:
+                            - port
+                            type: object
+                          httpGet:
+                            description: HTTPGet specifies an HTTP GET request to
+                              perform.
+                            properties:
+                              host:
+                                description: |-
+                                  Host name to connect to, defaults to the pod IP. You probably want to set
+                                  "Host" in httpHeaders instead.
+                                type: string
+                              httpHeaders:
+                                description: Custom headers to set in the request.
+                                  HTTP allows repeated headers.
+                                items:
+                                  description: HTTPHeader describes a custom header
+                                    to be used in HTTP probes
+                                  properties:
+                                    name:
+                                      description: |-
+                                        The header field name.
+                                        This will be canonicalized upon output, so case-variant names will be understood as the same header.
+                                      type: string
+                                    value:
+                                      description: The header field value
+                                      type: string
+                                  required:
+                                  - name
+                                  - value
+                                  type: object
+                                type: array
+                                x-kubernetes-list-type: atomic
+                              path:
+                                description: Path to access on the HTTP server.
+                                type: string
+                              port:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                description: |-
+                                  Name or number of the port to access on the container.
+                                  Number must be in the range 1 to 65535.
+                                  Name must be an IANA_SVC_NAME.
+                                x-kubernetes-int-or-string: true
+                              scheme:
+                                description: |-
+                                  Scheme to use for connecting to the host.
+                                  Defaults to HTTP.
+                                type: string
+                            required:
+                            - port
+                            type: object
+                          initialDelaySeconds:
+                            description: |-
+                              Number of seconds after the container has started before liveness probes are initiated.
+                              More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
+                            format: int32
+                            type: integer
+                          periodSeconds:
+                            description: |-
+                              How often (in seconds) to perform the probe.
+                              Default to 10 seconds. Minimum value is 1.
+                            format: int32
+                            type: integer
+                          successThreshold:
+                            description: |-
+                              Minimum consecutive successes for the probe to be considered successful after having failed.
+                              Defaults to 1. Must be 1 for liveness and startup. Minimum value is 1.
+                            format: int32
+                            type: integer
+                          tcpSocket:
+                            description: TCPSocket specifies a connection to a TCP
+                              port.
+                            properties:
+                              host:
+                                description: 'Optional: Host name to connect to, defaults
+                                  to the pod IP.'
+                                type: string
+                              port:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                description: |-
+                                  Number or name of the port to access on the container.
+                                  Number must be in the range 1 to 65535.
+                                  Name must be an IANA_SVC_NAME.
+                                x-kubernetes-int-or-string: true
+                            required:
+                            - port
+                            type: object
+                          terminationGracePeriodSeconds:
+                            description: |-
+                              Optional duration in seconds the pod needs to terminate gracefully upon probe failure.
+                              The grace period is the duration in seconds after the processes running in the pod are sent
+                              a termination signal and the time when the processes are forcibly halted with a kill signal.
+                              Set this value longer than the expected cleanup time for your process.
+                              If this value is nil, the pod's terminationGracePeriodSeconds will be used. Otherwise, this
+                              value overrides the value provided by the pod spec.
+                              Value must be non-negative integer. The value zero indicates stop immediately via
+                              the kill signal (no opportunity to shut down).
+                              This is a beta field and requires enabling ProbeTerminationGracePeriod feature gate.
+                              Minimum value is 1. spec.terminationGracePeriodSeconds is used if unset.
+                            format: int64
+                            type: integer
+                          timeoutSeconds:
+                            description: |-
+                              Number of seconds after which the probe times out.
+                              Defaults to 1 second. Minimum value is 1.
+                              More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes
+                            format: int32
+                            type: integer
+                        type: object
+                      replicas:
+                        description: |-
+                          Replicas controls the rendered Deployment's replica count. The
+                          controller clamps negative values to 1. Defaults to 1 when unset.
+                        format: int32
+                        minimum: 0
+                        type: integer
+                      resources:
+                        description: |-
+                          Resources sets the container's resource requests/limits. When unset
+                          the operator emits BestEffort QoS; noisy-neighbour evictions hit
+                          MCP tools first. Chart-rendered MCP tools already expose this via
+                          mcpTools.<name>.resources. (#1353)
+                        properties:
+                          claims:
+                            description: |-
+                              Claims lists the names of resources, defined in spec.resourceClaims,
+                              that are used by this container.
+
+                              This is an alpha field and requires enabling the
+                              DynamicResourceAllocation feature gate.
+
+                              This field is immutable. It can only be set for containers.
+                            items:
+                              description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                              properties:
+                                name:
+                                  description: |-
+                                    Name must match the name of one entry in pod.spec.resourceClaims of
+                                    the Pod where this field is used. It makes that resource available
+                                    inside a container.
+                                  type: string
+                                request:
+                                  description: |-
+                                    Request is the name chosen for a request in the referenced claim.
+                                    If empty, everything from the claim is made available, otherwise
+                                    only the result of this request.
+                                  type: string
+                              required:
+                              - name
+                              type: object
+                            type: array
+                            x-kubernetes-list-map-keys:
+                            - name
+                            x-kubernetes-list-type: map
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              Limits describes the maximum amount of compute resources allowed.
+                              More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              Requests describes the minimum amount of compute resources required.
+                              If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                              otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                              More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                            type: object
+                        type: object
                     type: object
                 type: object
               metrics:
@@ -2208,6 +3601,12 @@ spec:
                   container in the pod — this is kept for backward compatibility with
                   existing NyxAgent manifests and for MCP-tool-style pods that want a
                   single fixed port. Prefer leaving it unset on new deployments.
+
+                  DEPRECATED (#1374): non-zero values in multi-container pods collide
+                  (harness:9000 + backend:9000) and mask the intent of the #1249 /
+                  #1322 unique-named-port work. New deployments should leave this
+                  unset; future v1 may reject non-zero values on multi-container
+                  pods via the webhook.
                 format: int32
                 maximum: 65535
                 minimum: 0
@@ -2622,7 +4021,7 @@ spec:
                 description: Port is the HTTP port harness listens on (Service + probe
                   target).
                 format: int32
-                maximum: 65535
+                maximum: 64535
                 minimum: 1
                 type: integer
               preStop:
@@ -2824,7 +4223,7 @@ spec:
                   container port (`Spec.Port`). Mirrors the chart's `service.yaml`
                   which already separates Service port from target port.
                 format: int32
-                maximum: 65535
+                maximum: 64535
                 minimum: 1
                 type: integer
               serviceType:
@@ -3260,6 +4659,69 @@ spec:
                 description: ReadyReplicas mirrors the agent Deployment's status.readyReplicas.
                 format: int32
                 type: integer
+              reconcileHistory:
+                description: |-
+                  ReconcileHistory is a capped ring of the last ReconcileHistoryMax
+                  reconcile outcomes (#1112). Newest entry last. Surfaces past phase
+                  flaps, reconcile durations, and error reasons to `kubectl describe`
+                  without needing Prometheus or a workqueue log tail. Writes happen
+                  inside updateStatus on the same Status().Patch that records the
+                  phase/conditions, so no extra round-trip to the apiserver.
+                items:
+                  description: |-
+                    ReconcileHistoryEntry is a single reconcile outcome persisted on
+                    NyxAgentStatus.ReconcileHistory (#1112). Fields are deliberately
+                    primitive so the entries serialise cleanly into the status subresource
+                    and render usefully under `kubectl describe`.
+                  properties:
+                    duration:
+                      description: |-
+                        Duration is the reconcile wall-clock duration, serialised as the
+                        Go time.Duration string (e.g. "123ms", "2.4s"). Kept as a string
+                        rather than int64 nanoseconds so the field is self-describing in
+                        `kubectl get -o yaml` without dashboard tooling.
+                      minLength: 1
+                      type: string
+                    message:
+                      description: |-
+                        Message is a human-readable summary, truncated to
+                        ReconcileHistoryMessageMax bytes with a trailing "…" when the full
+                        error overflows. Empty on Success outcomes where the Reason alone
+                        is enough.
+                      maxLength: 128
+                      type: string
+                    phase:
+                      description: Phase classifies the outcome. See ReconcileHistoryPhase.
+                      enum:
+                      - Success
+                      - Error
+                      - Partial
+                      type: string
+                    reason:
+                      description: |-
+                        Reason is a short machine-readable code — same convention as
+                        metav1.Condition.Reason (CamelCase, no punctuation). Typical values:
+                        "Reconciled", "ReconcileFailed".
+                      maxLength: 64
+                      minLength: 1
+                      type: string
+                    time:
+                      description: |-
+                        Time is the apiserver-visible wall-clock at which reconcile
+                        finished. Indexed by the ring's natural order; included as a field
+                        so `kubectl describe` surfaces it without forcing readers to infer
+                        ordering from array position.
+                      format: date-time
+                      type: string
+                  required:
+                  - duration
+                  - phase
+                  - reason
+                  - time
+                  type: object
+                maxItems: 10
+                type: array
+                x-kubernetes-list-type: atomic
             type: object
         type: object
     served: true

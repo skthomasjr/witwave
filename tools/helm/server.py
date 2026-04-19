@@ -338,6 +338,24 @@ _ENV_ALLOWLIST = frozenset({
     "KUBECONFIG",
     # OTel — allowed so helm's outbound telemetry (if any) is traceable
     "OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_SERVICE_NAME",
+    # #1421: proxy config — required for helm behind corporate proxies
+    # to reach chart repos. Stripping these silently breaks enterprise
+    # deployments.
+    "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
+    "http_proxy", "https_proxy", "no_proxy",
+    # #1421: cloud-provider exec-plugin credentials (BYO-kubeconfig
+    # using AWS EKS / GCP GKE / Azure AKS auth plugins). Stripping
+    # these makes kubectl/helm silently fail auth on cloud clusters.
+    "AWS_REGION", "AWS_DEFAULT_REGION", "AWS_PROFILE",
+    "AWS_ROLE_ARN", "AWS_ROLE_SESSION_NAME",
+    "AWS_WEB_IDENTITY_TOKEN_FILE",
+    "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+    "AWS_SHARED_CREDENTIALS_FILE", "AWS_CONFIG_FILE",
+    "GOOGLE_APPLICATION_CREDENTIALS",
+    "CLOUDSDK_CORE_PROJECT", "CLOUDSDK_COMPUTE_ZONE",
+    "CLOUDSDK_COMPUTE_REGION", "CLOUDSDK_CONFIG",
+    "AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET",
+    "AZURE_TENANT_ID", "AZURE_SUBSCRIPTION_ID",
 })
 
 
