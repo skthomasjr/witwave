@@ -75,6 +75,13 @@ const DefaultImageTagSentinel = "unset"
 // than adding per-concern finalizers.
 const nyxAgentFinalizer = "nyxagent.nyx.ai/finalizer"
 
+// NyxOperatorFieldManager is the FieldManager name the operator uses for
+// Server-Side Apply writes (#751). Isolating the field-owner in one place
+// means external field managers (HPA, VPA, GitOps) can coexist with the
+// operator without per-reconcile write thrash: SSA only updates the fields
+// the operator actually owns, leaving others untouched on the apiserver.
+const NyxOperatorFieldManager = "nyx-operator"
+
 // NyxAgentReconciler reconciles a NyxAgent object.
 type NyxAgentReconciler struct {
 	client.Client
@@ -443,39 +450,70 @@ func (r *NyxAgentReconciler) applyDeployment(ctx context.Context, agent *nyxv1al
 		desired.Spec.Template.ObjectMeta.Annotations[credentialsChecksumAnnotation] = checksum
 	}
 
+	// Detect a credential rotation by looking at the existing Deployment's
+	// previously-stamped checksum. Also honour the HPA's authority over
+	// spec.replicas (#486): when autoscaling is on, leave replicas unset in
+	// the desired object so SSA does not claim ownership of that field.
 	existing := &appsv1.Deployment{}
 	getErr := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
 	switch {
 	case apierrors.IsNotFound(getErr):
+		// fall through — SSA handles create and update uniformly below.
 		span.SetAttributes(attribute.String("nyx.resource.action", "create"))
-		err = r.Create(ctx, desired)
-		return err
 	case getErr != nil:
 		err = getErr
 		return err
-	}
-
-	// Detect a rotation: the previously-stamped checksum differs from
-	// the freshly-computed one. Bump the counter exactly once per
-	// rotation; the annotation update below rolls the Deployment.
-	if existing.Spec.Template.Annotations != nil {
-		prev := existing.Spec.Template.Annotations[credentialsChecksumAnnotation]
-		if prev != "" && prev != checksum {
-			NyxAgentCredentialRotationsTotal.WithLabelValues(agent.Namespace, agent.Name).Inc()
+	default:
+		span.SetAttributes(attribute.String("nyx.resource.action", "apply"))
+		if existing.Spec.Template.Annotations != nil {
+			prev := existing.Spec.Template.Annotations[credentialsChecksumAnnotation]
+			if prev != "" && prev != checksum {
+				NyxAgentCredentialRotationsTotal.WithLabelValues(agent.Namespace, agent.Name).Inc()
+			}
+		}
+		if agent.Spec.Autoscaling != nil && agent.Spec.Autoscaling.Enabled {
+			// Drop replicas from the desired object so SSA relinquishes
+			// ownership of the field to the HPA — otherwise every reconcile
+			// would reassert replicas=<nil|default> and fight the HPA.
+			desired.Spec.Replicas = nil
 		}
 	}
-	// When autoscaling is enabled, the HPA owns spec.replicas. Preserve the
-	// existing value so that `existing.Spec = desired.Spec` (where desired has
-	// replicas=nil) doesn't defeat the HPA on every reconcile. See #486.
-	if agent.Spec.Autoscaling != nil && agent.Spec.Autoscaling.Enabled {
-		desired.Spec.Replicas = existing.Spec.Replicas
+
+	// Server-Side Apply (#751). Tagging every operator-managed write with
+	// FieldManager="nyx-operator" lets apiserver track field ownership so
+	// external managers (HPA for replicas, GitOps for labels, a human
+	// running ``kubectl edit``) can coexist without per-reconcile write
+	// thrash. ForceOwnership claims fields we consider operator-owned on
+	// upgrades that previously used bare Update.
+	if err = applySSA(ctx, r.Client, desired); err != nil {
+		return err
 	}
-	// Patch spec + labels; keep existing status and server-filled fields.
-	existing.Spec = desired.Spec
-	existing.Labels = desired.Labels
-	span.SetAttributes(attribute.String("nyx.resource.action", "update"))
-	err = r.Update(ctx, existing)
-	return err
+	return nil
+}
+
+// applySSA issues a Server-Side Apply patch against ``obj`` using the
+// operator's FieldManager. The caller must set GVK on the object (SSA
+// requires TypeMeta); the helper strips ResourceVersion and ManagedFields
+// which would otherwise conflict with Apply semantics.
+func applySSA(ctx context.Context, c client.Client, obj client.Object) error {
+	// SSA requires TypeMeta populated; the object's GVK must resolve
+	// through the scheme. Clear server-managed bookkeeping so we don't
+	// trip apiserver conflict checks.
+	obj.SetResourceVersion("")
+	obj.SetManagedFields(nil)
+	if obj.GetObjectKind().GroupVersionKind().Empty() {
+		// Best-effort: look up the object's kind on the scheme when the
+		// caller forgot to set TypeMeta. Falls through to the Patch call
+		// which will surface a clear error if GVK is still missing.
+		gvks, _, err := c.Scheme().ObjectKinds(obj)
+		if err == nil && len(gvks) > 0 {
+			obj.GetObjectKind().SetGroupVersionKind(gvks[0])
+		}
+	}
+	return c.Patch(ctx, obj, client.Apply,
+		client.ForceOwnership,
+		client.FieldOwner(NyxOperatorFieldManager),
+	)
 }
 
 // NyxPromptAgentRefIndex is the field-indexer key that maps every
@@ -634,26 +672,25 @@ func (r *NyxAgentReconciler) applyService(ctx context.Context, agent *nyxv1alpha
 	if err = controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
 		return fmt.Errorf("set owner on Service: %w", err)
 	}
+	// Preserve ClusterIP across updates — the apiserver rejects attempts to
+	// change it. Read the live object only to carry that immutable field
+	// forward; everything else is expressed via SSA (#751).
 	existing := &corev1.Service{}
 	getErr := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
 	switch {
 	case apierrors.IsNotFound(getErr):
 		span.SetAttributes(attribute.String("nyx.resource.action", "create"))
-		err = r.Create(ctx, desired)
-		return err
 	case getErr != nil:
 		err = getErr
 		return err
+	default:
+		span.SetAttributes(attribute.String("nyx.resource.action", "apply"))
+		desired.Spec.ClusterIP = existing.Spec.ClusterIP
 	}
-	// Preserve ClusterIP across updates — the API server rejects attempts to
-	// change it.
-	desired.Spec.ClusterIP = existing.Spec.ClusterIP
-	existing.Spec = desired.Spec
-	existing.Labels = desired.Labels
-	existing.Annotations = desired.Annotations
-	span.SetAttributes(attribute.String("nyx.resource.action", "update"))
-	err = r.Update(ctx, existing)
-	return err
+	if err = applySSA(ctx, r.Client, desired); err != nil {
+		return err
+	}
+	return nil
 }
 
 // reconcileConfigMaps applies every ConfigMap the spec currently calls for
