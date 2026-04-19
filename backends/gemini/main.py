@@ -359,7 +359,24 @@ async def main():
                                 "description": _agent_description,
                                 "inputSchema": {
                                     "type": "object",
-                                    "properties": {"prompt": {"type": "string", "description": "The prompt to send to the agent."}},
+                                    "properties": {
+                                        "prompt": {"type": "string", "description": "The prompt to send to the agent."},
+                                        # Advertise session_id + max_tokens parity with claude (#1090) so
+                                        # generic MCP clients don't silently drop continuation / budget
+                                        # controls when switching backends.
+                                        "session_id": {
+                                            "type": "string",
+                                            "description": "Optional session identifier for conversation continuity. "
+                                                           "A valid UUID is passed through verbatim; any other string is "
+                                                           "hashed via uuid5(NAMESPACE_URL, value). Omit for a fresh session.",
+                                        },
+                                        "max_tokens": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "description": "Optional per-call token budget. Positive integers only; "
+                                                           "non-positive or invalid values are logged and ignored.",
+                                        },
+                                    },
                                     "required": ["prompt"],
                                 },
                             }
