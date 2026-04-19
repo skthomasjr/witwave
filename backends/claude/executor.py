@@ -393,32 +393,66 @@ STREAM_CHUNK_TIMEOUT_SECONDS = float(os.environ.get("STREAM_CHUNK_TIMEOUT_SECOND
 # from #633 still fires regardless.  Defaults the bearer token to
 # TRIGGERS_AUTH_TOKEN so operators don't need an additional secret.
 HARNESS_EVENTS_URL = os.environ.get("HARNESS_EVENTS_URL", "") or ""
-# Token source resolution (#933): prefer the dedicated
-# HARNESS_EVENTS_AUTH_TOKEN; fall back to TRIGGERS_AUTH_TOKEN only for
-# backward compatibility with deployments that predate #700. Log which
-# env var supplied the value at startup so operators notice when a
-# rotation of HARNESS_EVENTS_AUTH_TOKEN silently reverts to the legacy
-# fallback — previously this mis-routing surfaced only as 401s buried
-# in per-call DEBUG output.
-_HET_PRIMARY = os.environ.get("HARNESS_EVENTS_AUTH_TOKEN", "")
-_HET_FALLBACK = os.environ.get("TRIGGERS_AUTH_TOKEN", "")
-if _HET_PRIMARY:
-    HARNESS_EVENTS_AUTH_TOKEN = _HET_PRIMARY
-    _HET_SOURCE = "HARNESS_EVENTS_AUTH_TOKEN"
-elif _HET_FALLBACK:
-    HARNESS_EVENTS_AUTH_TOKEN = _HET_FALLBACK
-    _HET_SOURCE = "TRIGGERS_AUTH_TOKEN (legacy fallback — set HARNESS_EVENTS_AUTH_TOKEN to silence)"
-    logger.warning(
-        "hook.decision transport: HARNESS_EVENTS_AUTH_TOKEN is unset; "
-        "using the legacy TRIGGERS_AUTH_TOKEN fallback (#933). Rotating "
-        "HARNESS_EVENTS_AUTH_TOKEN without clearing TRIGGERS_AUTH_TOKEN "
-        "would silently keep the stale bearer — set a dedicated "
-        "HARNESS_EVENTS_AUTH_TOKEN in production."
-    )
-else:
-    HARNESS_EVENTS_AUTH_TOKEN = ""
-    _HET_SOURCE = "(unset)"
-logger.info("hook.decision transport: bearer source = %s", _HET_SOURCE)
+
+# Token source resolution (#933, rotation-aware via #981): prefer the
+# dedicated HARNESS_EVENTS_AUTH_TOKEN; fall back to TRIGGERS_AUTH_TOKEN
+# only for backward compatibility with deployments that predate #700.
+# _resolve_harness_events_auth_token() is called on every POST so
+# Kubernetes projected-Secret rotation takes effect in-process without
+# a pod restart. The import-time logger.info that previously advertised
+# the token source moved into the first successful resolution so the
+# log lands *after* main.py configures structured JSON handlers (#980)
+# and the emission is rate-limited to one-per-source-change so a
+# rotation back to the legacy fallback is still visible.
+_HET_SOURCE_LAST: str | None = None
+_HET_SOURCE_LOCK = threading.Lock()
+
+
+def _resolve_harness_events_auth_token() -> tuple[str, str]:
+    """Return (token, source_label) for the harness-events bearer.
+
+    Read fresh on every call so rotated Kubernetes Secrets (projected
+    into the container as env vars via the kubelet sync loop) take
+    effect without a backend restart. Emits a log line the first time
+    a given source is observed and on subsequent changes so operators
+    can detect silent reversion to the legacy fallback (#980, #981).
+    """
+    primary = os.environ.get("HARNESS_EVENTS_AUTH_TOKEN", "")
+    fallback = os.environ.get("TRIGGERS_AUTH_TOKEN", "")
+    if primary:
+        token = primary
+        source = "HARNESS_EVENTS_AUTH_TOKEN"
+    elif fallback:
+        token = fallback
+        source = "TRIGGERS_AUTH_TOKEN (legacy fallback — set HARNESS_EVENTS_AUTH_TOKEN to silence)"
+    else:
+        token = ""
+        source = "(unset)"
+
+    global _HET_SOURCE_LAST
+    with _HET_SOURCE_LOCK:
+        if source != _HET_SOURCE_LAST:
+            previous = _HET_SOURCE_LAST
+            _HET_SOURCE_LAST = source
+            emit = True
+        else:
+            emit = False
+            previous = None
+    if emit:
+        if source.startswith("TRIGGERS_AUTH_TOKEN"):
+            logger.warning(
+                "hook.decision transport: HARNESS_EVENTS_AUTH_TOKEN is unset; "
+                "using the legacy TRIGGERS_AUTH_TOKEN fallback (#933). Rotating "
+                "HARNESS_EVENTS_AUTH_TOKEN without clearing TRIGGERS_AUTH_TOKEN "
+                "would silently keep the stale bearer — set a dedicated "
+                "HARNESS_EVENTS_AUTH_TOKEN in production."
+            )
+        logger.info(
+            "hook.decision transport: bearer source = %s%s",
+            source,
+            f" (was {previous!r})" if previous is not None else "",
+        )
+    return token, source
 # Tight timeout — the hook is synchronous with tool execution; we never block
 # on the POST (fire-and-forget via asyncio.create_task) but still want any
 # connection the client opens to fail fast when the harness is unreachable.
@@ -777,7 +811,12 @@ async def _post_hook_event_to_harness(event_dict: dict) -> None:
     """
     if not HARNESS_EVENTS_URL:
         return
-    if not HARNESS_EVENTS_AUTH_TOKEN:
+    # Re-resolve the token per call so rotated secrets take effect
+    # in-process without a pod restart (#981). Resolution also logs
+    # source changes so a silent reversion to the legacy fallback is
+    # surfaced at default log levels.
+    token, _ = _resolve_harness_events_auth_token()
+    if not token:
         # Surface the misconfiguration exactly once at WARNING: the harness
         # endpoint will reject every POST, so hook events are silently
         # dropped. Operators who set HARNESS_EVENTS_URL without the token
@@ -798,7 +837,7 @@ async def _post_hook_event_to_harness(event_dict: dict) -> None:
         await client.post(
             url,
             json=event_dict,
-            headers={"Authorization": f"Bearer {HARNESS_EVENTS_AUTH_TOKEN}"},
+            headers={"Authorization": f"Bearer {token}"},
         )
     except Exception as exc:
         # Transport failures are expected during harness restarts or network
