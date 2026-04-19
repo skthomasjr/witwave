@@ -345,6 +345,43 @@ def test_diff_redactor_failure_path_uses_log_binding():
         )
 
 
+# ----- Privileged-op audit log (#1125) -----
+
+
+def test_audit_redacts_values_and_writes_jsonl(tmp_path, monkeypatch):
+    import mcp_audit
+    import json as _json
+
+    log_path = tmp_path / "audit.jsonl"
+    monkeypatch.setenv("MCP_AUDIT_LOG_PATH", str(log_path))
+    monkeypatch.setenv("AGENT_NAME", "iris-test")
+
+    mcp_audit.audit(
+        "mcp-helm", "install",
+        args={"name": "demo", "namespace": "ns",
+              "values": {"db": {"password": "sekret"}}},
+        dry_run=False,
+    )
+    assert log_path.exists()
+    line = log_path.read_text().strip().splitlines()[0]
+    record = _json.loads(line)
+    assert record["server"] == "mcp-helm"
+    assert record["tool"] == "install"
+    assert record["agent"] == "iris-test"
+    assert record["dry_run"] is False
+    # values must be redacted to shape, not contents
+    assert record["args"]["values"].startswith("<dict")
+    assert "sekret" not in line
+
+
+def test_audit_is_noop_when_path_unset(monkeypatch, tmp_path):
+    import mcp_audit
+
+    # Empty env var disables the sink — must not raise.
+    monkeypatch.setenv("MCP_AUDIT_LOG_PATH", "")
+    mcp_audit.audit("mcp-helm", "install", args={"name": "x"})
+
+
 # ----- Call-budget quota (#1124) -----
 
 

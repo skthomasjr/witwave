@@ -67,6 +67,12 @@ except Exception:  # pragma: no cover - defensive fallback
     def record_tool_call(*_a: Any, **_kw: Any):
         yield None
 
+try:
+    from mcp_audit import audit as _audit  # type: ignore
+except Exception:  # pragma: no cover - defensive fallback
+    def _audit(*_a: Any, **_kw: Any) -> None:  # type: ignore
+        return None
+
 log = logging.getLogger("tools.helm")
 
 mcp = FastMCP("helm")
@@ -732,6 +738,13 @@ def install(
         repo=repo,
         timeout=timeout,
     )
+    _audit(
+        "mcp-helm", "install",
+        args={"name": name, "chart": chart, "namespace": namespace,
+              "version": version, "repo": repo, "values": values,
+              "wait": wait, "timeout": timeout},
+        dry_run=dry_run,
+    )
     with _handler_span(
         "install",
         {"helm.release": name, "helm.chart": chart, "helm.namespace": namespace,
@@ -793,6 +806,15 @@ def upgrade(
         version=version,
         repo=repo,
         timeout=timeout,
+    )
+    _audit(
+        "mcp-helm", "upgrade",
+        args={"name": name, "chart": chart, "namespace": namespace,
+              "version": version, "repo": repo, "values": values,
+              "install_if_missing": install_if_missing, "wait": wait,
+              "timeout": timeout, "reset_values": reset_values,
+              "reuse_values": reuse_values},
+        dry_run=dry_run,
     )
     with _handler_span(
         "upgrade",
@@ -913,6 +935,11 @@ def rollback(name: str, namespace: str, revision: int, wait: bool = False) -> st
     """
     _refuse_if_read_only("rollback")
     _reject_flag_like(name=name, namespace=namespace)
+    _audit(
+        "mcp-helm", "rollback",
+        args={"name": name, "namespace": namespace,
+              "revision": revision, "wait": wait},
+    )
     # Type-validate revision as int so an LLM-supplied "-1"-style string
     # cannot flow into argv as a flag (#693).
     if not isinstance(revision, int) or isinstance(revision, bool):
@@ -947,6 +974,12 @@ def uninstall(
     """
     _refuse_if_read_only("uninstall")
     _reject_flag_like(name=name, namespace=namespace)
+    _audit(
+        "mcp-helm", "uninstall",
+        args={"name": name, "namespace": namespace,
+              "keep_history": keep_history},
+        dry_run=dry_run,
+    )
     with _handler_span(
         "uninstall",
         {"helm.release": name, "helm.namespace": namespace, "helm.dry_run": dry_run},

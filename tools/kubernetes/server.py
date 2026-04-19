@@ -64,6 +64,12 @@ except Exception:  # pragma: no cover - defensive fallback
     def record_tool_call(*_a: Any, **_kw: Any):
         yield None
 
+try:
+    from mcp_audit import audit as _audit  # type: ignore
+except Exception:  # pragma: no cover - defensive fallback
+    def _audit(*_a: Any, **_kw: Any) -> None:  # type: ignore
+        return None
+
 log = logging.getLogger("tools.kubernetes")
 
 mcp = FastMCP("kubernetes")
@@ -538,6 +544,11 @@ def read_secret_value(
             "raw Secret material into logs and memory; pass confirm=True only "
             "when the caller genuinely needs the payload."
         )
+    _audit(
+        "mcp-kubernetes", "read_secret_value",
+        args={"name": name, "namespace": namespace},
+        outcome="invoked",
+    )
     with _handler_span(
         "read_secret_value",
         {"k8s.name": name, "k8s.namespace": namespace, "k8s.secret_read": True},
@@ -634,6 +645,13 @@ def apply(
     # depends on the flag".
     _refuse_if_read_only("apply")
     field_manager = _resolve_field_manager(caller_id)
+    _audit(
+        "mcp-kubernetes", "apply",
+        args={"manifest": manifest, "caller_id": caller_id,
+              "field_manager": field_manager},
+        caller=caller_id,
+        dry_run=dry_run,
+    )
     with _handler_span("apply", {"k8s.field_manager": field_manager, "k8s.dry_run": dry_run}) as _h:
         try:
             log.info("apply: field_manager=%s dry_run=%s", field_manager, dry_run)
@@ -709,6 +727,12 @@ def delete(
     running for real.
     """
     _refuse_if_read_only("delete")
+    _audit(
+        "mcp-kubernetes", "delete",
+        args={"kind": kind, "name": name, "namespace": namespace,
+              "api_version": api_version, "propagation_policy": propagation_policy},
+        dry_run=dry_run,
+    )
     with _handler_span(
         "delete",
         {"k8s.kind": kind, "k8s.name": name, "k8s.namespace": namespace,
