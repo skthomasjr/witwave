@@ -3,3 +3,7 @@ dist
 .vite
 coverage
 *.local
+# Playwright artefacts (#818) — runtime traces, reporters, screenshots.
+/test-results/
+/playwright-report/
+/playwright/.cache/

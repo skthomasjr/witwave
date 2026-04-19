@@ -92,5 +92,8 @@ export default defineConfig({
     // coverage — the setup file only registers the matcher, it doesn't
     // force checks (#970).
     setupFiles: ["./tests/setup/axe.ts"],
+    // Playwright specs live under tests/e2e (#818) and use `test` from
+    // @playwright/test; keep vitest from picking them up.
+    exclude: ["**/node_modules/**", "**/dist/**", "tests/e2e/**"],
   },
 });

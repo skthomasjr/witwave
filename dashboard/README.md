@@ -65,12 +65,31 @@ events. Both views coexist; OTel Traces is for distributed request flow spanning
 ## Testing
 
 ```bash
-npm run test         # one-shot
-npm run test:watch   # interactive
+npm run test         # one-shot unit specs (vitest)
+npm run test:watch   # interactive vitest
 ```
 
 Vitest + `@vue/test-utils` in jsdom. Smoke specs for `TeamView`, `ChatPanel`, and `JobsView` cover the list /
 chat / fan-out patterns; add one per new view with the same shape.
+
+### End-to-end (Playwright, #818)
+
+`@playwright/test` is scaffolded for full-browser smoke coverage. Tests live under `tests/e2e/` and mock the
+`/api/*` surface with `page.route()` so the suite does **not** require a live cluster.
+
+```bash
+cd dashboard
+npx playwright install chromium   # first run only — downloads browser binary
+npm run test:e2e
+```
+
+`playwright.config.ts` auto-starts `npm run build && npm run preview -- --port 4173` before the suite so the
+specs always target a deterministic production bundle. Override with `PLAYWRIGHT_BASE_URL=<url>` to point at
+an externally-hosted dev server instead (e.g. during iterative UI work).
+
+The scaffold ships with three smoke flows: shell nav, team list rendering against a mocked `/api/team`, and a
+legacy `/jobs` → `/automation` redirect. CI gating and broader flow coverage (conversations drawer, chat
+send/cancel, degraded banner) are follow-up.
 
 ## Production build
 

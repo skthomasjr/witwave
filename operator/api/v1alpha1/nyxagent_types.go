@@ -853,6 +853,87 @@ type DashboardSpec struct {
 	// Resources for the dashboard container.
 	// +optional
 	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
+
+	// Ingress configures an optional networking.k8s.io/v1 Ingress for the
+	// dashboard Service (#831). Scaffold scope: schema + fail-closed auth
+	// guard. The reconciler in nyxagent_dashboard_ingress.go renders the
+	// Ingress when Enabled=true AND Auth.Mode has been explicitly set —
+	// rendering an unauthenticated Ingress for the dashboard would expose
+	// sensitive per-agent conversation history and is a fail-render mirror
+	// of the chart guard introduced in #528.
+	// +optional
+	Ingress *DashboardIngressSpec `json:"ingress,omitempty"`
+}
+
+// DashboardIngressSpec mirrors the chart's `dashboard.ingress` block and
+// is the only operator-managed entrypoint that reaches the dashboard
+// Service from outside the cluster. The fail-closed posture is the whole
+// point of the CRD gate: the reconciler refuses to render an Ingress
+// until Auth.Mode is non-empty.
+type DashboardIngressSpec struct {
+	// Enabled toggles reconciliation of the Ingress. When false (the
+	// default), no Ingress is rendered and any previously-owned Ingress
+	// is left to ownerReferences GC on NyxAgent deletion.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// ClassName is the ingress class (optional — matches
+	// networking.k8s.io/v1 IngressClassName). Examples: "nginx", "traefik".
+	// +optional
+	ClassName *string `json:"className,omitempty"`
+
+	// Host is the Host header the ingress controller should route on
+	// (e.g. "iris.example.com"). Required when Enabled=true.
+	// +optional
+	Host string `json:"host,omitempty"`
+
+	// TLS wires a TLS block onto the rendered Ingress. When nil the
+	// Ingress is rendered without TLS (discouraged; documented).
+	// +optional
+	TLS *DashboardIngressTLSSpec `json:"tls,omitempty"`
+
+	// Auth is the fail-closed auth configuration. The reconciler refuses
+	// to render the Ingress unless Auth.Mode is set — mirroring the
+	// chart's fail-render guard (#528). Setting Auth.Mode="none" is an
+	// explicit opt-out that the operator still logs loudly on every
+	// reconcile.
+	// +optional
+	Auth *DashboardAuthSpec `json:"auth,omitempty"`
+}
+
+// DashboardIngressTLSSpec is the minimal per-host TLS block. SecretName
+// refers to a tls.crt / tls.key Secret the cluster operator must create
+// out of band (cert-manager, kubectl, etc.).
+type DashboardIngressTLSSpec struct {
+	// SecretName references a kubernetes.io/tls Secret in the same
+	// namespace as the NyxAgent. Required when TLS is set.
+	// +kubebuilder:validation:MinLength=1
+	SecretName string `json:"secretName"`
+}
+
+// DashboardAuthSpec mirrors the chart's dashboard.auth guard. Modes:
+//
+//   - "basic"  — basic-auth Secret is reconciled and stamped into the
+//     Ingress via nginx-style annotations (follow-up: richer controller
+//     wiring for non-nginx ingress classes).
+//   - "none"   — explicit opt-out; Ingress is rendered without auth and
+//     the operator logs a warning event on every reconcile.
+//
+// Any other value is rejected at the CRD schema layer. Leaving Auth nil
+// OR leaving Mode empty keeps the fail-closed posture: Ingress render
+// is skipped and status surfaces the reason.
+type DashboardAuthSpec struct {
+	// Mode selects the auth guard.
+	// +kubebuilder:validation:Enum=basic;none
+	Mode string `json:"mode"`
+
+	// BasicAuthSecretName names an existing basic-auth Secret (the same
+	// htpasswd-style key "auth" the nginx ingress controller reads). When
+	// empty and Mode="basic", the operator reconciles a scaffold Secret —
+	// scaffold scope: the scaffold is documented in the reconciler as a
+	// follow-up.
+	// +optional
+	BasicAuthSecretName string `json:"basicAuthSecretName,omitempty"`
 }
 
 // PodMonitorSpec configures an optional monitoring.coreos.com/v1 PodMonitor

@@ -1520,6 +1520,72 @@ spec:
                     required:
                     - repository
                     type: object
+                  ingress:
+                    description: |-
+                      Ingress configures an optional networking.k8s.io/v1 Ingress for the
+                      dashboard Service (#831). Scaffold scope: schema + fail-closed auth
+                      guard. The reconciler in nyxagent_dashboard_ingress.go renders the
+                      Ingress when Enabled=true AND Auth.Mode has been explicitly set —
+                      rendering an unauthenticated Ingress for the dashboard would expose
+                      sensitive per-agent conversation history and is a fail-render mirror
+                      of the chart guard introduced in #528.
+                    properties:
+                      auth:
+                        description: |-
+                          Auth is the fail-closed auth configuration. The reconciler refuses
+                          to render the Ingress unless Auth.Mode is set — mirroring the
+                          chart's fail-render guard (#528). Setting Auth.Mode="none" is an
+                          explicit opt-out that the operator still logs loudly on every
+                          reconcile.
+                        properties:
+                          basicAuthSecretName:
+                            description: |-
+                              BasicAuthSecretName names an existing basic-auth Secret (the same
+                              htpasswd-style key "auth" the nginx ingress controller reads). When
+                              empty and Mode="basic", the operator reconciles a scaffold Secret —
+                              scaffold scope: the scaffold is documented in the reconciler as a
+                              follow-up.
+                            type: string
+                          mode:
+                            description: Mode selects the auth guard.
+                            enum:
+                            - basic
+                            - none
+                            type: string
+                        required:
+                        - mode
+                        type: object
+                      className:
+                        description: |-
+                          ClassName is the ingress class (optional — matches
+                          networking.k8s.io/v1 IngressClassName). Examples: "nginx", "traefik".
+                        type: string
+                      enabled:
+                        description: |-
+                          Enabled toggles reconciliation of the Ingress. When false (the
+                          default), no Ingress is rendered and any previously-owned Ingress
+                          is left to ownerReferences GC on NyxAgent deletion.
+                        type: boolean
+                      host:
+                        description: |-
+                          Host is the Host header the ingress controller should route on
+                          (e.g. "iris.example.com"). Required when Enabled=true.
+                        type: string
+                      tls:
+                        description: |-
+                          TLS wires a TLS block onto the rendered Ingress. When nil the
+                          Ingress is rendered without TLS (discouraged; documented).
+                        properties:
+                          secretName:
+                            description: |-
+                              SecretName references a kubernetes.io/tls Secret in the same
+                              namespace as the NyxAgent. Required when TLS is set.
+                            minLength: 1
+                            type: string
+                        required:
+                        - secretName
+                        type: object
+                    type: object
                   port:
                     default: 80
                     description: Port is the Service port (the container always listens

@@ -370,6 +370,13 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	if err := r.reconcileMCPTools(ctx, agent); err != nil {
 		reconcileErrs = append(reconcileErrs, err)
 	}
+	// Dashboard Ingress + auth guard (#831). Scaffold: the fail-closed
+	// auth gate is wired end-to-end here; full Ingress + Secret rendering
+	// is a follow-up so the CRD schema can settle before the controller
+	// grows per-ingress-class adapters.
+	if err := r.reconcileDashboardIngress(ctx, agent); err != nil {
+		reconcileErrs = append(reconcileErrs, err)
+	}
 	reconcileErr := errors.Join(reconcileErrs...)
 
 	// Observe Deployment status and update our own status subresource.
