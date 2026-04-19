@@ -211,3 +211,96 @@ def test_redacted_sentinel_is_nonempty_string():
     """Sanity guard so future refactors keep the redaction marker
     distinguishable from legitimate empty values."""
     assert isinstance(server._REDACTED, str) and server._REDACTED
+
+
+# ----- with_kube_retry 401 auto-reload (#1082) --------------------
+
+
+def test_with_kube_retry_passes_through_on_success():
+    calls = []
+
+    def _ok():
+        calls.append(1)
+        return "done"
+
+    assert server.with_kube_retry(_ok) == "done"
+    assert len(calls) == 1
+
+
+def test_with_kube_retry_reloads_and_retries_on_401():
+    calls = {"n": 0}
+
+    def _flaky():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise server.ApiException(status=401, reason="Unauthorized")
+        return "ok"
+
+    with mock.patch.object(server, "_reload_kube_clients") as reload_mock:
+        out = server.with_kube_retry(_flaky)
+
+    assert out == "ok"
+    assert calls["n"] == 2
+    reload_mock.assert_called_once()
+
+
+def test_with_kube_retry_propagates_non_401_without_reload():
+    def _forbidden():
+        raise server.ApiException(status=403, reason="Forbidden")
+
+    with mock.patch.object(server, "_reload_kube_clients") as reload_mock:
+        with pytest.raises(server.ApiException):
+            server.with_kube_retry(_forbidden)
+    reload_mock.assert_not_called()
+
+
+# ----- _resolve discovery-cache invalidation (#1083) ---------------
+
+
+def test_resolve_invalidates_discovery_on_resource_not_found():
+    # Build a fake exception type that matches by class name.
+    class ResourceNotFoundError(Exception):
+        pass
+
+    call_log = []
+
+    class FakeResources:
+        def __init__(self):
+            self.attempts = 0
+
+        def get(self, **kwargs):
+            self.attempts += 1
+            call_log.append(kwargs)
+            if self.attempts == 1:
+                raise ResourceNotFoundError("not found")
+            return "resource-handle"
+
+    class FakeDyn:
+        def __init__(self):
+            self.resources = FakeResources()
+
+    fake_dyn = FakeDyn()
+    server._dyn_client = fake_dyn  # prime the cache
+    try:
+        with mock.patch.object(server, "_dyn", return_value=fake_dyn):
+            out = server._resolve(kind="Foo")
+        assert out == "resource-handle"
+        assert fake_dyn.resources.attempts == 2
+    finally:
+        server._dyn_client = None
+
+
+def test_resolve_propagates_unrelated_exceptions():
+    class Boom(Exception):
+        pass
+
+    class FakeResources:
+        def get(self, **kwargs):
+            raise Boom("unrelated")
+
+    class FakeDyn:
+        resources = FakeResources()
+
+    with mock.patch.object(server, "_dyn", return_value=FakeDyn()):
+        with pytest.raises(Boom):
+            server._resolve(kind="Foo")

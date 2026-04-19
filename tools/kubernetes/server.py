@@ -116,10 +116,37 @@ _KIND_RE = re.compile(r"^[A-Z][A-Za-z0-9]*$")
 _api_client: client.ApiClient | None = None
 _dyn_client: dynamic.DynamicClient | None = None
 
+# Prometheus counters for auth/discovery self-healing (#1082, #1083).
+try:
+    from prometheus_client import Counter as _Counter  # type: ignore
+
+    mcp_k8s_token_reload_total = _Counter(
+        "mcp_k8s_token_reload_total",
+        "Count of Kubernetes client reloads triggered by a 401 response, "
+        "e.g. projected ServiceAccount token rotation.",
+        ["outcome"],
+    )
+    mcp_discovery_reload_total = _Counter(
+        "mcp_discovery_reload_total",
+        "Count of DynamicClient discovery-cache refreshes triggered by a "
+        "ResourceNotFound / 404 during _resolve.",
+        ["outcome"],
+    )
+except Exception:  # pragma: no cover - metrics disabled
+    mcp_k8s_token_reload_total = None  # type: ignore
+    mcp_discovery_reload_total = None  # type: ignore
+
 
 def _load_kube_config() -> None:
     try:
-        config.load_incluster_config()
+        # try_refresh_token=True keeps the projected SA token fresh
+        # across rotations rather than snapshotting it at ApiClient
+        # construction (#1082). Older kubernetes client releases lack
+        # the kwarg; fall back to the default signature in that case.
+        try:
+            config.load_incluster_config(try_refresh_token=True)
+        except TypeError:
+            config.load_incluster_config()
         log.info("loaded in-cluster kube config")
     except config.ConfigException:
         config.load_kube_config()
@@ -140,11 +167,89 @@ def _dyn() -> dynamic.DynamicClient:
     return _dyn_client
 
 
+def _reload_kube_clients() -> None:
+    """Drop cached ApiClient/DynamicClient and reload kube config (#1082)."""
+    global _api_client, _dyn_client
+    _api_client = None
+    _dyn_client = None
+    _load_kube_config()
+
+
+def with_kube_retry(fn, *args, **kwargs):
+    """Run ``fn`` and retry once on 401 after reloading kube config (#1082).
+
+    Scope is narrow: only 401 Unauthorized triggers a reload. Other
+    ApiException codes propagate unchanged so RBAC 403s, 404s,
+    conflicts stay loud. Single-retry prevents a genuinely-broken
+    auth posture from hammering the apiserver in a tight loop.
+    """
+    try:
+        return fn(*args, **kwargs)
+    except ApiException as exc:
+        if getattr(exc, "status", None) != 401:
+            raise
+        try:
+            _reload_kube_clients()
+        except Exception:
+            if mcp_k8s_token_reload_total is not None:
+                try:
+                    mcp_k8s_token_reload_total.labels(outcome="error").inc()
+                except Exception:
+                    pass
+            raise
+        if mcp_k8s_token_reload_total is not None:
+            try:
+                mcp_k8s_token_reload_total.labels(outcome="ok").inc()
+            except Exception:
+                pass
+        log.info("kube 401: reloaded config, retrying once")
+        return fn(*args, **kwargs)
+
+
 def _resolve(kind: str, api_version: str | None = None):
-    """Resolve a Kubernetes resource by kind, optionally disambiguated by apiVersion."""
-    if api_version:
-        return _dyn().resources.get(api_version=api_version, kind=kind)
-    return _dyn().resources.get(kind=kind)
+    """Resolve a Kubernetes resource by kind, optionally disambiguated by apiVersion.
+
+    A ResourceNotFoundError / 404 here often means the DynamicClient
+    discovery cache is stale relative to the live apiserver — e.g. a
+    CRD installed after this pod started. Invalidate the cache and
+    retry once before raising (#1083).
+    """
+    def _do():
+        if api_version:
+            return _dyn().resources.get(api_version=api_version, kind=kind)
+        return _dyn().resources.get(kind=kind)
+
+    try:
+        return _do()
+    except Exception as exc:
+        exc_name = type(exc).__name__
+        status = getattr(exc, "status", None)
+        is_missing = (
+            exc_name in ("ResourceNotFoundError", "ResourceNotUniqueError")
+            or status == 404
+        )
+        if not is_missing:
+            raise
+        global _dyn_client
+        _dyn_client = None
+        try:
+            result = _do()
+        except Exception:
+            if mcp_discovery_reload_total is not None:
+                try:
+                    mcp_discovery_reload_total.labels(outcome="error").inc()
+                except Exception:
+                    pass
+            raise
+        if mcp_discovery_reload_total is not None:
+            try:
+                mcp_discovery_reload_total.labels(outcome="ok").inc()
+            except Exception:
+                pass
+        log.info(
+            "kube discovery miss (%s); reloaded DynamicClient and retried", exc_name
+        )
+        return result
 
 
 def _to_dict(obj: Any) -> Any:
