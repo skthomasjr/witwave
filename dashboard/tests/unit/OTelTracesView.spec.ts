@@ -142,9 +142,16 @@ describe("OTelTracesView", () => {
 
   it("honours window.__NYX_CONFIG__.traceApiUrl over in-cluster fallback (#826)", async () => {
     // Runtime-injected config should win: fetch must target the external
-    // base URL, not the /api/team in-cluster fan-out.
-    (window as unknown as { __NYX_CONFIG__: { traceApiUrl: string } }).__NYX_CONFIG__ = {
+    // base URL, not the /api/team in-cluster fan-out. Cross-origin URL
+    // requires the explicit opt-in flag (#1061) — otherwise the same-origin
+    // guard rejects it to keep CSP connect-src in sync with the feature.
+    (
+      window as unknown as {
+        __NYX_CONFIG__: { traceApiUrl: string; traceApiAllowCrossOrigin: boolean };
+      }
+    ).__NYX_CONFIG__ = {
       traceApiUrl: "https://tempo.example:16686",
+      traceApiAllowCrossOrigin: true,
     };
 
     const fetchSpy = vi.fn((input: RequestInfo | URL) => {
@@ -174,8 +181,15 @@ describe("OTelTracesView", () => {
   });
 
   it("fetches a trace list from the Jaeger API when configured", async () => {
-    (window as unknown as { __NYX_CONFIG__: { traceApiUrl: string } }).__NYX_CONFIG__ = {
+    // Cross-origin trace URL requires the explicit allowCrossOrigin
+    // opt-in (#1061).
+    (
+      window as unknown as {
+        __NYX_CONFIG__: { traceApiUrl: string; traceApiAllowCrossOrigin: boolean };
+      }
+    ).__NYX_CONFIG__ = {
       traceApiUrl: "http://jaeger.test",
+      traceApiAllowCrossOrigin: true,
     };
 
     vi.stubGlobal(

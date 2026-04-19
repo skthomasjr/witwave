@@ -63,6 +63,19 @@ data:
       # - frame-ancestors 'none'             — clickjacking (supersedes XFO)
       # - base-uri 'self'                    — prevent base tag hijack
       # - form-action 'self'                 — no off-origin form posts
+      #
+      # CSP ↔ traceApiUrl coordination (#1061). When an operator points the
+      # dashboard at a cross-origin Jaeger/Tempo backend via
+      # __NYX_CONFIG__.traceApiUrl they MUST also:
+      #   1. Set __NYX_CONFIG__.traceApiAllowCrossOrigin=true in the runtime
+      #      config (dashboard same-origin guard refuses the URL otherwise).
+      #   2. Widen this connect-src directive to include the trace backend
+      #      origin (e.g. `connect-src 'self' https://jaeger.example`),
+      #      either by templating this ConfigMap or by layering an additional
+      #      header via your ingress. Without it the fetch is silently
+      #      blocked by CSP.
+      # Keep the two settings in sync — a lone traceApiUrl bypasses nothing,
+      # but a lone CSP widening leaves an attack surface no feature uses.
       add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
       add_header X-Content-Type-Options "nosniff" always;
       add_header Referrer-Policy "no-referrer" always;

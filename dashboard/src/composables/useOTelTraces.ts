@@ -76,15 +76,50 @@ export interface TraceListRow {
 
 interface NyxRuntimeConfig {
   traceApiUrl?: string;
+  // Explicit operator opt-in to point traceApiUrl at a cross-origin
+  // Jaeger/Tempo host (#1061). When absent/false, a cross-origin
+  // traceApiUrl is rejected at validate time. CSP's `connect-src 'self'`
+  // would silently block the fetch otherwise, leaving the user with a
+  // broken trace view and no obvious explanation. Opt-in here signals
+  // that the operator has ALSO widened the CSP connect-src directive in
+  // the dashboard nginx ConfigMap to cover the target origin.
+  traceApiAllowCrossOrigin?: boolean;
 }
 
 // Validate a candidate trace backend URL via `new URL()` and a protocol
 // allow-list (#740). A mis-set runtime config that pointed at, say,
 // `javascript:` or `file:` would otherwise be sent to `fetch()` and leak
 // traceIds/service names (or worse, be coerced by a credulous browser).
-// Returns the trimmed URL string when safe, null when not. Kept exported
-// at module scope so a future unit test can cover it directly.
-function validateTraceBaseUrl(raw: string | undefined | null): string | null {
+//
+// Same-origin by default (#1061). The dashboard's baseline CSP is
+// `connect-src 'self'`, so any cross-origin traceApiUrl would be silently
+// blocked by the browser at fetch() time. Reject cross-origin URLs unless
+// the operator explicitly opts in via __NYX_CONFIG__.traceApiAllowCrossOrigin,
+// which also signals they've widened the CSP connect-src directive to
+// cover the target origin. The two settings are deliberately coupled so
+// a ConfigMap mutation that flipped only one of them (e.g. a compromised
+// operator injects a remote traceApiUrl but can't touch the nginx CSP)
+// can't silently exfiltrate trace IDs.
+//
+// Returns the trimmed URL string when safe, null when not. Kept at
+// module scope so a future unit test can cover it directly.
+function isSameOrigin(parsed: URL): boolean {
+  // jsdom/vitest harness has no window.location.origin in some configs,
+  // so guard access and treat an unknown origin as "not same-origin" to
+  // fail closed.
+  try {
+    const currentOrigin = window.location.origin;
+    if (typeof currentOrigin !== "string" || currentOrigin === "") return false;
+    return parsed.origin === currentOrigin;
+  } catch {
+    return false;
+  }
+}
+
+function validateTraceBaseUrl(
+  raw: string | undefined | null,
+  allowCrossOrigin: boolean,
+): string | null {
   if (typeof raw !== "string" || raw.length === 0) return null;
   const trimmed = raw.replace(/\/+$/, "");
   let parsed: URL;
@@ -106,6 +141,16 @@ function validateTraceBaseUrl(raw: string | undefined | null): string | null {
     );
     return null;
   }
+  if (!allowCrossOrigin && !isSameOrigin(parsed)) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[nyx] traceApiUrl rejected: cross-origin without __NYX_CONFIG__.traceApiAllowCrossOrigin=true " +
+        "(CSP connect-src 'self' would block this fetch; set allowCrossOrigin " +
+        "AND widen nginx connect-src to the trace backend origin)",
+      trimmed,
+    );
+    return null;
+  }
   return trimmed;
 }
 
@@ -116,8 +161,9 @@ function resolveBaseUrl(): string | null {
   // the in-cluster fallback below.
   const runtime = (window as unknown as { __NYX_CONFIG__?: NyxRuntimeConfig })
     .__NYX_CONFIG__;
+  const allowCrossOrigin = runtime?.traceApiAllowCrossOrigin === true;
   if (runtime && typeof runtime.traceApiUrl === "string" && runtime.traceApiUrl) {
-    const safe = validateTraceBaseUrl(runtime.traceApiUrl);
+    const safe = validateTraceBaseUrl(runtime.traceApiUrl, allowCrossOrigin);
     if (safe !== null) return safe;
     // Fall through to build-time when the runtime value is rejected.
   }
@@ -125,7 +171,7 @@ function resolveBaseUrl(): string | null {
     .env;
   const build = env?.VITE_TRACE_API_URL;
   if (build && build.length > 0) {
-    const safe = validateTraceBaseUrl(build);
+    const safe = validateTraceBaseUrl(build, allowCrossOrigin);
     if (safe !== null) return safe;
   }
   return null;
