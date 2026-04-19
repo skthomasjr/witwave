@@ -1,4 +1,40 @@
 {{/*
+nyx.serviceMeshPodAnnotations — emit the service-mesh sidecar-injection
+annotations uniform across every pod template in the chart (#1121).
+Pre-#1121 operators hand-assembled per-mesh annotations in each of
+agents[].podAnnotations, mcpTools.<name>.podAnnotations,
+dashboard.podAnnotations, and nyx-operator.podAnnotations.
+
+Supported meshes:
+  linkerd — `linkerd.io/inject: enabled`
+  istio   — `sidecar.istio.io/inject: "true"`
+  none    — no annotations (explicit opt-out shape)
+
+Caller:
+  .root — top-level .Values handle
+
+Emits nothing when serviceMesh.enabled is falsey or type is missing/none.
+Output lines include trailing newlines so the caller can nindent the
+result into an `annotations:` block directly.
+
+Usage:
+  {{- include "nyx.serviceMeshPodAnnotations" (dict "root" $) | nindent 8 }}
+*/}}
+{{- define "nyx.serviceMeshPodAnnotations" -}}
+{{- $root := .root -}}
+{{- $sm := ($root.Values.serviceMesh | default dict) -}}
+{{- if $sm.enabled -}}
+{{- $type := ($sm.type | default "none" | toString | lower) -}}
+{{- if eq $type "linkerd" -}}
+linkerd.io/inject: enabled
+{{ end -}}
+{{- if eq $type "istio" -}}
+sidecar.istio.io/inject: "true"
+{{ end -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 nyx.hardenedContainerSecurityContext — PSS-restricted-compliant container
 securityContext applied to every container and initContainer across the
 chart (#1073). PSS-restricted evaluates per-container: missing fields

@@ -30,6 +30,12 @@ spec:
         app.kubernetes.io/component: dashboard
         app.kubernetes.io/part-of: nyx
         app.kubernetes.io/managed-by: helm
+      {{- /* #1121: service-mesh injection annotations. */}}
+      {{- $meshAnn := include "nyx.serviceMeshPodAnnotations" (dict "root" $) }}
+      {{- if $meshAnn }}
+      annotations:
+        {{- $meshAnn | trim | nindent 8 }}
+      {{- end }}
     spec:
       automountServiceAccountToken: false
       securityContext:

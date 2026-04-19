@@ -248,7 +248,8 @@ spec:
       {{- if (.metrics) }}{{- if hasKey .metrics "enabled" }}{{- $metricsOn = .metrics.enabled }}{{- end }}{{- end }}
       {{- $podAnnOn := $.Values.metrics.podAnnotations }}
       {{- if (.metrics) }}{{- if hasKey .metrics "podAnnotations" }}{{- $podAnnOn = .metrics.podAnnotations }}{{- end }}{{- end }}
-      {{- if or .podAnnotations (and $metricsOn $podAnnOn) }}
+      {{- $meshAnn := include "nyx.serviceMeshPodAnnotations" (dict "root" $) }}
+      {{- if or .podAnnotations (and $metricsOn $podAnnOn) $meshAnn }}
       annotations:
         {{- if and $metricsOn $podAnnOn }}
         prometheus.io/scrape: "true"
@@ -259,6 +260,11 @@ spec:
         # PodMonitor instead (#687).
         prometheus.io/port: {{ add (int (.port | default 8000)) 1000 | quote }}
         prometheus.io/path: "/metrics"
+        {{- end }}
+        {{- /* #1121: service-mesh sidecar-injection annotations, rendered
+               uniformly across every pod template in the chart. */}}
+        {{- with $meshAnn }}
+        {{- . | trim | nindent 8 }}
         {{- end }}
         {{- with .podAnnotations }}
         {{- toYaml . | nindent 8 }}

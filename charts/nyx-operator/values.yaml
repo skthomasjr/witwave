@@ -229,6 +229,15 @@ observability:
 # extraArgs:
 #   - --zap-log-level=debug
 
+# Service-mesh sidecar injection (#1121). Mirrors the nyx chart's
+# `serviceMesh:` shape so one toggle pair covers both charts.
+# type=linkerd → `linkerd.io/inject: enabled`
+# type=istio   → `sidecar.istio.io/inject: "true"`
+# type=none    → emits nothing
+serviceMesh:
+  enabled: false
+  type: none
+
 nodeSelector: {}
 tolerations: []
 affinity: {}

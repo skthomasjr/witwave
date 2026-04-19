@@ -141,6 +141,14 @@
         "labels": { "type": "object" }
       }
     },
+    "serviceMesh": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "type": { "type": "string", "enum": ["linkerd", "istio", "none"] }
+      }
+    },
     "prometheusRule": {
       "type": "object",
       "additionalProperties": true,

@@ -124,6 +124,14 @@
     "tolerations": { "type": "array" },
     "affinity": { "type": "object" },
     "topologySpreadConstraints": { "type": "array" },
-    "priorityClassName": { "type": "string" }
+    "priorityClassName": { "type": "string" },
+    "serviceMesh": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "type": { "type": "string", "enum": ["linkerd", "istio", "none"] }
+      }
+    }
   }
 }

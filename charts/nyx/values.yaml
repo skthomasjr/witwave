@@ -408,6 +408,23 @@ serviceMonitor:
 # PodMonitor is rendered per agent that has metrics enabled, with one
 # endpoint per enabled backend. Off by default so the chart never references
 # monitoring.coreos.com CRDs unless the user opts in.
+# Service-mesh sidecar injection (#1121). Single toggle that renders
+# the mesh-appropriate pod annotation across every pod template in
+# this chart (agents, mcp-tools, dashboard). Pre-#1121 operators
+# hand-assembled per-mesh annotations across four separate
+# podAnnotations blocks.
+#
+# type=linkerd  → renders `linkerd.io/inject: enabled`
+# type=istio    → renders `sidecar.istio.io/inject: "true"`
+# type=none     → emits nothing (explicit opt-out shape, default)
+#
+# The chart does NOT install the mesh control plane; that's the
+# cluster admin's job. nyx only requests sidecar injection for its
+# own pods.
+serviceMesh:
+  enabled: false
+  type: none
+
 podMonitor:
   enabled: false
   # Forwarded to each PodMonitor's podMetricsEndpoints[].

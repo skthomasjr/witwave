@@ -209,6 +209,13 @@ spec:
         app.kubernetes.io/component: mcp-tool
         app.kubernetes.io/part-of: nyx
         app.kubernetes.io/managed-by: {{ $.Release.Service }}
+      {{- /* #1121: service-mesh injection annotations, uniform across
+             every pod template. */}}
+      {{- $meshAnn := include "nyx.serviceMeshPodAnnotations" (dict "root" $) }}
+      {{- if $meshAnn }}
+      annotations:
+        {{- $meshAnn | trim | nindent 8 }}
+      {{- end }}
     spec:
       {{- /* Use the resolved SA ($saName): chart-rendered when
              rbac.create=true and no user override, user-supplied
