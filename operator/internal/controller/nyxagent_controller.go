@@ -73,6 +73,18 @@ const DefaultImageTagSentinel = "unset"
 // the operator was offline at delete time (#569). Future per-CR metrics or
 // external-state teardown should piggyback on this single finalizer rather
 // than adding per-concern finalizers.
+//
+// #1373 KNOWN RESIDUAL RISK (SSA vs MergeFrom on metadata):
+// The finalizer add/remove + teardown-complete annotation write go
+// through client.Patch(ctx, agent, client.MergeFrom(before)), while
+// the rest of the apply chain uses SSA with NyxOperatorFieldManager.
+// Under high GitOps churn (spec update every few seconds + user
+// delete) the metadata Patch can race SSA Apply, producing
+// "Forbidden: finalizer added to terminating object" on rare windows.
+// Full mitigation is to SSA-patch the metadata too under a dedicated
+// FieldManager name — tracked as follow-up. Current behaviour:
+// observable via controller-runtime retries; does not leak state but
+// does add noise in reconcile-error rate.
 const nyxAgentFinalizer = "nyxagent.nyx.ai/finalizer"
 
 // NyxOperatorFieldManager is the FieldManager name the operator uses for

@@ -18,6 +18,20 @@ marked.setOptions({
 // operators via `window.opener`-style redirect vectors. `javascript:` /
 // `data:` schemes are already stripped by DOMPurify's default allow-list —
 // this hook does not re-enable them.
+// #1394 KNOWN RESIDUAL RISK: DOMPurify hooks are process-global. Any
+// future module that registers its own hook — or test that calls
+// removeAllHooks() — changes the behaviour of every renderMarkdown()
+// caller (6 v-html sites in AgentCard / ConversationsView / ChatPanel /
+// ConversationDrawer / AgentDetail). Defensive posture for now:
+// (a) hookInstalled gate prevents re-registration from this module;
+// (b) CSP blocks scripts + restricts img-src, belt-and-braces;
+// (c) DOMPurify's default allow-list already strips `javascript:` /
+//     `data:` schemes.
+// A proper fix would switch to a per-call `sanitize(..., { HOOKS: ... })`
+// form when DOMPurify exposes it without a global addHook call. Until
+// then, any new DOMPurify consumer in this codebase must audit
+// their interaction with this hook — `installLinkHook` must not be
+// undone by `DOMPurify.removeAllHooks()`.
 let hookInstalled = false;
 function installLinkHook(): void {
   if (hookInstalled) return;

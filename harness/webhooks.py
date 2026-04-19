@@ -463,6 +463,20 @@ def _host_is_private(host: str) -> bool:
     )
 
 
+#
+# #1363 KNOWN RESIDUAL RISK (DNS rebinding TOCTOU):
+# _validate_url_async resolves the hostname via socket.getaddrinfo and
+# confirms no resolved address is private/loopback. httpx then performs
+# ITS OWN resolution when issuing the POST; a DNS server with a sub-RTT
+# TTL can flip the answer between the two resolves and deliver the
+# request to an internal IP. We mitigate with (a) a pre-POST re-check
+# (see `url_recheck` call sites below), which shrinks the window, and
+# (b) the operator-provided WEBHOOK_URL_ALLOWED_HOSTS allow-list, which
+# caps the set of hostnames that can even reach this path. A complete
+# mitigation (custom httpx transport that reuses the validated IP +
+# stamps the Host header) requires a transport override we haven't
+# landed yet. Audit the resolved-IPs counter on webhook_delivery_total
+# for anomalies.
 async def _validate_url_async(url: str) -> str | None:
     """Async counterpart of :func:`_validate_url` (#699, #705).
 
