@@ -159,6 +159,22 @@ var (
 			Help: "Total NyxPrompt admission-webhook heartbeat-singleton checks that fell back to the full-namespace scan because the field index was missing.",
 		},
 	)
+
+	// NyxAgentLeader reports which operator replica currently holds the
+	// leader-election lease (#1115). Set to 1 on the pod that has been
+	// elected leader; the other replicas never set the gauge so their
+	// value stays absent (not 0) and PromQL ``sum(nyxagent_leader) == 0``
+	// cleanly alerts "no leader for > N seconds". controller-runtime
+	// already emits leader_election_master_status via client-go, but it
+	// doesn't carry the pod label operators need to attribute handoffs
+	// during rollouts.
+	NyxAgentLeader = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "nyxagent_leader",
+			Help: "1 when this operator pod currently holds the NyxAgent leader-election lease, absent otherwise.",
+		},
+		[]string{"pod"},
+	)
 )
 
 func init() {
@@ -172,5 +188,6 @@ func init() {
 		nyxpromptDesiredCount,
 		nyxpromptStatusPatchConflictsTotal,
 		NyxPromptWebhookIndexFallbackTotal,
+		NyxAgentLeader,
 	)
 }

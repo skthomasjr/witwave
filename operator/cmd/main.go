@@ -39,6 +39,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -396,6 +397,32 @@ func main() {
 			setupLog.Error(err, "unable to set up webhook cert ready check")
 			os.Exit(1)
 		}
+	}
+
+	// Leader-election gauge hook (#1115). controller-runtime exposes an
+	// Elected() channel that closes once this replica wins the lease;
+	// wire a runnable that blocks on it and flips nyxagent_leader{pod}
+	// to 1 so dashboards can alert on "no leader for > N seconds" and
+	// see per-pod handoffs during rollouts.
+	podName := os.Getenv("POD_NAME")
+	if podName == "" {
+		podName = os.Getenv("HOSTNAME")
+	}
+	if err := mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
+		select {
+		case <-mgr.Elected():
+			controller.NyxAgentLeader.WithLabelValues(podName).Set(1)
+		case <-ctx.Done():
+			return nil
+		}
+		<-ctx.Done()
+		// Release the gauge on shutdown so the next leader's 1 is not
+		// double-counted with this pod's stale 1.
+		controller.NyxAgentLeader.DeleteLabelValues(podName)
+		return nil
+	})); err != nil {
+		setupLog.Error(err, "unable to register leader-election metric runnable")
+		os.Exit(1)
 	}
 
 	setupLog.Info("starting manager")
