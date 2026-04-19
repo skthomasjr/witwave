@@ -451,6 +451,28 @@ func isFieldIndexMissing(err error) bool {
 	return false
 }
 
+// listContainsSelf reports whether the given NyxAgentList includes the
+// agent identified by agent.UID (or agent.Name when UID is empty, e.g.
+// in unit tests that don't set UIDs). Used by reconcileManifestConfigMap
+// to detect the narrow informer-cache lag where the cached, scoped List
+// has not yet observed this agent's own add-event and an APIReader
+// escalation is required (#1066, #900).
+func listContainsSelf(list *nyxv1alpha1.NyxAgentList, agent *nyxv1alpha1.NyxAgent) bool {
+	if list == nil || agent == nil {
+		return false
+	}
+	for i := range list.Items {
+		a := &list.Items[i]
+		if agent.UID != "" && a.UID == agent.UID {
+			return true
+		}
+		if agent.UID == "" && a.Name == agent.Name && a.Namespace == agent.Namespace {
+			return true
+		}
+	}
+	return false
+}
+
 // NyxAgentTeamIndex is the field-indexer key that maps every NyxAgent to
 // its team label value (#753). Agents without the label land under the
 // empty-string key — the same grouping teamKey() uses in-memory.
