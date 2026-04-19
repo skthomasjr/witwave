@@ -380,22 +380,30 @@ class ContinuationRunner:
                 # Single-upstream fast path — fire immediately (original behaviour).
                 ready = True
             else:
-                # Fan-in: record which patterns have been satisfied for this session
-                # and fire only once all required patterns have been seen.
+                # Fan-in: record which concrete upstream kinds have arrived
+                # for this session, then ready-check by matching each
+                # configured pattern against the stored kinds (#1039). The
+                # previous implementation stored patterns and called
+                # ``fnmatch(p2, p)`` — treating a stored pattern as the
+                # 'name' against the configured pattern. Same-base patterns
+                # trivially matched (``job:* == job:*``) so fan-ins fired
+                # after seeing any one upstream whose pattern-shape overlapped
+                # with another required pattern, regardless of whether the
+                # other upstream had actually completed.
                 key = (item.name, session_id)
                 entry = self._fanin_state.get(key)
                 if entry is None:
                     seen: set[str] = set()
                 else:
                     _ts, seen = entry
-                seen.update(matched_patterns)
+                seen.add(kind)
                 # Refresh timestamp on every update so active fan-ins are kept
                 # alive and only truly stale partial state ages out (#557).
                 self._fanin_state[key] = (time.monotonic(), seen)
-                # Check whether every required pattern has been satisfied by at
-                # least one upstream completion in this session.
+                # Every configured pattern must be satisfied by at least one
+                # observed upstream kind.
                 ready = all(
-                    any(p2 == "*" or fnmatch(p2, p) or p == p2 for p2 in seen)
+                    any(p == "*" or fnmatch(kind_seen, p) for kind_seen in seen)
                     for p in item.continues_after
                 )
                 if ready:
