@@ -221,12 +221,20 @@ def schedule_post(event_dict: dict[str, Any], shed_counter: Any = None) -> bool:
         return False
 
     def _done(tt: asyncio.Task, _inflight: set = _INFLIGHT) -> None:
-        _inflight.discard(tt)
-        # Re-arm the shed warning once we drop back below half cap.
-        # Guard the write with the same _shed_warn_lock used by the
-        # set-path above (#882) so concurrent task completions can't
-        # both flip the flag after one has already cleared it.
-        if len(_inflight) < HOOK_POST_MAX_INFLIGHT // 2:
+        # _INFLIGHT mutations must be serialised against schedule_post's
+        # check-and-add under _inflight_lock (#1037). Previously this
+        # callback used a bare ``discard`` so a concurrent check-and-add
+        # on a worker thread could read a stale length mid-mutation,
+        # either over-admitting (len observed < cap before discard
+        # completes) or prematurely shedding (len observed >= cap while
+        # this task was already logically gone). Holding the lock for
+        # the discard itself and the ``len()`` check below restores the
+        # intended atomicity even if a future refactor moves any of
+        # this off the main event loop.
+        with _inflight_lock:
+            _inflight.discard(tt)
+            below_half = len(_inflight) < HOOK_POST_MAX_INFLIGHT // 2
+        if below_half:
             global _shed_warned
             with _shed_warn_lock:
                 _shed_warned = False
