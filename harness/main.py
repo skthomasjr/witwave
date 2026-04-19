@@ -1444,6 +1444,99 @@ async def main():
         """Return a snapshot of currently registered trigger endpoints."""
         return JSONResponse(trigger_runner.items())
 
+    async def validate_handler(request: Request) -> JSONResponse:
+        """Dry-run parse of a supplied .md config (#1088).
+
+        Accepts a JSON body of the shape::
+
+            {"kind": "job|task|trigger|continuation|webhook|heartbeat",
+             "content": "---\\n...frontmatter...\\n---\\n...body..."}
+
+        and returns ``{"ok": bool, "errors": [...], "parsed": {...}}``
+        without registering or firing anything. Gives operators a curl
+        one-liner for CI + pre-merge gitSync flows.
+
+        Guarded by the same ADHOC_RUN_AUTH_TOKEN as /jobs/<name>/run so
+        a misconfig scanner can share the existing bearer token rather
+        than introducing a new one.
+        """
+        # Auth guard — parity with ad-hoc run handlers. Refuses when
+        # ADHOC_RUN_AUTH_TOKEN is unset so /validate never opens a
+        # world-readable parsing surface by default.
+        if not _check_adhoc_auth(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"ok": False, "errors": ["request body must be JSON"]}, status_code=400)
+        if not isinstance(body, dict):
+            return JSONResponse({"ok": False, "errors": ["body must be a JSON object"]}, status_code=400)
+        kind = str(body.get("kind") or "").strip().lower()
+        content = body.get("content")
+        if not kind:
+            return JSONResponse({"ok": False, "errors": ["missing 'kind'"]}, status_code=400)
+        if not isinstance(content, str):
+            return JSONResponse({"ok": False, "errors": ["missing or non-string 'content'"]}, status_code=400)
+        # Cap at the same whole-file limit read_md_bounded applies
+        # (#1038) so a caller can't weaponise /validate against the
+        # harness's own memory budget.
+        try:
+            from utils import PARSE_FRONTMATTER_MAX_FILE_BYTES
+        except Exception:
+            PARSE_FRONTMATTER_MAX_FILE_BYTES = 128 * 1024
+        if len(content.encode("utf-8", errors="replace")) > PARSE_FRONTMATTER_MAX_FILE_BYTES:
+            return JSONResponse(
+                {"ok": False, "errors": [f"content exceeds {PARSE_FRONTMATTER_MAX_FILE_BYTES} bytes"]},
+                status_code=413,
+            )
+
+        from utils import FrontmatterTooLarge, parse_frontmatter, parse_frontmatter_raw
+        errors: list[str] = []
+        parsed: dict[str, object] = {}
+        try:
+            fields, body_text = parse_frontmatter(content)
+            raw_fields, _ = parse_frontmatter_raw(content)
+            parsed = {"fields": fields, "body_len": len(body_text)}
+        except FrontmatterTooLarge as exc:
+            errors.append(f"frontmatter too large: {exc}")
+            return JSONResponse({"ok": False, "errors": errors}, status_code=400)
+        except Exception as exc:
+            errors.append(f"frontmatter parse error: {exc!r}")
+            return JSONResponse({"ok": False, "errors": errors}, status_code=400)
+
+        # Per-kind semantic checks. Keep additive / non-authoritative:
+        # the canonical validation path is still the runner's parse_*
+        # but those unconditionally touch disk, logs, and the runner's
+        # registration state — unsuitable for dry-run.
+        if kind in {"job", "task", "trigger", "continuation", "webhook"}:
+            if not raw_fields:
+                errors.append("frontmatter is empty — nothing to validate")
+        if kind == "job":
+            if not raw_fields.get("schedule") and not raw_fields.get("run-once"):
+                errors.append("job: missing 'schedule' (cron) or 'run-once'")
+        elif kind == "task":
+            if not raw_fields.get("days"):
+                errors.append("task: missing 'days'")
+        elif kind == "trigger":
+            if not raw_fields.get("endpoint"):
+                errors.append("trigger: missing 'endpoint'")
+        elif kind == "continuation":
+            if not raw_fields.get("continues-after") and not raw_fields.get("continues_after"):
+                errors.append("continuation: missing 'continues-after'")
+        elif kind == "webhook":
+            if not raw_fields.get("url"):
+                errors.append("webhook: missing 'url'")
+        elif kind == "heartbeat":
+            if not raw_fields.get("schedule"):
+                errors.append("heartbeat: missing 'schedule'")
+        else:
+            errors.append(
+                f"unknown kind={kind!r}; expected one of "
+                "job/task/trigger/continuation/webhook/heartbeat"
+            )
+
+        return JSONResponse({"ok": not errors, "errors": errors, "parsed": parsed})
+
     async def routing_handler(request: Request) -> JSONResponse:
         """Return a read-only view of the backend.yaml routing config (#638).
 
@@ -1662,6 +1755,7 @@ async def main():
         Route("/continuations", continuations_handler, methods=["GET"]),
         Route("/heartbeat", heartbeat_handler, methods=["GET"]),
         Route("/triggers", triggers_handler, methods=["GET"]),
+        Route("/validate", validate_handler, methods=["POST"]),
         Route("/routing", routing_handler, methods=["GET"]),
         Route("/conversations", conversations_handler, methods=["GET"]),
         Route("/trace", trace_handler, methods=["GET"]),
