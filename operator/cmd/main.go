@@ -19,7 +19,9 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"flag"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -372,25 +374,42 @@ func main() {
 		os.Exit(1)
 	}
 
-	// When webhooks are enabled, gate readyz on the cert pair actually
-	// being on disk (#750). Chart rollouts that land
-	// Mutating/ValidatingWebhookConfiguration with failurePolicy=Fail
-	// before the operator pod has a mounted cert would otherwise cause
-	// cluster-wide NyxAgent CRUD rejections: the Service endpoint is
-	// healthy (readyz returns 200 via healthz.Ping) so the apiserver
-	// routes admission calls to the pod, which then TLS-errors because
-	// the serving cert is missing. Holding readyz at 503 until both
-	// tls.crt and tls.key exist keeps the Service endpoint out of the
-	// kube-proxy rotation until the webhook server can actually answer.
-	if len(webhookCertPath) > 0 {
-		certFile := filepath.Join(webhookCertPath, webhookCertName)
-		keyFile := filepath.Join(webhookCertPath, webhookCertKey)
+	// When webhooks are enabled, gate readyz on the webhook cert being
+	// loaded by the certwatcher and currently valid (#758). The previous
+	// check (#750) only stat'd the cert files on disk — a present-but-
+	// malformed cert, or one whose NotAfter had elapsed, still passed and
+	// the Service endpoint was added to the kube-proxy rotation before the
+	// TLS handshake could succeed. Pulling the live cert from the
+	// certwatcher and checking NotBefore/NotAfter against the current
+	// wall-clock time ensures we only signal Ready once the webhook server
+	// can actually complete a handshake.
+	if len(webhookCertPath) > 0 && webhookCertWatcher != nil {
+		watcher := webhookCertWatcher
 		if err := mgr.AddReadyzCheck("webhook-cert", func(_ *http.Request) error {
-			if _, err := os.Stat(certFile); err != nil {
-				return err
+			cert, err := watcher.GetCertificate(nil)
+			if err != nil {
+				return fmt.Errorf("webhook cert watcher has no cert loaded yet: %w", err)
 			}
-			if _, err := os.Stat(keyFile); err != nil {
-				return err
+			if cert == nil || len(cert.Certificate) == 0 {
+				return fmt.Errorf("webhook cert watcher returned empty cert chain")
+			}
+			// Parse the leaf to validate the NotBefore/NotAfter window.
+			// certwatcher.GetCertificate populates cert.Leaf lazily; when
+			// it's missing, parse the first entry in the DER chain.
+			leaf := cert.Leaf
+			if leaf == nil {
+				parsed, parseErr := x509.ParseCertificate(cert.Certificate[0])
+				if parseErr != nil {
+					return fmt.Errorf("webhook cert leaf parse: %w", parseErr)
+				}
+				leaf = parsed
+			}
+			now := time.Now()
+			if now.Before(leaf.NotBefore) {
+				return fmt.Errorf("webhook cert not yet valid (NotBefore=%s)", leaf.NotBefore.Format(time.RFC3339))
+			}
+			if now.After(leaf.NotAfter) {
+				return fmt.Errorf("webhook cert expired (NotAfter=%s)", leaf.NotAfter.Format(time.RFC3339))
 			}
 			return nil
 		}); err != nil {
