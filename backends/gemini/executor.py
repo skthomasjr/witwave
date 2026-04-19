@@ -80,6 +80,7 @@ from metrics import (
     backend_hooks_config_errors_total,
     backend_hooks_config_reloads_total,
     backend_hooks_enforcement_mode,
+    backend_hooks_evaluations_total,
     backend_log_bytes_total,
     backend_log_entries_total,
     backend_log_write_errors_total,
@@ -2140,16 +2141,33 @@ class AgentExecutor(A2AAgentExecutor):
     ) -> None:
         """Post a hook.decision event to the harness side-channel (#963).
 
-        Skeleton today — gemini's PreToolUse path is blocked on the
-        AFC-off work in #640/#808, so this helper has no inline caller
-        yet. Adding the full wiring now means the eventual enforcement
-        path can decide-then-post in one call without a second plumbing
-        change, keeping gemini consistent with claude (#779) and codex
-        (#937). Fire-and-forget via schedule_post so a transport stall
-        cannot back-pressure the evaluator.
+        gemini's PreToolUse path is blocked on the AFC-off work in
+        #640/#808, so this helper has no inline caller yet. Adding the
+        full wiring now means the eventual enforcement path can
+        decide-then-post in one call without a second plumbing change,
+        keeping gemini consistent with claude (#779) and codex (#937).
+        Fire-and-forget via schedule_post so a transport stall cannot
+        back-pressure the evaluator.
+
+        #1001 hardening:
+          * Lazy re-probe the ``hook_events`` import on every call so a
+            late-mount (rolling update that landed shared/ after pod
+            start) flips _hook_events_ready to True the first time the
+            helper is invoked rather than staying latched False.
+          * Flip backend_hooks_enforcement_mode from skeleton (0) to
+            enforcing (1) on the first successful schedule_post so
+            dashboards and alerts notice the transition.
         """
         if not getattr(self, "_hook_events_ready", False):
-            return
+            # Late-mount re-probe: shared/hook_events.py may have been
+            # mounted after __init__ captured the import state. A one-
+            # line re-import here is cheap under Python's module cache
+            # and promotes the flag as soon as the mount lands.
+            try:
+                import hook_events as _hev_probe  # noqa: F401
+                self._hook_events_ready = True
+            except Exception:
+                return
         try:
             import hook_events as _hev
             _hev.schedule_post(
@@ -2164,6 +2182,23 @@ class AgentExecutor(A2AAgentExecutor):
                     "traceparent": traceparent,
                 }
             )
+            # First-fire transition: promote the skeleton gauge (0) to
+            # enforcing (1) so cross-backend dashboards light up the
+            # moment gemini's evaluation path actually posts.
+            if not getattr(self, "_hook_enforcement_mode_promoted", False):
+                self._hook_enforcement_mode_promoted = True
+                if backend_hooks_enforcement_mode is not None:
+                    try:
+                        backend_hooks_enforcement_mode.labels(**_LABELS).set(1)
+                    except Exception:
+                        pass
+            if backend_hooks_evaluations_total is not None:
+                try:
+                    backend_hooks_evaluations_total.labels(
+                        **_LABELS, tool=tool or "unknown", decision=decision,
+                    ).inc()
+                except Exception:
+                    pass
         except Exception as _hev_exc:
             logger.debug("hook.decision transport scheduling failed: %r", _hev_exc)
 
