@@ -42,7 +42,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import random
 import threading
+import time
 from typing import Any
 
 import httpx
@@ -63,6 +65,25 @@ HOOK_EVENTS_AUTH_TOKEN = (
 # Back-compat alias for any external importer that grabs the old name.
 HARNESS_EVENTS_AUTH_TOKEN = HOOK_EVENTS_AUTH_TOKEN
 HOOK_POST_MAX_INFLIGHT = int(os.environ.get("HOOK_POST_MAX_INFLIGHT", "32"))
+
+# Per-POST timeout (#1045). Default 2.0s — previously 5.0s, which allowed a
+# slow-but-alive harness to occupy an inflight slot long enough to saturate
+# HOOK_POST_MAX_INFLIGHT within a handful of denied tool calls. Tunable via
+# HOOK_POST_TIMEOUT_SECONDS; a single jittered retry still gives the
+# harness room on transient latency.
+HOOK_POST_TIMEOUT_SECONDS = float(os.environ.get("HOOK_POST_TIMEOUT_SECONDS", "2.0"))
+# httpx connection-pool limits — without these, httpx defaults can let a
+# stalled harness grow an unbounded pool when requests pile up.
+HOOK_POST_MAX_CONNECTIONS = int(os.environ.get("HOOK_POST_MAX_CONNECTIONS", "16"))
+HOOK_POST_MAX_KEEPALIVE = int(os.environ.get("HOOK_POST_MAX_KEEPALIVE", "8"))
+# Circuit breaker: if a rolling window of recent posts exceeds the failure
+# ratio, open for HOOK_POST_CB_COOLDOWN_SECONDS and short-circuit future
+# posts so we don't keep a stalled harness occupying inflight slots.
+HOOK_POST_CB_WINDOW = int(os.environ.get("HOOK_POST_CB_WINDOW", "20"))
+HOOK_POST_CB_FAIL_RATIO = float(os.environ.get("HOOK_POST_CB_FAIL_RATIO", "0.8"))
+HOOK_POST_CB_COOLDOWN_SECONDS = float(os.environ.get("HOOK_POST_CB_COOLDOWN_SECONDS", "15.0"))
+# Single jittered retry window (#1045). 0 disables.
+HOOK_POST_RETRY_MAX_DELAY = float(os.environ.get("HOOK_POST_RETRY_MAX_DELAY_SECONDS", "0.25"))
 
 # One-shot warning flags — guarded by a threading.Lock so two concurrent
 # first-posts don't race the write.
@@ -109,8 +130,49 @@ async def _get_client() -> httpx.AsyncClient:
     global _client
     async with _client_lock:
         if _client is None or _client.is_closed:
-            _client = httpx.AsyncClient(timeout=5.0)
+            _client = httpx.AsyncClient(
+                timeout=HOOK_POST_TIMEOUT_SECONDS,
+                limits=httpx.Limits(
+                    max_connections=HOOK_POST_MAX_CONNECTIONS,
+                    max_keepalive_connections=HOOK_POST_MAX_KEEPALIVE,
+                ),
+            )
     return _client
+
+
+# Circuit-breaker state (#1045). ``_cb_recent`` tracks the last
+# HOOK_POST_CB_WINDOW outcomes as booleans (True = failed). ``_cb_open_until``
+# is a monotonic deadline; while non-zero and in the future, _post_once
+# short-circuits so a stalled harness can't keep occupying inflight slots.
+_cb_lock = threading.Lock()
+_cb_recent: list[bool] = []
+_cb_open_until: float = 0.0
+
+
+def _cb_is_open() -> bool:
+    with _cb_lock:
+        return _cb_open_until > time.monotonic()
+
+
+def _cb_record(failed: bool) -> None:
+    global _cb_open_until
+    with _cb_lock:
+        _cb_recent.append(failed)
+        if len(_cb_recent) > HOOK_POST_CB_WINDOW:
+            del _cb_recent[: len(_cb_recent) - HOOK_POST_CB_WINDOW]
+        if len(_cb_recent) >= HOOK_POST_CB_WINDOW:
+            fails = sum(1 for x in _cb_recent if x)
+            ratio = fails / len(_cb_recent)
+            if ratio >= HOOK_POST_CB_FAIL_RATIO:
+                _cb_open_until = time.monotonic() + HOOK_POST_CB_COOLDOWN_SECONDS
+                _cb_recent.clear()
+                logger.warning(
+                    "hook.decision circuit breaker OPEN: %.2f failure ratio "
+                    "over %d posts; shedding for %.1fs",
+                    ratio,
+                    HOOK_POST_CB_WINDOW,
+                    HOOK_POST_CB_COOLDOWN_SECONDS,
+                )
 
 
 async def _post_once(event_dict: dict[str, Any]) -> None:
@@ -145,19 +207,41 @@ async def _post_once(event_dict: dict[str, Any]) -> None:
                 )
         return
     url = HARNESS_EVENTS_URL.rstrip("/") + "/internal/events/hook-decision"
+    # Circuit breaker short-circuit (#1045). While open, don't consume an
+    # httpx connection or timeout budget — just record as a drop so the
+    # window continues to refresh on the next attempt.
+    if _cb_is_open():
+        return
     try:
         client = await _get_client()
-        resp = await client.post(
-            url,
-            json=event_dict,
-            headers={"Authorization": f"Bearer {HOOK_EVENTS_AUTH_TOKEN}"},
-        )
+        resp = None
+        last_exc: Exception | None = None
+        # Attempt + single jittered retry on transient network errors
+        # (connect failures, read timeouts). 4xx/5xx responses are NOT
+        # retried — the server saw our request and issued a verdict.
+        for attempt in range(2):
+            try:
+                resp = await client.post(
+                    url,
+                    json=event_dict,
+                    headers={"Authorization": f"Bearer {HOOK_EVENTS_AUTH_TOKEN}"},
+                )
+                last_exc = None
+                break
+            except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError) as exc:
+                last_exc = exc
+                if attempt == 0 and HOOK_POST_RETRY_MAX_DELAY > 0:
+                    await asyncio.sleep(random.uniform(0, HOOK_POST_RETRY_MAX_DELAY))
+                    continue
+                raise
+        assert resp is not None  # either we broke out with resp set or re-raised
         # Branch on resp.status_code (#881). Previously the response
         # was discarded; a wrong HOOK_EVENTS_AUTH_TOKEN (401/403) or a
         # misconfigured harness endpoint (404/5xx) was silently
         # swallowed — only the empty-token case was surfaced. Log the
         # first non-2xx at WARNING and stay silent afterwards to avoid
         # flooding logs on a sustained misconfig.
+        _cb_record(failed=(resp.status_code >= 500))
         if resp.status_code >= 400:
             global _status_warned, _status_dropped_since_warn
             with _status_warn_lock:
@@ -187,6 +271,7 @@ async def _post_once(event_dict: dict[str, Any]) -> None:
                 _status_warned = False
                 _status_dropped_since_warn = 0
     except Exception as exc:
+        _cb_record(failed=True)
         logger.warning("hook.decision POST to %s failed: %r", url, exc)
 
 
