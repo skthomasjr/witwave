@@ -79,6 +79,15 @@ func Load(cfgPath string, overrides FlagOverrides, getenv func(string) string) (
 	}
 	if path != "" {
 		if st, err := os.Stat(path); err == nil {
+			// #1395: refuse non-regular files (named pipes, devices) so
+			// a hostile XDG_CONFIG_HOME pointing at /dev/stdin or a
+			// named FIFO can't hang the CLI or exfiltrate via stdout.
+			if !st.Mode().IsRegular() {
+				return Resolved{}, fmt.Errorf(
+					"config path %s is not a regular file (mode=%s)",
+					path, st.Mode(),
+				)
+			}
 			// #1358: warn (but proceed) when config.toml is readable by
 			// others — bearer tokens live plaintext inside. Unix-only
 			// check; Windows permission model differs and this block

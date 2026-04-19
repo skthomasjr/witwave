@@ -55,12 +55,23 @@ function readPinnedFromStorage(): string[] {
   }
 }
 
+// #1381: cap pinned-id persistence so a long-lived tab doesn't blow
+// past Safari's 5MB localStorage quota. Event IDs drop off the 1000-
+// entry ring over days of pinning; keep the most-recently-pinned 1000.
+const PINNED_PERSIST_CAP = 1000;
+
 function persistPinned(): void {
   if (typeof window === "undefined" || !window.localStorage) return;
   try {
+    let arr = Array.from(pinnedIds.value);
+    if (arr.length > PINNED_PERSIST_CAP) {
+      arr = arr.slice(-PINNED_PERSIST_CAP);
+      // Update the in-memory Set too so the UI and the store agree.
+      pinnedIds.value = new Set(arr);
+    }
     window.localStorage.setItem(
       PINNED_STORAGE_KEY,
-      JSON.stringify(Array.from(pinnedIds.value)),
+      JSON.stringify(arr),
     );
   } catch {
     // Ignore quota / serialisation errors — pins are a UX nicety.

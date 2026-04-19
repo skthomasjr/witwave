@@ -31,6 +31,13 @@ HEARTBEAT_PATH = os.environ.get("HEARTBEAT_PATH", "/home/agent/.nyx/HEARTBEAT.md
 DEFAULT_SCHEDULE = "*/30 * * * *"
 HEARTBEAT_DIR = os.path.dirname(HEARTBEAT_PATH)
 AGENT_NAME = os.environ.get("AGENT_NAME", "nyx")
+# #1390: deterministic uuid5 derived from AGENT_NAME. In multi-tenant
+# deployments where agent names are public (visible via /agents or
+# k8s manifest), SESSION_ID_SECRET must be set so downstream
+# session-id binding (shared/session_binding.py) HMAC-derives the
+# effective id per caller. Without a secret the legacy uuid5 path is
+# used and knowing the agent name is sufficient to address the
+# heartbeat session. Document: AGENTS.md §session-binding.
 HEARTBEAT_SESSION = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{AGENT_NAME}.heartbeat"))
 # Bounded wait for an in-flight heartbeat to wind down after stop_event fires
 # (#492). The loop also races message.result against stop_event internally, so

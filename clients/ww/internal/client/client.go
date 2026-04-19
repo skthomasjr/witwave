@@ -153,8 +153,17 @@ func (c *Client) DoJSON(ctx context.Context, method, path string, body, out any,
 			}
 			return lastErr
 		}
-		respBody, readErr := io.ReadAll(resp.Body)
+		// #1384: cap response body so a misconfigured harness returning
+		// 500 + 100MB body doesn't blow CLI memory per retry attempt.
+		const respBodyCap = 4 * 1024 * 1024 // 4 MiB
+		respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, respBodyCap+1))
 		_ = resp.Body.Close()
+		if int64(len(respBody)) > respBodyCap {
+			respBody = respBody[:respBodyCap]
+			if c.cfg.Verbose >= 1 {
+				c.logLine(fmt.Sprintf("<-- response body truncated at %d bytes", respBodyCap))
+			}
+		}
 		if c.cfg.Verbose >= 1 {
 			c.logLine(fmt.Sprintf("<-- %d %s", resp.StatusCode, resp.Status))
 		}

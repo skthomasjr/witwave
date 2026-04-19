@@ -157,10 +157,18 @@ function makeTurnId(
   return `${role}-${ts}-${hashPart}-${counter}`;
 }
 
-// NOTE (#1157): `agent` and `sessionId` are baseline values captured at
-// instantiation. They are embedded into the stream URL here and will NOT
+// NOTE (#1157, #1383): `agent` and `sessionId` are baseline values captured
+// at instantiation. They are embedded into the stream URL here and will NOT
 // be re-read if the caller later mutates a ref passed in as one of these
 // arguments — the stream URL is frozen for the lifetime of the composable.
+//
+// CONTRACT: callers OUTSIDE a Vue component setup() (e.g. a Pinia store,
+// a utility function) MUST explicitly call the returned `close()` when
+// the stream is no longer needed. The auto-teardown via `onBeforeUnmount`
+// only fires inside a setup() scope; calling `useConversationStream` in
+// a module-level or non-component scope will leak the SSE connection
+// on session switch unless `close()` is invoked manually.
+//
 // To switch agent or sessionId, callers MUST call `close()` on the
 // existing composable and create a new one. Reassigning the argument or
 // mutating reactive refs from which these were derived will have no

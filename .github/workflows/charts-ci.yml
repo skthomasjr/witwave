@@ -41,15 +41,16 @@ jobs:
 
       # Some charts fail render with default values by design (#760 guard
       # rejects placeholder tokens). Tolerate ONLY that specific guard's
-      # error message ("REPLACE_ME") — any other render failure must
-      # surface loudly (#1258). The previous `|| true` hid genuine
-      # template regressions behind the same exit code as the expected
-      # #760 guard.
+      # error message — any other render failure must surface loudly
+      # (#1258, #1376). Anchored match on the full known error phrase
+      # instead of the bare "REPLACE_ME" substring so unrelated errors
+      # that happen to mention the token name still fail CI.
       - name: helm template (default values)
         run: |
           helm template ci-default ${{ matrix.chart }} --validate=false \
             > /tmp/${{ matrix.chart }}-default.yaml 2> /tmp/helm-err \
-            || (grep -q 'REPLACE_ME' /tmp/helm-err && echo 'tolerated #760 guard') \
+            || (grep -qE 'REPLACE_ME_WITH_GENERATED_TOKEN|refusing to render placeholder token' /tmp/helm-err \
+                && echo 'tolerated #760 guard') \
             || (cat /tmp/helm-err; exit 1)
 
       - name: helm template (values-test.yaml when present)

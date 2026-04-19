@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -164,9 +165,14 @@ func readPrompt(args []string, file string) (string, error) {
 func randomHex(n int) string {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
-		// Fallback — deterministic but not unique; acceptable for
-		// client-side ids.
-		return "fallbackid"
+		// #1397: cryto/rand failure is extremely rare but not impossible
+		// (e.g. seccomp stripping getrandom). Previous fallback returned
+		// the literal "fallbackid" for every caller — parallel invocations
+		// collided on contextId and merged distinct A2A conversations
+		// on the backend. Use PID + high-res time so collisions require
+		// same-pid-same-nanosecond.
+		now := time.Now().UnixNano()
+		return fmt.Sprintf("ww-%d-%d", os.Getpid(), now)
 	}
 	return hex.EncodeToString(b)
 }

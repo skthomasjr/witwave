@@ -696,6 +696,12 @@ type NyxAgentSpec struct {
 	// container in the pod — this is kept for backward compatibility with
 	// existing NyxAgent manifests and for MCP-tool-style pods that want a
 	// single fixed port. Prefer leaving it unset on new deployments.
+	//
+	// DEPRECATED (#1374): non-zero values in multi-container pods collide
+	// (harness:9000 + backend:9000) and mask the intent of the #1249 /
+	// #1322 unique-named-port work. New deployments should leave this
+	// unset; future v1 may reject non-zero values on multi-container
+	// pods via the webhook.
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:Maximum=65535
 	// +optional
@@ -1151,6 +1157,7 @@ type NyxAgentStatus struct {
 	// phase/conditions, so no extra round-trip to the apiserver.
 	// +optional
 	// +listType=atomic
+	// +kubebuilder:validation:MaxItems=10
 	ReconcileHistory []ReconcileHistoryEntry `json:"reconcileHistory,omitempty"`
 }
 

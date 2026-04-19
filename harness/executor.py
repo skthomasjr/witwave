@@ -497,9 +497,12 @@ async def _guarded(
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                if time.monotonic() - _attempt_start >= restart_delay:
-                    # Reset the streak after a stable run (#1311: on_recovered
-                    # was already dispatched by the watchdog, so don't double-fire).
+                # #1367: require 3× restart_delay of stable running before
+                # resetting the streak. Previous rule (reset on any 5s-stable
+                # run) let a task crashing every 6s never accumulate toward
+                # WORKER_MAX_RESTARTS — infinite-restart CPU burn without
+                # readiness flipping.
+                if time.monotonic() - _attempt_start >= restart_delay * 3:
                     consecutive_restarts = 0
                 consecutive_restarts += 1
                 logger.error(

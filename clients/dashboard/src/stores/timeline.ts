@@ -530,20 +530,28 @@ export const useTimelineStore = defineStore("timeline", () => {
     });
   }
 
+  // #1380: cache the lowercased JSON.stringify per envelope so a fast
+  // typist doesn't pay O(ring × payload) per keystroke. WeakMap keyed
+  // on the envelope object means the cache entry dies with the envelope.
+  const searchIndex = new WeakMap<EventEnvelope, string>();
+
+  function searchHaystack(e: EventEnvelope): string {
+    const cached = searchIndex.get(e);
+    if (cached !== undefined) return cached;
+    let haystack = "";
+    try {
+      haystack = JSON.stringify(e).toLowerCase();
+    } catch {
+      haystack = "";
+    }
+    searchIndex.set(e, haystack);
+    return haystack;
+  }
+
   function search(q: string): EventEnvelope[] {
     const term = (q || "").trim().toLowerCase();
     if (!term) return events.value.slice();
-    return events.value.filter((e) => {
-      try {
-        // Stringify the whole envelope so the search covers type, agent,
-        // id, and every payload key/value. Keep the haystack lowercased
-        // at query time — the ring is small enough (~1000 entries) that
-        // per-query cost is acceptable; if that changes, cache per-event.
-        return JSON.stringify(e).toLowerCase().includes(term);
-      } catch {
-        return false;
-      }
-    });
+    return events.value.filter((e) => searchHaystack(e).includes(term));
   }
 
   const eventCount = computed(() => events.value.length);
