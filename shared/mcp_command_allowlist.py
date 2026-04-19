@@ -67,7 +67,22 @@ _INTERPRETER_INLINE_CODE_FLAGS: frozenset[str] = frozenset({
     "-c", "--command",
     "-e", "--execute", "--eval",
     "--inline",
+    # Node-specific inline/stdin paths (#1046).
+    "--input-type", "--input-type=module", "--input-type=commonjs",
+    # bash/sh read-script-from-stdin.
+    "-s",
 })
+
+# Positional-script extensions (#1046). When an interpreter command sees
+# a positional argument (not starting with ``-``) whose basename ends in
+# one of these, it's running arbitrary code off disk. We allow it only
+# when the absolute path resolves under an explicit
+# ``MCP_ALLOWED_CWD_PREFIXES`` entry (operator-vetted tree).
+_SCRIPT_EXTENSIONS: tuple[str, ...] = (
+    ".py", ".js", ".mjs", ".cjs", ".sh", ".bash", ".rb", ".pl", ".php", ".ts",
+)
+
+DEFAULT_MCP_ALLOWED_CWD_PREFIXES = ""
 
 
 def _load_env_frozenset(var: str, default: str) -> frozenset[str]:
@@ -140,11 +155,22 @@ def mcp_command_args_safe(
     base = os.path.basename(command.strip())
     if base not in INTERPRETER_COMMANDS:
         return True, "not_interpreter"
+    cwd_prefixes = _load_env_tuple(
+        "MCP_ALLOWED_CWD_PREFIXES", DEFAULT_MCP_ALLOWED_CWD_PREFIXES
+    )
     for arg in args:
         if not isinstance(arg, str):
             continue
         if arg in _INTERPRETER_INLINE_CODE_FLAGS:
             return False, "interpreter_inline_code_flag"
+        # Node flag-with-value form (e.g. ``--input-type=module``).
+        if arg.startswith("--input-type"):
+            return False, "interpreter_inline_code_flag"
+        # Bare "-" tells most interpreters (python, bash, node with some
+        # flags) to read the script from stdin — the harness can't vet
+        # what stdin will contain, so reject unconditionally (#1046).
+        if arg == "-":
+            return False, "interpreter_stdin_script"
         # Also reject the common "run arbitrary string as script" shape
         # of uv/uvx ("uvx <pkg>" where pkg resolves to arbitrary code).
         if base in ("uv",) and arg == "run":
@@ -152,4 +178,20 @@ def mcp_command_args_safe(
         if base in ("uvx",) and not arg.startswith("-"):
             # uvx <package> installs and runs an arbitrary PyPI pkg.
             return False, "uvx_package_rejected"
+        # Positional script file (#1046). ``python foo.py`` is still
+        # arbitrary code execution even without -c; only accept when the
+        # script lives under an operator-vetted MCP_ALLOWED_CWD_PREFIXES
+        # tree. Detection is purely suffix-based — that's intentional:
+        # the goal is to force operators to opt in for any .py/.sh
+        # spawn, not to cover every possible shebang trick.
+        if not arg.startswith("-"):
+            lowered = arg.lower()
+            if lowered.endswith(_SCRIPT_EXTENSIONS):
+                if not cwd_prefixes:
+                    return False, "positional_script_no_cwd_allowlist"
+                # Accept only absolute paths under a prefix.
+                if not arg.startswith("/"):
+                    return False, "positional_script_relative"
+                if not any(arg.startswith(p) for p in cwd_prefixes):
+                    return False, "positional_script_outside_cwd"
     return True, "interpreter_args_ok"
