@@ -493,6 +493,7 @@ async def _emit_afc_history(
     *,
     session_id: str,
     model: str | None,
+    prefix_history: list | None = None,
 ) -> None:
     """Extract ``function_call`` / ``function_response`` parts from an AFC history
     and emit ``tool_use`` / ``tool_result`` trace rows + metrics (#640).
@@ -506,10 +507,18 @@ async def _emit_afc_history(
     claude uses so the dashboard TraceView (#592) and OTel trace viewer
     (#632) can render them uniformly.
 
+    ``prefix_history`` (#996) seeds the pending-fc tables with
+    function_call parts from turns *prior* to this slice — used on
+    resumption paths where chats.create re-appends a persisted
+    function_call that only now gets its function_response. No rows or
+    metrics are emitted for the prefix; it exists purely so a fr in
+    the current slice can pair with its fc instead of being mis-labelled
+    via the cross-tool FIFO fallback (#887).
+
     Errors here are logged and swallowed — observability must never break
     the response path.
     """
-    if not history:
+    if not history and not prefix_history:
         return
     # Pairing strategy (#676):
     #   1. If both sides carry a matching id (newer google-genai), pair by id.
@@ -528,6 +537,56 @@ async def _emit_afc_history(
     # Secondary flat FIFO preserved only for cross-tool fallback ordering.
     pending_by_index: list[dict] = []
     call_counter = 0
+
+    # Seed pending tables from prefix_history (#996) so any unmatched
+    # function_call from a prior turn can still pair with a
+    # function_response that lands in this slice. Remove from the
+    # pending tables any fc/fr that were already paired in the prefix;
+    # we only want the unmatched tail.
+    if prefix_history:
+        for _pre_content in prefix_history:
+            _pre_parts = getattr(_pre_content, "parts", None) or []
+            for _pre_part in _pre_parts:
+                _pre_fc = getattr(_pre_part, "function_call", None)
+                _pre_fr = getattr(_pre_part, "function_response", None)
+                if _pre_fc is not None:
+                    call_counter += 1
+                    _pre_name = getattr(_pre_fc, "name", None) or "<unknown>"
+                    _pre_fc_id = getattr(_pre_fc, "id", None)
+                    _pre_call_id = _pre_fc_id or f"fc-{session_id[:8]}-{call_counter}"
+                    _pre_ts = datetime.now(timezone.utc).isoformat()
+                    _pre_entry = {
+                        "id": _pre_call_id, "ts": _pre_ts,
+                        "name": _pre_name, "fc_id": _pre_fc_id,
+                    }
+                    if _pre_fc_id:
+                        pending_by_id[_pre_fc_id] = _pre_entry
+                    pending_by_name.setdefault(_pre_name, []).append(_pre_entry)
+                    pending_by_index.append(_pre_entry)
+                elif _pre_fr is not None:
+                    # Pair off a prefix fc with this prefix fr so it does
+                    # not linger into the current slice's pending tables.
+                    _pre_fr_id = getattr(_pre_fr, "id", None)
+                    _pre_name = getattr(_pre_fr, "name", None) or "<unknown>"
+                    _pre_matched = None
+                    if _pre_fr_id and _pre_fr_id in pending_by_id:
+                        _pre_matched = pending_by_id.pop(_pre_fr_id)
+                    elif pending_by_name.get(_pre_name):
+                        _pre_matched = pending_by_name[_pre_name].pop(0)
+                        if _pre_matched.get("fc_id"):
+                            pending_by_id.pop(_pre_matched["fc_id"], None)
+                    if _pre_matched is not None:
+                        try:
+                            pending_by_index.remove(_pre_matched)
+                        except ValueError:
+                            pass
+                        _q = pending_by_name.get(_pre_matched.get("name", ""))
+                        if _q and _pre_matched in _q:
+                            try:
+                                _q.remove(_pre_matched)
+                            except ValueError:
+                                pass
+
     for content in history:
         parts = getattr(content, "parts", None) or []
         for part in parts:
@@ -1608,13 +1667,20 @@ async def run_query(
                 try:
                     # Pass only the slice appended during this turn (#883)
                     # so we don't duplicate every prior turn's AFC rows and
-                    # metric increments on every request.
+                    # metric increments on every request. Also forward the
+                    # pre-snapshot prefix as seed context (#996) so a
+                    # function_response in the new slice that pairs with a
+                    # function_call persisted from a prior turn still
+                    # matches by id instead of falling through to the
+                    # cross-tool FIFO with a mis-labelled tool_use_id.
                     _full_history = list(chat.history or [])
                     _new_history = _full_history[_afc_history_start:]
+                    _prefix_history = _full_history[:_afc_history_start]
                     await _emit_afc_history(
                         _new_history,
                         session_id=session_id,
                         model=resolved_model,
+                        prefix_history=_prefix_history,
                     )
                 except Exception as _afc_exc:
                     logger.debug("AFC history emit failed: %s", _afc_exc)
