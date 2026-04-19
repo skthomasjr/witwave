@@ -1830,6 +1830,17 @@ async def _run_inner(
         # addressed on the success and budget-exceeded paths via
         # _track_session's LRU-aligned pruning, and on the timeout path
         # above (which also removes the on-disk session file).
+        #
+        # #1059: for sessions that errored BEFORE _track_session ran, the
+        # LRU-aligned pruning never touches _session_cleanup_epoch /
+        # _history_write_done, so a burst of unique session_ids that all
+        # error will leak bookkeeping entries. Only the timeout branch
+        # above (#942) popped them. Do the same here as a safety net when
+        # the session never made it into the LRU.
+        if session_id not in sessions:
+            _session_cleanup_epoch.pop(session_id, None)
+            if _history_write_done is not None:
+                _history_write_done.pop(session_id, None)
         if backend_tasks_total is not None:
             backend_tasks_total.labels(**_LABELS, status="error").inc()
         if backend_task_error_duration_seconds is not None:
