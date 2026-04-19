@@ -196,6 +196,7 @@ async def run(
     model: str | None = None,
     max_tokens: int | None = None,
     trace_context: TraceContext | None = None,
+    caller_id: str | None = None,
 ) -> str:
     if harness_concurrent_queries is not None:
         harness_concurrent_queries.inc()
@@ -203,6 +204,7 @@ async def run(
         return await _run_inner(
             prompt, session_id, sessions, backends, default_backend_id,
             backend_id, model, max_tokens, trace_context=trace_context,
+            caller_id=caller_id,
         )
     finally:
         if harness_concurrent_queries is not None:
@@ -219,6 +221,7 @@ async def _run_inner(
     model: str | None = None,
     max_tokens: int | None = None,
     trace_context: TraceContext | None = None,
+    caller_id: str | None = None,
 ) -> str:
     resolved_id = backend_id or default_backend_id
     backend = backends.get(resolved_id)
@@ -245,12 +248,17 @@ async def _run_inner(
 
     _start = time.monotonic()
     try:
+        # caller_id propagates here only when the backend's run_query
+        # signature accepts it (A2ABackend on the relay path). Non-relay
+        # backends (in-process claude/codex/gemini) ignore caller_id;
+        # they derive session binding from their own /mcp bearer.
+        _run_kwargs: dict[str, object] = dict(
+            model=model, max_tokens=max_tokens, trace_context=trace_context,
+        )
+        if caller_id is not None:
+            _run_kwargs["caller_id"] = caller_id
         collected = await asyncio.wait_for(
-            backend.run_query(
-                prompt, session_id, is_new,
-                model=model, max_tokens=max_tokens,
-                trace_context=trace_context,
-            ),
+            backend.run_query(prompt, session_id, is_new, **_run_kwargs),
             timeout=TASK_TIMEOUT_SECONDS,
         )
     except asyncio.TimeoutError:
@@ -837,6 +845,16 @@ class AgentExecutor(A2AAgentExecutor):
         trace_context, _had_inbound = context_from_inbound(
             _tp_header if isinstance(_tp_header, str) else None
         )
+        # Inbound caller identity (#1084). Forwarded opaquely from upstream
+        # relays so the chain {ingress-relay -> harness -> A2A backend}
+        # presents a consistent principal to derive_session_id at each hop.
+        # When absent (e.g. first-hop harness with no upstream stamp) the
+        # value stays None and the session binding falls back to its
+        # documented legacy derivation.
+        _inbound_caller_id = metadata.get("caller_id")
+        caller_id: str | None = (
+            _inbound_caller_id if isinstance(_inbound_caller_id, str) and _inbound_caller_id else None
+        )
         if harness_a2a_traces_received_total is not None:
             harness_a2a_traces_received_total.labels(has_inbound=str(_had_inbound).lower()).inc()
         # Bridge to OTel (#469). When OTel is enabled the extracted context
@@ -876,6 +894,7 @@ class AgentExecutor(A2AAgentExecutor):
                         model=model,
                         max_tokens=max_tokens,
                         trace_context=trace_context,
+                        caller_id=caller_id,
                     )
                     _success = True
                     if _response:

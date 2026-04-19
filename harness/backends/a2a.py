@@ -235,6 +235,7 @@ class A2ABackend:
         model: str | None = None,
         max_tokens: int | None = None,
         trace_context: TraceContext | None = None,
+        caller_id: str | None = None,
     ) -> list[str]:
         """Forward the prompt to the remote A2A agent and return collected text chunks.
 
@@ -298,6 +299,14 @@ class A2ABackend:
                 _metadata["max_tokens"] = max_tokens
             if _outbound_traceparent is not None:
                 _metadata["traceparent"] = _outbound_traceparent
+            # Stamp caller_id on outbound A2A relay (#1084). Completes the
+            # #867/#929/#935/#941 multi-tenant chain — backends receive a
+            # caller identity they can feed into derive_session_id so two
+            # callers presenting the same raw session_id land in disjoint
+            # sessions. Forwarded opaque so downstream sees whatever the
+            # top-most relay derived from its inbound principal.
+            if caller_id:
+                _metadata["caller_id"] = caller_id
             if _metadata:
                 payload["params"]["message"]["metadata"] = _metadata
 
