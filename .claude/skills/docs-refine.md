@@ -18,7 +18,7 @@ The documents covered by this skill are:
 - `<repo-root>/backends/claude/README.md` — Claude backend component
 - `<repo-root>/backends/codex/README.md` — Codex backend component
 - `<repo-root>/backends/gemini/README.md` — Gemini backend component
-- `<repo-root>/dashboard/README.md` — Vue 3 dashboard component (was `ui/README.md`)
+- `<repo-root>/clients/dashboard/README.md` — Vue 3 dashboard component (was `ui/README.md`)
 - `<repo-root>/operator/README.md` — Kubernetes operator (Go) component
 - `<repo-root>/tools/README.md` — MCP component index
 - `<repo-root>/tools/kubernetes/README.md` — mcp-kubernetes MCP server

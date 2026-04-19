@@ -5,16 +5,16 @@
 //
 // Version info is injected at build time via -ldflags:
 //
-//	go build -ldflags "-X 'github.com/skthomasjr/autonomous-agent/cmd/ww/cmd.Version=0.1.0' \
-//	                   -X 'github.com/skthomasjr/autonomous-agent/cmd/ww/cmd.Commit=<sha>' \
-//	                   -X 'github.com/skthomasjr/autonomous-agent/cmd/ww/cmd.BuildDate=<iso>'" \
-//	  ./cmd/ww
+//	go build -ldflags "-X 'github.com/skthomasjr/autonomous-agent/clients/ww/cmd.Version=0.1.0' \
+//	                   -X 'github.com/skthomasjr/autonomous-agent/clients/ww/cmd.Commit=<sha>' \
+//	                   -X 'github.com/skthomasjr/autonomous-agent/clients/ww/cmd.BuildDate=<iso>'" \
+//	  .
 package main
 
 import (
 	"os"
 
-	"github.com/skthomasjr/autonomous-agent/cmd/ww/cmd"
+	"github.com/skthomasjr/autonomous-agent/clients/ww/cmd"
 )
 
 func main() {

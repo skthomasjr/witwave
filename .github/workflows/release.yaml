@@ -28,9 +28,6 @@ jobs:
           - image: gemini
             file: backends/gemini/Dockerfile
             context: .
-          - image: dashboard
-            file: dashboard/Dockerfile
-            context: .
           - image: operator
             file: operator/Dockerfile
             context: operator
@@ -42,6 +39,12 @@ jobs:
             context: .
           - image: mcp-helm
             file: tools/helm/Dockerfile
+            context: .
+          - image: mcp-prometheus
+            file: tools/prometheus/Dockerfile
+            context: .
+          - image: dashboard
+            file: clients/dashboard/Dockerfile
             context: .
 
     steps:

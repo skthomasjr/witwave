@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/skthomasjr/autonomous-agent/cmd/ww/internal/client"
-	"github.com/skthomasjr/autonomous-agent/cmd/ww/internal/output"
+	"github.com/skthomasjr/autonomous-agent/clients/ww/internal/client"
+	"github.com/skthomasjr/autonomous-agent/clients/ww/internal/output"
 	"github.com/spf13/cobra"
 )
 

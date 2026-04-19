@@ -306,7 +306,7 @@ tools/                       # MCP components (one directory per server)
     ├── server.py
     └── requirements.txt
 
-dashboard/                   # Vue 3 + Vite + PrimeVue web interface
+clients/dashboard/           # Vue 3 + Vite + PrimeVue web interface
 charts/                      # Helm charts
 ├── nyx/                     # nyx Helm chart (deploys agents to Kubernetes)
 └── nyx-operator/            # nyx-operator Helm chart (deploys the NyxAgent controller)
@@ -345,7 +345,7 @@ docker build -f tools/helm/Dockerfile -t mcp-helm:latest .
 docker build -f tools/prometheus/Dockerfile -t mcp-prometheus:latest .
 
 # Dashboard image — optional; only built/pushed when dashboard.enabled=true in the chart.
-docker build -f dashboard/Dockerfile -t dashboard:latest .
+docker build -f clients/dashboard/Dockerfile -t dashboard:latest .
 
 # git-sync helper image (upstream git-sync + rsync). Built from the `helpers/`
 # folder alongside any future pod-level helper images (sidecar or init).

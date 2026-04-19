@@ -1,5 +1,5 @@
 # goreleaser config for the ww CLI.
-# Run `goreleaser release --clean` from repo root; requires GITHUB_TOKEN
+# Run `goreleaser release --clean` from clients/ww; requires GITHUB_TOKEN
 # and HOMEBREW_TAP_GITHUB_TOKEN env vars at release time.
 #
 # The tap repo (skthomasjr/homebrew-ww) does not exist yet — the
@@ -14,7 +14,7 @@ before:
 
 builds:
   - id: ww
-    main: ./cmd/ww
+    main: .
     binary: ww
     env:
       - CGO_ENABLED=0
@@ -28,9 +28,9 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X 'github.com/skthomasjr/autonomous-agent/cmd/ww/cmd.Version={{.Version}}'
-      - -X 'github.com/skthomasjr/autonomous-agent/cmd/ww/cmd.Commit={{.ShortCommit}}'
-      - -X 'github.com/skthomasjr/autonomous-agent/cmd/ww/cmd.BuildDate={{.Date}}'
+      - -X 'github.com/skthomasjr/autonomous-agent/clients/ww/cmd.Version={{.Version}}'
+      - -X 'github.com/skthomasjr/autonomous-agent/clients/ww/cmd.Commit={{.ShortCommit}}'
+      - -X 'github.com/skthomasjr/autonomous-agent/clients/ww/cmd.BuildDate={{.Date}}'
 
 archives:
   - id: ww
@@ -43,9 +43,8 @@ archives:
       - goos: windows
         formats: [zip]
     files:
-      - cmd/ww/README.md
-      - LICENSE*
       - README.md
+      - LICENSE*
 
 checksum:
   name_template: checksums.txt

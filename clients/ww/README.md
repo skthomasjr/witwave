@@ -15,7 +15,7 @@ validate scheduler files — all without a browser.
 For now, from a checkout of `skthomasjr/autonomous-agent`:
 
 ```bash
-go install github.com/skthomasjr/autonomous-agent/cmd/ww@latest
+go install github.com/skthomasjr/autonomous-agent/clients/ww@latest
 ```
 
 When the Homebrew tap lands:
@@ -163,10 +163,10 @@ dumps request and response bodies (truncated at 4 KiB per direction).
 
 ```bash
 go build -ldflags "\
-  -X 'github.com/skthomasjr/autonomous-agent/cmd/ww/cmd.Version=0.1.0' \
-  -X 'github.com/skthomasjr/autonomous-agent/cmd/ww/cmd.Commit=$(git rev-parse --short HEAD)' \
-  -X 'github.com/skthomasjr/autonomous-agent/cmd/ww/cmd.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)' \
-" -o bin/ww ./cmd/ww
+  -X 'github.com/skthomasjr/autonomous-agent/clients/ww/cmd.Version=0.1.0' \
+  -X 'github.com/skthomasjr/autonomous-agent/clients/ww/cmd.Commit=$(git rev-parse --short HEAD)' \
+  -X 'github.com/skthomasjr/autonomous-agent/clients/ww/cmd.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)' \
+" -o bin/ww .
 ```
 
 ## Scope notes (v0.1)

@@ -20,7 +20,7 @@ If the caller specified a list of files, format only those. If no files were spe
 - `<repo-root>/backends/claude/README.md`
 - `<repo-root>/backends/codex/README.md`
 - `<repo-root>/backends/gemini/README.md`
-- `<repo-root>/dashboard/README.md`
+- `<repo-root>/clients/dashboard/README.md`
 - `<repo-root>/operator/README.md`
 - `<repo-root>/tools/README.md`
 - `<repo-root>/tools/kubernetes/README.md`

@@ -118,7 +118,7 @@ shared/                        # Python modules mounted into harness + backends
 ├── validation.py              # Input validation helpers
 └── exceptions.py              # Shared exception types
 
-dashboard/                     # Vue 3 + Vite + PrimeVue web interface
+clients/dashboard/                    # Vue 3 + Vite + PrimeVue web interface
 
 operator/                      # Go/Kubebuilder Kubernetes operator
 

@@ -12,9 +12,9 @@ WORKDIR /build
 # v-html render path (marked/dompurify/primevue/vue are the risky ones).
 # `--ignore-scripts` keeps install-time postinstall hooks from executing
 # in the build stage; `--no-audit --no-fund` just trims noise.
-COPY dashboard/package.json dashboard/package-lock.json ./
+COPY clients/dashboard/package.json clients/dashboard/package-lock.json ./
 RUN npm ci --no-audit --no-fund --ignore-scripts
-COPY dashboard/ ./
+COPY clients/dashboard/ ./
 RUN npm run build
 
 FROM nginxinc/nginx-unprivileged:1.27-bookworm
@@ -29,7 +29,7 @@ FROM nginxinc/nginx-unprivileged:1.27-bookworm
 # this with a ConfigMap that adds per-agent /api/agents/<name>/ routes
 # templated from .Values.agents (see charts/nyx/templates/
 # configmap-dashboard-nginx.yaml).
-COPY --chown=nginx:nginx dashboard/nginx.conf /etc/nginx/templates/default.conf.template
+COPY --chown=nginx:nginx clients/dashboard/nginx.conf /etc/nginx/templates/default.conf.template
 COPY --from=build --chown=nginx:nginx /build/dist /usr/share/nginx/html
 EXPOSE 3000
 CMD ["nginx", "-g", "daemon off;"]
