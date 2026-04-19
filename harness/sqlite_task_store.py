@@ -19,6 +19,7 @@ import asyncio
 import logging
 import os
 import sqlite3
+import threading
 import time
 
 from a2a.server.context import ServerCallContext
@@ -145,28 +146,56 @@ class SqliteTaskStore(TaskStore):
 
     def __init__(self, path: str) -> None:
         self._path = path
-        self._conn: sqlite3.Connection | None = None
-        self._lock = asyncio.Lock()
+        # Per-thread connections via threading.local (#1040). The previous
+        # design shared one connection + an asyncio.Lock, which serialised
+        # every save/get/delete across the entire asyncio.to_thread
+        # executor. Under SQLite's WAL + busy_timeout (file-level
+        # coordination) a per-thread connection is the standard pattern
+        # for concurrent access; the outer asyncio.Lock added no
+        # correctness and pessimised the retry path (the lock was held
+        # across ~700ms of backoff inside _retry_on_operational).
+        self._local = threading.local()
+        self._opened_once = False
+        self._opened_lock = threading.Lock()
 
     def _get_conn(self) -> sqlite3.Connection:
-        if self._conn is None:
-            self._conn = _open_db(self._path)
-            logger.info("SqliteTaskStore opened at %s", self._path)
-        return self._conn
+        conn = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = _open_db(self._path)
+            self._local.conn = conn
+            # Log the first-ever open at INFO so the "SqliteTaskStore
+            # opened at …" line still appears; subsequent per-thread
+            # opens go to DEBUG to avoid log spam.
+            with self._opened_lock:
+                if not self._opened_once:
+                    self._opened_once = True
+                    logger.info("SqliteTaskStore opened at %s", self._path)
+                else:
+                    logger.debug(
+                        "SqliteTaskStore opened per-thread connection at %s", self._path
+                    )
+        return conn
 
     async def save(
         self, task: Task, context: ServerCallContext | None = None
     ) -> None:
         data = task.model_dump_json()
-        async with self._lock:
-            await asyncio.to_thread(_db_save, self._get_conn(), task.id, data)
+        # Resolve the per-thread connection inside the worker thread
+        # (#1040) — threading.local is keyed on the running thread, so
+        # the lookup has to happen after to_thread has dispatched.
+        def _op() -> None:
+            _db_save(self._get_conn(), task.id, data)
+
+        await asyncio.to_thread(_op)
         logger.debug("Task %s saved to SQLite store.", task.id)
 
     async def get(
         self, task_id: str, context: ServerCallContext | None = None
     ) -> Task | None:
-        async with self._lock:
-            raw = await asyncio.to_thread(_db_get, self._get_conn(), task_id)
+        def _op() -> str | None:
+            return _db_get(self._get_conn(), task_id)
+
+        raw = await asyncio.to_thread(_op)
         if raw is None:
             logger.debug("Task %s not found in SQLite store.", task_id)
             return None
@@ -177,6 +206,8 @@ class SqliteTaskStore(TaskStore):
     async def delete(
         self, task_id: str, context: ServerCallContext | None = None
     ) -> None:
-        async with self._lock:
-            await asyncio.to_thread(_db_delete, self._get_conn(), task_id)
+        def _op() -> None:
+            _db_delete(self._get_conn(), task_id)
+
+        await asyncio.to_thread(_op)
         logger.debug("Task %s deleted from SQLite store.", task_id)
