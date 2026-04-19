@@ -1274,6 +1274,7 @@ async def _run_query_inner(
     effective_model: str | None = None,
     max_tokens: int | None = None,
     on_chunk: Callable[[str], Awaitable[None]] | None = None,
+    tool_use_flag: "list[bool] | None" = None,
 ) -> list[str]:
     # Sanitize the `model` label once at the construction site so every
     # downstream `.labels(**_sdk_labels)` call is cardinality-bounded (#601).
@@ -1352,6 +1353,12 @@ async def _run_query_inner(
                             elif isinstance(block, ToolUseBlock):
                                 _tool_names[block.id] = block.name
                                 _tool_start_times[block.id] = time.monotonic()
+                                # Record that at least one tool_use executed on
+                                # this attempt — run_query() consults this flag
+                                # to refuse a collision-retry replay that would
+                                # duplicate cluster mutations / writes (#1048).
+                                if tool_use_flag is not None and not tool_use_flag[0]:
+                                    tool_use_flag[0] = True
                                 if backend_sdk_tool_calls_total is not None:
                                     backend_sdk_tool_calls_total.labels(**_LABELS, tool=block.name).inc()
                                 if backend_sdk_tool_call_input_size_bytes is not None:
@@ -1485,6 +1492,11 @@ async def run_query(
         logger.error(f"[claude stderr] {line}")
 
     effective_model = ctx.model or CLAUDE_MODEL
+    # Mutable idempotency marker — set to [True] by _run_query_inner when it
+    # records the first ToolUseBlock. The collision-retry path below consults
+    # this to refuse a replay that would duplicate cluster mutations / file
+    # writes (#1048).
+    _tool_use_flag: list[bool] = [False]
     try:
         return await _run_query_inner(
             prompt,
@@ -1493,6 +1505,7 @@ async def run_query(
             effective_model=effective_model,
             max_tokens=max_tokens,
             on_chunk=on_chunk,
+            tool_use_flag=_tool_use_flag,
         )
     except BudgetExceededError:
         raise
@@ -1502,6 +1515,17 @@ async def run_query(
             if "session" in line.lower() and "already in use" in line.lower()
         ]
         if is_new and _collision_lines:
+            # If the failed attempt already executed at least one tool_use,
+            # replaying the prompt as a resume would re-run those tools and
+            # potentially duplicate cluster mutations or file writes (#1048).
+            # Refuse the retry and re-raise.
+            if _tool_use_flag[0]:
+                logger.error(
+                    f"Session {ctx.session_id!r}: session-ID collision on new session "
+                    f"but attempt already executed a tool_use — refusing retry to avoid "
+                    f"duplicate side effects. See #1048."
+                )
+                raise
             logger.warning(
                 f"Session {ctx.session_id!r}: session-ID collision detected on new session "
                 f"(stderr: {_collision_lines[0]!r}) — retrying as resume."
