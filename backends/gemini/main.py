@@ -101,6 +101,18 @@ def build_agent_card() -> AgentCard:
     )
 
 
+# #1099: expose subsystem counters on /health for richer liveness signal.
+# Populated by main() after AgentExecutor construction so the handler can
+# read from it without needing the executor instance plumbed through.
+_health_executor_ref: "AgentExecutor | None" = None
+
+
+def _set_health_executor(executor: "AgentExecutor") -> None:
+    """Register the running executor for /health subsystem introspection (#1099)."""
+    global _health_executor_ref
+    _health_executor_ref = executor
+
+
 async def health(request: Request) -> JSONResponse:
     if backend_health_checks_total is not None:
         backend_health_checks_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="health").inc()
@@ -110,16 +122,49 @@ async def health(request: Request) -> JSONResponse:
     # bypasses the hooks engine so the value is "skeleton" until #640
     # disables AFC and hand-rolls the tool loop.
     hook_mode = "skeleton"
+    # #1099: subsystem dimensions for parity with claude's /health.
+    # Snapshot under best-effort try/except so a degraded executor can
+    # still answer the liveness probe.
+    mcp_servers_active = 0
+    session_cache_utilization_percent = 0.0
+    history_save_failed_count = 0
+    _exec = _health_executor_ref
+    if _exec is not None:
+        try:
+            mcp_servers_active = len(getattr(_exec, "_live_mcp_servers", []) or [])
+        except Exception:
+            pass
+        try:
+            from executor import MAX_SESSIONS as _MAX
+            _sessions = getattr(_exec, "_sessions", None)
+            if _sessions is not None and _MAX > 0:
+                session_cache_utilization_percent = round(
+                    (len(_sessions) / _MAX) * 100.0, 2
+                )
+        except Exception:
+            pass
+        try:
+            history_save_failed_count = len(
+                getattr(_exec, "_history_save_failed", set()) or set()
+            )
+        except Exception:
+            pass
+    subsystem = {
+        "hooks_enforcement_mode": hook_mode,
+        "mcp_servers_active": mcp_servers_active,
+        "session_cache_utilization_percent": session_cache_utilization_percent,
+        "history_save_failed": history_save_failed_count,
+    }
     if _ready:
         elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
         return JSONResponse({
             "status": "ok",
             "agent": AGENT_NAME,
             "uptime_seconds": elapsed,
-            "hooks_enforcement_mode": hook_mode,
+            **subsystem,
         })
     return JSONResponse(
-        {"status": "starting", "hooks_enforcement_mode": hook_mode},
+        {"status": "starting", **subsystem},
         status_code=503,
     )
 
@@ -252,6 +297,10 @@ async def main():
 
     agent_card = build_agent_card()
     executor = AgentExecutor()
+    # #1099: register the executor so the module-level /health handler can
+    # surface mcp_servers_active / session_cache_utilization_percent /
+    # history_save_failed without needing the executor threaded through.
+    _set_health_executor(executor)
     _task_store_path = os.environ.get("TASK_STORE_PATH", "")
     if _task_store_path:
         logger.info("Using SqliteTaskStore at %s", _task_store_path)
