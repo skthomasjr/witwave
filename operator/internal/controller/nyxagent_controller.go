@@ -158,23 +158,34 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	//      observed. Requeue immediately after the patch lands — the
 	//      update triggers its own reconcile anyway, but returning
 	//      here keeps the control flow linear.
+	// Finalizer / teardown-annotation mutations use client.Patch with a
+	// MergeFrom base rather than r.Update (#1068). The full-object PUT
+	// path clobbers concurrent spec writers (GitOps sync, kubectl apply,
+	// admission-webhook defaults) between the Get at the top of
+	// Reconcile and the write here; a strategic/merge patch over just
+	// the metadata.finalizers list (or metadata.annotations key) leaves
+	// spec / status / labels untouched on the apiserver.
 	if !agent.DeletionTimestamp.IsZero() {
 		if controllerutil.ContainsFinalizer(agent, nyxAgentFinalizer) {
 			if err := r.finalizeNyxAgent(ctx, agent); err != nil {
 				return ctrl.Result{}, fmt.Errorf("finalize NyxAgent: %w", err)
 			}
+			before := agent.DeepCopy()
 			controllerutil.RemoveFinalizer(agent, nyxAgentFinalizer)
-			if err := r.Update(ctx, agent); err != nil {
+			if err := r.Patch(ctx, agent, client.MergeFrom(before)); err != nil {
 				return ctrl.Result{}, fmt.Errorf("remove finalizer: %w", err)
 			}
 		}
 		return ctrl.Result{}, nil
 	}
-	if controllerutil.AddFinalizer(agent, nyxAgentFinalizer) {
-		if err := r.Update(ctx, agent); err != nil {
-			return ctrl.Result{}, fmt.Errorf("add finalizer: %w", err)
+	if !controllerutil.ContainsFinalizer(agent, nyxAgentFinalizer) {
+		before := agent.DeepCopy()
+		if controllerutil.AddFinalizer(agent, nyxAgentFinalizer) {
+			if err := r.Patch(ctx, agent, client.MergeFrom(before)); err != nil {
+				return ctrl.Result{}, fmt.Errorf("add finalizer: %w", err)
+			}
+			return ctrl.Result{}, nil
 		}
-		return ctrl.Result{}, nil
 	}
 
 	// Per-agent enabled flag (default true). When explicitly false, tear
@@ -206,11 +217,14 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			return ctrl.Result{}, err
 		}
 		// Stamp the generation on success so we short-circuit next time.
+		// Patch (#1068) over the annotation-map delta so a concurrent
+		// spec writer's fields survive this metadata-only update.
+		before := agent.DeepCopy()
 		if agent.Annotations == nil {
 			agent.Annotations = map[string]string{}
 		}
 		agent.Annotations[teardownAnnotation] = fmt.Sprintf("%d", agent.Generation)
-		if err := r.Update(ctx, agent); err != nil {
+		if err := r.Patch(ctx, agent, client.MergeFrom(before)); err != nil {
 			// Non-fatal — the next reconcile will retry the stamp.
 			log.Info("teardown complete but annotation stamp failed; will retry",
 				"name", agent.Name, "err", err.Error())
@@ -219,10 +233,13 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	// Re-enabled path: clear a prior teardown-complete annotation so a
-	// future disable picks up the then-current generation fresh.
+	// future disable picks up the then-current generation fresh. Patch
+	// (#1068) over the annotation-map delta; a full-object Update here
+	// would clobber concurrent spec edits.
 	if v, ok := agent.Annotations[teardownAnnotation]; ok && v != "" {
+		before := agent.DeepCopy()
 		delete(agent.Annotations, teardownAnnotation)
-		if err := r.Update(ctx, agent); err != nil {
+		if err := r.Patch(ctx, agent, client.MergeFrom(before)); err != nil {
 			log.Info("failed to clear teardown-complete annotation on re-enable; non-fatal",
 				"name", agent.Name, "err", err.Error())
 		}
