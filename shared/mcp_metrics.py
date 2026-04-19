@@ -79,6 +79,127 @@ class ConcurrencyCapExceeded(RuntimeError):
     """
 
 
+class CallBudgetExhausted(RuntimeError):
+    """Raised when the cumulative call budget for (server, tool) is hit (#1124).
+
+    Distinct from ConcurrencyCapExceeded — that is a per-moment RPS
+    guardrail; this is a rolling-window cumulative ceiling that stops
+    runaway continuation loops even when they're not rate-limit-hot.
+    """
+
+
+if _PROM_AVAILABLE:
+    MCP_TOOL_BUDGET_EXHAUSTED_TOTAL = Counter(
+        "mcp_tool_budget_exhausted_total",
+        "MCP tool calls rejected because the per-(server, tool) cumulative "
+        "call budget in the configured window was already spent.",
+        ["server", "tool"],
+    )
+else:  # pragma: no cover - import-time fallback
+    MCP_TOOL_BUDGET_EXHAUSTED_TOTAL = None  # type: ignore[assignment]
+
+
+# Rolling-window call budget (#1124).
+# Key = (server, tool). Value = list of monotonic timestamps for calls
+# that landed within the current window. Trimmed on every check; grows
+# at most to the cap + O(1) so memory stays bounded.
+_BUDGET_LOCK = threading.Lock()
+_BUDGET_STATE: dict[tuple[str, str], list[float]] = {}
+
+
+def _budget_for(server: str, tool: str) -> tuple[int, float]:
+    """Return (max_calls, window_seconds) for (server, tool).
+
+    Resolution order, first non-empty wins:
+      1. MCP_BUDGET_<SERVER>_<TOOL>            (per-tool override)
+      2. MCP_BUDGET_<SERVER>                   (per-server default)
+      3. MCP_BUDGET                            (global default)
+    Value format: ``<count>/<duration>`` where ``<duration>`` is a
+    number optionally suffixed with ``s``, ``m``, or ``h``. Example:
+    ``MCP_BUDGET_HELM_INSTALL=5/1h`` caps helm.install at 5/hour.
+    Returns (0, 0.0) when no budget is configured — the caller treats
+    that as "unlimited".
+    """
+
+    def _norm(s: str) -> str:
+        return s.replace(".", "_").replace("-", "_").upper()
+
+    candidates = (
+        f"MCP_BUDGET_{_norm(server)}_{_norm(tool)}",
+        f"MCP_BUDGET_{_norm(server)}",
+        "MCP_BUDGET",
+    )
+    for name in candidates:
+        raw = os.environ.get(name, "").strip()
+        if not raw:
+            continue
+        if "/" not in raw:
+            _logger.warning("mcp_metrics: %s missing '/' — expected N/duration", name)
+            continue
+        count_str, dur_str = raw.split("/", 1)
+        try:
+            count = int(count_str.strip())
+        except ValueError:
+            _logger.warning("mcp_metrics: %s count %r not int", name, count_str)
+            continue
+        dur_str = dur_str.strip().lower()
+        if not dur_str:
+            continue
+        multiplier = 1.0
+        if dur_str.endswith("ms"):
+            multiplier = 0.001
+            dur_str = dur_str[:-2]
+        elif dur_str.endswith("s"):
+            dur_str = dur_str[:-1]
+        elif dur_str.endswith("m"):
+            multiplier = 60.0
+            dur_str = dur_str[:-1]
+        elif dur_str.endswith("h"):
+            multiplier = 3600.0
+            dur_str = dur_str[:-1]
+        try:
+            window = float(dur_str.strip()) * multiplier
+        except ValueError:
+            _logger.warning("mcp_metrics: %s duration %r not a number", name, dur_str)
+            continue
+        if count <= 0 or window <= 0:
+            return 0, 0.0
+        return count, window
+    return 0, 0.0
+
+
+def _consume_budget(server: str, tool: str) -> None:
+    """Atomically record one call and raise CallBudgetExhausted on overflow (#1124).
+
+    Must be called BEFORE the tool actually does work; if the handler
+    later errors out, the call still counts against the budget — the
+    point of the ceiling is to bound blast radius regardless of outcome.
+    """
+    cap, window = _budget_for(server, tool)
+    if cap <= 0 or window <= 0:
+        return
+    now = time.monotonic()
+    with _BUDGET_LOCK:
+        hits = _BUDGET_STATE.setdefault((server, tool), [])
+        cutoff = now - window
+        # Trim stale entries.
+        while hits and hits[0] < cutoff:
+            hits.pop(0)
+        if len(hits) >= cap:
+            if _PROM_AVAILABLE and MCP_TOOL_BUDGET_EXHAUSTED_TOTAL is not None:
+                try:
+                    MCP_TOOL_BUDGET_EXHAUSTED_TOTAL.labels(
+                        server=server, tool=tool
+                    ).inc()
+                except Exception:
+                    pass
+            raise CallBudgetExhausted(
+                f"mcp {server}.{tool}: call budget exhausted "
+                f"({cap} calls / {window:.0f}s window)."
+            )
+        hits.append(now)
+
+
 _CAP_LOCK = threading.Lock()
 # Values: threading.BoundedSemaphore OR the string "nocap" (sentinel for
 # "env says no cap"). Absent key = not yet resolved.
@@ -159,6 +280,13 @@ def record_tool_call(server: str, tool: str) -> Iterator[None]:
     Re-raises the original exception so the caller's own error path
     still runs; always releases the semaphore in ``finally``.
     """
+    # Budget check fires before the concurrency cap so a runaway
+    # continuation loop is rejected cheaply without first consuming a
+    # semaphore slot (#1124). Raising CallBudgetExhausted short-circuits
+    # the context manager entirely — we never enter the timing block,
+    # so the call does not contribute to mcp_tool_calls_total with
+    # outcome=error.
+    _consume_budget(server, tool)
     sem = _cap_for(server, tool)
     acquired = False
     if sem is not None:

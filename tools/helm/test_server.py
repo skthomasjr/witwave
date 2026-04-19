@@ -345,6 +345,55 @@ def test_diff_redactor_failure_path_uses_log_binding():
         )
 
 
+# ----- Call-budget quota (#1124) -----
+
+
+def test_call_budget_parses_and_enforces(monkeypatch):
+    import mcp_metrics
+
+    # Reset state between tests.
+    mcp_metrics._BUDGET_STATE.clear()
+    monkeypatch.setenv("MCP_BUDGET_HELMTEST_TOOLX", "2/1h")
+
+    # Budget resolves for the tool.
+    cap, window = mcp_metrics._budget_for("helmtest", "toolx")
+    assert cap == 2
+    assert window == 3600.0
+
+    # First two calls consume; third raises.
+    mcp_metrics._consume_budget("helmtest", "toolx")
+    mcp_metrics._consume_budget("helmtest", "toolx")
+    with pytest.raises(mcp_metrics.CallBudgetExhausted, match="budget exhausted"):
+        mcp_metrics._consume_budget("helmtest", "toolx")
+
+
+def test_call_budget_no_op_when_unset(monkeypatch):
+    import mcp_metrics
+
+    mcp_metrics._BUDGET_STATE.clear()
+    monkeypatch.delenv("MCP_BUDGET", raising=False)
+    monkeypatch.delenv("MCP_BUDGET_FOO", raising=False)
+    monkeypatch.delenv("MCP_BUDGET_FOO_BAR", raising=False)
+    # No raise even after many calls.
+    for _ in range(50):
+        mcp_metrics._consume_budget("foo", "bar")
+
+
+def test_call_budget_window_syntax_variants(monkeypatch):
+    import mcp_metrics
+
+    for raw, expected in [
+        ("1/30s", 30.0),
+        ("1/5m", 300.0),
+        ("1/2h", 7200.0),
+        ("1/500ms", 0.5),
+    ]:
+        monkeypatch.setenv("MCP_BUDGET_X_Y", raw)
+        cap, window = mcp_metrics._budget_for("x", "y")
+        assert cap == 1
+        assert abs(window - expected) < 1e-6
+
+
 # ----- MCP_READ_ONLY gate (#1123) -----
 
 
