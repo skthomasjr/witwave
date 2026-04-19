@@ -23,7 +23,18 @@
         },
         "imagePullSecrets": { "type": "array" },
         "resources": { "type": "object" },
-        "securityContext": { "type": "object" }
+        "securityContext": { "type": "object" },
+        "runtimeConfig": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "traceApiUrl": { "type": "string" },
+            "traceApiAllowCrossOrigin": { "type": "boolean" },
+            "timelineEventsUrl": { "type": "string" },
+            "locale": { "type": "string" },
+            "harnessBearerToken": { "type": "string" }
+          }
+        }
       }
     },
     "ingress": {

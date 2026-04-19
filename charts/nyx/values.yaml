@@ -36,6 +36,33 @@ dashboard:
   #   runAsGroup: 1000
   #   fsGroup: 1000
 
+  # Runtime config injected into window.__NYX_CONFIG__ by nginx at
+  # serve time (#1110 / #1061). The dashboard SPA reads these on boot —
+  # trace API URL, locale, theme, timeline event-stream overrides.
+  # Rendered verbatim as JSON into the index.html response via
+  # `sub_filter` in the ConfigMap.
+  #
+  # Non-secret values only. The harness CONVERSATIONS_AUTH_TOKEN bearer
+  # is NOT rendered here (a plain `kubectl get cm` would leak it) —
+  # until the Secret-backed env-var injection lands, operators wanting
+  # an authenticated timeline stream must inject
+  # `__NYX_CONFIG__.harnessBearerToken` via their own index.html override.
+  runtimeConfig: {}
+    # # External trace backend URL (Jaeger / Tempo / Grafana). Empty
+    # # disables the OTelTraces view. Must be same-origin OR operators
+    # # must set traceApiAllowCrossOrigin=true AND widen the dashboard
+    # # CSP connect-src directive (#1061).
+    # traceApiUrl: "https://jaeger.example.com"
+    # traceApiAllowCrossOrigin: false
+    # # Override the default timeline stream URL. Default is
+    # # /events/stream (single-harness dev mode). For fleet deployments,
+    # # multi-agent fanout uses /api/agents/<name>/events/stream per
+    # # team member and this override is not required.
+    # timelineEventsUrl: "/events/stream"
+    # # Default locale for the dashboard i18n layer. Falls back to
+    # # navigator.language then "en" when unset (#819).
+    # locale: "en"
+
 # Ingress for the dashboard. Disabled by default — enable to expose the dashboard externally (#424).
 #
 # SECURITY (#528): When the dashboard is exposed via Ingress, the nginx pod

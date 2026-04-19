@@ -82,8 +82,30 @@ data:
 
       # History-mode fallback so deep-linked routes (e.g. /team) hit index.html
       # rather than returning 404 from nginx's static resolver.
+      #
+      # Runtime config injection (#1110 / #1061). Dashboard composables read
+      # from `window.__NYX_CONFIG__` at boot (trace API url, locale, theme
+      # preference, timeline event stream overrides, …). The SPA index.html
+      # is static — it has no way to learn deployment-specific values at
+      # build time — so nginx substitutes a single `<script>` tag into the
+      # HTML response via `sub_filter` right before `</head>`. The tag is
+      # rendered from Helm `.Values.dashboard.runtimeConfig` at chart-
+      # template time; operators update values.yaml and the next rollout
+      # publishes new config.
+      #
+      # Non-secret values only. The harness bearer token is intentionally
+      # NOT rendered here — a follow-up will mount it as a Secret-backed
+      # env var and use `envsubst` (like `${NGINX_LOCAL_RESOLVERS}` above)
+      # so a plain `kubectl get cm` doesn't leak the token. Until that
+      # lands, operators wanting authenticated timeline streams inject
+      # `window.__NYX_CONFIG__.harnessBearerToken` through their own
+      # index.html override or an additional sub_filter.
+      {{- $rc := .Values.dashboard.runtimeConfig | default dict }}
       location / {
         try_files $uri $uri/ /index.html;
+        sub_filter_once on;
+        sub_filter_types text/html;
+        sub_filter '</head>' '<script>window.__NYX_CONFIG__=Object.freeze({{ $rc | toJson }});</script></head>';
       }
 
       # Dashboard-local health probe (distinct from any upstream agent's /health).
