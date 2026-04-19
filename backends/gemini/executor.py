@@ -935,6 +935,17 @@ _history_write_done: dict[str, asyncio.Event] = {}
 # hazard applies).
 _session_cleanup_epoch: dict[str, int] = {}
 
+# Strong-reference set for _track_session's fire-and-forget
+# _deferred_evict_remove tasks (#999). asyncio.create_task only keeps a
+# weak reference from the running loop, so without a strong ref a task
+# scheduled just before loop shutdown can be garbage-collected before
+# the deferred os.remove executes — leaving a stale session file on
+# disk that resumption on the next pod boot happily re-hydrates. The
+# executor's close() path drains this set after cancelling watchers so
+# a graceful shutdown flushes every pending eviction. done_callback
+# discards completed tasks so the set does not grow unbounded.
+_EVICT_REMOVE_TASKS: set[asyncio.Task] = set()
+
 
 def _bump_cleanup_epoch(session_id: str) -> int:
     """Increment and return the cleanup epoch for ``session_id`` (#732)."""
@@ -1290,7 +1301,13 @@ def _track_session(
                         )
                     _bump_cleanup_epoch(_ev_id)
                     _session_cleanup_epoch.pop(_ev_id, None)
-                _loop.create_task(_deferred_evict_remove())
+                _evict_task = _loop.create_task(_deferred_evict_remove())
+                # Hold a strong reference so loop shutdown doesn't
+                # garbage-collect the task mid-flight (#999). The
+                # done-callback discards the reference on completion
+                # so the set stays bounded under sustained eviction.
+                _EVICT_REMOVE_TASKS.add(_evict_task)
+                _evict_task.add_done_callback(_EVICT_REMOVE_TASKS.discard)
             else:
                 try:
                     os.remove(_evicted_path)
@@ -2969,4 +2986,26 @@ class AgentExecutor(A2AAgentExecutor):
                 await _old_stack.aclose()
             except Exception as _close_exc:
                 logger.warning("Parked MCP stack aclose on shutdown: %s", _close_exc)
+        # Drain any pending _track_session deferred-evict os.remove
+        # tasks (#999) with a bounded wait so a graceful shutdown
+        # actually removes the evicted session file instead of letting
+        # loop-close drop the pending task. 10s is comfortably greater
+        # than the per-task 5s wait on _history_write_done.
+        if _EVICT_REMOVE_TASKS:
+            _pending = list(_EVICT_REMOVE_TASKS)
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*_pending, return_exceptions=True),
+                    timeout=10.0,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "Deferred session-evict removal did not drain within 10s — "
+                    "%d task(s) still pending; cancelling.",
+                    len(_pending),
+                )
+                for _t in _pending:
+                    if not _t.done():
+                        _t.cancel()
+                await asyncio.gather(*_pending, return_exceptions=True)
         await _close_client()
