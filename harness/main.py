@@ -49,12 +49,22 @@ from metrics import (
     harness_backends_config_stale,
     harness_health_checks_total,
     harness_info,
+    harness_prompt_env_substitutions_total,
     harness_startup_duration_seconds,
     harness_task_restarts_total,
     harness_triggers_requests_total,
     harness_up,
     harness_uptime_seconds,
 )
+# Wire shared/prompt_env.substitutions_total (#1089) so every
+# resolve_prompt_env() call feeds the Counter. Idempotent — a None
+# counter (METRICS_ENABLED unset) leaves the module's fallback in
+# place and the _bump() helper no-ops.
+try:
+    import prompt_env as _prompt_env_mod  # shared/prompt_env.py
+    _prompt_env_mod.substitutions_total = harness_prompt_env_substitutions_total
+except Exception:
+    pass
 from conversations import (
     make_proxy_conversations_handler,
     make_proxy_trace_handler,

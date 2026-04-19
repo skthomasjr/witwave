@@ -135,6 +135,13 @@ harness_hook_decision_listener_dup_rejects_total: prometheus_client.Counter | No
 # queue in bus.py is full and an event is shed. Pair with existing
 # backend_hook_post_shed_total for end-to-end visibility.
 harness_hook_decision_dropped_total: prometheus_client.Counter | None = None
+# {{env.VAR}} prompt substitution outcomes (#1089). Labels (var, result)
+# where result is one of "hit" / "missing" / "denied". Fires inside
+# shared/prompt_env.resolve_prompt_env() via the wiring hook added in
+# #1035.  Catches the "my prompt is secretly empty" class of incident:
+# a rotated token expanding empty manifests as a non-zero rate on
+# result="missing" without a single new log line.
+harness_prompt_env_substitutions_total: prometheus_client.Counter | None = None
 
 
 if _enabled:
@@ -623,6 +630,15 @@ if _enabled:
         "Total hook.decision events shed because the bounded dispatcher "
         "queue was full (#928/#1085). Paired with backend_hook_post_shed_total "
         "for end-to-end shed visibility.",
+    )
+    harness_prompt_env_substitutions_total = prometheus_client.Counter(
+        "harness_prompt_env_substitutions_total",
+        "Outcomes of {{env.VAR}} expansions in scheduler prompts (#1089). "
+        "result: hit=non-empty expansion; missing=allow-listed but unset; "
+        "denied=var outside PROMPT_ENV_ALLOWLIST. A non-zero rate on "
+        "missing for a previously-hit var is the signal for a rotated "
+        "token silently expanding empty.",
+        ["var", "result"],
     )
     harness_webhooks_items_registered = prometheus_client.Gauge(
         "harness_webhooks_items_registered",
