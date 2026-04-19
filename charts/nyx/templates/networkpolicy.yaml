@@ -224,6 +224,23 @@ spec:
     {{- /* MCP app port is 8000 (FastMCP streamable-http listener, #644).
            Scope allowSameNamespace to this port only (#911). */ -}}
     {{- include "nyx.np.ingressRules" (dict "ing" (omit $ing "allowDashboard") "dashboardEnabled" false "dashboardPeer" $dashboardPeer "sameNsPeer" $sameNsPeer "metricsPort" $mcpMetricsPort "appPort" 8000) }}
+    {{- /* #1074: allow nyx-managed pods (agents, dashboard, other MCP
+           tools) to reach the :8000 FastMCP listener. Default-on via
+           networkPolicy.ingress.allowNyxAgents so enabling NPs
+           doesn't black-hole agent → MCP traffic. Match is on the
+           canonical `app.kubernetes.io/part-of: nyx` label that every
+           chart-rendered pod carries; it narrows the peer set to
+           this release's agents without broadening to "every pod in
+           the namespace" the way allowSameNamespace does. */ -}}
+    {{- if (hasKey $ing "allowNyxAgents" | ternary $ing.allowNyxAgents true) }}
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: nyx
+      ports:
+        - protocol: TCP
+          port: 8000
+    {{- end }}
   {{- if not $np.egressOpen }}
   egress:
     {{- include "nyx.np.egressRules" (dict "np" $np) }}

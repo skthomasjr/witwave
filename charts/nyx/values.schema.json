@@ -195,6 +195,7 @@
           "properties": {
             "allowDashboard": { "type": "boolean" },
             "allowSameNamespace": { "type": "boolean" },
+            "allowNyxAgents": { "type": "boolean" },
             "metricsFrom": { "type": "array" },
             "additionalFrom": { "type": "array" }
           }
@@ -265,6 +266,7 @@
               "additionalProperties": false,
               "properties": {
                 "create": { "type": "boolean" },
+                "clusterWide": { "type": "boolean" },
                 "rules": { "type": "array" }
               }
             }
@@ -297,6 +299,7 @@
               "additionalProperties": false,
               "properties": {
                 "create": { "type": "boolean" },
+                "clusterWide": { "type": "boolean" },
                 "rules": { "type": "array" }
               }
             }
@@ -537,6 +540,7 @@
               "additionalProperties": false,
               "properties": {
                 "create": { "type": "boolean" },
+                "clusterWide": { "type": "boolean" },
                 "rules": {
                   "type": "array",
                   "items": {
