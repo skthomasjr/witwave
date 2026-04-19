@@ -560,6 +560,16 @@ async def main():
         unauthorized = _require_traces_auth(request)
         if unauthorized is not None:
             return unauthorized
+        # #1094: clamp limit against the in-memory span cap so an
+        # authenticated caller can't request limit=10_000_000 and force a
+        # pathological response assembly. Matches claude/main.py's
+        # defence added for the same endpoint.
+        try:
+            _cap = int(os.environ.get("OTEL_IN_MEMORY_SPANS") or 1000)
+        except ValueError:
+            _cap = 1000
+        if _cap <= 0:
+            _cap = 1000
         try:
             limit_raw = request.query_params.get("limit")
             limit = int(limit_raw) if limit_raw else 20
@@ -567,6 +577,8 @@ async def main():
             limit = 20
         if limit <= 0:
             limit = 20
+        if limit > _cap:
+            limit = _cap
         # Offset-based pagination (#1101). Parity with claude / codex.
         try:
             offset_raw = request.query_params.get("offset")
