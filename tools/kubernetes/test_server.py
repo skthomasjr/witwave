@@ -213,6 +213,17 @@ def test_redacted_sentinel_is_nonempty_string():
     assert isinstance(server._REDACTED, str) and server._REDACTED
 
 
+# ----- Inner-work histogram (#1126) -------------------------------
+
+
+def test_k8s_api_call_duration_seconds_is_registered():
+    assert server.k8s_api_call_duration_seconds is not None
+    sample = server.k8s_api_call_duration_seconds.labels(
+        verb="list", resource="Pod", outcome="ok"
+    )
+    assert sample is not None
+
+
 # ----- MCP_READ_ONLY gate (#1123) ---------------------------------
 
 

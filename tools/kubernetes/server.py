@@ -161,9 +161,22 @@ try:
         "ResourceNotFound / 404 during _resolve.",
         ["outcome"],
     )
+    # Inner-work histogram for apiserver latency (#1126). Distinct from
+    # mcp_tool_duration_seconds (the outer handler span) — operators
+    # alert on this to attribute slowness to the apiserver round-trip
+    # specifically, rather than to in-process redaction or parsing work.
+    from prometheus_client import Histogram as _Histogram  # type: ignore
+
+    k8s_api_call_duration_seconds = _Histogram(
+        "k8s_api_call_duration_seconds",
+        "Wall-clock duration of a Kubernetes API call from the MCP server.",
+        ["verb", "resource", "outcome"],
+        buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0),
+    )
 except Exception:  # pragma: no cover - metrics disabled
     mcp_k8s_token_reload_total = None  # type: ignore
     mcp_discovery_reload_total = None  # type: ignore
+    k8s_api_call_duration_seconds = None  # type: ignore
 
 
 def _load_kube_config() -> None:
@@ -331,12 +344,39 @@ def _handler_span(tool: str, attributes: dict[str, Any] | None = None):
             yield span
 
 
+@contextlib.contextmanager
 def _api_span(verb: str, resource: str, attributes: dict[str, Any] | None = None):
-    """Open a child ``k8s.api.call`` span wrapping a Kubernetes API call."""
+    """Open a child ``k8s.api.call`` span wrapping a Kubernetes API call.
+
+    Also observes ``k8s_api_call_duration_seconds{verb, resource, outcome}``
+    so operators can attribute latency specifically to the apiserver
+    round-trip, separate from the outer ``mcp_tool_duration_seconds``
+    (#1126). Records every call including failures so the histogram
+    covers error-path latency as well.
+    """
     attrs: dict[str, Any] = {"k8s.verb": verb, "k8s.resource": resource}
     if attributes:
         attrs.update({k: v for k, v in attributes.items() if v is not None})
-    return start_span("k8s.api.call", kind=SPAN_KIND_INTERNAL, attributes=attrs)
+    import time as _t
+    start = _t.monotonic()
+    outcome = "ok"
+    try:
+        with start_span(
+            "k8s.api.call", kind=SPAN_KIND_INTERNAL, attributes=attrs
+        ) as span:
+            try:
+                yield span
+            except BaseException:
+                outcome = "error"
+                raise
+    finally:
+        if k8s_api_call_duration_seconds is not None:
+            try:
+                k8s_api_call_duration_seconds.labels(
+                    verb=verb, resource=resource, outcome=outcome,
+                ).observe(_t.monotonic() - start)
+            except Exception:
+                pass
 
 
 @mcp.tool()

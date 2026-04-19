@@ -126,8 +126,22 @@ try:
         "exceeded HELM_SUBPROCESS_TIMEOUT_SECONDS (#857).",
         ["tool", "command"],
     )
+    # Inner-work histogram for helm-CLI latency (#1126). Distinct from
+    # mcp_tool_duration_seconds (the outer handler span) — operators
+    # alert on this one to know 'helm subprocess is slow' vs. 'tool is
+    # slow for some other reason'. Bucket range covers quick list/get
+    # calls through long upgrade --wait runs.
+    helm_subprocess_duration_seconds = _prom.Histogram(
+        "helm_subprocess_duration_seconds",
+        "Wall-clock duration of a helm CLI invocation (subprocess).",
+        ["command", "outcome"],
+        buckets=(
+            0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0,
+        ),
+    )
 except Exception:  # pragma: no cover - metrics disabled
     mcp_subprocess_timeouts_total = None  # type: ignore
+    helm_subprocess_duration_seconds = None  # type: ignore
 
 
 def _helm(
@@ -137,13 +151,17 @@ def _helm(
 ) -> Any:
     cmd = ["helm", *args]
     log.debug("exec: %s", " ".join(cmd))
+    command = args[0] if args else ""
     # helm.exec child span — captures subprocess latency independent of the
     # outer mcp.handler span, so operators can attribute time spent in the
     # CLI vs. in-process work.
+    import time as _t  # local import to keep top-of-file clean
+    _subp_start = _t.monotonic()
+    _subp_outcome = "ok"
     with start_span(
         "helm.exec",
         kind=SPAN_KIND_INTERNAL,
-        attributes={"helm.command": args[0] if args else "", "helm.args": " ".join(args)},
+        attributes={"helm.command": command, "helm.args": " ".join(args)},
     ) as _exec_span:
         try:
             proc = subprocess.run(
@@ -160,12 +178,14 @@ def _helm(
                     f"{(proc.stderr or proc.stdout).strip()}"
                 )
                 set_span_error(_exec_span, err)
+                _subp_outcome = "error"
                 raise err
             if parse_json:
                 out = proc.stdout.strip()
                 return json.loads(out) if out else None
             return proc.stdout
         except subprocess.TimeoutExpired as exc:
+            _subp_outcome = "timeout"
             # subprocess.run has already killed the child and reaped it by
             # the time TimeoutExpired reaches us. Surface a HelmError so the
             # outer handler span records the failure uniformly.
@@ -183,10 +203,23 @@ def _helm(
             set_span_error(_exec_span, err)
             raise err from exc
         except HelmError:
+            _subp_outcome = "error"
             raise
         except Exception as exc:
             set_span_error(_exec_span, exc)
+            _subp_outcome = "error"
             raise
+        finally:
+            # Record every CLI invocation into the inner-work histogram
+            # (#1126), including timeouts and non-zero exits, so p95/p99
+            # is alertable regardless of outcome.
+            if helm_subprocess_duration_seconds is not None:
+                try:
+                    helm_subprocess_duration_seconds.labels(
+                        command=command, outcome=_subp_outcome,
+                    ).observe(_t.monotonic() - _subp_start)
+                except Exception:
+                    pass
 
 
 @contextlib.contextmanager

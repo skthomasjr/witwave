@@ -345,6 +345,19 @@ def test_diff_redactor_failure_path_uses_log_binding():
         )
 
 
+# ----- Inner-work histogram (#1126) -----
+
+
+def test_helm_subprocess_duration_seconds_is_registered():
+    # Histogram exposed so prom_client's default registry collects it.
+    assert server.helm_subprocess_duration_seconds is not None
+    # Label schema is (command, outcome).
+    sample = server.helm_subprocess_duration_seconds.labels(
+        command="list", outcome="ok"
+    )
+    assert sample is not None
+
+
 # ----- Privileged-op audit log (#1125) -----
 
 
