@@ -142,6 +142,24 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
+	// Reconcile-pause short-circuit (#1113). Distinct from spec.enabled=false
+	// (which tears the Deployment and Service down), the pause annotation
+	// freezes reconciliation in place: running pods stay up, the controller
+	// stops writing, and operators can investigate / roll back via other
+	// tooling without racing against the operator reapplying the spec.
+	// We deliberately still service the deletion path (DeletionTimestamp
+	// set) so a ``kubectl delete`` of a paused agent still runs the
+	// finalizer — otherwise a paused agent could not be removed without
+	// manually clearing the annotation first.
+	const reconcilePausedAnnotation = "nyx.ai/reconcile-paused"
+	if agent.DeletionTimestamp.IsZero() {
+		if v := agent.Annotations[reconcilePausedAnnotation]; v == "true" {
+			log.V(1).Info("NyxAgent reconciliation paused via annotation — skipping",
+				"annotation", reconcilePausedAnnotation, "name", agent.Name)
+			return ctrl.Result{}, nil
+		}
+	}
+
 	// Finalizer lifecycle (#569). Two cases:
 	//
 	//   1. CR is being deleted (DeletionTimestamp set): run teardown so
