@@ -175,6 +175,24 @@ var (
 		},
 		[]string{"pod"},
 	)
+
+	// NyxAgentCredentialRotationsTotal counts observed changes to the
+	// credential-Secret checksum stamped on each agent's pod template
+	// (#1114). One increment per (namespace, name) per detected rotation:
+	// the Secret watch enqueues the owning agent, the reconciler
+	// recomputes the checksum against the referenced Secrets' current
+	// ResourceVersion, and — when the checksum actually differs — the
+	// annotation update triggers a rolling restart so the new token
+	// loads. Operators can alert on sustained rotation rates (indicating
+	// a flapping credential source) or on a suspicious absence of
+	// rotations during a scheduled refresh window.
+	NyxAgentCredentialRotationsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "nyxagent_credential_rotations_total",
+			Help: "Total NyxAgent credential-Secret checksum rotations observed by the reconciler, labelled by namespace and name.",
+		},
+		[]string{"namespace", "name"},
+	)
 )
 
 func init() {
@@ -189,5 +207,6 @@ func init() {
 		nyxpromptStatusPatchConflictsTotal,
 		NyxPromptWebhookIndexFallbackTotal,
 		NyxAgentLeader,
+		NyxAgentCredentialRotationsTotal,
 	)
 }

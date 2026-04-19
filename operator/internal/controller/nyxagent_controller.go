@@ -395,6 +395,23 @@ func (r *NyxAgentReconciler) applyDeployment(ctx context.Context, agent *nyxv1al
 	if err = controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
 		return fmt.Errorf("set owner on Deployment: %w", err)
 	}
+
+	// Credential-Secret checksum (#1114). Stamp a hash of the referenced
+	// Secrets' ResourceVersions onto the pod template so a rotated token
+	// triggers a rolling restart. Errors surface through the reconcile
+	// chain so a transient apiserver blip doesn't silently leave the
+	// agent on the old token.
+	checksum, ccErr := r.computeCredentialsChecksum(ctx, agent)
+	if ccErr != nil {
+		return ccErr
+	}
+	if checksum != "" {
+		if desired.Spec.Template.ObjectMeta.Annotations == nil {
+			desired.Spec.Template.ObjectMeta.Annotations = map[string]string{}
+		}
+		desired.Spec.Template.ObjectMeta.Annotations[credentialsChecksumAnnotation] = checksum
+	}
+
 	existing := &appsv1.Deployment{}
 	getErr := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
 	switch {
@@ -405,6 +422,16 @@ func (r *NyxAgentReconciler) applyDeployment(ctx context.Context, agent *nyxv1al
 	case getErr != nil:
 		err = getErr
 		return err
+	}
+
+	// Detect a rotation: the previously-stamped checksum differs from
+	// the freshly-computed one. Bump the counter exactly once per
+	// rotation; the annotation update below rolls the Deployment.
+	if existing.Spec.Template.Annotations != nil {
+		prev := existing.Spec.Template.Annotations[credentialsChecksumAnnotation]
+		if prev != "" && prev != checksum {
+			NyxAgentCredentialRotationsTotal.WithLabelValues(agent.Namespace, agent.Name).Inc()
+		}
 	}
 	// When autoscaling is enabled, the HPA owns spec.replicas. Preserve the
 	// existing value so that `existing.Spec = desired.Spec` (where desired has
@@ -2277,6 +2304,7 @@ func (r *NyxAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&policyv1.PodDisruptionBudget{}).
 		Watches(&nyxv1alpha1.NyxAgent{}, enqueueTeammates, builder.WithPredicates(teamPredicate)).
 		Watches(&nyxv1alpha1.NyxPrompt{}, enqueueAgentsBoundByPrompt).
+		Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(r.enqueueAgentsReferencingSecret)).
 		Named("nyxagent").
 		Complete(r)
 }
