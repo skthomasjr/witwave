@@ -6,18 +6,27 @@ import AgentCard from "./AgentCard.vue";
 // selection state live in TeamView. Footer is reserved for the legacy "version
 // / last-updated" strip, currently empty.
 
-defineProps<{
+// isPinned is optional so existing test mounts that don't pass it keep
+// working (pin feature is off-by-default for them). toggle-pin emit
+// likewise — unbound consumers silently drop.
+const props = defineProps<{
   members: TeamMember[];
   loading: boolean;
   error: string;
   selectedName: string | null;
   activeBackendId: string | null;
+  isPinned?: (name: string) => boolean;
 }>();
 
 const emit = defineEmits<{
   (e: "select", name: string): void;
   (e: "select-backend", name: string, backendId: string): void;
+  (e: "toggle-pin", name: string): void;
 }>();
+
+function pinnedFor(name: string): boolean {
+  return props.isPinned ? props.isPinned(name) : false;
+}
 </script>
 
 <template>
@@ -33,15 +42,38 @@ const emit = defineEmits<{
         No agents found.
       </div>
       <template v-else>
-        <AgentCard
+        <div
           v-for="m in members"
           :key="m.name"
-          :member="m"
-          :selected="selectedName === m.name"
-          :active-backend-id="selectedName === m.name ? activeBackendId : null"
-          @select="emit('select', m.name)"
-          @select-backend="(id) => emit('select-backend', m.name, id)"
-        />
+          class="agents-card-row"
+          :class="{ 'is-pinned': pinnedFor(m.name) }"
+        >
+          <AgentCard
+            :member="m"
+            :selected="selectedName === m.name"
+            :active-backend-id="selectedName === m.name ? activeBackendId : null"
+            @select="emit('select', m.name)"
+            @select-backend="(id) => emit('select-backend', m.name, id)"
+          />
+          <button
+            v-if="isPinned"
+            type="button"
+            class="pin-btn"
+            :class="{ 'is-pinned': pinnedFor(m.name) }"
+            :aria-pressed="pinnedFor(m.name)"
+            :title="pinnedFor(m.name) ? 'Unpin agent' : 'Pin agent to top of list'"
+            :aria-label="pinnedFor(m.name) ? `Unpin ${m.name}` : `Pin ${m.name}`"
+            :data-testid="`team-pin-${m.name}`"
+            @click.stop="emit('toggle-pin', m.name)"
+          >
+            <i
+              :class="
+                pinnedFor(m.name) ? 'pi pi-bookmark-fill' : 'pi pi-bookmark'
+              "
+              aria-hidden="true"
+            />
+          </button>
+        </div>
       </template>
     </div>
     <div class="agents-footer" data-testid="team-footer" />
@@ -72,6 +104,45 @@ const emit = defineEmits<{
   font-size: 11px;
   padding: 20px 10px;
   text-align: center;
+}
+
+.agents-card-row {
+  position: relative;
+}
+
+.agents-card-row.is-pinned {
+  /* Subtle left border to signal pin without changing card layout. */
+  box-shadow: inset 3px 0 0 var(--nyx-yellow);
+  border-radius: var(--nyx-radius);
+}
+
+.pin-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  border: none;
+  color: var(--nyx-muted);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: var(--nyx-radius);
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s;
+}
+
+.agents-card-row:hover .pin-btn,
+.pin-btn.is-pinned,
+.pin-btn:focus-visible {
+  opacity: 1;
+}
+
+.pin-btn.is-pinned {
+  color: var(--nyx-yellow);
+}
+
+.pin-btn:hover {
+  color: var(--nyx-bright);
 }
 
 .agents-footer {
