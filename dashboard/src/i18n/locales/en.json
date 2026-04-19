@@ -5,7 +5,8 @@
     "conversations": "Conversations",
     "trace": "Tool Trace",
     "otelTraces": "Traces",
-    "metrics": "Metrics"
+    "metrics": "Metrics",
+    "timeline": "Timeline"
   },
   "status": {
     "connecting": "connecting…",
@@ -32,5 +33,32 @@
     "autoTitle": "Theme: auto (currently {resolved}) — click to switch to light",
     "lightTitle": "Theme: light — click to switch to dark",
     "darkTitle": "Theme: dark — click to switch to auto"
+  },
+  "timeline": {
+    "title": "Timeline",
+    "empty": "Waiting for activity …",
+    "search": {
+      "placeholder": "search events…"
+    },
+    "filter": {
+      "agents": "filter by agent",
+      "types": "filter by type"
+    },
+    "pill": {
+      "live": "live",
+      "reconnecting": "reconnecting",
+      "disconnected": "disconnected"
+    },
+    "pin": {
+      "pinLabel": "Pin event",
+      "unpinLabel": "Unpin event"
+    },
+    "agentGlobal": "global",
+    "gap": {
+      "marker": "missed events (ring overflow)"
+    },
+    "overrun": {
+      "marker": "stream overrun — reconnecting"
+    }
   }
 }

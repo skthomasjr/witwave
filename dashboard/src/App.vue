@@ -31,6 +31,7 @@ const navSchema: NavItem[] = [
   { labelKey: "nav.trace", to: { name: "trace" } },
   { labelKey: "nav.otelTraces", to: { name: "otel-traces" } },
   { labelKey: "nav.metrics", to: { name: "metrics" } },
+  { labelKey: "nav.timeline", to: { name: "timeline" } },
 ];
 
 const navItems = computed(() =>

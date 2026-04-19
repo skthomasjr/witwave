@@ -6,6 +6,7 @@ import ConversationsView from "./views/ConversationsView.vue";
 import TraceView from "./views/TraceView.vue";
 import OTelTracesView from "./views/OTelTracesView.vue";
 import MetricsView from "./views/MetricsView.vue";
+import TimelineView from "./views/TimelineView.vue";
 
 // Route table backs the nav in App.vue one-to-one (#470). Add a view here
 // and a nav entry there; dashboard picks up the new link automatically.
@@ -60,5 +61,9 @@ export const router = createRouter({
       component: OTelTracesView,
     },
     { path: "/metrics", name: "metrics", component: MetricsView },
+    // Live timeline view fed by the harness `/events/stream` SSE feed
+    // (#1110). Keep near the end of the nav order so the default "/"
+    // team landing page still wins the first visit.
+    { path: "/timeline", name: "timeline", component: TimelineView },
   ],
 });

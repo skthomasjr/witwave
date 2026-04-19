@@ -1,0 +1,422 @@
+import { getCurrentInstance, onBeforeUnmount, ref, type Ref } from "vue";
+
+// Phase-1 client for the harness `/events/stream` SSE feed (#1110).
+//
+// Why fetch + ReadableStream instead of EventSource: browser EventSource
+// cannot set headers, and the harness requires `Authorization: Bearer`
+// on every request (see docs/events/README.md#auth). The fetch-stream
+// pattern also lets us surface transport-level errors to callers and
+// cancel cleanly on unmount.
+//
+// Parser notes:
+//   - SSE framing per https://html.spec.whatwg.org/multipage/server-sent-events.html
+//   - `event:` field sets the event type (we mirror it into the envelope
+//     `type` for convenience, but always prefer the JSON body).
+//   - `id:` updates `lastEventId` which is sent back as `Last-Event-ID`
+//     on reconnect so the harness ring buffer can replay missed events.
+//   - `retry:` updates the reconnect delay ceiling for the next attempt.
+//   - `: <comment>` lines are keepalives — ignored.
+//   - Blank line delimits a message.
+//
+// Control events (`stream.gap`, `stream.overrun`) are observed inline:
+//   - `stream.overrun` means the harness closed our queue; reset
+//     `lastEventId` to the overrun's `resume_id` (when present) so
+//     reconnect restarts from the current head rather than thrashing
+//     the ring, then schedule a reconnect.
+//   - `stream.gap` is surfaced as a synthetic event in the list so the
+//     UI can render a "missed events" marker.
+
+export interface EventEnvelope {
+  type: string;
+  version: number;
+  id: string;
+  ts: string;
+  agent_id: string | null;
+  payload: Record<string, unknown>;
+}
+
+export interface UseEventStreamOptions {
+  // Maximum number of events to retain in the returned `events` ref.
+  // Once the list exceeds this, the oldest entries are evicted. Default
+  // 500; the store layer keeps a bigger ring when desired.
+  maxEvents?: number;
+  // Bearer token for `Authorization`. Optional: local dev may run with
+  // the auth guard disabled.
+  token?: string;
+  // Connect immediately on composable creation. Default `true`. Unit
+  // tests set this `false` and call `open()` explicitly so the request
+  // is observed deterministically.
+  autoConnect?: boolean;
+  // Injection seam for tests — swap in a fetch mock without having to
+  // stub global fetch for the whole module.
+  fetchImpl?: typeof fetch;
+  // Base reconnect delay (ms). Backoff is exponential up to `maxDelayMs`
+  // with full-jitter randomisation.
+  initialDelayMs?: number;
+  maxDelayMs?: number;
+  // If the server sends a `retry:` field it overrides the in-flight
+  // backoff ceiling for the next attempt.
+}
+
+export interface UseEventStreamReturn {
+  events: Ref<EventEnvelope[]>;
+  connected: Ref<boolean>;
+  reconnecting: Ref<boolean>;
+  error: Ref<string>;
+  lastEventId: Ref<string>;
+  open: () => void;
+  close: () => void;
+}
+
+const DEFAULT_MAX_EVENTS = 500;
+const DEFAULT_INITIAL_DELAY_MS = 100;
+const DEFAULT_MAX_DELAY_MS = 10_000;
+
+interface ParsedMessage {
+  type: string;
+  id: string;
+  data: string;
+  retryMs: number | null;
+}
+
+// Minimal SSE message assembler. The spec is byte-oriented; we work in
+// strings here since fetch's ReadableStream hands us decoded text. The
+// assembler yields one `ParsedMessage` per `\n\n`-terminated block.
+export function __parseSSEChunk(
+  buffer: string,
+): { messages: ParsedMessage[]; remainder: string } {
+  const messages: ParsedMessage[] = [];
+  let remainder = buffer;
+
+  // Normalise line endings so `\r\n` and `\r` separators work the same
+  // as `\n`. The SSE spec allows all three; the harness uses `\n` but a
+  // proxy could rewrap.
+  remainder = remainder.replace(/\r\n|\r/g, "\n");
+
+  while (true) {
+    const boundary = remainder.indexOf("\n\n");
+    if (boundary === -1) break;
+    const block = remainder.slice(0, boundary);
+    remainder = remainder.slice(boundary + 2);
+    const parsed = parseBlock(block);
+    if (parsed) messages.push(parsed);
+  }
+
+  return { messages, remainder };
+}
+
+function parseBlock(block: string): ParsedMessage | null {
+  let type = "message";
+  let id = "";
+  const dataLines: string[] = [];
+  let retryMs: number | null = null;
+  let sawField = false;
+
+  for (const rawLine of block.split("\n")) {
+    if (rawLine.length === 0) continue;
+    // Comment / keepalive line — ignore entirely.
+    if (rawLine.startsWith(":")) continue;
+    const colon = rawLine.indexOf(":");
+    let field: string;
+    let value: string;
+    if (colon === -1) {
+      field = rawLine;
+      value = "";
+    } else {
+      field = rawLine.slice(0, colon);
+      // SSE spec: single leading space after the colon is stripped.
+      value = rawLine.slice(colon + 1);
+      if (value.startsWith(" ")) value = value.slice(1);
+    }
+    sawField = true;
+    switch (field) {
+      case "event":
+        type = value;
+        break;
+      case "id":
+        id = value;
+        break;
+      case "data":
+        dataLines.push(value);
+        break;
+      case "retry": {
+        const n = Number.parseInt(value, 10);
+        if (Number.isFinite(n) && n >= 0) retryMs = n;
+        break;
+      }
+      default:
+        // Unknown fields are ignored per SSE spec.
+        break;
+    }
+  }
+
+  if (!sawField) return null;
+  return {
+    type,
+    id,
+    data: dataLines.join("\n"),
+    retryMs,
+  };
+}
+
+function clampMaxEvents(max: number): number {
+  if (!Number.isFinite(max) || max <= 0) return DEFAULT_MAX_EVENTS;
+  return Math.floor(max);
+}
+
+function jitter(base: number): number {
+  // Full jitter — 0..base. Prevents synchronized reconnect storms when
+  // many dashboards watch the same harness after a bounce.
+  return Math.floor(Math.random() * base);
+}
+
+function makeSyntheticGapEvent(envelope: EventEnvelope): EventEnvelope {
+  // Re-emit the server's stream.gap verbatim as a UI marker. The
+  // caller (TimelineView) branches on `type === 'stream.gap'` to render
+  // a "missed events" row inline.
+  return envelope;
+}
+
+export function useEventStream(
+  url: string,
+  options: UseEventStreamOptions = {},
+): UseEventStreamReturn {
+  const maxEvents = clampMaxEvents(options.maxEvents ?? DEFAULT_MAX_EVENTS);
+  const initialDelayMs = options.initialDelayMs ?? DEFAULT_INITIAL_DELAY_MS;
+  const maxDelayMs = options.maxDelayMs ?? DEFAULT_MAX_DELAY_MS;
+  const fetchImpl = options.fetchImpl ?? fetch;
+
+  const events = ref<EventEnvelope[]>([]) as Ref<EventEnvelope[]>;
+  const connected = ref(false);
+  const reconnecting = ref(false);
+  const error = ref("");
+  const lastEventId = ref("");
+
+  let aborter: AbortController | null = null;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let attempt = 0;
+  let serverRetryHintMs: number | null = null;
+  let closed = false;
+
+  function pushEvent(envelope: EventEnvelope): void {
+    const next = events.value.slice();
+    next.push(envelope);
+    if (next.length > maxEvents) {
+      next.splice(0, next.length - maxEvents);
+    }
+    events.value = next;
+  }
+
+  function handleMessage(msg: ParsedMessage): void {
+    if (msg.id) {
+      // Track last-seen id for `Last-Event-ID` on reconnect, even for
+      // malformed payloads — the harness ring cares about the id, not
+      // the body.
+      lastEventId.value = msg.id;
+    }
+    if (msg.retryMs !== null) {
+      serverRetryHintMs = msg.retryMs;
+    }
+    if (!msg.data) return;
+    let parsed: EventEnvelope | null = null;
+    try {
+      parsed = JSON.parse(msg.data) as EventEnvelope;
+    } catch {
+      // Malformed JSON — drop the event but keep the stream alive. A
+      // phase-2 counter could surface this on the UI; for now we stay
+      // silent so one bad payload doesn't tear the connection down.
+      return;
+    }
+    if (!parsed || typeof parsed !== "object") return;
+
+    if (parsed.type === "stream.overrun") {
+      // The harness closed our queue. The overrun payload carries a
+      // `resume_id` pointing past the lost window; using it as the new
+      // `Last-Event-ID` avoids the harness immediately re-emitting a
+      // stream.gap on reconnect.
+      const payload = (parsed.payload ?? {}) as { resume_id?: unknown };
+      const resume = typeof payload.resume_id === "string" ? payload.resume_id : "";
+      if (resume) {
+        lastEventId.value = resume;
+      }
+      // Fall through and let the stream-end path schedule a reconnect.
+      return;
+    }
+
+    if (parsed.type === "stream.gap") {
+      pushEvent(makeSyntheticGapEvent(parsed));
+      return;
+    }
+
+    pushEvent(parsed);
+  }
+
+  async function runOnce(): Promise<void> {
+    aborter = new AbortController();
+    const headers: Record<string, string> = {
+      Accept: "text/event-stream",
+      "Cache-Control": "no-cache",
+    };
+    if (options.token) {
+      headers.Authorization = `Bearer ${options.token}`;
+    }
+    if (lastEventId.value) {
+      headers["Last-Event-ID"] = lastEventId.value;
+    }
+
+    let resp: Response;
+    try {
+      resp = await fetchImpl(url, {
+        method: "GET",
+        headers,
+        signal: aborter.signal,
+        // Tell browsers to keep the connection open; without this, some
+        // HTTP/2 proxies will treat the request as idle and reset it.
+        cache: "no-store",
+      });
+    } catch (e) {
+      if ((e as { name?: string }).name === "AbortError") {
+        connected.value = false;
+        return;
+      }
+      throw e;
+    }
+
+    if (!resp.ok) {
+      // Non-2xx — surface the status and let the reconnect ladder
+      // decide how aggressively to retry.
+      throw new Error(`stream HTTP ${resp.status}`);
+    }
+
+    const body = resp.body;
+    if (!body) {
+      throw new Error("stream body missing");
+    }
+
+    connected.value = true;
+    reconnecting.value = false;
+    error.value = "";
+    attempt = 0;
+
+    const reader = body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const { messages, remainder } = __parseSSEChunk(buffer);
+        buffer = remainder;
+        for (const msg of messages) {
+          handleMessage(msg);
+        }
+      }
+    } finally {
+      try {
+        reader.releaseLock();
+      } catch {
+        // reader may already be released if the body errored.
+      }
+    }
+  }
+
+  function scheduleReconnect(): void {
+    if (closed) return;
+    reconnecting.value = true;
+    connected.value = false;
+
+    // Prefer an explicit server `retry:` hint when present; otherwise
+    // do exponential backoff with full jitter bounded by maxDelayMs.
+    let delay: number;
+    if (serverRetryHintMs !== null) {
+      delay = serverRetryHintMs;
+      serverRetryHintMs = null;
+    } else {
+      const ceiling = Math.min(
+        maxDelayMs,
+        initialDelayMs * Math.pow(2, Math.max(0, attempt)),
+      );
+      delay = jitter(ceiling) + Math.min(ceiling, initialDelayMs);
+      if (delay > maxDelayMs) delay = maxDelayMs;
+    }
+    attempt += 1;
+
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      void loop();
+    }, delay);
+  }
+
+  async function loop(): Promise<void> {
+    if (closed) return;
+    try {
+      await runOnce();
+      // Stream ended cleanly (server closed) — treat as a reconnect.
+      if (!closed) {
+        scheduleReconnect();
+      }
+    } catch (e) {
+      if ((e as { name?: string }).name === "AbortError") {
+        connected.value = false;
+        return;
+      }
+      error.value = e instanceof Error ? e.message : String(e);
+      scheduleReconnect();
+    }
+  }
+
+  function open(): void {
+    if (closed) {
+      // Reopen from a closed composable — reset the sentinel.
+      closed = false;
+    }
+    if (aborter || reconnectTimer) return; // already running
+    void loop();
+  }
+
+  function close(): void {
+    closed = true;
+    connected.value = false;
+    reconnecting.value = false;
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    if (aborter) {
+      try {
+        aborter.abort();
+      } catch {
+        // ignore
+      }
+      aborter = null;
+    }
+  }
+
+  if (options.autoConnect !== false) {
+    // Defer to microtask so callers can wire up watchers before the
+    // first chunk lands. Unit tests that pass `autoConnect: false` get
+    // deterministic control over when the fetch fires.
+    queueMicrotask(() => {
+      if (!closed) open();
+    });
+  }
+
+  // Best-effort auto-teardown — only register when we're inside a
+  // component setup(). Outside a component (e.g. a long-lived Pinia
+  // store, or a unit test calling directly), the store / caller is
+  // responsible for calling `close()` explicitly.
+  if (getCurrentInstance()) {
+    onBeforeUnmount(() => close());
+  }
+
+  return {
+    events,
+    connected,
+    reconnecting,
+    error,
+    lastEventId,
+    open,
+    close,
+  };
+}
