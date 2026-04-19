@@ -99,6 +99,13 @@ operators who terminate TLS elsewhere and strip headers should replicate these a
   harness doesn't stall the whole view.
 - `_read_jsonl` tail-read so `Conversations` / `Tool Trace` stream the last N entries without reading the
   whole file into memory on large logs.
+- **Automated a11y smoke (#970):** `vitest-axe` is wired into `tests/setup/axe.ts` and picked up by every
+  `npm run test` run. `tests/unit/a11y.spec.ts` exercises a handful of key components (`AgentCard`,
+  `AlertBanner`, `PromptCard`, `AgentList`) through axe-core and asserts zero violations. The
+  `color-contrast` and `region` rules are disabled for isolated component mounts — re-enable them once a
+  full-page harness lands. To extend coverage, mount the view, call
+  `const results = await axe(wrapper.element, runRules);` and assert
+  `expect(results).toHaveNoViolations()`.
 
 ## Runtime-config validation (`traceApiUrl`)
 

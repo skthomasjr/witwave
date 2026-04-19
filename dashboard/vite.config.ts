@@ -87,5 +87,10 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     globals: true,
+    // tests/setup/axe.ts wires vitest-axe's toHaveNoViolations matcher
+    // into `expect`. Individual specs can still run without a11y
+    // coverage — the setup file only registers the matcher, it doesn't
+    // force checks (#970).
+    setupFiles: ["./tests/setup/axe.ts"],
   },
 });
