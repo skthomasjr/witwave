@@ -36,12 +36,30 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from dataclasses import dataclass
 from typing import Any, Mapping
 
 from log_utils import _append_log  # type: ignore
 
 logger = logging.getLogger(__name__)
+
+
+# Rotation-pressure threshold (#1102). When the tool-activity.jsonl file
+# exceeds this size we bump ``tool_audit_rotation_pressure_total{reason}``
+# so operators can alert before /trace reads become unusable. Default
+# 256 MiB; tune via TOOL_ACTIVITY_ROTATION_PRESSURE_BYTES. 0 disables.
+# The check is opportunistic (every N writes) to avoid a stat() per
+# append.
+try:
+    _ROTATION_PRESSURE_BYTES = int(os.environ.get("TOOL_ACTIVITY_ROTATION_PRESSURE_BYTES", "268435456"))
+except ValueError:
+    _ROTATION_PRESSURE_BYTES = 268435456
+try:
+    _ROTATION_CHECK_EVERY = max(1, int(os.environ.get("TOOL_ACTIVITY_ROTATION_CHECK_EVERY", "100")))
+except ValueError:
+    _ROTATION_CHECK_EVERY = 100
+_rotation_counters: dict[str, int] = {}
 
 
 @dataclass
@@ -53,6 +71,9 @@ class ToolAuditMetrics:
     log_bytes_total: Any = None
     log_write_errors_total: Any = None
     log_write_errors_by_logger_total: Any = None
+    # Per-entry byte-size histogram and rotation-pressure counter (#1102).
+    tool_audit_bytes_per_entry: Any = None
+    tool_audit_rotation_pressure_total: Any = None
 
 
 @dataclass
@@ -92,9 +113,38 @@ async def log_tool_audit(ctx: ToolAuditContext, entry: dict) -> None:
                 m.log_entries_total.labels(**ctx.labels, logger="trace").inc()
             except Exception:
                 pass
+        _line_bytes = _utf8_byte_length(line)
         if m.log_bytes_total is not None:
             try:
-                m.log_bytes_total.labels(**ctx.labels, logger="trace").inc(_utf8_byte_length(line))
+                m.log_bytes_total.labels(**ctx.labels, logger="trace").inc(_line_bytes)
+            except Exception:
+                pass
+        # Per-entry byte histogram (#1102).
+        if m.tool_audit_bytes_per_entry is not None:
+            try:
+                m.tool_audit_bytes_per_entry.labels(**ctx.labels, tool=tool).observe(_line_bytes)
+            except Exception:
+                pass
+        # Opportunistic rotation-pressure check (#1102). Only os.stat()
+        # every _ROTATION_CHECK_EVERY writes per path to keep the hot
+        # path cheap. Any stat failure is swallowed.
+        if _ROTATION_PRESSURE_BYTES > 0 and m.tool_audit_rotation_pressure_total is not None:
+            try:
+                _path = ctx.trace_log_path
+                _n = _rotation_counters.get(_path, 0) + 1
+                _rotation_counters[_path] = _n
+                if _n % _ROTATION_CHECK_EVERY == 0:
+                    try:
+                        _size = os.path.getsize(_path)
+                    except OSError:
+                        _size = 0
+                    if _size >= _ROTATION_PRESSURE_BYTES:
+                        try:
+                            m.tool_audit_rotation_pressure_total.labels(
+                                **ctx.labels, reason="size_threshold_exceeded"
+                            ).inc()
+                        except Exception:
+                            pass
             except Exception:
                 pass
     except Exception as exc:  # pragma: no cover — audit must never raise

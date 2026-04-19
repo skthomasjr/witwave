@@ -149,6 +149,9 @@ backend_hooks_config_errors_total: prometheus_client.Counter | None = None
 backend_hooks_active_rules: prometheus_client.Gauge | None = None
 backend_hooks_evaluations_total: prometheus_client.Counter | None = None
 backend_tool_audit_entries_total: prometheus_client.Counter | None = None
+# Per-entry byte histogram + rotation-pressure counter for tool-activity.jsonl (#1102).
+backend_tool_audit_bytes_per_entry: prometheus_client.Histogram | None = None
+backend_tool_audit_rotation_pressure_total: prometheus_client.Counter | None = None
 
 if _enabled:
     backend_up = prometheus_client.Gauge("backend_up", "Backend agent is running", ["agent", "agent_id", "backend"])
@@ -656,6 +659,19 @@ if _enabled:
         "backend_tool_audit_entries_total",
         "Total rows written to tool-audit.jsonl by codex PostToolUse audit.",
         ["agent", "agent_id", "backend", "tool"],
+    )
+    # Size / rotation observability on tool-activity.jsonl (#1102).
+    backend_tool_audit_bytes_per_entry = prometheus_client.Histogram(
+        "backend_tool_audit_bytes_per_entry",
+        "Per-row byte size of tool-activity.jsonl entries. See #1102.",
+        ["agent", "agent_id", "backend", "tool"],
+        buckets=(64, 256, 1024, 4096, 16384, 65536, 262144, 1048576, 4194304),
+    )
+    backend_tool_audit_rotation_pressure_total = prometheus_client.Counter(
+        "backend_tool_audit_rotation_pressure_total",
+        "Total opportunistic checks that found tool-activity.jsonl above "
+        "TOOL_ACTIVITY_ROTATION_PRESSURE_BYTES. See #1102.",
+        ["agent", "agent_id", "backend", "reason"],
     )
     # Peer-parity placeholders (#796): claude's hook surface exposes
     # backend_hooks_active_rules and backend_hooks_evaluations_total;

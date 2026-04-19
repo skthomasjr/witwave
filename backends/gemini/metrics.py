@@ -106,6 +106,9 @@ backend_sqlite_task_store_lock_wait_seconds: prometheus_client.Histogram | None 
 backend_hooks_denials_total: prometheus_client.Counter | None = None
 backend_hooks_warnings_total: prometheus_client.Counter | None = None
 backend_tool_audit_entries_total: prometheus_client.Counter | None = None
+# Per-entry byte histogram + rotation-pressure counter for tool-activity.jsonl (#1102).
+backend_tool_audit_bytes_per_entry: prometheus_client.Histogram | None = None
+backend_tool_audit_rotation_pressure_total: prometheus_client.Counter | None = None
 backend_hooks_config_errors_total: prometheus_client.Counter | None = None
 backend_hooks_config_reloads_total: prometheus_client.Counter | None = None
 # Enforcement-mode gauge (#736). Reports whether PreToolUse hooks are
@@ -505,6 +508,19 @@ if _enabled:
         "backend_tool_audit_entries_total",
         "Total rows written to tool-audit.jsonl by the PostToolUse hook.",
         ["agent", "agent_id", "backend", "tool"],
+    )
+    # Size / rotation observability on tool-activity.jsonl (#1102).
+    backend_tool_audit_bytes_per_entry = prometheus_client.Histogram(
+        "backend_tool_audit_bytes_per_entry",
+        "Per-row byte size of tool-activity.jsonl entries. See #1102.",
+        ["agent", "agent_id", "backend", "tool"],
+        buckets=(64, 256, 1024, 4096, 16384, 65536, 262144, 1048576, 4194304),
+    )
+    backend_tool_audit_rotation_pressure_total = prometheus_client.Counter(
+        "backend_tool_audit_rotation_pressure_total",
+        "Total opportunistic checks that found tool-activity.jsonl above "
+        "TOOL_ACTIVITY_ROTATION_PRESSURE_BYTES. See #1102.",
+        ["agent", "agent_id", "backend", "reason"],
     )
     backend_hooks_config_errors_total = prometheus_client.Counter(
         "backend_hooks_config_errors_total",
