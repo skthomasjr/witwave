@@ -169,8 +169,38 @@ def _session_file_path(session_id: str) -> "pathlib.Path | None":
         return pathlib.Path(unicodedata.normalize("NFC", str(pathlib.Path.home() / ".claude")))
 
     try:
-        cwd = os.getcwd()
-        sessions_dir = _config_home() / "projects" / _sanitize(cwd)
+        # Refuse to resolve if cwd has drifted since startup (#1047).  Any
+        # in-process ``os.chdir`` would otherwise produce a wrong-but-
+        # plausible path that misses history and targets unlinks at the
+        # wrong files.  Log once at warning level, bump the drift counter,
+        # and return None so callers treat the session as unknown rather
+        # than corrupting state.
+        if _STARTUP_CWD is None:
+            return None
+        try:
+            live_cwd = os.getcwd()
+        except Exception:
+            live_cwd = None
+        if live_cwd != _STARTUP_CWD:
+            if backend_session_path_mismatch_total is not None:
+                try:
+                    backend_session_path_mismatch_total.labels(
+                        **_LABELS, reason="cwd_drift"
+                    ).inc()
+                except Exception:
+                    pass
+            if not getattr(_session_file_path, "_logged_cwd_drift", False):
+                logger.warning(
+                    "session-path: cwd drifted since startup (startup=%r live=%r) — "
+                    "refusing to resolve session file path. See #1047.",
+                    _STARTUP_CWD, live_cwd,
+                )
+                try:
+                    _session_file_path._logged_cwd_drift = True  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+            return None
+        sessions_dir = _config_home() / "projects" / _sanitize(_STARTUP_CWD)
         return sessions_dir / f"{session_id}.jsonl"
     except Exception:
         return None
