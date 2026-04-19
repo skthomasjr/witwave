@@ -26,6 +26,14 @@ export interface AgentMetrics {
 // are absent. Kept as a Record (not a Map) for easy template iteration.
 export type PerAgentErrors = Record<string, string>;
 
+// Per-agent /metrics response size cap (#1065). A single agent with a
+// histogram cardinality blowup can otherwise drag every dashboard tab
+// into OOM/CPU soft-lock. 2 MiB is well above what a healthy backend
+// emits (the claude backend's own /metrics is <<200 KiB at steady state)
+// but comfortably below the soft-lock threshold in Chrome/Firefox. Kept
+// at module scope so a future unit test can reference the limit.
+const METRICS_MAX_BYTES = 2 * 1024 * 1024;
+
 async function fetchText(
   url: string,
   signal: AbortSignal,
@@ -64,7 +72,63 @@ async function fetchText(
   try {
     const resp = await fetch(url, { signal: effectiveSignal });
     if (!resp.ok) throw new ApiError(resp.status, `HTTP ${resp.status}`);
-    return await resp.text();
+    // Byte-ceiling the response (#1065). Two-stage check: Content-Length
+    // when the server provides one (fast reject), then streaming read
+    // for chunked/un-typed responses. Overshooting the cap aborts the
+    // body stream and surfaces an ApiError instead of silently
+    // truncating — loud failure beats a corrupted parse.
+    const cl = resp.headers?.get?.("Content-Length");
+    if (cl != null) {
+      const n = Number.parseInt(cl, 10);
+      if (Number.isFinite(n) && n > METRICS_MAX_BYTES) {
+        throw new ApiError(
+          resp.status,
+          `metrics response too large (${n} > ${METRICS_MAX_BYTES} bytes)`,
+        );
+      }
+    }
+    // Stream so we can enforce the cap even when Content-Length is absent
+    // or lies. Falls back to resp.text() on runtimes without body.getReader
+    // (notably the vitest/jsdom mocks used in tests).
+    const reader = resp.body?.getReader?.();
+    if (!reader) {
+      const txt = await resp.text();
+      if (txt.length > METRICS_MAX_BYTES) {
+        throw new ApiError(
+          resp.status,
+          `metrics response too large (>${METRICS_MAX_BYTES} bytes)`,
+        );
+      }
+      return txt;
+    }
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > METRICS_MAX_BYTES) {
+        try {
+          await reader.cancel();
+        } catch {
+          // ignore
+        }
+        throw new ApiError(
+          resp.status,
+          `metrics response too large (>${METRICS_MAX_BYTES} bytes)`,
+        );
+      }
+      chunks.push(value);
+    }
+    // Decode concatenated chunks as UTF-8.
+    const merged = new Uint8Array(total);
+    let offset = 0;
+    for (const c of chunks) {
+      merged.set(c, offset);
+      offset += c.byteLength;
+    }
+    return new TextDecoder("utf-8").decode(merged);
   } finally {
     cleanup();
   }

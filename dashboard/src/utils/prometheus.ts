@@ -1,6 +1,31 @@
 // Prometheus text-format parser matching the legacy ui/ behavior — groups
 // samples by metric *family* (strips suffixes like _total / _count / _sum /
 // _bucket) so counters and histograms can be queried cleanly.
+//
+// Hardening (#1065):
+//   - Overlong individual lines are rejected; a single pathological
+//     agent's label-cardinality blowup can otherwise drag the parser
+//     into CPU soft-lock.
+//   - The numeric value token is matched against a strict regex instead
+//     of deferring to Number() — the old SAMPLE_RE allowed any substring
+//     of `[0-9.+eEinfa]` which was far too permissive (e.g. `infa`,
+//     `.+.+`, `eE`) and would classify junk as 0/NaN.
+//
+// The fetchText fan-out (useMetrics) enforces the outer total-size cap.
+
+// Reject any sample/comment line above this length. 64 KiB is generous
+// enough for real-world histograms (bucket boundaries bump label names
+// but not line length) and small enough to keep the regex engine honest
+// in the face of adversarial input.
+const MAX_LINE_BYTES = 64 * 1024;
+
+// Strict numeric value matcher. Accepts Prometheus text-format numbers:
+// optional sign, integer/decimal mantissa, optional exponent, or the
+// literal tokens +Inf / -Inf / NaN. Previously Number(valueToken) was
+// called on whatever non-whitespace string followed the labels, which
+// silently accepted almost anything JavaScript's coercion understood.
+const NUMERIC_VALUE_RE =
+  /^(?:[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|[+-]?Inf|NaN)$/;
 
 export interface Sample {
   name: string;
@@ -151,6 +176,11 @@ export function parseProm(text: string): FamilyMap {
   };
 
   for (const rawLine of text.split("\n")) {
+    // Drop overlong lines wholesale (#1065). The cap is well above any
+    // legitimate prom-format line; anything that exceeds it is either
+    // cardinality-exploded adversarial input or a truncated body, and
+    // in either case the rest of the feed is safer to keep parsing.
+    if (rawLine.length > MAX_LINE_BYTES) continue;
     const t = rawLine.trim();
     if (!t) continue;
     if (t.startsWith("# HELP ")) {
@@ -173,6 +203,12 @@ export function parseProm(text: string): FamilyMap {
       let end = tokens.valueStart;
       while (end < t.length && t[end] !== " " && t[end] !== "\t") end += 1;
       const valueToken = t.slice(tokens.valueStart, end);
+      // #1065: strict numeric-token match. Number() accepted far too much
+      // (`  42 `, `0x10`, empty string coerces to 0). Reject anything
+      // that doesn't look like a real Prom number. Inf/NaN are valid
+      // per the spec but are skipped below because dashboards don't
+      // have a useful way to render them.
+      if (!NUMERIC_VALUE_RE.test(valueToken)) continue;
       const value = Number(valueToken);
       if (!Number.isFinite(value)) continue;
       ensure(family(tokens.name)).samples.push({
