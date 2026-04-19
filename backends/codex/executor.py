@@ -192,6 +192,24 @@ _SHELL_ENV_DENYLIST: frozenset[str] = frozenset({
     "DYLD_INSERT_LIBRARIES",
     "DYLD_LIBRARY_PATH",
     "DYLD_FRAMEWORK_PATH",
+    # #1054: proxy + TLS trust + key-log env vars. A caller-supplied
+    # override here can silently route all downstream HTTP(S) traffic
+    # through an attacker proxy, swap the CA bundle to one they control
+    # (MITM) or dump TLS pre-master secrets for offline decryption.
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+    "no_proxy",
+    "SSL_CERT_FILE",
+    "SSL_CERT_DIR",
+    "REQUESTS_CA_BUNDLE",
+    "CURL_CA_BUNDLE",
+    "NODE_EXTRA_CA_CERTS",
+    "SSLKEYLOGFILE",
 })
 
 
