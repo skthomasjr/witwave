@@ -32,14 +32,11 @@ Resolution order: per-message metadata → routing config model → default mode
 The agent's name, personality, and behavioral constraints all live there. The file is hot-reloaded on change — updating
 `CLAUDE.md` takes effect for the next request without restarting the container.
 
-**Metrics** — Exposes the superset of `backend_*` metrics: context-window token counts, context exhaustion events,
-tool call counts, per-request `/mcp` observability (`backend_mcp_requests_total`,
-`backend_mcp_request_duration_seconds`), SQLite task-store lock-wait (`backend_sqlite_task_store_lock_wait_seconds`),
-and time-to-first-message. Hooks denials are counted on the canonical cross-backend
-`backend_hooks_denials_total{tool,source,rule}`; the legacy `backend_hooks_blocked_total` alias remains for one
-release cycle. Added this cycle: `backend_webhook_timeout_total` (webhook delivery timeouts surfaced separately
-from generic errors) and `backend_allowed_tools_reload_total` (count of tool-allow-list hot-reloads). All
-histograms declare explicit bucket tuples.
+**Metrics** — Exposes the **superset** of the `backend_*` series. Covers context-window token counts, tool-call
+counts and errors, per-request `/mcp` observability, SQLite task-store lock-wait, hook evaluations and denials
+(canonical `backend_hooks_denials_total{tool,source,rule}`), webhook delivery timeouts, and allowed-tool
+reloads. Peers (codex, gemini) track placeholders for the same series so cross-backend PromQL joins stay clean.
+See `metrics.py` for the live catalog; see `AGENTS.md` → "Metrics landscape" for the alignment principle.
 
 **Hooks (PreToolUse / PostToolUse)** — A two-layer policy engine wraps every tool call the SDK makes. A conservative
 **baseline** of deny rules ships with the executor and blocks the most obvious-dangerous shell patterns (`rm -rf /`,

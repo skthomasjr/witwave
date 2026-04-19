@@ -28,21 +28,13 @@ on the first request.
 constraints live there. The file is hot-reloaded on change — updating `GEMINI.md` takes effect for the next request
 without restarting the container.
 
-**Metrics** — Exposes the common `backend_*` Prometheus metrics: request count/latency, session starts/evictions,
-queue depth, error counts, and execution duration. Context-window metrics (`backend_context_tokens`,
-`backend_context_usage_percent`, `backend_context_exhaustion_total`, etc.) are tracked via
-`usage_metadata.total_token_count` on each response chunk; SDK error classification
-(`backend_sdk_errors_total`, `backend_sdk_result_errors_total`, `backend_sdk_client_errors_total`) distinguishes
-connection-level from result-level from catch-all exceptions. Additional metrics landed this cycle:
-`backend_empty_prompts_total` (#812), `backend_sdk_subprocess_spawn_duration_seconds` (genai client cold-start),
-`backend_sdk_tokens_per_query`, `backend_sdk_tool_call_input_size_bytes`, `backend_sdk_tool_result_size_bytes`
-(#811 — payload size histograms aligned with claude's buckets), per-stdio-server liveness
-`backend_mcp_server_up{server}` + `backend_mcp_server_exits_total{server,reason}` (#816), MCP per-request
-observability `backend_mcp_requests_total` + `backend_mcp_request_duration_seconds` (#560), and command
-allow-list rejections `backend_mcp_command_rejected_total{reason}` (#730). Hook counters carry a `source`
-label (`baseline`|`extension`) for schema parity with claude/codex. The `backend_hooks_enforcement_mode`
-gauge reports whether PreToolUse hooks are actually evaluated: `0`=skeleton (rules loaded but AFC bypasses
-them — today's state), `1`=enforcing, `-1`=disabled (#736).
+**Metrics** — Exposes the common `backend_*` series (request count / latency, session lifecycle, queue
+depth, errors, context-window tokens, SDK error classification split into connection / result / catch-all,
+per-stdio-server liveness, MCP per-request observability, command allow-list rejections, tool-payload-size
+histograms). Claude is the superset; gemini tracks placeholders for its missing series so PromQL joins stay
+clean. The `backend_hooks_enforcement_mode` gauge reports whether PreToolUse hooks are actually evaluated:
+`0`=skeleton (rules loaded but AFC bypasses them — today's state), `1`=enforcing, `-1`=disabled.
+See `metrics.py` for the live catalog.
 
 ## Endpoints
 

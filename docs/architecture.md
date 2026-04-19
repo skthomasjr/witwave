@@ -18,174 +18,24 @@ protocol layer, a shift in deployment model — it should be discussed here firs
 
 ## Repository Structure
 
-```text
-.agents/
-├── active/                    # Live autonomous agents
-│   ├── manifest.json          # Registry of all agents in this deployment
-│   ├── iris/
-│   │   ├── .nyx/              # Runtime config (mounted into harness)
-│   │   │   ├── agent-card.md  # A2A identity description (nyx agent card)
-│   │   │   ├── backend.yaml   # Backend routing config
-│   │   │   ├── HEARTBEAT.md   # Proactive heartbeat schedule
-│   │   │   ├── jobs/          # Scheduled jobs (*.md, cron frontmatter)
-│   │   │   ├── tasks/         # Calendar tasks (*.md, days/window frontmatter)
-│   │   │   ├── triggers/      # Inbound HTTP trigger definitions (*.md)
-│   │   │   ├── continuations/ # Continuation definitions (*.md)
-│   │   │   └── webhooks/      # Outbound webhook subscriptions (*.md)
-│   │   ├── .claude/           # Claude backend config (mounted into claude)
-│   │   │   ├── CLAUDE.md      # Behavioral instructions / system prompt
-│   │   │   ├── agent-card.md  # A2A identity description (Claude backend)
-│   │   │   ├── mcp.json       # MCP server configuration
-│   │   │   └── settings.json  # Claude Code settings
-│   │   ├── .codex/            # Codex backend config (mounted into codex)
-│   │   │   ├── AGENTS.md      # Behavioral instructions / system prompt
-│   │   │   ├── agent-card.md  # A2A identity description (Codex backend)
-│   │   │   └── config.toml
-│   │   ├── .gemini/           # Gemini backend config (mounted into gemini)
-│   │   │   ├── GEMINI.md      # Behavioral instructions / system prompt
-│   │   │   └── agent-card.md  # A2A identity description (Gemini backend)
-│   │   ├── logs/              # harness logs
-│   │   ├── claude/         # Claude backend instance
-│   │   │   ├── logs/          # conversation.jsonl
-│   │   │   └── memory/        # Persistent markdown memory files
-│   │   ├── codex/          # Codex backend instance
-│   │   │   ├── logs/
-│   │   │   └── memory/
-│   │   └── gemini/         # Gemini backend instance
-│   │       ├── logs/
-│   │       └── memory/        # Includes sessions/ subdir for JSON session history
-│   ├── nova/                  # Same structure as iris/
-│   └── kira/                  # Same structure as iris/
-└── test/                      # Test agents
-    ├── manifest.json
-    ├── bob/                   # Same structure as active agents
-    └── fred/
+Full file-by-file layout lives in [`AGENTS.md`](../AGENTS.md#project-structure) — that's the canonical
+reference for "what file is where" and stays current because coding agents read it first.
 
-harness/                       # harness source (router/scheduler)
-├── Dockerfile
-├── main.py                    # Entrypoint — wires all components and runs the event loop
-├── executor.py                # Routes A2A requests to the configured backend; fires webhooks/continuations
-├── bus.py                     # Internal async message bus (deduplication, backpressure)
-├── heartbeat.py               # Heartbeat scheduler — drives proactive agent behavior
-├── jobs.py                    # Job scheduler — cron-based prompt dispatch
-├── tasks.py                   # Task scheduler — calendar-window prompt dispatch
-├── triggers.py                # Inbound HTTP trigger handler — serves POST /triggers/{endpoint}
-├── continuations.py           # Continuation runner — fires follow-up prompts on upstream completion
-├── webhooks.py                # Outbound webhook runner — POSTs to subscribed URLs after prompt completion
-├── metrics.py                 # Prometheus metric definitions (harness_* prefix)
-├── metrics_proxy.py           # Aggregates backend /metrics (fetches on METRICS_PORT=9000, not app port)
-├── conversations_proxy.py     # Fetches and merges /conversations and /trace from all backends
-├── sqlite_task_store.py       # SQLite-backed A2A task store (used when TASK_STORE_PATH is set)
-├── utils.py                   # Shared utilities (frontmatter parser, duration parser, etc.)
-└── backends/
-    ├── base.py                # AgentBackend abstract base class
-    ├── a2a.py                 # A2ABackend — forwards requests to a remote A2A agent
-    └── config.py              # Backend config loader (backend.yaml)
+At the top level, the repo is split into two buckets plus shared infrastructure:
 
-backends/claude/                     # Claude backend source
-├── Dockerfile
-├── main.py                    # A2A server entrypoint
-├── executor.py                # Claude Agent SDK executor; owns session state and logging
-├── hooks.py                   # PreToolUse/PostToolUse policy engine + baseline deny rules (#467)
-├── metrics.py                 # Prometheus metric definitions (a2_* prefix; superset with tool/MCP metrics)
-├── sqlite_task_store.py       # SQLite-backed A2A task store (used when TASK_STORE_PATH is set)
-└── requirements.txt
+- **Platform infrastructure** — `harness/`, `backends/{claude,codex,gemini}/`, `operator/`, `tools/`
+  (MCP servers: `kubernetes`, `helm`, `prometheus`), `charts/{nyx,nyx-operator}/`, `shared/`.
+- **Client surfaces** (under `clients/`) — `clients/dashboard/` (Vue 3 web UI), `clients/ww/` (Go CLI).
+- **Agent configs** (`.agents/`) — per-named-agent filesystem config that gets mounted into the
+  platform containers. `active/` for production-like (`iris`, `nova`, `kira`); `test/` for
+  disposable test fixtures (`bob`, `fred`).
+- **Docs + skills** — `docs/` (this document + product-vision + competitive-landscape + event wire
+  contract + smoke tests + prompt-type reference), `.claude/skills/` (user-invokable Claude Code
+  skills that drive discovery / refinement / implementation loops), `.github/ISSUE_TEMPLATE/`.
 
-backends/codex/                      # Codex backend source
-├── Dockerfile
-├── main.py                    # A2A server entrypoint
-├── executor.py                # OpenAI Agents SDK executor; owns session state and logging
-├── computer.py                # PlaywrightComputer — headless Chromium browser implementation
-├── metrics.py                 # Prometheus metric definitions (a2_* prefix)
-├── sqlite_task_store.py       # SQLite-backed A2A task store (used when TASK_STORE_PATH is set)
-└── requirements.txt
-
-backends/gemini/                     # Gemini backend source
-├── Dockerfile
-├── main.py                    # A2A server entrypoint
-├── executor.py                # google-genai SDK executor; owns session state and logging
-├── hooks.py                   # Hook skeleton; #631/#640 AFC caveat documented in backend README
-├── metrics.py                 # Prometheus metric definitions (a2_* prefix)
-├── sqlite_task_store.py       # SQLite-backed A2A task store (used when TASK_STORE_PATH is set)
-└── requirements.txt
-
-shared/                        # Python modules mounted into harness + backends
-├── otel.py                    # OpenTelemetry bootstrap and helpers (#469)
-├── log_utils.py               # Structured log append helpers
-├── conversations.py           # Shared /conversations, /trace, /tool-audit auth-gated handlers
-├── hooks_engine.py            # Hook policy evaluation shared by backends that wire hooks
-├── prompt_env.py              # {{env.VAR}} interpolation for prompt bodies (#473)
-├── validation.py              # Input validation helpers
-└── exceptions.py              # Shared exception types
-
-clients/dashboard/                    # Vue 3 + Vite + PrimeVue web interface
-
-operator/                      # Go/Kubebuilder Kubernetes operator
-
-helpers/                       # Pod-level helper images (sidecar or init) bundled by the chart / operator
-└── git-sync/                  # Internal git-sync image (upstream git-sync + rsync for correct incremental sync)
-    └── Dockerfile             # Adds rsync to the upstream git-sync image
-
-.claude/
-└── skills/                    # Local Claude Code skills (user-invokable slash commands)
-    ├── develop.md             # Full autonomous development cycle (bugs → risks → gaps → features → docs)
-    ├── docs-refine.md         # Review and update project documentation
-    ├── docs-format.md         # Lint and format markdown documents (leaf skill)
-    ├── skill-development.md   # Guide for creating and auditing skills
-    ├── bug-discover.md        # Find bugs → file issues
-    ├── bug-refine.md          # Analyze and order pending bugs
-    ├── bug-approve.md         # Approve or defer pending bugs
-    ├── bug-implement.md       # Fix approved bugs
-    ├── bug-github-issues.md   # GitHub issue operations for bugs (leaf skill)
-    ├── risk-discover.md       # Find risks → file issues
-    ├── risk-refine.md         # Analyze and order pending risks
-    ├── risk-approve.md        # Approve or defer pending risks
-    ├── risk-implement.md      # Mitigate approved risks
-    ├── risk-github-issues.md  # GitHub issue operations for risks (leaf skill)
-    ├── gap-discover.md        # Find gaps → file issues
-    ├── gap-refine.md          # Analyze and order pending gaps
-    ├── gap-approve.md         # Approve or defer pending gaps
-    ├── gap-implement.md       # Implement approved gaps
-    ├── gap-github-issues.md   # GitHub issue operations for gaps (leaf skill)
-    ├── feature-discover.md    # Derive features from ready requests
-    ├── feature-refine.md      # Analyze and order pending features
-    ├── feature-approve.md     # Approve or defer pending features
-    ├── feature-implement.md   # Implement approved features
-    ├── feature-github-issues.md # GitHub issue operations for features (leaf skill)
-    ├── request-dialog.md      # Conversational request intake
-    ├── request-discover.md    # Find open requests
-    └── request-github-issues.md # GitHub issue operations for requests (leaf skill)
-
-docs/
-├── architecture.md            # This document
-├── competitive-landscape.md   # Competitor research and gap analysis
-├── product-vision.md          # Target audience, design principles, deployment roadmap
-├── examples.md                # Redirect stub → prompts/ and architecture.md
-├── smoke-tests.md             # What to check in the conversation log after deploying the test stack
-└── prompts/                   # Prompt type reference (one file per type)
-    ├── README.md              # Index and overview
-    ├── heartbeat.md
-    ├── jobs.md
-    ├── tasks.md
-    ├── triggers.md
-    ├── continuations.md
-    └── webhooks.md
-
-.github/
-└── ISSUE_TEMPLATE/
-    ├── bug.md                 # Bug report template (label: bug)
-    ├── risk.md                # Risk template (label: risk)
-    ├── gap.md                 # Gap template (label: gap)
-    ├── feature.md             # Feature proposal template (label: feature)
-    ├── task.md                # General task template (label: task)
-    └── question.md            # Question template
-
-charts/                        # Helm charts
-├── nyx/                       # nyx Helm chart (deploys agents to Kubernetes)
-└── nyx-operator/              # Helm chart for the Kubernetes operator
-AGENTS.md                      # Canonical repo instructions for all coding agents
-CLAUDE.md                      # Claude Code compatibility shim → AGENTS.md
-```
+The split between infrastructure and clients is intentional: infrastructure is the platform, clients
+are interchangeable ways to observe + interact with it. Adding a TUI or a mobile app goes under
+`clients/`, not as a peer of `harness/`.
 
 ---
 
@@ -494,41 +344,29 @@ Phase 17:    docs refinement
 
 ## Deployment
 
-### Local
+### How to install
 
-Build all four images and deploy with Helm:
+Installation commands live with the artifacts they deploy:
 
-```bash
-docker build -f harness/Dockerfile -t harness:latest .
-docker build -f backends/claude/Dockerfile -t claude:latest .
-docker build -f backends/codex/Dockerfile -t codex:latest .
-docker build -f backends/gemini/Dockerfile -t gemini:latest .
-helm upgrade --install nyx ./charts/nyx -f ./charts/nyx/values-test.yaml -n nyx --create-namespace
-```
+- Local Helm install (with values-test.yaml) — [`AGENTS.md` → Running Locally](../AGENTS.md#running-locally)
+- Production nyx agent install (published chart) — [`charts/nyx/README.md`](../charts/nyx/README.md)
+- Operator install — [`charts/nyx-operator/README.md`](../charts/nyx-operator/README.md)
+- Operator development (`make install` / `make run`) — [`operator/README.md`](../operator/README.md)
+- ww CLI — [`clients/ww/README.md`](../clients/ww/README.md)
 
-Port assignments per agent:
-
-| Agent | harness | claude | codex | gemini |
-| ----- | ------- | ------ | ----- | ------ |
-| iris  | 8000    | 8010   | 8011  | 8012   |
-| nova  | 8001    | 8010   | 8011  | 8012   |
-| kira  | 8002    | 8010   | 8011  | 8012   |
-
-### Kubernetes (Target)
+### Kubernetes is the target
 
 All infrastructure decisions are evaluated against Kubernetes compatibility:
 
 - Health probes follow the three-probe model (`/health/start`, `/health/live`, `/health/ready`) for harness;
-  `/health` for backend containers
-- Configuration injected via env vars and mounted `ConfigMap`/`Secret` volumes
-- Backend URL configurable via `A2A_URL_<ID>` env var — supports same-pod sidecar (`http://localhost:8010`) or
-  out-of-pod via Service DNS (`http://claude-svc:8000`) without config file changes
-- Stateless containers at the harness layer (all state lives in backends)
-- Standard HTTP endpoints suitable for `Service` and `Ingress`
+  `/health` for backend containers.
+- Configuration injected via env vars and mounted `ConfigMap`/`Secret` volumes.
+- Backend URL configurable via `A2A_URL_<ID>` env var — supports same-pod sidecar (`http://localhost:8010`)
+  or out-of-pod via Service DNS (`http://claude-svc:8000`) without config file changes.
+- Stateless containers at the harness layer (all state lives in backends).
+- Standard HTTP endpoints suitable for `Service` and `Ingress`.
 
-A Helm chart is available at `charts/nyx/` and published to `oci://ghcr.io/skthomasjr/charts/nyx` on every release tag.
-A Kubernetes Operator (declarative agent lifecycle via CRDs) is in development; its chart lives at
-`charts/nyx-operator/`.
+Per-agent port assignments live in [`AGENTS.md` → Interacting with Agents](../AGENTS.md#interacting-with-agents).
 
 ### git-sync Image
 
