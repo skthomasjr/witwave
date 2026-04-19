@@ -661,7 +661,7 @@ if _enabled:
     backend_hooks_shed_total = prometheus_client.Counter(
         "backend_hooks_shed_total",
         "Total hook.decision POSTs shed because the bounded in-flight "
-        "cap (HOOK_POST_MAX_INFLIGHT, default 64) was reached (#712, #957). "
+        "cap (HOOK_POST_MAX_INFLIGHT, default 32) was reached (#712, #957). "
         "Non-zero rate indicates the harness is unreachable or slow while "
         "shell baseline denials fire; the backend would otherwise OOM.",
         ["agent", "agent_id", "backend"],

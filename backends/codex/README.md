@@ -58,8 +58,10 @@ MCP config metrics (`backend_mcp_config_errors_total`, `backend_mcp_config_reloa
 dashboards carry the series (codex's OpenAI Agents SDK runs in-process so nothing literal is measured).
 Hook denials are counted on the canonical cross-backend `backend_hooks_denials_total{tool,source,rule}`;
 the legacy `backend_codex_hooks_denials_total{rule}` alias is retained through one release cycle and its
-emission is now gated by `EMIT_DEPRECATED_HOOK_METRICS` (off by default, #940). `backend_hook_post_shed_total`
-tracks hook.decision POSTs shed when the async dispatcher queue is saturated (#928). Peer-parity
+emission is gated by `EMIT_DEPRECATED_HOOK_METRICS` (on by default during the migration window, #940;
+flip to `0`/`false` once dashboards have re-pointed at the canonical counter).
+`backend_hooks_shed_total` tracks hook.decision POSTs shed when the async dispatcher queue is saturated
+(#928, #957). Peer-parity
 placeholders for the rest of claude's hook metric family (`backend_hooks_warnings_total`,
 `backend_hooks_config_*`, `backend_hooks_active_rules`, `backend_hooks_evaluations_total`,
 `backend_tool_audit_entries_total`) register at zero until the non-shell hook path lands (#586 deferred).
