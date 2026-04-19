@@ -1,0 +1,111 @@
+name: CI — ww CLI
+
+# Per-PR validation for the ww CLI. Runs on any change under clients/ww/**
+# or to this workflow file itself; other components have their own CI
+# (charts-ci.yml, etc.) and don't need to pay the Go toolchain tax.
+#
+# Flat-tag convention: release.yml fires on `v*.*.*` tags across the whole
+# platform. This CI is the pre-merge gate that keeps ww releasable.
+
+on:
+  pull_request:
+    paths:
+      - "clients/ww/**"
+      - ".github/workflows/ww-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "clients/ww/**"
+      - ".github/workflows/ww-ci.yml"
+
+concurrency:
+  group: ww-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: lint + test + build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    defaults:
+      run:
+        working-directory: clients/ww
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          # Read version from clients/ww/go.mod so the workflow and
+          # the module never drift.
+          go-version-file: clients/ww/go.mod
+          cache: true
+          cache-dependency-path: clients/ww/go.sum
+
+      - name: gofmt check
+        run: |
+          set -e
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt diffs found:"
+            echo "$unformatted"
+            gofmt -d .
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test -race -count=1 ./...
+
+      - name: go build (host)
+        run: go build -o /tmp/ww .
+
+      - name: Smoke check
+        run: |
+          /tmp/ww version --short
+          /tmp/ww --help > /dev/null
+
+  cross-compile:
+    # Sanity check that the binary builds on every target platform goreleaser
+    # ships at release time. Cheap — just go build with GOOS/GOARCH. Catches
+    # platform-conditional imports before they reach a tag.
+    name: cross-compile — ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+
+    defaults:
+      run:
+        working-directory: clients/ww
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: clients/ww/go.mod
+          cache: true
+          cache-dependency-path: clients/ww/go.sum
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: go build -trimpath -ldflags "-s -w" -o /tmp/ww-${GOOS}-${GOARCH} .

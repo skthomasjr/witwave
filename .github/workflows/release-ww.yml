@@ -1,0 +1,69 @@
+name: Release — ww CLI
+
+# Tag-triggered release for the ww CLI. Mirrors the flat-tag pattern
+# established by release.yaml (container images) and release-helm.yml
+# (Helm charts) — every `v*.*.*` tag produces a ww binary release for
+# every platform plus a Homebrew formula.
+#
+# Prerequisites for a successful run:
+#   1. The Homebrew tap repo github.com/${{ github.repository_owner }}/homebrew-ww
+#      must exist (empty is fine; the formula is auto-generated).
+#   2. A PAT with `repo` scope on the tap repo must be configured as the
+#      `HOMEBREW_TAP_GITHUB_TOKEN` secret on this repo.
+#
+# Without (1) + (2), this workflow succeeds at building + uploading the
+# binaries to the GitHub Release but fails at the Homebrew publish step.
+# That's a supported interim state — users can `go install` or download
+# binaries from Releases while brew is being wired up.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+      - "v*.*.*-beta.*"
+      - "v*.*.*-rc.*"
+
+concurrency:
+  group: release-ww-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  goreleaser:
+    name: goreleaser
+    runs-on: ubuntu-latest
+    permissions:
+      # goreleaser needs contents:write to create the release + upload
+      # assets. packages:write reserved for future container-based
+      # goreleaser steps if we ever add one.
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # goreleaser reads tag history to compute the changelog.
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: clients/ww/go.mod
+          cache: true
+          cache-dependency-path: clients/ww/go.sum
+
+      - name: Run goreleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          workdir: clients/ww
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Required for the Homebrew formula to be pushed to the
+          # skthomasjr/homebrew-ww tap. Scoped PAT with `repo`
+          # permissions. Optional until the tap repo exists — goreleaser
+          # will fail loudly at the publish step, which is the signal to
+          # provision the tap + secret.
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
