@@ -49,12 +49,17 @@ logger = logging.getLogger(__name__)
 
 _ENV_VAR = "SESSION_ID_SECRET"
 
-# One-shot warning guard: when the secret is set but caller_identity is
-# missing on the very first request, we log once per process and then
-# stay quiet. Logging once per request would drown the signal under
-# normal traffic.
-_missing_caller_warned = False
+# Periodic warning guard (#1035). The original implementation latched
+# _missing_caller_warned True after the first miss which meant a
+# sustained multi-tenant misconfig (harness not stamping caller_id)
+# logged exactly one line per process lifetime and fell silent. Now we
+# re-arm every N misses so operators keep seeing the signal. Callers
+# can also wire a Prometheus counter via ``missing_caller_total`` and
+# alert on the rate.
+_missing_caller_count = 0
 _warn_lock = threading.Lock()
+_SESSION_BIND_REARM_EVERY = int(os.environ.get("SESSION_BIND_WARN_REARM_EVERY", "500"))
+missing_caller_total = None  # type: ignore[assignment]
 
 
 def _legacy_derive(raw_sid: str) -> str:
@@ -111,17 +116,25 @@ def derive_session_id(
         return _legacy_derive(raw_sid)
 
     if not caller_identity:
-        global _missing_caller_warned
+        global _missing_caller_count
         with _warn_lock:
-            if not _missing_caller_warned:
-                _missing_caller_warned = True
-                logger.warning(
-                    "SESSION_ID_SECRET is set but no caller_identity is available "
-                    "on this request — session_id binding cannot be applied and "
-                    "the legacy (uuid5) derivation is in use. Ensure the harness "
-                    "stamps metadata.caller_id for multi-tenant deployments. "
-                    "This warning is logged once per process."
-                )
+            should_warn = (_missing_caller_count % _SESSION_BIND_REARM_EVERY) == 0
+            _missing_caller_count += 1
+            count = _missing_caller_count
+        if should_warn:
+            logger.warning(
+                "SESSION_ID_SECRET is set but no caller_identity is available "
+                "on this request — session_id binding cannot be applied and "
+                "the legacy (uuid5) derivation is in use. Ensure the harness "
+                "stamps metadata.caller_id for multi-tenant deployments. "
+                "(miss count=%d; will re-warn every %d misses)",
+                count, _SESSION_BIND_REARM_EVERY,
+            )
+        if missing_caller_total is not None:
+            try:
+                missing_caller_total.inc()
+            except Exception:
+                pass
         return _legacy_derive(raw_sid)
 
     caller_hash = _hash_caller(caller_identity)

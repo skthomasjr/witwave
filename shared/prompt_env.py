@@ -38,9 +38,18 @@ logger = logging.getLogger(__name__)
 
 _ENV_VAR_RE = re.compile(r"\{\{env\.(\w+)\}\}")
 
-# Rate-limit warning spam per (var_name) — log once per process lifetime.
-_warned_vars: set[str] = set()
-_warned_no_allowlist = False
+# Re-arm counters (#1035). The original implementation latched the
+# warning flags True after the first emission so sustained misconfigs
+# logged exactly one line per process lifetime and went silent. We now
+# re-emit every N occurrences so operators keep seeing the signal.
+_warned_vars: dict[str, int] = {}
+_warned_no_allowlist_count = 0
+_PROMPT_ENV_REARM_EVERY = int(os.environ.get("PROMPT_ENV_WARN_REARM_EVERY", "500"))
+
+# Optional Prometheus counter surface (#1089). Callers set this to a
+# CounterVec with labels (var, result); leaving None keeps the module
+# dependency-free.
+substitutions_total = None  # type: ignore[assignment]
 
 
 def _config() -> tuple[bool, list[str]]:
@@ -85,30 +94,50 @@ def resolve_prompt_env(text: str) -> str:
     tuple) keeps the integration one-liner so runners don't need to grow a
     failure-handling branch.
     """
-    global _warned_no_allowlist
+    global _warned_no_allowlist_count
     enabled, allowlist = _config()
     if not enabled:
         return text
-    if not allowlist and not _warned_no_allowlist:
-        logger.warning(
-            "PROMPT_ENV_ENABLED=true but PROMPT_ENV_ALLOWLIST is empty — every "
-            "{{env.VAR}} reference in prompt bodies will be substituted with "
-            "an empty string. Set PROMPT_ENV_ALLOWLIST=<comma-separated prefixes "
-            "or globs> to enable interpolation."
-        )
-        _warned_no_allowlist = True
+    if not allowlist:
+        if _warned_no_allowlist_count % _PROMPT_ENV_REARM_EVERY == 0:
+            logger.warning(
+                "PROMPT_ENV_ENABLED=true but PROMPT_ENV_ALLOWLIST is empty — every "
+                "{{env.VAR}} reference in prompt bodies will be substituted with "
+                "an empty string. Set PROMPT_ENV_ALLOWLIST=<comma-separated prefixes "
+                "or globs> to enable interpolation. (warn count=%d)",
+                _warned_no_allowlist_count + 1,
+            )
+        _warned_no_allowlist_count += 1
 
     def _sub(m: re.Match) -> str:
         name = m.group(1)
         if not _var_allowed(name, allowlist):
-            if name not in _warned_vars:
+            count = _warned_vars.get(name, 0)
+            if count % _PROMPT_ENV_REARM_EVERY == 0:
                 logger.warning(
                     "prompt env interpolation: %r is not on PROMPT_ENV_ALLOWLIST; "
-                    "substituting empty string",
-                    name,
+                    "substituting empty string (miss count=%d)",
+                    name, count + 1,
                 )
-                _warned_vars.add(name)
+            _warned_vars[name] = count + 1
+            _bump(name, "denied")
             return ""
-        return os.environ.get(name, "")
+        value = os.environ.get(name, "")
+        _bump(name, "hit" if value else "missing")
+        return value
 
     return _ENV_VAR_RE.sub(_sub, text)
+
+
+def _bump(var: str, result: str) -> None:
+    """Increment the optional Prometheus counter surface (#1089).
+
+    No-op when ``substitutions_total`` hasn't been wired so this module
+    stays dependency-free outside the harness process.
+    """
+    if substitutions_total is None:
+        return
+    try:
+        substitutions_total.labels(var=var, result=result).inc()
+    except Exception:
+        pass

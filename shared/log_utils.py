@@ -7,38 +7,84 @@ than across four separate copies.
 import fcntl
 import logging
 import os
+import threading
 
 logger = logging.getLogger(__name__)
 
 MAX_LOG_BYTES = int(os.environ.get("MAX_LOG_BYTES", str(10 * 1024 * 1024)))
 MAX_LOG_BACKUP_COUNT = int(os.environ.get("MAX_LOG_BACKUP_COUNT", "1"))
 
-# Track which log directories have already been probed so the per-append
-# startup check runs once per process per unique dir (#738). Set to the
-# probed path once we've verified it or emitted the warning.
-_WRITABILITY_CHECKED: set[str] = set()
+# Track writability state per log dir (#738, re-arm in #1035). -1 means
+# the dir passed the probe. Any non-negative value is appends-since-warn.
+_WRITABILITY_STATE: dict[str, int] = {}
+_WRITABILITY_LOCK = threading.Lock()
+_WRITABILITY_REARM_EVERY = int(os.environ.get("LOG_WRITABILITY_REARM_EVERY", "500"))
+
+# Optional Prometheus counter surface. Callers set this to a Counter
+# with .inc(); we bump on every re-warn.
+writability_failed_total = None  # type: ignore[assignment]
 
 
 def _check_writability(log_dir: str) -> None:
-    """Once-per-process probe that logs a loud warning when the mount is
-    read-only (#738). Prevents silent per-write spinlock-style failures
-    when the log volume is mounted read-only by a misconfigured
-    PodSecurityContext or a stuck upstream writer.
+    """Probe log dir writability with periodic re-arm (#738/#1035).
+
+    Re-emits the WARNING every ``LOG_WRITABILITY_REARM_EVERY`` subsequent
+    appends after a failed probe so sustained readonly-mount outages
+    stay visible.
     """
-    if log_dir in _WRITABILITY_CHECKED:
-        return
-    _WRITABILITY_CHECKED.add(log_dir)
-    try:
-        probe = os.path.join(log_dir, ".writability-probe")
-        with open(probe, "a"):
-            pass
-        os.unlink(probe)
-    except OSError as exc:
-        logger.error(
-            "log_utils: directory %r is not writable (%s); log appends will "
-            "silently fail until the mount is fixed.",
-            log_dir, exc,
-        )
+    with _WRITABILITY_LOCK:
+        state = _WRITABILITY_STATE.get(log_dir)
+        if state == -1:
+            return
+        if state is None:
+            try:
+                probe = os.path.join(log_dir, ".writability-probe")
+                with open(probe, "a"):
+                    pass
+                os.unlink(probe)
+            except OSError as exc:
+                _WRITABILITY_STATE[log_dir] = 0
+                logger.error(
+                    "log_utils: directory %r is not writable (%s); log appends will "
+                    "silently fail until the mount is fixed. Re-warning every %d "
+                    "subsequent appends.",
+                    log_dir, exc, _WRITABILITY_REARM_EVERY,
+                )
+                if writability_failed_total is not None:
+                    try:
+                        writability_failed_total.inc()
+                    except Exception:
+                        pass
+                return
+            _WRITABILITY_STATE[log_dir] = -1
+            return
+        state += 1
+        if state >= _WRITABILITY_REARM_EVERY:
+            try:
+                probe = os.path.join(log_dir, ".writability-probe")
+                with open(probe, "a"):
+                    pass
+                os.unlink(probe)
+                _WRITABILITY_STATE[log_dir] = -1
+                logger.info(
+                    "log_utils: directory %r recovered and is now writable.",
+                    log_dir,
+                )
+                return
+            except OSError as exc:
+                _WRITABILITY_STATE[log_dir] = 0
+                logger.error(
+                    "log_utils: directory %r is STILL not writable (%s); "
+                    "%d silent append attempt(s) since the last warning.",
+                    log_dir, exc, state,
+                )
+                if writability_failed_total is not None:
+                    try:
+                        writability_failed_total.inc()
+                    except Exception:
+                        pass
+                return
+        _WRITABILITY_STATE[log_dir] = state
 
 
 def _append_log(path: str, line: str) -> None:
