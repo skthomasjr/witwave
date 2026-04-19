@@ -29,6 +29,17 @@ spec:
   namespaceSelector:
     matchNames:
       - {{ $.Release.Namespace }}
+  {{- /* Cardinality + size safety (#1076) — mirror of the podMonitor
+         block so operators can tune both in lockstep. */}}
+  {{- with $.Values.serviceMonitor.sampleLimit }}
+  sampleLimit: {{ . }}
+  {{- end }}
+  {{- with $.Values.serviceMonitor.targetLimit }}
+  targetLimit: {{ . }}
+  {{- end }}
+  {{- with $.Values.serviceMonitor.labelValueLengthLimit }}
+  labelValueLengthLimit: {{ . }}
+  {{- end }}
   endpoints:
     # Scrape the dedicated metrics listener (#643). Service exposes port
     # "metrics" on .Values.metrics.port (default 9000), targetPort bound
@@ -37,6 +48,10 @@ spec:
       path: /metrics
       interval: {{ $.Values.serviceMonitor.scrapeInterval }}
       scrapeTimeout: {{ $.Values.serviceMonitor.scrapeTimeout }}
+      {{- with $.Values.serviceMonitor.metricRelabelings }}
+      metricRelabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

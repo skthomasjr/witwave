@@ -400,6 +400,23 @@ serviceMonitor:
   # the cluster's Prometheus selects ServiceMonitors by a tenancy label
   # (e.g. release: kube-prometheus-stack).
   labels: {}
+  # Cardinality + size safety (#1076). Prometheus Operator maps these to
+  # the per-target / per-scrape limits on the rendered ServiceMonitor. The
+  # defaults are conservative enough for a single-team deployment but
+  # keep a hostile backend from blowing up shared Prometheus tenants via
+  # unbounded label values (tool=..., rule_id=..., model=...). Set any to
+  # 0 to disable that particular cap; leave unset to render nothing.
+  sampleLimit: 10000
+  targetLimit: 100
+  labelValueLengthLimit: 256
+  # Passthrough for Prometheus Operator metricRelabelings, applied before
+  # ingestion. Default drops the worst-case unbounded label values (tool
+  # names longer than 128 chars). Override to an empty list to scrape
+  # everything as-is.
+  metricRelabelings:
+    - sourceLabels: [tool]
+      regex: ".{129,}"
+      action: drop
 
 # PodMonitor for the Prometheus Operator (#582). Scrapes backend /metrics
 # endpoints directly on the pod. Required for backend observability because
@@ -434,6 +451,17 @@ podMonitor:
   # the cluster's Prometheus selects PodMonitors by a tenancy label
   # (e.g. release: kube-prometheus-stack).
   labels: {}
+  # Cardinality + size safety (#1076). Per-agent + per-MCP-tool PodMonitor
+  # fan-out means unbounded tool/rule/model labels can blow up a shared
+  # Prometheus tenant. Same shape as serviceMonitor.* so operators can
+  # tune both in lockstep.
+  sampleLimit: 10000
+  targetLimit: 100
+  labelValueLengthLimit: 256
+  metricRelabelings:
+    - sourceLabels: [tool]
+      regex: ".{129,}"
+      action: drop
 
 # Prometheus Operator PrometheusRule (#1117). Ships opinionated default
 # alerts so a fresh install has usable paging day one: backend pod down,

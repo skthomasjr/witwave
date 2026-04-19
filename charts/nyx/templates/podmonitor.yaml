@@ -30,11 +30,28 @@ spec:
   namespaceSelector:
     matchNames:
       - {{ $.Release.Namespace }}
+  {{- /* Cardinality + size safety (#1076). Values render only when non-nil
+         so existing installs that explicitly override these to null keep
+         their old behaviour; the defaults in values.yaml cap per-scrape
+         samples, targets, and label-value lengths. */}}
+  {{- with $.Values.podMonitor.sampleLimit }}
+  sampleLimit: {{ . }}
+  {{- end }}
+  {{- with $.Values.podMonitor.targetLimit }}
+  targetLimit: {{ . }}
+  {{- end }}
+  {{- with $.Values.podMonitor.labelValueLengthLimit }}
+  labelValueLengthLimit: {{ . }}
+  {{- end }}
   podMetricsEndpoints:
     - port: metrics
       path: /metrics
       interval: {{ $.Values.podMonitor.scrapeInterval }}
       scrapeTimeout: {{ $.Values.podMonitor.scrapeTimeout }}
+      {{- with $.Values.podMonitor.metricRelabelings }}
+      metricRelabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
 {{- end }}
 {{- end }}
 {{- end }}
@@ -65,11 +82,28 @@ spec:
   namespaceSelector:
     matchNames:
       - {{ $.Release.Namespace }}
+  {{- /* Cardinality + size safety (#1076). Values render only when non-nil
+         so existing installs that explicitly override these to null keep
+         their old behaviour; the defaults in values.yaml cap per-scrape
+         samples, targets, and label-value lengths. */}}
+  {{- with $.Values.podMonitor.sampleLimit }}
+  sampleLimit: {{ . }}
+  {{- end }}
+  {{- with $.Values.podMonitor.targetLimit }}
+  targetLimit: {{ . }}
+  {{- end }}
+  {{- with $.Values.podMonitor.labelValueLengthLimit }}
+  labelValueLengthLimit: {{ . }}
+  {{- end }}
   podMetricsEndpoints:
     - port: metrics
       path: /metrics
       interval: {{ $.Values.podMonitor.scrapeInterval }}
       scrapeTimeout: {{ $.Values.podMonitor.scrapeTimeout }}
+      {{- with $.Values.podMonitor.metricRelabelings }}
+      metricRelabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
 {{- end }}
 {{- end }}
 {{- end }}
