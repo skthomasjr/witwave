@@ -171,7 +171,7 @@ malformed requests.
 ## Directory layout
 
 ```
-dashboard/
+clients/dashboard/
 ├── package.json           # npm scripts + deps (vue, vue-router, primevue, chart.js)
 ├── vite.config.ts         # dev server + VITE_TEAM-driven per-agent proxies
 ├── tsconfig.json          # strict TS for .ts + .vue

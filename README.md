@@ -48,22 +48,22 @@ autonomous agent.
 
 ## Components
 
-The platform has eight components, each with its own source directory:
-
 | Component          | Directory              | Type               | Description                                                                                                                 |
 | ------------------ | ---------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| **Harness**        | `harness/`             | Orchestrator agent | The infrastructure and routing layer for a named agent. Owns scheduling, triggering, chaining, and A2A relay. No LLM of its own. |
-| **Claude backend** | `backends/claude/`           | Backend agent      | Executes prompts via the Claude Agent SDK. Manages sessions, memory, conversation logs, and metrics.                        |
-| **Codex backend**  | `backends/codex/`            | Backend agent      | Executes prompts via the OpenAI Agents SDK. Supports web search and headless browser via Playwright.                        |
-| **Gemini backend** | `backends/gemini/`           | Backend agent      | Executes prompts via the Google Gemini SDK. Manages sessions and conversation history.                                      |
-| **Dashboard**      | `clients/dashboard/`           | Web interface      | Vue 3 + PrimeVue app for monitoring metrics, browsing agents, viewing conversations, and chatting with agents.              |
-| **Operator**       | `operator/`            | Kubernetes operator| Go controller (Operator SDK) that reconciles `NyxAgent` custom resources into the same workloads the Helm chart renders.     |
-| **Agent chart**    | `charts/nyx/`          | Deployment         | Kubernetes Helm chart for deploying nyx agents via templated manifests (no CRDs).                                            |
-| **Operator chart** | `charts/nyx-operator/` | Deployment         | Kubernetes Helm chart that installs the operator and the `NyxAgent` CRD.                                                     |
+| **Harness**        | `harness/`             | Orchestrator agent | Scheduling, triggering, chaining, A2A relay. No LLM of its own.                                                             |
+| **Claude backend** | `backends/claude/`     | Backend agent      | Executes prompts via the Claude Agent SDK.                                                                                  |
+| **Codex backend**  | `backends/codex/`      | Backend agent      | Executes prompts via the OpenAI Agents SDK. Supports web search and headless browser via Playwright.                        |
+| **Gemini backend** | `backends/gemini/`     | Backend agent      | Executes prompts via the Google Gemini SDK.                                                                                 |
+| **MCP tools**      | `tools/`               | Tool infrastructure| `mcp-kubernetes`, `mcp-helm`, `mcp-prometheus` — shared MCP servers backends opt into.                                     |
+| **Dashboard**      | `clients/dashboard/`   | Web client         | Vue 3 + PrimeVue web UI.                                                                                                    |
+| **ww CLI**         | `clients/ww/`          | Client             | Go + cobra command-line interface (`brew install ww`).                                                                      |
+| **Operator**       | `operator/`            | Kubernetes operator| Go controller that reconciles `NyxAgent` CRDs.                                                                              |
+| **Agent chart**    | `charts/nyx/`          | Deployment         | Helm chart that deploys nyx agents via templated manifests.                                                                  |
+| **Operator chart** | `charts/nyx-operator/` | Deployment         | Helm chart that installs the operator + CRD.                                                                                 |
 
-The harness routes work to backend agents but does no LLM execution itself. The dashboard provides visibility only —
-it does not participate in agent workflows. The operator and its chart are an alternative install path to the agent
-chart; both target the same per-agent deployment shape.
+The harness routes work to backend agents but does no LLM execution itself. Client surfaces (dashboard + ww) provide
+visibility and interaction; they don't participate in agent workflows. The operator and its chart are an alternative
+install path to the agent chart; both target the same per-agent deployment shape.
 
 ## How It Works
 
@@ -99,6 +99,9 @@ automatically on every release tag.
 | `git-sync`       | `ghcr.io/skthomasjr/images/git-sync:latest`       |
 | `mcp-kubernetes` | `ghcr.io/skthomasjr/images/mcp-kubernetes:latest` |
 | `mcp-helm`       | `ghcr.io/skthomasjr/images/mcp-helm:latest`       |
+| `mcp-prometheus` | `ghcr.io/skthomasjr/images/mcp-prometheus:latest` |
+
+The `ww` CLI ships as a standalone binary on [GitHub Releases](https://github.com/skthomasjr/autonomous-agent/releases) (plus `brew install ww` once the tap lands — tracked in issue #1128).
 
 Pull a specific version with a semver tag, e.g. `ghcr.io/skthomasjr/images/harness:0.2.0-beta.37`.
 The latest released tag is visible in the [GitHub Releases](https://github.com/skthomasjr/autonomous-agent/releases) page; substitute it for the version below.
@@ -370,93 +373,20 @@ Memory files are not committed to source control. harness has no memory layer of
 
 ## Security
 
-Three cross-cutting security gates land in this cycle. Each is configured via environment variables; all three ship
-default-closed but with a warning when left unconfigured so an oversight is loud rather than silent.
+Protected endpoints use `Authorization: Bearer <token>` throughout. Two distinct harness tokens:
 
-### Backend `/mcp`, `/conversations`, `/trace` bearer auth
+- **`CONVERSATIONS_AUTH_TOKEN`** — read / observe endpoints (`/conversations`, `/trace`, `/mcp`, `/api/traces`, `/events/stream`, `/api/sessions/<id>/stream`). Reused on the harness for inbound and on each backend for its own protected surface.
+- **`ADHOC_RUN_AUTH_TOKEN`** — trigger-actions endpoints (`POST /jobs/<name>/run`, `/tasks/<name>/run`, `/triggers/<name>/run`, `/validate`).
 
-All three backends (`claude`, `codex`, `gemini`) now require a bearer token on the `/mcp`, `/conversations`,
-and `/trace` endpoints — **parity across backends** (#510, #516, #518). Set `CONVERSATIONS_AUTH_TOKEN` on every backend
-container. If it is unset or empty the backend logs a startup warning (#517) and the shared guard in
-`shared/conversations.py` refuses to serve the protected endpoints.
+Both are default-closed — the server refuses requests when the token is unset. `CONVERSATIONS_AUTH_DISABLED=true` is a documented escape hatch for local dev; startup logs a loud warning when it's set.
 
-harness forwards inbound `/conversations` and `/trace` reads to the backends — set
-`BACKEND_CONVERSATIONS_AUTH_TOKEN` on the harness to match so the aggregated reads continue to work. See the
-environment variable tables below.
+Session IDs on multi-tenant surfaces are HMAC-bound to the caller via `SESSION_ID_SECRET`. Rotation uses a probe-list window via `SESSION_ID_SECRET_PREV`: writes go to the current-secret derivation; reads probe `[current, prev]` and emit a one-shot WARN on prev-hits so operators know when they can drop the prev secret.
 
-### Webhook URL allow-list and scheme guard (#524)
+MCP stdio entries are gated by a per-backend command allow-list (`MCP_ALLOWED_COMMANDS`, `MCP_ALLOWED_COMMAND_PREFIXES`, `MCP_ALLOWED_CWD_PREFIXES`); rejections bump `backend_mcp_command_rejected_total{reason}`. Every MCP tool container enforces its own bearer (`MCP_TOOL_AUTH_TOKEN`) via `shared/mcp_auth.py`. Outbound webhooks go through an SSRF-resistant URL check that re-resolves the hostname at delivery time.
 
-Outbound webhooks now go through an SSRF-resistant URL check. See [URL safety (#524)](#url-safety-524) under Outbound
-Webhooks for the full rules. Migration: any webhook markdown that previously used `url: http://{{env.FOO}}/…` must be
-rewritten to use `url-env-var: FOO` — `{{env.*}}` substitutions in the `url:` field are no longer honoured. Private /
-loopback / link-local / reserved destinations can be explicitly opted in via the `WEBHOOK_URL_ALLOWED_HOSTS` env var
-on harness (comma-separated `host` or `host:port` entries).
+The nyx-operator chart runs with a split RBAC surface (`rbac.secretsWrite=false` drops Secret write verbs while keeping reads). Credential Secrets are dual-checked (label + `IsControlledBy`) before any update/delete so the operator never touches user-created Secrets.
 
-### Dashboard Ingress (#528)
-
-The dashboard Ingress template is default-closed: `ingress.enabled=true` fails template render unless one of the
-following is configured — chart-managed basic auth (`ingress.auth.enabled=true`, the default), an explicit escape
-hatch (`ingress.auth.allowInsecure=true`), or a user-supplied auth annotation (nginx-ingress `auth-url` / `auth-signin`
-or a traefik middleware). See [`charts/nyx/README.md`](charts/nyx/README.md) for the full `ingress.auth.*` values.
-
-### Operator namespace-scoped RBAC (#532)
-
-The `nyx-operator` chart supports a namespace-scoped deployment mode. Set `rbac.scope=namespace` and
-`rbac.watchNamespaces: [...]` to install per-namespace Role/RoleBindings only (no ClusterRole/ClusterRoleBinding), and
-pass the matching `--watch-namespaces` flag to restrict the controller-runtime cache. See
-[`charts/nyx-operator/README.md`](charts/nyx-operator/README.md).
-
-### Pod security (#541)
-
-The agent chart's pod spec now sets `seccompProfile: RuntimeDefault` alongside the existing `runAsNonRoot` / `runAsUser`
-settings, and the dashboard pod runs as non-root. This keeps the chart compatible with the Pod Security Standards
-"restricted" profile out of the box.
-
-### MCP tool bearer-token auth (#771)
-
-Every MCP tool container (`mcp-kubernetes`, `mcp-helm`, and anything added under `tools/`) now enforces a bearer
-token via the shared `shared/mcp_auth.py` middleware. Set `MCP_TOOL_AUTH_TOKEN` on each tool container. When the
-token is unset/empty and `MCP_TOOL_AUTH_DISABLED` is not explicitly set, the server refuses every request. Use
-`MCP_TOOL_AUTH_DISABLED=true` only for local dev — the startup log is loud on purpose.
-
-### MCP command + cwd allow-list
-
-All three backends validate stdio entries in `mcp.json` against a per-backend allow-list of command basenames,
-absolute-path prefixes, and working-directory prefixes before spawning the subprocess (`MCP_ALLOWED_COMMANDS`,
-`MCP_ALLOWED_COMMAND_PREFIXES`, `MCP_ALLOWED_CWD_PREFIXES`). Rejections increment
-`backend_mcp_command_rejected_total{reason}` so operators can alert on sudden spikes without parsing logs
-(claude #711, codex #720, gemini #730). The default allow-list is pruned to `mcp-kubernetes,mcp-helm,uv,uvx`
-and the absolute-path basename fallback has been removed (#862): a path like `/usr/local/bin/uvx` no longer
-passes on basename alone — the full path must match `MCP_ALLOWED_COMMAND_PREFIXES`. Interpreter invocations
-(`python -c`, `node -e`, …) are additionally vetted by `mcp_command_args_safe()` against an args deny-list so
-the allow-list cannot be bypassed via a permitted interpreter (#930).
-
-### Harness A2A ingress cap (#783)
-
-`A2A_MAX_PROMPT_BYTES` (default 1 MiB) rejects oversized A2A prompts at ingress before they hit a backend. Set
-to `0` to disable.
-
-### Continuation fan-out cap (#781)
-
-`CONTINUATION_MAX_CONCURRENT_FIRES_GLOBAL` caps in-flight continuation fires across all items to prevent a single
-high-branching event from driving the harness into memory pressure.
-
-### Conversation/trace auth escape hatch (#718)
-
-`CONVERSATIONS_AUTH_DISABLED=true` explicitly acknowledges running the `/conversations`, `/trace`, `/mcp`, and
-claude's `/api/traces` endpoints without a bearer token — the operator must set it to override the default
-fail-closed behaviour when `CONVERSATIONS_AUTH_TOKEN` is empty.
-
-### Log redaction (#714)
-
-`LOG_REDACT=true` on any backend wraps user-prompt and agent-response content with redaction before it lands in
-`conversation.jsonl`. Off by default; opt in per-agent.
-
-### Operator Secret RBAC split (#761)
-
-The `nyx-operator` chart now splits Secret read verbs from Secret write verbs. `rbac.secretsWrite: false` keeps
-`get`/`list`/`watch` but drops `create`/`delete`/`patch`/`update` — appropriate when all backend credentials are
-pre-provisioned Secrets referenced via `existingSecret` rather than the inline `credentials.secrets` path.
+See `AGENTS.md` → "Conventions" for the full auth / redaction / MCP / RBAC posture, `shared/redact.py` for the conversation-log redaction rules (idempotent merge-spans with UUID / OTel-trace shielding), and each chart's `values.yaml` for the full surface of security-affecting knobs.
 
 ## Configuration
 
@@ -522,28 +452,11 @@ pre-provisioned Secrets referenced via `existingSecret` rather than the inline `
 
 ## Metrics
 
-When `METRICS_ENABLED` is set, Prometheus metrics are served at `/metrics` on a **dedicated port** (9000 by default,
-configurable via `METRICS_PORT`) on every container — harness, each backend, and each MCP tool (#643). The metrics
-listener is split from the app listener so NetworkPolicy and auth posture can diverge cleanly between app traffic
-(A2A, triggers, conversations) and monitoring scrapes.
+When `METRICS_ENABLED` is set, Prometheus metrics are served at `/metrics` on a **dedicated port** (9000 by default, configurable via `METRICS_PORT`) on every container. The metrics listener is split from the app listener so NetworkPolicy and auth posture can diverge cleanly between app traffic and monitoring scrapes.
 
-Backend containers (`claude`, `codex`, `gemini`) expose `backend_*`-prefixed metrics. `claude` exposes the
-superset (tool-call, context-window, MCP, hooks/tool-audit); `codex` and `gemini` track peer-parity
-placeholders for every series so cross-backend PromQL joins don't drop the codex/gemini label sets when a
-metric is baseline-only on those backends. Denials are counted on the canonical
-`backend_hooks_denials_total{tool,source,rule}` on every backend (claude's `backend_hooks_blocked_total` and
-codex's `backend_codex_hooks_denials_total` remain as deprecated aliases for one release cycle).
-`backend_sdk_tool_calls_per_query` carries the aligned `model` label on every backend (#795). Per-request
-`/mcp` observability (`backend_mcp_requests_total`, `backend_mcp_request_duration_seconds`) and the SQLite
-task-store lock-wait histogram (`backend_sqlite_task_store_lock_wait_seconds`) are available on claude and
-gemini with matching schemas.
-harness exposes `harness_*`-prefixed infrastructure metrics (bus, heartbeat, job, sessions, webhooks, etc.). The
-harness `/metrics` endpoint also aggregates all backend `/metrics` endpoints (fetched at each backend's `:9000`),
-injecting a `backend="<id>"` label on each sample so a single scrape target captures the full deployment. This is
-redundant with scraping each container's `:9000` directly via PodMonitor, but is preserved so operators curl-ing
-the harness endpoint get the full picture.
+Each backend exposes `backend_*`-prefixed metrics; **claude is the superset** and peers track placeholders so cross-backend PromQL joins don't lose label sets. Harness exposes `harness_*`-prefixed infrastructure metrics. The harness `/metrics` endpoint also aggregates all backend `/metrics` endpoints with a `backend="<id>"` label injected per sample, so a single scrape captures the full deployment.
 
-Quick verify (default ports, harness exposed to localhost):
+For the full catalog, read each component's `metrics.py`. For the rendered view, see `charts/nyx/dashboards/` (Grafana sidecar) and `charts/nyx/templates/prometheusrule.yaml` (default alerts).
 
 ```bash
 curl -s http://localhost:9000/metrics | head
