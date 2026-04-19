@@ -1,16 +1,14 @@
 # Competitive Landscape
 
-Last updated: 2026-04-19 by local-agent (ninth pass — full Reference Products refresh via market research;
-added 5 new competitors (OpenClaw, kagent, Amazon Bedrock AgentCore, Microsoft Agent Framework + Foundry,
-Cloudflare Agent Cloud); dropped 2 (AutoGPT — pivoted to low-code builder; SWE-agent — academic benchmark
-tool, not platform competitor); replaced LangGraph entry with LangGraph + Platform reference and corrected
-the prior-pass "v2.0" framing (features cited were actually v1.x); updated 5 entries with Apr 2026 releases
-(Claude Agent SDK Python GA today, Devin-in-Windsurf, Hermes v0.10.0 Tool Gateway, CrewAI v1.14.2 checkpoint
-primitives, A2A v1.0 + Linux Foundation governance); added "Category references" appendix (NVIDIA NAT,
-Salesforce Agent Fabric); Positioning + Gap Analysis revised for three new market realities (A2A + MCP +
-OTel are now baseline not differentiators; Kubernetes-native agent infra is no longer empty space;
-"Agent Fabric / Mesh / Cloud" has coalesced as the category name). Research Themes section not re-verified
-in this pass — flag industry statistics older than 30 days before quoting them.)
+Last updated: 2026-04-19 by local-agent (tenth pass — aggressive cut of Research Themes from deep
+research-synthesis bibliography to one-paragraph navigational scaffolding per theme, pointing at
+Reference Products for current state. Industry statistics that were previously inline have been retired;
+they drift invisibly and can't be kept honest without quarterly refresh discipline. The preceding ninth
+pass earlier today did the full Reference Products refresh: added 5 competitors (OpenClaw, kagent,
+Amazon Bedrock AgentCore, Microsoft Agent Framework + Foundry, Cloudflare Agent Cloud); dropped 2
+(AutoGPT, SWE-agent); corrected LangGraph v2.0 framing; bumped 5 entries to April 2026 releases;
+added Category references appendix; revised Positioning + Gap Analysis for the three market realities
+that have coalesced in the last 60 days.)
 
 ---
 
@@ -434,206 +432,89 @@ the canonical enterprise category name** alongside "Agent Mesh" and "Agent Cloud
 
 ## Research Themes
 
+Thin navigational scaffolding — one paragraph per theme pointing at the relevant entries in Reference Products
+and Gap Analysis for current state. Not a research bibliography; the competitor-specific detail lives with each
+competitor's section (which ages on a clear cadence), and industry statistics that were previously inline have
+been retired because they drift invisibly and can't be kept honest without quarterly refresh discipline.
+
 ### Memory
 
-**What competitors do:** CrewAI now offers a unified Memory class with LLM-inferred hierarchical scopes
-(`/project/alpha`-style paths), composite recall (semantic similarity + recency decay + importance weighting), and
-non-blocking background saves with direct terminal inspection. AutoGPT persists long-term memory for self-reflection.
-LangGraph stores full workflow state externally for checkpoint/resume. Research (Mem0, MemGPT) confirms purpose-built
-retrieval memory outperforms long-context prompting for selective recall. CrewAI's 2026 limitation — losing coordination
-state when a crew ends — highlights the value of persistent shared memory for compounding team intelligence.
-
-**What users value most:** Agents that remember previous work across runs. The current markdown memory files work for
-prose notes but are fragile for structured data — timestamps, status flags, team-wide facts — that need reliable
-read/update semantics.
-
-**Candidate features:** A shared structured memory index (YAML) at a well-known path that all agents read and write with
-named keys. No infrastructure dependency beyond a shared Docker volume. (F-003, on hold pending shared volume.)
-
----
+Persistent structured memory across runs. CrewAI's unified Memory class with LLM-inferred hierarchical scopes + composite
+recall is the leading open-source implementation. Hermes Agent's SQLite FTS5 + auto-generated skills is the consumer-side
+peer. This project uses flat markdown files, which work for prose notes but are fragile for structured data needing
+reliable read/update. Candidate: shared structured memory index (F-003, on hold pending shared-volume infrastructure).
 
 ### Observability
 
-**What competitors do:** OpenHands provides per-run tool-use traces. Devin 2.2 surfaces screen recordings of agent
-testing. LangGraph emits OpenTelemetry-compatible spans — OTel-based tracing across all reasoning steps, tool calls, and
-memory accesses is the 2026 emerging standard. CrewAI tracks token usage in `LLMCallCompletedEvent`. A new term — "AI
-archaeology" — describes the difficulty of debugging long execution traces; good observability prevents this. 89% of
-organizations have implemented agent observability in 2026.
-
-**Where this project stands:** This project now has **70+ Prometheus metrics** across all subsystems — SDK query
-duration/errors/tool calls, per-tool latency and error rates, context token usage and exhaustion events, bus queue depth
-and processing duration, per-agenda-item duration/lag/success/error timestamps, heartbeat timing and skip counts,
-session LRU cache utilization, MCP config reload tracking, health probe hit counts, startup duration, and more. This is
-among the most comprehensive agent observability implementations in the ecosystem. The JSONL tool-use trace log (F-002)
-provides the raw event layer. Context usage monitoring via `get_context_usage()` (F-011) provides proactive threshold
-warnings.
-
-**What users value most:** The ability to understand why an agent took a specific action, and to surface patterns (which
-tools fail most, which agenda items are slowest) without reading free-text logs. Proactive warnings before context
-limits silently degrade reliability. The next frontier is OpenTelemetry-compatible distributed tracing across
-multi-agent workflows.
-
-**Candidate features:** Context usage monitoring via `get_context_usage()` (F-011, implemented). Prometheus `/metrics`
-endpoint with 70+ metrics (F-008, implemented).
-
----
+Metrics + OpenTelemetry tracing + event stream. Now table stakes across the category — Bedrock AgentCore, kagent,
+Cloudflare, and Microsoft Agent Framework all ship the tripod. This project's remaining edge is the published
+multi-client event-stream wire contract (`docs/events/events.schema.json`) consumed by the dashboard + `ww` CLI + future
+mobile — most competitors couple event observability to proprietary UIs. See Gap Analysis → Observability.
 
 ### Human-in-the-Loop
 
-**What competitors do:** LangGraph 2.0's declarative `interrupt()` pauses a graph node mid-execution and resumes after
-human input with structured payloads. The Claude Agent SDK ships `AskUserQuestion` as a built-in HITL tool (main agents
-only — unavailable to subagents per SDK bug #12890; this project does not use subagents). Devin shows its plan before
-touching code. All production agent systems treat approval gates as a standard pattern.
-
-**What users value most:** Targeted checkpoints before destructive or irreversible actions, without blocking routine
-work. The narrower the gate, the less friction.
-
-**Candidate features:** Enable `AskUserQuestion` in `executor.py` — a one-line change that unlocks the SDK's built-in
-HITL primitive (F-001).
-
----
+Approval gates before destructive actions. LangGraph's `interrupt()` with structured payloads is the reference pattern.
+The Claude Agent SDK ships `AskUserQuestion` as a built-in HITL tool. Devin shows plan-before-code as a hard checkpoint.
+This project has `AskUserQuestion` available but not yet enabled (F-001, open — one-line wiring change in `executor.py`).
 
 ### Guardrails / Safety
 
-**What competitors do:** mini-SWE-agent validates that minimal tools + tight constraints = better outcomes (65%
-SWE-bench Verified in 100 lines). LangGraph 2.0 ships guardrail nodes as first-class primitives — content filtering,
-rate limiting, and audit logging with field redaction as declarative config. The Claude Agent SDK's `PreToolUse` hook
-now supports `updatedInput` — **rewriting tool arguments before execution**, not just blocking — enabling path
-sandboxing, argument normalization, and flag stripping at the harness layer. 90% of production agents are
-over-permissioned (2026 industry finding). The accepted control hierarchy: prevention first (hooks), then human
-intervention (`AskUserQuestion`), then recording (trace log).
-
-**What users value most:** Prevention of repeated error patterns (documented failure mode in SWE-agent research),
-enforcement of security policies without polluting agent prompts, and audit trails for compliance. This is distinct from
-F-001: hooks are automatic and programmatic; `AskUserQuestion` is agent-initiated and interactive.
-
-**Candidate features:** SDK hook integration — `PreToolUse` (with `updatedInput`) for blocking/rewriting dangerous
-operations, `PostToolUse`/`PostToolUseFailure` for harness-level audit, `Notification` for routing agent status to
-external systems (F-009).
-
----
+Prevention-first control hierarchy: hooks → human intervention → trace log. LangGraph ships declarative guardrail nodes.
+The Claude Agent SDK's `PreToolUse` hook supports `updatedInput` for argument rewriting (not just blocking). This project
+ships the hook runtime (`hooks.yaml` baseline + per-agent extensions, hot-reloaded) plus MCP command + cwd allow-lists;
+see the Claude Code / SDK entry for the specific API surface and Gap Analysis → Safety for what remains.
 
 ### Coordination
 
-**What competitors do:** CrewAI uses in-process Python delegation. LangGraph 2.0 routes via graph edges, parallel
-fan-out, and now native A2A integration. A2A (used by this project) is at v0.3 with 150+ supporting organizations.
-Research shows structured planner-worker hierarchies significantly outperform flat "bag of agents" patterns:
-unstructured swarms compound errors at up to 17x the rate of structured coordination. The winning production topology is
-hybrid: a high-level orchestrator for strategic coordination + local mesh networks for tactical execution. Devin's
-"Schedule Devins" (March 2026) adds self-scheduling with parallel delegation to managed Devins, each in an isolated VM —
-validating this project's agenda-based scheduling model. Devin also reacts to external events (GitHub PRs, Jira tickets,
-Slack messages) rather than only scheduled runs — event-driven triggers bridge autonomous agents to the rest of the
-organization's toolchain.
-
-**What users value most:** Assigning a task to a specific agent and getting a result back without manually constructing
-A2A request payloads. Clear accountability in multi-agent workflows. The ability for external systems (CI/CD pipelines,
-GitHub webhooks, monitoring alerts) to trigger a specific agent on demand without a cron schedule.
-
-**Implemented:** A `delegate` skill document that wraps A2A into a clean natural-language pattern for agents (F-006).
-On-demand HTTP trigger endpoints for event-driven agent workflows — external systems can POST to
-`POST /triggers/{endpoint}` to dispatch work without a cron schedule.
-
----
+Multi-agent delegation patterns. A2A v1.0 (Linux Foundation governance, 150+ organizations) is the emerging standard;
+LangGraph Platform, Microsoft Agent Framework, and Bedrock AgentCore all integrate it natively. Research shows
+hierarchical planner-worker topologies outperform flat "bag of agents" by ~17x on error compounding. This project's
+hybrid heartbeat-orchestrator + A2A-delegation model aligns with the winning topology. Implemented: `delegate` skill +
+`POST /triggers/{endpoint}` for event-driven dispatch (F-006).
 
 ### Durability / Crash Recovery
 
-**What competitors do:** LangGraph 2.0 made checkpointing _mandatory_ (breaking change), reinforcing that it is no
-longer optional for production systems. PostgreSQL checkpointers gained connection pooling for multi-tenant deployments.
-AutoGPT persists task queues. Temporal.io's durable workflow pattern has become a 2026 reference architecture. Platforms
-without checkpoint/resume are explicitly not considered production-ready.
-
-**What users value most:** Long-running scheduled tasks should not silently restart from zero after a crash. Detection
-is the minimum viable step; full resume requires SDK-level support.
-
-**Candidate features:** F-005 (implemented — stale checkpoint detection and warning on startup). Full session resume is
-a longer-term follow-on requiring SDK-level checkpoint/restore support beyond the current `resume=session_id` mechanism.
-
----
+Checkpointing is mandatory in production systems post-LangGraph-1.x (which made it a hard requirement). Temporal.io's
+durable workflow model is the broader 2026 reference architecture. CrewAI's v1.14.0 checkpoint/resume primitives are
+now the OSS peer reference. This project has stale-checkpoint detection on startup (F-005); full session resume past
+`resume=session_id` remains a longer-term follow-on.
 
 ### Tooling / MCP
 
-**What competitors do:** LangGraph 2.0 ships MCPToolkit for standardized MCP connections. The Claude Agent SDK,
-OpenHands, and virtually every major agent platform support MCP natively. MCP is under Linux Foundation governance
-(donated December 2025). Hundreds of community MCP servers cover browsers, databases, APIs, and system integrations.
-
-**What users value most:** Browser automation and database access are the most-requested extensions beyond file/shell
-operations.
-
-**Candidate features:** Per-agent opt-in MCP configuration via `.claude/mcp.json` (F-004, implemented).
-
----
+MCP is under Linux Foundation governance (donated December 2025). Hundreds of community MCP servers cover browsers,
+databases, APIs, system integrations. Native MCP support is ubiquitous across the landscape — table stakes. This project
+ships three MCP tool servers (`mcp-kubernetes`, `mcp-helm`, `mcp-prometheus`), each bearer-auth-gated and call-budget-capped.
+Dynamic *task-aware* tool injection (CrewAI's Tool Search — load only the tools relevant to the current prompt) is the
+remaining frontier; see Gap Analysis → Tooling.
 
 ### Planning / Task Decomposition
 
-**What competitors do:** OpenHands v1.5.0 made the Planning Agent its headline feature — a two-phase Plan/Code workflow
-where the agent operates in a read-only mode until a structured `PLAN.md` is produced, then switches to execution mode.
-Devin enforces the same pattern as a hard checkpoint: humans review and approve the plan before any code is written.
-SWE-agent research confirms that agents which plan before acting produce fewer cascading failures. The Claude Agent SDK
-ships `permission_mode="plan"` natively — read-only tool access + one writable plan file — as a first-class option in
-`ClaudeAgentOptions`.
-
-**What users value most:** Agents that think before acting on complex tasks — especially multi-file changes,
-architectural decisions, or agenda items with irreversible side effects. A planning phase surfaces the agent's intent
-before it touches production files, giving operators a low-friction checkpoint.
-
-**Candidate features:** Planning mode for agenda items — opt-in via `mode: plan` frontmatter, passing
-`permission_mode="plan"` to `ClaudeAgentOptions` (F-012).
-
----
+Plan-before-code as a hard checkpoint pattern. OpenHands's Planning Agent (read-only until `PLAN.md` is finalized) + the
+Claude Agent SDK's `permission_mode="plan"` are the reference implementations. Research confirms planning phases
+produce fewer cascading failures. This project has neither a planning mode nor a plan-gate (F-012, open).
 
 ### Safety / Governance
 
-**What competitors do:** Microsoft released the Agent Governance Toolkit (April 2, 2026, MIT license) — the first
-open-source toolkit to address all 10 OWASP Agentic Top 10 risks (published December 2025) with deterministic,
-sub-millisecond policy enforcement. The OWASP taxonomy covers: goal hijacking, tool misuse, identity abuse, memory
-poisoning, cascading failures, and rogue agents. Galileo released Agent Control (open source), a centralized guardrails
-platform with write-once policies enforced across all agent deployments. OpenGuardrails adds a guard-agent layer.
-McKinsey red-team research (2026) demonstrated an AI agent gaining full enterprise access in 120 minutes. EU AI Act
-high-risk obligations take effect August 2026; Colorado AI Act becomes enforceable June 2026.
-
-**What users value most:** Prevention first (hooks), then human intervention (`AskUserQuestion`), then recording (trace
-log). Operators want to express policies in a file they can read and review — not Python callbacks buried in the harness
-code. 80.9% of teams have pushed agents into production, but only 14.4% with full security approval.
-
-**Candidate features:** SDK hook integration for callback-level guardrails (F-009, #68). Declarative policy engine that
-evaluates a JSON/YAML policy file before every tool call — maps OWASP Agentic Top 10 risk categories to enforcement
-rules without requiring Python code changes.
-
----
+Microsoft's Agent Governance Toolkit (MIT license, 2026-04-02) is the first toolkit to address all 10 OWASP Agentic Top 10
+risks with deterministic sub-millisecond policy enforcement. EU AI Act high-risk obligations take effect August 2026;
+Colorado AI Act becomes enforceable June 2026 (verify specifics before quoting — regulation dates shift). This project's
+`hooks.yaml` declarative policy engine provides the enforcement primitive; the gap is OWASP-category labelling on rules
+so it becomes a direct comparable to the MS toolkit. See Gap Analysis → Safety for specifics.
 
 ### Self-Improvement / Lifelong Learning
 
-**What competitors do:** Hermes Agent auto-generates skill documents after successfully completing complex tasks — a
-closed learning loop from execution → skill synthesis → future reuse. Google's Always-On Memory Agent continuously
-ingests information and consolidates it in the background (LLM-driven, no vector database). Agent Zero enables
-self-correction and transparent learning from experience. The 2026 category framing: "can AI remember what it learned
-yesterday and do it better tomorrow?"
-
-**What users value most:** Agents that accumulate capability over time — not just memory of facts, but procedural
-knowledge of how to accomplish recurring classes of tasks. The 2026 community signal: context engineering (what the
-agent knows going in) has overtaken prompt design as the key differentiator.
-
-**Candidate features:** Post-task skill synthesis — after completing a complex agenda run, the agent evaluates whether a
-reusable skill should be written to `.nyx/skills/` and writes it if so. No new infrastructure required; the skill
-directory already exists and agents already load skills from it.
-
----
+The closed learning loop: execution → skill synthesis → future reuse. Hermes Agent auto-generates skill documents after
+completing complex tasks; Google's Always-On Memory Agent continuously consolidates in the background. The 2026 frame:
+"can the agent remember what it learned yesterday and do it better tomorrow?" This project has the skill-document
+infrastructure (`.claude/skills/`, `.codex/skills/`, `.gemini/skills/`) but no execution-to-skill synthesis path.
+Candidate: post-task skill synthesis that evaluates whether a completed run yielded a reusable pattern.
 
 ### Cost / Token Management
 
-**What competitors do:** The Claude Agent SDK provides `task_budget` (v0.1.51) to cap token budget per session, and
-`maxTurns` as an `AgentDefinition` field for subagent turn limits. `get_context_usage()` (0.1.52) exposes real-time
-token consumption by category. CrewAI v1.13.0 added token usage tracking in `LLMCallCompletedEvent`. Industry research
-in 2026 finds 90% of production agents are over-resourced, with cost control emerging as a top operational concern. The
-compounding reliability finding is relevant: at 85% per-step reliability, a 10-step workflow succeeds only ~20% of the
-time end-to-end — context exhaustion silently degrades reliability at the tail end of long runs without any explicit
-error.
-
-**What users value most:** Predictable, bounded API costs per agent run. Proactive warnings before context limits cause
-silent degradation. No runaway API bills from stuck or looping agents.
-
-**Candidate features:** Budget cap per agent run via `task_budget` (F-010). Context usage monitoring via
-`get_context_usage()` (F-011, implemented).
+Token budgeting + context-usage monitoring to prevent runaway bills and silent tail-end degradation. The Claude Agent
+SDK ships `task_budget` (per-session cap) and `get_context_usage()` (real-time consumption by category). CrewAI tracks
+token usage in `LLMCallCompletedEvent`. Production agents are widely over-resourced (industry finding; verify current
+figure before citing). This project has `get_context_usage()` wired; `task_budget` is proposed but unimplemented (F-010).
 
 ---
 
