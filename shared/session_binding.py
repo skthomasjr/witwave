@@ -48,6 +48,12 @@ import uuid
 logger = logging.getLogger(__name__)
 
 _ENV_VAR = "SESSION_ID_SECRET"
+# Previous-generation secret for rotation windows (#1042). When set AND
+# different from the current secret, ``derive_session_id_candidates``
+# returns ``[current_id, prev_id]`` so backends can probe both during
+# lookup and migrate lazily on hit. Unset or equal to the current
+# secret → single-element candidate list (no-op).
+_PREV_ENV_VAR = "SESSION_ID_SECRET_PREV"
 
 # Periodic warning guard (#1035). The original implementation latched
 # _missing_caller_warned True after the first miss which meant a
@@ -102,6 +108,26 @@ def _hash_caller(caller_identity: str) -> str:
     text if caller_identity happens to be the token itself.
     """
     return hashlib.sha256(caller_identity.encode("utf-8")).hexdigest()
+
+
+def _hmac_derive(raw_sid: str, caller_identity: str, secret: str) -> str:
+    """Produce the HMAC-bound session id for a specific secret (#1042).
+
+    Extracted so both the main derivation and the probe-list helper
+    can compute a candidate id for an arbitrary secret without
+    duplicating the HMAC→uuid5 fold.
+    """
+    caller_hash = _hash_caller(caller_identity)
+    mac = hmac.new(
+        secret.encode("utf-8"),
+        msg=f"{caller_hash}\x00{raw_sid}".encode("utf-8"),
+        digestmod=hashlib.sha256,
+    ).digest()
+    # Fold HMAC bytes back into a uuid so downstream code (session file
+    # paths, SQLiteSession row keys, LRU dict) sees the same shape it
+    # always has. uuid5 over an hmac-derived stable input gives us a
+    # deterministic, per-caller, collision-resistant session id.
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, mac.hex()))
 
 
 def derive_session_id(
@@ -165,14 +191,99 @@ def derive_session_id(
         _bump_fallback("caller_identity_missing")
         return _legacy_derive(raw_sid)
 
-    caller_hash = _hash_caller(caller_identity)
-    mac = hmac.new(
-        secret.encode("utf-8"),
-        msg=f"{caller_hash}\x00{raw_sid}".encode("utf-8"),
-        digestmod=hashlib.sha256,
-    ).digest()
-    # Fold HMAC bytes back into a uuid so downstream code (session file
-    # paths, SQLiteSession row keys, LRU dict) sees the same shape it
-    # always has. uuid5 over an hmac-derived stable input gives us a
-    # deterministic, per-caller, collision-resistant session id.
-    return str(uuid.uuid5(uuid.NAMESPACE_URL, mac.hex()))
+    return _hmac_derive(raw_sid, caller_identity, secret)
+
+
+# Rotation window telemetry (#1042). Re-armed every N hits so operators
+# keep seeing the signal; pair with the ``prev_secret_hit_total``
+# counter if backends wire one in. The miss count is process-local.
+_prev_hit_count = 0
+_prev_hit_lock = threading.Lock()
+_PREV_HIT_REARM_EVERY = int(os.environ.get("SESSION_PREV_HIT_WARN_REARM_EVERY", "500"))
+prev_secret_hit_total = None  # type: ignore[assignment]
+
+
+def note_prev_secret_hit(raw_sid: str = "") -> None:
+    """Record that a session lookup resolved via ``SESSION_ID_SECRET_PREV``.
+
+    Call this from the backend's lookup path when a candidate beyond
+    index 0 in :func:`derive_session_id_candidates` is the one that
+    found existing storage. The goal is operational visibility: once
+    this warning stops firing across the rotation window (no active
+    sessions remain under the previous secret), ``SESSION_ID_SECRET_PREV``
+    can be safely dropped from the deployment.
+
+    ``raw_sid`` is accepted for log context but not logged verbatim —
+    only its length is included so the message is safe against
+    credential-leak-in-logs review.
+    """
+    global _prev_hit_count
+    with _prev_hit_lock:
+        should_warn = (_prev_hit_count % _PREV_HIT_REARM_EVERY) == 0
+        _prev_hit_count += 1
+        count = _prev_hit_count
+    if should_warn:
+        logger.warning(
+            "session served via SESSION_ID_SECRET_PREV — rotation window "
+            "active (hit count=%d; raw_sid_len=%d; will re-warn every %d "
+            "hits). Drop SESSION_ID_SECRET_PREV once this warning stops "
+            "firing across your session-retention window.",
+            count, len(raw_sid or ""), _PREV_HIT_REARM_EVERY,
+        )
+    if prev_secret_hit_total is not None:
+        try:
+            prev_secret_hit_total.inc()
+        except Exception:
+            pass
+
+
+def derive_session_id_candidates(
+    raw_sid: str,
+    caller_identity: str | None = None,
+    *,
+    secret: str | None = None,
+    prev_secret: str | None = None,
+) -> list[str]:
+    """Return ordered session-id candidates for lookup during rotation (#1042).
+
+    The first element is always the current-secret derivation — the ID
+    new writes go under. When ``SESSION_ID_SECRET_PREV`` is set AND
+    differs from the current secret, the second element is the
+    previous-secret derivation so backends can probe both at lookup
+    time. Callers should:
+
+    1. Iterate the list in order, checking storage for an existing
+       session at each candidate id.
+    2. If a hit occurs at any index > 0, call :func:`note_prev_secret_hit`
+       and optionally migrate the underlying storage to ``candidates[0]``.
+    3. Use ``candidates[0]`` for any new write.
+
+    When the current derivation falls back to legacy / uuid4 (no
+    raw_sid, no secret, no caller), the returned list has exactly one
+    element — rotation is a no-op in those regimes.
+
+    ``secret`` and ``prev_secret`` default to the environment; pass
+    explicitly in tests.
+    """
+    # Resolve current first — also covers empty-raw / no-secret / no-caller
+    # fallbacks and keeps derive_session_id as the single source of truth
+    # for the "which path do we take?" decision.
+    current = derive_session_id(raw_sid, caller_identity, secret=secret)
+    if not raw_sid or not caller_identity:
+        return [current]
+
+    if secret is None:
+        secret = os.environ.get(_ENV_VAR, "")
+    if prev_secret is None:
+        prev_secret = os.environ.get(_PREV_ENV_VAR, "")
+
+    if not secret or not prev_secret or prev_secret == secret:
+        return [current]
+
+    prev_id = _hmac_derive(raw_sid, caller_identity, prev_secret)
+    if prev_id == current:
+        # Same ID under both secrets (collision — astronomically unlikely
+        # with 128-bit HMAC outputs folded into uuid5, but check so we
+        # never return duplicates).
+        return [current]
+    return [current, prev_id]

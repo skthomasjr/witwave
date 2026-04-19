@@ -2554,9 +2554,26 @@ class AgentExecutor(A2AAgentExecutor):
         # SESSION_ID_SECRET is unset), so this merely closes the
         # consistency gap across backends without changing default
         # behaviour.
-        from session_binding import derive_session_id as _derive_session_id
+        from session_binding import (
+            derive_session_id as _derive_session_id,
+            derive_session_id_candidates as _derive_session_id_candidates,
+            note_prev_secret_hit as _note_prev_secret_hit,
+        )
         _caller_id = metadata.get("caller_id") if isinstance(metadata.get("caller_id"), str) else None
-        session_id = _derive_session_id(_raw_sid, caller_identity=_caller_id)
+        # Probe-list rotation (#1042). Same pattern as claude executor:
+        # candidates[0] is the current-secret derivation; any subsequent
+        # candidate corresponds to SESSION_ID_SECRET_PREV. If existing
+        # rows in CODEX_SESSION_DB are keyed under the previous derivation
+        # we route this request to the old id so resume works mid-window.
+        _sid_candidates = _derive_session_id_candidates(_raw_sid, caller_identity=_caller_id)
+        session_id = _sid_candidates[0]
+        if len(_sid_candidates) > 1:
+            for _prev_sid in _sid_candidates[1:]:
+                if await asyncio.to_thread(_sqlite_session_exists, _prev_sid):
+                    session_id = _prev_sid
+                    _note_prev_secret_hit(_raw_sid)
+                    break
+        _ = _derive_session_id  # noqa: F841 — retained for callers not yet on the probe list
         model = metadata.get("model") or None
         # Shared parser lives in shared/validation.py (#537, #428, #555).
         max_tokens = parse_max_tokens(

@@ -529,6 +529,7 @@ Backends:
 | `OPENAI_API_KEY_FILE`                      | Codex-only. Path to a mounted file holding the OpenAI key; watched for change so rotation no longer requires pod restart (#728, parity with gemini #1057). |
 | `GEMINI_API_KEY_FILE`                      | Gemini-only. Path to a mounted file holding the Gemini API key; watcher calls `_close_client` on change (#1057). |
 | `GEMINI_AFC_HISTORY_SOFT_CAP_BYTES`        | Gemini soft ceiling on `chat.history` bytes during AFC ping-pong; raises `BudgetExceededError` when exceeded (default 2 MiB, #1058). |
+| `SESSION_ID_SECRET_PREV`                   | Previous-generation HMAC key for `SESSION_ID_SECRET` rotation windows (#1042). When set and different from the current secret, `derive_session_id_candidates()` returns `[current, prev]` so backends probe both at lookup time; new writes always land on the current-secret id. Once `note_prev_secret_hit` stops firing across your session-retention window, remove this env var. `SESSION_PREV_HIT_WARN_REARM_EVERY` (default 500) controls the WARN re-arm cadence. |
 | `SQLITE_TASK_STORE_BUSY_TIMEOUT_MS`        | Codex SqliteTaskStore busy-timeout tuning; replaces the previous process-wide asyncio.Lock with per-thread connections (#726). |
 | `BROWSER_CONTEXT_MAX_IDLE_SECONDS`         | Codex BrowserPool idle-release sweep interval — prevents linear RSS growth under per-session Chromium caching (#1053). |
 | `COMPUTER_MAX_CONTEXTS`                    | Codex hard cap on concurrent Chromium contexts, independent of the LRU session count (#1053).               |

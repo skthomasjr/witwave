@@ -128,5 +128,88 @@ def test_derived_id_is_a_valid_uuid():
     assert parsed.version == 5
 
 
+# ----- probe-list rotation (#1042) -------------------------------
+
+
+def test_candidates_single_element_when_no_prev_secret():
+    sb = _fresh_module()
+    got = sb.derive_session_id_candidates(
+        "conv-42", caller_identity="alice", secret="s3cret", prev_secret=""
+    )
+    assert len(got) == 1
+    assert got[0] == sb.derive_session_id("conv-42", caller_identity="alice", secret="s3cret")
+
+
+def test_candidates_two_elements_when_prev_differs():
+    sb = _fresh_module()
+    got = sb.derive_session_id_candidates(
+        "conv-42", caller_identity="alice", secret="new", prev_secret="old",
+    )
+    assert len(got) == 2
+    assert got[0] == sb.derive_session_id("conv-42", caller_identity="alice", secret="new")
+    assert got[1] == sb.derive_session_id("conv-42", caller_identity="alice", secret="old")
+    assert got[0] != got[1], "rotation is a no-op if old and new derivations coincide"
+
+
+def test_candidates_dedupes_when_prev_equals_current():
+    sb = _fresh_module()
+    got = sb.derive_session_id_candidates(
+        "conv-42", caller_identity="alice", secret="same", prev_secret="same",
+    )
+    assert len(got) == 1, "prev==current must not produce a duplicate candidate"
+
+
+def test_candidates_single_element_in_fallback_regimes():
+    """Empty raw, no caller, no secret — all degenerate to a single
+    candidate (rotation cannot apply when the derivation isn't HMAC-bound)."""
+    sb = _fresh_module()
+    assert len(sb.derive_session_id_candidates("", caller_identity="alice", secret="s", prev_secret="p")) == 1
+    assert len(sb.derive_session_id_candidates("conv", caller_identity=None, secret="s", prev_secret="p")) == 1
+    assert len(sb.derive_session_id_candidates("conv", caller_identity="alice", secret="", prev_secret="p")) == 1
+
+
+def test_candidates_env_default_reads_both_secrets(monkeypatch):
+    monkeypatch.setenv("SESSION_ID_SECRET", "cur")
+    monkeypatch.setenv("SESSION_ID_SECRET_PREV", "old")
+    sb = _fresh_module()
+    got = sb.derive_session_id_candidates("conv-42", caller_identity="alice")
+    assert len(got) == 2
+
+
+def test_candidates_are_idempotent_across_calls():
+    sb = _fresh_module()
+    a = sb.derive_session_id_candidates("conv-42", "alice", secret="new", prev_secret="old")
+    b = sb.derive_session_id_candidates("conv-42", "alice", secret="new", prev_secret="old")
+    assert a == b
+
+
+def test_note_prev_secret_hit_warns_on_first_and_re_arms(monkeypatch, caplog):
+    """note_prev_secret_hit fires one WARN on first hit; silent until the
+    re-arm interval, then WARN again. Avoids log flood while keeping the
+    signal alive for long-running rotation windows."""
+    monkeypatch.setenv("SESSION_PREV_HIT_WARN_REARM_EVERY", "3")
+    sb = _fresh_module()
+    with caplog.at_level(logging.WARNING, logger="session_binding"):
+        sb.note_prev_secret_hit("raw")  # hit 1 → WARN
+        sb.note_prev_secret_hit("raw")  # hit 2 → silent
+        sb.note_prev_secret_hit("raw")  # hit 3 → silent
+        sb.note_prev_secret_hit("raw")  # hit 4 → WARN (4 % 3 == 1, not 0). Wait — re-arm uses `count % every == 0` _before_ increment
+    warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    # The re-arm predicate is (count % every == 0) on the pre-increment
+    # counter, which fires at count values 0 and `every` and `2*every`.
+    # With every=3 and 4 calls: WARNs at call #1 (count 0→1) and #4 (count 3→4).
+    assert len(warnings) == 2
+
+
+def test_note_prev_secret_hit_does_not_log_raw_sid(monkeypatch, caplog):
+    """The WARN must not log the raw sid verbatim — only its length."""
+    sb = _fresh_module()
+    with caplog.at_level(logging.WARNING, logger="session_binding"):
+        sb.note_prev_secret_hit("should-not-appear-in-log")
+    joined = "\n".join(r.getMessage() for r in caplog.records)
+    assert "should-not-appear-in-log" not in joined
+    assert "raw_sid_len=" in joined
+
+
 if __name__ == "__main__":  # pragma: no cover
     sys.exit(pytest.main([__file__, "-q"]))

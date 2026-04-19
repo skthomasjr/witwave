@@ -2952,9 +2952,25 @@ class AgentExecutor(A2AAgentExecutor):
         # helper in shared/session_binding.py for the derivation rules.
         # Backward compatible: legacy derivation when SESSION_ID_SECRET
         # is unset.
-        from session_binding import derive_session_id as _derive_session_id
+        from session_binding import (
+            derive_session_id as _derive_session_id,
+            derive_session_id_candidates as _derive_session_id_candidates,
+            note_prev_secret_hit as _note_prev_secret_hit,
+        )
         _caller_id = metadata.get("caller_id") if isinstance(metadata.get("caller_id"), str) else None
-        session_id = _derive_session_id(_raw_sid, caller_identity=_caller_id)
+        # Probe-list rotation (#1042). If SESSION_ID_SECRET_PREV is set we
+        # compute both derivations and route resumption to whichever id
+        # has an existing history JSON on disk. Parity with the
+        # corresponding blocks in backends/{claude,codex}/executor.py.
+        _sid_candidates = _derive_session_id_candidates(_raw_sid, caller_identity=_caller_id)
+        session_id = _sid_candidates[0]
+        if len(_sid_candidates) > 1:
+            for _prev_sid in _sid_candidates[1:]:
+                if await asyncio.to_thread(_session_file_exists, _prev_sid):
+                    session_id = _prev_sid
+                    _note_prev_secret_hit(_raw_sid)
+                    break
+        _ = _derive_session_id  # noqa: F841 — retained import for future call sites
         model = metadata.get("model") or None
         # Shared parser lives in shared/validation.py (#537, #428).
         max_tokens = parse_max_tokens(
