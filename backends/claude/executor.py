@@ -919,17 +919,22 @@ def _make_pre_tool_use_hook(state: HookState, session_id_ref: dict | None = None
         # Wrapped in try/except because the hook must never fail on the
         # transport; the span event above is still the authoritative record.
         try:
+            # Prefer the backend-derived session_id (HMAC-bound via
+            # session_binding) so downstream subscribers correlate to
+            # persisted state; fall back to the SDK-supplied value only
+            # if no closure ref was passed (#871). An empty-string
+            # ref['value'] is treated as "ref present but not yet
+            # populated" — still respected rather than transparently
+            # falling back to input_data.session_id — so a future
+            # refactor that zeroes the ref does not silently revert
+            # hook payloads to the SDK-internal id (#984).
+            if session_id_ref is not None and "value" in session_id_ref:
+                _resolved_sid = session_id_ref.get("value") or ""
+            else:
+                _resolved_sid = input_data.get("session_id") or ""
             _event_dict = {
                 "agent": AGENT_OWNER or AGENT_NAME,
-                # Prefer the backend-derived session_id (HMAC-bound via
-                # session_binding) so downstream subscribers correlate to
-                # persisted state; fall back to the SDK-supplied value only
-                # if no closure ref was passed (#871).
-                "session_id": (
-                    (session_id_ref.get("value") if session_id_ref else None)
-                    or input_data.get("session_id")
-                    or ""
-                ),
+                "session_id": _resolved_sid,
                 "tool": tool_name or "",
                 "decision": decision,
                 "rule_name": (matched.name if matched is not None else ""),
