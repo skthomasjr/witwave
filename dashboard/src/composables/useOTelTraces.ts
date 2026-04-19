@@ -166,15 +166,21 @@ async function inClusterFetchList(
 ): Promise<JaegerResponse<JaegerTrace[]>> {
   const team = await fetchTeam(signal);
   if (!team.length) return { data: [], total: 0 };
-  // Extract the caller's ?limit= from the path so each per-agent
-  // result can be capped to the newest K traces before returning to
-  // the merge step (#746). Without the cap, a deep retention buffer
-  // on one agent dominates the merged result and every poll copies
-  // every span across the wire.
-  // Also parsed into `totalLimit` (#895) so the merged list is
-  // re-sliced to the caller's requested limit — previously 3 agents
-  // with limit=10 each returned up to 30 rows in the outer list.
-  let perAgentLimit = 500;
+  // Extract the caller's ?limit= from the path so the final merged
+  // result can be clamped to the caller's requested limit (#895).
+  // The per-agent cap is kept generous so cross-pod distributed
+  // traces don't lose spans when one agent's spans would fall
+  // outside a tight top-K window on a sibling agent (#1004). If
+  // agent A has top-10 spans and agent B's spans fall outside top-10,
+  // clamping each agent to 10 would drop B's contribution entirely
+  // from any trace both agents participated in.
+  //
+  // Formula: perAgentLimit = max(requested * FANOUT_FACTOR, MIN_PER_AGENT)
+  // — generous enough that cross-pod traces merge correctly, capped
+  // so a deep retention buffer on one agent doesn't dominate the wire.
+  const MIN_PER_AGENT_LIMIT = 500;
+  const FANOUT_FACTOR = 10;
+  let perAgentLimit = MIN_PER_AGENT_LIMIT;
   let totalLimit: number | null = null;
   try {
     const qIdx = path.indexOf("?");
@@ -184,8 +190,8 @@ async function inClusterFetchList(
       if (l !== null) {
         const n = Number.parseInt(l, 10);
         if (Number.isFinite(n) && n > 0) {
-          perAgentLimit = n;
           totalLimit = n;
+          perAgentLimit = Math.max(n * FANOUT_FACTOR, MIN_PER_AGENT_LIMIT);
         }
       }
     }
