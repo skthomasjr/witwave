@@ -37,14 +37,110 @@ interface DashboardClientError {
   ts: string;
 }
 
+// Rolling token-bucket throttle (#1060). A tight-loop error in a
+// component would otherwise flood console/log shippers and can itself
+// recurse through the unhandledrejection handler. We keep a per-key
+// (kind+message+stack-head) bucket capped at BUCKET_MAX entries within
+// BUCKET_WINDOW_MS; once exceeded, occurrences are rolled up into a
+// single suppression note. After STACK_DROP_AFTER stacks for the same
+// key we stop forwarding the stack payload to cap per-event size.
+const BUCKET_WINDOW_MS = 60_000;
+const BUCKET_MAX = 10;
+const STACK_DROP_AFTER = 3;
+const KEY_CACHE_MAX = 256;
+interface BucketState {
+  count: number;
+  stackSeen: number;
+  windowStart: number;
+  suppressed: number;
+}
+const errorBuckets = new Map<string, BucketState>();
+let inLogger = false;
+
+function stackHead(stack: string | undefined): string {
+  if (!stack) return "";
+  const nl = stack.indexOf("\n");
+  const first = nl === -1 ? stack : stack.slice(0, nl);
+  const after = nl === -1 ? "" : stack.slice(nl + 1, nl + 200);
+  return (first.slice(0, 120) + "|" + after.slice(0, 120)).trim();
+}
+
+function bucketKey(
+  kind: DashboardClientError["kind"],
+  message: string,
+  stack: string | undefined,
+): string {
+  return kind + "::" + (message || "").slice(0, 200) + "::" + stackHead(stack);
+}
+
 function logClientError(payload: DashboardClientError): void {
-  // Single entry, stringified JSON so log shippers can parse.
+  if (inLogger) {
+    return;
+  }
+  inLogger = true;
   try {
-    console.error("[dashboard.client_error] " + JSON.stringify(payload));
+    const key = bucketKey(payload.kind, payload.message, payload.stack);
+    const now = Date.now();
+    let bucket = errorBuckets.get(key);
+    if (!bucket || now - bucket.windowStart > BUCKET_WINDOW_MS) {
+      if (bucket && bucket.suppressed > 0) {
+        try {
+          console.error(
+            "[dashboard.client_error.suppressed] " +
+              JSON.stringify({
+                key,
+                suppressed: bucket.suppressed,
+                windowMs: BUCKET_WINDOW_MS,
+              }),
+          );
+        } catch {
+          /* ignore */
+        }
+      }
+      bucket = { count: 0, stackSeen: 0, windowStart: now, suppressed: 0 };
+      errorBuckets.set(key, bucket);
+      if (errorBuckets.size > KEY_CACHE_MAX) {
+        errorBuckets.clear();
+        errorBuckets.set(key, bucket);
+      }
+    }
+    bucket.count += 1;
+    if (bucket.count > BUCKET_MAX) {
+      bucket.suppressed += 1;
+      return;
+    }
+    const out: DashboardClientError = { ...payload };
+    if (bucket.stackSeen >= STACK_DROP_AFTER) {
+      delete out.stack;
+    } else if (out.stack) {
+      bucket.stackSeen += 1;
+    }
+    try {
+      console.error("[dashboard.client_error] " + JSON.stringify(out));
+    } catch {
+      console.error("[dashboard.client_error] (non-serialisable payload)");
+    }
   } catch {
-    console.error("[dashboard.client_error] (non-serialisable payload)");
+    // Sink must never throw up the stack.
+  } finally {
+    inLogger = false;
   }
 }
+
+// Exposed for tests only.
+export const __errorSinkInternals = {
+  reset(): void {
+    errorBuckets.clear();
+    inLogger = false;
+  },
+  snapshot(): Map<string, BucketState> {
+    return new Map(errorBuckets);
+  },
+  BUCKET_MAX,
+  STACK_DROP_AFTER,
+  BUCKET_WINDOW_MS,
+  logClientError,
+};
 
 app.config.errorHandler = (err, instance, info) => {
   const e = err as Error;

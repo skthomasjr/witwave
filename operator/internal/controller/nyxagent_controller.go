@@ -658,27 +658,20 @@ func (r *NyxAgentReconciler) reconcileManifestConfigMap(ctx context.Context, age
 	// returns only NyxAgents that share this agent's team label
 	// (including the empty-string grouping when the label is absent),
 	// so a namespace of hundreds of unrelated agents no longer lands a
-	// full-namespace List on every manifest reconcile.  Falls back to
-	// the legacy full-List path when the index is missing.
+	// full-namespace List on every manifest reconcile.
 	//
-	// Cache-bypass (#900): membership that drives the manifest CM must
-	// reflect the authoritative apiserver state, not the informer cache.
-	// During rapid create bursts (A and B created back-to-back) the
-	// cache delivery of B's add-event can lag the reconcile of A,
-	// causing A to rewrite the CM with {A} and drop B's ownerRef until
-	// an unrelated event re-fires. APIReader (mgr.GetAPIReader()) is a
-	// direct-from-apiserver client. Note: APIReader does not support
-	// field selectors over custom indices, so we always List by
-	// namespace and filter by teamKey() in memory on this path. The
-	// informer-cache path below is kept as a fallback for unit tests
-	// that construct the reconciler without an APIReader.
+	// Cache-first (#1066): the prior #900 implementation unconditionally
+	// used APIReader (direct apiserver) for every manifest reconcile,
+	// scaling O(agents × reconciles) in namespace LIST QPS and
+	// regressing the #753 index. We now default to the cached, scoped
+	// List and escalate to APIReader only when the cached snapshot
+	// omits *self* — the narrow race the #900 cache-bypass was added
+	// to cover (rapid create-burst where the informer cache has not
+	// yet delivered this agent's own add-event).
 	wantTeam := teamKey(agent)
 	allAgents := &nyxv1alpha1.NyxAgentList{}
-	if r.APIReader != nil {
-		if err := r.APIReader.List(ctx, allAgents, client.InNamespace(agent.Namespace)); err != nil {
-			return fmt.Errorf("list NyxAgents for manifest (live): %w", err)
-		}
-	} else if err := r.List(ctx, allAgents,
+	listedViaCache := false
+	if err := r.List(ctx, allAgents,
 		client.InNamespace(agent.Namespace),
 		client.MatchingFields{NyxAgentTeamIndex: wantTeam},
 	); err != nil {
@@ -694,6 +687,24 @@ func (r *NyxAgentReconciler) reconcileManifestConfigMap(ctx context.Context, age
 		if err := r.List(ctx, allAgents, client.InNamespace(agent.Namespace)); err != nil {
 			return fmt.Errorf("list NyxAgents for manifest: %w", err)
 		}
+		listedViaCache = true
+	} else {
+		listedViaCache = true
+	}
+
+	// Cache-miss-self escalation (#1066): if the cached snapshot does
+	// not include this agent's own UID, the informer is lagging the
+	// authoritative apiserver state and writing the CM now would drop
+	// self's ownerRef. Fall through to an APIReader-backed List
+	// exactly once. APIReader does not support field selectors over
+	// custom indices, so we List by namespace and filter by teamKey()
+	// in the existing in-memory loop below.
+	if listedViaCache && r.APIReader != nil && !listContainsSelf(allAgents, agent) {
+		live := &nyxv1alpha1.NyxAgentList{}
+		if err := r.APIReader.List(ctx, live, client.InNamespace(agent.Namespace)); err != nil {
+			return fmt.Errorf("list NyxAgents for manifest (live escalation): %w", err)
+		}
+		allAgents = live
 	}
 
 	var members []manifestMember
