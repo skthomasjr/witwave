@@ -24,6 +24,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -61,6 +62,7 @@ func (r *NyxAgentReconciler) reconcileMCPTools(ctx context.Context, agent *nyxv1
 		candidates := map[string]*nyxv1alpha1.MCPToolSpec{
 			"kubernetes": agent.Spec.MCPTools.Kubernetes,
 			"helm":       agent.Spec.MCPTools.Helm,
+			"prometheus": agent.Spec.MCPTools.Prometheus,  // #1354
 		}
 		for name, tool := range candidates {
 			if tool != nil && tool.Enabled {
@@ -264,14 +266,9 @@ func (r *NyxAgentReconciler) applyMCPToolDeployment(ctx context.Context, agent *
 						// kubelet probes succeed under MCP_TOOL_AUTH_TOKEN.
 						// If that contract changes, either expose a token
 						// ref on MCPToolSpec or switch probes to TCP.
-						ReadinessProbe: &corev1.Probe{
-							ProbeHandler: corev1.ProbeHandler{
-								HTTPGet: &corev1.HTTPGetAction{
-									Path: "/health",
-									Port: intstr.FromInt(int(mcpToolPort)),
-								},
-							},
-						},
+						ReadinessProbe: mcpToolReadinessProbe(spec),
+						LivenessProbe:  mcpToolLivenessProbe(spec),
+						Resources:      mcpToolResources(spec),
 					}},
 				},
 			},
@@ -284,6 +281,55 @@ func (r *NyxAgentReconciler) applyMCPToolDeployment(ctx context.Context, agent *
 	// the MCP render path too; the agent controller owns only the fields
 	// it stamps, leaving HPA / GitOps free to claim others.
 	return applySSA(ctx, r.Client, desired)
+}
+
+// mcpToolReadinessProbe returns the user's override if set, else a
+// sensible default that tolerates cold-start kube discovery (#1353).
+func mcpToolReadinessProbe(spec *nyxv1alpha1.MCPToolSpec) *corev1.Probe {
+	if spec != nil && spec.ReadinessProbe != nil {
+		return spec.ReadinessProbe
+	}
+	return &corev1.Probe{
+		ProbeHandler: corev1.ProbeHandler{
+			HTTPGet: &corev1.HTTPGetAction{
+				Path: "/health",
+				Port: intstr.FromInt(int(mcpToolPort)),
+			},
+		},
+		// #1353 defaults: absorb ~10s kube-discovery cold start.
+		InitialDelaySeconds: 5,
+		PeriodSeconds:       10,
+		TimeoutSeconds:      3,
+		FailureThreshold:    6,
+		SuccessThreshold:    1,
+	}
+}
+
+// mcpToolLivenessProbe returns the user's override or nil (no liveness
+// by default — readiness alone handles cold-start churn). (#1353)
+func mcpToolLivenessProbe(spec *nyxv1alpha1.MCPToolSpec) *corev1.Probe {
+	if spec != nil && spec.LivenessProbe != nil {
+		return spec.LivenessProbe
+	}
+	return nil
+}
+
+// mcpToolResources returns the user's override or a sensible default
+// that gets the pod out of BestEffort QoS (#1353).
+func mcpToolResources(spec *nyxv1alpha1.MCPToolSpec) corev1.ResourceRequirements {
+	if spec != nil && spec.Resources != nil {
+		return *spec.Resources
+	}
+	return corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("50m"),
+			corev1.ResourceMemory: resource.MustParse("64Mi"),
+		},
+		Limits: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("500m"),
+			corev1.ResourceMemory: resource.MustParse("256Mi"),
+		},
+	}
 }
 
 // mcpToolEnv builds the env slice for an MCP tool container. Projects

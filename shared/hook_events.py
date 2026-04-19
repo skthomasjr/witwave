@@ -154,6 +154,9 @@ _warned_url_unset: bool = False
 # falls back to :func:`asyncio.run_coroutine_threadsafe` against this
 # reference so the coroutine still lands on the backend's main loop.
 _bound_loop: "asyncio.AbstractEventLoop | None" = None
+# #1362: one-shot WARN when threadsafe dispatch path is reached but
+# bind_event_loop was never called — otherwise trace.span silently drops.
+_NO_LOOP_WARNED: bool = False
 
 
 def _build_iso_ts() -> str:
@@ -546,7 +549,20 @@ def schedule_event_post(
                     except Exception:  # pragma: no cover
                         _INFLIGHT_CF.discard(cf)
                     return True
-                # No loop bound — silent drop (module imported in tests, etc.).
+                # #1362: one-shot WARN so operators see the gap. A
+                # new backend that forgets to call bind_event_loop()
+                # otherwise silently drops trace.span events forever.
+                global _NO_LOOP_WARNED
+                if not _NO_LOOP_WARNED:
+                    _NO_LOOP_WARNED = True
+                    logger.warning(
+                        "shared/hook_events: schedule_event_post called "
+                        "from worker thread but bind_event_loop() was "
+                        "never called — trace.span events will be "
+                        "dropped silently until wired. Fix: call "
+                        "bind_event_loop(asyncio.get_running_loop()) "
+                        "during backend startup."
+                    )
                 return False
             _INFLIGHT.add(t)
             _over_cap = False

@@ -19,6 +19,13 @@ spec:
                serviceMesh.enabled pair lights up both charts. */}}
         {{- if (.Values.serviceMesh).enabled }}
         {{- $type := (.Values.serviceMesh.type | default "none" | toString | lower) }}
+        {{/* #1392: fail loudly on unknown types so a typo like "Linkerd"
+             (capital L) doesn't silently no-op. Keep "none" as a valid
+             sentinel (enabled=true + type=none is still wrong; caught). */}}
+        {{- $validTypes := list "linkerd" "istio" "none" }}
+        {{- if not (has $type $validTypes) }}
+        {{- fail (printf "serviceMesh.type=%q is not in %v (case-sensitive lowercase). See #1392." $type $validTypes) }}
+        {{- end }}
         {{- if eq $type "linkerd" }}
         linkerd.io/inject: enabled
         {{- end }}

@@ -111,6 +111,9 @@ harness_webhooks_delivery_shed_total: prometheus_client.Counter | None = None
 harness_webhooks_parse_errors_total: prometheus_client.Counter | None = None
 harness_webhooks_reloads_total: prometheus_client.Counter | None = None
 harness_webhooks_items_registered: prometheus_client.Gauge | None = None
+# #1389: count body-size-cap truncations per subscription so operators
+# alert on malformed bodies downstream.
+harness_webhooks_body_truncated_total: prometheus_client.Counter | None = None
 harness_consensus_runs_total: prometheus_client.Counter | None = None
 harness_consensus_backend_errors_total: prometheus_client.Counter | None = None
 harness_metrics_backend_fetch_errors_total: prometheus_client.Counter | None = None
@@ -662,6 +665,13 @@ if _enabled:
     harness_webhooks_items_registered = prometheus_client.Gauge(
         "harness_webhooks_items_registered",
         "Number of currently registered webhook subscriptions.",
+    )
+    # #1389: body-truncation counter.
+    harness_webhooks_body_truncated_total = prometheus_client.Counter(
+        "harness_webhooks_body_truncated_total",
+        "Total outbound webhook deliveries where the body was truncated "
+        "to the 256 KiB cap (downstream may see malformed JSON).",
+        ["subscription"],
     )
     harness_consensus_runs_total = prometheus_client.Counter(
         "harness_consensus_runs_total",

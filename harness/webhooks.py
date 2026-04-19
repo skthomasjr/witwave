@@ -45,6 +45,7 @@ from events import get_event_stream
 from tracing import inject_traceparent, set_span_error, start_span
 from metrics import (
     harness_file_watcher_restarts_total,
+    harness_webhooks_body_truncated_total,
     harness_webhooks_delivery_shed_total,
     harness_webhooks_delivery_total,
     harness_webhooks_items_registered,
@@ -1094,6 +1095,27 @@ async def deliver(
     # Cap at 256 KiB — decode back after slicing to avoid splitting multi-byte sequences
     body_bytes = body.encode("utf-8")
     if len(body_bytes) > 256 * 1024:
+        # #1389: surface truncation so operators see when downstream
+        # receivers get a malformed body. Log once per sub (stashed on
+        # the sub object); also bump a metric counter.
+        _prev = getattr(sub, "_truncation_warned", False)
+        if not _prev:
+            logger.warning(
+                "Webhook '%s': body truncated from %d to 262144 bytes — "
+                "receiver may see malformed JSON. (#1389)",
+                sub.name, len(body_bytes),
+            )
+            try:
+                sub._truncation_warned = True  # type: ignore[attr-defined]
+            except Exception:
+                pass
+        if harness_webhooks_body_truncated_total is not None:
+            try:
+                harness_webhooks_body_truncated_total.labels(
+                    subscription=sub.name
+                ).inc()
+            except Exception:
+                pass
         body_bytes = body_bytes[: 256 * 1024].decode("utf-8", errors="ignore").encode("utf-8")
 
     # Build headers — resolve {{env.VAR}} and context variables

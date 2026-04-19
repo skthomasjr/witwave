@@ -148,8 +148,14 @@ def parse_frontmatter_raw(raw: str) -> tuple[dict, str]:
 # full re-read each runner did on every watcher tick (#1038). The cache
 # keys include both mtime and size so a writer that patches a file
 # without bumping mtime (rare) still invalidates correctly.
-_MD_CACHE: dict[str, tuple[int, int, str]] = {}
+# #1388: switched to OrderedDict for LRU (move-on-hit + popitem-oldest)
+# instead of FIFO which would evict the oldest inserted regardless of
+# recent access. Also tracks an eviction counter so operators can alert
+# on cache thrash (>1024 md files in a watched tree).
+from collections import OrderedDict
+_MD_CACHE: "OrderedDict[str, tuple[int, int, str]]" = OrderedDict()
 _MD_CACHE_MAX = int(os.environ.get("PARSE_FRONTMATTER_CACHE_MAX", "1024"))
+_MD_CACHE_EVICTIONS = 0  # read by metrics.py via `read_md_cache_evictions_total`
 
 
 def read_md_bounded(path: str) -> str | None:
@@ -186,6 +192,9 @@ def read_md_bounded(path: str) -> str | None:
 
     cached = _MD_CACHE.get(path)
     if cached is not None and cached[0] == st.st_mtime_ns and cached[1] == st.st_size:
+        # #1388: LRU move-on-hit so an actively-read path isn't evicted
+        # just because an unrelated hot path inserted recently.
+        _MD_CACHE.move_to_end(path)
         return cached[2]
 
     try:
@@ -200,12 +209,14 @@ def read_md_bounded(path: str) -> str | None:
         _MD_CACHE.pop(path, None)
         return None
 
-    # Evict oldest entry on overflow (simple FIFO — cache is mostly
-    # warm-on-startup and stable across ticks, so LRU would be overkill).
+    # #1388: LRU eviction of the least-recently-used entry; also bump
+    # the module-level counter so metrics can alert on thrash.
     if len(_MD_CACHE) >= _MD_CACHE_MAX:
         try:
-            _MD_CACHE.pop(next(iter(_MD_CACHE)))
-        except StopIteration:
+            _MD_CACHE.popitem(last=False)
+            global _MD_CACHE_EVICTIONS
+            _MD_CACHE_EVICTIONS += 1
+        except KeyError:
             pass
     _MD_CACHE[path] = (st.st_mtime_ns, st.st_size, raw)
     return raw

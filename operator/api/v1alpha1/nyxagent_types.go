@@ -1249,6 +1249,12 @@ type MCPToolsSpec struct {
 	// `helm` CLI). Off by default.
 	// +optional
 	Helm *MCPToolSpec `json:"helm,omitempty"`
+
+	// Prometheus renders the `mcp-prometheus` tool (PromQL query surface).
+	// Off by default. (#1354 stopgap — a future v1 should reshape to
+	// map[string]*MCPToolSpec so new tools are additive without CRD bumps.)
+	// +optional
+	Prometheus *MCPToolSpec `json:"prometheus,omitempty"`
 }
 
 // MCPToolSpec is the per-tool knob set. Scaffold scope (#830): Enabled,
@@ -1281,11 +1287,41 @@ type MCPToolSpec struct {
 	// +optional
 	AuthTokenSecretRef *corev1.SecretKeySelector `json:"authTokenSecretRef,omitempty"`
 
+	// #1355 SECURITY NOTE: The cluster-scoped ServiceAccount pattern
+	// (when NyxAgent uses an SA with apiserver permissions for MCP
+	// tool access) mounts the SA token into EVERY pod container —
+	// including the backend containers (claude/codex/gemini). A
+	// prompt-injection compromise of a backend can read
+	// /var/run/secrets/kubernetes.io/serviceaccount/token and make
+	// authenticated apiserver calls directly, bypassing every MCP
+	// tool allow-list. PREFERRED recipe: deploy MCP tools as their
+	// own separately-scoped pods (chart default) and have backends
+	// reach them via the cluster-shared Service. Document this in
+	// operator/README.md §security-posture.
 	// AuthDisabled acknowledges that MCP_TOOL_AUTH_TOKEN is intentionally
 	// not set for this tool. Useful for local dev. The mcp_auth middleware
 	// logs a loud WARN at startup when this is true. (#1331)
 	// +optional
 	AuthDisabled bool `json:"authDisabled,omitempty"`
+
+	// Resources sets the container's resource requests/limits. When unset
+	// the operator emits BestEffort QoS; noisy-neighbour evictions hit
+	// MCP tools first. Chart-rendered MCP tools already expose this via
+	// mcpTools.<name>.resources. (#1353)
+	// +optional
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+
+	// ReadinessProbe overrides the default HTTP GET on /health with no
+	// initialDelaySeconds. Large-cluster kube discovery can take >1s at
+	// cold start; the default probe times out and CrashLoops the pod
+	// before discovery completes. Chart-rendered parity ships tunable
+	// probes; operator path now does too. (#1353)
+	// +optional
+	ReadinessProbe *corev1.Probe `json:"readinessProbe,omitempty"`
+
+	// LivenessProbe overrides the default. Absent by default. (#1353)
+	// +optional
+	LivenessProbe *corev1.Probe `json:"livenessProbe,omitempty"`
 }
 
 // +kubebuilder:object:root=true

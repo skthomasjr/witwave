@@ -30,11 +30,33 @@ TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
 _HTTP_TIMEOUT_SECONDS = max(TASK_TIMEOUT_SECONDS - 10, 10)
 
 # Retry configuration for transient network errors.
-_MAX_RETRIES = int(os.environ.get("A2A_BACKEND_MAX_RETRIES", "3"))
-if _MAX_RETRIES < 1:
-    raise ValueError(f"A2A_BACKEND_MAX_RETRIES must be >= 1, got {_MAX_RETRIES}")
-if _MAX_RETRIES > 10:
-    logging.getLogger(__name__).warning("A2A_BACKEND_MAX_RETRIES=%d is unusually high", _MAX_RETRIES)
+def _resolve_max_retries() -> int:
+    """Parse A2A_BACKEND_MAX_RETRIES tolerant of bad values (#1387).
+
+    A chart-values typo used to crash the harness into CrashLoopBackoff
+    via a stack trace at module import. Now falls back to default 3 and
+    logs a WARN so operators can still see the misconfig.
+    """
+    _log = logging.getLogger(__name__)
+    _raw = os.environ.get("A2A_BACKEND_MAX_RETRIES", "3")
+    try:
+        val = int(_raw)
+    except (TypeError, ValueError):
+        _log.warning(
+            "A2A_BACKEND_MAX_RETRIES=%r is not an int — falling back to 3", _raw
+        )
+        return 3
+    if val < 1:
+        _log.warning(
+            "A2A_BACKEND_MAX_RETRIES=%d < 1 — falling back to 3", val
+        )
+        return 3
+    if val > 10:
+        _log.warning("A2A_BACKEND_MAX_RETRIES=%d is unusually high", val)
+    return val
+
+
+_MAX_RETRIES = _resolve_max_retries()
 _RETRY_BACKOFF_BASE = float(os.environ.get("A2A_BACKEND_RETRY_BACKOFF", "1.0"))
 
 # Transient status codes that are safe to retry.
@@ -139,7 +161,15 @@ class A2ABackend:
         # server-minted value on subsequent turns. Previously every
         # outbound call reused session_id as contextId, which collides
         # with whatever id the remote backend would have chosen itself.
-        self._session_has_context: set[str] = set()
+        # #1360: bounded LRU so a long-lived harness fielding many
+        # one-shot sessions (per-trigger uuid4) doesn't grow the set
+        # to tens of MB across days. OrderedDict preserves insertion
+        # order; we move_to_end on hit, popitem(last=False) on cap.
+        from collections import OrderedDict
+        self._session_has_context: "OrderedDict[str, None]" = OrderedDict()
+        self._session_has_context_max: int = int(
+            os.environ.get("A2A_SESSION_CONTEXT_CACHE_MAX", "10000")
+        )
         # Initialize gauge labels so scrapes see this backend even before its
         # first request — absent series are harder to alert on than 0-valued
         # ones.
@@ -405,7 +435,13 @@ class A2ABackend:
             # session on a successful response; failures don't promote
             # the session to "has context" since the server may not have
             # persisted anything.
-            self._session_has_context.add(session_id)
+            # #1360: LRU-insert with bounded cap.
+            if session_id in self._session_has_context:
+                self._session_has_context.move_to_end(session_id)
+            else:
+                self._session_has_context[session_id] = None
+                while len(self._session_has_context) > self._session_has_context_max:
+                    self._session_has_context.popitem(last=False)
             # Record a successful outcome so the failure counter resets
             # and the breaker closes from half_open if applicable.
             await self._circuit_record(ok=True)

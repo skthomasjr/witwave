@@ -286,6 +286,14 @@ _SHELL_ENV_DENYLIST: frozenset[str] = frozenset({
 # ``backend_hooks_denials_total{rule=...}`` label keeps cross-backend
 # dashboard parity, while the comment block above documents the real
 # scope.
+#
+# #1350: These rules are ADVISORY-not-enforcement. The ``baseline-*``
+# prefix on the metric label is load-bearing for dashboard parity, so
+# renaming is a breaking change. Operators reading dashboards must
+# understand that shell access is trivially bypassable (sh -c, heredoc,
+# env substitution) — the rules filter fat-finger mistakes, not a
+# determined attacker. The alerts-runbook and AGENTS.md call this out
+# explicitly; the rule name alone is not a contract.
 _SHELL_DENY_RULES: tuple[tuple[str, "re.Pattern[str]", str], ...] = (
     (
         "baseline-rm-rf-root",

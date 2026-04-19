@@ -121,6 +121,22 @@ _MCP_REQUEST_TIMEOUT_SECONDS = float(
     os.environ.get("MCP_SUBPROCESS_TIMEOUT_SEC") or "30"
 )
 
+
+# #1398: module-level shared httpx.Client so TLS handshakes + connection
+# pool amortise across queries. Lazy init keeps import-time cheap and
+# defers failure to first use.
+_SHARED_HTTPX_CLIENT: "httpx.Client | None" = None
+
+
+def _get_shared_httpx_client() -> "httpx.Client":
+    global _SHARED_HTTPX_CLIENT
+    if _SHARED_HTTPX_CLIENT is None:
+        _SHARED_HTTPX_CLIENT = httpx.Client(
+            timeout=_MCP_REQUEST_TIMEOUT_SECONDS,
+            limits=httpx.Limits(max_connections=50, max_keepalive_connections=10),
+        )
+    return _SHARED_HTTPX_CLIENT
+
 # Per-response byte cap on tool output (#778 parity). Prometheus query
 # results can be arbitrarily large (a range query over a long window
 # with high-cardinality labels returns MBs of JSON); cap so one bad
@@ -205,10 +221,14 @@ def _prom_get(endpoint: str, params: dict[str, Any]) -> Any:
         # parse JSON, but we guarantee the buffer cannot exceed the cap.
         cap = _MCP_PROM_MAX_RESPONSE_BYTES
         try:
-            with httpx.Client(timeout=_MCP_REQUEST_TIMEOUT_SECONDS) as client:
-                with client.stream(
-                    "GET", url, params=clean_params, headers=headers
-                ) as resp:
+            # #1398: use a module-level httpx.Client so TLS handshakes +
+            # connection pool amortise across queries. Fresh-per-call
+            # construction defeats keep-alive and burns CPU on concurrent
+            # load. Lazy-init keeps import-time cheap.
+            _client = _get_shared_httpx_client()
+            with _client.stream(
+                "GET", url, params=clean_params, headers=headers
+            ) as resp:
                     status = resp.status_code
                     buf = bytearray()
                     truncated = False
