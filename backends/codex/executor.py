@@ -97,7 +97,9 @@ from metrics import (
     backend_codex_hooks_denials_total,
     backend_hooks_denials_total,
     backend_hooks_shed_total,
+    backend_tool_audit_bytes_per_entry,
     backend_tool_audit_entries_total,
+    backend_tool_audit_rotation_pressure_total,
 )
 
 from log_utils import _append_log
@@ -365,6 +367,9 @@ async def _append_tool_audit(entry: dict) -> None:
                 log_bytes_total=backend_log_bytes_total,
                 log_write_errors_total=backend_log_write_errors_total,
                 log_write_errors_by_logger_total=backend_log_write_errors_by_logger_total,
+                # #1102: size / rotation observability on tool-activity.jsonl.
+                tool_audit_bytes_per_entry=backend_tool_audit_bytes_per_entry,
+                tool_audit_rotation_pressure_total=backend_tool_audit_rotation_pressure_total,
             ),
         ),
         entry,
