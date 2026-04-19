@@ -20,6 +20,11 @@ replicaCount: 1
 # managed out-of-band (e.g. via argocd sync waves or a separate release).
 # When disabled, the operator still runs but will fail to reconcile any
 # NyxAgent until its CRD is present in the cluster.
+# Kept for values backward compatibility. CRDs now ship in charts/nyx-operator/crds/
+# (native Helm CRD dir) and are installed/updated by Helm ahead of any template
+# render, which resolves the install-time ordering race between CRD creation
+# and webhook admission (#1075). This flag is no longer consulted by any
+# template; set to false only if your downstream tooling still reads it.
 installCRDs: true
 
 # RBAC — when false the chart skips ClusterRole/ClusterRoleBinding/Role

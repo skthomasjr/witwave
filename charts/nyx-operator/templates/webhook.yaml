@@ -124,10 +124,16 @@ apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
   name: {{ printf "%s-mutating" $fullName }}
-  {{- if $cm }}
   annotations:
+    {{- if $cm }}
     cert-manager.io/inject-ca-from: {{ $caInject | quote }}
-  {{- end }}
+    {{- end }}
+    # #1075: checksum annotation on the webhook bundle forces a roll of
+    # the MWC whenever the rendered config (including caBundle under BYO
+    # mode) changes. Without this, a rotated Secret + helm upgrade would
+    # leave the MWC pinned at the old CA and every admission call would
+    # 500 until the admin force-deleted the MWC.
+    nyx.ai/webhook-cert-checksum: {{ printf "%v|%v|%v" (default "" .Values.webhooks.caBundle) (default "" .Values.webhooks.existingSecret) (default "" .Values.webhooks.certManager.enabled) | sha256sum }}
   labels:
     {{- include "nyx-operator.labels" . | nindent 4 }}
     app.kubernetes.io/component: webhook
@@ -154,10 +160,12 @@ apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
   name: {{ printf "%s-validating" $fullName }}
-  {{- if $cm }}
   annotations:
+    {{- if $cm }}
     cert-manager.io/inject-ca-from: {{ $caInject | quote }}
-  {{- end }}
+    {{- end }}
+    # #1075: see MWC above for the rationale.
+    nyx.ai/webhook-cert-checksum: {{ printf "%v|%v|%v" (default "" .Values.webhooks.caBundle) (default "" .Values.webhooks.existingSecret) (default "" .Values.webhooks.certManager.enabled) | sha256sum }}
   labels:
     {{- include "nyx-operator.labels" . | nindent 4 }}
     app.kubernetes.io/component: webhook

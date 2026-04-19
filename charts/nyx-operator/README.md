@@ -68,7 +68,7 @@ kubectl delete crd nyxagents.nyx.ai
 | `image.pullPolicy`           | Image pull policy                                                                            | `IfNotPresent`                              |
 | `imagePullSecrets`           | Image pull secrets for the controller pod                                                    | `[]`                                        |
 | `replicaCount`               | Number of controller manager replicas                                                        | `1`                                         |
-| `installCRDs`                | Install the `nyxagents.nyx.ai` CRD with the chart                                            | `true`                                      |
+| `installCRDs`                | Deprecated (#1075). CRDs ship under `charts/nyx-operator/crds/` and are installed by Helm ahead of any template, bypassing the install-time webhook/CRD ordering race. The flag is no longer consulted by any template. | `true` |
 | `rbac.create`                | Create the ClusterRole/ClusterRoleBinding and leader-election Role/RoleBinding               | `true`                                      |
 | `rbac.scope`                 | `cluster` (install a ClusterRole + ClusterRoleBinding, operator watches all namespaces) or `namespace` (install a Role + RoleBinding per `rbac.watchNamespaces` entry; ClusterRole is skipped) (#532) | `cluster`                       |
 | `rbac.watchNamespaces`       | Namespaces the operator watches when `rbac.scope=namespace`. Each entry receives a per-namespace Role + RoleBinding. Empty falls back to the release namespace. Ignored when `rbac.scope=cluster` | `[]`                               |

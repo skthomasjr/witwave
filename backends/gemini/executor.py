@@ -779,6 +779,17 @@ _SAVE_HISTORY_MAX_TURNS = int(os.environ.get("GEMINI_MAX_HISTORY_TURNS", "100"))
 # still lands on a safe user-turn boundary.
 _SAVE_HISTORY_MAX_BYTES = int(os.environ.get("GEMINI_MAX_HISTORY_BYTES", str(256 * 1024)))
 
+# #1058: AFC per-turn soft cap on chat.history growth. AFC ping-pong is
+# internal to send_message_stream; a runaway tool loop could accumulate
+# megabytes of tool-call/response rows before _emit_afc_history has a
+# chance to slice and persist. Check chat.history byte size on each
+# streamed chunk and raise BudgetExceededError early once we cross the
+# cap. Default 2 MiB (~8x _SAVE_HISTORY_MAX_BYTES) so normal AFC loops
+# complete; set to 0 to disable.
+_AFC_HISTORY_SOFT_CAP_BYTES = int(
+    os.environ.get("GEMINI_AFC_HISTORY_SOFT_CAP_BYTES", str(2 * 1024 * 1024))
+)
+
 
 def _write_history_to_disk(tmp_path: str, path: str, raw: list) -> None:
     """Write serialized history to disk atomically (blocking I/O, run in a thread)."""
@@ -1434,6 +1445,39 @@ async def run_query(
                         if backend_budget_exceeded_total is not None:
                             backend_budget_exceeded_total.labels(**_LABELS).inc()
                         raise BudgetExceededError(_total_tokens, max_tokens, list(collected))
+                    # #1058: AFC history soft cap. Estimate current
+                    # chat.history footprint and raise BudgetExceededError
+                    # early if an AFC ping-pong loop is accumulating
+                    # unbounded tool-call/result rows inside the SDK. Use
+                    # a cheap per-chunk sampling rate (every 4th chunk)
+                    # to avoid running a sizeof over multi-MB history on
+                    # every token; still catches runaway growth within a
+                    # few chunks of crossing the cap.
+                    if (
+                        _AFC_HISTORY_SOFT_CAP_BYTES > 0
+                        and (_message_count & 0x3) == 0
+                    ):
+                        try:
+                            _hist_bytes = sum(
+                                len(repr(_h)) for _h in (chat.history or [])
+                            )
+                        except Exception:
+                            _hist_bytes = 0
+                        if _hist_bytes >= _AFC_HISTORY_SOFT_CAP_BYTES:
+                            logger.warning(
+                                "Session %r: AFC history soft cap tripped "
+                                "(~%d bytes >= %d) — aborting turn before "
+                                "truncation runs post-hoc. (#1058)",
+                                session_id, _hist_bytes, _AFC_HISTORY_SOFT_CAP_BYTES,
+                            )
+                            if backend_budget_exceeded_total is not None:
+                                try:
+                                    backend_budget_exceeded_total.labels(**_LABELS).inc()
+                                except Exception:
+                                    pass
+                            raise BudgetExceededError(
+                                _total_tokens, max_tokens or 0, list(collected)
+                            )
                 _turn_count = 1
             except BudgetExceededError as exc:
                 if backend_sdk_session_duration_seconds is not None:
