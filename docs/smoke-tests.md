@@ -208,7 +208,7 @@ Planned additions. Kept here so the intent stays visible without cluttering the 
 | **Concurrent load ordering** | Multiple jobs firing at the same cron tick all complete without scheduler interleaving bugs | Needs 3+ jobs with identical `schedule:` plus log-ordering assertions the doc can explain clearly |
 | **Session persistence across pod restart** | Session ID and memory survive a pod restart (PVC persistence works end-to-end) | Requires manual deploy-time choreography — seed session, restart pod, verify memory — not a single-file change |
 | **Per-message `model` override via A2A metadata** | `metadata.model` on an inbound A2A request overrides the routing default and lands in the log | Triggers don't yet propagate `metadata.model` from the HTTP payload to the dispatch; needs trigger-side plumbing before a smoke test fits |
-| **Gemini backend parity** | `backend-check-gemini`, `model-check-gemini-*`, `animal-memory-gemini`, `ping-gemini` | Gemini backend is not supported yet (no account); add once supported |
+| **Gemini backend parity** | `backend-check-gemini`, `model-check-gemini-*`, `animal-memory-gemini`, `ping-gemini` | Gemini backend is supported; the gap is a deployed test agent — `.agents/test/luke/` is scaffolded but not yet wired into `charts/nyx/values-test.yaml`. Once `luke` (or `bob-gemini`) lands in the test chart, promote these rows into the active tables. |
 
 ### Not a fit for this document
 
