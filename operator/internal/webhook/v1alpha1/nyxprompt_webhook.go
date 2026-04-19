@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	nyxv1alpha1 "github.com/nyx-ai/nyx-operator/api/v1alpha1"
+	"github.com/nyx-ai/nyx-operator/internal/controller"
 )
 
 // +kubebuilder:webhook:path=/validate-nyx-ai-v1alpha1-nyxprompt,mutating=false,failurePolicy=fail,sideEffects=None,groups=nyx.ai,resources=nyxprompts,verbs=create;update,versions=v1alpha1,name=vnyxprompt.kb.io,admissionReviewVersions=v1
@@ -211,13 +212,17 @@ func (v *NyxPromptCustomValidator) validateHeartbeatSingleton(ctx context.Contex
 			client.MatchingFields{NyxPromptHeartbeatAgentIndex: myRef.Name},
 		)
 		if err != nil {
-			// An indexer lookup error may mean the index wasn't registered
-			// (controller-runtime returns a typed error referencing the
-			// missing field). Fall through to the legacy path rather than
-			// failing admission — this keeps unit tests that skip the
-			// manager bootstrap working and is safe because the legacy
-			// path is semantically identical, just slower.
-			if strings.Contains(err.Error(), NyxPromptHeartbeatAgentIndex) {
+			// An indexer lookup error may mean the index wasn't registered.
+			// Previously we substring-matched the raw error text for the
+			// field name, which is brittle against controller-runtime /
+			// client-go error-message reformats — a failed match with
+			// failurePolicy=Fail would wedge all NyxPrompt CRUD
+			// cluster-wide (#1069). Reuse the canonical, regex-anchored
+			// IsFieldIndexMissing helper shared with the controller
+			// package and emit a counter so operators see fallback fires
+			// in their dashboards.
+			if controller.IsFieldIndexMissing(err) {
+				controller.NyxPromptWebhookIndexFallbackTotal.Inc()
 				return v.validateHeartbeatSingletonFull(ctx, p)
 			}
 			return apierrors.NewInternalError(fmt.Errorf("list heartbeat NyxPrompts by index: %w", err))

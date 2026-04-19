@@ -426,7 +426,7 @@ func NyxPromptAgentRefExtractor(obj client.Object) []string {
 	return out
 }
 
-// isFieldIndexMissing returns true for the specific error controller-
+// IsFieldIndexMissing returns true for the specific error controller-
 // runtime / client-go return when a List requests a MatchingFields
 // value for an index that isn't registered — i.e. the operator never
 // called IndexField (common in unit tests that skip manager bootstrap).
@@ -454,7 +454,7 @@ var fieldIndexMissingRe = regexp.MustCompile(
 	`(?i)\b(?:index with name \S+|indexer "\S+")\s+does not exist\b`,
 )
 
-func isFieldIndexMissing(err error) bool {
+func IsFieldIndexMissing(err error) bool {
 	if err == nil {
 		return false
 	}
@@ -529,7 +529,7 @@ func (r *NyxAgentReconciler) listNyxPromptsForAgent(ctx context.Context, agent *
 	// (#901 twin): fall back to the full-list path only for the
 	// specific case, propagate all others so RBAC denials and context
 	// cancellations aren't masked as "index missing".
-	if !isFieldIndexMissing(err) {
+	if !IsFieldIndexMissing(err) {
 		return nil, err
 	}
 	// Index missing — fall back to the legacy full-namespace scan.
@@ -697,7 +697,7 @@ func (r *NyxAgentReconciler) reconcileManifestConfigMap(ctx context.Context, age
 		// full-namespace List path, silently masking RBAC denials,
 		// context cancellations, and apiserver 500s as "index
 		// missing" and degrading every reconcile.
-		if !isFieldIndexMissing(err) {
+		if !IsFieldIndexMissing(err) {
 			return fmt.Errorf("list NyxAgents for manifest (scoped): %w", err)
 		}
 		// Index missing — full-namespace List keeps prior behaviour.
@@ -1988,7 +1988,7 @@ func (r *NyxAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			// when the index genuinely isn't registered (unit-test
 			// bootstrap); otherwise log and return nil so the
 			// caller's workqueue retry semantics kick in.
-			if !isFieldIndexMissing(err) {
+			if !IsFieldIndexMissing(err) {
 				logf.FromContext(ctx).Error(err, "enqueuePeersForTeam: scoped List failed",
 					"namespace", namespace, "team", team)
 				return nil

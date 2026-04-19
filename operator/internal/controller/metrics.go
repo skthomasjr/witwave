@@ -138,6 +138,20 @@ var (
 		},
 		[]string{"namespace", "name"},
 	)
+
+	// NyxPromptWebhookIndexFallbackTotal counts every time the NyxPrompt
+	// admission webhook's scoped-by-index heartbeat-singleton check had
+	// to fall through to the O(N) full-namespace scan because the field
+	// indexer was unavailable (#1069). Unit-test call sites that skip
+	// manager bootstrap legitimately trip this; a sudden rate spike in
+	// production is an operational signal that the indexer has been
+	// dropped from the manager start-up path.
+	NyxPromptWebhookIndexFallbackTotal = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "nyxprompt_webhook_index_fallback_total",
+			Help: "Total NyxPrompt admission-webhook heartbeat-singleton checks that fell back to the full-namespace scan because the field index was missing.",
+		},
+	)
 )
 
 func init() {
@@ -150,5 +164,6 @@ func init() {
 		nyxpromptReadyCount,
 		nyxpromptDesiredCount,
 		nyxpromptStatusPatchConflictsTotal,
+		NyxPromptWebhookIndexFallbackTotal,
 	)
 }
