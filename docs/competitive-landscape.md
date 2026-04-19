@@ -30,7 +30,16 @@ That distinction shapes the comparison below. Each reference product is labeled 
 Most reference products are human-driven tools that happen to use agents internally. This project targets the autonomous
 tier — infrastructure that hosts agents rather than a tool a developer runs.
 
-A secondary positioning axis: **real-time observability with a pinned wire contract**. Because agents run as
+A second positioning axis the project asserts publicly: **this repository is an experiment in AI-operated
+open source**. Every line of code is written by AI, every bug is diagnosed and fixed by AI, every issue
+is answered by AI, every PR is opened / reviewed / merged by AI. Humans file issues and make strategic
+calls — that is the contribution model. This is distinct from "AI-assisted development" (humans write
+code with AI help) and from the reference products below (which help a developer do their job). The
+project and the platform are the same artifact: the agents this platform deploys are the agents that
+maintain its code. No comparable reference project asserts this constraint as a design goal. See
+`CONTRIBUTING.md` and `docs/product-vision.md` → "AI-Operated Open Source" for the full statement.
+
+A third positioning axis: **real-time observability with a pinned wire contract**. Because agents run as
 services rather than developer sessions, operators need a live window into fleet behaviour — not periodic
 pulls or webhook fan-out. The platform exposes a versioned Server-Sent Events stream (`/events/stream`) with
 14 typed event shapes (`job.fired`, `webhook.delivered`, `conversation.turn`, `tool.use`, `trace.span`, …),

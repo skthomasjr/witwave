@@ -11,6 +11,12 @@ Agents are currently bootstrapped manually using AI CLI tools (Claude Code, Code
 to take over their own development cycle: evaluating the codebase, proposing improvements, implementing them, and
 shipping — closing the loop without a human in the hot path.
 
+**This project is also an experiment in AI-operated open source.** Every line of code here is written by AI. Every bug
+is diagnosed and fixed by AI. Every issue is answered by AI. Every PR is opened, reviewed, and merged by AI. Humans
+file issues and make strategic calls — that is the shape of participation. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for
+the full model (including the current-state-vs-target breakdown), and [`docs/product-vision.md`](docs/product-vision.md)
+for why this is a first-class project goal rather than a convention.
+
 ---
 
 Built on the [A2A protocol](https://a2a-protocol.org). Each named agent is a set of containers: a **harness**

@@ -12,6 +12,41 @@ The unit of deployment is a container. The unit of identity is an agent. The uni
 
 ---
 
+## AI-Operated Open Source
+
+One of the project's explicit target goals is that **every line of code
+in this repository is written by AI** — not as a slogan but as a
+structural design constraint. Agents write the code, fix the bugs,
+answer the issues, refine the requests, open the pull requests, review
+the pull requests, merge them, cut the releases, write the release
+notes, and eventually write the blog posts and handle community
+outreach at a calibrated level. Humans file issues (questions,
+requests, bug reports) and make strategic calls. That is the shape of
+participation.
+
+This is distinct from "AI-assisted development" (humans write code
+with AI help) or "agent platform for developers" (agents help a
+developer do their job). The target model here is **AI-run**: the
+agents maintain the platform they are built on. The repo is both the
+product and the test bed — every feature shipped, every regression
+fixed, every incident postmortem is evidence for whether autonomous
+agents can actually maintain real software over the long run.
+
+Today this runs with one human contributor guiding the agents through
+each loop; the target is a model where multiple external humans file
+issues and agents carry them end-to-end without human involvement in
+the day-to-day. The gap between today and target is tooling (auto-PR
+close, labeled state transitions, blog pipeline, community-support
+dialogue) — not design. See `CONTRIBUTING.md` for the full
+participation model and current-state-vs-target breakdown.
+
+If the thesis holds, this becomes a reference implementation for how
+other open-source projects can be maintained the same way. If it
+doesn't, the project learns exactly where it breaks and publishes the
+failure modes.
+
+---
+
 ## Target Audience
 
 ### Individual Practitioners
