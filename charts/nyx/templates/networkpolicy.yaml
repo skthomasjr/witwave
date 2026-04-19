@@ -242,7 +242,17 @@ spec:
            the namespace" the way allowSameNamespace does. */ -}}
     {{- if (hasKey $ing "allowNyxAgents" | ternary $ing.allowNyxAgents true) }}
     - from:
-        - podSelector:
+        {{- /* #1379: explicit namespaceSelector pinned to this release's
+               namespace. NetworkPolicy semantics implicitly scope
+               `podSelector:`-only `from:` entries to the NP's own
+               namespace, but the inconsistency with the dashboardPeer
+               (which pins namespaceSelector explicitly) is a
+               comprehension hazard — a copy-paste of this block could
+               silently broaden to cross-namespace. */ -}}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $.Release.Namespace | quote }}
+          podSelector:
             matchLabels:
               app.kubernetes.io/part-of: nyx
       ports:

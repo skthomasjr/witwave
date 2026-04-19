@@ -407,6 +407,25 @@ def _helm(
             finally:
                 t_out.join(timeout=1.0)
                 t_err.join(timeout=1.0)
+                # #1365: close pipe FDs before declaring success so drain
+                # threads can't linger on stuck reads past handler exit.
+                # Daemon threads get reaped at process exit but hold pipe
+                # FDs until then; explicitly close the streams.
+                for _stream in (proc.stdout, proc.stderr, proc.stdin):
+                    if _stream is not None:
+                        try:
+                            _stream.close()
+                        except Exception:
+                            pass
+                # Log at WARN when drain threads are still alive after
+                # join timeouts so operators can correlate FD counts.
+                if t_out.is_alive() or t_err.is_alive():
+                    log.warning(
+                        "helm subprocess drain threads outlived handler "
+                        "(stdout_alive=%s stderr_alive=%s); pipe FDs held "
+                        "until process exit. (#1365)",
+                        t_out.is_alive(), t_err.is_alive(),
+                    )
 
             # If either stream was truncated, kill the process so we
             # don't leak a still-running helm invocation past the
@@ -1482,7 +1501,28 @@ def repo_add(name: str, url: str) -> str:
     # letting helm reach out to it.
     from urllib.parse import urlparse as _urlparse
     parsed = _urlparse(url)
-    hostname = (parsed.hostname or "").lower()
+    # #1369: refuse userinfo in URL (credentials in-line defeat the
+    # allow-list since allow-list compares hostname only).
+    if parsed.username is not None or parsed.password is not None:
+        raise HelmError(
+            f"helm repo_add: URL with userinfo is not accepted "
+            "(embed credentials via helm's login flow instead). See #1369."
+        )
+    hostname = (parsed.hostname or "").lower().rstrip(".")
+    # #1369: IDN / punycode normalisation so homograph hosts that
+    # visually resemble allow-list entries can't slip past the string
+    # compare. idna.encode is stricter than ascii-lowered .hostname.
+    if hostname:
+        try:
+            import idna as _idna
+            hostname = _idna.encode(hostname).decode("ascii")
+        except Exception:
+            # idna not installed or invalid name — reject rather than
+            # fall through to the less-strict .lower() compare.
+            raise HelmError(
+                f"helm repo_add: hostname {parsed.hostname!r} failed IDN "
+                "normalisation. See #1369."
+            )
     if parsed.scheme not in ("http", "https", "oci"):
         raise HelmError(
             f"helm repo_add: URL scheme must be http/https/oci (got "
@@ -1575,7 +1615,15 @@ def _get_info_doc() -> dict[str, Any]:
     # them on the internal tool manager; fall back to a static list
     # lookup if the attribute shape changes.
     try:
-        tool_names = sorted(mcp._tool_manager._tools.keys())  # type: ignore[attr-defined]
+        # #1400: defensive lookup — try multiple known paths so a FastMCP minor
+        # bump that renames the private attr doesn't silently empty /info.
+        try:
+            tool_names = sorted(mcp._tool_manager._tools.keys())  # type: ignore[attr-defined]
+        except AttributeError:
+            try:
+                tool_names = sorted(mcp.list_tools().keys())  # type: ignore[attr-defined]
+            except Exception:
+                tool_names = []  # fall through; operators see empty tool list
     except Exception:
         tool_names = []
 

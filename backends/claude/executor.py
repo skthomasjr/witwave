@@ -777,6 +777,26 @@ _HOOK_HTTP_CLIENTS_LOCK = threading.Lock()
 async def _get_hook_http_client() -> "httpx.AsyncClient":  # noqa: F821
     loop = asyncio.get_running_loop()
     key = id(loop)
+    # #1361: on hot paths, also prune entries whose loop is closed
+    # (a secondary loop that exited without calling
+    # _close_hook_http_client leaks the AsyncClient + pool).
+    # This check is O(n_loops); ~1-2 loops typical in this process.
+    _dead_keys: list[int] = []
+    for _k in list(_HOOK_HTTP_CLIENTS.keys()):
+        if _k == key:
+            continue
+        _entry = _HOOK_HTTP_CLIENTS.get(_k)
+        # We can't recover the loop object from id() alone; detect dead
+        # entries by checking the AsyncClient's transport internal
+        # `is_closed` flag as a best-effort signal. httpx AsyncClient
+        # exposes `is_closed` in recent versions.
+        try:
+            if _entry is not None and getattr(_entry[0], "is_closed", False):
+                _dead_keys.append(_k)
+        except Exception:
+            pass
+    for _dk in _dead_keys:
+        _HOOK_HTTP_CLIENTS.pop(_dk, None)
     entry = _HOOK_HTTP_CLIENTS.get(key)
     if entry is None:
         # New loop — construct inside the running loop so the Lock is

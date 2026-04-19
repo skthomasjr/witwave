@@ -31,6 +31,10 @@ jobs:
   goreleaser:
     name: goreleaser
     runs-on: ubuntu-latest
+    # #1378: hard-gate the whole job on tag refs so any future
+    # workflow_dispatch / pull_request / pull_request_target addition
+    # can't accidentally reach the tap PAT via step-level env inheritance.
+    if: github.ref_type == 'tag'
     permissions:
       # goreleaser needs contents:write to create the release + upload
       # assets. packages:write reserved for future container-based

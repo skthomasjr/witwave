@@ -496,7 +496,9 @@ def make_session_stream_handler(
     resume).  Each backend passes its own ``CONVERSATIONS_AUTH_TOKEN``
     and agent identity for the envelope metadata.
     """
+    import hashlib as _hashlib
     import hmac as _hmac
+    import os as _os
     from starlette.requests import Request
     from starlette.responses import JSONResponse, StreamingResponse
 
@@ -504,6 +506,13 @@ def make_session_stream_handler(
         from conversations import auth_disabled_escape_hatch  # type: ignore
     except Exception:  # pragma: no cover
         from shared.conversations import auth_disabled_escape_hatch  # type: ignore
+
+    # #1399: per-caller concurrent-stream cap so one authed caller
+    # opening many SSE streams can't exhaust FDs. Key on the
+    # fingerprint of the presented bearer (SHA-256 prefix) so the cap
+    # is per-credential. Defaults to 8 streams per caller.
+    _per_caller_max = int(_os.environ.get("SESSION_STREAM_MAX_PER_CALLER", "8"))
+    _per_caller_counts: dict[str, int] = {}
 
     async def handler(request: "Request"):
         # Auth — parity with /conversations, /trace, /mcp, /api/traces.
@@ -520,6 +529,18 @@ def make_session_stream_handler(
         session_id = request.path_params.get("session_id") or ""
         if not session_id:
             return JSONResponse({"error": "missing session_id"}, status_code=400)
+
+        # #1399: cap concurrent streams per caller.
+        _bearer = request.headers.get("Authorization", "")[:128]
+        _caller_fp = _hashlib.sha256(_bearer.encode("utf-8", errors="replace")).hexdigest()[:16]
+        if _per_caller_max > 0:
+            cur = _per_caller_counts.get(_caller_fp, 0)
+            if cur >= _per_caller_max:
+                return JSONResponse(
+                    {"error": "too many concurrent streams for this caller"},
+                    status_code=429,
+                )
+            _per_caller_counts[_caller_fp] = cur + 1
 
         stream = get_session_stream(session_id, agent_id=agent_id, create=True)
 
@@ -556,6 +577,16 @@ def make_session_stream_handler(
                 if _aclose is not None:
                     try:
                         await _aclose()
+                    except Exception:
+                        pass
+                # #1399: release the per-caller cap slot.
+                if _per_caller_max > 0:
+                    try:
+                        cur = _per_caller_counts.get(_caller_fp, 0)
+                        if cur <= 1:
+                            _per_caller_counts.pop(_caller_fp, None)
+                        else:
+                            _per_caller_counts[_caller_fp] = cur - 1
                     except Exception:
                         pass
 

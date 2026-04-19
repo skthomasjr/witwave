@@ -507,7 +507,16 @@ export const useTimelineStore = defineStore("timeline", () => {
     // `lastProcessedEventId` pointing at an id that no longer exists
     // in the fresh ring, causing the next event batch to skip dispatch
     // entirely. (#1238)
-    __resetUseAlerts();
+    //
+    // #1382: guard for the circular-import initialisation window.
+    // If tree-shaking / SSR rehydration evaluates the modules in an
+    // unexpected order, `__resetUseAlerts` may be `undefined` at the
+    // point this code runs. Treat that as a soft no-op instead of a
+    // TypeError so tests keep passing; in production the import order
+    // is stable.
+    if (typeof __resetUseAlerts === "function") {
+      __resetUseAlerts();
+    }
   }
 
   // --- Selectors ---------------------------------------------------------

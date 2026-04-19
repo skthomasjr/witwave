@@ -585,6 +585,10 @@ async def main():
                         "tool.name": tool_name,
                         "session.id": session_id,
                         "agent.id": AGENT_ID,
+                        # #1391: include RPC id so slow calls can be
+                        # correlated across the conversation.jsonl /
+                        # trace UI without manual joining.
+                        "rpc.id": str(rpc_id) if rpc_id is not None else "",
                     },
                 ) as _mcp_span:
                     try:

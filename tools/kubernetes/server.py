@@ -1049,7 +1049,15 @@ def _get_info_doc() -> dict[str, Any]:
     }
 
     try:
-        tool_names = sorted(mcp._tool_manager._tools.keys())  # type: ignore[attr-defined]
+        # #1400: defensive lookup — try multiple known paths so a FastMCP minor
+        # bump that renames the private attr doesn't silently empty /info.
+        try:
+            tool_names = sorted(mcp._tool_manager._tools.keys())  # type: ignore[attr-defined]
+        except AttributeError:
+            try:
+                tool_names = sorted(mcp.list_tools().keys())  # type: ignore[attr-defined]
+            except Exception:
+                tool_names = []  # fall through; operators see empty tool list
     except Exception:
         tool_names = []
 
