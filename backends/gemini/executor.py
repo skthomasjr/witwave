@@ -2420,8 +2420,16 @@ class AgentExecutor(A2AAgentExecutor):
             # _mcp_known_servers now reflects the currently-configured
             # set plus anything still-bound to a zero gauge; keep only
             # the current config names so future reloads don't keep
-            # growing the set unboundedly.
-            self._mcp_known_servers = set(new_names) | self._mcp_known_servers
+            # growing the set unboundedly. The previous assignment
+            # (new_names | self._mcp_known_servers) was the inverse of
+            # this intent — it was a union with the full historical
+            # set, so every reload monotonically grew the set (#994).
+            # The correct right-hand side is new_names | removed: the
+            # currently-configured servers plus the servers we just
+            # zeroed out on this reload, so operators can still see
+            # the zeroed gauge but names from prior reloads that are
+            # neither in the current config nor in `removed` drop out.
+            self._mcp_known_servers = new_names | removed
 
             # Startup warning re: AFC vs hooks asymmetry (#640). Logged once
             # per stack bring-up so operators see it on every reload when
