@@ -254,12 +254,43 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// future disable picks up the then-current generation fresh. Patch
 	// (#1068) over the annotation-map delta; a full-object Update here
 	// would clobber concurrent spec edits.
+	//
+	// #1017: the Patch here can race with a concurrent delete — either
+	// the Patch succeeds on an object that just gained DeletionTimestamp
+	// (Kubernetes allows metadata patches during termination) or it
+	// fails with a conflict/not-found. Before falling through to the
+	// apply chain, re-Get via APIReader so a DeletionTimestamp set
+	// between the original Get at the top of Reconcile and here is
+	// visible. If the CR is terminating we let the delete branch handle
+	// it on the next reconcile rather than running the apply chain and
+	// producing "Forbidden: being deleted" errors from Create calls with
+	// owner refs pointed at a terminating parent.
 	if v, ok := agent.Annotations[teardownAnnotation]; ok && v != "" {
 		before := agent.DeepCopy()
 		delete(agent.Annotations, teardownAnnotation)
 		if err := r.Patch(ctx, agent, client.MergeFrom(before)); err != nil {
 			log.Info("failed to clear teardown-complete annotation on re-enable; non-fatal",
 				"name", agent.Name, "err", err.Error())
+		}
+	}
+	// Re-check DeletionTimestamp after any metadata Patch on the
+	// re-enable path so a concurrent delete that landed during
+	// reconcile is honoured before the apply chain runs (#1017).
+	{
+		fresh := &nyxv1alpha1.NyxAgent{}
+		if gErr := r.APIReader.Get(ctx, req.NamespacedName, fresh); gErr != nil {
+			if apierrors.IsNotFound(gErr) {
+				// CR was deleted out from under us — nothing to do.
+				return ctrl.Result{}, nil
+			}
+			// Transient read error — surface for rate-limited retry
+			// rather than racing into the apply chain.
+			return ctrl.Result{}, fmt.Errorf("re-check DeletionTimestamp: %w", gErr)
+		}
+		if !fresh.DeletionTimestamp.IsZero() {
+			log.Info("NyxAgent entered deletion during reconcile; deferring apply chain to delete branch",
+				"name", agent.Name)
+			return ctrl.Result{}, nil
 		}
 	}
 
