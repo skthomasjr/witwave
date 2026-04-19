@@ -1626,14 +1626,17 @@ async def _run_query_inner(
                             # Fire-and-forget; never let emit failure
                             # interrupt the streaming response path.
                             try:
+                                # Omit ``model`` entirely when falsy (#1150).
+                                _a_turn_payload: dict = {
+                                    "session_id_hash": _session_id_hash(session_id),
+                                    "role": "assistant",
+                                    "content_bytes": len((_text or "").encode("utf-8")),
+                                }
+                                if effective_model:
+                                    _a_turn_payload["model"] = effective_model
                                 _emit_event_safe(
                                     "conversation.turn",
-                                    {
-                                        "session_id_hash": _session_id_hash(session_id),
-                                        "role": "assistant",
-                                        "content_bytes": len((_text or "").encode("utf-8")),
-                                        "model": effective_model or "",
-                                    },
+                                    _a_turn_payload,
                                 )
                             except Exception:
                                 pass
@@ -1827,16 +1830,19 @@ async def _run_inner(
     logger.info(f"Session {ctx.session_id} ({'new' if is_new else 'existing'}) — prompt: {_prompt_preview!r}")
     await log_entry("user", prompt, ctx.session_id, model=ctx.model)
     # conversation.turn event (#1110 phase 3). Wrap — never raise.
+    # Omit the ``model`` key entirely when it's falsy (#1150) — an
+    # empty string was both noisier and a validator foot-gun (the
+    # schema accepts any string including ""; downstream consumers
+    # would rather see the field missing than an empty stub).
     try:
-        _emit_event_safe(
-            "conversation.turn",
-            {
-                "session_id_hash": _session_id_hash(ctx.session_id),
-                "role": "user",
-                "content_bytes": len((prompt or "").encode("utf-8")),
-                "model": ctx.model or "",
-            },
-        )
+        _turn_payload: dict = {
+            "session_id_hash": _session_id_hash(ctx.session_id),
+            "role": "user",
+            "content_bytes": len((prompt or "").encode("utf-8")),
+        }
+        if ctx.model:
+            _turn_payload["model"] = ctx.model
+        _emit_event_safe("conversation.turn", _turn_payload)
     except Exception:
         pass
 
@@ -2442,9 +2448,15 @@ class AgentExecutor(A2AAgentExecutor):
         try:
             from session_stream import get_session_stream as _get_session_stream
             _sess_stream = _get_session_stream(session_id, agent_id=AGENT_OWNER)
-            _sess_stream.reset_assistant_seq()
+            # Per-turn seq covers user+assistant chunks (#1139) so
+            # observers see monotonic seq across roles; the user chunk
+            # consumes seq=0 and the first assistant chunk gets seq=1+.
+            _sess_stream.reset_turn_seq()
             _sess_stream.publish_chunk(
-                role="user", seq=0, content=prompt, final=True
+                role="user",
+                seq=_sess_stream.next_turn_seq(),
+                content=prompt,
+                final=True,
             )
         except Exception as _sess_exc:  # pragma: no cover — best-effort
             logger.warning("session_stream: user prompt publish failed: %r", _sess_exc)
@@ -2461,7 +2473,7 @@ class AgentExecutor(A2AAgentExecutor):
                 try:
                     _sess_stream.publish_chunk(
                         role="assistant",
-                        seq=_sess_stream.next_assistant_seq(),
+                        seq=_sess_stream.next_turn_seq(),
                         content=text,
                         final=False,
                     )
@@ -2514,7 +2526,7 @@ class AgentExecutor(A2AAgentExecutor):
                         try:
                             _sess_stream.publish_chunk(
                                 role="assistant",
-                                seq=_sess_stream.next_assistant_seq(),
+                                seq=_sess_stream.next_turn_seq(),
                                 content="",
                                 final=True,
                             )
@@ -2539,6 +2551,23 @@ class AgentExecutor(A2AAgentExecutor):
                         session_id,
                         model=model,
                     )
+                    # Per-session stream: emit a final=True assistant chunk
+                    # on the failure path too (#1141) so observers see a
+                    # deterministic turn boundary even when execution blew
+                    # up mid-stream.  Best-effort.
+                    if _sess_stream is not None:
+                        try:
+                            _sess_stream.publish_chunk(
+                                role="assistant",
+                                seq=_sess_stream.next_turn_seq(),
+                                content="",
+                                final=True,
+                            )
+                        except Exception as _ef_exc:  # pragma: no cover
+                            logger.warning(
+                                "session_stream: final chunk publish on "
+                                "error path failed: %r", _ef_exc,
+                            )
                     raise
         finally:
             if backend_a2a_request_duration_seconds is not None:

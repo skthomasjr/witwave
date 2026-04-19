@@ -233,6 +233,17 @@ async def main():
     start_time = datetime.now(timezone.utc)
     _startup_mono = time.monotonic()
 
+    # Bind the running event loop so cross-thread event publishers
+    # (notably the OTel span processor's worker thread) can still
+    # reach the harness event channel (#1144).  Must happen before
+    # OTel init so the very first span's on_end callback already has
+    # a loop reference to fall back to.
+    try:
+        from hook_events import bind_event_loop as _bind_event_loop
+        _bind_event_loop(asyncio.get_running_loop())
+    except Exception as _bind_exc:  # pragma: no cover — best-effort
+        logger.warning("hook_events.bind_event_loop failed: %r", _bind_exc)
+
     # Initialise OTel before the executor so every request gets a span if
     # enabled (#469). No-op when OTEL_ENABLED is falsy.
     from otel import init_otel_if_enabled

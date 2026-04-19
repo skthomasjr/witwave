@@ -210,6 +210,20 @@ var (
 		},
 		[]string{"namespace", "name"},
 	)
+
+	// NyxAgentCredentialWatchListErrorsTotal counts List failures in the
+	// Secret-watch mapper (#1170). When the primary namespace-scoped List
+	// fails, the mapper falls back to a best-effort retry so one missed
+	// list doesn't permanently desync the reconciler from a rotated
+	// Secret. A non-zero rate here points at APIServer pressure or a
+	// per-namespace RBAC regression rather than a controller bug.
+	NyxAgentCredentialWatchListErrorsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "nyxagent_credential_watch_list_errors_total",
+			Help: "Total List failures in the credentials Secret-watch mapper; the mapper retries once before falling back to an empty enqueue set.",
+		},
+		[]string{"namespace"},
+	)
 )
 
 func init() {
@@ -225,6 +239,7 @@ func init() {
 		NyxPromptWebhookIndexFallbackTotal,
 		NyxAgentLeader,
 		NyxAgentCredentialRotationsTotal,
+		NyxAgentCredentialWatchListErrorsTotal,
 		nyxagentManifestOwnerRefSkippedNoUIDTotal,
 	)
 }

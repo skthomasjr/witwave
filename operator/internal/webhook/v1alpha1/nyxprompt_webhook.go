@@ -150,14 +150,14 @@ func validateNyxPromptSpec(p *nyxv1alpha1.NyxPrompt) error {
 // webhook can issue one short scoped List per AgentRef on the incoming
 // object instead of a full-namespace List that the admission handler
 // has to filter in-process on every Create/Update.  The indexer is
-// registered from ``cmd/main.go`` alongside the other field indexers;
+// registered from “cmd/main.go“ alongside the other field indexers;
 // the webhook falls back to the legacy full-List path when the index
 // is not present (for example in unit tests that skip the manager
 // bootstrap).
 const NyxPromptHeartbeatAgentIndex = "spec.agentRefs.name.heartbeat"
 
 // NyxPromptHeartbeatAgentExtractor returns the per-object values stored
-// under ``NyxPromptHeartbeatAgentIndex``.  Non-heartbeat prompts
+// under “NyxPromptHeartbeatAgentIndex“.  Non-heartbeat prompts
 // produce nil so they drop out of the index entirely — keeps the
 // index small when most NyxPrompts are jobs/tasks/triggers.
 func NyxPromptHeartbeatAgentExtractor(obj client.Object) []string {
@@ -182,8 +182,8 @@ func NyxPromptHeartbeatAgentExtractor(obj client.Object) []string {
 // The harness reads a single `HEARTBEAT.md` file so overlapping prompts
 // would race to overwrite the same mount.
 //
-// Performance (#755): prefers ``client.MatchingFields`` against the
-// ``NyxPromptHeartbeatAgentIndex`` field indexer so each agent-ref
+// Performance (#755): prefers “client.MatchingFields“ against the
+// “NyxPromptHeartbeatAgentIndex“ field indexer so each agent-ref
 // contributes one O(k) scoped List rather than a full-namespace O(N)
 // scan.  Exits on the first collision rather than continuing to scan.
 // When the indexer is not wired (unit tests) the code path falls back

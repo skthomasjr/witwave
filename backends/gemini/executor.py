@@ -1833,15 +1833,15 @@ async def run_query(
                 # conversation.turn event (#1110 phase 3). One event per
                 # completed assistant turn; partial sites do not emit.
                 try:
-                    _emit_event_safe(
-                        "conversation.turn",
-                        {
-                            "session_id_hash": _session_id_hash(session_id),
-                            "role": "assistant",
-                            "content_bytes": len(full_response.encode("utf-8")),
-                            "model": resolved_model or "",
-                        },
-                    )
+                    # Omit ``model`` entirely when falsy (#1150).
+                    _a_turn_payload: dict = {
+                        "session_id_hash": _session_id_hash(session_id),
+                        "role": "assistant",
+                        "content_bytes": len(full_response.encode("utf-8")),
+                    }
+                    if resolved_model:
+                        _a_turn_payload["model"] = resolved_model
+                    _emit_event_safe("conversation.turn", _a_turn_payload)
                 except Exception:
                     pass
 
@@ -2009,16 +2009,16 @@ async def _run_inner(
     logger.info(f"Session {session_id} ({'new' if is_new else 'existing'}) — prompt: {_prompt_preview!r}")
     await log_entry("user", prompt, session_id, model=resolved_model)
     # conversation.turn event (#1110 phase 3). Wrap — never raise.
+    # Omit the ``model`` key entirely when falsy (#1150).
     try:
-        _emit_event_safe(
-            "conversation.turn",
-            {
-                "session_id_hash": _session_id_hash(session_id),
-                "role": "user",
-                "content_bytes": len((prompt or "").encode("utf-8")),
-                "model": resolved_model or "",
-            },
-        )
+        _u_turn_payload: dict = {
+            "session_id_hash": _session_id_hash(session_id),
+            "role": "user",
+            "content_bytes": len((prompt or "").encode("utf-8")),
+        }
+        if resolved_model:
+            _u_turn_payload["model"] = resolved_model
+        _emit_event_safe("conversation.turn", _u_turn_payload)
     except Exception:
         pass
 
@@ -3082,9 +3082,13 @@ class AgentExecutor(A2AAgentExecutor):
         try:
             from session_stream import get_session_stream as _get_session_stream
             _sess_stream = _get_session_stream(session_id, agent_id=AGENT_OWNER)
-            _sess_stream.reset_assistant_seq()
+            # Per-turn seq covers user+assistant chunks (#1139).
+            _sess_stream.reset_turn_seq()
             _sess_stream.publish_chunk(
-                role="user", seq=0, content=prompt, final=True
+                role="user",
+                seq=_sess_stream.next_turn_seq(),
+                content=prompt,
+                final=True,
             )
         except Exception as _sess_exc:  # pragma: no cover
             logger.warning("session_stream: user prompt publish failed: %r", _sess_exc)
@@ -3100,7 +3104,7 @@ class AgentExecutor(A2AAgentExecutor):
                 try:
                     _sess_stream.publish_chunk(
                         role="assistant",
-                        seq=_sess_stream.next_assistant_seq(),
+                        seq=_sess_stream.next_turn_seq(),
                         content=text,
                         final=False,
                     )
@@ -3153,7 +3157,7 @@ class AgentExecutor(A2AAgentExecutor):
                     try:
                         _sess_stream.publish_chunk(
                             role="assistant",
-                            seq=_sess_stream.next_assistant_seq(),
+                            seq=_sess_stream.next_turn_seq(),
                             content="",
                             final=True,
                         )
@@ -3168,6 +3172,23 @@ class AgentExecutor(A2AAgentExecutor):
             _set_span_error(_otel_span, _exc)
             if backend_a2a_requests_total is not None:
                 backend_a2a_requests_total.labels(**_LABELS, status="error").inc()
+            # Per-session stream: emit a terminal final=True assistant
+            # chunk on the failure path too (#1141) so observers see a
+            # deterministic turn boundary even when execution blew up
+            # mid-stream.  Best-effort.
+            if _sess_stream is not None:
+                try:
+                    _sess_stream.publish_chunk(
+                        role="assistant",
+                        seq=_sess_stream.next_turn_seq(),
+                        content="",
+                        final=True,
+                    )
+                except Exception as _ef_exc:  # pragma: no cover
+                    logger.warning(
+                        "session_stream: final chunk publish on error "
+                        "path failed: %r", _ef_exc,
+                    )
             raise
         finally:
             if backend_a2a_request_duration_seconds is not None:

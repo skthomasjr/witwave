@@ -62,11 +62,17 @@ func newTestAgent(name string) *nyxv1alpha1.NyxAgent {
 
 // newReconciler wires a reconciler against the envtest-managed API server.
 // A fake EventRecorder is supplied so phase-transition events don't panic.
+// APIReader is pointed at the same envtest client so the cache-bypass
+// code paths (re-check DeletionTimestamp, manifest live-escalation)
+// behave the same way they do in a real manager wiring — without this,
+// the test-only `r.APIReader` nil fallback (#1168) would silently
+// bypass those paths and mask regressions in them.
 func newReconciler() *NyxAgentReconciler {
 	return &NyxAgentReconciler{
-		Client:   k8sClient,
-		Scheme:   k8sClient.Scheme(),
-		Recorder: record.NewFakeRecorder(16),
+		Client:    k8sClient,
+		APIReader: k8sClient,
+		Scheme:    k8sClient.Scheme(),
+		Recorder:  record.NewFakeRecorder(16),
 	}
 }
 

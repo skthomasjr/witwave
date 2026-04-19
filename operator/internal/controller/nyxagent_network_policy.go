@@ -21,8 +21,10 @@ import (
 	"fmt"
 
 	networkingv1 "k8s.io/api/networking/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	nyxv1alpha1 "github.com/nyx-ai/nyx-operator/api/v1alpha1"
@@ -34,7 +36,28 @@ import (
 // NetworkPolicies (the chart's `allowNyxAgents` knob) are follow-up.
 func (r *NyxAgentReconciler) reconcileNetworkPolicy(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
 	np := agent.Spec.NetworkPolicy
+	// Delete-if-present path (#1175): flipping spec.networkPolicy.enabled
+	// from true to false (or removing the block entirely) used to leave
+	// the previously-applied NetworkPolicy behind, so the agent stayed
+	// effectively isolated until someone deleted the object by hand.
+	// Mirror reconcileHPA: Get by name, IsControlledBy-check, Delete.
 	if np == nil || !np.Enabled {
+		existing := &networkingv1.NetworkPolicy{}
+		key := client.ObjectKey{Namespace: agent.Namespace, Name: agent.Name}
+		if err := r.Get(ctx, key, existing); err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil
+			}
+			return fmt.Errorf("get NetworkPolicy for cleanup: %w", err)
+		}
+		if !metav1.IsControlledBy(existing, agent) {
+			// Never touch a NetworkPolicy we didn't create; operators
+			// sometimes hand-author one with the agent's name.
+			return nil
+		}
+		if err := r.Delete(ctx, existing); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("delete disabled NetworkPolicy: %w", err)
+		}
 		return nil
 	}
 	desired := buildNetworkPolicy(agent)
@@ -118,15 +141,24 @@ func buildNetworkPolicyIngressRules(agent *nyxv1alpha1.NyxAgent, appPort, metric
 		})
 	}
 
-	// Same-namespace peer: reaches every port on the agent pod. Uses an
-	// empty PodSelector which matches all pods in the namespace this
-	// NetworkPolicy lives in (that's how v1 NetworkPolicy peers scope by
-	// default — no namespaceSelector needed for same-namespace).
+	// Same-namespace peer: reaches the narrow set of ports the agent
+	// actually exposes (app + metrics) instead of every port on the pod
+	// (#1174). Previously an empty Ports list meant "all ports", which
+	// defeated the point of defining a per-port policy at all —
+	// sidecars co-tenanting the pod became reachable from any neighbour
+	// in the namespace. Callers who genuinely need a wider same-
+	// namespace reach should set AdditionalFrom instead; that path
+	// keeps the explicit "all ports" escape hatch and is documented
+	// accordingly.
 	if ing.AllowSameNamespace {
 		rules = append(rules, networkingv1.NetworkPolicyIngressRule{
 			From: []networkingv1.NetworkPolicyPeer{{
 				PodSelector: &metav1.LabelSelector{},
 			}},
+			Ports: []networkingv1.NetworkPolicyPort{
+				{Port: intstrPtr(int(appPort))},
+				{Port: intstrPtr(int(metricsPort))},
+			},
 		})
 	}
 

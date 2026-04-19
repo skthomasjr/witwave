@@ -80,15 +80,15 @@ func newSendCmd() *cobra.Command {
 				"params":  map[string]any{"message": message},
 			}
 
-			useRun := c.RunToken() != ""
-			if !useRun && c.Token() == "" {
-				out.Warnf("no run_token and no token configured; request will be unauthenticated")
-			} else if !useRun {
-				out.Warnf("no run_token; falling back to conversations token")
+			// A2A send uses the conversations/session token, not the
+			// ad-hoc run token. The run token is reserved for dedicated
+			// /run endpoints.
+			if c.PreferredToken() == "" {
+				out.Warnf("no token configured; request will be unauthenticated")
 			}
 
 			var resp a2aResponse
-			if err := c.DoJSON(ctx, http.MethodPost, targetURL, body, &resp, useRun); err != nil {
+			if err := c.DoJSON(ctx, http.MethodPost, targetURL, body, &resp, false); err != nil {
 				return handleErr(out, err)
 			}
 			if resp.Error != nil {

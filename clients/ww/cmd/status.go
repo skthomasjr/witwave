@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -99,7 +100,11 @@ func probeOne(ctx context.Context, c *client.Client, a agentEntry) statusRow {
 		row.Error = err.Error()
 		return row
 	}
-	if tok := c.Token(); tok != "" {
+	// Only attach the bearer token if the target URL's origin matches
+	// the configured base URL. /agents can return arbitrary absolute
+	// URLs (direct-agent addresses) and we must not leak the harness
+	// token to unrelated hosts.
+	if tok := c.Token(); tok != "" && sameOrigin(c.BaseURL(), u) {
 		req.Header.Set("Authorization", "Bearer "+tok)
 	}
 	req.Header.Set("User-Agent", "ww/"+Version)
@@ -114,4 +119,22 @@ func probeOne(ctx context.Context, c *client.Client, a agentEntry) statusRow {
 	row.Healthy = resp.StatusCode >= 200 && resp.StatusCode < 300
 	row.Status = resp.Status
 	return row
+}
+
+// sameOrigin reports whether probeURL shares scheme+host (including
+// port) with baseURL. Any parse error conservatively returns false so
+// the caller will withhold auth.
+func sameOrigin(baseURL, probeURL string) bool {
+	if baseURL == "" {
+		return false
+	}
+	b, err := url.Parse(baseURL)
+	if err != nil {
+		return false
+	}
+	p, err := url.Parse(probeURL)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(b.Scheme, p.Scheme) && strings.EqualFold(b.Host, p.Host)
 }

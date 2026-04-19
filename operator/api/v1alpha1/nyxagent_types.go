@@ -255,19 +255,19 @@ type BackendSpec struct {
 //
 // Three mutually-exclusive modes:
 //
-//   1. ExistingSecret — reference a pre-created Secret. The operator
-//      never writes to it. Production default.
+//  1. ExistingSecret — reference a pre-created Secret. The operator
+//     never writes to it. Production default.
 //
-//   2. Inline (Username + Token + AcknowledgeInsecureInline=true) —
-//      the operator reconciles a per-entry Secret keyed
-//      `GITSYNC_USERNAME` / `GITSYNC_PASSWORD` and envFroms it into
-//      the git-sync init + sidecar. The ack flag is load-bearing: the
-//      admission webhook refuses inline values without it because they
-//      land in etcd + CR history and are recoverable via
-//      `kubectl get nyxagent -o yaml`.
+//  2. Inline (Username + Token + AcknowledgeInsecureInline=true) —
+//     the operator reconciles a per-entry Secret keyed
+//     `GITSYNC_USERNAME` / `GITSYNC_PASSWORD` and envFroms it into
+//     the git-sync init + sidecar. The ack flag is load-bearing: the
+//     admission webhook refuses inline values without it because they
+//     land in etcd + CR history and are recoverable via
+//     `kubectl get nyxagent -o yaml`.
 //
-//   3. Empty — the entry's legacy `EnvFrom` list is used as-is (no
-//      operator-managed Secret, no Secret reconciliation).
+//  3. Empty — the entry's legacy `EnvFrom` list is used as-is (no
+//     operator-managed Secret, no Secret reconciliation).
 //
 // When both ExistingSecret and inline values are set, ExistingSecret
 // wins and the inline values are ignored.

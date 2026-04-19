@@ -117,6 +117,12 @@ describe("useEventStream", () => {
         fetchImpl,
         autoConnect: false,
         token: "secret",
+        // Full jitter means the reconnect timer after the stream's
+        // clean close can fire between 0 and `initialDelayMs`. Use a
+        // large delay so a second fetch can't land inside the 20ms
+        // observation window. (#1152 corrected the jitter math — the
+        // prior additive floor masked this test's 20ms race.)
+        initialDelayMs: 5_000,
       }),
     );
     value.open();

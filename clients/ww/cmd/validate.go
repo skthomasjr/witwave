@@ -56,10 +56,10 @@ func newValidateCmd() *cobra.Command {
 				q.Set("kind", kind)
 				req.URL.RawQuery = q.Encode()
 			}
-			if tok := c.Token(); tok != "" {
+			// /validate is not an ad-hoc-run endpoint; use the
+			// conversations token exclusively.
+			if tok := c.PreferredToken(); tok != "" {
 				req.Header.Set("Authorization", "Bearer "+tok)
-			} else if rt := c.RunToken(); rt != "" {
-				req.Header.Set("Authorization", "Bearer "+rt)
 			}
 			req.Header.Set("User-Agent", "ww/"+Version)
 

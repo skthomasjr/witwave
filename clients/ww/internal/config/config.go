@@ -117,21 +117,21 @@ func Load(cfgPath string, overrides FlagOverrides, getenv func(string) string) (
 	return r, nil
 }
 
-// defaultConfigPath returns the path to ~/.config/ww/config.toml with
-// XDG_CONFIG_HOME override.
+// defaultConfigPath returns the path to ww/config.toml inside the
+// per-OS user config directory. XDG_CONFIG_HOME (via getenv) always
+// wins so the env-override seam remains testable on every platform;
+// otherwise os.UserConfigDir() provides the OS-appropriate location
+// (%AppData%\ww\config.toml on Windows, ~/Library/Application
+// Support/ww/config.toml on macOS, ~/.config/ww/config.toml on Linux).
 func defaultConfigPath(getenv func(string) string) string {
 	if xdg := getenv("XDG_CONFIG_HOME"); xdg != "" {
 		return filepath.Join(xdg, "ww", "config.toml")
 	}
-	home := getenv("HOME")
-	if home == "" {
-		var err error
-		home, err = os.UserHomeDir()
-		if err != nil {
-			return ""
-		}
+	dir, err := os.UserConfigDir()
+	if err != nil || dir == "" {
+		return ""
 	}
-	return filepath.Join(home, ".config", "ww", "config.toml")
+	return filepath.Join(dir, "ww", "config.toml")
 }
 
 func firstNonEmpty(vals ...string) string {

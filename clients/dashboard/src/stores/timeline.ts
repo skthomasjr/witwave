@@ -71,8 +71,25 @@ declare global {
     __NYX_CONFIG__?: {
       harnessBearerToken?: string;
       timelineEventsUrl?: string;
+      basePath?: string;
     } & Record<string, unknown>;
   }
+}
+
+// Resolve the deployment base path prefix. Dashboard instances deployed
+// under a sub-path (e.g. /nyx) need every proxy URL to share that
+// prefix. (#1163)
+function resolveBasePath(): string {
+  if (typeof window === "undefined") return "";
+  const cfg = window.__NYX_CONFIG__;
+  if (!cfg) return "";
+  const bp = cfg.basePath;
+  if (typeof bp !== "string" || bp.length === 0) return "";
+  // Normalise: no trailing slash; ensure leading slash.
+  let out = bp;
+  if (!out.startsWith("/")) out = "/" + out;
+  if (out.endsWith("/")) out = out.slice(0, -1);
+  return out;
 }
 
 function resolveBearerToken(explicit?: string): string | undefined {
@@ -92,14 +109,15 @@ function resolveSingleEventsUrl(explicit?: string): string {
       return cfg.timelineEventsUrl;
     }
   }
-  return DEFAULT_EVENTS_URL;
+  return `${resolveBasePath()}${DEFAULT_EVENTS_URL}`;
 }
 
 // Per-agent stream URL — nginx proxies /api/agents/<name>/* straight to
 // that agent's harness. Path parity with the rest of the dashboard's
-// per-agent API surface.
+// per-agent API surface. Honors `__NYX_CONFIG__.basePath` so deployments
+// under a sub-path (e.g. /nyx) get the correct proxy prefix. (#1163)
 export function agentStreamUrl(name: string): string {
-  return `/api/agents/${encodeURIComponent(name)}/events/stream`;
+  return `${resolveBasePath()}/api/agents/${encodeURIComponent(name)}/events/stream`;
 }
 
 export interface TimelineStoreInitOptions extends UseEventStreamOptions {
@@ -120,17 +138,6 @@ interface AgentStreamHandle {
   // every tick.
   lastSeenLength: number;
 }
-
-// Module-level state (exposed only through the store surface below).
-// A Map keyed by member name carries per-agent streams; the override
-// path uses `singleStream` instead.
-const agentStreams = new Map<string, AgentStreamHandle>();
-let singleStream: UseEventStreamReturn | null = null;
-let singleWatcherStop: (() => void) | null = null;
-let teamWatcherStop: (() => void) | null = null;
-let teamHandle: ReturnType<typeof useTeam> | null = null;
-// Cached token for fanout streams — resolved once at `start()` time.
-let sharedBearerToken: string | undefined;
 
 function clampRing(size: number | undefined): number {
   if (!size || !Number.isFinite(size) || size <= 0) return DEFAULT_RING_SIZE;
@@ -185,6 +192,18 @@ export const useTimelineStore = defineStore("timeline", () => {
   // window, but ring eviction there can truncate from the left and the
   // merge path mustn't confuse "left-truncated" with "new".
   const seenIds = new Set<string>();
+
+  // Per-store fanout state. Kept inside the setup closure (not module
+  // scope) so a Pinia reset / multiple store instantiations don't share
+  // stream handles. (#1155) A Map keyed by member name carries per-agent
+  // streams; the override path uses `singleStream` instead.
+  const agentStreams = new Map<string, AgentStreamHandle>();
+  let singleStream: UseEventStreamReturn | null = null;
+  let singleWatcherStop: (() => void) | null = null;
+  let teamWatcherStop: (() => void) | null = null;
+  let teamHandle: ReturnType<typeof useTeam> | null = null;
+  // Cached token for fanout streams — resolved once at `start()` time.
+  let sharedBearerToken: string | undefined;
 
   function trimRing(): void {
     const max = ringSize.value;
@@ -449,6 +468,15 @@ export const useTimelineStore = defineStore("timeline", () => {
     error.value = "";
     ringSize.value = DEFAULT_RING_SIZE;
     seenIds.clear();
+    // Belt-and-braces: stop() already tears these down, but tests that
+    // exercise mid-setup failure paths may land here with stale state.
+    // Fully clear the closure-local singletons. (#1155)
+    agentStreams.clear();
+    singleStream = null;
+    singleWatcherStop = null;
+    teamWatcherStop = null;
+    teamHandle = null;
+    sharedBearerToken = undefined;
   }
 
   // --- Selectors ---------------------------------------------------------

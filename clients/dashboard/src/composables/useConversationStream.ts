@@ -140,6 +140,14 @@ function makeTurnId(
   return `${role}-${ts}-${hashPart}-${counter}`;
 }
 
+// NOTE (#1157): `agent` and `sessionId` are baseline values captured at
+// instantiation. They are embedded into the stream URL here and will NOT
+// be re-read if the caller later mutates a ref passed in as one of these
+// arguments — the stream URL is frozen for the lifetime of the composable.
+// To switch agent or sessionId, callers MUST call `close()` on the
+// existing composable and create a new one. Reassigning the argument or
+// mutating reactive refs from which these were derived will have no
+// effect on the in-flight stream.
 export function useConversationStream(
   agent: string,
   sessionId: string,
@@ -165,9 +173,31 @@ export function useConversationStream(
   // Counter drives unique turnIds even when two turns share the same
   // first-chunk timestamp (rare but possible with coarse-clock hosts).
   let turnCounter = 0;
-  // Last envelope id processed into the turn list. Lets us diff forward
-  // without re-running accumulation on every reactive flush.
-  let lastSeenIndex = 0;
+  // Id-keyed dedupe for processed envelopes. Positional indexing breaks
+  // down when the underlying stream's ring evicts from the left — the
+  // array shrinks, our index lands on what looks like a "new" envelope,
+  // and we reprocess already-seen chunks, producing duplicate turns.
+  // Mirror the timeline store's `seenIds` pattern instead. (#1156)
+  const processedIds = new Set<string>();
+  // Cap on the Set's size so it doesn't grow unbounded on long sessions.
+  // When we hit the cap we drop the oldest entries (insertion order is
+  // iteration order for a Set).
+  const PROCESSED_IDS_CAP = 2000;
+
+  function markProcessed(id: string): void {
+    processedIds.add(id);
+    if (processedIds.size > PROCESSED_IDS_CAP) {
+      // Evict the oldest half in one pass — amortises the cost of
+      // rebuilding iteration state vs. shedding one id at a time.
+      const drop = processedIds.size - PROCESSED_IDS_CAP;
+      let dropped = 0;
+      for (const key of processedIds) {
+        if (dropped >= drop) break;
+        processedIds.delete(key);
+        dropped += 1;
+      }
+    }
+  }
 
   function pushTurn(turn: ConversationTurn): void {
     const next = turns.value.slice();
@@ -276,17 +306,17 @@ export function useConversationStream(
     );
   }
 
-  // Diff-forward on every reactive flush so we only process fresh
-  // envelopes. The underlying stream trims its ring from the left on
-  // eviction; if that happens our index would be past the array end —
-  // fall back to a full scan in that case.
+  // Process every envelope that we haven't handled yet, keyed by `id`.
+  // Survives ring evictions in the underlying stream — each envelope is
+  // processed exactly once regardless of positional shifts. (#1156)
   watch(
     stream.events,
     (arr) => {
       const events = arr as EventEnvelope[];
-      const startAt = events.length >= lastSeenIndex ? lastSeenIndex : 0;
-      for (let i = startAt; i < events.length; i += 1) {
-        const env = events[i];
+      for (const env of events) {
+        if (!env || !env.id) continue;
+        if (processedIds.has(env.id)) continue;
+        markProcessed(env.id);
         switch (env.type) {
           case "conversation.chunk":
             handleChunk(env);
@@ -307,7 +337,6 @@ export function useConversationStream(
             break;
         }
       }
-      lastSeenIndex = events.length;
     },
     { immediate: true, deep: false },
   );
@@ -318,6 +347,10 @@ export function useConversationStream(
     } catch {
       // ignore — close is best-effort.
     }
+    // Reset dedupe state so a later reopen (same composable instance is
+    // unusual, but callers can still trigger the path indirectly via the
+    // underlying stream's `open()`) doesn't carry over old ids. (#1156)
+    processedIds.clear();
   }
 
   if (getCurrentInstance()) {

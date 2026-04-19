@@ -12,25 +12,25 @@ You may obtain a copy of the License at
 //
 // v1alpha1 is currently the only served version of both CRDs in this
 // module. Marking it explicitly as the **conversion Hub** via the
-// ``Hub()`` method lands the kubebuilder-style scaffold *now*, so the
+// “Hub()“ method lands the kubebuilder-style scaffold *now*, so the
 // next version bump (v1beta1, v1, …) only needs to:
 //
-//  1. Add the new API types under ``api/v<new>/``.
-//  2. Implement ``ConvertTo(dst conversion.Hub)`` and
-//     ``ConvertFrom(src conversion.Hub)`` on the new types, with
+//  1. Add the new API types under “api/v<new>/“.
+//  2. Implement “ConvertTo(dst conversion.Hub)“ and
+//     “ConvertFrom(src conversion.Hub)“ on the new types, with
 //     identity field copies for anything that has not actually
 //     changed shape.
 //  3. Turn on the conversion webhook in the CRD manifests (see the
-//     ``[WEBHOOK]`` patch blocks in ``operator/config/crd/``).
+//     “[WEBHOOK]“ patch blocks in “operator/config/crd/“).
 //
-// Shipping ``Hub()`` alone has no runtime effect on a single-version
+// Shipping “Hub()“ alone has no runtime effect on a single-version
 // deployment (controller-runtime only invokes conversion when two or
 // more versions are served), but it is the canonical kubebuilder
 // pattern that unlocks a zero-downtime version bump without a
 // migration script.
 //
-// Both ``DashboardSpec.HarnessURL`` and similar fields already carry
-// ``// Deprecated:`` doc comments, foreshadowing a future shape change;
+// Both “DashboardSpec.HarnessURL“ and similar fields already carry
+// “// Deprecated:“ doc comments, foreshadowing a future shape change;
 // landing the scaffold now means the first breaking field removal can
 // ship with an identity-plus-drop conversion instead of forcing every
 // existing CR to be re-applied by hand.

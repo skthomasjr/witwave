@@ -840,6 +840,7 @@ async def _retry_deliver(
     attempt: int,
     max_attempts: int,
     client: httpx.AsyncClient,
+    deliver_started_mono: float | None = None,
 ) -> None:
     """Continue delivery for a subscription after the first attempt failed.
 
@@ -901,16 +902,19 @@ async def _retry_deliver(
                 # Retry chain recovered; emit the SSE webhook.delivered
                 # envelope so dashboards see the eventual success rather
                 # than only the pre-retry failure event (#1110). Duration
-                # cannot be reconstructed here — we don't carry the
-                # original deliver() _deliver_started_mono through the
-                # chain — so emit 0 and rely on status_code to signal
-                # recovery.
+                # is measured against the original ``deliver()`` start
+                # (#1151) so dashboards see the true wall-clock cost
+                # including retries and backoff, not a misleading 0.
                 try:
+                    if deliver_started_mono is not None:
+                        _duration_s = max(0.0, time.monotonic() - deliver_started_mono)
+                    else:
+                        _duration_s = 0.0
                     _publish_webhook_event(
                         sub_name=sub.name,
                         url=url,
                         result=f"http_{resp.status_code}" if resp.status_code >= 400 else "success",
-                        duration_seconds=0.0,
+                        duration_seconds=_duration_s,
                     )
                 except Exception:  # pragma: no cover
                     pass
@@ -1177,6 +1181,10 @@ async def deliver(
                     attempt=1,
                     max_attempts=1 + sub.retries,
                     client=client,
+                    # Thread the original deliver() start (#1151) so a
+                    # recovered-after-retry success reports true
+                    # wall-clock duration instead of 0.
+                    deliver_started_mono=_deliver_started_mono,
                 )
                 # Total-chain timeout (#786): cap wall-clock across all retries
                 # + backoffs so a wedged downstream can't hold a concurrency

@@ -34,7 +34,29 @@ export function exportJson(rows: unknown[], filename: string): void {
 // avoids spreadsheet tools silently trimming). Nested quotes are doubled.
 export function csvEscape(value: unknown): string {
   if (value === null || value === undefined) return "";
-  const s = typeof value === "string" ? value : JSON.stringify(value);
+  let s: string;
+  if (typeof value === "string") {
+    s = value;
+  } else {
+    // JSON.stringify throws on cyclic payloads ("converting circular
+    // structure to JSON") and on BigInt. Previously the export aborted
+    // mid-row when it hit one. Fall back to String(value) so the
+    // export continues with a best-effort representation of the cell
+    // rather than crashing. (#1166)
+    try {
+      s = JSON.stringify(value);
+      // JSON.stringify returns undefined for values like plain
+      // functions or symbols — normalise to empty string so we never
+      // feed `undefined` into the downstream string ops.
+      if (s === undefined) s = "";
+    } catch {
+      try {
+        s = String(value);
+      } catch {
+        s = "";
+      }
+    }
+  }
   const needsQuoting =
     s.includes(",") ||
     s.includes('"') ||

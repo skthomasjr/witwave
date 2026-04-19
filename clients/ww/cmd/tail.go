@@ -58,22 +58,40 @@ func newTailCmd() *cobra.Command {
 			}
 
 			lastID := tf.lastEventID
-			backoff := 100 * time.Millisecond
+			const initialBackoff = 100 * time.Millisecond
+			const minReconnectFloor = 500 * time.Millisecond
+			backoff := initialBackoff
 			for {
 				if ctx.Err() != nil {
 					return nil
 				}
-				resumed, err := streamOnce(ctx, c, out, targetURL, lastID, tf.pretty, typeFilter)
+				resumed, receivedAny, err := streamOnce(ctx, c, out, targetURL, lastID, tf.pretty, typeFilter)
 				if resumed != "" {
 					lastID = resumed
 				}
-				if err == nil || errors.Is(err, io.EOF) {
-					// Normal server-side close — reconnect immediately.
-					backoff = 100 * time.Millisecond
-					continue
-				}
 				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 					return nil
+				}
+				if err == nil || errors.Is(err, io.EOF) {
+					// Normal server-side close. Only reset backoff if
+					// we actually received something in this attempt —
+					// otherwise back off to avoid a tight reconnect
+					// loop against a broken endpoint.
+					if receivedAny {
+						backoff = initialBackoff
+						continue
+					}
+					// No events; enforce a minimum reconnect floor and
+					// keep escalating until something comes back.
+					wait := backoff
+					if wait < minReconnectFloor {
+						wait = minReconnectFloor
+					}
+					if !sleepCtx(ctx, wait) {
+						return nil
+					}
+					backoff = nextBackoff(backoff)
+					continue
 				}
 				out.Warnf("stream error: %v (reconnecting in %v)", err, backoff)
 				if !sleepCtx(ctx, backoff) {
@@ -113,7 +131,10 @@ func resolveStreamURL(ctx context.Context, c *client.Client, tf *tailFlags) (str
 }
 
 // streamOnce connects once and returns the last-seen event id so a
-// reconnect can resume. err is nil at EOF.
+// reconnect can resume. The receivedAny bool reports whether any real
+// event (not a keepalive / empty block) was consumed during this
+// attempt — callers use it to decide whether to reset reconnect
+// backoff. err is nil at EOF.
 func streamOnce(
 	ctx context.Context,
 	c *client.Client,
@@ -121,27 +142,29 @@ func streamOnce(
 	target, lastID string,
 	pretty bool,
 	typeFilter map[string]struct{},
-) (string, error) {
+) (string, bool, error) {
 	hdr := http.Header{}
 	if lastID != "" {
 		hdr.Set("Last-Event-ID", lastID)
 	}
 	resp, err := c.OpenStream(ctx, http.MethodGet, target, nil, hdr, false)
 	if err != nil {
-		return lastID, err
+		return lastID, false, err
 	}
 	defer resp.Body.Close()
 
 	p := client.NewSSEParser(resp.Body)
 	seenID := lastID
+	receivedAny := false
 	for {
 		ev, err := p.Next(ctx)
 		if err != nil {
-			return seenID, err
+			return seenID, receivedAny, err
 		}
 		if ev.IsKeepalive() {
 			continue
 		}
+		receivedAny = true
 		if ev.ID != "" {
 			seenID = ev.ID
 		}
@@ -167,10 +190,12 @@ func emitEvent(w *output.Writer, ev client.Event, pretty bool) {
 		ID:    ev.ID,
 		Retry: ev.Retry.Milliseconds(),
 	}
+	dataIsJSON := false
 	if ev.Data != "" {
 		// Try to emit as JSON; fall back to a string.
 		if json.Valid([]byte(ev.Data)) {
 			rec.Data = json.RawMessage(ev.Data)
+			dataIsJSON = true
 		} else {
 			b, _ := json.Marshal(ev.Data)
 			rec.Data = b
@@ -185,8 +210,18 @@ func emitEvent(w *output.Writer, ev client.Event, pretty bool) {
 		fmt.Fprintln(w.Out, string(b))
 		return
 	}
-	// Human pretty line.
-	fmt.Fprintf(w.Out, "[%s] id=%s  %s\n", ev.Type, ev.ID, string(rec.Data))
+	// Human pretty line. When the raw data wasn't valid JSON, render it
+	// as-is without the JSON quoting/escaping layer so users see the
+	// wire text instead of an escaped string literal.
+	var rendered string
+	if ev.Data == "" {
+		rendered = ""
+	} else if dataIsJSON {
+		rendered = string(rec.Data)
+	} else {
+		rendered = ev.Data
+	}
+	fmt.Fprintf(w.Out, "[%s] id=%s  %s\n", ev.Type, ev.ID, rendered)
 }
 
 func sleepCtx(ctx context.Context, d time.Duration) bool {

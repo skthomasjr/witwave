@@ -48,28 +48,115 @@ var defaultMCPToolImages = map[string]string{
 }
 
 // reconcileMCPTools walks every tool the spec asks for and reconciles a
-// Deployment + Service pair. Tools with Enabled=false are skipped (delete
-// path is a follow-up; chart-driven lifecycle remains the source of truth
-// for operator-managed clusters running mcpTools in the chart alongside
-// the operator).
+// Deployment + Service pair. Tools with Enabled=false (or removed
+// entirely from the spec) are GC'd via a label-scoped list + IsControlledBy
+// filter so the operator no longer stranded leftover tool Deployments /
+// Services after a tool was disabled (#1172).
 func (r *NyxAgentReconciler) reconcileMCPTools(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
-	if agent.Spec.MCPTools == nil {
-		return nil
-	}
-	tools := map[string]*nyxv1alpha1.MCPToolSpec{
-		"kubernetes": agent.Spec.MCPTools.Kubernetes,
-		"helm":       agent.Spec.MCPTools.Helm,
-	}
-	var errs []error
-	for name, tool := range tools {
-		if tool == nil || !tool.Enabled {
-			continue
+	// Compute the desired (enabled) set first. When spec.mcpTools is
+	// nil we still run the cleanup pass so a tool that was deleted
+	// from the CR gets torn down.
+	desired := map[string]*nyxv1alpha1.MCPToolSpec{}
+	if agent.Spec.MCPTools != nil {
+		candidates := map[string]*nyxv1alpha1.MCPToolSpec{
+			"kubernetes": agent.Spec.MCPTools.Kubernetes,
+			"helm":       agent.Spec.MCPTools.Helm,
 		}
+		for name, tool := range candidates {
+			if tool != nil && tool.Enabled {
+				desired[name] = tool
+			}
+		}
+	}
+
+	var errs []error
+	for name, tool := range desired {
 		if err := r.applyMCPToolDeployment(ctx, agent, name, tool); err != nil {
 			errs = append(errs, fmt.Errorf("mcp-%s deployment: %w", name, err))
 		}
 		if err := r.applyMCPToolService(ctx, agent, name); err != nil {
 			errs = append(errs, fmt.Errorf("mcp-%s service: %w", name, err))
+		}
+	}
+
+	// Cleanup: list Deployments + Services labelled by THIS agent's
+	// part-of/managed-by markers and scoped to the mcp- component
+	// prefix, then delete anything that's either for a not-desired
+	// tool or genuinely orphaned. IsControlledBy is checked before
+	// every Delete so foreign-owned objects (another NyxAgent, or a
+	// chart-managed sibling) are never touched — mirrors the
+	// reconcileConfigMaps pattern (line ~766).
+	if cleanupErr := r.cleanupMCPTools(ctx, agent, desired); cleanupErr != nil {
+		errs = append(errs, cleanupErr)
+	}
+	return errors.Join(errs...)
+}
+
+// cleanupMCPTools deletes MCP-tool Deployments/Services owned by this
+// NyxAgent whose tool name is not in the desired (enabled) set.
+func (r *NyxAgentReconciler) cleanupMCPTools(ctx context.Context, agent *nyxv1alpha1.NyxAgent, desired map[string]*nyxv1alpha1.MCPToolSpec) error {
+	// Only filter by labels we know every MCP-tool resource carries.
+	// The per-tool `labelComponent` value differs (mcp-kubernetes vs
+	// mcp-helm), so we match by partOf + managedBy + the agent name
+	// and then filter by component-prefix in memory.
+	selector := client.MatchingLabels{
+		labelName:      "",
+		labelPartOf:    partOf,
+		labelManagedBy: managedBy,
+	}
+	// labelName is per-resource (mcpToolName), not the agent's own
+	// name — drop it from the selector so the List actually matches
+	// every mcp-tool child.
+	delete(selector, labelName)
+
+	deps := &appsv1.DeploymentList{}
+	if err := r.List(ctx, deps, client.InNamespace(agent.Namespace), selector); err != nil {
+		return fmt.Errorf("list MCP-tool Deployments for cleanup: %w", err)
+	}
+	svcs := &corev1.ServiceList{}
+	if err := r.List(ctx, svcs, client.InNamespace(agent.Namespace), selector); err != nil {
+		return fmt.Errorf("list MCP-tool Services for cleanup: %w", err)
+	}
+
+	toolNameFromComponent := func(component string) (string, bool) {
+		const prefix = "mcp-"
+		if len(component) <= len(prefix) || component[:len(prefix)] != prefix {
+			return "", false
+		}
+		return component[len(prefix):], true
+	}
+
+	var errs []error
+	for i := range deps.Items {
+		d := &deps.Items[i]
+		if !metav1.IsControlledBy(d, agent) {
+			continue
+		}
+		tool, ok := toolNameFromComponent(d.Labels[labelComponent])
+		if !ok {
+			continue
+		}
+		if _, wanted := desired[tool]; wanted {
+			continue
+		}
+		if err := r.Delete(ctx, d); err != nil && !apierrors.IsNotFound(err) {
+			errs = append(errs, fmt.Errorf("delete stranded mcp-%s Deployment: %w", tool, err))
+		}
+	}
+	for i := range svcs.Items {
+		s := &svcs.Items[i]
+		if !metav1.IsControlledBy(s, agent) {
+			continue
+		}
+		tool, ok := toolNameFromComponent(s.Labels[labelComponent])
+		if !ok {
+			continue
+		}
+		if _, wanted := desired[tool]; wanted {
+			continue
+		}
+		if err := r.Delete(ctx, s); err != nil && !apierrors.IsNotFound(err) {
+			errs = append(errs, fmt.Errorf("delete stranded mcp-%s Service: %w", tool, err))
 		}
 	}
 	return errors.Join(errs...)
@@ -112,8 +199,13 @@ func resolveMCPToolImage(tool string, spec *nyxv1alpha1.MCPToolSpec, fallbackTag
 }
 
 func (r *NyxAgentReconciler) applyMCPToolDeployment(ctx context.Context, agent *nyxv1alpha1.NyxAgent, tool string, spec *nyxv1alpha1.MCPToolSpec) error {
+	// #1173: honour an explicit Replicas=0 (pause the tool without
+	// removing its Deployment). Previously any zero or negative value
+	// was coerced to 1, so operators couldn't drain a tool during
+	// cluster maintenance without also disabling it. The CRD caps
+	// Replicas at Minimum=0, so negative values can't land here.
 	replicas := int32(1)
-	if spec.Replicas != nil && *spec.Replicas > 0 {
+	if spec.Replicas != nil {
 		replicas = *spec.Replicas
 	}
 	img := resolveMCPToolImage(tool, spec, DefaultImageTag)
@@ -143,6 +235,20 @@ func (r *NyxAgentReconciler) applyMCPToolDeployment(ctx context.Context, agent *
 							ContainerPort: mcpToolPort,
 							Protocol:      corev1.ProtocolTCP,
 						}},
+						// Readiness probe posture (#1173): Kubernetes does
+						// NOT expand env vars inside HTTPGet.HTTPHeaders, so
+						// we can't stamp `Authorization: Bearer $(MCP_TOOL_AUTH_TOKEN)`
+						// here and expect it to resolve at kubelet time. The
+						// operator also has no visibility into the per-tool
+						// auth token (MCPToolSpec is intentionally scaffold-
+						// scoped — Enabled, Image, Replicas only), so we
+						// cannot embed a plaintext header either. By
+						// contract (AGENTS.md: `shared/mcp_auth.py` and the
+						// chart's `/health` path) the MCP tool server
+						// whitelists `/health` without auth precisely so
+						// kubelet probes succeed under MCP_TOOL_AUTH_TOKEN.
+						// If that contract changes, either expose a token
+						// ref on MCPToolSpec or switch probes to TCP.
 						ReadinessProbe: &corev1.Probe{
 							ProbeHandler: corev1.ProbeHandler{
 								HTTPGet: &corev1.HTTPGetAction{

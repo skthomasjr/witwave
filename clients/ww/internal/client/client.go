@@ -68,6 +68,12 @@ func (c *Client) Token() string { return c.cfg.Token }
 // RunToken returns the ad-hoc run bearer token (may be empty).
 func (c *Client) RunToken() string { return c.cfg.RunToken }
 
+// PreferredToken returns the token callers should use for A2A / validate
+// / other non-ad-hoc-run HTTP calls. This is always the conversations
+// token (Token) — RunToken is reserved for the dedicated ad-hoc-run
+// endpoints.
+func (c *Client) PreferredToken() string { return c.cfg.Token }
+
 // Verbose returns the verbosity level (0/1/2).
 func (c *Client) Verbose() int { return c.cfg.Verbose }
 
@@ -117,7 +123,13 @@ func (c *Client) DoJSON(ctx context.Context, method, path string, body, out any,
 
 	var lastErr error
 	backoff := 200 * time.Millisecond
-	const maxAttempts = 3
+	// Only retry idempotent methods. Non-GET requests get a single
+	// attempt — retrying POST/PUT/DELETE can cause duplicate side
+	// effects on the server.
+	maxAttempts := 3
+	if method != http.MethodGet {
+		maxAttempts = 1
+	}
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		req, err := http.NewRequestWithContext(ctx, method, u, bytesReader(buf))
 		if err != nil {
@@ -214,12 +226,15 @@ func (c *Client) GetBytes(ctx context.Context, path string) ([]byte, error) {
 	return body, nil
 }
 
-// OpenStream issues a GET and hands back the response body as an
+// OpenStream issues a request and hands back the response body as an
 // io.ReadCloser. Used by SSE / streaming POST paths. Stream callers are
 // responsible for closing the body.
 //
-// The request bypasses the http.Client Timeout by cloning it with
-// Timeout=0 so long-lived streams don't get killed at 30s.
+// Cancellation is driven entirely by the caller's context — pass a
+// long-lived context (no deadline) for long streams. The configured
+// http.Client Timeout still applies to establishing the connection and
+// receiving headers, but streams cancel through ctx, not the Client
+// timeout.
 func (c *Client) OpenStream(ctx context.Context, method, path string, body any, extraHeaders http.Header, useRunToken bool) (*http.Response, error) {
 	u, err := c.Resolve(path)
 	if err != nil {
@@ -243,14 +258,14 @@ func (c *Client) OpenStream(ctx context.Context, method, path string, body any, 
 			req.Header.Add(k, v)
 		}
 	}
-	// Clone the client with no overall timeout for streams; context
-	// controls cancellation.
-	streamClient := *c.hc
-	streamClient.Timeout = 0
 	if c.cfg.Verbose >= 1 {
 		c.logLine(fmt.Sprintf("--> %s %s [stream]", method, u))
 	}
-	resp, err := streamClient.Do(req)
+	// Use the shared client directly — cloning by value trips the
+	// copylocks check (http.Client contains a sync.Mutex in the cookie
+	// jar interface). The request context controls cancellation for
+	// long-lived streams.
+	resp, err := c.hc.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("transport: %w", err)
 	}
@@ -278,9 +293,20 @@ func (c *Client) applyHeaders(req *http.Request, useRunToken, hasBody bool) {
 }
 
 func (c *Client) sleep(ctx context.Context, d time.Duration) {
-	// Add +/- 25% jitter so stampedes don't synchronise.
-	jitter := time.Duration(rand.Int63n(int64(d / 2)))
-	wait := d/2 + jitter
+	if d <= 0 {
+		return
+	}
+	// Add +/- 25% jitter so stampedes don't synchronise. Guard against
+	// rand.Int63n panicking on tiny durations where d/2 rounds to 0.
+	half := d / 2
+	var jitter time.Duration
+	if half > 0 {
+		jitter = time.Duration(rand.Int63n(int64(half)))
+	}
+	wait := half + jitter
+	if wait <= 0 {
+		wait = d
+	}
 	t := time.NewTimer(wait)
 	defer t.Stop()
 	select {

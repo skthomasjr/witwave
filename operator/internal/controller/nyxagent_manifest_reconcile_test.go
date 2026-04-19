@@ -40,15 +40,15 @@ import (
 //
 // Scope: 4-6 representative cases is sufficient per #972. Scenarios
 // covered:
-//   1. legacy single-owner CM converges to multi-owner shape on the
-//      next reconcile (upgrade path, #684).
-//   2. deleting one of three team members keeps the CM in place with
-//      two remaining non-controller OwnerReferences.
-//   3. the manifestHash annotation short-circuits writes when membership
-//      is unchanged across repeated reconciles (churn guard, #474).
-//   4. an agent with the empty-string team key still produces a
-//      manifest CM so agents that forgot the team label aren't silently
-//      dropped from their peer's manifests.
+//  1. legacy single-owner CM converges to multi-owner shape on the
+//     next reconcile (upgrade path, #684).
+//  2. deleting one of three team members keeps the CM in place with
+//     two remaining non-controller OwnerReferences.
+//  3. the manifestHash annotation short-circuits writes when membership
+//     is unchanged across repeated reconciles (churn guard, #474).
+//  4. an agent with the empty-string team key still produces a
+//     manifest CM so agents that forgot the team label aren't silently
+//     dropped from their peer's manifests.
 var _ = Describe("manifest ConfigMap reconcile (#972)", func() {
 	var (
 		teamName string

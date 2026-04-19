@@ -114,6 +114,14 @@ const streamConnected = ref<boolean>(false);
 const streamReconnecting = ref<boolean>(false);
 const streamError = ref<string>("");
 const streamTurns = ref<ConversationTurn[]>([]);
+// Tracks the current (agent, session) stream instance by monotonically
+// incrementing generation. Any bridged turn carries the gen at which it
+// was observed; switching sessions bumps the gen and filters out stale
+// turns that might still flush from the previous composable. (#1165)
+const currentStreamGen = ref<number>(0);
+// Per-turn gen tagging keyed by turnId so late flushes from the prior
+// session don't mis-tag as the new session's rows.
+const streamTurnGens = new Map<string, number>();
 // Polling-fallback latch: once the stream has been disconnected for >15s
 // we flip this true and show the "polling fallback" pill. Flips back
 // false as soon as the stream reconnects.
@@ -142,6 +150,7 @@ function teardownStream(): void {
   streamReconnecting.value = false;
   streamError.value = "";
   streamTurns.value = [];
+  streamTurnGens.clear();
   pollingFallback.value = false;
 }
 
@@ -171,6 +180,10 @@ async function loadBacklog(agent: string, session: string): Promise<void> {
 
 function openStream(agent: string, session: string): void {
   teardownStream();
+  // Bump gen so the turns view filters out anything tagged with an
+  // earlier session's gen. (#1165)
+  currentStreamGen.value += 1;
+  const gen = currentStreamGen.value;
   const stream = useConversationStream(agent, session);
   convStream = stream;
   // Bridge the composable's refs onto component-owned refs so watchers in
@@ -205,6 +218,14 @@ function openStream(agent: string, session: string): void {
   watch(
     stream.turns,
     (v) => {
+      // Tag every incoming turn with the gen under which it was
+      // observed; stale flushes from the prior session land with an
+      // older gen and get filtered out at render time. (#1165)
+      for (const turn of v) {
+        if (!streamTurnGens.has(turn.turnId)) {
+          streamTurnGens.set(turn.turnId, gen);
+        }
+      }
       streamTurns.value = v.slice();
     },
     { immediate: true, deep: true },
@@ -226,6 +247,11 @@ watch(
       // If the selection changes again before backlog lands, abort.
       backlogAborter?.abort();
     });
+    // Clear streamTurns synchronously before awaiting the backlog so a
+    // session switch cannot briefly render the prior session's rows
+    // tagged with the new (agent, session) pair. (#1165)
+    streamTurns.value = [];
+    streamTurnGens.clear();
     // One-shot backlog, then open the stream. The order matters so that
     // `streamTurns` only starts accumulating after the backlog snapshot
     // lands — otherwise a chunk that overlaps the final backlog row
@@ -247,20 +273,26 @@ onBeforeUnmount(() => {
 // first-chunk `ts` is stable so backlog de-dupe on (agent|session|ts|role)
 // can skip stream rows that the backlog already contains.
 function streamTurnsAsRows(agent: string, session: string): Row[] {
-  return streamTurns.value.map((turn) => ({
-    ts: turn.ts,
-    agent,
-    session_id: session,
-    role: turn.role === "assistant" ? "agent" : "user",
-    text: turn.content,
-    _agent: agent,
-    // Attach the turn id + in-progress flag so the template can show a
-    // typing indicator and so the v-for key survives chunk appends.
-    // Not part of the ConversationEntry wire shape; we carry it as
-    // extra own-properties and cast on use.
-    __turnId: turn.turnId,
-    __incomplete: !turn.complete,
-  }) as Row & { __turnId: string; __incomplete: boolean });
+  const gen = currentStreamGen.value;
+  // Only render turns whose gen matches the current session — late
+  // flushes from the previous composable land with an older gen and
+  // would otherwise get mis-tagged with the new (agent, session). (#1165)
+  return streamTurns.value
+    .filter((turn) => streamTurnGens.get(turn.turnId) === gen)
+    .map((turn) => ({
+      ts: turn.ts,
+      agent,
+      session_id: session,
+      role: turn.role === "assistant" ? "agent" : "user",
+      text: turn.content,
+      _agent: agent,
+      // Attach the turn id + in-progress flag so the template can show a
+      // typing indicator and so the v-for key survives chunk appends.
+      // Not part of the ConversationEntry wire shape; we carry it as
+      // extra own-properties and cast on use.
+      __turnId: turn.turnId,
+      __incomplete: !turn.complete,
+    }) as Row & { __turnId: string; __incomplete: boolean });
 }
 
 // Pure chronological order. Within a session, a response's ts is always

@@ -67,13 +67,13 @@ function persistPinned(): void {
   }
 }
 
-watch(
-  pinnedIds,
-  () => {
-    persistPinned();
-  },
-  { deep: true },
-);
+// Relies on whole-ref replacement in `togglePinned` (the Set is
+// reassigned, not mutated in place). Mutating the Set in place would
+// silently break persistence — `deep: true` on a Set is a no-op because
+// Vue does not proxy Set internals for structural reactivity. (#1164)
+watch(pinnedIds, () => {
+  persistPinned();
+});
 
 // -- Known types + agents --------------------------------------------------
 

@@ -121,7 +121,7 @@ func main() {
 }
 
 // renderAgent writes every resource controller.buildXxx would produce
-// for ``agent`` as a multi-document YAML stream. Resource ordering
+// for “agent“ as a multi-document YAML stream. Resource ordering
 // mirrors Reconcile.
 func renderAgent(agent *nyxv1alpha1.NyxAgent, w io.Writer) error {
 	emit := func(kind, name string, obj interface{}) error {
@@ -199,7 +199,11 @@ func renderAgent(agent *nyxv1alpha1.NyxAgent, w io.Writer) error {
 			return err
 		}
 	}
-	if mcm := controller.BuildManifestConfigMapForPlan(agent); mcm != nil {
+	mcm, mcmErr := controller.BuildManifestConfigMapForPlan(agent)
+	if mcmErr != nil {
+		return fmt.Errorf("build manifest ConfigMap: %w", mcmErr)
+	}
+	if mcm != nil {
 		if err := emit("ConfigMap", mcm.Name, mcm); err != nil {
 			return err
 		}

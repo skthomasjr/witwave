@@ -54,13 +54,31 @@ def _require_keys(
     optional: tuple[str, ...],
     type_: str,
 ) -> str | None:
+    """Enforce required fields; permit unknown additive fields (#1145).
+
+    Matches the docstring at module-top: *Additive payload changes
+    (new optional fields) do NOT require code changes here because
+    every per-type validator defaults to ignoring keys it does not
+    know about.*  Previously this helper rejected any key outside
+    ``required | optional``, which contradicted the documented
+    forward-compatibility contract — a publisher adding a new
+    optional field would trip validation on every envelope until the
+    validator was updated in lockstep.
+    """
     for k in required:
         if k not in payload:
             return _err(f"{type_}: missing required payload field {k!r}")
     allowed = set(required) | set(optional)
-    for k in payload:
-        if k not in allowed:
-            return _err(f"{type_}: unexpected payload field {k!r}")
+    # Unknown keys are tolerated for forward compatibility; a debug
+    # log gives operators a way to audit unexpected additions
+    # without hard-failing valid traffic.
+    unknown = [k for k in payload if k not in allowed]
+    if unknown:
+        import logging as _logging
+        _logging.getLogger(__name__).debug(
+            "%s: ignoring unknown additive payload fields %r (#1145)",
+            type_, unknown,
+        )
     return None
 
 

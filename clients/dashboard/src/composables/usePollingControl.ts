@@ -1,4 +1,4 @@
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed } from "vue";
 import type { ComputedRef, Ref } from "vue";
 
 // Global auto-refresh pause + tab-visibility gating (#1107).
@@ -38,23 +38,22 @@ const visibleRef = ref<boolean>(
   typeof document === "undefined" ? true : !document.hidden,
 );
 
-let visibilityListenerCount = 0;
+// The visibility listener is intentionally long-lived: installed once at
+// module scope on the first use and never removed. A single listener on
+// `document.visibilitychange` is trivial in cost (a ref write per tab
+// flip), and the refcount approach it replaces had a leak — multiple
+// `usePollingControl()` callers during a single mount could bump the
+// count without symmetric unmounts, leaving the listener reattached or
+// detached out of sync with reality. (#1161)
+let visibilityListenerInstalled = false;
 function onVisibilityChange(): void {
   visibleRef.value = !document.hidden;
 }
 function installVisibilityListener(): void {
   if (typeof document === "undefined") return;
-  if (visibilityListenerCount === 0) {
-    document.addEventListener("visibilitychange", onVisibilityChange);
-  }
-  visibilityListenerCount += 1;
-}
-function removeVisibilityListener(): void {
-  if (typeof document === "undefined") return;
-  visibilityListenerCount = Math.max(0, visibilityListenerCount - 1);
-  if (visibilityListenerCount === 0) {
-    document.removeEventListener("visibilitychange", onVisibilityChange);
-  }
+  if (visibilityListenerInstalled) return;
+  document.addEventListener("visibilitychange", onVisibilityChange);
+  visibilityListenerInstalled = true;
 }
 
 export interface UsePollingControlApi {
@@ -67,8 +66,9 @@ export interface UsePollingControlApi {
 }
 
 export function usePollingControl(): UsePollingControlApi {
-  onMounted(() => installVisibilityListener());
-  onUnmounted(() => removeVisibilityListener());
+  // Permanently installed on first use — no refcount, no teardown hook.
+  // See the note above installVisibilityListener. (#1161)
+  installVisibilityListener();
   return {
     paused: pausedRef,
     visible: visibleRef,
@@ -100,6 +100,6 @@ export function ensureVisibilityListenerInstalled(): void {
 export function __resetPollingControl(): void {
   pausedRef.value = false;
   visibleRef.value = true;
-  // Don't decrement the visibility listener count past zero; tests
-  // may call this before any mount happens.
+  // The visibility listener is intentionally long-lived; tests may
+  // exercise the install path but we don't detach here. (#1161)
 }

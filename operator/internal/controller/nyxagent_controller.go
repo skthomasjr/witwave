@@ -290,9 +290,19 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// Re-check DeletionTimestamp after any metadata Patch on the
 	// re-enable path so a concurrent delete that landed during
 	// reconcile is honoured before the apply chain runs (#1017).
+	// APIReader is preferred because it bypasses the informer cache,
+	// but some unit tests instantiate the reconciler without wiring
+	// APIReader — fall back to the cached client Get in that case so
+	// tests don't nil-deref (#1168, same guard as line 859).
 	{
 		fresh := &nyxv1alpha1.NyxAgent{}
-		if gErr := r.APIReader.Get(ctx, req.NamespacedName, fresh); gErr != nil {
+		var gErr error
+		if r.APIReader != nil {
+			gErr = r.APIReader.Get(ctx, req.NamespacedName, fresh)
+		} else {
+			gErr = r.Get(ctx, req.NamespacedName, fresh)
+		}
+		if gErr != nil {
 			if apierrors.IsNotFound(gErr) {
 				// CR was deleted out from under us — nothing to do.
 				return ctrl.Result{}, nil
@@ -518,7 +528,7 @@ func (r *NyxAgentReconciler) applyDeployment(ctx context.Context, agent *nyxv1al
 	return nil
 }
 
-// applySSA issues a Server-Side Apply patch against ``obj`` using the
+// applySSA issues a Server-Side Apply patch against “obj“ using the
 // operator's FieldManager. The caller must set GVK on the object (SSA
 // requires TypeMeta); the helper strips ResourceVersion and ManagedFields
 // which would otherwise conflict with Apply semantics.
@@ -545,7 +555,7 @@ func applySSA(ctx context.Context, c client.Client, obj client.Object) error {
 
 // NyxPromptAgentRefIndex is the field-indexer key that maps every
 // NyxPrompt to its spec.agentRefs[].name values (#753). Indexing here
-// lets ``listNyxPromptsForAgent`` issue a single scoped List instead of
+// lets “listNyxPromptsForAgent“ issue a single scoped List instead of
 // the full-namespace List + in-memory O(N*R) filter it used to run on
 // every reconcile.
 const NyxPromptAgentRefIndex = "spec.agentRefs.name"
@@ -578,21 +588,27 @@ func NyxPromptAgentRefExtractor(obj client.Object) []string {
 // each reconcile (#901). Real errors must propagate so they are
 // logged/retried; only index-missing is legitimately recoverable with
 // the fallback path.
-// fieldIndexMissingRe matches the two upstream error formats produced
-// when a scoped List references an index that isn't registered:
+// fieldIndexMissingRe matches the upstream error formats produced when
+// a scoped List references an index that isn't registered. Known
+// variants across controller-runtime + client-go + envtest/apiserver
+// versions (#1014, #1179):
 //
 //	controller-runtime cache_reader: `index with name %s does not exist`
 //	client-go thread_safe_store:     `Index with name %s does not exist`
 //	                                 `indexer "%s" does not exist`
+//	newer upstream phrasing:         `index with name %s is not registered`
+//	                                 `indexer "%s" not registered`
+//	envtest apiserver (no index):    `field label not supported: %s`
 //
 // The previous substring-pair check (`"index"` AND `"does not exist"`)
 // was loose enough to classify wrapped/joined errors like
-// `context deadline exceeded; index X does not exist` as recoverable
-// (#1014). The anchored regex below requires the exact upstream phrase
+// `context deadline exceeded; index X does not exist` as recoverable.
+// The anchored alternation below requires the exact upstream phrase
 // shape so unrelated errors that happen to mention both words no longer
-// trip the fallback path.
+// trip the fallback path, while still covering the "not registered" and
+// envtest "field label not supported" phrasings.
 var fieldIndexMissingRe = regexp.MustCompile(
-	`(?i)\b(?:index with name \S+|indexer "\S+")\s+does not exist\b`,
+	`(?i)\b(?:(?:index with name \S+|indexer "\S+")\s+(?:does not exist|is not registered|not registered)|field label not supported:\s*\S+)\b`,
 )
 
 func IsFieldIndexMissing(err error) bool {
@@ -607,6 +623,41 @@ func IsFieldIndexMissing(err error) bool {
 		}
 	}
 	return false
+}
+
+// ownerRefsEqual reports whether two OwnerReference slices represent
+// the same desired set (order-insensitive over (UID, Controller)). We
+// compare (UID, Controller) rather than the whole struct because
+// BlockOwnerDeletion and APIVersion drift are not signals of
+// ownership drift — only UID set and the Controller flag matter for
+// the GC semantics the manifest CM depends on.
+func ownerRefsEqual(a, b []metav1.OwnerReference) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	type key struct {
+		UID        string
+		Controller bool
+	}
+	toSet := func(in []metav1.OwnerReference) map[key]struct{} {
+		out := make(map[key]struct{}, len(in))
+		for _, r := range in {
+			ctrl := false
+			if r.Controller != nil {
+				ctrl = *r.Controller
+			}
+			out[key{UID: string(r.UID), Controller: ctrl}] = struct{}{}
+		}
+		return out
+	}
+	aSet := toSet(a)
+	bSet := toSet(b)
+	for k := range aSet {
+		if _, ok := bSet[k]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // listContainsSelf reports whether the given NyxAgentList includes the
@@ -638,7 +689,7 @@ const NyxAgentTeamIndex = "metadata.labels.nyx.ai/team"
 
 // NyxAgentTeamExtractor returns the single-element team key for a
 // NyxAgent, including the empty-string case. Returning a single value
-// means the scoped List ``client.MatchingFields{NyxAgentTeamIndex: t}``
+// means the scoped List “client.MatchingFields{NyxAgentTeamIndex: t}“
 // yields exactly the peers that share the team group.
 func NyxAgentTeamExtractor(obj client.Object) []string {
 	a, ok := obj.(*nyxv1alpha1.NyxAgent)
@@ -652,8 +703,8 @@ func NyxAgentTeamExtractor(obj client.Object) []string {
 // whose spec.agentRefs contains this agent. The result is sorted by CR
 // name so buildDeployment renders pod volumes in a deterministic order.
 //
-// Performance (#753): uses ``client.MatchingFields`` against
-// ``NyxPromptAgentRefIndex`` so each call is O(k) in the number of
+// Performance (#753): uses “client.MatchingFields“ against
+// “NyxPromptAgentRefIndex“ so each call is O(k) in the number of
 // prompts bound to this agent rather than O(N) in the namespace prompt
 // count. Falls back to the legacy full-List path when the index is
 // missing (unit tests that skip the manager bootstrap).
@@ -935,11 +986,15 @@ func (r *NyxAgentReconciler) reconcileManifestConfigMap(ctx context.Context, age
 	}
 
 	// Hash short-circuit: if the already-stored CM carries the same
-	// content hash, do nothing. The hash input now includes the sorted
-	// set of owner UIDs, so a membership change that coincidentally
-	// leaves the rendered JSON unchanged still forces a refresh of the
-	// owner refs.
-	if existing.Annotations[manifestHashAnnotation] == desiredHash {
+	// content hash AND the on-object OwnerReferences match the
+	// desired shape, do nothing. The hash input already covers both
+	// body and sorted owner UIDs, but a bystander (operator upgrade,
+	// ArgoCD drift, manual kubectl edit) can mutate OwnerReferences
+	// without touching the annotation — in that case the annotation
+	// alone would falsely report "in sync" and we'd skip the write
+	// the upgrade path (#684) depends on. Compare both.
+	if existing.Annotations[manifestHashAnnotation] == desiredHash &&
+		ownerRefsEqual(existing.OwnerReferences, desired.OwnerReferences) {
 		return nil
 	}
 	if existing.Annotations == nil {
@@ -1244,9 +1299,9 @@ func (r *NyxAgentReconciler) reconcilePDB(ctx context.Context, agent *nyxv1alpha
 // Error handling (#754): every step is best-effort idempotent.  A
 // transient apiserver failure on, say, the PodMonitor delete must not
 // prevent the next step (the dashboard, or removing the finalizer)
-// from running.  All non-nil errors are accumulated via ``errors.Join``
+// from running.  All non-nil errors are accumulated via “errors.Join“
 // and returned together.  Each failure also increments
-// ``nyxagent_teardown_step_errors_total{kind,reason}`` so operators can
+// “nyxagent_teardown_step_errors_total{kind,reason}“ so operators can
 // alert on stuck-delete patterns without grepping reconcile logs.
 func (r *NyxAgentReconciler) teardownDisabledAgent(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
 	key := client.ObjectKey{Namespace: agent.Namespace, Name: agent.Name}
@@ -1671,7 +1726,7 @@ func handleDownstreamNoMatch(cacheKey string, err error) (error, bool) {
 // installed — the reconciler treats that as a clean no-op. Other errors
 // propagate so they surface in status + the retry loop.
 //
-// Results are cached for ``crdProbeTTL`` (#756) so a high-churn
+// Results are cached for “crdProbeTTL“ (#756) so a high-churn
 // NyxAgent workload does not re-probe the RESTMapper on every
 // reconcile. A fresh install of the Prometheus Operator CRDs is
 // picked up within that TTL without operator restart.
@@ -2281,11 +2336,14 @@ func (r *NyxAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		reqs := make([]reconcile.Request, 0, len(peers.Items))
 		for i := range peers.Items {
 			p := &peers.Items[i]
-			peerTeam := ""
-			if p.Labels != nil {
-				peerTeam = p.Labels[teamLabel]
-			}
-			if peerTeam != team {
+			// #1178: use teamKey() here (matches NyxAgentTeamExtractor
+			// semantics, including the empty-string-for-missing-label
+			// grouping) instead of a raw label lookup. The previous
+			// `p.Labels[teamLabel]` read did not nil-guard Labels in a
+			// way that matched the extractor's contract, producing
+			// post-filter mismatches on the fallback namespace-List
+			// path where the field-indexer wasn't registered.
+			if teamKey(p) != team {
 				continue
 			}
 			if p.Namespace == namespace && p.Name == skipName {

@@ -111,7 +111,15 @@ function now(): number {
   return Date.now();
 }
 
-function upsertAlert(next: Alert): void {
+interface UpsertOptions {
+  // Only when the caller explicitly asks for it does a re-arm outside
+  // the dedupe window clear an existing dismissal. Without this flag a
+  // dismissed alert stays dismissed regardless of how much time has
+  // passed since the last firing. (#1158)
+  unDismiss?: boolean;
+}
+
+function upsertAlert(next: Alert, opts: UpsertOptions = {}): void {
   const prev = activeAlerts.value.get(next.id);
   const merged: Alert = {
     ...next,
@@ -135,10 +143,13 @@ function upsertAlert(next: Alert): void {
       return;
     }
     // Outside the window → treat as a fresh re-arm: reset firstSeenAt +
-    // count, and clear any stale dismissal so the operator sees it.
+    // count. Respect any existing dismissal unless caller opts in via
+    // `unDismiss: true`. Previously an unconditional wipe meant an
+    // operator dismissal silently vanished once the dedupe window
+    // elapsed. (#1158)
     merged.firstSeenAt = merged.lastSeenAt;
     merged.count = 1;
-    if (dismissedAlertIds.value.has(next.id)) {
+    if (opts.unDismiss && dismissedAlertIds.value.has(next.id)) {
       const dismissed = new Set(dismissedAlertIds.value);
       dismissed.delete(next.id);
       dismissedAlertIds.value = dismissed;
@@ -164,10 +175,14 @@ function clearAlert(id: string): void {
 
 // --- Health-poll fallback ---------------------------------------------------
 
+// Stable ids per health state so dismissals persist across detail
+// changes. Previously the id embedded the detail string, which meant a
+// single char change in the detail (e.g. a new failing member name)
+// created a new alert id and re-surfaced a dismissed entry. (#1159)
 function healthAlertFor(state: HealthState, detail: string): Alert | null {
   if (state === "err") {
     return {
-      id: `health:err:${detail}`,
+      id: "health:err",
       severity: "error",
       title: "All agents unreachable",
       detail: detail || "The harness fan-out is failing for every team member.",
@@ -175,7 +190,7 @@ function healthAlertFor(state: HealthState, detail: string): Alert | null {
   }
   if (state === "partial") {
     return {
-      id: `health:partial:${detail}`,
+      id: "health:partial",
       severity: "warning",
       title: "Team degraded",
       detail: detail || "One or more agents are failing their health probe.",
@@ -392,14 +407,16 @@ function wireOnce(): void {
 
   watch(
     [connected, reconnecting],
-    ([conn, rec]) => {
+    ([conn]) => {
       if (conn) {
         clearStreamDown();
         return;
       }
-      if (rec || !conn) {
-        scheduleStreamDown();
-      }
+      // Post-guard: `conn` is false here, so we're always in the
+      // stream-down scheduling path. The prior `if (rec || !conn)`
+      // test had a dead `rec ||` half and was tautologically true once
+      // the guard fell through. (#1160)
+      scheduleStreamDown();
     },
     { immediate: true },
   );

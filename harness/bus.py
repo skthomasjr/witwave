@@ -365,14 +365,33 @@ def _emit_hook_decision_event_stream(event: HookDecisionEvent) -> None:
     except Exception:  # pragma: no cover — harness context required
         return
     try:
+        # Drop events with out-of-contract agent/decision values
+        # (#1149) rather than silently substituting "claude"/"allow".
+        # Coercion misreported dashboards: a `warn`-mode test rule
+        # landing on `codex` was rewritten as a claude `allow`
+        # envelope, completely erasing the operator's real policy
+        # signal.  Dropping the event is strictly safer — the
+        # backend's own OTel span event still captures the decision.
+        if event.agent not in ("claude", "codex", "gemini"):
+            logger.warning(
+                "hook.decision SSE drop: unknown agent %r (expected one of "
+                "claude/codex/gemini) (#1149)", event.agent,
+            )
+            return
+        if event.decision not in ("allow", "deny", "warn"):
+            logger.warning(
+                "hook.decision SSE drop: unknown decision %r (expected one "
+                "of allow/deny/warn) (#1149)", event.decision,
+            )
+            return
         sid_hash = hashlib.sha256(
             (event.session_id or "").encode("utf-8")
         ).hexdigest()[:12]
         payload: dict = {
-            "backend": event.agent if event.agent in ("claude", "codex", "gemini") else "claude",
+            "backend": event.agent,
             "session_id_hash": sid_hash or "0" * 12,
             "tool": event.tool or "",
-            "decision": event.decision if event.decision in ("allow", "deny", "warn") else "allow",
+            "decision": event.decision,
         }
         if event.rule_name:
             payload["rule_id"] = event.rule_name

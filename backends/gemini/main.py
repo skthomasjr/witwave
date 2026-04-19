@@ -291,6 +291,16 @@ async def main():
     start_time = datetime.now(timezone.utc)
     _startup_mono = time.monotonic()
 
+    # Bind the running event loop for cross-thread event publishers
+    # (OTel span processor worker thread) so trace.span events reach
+    # the harness event channel instead of being silently dropped by
+    # ``asyncio.get_running_loop`` raising on a worker thread (#1144).
+    try:
+        from hook_events import bind_event_loop as _bind_event_loop
+        _bind_event_loop(asyncio.get_running_loop())
+    except Exception as _bind_exc:  # pragma: no cover — best-effort
+        logger.warning("hook_events.bind_event_loop failed: %r", _bind_exc)
+
     # Initialise OTel before the executor (#469). No-op when OTEL_ENABLED is falsy.
     from otel import init_otel_if_enabled
     init_otel_if_enabled(service_name=os.environ.get("OTEL_SERVICE_NAME") or f"gemini-{os.environ.get('AGENT_OWNER', 'unknown')}")

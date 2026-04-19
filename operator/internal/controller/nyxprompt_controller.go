@@ -225,10 +225,7 @@ func (r *NyxPromptReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			readyCount++
 		}
 	}
-	// Publish ready/desired counts as gauges so dashboards can alert on
-	// partial-binding without scraping the CR status subresource (#837).
-	nyxpromptReadyCount.WithLabelValues(prompt.Namespace, prompt.Name).Set(float64(readyCount))
-	nyxpromptDesiredCount.WithLabelValues(prompt.Namespace, prompt.Name).Set(float64(len(prompt.Spec.AgentRefs)))
+	desiredCount := int32(len(prompt.Spec.AgentRefs))
 
 	// Status().Patch with MergeFrom (#757) so concurrent writers on the
 	// status subresource do not contend over the full object version;
@@ -243,8 +240,22 @@ func (r *NyxPromptReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// not duplicated. Non-conflict errors still propagate to controller-
 	// runtime so its rate limiter can back off.
 	hasErr := len(reconcileErrs) > 0
-	if err := r.patchStatusWithConflictRetry(ctx, prompt, bindings, readyCount, hasErr); err != nil {
-		reconcileErrs = append(reconcileErrs, fmt.Errorf("update status: %w", err))
+	statusErr := r.patchStatusWithConflictRetry(ctx, prompt, bindings, readyCount, hasErr)
+	if statusErr != nil {
+		reconcileErrs = append(reconcileErrs, fmt.Errorf("update status: %w", statusErr))
+	}
+
+	// #1177: publish ready/desired gauges only AFTER a successful status
+	// patch. Previously the gauges fired before the patch, so a 409
+	// exhaustion would leave dashboards advertising a post-reconcile
+	// state that never actually landed on the CR. Firing after the
+	// commit keeps the metric and the status subresource in lockstep —
+	// on patch failure the gauges are left at their prior values and
+	// the next reconcile (triggered by the resource version watch) will
+	// re-try the whole update.
+	if statusErr == nil {
+		nyxpromptReadyCount.WithLabelValues(prompt.Namespace, prompt.Name).Set(float64(readyCount))
+		nyxpromptDesiredCount.WithLabelValues(prompt.Namespace, prompt.Name).Set(float64(desiredCount))
 	}
 
 	if len(reconcileErrs) > 0 {
@@ -531,9 +542,15 @@ func renderNyxPromptBody(prompt *nyxv1alpha1.NyxPrompt) (string, error) {
 	return buf.String(), nil
 }
 
-// sortMap returns the input with its top-level keys in a deterministic
-// order. Sub-maps are intentionally left as-is; nested order is handled
-// by sigs.k8s.io/yaml's sorted-key emission for map[string]interface{}.
+// sortMap returns the input with keys in a deterministic order at every
+// level of the map tree (#1167). json.Unmarshal into `interface{}` only
+// produces `map[string]interface{}`, but we also handle
+// `map[interface{}]interface{}` (what a YAML decoder would emit) and
+// walk slices so any nested maps inside list entries are normalised too.
+// sigs.k8s.io/yaml's sorted-key emission only applies to the top level
+// of each map it serialises; nested untyped maps came through in Go's
+// random iteration order, so frontmatter with nested structures churned
+// the rendered CM bytes across reconciles.
 func sortMap(in map[string]interface{}) map[string]interface{} {
 	if len(in) == 0 {
 		return in
@@ -545,9 +562,51 @@ func sortMap(in map[string]interface{}) map[string]interface{} {
 	sort.Strings(keys)
 	out := make(map[string]interface{}, len(in))
 	for _, k := range keys {
-		out[k] = in[k]
+		out[k] = sortValue(in[k])
 	}
 	return out
+}
+
+// sortValue recursively normalises nested maps and slices so the
+// rendered YAML is byte-stable regardless of map iteration order.
+func sortValue(v interface{}) interface{} {
+	switch x := v.(type) {
+	case map[string]interface{}:
+		return sortMap(x)
+	case map[interface{}]interface{}:
+		// Convert to map[string]interface{} when every key is a string
+		// so downstream YAML emission remains identical to the plain
+		// sortMap path. Non-string keys are left under the original
+		// type (rare in JSON-sourced frontmatter, but defensive).
+		out := make(map[string]interface{}, len(x))
+		allStringKeys := true
+		for k := range x {
+			if _, ok := k.(string); !ok {
+				allStringKeys = false
+				break
+			}
+		}
+		if !allStringKeys {
+			// Sort by fmt-stringified key for determinism even when
+			// keys aren't strings; still normalise values.
+			converted := make(map[string]interface{}, len(x))
+			for k, v := range x {
+				converted[fmt.Sprintf("%v", k)] = v
+			}
+			return sortMap(converted)
+		}
+		for k, v := range x {
+			out[k.(string)] = v
+		}
+		return sortMap(out)
+	case []interface{}:
+		for i, item := range x {
+			x[i] = sortValue(item)
+		}
+		return x
+	default:
+		return v
+	}
 }
 
 // SetupWithManager wires the reconciler. NyxPrompt owns its ConfigMaps;

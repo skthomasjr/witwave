@@ -35,6 +35,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	nyxv1alpha1 "github.com/nyx-ai/nyx-operator/api/v1alpha1"
@@ -47,8 +48,17 @@ import (
 const credentialsChecksumAnnotation = "nyx.ai/credentials-checksum"
 
 // referencedCredentialSecretNames returns every Secret name the given
-// agent depends on for credentials — both operator-managed Secrets (by
-// their computed name) and ExistingSecret pass-through references.
+// agent depends on for credentials. This covers three reference paths:
+//
+//  1. resolveGitSyncCredentials / resolveBackendCredentials — the
+//     operator-managed-or-passthrough resolver output.
+//  2. EnvFromSource.SecretRef across each backend's EnvFrom list — a
+//     user-provided Secret sourced whole-cloth into the backend env
+//     (#1171). Missing these used to mean a rotation of a user-supplied
+//     Secret never rolled the Deployment.
+//  3. EnvVarSource.SecretKeyRef across each backend's Env list — a
+//     user-provided Secret referenced one key at a time (#1171).
+//
 // Names are returned in stable sort order so the caller's checksum is
 // deterministic across reconciles.
 func referencedCredentialSecretNames(agent *nyxv1alpha1.NyxAgent) []string {
@@ -58,11 +68,29 @@ func referencedCredentialSecretNames(agent *nyxv1alpha1.NyxAgent) []string {
 		if r.SecretName != "" {
 			names[r.SecretName] = struct{}{}
 		}
+		// GitSync EnvFrom SecretRef coverage (#1171). GitSyncSpec has
+		// no inline Env field — credentials are injected via EnvFrom
+		// or the resolver.
+		for _, ef := range gs.EnvFrom {
+			if ef.SecretRef != nil && ef.SecretRef.Name != "" {
+				names[ef.SecretRef.Name] = struct{}{}
+			}
+		}
 	}
 	for _, b := range agent.Spec.Backends {
 		r := resolveBackendCredentials(agent.Name, b)
 		if r.SecretName != "" {
 			names[r.SecretName] = struct{}{}
+		}
+		for _, ef := range b.EnvFrom {
+			if ef.SecretRef != nil && ef.SecretRef.Name != "" {
+				names[ef.SecretRef.Name] = struct{}{}
+			}
+		}
+		for _, e := range b.Env {
+			if e.ValueFrom != nil && e.ValueFrom.SecretKeyRef != nil && e.ValueFrom.SecretKeyRef.Name != "" {
+				names[e.ValueFrom.SecretKeyRef.Name] = struct{}{}
+			}
 		}
 	}
 	out := make([]string, 0, len(names))
@@ -109,9 +137,29 @@ func (r *NyxAgentReconciler) enqueueAgentsReferencingSecret(ctx context.Context,
 	if !ok {
 		return nil
 	}
+	log := logf.FromContext(ctx).WithValues(
+		"secret", sec.Name,
+		"namespace", sec.Namespace,
+		"component", "credentials-watch",
+	)
 	list := &nyxv1alpha1.NyxAgentList{}
 	if err := r.List(ctx, list, client.InNamespace(sec.Namespace)); err != nil {
-		return nil
+		// #1170: swallowing this error previously meant a rotated
+		// Secret never reached any NyxAgent on that pass — the watch
+		// would effectively drop the event. Log at ERROR so operators
+		// see the miss, bump a counter for alerting, and fall back to
+		// a best-effort second List. If the retry also fails we still
+		// return an empty set (upstream is free to issue another
+		// event), but we do not silently eat the observability.
+		log.Error(err, "credentials watch: failed to List NyxAgents for Secret rotation; retrying")
+		NyxAgentCredentialWatchListErrorsTotal.WithLabelValues(sec.Namespace).Inc()
+		retry := &nyxv1alpha1.NyxAgentList{}
+		if rErr := r.List(ctx, retry, client.InNamespace(sec.Namespace)); rErr != nil {
+			log.Error(rErr, "credentials watch: retry List failed; returning empty enqueue set")
+			NyxAgentCredentialWatchListErrorsTotal.WithLabelValues(sec.Namespace).Inc()
+			return nil
+		}
+		list = retry
 	}
 	var out []reconcile.Request
 	for i := range list.Items {

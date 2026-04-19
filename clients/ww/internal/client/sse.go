@@ -13,16 +13,17 @@ import (
 
 // Event is a parsed SSE message.
 type Event struct {
-	Type    string
-	Data    string
-	ID      string
-	Retry   time.Duration // zero when unset
-	Comment string        // for ": keepalive" blocks; Type/Data empty
+	Type        string
+	Data        string
+	ID          string
+	Retry       time.Duration // zero when unset
+	Comment     string        // captured comment text (may be empty for bare ":" blocks)
+	CommentOnly bool          // true for blocks containing only SSE comments (keepalives)
 }
 
 // IsKeepalive reports whether this event is a bare SSE comment (keepalive).
 func (e Event) IsKeepalive() bool {
-	return e.Type == "" && e.Data == "" && e.ID == "" && e.Retry == 0 && e.Comment != ""
+	return e.CommentOnly
 }
 
 // SSEParser reads an SSE stream framed by blank-line separated blocks.
@@ -49,8 +50,10 @@ func (p *SSEParser) Next(ctx context.Context) (Event, error) {
 			// Pass through EOF with any tail-event still pending collected.
 			return Event{}, err
 		}
-		// Drop entirely-empty blocks (repeated blank lines).
-		if ev.Type == "" && ev.Data == "" && ev.ID == "" && ev.Retry == 0 && ev.Comment == "" {
+		// Drop entirely-empty blocks (repeated blank lines). Comment-
+		// only blocks are surfaced via CommentOnly=true so callers can
+		// recognise keepalives even when the comment text is empty.
+		if ev.Type == "" && ev.Data == "" && ev.ID == "" && ev.Retry == 0 && ev.Comment == "" && !ev.CommentOnly {
 			continue
 		}
 		return ev, nil
@@ -58,7 +61,9 @@ func (p *SSEParser) Next(ctx context.Context) (Event, error) {
 }
 
 // readBlock reads lines until it hits a blank line or EOF. A block with
-// ONLY comment lines is returned as a keepalive (Comment set).
+// ONLY comment lines is marked CommentOnly=true (keepalive). The
+// Comment field carries whatever text the comment actually contained;
+// bare ": " keepalives leave Comment empty.
 func (p *SSEParser) readBlock() (Event, error) {
 	var (
 		ev           Event
@@ -78,10 +83,7 @@ func (p *SSEParser) readBlock() (Event, error) {
 				ev.Data = strings.Join(dataLines, "\n")
 			}
 			if commentOnly && sawSomething && ev.Data == "" && ev.Type == "" && ev.ID == "" {
-				// All-comment block → keepalive
-				if ev.Comment == "" {
-					ev.Comment = "keepalive"
-				}
+				ev.CommentOnly = true
 			}
 			return ev, nil
 		}
@@ -97,18 +99,19 @@ func (p *SSEParser) readBlock() (Event, error) {
 				ev.Data = strings.Join(dataLines, "\n")
 			}
 			if commentOnly && sawSomething && ev.Data == "" && ev.Type == "" && ev.ID == "" {
-				if ev.Comment == "" {
-					ev.Comment = "keepalive"
-				}
+				ev.CommentOnly = true
 			}
 			return ev, nil
 		}
 		sawSomething = true
 		// Comment line — skip.
 		if strings.HasPrefix(line, ":") {
-			// Record first comment for diagnostics.
+			// Record first non-empty comment text for diagnostics;
+			// leave Comment empty for bare ":" / ": " blocks.
 			if ev.Comment == "" {
-				ev.Comment = strings.TrimSpace(line[1:])
+				if text := strings.TrimSpace(line[1:]); text != "" {
+					ev.Comment = text
+				}
 			}
 			continue
 		}

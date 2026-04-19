@@ -197,6 +197,12 @@ export function useEventStream(
   let attempt = 0;
   let serverRetryHintMs: number | null = null;
   let closed = false;
+  // generation counter — every open() bumps this. runOnce/loop/
+  // scheduleReconnect/fetch-then callbacks capture the generation at
+  // entry and early-return if it no longer matches currentGen. This
+  // prevents stale callbacks from a prior open() session from touching
+  // refs or scheduling work after close()/reopen. (#1153)
+  let currentGen = 0;
 
   function pushEvent(envelope: EventEnvelope): void {
     const next = events.value.slice();
@@ -251,7 +257,8 @@ export function useEventStream(
     pushEvent(parsed);
   }
 
-  async function runOnce(): Promise<void> {
+  async function runOnce(gen: number): Promise<void> {
+    if (gen !== currentGen) return;
     aborter = new AbortController();
     const headers: Record<string, string> = {
       Accept: "text/event-stream",
@@ -275,12 +282,15 @@ export function useEventStream(
         cache: "no-store",
       });
     } catch (e) {
+      if (gen !== currentGen) return;
       if ((e as { name?: string }).name === "AbortError") {
         connected.value = false;
         return;
       }
       throw e;
     }
+
+    if (gen !== currentGen) return;
 
     if (!resp.ok) {
       // Non-2xx — surface the status and let the reconnect ladder
@@ -304,7 +314,14 @@ export function useEventStream(
     try {
       while (true) {
         const { value, done } = await reader.read();
-        if (done) break;
+        if (gen !== currentGen) return;
+        if (done) {
+          // Mark the live-pill down immediately on clean close so the
+          // UI doesn't show "connected" during the reconnect window.
+          // (#1154)
+          connected.value = false;
+          break;
+        }
         buffer += decoder.decode(value, { stream: true });
         const { messages, remainder } = __parseSSEChunk(buffer);
         buffer = remainder;
@@ -321,13 +338,16 @@ export function useEventStream(
     }
   }
 
-  function scheduleReconnect(): void {
+  function scheduleReconnect(gen: number): void {
     if (closed) return;
+    if (gen !== currentGen) return;
     reconnecting.value = true;
     connected.value = false;
 
     // Prefer an explicit server `retry:` hint when present; otherwise
     // do exponential backoff with full jitter bounded by maxDelayMs.
+    // Full jitter: ceiling = min(maxDelayMs, initialDelayMs * 2**attempt);
+    // delay = random * ceiling. No additive floor. (#1152)
     let delay: number;
     if (serverRetryHintMs !== null) {
       delay = serverRetryHintMs;
@@ -337,32 +357,35 @@ export function useEventStream(
         maxDelayMs,
         initialDelayMs * Math.pow(2, Math.max(0, attempt)),
       );
-      delay = jitter(ceiling) + Math.min(ceiling, initialDelayMs);
-      if (delay > maxDelayMs) delay = maxDelayMs;
+      delay = Math.floor(Math.random() * ceiling);
     }
     attempt += 1;
 
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
-      void loop();
+      if (gen !== currentGen) return;
+      void loop(gen);
     }, delay);
   }
 
-  async function loop(): Promise<void> {
+  async function loop(gen: number): Promise<void> {
     if (closed) return;
+    if (gen !== currentGen) return;
     try {
-      await runOnce();
+      await runOnce(gen);
+      if (gen !== currentGen) return;
       // Stream ended cleanly (server closed) — treat as a reconnect.
       if (!closed) {
-        scheduleReconnect();
+        scheduleReconnect(gen);
       }
     } catch (e) {
+      if (gen !== currentGen) return;
       if ((e as { name?: string }).name === "AbortError") {
         connected.value = false;
         return;
       }
       error.value = e instanceof Error ? e.message : String(e);
-      scheduleReconnect();
+      scheduleReconnect(gen);
     }
   }
 
@@ -372,11 +395,18 @@ export function useEventStream(
       closed = false;
     }
     if (aborter || reconnectTimer) return; // already running
-    void loop();
+    // Bump generation so any stale in-flight callback from a prior
+    // open() session short-circuits. (#1153)
+    currentGen += 1;
+    const gen = currentGen;
+    void loop(gen);
   }
 
   function close(): void {
     closed = true;
+    // Bump generation so any in-flight awaiters (fetch, reader.read,
+    // pending reconnect timer) no-op when they wake. (#1153)
+    currentGen += 1;
     connected.value = false;
     reconnecting.value = false;
     if (reconnectTimer) {

@@ -259,8 +259,8 @@ func main() {
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
 		Cache:                  cacheOpts,
-		LeaderElection:   enableLeaderElection,
-		LeaderElectionID: "2658b259.nyx.ai",
+		LeaderElection:         enableLeaderElection,
+		LeaderElectionID:       "2658b259.nyx.ai",
 		// LeaderElectionReleaseOnCancel=true (#752): the binary exits
 		// immediately after mgr.Start returns (no external cleanup runs
 		// past that point), so it is safe to release the lease on

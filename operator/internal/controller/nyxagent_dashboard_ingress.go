@@ -46,11 +46,22 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	nyxv1alpha1 "github.com/nyx-ai/nyx-operator/api/v1alpha1"
 )
+
+// dashboardIngressLastEventStateAnnotation tracks the last
+// DashboardIngressAuthStatus for which the reconciler emitted an Event
+// (#1180). Only transitions emit new Events, so steady-state
+// `auth.mode=none` no longer floods the namespace's Event stream every
+// reconcile pass.
+const dashboardIngressLastEventStateAnnotation = "nyx.ai/dashboard-ingress-last-event-state"
 
 // DashboardIngressAuthStatus describes the fail-closed decision the
 // reconciler made this pass. Exported so downstream status-writers (and
@@ -95,34 +106,82 @@ func EvaluateDashboardIngressAuth(agent *nyxv1alpha1.NyxAgent) DashboardIngressA
 // feature is observable from day one.
 func (r *NyxAgentReconciler) reconcileDashboardIngress(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
 	log := logf.FromContext(ctx).WithValues("agent", agent.Name, "namespace", agent.Namespace)
-	switch EvaluateDashboardIngressAuth(agent) {
+	state := EvaluateDashboardIngressAuth(agent)
+	switch state {
 	case DashboardIngressAuthStatusDisabled:
 		// No-op. Dashboard ingress was not requested or the Enabled
-		// toggle is off.
-		return nil
+		// toggle is off. Clear any prior annotation so a future
+		// Enabled=true → auth.mode=none flip emits an Event again.
+		return r.updateDashboardIngressLastEventState(ctx, agent, string(state))
 	case DashboardIngressAuthStatusMissingAuth:
-		// Fail-closed mirror of chart #528. Log + event so the user
-		// sees *why* the Ingress didn't materialise.
+		// Fail-closed mirror of chart #528. Log on every reconcile,
+		// but only emit an Event on a state transition (#1180) so a
+		// steady-state missing-auth configuration doesn't flood the
+		// namespace Event stream.
 		log.Info("skipping dashboard Ingress render: spec.dashboard.ingress.auth.mode must be set (fail-closed)",
 			"component", "dashboard-ingress")
-		if r.Recorder != nil {
+		if r.shouldEmitDashboardIngressEvent(agent, state) && r.Recorder != nil {
 			r.Recorder.Event(agent, "Warning", "DashboardIngressAuthRequired",
 				"Dashboard ingress skipped: set spec.dashboard.ingress.auth.mode to 'basic' or 'none' to proceed (fail-closed, see #528/#831)")
 		}
-		return nil
+		return r.updateDashboardIngressLastEventState(ctx, agent, string(state))
 	case DashboardIngressAuthStatusUnauthenticated:
 		log.Info("rendering dashboard Ingress WITHOUT auth (spec.dashboard.ingress.auth.mode=none)",
 			"component", "dashboard-ingress")
-		if r.Recorder != nil {
+		if r.shouldEmitDashboardIngressEvent(agent, state) && r.Recorder != nil {
 			r.Recorder.Event(agent, "Warning", "DashboardIngressUnauthenticated",
 				"Dashboard ingress rendered without auth (auth.mode=none) — conversation history is reachable via the Ingress host")
 		}
 		// Full Ingress render is follow-up scaffolding.
-		return nil
+		return r.updateDashboardIngressLastEventState(ctx, agent, string(state))
 	case DashboardIngressAuthStatusBasic:
 		log.Info("rendering dashboard Ingress with basic-auth (scaffold: full render is follow-up)",
 			"component", "dashboard-ingress")
+		return r.updateDashboardIngressLastEventState(ctx, agent, string(state))
+	}
+	return nil
+}
+
+// shouldEmitDashboardIngressEvent reports whether the current
+// DashboardIngressAuthStatus differs from the last value we stamped on
+// the agent's annotations. Callers gate their `Recorder.Event` calls
+// on this so reconciler-churn doesn't spam duplicate Events.
+func (r *NyxAgentReconciler) shouldEmitDashboardIngressEvent(agent *nyxv1alpha1.NyxAgent, state DashboardIngressAuthStatus) bool {
+	prev := ""
+	if agent.Annotations != nil {
+		prev = agent.Annotations[dashboardIngressLastEventStateAnnotation]
+	}
+	return prev != string(state)
+}
+
+// updateDashboardIngressLastEventState writes the current state value
+// into the annotation via an SSA-safe JSON-merge patch (#1180). The
+// patch is scoped to metadata.annotations so it never clobbers
+// concurrent writes to unrelated fields. Idempotent: if the annotation
+// already holds `value` the patch is a no-op skip.
+func (r *NyxAgentReconciler) updateDashboardIngressLastEventState(ctx context.Context, agent *nyxv1alpha1.NyxAgent, value string) error {
+	if agent.Annotations != nil && agent.Annotations[dashboardIngressLastEventStateAnnotation] == value {
 		return nil
 	}
+	patch := map[string]interface{}{
+		"metadata": map[string]interface{}{
+			"annotations": map[string]string{
+				dashboardIngressLastEventStateAnnotation: value,
+			},
+		},
+	}
+	raw, err := json.Marshal(patch)
+	if err != nil {
+		return fmt.Errorf("marshal dashboard-ingress-last-event-state patch: %w", err)
+	}
+	if err := r.Patch(ctx, agent, client.RawPatch(types.MergePatchType, raw)); err != nil {
+		return fmt.Errorf("patch dashboard-ingress-last-event-state annotation: %w", err)
+	}
+	// Mirror the write back into the in-memory copy so downstream
+	// reconcile steps see the same annotation value we just landed.
+	if agent.Annotations == nil {
+		agent.Annotations = map[string]string{}
+	}
+	agent.Annotations[dashboardIngressLastEventStateAnnotation] = value
 	return nil
 }

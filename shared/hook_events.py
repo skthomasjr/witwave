@@ -130,6 +130,38 @@ _STATUS_REARM_EVERY = int(os.environ.get("HOOK_EVENTS_STATUS_REARM_EVERY", "500"
 # task may be garbage-collected before it completes.
 _INFLIGHT: set[asyncio.Task] = set()
 
+# One-shot INFO flag for the URL-unset path in ``schedule_event_post``
+# (#1143). Logged at INFO (not WARN) because an empty URL is a
+# legitimate deployment mode — no harness event channel wired up — and
+# must not be confused with the auth-token-missing WARNING that fires
+# when the URL *is* set but the bearer is empty.
+_url_unset_info_lock = threading.Lock()
+_warned_url_unset: bool = False
+
+# Event loop reference for cross-thread scheduling (#1144). The OTel
+# SpanProcessor runs ``_emit_trace_span_event`` on a worker thread
+# (BatchSpanProcessor's exporter thread or the in-memory on_end
+# callback) which has no running asyncio loop, so a plain
+# ``asyncio.create_task`` raises ``RuntimeError: no running event
+# loop`` and silently drops the event.  Backends call
+# :func:`bind_event_loop` at startup; when the scheduler detects a
+# worker-thread caller (``asyncio.get_running_loop()`` raises) it
+# falls back to :func:`asyncio.run_coroutine_threadsafe` against this
+# reference so the coroutine still lands on the backend's main loop.
+_bound_loop: "asyncio.AbstractEventLoop | None" = None
+
+
+def bind_event_loop(loop: "asyncio.AbstractEventLoop") -> None:
+    """Remember *loop* as the target for cross-thread schedule calls (#1144).
+
+    Idempotent; last caller wins. Called once during each backend's
+    ``main()`` after the event loop is running so worker-thread
+    publishers (notably the OTel span processor) can still reach the
+    transport.
+    """
+    global _bound_loop
+    _bound_loop = loop
+
 # Module-level httpx client. Created lazily on first post to avoid
 # instantiating one before the backend's event loop is running.
 _client: httpx.AsyncClient | None = None
@@ -292,103 +324,19 @@ async def _post_once_to(url: str, body: dict[str, Any]) -> None:
 
 
 async def _post_once(event_dict: dict[str, Any]) -> None:
-    """Actual POST. Called from ``asyncio.create_task`` in post_event."""
-    if not HARNESS_EVENTS_URL:
-        return
-    if not HOOK_EVENTS_AUTH_TOKEN:
-        # Periodic re-WARN (#936). Previously _auth_warned flipped True
-        # on first drop and never reset, so a sustained misconfig where
-        # the initial WARN was lost to log shipping became completely
-        # invisible. Re-arm every N drops so operators see the signal
-        # repeatedly while the misconfig persists.
-        global _auth_warned, _auth_dropped_since_warn
-        with _auth_warn_lock:
-            _auth_dropped_since_warn += 1
-            # Re-emit every _AUTH_REARM_EVERY drops.
-            _should_warn = (
-                not _auth_warned
-                or _auth_dropped_since_warn >= _AUTH_REARM_EVERY
-            )
-            if _should_warn:
-                _auth_warned = True
-                _count = _auth_dropped_since_warn
-                _auth_dropped_since_warn = 0
-                logger.warning(
-                    "hook.decision transport DISABLED: HARNESS_EVENTS_URL is set "
-                    "but HOOK_EVENTS_AUTH_TOKEN (and its HARNESS_EVENTS_AUTH_TOKEN/"
-                    "TRIGGERS_AUTH_TOKEN aliases) are all empty. Set the token so "
-                    "the harness endpoint accepts the POST. %d event(s) dropped "
-                    "since the last warning; will re-warn every %d dropped events.",
-                    _count, _AUTH_REARM_EVERY,
-                )
-        return
+    """Actual POST. Called from ``asyncio.create_task`` in post_event.
+
+    The URL-unset check that used to live here was redundant (#1142):
+    :func:`schedule_post` already returns False when
+    ``HARNESS_EVENTS_URL`` is empty, so this coroutine is only scheduled
+    when the transport is configured.  Auth-warn plumbing is delegated
+    to :func:`_post_once_to` so the two helpers don't drift.
+    """
     url = HARNESS_EVENTS_URL.rstrip("/") + "/internal/events/hook-decision"
-    # Circuit breaker short-circuit (#1045). While open, don't consume an
-    # httpx connection or timeout budget — just record as a drop so the
-    # window continues to refresh on the next attempt.
-    if _cb_is_open():
-        return
-    try:
-        client = await _get_client()
-        resp = None
-        last_exc: Exception | None = None
-        # Attempt + single jittered retry on transient network errors
-        # (connect failures, read timeouts). 4xx/5xx responses are NOT
-        # retried — the server saw our request and issued a verdict.
-        for attempt in range(2):
-            try:
-                resp = await client.post(
-                    url,
-                    json=event_dict,
-                    headers={"Authorization": f"Bearer {HOOK_EVENTS_AUTH_TOKEN}"},
-                )
-                last_exc = None
-                break
-            except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError) as exc:
-                last_exc = exc
-                if attempt == 0 and HOOK_POST_RETRY_MAX_DELAY > 0:
-                    await asyncio.sleep(random.uniform(0, HOOK_POST_RETRY_MAX_DELAY))
-                    continue
-                raise
-        assert resp is not None  # either we broke out with resp set or re-raised
-        # Branch on resp.status_code (#881). Previously the response
-        # was discarded; a wrong HOOK_EVENTS_AUTH_TOKEN (401/403) or a
-        # misconfigured harness endpoint (404/5xx) was silently
-        # swallowed — only the empty-token case was surfaced. Log the
-        # first non-2xx at WARNING and stay silent afterwards to avoid
-        # flooding logs on a sustained misconfig.
-        _cb_record(failed=(resp.status_code >= 500))
-        if resp.status_code >= 400:
-            global _status_warned, _status_dropped_since_warn
-            with _status_warn_lock:
-                _status_dropped_since_warn += 1
-                _should_warn = (
-                    not _status_warned
-                    or _status_dropped_since_warn >= _STATUS_REARM_EVERY
-                )
-                if _should_warn:
-                    _status_warned = True
-                    _count = _status_dropped_since_warn
-                    _status_dropped_since_warn = 0
-                    logger.warning(
-                        "hook.decision POST to %s returned HTTP %d (check "
-                        "HOOK_EVENTS_AUTH_TOKEN and harness endpoint config); "
-                        "%d non-2xx response(s) since last warning; will "
-                        "re-warn every %d dropped events.",
-                        url,
-                        resp.status_code,
-                        _count,
-                        _STATUS_REARM_EVERY,
-                    )
-        else:
-            # Re-arm the warning so a subsequent sustained failure is
-            # visible without a process restart.
-            with _status_warn_lock:
-                _status_warned = False
-                _status_dropped_since_warn = 0
-    except Exception as exc:
-        _cb_record(failed=True)
-        logger.warning("hook.decision POST to %s failed: %r", url, exc)
+    # Delegate to _post_once_to (#1142) so the auth-warn / circuit
+    # breaker / retry / status-warn logic stays in exactly one place
+    # and the two entry points can no longer drift.
+    await _post_once_to(url, event_dict)
 
 
 def schedule_post(event_dict: dict[str, Any], shed_counter: Any = None) -> bool:
@@ -488,7 +436,22 @@ def schedule_event_post(
     """
     url = _resolve_publish_url()
     if not url:
-        # Transport disabled — silent no-op.
+        # Transport disabled by operator intent — but log once at INFO
+        # (#1143) so operators grepping for why events never reached
+        # the harness see an explicit signal.  Gated by a module-level
+        # flag so a steady stream of drops doesn't flood logs.
+        global _warned_url_unset
+        with _url_unset_info_lock:
+            if not _warned_url_unset:
+                _warned_url_unset = True
+                logger.info(
+                    "schedule_event_post: HARNESS_EVENTS_PUBLISH_URL and "
+                    "HARNESS_EVENTS_URL are both unset — backend-originated "
+                    "events (%r and peers) will not reach the harness event "
+                    "channel. This is the default single-process mode; set "
+                    "HARNESS_EVENTS_URL to opt in.",
+                    event_type,
+                )
         return False
 
     # Assemble the full envelope the harness expects.
@@ -539,7 +502,31 @@ def schedule_event_post(
             try:
                 t = asyncio.create_task(_post_once_to(url, envelope))
             except RuntimeError:
-                # No running loop (e.g. module imported for tests). Silent drop.
+                # No running loop on the caller's thread (#1144). The
+                # OTel span processor runs its on_end callback on a
+                # worker thread, so ``create_task`` raises here. Fall
+                # back to ``run_coroutine_threadsafe`` against the
+                # loop bound at backend startup so the POST still
+                # lands on the main asyncio loop.
+                if _bound_loop is not None and not _bound_loop.is_closed():
+                    try:
+                        cf = asyncio.run_coroutine_threadsafe(
+                            _post_once_to(url, envelope), _bound_loop
+                        )
+                        # Track the concurrent.futures.Future via a
+                        # placeholder wrapping Task — we cannot drop
+                        # it straight into ``_INFLIGHT`` (wrong type)
+                        # so we register a done-callback that
+                        # decrements the shed budget. Use a sentinel
+                        # Task-like proxy to keep _INFLIGHT typed;
+                        # simplest approach: don't count threadsafe
+                        # dispatches against _INFLIGHT (they do not
+                        # consume loop slots on the caller side).
+                        _ = cf
+                        return True
+                    except Exception:  # pragma: no cover
+                        return False
+                # No loop bound — silent drop (module imported in tests, etc.).
                 return False
             _INFLIGHT.add(t)
             _over_cap = False

@@ -256,14 +256,18 @@ class EventStream:
         self._bump(self._metrics.dropped_total, labels={"reason": "overrun"})
         # Generate an overrun envelope scoped to this subscriber. The
         # envelope is NOT pushed to the ring or to other subscribers —
-        # other subscribers saw no overrun. We bypass validate_envelope
-        # here only to avoid recursion; construct the envelope by hand
-        # so it still passes shape.
-        self._next_id += 1
+        # other subscribers saw no overrun. Do NOT increment the shared
+        # ``_next_id`` counter for this synthetic envelope (#1140): it's
+        # visible only to the evicted subscriber, so the non-evicted
+        # subscribers must not see a gap in their Last-Event-ID
+        # progression. Use a subscriber-scoped synthetic id based on
+        # the current publish position suffixed with ".overrun" so the
+        # evicted subscriber still sees a unique, monotonic id for the
+        # terminal frame.
         overrun = EventEnvelope(
             type="stream.overrun",
             version=1,
-            id=str(self._next_id),
+            id=f"{self._next_id}.overrun",
             ts=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.") +
                f"{datetime.now(timezone.utc).microsecond // 1000:03d}Z",
             agent_id=None,
@@ -432,6 +436,12 @@ def parse_and_publish_envelope(
     if agent_id_raw is not None and not isinstance(agent_id_raw, str):
         _bump("validation")
         return 400, "agent_id must be a string or null"
+    # Cap agent_id to the same limit as payload fields (#1146). An
+    # uncapped agent_id let an unbounded string flow straight into
+    # ``stream.publish`` and into every subscriber's queue, blowing
+    # the per-field budget the payload path already enforces.
+    if isinstance(agent_id_raw, str) and len(agent_id_raw) > MAX_EVENT_PUBLISH_FIELD_BYTES:
+        agent_id_raw = agent_id_raw[:MAX_EVENT_PUBLISH_FIELD_BYTES] + "...[truncated]"
     if not isinstance(version_raw, int) or isinstance(version_raw, bool) or version_raw < 1:
         _bump("validation")
         return 400, "version must be a positive integer"

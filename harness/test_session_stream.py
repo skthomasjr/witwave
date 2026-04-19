@@ -154,12 +154,13 @@ class SessionStreamRoundtripTests(unittest.IsolatedAsyncioTestCase):
     async def test_grace_period_newly_created_idle_bootstraps(self) -> None:
         ss = _fresh()
         ss.get_session_stream("sess-cold")
-        # First sweep sees no subscribers ever — is_idle_past bootstraps
-        # the clock and returns False.
-        self.assertEqual(ss.sweep_idle_streams(grace_sec=0.0), 0)
-        # A subsequent sweep after any positive elapsed time evicts it.
-        await asyncio.sleep(0.01)
+        # #1147: the idle clock is set at construction, so a broadcaster
+        # with no subscribers and no publishes is already sweep-eligible
+        # under grace=0.  Previous behaviour (lazy bootstrap on first
+        # inspection) is explicitly replaced because it cost one sweeper
+        # tick of eviction latency on idle sessions.
         self.assertEqual(ss.sweep_idle_streams(grace_sec=0.0), 1)
+        self.assertEqual(ss.registry_size(), 0)
 
     async def test_grace_period_respects_active_subscribers(self) -> None:
         ss = _fresh()

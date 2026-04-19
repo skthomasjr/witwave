@@ -134,20 +134,33 @@ class SessionStream:
         self._subscribers: set[_Subscriber] = set()
         self._next_id: int = 0
         self._agent_id = agent_id
-        # Per-session assistant chunk sequence number.  Resets each
-        # turn via :meth:`reset_assistant_seq` — callers invoke it at
-        # the start of each assistant stream so observers see monotonic
-        # seq within a turn.
-        self._assistant_seq: int = 0
+        # Per-turn chunk sequence number (#1139).  Spans both user and
+        # assistant roles within a single turn so seq is monotonic
+        # across roles — previously only assistant chunks consumed the
+        # counter and the user chunk always claimed seq=0, colliding
+        # with the first assistant chunk.  Callers invoke
+        # :meth:`reset_turn_seq` at the start of each turn and then
+        # :meth:`next_turn_seq` for every role-chunk they emit.
+        self._turn_seq: int = 0
         # Last-unsubscribed wall-time; used by the registry to decide
-        # when the grace period has elapsed.
-        self._idle_since: float | None = None
+        # when the grace period has elapsed.  Set at broadcaster
+        # construction (#1147) so a newly-created broadcaster with no
+        # subscribers is already on the idle clock — previously
+        # ``is_idle_past`` started counting on first inspection, which
+        # delayed sweeper eviction by one tick.
+        self._idle_since: float | None = time.monotonic()
+        # Last publish-activity monotonic timestamp (#1147). Used in
+        # conjunction with ``_idle_since`` so a broadcaster that is
+        # still receiving publishes doesn't get swept even if it has
+        # no live subscribers.
+        self._last_activity: float = time.monotonic()
 
     # ---------- subscription ----------
 
     def subscribe(self) -> AsyncIterator[SessionStreamEnvelope]:
         sub = _Subscriber(asyncio.Queue(maxsize=self._queue_max))
         self._subscribers.add(sub)
+        # First subscriber attached — clear the idle clock (#1147).
         self._idle_since = None
         return self._iterate(sub)
 
@@ -193,15 +206,31 @@ class SessionStream:
             },
         )
 
-    def next_assistant_seq(self) -> int:
-        """Allocate + return the next assistant seq for this turn."""
-        n = self._assistant_seq
-        self._assistant_seq += 1
+    def next_turn_seq(self) -> int:
+        """Allocate + return the next per-turn seq (#1139).
+
+        The counter covers both user and assistant chunks within a
+        single turn so observers see a strictly monotonic seq across
+        roles.  Callers invoke this for every chunk they publish,
+        including the initial user chunk.
+        """
+        n = self._turn_seq
+        self._turn_seq += 1
         return n
 
+    def reset_turn_seq(self) -> None:
+        """Reset the per-turn chunk counter.  Call at the start of each turn."""
+        self._turn_seq = 0
+
+    # Deprecated aliases kept for backward compatibility with callers
+    # that predate #1139.  The semantics are identical now — both roles
+    # share the same counter.  Scheduled for removal once all backend
+    # executors are migrated.
+    def next_assistant_seq(self) -> int:
+        return self.next_turn_seq()
+
     def reset_assistant_seq(self) -> None:
-        """Reset the assistant chunk counter.  Call at the start of each turn."""
-        self._assistant_seq = 0
+        self.reset_turn_seq()
 
     def publish(
         self,
@@ -232,6 +261,10 @@ class SessionStream:
             return None
 
         self._ring.append(envelope)
+        # Refresh activity timestamp (#1147) — a broadcaster that is
+        # still receiving publishes isn't idle even if all subscribers
+        # have detached.
+        self._last_activity = time.monotonic()
         self._fanout(envelope)
         return envelope
 
@@ -312,16 +345,29 @@ class SessionStream:
         return len(self._ring)
 
     def is_idle_past(self, grace_sec: float) -> bool:
-        """True iff no subscribers and idle for at least ``grace_sec``."""
+        """True iff no subscribers AND no publishes for ``grace_sec`` (#1147).
+
+        A broadcaster qualifies as idle only when both the subscriber
+        set is empty and the last publish is older than the grace
+        window.  ``_idle_since`` is set at construction and reset each
+        time a subscriber attaches/detaches; ``_last_activity`` is
+        bumped by every :meth:`publish` so a still-active session
+        isn't reaped out from under live publishers.
+        """
         if self._subscribers:
             return False
         if self._idle_since is None:
-            # Newly created broadcaster with no subscribers yet — start
-            # the idle clock now rather than treating "never had one" as
-            # forever-idle.
+            # Defensive — a detached subscriber should have set this,
+            # but guard against races where the idle clock was missed.
             self._idle_since = time.monotonic()
             return False
-        return (time.monotonic() - self._idle_since) >= grace_sec
+        now = time.monotonic()
+        since_idle = now - self._idle_since
+        since_publish = now - self._last_activity
+        # Require BOTH clocks past the grace window: a broadcaster that
+        # has no subscribers but is still receiving publishes is not
+        # idle yet.
+        return since_idle >= grace_sec and since_publish >= grace_sec
 
 
 # ---------------------------------------------------------------------------
@@ -361,12 +407,47 @@ def sweep_idle_streams(
 
     Intended to be called from a periodic sweeper task.  Returns the
     number of broadcasters evicted.
+
+    Before a broadcaster is popped from the registry, any lingering
+    subscriber queues are terminated by enqueuing a ``stream.overrun``
+    envelope plus the overrun sentinel (#1148).  Without this step,
+    evictor-race subscribers that attached between ``is_idle_past``
+    and ``pop`` would be stranded waiting on ``queue.get()`` forever
+    — their queue would go unreferenced, their ``_iterate`` coroutine
+    would leak, and their HTTP connection would sit open until the
+    client-side timeout.
     """
     dropped: list[str] = []
     for sid, stream in list(_registry.items()):
         if stream.is_idle_past(grace_sec):
             dropped.append(sid)
     for sid in dropped:
+        stream = _registry.get(sid)
+        if stream is not None:
+            # Terminate any stragglers before dropping the broadcaster.
+            for sub in list(stream._subscribers):  # noqa: SLF001 — intentional
+                sub.closed = True
+                overrun = SessionStreamEnvelope(
+                    type="stream.overrun",
+                    version=1,
+                    id=str(stream._next_id + 1),  # noqa: SLF001
+                    ts=_now_iso_ms(),
+                    agent_id=stream._agent_id,  # noqa: SLF001
+                    payload={
+                        "queue_depth": sub.queue.qsize(),
+                        "queue_max": stream._queue_max,  # noqa: SLF001
+                        "reason": "broadcaster swept while subscriber attached",
+                    },
+                )
+                try:
+                    sub.queue.put_nowait(overrun)
+                except asyncio.QueueFull:
+                    pass
+                try:
+                    sub.queue.put_nowait(_OVERRUN_SENTINEL)
+                except asyncio.QueueFull:
+                    pass
+                stream._subscribers.discard(sub)  # noqa: SLF001
         _registry.pop(sid, None)
     if dropped:
         logger.debug("session_stream: swept %d idle broadcasters", len(dropped))

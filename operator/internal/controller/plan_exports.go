@@ -24,6 +24,8 @@ package controller
 // and add no new public reconcile surface.
 
 import (
+	"fmt"
+
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
@@ -53,6 +55,14 @@ func BuildConfigMapsForPlan(agent *nyxv1alpha1.NyxAgent) []*corev1.ConfigMap {
 		out = append(out, cm)
 	}
 	for _, b := range agent.Spec.Backends {
+		// #1169: honour backendEnabled() here so plan-mode output
+		// matches reconcileConfigMaps (line 737-744), which skips
+		// disabled backends before emitting their ConfigMap. Without
+		// this guard, `plan` promised ConfigMaps that the live
+		// reconciler would never write.
+		if !backendEnabled(b) {
+			continue
+		}
 		if cm := buildConfigMap(agent, agentConfigMapName(agent, b.Name), b.Config); cm != nil {
 			out = append(out, cm)
 		}
@@ -104,12 +114,25 @@ func BuildDashboardServiceForPlan(agent *nyxv1alpha1.NyxAgent) *corev1.Service {
 // BuildManifestConfigMapForPlan renders the manifest ConfigMap as if
 // the agent were the sole team member (plan mode cannot list peer
 // CRs). A live team of N members would produce a larger CM.
-func BuildManifestConfigMapForPlan(agent *nyxv1alpha1.NyxAgent) *corev1.ConfigMap {
+//
+// #1176: the previous signature returned only *corev1.ConfigMap,
+// silently discarding any build failure (the internal builder returns
+// a body+hash pair whose body can theoretically collapse to nothing
+// under pathological input). The signature now returns an explicit
+// error so `operator plan` can surface the failure on stderr and exit
+// non-zero rather than emitting an incomplete stream. The underlying
+// builder does not currently return an error, so we synthesise one
+// when the rendered ConfigMap comes back nil — that keeps the contract
+// forward-compatible for follow-ups that add real validation.
+func BuildManifestConfigMapForPlan(agent *nyxv1alpha1.NyxAgent) (*corev1.ConfigMap, error) {
 	port := agent.Spec.Port
 	if port == 0 {
 		port = 8000
 	}
 	members := []manifestMember{{Name: agent.Name, Port: port}}
 	cm, _ := buildManifestConfigMap(agent, []*nyxv1alpha1.NyxAgent{agent}, members)
-	return cm
+	if cm == nil {
+		return nil, fmt.Errorf("build manifest ConfigMap for %s/%s: builder returned nil", agent.Namespace, agent.Name)
+	}
+	return cm, nil
 }

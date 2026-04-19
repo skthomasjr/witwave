@@ -105,6 +105,14 @@ function resolveChoice(
 // before the Vue app mounts — avoids a flash of wrong theme.
 applyToDocument(resolveChoice(choiceRef.value, systemPrefersLightRef.value));
 
+// Install the OS listener at module load so an OS-level toggle during
+// page load / before the first component mounts doesn't get dropped.
+// Previously we deferred this until `useTheme()` was called, which is
+// first-mount-time in practice and misses anyone flipping their OS
+// theme in the few hundred ms between module eval and the header
+// rendering. (#1162)
+ensureSystemListener();
+
 // Keep documentElement in sync whenever the choice OR the OS preference
 // changes. Module-level watch so the side effect fires regardless of
 // which component happens to instantiate the composable.
