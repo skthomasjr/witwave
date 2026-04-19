@@ -8,14 +8,24 @@ FROM python:3.12-slim-bookworm
 # bundled CLI.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    HELM_VERSION=v3.20.2
+    HELM_VERSION=v3.20.2 \
+    KUBECTL_VERSION=v1.31.0
 
+# kubectl ships alongside helm in this image so diff_manifest (#1127)
+# can compute a server-side diff of a raw manifest against the live
+# cluster. The binary is only used for ``kubectl diff -f -`` — we do
+# not shell out to kubectl for any mutating operation. Pin the
+# version so rebuilds are reproducible; refresh in lockstep with
+# apiserver compat windows.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       curl \
       ca-certificates \
     && curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" \
        | tar -xz -C /tmp \
     && mv /tmp/linux-amd64/helm /usr/local/bin/helm \
+    && curl -fsSL -o /usr/local/bin/kubectl \
+         "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" \
+    && chmod 0755 /usr/local/bin/kubectl \
     && rm -rf /tmp/linux-amd64 \
     && apt-get purge -y curl \
     && apt-get autoremove -y \

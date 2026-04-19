@@ -959,6 +959,95 @@ def diff(
             raise
 
 
+def _kubectl_present() -> bool:
+    """Probe whether kubectl is on PATH for diff_manifest (#1127)."""
+    try:
+        proc = subprocess.run(
+            ["kubectl", "version", "--client=true", "--output=yaml"],
+            capture_output=True, text=True, check=False, timeout=5,
+        )
+        return proc.returncode == 0
+    except Exception:
+        return False
+
+
+@mcp.tool()
+def diff_manifest(manifest: str, redact: bool = True) -> str:
+    """Preview what applying a raw YAML manifest would change vs. live (#1127).
+
+    Symmetric with ``kubernetes.apply(dry_run=True)``: takes a multi-doc
+    YAML string and shells out to ``kubectl diff -f -`` to compute the
+    server-side diff against the cluster. Returns the unified diff
+    text so callers can reason about a change before committing —
+    especially useful when the change is not a Helm release upgrade.
+
+    Requires ``kubectl`` on PATH inside the container. When absent
+    the tool raises a ``HelmError`` with a clear message rather than
+    silently returning empty — deploy-time probes should detect the
+    missing dependency via the ``/info`` surface (#1122) before a
+    caller hits this path.
+
+    When ``redact=True`` (the default), output is passed through the
+    same Secret-aware diff redactor used by :func:`diff` so Secret
+    ``data``/``stringData`` values are masked before returning.
+    """
+    if not isinstance(manifest, str) or not manifest.strip():
+        raise ValueError("helm: 'manifest' must be a non-empty YAML string")
+    if not _kubectl_present():
+        raise HelmError(
+            "helm diff_manifest: kubectl not found on PATH. This tool "
+            "requires kubectl to be installed in the mcp-helm container. "
+            "See /info response for the current helm container capabilities."
+        )
+    with _handler_span(
+        "diff_manifest",
+        {"helm.manifest_bytes": len(manifest)},
+    ) as _h:
+        try:
+            # kubectl diff exits 0 (no diff) or 1 (diff present); other
+            # non-zero codes are real errors. We capture both streams
+            # and only raise on a real failure.
+            proc = subprocess.run(
+                ["kubectl", "diff", "-f", "-"],
+                input=manifest,
+                capture_output=True, text=True, check=False,
+                timeout=_HELM_SUBPROCESS_TIMEOUT_SECONDS,
+            )
+            if proc.returncode not in (0, 1):
+                err = HelmError(
+                    f"kubectl diff exited {proc.returncode}: "
+                    f"{(proc.stderr or proc.stdout).strip()}"
+                )
+                set_span_error(_h, err)
+                raise err
+            raw = proc.stdout or ""
+            if redact and raw:
+                try:
+                    return _redact_diff(raw)
+                except Exception as _redact_exc:
+                    log.warning(
+                        "diff_manifest redaction failed (%s); suppressing output.",
+                        _redact_exc,
+                    )
+                    return (
+                        "# diff redacted: Secret-aware redactor raised "
+                        f"{type(_redact_exc).__name__} — output suppressed "
+                        "to avoid leaking Secret contents (#915).\n"
+                    )
+            return raw
+        except subprocess.TimeoutExpired as exc:
+            err = HelmError(
+                f"kubectl diff killed after "
+                f"{_HELM_SUBPROCESS_TIMEOUT_SECONDS}s "
+                "(HELM_SUBPROCESS_TIMEOUT_SECONDS)"
+            )
+            set_span_error(_h, err)
+            raise err from exc
+        except Exception as exc:
+            set_span_error(_h, exc)
+            raise
+
+
 @mcp.tool()
 def rollback(name: str, namespace: str, revision: int, wait: bool = False) -> str:
     """Roll a release back to a prior revision.

@@ -345,6 +345,22 @@ def test_diff_redactor_failure_path_uses_log_binding():
         )
 
 
+# ----- diff_manifest (#1127) -----
+
+
+def test_diff_manifest_rejects_empty():
+    fn = server.diff_manifest.fn if hasattr(server.diff_manifest, "fn") else server.diff_manifest
+    with pytest.raises(ValueError, match="non-empty"):
+        fn(manifest="")
+
+
+def test_diff_manifest_raises_helm_error_when_kubectl_missing(monkeypatch):
+    fn = server.diff_manifest.fn if hasattr(server.diff_manifest, "fn") else server.diff_manifest
+    monkeypatch.setattr(server, "_kubectl_present", lambda: False)
+    with pytest.raises(server.HelmError, match="kubectl"):
+        fn(manifest="apiVersion: v1\nkind: Namespace\nmetadata:\n  name: demo\n")
+
+
 # ----- Inner-work histogram (#1126) -----
 
 
