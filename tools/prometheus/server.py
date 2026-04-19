@@ -257,7 +257,7 @@ def _prom_get(endpoint: str, params: dict[str, Any]) -> Any:
                 snippet = bytes(buf[:512]).decode("utf-8", errors="replace")
             except Exception:
                 snippet = "<undecodable>"
-            log.info(
+            log.warning(
                 "prometheus %s upstream HTTP %d body snippet: %s",
                 endpoint, status, snippet,
             )
@@ -271,7 +271,7 @@ def _prom_get(endpoint: str, params: dict[str, Any]) -> Any:
                 snippet = bytes(buf[:512]).decode("utf-8", errors="replace")
             except Exception:
                 snippet = "<undecodable>"
-            log.info(
+            log.warning(
                 "prometheus %s non-JSON body snippet: %s", endpoint, snippet,
             )
             err = PrometheusError(

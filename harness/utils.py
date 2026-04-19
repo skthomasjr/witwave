@@ -10,7 +10,10 @@ from typing import Any
 
 import yaml
 
-_DURATION_RE = re.compile(r"^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$")
+# #1326: re.ASCII so \d matches only [0-9]. Without the flag, Unicode
+# decimal digits (Arabic-Indic, Thai, etc.) parse successfully and
+# surprise operators.
+_DURATION_RE = re.compile(r"^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$", re.ASCII)
 
 
 def parse_duration(value: str) -> float:

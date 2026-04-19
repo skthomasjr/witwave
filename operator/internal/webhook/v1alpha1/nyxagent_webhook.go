@@ -27,6 +27,7 @@ package v1alpha1
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -266,9 +267,12 @@ func validateSharedStorageHostPath(agent *nyxv1alpha1.NyxAgent) error {
 			"spec.sharedStorage.hostPath=%q: must be an absolute path (start with '/')",
 			ss.HostPath,
 		))
-	case strings.Contains(hp, ".."):
+	case containsDotDotSegment(hp):
+		// #1320: check for ".." as a path SEGMENT, not a substring, so
+		// legitimate directory names like "/mnt/backup..old" pass while
+		// "/mnt/../etc" correctly rejects.
 		return apierrors.NewForbidden(nyxagentGR, agent.Name, fmt.Errorf(
-			"spec.sharedStorage.hostPath=%q: must not contain '..' path elements "+
+			"spec.sharedStorage.hostPath=%q: must not contain '..' path segments "+
 				"(hostPath volumes bypass cluster-level isolation)",
 			ss.HostPath,
 		))
@@ -367,4 +371,21 @@ func SetupNyxAgentWebhookWithManager(mgr ctrl.Manager) error {
 		return err
 	}
 	return nil
+}
+
+// containsDotDotSegment reports whether the given filesystem path
+// contains ".." as a path SEGMENT (not as a substring of a segment).
+// "/mnt/../etc" → true; "/mnt/backup..old" → false. #1320.
+//
+// We inspect the RAW path (split on '/') rather than filepath.Clean
+// because Clean resolves ".." — and the whole point is to refuse any
+// operator intent to traverse, even when the resolved path exists.
+func containsDotDotSegment(p string) bool {
+	slash := filepath.ToSlash(p)
+	for _, seg := range strings.Split(slash, "/") {
+		if seg == ".." {
+			return true
+		}
+	}
+	return false
 }

@@ -180,6 +180,14 @@ def _track_session(sessions: OrderedDict[str, float], session_id: str) -> None:
                 harness_session_evictions_total.inc()
             if harness_session_age_seconds is not None:
                 harness_session_age_seconds.observe(time.monotonic() - last_used_at)
+            # #1308: log the eviction with session_id so operators can
+            # correlate backend-side inventory drift. Full event type
+            # creation requires schema updates (docs/events/) and is
+            # tracked separately; this audit log is the minimum signal.
+            logger.info(
+                "session.evicted: session_id=%s last_used_age_s=%.1f lru_cap=%d",
+                _evicted_id, time.monotonic() - last_used_at, MAX_SESSIONS,
+            )
         sessions[session_id] = time.monotonic()
     if harness_active_sessions is not None:
         harness_active_sessions.set(len(sessions))
@@ -467,15 +475,34 @@ async def _guarded(
     consecutive_restarts = 0
     while True:
         _attempt_start = time.monotonic()
+        # #1311: if we were in a restart streak, schedule an on_recovered
+        # timer that fires after restart_delay of continuous running —
+        # otherwise on_recovered only fires on the NEXT crash, which may
+        # never come for a task that heals.
+        _recovery_watchdog: asyncio.Task | None = None
+        if consecutive_restarts > 0 and on_recovered is not None:
+            async def _recovery_watch(delay: float, cb) -> None:
+                try:
+                    await asyncio.sleep(delay)
+                    cb()
+                except asyncio.CancelledError:
+                    pass
+            _recovery_watchdog = asyncio.ensure_future(
+                _recovery_watch(restart_delay, on_recovered)
+            )
         try:
             await coro_fn(*args)
             return  # clean exit — do not restart
         except asyncio.CancelledError:
+            if _recovery_watchdog is not None and not _recovery_watchdog.done():
+                _recovery_watchdog.cancel()
             raise
         except Exception as exc:
+            if _recovery_watchdog is not None and not _recovery_watchdog.done():
+                _recovery_watchdog.cancel()
             if time.monotonic() - _attempt_start >= restart_delay:
-                if consecutive_restarts > 0 and on_recovered is not None:
-                    on_recovered()
+                # Reset the streak after a stable run (#1311: on_recovered
+                # was already dispatched by the watchdog, so don't double-fire).
                 consecutive_restarts = 0
             consecutive_restarts += 1
             logger.error(
@@ -493,7 +520,20 @@ class AgentExecutor(A2AAgentExecutor):
     def __init__(self):
         self._sessions: OrderedDict[str, float] = OrderedDict()
         self._running_tasks: dict[str, asyncio.Task] = {}
-        self._backends, self._default_backend_id, self._routing = load_backends()
+        # #1328: degrade gracefully when backend.yaml is temporarily
+        # invalid at startup. The watcher task (`backends_watcher`) already
+        # handles hot-reload failures, so starting with empty routing lets
+        # the harness come up and pick up the next valid config.
+        try:
+            self._backends, self._default_backend_id, self._routing = load_backends()
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "executor: backend.yaml invalid at startup (%r); "
+                "starting with empty routing. Watcher will pick up next "
+                "valid config.",
+                exc,
+            )
+            self._backends, self._default_backend_id, self._routing = {}, None, {}
         self._mcp_watcher_tasks: list[asyncio.Task] = []
         self._background_tasks: set[asyncio.Task] = set()
         self._continuation_runner = None

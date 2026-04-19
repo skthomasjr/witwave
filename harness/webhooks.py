@@ -561,7 +561,7 @@ def parse_webhook_file(path: str) -> "WebhookSubscription | object | None":
 
         enabled = True
         if "enabled" in fields:
-            enabled = str(fields["enabled"]).lower() not in ("false", "")
+            enabled = str(fields["enabled"]).lower() not in ("false", "no", "off", "n", "0", "")
         if not enabled:
             # Return a minimal disabled subscription so the dashboard
             # lists it; no delivery machinery is armed until the file
@@ -912,7 +912,9 @@ async def _retry_deliver(
 
     result = "unknown"
     while attempt < max_attempts:
-        backoff = 2 ** (attempt - 1)  # 1s, 2s, 4s, ...
+        # #1309: cap the backoff so WEBHOOK_TOTAL_TIMEOUT_SECONDS=0 (legacy
+        # "no total timeout") regime doesn't produce multi-day waits.
+        backoff = min(2 ** (attempt - 1), 300.0)  # 1s, 2s, 4s, ..., capped 300s
         try:
             await asyncio.sleep(backoff)
         except asyncio.CancelledError:
@@ -1041,6 +1043,14 @@ async def deliver(
     url_error = await _validate_url_async(url)
     if url_error is not None:
         logger.error(f"Webhook '{sub.name}': resolved URL rejected — {url_error}.")
+        # #1310: emit a metric for URL-validation failures.
+        if harness_webhooks_delivery_total is not None:
+            try:
+                harness_webhooks_delivery_total.labels(
+                    result="url_validation_failed", subscription=sub.name
+                ).inc()
+            except Exception:
+                pass
         return
 
     # Run LLM extractions if defined and backends are available. Extraction
@@ -1308,6 +1318,14 @@ async def _deliver_hook_decision(
     url_error = await _validate_url_async(url)
     if url_error is not None:
         logger.error(f"Webhook '{sub.name}': resolved URL rejected — {url_error}.")
+        # #1310: emit a metric for URL-validation failures.
+        if harness_webhooks_delivery_total is not None:
+            try:
+                harness_webhooks_delivery_total.labels(
+                    result="url_validation_failed", subscription=sub.name
+                ).inc()
+            except Exception:
+                pass
         return
 
     if sub.body_template:

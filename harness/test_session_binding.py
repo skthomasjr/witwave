@@ -160,12 +160,17 @@ def test_candidates_dedupes_when_prev_equals_current():
 
 
 def test_candidates_single_element_in_fallback_regimes():
-    """Empty raw, no caller, no secret — all degenerate to a single
-    candidate (rotation cannot apply when the derivation isn't HMAC-bound)."""
+    """Empty raw / no caller — degenerate to a single candidate
+    (rotation cannot apply when the derivation isn't HMAC-bound).
+
+    #1235: current=empty + prev=set + caller present DOES emit a
+    prev-secret probe candidate so previously-HMAC-bound sessions
+    can resume during an operator-initiated rotation unwind."""
     sb = _fresh_module()
     assert len(sb.derive_session_id_candidates("", caller_identity="alice", secret="s", prev_secret="p")) == 1
     assert len(sb.derive_session_id_candidates("conv", caller_identity=None, secret="s", prev_secret="p")) == 1
-    assert len(sb.derive_session_id_candidates("conv", caller_identity="alice", secret="", prev_secret="p")) == 1
+    # #1235: current unset + prev set + caller present → 2 candidates.
+    assert len(sb.derive_session_id_candidates("conv", caller_identity="alice", secret="", prev_secret="p")) == 2
 
 
 def test_candidates_env_default_reads_both_secrets(monkeypatch):

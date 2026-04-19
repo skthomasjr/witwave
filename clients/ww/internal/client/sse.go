@@ -136,7 +136,9 @@ func (p *SSEParser) readBlock() (Event, error) {
 		case "id":
 			ev.ID = value
 		case "retry":
-			if ms, err := strconv.Atoi(value); err == nil && ms >= 0 {
+			// #1314: clamp at 10 minutes so a hostile server can't
+			// cause int64 overflow on `time.Duration(ms) * time.Millisecond`.
+			if ms, err := strconv.Atoi(value); err == nil && ms >= 0 && ms <= 600_000 {
 				ev.Retry = time.Duration(ms) * time.Millisecond
 			}
 		default:

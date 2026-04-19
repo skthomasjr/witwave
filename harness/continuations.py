@@ -102,7 +102,7 @@ def parse_continuation_file(path: str) -> "ContinuationItem | object | None":
 
         enabled = True
         if "enabled" in fields:
-            enabled = str(fields["enabled"]).lower() not in ("false", "")
+            enabled = str(fields["enabled"]).lower() not in ("false", "no", "off", "n", "0", "")
 
         continues_after_raw = fields.get("continues-after") or ""
         # Accepts a single string or a YAML list.  A comma-separated string is
@@ -382,7 +382,7 @@ class ContinuationRunner:
             for k in stale:
                 del self._fanin_state[k]
         if harness_continuation_items_registered is not None:
-            harness_continuation_items_registered.set(len(self._items))
+            harness_continuation_items_registered.set(sum(1 for i in self._items.values() if i.enabled))
 
     def _evict_stale_fanin(self, now: float | None = None) -> int:
         """Evict fan-in state entries older than CONTINUATION_FANIN_TTL.
@@ -579,13 +579,14 @@ class ContinuationRunner:
                 # in-flight count drops below max_concurrent_fires.
                 continue
 
-            # Throttle passed — now it's safe to clear fan-in state so the
-            # next round of upstream events starts fresh.
-            if fanin_key is not None:
-                self._fanin_state.pop(fanin_key, None)
+            # Throttle passed — schedule first, then clear fan-in state so
+            # a future exception between the two lines cannot produce a
+            # cleared-state-with-no-fire window (#1325).
             if harness_continuation_fires_total is not None:
                 harness_continuation_fires_total.labels(upstream_kind=kind).inc()
             _t = asyncio.ensure_future(_fire(item, session_id, bus, trace_context, upstream_kind_label=kind))
+            if fanin_key is not None:
+                self._fanin_state.pop(fanin_key, None)
             self._active_fires.add(_t)
             fires.add(_t)
             def _cleanup(t: asyncio.Task, _name: str = item.name) -> None:

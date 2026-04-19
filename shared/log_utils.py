@@ -129,8 +129,13 @@ def _append_log(path: str, line: str) -> None:
     with open(lock_path, "a") as lock_f:
         fcntl.flock(lock_f, fcntl.LOCK_EX)
         try:
+            # #1317: defensively escape embedded newlines so a malformed
+            # caller cannot corrupt the JSONL frame. Tail-followers parse
+            # line-by-line; a raw \n inside `line` would split one record
+            # into two and the consumer would see corrupted frames.
+            _sanitised = line.replace("\r", "\\r").replace("\n", "\\n")
             with open(path, "a", encoding="utf-8") as f:
-                f.write(line + "\n")
+                f.write(_sanitised + "\n")
                 f.flush()
             if MAX_LOG_BACKUP_COUNT > 0 and os.path.getsize(path) >= MAX_LOG_BYTES:
                 # Rotate: <path>.N → <path>.N+1, …, <path> → <path>.1

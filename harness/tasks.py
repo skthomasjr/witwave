@@ -109,7 +109,7 @@ def parse_task_file(path: str) -> "TaskItem | object | None":
 
         enabled = True
         if "enabled" in fields:
-            enabled = str(fields["enabled"]).lower() not in ("false", "")
+            enabled = str(fields["enabled"]).lower() not in ("false", "no", "off", "n", "0", "")
         if not enabled:
             # Return a minimal TaskItem with enabled=False so the task is
             # listed in /tasks for dashboard visibility but isn't armed.
@@ -192,10 +192,15 @@ def parse_task_file(path: str) -> "TaskItem | object | None":
                 if harness_sched_task_parse_errors_total is not None:
                     harness_sched_task_parse_errors_total.inc()
                 return None
+            # #1305: combine tz-aware so DST transitions don't silently
+            # skew the derived window_end. If the operator zone transitions
+            # forward between window_start and window_start+duration, the
+            # resulting wall-clock end shifts by the DST offset; that is
+            # the correct observable wall-clock, not the naive one.
             _ref_date = datetime.now(tz).date()
-            ws_dt = datetime.combine(_ref_date, window_start)
+            ws_dt = datetime.combine(_ref_date, window_start).replace(tzinfo=tz)
             we_dt = ws_dt + timedelta(seconds=duration_secs)
-            window_end = we_dt.time()
+            window_end = we_dt.timetz().replace(tzinfo=None)
 
         # loop
         loop = str(fields.get("loop", "false")).lower() not in ("false", "")
@@ -328,7 +333,13 @@ def _next_window_open(item: TaskItem, after: datetime) -> datetime | None:
         # We are past window_start for today (normal case).
         check_date += timedelta(days=1)
 
-    for _ in range(366 * 2):  # guard against infinite loop — max 2 years
+    # #1306: derive the iteration cap from item.end when bounded so
+    # sparse-day tasks with a far-future end don't silently expire at
+    # 2 years. Cap at 10 years by default (generous upper bound that
+    # still protects against runaway loops on unbounded sparse-day
+    # expressions).
+    _max_iters = (item.end - check_date).days + 2 if item.end else 366 * 10
+    for _ in range(_max_iters):
         if item.start and check_date < item.start:
             check_date += timedelta(days=1)
             continue
@@ -432,6 +443,22 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
             if harness_sched_task_item_last_success_timestamp_seconds is not None:
                 harness_sched_task_item_last_success_timestamp_seconds.labels(name=item.name).set(_success_ts)
         except asyncio.CancelledError:
+            # #1307: mirror the loop-path drain (#1274) on run-once so the
+            # in-flight bus.send doesn't leak past cleanup.
+            if _send_task is not None and not _send_task.done():
+                _drain_timeout = float(os.environ.get("TASKS_SHUTDOWN_DRAIN_TIMEOUT", "5"))
+                try:
+                    await asyncio.wait_for(
+                        asyncio.gather(_send_task, return_exceptions=True),
+                        timeout=_drain_timeout,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        f"Task '{item.name}' run-once drain timed out after "
+                        f"{_drain_timeout}s — abandoning in-flight send."
+                    )
+                    if not _send_task.done():
+                        _send_task.cancel()
             raise
         except Exception as e:
             logger.error(f"Task '{item.name}' error: {e}")
@@ -775,7 +802,7 @@ class TaskRunner:
         item.task = task
         self._items[path] = item
         if harness_sched_task_items_registered is not None:
-            harness_sched_task_items_registered.set(len(self._items))
+            harness_sched_task_items_registered.set(sum(1 for i in self._items.values() if i.enabled))
         if item.window_start is not None:
             logger.info(f"Task '{item.name}' registered. Window: {item.window_start.strftime('%H:%M')}")
         else:
@@ -818,10 +845,10 @@ class TaskRunner:
                 logger.info(f"Task '{existing.name}' unregistered.")
             existing.task.cancel()
             if harness_sched_task_items_registered is not None:
-                harness_sched_task_items_registered.set(len(self._items))
+                harness_sched_task_items_registered.set(sum(1 for i in self._items.values() if i.enabled))
             return existing.task
         if harness_sched_task_items_registered is not None:
-            harness_sched_task_items_registered.set(len(self._items))
+            harness_sched_task_items_registered.set(sum(1 for i in self._items.values() if i.enabled))
         return None
 
     async def _scan(self) -> None:

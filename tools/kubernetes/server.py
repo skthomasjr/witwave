@@ -164,9 +164,19 @@ def _truncate_json(value: Any, *, tool: str) -> Any:
     if len(raw.encode("utf-8", errors="replace")) <= cap:
         return value
     if isinstance(value, list):
+        # #1324: on oversize lists, use the initial `raw` serialisation
+        # (already computed above) to estimate a target-K up-front,
+        # bounding per-item dumps to roughly O(K) rather than O(N).
+        # Estimate: average item serialised length ≈ len(raw)/len(value),
+        # target K so K * avg + framing < cap.
+        _n = len(value)
+        _avg = max(1, len(raw) // max(1, _n))
+        _target_k = max(1, min(_n, cap // (_avg + 1)))
         trimmed: list[Any] = []
         running = 2
-        for item in value:
+        # Only iterate up to 2× the estimated K so pathological skewed
+        # item sizes still trim accurately without scanning the full list.
+        for item in value[: _target_k * 2]:
             try:
                 chunk = _json.dumps(item, default=str)
             except Exception:
@@ -177,7 +187,7 @@ def _truncate_json(value: Any, *, tool: str) -> Any:
             running += len(chunk) + 1
         return {
             "_truncated": True,
-            "_original_length": len(value),
+            "_original_length": _n,
             "_returned_length": len(trimmed),
             "_cap_bytes": cap,
             "items": trimmed,
@@ -191,6 +201,15 @@ def _truncate_json(value: Any, *, tool: str) -> Any:
             out["_cap_bytes"] = cap
             out["_original_item_count"] = inner["_original_length"]
             out["_returned_item_count"] = inner["_returned_length"]
+            # #1303/#1304: when we truncate, the apiserver's continue
+            # token points PAST our trimmed rows. Returning it would
+            # cause callers to skip data. Null it out so callers lower
+            # `limit` and re-issue from the same position.
+            if "continue" in out or "_continue" in out or "metadata" in out:
+                out["continue"] = ""
+                if isinstance(out.get("metadata"), dict):
+                    out["metadata"] = {**out["metadata"], "continue": ""}
+                out["_continue_cleared_due_to_truncation"] = True
         else:
             out["items"] = inner
         return out

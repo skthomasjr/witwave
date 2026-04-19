@@ -400,6 +400,19 @@ async def main():
             if not hmac_mod.compare_digest(f"Bearer {CONVERSATIONS_AUTH_TOKEN}", header):
                 _status_box[0] = "unauthorized"
                 return JSONResponse({"error": "unauthorized"}, status_code=401)
+        # #1315: reject oversize Content-Length early so an authed caller
+        # can't force the backend to buffer a multi-MiB MCP body.
+        _MCP_BODY_CAP = 4 * 1024 * 1024  # 4 MiB
+        try:
+            declared_len = int(request.headers.get("Content-Length", "") or "-1")
+        except ValueError:
+            declared_len = -1
+        if declared_len > _MCP_BODY_CAP:
+            _status_box[0] = "body_too_large"
+            return JSONResponse(
+                {"jsonrpc": "2.0", "id": None, "error": {"code": -32600, "message": "body too large"}},
+                status_code=413,
+            )
         try:
             body = await request.json()
         except Exception:

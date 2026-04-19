@@ -76,7 +76,7 @@ def load_heartbeat() -> tuple[str, str, str | None, str | None, list[ConsensusEn
     if "schedule" in fields:
         schedule = fields["schedule"]
     if "enabled" in fields:
-        enabled = str(fields["enabled"]).lower() not in ("false", "")
+        enabled = str(fields["enabled"]).lower() not in ("false", "no", "off", "n", "0", "")
     model = fields.get("model") or None
     backend_id = fields.get("agent") or None
     consensus = parse_consensus(raw_fields.get("consensus"))
@@ -187,13 +187,18 @@ async def _run_loop(
                 if harness_heartbeat_skips_total is not None:
                     harness_heartbeat_skips_total.inc()
                 continue
+            # #1323: record last_fire unconditionally once try_send has
+            # returned True — a future bus refactor where result is None
+            # would otherwise produce a silent no-op (no metrics / no
+            # event stream emit), leaving dashboards claiming healthy
+            # while no actual fire happened.
+            logger.info("Heartbeat firing.")
+            _fire_ts = time.time()
+            global last_fire
+            last_fire = _fire_ts  # #1087
+            if harness_heartbeat_last_run_timestamp_seconds is not None:
+                harness_heartbeat_last_run_timestamp_seconds.set(_fire_ts)
             if message.result is not None:
-                logger.info("Heartbeat firing.")
-                _fire_ts = time.time()
-                global last_fire
-                last_fire = _fire_ts  # #1087
-                if harness_heartbeat_last_run_timestamp_seconds is not None:
-                    harness_heartbeat_last_run_timestamp_seconds.set(_fire_ts)
                 try:
                     # Race the in-flight result against stop_event (#492). Shield
                     # the result future so asyncio.wait doesn't mark our local

@@ -103,7 +103,7 @@ def parse_job_file(path: str) -> "JobItem | object | None":
             except (ValueError, TypeError):
                 logger.warning(f"Job file {path}: invalid 'max-tokens' value {max_tokens_raw!r}, ignoring.")
         if "enabled" in fields:
-            enabled = str(fields["enabled"]).lower() not in ("false", "")
+            enabled = str(fields["enabled"]).lower() not in ("false", "no", "off", "n", "0", "")
 
         # Disabled jobs bypass cron validation — a busted schedule on a
         # job that isn't going to fire shouldn't be a parse error, and
@@ -176,7 +176,9 @@ async def _execute_job(item: JobItem, bus: MessageBus, semaphore: asyncio.Semaph
 
         prompt = resolve_prompt_env(f"Job: {item.name}\n\n{item.content}")
         logger.info(f"Job '{item.name}' firing.")
-        _job_start = time.monotonic()
+        # #1322: removed inner `_job_start = time.monotonic()` reassign so
+        # duration metric covers resolve_prompt_env + bus.send symmetrically
+        # on both success and error paths (was: success underreported).
         message = Message(prompt=prompt, session_id=item.session_id, kind=f"job:{item.name}", model=item.model, backend_id=item.backend_id, consensus=item.consensus, max_tokens=item.max_tokens)
         _fire_ts = time.time()
         item.last_fire = _fire_ts  # #1087 — surface last_fire on /jobs snapshot
@@ -372,7 +374,7 @@ class JobRunner:
         item.task = task
         self._items[path] = item
         if harness_job_items_registered is not None:
-            harness_job_items_registered.set(len(self._items))
+            harness_job_items_registered.set(sum(1 for i in self._items.values() if i.enabled))
         if item.schedule:
             logger.info(f"Job '{item.name}' registered. Schedule: {item.schedule}")
         else:
@@ -410,10 +412,10 @@ class JobRunner:
                 logger.info(f"Job '{existing.name}' unregistered.")
             existing.task.cancel()
             if harness_job_items_registered is not None:
-                harness_job_items_registered.set(len(self._items))
+                harness_job_items_registered.set(sum(1 for i in self._items.values() if i.enabled))
             return existing.task
         if harness_job_items_registered is not None:
-            harness_job_items_registered.set(len(self._items))
+            harness_job_items_registered.set(sum(1 for i in self._items.values() if i.enabled))
         return None
 
     async def _scan(self) -> None:

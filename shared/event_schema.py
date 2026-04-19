@@ -437,10 +437,11 @@ def _validate_stream_gap(p: dict) -> str | None:
     err = _require_keys(p, ("last_seen_id", "resume_id"), ("reason",), "stream.gap")
     if err:
         return err
-    if not isinstance(p["last_seen_id"], str):
-        return _err("stream.gap: last_seen_id must be a string")
-    if not isinstance(p["resume_id"], str):
-        return _err("stream.gap: resume_id must be a string")
+    # #1327: require non-empty strings for semantically-required ids.
+    if not _is_nonempty_str(p["last_seen_id"]):
+        return _err("stream.gap: last_seen_id must be a non-empty string")
+    if not _is_nonempty_str(p["resume_id"]):
+        return _err("stream.gap: resume_id must be a non-empty string")
     if "reason" in p and not isinstance(p["reason"], str):
         return _err("stream.gap: reason must be a string")
     return None

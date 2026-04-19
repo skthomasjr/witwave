@@ -398,14 +398,35 @@ func (r *NyxPromptReconciler) patchStatusWithConflictRetry(
 			LastTransitionTime: metav1.Now(),
 			ObservedGeneration: stampGen,
 		}
-		if !reconcileHadErrors && readyCount == int32(len(target.Spec.AgentRefs)) && len(target.Spec.AgentRefs) > 0 {
+		// #1312: compare against len(bindings) when generation moved so
+		// we don't falsely declare AllBound against a new spec's refs.
+		var allBoundRefs int
+		if target.Generation == reconciledGeneration {
+			allBoundRefs = len(target.Spec.AgentRefs)
+		} else {
+			allBoundRefs = len(bindings)
+		}
+		if !reconcileHadErrors && readyCount == int32(allBoundRefs) && allBoundRefs > 0 {
 			cond.Status = metav1.ConditionTrue
 			cond.Reason = "AllBound"
 		} else {
 			cond.Status = metav1.ConditionFalse
 			cond.Reason = "PartialBinding"
 		}
-		cond.Message = fmt.Sprintf("%d/%d agents bound.", readyCount, len(target.Spec.AgentRefs))
+		// #1312: use the same generation-basis for BOTH numerator and
+		// denominator so the message doesn't show "readyCount(old_spec) /
+		// desired(new_spec)" when a 409 retry observes a newer spec.
+		// When we preserve prior ObservedGeneration (spec moved), report
+		// against the bindings we actually wrote (they reflect the old
+		// spec) — so also use len(bindings) as the denominator instead
+		// of len(target.Spec.AgentRefs).
+		var desiredCount int
+		if target.Generation == reconciledGeneration {
+			desiredCount = len(target.Spec.AgentRefs)
+		} else {
+			desiredCount = len(bindings)
+		}
+		cond.Message = fmt.Sprintf("%d/%d agents bound.", readyCount, desiredCount)
 		setCondition(&target.Status.Conditions, cond)
 	}
 

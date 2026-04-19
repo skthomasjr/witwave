@@ -1083,12 +1083,38 @@ async def main():
         # mechanism.  This keeps unauthenticated callers from forcing the
         # harness to buffer up to MAX_TRIGGER_BODY_BYTES per concurrent request.
         MAX_TRIGGER_BODY_BYTES = 1_048_576
+        # #1318: validate the bearer VALUE (not mere presence) before we
+        # buffer the body, so an unauth caller sending `Authorization:
+        # anything` cannot force a 1 MiB buffer allocation before rejection.
+        # Signature-auth paths still require the signature header at this
+        # gate because the HMAC check needs the body; for those we keep
+        # the presence-only pre-check but reject oversize Content-Length
+        # early below.
         auth_header_present = False
+        auth_token_validated = False
         if item.secret_env_var:
             auth_header_present = bool(request.headers.get("X-Hub-Signature-256"))
-        elif os.environ.get("TRIGGERS_AUTH_TOKEN", ""):
-            auth_header_present = bool(request.headers.get("Authorization"))
+        else:
+            _global_token = os.environ.get("TRIGGERS_AUTH_TOKEN", "").strip()
+            if _global_token:
+                _hdr = request.headers.get("Authorization", "")
+                auth_header_present = bool(_hdr)
+                if _hdr and hmac_mod.compare_digest(
+                    f"Bearer {_global_token}", _hdr
+                ):
+                    auth_token_validated = True
+            else:
+                # No token configured — _check_trigger_auth will reject anyway.
+                auth_header_present = bool(request.headers.get("Authorization"))
         if not auth_header_present:
+            trigger_runner._running.discard(endpoint)
+            if harness_triggers_requests_total is not None:
+                harness_triggers_requests_total.labels(method=request.method, code="401").inc()
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        # Bearer auth: reject BEFORE buffering if token doesn't match.
+        if (not item.secret_env_var
+                and os.environ.get("TRIGGERS_AUTH_TOKEN", "").strip()
+                and not auth_token_validated):
             trigger_runner._running.discard(endpoint)
             if harness_triggers_requests_total is not None:
                 harness_triggers_requests_total.labels(method=request.method, code="401").inc()
@@ -1579,6 +1605,20 @@ async def main():
         # world-readable parsing surface by default.
         if not _check_adhoc_auth(request):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
+        # #1316: reject oversize Content-Length BEFORE buffering the body.
+        try:
+            from utils import PARSE_FRONTMATTER_MAX_FILE_BYTES as _MAX
+        except Exception:
+            _MAX = 1_048_576
+        try:
+            declared_len = int(request.headers.get("Content-Length", "") or "-1")
+        except ValueError:
+            declared_len = -1
+        if declared_len > _MAX:
+            return JSONResponse(
+                {"ok": False, "errors": [f"body exceeds {_MAX} bytes"]},
+                status_code=413,
+            )
         try:
             body = await request.json()
         except Exception:

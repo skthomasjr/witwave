@@ -78,6 +78,11 @@ async function fetchText(
         };
         effectiveSignal = controller.signal;
       }
+      // #1313: the caller's catch handler uses `signal.aborted` (the
+      // OUTER signal passed in here) to distinguish outer-cancel from
+      // timeout-cancel. The timer aborts the INNER `controller` only,
+      // so this distinction remains correct regardless of whether
+      // AbortSignal.any was used above — documented for future edits.
     }
   }
   try {

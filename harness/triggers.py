@@ -64,7 +64,7 @@ def parse_trigger_file(path: str) -> TriggerItem | object | None:
 
         enabled = True
         if "enabled" in fields:
-            enabled = str(fields["enabled"]).lower() not in ("false", "")
+            enabled = str(fields["enabled"]).lower() not in ("false", "no", "off", "n", "0", "")
 
         endpoint = fields.get("endpoint") or None
         if not endpoint and not enabled:
