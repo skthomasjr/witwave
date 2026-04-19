@@ -39,12 +39,18 @@ jobs:
       - name: helm lint (default values)
         run: helm lint ${{ matrix.chart }}
 
-      - name: helm template (default values)
-        run: helm template ci-default ${{ matrix.chart }} --validate=false > /tmp/${{ matrix.chart }}-default.yaml || true
       # Some charts fail render with default values by design (#760 guard
-      # rejects placeholder tokens). Run the more forgiving validate=false
-      # to surface template-side syntax errors but tolerate opinionated
-      # deploy-time guards.
+      # rejects placeholder tokens). Tolerate ONLY that specific guard's
+      # error message ("REPLACE_ME") — any other render failure must
+      # surface loudly (#1258). The previous `|| true` hid genuine
+      # template regressions behind the same exit code as the expected
+      # #760 guard.
+      - name: helm template (default values)
+        run: |
+          helm template ci-default ${{ matrix.chart }} --validate=false \
+            > /tmp/${{ matrix.chart }}-default.yaml 2> /tmp/helm-err \
+            || (grep -q 'REPLACE_ME' /tmp/helm-err && echo 'tolerated #760 guard') \
+            || (cat /tmp/helm-err; exit 1)
 
       - name: helm template (values-test.yaml when present)
         run: |
@@ -290,8 +296,15 @@ jobs:
               podSC = pod_spec.get("securityContext") or {}
               pod_seccomp = (podSC.get("seccompProfile") or {}).get("type")
               pod_runAsNonRoot = podSC.get("runAsNonRoot")
+              # PSS-restricted enforces security context requirements on
+              # ephemeral debug containers too (#1266). `kubectl debug`
+              # injects them at runtime and they're subject to the same
+              # namespace admission policy as permanent containers — if
+              # our chart ever declares them statically they must carry
+              # the full SC baseline.
               containers = (pod_spec.get("containers") or []) + \
-                           (pod_spec.get("initContainers") or [])
+                           (pod_spec.get("initContainers") or []) + \
+                           (pod_spec.get("ephemeralContainers") or [])
               for c in containers:
                   sc = c.get("securityContext") or {}
                   seccomp = (sc.get("seccompProfile") or {}).get("type") or pod_seccomp

@@ -141,11 +141,14 @@ data:
       # the exact path.
       {{- $agentMetricsPort := add (int ($agent.port | default 8000)) 1000 }}
       {{- /* Only render this route when the agent's Service actually
-             exposes the metrics port — service.yaml uses the same
-             default+override computation (#689). Without this guard the
-             dashboard returned 502 for /api/agents/<name>/metrics when
-             metrics were disabled. */}}
-      {{- $agentMetricsEnabled := (($agent.metrics).enabled | default $.Values.metrics.enabled) }}
+             exposes the metrics port — service.yaml / servicemonitor.yaml
+             use the same hasKey-branch pattern (#1019, #1256). The
+             previous `default` collapsed `enabled: false` to the global
+             value because `false | default X` returns X. Without this
+             guard the dashboard returned 502 for /api/agents/<name>/metrics
+             when metrics were disabled per-agent. */}}
+      {{- $agentMetricsEnabled := $.Values.metrics.enabled }}
+      {{- if ($agent.metrics) }}{{- if hasKey $agent.metrics "enabled" }}{{- $agentMetricsEnabled = $agent.metrics.enabled }}{{- end }}{{- end }}
       {{- if $agentMetricsEnabled }}
       location = /api/agents/{{ $agent.name }}/metrics {
         proxy_pass http://{{ $release }}-{{ $agent.name }}.{{ $.Release.Namespace }}.svc.{{ $clusterDomain }}:{{ $agentMetricsPort }}/metrics;

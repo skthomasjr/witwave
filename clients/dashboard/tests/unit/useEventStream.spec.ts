@@ -240,8 +240,11 @@ describe("useEventStream", () => {
     value.open();
     await new Promise((r) => setTimeout(r, 20));
 
-    // Only the non-control event lands in the list; overrun is consumed.
-    expect(value.events.value.map((e) => e.type)).toEqual(["x"]);
+    // The non-control event lands in the list, and the overrun marker
+    // is surfaced too (#1237) — downstream consumers like useAlerts key
+    // off the envelope to raise the "stream caught up after reconnect"
+    // banner.
+    expect(value.events.value.map((e) => e.type)).toEqual(["x", "stream.overrun"]);
     // resume_id wins over the overrun's own id so reconnect restarts
     // from the new head.
     expect(value.lastEventId.value).toBe("500");

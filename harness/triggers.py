@@ -157,7 +157,10 @@ class TriggerRunner:
         if existing:
             logger.info(f"Trigger '{existing.name}' unregistered.")
             if harness_triggers_items_registered is not None:
-                harness_triggers_items_registered.set(len(self._items))
+                # #1230: count enabled only, matching register path.
+                harness_triggers_items_registered.set(
+                    sum(1 for i in self._items.values() if i.enabled)
+                )
             if count_reload and harness_triggers_reloads_total is not None:
                 harness_triggers_reloads_total.inc()
 

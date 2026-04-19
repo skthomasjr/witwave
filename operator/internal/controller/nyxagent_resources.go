@@ -574,8 +574,13 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string, prompts []n
 	metricsOn := agent.Spec.Metrics.Enabled
 	harnessPorts := []corev1.ContainerPort{{Name: "http", ContainerPort: harnessPort}}
 	if metricsOn {
+		// Unique container-port names per pod (#1249): "metrics" collided
+		// between harness and every backend container. Keep harness on
+		// "metrics-harness" and each backend on "metrics-<backend>" so the
+		// Service / PodMonitor can target a specific container without
+		// the kubelet rejecting the Pod on duplicate port-name validation.
 		harnessPorts = append(harnessPorts, corev1.ContainerPort{
-			Name:          "metrics",
+			Name:          "metrics-harness",
 			ContainerPort: harnessMetricsPort,
 		})
 	}
@@ -666,11 +671,13 @@ func buildDeployment(agent *nyxv1alpha1.NyxAgent, appVersion string, prompts []n
 		bMetricsPort := containerMetricsPort(agent.Spec.MetricsPort, bPort)
 		bPorts := []corev1.ContainerPort{{Name: "http", ContainerPort: bPort}}
 		if metricsOn {
-			// Dedicated Prometheus metrics listener (#643); mirrors chart.
-			// Every container in the pod exposes the same `metrics` port
-			// name, so PodMonitor's single endpoint targets them all.
+			// Dedicated Prometheus metrics listener (#643). Each backend
+			// uses a container-port name of "metrics-<backend>" so the
+			// pod's Port list is unique across containers (#1249). The
+			// PodMonitor scrapes every container via targetPort-by-number
+			// or per-name endpoints; the Service only routes harness.
 			bPorts = append(bPorts, corev1.ContainerPort{
-				Name:          "metrics",
+				Name:          fmt.Sprintf("metrics-%s", b.Name),
 				ContainerPort: bMetricsPort,
 			})
 		}
@@ -972,14 +979,17 @@ func buildService(agent *nyxv1alpha1.NyxAgent) *corev1.Service {
 		TargetPort: intstr.FromInt(int(port)),
 	}}
 	if agent.Spec.Metrics.Enabled {
-		// Expose the metrics port on the Service so ServiceMonitor can
-		// target it by name (#643). TargetPort is the container-port name
-		// `metrics` (not a number) so Service routing survives any future
-		// metrics-port override on the container side.
+		// Expose the harness metrics port on the Service so ServiceMonitor
+		// can target it by name (#643). Backends keep their own container
+		// ports ("metrics-<backend>") and are scraped via PodMonitor rather
+		// than fan-out through this Service — routing one named Service
+		// port to multiple container-port names is ambiguous. Service
+		// targetPort is now "metrics-harness" (#1249) to match the
+		// container-port rename that removed the duplicate "metrics" name.
 		servicePorts = append(servicePorts, corev1.ServicePort{
 			Name:       "metrics",
 			Port:       metricsPort,
-			TargetPort: intstr.FromString("metrics"),
+			TargetPort: intstr.FromString("metrics-harness"),
 		})
 	}
 
@@ -1038,16 +1048,30 @@ func buildPodMonitor(agent *nyxv1alpha1.NyxAgent) *unstructured.Unstructured {
 		labels[k] = v
 	}
 
-	// Single endpoint targeting the shared `metrics` container port name
-	// (#643). Prometheus discovers one target per container that exposes
-	// this port — harness + every enabled backend — in one sweep.
+	// One endpoint per uniquely-named metrics port (#1249): harness
+	// exposes "metrics-harness" and each enabled backend exposes
+	// "metrics-<backend>". The former single "metrics" name collided
+	// across containers and the kubelet rejected the Pod — see #1249.
 	endpoints := []interface{}{
 		map[string]interface{}{
-			"port":          "metrics",
+			"port":          "metrics-harness",
 			"path":          "/metrics",
 			"interval":      interval,
 			"scrapeTimeout": scrapeTimeout,
 		},
+	}
+	backendNames := append([]nyxv1alpha1.BackendSpec(nil), agent.Spec.Backends...)
+	sort.Slice(backendNames, func(i, j int) bool { return backendNames[i].Name < backendNames[j].Name })
+	for _, b := range backendNames {
+		if !backendEnabled(b) {
+			continue
+		}
+		endpoints = append(endpoints, map[string]interface{}{
+			"port":          fmt.Sprintf("metrics-%s", b.Name),
+			"path":          "/metrics",
+			"interval":      interval,
+			"scrapeTimeout": scrapeTimeout,
+		})
 	}
 
 	obj := &unstructured.Unstructured{}
@@ -1250,16 +1274,29 @@ func containerMetricsPort(overrideMetricsPort int32, appPort int32) int32 {
 // TODO(#1222): tighten spec.port / backend.port upper bounds in the
 // validating webhook so the clamp code path is unreachable.
 func validateContainerMetricsPorts(agent *nyxv1alpha1.NyxAgent) error {
-	// Only guard against the clamp-induced collision: if two containers
-	// both hit the 65535 clamp they will fight over the same port.
-	const clamped int32 = 65535
+	_, err := metricsPortClampStatus(agent)
+	return err
+}
+
+// metricsPortClampStatus reports the list of container names whose metrics
+// listener was silently clamped to 65535 (appPort > 64535 with metrics
+// enabled) alongside the collision-detection error that
+// validateContainerMetricsPorts used to return on its own. Returning the
+// names lets the reconciler emit a `MetricsPortClamped` Warning Event
+// (#1250) so operators can see the misconfiguration in `kubectl describe`
+// without the reconciler itself aborting the rollout when only one
+// container is clamped (the single-clamp case is not a port collision).
+func metricsPortClampStatus(agent *nyxv1alpha1.NyxAgent) (clamped []string, collision error) {
+	const clampedValue int32 = 65535
+	if !agent.Spec.Metrics.Enabled {
+		return nil, nil
+	}
 	harnessPort := agent.Spec.Port
 	if harnessPort == 0 {
 		harnessPort = 8000
 	}
-	clampedNames := []string{}
-	if agent.Spec.MetricsPort == 0 && harnessPort+1000 > 65535 {
-		clampedNames = append(clampedNames, "harness")
+	if agent.Spec.MetricsPort == 0 && harnessPort > 64535 {
+		clamped = append(clamped, "harness")
 	}
 	for _, b := range agent.Spec.Backends {
 		if !backendEnabled(b) {
@@ -1269,17 +1306,17 @@ func validateContainerMetricsPorts(agent *nyxv1alpha1.NyxAgent) error {
 		if bPort == 0 {
 			bPort = 8000
 		}
-		if agent.Spec.MetricsPort == 0 && bPort+1000 > 65535 {
-			clampedNames = append(clampedNames, b.Name)
+		if agent.Spec.MetricsPort == 0 && bPort > 64535 {
+			clamped = append(clamped, b.Name)
 		}
 	}
-	if len(clampedNames) > 1 {
-		return fmt.Errorf(
+	if len(clamped) > 1 {
+		return clamped, fmt.Errorf(
 			"metrics port collision: containers %v all have appPort>=%d and would clamp to %d; set spec.metricsPort explicitly or lower the app ports",
-			clampedNames, 65535-999, clamped,
+			clamped, 65535-999, clampedValue,
 		)
 	}
-	return nil
+	return clamped, nil
 }
 
 // backendEnabled reports the per-backend enabled flag with default-true
@@ -1299,6 +1336,13 @@ func preStopLifecycle(agent *nyxv1alpha1.NyxAgent) *corev1.Lifecycle {
 	// means "skip the preStop sleep", not "I want the default".
 	if delay < 0 {
 		delay = 5
+	}
+	// #1252: `sleep 0` still forks /bin/sh and waits on a no-op; emit no
+	// Lifecycle at all when the user asked for zero seconds. The container
+	// keeps preStop.enabled=true as a documentation signal without paying
+	// for a meaningless exec.
+	if delay == 0 {
+		return nil
 	}
 	return &corev1.Lifecycle{
 		PreStop: &corev1.LifecycleHandler{
@@ -1563,7 +1607,13 @@ func buildDashboardConfigMap(agent *nyxv1alpha1.NyxAgent) *corev1.ConfigMap {
 		clusterDomain = "cluster.local"
 	}
 	upstream := fmt.Sprintf("http://%s.%s.svc.%s:%d", agent.Name, agent.Namespace, clusterDomain, agentPort)
-	directory := fmt.Sprintf(`[{"name":%q,"url":%q}]`, agent.Name, fmt.Sprintf("http://%s:%d", agent.Name, agentPort))
+	// #1255: directory entry URL must be the same FQDN the upstream line
+	// uses — a short-name `http://<agent>:<port>` entry makes the dashboard
+	// client look up the Service at its own namespace search path, which
+	// breaks once the dashboard lands in a different namespace than the
+	// agent (typical multi-tenant install).
+	directoryURL := fmt.Sprintf("http://%s.%s.svc.%s:%d", agent.Name, agent.Namespace, clusterDomain, agentPort)
+	directory := fmt.Sprintf(`[{"name":%q,"url":%q}]`, agent.Name, directoryURL)
 
 	tpl := `server {
   listen 3000;
@@ -1933,14 +1983,20 @@ func buildManifestOwnerRefs(agents []*nyxv1alpha1.NyxAgent) []metav1.OwnerRefere
 			)
 			continue
 		}
-		no, block := false, false
+		// #1251: allocate fresh *bool per iteration via boolPtr so each
+		// OwnerReference owns its own pointer target. Declaring locals
+		// inside the loop body is already per-iteration under Go
+		// semantics, but routing through boolPtr — which returns the
+		// address of a fresh named parameter — makes the non-aliasing
+		// explicit and is robust to future refactors that might hoist
+		// the locals out of the loop.
 		refs = append(refs, metav1.OwnerReference{
 			APIVersion:         nyxv1alpha1.GroupVersion.String(),
 			Kind:               "NyxAgent",
 			Name:               a.Name,
 			UID:                a.UID,
-			Controller:         &no,
-			BlockOwnerDeletion: &block,
+			Controller:         boolPtr(false),
+			BlockOwnerDeletion: boolPtr(false),
 		})
 	}
 	sort.Slice(refs, func(i, j int) bool { return refs[i].UID < refs[j].UID })

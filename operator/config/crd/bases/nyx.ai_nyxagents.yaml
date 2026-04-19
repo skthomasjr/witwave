@@ -1324,7 +1324,11 @@ spec:
                     name:
                       description: |-
                         Name identifies the backend (e.g. claude, codex, gemini). Used as the
-                        container name and the backend ID in routing.
+                        container name and the backend ID in routing. MaxLength caps the
+                        name well under the Kubernetes container-name limit (63) so the
+                        downstream container name `<agent>-<backend>` still fits comfortably
+                        even for long agent names (#1253).
+                      maxLength: 30
                       pattern: ^[a-z0-9][a-z0-9-]*$
                       type: string
                     port:
@@ -1433,6 +1437,12 @@ spec:
                             type: object
                           type: array
                         size:
+                          description: |-
+                            Size is a Kubernetes resource.Quantity string (e.g. "10Gi", "500M").
+                            The pattern matches the syntax accepted by resource.ParseQuantity so
+                            typos like "10 GB" or "10gibs" are rejected at admission rather than
+                            surfacing as a PVC `ProvisioningFailed` event on the cluster (#1254).
+                          pattern: ^([+-]?[0-9.]+)([eEinumkKMGTP]*[-+]?[0-9]*)?$
                           type: string
                         storageClassName:
                           type: string

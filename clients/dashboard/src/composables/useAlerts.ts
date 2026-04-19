@@ -94,11 +94,6 @@ function currentStampMs(): number {
   return latestObservedStampMs || now();
 }
 
-// Monotonic cursor into the timeline store's ring — we only process
-// events past this index each tick so a reactive burst doesn't re-score
-// the whole ring.
-let lastProcessedEventId = "";
-
 // Marker for the stream-outage timer so only one timer is ever live.
 let streamDownTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -346,6 +341,14 @@ function dispatchEvent(event: EventEnvelope): void {
 }
 
 // --- Module wiring ----------------------------------------------------------
+
+// Monotonic cursor into the timeline store's ring — we only process
+// events past this id each tick so a reactive burst doesn't re-score
+// the whole ring. Lives inside the module so multiple `useAlerts()`
+// callers share it, but `__resetUseAlerts()` zeroes it so pinia-store
+// resets in tests don't leave a stale cursor that skips fresh events
+// emitted through the reset store. (#1238)
+let lastProcessedEventId = "";
 
 function wireOnce(): void {
   if (wiredUp) return;

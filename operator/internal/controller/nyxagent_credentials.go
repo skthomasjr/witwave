@@ -285,8 +285,11 @@ func (r *NyxAgentReconciler) reconcileCredentialsSecrets(ctx context.Context, ag
 		if !metav1.IsControlledBy(existing, agent) {
 			continue
 		}
+		if err := controllerutil.SetControllerReference(agent, existing, r.Scheme); err != nil {
+			return fmt.Errorf("set owner on existing Secret %s: %w", sec.Name, err)
+		}
 		existing.Data = sec.Data
-		existing.Labels = sec.Labels
+		existing.Labels = mergeOwnedStringMap(existing.Labels, sec.Labels, nyxAgentOwnedLabelKeys)
 		existing.Type = sec.Type
 		if err := r.Update(ctx, existing); err != nil {
 			return fmt.Errorf("update Secret %s: %w", sec.Name, err)

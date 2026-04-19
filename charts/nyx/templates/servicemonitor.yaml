@@ -29,6 +29,12 @@ spec:
   namespaceSelector:
     matchNames:
       - {{ $.Release.Namespace }}
+  {{- /* Preserve the canonical `app.kubernetes.io/part-of` label from the
+         target Service onto every scraped series so alerts match on
+         `app_kubernetes_io_part_of="nyx"` instead of the fragile
+         `job=~".*nyx.*"` regex (#1264). */}}
+  targetLabels:
+    - app.kubernetes.io/part-of
   {{- /* Cardinality + size safety (#1076) — mirror of the podMonitor
          block so operators can tune both in lockstep. */}}
   {{- with $.Values.serviceMonitor.sampleLimit }}

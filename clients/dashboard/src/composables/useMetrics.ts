@@ -60,14 +60,24 @@ async function fetchText(
       ]);
     } else {
       const controller = new AbortController();
-      const outerListener = () => controller.abort();
-      signal.addEventListener("abort", outerListener);
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
-      cleanup = () => {
-        clearTimeout(timer);
-        signal.removeEventListener("abort", outerListener);
-      };
-      effectiveSignal = controller.signal;
+      // If the outer signal is already aborted before we wire up the
+      // listener, the listener never fires and the request proceeds as
+      // if the caller hadn't cancelled. Synchronously propagate the
+      // abort so callers that tear down the fan-out mid-tick actually
+      // cancel the next fetch. (#1241)
+      if (signal.aborted) {
+        controller.abort();
+        effectiveSignal = controller.signal;
+      } else {
+        const outerListener = () => controller.abort();
+        signal.addEventListener("abort", outerListener);
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        cleanup = () => {
+          clearTimeout(timer);
+          signal.removeEventListener("abort", outerListener);
+        };
+        effectiveSignal = controller.signal;
+      }
     }
   }
   try {

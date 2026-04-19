@@ -198,8 +198,14 @@
        enough remaining grace for A2A requests, jobs, and webhook deliveries
        to drain before SIGKILL (#547, mirrors #512). */}}
 {{- if .Values.preStop.enabled }}
-{{- if ge (int .Values.preStop.delaySeconds) (int (.Values.terminationGracePeriodSeconds | default 60)) }}
-{{- fail (printf "preStop.delaySeconds (%d) must be strictly less than terminationGracePeriodSeconds (%d)" (int .Values.preStop.delaySeconds) (int (.Values.terminationGracePeriodSeconds | default 60))) }}
+{{- /* Compute the effective delay once using the hasKey-branch pattern so the
+       guard and the two preStop command sites see the same value (#1262). The
+       prior `| default 5` in the command sites collapsed an explicit 0 to 5,
+       disagreeing with this guard which read the raw value. */}}
+{{- $preStopDelay := 5 }}
+{{- if hasKey .Values.preStop "delaySeconds" }}{{- $preStopDelay = .Values.preStop.delaySeconds }}{{- end }}
+{{- if ge (int $preStopDelay) (int (.Values.terminationGracePeriodSeconds | default 60)) }}
+{{- fail (printf "preStop.delaySeconds (%d) must be strictly less than terminationGracePeriodSeconds (%d)" (int $preStopDelay) (int (.Values.terminationGracePeriodSeconds | default 60))) }}
 {{- end }}
 {{- end }}
 {{- range .Values.agents }}
@@ -321,11 +327,18 @@ spec:
           env:
             - name: GITSYNC_REPO
               value: {{ .repo | quote }}
+            {{- /* #1265: point HOME at a per-pod path under /git (the
+                   git-sync data volume) so git's ~/.gitconfig / credential
+                   helper scratch files land alongside the clone and not
+                   in the emptyDir shared with unrelated containers. */}}
+            - name: HOME
+              value: /git/.home
           {{- include "nyx.renderGitSyncEnvFrom" (dict "gs" . "agent" $agent "default" (($.Values.gitSync).credentials | default dict) "release" $.Release.Name) | nindent 10 }}
           volumeMounts:
             - name: git-sync-data
               mountPath: /git
-            - name: nyx-tmp
+            # #1265: git-sync /tmp is isolated from the pod-wide nyx-tmp.
+            - name: nyx-tmp-gitsync
               mountPath: /tmp
         {{- end }}
         {{- if include "nyx.hasMappings" $agent }}
@@ -334,10 +347,14 @@ spec:
           securityContext:
             {{- include "nyx.hardenedContainerSecurityContext" (dict "root" $) | nindent 12 }}
           command: ["/bin/sh", "/nyx-scripts/git-sync.sh"]
+          env:
+            - name: HOME
+              value: /git/.home
           volumeMounts:
             - name: git-sync-data
               mountPath: /git
-            - name: nyx-tmp
+            # #1265: git-sync /tmp is isolated from the pod-wide nyx-tmp.
+            - name: nyx-tmp-gitsync
               mountPath: /tmp
             {{- include "nyx.gitMappingMounts" (dict "agent" $agent "release" $.Release.Name) | nindent 12 }}
         {{- end }}
@@ -366,11 +383,14 @@ spec:
           env:
             - name: GITSYNC_REPO
               value: {{ .repo | quote }}
+            - name: HOME
+              value: /git/.home
           {{- include "nyx.renderGitSyncEnvFrom" (dict "gs" . "agent" $agent "default" (($.Values.gitSync).credentials | default dict) "release" $.Release.Name) | nindent 10 }}
           volumeMounts:
             - name: git-sync-data
               mountPath: /git
-            - name: nyx-tmp
+            # #1265: git-sync /tmp is isolated from the pod-wide nyx-tmp.
+            - name: nyx-tmp-gitsync
               mountPath: /tmp
             {{- if include "nyx.hasMappings" $agent }}
             {{- include "nyx.gitMappingMounts" (dict "agent" $agent "release" $.Release.Name) | nindent 12 }}
@@ -388,7 +408,10 @@ spec:
               exec:
                 # Sleep before SIGTERM to give in-flight A2A requests, jobs,
                 # and webhook deliveries a coordinated drain window (#447).
-                command: ["/bin/sh", "-c", "sleep {{ $.Values.preStop.delaySeconds | default 5 }}"]
+                # Use the hasKey-branch pattern so an explicit 0 (disable
+                # the sleep) is not silently collapsed to 5 by
+                # `| default 5` (#1261, #1262).
+                command: ["/bin/sh", "-c", "sleep {{- if hasKey $.Values.preStop "delaySeconds" }} {{ $.Values.preStop.delaySeconds }}{{- else }} 5{{- end }}"]
           {{- end }}
           {{- $harnessMetricsPort := add (int (.port | default 8000)) 1000 }}
           ports:
@@ -507,8 +530,10 @@ spec:
             preStop:
               exec:
                 # Sleep before SIGTERM to give in-flight backend queries a
-                # coordinated drain window (#447).
-                command: ["/bin/sh", "-c", "sleep {{ $.Values.preStop.delaySeconds | default 5 }}"]
+                # coordinated drain window (#447). Use the hasKey-branch
+                # pattern so an explicit 0 is not silently collapsed to 5
+                # by `| default 5` (#1261, #1262).
+                command: ["/bin/sh", "-c", "sleep {{- if hasKey $.Values.preStop "delaySeconds" }} {{ $.Values.preStop.delaySeconds }}{{- else }} 5{{- end }}"]
           {{- end }}
           {{- $backendMetricsPort := add (int .port) 1000 }}
           ports:
@@ -655,6 +680,15 @@ spec:
           emptyDir: {}
         {{- if .gitSyncs }}
         - name: git-sync-data
+          emptyDir: {}
+        {{- /* Dedicated /tmp for git-sync (#1265). Previously git-sync
+               shared the pod-wide `nyx-tmp` emptyDir with the harness and
+               every backend; a hostile commit's post-clone hook or any
+               transient tempfile from git-sync leaked into filesystem
+               views the app containers already trust. Scoping git-sync's
+               /tmp to its own emptyDir closes that seam. Only the
+               git-sync init + sidecar mount this volume. */}}
+        - name: nyx-tmp-gitsync
           emptyDir: {}
         {{- end }}
         {{- if .config }}

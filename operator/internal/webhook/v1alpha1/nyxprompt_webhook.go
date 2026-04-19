@@ -43,6 +43,14 @@ import (
 // structural schema can't express.
 type NyxPromptCustomValidator struct {
 	Client client.Client
+
+	// indexRegistered is set true by SetupNyxPromptWebhookWithManager only
+	// after the heartbeat field-indexer registration returns success. When
+	// false, the fast-path MatchingFields List is skipped and the validator
+	// falls straight through to the full-namespace scan (#1247). This is
+	// more reliable than sniffing error text from controller-runtime on
+	// every admission request.
+	indexRegistered bool
 }
 
 var _ webhook.CustomValidator = &NyxPromptCustomValidator{}
@@ -198,6 +206,14 @@ func (v *NyxPromptCustomValidator) validateHeartbeatSingleton(ctx context.Contex
 		// client, so this branch only fires in unit tests.
 		return nil
 	}
+	// Skip the MatchingFields fast path entirely when the indexer was not
+	// registered successfully (#1247). Sniffing error text on every call
+	// was brittle and could wedge admission if controller-runtime reworded
+	// its errors again. The full-scan fallback is safe and correct — just
+	// slower on large namespaces, which is acceptable for a fallback.
+	if !v.indexRegistered {
+		return v.validateHeartbeatSingletonFull(ctx, p)
+	}
 	// Fast path: one scoped List per agent-ref via the field indexer.
 	// The index only contains heartbeat prompts, so every returned item
 	// is already a collision candidate — the inner loop just filters out
@@ -330,9 +346,29 @@ func requireNonEmptyStringOrList(fm map[string]interface{}, key string) error {
 // SetupNyxPromptWebhookWithManager registers the validator with the
 // controller-runtime manager. Call this from main.go alongside the NyxAgent
 // webhook setup.
+//
+// Registers the heartbeat field indexer itself and flips the validator's
+// indexRegistered flag only when registration succeeds (#1247). A failed
+// indexer registration is logged and tolerated — the validator falls back
+// to the full-namespace scan. That avoids wedging admission cluster-wide on
+// an indexer hiccup.
 func SetupNyxPromptWebhookWithManager(mgr ctrl.Manager) error {
+	v := &NyxPromptCustomValidator{Client: mgr.GetClient()}
+	if err := mgr.GetFieldIndexer().IndexField(
+		context.Background(),
+		&nyxv1alpha1.NyxPrompt{},
+		NyxPromptHeartbeatAgentIndex,
+		NyxPromptHeartbeatAgentExtractor,
+	); err != nil {
+		ctrl.Log.WithName("nyxprompt-webhook").Error(err,
+			"failed to register heartbeat field indexer; validator will fall back to full-namespace scan",
+			"field", NyxPromptHeartbeatAgentIndex,
+		)
+	} else {
+		v.indexRegistered = true
+	}
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(&nyxv1alpha1.NyxPrompt{}).
-		WithValidator(&NyxPromptCustomValidator{Client: mgr.GetClient()}).
+		WithValidator(v).
 		Complete()
 }

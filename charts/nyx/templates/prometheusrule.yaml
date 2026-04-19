@@ -47,11 +47,21 @@ spec:
         {{- with $alerts.backendDown }}
         {{- if .enabled }}
         - alert: NyxBackendDown
+          # Selector changed from `job=~".*nyx.*"` to the canonical
+          # operator-stamped `app_kubernetes_io_part_of="nyx"` (#1264).
+          # The regex was fragile to any `jobLabel` override on the
+          # ServiceMonitor / PodMonitor and matched any unrelated job
+          # that happened to contain "nyx". Prometheus sanitises `.`
+          # and `/` in label names, so the target Service label
+          # `app.kubernetes.io/part-of: nyx` becomes this series label.
+          # The `for:` clause is intentionally omitted (#1263) —
+          # `absent_over_time(.. [Xm])` already requires X minutes of
+          # continuous absence, pairing it with `for: Xm` doubled the
+          # effective detection latency to 2X.
           expr: |
-            absent_over_time(backend_info{job=~".*nyx.*"}[{{ .forMinutes }}m])
+            absent_over_time(backend_info{app_kubernetes_io_part_of="nyx"}[{{ .forMinutes }}m])
             or
-            (sum by (agent, backend, pod) (up{job=~".*nyx.*"}) == 0)
-          for: {{ .forMinutes }}m
+            (sum by (agent, backend, pod) (up{app_kubernetes_io_part_of="nyx"}) == 0)
           labels:
             severity: {{ .severity | quote }}
             part_of: nyx

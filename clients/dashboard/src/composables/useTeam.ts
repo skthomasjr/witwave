@@ -55,31 +55,47 @@ const sharedLoading = ref<boolean>(true);
 let currentMemberTimeoutMs = 5000;
 let currentDirectoryTimeoutMs = 5000;
 
-// Multiset of requested option values; we pick min(interval)/max(timeouts)
-// on every subscribe/unsubscribe so changes propagate in both directions.
-const subscriberIntervals: number[] = [];
-const subscriberMemberTimeouts: number[] = [];
-const subscriberDirectoryTimeouts: number[] = [];
+// Token-keyed subscriber map. The previous implementation keyed register/
+// deregister off the raw `intervalMs` numeric value, which meant two
+// subscribers sharing the default `5000` could not be distinguished —
+// unregistering either one removed the same entry and the refcount
+// skewed. Each `startShared` call now mints a fresh `Symbol()` token,
+// and `unregisterSubscriber` deletes by token so every subscribe/
+// unsubscribe pair is accounted for exactly once. (#1239)
+interface SubscriberEntry {
+  intervalMs: number;
+  memberTimeoutMs: number;
+  directoryTimeoutMs: number;
+}
+const subscribers = new Map<symbol, SubscriberEntry>();
 let effectiveIntervalMs = 5000;
 let subscriberCount = 0;
 let pollerTimer: ReturnType<typeof setInterval> | null = null;
 let pollerAborter: AbortController | null = null;
 
 function recomputeEffectiveInterval(): number {
-  return subscriberIntervals.length === 0
-    ? 5000
-    : Math.min(...subscriberIntervals);
+  if (subscribers.size === 0) return 5000;
+  let min = Number.POSITIVE_INFINITY;
+  for (const s of subscribers.values()) {
+    if (s.intervalMs < min) min = s.intervalMs;
+  }
+  return Number.isFinite(min) ? min : 5000;
 }
 
 function recomputeTimeouts(): void {
-  currentMemberTimeoutMs =
-    subscriberMemberTimeouts.length === 0
-      ? 5000
-      : Math.max(...subscriberMemberTimeouts);
-  currentDirectoryTimeoutMs =
-    subscriberDirectoryTimeouts.length === 0
-      ? 5000
-      : Math.max(...subscriberDirectoryTimeouts);
+  if (subscribers.size === 0) {
+    currentMemberTimeoutMs = 5000;
+    currentDirectoryTimeoutMs = 5000;
+    return;
+  }
+  let maxMember = 0;
+  let maxDir = 0;
+  for (const s of subscribers.values()) {
+    if (s.memberTimeoutMs > maxMember) maxMember = s.memberTimeoutMs;
+    if (s.directoryTimeoutMs > maxDir) maxDir = s.directoryTimeoutMs;
+  }
+  currentMemberTimeoutMs = maxMember > 0 ? maxMember : 5000;
+  currentDirectoryTimeoutMs = maxDir > 0 ? maxDir : 5000;
 }
 
 async function fetchMember(
@@ -143,15 +159,14 @@ function startShared(
   intervalMs: number,
   memberTimeoutMs: number,
   directoryTimeoutMs: number,
-): void {
+): symbol {
   // Register this subscriber's interval + timeouts and recompute the
   // effective (min) cadence + (max) timeouts. A later subscriber that
   // needs a tighter interval than the current one restarts the timer
   // (#891); a later subscriber with a tighter timeout is ignored so
   // healthy-but-busy agents aren't aborted mid-poll (#951).
-  subscriberIntervals.push(intervalMs);
-  subscriberMemberTimeouts.push(memberTimeoutMs);
-  subscriberDirectoryTimeouts.push(directoryTimeoutMs);
+  const token = Symbol("useTeamSubscriber");
+  subscribers.set(token, { intervalMs, memberTimeoutMs, directoryTimeoutMs });
   recomputeTimeouts();
 
   const newEffective = recomputeEffectiveInterval();
@@ -170,7 +185,7 @@ function startShared(
       if (pollingShouldSkipTick()) return;
       void sharedRefresh();
     }, effectiveIntervalMs);
-    return;
+    return token;
   }
 
   if (newEffective !== effectiveIntervalMs) {
@@ -184,6 +199,7 @@ function startShared(
       void sharedRefresh();
     }, effectiveIntervalMs);
   }
+  return token;
 }
 
 function stopShared(): void {
@@ -195,20 +211,11 @@ function stopShared(): void {
   pollerAborter = null;
 }
 
-function unregisterSubscriber(
-  intervalMs: number,
-  memberTimeoutMs: number,
-  directoryTimeoutMs: number,
-): void {
-  const idx = subscriberIntervals.indexOf(intervalMs);
-  if (idx !== -1) subscriberIntervals.splice(idx, 1);
-  const mIdx = subscriberMemberTimeouts.indexOf(memberTimeoutMs);
-  if (mIdx !== -1) subscriberMemberTimeouts.splice(mIdx, 1);
-  const dIdx = subscriberDirectoryTimeouts.indexOf(directoryTimeoutMs);
-  if (dIdx !== -1) subscriberDirectoryTimeouts.splice(dIdx, 1);
+function unregisterSubscriber(token: symbol): void {
+  if (!subscribers.delete(token)) return;
   recomputeTimeouts();
 
-  if (subscriberIntervals.length === 0 || pollerTimer === null) {
+  if (subscribers.size === 0 || pollerTimer === null) {
     return;
   }
   const newEffective = recomputeEffectiveInterval();
@@ -231,9 +238,7 @@ function unregisterSubscriber(
 export function __resetSharedTeamPoller(): void {
   stopShared();
   subscriberCount = 0;
-  subscriberIntervals.length = 0;
-  subscriberMemberTimeouts.length = 0;
-  subscriberDirectoryTimeouts.length = 0;
+  subscribers.clear();
   effectiveIntervalMs = 5000;
   currentMemberTimeoutMs = 5000;
   currentDirectoryTimeoutMs = 5000;
@@ -247,28 +252,36 @@ export function useTeam(opts: UseTeamOptions = {}) {
   const memberTimeoutMs = opts.memberTimeoutMs ?? 5000;
   const directoryTimeoutMs = opts.directoryTimeoutMs ?? 5000;
 
+  // Each `useTeam()` call owns its own subscription token. Previously
+  // register/deregister were keyed off the `intervalMs` numeric value,
+  // which meant two concurrent subscribers sharing the default 5000
+  // produced duplicated entries in parallel arrays and unregister
+  // removed the wrong slot — skewing the refcount after repeated
+  // mount/unmount cycles. (#1239)
+  let token: symbol | null = null;
+
   onMounted(() => {
     subscriberCount += 1;
-    startShared(intervalMs, memberTimeoutMs, directoryTimeoutMs);
+    token = startShared(intervalMs, memberTimeoutMs, directoryTimeoutMs);
   });
 
   onUnmounted(() => {
     subscriberCount = Math.max(0, subscriberCount - 1);
     if (subscriberCount === 0) {
       // Last subscriber leaving: tear everything down AND clear the
-      // multisets so the poller starts cleanly on next mount.
+      // subscriber map so the poller starts cleanly on next mount.
       stopShared();
-      subscriberIntervals.length = 0;
-      subscriberMemberTimeouts.length = 0;
-      subscriberDirectoryTimeouts.length = 0;
+      subscribers.clear();
       effectiveIntervalMs = 5000;
       currentMemberTimeoutMs = 5000;
       currentDirectoryTimeoutMs = 5000;
-    } else {
+      token = null;
+    } else if (token !== null) {
       // Recompute min(interval) / max(timeouts). If this subscriber was
       // the tightest-cadence one, the poller should relax (#891); if it
       // was the longest-timeout one, timeouts contract back (#951).
-      unregisterSubscriber(intervalMs, memberTimeoutMs, directoryTimeoutMs);
+      unregisterSubscriber(token);
+      token = null;
     }
   });
 

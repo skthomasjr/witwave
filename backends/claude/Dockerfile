@@ -13,11 +13,13 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     gnupg \
     procps \
-    iptables \
     python3 \
     python3-pip \
     python3-venv \
     && rm -rf /var/lib/apt/lists/*
+# Note: iptables was removed (#1260). PSS-restricted drops ALL caps
+# including NET_ADMIN, so the binary couldn't modify kernel tables at
+# runtime — it was just dead attack surface.
 
 # Node.js 20
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \

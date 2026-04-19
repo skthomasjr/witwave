@@ -49,6 +49,14 @@ export interface ConversationTurn {
   // Timestamp of the FIRST chunk of this turn. Stays stable across
   // appends so merging against backlog rows stays consistent.
   ts: string;
+  // Server-identity fingerprint for the turn — used only to gate
+  // `canAppend` so two parallel assistant turns (e.g. concurrent job
+  // dispatches against one session) don't collide into a shared row.
+  // Opaque to the view; `turnId` remains the stable rendering key.
+  // Optional on the public interface so backlog-merge callers that
+  // synthesise turns without stream state don't have to fabricate a
+  // key. (#1240)
+  turnKey?: string;
 }
 
 export interface ToolUseEvent {
@@ -113,6 +121,15 @@ interface ChunkPayload {
   seq?: number;
   content?: string;
   final?: boolean;
+  // Turn-identity fields. The backends have flirted with several names
+  // as the per-turn contract has evolved; we probe them in order and
+  // fall back to `session_id_hash + turn_sequence` so parallel
+  // assistant turns (e.g. two jobs firing concurrently against one
+  // session) don't append into a single shared row. (#1240)
+  turn_id?: string;
+  turnId?: string;
+  assistant_turn_id?: string;
+  turn_sequence?: number;
 }
 
 interface TurnPayload {
@@ -231,6 +248,27 @@ export function useConversationStream(
     }
   }
 
+  function deriveTurnKey(p: ChunkPayload, role: ConversationTurnRole): string {
+    // Prefer an explicit server-side turn id when the backend provides
+    // one; callers probed in order of increasing schema age. When no
+    // explicit id is carried we synthesise one from `session_id_hash +
+    // turn_sequence`, which is the closest thing the current envelope
+    // schema offers to a turn-scoped identifier. If NEITHER is present
+    // we fall back to a per-role synthetic key that lets the previous
+    // behaviour (append to any open same-role turn) hold — this path
+    // is mostly hit in tests + legacy fixtures. (#1240)
+    if (typeof p.turn_id === "string" && p.turn_id) return p.turn_id;
+    if (typeof p.turnId === "string" && p.turnId) return p.turnId;
+    if (typeof p.assistant_turn_id === "string" && p.assistant_turn_id) {
+      return p.assistant_turn_id;
+    }
+    const sessionHash = p.session_id_hash ?? "";
+    if (typeof p.turn_sequence === "number") {
+      return `${sessionHash}:${p.turn_sequence}`;
+    }
+    return `legacy:${role}:${sessionHash}`;
+  }
+
   function handleChunk(env: EventEnvelope): void {
     const p = (env.payload ?? {}) as ChunkPayload;
     const role = p.role === "user" ? "user" : "assistant";
@@ -238,6 +276,7 @@ export function useConversationStream(
     const seq = typeof p.seq === "number" ? p.seq : 0;
     const final = p.final === true;
     const sessionHash = p.session_id_hash;
+    const chunkTurnKey = deriveTurnKey(p, role);
 
     if (role === "user") {
       // User chunks are always single-shot turns — the backends don't
@@ -251,18 +290,26 @@ export function useConversationStream(
         content,
         complete: true,
         ts: env.ts,
+        turnKey: chunkTurnKey,
       });
       return;
     }
 
     // Assistant chunk. Decide: append to the open assistant turn, or
-    // start a fresh one.
+    // start a fresh one. When both the open turn and the incoming
+    // chunk carry a turnKey, they must match — two parallel assistant
+    // turns otherwise silently concatenate into a single row. Missing
+    // keys (backlog-synthesised turns) fall back to the legacy
+    // "append to any open same-role turn" behaviour. (#1240)
     const last = turns.value[turns.value.length - 1];
+    const keysAgree =
+      !last?.turnKey || !chunkTurnKey || last.turnKey === chunkTurnKey;
     const canAppend =
       !!last &&
       last.role === "assistant" &&
       !last.complete &&
-      seq > 0;
+      seq > 0 &&
+      keysAgree;
 
     if (canAppend) {
       appendToLastAssistant(content, final);
@@ -276,6 +323,7 @@ export function useConversationStream(
       content,
       complete: final,
       ts: env.ts,
+      turnKey: chunkTurnKey,
     });
   }
 

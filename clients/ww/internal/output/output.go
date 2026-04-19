@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/fatih/color"
 	"golang.org/x/term"
@@ -110,8 +111,13 @@ func (w *Writer) EmitRaw(s string) {
 func (w *Writer) Errorf(format string, a ...any) {
 	red := color.New(color.FgRed, color.Bold).SprintFunc()
 	fmt.Fprint(w.Err, red("error: "))
-	fmt.Fprintf(w.Err, format, a...)
-	if len(format) == 0 || format[len(format)-1] != '\n' {
+	// Render first, then decide on newline from the RENDERED text.
+	// Checking the format string instead ignored any trailing newline
+	// supplied through a `%s`-formatted argument and still emitted an
+	// extra blank line. (#1243)
+	rendered := fmt.Sprintf(format, a...)
+	fmt.Fprint(w.Err, rendered)
+	if !strings.HasSuffix(rendered, "\n") {
 		fmt.Fprintln(w.Err)
 	}
 }
@@ -120,8 +126,9 @@ func (w *Writer) Errorf(format string, a ...any) {
 func (w *Writer) Warnf(format string, a ...any) {
 	yellow := color.New(color.FgYellow).SprintFunc()
 	fmt.Fprint(w.Err, yellow("warn: "))
-	fmt.Fprintf(w.Err, format, a...)
-	if len(format) == 0 || format[len(format)-1] != '\n' {
+	rendered := fmt.Sprintf(format, a...)
+	fmt.Fprint(w.Err, rendered)
+	if !strings.HasSuffix(rendered, "\n") {
 		fmt.Fprintln(w.Err)
 	}
 }
@@ -129,8 +136,9 @@ func (w *Writer) Warnf(format string, a ...any) {
 // Headerf writes a bold header line to stdout.
 func (w *Writer) Headerf(format string, a ...any) {
 	bold := color.New(color.Bold).SprintfFunc()
-	fmt.Fprint(w.Out, bold(format, a...))
-	if len(format) == 0 || format[len(format)-1] != '\n' {
+	rendered := bold(format, a...)
+	fmt.Fprint(w.Out, rendered)
+	if !strings.HasSuffix(rendered, "\n") {
 		fmt.Fprintln(w.Out)
 	}
 }

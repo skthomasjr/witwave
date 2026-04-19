@@ -263,6 +263,19 @@ _URL_ALLOWED_HOSTS = tuple(
     for h in os.environ.get("WEBHOOK_URL_ALLOWED_HOSTS", "").split(",")
     if h.strip()
 )
+# #1234: by default the allow-list NO LONGER bypasses the resolved-IP
+# private-range check. An operator who relied on the old behaviour (e.g.
+# to reach loopback from an in-cluster smoke target via a DNS alias) must
+# opt in explicitly with WEBHOOK_ALLOW_LOOPBACK_HOSTS=true.
+_ALLOW_LOOPBACK_HOSTS = os.environ.get(
+    "WEBHOOK_ALLOW_LOOPBACK_HOSTS", ""
+).strip().lower() in ("1", "true", "yes")
+if _ALLOW_LOOPBACK_HOSTS:
+    logger.warning(
+        "webhooks: WEBHOOK_ALLOW_LOOPBACK_HOSTS=true — allow-listed hosts "
+        "will skip the resolved-IP private-range check. SSRF surface is "
+        "widened; confirm this is intentional."
+    )
 
 
 # Event kinds this runner knows how to fan out. The default-event used when
@@ -473,18 +486,28 @@ def _validate_url(url: str) -> str | None:
     # opt in explicitly without re-enabling general SSRF.
     port = parts.port
     host_port = f"{host}:{port}" if port is not None else host
-    if _URL_ALLOWED_HOSTS and (
+    # #1234: allow-list match no longer short-circuits the resolved-IP
+    # check by default. It still exempts the host from the bare
+    # loopback-alias deny and private-range literal deny, but the DNS
+    # resolution still runs and rejects loopback/private answers unless
+    # WEBHOOK_ALLOW_LOOPBACK_HOSTS=true.
+    _allowlisted = bool(_URL_ALLOWED_HOSTS and (
         host in _URL_ALLOWED_HOSTS or host_port in _URL_ALLOWED_HOSTS
-    ):
+    ))
+    if _allowlisted and _ALLOW_LOOPBACK_HOSTS:
         return None
     # Reject known loopback aliases up front so a misconfigured resolver
     # cannot let them through (#654).
-    if host in _LOOPBACK_HOST_ALIASES:
+    # #1234: allow-list hosts still hit the resolved-IP check below; skip
+    # the literal-alias + literal-private checks only when allow-listed
+    # so an allow-listed service name like "smoke.internal" isn't mistaken
+    # for a raw loopback alias.
+    if not _allowlisted and host in _LOOPBACK_HOST_ALIASES:
         return (
             f"host {host!r} is a loopback alias and is not in "
             "WEBHOOK_URL_ALLOWED_HOSTS"
         )
-    if _host_is_private(host):
+    if not _allowlisted and _host_is_private(host):
         return (
             f"host {host!r} is a loopback/link-local/private/reserved IP "
             "and is not in WEBHOOK_URL_ALLOWED_HOSTS"
@@ -1409,7 +1432,10 @@ class WebhookRunner:
         if existing:
             logger.info(f"Webhook subscription '{existing.name}' unregistered.")
             if harness_webhooks_items_registered is not None:
-                harness_webhooks_items_registered.set(len(self._items))
+                # #1230: count enabled only, matching register path.
+                harness_webhooks_items_registered.set(
+                    sum(1 for i in self._items.values() if i.enabled)
+                )
             if count_reload and harness_webhooks_reloads_total is not None:
                 harness_webhooks_reloads_total.inc()
 

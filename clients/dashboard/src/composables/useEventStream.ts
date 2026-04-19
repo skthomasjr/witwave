@@ -71,6 +71,11 @@ export interface UseEventStreamReturn {
 const DEFAULT_MAX_EVENTS = 500;
 const DEFAULT_INITIAL_DELAY_MS = 100;
 const DEFAULT_MAX_DELAY_MS = 10_000;
+// Minimum reconnect delay. Full-jitter with `Math.random() * ceiling`
+// can produce 0ms, which turns a server bounce into a tight reconnect
+// loop against an unhealthy upstream. Floor every computed delay at
+// MIN_BACKOFF_MS so the reconnect pacer can't degenerate. (#1236)
+const MIN_BACKOFF_MS = 50;
 
 interface ParsedMessage {
   type: string;
@@ -245,6 +250,13 @@ export function useEventStream(
       if (resume) {
         lastEventId.value = resume;
       }
+      // Surface the overrun envelope itself into the events ring BEFORE
+      // early-returning. Downstream listeners (notably
+      // `useAlerts.handleStreamMarker`) key off the envelope to raise the
+      // "stream caught up after reconnect" banner — swallowing the event
+      // silently meant operators had no signal a gap had occurred.
+      // (#1237)
+      pushEvent(parsed);
       // Fall through and let the stream-end path schedule a reconnect.
       return;
     }
@@ -357,7 +369,7 @@ export function useEventStream(
         maxDelayMs,
         initialDelayMs * Math.pow(2, Math.max(0, attempt)),
       );
-      delay = Math.floor(Math.random() * ceiling);
+      delay = Math.max(MIN_BACKOFF_MS, Math.floor(Math.random() * ceiling));
     }
     attempt += 1;
 

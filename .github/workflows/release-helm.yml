@@ -1,4 +1,10 @@
-name: Release — nyx Helm chart
+name: Release — Helm charts
+
+# Canonical publisher for every Helm chart under charts/ (currently
+# charts/nyx and charts/nyx-operator). release.yaml used to publish
+# charts/nyx in parallel which raced this workflow on the same tag
+# (#1257); that job has been removed — all chart packaging/pushing
+# is owned here. Container images are built by release.yaml.
 
 on:
   push:
@@ -12,6 +18,15 @@ jobs:
     permissions:
       contents: read
       packages: write
+
+    strategy:
+      # Keep charts independent so a failure packaging one doesn't block
+      # the other, and so the OCI push per chart is atomic.
+      fail-fast: false
+      matrix:
+        chart:
+          - nyx
+          - nyx-operator
 
     steps:
       - name: Checkout
@@ -29,11 +44,11 @@ jobs:
 
       - name: Update chart version
         run: |
-          sed -i "s/^version:.*/version: ${{ steps.version.outputs.version }}/" charts/nyx/Chart.yaml
-          sed -i "s/^appVersion:.*/appVersion: \"${{ steps.version.outputs.version }}\"/" charts/nyx/Chart.yaml
+          sed -i "s/^version:.*/version: ${{ steps.version.outputs.version }}/" charts/${{ matrix.chart }}/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${{ steps.version.outputs.version }}\"/" charts/${{ matrix.chart }}/Chart.yaml
 
       - name: Package chart
-        run: helm package charts/nyx --destination /tmp/charts
+        run: helm package charts/${{ matrix.chart }} --destination /tmp/charts
 
       - name: Push chart to GHCR
-        run: helm push /tmp/charts/nyx-${{ steps.version.outputs.version }}.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
+        run: helm push /tmp/charts/${{ matrix.chart }}-${{ steps.version.outputs.version }}.tgz oci://ghcr.io/${{ github.repository_owner }}/charts

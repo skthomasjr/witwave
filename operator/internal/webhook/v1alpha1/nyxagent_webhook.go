@@ -143,7 +143,10 @@ func validatePreStopGrace(agent *nyxv1alpha1.NyxAgent) error {
 	if agent.Spec.TerminationGracePeriodSeconds != nil {
 		graceSeconds = *agent.Spec.TerminationGracePeriodSeconds
 	}
-	if int64(ps.DelaySeconds) >= graceSeconds {
+	// delay == 0 is a no-op preStop sleep — permit it unconditionally even
+	// when grace == 0. Only enforce the strict-less relationship when the
+	// user actually asked for a sleep window.
+	if ps.DelaySeconds > 0 && int64(ps.DelaySeconds) >= graceSeconds {
 		return apierrors.NewForbidden(nyxagentGR, agent.Name, fmt.Errorf(
 			"spec.preStop.delaySeconds=%d must be strictly less than "+
 				"spec.terminationGracePeriodSeconds=%d (K8s default 30 when unset); "+

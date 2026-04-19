@@ -129,6 +129,11 @@ _STATUS_REARM_EVERY = int(os.environ.get("HOOK_EVENTS_STATUS_REARM_EVERY", "500"
 # reference to the task from the event loop, so without a strong ref the
 # task may be garbage-collected before it completes.
 _INFLIGHT: set[asyncio.Task] = set()
+# #1233: cross-thread (OTel worker thread) dispatches go through
+# run_coroutine_threadsafe; track those Futures here so the inflight
+# cap governs them too.
+import concurrent.futures as _cf_mod
+_INFLIGHT_CF: "set[_cf_mod.Future[Any]]" = set()
 
 # One-shot INFO flag for the URL-unset path in ``schedule_event_post``
 # (#1143). Logged at INFO (not WARN) because an empty URL is a
@@ -149,6 +154,15 @@ _warned_url_unset: bool = False
 # falls back to :func:`asyncio.run_coroutine_threadsafe` against this
 # reference so the coroutine still lands on the backend's main loop.
 _bound_loop: "asyncio.AbstractEventLoop | None" = None
+
+
+def _build_iso_ts() -> str:
+    """RFC3339 ts with millisecond precision from a single clock sample (#1232)."""
+    _s = time.time()
+    return (
+        time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(_s))
+        + f".{int((_s % 1) * 1000):03d}Z"
+    )
 
 
 def bind_event_loop(loop: "asyncio.AbstractEventLoop") -> None:
@@ -462,10 +476,9 @@ def schedule_event_post(
         # of "0" is fine for schema-validation purposes because the
         # harness rewrites this field before publishing.
         "id": "0",
-        "ts": (
-            time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime())
-            + f".{int((time.time() % 1) * 1000):03d}Z"
-        ),
+        # #1232: single time.time() sample — avoids seconds and ms
+        # fragments sampled across a sub-ms clock rollover.
+        "ts": _build_iso_ts(),
         "agent_id": agent_id,
         "payload": dict(payload),
     }
@@ -495,8 +508,9 @@ def schedule_event_post(
             return False
 
     # Check-and-add under _inflight_lock (mirrors schedule_post).
+    # #1233: count cross-thread CF dispatches against the cap too.
     with _inflight_lock:
-        if len(_INFLIGHT) >= HOOK_POST_MAX_INFLIGHT:
+        if len(_INFLIGHT) + len(_INFLIGHT_CF) >= HOOK_POST_MAX_INFLIGHT:
             _over_cap = True
         else:
             try:
@@ -509,23 +523,29 @@ def schedule_event_post(
                 # loop bound at backend startup so the POST still
                 # lands on the main asyncio loop.
                 if _bound_loop is not None and not _bound_loop.is_closed():
+                    # #1233: threadsafe dispatch must participate in the
+                    # inflight cap so OTel-driven events can't pile up
+                    # unbounded on the main loop. Track the
+                    # concurrent.futures.Future via a thin wrapper that
+                    # mimics a done-callback into _INFLIGHT.
                     try:
                         cf = asyncio.run_coroutine_threadsafe(
                             _post_once_to(url, envelope), _bound_loop
                         )
-                        # Track the concurrent.futures.Future via a
-                        # placeholder wrapping Task — we cannot drop
-                        # it straight into ``_INFLIGHT`` (wrong type)
-                        # so we register a done-callback that
-                        # decrements the shed budget. Use a sentinel
-                        # Task-like proxy to keep _INFLIGHT typed;
-                        # simplest approach: don't count threadsafe
-                        # dispatches against _INFLIGHT (they do not
-                        # consume loop slots on the caller side).
-                        _ = cf
-                        return True
                     except Exception:  # pragma: no cover
                         return False
+                    # Use a module-level set of in-flight CF futures
+                    # keyed by id; cleaned up via add_done_callback.
+                    _INFLIGHT_CF.add(cf)
+
+                    def _done_cb(_fut: "concurrent.futures.Future[Any]") -> None:
+                        _INFLIGHT_CF.discard(_fut)
+
+                    try:
+                        cf.add_done_callback(_done_cb)
+                    except Exception:  # pragma: no cover
+                        _INFLIGHT_CF.discard(cf)
+                    return True
                 # No loop bound — silent drop (module imported in tests, etc.).
                 return False
             _INFLIGHT.add(t)

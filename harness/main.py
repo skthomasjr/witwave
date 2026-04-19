@@ -1901,11 +1901,25 @@ async def main():
 
         async def _gen():
             import json as _json
-            # Replay first — any envelope whose id > last_id still in the
-            # ring. Clients receive them in publish order before any live
-            # fanout begins so monotonic ordering from the client's PoV is
-            # preserved.
+            # #1229: Subscribe FIRST so no event published during replay is
+            # lost. Snapshot the stream's current _next_id right before
+            # subscribing; replay covers ids <= snapshot, live covers ids
+            # > snapshot. Track delivered ids to de-dup the race window.
+            _replay_snapshot_id = stream._next_id  # noqa: SLF001 (intentional race-window snapshot)
+            sub_iter = stream.subscribe()
+
+            _delivered_ids: set[str] = set()
             for envelope in stream.replay_from(last_id):
+                # Filter: only emit envelopes at-or-below the snapshot
+                # (anything newer will arrive via the live subscription).
+                try:
+                    if int(envelope.id) > _replay_snapshot_id:
+                        continue
+                except Exception:
+                    # Non-numeric ids (e.g. synthetic "{n}.overrun") keep
+                    # the existing behaviour; replay emits them as-is.
+                    pass
+                _delivered_ids.add(envelope.id)
                 yield (
                     f"event: {envelope.type}\n"
                     f"id: {envelope.id}\n"
@@ -1913,7 +1927,6 @@ async def main():
                 ).encode("utf-8")
 
             # Live subscription with a keepalive ticker running alongside.
-            sub_iter = stream.subscribe()
             sub_task: asyncio.Task = asyncio.ensure_future(sub_iter.__anext__())
             ka_task: asyncio.Task = asyncio.ensure_future(
                 asyncio.sleep(EVENT_STREAM_KEEPALIVE_SEC)
@@ -1930,6 +1943,12 @@ async def main():
                         except StopAsyncIteration:
                             # Subscriber closed (evicted or shutdown).
                             return
+                        # #1229: skip ids already delivered via replay
+                        # during the subscribe/replay overlap window.
+                        if envelope.id in _delivered_ids:
+                            _delivered_ids.discard(envelope.id)
+                            sub_task = asyncio.ensure_future(sub_iter.__anext__())
+                            continue
                         yield (
                             f"event: {envelope.type}\n"
                             f"id: {envelope.id}\n"

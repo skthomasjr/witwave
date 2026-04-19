@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -75,8 +76,24 @@ func parseSnapshot(raw []byte) ([]snapshotEntry, error) {
 			}
 		}
 	}
-	// Fall back to treating the object itself as a single entry.
-	return []snapshotEntry{snapshotEntry(obj)}, nil
+	// Unknown shape. Previously we silently treated the raw object as a
+	// single entry, which meant a harness response wrapped in a new
+	// envelope (e.g. `{"data": [...]}`) rendered a meaningless
+	// "one-row" table keyed by envelope metadata. Surfacing the
+	// observed top-level keys plus the expected shape helps operators
+	// tell "harness changed its schema" from "I pointed ww at the
+	// wrong URL". (#1244)
+	keys := make([]string, 0, len(obj))
+	for k := range obj {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return nil, fmt.Errorf(
+		"unexpected snapshot shape: top-level keys = [%s]; expected a JSON list, "+
+			"an object with \"items\": [...], or an object with one of "+
+			"\"jobs\"/\"tasks\"/\"triggers\"/\"continuations\"/\"heartbeat\"",
+		strings.Join(keys, ", "),
+	)
 }
 
 // pickField returns the first non-empty string value among the

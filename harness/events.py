@@ -207,12 +207,14 @@ class EventStream:
         event failed validation and was dropped.  Never raises.
         """
         self._next_id += 1
+        # #1231: single now() sample avoids seconds/ms sampled across a
+        # sub-millisecond rollover producing a non-monotonic ts.
+        _now = datetime.now(timezone.utc)
         envelope = EventEnvelope(
             type=type_,
             version=version,
             id=str(self._next_id),
-            ts=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.") +
-               f"{datetime.now(timezone.utc).microsecond // 1000:03d}Z",
+            ts=_now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{_now.microsecond // 1000:03d}Z",
             agent_id=agent_id,
             payload=dict(payload),
         )
@@ -264,12 +266,13 @@ class EventStream:
         # the current publish position suffixed with ".overrun" so the
         # evicted subscriber still sees a unique, monotonic id for the
         # terminal frame.
+        # #1231: single now() sample.
+        _now_ov = datetime.now(timezone.utc)
         overrun = EventEnvelope(
             type="stream.overrun",
             version=1,
             id=f"{self._next_id}.overrun",
-            ts=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.") +
-               f"{datetime.now(timezone.utc).microsecond // 1000:03d}Z",
+            ts=_now_ov.strftime("%Y-%m-%dT%H:%M:%S.") + f"{_now_ov.microsecond // 1000:03d}Z",
             agent_id=None,
             payload={
                 "queue_depth": sub.queue.qsize(),

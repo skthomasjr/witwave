@@ -481,8 +481,19 @@ func (r *NyxAgentReconciler) applyDeployment(ctx context.Context, agent *nyxv1al
 	// safer than letting the Deployment land and crash-loop on bind.
 	// TODO(#1222): tighten appPort range in the validating webhook so
 	// this guard becomes a defence-in-depth rather than a front-line check.
-	if err := validateContainerMetricsPorts(agent); err != nil {
-		return fmt.Errorf("metrics port validation: %w", err)
+	clampedContainers, clampErr := metricsPortClampStatus(agent)
+	if clampErr != nil {
+		return fmt.Errorf("metrics port validation: %w", clampErr)
+	}
+	// #1250: single-container clamp is not a collision but is still a
+	// misconfiguration (silent clamp from appPort+1000 to 65535 means
+	// the operator picked a port the user did not ask for). Surface a
+	// Warning Event so the misconfig is visible in `kubectl describe`.
+	if len(clampedContainers) > 0 && r.Recorder != nil {
+		r.Recorder.Eventf(agent, corev1.EventTypeWarning, "MetricsPortClamped",
+			"metrics port for containers %v was clamped to 65535 because appPort > 64535; set spec.metricsPort explicitly or lower the app ports",
+			clampedContainers,
+		)
 	}
 	desired := buildDeployment(agent, DefaultImageTag, prompts)
 	if err = controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {

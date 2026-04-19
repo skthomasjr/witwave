@@ -327,19 +327,10 @@ func main() {
 			os.Exit(1)
 		}
 		// Field indexer for heartbeat NyxPrompt singleton validation
-		// (#755). Registered before the webhook setup so the validator's
-		// fast-path ``MatchingFields`` lookup works on the first
-		// admission request instead of silently falling back to the
-		// full-namespace List.
-		if err := mgr.GetFieldIndexer().IndexField(
-			context.Background(),
-			&nyxv1alpha1.NyxPrompt{},
-			webhookv1alpha1.NyxPromptHeartbeatAgentIndex,
-			webhookv1alpha1.NyxPromptHeartbeatAgentExtractor,
-		); err != nil {
-			setupLog.Error(err, "unable to register field indexer", "field", webhookv1alpha1.NyxPromptHeartbeatAgentIndex)
-			os.Exit(1)
-		}
+		// (#755) is now registered inside SetupNyxPromptWebhookWithManager
+		// so the validator flips its indexRegistered flag only on actual
+		// success (#1247) — a failed registration falls back to the full-
+		// namespace scan rather than wedging admission cluster-wide.
 		if err := webhookv1alpha1.SetupNyxPromptWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "NyxPrompt")
 			os.Exit(1)
@@ -423,9 +414,9 @@ func main() {
 	// wire a runnable that blocks on it and flips nyxagent_leader{pod}
 	// to 1 so dashboards can alert on "no leader for > N seconds" and
 	// see per-pod handoffs during rollouts.
-	podName := os.Getenv("POD_NAME")
-	if podName == "" {
-		podName = os.Getenv("HOSTNAME")
+	podName := firstNonEmpty(os.Getenv("POD_NAME"), os.Getenv("HOSTNAME"), "unknown")
+	if podName == "unknown" {
+		setupLog.Info("WARN: POD_NAME and HOSTNAME both empty; leader-election metric labelled with pod=\"unknown\" — set POD_NAME via downward API to disambiguate")
 	}
 	if err := mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
 		select {
@@ -449,4 +440,16 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+// firstNonEmpty returns the first non-empty string in the sequence. Used
+// to derive a pod identity label for the leader-election gauge with a
+// guaranteed fallback so the label series is never the empty string (#1248).
+func firstNonEmpty(candidates ...string) string {
+	for _, c := range candidates {
+		if c != "" {
+			return c
+		}
+	}
+	return ""
 }

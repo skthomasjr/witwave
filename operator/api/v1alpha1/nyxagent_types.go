@@ -159,6 +159,11 @@ type BackendStorageSpec struct {
 	// +optional
 	Enabled bool `json:"enabled,omitempty"`
 
+	// Size is a Kubernetes resource.Quantity string (e.g. "10Gi", "500M").
+	// The pattern matches the syntax accepted by resource.ParseQuantity so
+	// typos like "10 GB" or "10gibs" are rejected at admission rather than
+	// surfacing as a PVC `ProvisioningFailed` event on the cluster (#1254).
+	// +kubebuilder:validation:Pattern=^([+-]?[0-9.]+)([eEinumkKMGTP]*[-+]?[0-9]*)?$
 	// +optional
 	Size string `json:"size,omitempty"`
 
@@ -185,8 +190,12 @@ type BackendStorageSpec struct {
 // BackendSpec defines one backend sidecar container.
 type BackendSpec struct {
 	// Name identifies the backend (e.g. claude, codex, gemini). Used as the
-	// container name and the backend ID in routing.
+	// container name and the backend ID in routing. MaxLength caps the
+	// name well under the Kubernetes container-name limit (63) so the
+	// downstream container name `<agent>-<backend>` still fits comfortably
+	// even for long agent names (#1253).
 	// +kubebuilder:validation:Pattern=^[a-z0-9][a-z0-9-]*$
+	// +kubebuilder:validation:MaxLength=30
 	Name string `json:"name"`
 
 	// Enabled toggles whether this backend's container, PVC, and any

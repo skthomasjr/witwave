@@ -277,7 +277,13 @@ def derive_session_id_candidates(
     if prev_secret is None:
         prev_secret = os.environ.get(_PREV_ENV_VAR, "")
 
-    if not secret or not prev_secret or prev_secret == secret:
+    # #1235: when current secret is unset but prev_secret is still set
+    # (operator unwinding HMAC binding — "set new → keep prev → drop
+    # current"), callers need the prev-secret probe so HMAC-bound
+    # sessions can be resumed during the transition. Fall through to
+    # emit the prev-secret candidate even when the current derivation
+    # is the legacy fallback path.
+    if not prev_secret or prev_secret == secret:
         return [current]
 
     prev_id = _hmac_derive(raw_sid, caller_identity, prev_secret)

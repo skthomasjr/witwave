@@ -7,6 +7,12 @@ import {
   type UseEventStreamOptions,
   type UseEventStreamReturn,
 } from "../composables/useEventStream";
+// Circular with `useAlerts` (which imports `useTimelineStore` for its
+// watchers) — ES modules resolve this fine as long as the binding is
+// only dereferenced at call time, not at top-level of module eval.
+// `__resetUseAlerts` is exported directly from the module, so importing
+// the function reference here is safe. (#1238)
+import { __resetUseAlerts } from "../composables/useAlerts";
 
 // Pinia store wrapping the harness `/events/stream` SSE feed (#1110).
 //
@@ -133,10 +139,14 @@ interface AgentStreamHandle {
   name: string;
   stream: UseEventStreamReturn;
   stopWatcher: () => void;
-  // Snapshot of the last merged length of events for this agent, so the
-  // merge path can diff forward instead of re-scanning the whole ref on
-  // every tick.
-  lastSeenLength: number;
+  // Id of the last envelope we merged for this agent. Positional length
+  // tracking broke down when the composable's ring evicted from the
+  // left — the array shrinks, the cursor lands on what looks like a
+  // "new" envelope, and we re-merged already-seen events. Iterating
+  // forward from a matching id stays stable across evictions; if the
+  // id is no longer present we fall back to a full scan with seenIds
+  // dedup. (#1242)
+  lastSeenEnvelopeId: string;
 }
 
 function clampRing(size: number | undefined): number {
@@ -300,7 +310,7 @@ export const useTimelineStore = defineStore("timeline", () => {
       name,
       stream,
       stopWatcher: () => {},
-      lastSeenLength: 0,
+      lastSeenEnvelopeId: "",
     };
     agentStreams.set(name, handle);
 
@@ -309,13 +319,21 @@ export const useTimelineStore = defineStore("timeline", () => {
       ([ev]) => {
         if (Array.isArray(ev)) {
           const arr = ev as EventEnvelope[];
-          // Diff forward — slice off what we've already merged. If the
-          // composable ring evicted from the left since last tick, fall
-          // back to a full scan (seenIds will de-dupe).
-          const startAt =
-            arr.length >= handle.lastSeenLength ? handle.lastSeenLength : 0;
+          // Diff forward from the last id we merged. If the cursor id
+          // is no longer in the composable's ring (left-eviction), fall
+          // back to a full scan — `seenIds` dedups the merged batch so
+          // re-submitting the whole array is safe. (#1242)
+          let startAt = 0;
+          if (handle.lastSeenEnvelopeId) {
+            const idx = arr.findIndex(
+              (e) => e.id === handle.lastSeenEnvelopeId,
+            );
+            startAt = idx === -1 ? 0 : idx + 1;
+          }
           const fresh = arr.slice(startAt);
-          handle.lastSeenLength = arr.length;
+          if (arr.length > 0) {
+            handle.lastSeenEnvelopeId = arr[arr.length - 1].id ?? "";
+          }
           if (fresh.length > 0) {
             const tagged = fresh.map((env) => tagEnvelope(env, name));
             mergeBatch(tagged);
@@ -363,15 +381,22 @@ export const useTimelineStore = defineStore("timeline", () => {
       // `mergeBatch` so seenIds / ring trimming stay uniform. Events
       // keep their original agent_id — no tagging in override mode,
       // because there's no "originating member" identity for this URL.
-      let lastLen = 0;
+      // Id-based cursor (parity with the fanout path) — see #1242.
+      let lastSeenEnvelopeId = "";
       singleWatcherStop = watch(
         [stream.events, stream.connected, stream.reconnecting, stream.error],
         ([ev]) => {
           if (Array.isArray(ev)) {
             const arr = ev as EventEnvelope[];
-            const startAt = arr.length >= lastLen ? lastLen : 0;
+            let startAt = 0;
+            if (lastSeenEnvelopeId) {
+              const idx = arr.findIndex((e) => e.id === lastSeenEnvelopeId);
+              startAt = idx === -1 ? 0 : idx + 1;
+            }
             const fresh = arr.slice(startAt);
-            lastLen = arr.length;
+            if (arr.length > 0) {
+              lastSeenEnvelopeId = arr[arr.length - 1].id ?? "";
+            }
             if (fresh.length > 0) mergeBatch(fresh);
           }
           recomputeAggregateState();
@@ -477,6 +502,12 @@ export const useTimelineStore = defineStore("timeline", () => {
     teamWatcherStop = null;
     teamHandle = null;
     sharedBearerToken = undefined;
+    // Clear the alert module's event cursor in tandem. Resetting the
+    // timeline store without resetting the alert module leaves
+    // `lastProcessedEventId` pointing at an id that no longer exists
+    // in the fresh ring, causing the next event batch to skip dispatch
+    // entirely. (#1238)
+    __resetUseAlerts();
   }
 
   // --- Selectors ---------------------------------------------------------
