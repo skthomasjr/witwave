@@ -472,6 +472,25 @@ async def main():
                 if _bearer_token
                 else None
             )
+            # #982: the "no-bearer on /mcp" case silently downgrades to
+            # the legacy uuid5 derivation (re-exposing the #710 cross-
+            # caller collision risk). The shared counter in
+            # shared.session_binding only distinguishes reasons like
+            # "secret_unset" / "caller_identity_missing" without an
+            # endpoint label, so a /mcp-specific alert wasn't possible.
+            # Bump a dedicated reason so operators can alert on
+            # unauthenticated /mcp hits even when SESSION_ID_SECRET is
+            # unset. Logged at WARNING (re-armed by the shared path).
+            if _caller_identity is None and backend_session_binding_fallback_total is not None:
+                try:
+                    backend_session_binding_fallback_total.labels(
+                        agent=AGENT_OWNER,
+                        agent_id=AGENT_ID,
+                        backend=_BACKEND_ID,
+                        reason="mcp_no_bearer",
+                    ).inc()
+                except Exception:
+                    pass
             # Update caller-cardinality gauge so operators can detect
             # single-tenant token collapse (gauge == 1 with non-trivial
             # /mcp traffic means SESSION_ID_SECRET's per-caller binding
