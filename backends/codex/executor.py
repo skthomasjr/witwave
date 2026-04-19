@@ -1,5 +1,6 @@
 import asyncio
 import contextvars
+import hashlib
 import json
 import logging
 import os
@@ -32,6 +33,7 @@ from computer import BrowserPool, PlaywrightComputer
 from agents.models.multi_provider import MultiProvider
 from metrics import (
     backend_a2a_last_request_timestamp_seconds,
+    backend_agent_md_revision,
     backend_hooks_config_errors_total,
     backend_a2a_request_duration_seconds,
     backend_a2a_requests_total,
@@ -1300,6 +1302,16 @@ def _load_agent_md() -> str:
         return ""
 
 
+def _compute_agent_md_revision(content: str) -> str:
+    """Return the SHA-256 hex prefix (first 12 chars) of AGENTS.md content (#1097).
+
+    Used as the ``revision`` label on ``backend_agent_md_revision`` and as
+    the ``codex.agent_md_revision`` per-query span attribute so operators
+    can verify a hot-reload has propagated to running queries.
+    """
+    return hashlib.sha256(content.encode("utf-8", errors="replace")).hexdigest()[:12]
+
+
 def _current_trace_id_hex() -> str | None:
     """Return the active OTel span's trace_id as hex, or None when no active span.
 
@@ -1489,10 +1501,20 @@ async def run_query(
         # Managed manually with a finally so we do not need to re-indent the
         # long stream loop below. The span stays open for the full streaming
         # iteration so nested tool.call / mcp.call spans parent under it.
+        #
+        # ``codex.agent_md_revision`` (#1097) — SHA-256 hex prefix of the
+        # AGENTS.md content that seeded ``instructions`` for this run. Paired
+        # with the ``backend_agent_md_revision`` gauge so operators can verify
+        # a hot-reload has propagated to in-flight queries.
+        _llm_attrs = {"model": _resolve_model_label(resolved_model)}
+        try:
+            _llm_attrs["codex.agent_md_revision"] = _compute_agent_md_revision(agent_md_content)
+        except Exception:
+            pass
         _llm_ctx = start_span(
             "llm.request",
             kind="client",
-            attributes={"model": _resolve_model_label(resolved_model)},
+            attributes=_llm_attrs,
         )
         _llm_ctx.__enter__()
         result = Runner.run_streamed(codex_agent, prompt, session=session, run_config=run_config)
@@ -2060,6 +2082,12 @@ class AgentExecutor(A2AAgentExecutor):
         self._sessions: OrderedDict[str, float] = OrderedDict()
         self._running_tasks: dict[str, asyncio.Task] = {}
         self._agent_md_content: str = _load_agent_md()
+        # Cached SHA-256 hex prefix of the currently-active AGENTS.md (#1097).
+        # Recomputed in perform_initial_loads() and agent_md_watcher() on each
+        # reload; stamped on backend_agent_md_revision gauge (value 1) and
+        # mirrored into the per-query span attribute codex.agent_md_revision.
+        self._agent_md_revision: str = _compute_agent_md_revision(self._agent_md_content)
+        self._stamp_agent_md_revision(self._agent_md_revision, previous=None)
         # MCP config dict loaded from MCP_CONFIG_PATH; populated and refreshed
         # by mcp_config_watcher() (#432).
         self._mcp_config: dict = {}
@@ -2094,6 +2122,30 @@ class AgentExecutor(A2AAgentExecutor):
         self._initial_agent_md_loaded = False
         self._initial_tool_config_loaded = False
 
+    def _stamp_agent_md_revision(self, current: str, previous: str | None) -> None:
+        """Update backend_agent_md_revision for a (possibly) new revision (#1097).
+
+        Zero out the previous revision's gauge via .remove() so only the
+        live revision reports value 1. All calls are best-effort: prometheus
+        registry churn must never break hot-reload.
+        """
+        if backend_agent_md_revision is None:
+            return
+        if previous is not None and previous != current:
+            try:
+                backend_agent_md_revision.remove(
+                    _LABELS["agent"], _LABELS["agent_id"], _LABELS["backend"], previous,
+                )
+            except (KeyError, ValueError):
+                # Label set never registered / already removed — benign.
+                pass
+            except Exception as exc:  # pragma: no cover — defensive
+                logger.debug("agent_md_revision remove failed for %r: %r", previous, exc)
+        try:
+            backend_agent_md_revision.labels(**_LABELS, revision=current).set(1)
+        except Exception as exc:  # pragma: no cover — defensive
+            logger.debug("agent_md_revision set failed for %r: %r", current, exc)
+
     def _mcp_watchers(self):
         """Return callables for AGENTS.md, mcp.json, config.toml, and API-key
         secret-file watching (#371, #432, #561, #728)."""
@@ -2122,6 +2174,14 @@ class AgentExecutor(A2AAgentExecutor):
             logger.info("AGENTS.md loaded (initial) from %s", AGENT_MD)
         except Exception as exc:
             logger.warning("AGENTS.md initial load failed: %r (keeping __init__ value)", exc)
+        # Refresh cached revision + gauge (#1097). If the content changed
+        # between __init__ time and lifespan start, swap the gauge label set
+        # so only the active revision reports 1.
+        _prev_rev = self._agent_md_revision
+        _new_rev = _compute_agent_md_revision(self._agent_md_content)
+        if _new_rev != _prev_rev:
+            self._agent_md_revision = _new_rev
+            self._stamp_agent_md_revision(_new_rev, previous=_prev_rev)
         self._initial_agent_md_loaded = True
 
         # MCP config — load + enter the initial stack so requests land on
@@ -2356,6 +2416,12 @@ class AgentExecutor(A2AAgentExecutor):
         if not self._initial_agent_md_loaded:
             self._agent_md_content = _load_agent_md()
             logger.info("AGENTS.md loaded from %s", AGENT_MD)
+            # Refresh revision gauge (#1097) in case __init__'s snapshot is stale.
+            _prev_rev = self._agent_md_revision
+            _new_rev = _compute_agent_md_revision(self._agent_md_content)
+            if _new_rev != _prev_rev:
+                self._agent_md_revision = _new_rev
+                self._stamp_agent_md_revision(_new_rev, previous=_prev_rev)
 
         watch_dir = os.path.dirname(os.path.abspath(AGENT_MD))
         while True:
@@ -2370,6 +2436,13 @@ class AgentExecutor(A2AAgentExecutor):
                     if os.path.abspath(path) == os.path.abspath(AGENT_MD):
                         self._agent_md_content = _load_agent_md()
                         logger.info("AGENTS.md reloaded from %s", AGENT_MD)
+                        # Update revision gauge on hot-reload (#1097). Clear
+                        # the old label set so only the live revision reads 1.
+                        _prev_rev = self._agent_md_revision
+                        _new_rev = _compute_agent_md_revision(self._agent_md_content)
+                        if _new_rev != _prev_rev:
+                            self._agent_md_revision = _new_rev
+                            self._stamp_agent_md_revision(_new_rev, previous=_prev_rev)
                         break
             logger.warning("AGENTS.md directory watcher exited — retrying in 10s.")
             if backend_file_watcher_restarts_total is not None:
