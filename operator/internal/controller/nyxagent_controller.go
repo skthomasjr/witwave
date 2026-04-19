@@ -1484,6 +1484,45 @@ func setCachedCRDProbe(key string, present bool) {
 	}
 }
 
+// invalidateCachedCRDProbe flips a cached present=true entry to
+// present=false inline (#1071). When a downstream apiserver call for a
+// GVK returns NoKindMatchError — meaning the CRD has been uninstalled
+// since we cached the probe — the reconcile step stops treating the
+// failure as a real error and converges to the absent-CRD no-op on the
+// next iteration (and this one, via the caller returning nil). Without
+// this the stale present=true could persist for up to crdProbeTTL,
+// flipping phase to Error for every agent during Prometheus-Operator
+// maintenance.
+func invalidateCachedCRDProbe(key string) {
+	entry := &crdProbeEntry{present: false, at: time.Now()}
+	if v, ok := crdProbeCache.Load(key); ok {
+		if p, ok := v.(*atomic.Pointer[crdProbeEntry]); ok && p != nil {
+			p.Store(entry)
+			return
+		}
+	}
+	p := &atomic.Pointer[crdProbeEntry]{}
+	p.Store(entry)
+	crdProbeCache.Store(key, p)
+}
+
+// handleDownstreamNoMatch inspects err from a reconcile step that
+// previously cleared the CRD-presence probe. When the error is a
+// NoKindMatchError the CRD was removed between the cached probe and the
+// apiserver call; invalidate the cache and return (nil, true) so the
+// caller can short-circuit to the no-op path. (nil, false) means the
+// caller should continue its normal error handling.
+func handleDownstreamNoMatch(cacheKey string, err error) (error, bool) {
+	if err == nil {
+		return nil, false
+	}
+	if meta.IsNoMatchError(err) {
+		invalidateCachedCRDProbe(cacheKey)
+		return nil, true
+	}
+	return err, false
+}
+
 // serviceMonitorCRDPresent reports whether the cluster has the
 // monitoring.coreos.com/v1 ServiceMonitor REST mapping registered. Uses
 // the RESTMapper on the shared client so the probe is a cache lookup on
@@ -1546,6 +1585,7 @@ func (r *NyxAgentReconciler) reconcileServiceMonitor(ctx context.Context, agent 
 
 	// Probe CRD presence. An absent CRD means we can't read or write
 	// the object at all; short-circuit both the apply and delete paths.
+	const smCacheKey = "monitoring.coreos.com/v1/ServiceMonitor"
 	present, err := r.serviceMonitorCRDPresent(ctx)
 	if err != nil {
 		return fmt.Errorf("probe ServiceMonitor CRD: %w", err)
@@ -1574,12 +1614,18 @@ func (r *NyxAgentReconciler) reconcileServiceMonitor(ctx context.Context, agent 
 			if apierrors.IsNotFound(err) {
 				return nil
 			}
+			if _, skip := handleDownstreamNoMatch(smCacheKey, err); skip {
+				return nil
+			}
 			return fmt.Errorf("get ServiceMonitor for delete: %w", err)
 		}
 		if !metav1.IsControlledBy(existing, agent) {
 			return nil
 		}
 		if err := r.Delete(ctx, existing); err != nil && !apierrors.IsNotFound(err) {
+			if _, skip := handleDownstreamNoMatch(smCacheKey, err); skip {
+				return nil
+			}
 			return fmt.Errorf("delete ServiceMonitor: %w", err)
 		}
 		return nil
@@ -1599,10 +1645,16 @@ func (r *NyxAgentReconciler) reconcileServiceMonitor(ctx context.Context, agent 
 	switch {
 	case apierrors.IsNotFound(err):
 		if err := r.Create(ctx, desired); err != nil {
+			if _, skip := handleDownstreamNoMatch(smCacheKey, err); skip {
+				return nil
+			}
 			return fmt.Errorf("create ServiceMonitor: %w", err)
 		}
 		return nil
 	case err != nil:
+		if _, skip := handleDownstreamNoMatch(smCacheKey, err); skip {
+			return nil
+		}
 		return fmt.Errorf("get ServiceMonitor: %w", err)
 	}
 
@@ -1618,6 +1670,9 @@ func (r *NyxAgentReconciler) reconcileServiceMonitor(ctx context.Context, agent 
 	existing.Object["spec"] = desired.Object["spec"]
 	existing.SetLabels(desired.GetLabels())
 	if err := r.Update(ctx, existing); err != nil {
+		if _, skip := handleDownstreamNoMatch(smCacheKey, err); skip {
+			return nil
+		}
 		return fmt.Errorf("update ServiceMonitor: %w", err)
 	}
 	return nil
@@ -1667,6 +1722,7 @@ func (r *NyxAgentReconciler) reconcilePodMonitor(ctx context.Context, agent *nyx
 
 	log := logf.FromContext(ctx)
 
+	const pmCacheKey = "monitoring.coreos.com/v1/PodMonitor"
 	present, err := r.podMonitorCRDPresent(ctx)
 	if err != nil {
 		return fmt.Errorf("probe PodMonitor CRD: %w", err)
@@ -1689,12 +1745,18 @@ func (r *NyxAgentReconciler) reconcilePodMonitor(ctx context.Context, agent *nyx
 			if apierrors.IsNotFound(err) {
 				return nil
 			}
+			if _, skip := handleDownstreamNoMatch(pmCacheKey, err); skip {
+				return nil
+			}
 			return fmt.Errorf("get PodMonitor for delete: %w", err)
 		}
 		if !metav1.IsControlledBy(existing, agent) {
 			return nil
 		}
 		if err := r.Delete(ctx, existing); err != nil && !apierrors.IsNotFound(err) {
+			if _, skip := handleDownstreamNoMatch(pmCacheKey, err); skip {
+				return nil
+			}
 			return fmt.Errorf("delete PodMonitor: %w", err)
 		}
 		return nil
@@ -1714,10 +1776,16 @@ func (r *NyxAgentReconciler) reconcilePodMonitor(ctx context.Context, agent *nyx
 	switch {
 	case apierrors.IsNotFound(err):
 		if err := r.Create(ctx, desired); err != nil {
+			if _, skip := handleDownstreamNoMatch(pmCacheKey, err); skip {
+				return nil
+			}
 			return fmt.Errorf("create PodMonitor: %w", err)
 		}
 		return nil
 	case err != nil:
+		if _, skip := handleDownstreamNoMatch(pmCacheKey, err); skip {
+			return nil
+		}
 		return fmt.Errorf("get PodMonitor: %w", err)
 	}
 
@@ -1727,6 +1795,9 @@ func (r *NyxAgentReconciler) reconcilePodMonitor(ctx context.Context, agent *nyx
 	existing.Object["spec"] = desired.Object["spec"]
 	existing.SetLabels(desired.GetLabels())
 	if err := r.Update(ctx, existing); err != nil {
+		if _, skip := handleDownstreamNoMatch(pmCacheKey, err); skip {
+			return nil
+		}
 		return fmt.Errorf("update PodMonitor: %w", err)
 	}
 	return nil
