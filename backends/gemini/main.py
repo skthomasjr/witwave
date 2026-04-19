@@ -479,27 +479,37 @@ async def main():
                     logger=logger,
                     source="MCP tools/call",
                 )
-                # Caller-bound session_id on gemini /mcp (#941). Gemini /mcp
-                # currently mints a fresh UUID per call, but any future
-                # resumption work would re-introduce the #733 hijack threat
-                # if not routed through the shared session_binding helper.
-                # Derive caller_identity from the bearer-token fingerprint
-                # so multi-tenant isolation is uniform with A2A and with
-                # claude (#867) / codex (#935) /mcp.
+                # Caller-bound session_id on gemini /mcp (#941, #997).
+                # The A2A path (executor.execute) reads caller_identity
+                # from metadata.caller_id stamped by the harness, so two
+                # entrypoints must resolve the same id for the same
+                # logical principal or session continuity fractures
+                # across /mcp and A2A. Resolution order:
+                #   1. arguments["caller_id"] if the MCP caller stamped
+                #      one explicitly (transport-agnostic, matches the
+                #      A2A metadata claim byte-for-byte)
+                #   2. sha256(bearer token) — authoritative fallback
+                #      documented at #997; uniform across
+                #      claude/codex/gemini /mcp for operators that do
+                #      not stamp caller_id.
                 _raw_sid = "".join(
                     c for c in str(arguments.get("session_id") or "").strip()[:256] if c >= " "
                 )
-                _bearer_header = request.headers.get("Authorization", "")
-                _bearer_token = (
-                    _bearer_header[len("Bearer "):]
-                    if _bearer_header.startswith("Bearer ")
-                    else ""
-                )
-                _caller_identity = (
-                    hashlib.sha256(_bearer_token.encode("utf-8")).hexdigest()
-                    if _bearer_token
-                    else None
-                )
+                _explicit_caller_id = arguments.get("caller_id")
+                if isinstance(_explicit_caller_id, str) and _explicit_caller_id:
+                    _caller_identity: str | None = _explicit_caller_id
+                else:
+                    _bearer_header = request.headers.get("Authorization", "")
+                    _bearer_token = (
+                        _bearer_header[len("Bearer "):]
+                        if _bearer_header.startswith("Bearer ")
+                        else ""
+                    )
+                    _caller_identity = (
+                        hashlib.sha256(_bearer_token.encode("utf-8")).hexdigest()
+                        if _bearer_token
+                        else None
+                    )
                 session_id = derive_session_id(_raw_sid, caller_identity=_caller_identity)
                 # Acquire the MCP stack under refcount for the entire
                 # call (#946). The previous snapshot-only pattern could
