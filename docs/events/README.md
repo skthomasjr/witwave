@@ -54,9 +54,12 @@ bump on failure rather than a hard error.
   version. The server emits both the old and new versions side-by-side
   for one release cycle, so old clients keep working.
 
-## Event types (phase 1)
+## Event types
 
-Eleven types cover the "what just happened across the fleet" surface:
+Phase 1 ships eleven harness-emitted types; phase 3 (#1110) adds three
+backend-emitted types that flow over the backend→harness event channel
+(`POST /internal/events/publish`) and are fanned out on the same SSE
+stream:
 
 | Type                      | Emitted by              | Payload summary                                                             |
 | ------------------------- | ----------------------- | --------------------------------------------------------------------------- |
@@ -71,19 +74,25 @@ Eleven types cover the "what just happened across the fleet" surface:
 | `a2a.request.received`    | harness A2A relay       | `{concern, model?}`                                                         |
 | `a2a.request.completed`   | harness A2A relay       | `{concern, outcome, duration_ms}`                                           |
 | `agent.lifecycle`         | harness or backends     | `{backend, event: started|stopped|config_reloaded|credential_rotated}`      |
+| `conversation.turn`       | backends (claude/codex/gemini) | `{session_id_hash, role: user|assistant, content_bytes, model?}`     |
+| `tool.use`                | backends (claude/codex/gemini) | `{session_id_hash, tool, duration_ms, outcome: ok|error|denied, result_size_bytes?, error?}` |
+| `trace.span`              | backends (claude/codex/gemini) | `{session_id_hash?, span_name, duration_ms, status: ok|error, service}` — only emitted for `{llm.request, shell, mcp.handler, backend.mcp.tools_call}` |
 
 See `events.schema.json` for the full JSON Schema.
 
-## What is NOT on this stream (phase 1)
+## What is NOT on this stream
 
 - Per-token conversation chunks — drill-down surface, per-backend stream.
-- Per-span trace events — drill-down surface, per-backend stream.
-- Per-tool-call activity — drill-down surface, per-backend stream.
+  Phase 3 emits a single `conversation.turn` summary event (content_bytes,
+  not raw content) per turn; raw token streams remain per-backend.
 - Prometheus metrics — polled over `/metrics`, not event-shaped.
 - Team / config / schedule snapshots — polled REST surfaces.
 
-These join the same multiplexed stream in phase 3+ once the
-backend→harness event channel lands.
+Phase 3 (#1110) added backend-emitted `conversation.turn`, `tool.use`,
+and `trace.span` events over the backend→harness event channel
+(`POST /internal/events/publish`, bearer-authed by
+`HOOK_EVENTS_AUTH_TOKEN`). Raw per-token chunks and the full OTel span
+tree are still drill-down surfaces on the per-backend endpoints.
 
 ## URL-host redaction
 

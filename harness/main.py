@@ -46,6 +46,7 @@ from metrics import (
     harness_bus_processing_duration_seconds,
     harness_bus_wait_seconds,
     harness_event_loop_lag_seconds,
+    harness_event_stream_inbound_rejected_total,
     harness_backend_reachable,
     harness_backends_config_stale,
     harness_health_checks_total,
@@ -342,6 +343,90 @@ async def hook_decision_event_handler(request: Request) -> JSONResponse:
 
     publish_hook_decision(event)
     return JSONResponse({"status": "accepted"}, status_code=202)
+
+
+# Hard cap on the POST /internal/events/publish body (#1110 phase 3).
+# Event payloads are small JSON blobs (envelope + a type-specific payload
+# with a handful of fields). 64 KiB is comfortable headroom while still
+# rejecting clearly-abusive bodies before any parse / validate cost.
+MAX_EVENT_PUBLISH_BODY_BYTES = 65_536
+# Per-field string cap applied to payload fields before fan-out (#924
+# mirror). Prevents a compromised backend from driving log-injection or
+# swelling outbound SSE bodies.
+MAX_EVENT_PUBLISH_FIELD_BYTES = 4096
+
+
+def _bump_inbound_rejected(reason: str) -> None:
+    try:
+        if harness_event_stream_inbound_rejected_total is not None:
+            harness_event_stream_inbound_rejected_total.labels(reason=reason).inc()
+    except Exception:
+        pass
+
+
+async def event_publish_handler(request: Request) -> JSONResponse:
+    """Receive a backend-originated generic event (#1110 phase 3).
+
+    Mirrors ``/internal/events/hook-decision`` for auth + body bounding
+    but instead of publishing via the hook.decision side-channel it
+    validates the envelope against ``shared/event_schema.py`` and, on
+    success, republishes through the in-process SSE stream via
+    :func:`events.get_event_stream().publish`.
+
+    Returns:
+    * 204 on successful fan-out.
+    * 401 when the bearer token is missing/wrong.
+    * 400 on malformed JSON / failing schema validation.
+    * 413 when the body exceeds :data:`MAX_EVENT_PUBLISH_BODY_BYTES`.
+
+    The endpoint is fail-safe: no token configured → every request is
+    rejected rather than silently accepted.
+    """
+    if not HOOK_EVENTS_AUTH_TOKEN:
+        logger.warning(
+            "POST /internal/events/publish rejected: no auth token configured "
+            "(set HOOK_EVENTS_AUTH_TOKEN)."
+        )
+        _bump_inbound_rejected("auth")
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    header = request.headers.get("Authorization", "")
+    if not hmac_mod.compare_digest(f"Bearer {HOOK_EVENTS_AUTH_TOKEN}", header):
+        _bump_inbound_rejected("auth")
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    # Bounded read.
+    try:
+        declared_len = int(request.headers.get("Content-Length", "") or "-1")
+    except ValueError:
+        declared_len = -1
+    if declared_len > MAX_EVENT_PUBLISH_BODY_BYTES:
+        _bump_inbound_rejected("over_cap")
+        return JSONResponse({"error": "request body too large"}, status_code=413)
+
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        if not chunk:
+            continue
+        total += len(chunk)
+        if total > MAX_EVENT_PUBLISH_BODY_BYTES:
+            _bump_inbound_rejected("over_cap")
+            return JSONResponse({"error": "request body too large"}, status_code=413)
+        chunks.append(chunk)
+    body_bytes = b"".join(chunks)
+
+    # Delegate parsing + validation + fan-out to the testable kernel in
+    # harness/events.py. Keeping the handler thin here means the core
+    # contract can be exercised from tests that don't need to import
+    # the A2A SDK / uvicorn / prometheus_client layer.
+    from events import parse_and_publish_envelope as _parse_publish
+    status, err = _parse_publish(
+        body_bytes,
+        rejected_counter=harness_event_stream_inbound_rejected_total,
+    )
+    if status == 204:
+        return Response(status_code=204)
+    return JSONResponse({"error": err or "invalid"}, status_code=status)
 
 
 # Hard cap on the body size the backend→harness hook.decision POST will buffer (#641).
@@ -1959,6 +2044,14 @@ async def main():
                             hook_decision_event_handler,
                             methods=["POST"],
                         ),
+                        # Generic backend→harness event channel (#1110 phase 3).
+                        # Same auth/port posture as hook-decision so NetworkPolicy
+                        # and scraper posture applies uniformly.
+                        Route(
+                            "/internal/events/publish",
+                            event_publish_handler,
+                            methods=["POST"],
+                        ),
                     ],
                 )
             else:
@@ -1972,10 +2065,16 @@ async def main():
                     hook_decision_event_handler,
                     methods=["POST"],
                 )
+                app.router.add_route(
+                    "/internal/events/publish",
+                    event_publish_handler,
+                    methods=["POST"],
+                )
                 logger.warning(
-                    "METRICS_ENABLED=0: /internal/events/hook-decision is "
-                    "bound to the public app listener. Enable the metrics "
-                    "listener to move the route off the app port (#924)."
+                    "METRICS_ENABLED=0: /internal/events/hook-decision + "
+                    "/internal/events/publish are bound to the public app "
+                    "listener. Enable the metrics listener to move the routes "
+                    "off the app port (#924)."
                 )
             try:
                 yield

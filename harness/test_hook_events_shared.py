@@ -107,5 +107,89 @@ def test_missing_token_logs_once(monkeypatch, caplog):
     asyncio.run(run())
 
 
+def test_schedule_event_post_builds_envelope(monkeypatch):
+    """schedule_event_post (#1110 phase 3) builds a valid envelope and
+    calls into the shared POST path with the publish URL + bearer."""
+    async def run():
+        he = _reload(monkeypatch, url="http://harness", token="s")
+        # Replace _post_once_to with a capture stub so we see the
+        # url + body + the fact that it was actually invoked.
+        calls: list[tuple[str, dict]] = []
+
+        async def _capture(url, body):
+            calls.append((url, body))
+
+        monkeypatch.setattr(he, "_post_once_to", _capture)
+        ok = he.schedule_event_post(
+            "conversation.turn",
+            {
+                "session_id_hash": "abcdef012345",
+                "role": "user",
+                "content_bytes": 10,
+                "model": "m1",
+            },
+            agent_id="iris",
+        )
+        assert ok is True
+        pending = list(he._INFLIGHT)
+        await asyncio.gather(*pending, return_exceptions=True)
+        assert len(calls) == 1, f"expected one POST, got {calls}"
+        url, body = calls[0]
+        assert url.endswith("/internal/events/publish"), url
+        assert body["type"] == "conversation.turn"
+        assert body["agent_id"] == "iris"
+        assert body["version"] == 1
+        assert body["payload"]["session_id_hash"] == "abcdef012345"
+        # envelope carries a `ts` and a placeholder `id` — the harness
+        # rewrites the id at receive time.
+        assert isinstance(body["ts"], str) and body["ts"].endswith("Z")
+        assert "id" in body
+
+    asyncio.run(run())
+
+
+def test_schedule_event_post_drops_invalid_envelope(monkeypatch):
+    """Schema validation at emit time drops malformed events without
+    invoking the POST path. Caller never observes an exception."""
+    async def run():
+        he = _reload(monkeypatch, url="http://harness", token="s")
+        calls: list[tuple[str, dict]] = []
+
+        async def _capture(url, body):
+            calls.append((url, body))
+
+        monkeypatch.setattr(he, "_post_once_to", _capture)
+        # Missing required `outcome`.
+        ok = he.schedule_event_post(
+            "tool.use",
+            {
+                "session_id_hash": "abcdef012345",
+                "tool": "Bash",
+                "duration_ms": 5,
+            },
+            agent_id="iris",
+        )
+        assert ok is False
+        assert calls == []
+
+    asyncio.run(run())
+
+
+def test_schedule_event_post_no_url_silent_drop(monkeypatch):
+    """With HARNESS_EVENTS_URL unset, schedule_event_post silently drops."""
+    he = _reload(monkeypatch, url="")
+    ok = he.schedule_event_post(
+        "conversation.turn",
+        {
+            "session_id_hash": "abcdef012345",
+            "role": "user",
+            "content_bytes": 10,
+        },
+        agent_id="iris",
+    )
+    assert ok is False
+    assert len(he._INFLIGHT) == 0
+
+
 if __name__ == "__main__":  # pragma: no cover
     sys.exit(pytest.main([__file__, "-q"]))

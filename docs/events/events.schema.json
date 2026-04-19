@@ -21,6 +21,9 @@
         "a2a.request.received",
         "a2a.request.completed",
         "agent.lifecycle",
+        "conversation.turn",
+        "tool.use",
+        "trace.span",
         "stream.gap",
         "stream.overrun"
       ]
@@ -54,6 +57,12 @@
       "then": { "properties": { "payload": { "$ref": "#/$defs/A2ARequestCompleted" } } } },
     { "if": { "properties": { "type": { "const": "agent.lifecycle" } } },
       "then": { "properties": { "payload": { "$ref": "#/$defs/AgentLifecycle" } } } },
+    { "if": { "properties": { "type": { "const": "conversation.turn" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/ConversationTurn" } } } },
+    { "if": { "properties": { "type": { "const": "tool.use" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/ToolUse" } } } },
+    { "if": { "properties": { "type": { "const": "trace.span" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/TraceSpan" } } } },
     { "if": { "properties": { "type": { "const": "stream.gap" } } },
       "then": { "properties": { "payload": { "$ref": "#/$defs/StreamGap" } } } },
     { "if": { "properties": { "type": { "const": "stream.overrun" } } },
@@ -186,6 +195,42 @@
         "backend": { "type": "string", "enum": ["claude", "codex", "gemini"] },
         "event": { "type": "string", "enum": ["started", "stopped", "config_reloaded", "credential_rotated"] },
         "detail": { "type": "string" }
+      }
+    },
+    "ConversationTurn": {
+      "type": "object",
+      "required": ["session_id_hash", "role", "content_bytes"],
+      "additionalProperties": false,
+      "properties": {
+        "session_id_hash": { "type": "string", "minLength": 12, "maxLength": 12 },
+        "role": { "type": "string", "enum": ["user", "assistant"] },
+        "content_bytes": { "type": "integer", "minimum": 0 },
+        "model": { "type": "string" }
+      }
+    },
+    "ToolUse": {
+      "type": "object",
+      "required": ["session_id_hash", "tool", "duration_ms", "outcome"],
+      "additionalProperties": false,
+      "properties": {
+        "session_id_hash": { "type": "string", "minLength": 12, "maxLength": 12 },
+        "tool": { "type": "string" },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "outcome": { "type": "string", "enum": ["ok", "error", "denied"] },
+        "result_size_bytes": { "type": "integer", "minimum": 0 },
+        "error": { "type": "string" }
+      }
+    },
+    "TraceSpan": {
+      "type": "object",
+      "required": ["span_name", "duration_ms", "status", "service"],
+      "additionalProperties": false,
+      "properties": {
+        "session_id_hash": { "type": "string", "minLength": 12, "maxLength": 12 },
+        "span_name": { "type": "string" },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "status": { "type": "string", "enum": ["ok", "error"] },
+        "service": { "type": "string" }
       }
     },
     "StreamGap": {

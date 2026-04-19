@@ -52,6 +52,16 @@ import httpx
 logger = logging.getLogger(__name__)
 
 HARNESS_EVENTS_URL = os.environ.get("HARNESS_EVENTS_URL", "") or ""
+# Backend→harness generic event channel (#1110 phase 3). Defaults to the
+# hook-decision base URL (HARNESS_EVENTS_URL) when not set explicitly so
+# existing deployments don't need a second env var. The path suffix is
+# ``/internal/events/publish``; if the operator set HARNESS_EVENTS_URL to
+# a value that already includes the hook-decision suffix we strip it
+# before appending /publish (defensive — both paths live on the same
+# host:port).
+HARNESS_EVENTS_PUBLISH_URL = (
+    os.environ.get("HARNESS_EVENTS_PUBLISH_URL", "") or ""
+)
 # Canonical: HOOK_EVENTS_AUTH_TOKEN (matches the harness endpoint #859).
 # Back-compat aliases preserve existing deployments during the rename:
 #   HARNESS_EVENTS_AUTH_TOKEN — historical name used by this module
@@ -173,6 +183,112 @@ def _cb_record(failed: bool) -> None:
                     HOOK_POST_CB_WINDOW,
                     HOOK_POST_CB_COOLDOWN_SECONDS,
                 )
+
+
+def _resolve_publish_url() -> str:
+    """Return the absolute URL for POST /internal/events/publish, or ''.
+
+    Resolution order:
+    * HARNESS_EVENTS_PUBLISH_URL if explicitly set — treated as absolute.
+    * HARNESS_EVENTS_URL with ``/internal/events/publish`` appended. If
+      the operator set HARNESS_EVENTS_URL to the historical full
+      hook-decision endpoint, strip the ``/internal/events/hook-decision``
+      suffix before appending.
+    * Empty string when neither is configured — transport disabled.
+    """
+    if HARNESS_EVENTS_PUBLISH_URL:
+        return HARNESS_EVENTS_PUBLISH_URL
+    if not HARNESS_EVENTS_URL:
+        return ""
+    base = HARNESS_EVENTS_URL.rstrip("/")
+    # Defensive: strip /internal/events/hook-decision if it's already on the
+    # base URL (some older deployments embed it).
+    if base.endswith("/internal/events/hook-decision"):
+        base = base[: -len("/internal/events/hook-decision")]
+    return base + "/internal/events/publish"
+
+
+async def _post_once_to(url: str, body: dict[str, Any]) -> None:
+    """Shared POST path for all backend→harness events.
+
+    Bearer, circuit breaker, retry, and status-warn state are shared
+    across endpoints — all traffic targets the same harness process, so
+    one-shot warnings should not re-fire just because the caller is now
+    emitting to /internal/events/publish instead of /internal/events/
+    hook-decision.
+    """
+    if not HOOK_EVENTS_AUTH_TOKEN:
+        global _auth_warned, _auth_dropped_since_warn
+        with _auth_warn_lock:
+            _auth_dropped_since_warn += 1
+            _should_warn = (
+                not _auth_warned
+                or _auth_dropped_since_warn >= _AUTH_REARM_EVERY
+            )
+            if _should_warn:
+                _auth_warned = True
+                _count = _auth_dropped_since_warn
+                _auth_dropped_since_warn = 0
+                logger.warning(
+                    "harness-events transport DISABLED: HARNESS_EVENTS_URL is set "
+                    "but HOOK_EVENTS_AUTH_TOKEN (and its HARNESS_EVENTS_AUTH_TOKEN/"
+                    "TRIGGERS_AUTH_TOKEN aliases) are all empty. %d event(s) dropped "
+                    "since the last warning; will re-warn every %d dropped events.",
+                    _count, _AUTH_REARM_EVERY,
+                )
+        return
+    if _cb_is_open():
+        return
+    try:
+        client = await _get_client()
+        resp = None
+        last_exc: Exception | None = None
+        for attempt in range(2):
+            try:
+                resp = await client.post(
+                    url,
+                    json=body,
+                    headers={"Authorization": f"Bearer {HOOK_EVENTS_AUTH_TOKEN}"},
+                )
+                last_exc = None
+                break
+            except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError) as exc:
+                last_exc = exc
+                if attempt == 0 and HOOK_POST_RETRY_MAX_DELAY > 0:
+                    await asyncio.sleep(random.uniform(0, HOOK_POST_RETRY_MAX_DELAY))
+                    continue
+                raise
+        assert resp is not None
+        _cb_record(failed=(resp.status_code >= 500))
+        if resp.status_code >= 400:
+            global _status_warned, _status_dropped_since_warn
+            with _status_warn_lock:
+                _status_dropped_since_warn += 1
+                _should_warn = (
+                    not _status_warned
+                    or _status_dropped_since_warn >= _STATUS_REARM_EVERY
+                )
+                if _should_warn:
+                    _status_warned = True
+                    _count = _status_dropped_since_warn
+                    _status_dropped_since_warn = 0
+                    logger.warning(
+                        "harness-events POST to %s returned HTTP %d (check "
+                        "HOOK_EVENTS_AUTH_TOKEN and harness endpoint config); "
+                        "%d non-2xx response(s) since last warning; will "
+                        "re-warn every %d dropped events.",
+                        url,
+                        resp.status_code,
+                        _count,
+                        _STATUS_REARM_EVERY,
+                    )
+        else:
+            with _status_warn_lock:
+                _status_warned = False
+                _status_dropped_since_warn = 0
+    except Exception as exc:
+        _cb_record(failed=True)
+        logger.warning("harness-events POST to %s failed: %r", url, exc)
 
 
 async def _post_once(event_dict: dict[str, Any]) -> None:
@@ -333,6 +449,120 @@ def schedule_post(event_dict: dict[str, Any], shed_counter: Any = None) -> bool:
         # the discard itself and the ``len()`` check below restores the
         # intended atomicity even if a future refactor moves any of
         # this off the main event loop.
+        with _inflight_lock:
+            _inflight.discard(tt)
+            below_half = len(_inflight) < HOOK_POST_MAX_INFLIGHT // 2
+        if below_half:
+            global _shed_warned
+            with _shed_warn_lock:
+                _shed_warned = False
+
+    t.add_done_callback(_done)
+    return True
+
+
+def schedule_event_post(
+    event_type: str,
+    payload: dict[str, Any],
+    *,
+    agent_id: str | None = None,
+    version: int = 1,
+    shed_counter: Any = None,
+) -> bool:
+    """Schedule a generic event POST to the harness event channel (#1110 phase 3).
+
+    Builds the ``{type, version, ts, agent_id, payload}`` body the
+    harness ``POST /internal/events/publish`` endpoint accepts, then
+    fans out through the same inflight cap, circuit breaker, retry
+    and shed plumbing as ``schedule_post``.
+
+    Schema validation is *best-effort*: we try to import the shared
+    validator and validate before scheduling — if validation raises,
+    or the validator isn't importable, we log at WARN and drop the
+    event rather than letting the exception propagate into the
+    caller's hot path. Callers should wrap in their own try/except as
+    defense-in-depth.
+
+    Returns ``True`` when scheduled, ``False`` on any drop
+    (transport disabled, validation failure, inflight cap, etc.).
+    """
+    url = _resolve_publish_url()
+    if not url:
+        # Transport disabled — silent no-op.
+        return False
+
+    # Assemble the full envelope the harness expects.
+    envelope = {
+        "type": event_type,
+        "version": version,
+        # The harness assigns a monotonic `id` on receive; our stub
+        # of "0" is fine for schema-validation purposes because the
+        # harness rewrites this field before publishing.
+        "id": "0",
+        "ts": (
+            time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime())
+            + f".{int((time.time() % 1) * 1000):03d}Z"
+        ),
+        "agent_id": agent_id,
+        "payload": dict(payload),
+    }
+
+    # Best-effort schema validation. Never raises into the caller.
+    try:
+        from event_schema import validate_envelope as _validate  # type: ignore
+    except Exception:
+        try:
+            from shared.event_schema import validate_envelope as _validate  # type: ignore
+        except Exception:
+            _validate = None  # type: ignore
+    if _validate is not None:
+        try:
+            _err_msg = _validate(envelope)
+            if _err_msg is not None:
+                logger.warning(
+                    "schedule_event_post: dropping invalid %r envelope: %s",
+                    event_type, _err_msg,
+                )
+                return False
+        except Exception as exc:  # validator itself blew up — best-effort
+            logger.warning(
+                "schedule_event_post: validator raised on %r: %r — dropping",
+                event_type, exc,
+            )
+            return False
+
+    # Check-and-add under _inflight_lock (mirrors schedule_post).
+    with _inflight_lock:
+        if len(_INFLIGHT) >= HOOK_POST_MAX_INFLIGHT:
+            _over_cap = True
+        else:
+            try:
+                t = asyncio.create_task(_post_once_to(url, envelope))
+            except RuntimeError:
+                # No running loop (e.g. module imported for tests). Silent drop.
+                return False
+            _INFLIGHT.add(t)
+            _over_cap = False
+
+    if _over_cap:
+        global _shed_warned
+        with _shed_warn_lock:
+            if not _shed_warned:
+                _shed_warned = True
+                logger.warning(
+                    "harness-events POST shed: %d in-flight at cap=%d "
+                    "(further shed suppressed until drain)",
+                    len(_INFLIGHT),
+                    HOOK_POST_MAX_INFLIGHT,
+                )
+        if shed_counter is not None:
+            try:
+                shed_counter.inc()
+            except Exception:
+                pass
+        return False
+
+    def _done(tt: asyncio.Task, _inflight: set = _INFLIGHT) -> None:
         with _inflight_lock:
             _inflight.discard(tt)
             below_half = len(_inflight) < HOOK_POST_MAX_INFLIGHT // 2

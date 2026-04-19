@@ -151,6 +151,9 @@ harness_event_stream_events_dropped_total: prometheus_client.Counter | None = No
 harness_event_stream_overruns_total: prometheus_client.Counter | None = None
 harness_event_stream_validation_errors_total: prometheus_client.Counter | None = None
 harness_event_stream_ring_size: prometheus_client.Gauge | None = None
+# Inbound rejection counter for POST /internal/events/publish (#1110 phase 3).
+# Labelled by reason: auth | validation | over_cap | malformed_json.
+harness_event_stream_inbound_rejected_total: prometheus_client.Counter | None = None
 
 
 if _enabled:
@@ -757,5 +760,12 @@ if _enabled:
         "harness_event_stream_ring_size",
         "Current depth of the SSE event stream replay ring (#1110). Bounded "
         "by EVENT_STREAM_RING_MAX (default 1000).",
+    )
+    harness_event_stream_inbound_rejected_total = prometheus_client.Counter(
+        "harness_event_stream_inbound_rejected_total",
+        "Total POST /internal/events/publish requests rejected before "
+        "fan-out (#1110 phase 3). reason is one of auth | validation | "
+        "over_cap | malformed_json.",
+        ["reason"],
     )
 

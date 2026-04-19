@@ -366,3 +366,96 @@ def reset_event_stream_for_tests() -> EventStream:
     global _singleton
     _singleton = EventStream()
     return _singleton
+
+
+# ---------------------------------------------------------------------------
+# Publish-envelope helper (shared with harness/main.py /internal/events/publish)
+# ---------------------------------------------------------------------------
+
+MAX_EVENT_PUBLISH_FIELD_BYTES = 4096
+
+
+def parse_and_publish_envelope(
+    body_bytes: bytes,
+    *,
+    stream: EventStream | None = None,
+    rejected_counter: Any = None,
+) -> tuple[int, str | None]:
+    """Parse a raw POST body into an envelope and fan it out on *stream*.
+
+    Returns ``(status_code, error_or_none)``. 204 on success, 400 on any
+    structural or validation failure, 413 is NOT returned here — callers
+    enforce body-size caps before they reach this function.
+
+    This is the testable kernel of ``event_publish_handler`` in
+    ``harness/main.py`` (#1110 phase 3). Keeping the logic here lets
+    tests exercise the full validation path without pulling in the A2A
+    SDK / uvicorn / prometheus_client at import time.
+
+    ``rejected_counter`` is optional; when provided its
+    ``labels(reason=...)`` counter is bumped on any rejection path. The
+    caller is responsible for bumping an ``auth``-reason counter before
+    this function is reached (auth happens above the body parse).
+    """
+    import json as _json
+    if stream is None:
+        stream = get_event_stream()
+
+    def _bump(reason: str) -> None:
+        if rejected_counter is None:
+            return
+        try:
+            rejected_counter.labels(reason=reason).inc()
+        except Exception:
+            pass
+
+    try:
+        body = _json.loads(body_bytes.decode("utf-8") or "{}")
+    except (UnicodeDecodeError, _json.JSONDecodeError) as exc:
+        logger.warning("parse_and_publish_envelope: malformed JSON body: %r", exc)
+        _bump("malformed_json")
+        return 400, "malformed json"
+    if not isinstance(body, dict):
+        _bump("validation")
+        return 400, "payload must be a JSON object"
+
+    type_raw = body.get("type")
+    payload_raw = body.get("payload")
+    agent_id_raw = body.get("agent_id")
+    version_raw = body.get("version", 1)
+    if not isinstance(type_raw, str) or not type_raw:
+        _bump("validation")
+        return 400, "type is required"
+    if not isinstance(payload_raw, dict):
+        _bump("validation")
+        return 400, "payload must be an object"
+    if agent_id_raw is not None and not isinstance(agent_id_raw, str):
+        _bump("validation")
+        return 400, "agent_id must be a string or null"
+    if not isinstance(version_raw, int) or isinstance(version_raw, bool) or version_raw < 1:
+        _bump("validation")
+        return 400, "version must be a positive integer"
+
+    # Per-field length caps on any string payload field (#924 mirror).
+    def _cap_value(v: Any) -> Any:
+        if isinstance(v, str) and len(v) > MAX_EVENT_PUBLISH_FIELD_BYTES:
+            return v[:MAX_EVENT_PUBLISH_FIELD_BYTES] + "...[truncated]"
+        return v
+
+    capped_payload: dict = {}
+    for k, v in payload_raw.items():
+        if not isinstance(k, str):
+            _bump("validation")
+            return 400, "payload keys must be strings"
+        capped_payload[k] = _cap_value(v)
+
+    envelope = stream.publish(
+        type_raw,
+        capped_payload,
+        agent_id=agent_id_raw,
+        version=version_raw,
+    )
+    if envelope is None:
+        _bump("validation")
+        return 400, "validation failed"
+    return 204, None

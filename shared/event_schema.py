@@ -309,6 +309,88 @@ def _validate_agent_lifecycle(p: dict) -> str | None:
     return None
 
 
+_CONVERSATION_ROLES = {"user", "assistant"}
+
+
+def _is_session_hash(v: Any) -> bool:
+    # 12-char sha256 prefix (lowercase hex).
+    return isinstance(v, str) and len(v) == 12
+
+
+def _validate_conversation_turn(p: dict) -> str | None:
+    err = _require_keys(
+        p,
+        ("session_id_hash", "role", "content_bytes"),
+        ("model",),
+        "conversation.turn",
+    )
+    if err:
+        return err
+    if not _is_session_hash(p["session_id_hash"]):
+        return _err("conversation.turn: session_id_hash must be a 12-char string")
+    if p["role"] not in _CONVERSATION_ROLES:
+        return _err(
+            f"conversation.turn: role must be one of {sorted(_CONVERSATION_ROLES)}"
+        )
+    if not _is_nonneg_int(p["content_bytes"]):
+        return _err("conversation.turn: content_bytes must be a non-negative integer")
+    if "model" in p and not isinstance(p["model"], str):
+        return _err("conversation.turn: model must be a string")
+    return None
+
+
+_TOOL_OUTCOMES = {"ok", "error", "denied"}
+
+
+def _validate_tool_use(p: dict) -> str | None:
+    err = _require_keys(
+        p,
+        ("session_id_hash", "tool", "duration_ms", "outcome"),
+        ("result_size_bytes", "error"),
+        "tool.use",
+    )
+    if err:
+        return err
+    if not _is_session_hash(p["session_id_hash"]):
+        return _err("tool.use: session_id_hash must be a 12-char string")
+    if not isinstance(p["tool"], str):
+        return _err("tool.use: tool must be a string")
+    if not _is_nonneg_int(p["duration_ms"]):
+        return _err("tool.use: duration_ms must be a non-negative integer")
+    if p["outcome"] not in _TOOL_OUTCOMES:
+        return _err(f"tool.use: outcome must be one of {sorted(_TOOL_OUTCOMES)}")
+    if "result_size_bytes" in p and not _is_nonneg_int(p["result_size_bytes"]):
+        return _err("tool.use: result_size_bytes must be a non-negative integer")
+    if "error" in p and not isinstance(p["error"], str):
+        return _err("tool.use: error must be a string")
+    return None
+
+
+_SPAN_STATUSES = {"ok", "error"}
+
+
+def _validate_trace_span(p: dict) -> str | None:
+    err = _require_keys(
+        p,
+        ("span_name", "duration_ms", "status", "service"),
+        ("session_id_hash",),
+        "trace.span",
+    )
+    if err:
+        return err
+    if not isinstance(p["span_name"], str) or not p["span_name"]:
+        return _err("trace.span: span_name must be a non-empty string")
+    if not _is_nonneg_int(p["duration_ms"]):
+        return _err("trace.span: duration_ms must be a non-negative integer")
+    if p["status"] not in _SPAN_STATUSES:
+        return _err(f"trace.span: status must be one of {sorted(_SPAN_STATUSES)}")
+    if not isinstance(p["service"], str):
+        return _err("trace.span: service must be a string")
+    if "session_id_hash" in p and not _is_session_hash(p["session_id_hash"]):
+        return _err("trace.span: session_id_hash must be a 12-char string")
+    return None
+
+
 def _validate_stream_gap(p: dict) -> str | None:
     err = _require_keys(p, ("last_seen_id", "resume_id"), ("reason",), "stream.gap")
     if err:
@@ -350,6 +432,9 @@ _VALIDATORS: dict[str, Callable[[dict], str | None]] = {
     "a2a.request.received": _validate_a2a_received,
     "a2a.request.completed": _validate_a2a_completed,
     "agent.lifecycle": _validate_agent_lifecycle,
+    "conversation.turn": _validate_conversation_turn,
+    "tool.use": _validate_tool_use,
+    "trace.span": _validate_trace_span,
     "stream.gap": _validate_stream_gap,
     "stream.overrun": _validate_stream_overrun,
 }

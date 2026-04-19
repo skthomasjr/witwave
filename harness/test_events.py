@@ -300,6 +300,176 @@ class EventSchemaTests(unittest.TestCase):
         ))
         self.assertIsNone(ok)
 
+    # ---- Phase-3 backend-emitted types (#1110) ---------------------
+
+    def test_conversation_turn_ok(self) -> None:
+        from event_schema import validate_envelope
+        ok = validate_envelope(self._env(
+            "conversation.turn",
+            {
+                "session_id_hash": "abcdef012345",
+                "role": "assistant",
+                "content_bytes": 42,
+                "model": "claude-opus-4-6",
+            },
+        ))
+        self.assertIsNone(ok)
+
+    def test_conversation_turn_bad_role(self) -> None:
+        from event_schema import validate_envelope
+        err = validate_envelope(self._env(
+            "conversation.turn",
+            {
+                "session_id_hash": "abcdef012345",
+                "role": "system",  # not in enum
+                "content_bytes": 42,
+            },
+        ))
+        self.assertIsNotNone(err)
+
+    def test_conversation_turn_hash_length(self) -> None:
+        from event_schema import validate_envelope
+        err = validate_envelope(self._env(
+            "conversation.turn",
+            {
+                "session_id_hash": "tooshort",
+                "role": "user",
+                "content_bytes": 1,
+            },
+        ))
+        self.assertIsNotNone(err)
+
+    def test_tool_use_ok(self) -> None:
+        from event_schema import validate_envelope
+        ok = validate_envelope(self._env(
+            "tool.use",
+            {
+                "session_id_hash": "abcdef012345",
+                "tool": "Bash",
+                "duration_ms": 17,
+                "outcome": "ok",
+                "result_size_bytes": 128,
+            },
+        ))
+        self.assertIsNone(ok)
+
+    def test_tool_use_bad_outcome(self) -> None:
+        from event_schema import validate_envelope
+        err = validate_envelope(self._env(
+            "tool.use",
+            {
+                "session_id_hash": "abcdef012345",
+                "tool": "Bash",
+                "duration_ms": 17,
+                "outcome": "success",  # not in enum (ok|error|denied)
+            },
+        ))
+        self.assertIsNotNone(err)
+
+    def test_trace_span_ok_with_session_hash(self) -> None:
+        from event_schema import validate_envelope
+        ok = validate_envelope(self._env(
+            "trace.span",
+            {
+                "session_id_hash": "abcdef012345",
+                "span_name": "llm.request",
+                "duration_ms": 120,
+                "status": "ok",
+                "service": "claude-backend",
+            },
+        ))
+        self.assertIsNone(ok)
+
+    def test_trace_span_ok_without_session_hash(self) -> None:
+        from event_schema import validate_envelope
+        ok = validate_envelope(self._env(
+            "trace.span",
+            {
+                "span_name": "mcp.handler",
+                "duration_ms": 3,
+                "status": "error",
+                "service": "codex-backend",
+            },
+        ))
+        self.assertIsNone(ok)
+
+    def test_trace_span_bad_status(self) -> None:
+        from event_schema import validate_envelope
+        err = validate_envelope(self._env(
+            "trace.span",
+            {
+                "span_name": "shell",
+                "duration_ms": 3,
+                "status": "timeout",  # not in enum (ok|error)
+                "service": "gemini-backend",
+            },
+        ))
+        self.assertIsNotNone(err)
+
+
+class EventStreamPhase3Tests(unittest.IsolatedAsyncioTestCase):
+    """EventStream publish/subscribe coverage for phase-3 types (#1110)."""
+
+    async def test_publish_conversation_turn_fanout(self) -> None:
+        stream = _fresh_stream()
+        sub = stream.subscribe()
+        sub_gen = sub.__aiter__()
+
+        env = stream.publish(
+            "conversation.turn",
+            {
+                "session_id_hash": "abcdef012345",
+                "role": "user",
+                "content_bytes": 10,
+                "model": "m1",
+            },
+            agent_id="iris",
+        )
+        self.assertIsNotNone(env)
+        delivered = await asyncio.wait_for(sub_gen.__anext__(), timeout=1.0)
+        self.assertEqual(delivered.type, "conversation.turn")
+        self.assertEqual(delivered.payload["role"], "user")
+
+    async def test_publish_tool_use_fanout(self) -> None:
+        stream = _fresh_stream()
+        sub = stream.subscribe()
+        sub_gen = sub.__aiter__()
+
+        env = stream.publish(
+            "tool.use",
+            {
+                "session_id_hash": "abcdef012345",
+                "tool": "Bash",
+                "duration_ms": 9,
+                "outcome": "denied",
+            },
+            agent_id="iris",
+        )
+        self.assertIsNotNone(env)
+        delivered = await asyncio.wait_for(sub_gen.__anext__(), timeout=1.0)
+        self.assertEqual(delivered.type, "tool.use")
+        self.assertEqual(delivered.payload["outcome"], "denied")
+
+    async def test_publish_trace_span_fanout(self) -> None:
+        stream = _fresh_stream()
+        sub = stream.subscribe()
+        sub_gen = sub.__aiter__()
+
+        env = stream.publish(
+            "trace.span",
+            {
+                "span_name": "llm.request",
+                "duration_ms": 50,
+                "status": "ok",
+                "service": "claude-backend",
+            },
+            agent_id="iris",
+        )
+        self.assertIsNotNone(env)
+        delivered = await asyncio.wait_for(sub_gen.__anext__(), timeout=1.0)
+        self.assertEqual(delivered.type, "trace.span")
+        self.assertEqual(delivered.payload["span_name"], "llm.request")
+
 
 if __name__ == "__main__":
     unittest.main()

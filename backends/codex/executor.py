@@ -124,6 +124,34 @@ logger = logging.getLogger(__name__)
 AGENT_NAME = os.environ.get("AGENT_NAME", "codex")
 AGENT_OWNER = os.environ.get("AGENT_OWNER", AGENT_NAME)
 AGENT_ID = os.environ.get("AGENT_ID", "codex")
+
+# Backend→harness generic event channel (#1110 phase 3). Import lazily
+# to tolerate environments where PYTHONPATH is not set up for the
+# shared/ mount yet (unit tests invoked in-tree). Emit sites wrap in
+# try/except and never let emission failure propagate.
+try:
+    from hook_events import schedule_event_post as _schedule_event_post  # type: ignore
+except Exception:  # pragma: no cover
+    try:
+        from shared.hook_events import schedule_event_post as _schedule_event_post  # type: ignore
+    except Exception:
+        def _schedule_event_post(*_a, **_kw):  # type: ignore
+            return False
+
+
+def _session_id_hash(session_id: str) -> str:
+    """Return the 12-char sha256 prefix used in events (#1110 phase 3)."""
+    if not session_id:
+        return "000000000000"
+    return hashlib.sha256(session_id.encode("utf-8")).hexdigest()[:12]
+
+
+def _emit_event_safe(event_type: str, payload: dict) -> None:
+    """Fire-and-forget event emit — never raises into the caller."""
+    try:
+        _schedule_event_post(event_type, payload, agent_id=AGENT_OWNER or AGENT_NAME)
+    except Exception as exc:  # pragma: no cover
+        logger.debug("event emit (%s) raised: %r", event_type, exc)
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
 TRACE_LOG = os.environ.get("TRACE_LOG", "/home/agent/logs/tool-activity.jsonl")
 AGENT_MD = "/home/agent/.codex/AGENTS.md"
@@ -1758,6 +1786,20 @@ async def run_query(
                         backend_sdk_tool_errors_total.labels(**_LABELS, tool=tool_name).inc()
                     if backend_sdk_tool_result_size_bytes is not None:
                         backend_sdk_tool_result_size_bytes.labels(**_LABELS, tool=tool_name).observe(full_bytes)
+                    # tool.use event (#1110 phase 3). Fire-and-forget.
+                    try:
+                        _emit_event_safe(
+                            "tool.use",
+                            {
+                                "session_id_hash": _session_id_hash(session_id),
+                                "tool": tool_name or "unknown",
+                                "duration_ms": int(_tool_elapsed * 1000),
+                                "outcome": "error" if is_error else "ok",
+                                "result_size_bytes": int(full_bytes),
+                            },
+                        )
+                    except Exception:
+                        pass
                     # Outbound MCP tool metric family (#1104) — no-op for
                     # non-mcp__ tool names.
                     try:
@@ -1895,6 +1937,22 @@ async def run_query(
     full_response = "".join(collected)
     if full_response:
         await log_entry("agent", full_response, session_id, model=resolved_model, tokens=_total_tokens or None)
+        # conversation.turn event (#1110 phase 3). One event per
+        # completed assistant turn; partial-response log_entry sites
+        # intentionally do NOT emit so the stream summarises the
+        # turn rather than every chunk.
+        try:
+            _emit_event_safe(
+                "conversation.turn",
+                {
+                    "session_id_hash": _session_id_hash(session_id),
+                    "role": "assistant",
+                    "content_bytes": len(full_response.encode("utf-8")),
+                    "model": resolved_model or "",
+                },
+            )
+        except Exception:
+            pass
 
     if backend_sdk_query_duration_seconds is not None:
         backend_sdk_query_duration_seconds.labels(**_LABELS, model=sanitize_model_label(resolved_model)).observe(time.monotonic() - _query_start)
@@ -1992,6 +2050,19 @@ async def _run_inner(
     _prompt_preview = prompt[:LOG_PROMPT_MAX_BYTES] + ("[truncated]" if len(prompt) > LOG_PROMPT_MAX_BYTES else "") if LOG_PROMPT_MAX_BYTES > 0 else "[redacted]"
     logger.info(f"Session {session_id} ({'new' if is_new else 'existing'}) — prompt: {_prompt_preview!r}")
     await log_entry("user", prompt, session_id, model=resolved_model)
+    # conversation.turn event (#1110 phase 3). Wrap — never raise.
+    try:
+        _emit_event_safe(
+            "conversation.turn",
+            {
+                "session_id_hash": _session_id_hash(session_id),
+                "role": "user",
+                "content_bytes": len((prompt or "").encode("utf-8")),
+                "model": resolved_model or "",
+            },
+        )
+    except Exception:
+        pass
 
     if backend_prompt_length_bytes is not None:
         backend_prompt_length_bytes.labels(**_LABELS).observe(len(prompt.encode()))

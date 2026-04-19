@@ -321,6 +321,76 @@ def _install_in_memory_sink(provider: Any) -> None:
         _span_ring_cap = 0
 
 
+# Allow-listed span names whose completion should be surfaced on the
+# harness SSE event stream as ``trace.span`` events (#1110 phase 3).
+# Keep this short — the stream carries the *high-level* shape of each
+# turn, not every instrumented function. Operators who want the full
+# span tree drill down via /api/traces on each backend.
+_TRACE_SPAN_EMIT_ALLOWLIST: set[str] = {
+    "llm.request",
+    "shell",
+    "mcp.handler",
+    "backend.mcp.tools_call",
+}
+
+
+def _emit_trace_span_event(span: Any) -> None:
+    """Best-effort emit of a ``trace.span`` event to the harness.
+
+    Called from ``_InMemorySpanProcessor.on_end``. Swallows every
+    exception — span persistence must never break on an event-emit
+    failure. Only fires for spans whose ``name`` is in
+    ``_TRACE_SPAN_EMIT_ALLOWLIST`` so we don't flood the stream with
+    per-sub-span noise.
+    """
+    try:
+        name = getattr(span, "name", "") or ""
+        if name not in _TRACE_SPAN_EMIT_ALLOWLIST:
+            return
+        start_ns = int(getattr(span, "start_time", 0) or 0)
+        end_ns = int(getattr(span, "end_time", 0) or 0)
+        duration_ms = max(0, (end_ns - start_ns) // 1_000_000) if end_ns >= start_ns else 0
+        # Status → "ok" | "error". Default to ok on any inspection failure.
+        status = "ok"
+        try:
+            _st = getattr(span, "status", None)
+            _code = getattr(_st, "status_code", None) if _st is not None else None
+            if _code is not None and getattr(_code, "name", "") == "ERROR":
+                status = "error"
+        except Exception:
+            pass
+        # Service name from the span's resource, matching the shape the
+        # /api/traces Jaeger JSON carries.
+        service = ""
+        try:
+            res = getattr(span, "resource", None)
+            if res is not None:
+                service = (res.attributes or {}).get("service.name", "") or ""
+        except Exception:
+            service = ""
+        payload: dict[str, Any] = {
+            "span_name": name,
+            "duration_ms": int(duration_ms),
+            "status": status,
+            "service": service or (os.environ.get("OTEL_SERVICE_NAME") or ""),
+        }
+        # Import schedule_event_post lazily so OTel bootstrap order
+        # doesn't depend on hook_events being importable at module
+        # load. Any failure here is silent — on_end never raises.
+        try:
+            from hook_events import schedule_event_post as _sep  # type: ignore
+        except Exception:
+            try:
+                from shared.hook_events import schedule_event_post as _sep  # type: ignore
+            except Exception:
+                return
+        agent_id = os.environ.get("AGENT_OWNER") or os.environ.get("AGENT_NAME")
+        _sep("trace.span", payload, agent_id=agent_id)
+    except Exception:
+        # Never raise out of on_end — the SpanProcessor contract must hold.
+        return
+
+
 class _InMemorySpanProcessor:
     """Append finished spans to the global ring buffer.
 
@@ -342,6 +412,10 @@ class _InMemorySpanProcessor:
         # GIL, so BatchSpanProcessor's worker thread can't interleave an
         # append with the old manual trim.
         ring.append(span)
+        # Fire trace.span event (#1110 phase 3) — best-effort, filtered to
+        # a small allow-list of top-level span names so the stream stays
+        # useful without flooding.
+        _emit_trace_span_event(span)
 
     def shutdown(self) -> None:
         return None
