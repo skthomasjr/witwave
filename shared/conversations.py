@@ -113,16 +113,38 @@ def _read_jsonl(path: str, since_dt: datetime | None, limit_n: int | None) -> li
         with open(path) as f:
             if offset > 0:
                 f.seek(offset)
-            for line in f:
+            # #1425: read line-by-line but only advance the cursor past
+            # the LAST successfully-parsed line. A partial/torn-read final
+            # line (writer flushed mid-record, reader sees it before the
+            # trailing `\n`) previously advanced `f.tell()` past the
+            # broken bytes, permanently losing the completed record on
+            # the next poll. Now we remember the position after each
+            # parsed line and use THAT as new_offset so torn tails
+            # retry on the next tick.
+            safe_offset = f.tell()
+            while True:
+                line = f.readline()
+                if not line:
+                    break
+                # Incomplete line (no trailing newline) — treat as
+                # possibly-torn; stop BEFORE advancing the offset so
+                # next poll re-reads from safe_offset.
+                if not line.endswith("\n"):
+                    break
                 line_stripped = line.strip()
                 if not line_stripped:
+                    safe_offset = f.tell()
                     continue
                 try:
                     entry = json.loads(line_stripped)
                 except json.JSONDecodeError:
+                    # Malformed complete line — advance past it (can't
+                    # re-parse successfully later).
+                    safe_offset = f.tell()
                     continue
                 entries.append(entry)
-            new_offset = f.tell()
+                safe_offset = f.tell()
+            new_offset = safe_offset
     except FileNotFoundError:
         return []
     # Trim buffered entries to cap so memory stays bounded on long-lived files.
@@ -192,15 +214,29 @@ def _read_tool_audit_jsonl(
             with open(path) as f:
                 if offset > 0:
                     f.seek(offset)
-                for line in f:
+                # Track a "safe" offset that only advances past fully-terminated
+                # lines (#1425). Using `for line in f` / unconditional `f.tell()`
+                # jumps to EOF even when the final line lacks a trailing newline
+                # (writer mid-flush), permanently losing that record on the next
+                # poll. Break on a torn tail and retry it next tick.
+                safe_offset = f.tell()
+                while True:
+                    line = f.readline()
+                    if not line:
+                        break
+                    if not line.endswith("\n"):
+                        break
                     stripped = line.strip()
                     if not stripped:
+                        safe_offset = f.tell()
                         continue
                     try:
                         parsed_entries.append(json.loads(stripped))
                     except json.JSONDecodeError:
+                        safe_offset = f.tell()
                         continue
-                new_offset = f.tell()
+                    safe_offset = f.tell()
+                new_offset = safe_offset
         except FileNotFoundError:
             return []
         if len(parsed_entries) > _TAIL_CACHE_ENTRY_CAP:

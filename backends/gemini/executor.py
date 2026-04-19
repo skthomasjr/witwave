@@ -232,7 +232,7 @@ logger = logging.getLogger(__name__)
 
 
 AGENT_NAME = os.environ.get("AGENT_NAME", "gemini")
-AGENT_OWNER = os.environ.get("AGENT_OWNER", AGENT_NAME)
+AGENT_OWNER = os.environ.get("AGENT_OWNER") or AGENT_NAME
 AGENT_ID = os.environ.get("AGENT_ID", "gemini")
 
 # Backend→harness generic event channel (#1110 phase 3). Import lazily

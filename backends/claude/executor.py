@@ -381,7 +381,7 @@ def _session_path_self_test() -> None:
         _bump("probe_exception")
 
 AGENT_NAME = os.environ.get("AGENT_NAME", "claude")
-AGENT_OWNER = os.environ.get("AGENT_OWNER", AGENT_NAME)
+AGENT_OWNER = os.environ.get("AGENT_OWNER") or AGENT_NAME
 AGENT_ID = os.environ.get("AGENT_ID", "claude")
 
 # Backend→harness generic event channel (#1110 phase 3). Imported lazily
