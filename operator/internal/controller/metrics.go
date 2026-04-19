@@ -90,13 +90,20 @@ var (
 	//   - "build_error"    — buildNyxPromptConfigMap failed
 	//   - "owner_error"    — controllerutil.SetControllerReference failed
 	//   - "apply_error"    — applyNyxPromptConfigMap failed
-	// Labelled by agent so operators can see partial-binding hotspots.
+	//
+	// Cardinality safety (#1070): previously this counter carried an
+	// "agent" label taken directly from spec.agentRefs[].name. Since
+	// those names include referenced-but-nonexistent agents, a malformed
+	// CR with thousands of unique bogus refs could explode the operator
+	// metrics endpoint. The agent label has been dropped — operators
+	// who need per-agent attribution should consult the
+	// NyxPrompt.Status.Bindings list directly.
 	nyxpromptBindingOutcomesTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "nyxprompt_binding_outcomes_total",
-			Help: "Total NyxPrompt→NyxAgent binding attempts, labelled by agent and outcome.",
+			Help: "Total NyxPrompt→NyxAgent binding attempts, labelled by outcome.",
 		},
-		[]string{"agent", "outcome"},
+		[]string{"outcome"},
 	)
 
 	// nyxpromptReadyCount mirrors NyxPrompt.Status.ReadyCount per CR so

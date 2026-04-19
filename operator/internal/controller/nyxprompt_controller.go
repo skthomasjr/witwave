@@ -96,7 +96,12 @@ func (r *NyxPromptReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	prompt := &nyxv1alpha1.NyxPrompt{}
 	if err := r.Get(ctx, req.NamespacedName, prompt); err != nil {
 		if apierrors.IsNotFound(err) {
-			// ConfigMap GC is handled by OwnerReferences. No work.
+			// ConfigMap GC is handled by OwnerReferences. Drain
+			// per-prompt timeseries (#1070) so Prometheus doesn't
+			// carry stale (namespace, name) labels for a deleted CR.
+			nyxpromptReadyCount.DeleteLabelValues(req.Namespace, req.Name)
+			nyxpromptDesiredCount.DeleteLabelValues(req.Namespace, req.Name)
+			nyxpromptStatusPatchConflictsTotal.DeleteLabelValues(req.Namespace, req.Name)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
@@ -177,9 +182,12 @@ func (r *NyxPromptReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}
 
-	// Flush outcomes exactly once per binding (#906).
-	for agentName, outcome := range finalOutcome {
-		nyxpromptBindingOutcomesTotal.WithLabelValues(agentName, outcome).Inc()
+	// Flush outcomes exactly once per binding (#906). The per-outcome
+	// counter no longer carries an agent label (#1070) to avoid
+	// unbounded cardinality from malformed specs with thousands of
+	// referenced-but-nonexistent agent names.
+	for _, outcome := range finalOutcome {
+		nyxpromptBindingOutcomesTotal.WithLabelValues(outcome).Inc()
 	}
 
 	// GC any NyxPrompt-owned ConfigMaps whose (prompt, agent) pair is no
