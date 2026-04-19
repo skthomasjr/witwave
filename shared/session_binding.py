@@ -61,6 +61,31 @@ _warn_lock = threading.Lock()
 _SESSION_BIND_REARM_EVERY = int(os.environ.get("SESSION_BIND_WARN_REARM_EVERY", "500"))
 missing_caller_total = None  # type: ignore[assignment]
 
+# #1103: labelled fallback counter. Backends register a Prometheus
+# Counter with label schema {agent, agent_id, backend, reason} via
+# set_fallback_counter(counter, labels). ``reason`` is one of:
+#   "secret_unset"             - SESSION_ID_SECRET not configured.
+#   "caller_identity_missing"  - secret set but no caller identity.
+#   "empty_raw_sid"            - empty / falsy raw_sid → fresh uuid4.
+_fallback_counter = None  # type: ignore[assignment]
+_fallback_labels: dict[str, str] = {}
+
+
+def set_fallback_counter(counter, labels: dict[str, str] | None = None) -> None:
+    """Register a backend Counter to be incremented on each fallback (#1103)."""
+    global _fallback_counter, _fallback_labels
+    _fallback_counter = counter
+    _fallback_labels = dict(labels or {})
+
+
+def _bump_fallback(reason: str) -> None:
+    if _fallback_counter is None:
+        return
+    try:
+        _fallback_counter.labels(**_fallback_labels, reason=reason).inc()
+    except Exception:
+        pass
+
 
 def _legacy_derive(raw_sid: str) -> str:
     """Current/pre-#710 derivation: deterministic uuid5 over the raw id."""
@@ -107,12 +132,14 @@ def derive_session_id(
     * Secret set + no caller → one-shot warning + legacy derivation.
     """
     if not raw_sid:
+        _bump_fallback("empty_raw_sid")
         return str(uuid.uuid4())
 
     if secret is None:
         secret = os.environ.get(_ENV_VAR, "")
 
     if not secret:
+        _bump_fallback("secret_unset")
         return _legacy_derive(raw_sid)
 
     if not caller_identity:
@@ -135,6 +162,7 @@ def derive_session_id(
                 missing_caller_total.inc()
             except Exception:
                 pass
+        _bump_fallback("caller_identity_missing")
         return _legacy_derive(raw_sid)
 
     caller_hash = _hash_caller(caller_identity)

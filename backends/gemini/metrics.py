@@ -109,6 +109,8 @@ backend_tool_audit_entries_total: prometheus_client.Counter | None = None
 # Per-entry byte histogram + rotation-pressure counter for tool-activity.jsonl (#1102).
 backend_tool_audit_bytes_per_entry: prometheus_client.Histogram | None = None
 backend_tool_audit_rotation_pressure_total: prometheus_client.Counter | None = None
+# shared/session_binding fallback counter — #1103.
+backend_session_binding_fallback_total: prometheus_client.Counter | None = None
 backend_hooks_config_errors_total: prometheus_client.Counter | None = None
 backend_hooks_config_reloads_total: prometheus_client.Counter | None = None
 # Enforcement-mode gauge (#736). Reports whether PreToolUse hooks are
@@ -520,6 +522,13 @@ if _enabled:
         "backend_tool_audit_rotation_pressure_total",
         "Total opportunistic checks that found tool-activity.jsonl above "
         "TOOL_ACTIVITY_ROTATION_PRESSURE_BYTES. See #1102.",
+        ["agent", "agent_id", "backend", "reason"],
+    )
+    # #1103: shared/session_binding fallback path counter.
+    backend_session_binding_fallback_total = prometheus_client.Counter(
+        "backend_session_binding_fallback_total",
+        "Total derive_session_id() calls that fell back to legacy uuid5 "
+        "derivation instead of the HMAC-bound per-caller binding. See #1103.",
         ["agent", "agent_id", "backend", "reason"],
     )
     backend_hooks_config_errors_total = prometheus_client.Counter(
