@@ -1940,13 +1940,99 @@ class AgentExecutor(A2AAgentExecutor):
             logger.debug("hook.decision transport scheduling failed: %r", _hev_exc)
 
     def _mcp_watchers(self):
-        """Return callables for GEMINI.md, hooks.yaml, mcp.json, and parked-stack watchdog (#371, #631, #640, #735)."""
+        """Return callables for GEMINI.md, hooks.yaml, mcp.json, parked-stack watchdog,
+        and the API key secret-file rotator (#371, #631, #640, #735, #1057)."""
         return [
             self.agent_md_watcher,
             self.hooks_config_watcher,
             self.mcp_config_watcher,
             self.mcp_parked_stacks_watchdog,
+            self.api_key_file_watcher,
         ]
+
+    async def api_key_file_watcher(self) -> None:
+        """Watch the API key file and refresh the genai.Client on change (#1057).
+
+        Operators rotating the Gemini key previously had to restart every
+        pod: ``_get_client`` cached the client for the process lifetime,
+        and ``_close_client`` was never invoked outside shutdown. This
+        watcher closes the cached client and re-reads the env on every
+        change to ``GEMINI_API_KEY_FILE`` so the next request constructs
+        a fresh client against the rotated key.
+
+        Disabled when ``GEMINI_API_KEY_FILE`` is unset (key is sourced from
+        the literal env var only — no file to watch). Uses the same
+        watchfiles.awatch pattern as every other watcher in this module
+        so the restart / watcher_events metrics remain comparable.
+        """
+        key_file = os.environ.get("GEMINI_API_KEY_FILE", "").strip()
+        if not key_file:
+            # No file-backed key configured. Log once and return — the
+            # watcher is deliberately structural so it's always listed
+            # alongside its peers but becomes a no-op when unused.
+            logger.info(
+                "api_key_file_watcher: GEMINI_API_KEY_FILE unset; key rotation "
+                "via secret-file is disabled. Set GEMINI_API_KEY_FILE to a path "
+                "for hot rotation without pod restart. (#1057)"
+            )
+            return
+        from watchfiles import awatch as _awatch
+        watch_dir = os.path.dirname(os.path.abspath(key_file)) or "/"
+        while True:
+            if not os.path.isdir(watch_dir):
+                logger.info(
+                    "api_key_file_watcher: directory %r not found — retrying in 10s.",
+                    watch_dir,
+                )
+                await asyncio.sleep(10)
+                continue
+            try:
+                async for changes in _awatch(watch_dir, recursive=False):
+                    if backend_watcher_events_total is not None:
+                        backend_watcher_events_total.labels(
+                            **_LABELS, watcher="api_key_file",
+                        ).inc()
+                    for _, path in changes:
+                        if os.path.abspath(path) == os.path.abspath(key_file):
+                            logger.info(
+                                "api_key_file_watcher: %r changed — "
+                                "closing cached genai.Client so the next "
+                                "request picks up the rotated key.",
+                                key_file,
+                            )
+                            # Re-read the file contents into the env so the
+                            # next _get_client sees the new key. Failures
+                            # are logged but non-fatal — if the operator
+                            # wrote a partial file mid-atomic-rename, the
+                            # watcher will re-fire when the rename completes.
+                            try:
+                                with open(key_file, "r") as _fh:
+                                    _new_key = _fh.read().strip()
+                                if _new_key:
+                                    os.environ["GEMINI_API_KEY"] = _new_key
+                            except Exception as _read_exc:
+                                logger.warning(
+                                    "api_key_file_watcher: failed to read %r: %r",
+                                    key_file, _read_exc,
+                                )
+                            try:
+                                await _close_client()
+                            except Exception as _close_exc:
+                                logger.warning(
+                                    "api_key_file_watcher: _close_client raised %r",
+                                    _close_exc,
+                                )
+                            break
+            except Exception as _w_exc:
+                logger.warning(
+                    "api_key_file_watcher: awatch loop exited (%r) — retrying in 10s.",
+                    _w_exc,
+                )
+                if backend_file_watcher_restarts_total is not None:
+                    backend_file_watcher_restarts_total.labels(
+                        **_LABELS, watcher="api_key_file",
+                    ).inc()
+                await asyncio.sleep(10)
 
     async def mcp_parked_stacks_watchdog(self) -> None:
         """Periodic watchdog that force-closes parked MCP stacks older than
