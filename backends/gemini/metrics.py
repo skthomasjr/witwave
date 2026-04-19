@@ -61,6 +61,7 @@ backend_log_write_errors_total: prometheus_client.Counter | None = None
 
 # Session persistence metrics
 backend_session_history_save_errors_total: prometheus_client.Counter | None = None
+backend_session_history_reset_total: prometheus_client.Counter | None = None
 
 # SDK metrics
 backend_sdk_subprocess_spawn_duration_seconds: prometheus_client.Histogram | None = None
@@ -355,6 +356,17 @@ if _enabled:
     backend_session_history_save_errors_total = prometheus_client.Counter(
         "backend_session_history_save_errors_total",
         "Total permanent session history save failures after all retries are exhausted.",
+        ["agent", "agent_id", "backend"],
+    )
+    # #1000: track the follow-up path where _load_history is skipped
+    # because a prior save permanently failed. Operators could not
+    # previously distinguish "save failed once but the user continued
+    # normally" from "user's session was silently reset from scratch";
+    # this counter ticks exactly once per reset.
+    backend_session_history_reset_total = prometheus_client.Counter(
+        "backend_session_history_reset_total",
+        "Total sessions reset to empty history because a prior save permanently "
+        "failed and the stale on-disk file was discarded. See #1000.",
         ["agent", "agent_id", "backend"],
     )
 

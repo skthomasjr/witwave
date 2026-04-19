@@ -118,6 +118,7 @@ from metrics import (
     backend_session_age_seconds,
     backend_session_evictions_total,
     backend_session_history_save_errors_total,
+    backend_session_history_reset_total,
     backend_session_idle_seconds,
     backend_session_starts_total,
     backend_task_cancellations_total,
@@ -1468,6 +1469,23 @@ async def run_query(
             )
             if _save_failed:
                 history = []
+                # #1000: surface the silent-reset path. Operators need
+                # to distinguish "one save hiccup, user continued
+                # normally" from "user's session was wiped and they're
+                # talking to a brand-new assistant". Bump a counter and
+                # log at WARNING so both /metrics and the log stream
+                # carry the signal.
+                if backend_session_history_reset_total is not None:
+                    try:
+                        backend_session_history_reset_total.labels(**_LABELS).inc()
+                    except Exception:
+                        pass
+                logger.warning(
+                    "Gemini run_query: session %r starting fresh — prior "
+                    "history save permanently failed; stale on-disk file "
+                    "will be removed (#886, #1000).",
+                    session_id,
+                )
                 try:
                     _stale_path = _session_path(session_id)
                     if os.path.exists(_stale_path):
