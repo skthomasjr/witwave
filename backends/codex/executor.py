@@ -156,6 +156,19 @@ CODEX_MODEL = os.environ.get("CODEX_MODEL") or "gpt-5.1-codex"
 OPENAI_API_KEY: str | None = os.environ.get("OPENAI_API_KEY") or None
 
 
+def _current_openai_api_key() -> str | None:
+    """Return the live OpenAI API key, honouring hot-reload semantics (#728).
+
+    Reads the env var on every call so a ``OPENAI_API_KEY_FILE`` watcher (or
+    an external process that rewrites the env via ``os.environ``) can rotate
+    the credential without a pod restart, matching gemini's #1057 pattern.
+
+    Falls back to the module-load value only if the env has been unset since
+    import (prevents regression when the watcher is disabled).
+    """
+    return os.environ.get("OPENAI_API_KEY") or OPENAI_API_KEY or None
+
+
 def _resolve_model_label(model: str | None) -> str:
     """Resolve a non-empty, cardinality-safe model label for observability (#719).
 
@@ -1152,7 +1165,10 @@ async def run_query(
             backend_session_history_save_errors_total.labels(**_LABELS).inc()
         session = None
 
-    run_config = RunConfig(model_provider=MultiProvider(openai_api_key=OPENAI_API_KEY)) if OPENAI_API_KEY else None
+    # Read the key per-request so OPENAI_API_KEY_FILE rotation takes effect on
+    # the next call without a pod restart (#728).
+    _live_openai_key = _current_openai_api_key()
+    run_config = RunConfig(model_provider=MultiProvider(openai_api_key=_live_openai_key)) if _live_openai_key else None
 
     collected: list[str] = []
     _query_start = time.monotonic()
@@ -1794,8 +1810,14 @@ class AgentExecutor(A2AAgentExecutor):
         self._initial_tool_config_loaded = False
 
     def _mcp_watchers(self):
-        """Return callables for AGENTS.md, mcp.json, and config.toml watching (#371, #432, #561)."""
-        return [self.agent_md_watcher, self.mcp_config_watcher, self.tool_config_watcher]
+        """Return callables for AGENTS.md, mcp.json, config.toml, and API-key
+        secret-file watching (#371, #432, #561, #728)."""
+        return [
+            self.agent_md_watcher,
+            self.mcp_config_watcher,
+            self.tool_config_watcher,
+            self.api_key_file_watcher,
+        ]
 
     async def perform_initial_loads(self) -> None:
         """Pre-load AGENTS.md, mcp.json, and config.toml before readiness (#1095).
@@ -2097,6 +2119,75 @@ class AgentExecutor(A2AAgentExecutor):
             if backend_file_watcher_restarts_total is not None:
                 backend_file_watcher_restarts_total.labels(**_LABELS, watcher="tool_config").inc()
             await asyncio.sleep(10)
+
+    async def api_key_file_watcher(self) -> None:
+        """Watch the OPENAI API key file and refresh the cached key on change (#728).
+
+        Mirrors gemini's #1057 pattern. Operators rotating ``OPENAI_API_KEY``
+        previously had to restart every pod because the key was captured at
+        module import. When ``OPENAI_API_KEY_FILE`` is set, this watcher
+        re-reads the file and updates ``os.environ['OPENAI_API_KEY']`` on
+        every change so the next ``run_query`` call picks up the new value
+        via ``_current_openai_api_key``.
+
+        Disabled when ``OPENAI_API_KEY_FILE`` is unset (key sourced from the
+        literal env var only). Uses the same ``watchfiles.awatch`` pattern as
+        every other watcher in this module so restart / watcher_events
+        metrics remain comparable.
+        """
+        key_file = os.environ.get("OPENAI_API_KEY_FILE", "").strip()
+        if not key_file:
+            logger.info(
+                "api_key_file_watcher: OPENAI_API_KEY_FILE unset; key rotation "
+                "via secret-file is disabled. Set OPENAI_API_KEY_FILE to a path "
+                "for hot rotation without pod restart. (#728)"
+            )
+            return
+        from watchfiles import awatch as _awatch
+
+        watch_dir = os.path.dirname(os.path.abspath(key_file)) or "/"
+        while True:
+            if not os.path.isdir(watch_dir):
+                logger.info(
+                    "api_key_file_watcher: directory %r not found — retrying in 10s.",
+                    watch_dir,
+                )
+                await asyncio.sleep(10)
+                continue
+            try:
+                async for changes in _awatch(watch_dir, recursive=False):
+                    if backend_watcher_events_total is not None:
+                        backend_watcher_events_total.labels(
+                            **_LABELS, watcher="api_key_file",
+                        ).inc()
+                    for _, path in changes:
+                        if os.path.abspath(path) == os.path.abspath(key_file):
+                            logger.info(
+                                "api_key_file_watcher: %r changed — "
+                                "refreshing OPENAI_API_KEY for the next request.",
+                                key_file,
+                            )
+                            try:
+                                with open(key_file, "r") as _fh:
+                                    _new_key = _fh.read().strip()
+                                if _new_key:
+                                    os.environ["OPENAI_API_KEY"] = _new_key
+                            except Exception as _read_exc:
+                                logger.warning(
+                                    "api_key_file_watcher: failed to read %r: %r",
+                                    key_file, _read_exc,
+                                )
+                            break
+            except Exception as _w_exc:
+                logger.warning(
+                    "api_key_file_watcher: awatch loop exited (%r) — retrying in 10s.",
+                    _w_exc,
+                )
+                if backend_file_watcher_restarts_total is not None:
+                    backend_file_watcher_restarts_total.labels(
+                        **_LABELS, watcher="api_key_file",
+                    ).inc()
+                await asyncio.sleep(10)
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         _exec_start = time.monotonic()
