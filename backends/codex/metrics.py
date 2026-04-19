@@ -137,6 +137,12 @@ backend_codex_hooks_denials_total: prometheus_client.Counter | None = None
 # each deny.
 backend_hooks_denials_total: prometheus_client.Counter | None = None
 backend_hooks_shed_total: prometheus_client.Counter | None = None
+# #1052: counts hook.decision emissions where _current_session_id
+# fell through to its "" default. Normal task dispatch seeds the
+# ContextVar in _run_inner; an empty value means an edge-dispatch path
+# (warmup, lifespan, /mcp tools/call) reached the baseline without a
+# session seed — worth a WARN + an alertable metric.
+backend_hook_session_missing_total: prometheus_client.Counter | None = None
 # Peer-parity hook metric family (#800) — matches the claude superset so
 # cross-backend dashboards don't drop the series. codex's hook path is
 # shell-baseline-only today (#586/#799 deferred) so warnings/config-*
@@ -659,6 +665,13 @@ if _enabled:
         "Non-zero rate indicates the harness is unreachable or slow while "
         "shell baseline denials fire; the backend would otherwise OOM.",
         ["agent", "agent_id", "backend"],
+    )
+    # #1052: track emissions that fell back to empty session_id.
+    backend_hook_session_missing_total = prometheus_client.Counter(
+        "backend_hook_session_missing_total",
+        "Total hook.decision emissions where _current_session_id was empty; "
+        "indicates a baseline check fired outside a task-dispatch path. See #1052.",
+        ["agent", "agent_id", "backend", "tool", "source"],
     )
     backend_tool_audit_entries_total = prometheus_client.Counter(
         "backend_tool_audit_entries_total",

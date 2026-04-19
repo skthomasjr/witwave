@@ -97,6 +97,7 @@ from metrics import (
     backend_codex_hooks_denials_total,
     backend_hooks_denials_total,
     backend_hooks_shed_total,
+    backend_hook_session_missing_total,
     backend_mcp_outbound_duration_seconds,
     backend_mcp_outbound_requests_total,
     backend_tool_audit_bytes_per_entry,
@@ -457,6 +458,26 @@ async def _shell_executor_inner(req: LocalShellCommandRequest) -> str:
                 if backend_hooks_shed_total is not None
                 else None
             )
+            _sid = _current_session_id.get()
+            if not _sid:
+                # #1052: empty session_id means a baseline check fired
+                # outside the normal _run_inner dispatch path (warmup,
+                # lifespan, /mcp tools/call). Treat as a defect surface —
+                # WARN and bump a dedicated counter so dashboards catch
+                # the regression class that #937 closed for the primary
+                # path only.
+                logger.warning(
+                    "_shell_executor: emitting hook.decision with empty "
+                    "session_id (edge-dispatch path?) rule=%s",
+                    rule,
+                )
+                if backend_hook_session_missing_total is not None:
+                    try:
+                        backend_hook_session_missing_total.labels(
+                            **_LABELS, tool="shell", source="baseline",
+                        ).inc()
+                    except Exception:
+                        pass
             _hook_events.schedule_post(
                 {
                     "agent": AGENT_OWNER or AGENT_NAME,
@@ -464,7 +485,8 @@ async def _shell_executor_inner(req: LocalShellCommandRequest) -> str:
                     # seeded in _run_inner. Falls back to "" only when the
                     # executor is driven outside a normal task run (tests,
                     # warmup, etc.) — same semantics as the old hard-coded "".
-                    "session_id": _current_session_id.get(),
+                    # #1052: empty-value case is now instrumented above.
+                    "session_id": _sid,
                     "tool": "shell",
                     "decision": "deny",
                     "rule_name": rule,
