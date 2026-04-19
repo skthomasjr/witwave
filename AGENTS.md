@@ -510,3 +510,151 @@ Set on **MCP tool** containers:
   touched.
 - **PodMonitor teardown on operator-disable** — when `spec.enabled=false` on a NyxAgent, the reconciler
   now tears down the optional `PodMonitor` and `ServiceMonitor` CRs alongside everything else.
+
+## Cycle 3 additions (#975–#1127)
+
+### New environment variables
+
+Harness:
+
+| Variable                             | Purpose                                                                                                                          |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `LOG_REDACT_HIGH_ENTROPY`            | Opt-in gate for the catch-all high-entropy redaction pattern; UUID/OTel trace/span IDs are shielded regardless (#1034).         |
+| `PARSE_FRONTMATTER_MAX_FILE_BYTES`   | Per-file size cap (default 128 KiB) before `parse_frontmatter` reads a scheduler `.md` — defends against YAML-bomb surface (#1038). |
+
+Backends:
+
+| Variable                                   | Purpose                                                                                                     |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `OPENAI_API_KEY_FILE`                      | Codex-only. Path to a mounted file holding the OpenAI key; watched for change so rotation no longer requires pod restart (#728, parity with gemini #1057). |
+| `GEMINI_API_KEY_FILE`                      | Gemini-only. Path to a mounted file holding the Gemini API key; watcher calls `_close_client` on change (#1057). |
+| `GEMINI_AFC_HISTORY_SOFT_CAP_BYTES`        | Gemini soft ceiling on `chat.history` bytes during AFC ping-pong; raises `BudgetExceededError` when exceeded (default 2 MiB, #1058). |
+| `SQLITE_TASK_STORE_BUSY_TIMEOUT_MS`        | Codex SqliteTaskStore busy-timeout tuning; replaces the previous process-wide asyncio.Lock with per-thread connections (#726). |
+| `BROWSER_CONTEXT_MAX_IDLE_SECONDS`         | Codex BrowserPool idle-release sweep interval — prevents linear RSS growth under per-session Chromium caching (#1053). |
+| `COMPUTER_MAX_CONTEXTS`                    | Codex hard cap on concurrent Chromium contexts, independent of the LRU session count (#1053).               |
+| `ALLOWED_TOOLS`                            | Gemini allow-list scaffold mirrored from claude; wired with `backend_allowed_tools_reload_total` counter ahead of hand-rolled AFC retrofit (#1100). |
+
+MCP tool containers:
+
+| Variable                                    | Purpose                                                                                                     |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `MCP_SUBPROCESS_TIMEOUT_SEC`                | Unified subprocess / API-call timeout for mcp-helm + mcp-kubernetes; falls back to legacy `HELM_SUBPROCESS_TIMEOUT_SECONDS` when set (#778, #857). |
+| `MCP_RESPONSE_MAX_BYTES`                    | Response-size cap applied to every query/list/get tool output (default 8 MiB, 0 disables, #778).            |
+| `MCP_LOGS_TAIL_LINES_MAX`                   | mcp-kubernetes hard cap on `logs()` tail_lines (default 50 000, #778).                                      |
+| `MCP_READ_ONLY` / `MCP_HELM_READ_ONLY` / `MCP_KUBERNETES_READ_ONLY` | Maintenance-mode switch — keeps read tools available while rejecting mutating tools with a clear error (#1123). |
+| `MCP_AUDIT_LOG_PATH`                        | Durable JSONL audit sink path for privileged ops (`read_secret_value`, `apply`, `delete`, `install`, `upgrade`, `rollback`, `uninstall`) — independent of OTel (#1125). |
+| `MCP_TOOL_BUDGET_<SERVER>_<TOOL>`           | Per-(server, tool) rolling call budget expressed as `N/<duration>` (s/m/h/ms); raises `CallBudgetExhausted` before concurrency-cap acquisition and bumps `mcp_tool_budget_exhausted_total` (#1124). |
+| `HELM_VALUES_TMPDIR`                        | Override for the tmpfs/emptyDir path used by mcp-helm when falling back from `helm --values=-` stdin — lets operators target a memory-backed volume so values never touch disk (#1081). |
+| `PROMETHEUS_URL` / `PROMETHEUS_BEARER_TOKEN` | Upstream endpoint + optional bearer for the new `mcp-prometheus` tool scaffold (#853).                     |
+
+Operator:
+
+| Variable          | Purpose                                                                                                     |
+| ----------------- | ----------------------------------------------------------------------------------------------------------- |
+| (annotation)      | `nyx.ai/reconcile-paused=true` on a NyxAgent short-circuits the reconcile before finalizer logic; deletions still proceed so paused agents remain removable (#1113). |
+| (annotation)      | `nyx.ai/credentials-checksum` is now stamped on backend pod templates — a rotated `existingSecret` triggers a rolling restart via controlled checksum drift (#1114). |
+
+### New chart values
+
+- `podSecurity.readOnlyRootFilesystem` flipped to `true` by default; `charts/nyx/templates/_helpers.tpl` ships a
+  `nyx.hardenedContainerSecurityContext` helper applied uniformly to every container + initContainer for
+  PSS-restricted compliance (#1073).
+- `mcpTools.<name>.rbac.clusterWide` (default `false`) — defaults to namespace-scoped `Role`+`RoleBinding`;
+  set to `true` to revert to `ClusterRole`+`ClusterRoleBinding` (#1074).
+- `mcpTools.<name>.networkPolicy.ingress.allowNyxAgents` — default ingress rule letting only pods carrying
+  `app.kubernetes.io/part-of: nyx` reach MCP tool Services on `:8000` (#1074).
+- `mcpTools.<name>.{nodeSelector,tolerations,affinity,topologySpreadConstraints,priorityClassName}` —
+  scheduling values wired for mcp-tools pods (#1116).
+- `mcpTools.prometheus.*` — toggle block for the new `mcp-prometheus` scaffold (disabled by default, #853).
+- `serviceMesh.{enabled,type}` (both charts) — single knob rendering linkerd / istio / none sidecar-injection
+  annotations uniformly across agents, mcp-tools, dashboard, and operator pods (#1121).
+- `prometheusRule.alerts.{BackendDown,HookDenialSpike,McpAuthFailure,WebhookTimeout,LockWaitSaturation}` —
+  opinionated default PrometheusRule template (disabled by default, individually toggleable, #1117).
+- `dashboard.traceApiAllowCrossOrigin` + `dashboard.nginx.cspConnectSrc` — explicit opt-in required for
+  cross-origin `traceApiUrl`; same-origin by default (#1061).
+- `agents[].gitSyncs[].repo` now rejects `^https?://[^/]*:[^/]*@` at render time — credentials-in-URL are
+  refused; use `existingSecret` + `GITSYNC_REPO` env injection (#1077).
+- `values.schema.json` — `agents[].name` and `agents[].backends[].name` enforce DNS-1123
+  `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$` + `maxLength: 63` (#1023).
+
+### New endpoints
+
+- **harness** — `POST /validate` dry-run parses supplied frontmatter and returns structured errors without
+  registering the item; bearer-gated by `ADHOC_RUN_AUTH_TOKEN` (#1088).
+- **harness** — `/jobs`, `/tasks`, `/heartbeat`, `/continuations` snapshot responses now carry
+  `next_fire` / `last_fire` / `last_success` fields (#1087).
+- **harness** — `/.well-known/agent-runs.json` discovery doc extended with `/webhooks` and `/continuations`
+  introspection surfaces (#1086).
+- **MCP tool servers** — `GET /info` on both mcp-helm and mcp-kubernetes advertises image/SDK/tool versions,
+  helm-diff plugin presence, feature flags, and the tool list; bearer-gated (#1122).
+- **mcp-helm** — `diff_manifest(manifest, redact)` tool accepts raw YAML and reports what would change via
+  `kubectl diff -f -` (#1127).
+
+### New metrics
+
+- `harness_hook_decision_dropped_total` (#1085), `harness_hook_decision_listener_errors_total{listener,error}`
+  + `harness_hook_decision_listener_dup_rejects_total` (#1036).
+- `harness_prompt_env_substitutions_total{var,result=hit|missing|denied}` (#1089).
+- `backend_session_caller_cardinality` gauge — unique caller-identity hashes per backend; detects the
+  single-tenant-token collapse where every caller maps to one identity (#1049).
+- `backend_session_binding_fallback_total{reason}` — fires when `SESSION_ID_SECRET` is set but a request
+  lacks `caller_identity` and falls back to legacy uuid5 (#1103).
+- `backend_mcp_outbound_requests_total{server,result}` + `backend_mcp_outbound_request_duration_seconds` —
+  backend-as-MCP-client observability of mcp-kubernetes / mcp-helm calls, separate from SDK-internal tools (#1104).
+- `backend_streaming_chunks_dropped_total` — claude parity with codex #724 (#1091).
+- `backend_sdk_info{sdk,version}` Info gauge across all three backends (#1092).
+- `backend_hook_session_missing_total` — codex bump when `_current_session_id` ContextVar is empty (#1052).
+- `backend_hooks_config_errors_total{reason='predicate_runtime'}` — codex bump on baseline-predicate
+  exception previously silently swallowed (#1055).
+- `backend_session_history_reset_total` — gemini WARN-path counter for silent save-history resets (#1000).
+- `mcp_tool_budget_exhausted_total{server,tool}` (#1124).
+- `mcp_k8s_token_reload_total` + `mcp_discovery_reload_total` — MCP-kubernetes SA token and CRD discovery
+  cache refresh counters tied to the 401 / NoKindMatchError reload-once wrappers (#1082, #1083).
+- `helm_subprocess_duration_seconds{command,outcome}` (#1126) and
+  `k8s_api_call_duration_seconds{verb,resource,outcome}` (#1126) — inner-work histograms beside the existing
+  handler-span duration.
+- `nyxagent_credential_rotations_total{namespace,name}` (#1114), `nyxagent_leader{pod}` gauge (#1115),
+  `nyxprompt_webhook_index_fallback_total` (#1069), `nyxagent_manifest_owner_ref_skipped_no_uid_total{namespace}` (#1016).
+
+### Additional security hardening
+
+- **REPLACE_ME guard covers `valueFrom` + `envFrom` + `credentials.existingSecret`** — not just inline
+  `env[].value` (#1072). Denylist now matches `*REPLACE_ME*`, `*test*`, and `nyx-test-credentials`; a chart
+  render against a test-shaped Secret reference fails.
+- **Webhook-cert checksum annotation** on MutatingWebhookConfiguration / ValidatingWebhookConfiguration —
+  rolls when `caBundle` / `existingSecret` / cert-manager config changes; deprecates `installCRDs` in favour
+  of native Helm `crds/` directory (#1075).
+- **Shell env denylist expanded** with `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` / `NO_PROXY` /
+  `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` / `CURL_CA_BUNDLE` / `SSLKEYLOGFILE` / `NODE_EXTRA_CA_CERTS` —
+  closes prompt-injection-driven exfiltration path via transport-layer env overrides (#1054).
+- **MCP command-args-safe script rejection** — positional `*.py` / `*.js` / `*.sh` rejected unless under
+  `MCP_ALLOWED_CWD_PREFIXES`; bare `-` stdin scripts rejected. Allow-listed interpreter is no longer a
+  near-universal entry point (#1046).
+- **`diff()` redactor state-machine hardened** against unified-diff file-headers and hunk markers
+  (`--- a/`, `+++ b/`, `@@`) that previously reset `in_secret=False` mid-Secret hunk (#1078, #1031, #1028).
+- **SSA migration on key operator apply paths** — Deployment + Service reconcile use
+  `client.Apply + FieldOwner("nyx-operator")` so field ownership is tracked cleanly and user/operator
+  conflicts surface as explicit apply errors (#751).
+- **`readyz` tied to webhook certwatcher** — operator pod isn't ready until `GetCertificate` returns a
+  valid leaf (parses + checks `NotBefore` / `NotAfter`) (#758).
+
+### New components
+
+- **mcp-prometheus** — new MCP tool at `tools/prometheus/` wrapping the Prometheus HTTP API. Exposes
+  `query`, `query_range`, `series`, `labels`, `label_values` via FastMCP streamable-http on `:8000`.
+  Disabled by default in the chart; enable via `mcpTools.prometheus.enabled=true` (#853 scaffold; Grafana /
+  Loki / OTel wrappers are follow-up).
+
+### New operator CRD surfaces (scaffolded, not complete parity)
+
+- `NyxAgentSpec.MCPTools` — scaffold CRD fields mirroring chart `mcpTools` (`Enabled`, `Image`,
+  `Replicas` on each of `Kubernetes`, `Helm`); reconciler renders Deployment + Service per enabled tool
+  via SSA (#830). Full-parity RBAC/scheduling/image.digest + delete path are follow-up.
+- `NyxAgentSpec.NetworkPolicy` — scaffold fields (`Enabled`, `Ingress.{AllowDashboard, AllowSameNamespace,
+  MetricsFrom, AdditionalFrom}`, `EgressOpen`) with pure `buildNetworkPolicy()` + 5 unit tests (#971).
+  MCP-tool NetworkPolicies + explicit egress rules are follow-up.
+- `NyxAgentSpec.Dashboard.Ingress` + `Auth.Mode` — fail-closed gate via `EvaluateDashboardIngressAuth`;
+  emits `DashboardIngressAuthRequired` / `DashboardIngressUnauthenticated` events. Full Ingress + Secret
+  render is follow-up (#831).
+- `operator/cmd/plan` — new subcommand renders Deployment / Service / ConfigMaps / PVCs / HPA / PDB /
+  dashboard / manifest CM for a given NyxAgent spec on stdout without applying (#1111).
