@@ -1825,32 +1825,40 @@ class AgentExecutor(A2AAgentExecutor):
         state reflects on-disk config. The watchers then detect the pre-loaded
         state and skip the redundant first parse before entering awatch().
         """
-        # MCP config.
+        # MCP config. Only mark initial-load as 'done' on success so a parse
+        # failure at boot doesn't lock watchers out of their first-parse path
+        # (#978). On failure, leave _initial_mcp_loaded falsy; the watcher's
+        # `if not _initial_mcp_loaded` branch will retry the parse on first
+        # awatch event instead of skipping it as a redundant re-parse.
         try:
             self._mcp_servers = await asyncio.to_thread(_load_mcp_config)
         except Exception:
             self._mcp_servers = {}
+        else:
+            self._initial_mcp_loaded = True
         if backend_mcp_servers_active is not None:
             backend_mcp_servers_active.labels(**_LABELS).set(len(self._mcp_servers))
         if self._mcp_servers:
             logger.info(f"MCP config loaded (initial): {list(self._mcp_servers.keys())}")
-        self._initial_mcp_loaded = True
 
         # CLAUDE.md — __init__ already loaded this synchronously, but refresh
         # here so any content written between import time and lifespan start is
-        # picked up before readiness flips.
+        # picked up before readiness flips. Only mark 'done' on success (#978).
         try:
             self._agent_md_content = _load_agent_md()
             logger.info("CLAUDE.md loaded (initial) from %s", AGENT_MD)
         except Exception as exc:
             logger.warning("CLAUDE.md initial load failed: %r (keeping __init__ value)", exc)
-        self._initial_agent_md_loaded = True
+        else:
+            self._initial_agent_md_loaded = True
 
-        # hooks.yaml extensions.
+        # hooks.yaml extensions. Only mark 'done' on success (#978).
         try:
             self._hook_state.extensions = await asyncio.to_thread(load_hooks_config_sync)
         except Exception as exc:
             logger.warning("hooks.yaml initial load failed: %r (baseline-only)", exc)
+        else:
+            self._initial_hooks_loaded = True
         if backend_hooks_active_rules is not None:
             backend_hooks_active_rules.labels(**_LABELS, source="extension").set(
                 len(self._hook_state.extensions)
@@ -1861,7 +1869,6 @@ class AgentExecutor(A2AAgentExecutor):
             len(self._hook_state.baseline),
             len(self._hook_state.extensions),
         )
-        self._initial_hooks_loaded = True
 
     async def close(self) -> None:
         """Cancel and drain all in-flight execute() tasks and MCP watcher tasks (#587).
