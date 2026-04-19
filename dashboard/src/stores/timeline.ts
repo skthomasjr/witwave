@@ -21,7 +21,45 @@ import {
 // tail; the store is the fleet-visible buffer that feeds the view.
 
 const DEFAULT_RING_SIZE = 1000;
-const EVENTS_URL = "/api/events/stream";
+// Relative URL — nginx / dev proxy forwards to the harness at /events/stream.
+// Phase 1 targets a single harness (first agent in the deployment). Multi-
+// agent fanout (one stream per team member, merged client-side) is a
+// phase-1.5 follow-up tracked at the end of this module.
+const DEFAULT_EVENTS_URL = "/events/stream";
+
+// Runtime-injected operator config (mirrors the #1061 traceApiUrl pattern).
+// Set via the dashboard nginx ConfigMap so operators can inject:
+//   - harnessBearerToken: the harness CONVERSATIONS_AUTH_TOKEN value
+//   - timelineEventsUrl : override the default /events/stream (e.g. when
+//                         the dashboard pod sits behind its own ingress).
+declare global {
+  interface Window {
+    __NYX_CONFIG__?: {
+      harnessBearerToken?: string;
+      timelineEventsUrl?: string;
+    } & Record<string, unknown>;
+  }
+}
+
+function resolveBearerToken(explicit?: string): string | undefined {
+  if (explicit) return explicit;
+  if (typeof window === "undefined") return undefined;
+  const cfg = window.__NYX_CONFIG__;
+  if (!cfg) return undefined;
+  const tok = cfg.harnessBearerToken;
+  return typeof tok === "string" && tok.length > 0 ? tok : undefined;
+}
+
+function resolveEventsUrl(explicit?: string): string {
+  if (explicit) return explicit;
+  if (typeof window !== "undefined") {
+    const cfg = window.__NYX_CONFIG__;
+    if (cfg && typeof cfg.timelineEventsUrl === "string" && cfg.timelineEventsUrl) {
+      return cfg.timelineEventsUrl;
+    }
+  }
+  return DEFAULT_EVENTS_URL;
+}
 
 export interface TimelineStoreInitOptions extends UseEventStreamOptions {
   ringSize?: number;
@@ -51,12 +89,14 @@ export const useTimelineStore = defineStore("timeline", () => {
     started.value = true;
     ringSize.value = clampRing(opts.ringSize);
 
-    const url = opts.url ?? EVENTS_URL;
+    const url = resolveEventsUrl(opts.url);
+    const token = resolveBearerToken(opts.token);
     // Let the composable hold a smaller live window — the store keeps
     // the authoritative ring. maxEvents on the composable trims rapid
     // in-memory growth between reactive flushes.
     const stream = useEventStream(url, {
       ...opts,
+      token,
       maxEvents: Math.min(ringSize.value, opts.maxEvents ?? ringSize.value),
     });
     activeStream = stream;
@@ -175,3 +215,20 @@ export const useTimelineStore = defineStore("timeline", () => {
 });
 
 export type { EventEnvelope } from "../composables/useEventStream";
+
+// -----------------------------------------------------------------------------
+// TODO(#1110 phase 1.5) — multi-agent fanout
+//
+// Phase 1 targets a single harness (default /events/stream, or an override
+// via __NYX_CONFIG__.timelineEventsUrl). For fleet deployments where the
+// dashboard faces N agents with their own harnesses, replace `activeStream`
+// with a Map<agentName, UseEventStreamReturn> indexed off `useTeam().members`.
+// Add/remove streams as the team directory changes, tag each emitted event
+// with the originating agent name at merge time, and preserve a single ring
+// ordered by ts. The selectors (`filterByAgent`, etc.) already assume this
+// per-agent labelling so the API surface doesn't need to change.
+//
+// Auth stays bearer-based; each per-agent stream can either share
+// __NYX_CONFIG__.harnessBearerToken (single-secret deployments) or pull
+// from a per-agent token map that the team directory carries.
+// -----------------------------------------------------------------------------
