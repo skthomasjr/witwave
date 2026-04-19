@@ -107,6 +107,35 @@ operators who terminate TLS elsewhere and strip headers should replicate these a
   `const results = await axe(wrapper.element, runRules);` and assert
   `expect(results).toHaveNoViolations()`.
 
+## Internationalisation (#819)
+
+`vue-i18n` is bootstrapped in `src/i18n/index.ts` and installed in `src/main.ts` before the router. English
+(`src/i18n/locales/en.json`) is the only locale shipped today; the plumbing is in place so follow-up passes
+can add additional locales without touching component source.
+
+Locale resolution order at startup:
+
+1. `VITE_LOCALE` build-time env (e.g. `VITE_LOCALE=en npm run build`).
+2. `window.__NYX_CONFIG__.locale` runtime injection (helm/configmap-driven deploy).
+3. Browser `navigator.language` (first two chars).
+4. Fallback `en`.
+
+Consumer pattern inside a component:
+
+```ts
+import { useI18n } from "vue-i18n";
+const { t } = useI18n();
+// …
+// {{ t("nav.team") }}
+```
+
+Pluralisation / interpolation use vue-i18n's native syntax — e.g. `t("team.pinned", { count: 3 })` resolves
+against `"pinned": "{count} pinned"` in `en.json`.
+
+`App.vue` is the reference migration (nav labels + header status copy). Remaining views still contain
+hardcoded English strings — extract them key-by-key under the same `nav.*` / `status.*` / `<view>.*` scheme
+and land additional locale files as `src/i18n/locales/<code>.json` when translation arrives.
+
 ## Runtime-config validation (`traceApiUrl`)
 
 `VITE_TRACE_API_URL` / `window.__NYX_CONFIG__.traceApiUrl` is validated at runtime — empty, non-URL, or

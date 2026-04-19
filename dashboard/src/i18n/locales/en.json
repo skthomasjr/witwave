@@ -1,0 +1,28 @@
+{
+  "nav": {
+    "team": "Team",
+    "automation": "Automation",
+    "conversations": "Conversations",
+    "trace": "Tool Trace",
+    "otelTraces": "Traces",
+    "metrics": "Metrics"
+  },
+  "status": {
+    "connecting": "connecting…",
+    "online": "online",
+    "degraded": "degraded",
+    "noAgents": "no agents",
+    "offline": "offline"
+  },
+  "team": {
+    "onlyDegraded": "only degraded",
+    "pinned": "{count} pinned",
+    "loading": "Loading agents…",
+    "empty": "No agents found.",
+    "loadError": "Could not load team: {error}",
+    "selectPrompt": "Select an agent to view details."
+  },
+  "alert": {
+    "dismiss": "Dismiss alert"
+  }
+}

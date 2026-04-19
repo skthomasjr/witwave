@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 import { RouterLink, RouterView } from "vue-router";
 import { useHealth } from "./composables/useHealth";
 import { usePollingControl } from "./composables/usePollingControl";
@@ -10,23 +12,29 @@ import AlertBanner from "./components/AlertBanner.vue";
 // member is reachable, amber when some are failing, red when all are
 // down, gray during the first fan-out probe.
 
+const { t } = useI18n();
+
 interface NavItem {
-  label: string;
+  labelKey: string;
   to: { name: string };
 }
 
-const navItems: NavItem[] = [
-  { label: "Team", to: { name: "team" } },
+const navSchema: NavItem[] = [
+  { labelKey: "nav.team", to: { name: "team" } },
   // The previous Jobs / Tasks / Triggers / Webhooks / Continuations /
   // Heartbeat tabs collapsed into a single card-grouped Automation view
   // so the nav bar has room to breathe. Legacy routes redirect — see
   // router.ts for the full list.
-  { label: "Automation", to: { name: "automation" } },
-  { label: "Conversations", to: { name: "conversations" } },
-  { label: "Tool Trace", to: { name: "trace" } },
-  { label: "Traces", to: { name: "otel-traces" } },
-  { label: "Metrics", to: { name: "metrics" } },
+  { labelKey: "nav.automation", to: { name: "automation" } },
+  { labelKey: "nav.conversations", to: { name: "conversations" } },
+  { labelKey: "nav.trace", to: { name: "trace" } },
+  { labelKey: "nav.otelTraces", to: { name: "otel-traces" } },
+  { labelKey: "nav.metrics", to: { name: "metrics" } },
 ];
+
+const navItems = computed(() =>
+  navSchema.map((n) => ({ label: t(n.labelKey), to: n.to })),
+);
 
 const { state, detail } = useHealth();
 // Global pause toggle (#1107). Setting `paused=true` tells every polling
@@ -68,14 +76,14 @@ const { paused, visible, toggle: togglePolling } = usePollingControl();
       >
         {{
           state === "connecting"
-            ? "connecting…"
+            ? t("status.connecting")
             : state === "ok"
-              ? "online"
+              ? t("status.online")
               : state === "partial"
-                ? "degraded"
+                ? t("status.degraded")
                 : state === "empty"
-                  ? "no agents"
-                  : "offline"
+                  ? t("status.noAgents")
+                  : t("status.offline")
         }}
       </span>
       <button

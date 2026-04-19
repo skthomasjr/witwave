@@ -7,11 +7,15 @@ import "./styles/tokens.css";
 
 import App from "./App.vue";
 import { router } from "./router";
+import { i18n } from "./i18n";
 
 const app = createApp(App);
 // Pinia hosts the cross-view selection store (#748). Keep install
 // order before router/PrimeVue so stores resolve from any guard.
 app.use(createPinia());
+// vue-i18n (#819). Loaded before router so redirect-path guards can
+// resolve translated labels if they ever need to.
+app.use(i18n);
 app.use(router);
 app.use(PrimeVue, {
   theme: {
