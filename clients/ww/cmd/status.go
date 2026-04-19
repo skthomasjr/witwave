@@ -23,14 +23,14 @@ type agentEntry struct {
 }
 
 type statusRow struct {
-	Name     string  `json:"name"`
-	Role     string  `json:"role"`
-	URL      string  `json:"url"`
-	Healthy  bool    `json:"healthy"`
-	Status   string  `json:"status"`
-	Latency  string  `json:"latency,omitempty"`
-	LastSeen string  `json:"last_seen,omitempty"`
-	Error    string  `json:"error,omitempty"`
+	Name     string `json:"name"`
+	Role     string `json:"role"`
+	URL      string `json:"url"`
+	Healthy  bool   `json:"healthy"`
+	Status   string `json:"status"`
+	Latency  string `json:"latency,omitempty"`
+	LastSeen string `json:"last_seen,omitempty"`
+	Error    string `json:"error,omitempty"`
 }
 
 func newStatusCmd() *cobra.Command {
