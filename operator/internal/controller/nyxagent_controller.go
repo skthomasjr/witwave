@@ -2110,13 +2110,34 @@ func (r *NyxAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			// restart-the-operator workaround.
 			oldPort := int32(0)
 			newPort := int32(0)
+			oldEnabled := true
+			newEnabled := true
+			oldDeleting := false
+			newDeleting := false
 			if a, ok := e.ObjectOld.(*nyxv1alpha1.NyxAgent); ok {
 				oldPort = a.Spec.Port
+				if a.Spec.Enabled != nil {
+					oldEnabled = *a.Spec.Enabled
+				}
+				oldDeleting = !a.DeletionTimestamp.IsZero()
 			}
 			if a, ok := e.ObjectNew.(*nyxv1alpha1.NyxAgent); ok {
 				newPort = a.Spec.Port
+				if a.Spec.Enabled != nil {
+					newEnabled = *a.Spec.Enabled
+				}
+				newDeleting = !a.DeletionTimestamp.IsZero()
 			}
-			return oldTeam != newTeam || oldPort != newPort
+			// Enabled flips and deletionTimestamp-just-set
+			// (#1067) both alter manifest membership because
+			// reconcileManifestConfigMap drops disabled /
+			// deleting agents. Without these clauses the
+			// pause (enabled true→false) and the graceful-
+			// delete onset leave peer manifests pointing at
+			// a Service whose endpoints have gone empty.
+			enabledFlipped := oldEnabled != newEnabled
+			deletionJustSet := !oldDeleting && newDeleting
+			return oldTeam != newTeam || oldPort != newPort || enabledFlipped || deletionJustSet
 		},
 	}
 
