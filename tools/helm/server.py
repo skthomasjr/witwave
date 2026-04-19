@@ -105,15 +105,108 @@ class HelmError(RuntimeError):
     """Raised when a helm CLI invocation fails."""
 
 
-# Process-level timeout for `helm` subprocess invocations (#857). Without this,
-# a hung CLI (remote registry stall, stuck `--wait`, unreachable repo index)
-# pins the FastMCP handler task until the pod is killed, leaking the coroutine
-# and quietly dropping the client request. Default 300s is long enough for
-# normal install/upgrade --wait paths on a healthy cluster and short enough
-# that a wedged subprocess surfaces to operators.
+# Process-level timeout for `helm` subprocess invocations (#857, #778).
+# Without this, a hung CLI (remote registry stall, stuck `--wait`,
+# unreachable repo index) pins the FastMCP handler task until the pod is
+# killed, leaking the coroutine and quietly dropping the client request.
+# Default 300s is long enough for normal install/upgrade --wait paths on a
+# healthy cluster and short enough that a wedged subprocess surfaces to
+# operators.
+#
+# MCP_SUBPROCESS_TIMEOUT_SEC (#778) is the cross-tool knob; the legacy
+# HELM_SUBPROCESS_TIMEOUT_SECONDS env is preserved for back-compat.
+# Precedence: HELM_SUBPROCESS_TIMEOUT_SECONDS > MCP_SUBPROCESS_TIMEOUT_SEC
+# > 300s default.
 _HELM_SUBPROCESS_TIMEOUT_SECONDS = float(
-    os.environ.get("HELM_SUBPROCESS_TIMEOUT_SECONDS", "300")
+    os.environ.get("HELM_SUBPROCESS_TIMEOUT_SECONDS")
+    or os.environ.get("MCP_SUBPROCESS_TIMEOUT_SEC")
+    or "300"
 )
+
+# Per-response byte cap on tool output (#778). Defends against a stuck
+# `--wait`, an accidental full-history fetch, or a malicious chart that
+# renders an enormous manifest: every string/JSON payload returned by
+# a query tool is truncated to this many bytes before being handed
+# back to the MCP client. 0 or negative disables the cap.
+_MCP_RESPONSE_MAX_BYTES = int(
+    os.environ.get("MCP_RESPONSE_MAX_BYTES") or str(8 * 1024 * 1024)
+)
+
+
+def _truncate_text(value: str, *, tool: str) -> str:
+    """Cap ``value`` to MCP_RESPONSE_MAX_BYTES (UTF-8) with a visible marker.
+
+    Returns the original string unchanged when the cap is disabled
+    (``<= 0``) or the payload already fits. Otherwise returns a
+    truncated body followed by a human-readable notice so the caller
+    sees that truncation happened rather than silently receiving a
+    partial response.
+    """
+    if not isinstance(value, str):
+        return value
+    cap = _MCP_RESPONSE_MAX_BYTES
+    if cap <= 0:
+        return value
+    encoded = value.encode("utf-8", errors="replace")
+    if len(encoded) <= cap:
+        return value
+    head = encoded[:cap].decode("utf-8", errors="replace")
+    suffix = (
+        f"\n\n# [mcp-helm:{tool}] response truncated: original payload "
+        f"{len(encoded)} bytes exceeded MCP_RESPONSE_MAX_BYTES={cap}."
+    )
+    return head + suffix
+
+
+def _truncate_json(value: Any, *, tool: str) -> Any:
+    """Size-cap a JSON-able payload (#778).
+
+    Serialises ``value`` to JSON to measure byte-length; when over the
+    cap, wraps the truncated head in a dict that preserves structure
+    so the caller can still parse the response. For list payloads we
+    drop trailing items until the re-serialised length fits, which is
+    the common shape for list_releases / history responses.
+    """
+    cap = _MCP_RESPONSE_MAX_BYTES
+    if cap <= 0 or value is None:
+        return value
+    try:
+        raw = json.dumps(value)
+    except Exception:
+        return value
+    if len(raw.encode("utf-8", errors="replace")) <= cap:
+        return value
+    if isinstance(value, list):
+        trimmed: list[Any] = []
+        running = 2  # '[]'
+        for item in value:
+            try:
+                chunk = json.dumps(item)
+            except Exception:
+                chunk = "null"
+            if running + len(chunk) + 1 > cap:
+                break
+            trimmed.append(item)
+            running += len(chunk) + 1
+        return {
+            "_truncated": True,
+            "_original_length": len(value),
+            "_returned_length": len(trimmed),
+            "_cap_bytes": cap,
+            "items": trimmed,
+        }
+    # Dict / scalar — return a placeholder rather than guess which keys
+    # to drop; callers with large single-object responses can opt into
+    # a higher MCP_RESPONSE_MAX_BYTES.
+    return {
+        "_truncated": True,
+        "_cap_bytes": cap,
+        "_note": (
+            f"mcp-helm:{tool} response exceeded MCP_RESPONSE_MAX_BYTES "
+            f"({cap}); raw payload suppressed. Raise the cap or narrow "
+            "the query to retrieve it."
+        ),
+    }
 
 # Prometheus counter for process-level timeouts (#857). Guarded so the server
 # still runs on machines without prometheus_client installed.
@@ -593,9 +686,10 @@ def list_releases(namespace: str | None = None, all_namespaces: bool = False) ->
         {"helm.namespace": namespace, "helm.all_namespaces": all_namespaces},
     ) as _h:
         try:
-            return _helm(
+            result = _helm(
                 ["list", "-o", "json", *_ns_args(namespace, all_namespaces)], parse_json=True
             ) or []
+            return _truncate_json(result, tool="list_releases")
         except Exception as exc:
             set_span_error(_h, exc)
             raise
@@ -664,13 +758,14 @@ def get_release(name: str, namespace: str) -> dict:
             manifest = _get_manifest_impl(name=name, namespace=namespace)
             hist = _history_impl(name=name, namespace=namespace, max_revisions=1)
             current = hist[-1] if hist else None
-            return {
+            payload = {
                 "name": name,
                 "namespace": namespace,
                 "current_revision": current,
                 "values": values,
-                "manifest": manifest,
+                "manifest": _truncate_text(manifest, tool="get_release"),
             }
+            return _truncate_json(payload, tool="get_release")
         except Exception as exc:
             set_span_error(_h, exc)
             raise
@@ -697,9 +792,10 @@ def get_values(
         {"helm.release": name, "helm.namespace": namespace, "helm.redacted": redact},
     ) as _h:
         try:
-            return _get_values_impl(
+            result = _get_values_impl(
                 name=name, namespace=namespace, all_values=all_values, redact=redact
             )
+            return _truncate_json(result, tool="get_values")
         except Exception as exc:
             set_span_error(_h, exc)
             raise
@@ -718,7 +814,8 @@ def get_manifest(name: str, namespace: str, redact: bool = True) -> str:
         {"helm.release": name, "helm.namespace": namespace, "helm.redacted": redact},
     ) as _h:
         try:
-            return _get_manifest_impl(name=name, namespace=namespace, redact=redact)
+            manifest = _get_manifest_impl(name=name, namespace=namespace, redact=redact)
+            return _truncate_text(manifest, tool="get_manifest")
         except Exception as exc:
             set_span_error(_h, exc)
             raise
@@ -729,9 +826,10 @@ def history(name: str, namespace: str, max_revisions: int = 10) -> list[dict]:
     """Return revision history for a release."""
     with _handler_span("history", {"helm.release": name, "helm.namespace": namespace}) as _h:
         try:
-            return _history_impl(
+            result = _history_impl(
                 name=name, namespace=namespace, max_revisions=max_revisions
             )
+            return _truncate_json(result, tool="history")
         except Exception as exc:
             set_span_error(_h, exc)
             raise
@@ -940,7 +1038,7 @@ def diff(
             raw = _helm(args, stdin=values_yaml) or ""
             if redact and raw:
                 try:
-                    return _redact_diff(raw)
+                    return _truncate_text(_redact_diff(raw), tool="diff")
                 except Exception as _redact_exc:
                     # Fail-closed: if redaction itself blows up, return
                     # a placeholder rather than leak the raw diff (#915).
@@ -953,7 +1051,7 @@ def diff(
                         f"{type(_redact_exc).__name__} — output "
                         "suppressed to avoid leaking Secret contents (#915).\n"
                     )
-            return raw
+            return _truncate_text(raw, tool="diff")
         except Exception as exc:
             set_span_error(_h, exc)
             raise
@@ -1023,7 +1121,7 @@ def diff_manifest(manifest: str, redact: bool = True) -> str:
             raw = proc.stdout or ""
             if redact and raw:
                 try:
-                    return _redact_diff(raw)
+                    return _truncate_text(_redact_diff(raw), tool="diff_manifest")
                 except Exception as _redact_exc:
                     log.warning(
                         "diff_manifest redaction failed (%s); suppressing output.",
@@ -1034,7 +1132,7 @@ def diff_manifest(manifest: str, redact: bool = True) -> str:
                         f"{type(_redact_exc).__name__} — output suppressed "
                         "to avoid leaking Secret contents (#915).\n"
                     )
-            return raw
+            return _truncate_text(raw, tool="diff_manifest")
         except subprocess.TimeoutExpired as exc:
             err = HelmError(
                 f"kubectl diff killed after "

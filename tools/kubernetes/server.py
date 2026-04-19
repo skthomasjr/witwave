@@ -99,6 +99,109 @@ def _refuse_if_read_only(tool: str) -> None:
 
 FIELD_MANAGER = "nyx-mcp-kubernetes"
 
+# Per-call network timeout applied to Kubernetes API requests (#778).
+# Defends against a stalled apiserver / slow log stream / hung watch
+# pinning the FastMCP handler task. 120s is generous for most get/list
+# calls; bulk log pulls and slow describe() paths may legitimately
+# approach it. Override with MCP_SUBPROCESS_TIMEOUT_SEC for env
+# parity with the helm tool (the knob applies to apiserver round-trips
+# here rather than a subprocess, but the operator contract is the same:
+# "no single MCP call blocks longer than this").
+_MCP_REQUEST_TIMEOUT_SECONDS = float(
+    os.environ.get("MCP_SUBPROCESS_TIMEOUT_SEC") or "120"
+)
+
+# Per-response byte cap on tool output (#778). Log fetches and large
+# object returns are the two footguns the original issue flagged.
+# 0 or negative disables the cap.
+_MCP_RESPONSE_MAX_BYTES = int(
+    os.environ.get("MCP_RESPONSE_MAX_BYTES") or str(8 * 1024 * 1024)
+)
+
+# Hard ceiling on the tail_lines argument for logs() (#778). Even when
+# the byte cap is disabled, the apiserver should not be asked for an
+# unbounded log tail — the worst case is a multi-GB streaming fetch that
+# holds kubelet and apiserver resources open. 50k lines is comfortably
+# larger than any reasonable diagnostic window.
+_LOGS_TAIL_LINES_MAX = int(
+    os.environ.get("MCP_LOGS_TAIL_LINES_MAX") or "50000"
+)
+
+
+def _truncate_text(value: str, *, tool: str) -> str:
+    """Cap ``value`` to MCP_RESPONSE_MAX_BYTES with a visible marker (#778)."""
+    if not isinstance(value, str):
+        return value
+    cap = _MCP_RESPONSE_MAX_BYTES
+    if cap <= 0:
+        return value
+    encoded = value.encode("utf-8", errors="replace")
+    if len(encoded) <= cap:
+        return value
+    head = encoded[:cap].decode("utf-8", errors="replace")
+    return (
+        head
+        + f"\n\n# [mcp-kubernetes:{tool}] response truncated: "
+        f"{len(encoded)} bytes exceeded MCP_RESPONSE_MAX_BYTES={cap}."
+    )
+
+
+def _truncate_json(value: Any, *, tool: str) -> Any:
+    """Cap a JSON-able payload to MCP_RESPONSE_MAX_BYTES (#778).
+
+    Mirrors the helm tool's helper so operators see consistent
+    truncation behaviour across MCP servers.
+    """
+    import json as _json
+    cap = _MCP_RESPONSE_MAX_BYTES
+    if cap <= 0 or value is None:
+        return value
+    try:
+        raw = _json.dumps(value, default=str)
+    except Exception:
+        return value
+    if len(raw.encode("utf-8", errors="replace")) <= cap:
+        return value
+    if isinstance(value, list):
+        trimmed: list[Any] = []
+        running = 2
+        for item in value:
+            try:
+                chunk = _json.dumps(item, default=str)
+            except Exception:
+                chunk = "null"
+            if running + len(chunk) + 1 > cap:
+                break
+            trimmed.append(item)
+            running += len(chunk) + 1
+        return {
+            "_truncated": True,
+            "_original_length": len(value),
+            "_returned_length": len(trimmed),
+            "_cap_bytes": cap,
+            "items": trimmed,
+        }
+    if isinstance(value, dict) and "items" in value and isinstance(value["items"], list):
+        inner = _truncate_json(value["items"], tool=tool)
+        out = dict(value)
+        if isinstance(inner, dict) and inner.get("_truncated"):
+            out["items"] = inner["items"]
+            out["_truncated"] = True
+            out["_cap_bytes"] = cap
+            out["_original_item_count"] = inner["_original_length"]
+            out["_returned_item_count"] = inner["_returned_length"]
+        else:
+            out["items"] = inner
+        return out
+    return {
+        "_truncated": True,
+        "_cap_bytes": cap,
+        "_note": (
+            f"mcp-kubernetes:{tool} response exceeded "
+            f"MCP_RESPONSE_MAX_BYTES ({cap}); raw payload suppressed."
+        ),
+    }
+
 # Maximum length of a server-side-apply field manager string. The
 # apiserver caps manager names at 128 characters; we truncate rather
 # than fail so a long caller_id never breaks an apply.
@@ -386,7 +489,9 @@ def list_namespaces() -> list[str]:
         try:
             core = client.CoreV1Api(_api())
             with _api_span("list", "Namespace"):
-                resp = core.list_namespace()
+                resp = core.list_namespace(
+                    _request_timeout=_MCP_REQUEST_TIMEOUT_SECONDS,
+                )
             return [ns.metadata.name for ns in resp.items]
         except Exception as exc:
             set_span_error(_h, exc)
@@ -432,6 +537,11 @@ def list_resources(
                 kwargs["limit"] = limit
             if continue_token:
                 kwargs["_continue"] = continue_token
+            # Apply per-call network timeout (#778). The dynamic client
+            # forwards _request_timeout through to the underlying urllib3
+            # HTTP call, so a stalled apiserver cannot pin the handler
+            # task indefinitely.
+            kwargs["_request_timeout"] = _MCP_REQUEST_TIMEOUT_SECONDS
             with _api_span("list", kind, {"k8s.namespace": namespace}):
                 result = resource.get(**kwargs)
             items = getattr(result, "items", None) or []
@@ -445,13 +555,17 @@ def list_resources(
             # Pass the outer `kind` through so Secret items that lack
             # per-item .kind (dynamic-client list responses strip it) are
             # still redacted (#916).
-            return {
+            payload = {
                 "items": [
                     _redact_secret_payload(_to_dict(item), outer_kind=kind)
                     for item in items
                 ],
                 "continue": next_token,
             }
+            # Byte-cap the response (#778). Large list responses trim
+            # trailing items rather than returning a single opaque
+            # placeholder; the caller can page via `continue`.
+            return _truncate_json(payload, tool="list_resources")
         except Exception as exc:
             set_span_error(_h, exc)
             raise
@@ -474,9 +588,14 @@ def get_resource(
             kwargs: dict[str, Any] = {"name": name}
             if namespace:
                 kwargs["namespace"] = namespace
+            # Per-call network timeout (#778).
+            kwargs["_request_timeout"] = _MCP_REQUEST_TIMEOUT_SECONDS
             with _api_span("get", kind, {"k8s.name": name, "k8s.namespace": namespace}):
-                # Redact Secret payload before returning (#775).
-                return _redact_secret_payload(_to_dict(resource.get(**kwargs)))
+                # Redact Secret payload then enforce response-size cap
+                # (#778) so a pathologically large CR body cannot OOM
+                # the handler.
+                obj = _redact_secret_payload(_to_dict(resource.get(**kwargs)))
+                return _truncate_json(obj, tool="get_resource")
         except Exception as exc:
             set_span_error(_h, exc)
             raise
@@ -519,6 +638,8 @@ def describe(
             kwargs: dict[str, Any] = {"name": name}
             if namespace:
                 kwargs["namespace"] = namespace
+            # Per-call network timeout (#778).
+            kwargs["_request_timeout"] = _MCP_REQUEST_TIMEOUT_SECONDS
             with _api_span("get", kind, {"k8s.name": name, "k8s.namespace": namespace}):
                 obj = _redact_secret_payload(_to_dict(resource.get(**kwargs)))
 
@@ -529,10 +650,14 @@ def describe(
                 with _api_span("list", "Event", {"k8s.namespace": namespace}):
                     if namespace:
                         ev_resp = core.list_namespaced_event(
-                            namespace=namespace, field_selector=selector
+                            namespace=namespace, field_selector=selector,
+                            _request_timeout=_MCP_REQUEST_TIMEOUT_SECONDS,
                         )
                     else:
-                        ev_resp = core.list_event_for_all_namespaces(field_selector=selector)
+                        ev_resp = core.list_event_for_all_namespaces(
+                            field_selector=selector,
+                            _request_timeout=_MCP_REQUEST_TIMEOUT_SECONDS,
+                        )
                 events = [ev.to_dict() for ev in ev_resp.items]
             except ApiException as e:
                 log.warning("failed to fetch events for %s/%s: %s", kind, name, e)
@@ -550,7 +675,7 @@ def describe(
                 )
                 events = []
 
-            return {"object": obj, "events": events}
+            return _truncate_json({"object": obj, "events": events}, tool="describe")
         except Exception as exc:
             set_span_error(_h, exc)
             raise
@@ -596,7 +721,10 @@ def read_secret_value(
         try:
             core = client.CoreV1Api(_api())
             with _api_span("get", "Secret", {"k8s.name": name, "k8s.namespace": namespace}):
-                sec = core.read_namespaced_secret(name=name, namespace=namespace)
+                sec = core.read_namespaced_secret(
+                    name=name, namespace=namespace,
+                    _request_timeout=_MCP_REQUEST_TIMEOUT_SECONDS,
+                )
             return {
                 "name": name,
                 "namespace": namespace,
@@ -647,12 +775,30 @@ def logs(
             kwargs: dict[str, Any] = {"name": pod, "namespace": namespace, "previous": previous}
             if container:
                 kwargs["container"] = container
-            if tail_lines is not None:
-                kwargs["tail_lines"] = tail_lines
+            # Hard-cap tail_lines at _LOGS_TAIL_LINES_MAX (#778) so even
+            # when the caller supplies a multi-million-line tail the
+            # apiserver fetch is bounded. None/unset falls back to the
+            # backend SDK default.
+            if tail_lines is None:
+                effective_tail = 200
+            else:
+                if not isinstance(tail_lines, int) or isinstance(tail_lines, bool):
+                    raise ValueError("logs: 'tail_lines' must be an int")
+                if tail_lines < 1:
+                    raise ValueError("logs: 'tail_lines' must be >= 1")
+                effective_tail = min(tail_lines, _LOGS_TAIL_LINES_MAX)
+            kwargs["tail_lines"] = effective_tail
             if since_seconds is not None:
                 kwargs["since_seconds"] = since_seconds
+            # Per-call network timeout (#778). Prevents a wedged pod
+            # log stream from pinning the handler indefinitely.
+            kwargs["_request_timeout"] = _MCP_REQUEST_TIMEOUT_SECONDS
             with _api_span("logs", "Pod", {"k8s.pod": pod, "k8s.namespace": namespace}):
-                return core.read_namespaced_pod_log(**kwargs)
+                raw = core.read_namespaced_pod_log(**kwargs)
+            # Byte-cap the log payload (#778). Even at a bounded line
+            # count a single line can carry arbitrary bytes, so measure
+            # the final string rather than trusting tail_lines alone.
+            return _truncate_text(raw or "", tool="logs")
         except Exception as exc:
             set_span_error(_h, exc)
             raise
@@ -730,6 +876,8 @@ def apply(
                     # the explicit string form that every shipped kubernetes
                     # client translates to ``?dryRun=All`` on the wire.
                     patch_kwargs["dry_run"] = "All"
+                # Per-call network timeout (#778).
+                patch_kwargs["_request_timeout"] = _MCP_REQUEST_TIMEOUT_SECONDS
                 with _api_span(
                     "apply",
                     kind,
@@ -790,6 +938,8 @@ def delete(
                 # dropped by others, risking a real delete when the caller
                 # expected a dry-run.
                 kwargs["dry_run"] = "All"
+            # Per-call network timeout (#778).
+            kwargs["_request_timeout"] = _MCP_REQUEST_TIMEOUT_SECONDS
             with _api_span("delete", kind, {"k8s.name": name, "k8s.namespace": namespace, "k8s.dry_run": dry_run}):
                 return _to_dict(resource.delete(**kwargs))
         except Exception as exc:
