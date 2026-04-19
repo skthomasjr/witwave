@@ -330,6 +330,18 @@ agents:
 multiple secrets merged, ConfigMaps) that the `credentials:` block doesn't cover. When both `credentials:`
 and `envFrom:` are set on the same entry, `credentials:` wins.
 
+**Do not embed credentials in the repo URL** (#1077). The chart rejects any `gitSyncs[].repo` that matches
+`^https?://[^/]*:[^/]*@` (e.g. `https://user:token@github.com/...`) at render time. Token-bearing URLs get
+persisted in the pod spec, the helm release Secret (`helm get values`, `sh.helm.release.v1.*`), apiserver
+audit logs, and every `kubectl get pod -oyaml`. The chart also moves `--repo` off the initContainer / sidecar
+args onto a `GITSYNC_REPO` environment variable for the same reason — operators add secret-scrubbing to env
+dumps far more reliably than to arbitrary positional flags.
+
+**Release-state leak on inline credentials.** Even with `acknowledgeInsecureInline: true`, token values are
+captured into the `sh.helm.release.v1.<release>.v<N>` Secret Helm writes to etcd — the rendered Secret object
+is part of the release manifest and `helm get values` will echo the inline token back. For anything beyond
+ephemeral smoke tests, prefer the `existingSecret` path.
+
 ### Installing with credentials from `.env`
 
 There's no Helm-native `.env` reader — easiest path is to shell-source before `helm upgrade`:

@@ -156,6 +156,27 @@
 {{- end }}
 {{- end }}
 {{- end }}
+{{- /* Guard: reject embedded credentials in gitSyncs[].repo (#1077).
+       A URL shaped `https://user:token@host/org/repo` lands in the pod
+       spec, helm release state (`helm get values`, sh.helm.release.v1.*
+       Secret), apiserver audit logs (CREATE Pod request body), and
+       every operator's `kubectl get pod -oyaml` — none of which
+       tolerate token exposure. The only safe wiring is an env var
+       fed from a Secret via envFrom, which git-sync reads as
+       GITSYNC_USERNAME / GITSYNC_PASSWORD. Fail render if the repo
+       URL itself carries credentials so the footgun can't slip
+       through. Regex matches `proto://[any-non-slash]:[any-non-slash]@`. */}}
+{{- range .Values.agents }}
+{{- $agentName := .name }}
+{{- range $gsi, $gs := (.gitSyncs | default list) }}
+{{- $repo := ($gs.repo | default "" | toString) }}
+{{- if $repo }}
+{{- if regexMatch `^https?://[^/]*:[^/]*@` $repo }}
+{{- fail (printf "agents[%q].gitSyncs[%d].repo=%q carries embedded credentials (https://user:token@...) — this URL is persisted to the pod spec, the helm release Secret (helm get values / sh.helm.release.v1.*), and apiserver audit logs. Move the token to a Secret and wire it via gitSyncs[].envFrom or gitSyncs[].credentials so git-sync picks it up as GITSYNC_USERNAME / GITSYNC_PASSWORD (#1077)." $agentName $gsi $repo) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- /* Guard: CORS + ingress interaction (#763). `*` or wildcard origins
        combined with `allow_credentials=true` (the harness's default when
        any CORS origin is configured) let browser JS on arbitrary origins
@@ -278,8 +299,11 @@ spec:
           image: {{ .image | default (include "nyx.gitSyncImage" $) }}
           securityContext:
             {{- include "nyx.hardenedContainerSecurityContext" (dict "root" $) | nindent 12 }}
+          {{- /* #1077: --repo moved to GITSYNC_REPO env so the URL is not
+                 stamped into args. Args still land in the pod spec but
+                 operators are far more likely to add secret-scrubbing to
+                 env-based paths than to arbitrary positional flags. */}}
           args:
-            - --repo={{ .repo }}
             - --root=/git
             - --one-time
             {{- if .ref }}
@@ -288,6 +312,9 @@ spec:
             {{- if .depth }}
             - --depth={{ .depth | toString }}
             {{- end }}
+          env:
+            - name: GITSYNC_REPO
+              value: {{ .repo | quote }}
           {{- include "nyx.renderGitSyncEnvFrom" (dict "gs" . "agent" $agent "default" (($.Values.gitSync).credentials | default dict) "release" $.Release.Name) | nindent 10 }}
           volumeMounts:
             - name: git-sync-data
@@ -317,8 +344,8 @@ spec:
           image: {{ .image | default (include "nyx.gitSyncImage" $) }}
           securityContext:
             {{- include "nyx.hardenedContainerSecurityContext" (dict "root" $) | nindent 12 }}
+          {{- /* #1077: --repo moved to GITSYNC_REPO env; see initContainer. */}}
           args:
-            - --repo={{ .repo }}
             - --root=/git
             - --period={{ .period | default "60s" }}
             {{- if .ref }}
@@ -330,6 +357,9 @@ spec:
             {{- if include "nyx.hasMappings" $agent }}
             - --exechook-command=/nyx-scripts/git-sync.sh
             {{- end }}
+          env:
+            - name: GITSYNC_REPO
+              value: {{ .repo | quote }}
           {{- include "nyx.renderGitSyncEnvFrom" (dict "gs" . "agent" $agent "default" (($.Values.gitSync).credentials | default dict) "release" $.Release.Name) | nindent 10 }}
           volumeMounts:
             - name: git-sync-data
