@@ -359,9 +359,23 @@ def _evaluate_shell_baseline(cmd_parts: list[str]) -> tuple[str, str] | None:
         try:
             if predicate(shared_input):
                 return rule.name, rule.reason
-        except Exception:
+        except Exception as _pred_exc:
             # A predicate bug must not block a dispatch — fall through to
             # the legacy table so operators still see the regex denials.
+            # #1055: surface the predicate fault via
+            # backend_hooks_config_errors_total{reason='predicate_runtime'}
+            # so silent swallowing doesn't hide a broken baseline rule.
+            logger.warning(
+                "_evaluate_shell_baseline predicate raised for rule=%s: %r",
+                getattr(rule, "name", "?"), _pred_exc,
+            )
+            if backend_hooks_config_errors_total is not None:
+                try:
+                    backend_hooks_config_errors_total.labels(
+                        **_LABELS, reason="predicate_runtime",
+                    ).inc()
+                except Exception:
+                    pass
             continue
     for rule, pattern, reason in _SHELL_DENY_RULES:
         if pattern.search(joined):
