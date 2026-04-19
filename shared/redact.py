@@ -16,6 +16,17 @@ would drift out of sync with the upstream leak vectors.
 
 Import as ``from redact import redact_text, should_redact`` from any
 shared/-mounted caller.
+
+Scope notes (#1034)
+-------------------
+Callers should apply :func:`redact_text` only to human-prompt /
+agent-response *value* fields, not to serialised JSON lines. Applying
+the credit-card or high-entropy catch-all to a full JSONL row would
+match UUID / trace-id / session-id shapes and break downstream joins
+with OpenTelemetry spans. The helpers below preserve UUID and common
+trace-id shapes explicitly, and the generic high-entropy catch-all is
+now gated behind ``LOG_REDACT_HIGH_ENTROPY=true`` so it only fires for
+operators who have accepted the trade-off.
 """
 
 from __future__ import annotations
@@ -23,7 +34,7 @@ from __future__ import annotations
 import os
 import re
 
-__all__ = ["redact_text", "should_redact"]
+__all__ = ["redact_text", "should_redact", "high_entropy_enabled"]
 
 _REDACTED = "[REDACTED]"
 
@@ -37,8 +48,34 @@ def should_redact() -> bool:
     return os.environ.get("LOG_REDACT", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-# Ordered from most-specific to most-generic. The generic high-entropy
-# rule fires last so it doesn't stomp shape-specific matches.
+def high_entropy_enabled() -> bool:
+    """True when the opt-in generic high-entropy catch-all is armed (#1034).
+
+    The generic ``high_entropy_token`` pattern matches UUIDs, OTel
+    trace/span ids, SHA-256 digests, and other benign identifiers that
+    log readers want to keep joinable across systems. Operators who
+    still want the catch-all must explicitly set
+    ``LOG_REDACT_HIGH_ENTROPY=true``.
+    """
+    return os.environ.get("LOG_REDACT_HIGH_ENTROPY", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+# UUID (any version), canonical 8-4-4-4-12 hex. Left lower/upper mix tolerant.
+_UUID_RE = re.compile(
+    r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
+)
+# OTel W3C trace-id (32 lower-hex) and span-id (16 lower-hex).
+_OTEL_TRACE_RE = re.compile(r"\b[0-9a-f]{32}\b")
+_OTEL_SPAN_RE = re.compile(r"\b[0-9a-f]{16}\b")
+
+# Sentinel used to mask identifier shapes so the subsequent redaction
+# pass can't clobber them. Chosen to be ASCII-only, unlikely to appear
+# in real text.
+_IDENT_SENTINEL = "\x00NYX_IDENT_{}\x00"
+
+
+# Ordered from most-specific to most-generic. Shape-specific rules fire
+# first; the gated generic high-entropy rule fires last.
 _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     # AWS Access Key ID
     ("aws_access_key", re.compile(r"\b(?:AKIA|ASIA|AIDA|AROA|AIPA|ANPA|ANVA|ACCA)[0-9A-Z]{16}\b")),
@@ -53,15 +90,49 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("authorization_header", re.compile(r"(?i)(authorization\s*[:=]\s*)(bearer\s+\S+)")),
     # JWT — three base64url segments separated by dots
     ("jwt", re.compile(r"\b[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b")),
-    # Credit card (Visa/MC/Amex/Discover-ish — 13-19 digits in groups)
-    ("credit_card", re.compile(r"\b(?:\d[ -]?){13,19}\b")),
+    # Credit card (Visa/MC/Amex/Discover-ish — 13-19 digits in groups).
+    # Require at least one separator so bare 13-19 digit numeric strings
+    # (timestamps, correlation ids) aren't swept up (#1034). Real CC
+    # numbers almost always render with group separators when they
+    # leak into logs.
+    ("credit_card", re.compile(r"\b\d{4}[ -]\d{4}[ -]\d{4}[ -]\d{1,7}\b")),
     # US SSN
     ("ssn", re.compile(r"\b\d{3}-\d{2}-\d{4}\b")),
     # Email — full shape; redact to stop PII leaking into logs
     ("email", re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")),
-    # High-entropy 32+ hex/base64url blob (last, catches generic tokens)
-    ("high_entropy_token", re.compile(r"\b[A-Za-z0-9_-]{32,}\b")),
 ]
+
+# Gated separately (#1034) — only runs when LOG_REDACT_HIGH_ENTROPY is on.
+_HIGH_ENTROPY_PATTERN: tuple[str, re.Pattern[str]] = (
+    "high_entropy_token",
+    re.compile(r"\b[A-Za-z0-9_-]{32,}\b"),
+)
+
+
+def _shield_identifiers(text: str) -> tuple[str, dict[str, str]]:
+    """Replace UUID / OTel trace / span shapes with opaque sentinels.
+
+    Returns the shielded text and a mapping that the caller can use
+    to restore the originals after pattern substitution has run.
+    """
+    mapping: dict[str, str] = {}
+
+    def _sub(match: re.Match[str]) -> str:
+        original = match.group(0)
+        key = _IDENT_SENTINEL.format(len(mapping))
+        mapping[key] = original
+        return key
+
+    shielded = _UUID_RE.sub(_sub, text)
+    shielded = _OTEL_TRACE_RE.sub(_sub, shielded)
+    shielded = _OTEL_SPAN_RE.sub(_sub, shielded)
+    return shielded, mapping
+
+
+def _restore_identifiers(text: str, mapping: dict[str, str]) -> str:
+    for sentinel, original in mapping.items():
+        text = text.replace(sentinel, original)
+    return text
 
 
 def redact_text(text: str) -> str:
@@ -70,13 +141,21 @@ def redact_text(text: str) -> str:
     The input is returned unchanged when LOG_REDACT is falsy so callers
     can unconditionally invoke this helper at log time without paying
     the regex cost on non-redacted deployments.
+
+    UUIDs, W3C trace-ids (32 hex), and span-ids (16 hex) are shielded
+    before pattern substitution and restored afterwards so downstream
+    tooling can still join across traces (#1034).
     """
     if not text or not should_redact():
         return text
-    out = text
+    shielded, mapping = _shield_identifiers(text)
+    out = shielded
     for name, pat in _PATTERNS:
         if name == "authorization_header":
             out = pat.sub(r"\1" + _REDACTED, out)
         else:
             out = pat.sub(_REDACTED, out)
-    return out
+    if high_entropy_enabled():
+        _, hi_pat = _HIGH_ENTROPY_PATTERN
+        out = hi_pat.sub(_REDACTED, out)
+    return _restore_identifiers(out, mapping)

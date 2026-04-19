@@ -30,8 +30,9 @@ _SHARED = Path(__file__).resolve().parents[1] / "shared"
 sys.path.insert(0, str(_SHARED))
 
 
-def _reload(monkeypatch, log_redact: str = "true"):
+def _reload(monkeypatch, log_redact: str = "true", high_entropy: str = "false"):
     monkeypatch.setenv("LOG_REDACT", log_redact)
+    monkeypatch.setenv("LOG_REDACT_HIGH_ENTROPY", high_entropy)
     import redact as _r  # type: ignore
     importlib.reload(_r)
     return _r
@@ -131,11 +132,55 @@ def test_redact_text_empty_short_circuits(monkeypatch):
 def test_redact_text_high_entropy_fires_last(monkeypatch):
     """A string that matches BOTH a shape-specific pattern and the
     generic high-entropy catch-all should be fully redacted but not
-    double-redacted (no '[REDACTED][REDACTED]' substring)."""
-    r = _reload(monkeypatch)
-    out = r.redact_text("token=AKIAIOSFODNN7EXAMPLEJUNK")
+    double-redacted (no '[REDACTED][REDACTED]' substring).
+
+    High-entropy must be explicitly enabled (#1034) so this test opts
+    in alongside LOG_REDACT.
+    """
+    r = _reload(monkeypatch, high_entropy="true")
+    # 40-char blob: matches the generic high-entropy rule; the AWS shape
+    # rule here does NOT match (no word boundary after 20 chars). We
+    # assert that the catch-all redacts the token without double-wrapping.
+    out = r.redact_text("token=AKIAIOSFODNN7EXAMPLEabcdefghij1234567890")
     assert r._REDACTED in out
     assert r._REDACTED + r._REDACTED not in out
+
+
+# ----- identifier-shape preservation (#1034) ---------------------
+
+
+def test_redact_text_preserves_uuid(monkeypatch):
+    """UUID-shaped identifiers must round-trip untouched (#1034)."""
+    r = _reload(monkeypatch, high_entropy="true")
+    uid = "550e8400-e29b-41d4-a716-446655440000"
+    assert uid in r.redact_text(f"session_id={uid}")
+
+
+def test_redact_text_preserves_otel_trace_and_span(monkeypatch):
+    """32-hex trace-id / 16-hex span-id must round-trip untouched."""
+    r = _reload(monkeypatch, high_entropy="true")
+    trace = "0af7651916cd43dd8448eb211c80319c"
+    span = "b7ad6b7169203331"
+    out = r.redact_text(f"trace_id={trace} span_id={span}")
+    assert trace in out
+    assert span in out
+
+
+def test_redact_text_high_entropy_gated_default_off(monkeypatch):
+    """The generic catch-all must be off unless LOG_REDACT_HIGH_ENTROPY=true."""
+    r = _reload(monkeypatch, high_entropy="false")
+    # 40-char opaque token that matches ONLY the high-entropy rule.
+    token = "A" * 40
+    assert token in r.redact_text(f"noise {token} noise")
+
+
+def test_redact_text_credit_card_requires_separators(monkeypatch):
+    """Bare 16-digit runs (e.g. timestamps) must not redact as credit cards."""
+    r = _reload(monkeypatch)
+    assert r.redact_text("correlation=1234567890123456") == "correlation=1234567890123456"
+    # Separated shape still redacts.
+    out = r.redact_text("4111 1111 1111 1111")
+    assert "4111" not in out
 
 
 # ----- ReDoS wall-clock bound ------------------------------------
