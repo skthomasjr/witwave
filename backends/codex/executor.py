@@ -764,7 +764,45 @@ def _build_mcp_servers(mcp_config: dict) -> list:
             elif "url" in cfg:
                 params = {"url": cfg["url"]}
                 if "headers" in cfg:
-                    params["headers"] = dict(cfg["headers"])
+                    raw_headers = dict(cfg["headers"])
+                    # #1056: restrict allowed header names to a safe set so
+                    # mcp.json can't inject arbitrary request headers
+                    # (Host override, Forwarded-For spoof, caller impersonation
+                    # via X-*). Anything outside the allow-list is dropped.
+                    allowed_hdr_prefixes = ("x-",)
+                    allowed_hdr_names = {
+                        "authorization",
+                        "accept",
+                        "accept-encoding",
+                        "content-type",
+                        "user-agent",
+                    }
+                    safe_headers: dict[str, str] = {}
+                    dropped: list[str] = []
+                    for hk, hv in raw_headers.items():
+                        if not isinstance(hk, str) or not isinstance(hv, str):
+                            dropped.append(str(hk))
+                            continue
+                        lowered = hk.strip().lower()
+                        ok = (
+                            lowered in allowed_hdr_names
+                            or any(lowered.startswith(p) for p in allowed_hdr_prefixes)
+                        )
+                        if ok:
+                            safe_headers[hk] = hv
+                        else:
+                            dropped.append(hk)
+                    if dropped:
+                        # Log names only — never values. Values may contain
+                        # tokens; the operator-visible signal is the header
+                        # key list.
+                        logger.warning(
+                            "MCP server %r: dropped %d disallowed header(s) %s — "
+                            "only Authorization/Accept/Content-Type/User-Agent and "
+                            "X-* are allowed. (#1056)",
+                            name, len(dropped), sorted(dropped),
+                        )
+                    params["headers"] = safe_headers
                 servers.append(MCPServerStreamableHttp(name=name, params=params))
             else:
                 logger.warning(
