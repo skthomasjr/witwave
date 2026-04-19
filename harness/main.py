@@ -904,6 +904,29 @@ async def main():
                 })
         except Exception:
             pass
+        # Read-only introspection surfaces (#1086). Webhooks and
+        # continuations don't have run endpoints — they're reactive —
+        # but their snapshot endpoints are part of the "introspection"
+        # surface a dashboard / remote-tooling client needs to bootstrap
+        # off a single well-known. Listing them alongside the run
+        # entries keeps /.well-known/agent-runs.json as the canonical
+        # discovery doc rather than requiring a second well-known.
+        payload.append({
+            "kind": "webhooks",
+            "name": "webhooks",
+            "endpoint": "/webhooks",
+            "methods": ["GET"],
+            "auth": "none",
+            "reactive": True,
+        })
+        payload.append({
+            "kind": "continuations",
+            "name": "continuations",
+            "endpoint": "/continuations",
+            "methods": ["GET"],
+            "auth": "none",
+            "reactive": True,
+        })
         return JSONResponse(payload)
 
     async def trigger_handler(request: Request) -> JSONResponse:
