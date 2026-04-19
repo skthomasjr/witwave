@@ -1,9 +1,16 @@
 # Competitive Landscape
 
-Last updated: 2026-04-19 by local-agent (eighth pass — Gap Analysis corrected for shipped observability
-(#1110 event stream + W3C traceparent propagation), `ALLOWED_TOOLS` + `hooks.yaml` declarative policy
-reconciled against current state, event-stream positioning added. Reference Products + Research Themes
-sections not re-verified in this pass — flag claims older than 30 days before quoting them.)
+Last updated: 2026-04-19 by local-agent (ninth pass — full Reference Products refresh via market research;
+added 5 new competitors (OpenClaw, kagent, Amazon Bedrock AgentCore, Microsoft Agent Framework + Foundry,
+Cloudflare Agent Cloud); dropped 2 (AutoGPT — pivoted to low-code builder; SWE-agent — academic benchmark
+tool, not platform competitor); replaced LangGraph entry with LangGraph + Platform reference and corrected
+the prior-pass "v2.0" framing (features cited were actually v1.x); updated 5 entries with Apr 2026 releases
+(Claude Agent SDK Python GA today, Devin-in-Windsurf, Hermes v0.10.0 Tool Gateway, CrewAI v1.14.2 checkpoint
+primitives, A2A v1.0 + Linux Foundation governance); added "Category references" appendix (NVIDIA NAT,
+Salesforce Agent Fabric); Positioning + Gap Analysis revised for three new market realities (A2A + MCP +
+OTel are now baseline not differentiators; Kubernetes-native agent infra is no longer empty space;
+"Agent Fabric / Mesh / Cloud" has coalesced as the category name). Research Themes section not re-verified
+in this pass — flag industry statistics older than 30 days before quoting them.)
 
 ---
 
@@ -32,7 +39,22 @@ pulls or webhook fan-out. The platform exposes a versioned Server-Sent Events st
 `Last-Event-ID` resume, and per-session drill-down streams that carry token-level `conversation.chunk`
 events. Every client (web dashboard, `ww` CLI, future mobile) consumes the same schema documented in
 `docs/events/`. Most reference products either don't ship a live observability stream or couple it to a
-proprietary UI; publishing the schema as a first-class client contract is a differentiator.
+proprietary UI; publishing the schema as a first-class multi-client contract is a differentiator.
+
+**Category context (April 2026).** Three market realities shape the comparisons below:
+
+1. **"Agent Fabric / Agent Mesh / Agent Cloud"** has coalesced as the enterprise-category name in the last
+   60 days — Cloudflare, Salesforce, MuleSoft, ServiceNow, Equinix, Nutanix all use one of these three
+   phrases. This project's harness + A2A + multi-backend routing sits squarely in that category
+   architecturally, though the project's positioning language is still "autonomous-agent infrastructure."
+2. **Kubernetes-native agent infrastructure is no longer empty space.** kagent is in the CNCF sandbox,
+   OpenClaw has a dedicated operator, OpenHands v1.6 added Kubernetes deployment + RBAC (March 2026), and
+   kubernetes.io published an "Agent Sandbox" post. What was a wide lane is now contested — differentiation
+   moves to specifics (multi-backend routing under one identity, scheduler-primitives breadth, etc.).
+3. **A2A + MCP + OpenTelemetry are now the assumed baseline tripod.** Every 2026 launch — Microsoft Agent
+   Framework, kagent, Bedrock AgentCore Gateway, Cloudflare Agent Cloud — leads with all three. Shipping
+   them is no longer a differentiator; *how* they compose (cross-pod topology, per-named-agent routing,
+   published event schema) is where the differentiation now lives.
 
 ---
 
@@ -79,9 +101,19 @@ mode (read-only + plan file) provides the native primitive to implement the same
 **Autonomy model:** Human-driven (Claude Code is an interactive CLI; the Agent SDK is a library for building agents, not
 an autonomous runtime by itself — this project is the autonomous harness built on top of it)
 
-The Claude Agent SDK (renamed from Claude Code SDK, late 2025) is the runtime this project builds on. We pin `0.1.55`;
-the current release is `0.1.56` (delta: fix for silent truncation of large MCP tool results over 50K chars). Key SDK
-capabilities not yet wired into this project:
+The Claude Agent SDK (renamed from Claude Code SDK, late 2025) is the runtime this project builds on. **The Claude
+Agent SDK for Python was formally released on 2026-04-18** (bundles Claude Code CLI; requires Python 3.10+) — the
+SDK is now a first-party supported product line, not a thin wrapper. Claude Code shipped 30+ releases during a
+five-week sprint in April 2026. Recent notables:
+
+- **Ultraplan early preview (Apr 6–10, 2026):** Cloud-drafted plans with a web editor; plans can run locally or
+  remotely. Pushes Claude Code further toward cloud-hosted agent execution.
+- **`ant` CLI:** A new standalone command-line client for the Claude API with native Claude Code integration and
+  YAML-versioned API resources — Anthropic's bid on the "agent infrastructure race" positioning.
+- **Focus view, stronger permissions + sandbox handling, richer status line, better resume/transcript reliability,
+  improved Bash + MCP stability.** Iteration-level polish across every edge of the CLI.
+
+Key SDK capabilities not yet wired into this project:
 
 **Hooks system — Python callback API via `HookMatcher`:** The SDK overview page confirms hooks are registered as Python
 callback functions in `ClaudeAgentOptions`, not file-based config. Example from SDK docs:
@@ -154,10 +186,16 @@ shipped by any agent product.
 
 **Schedule Devins (March 2026) — self-scheduling and parallel delegation:** Devin can now set up its own recurring
 schedules from natural language descriptions, carrying state between runs via persistent notes. A coordinator Devin
-delegates to managed Devins — each a full isolated VM — that work in parallel. This is architecturally close to this
-project's agenda + A2A delegation model, but with a key difference: Devin infers the schedule from natural language
-rather than requiring explicit cron expressions. The stateful scheduling pattern (each run builds on the previous)
-validates this project's session-based agenda design.
+delegates to managed Devins — each a full isolated VM — that work in parallel. Architecturally close to this
+project's agenda + A2A delegation model, except Devin infers the schedule from natural language rather than requiring
+explicit cron expressions.
+
+**Devin-in-Windsurf (2026-04-15):** Cognition integrated cloud Devin with Windsurf local dev, letting developers
+hand off tasks between a local IDE session and a remote Devin instance on the same repo. Plus progressive web app
+installation (desktop + mobile), browser-tab favicon session-status dots, a **PR Digest** (read-only view of
+Devin-session PRs for users who haven't yet connected GitHub), **GitHub Enterprise Server support** in the Review
+flow, repository-level Review permission enforcement, and IDP (Okta) groups management UI in Enterprise settings.
+The IDE-adjacent integration + enterprise identity / review-governance posture is Cognition's 2026-Q2 theme.
 
 **Relative standing:** Devin is a vertical product; this project is infrastructure. Transferable lessons: show the plan
 before acting, structure work for parallel execution, make agent actions observable mid-run, and carry state across
@@ -166,143 +204,231 @@ patterns. This project's agenda system already provides scheduled execution with
 Devins" validates the model while highlighting the value of event-driven triggers (F-013) and planning mode (F-012) as
 complements to cron.
 
-### SWE-agent
-
-**Autonomy model:** Human-driven (run as a CLI command against a specific GitHub issue; produces a patch, then stops —
-no persistent runtime or scheduling)
-
-The Princeton team's active 2026 development is **mini-SWE-agent**: achieving 65% on SWE-bench Verified in approximately
-100 lines of Python. This is the strongest published validation of the ACI philosophy — a minimal, constrained tool set
-with tight feedback loops achieves strong benchmark performance with near-zero scaffolding. SWE-bench Pro launched in
-2026 with 1,865 multi-language tasks (vs. 500 Python-only for Verified); OpenAI stopped reporting Verified scores after
-detecting training data contamination. Current open-source SOTA: Claude 4.5 Opus at 76.8% on bash-only. The v1.1.0
-release shipped training trajectories for fine-tuning.
-
-**Mini-SWE-agent v2 (2026):** A major rewrite that switches to native tool calling API by default (text-based action
-parsing still available), adds multimodal input support, and reaches 74%+ on SWE-bench Verified with Gemini 3 Pro.
-Research finding: randomly switching between GPT-5 and Sonnet 4 during a run boosts performance — model diversity within
-a single run is a novel technique not yet explored by this project or competitors.
-
-**Relative standing:** mini-SWE-agent's 100-line implementation validates the core ACI principle more strongly than
-ever: simplicity and constraints outperform complex scaffolding. The v2 model-diversity finding is notable — this
-project already supports per-agent model selection via `CLAUDE_MODEL`, and per-agenda-item model selection via the
-`model` frontmatter field, but not mid-run model switching. This project's tool list remains general-purpose with no
-harness-level guardrails. The SDK's `PreToolUse` hook with `updatedInput` is the natural implementation point for
-ACI-style argument transforms and blocking.
-
 ### Hermes Agent (NousResearch)
 
 **Autonomy model:** Autonomous (runs persistently on user-controlled infrastructure; connects to messaging platforms and
 operates proactively — the closest architectural peer to this project in the new 2026 open-source landscape)
 
-Hermes Agent (MIT, released February 2026, v0.7.0 as of April 3, 2026) is built around the thesis that an agent should
-learn from completed work and get measurably better the longer it runs. Key capabilities: persistent memory via
-prompt-injected files + SQLite FTS5 with LLM-powered summarization; **auto-generated skills** — after completing a
-complex task the agent writes a new skill document for future reuse; six terminal backends (local, Docker, SSH, Daytona,
-Singularity, Modal); 40+ built-in tools (web search, browser automation, vision, image generation, TTS, multi-model
-reasoning); multi-platform messaging gateway (Telegram, Discord, Slack, WhatsApp, CLI). v0.7.0 added a pluggable memory
-provider interface and same-provider credential pools for automatic rotation. The "auto-generated skills" pattern is the
-clearest capability gap relative to this project.
+Hermes Agent (MIT, NousResearch, released February 2026, **v0.10.0 on 2026-04-16**) is built around the thesis that an
+agent should learn from completed work and get measurably better the longer it runs. Ships weekly. Key capabilities:
+persistent memory via prompt-injected files + SQLite FTS5 with LLM-powered summarization; **auto-generated skills**
+— after completing a complex task the agent writes a new skill document for future reuse (FTS5 now indexes 118+
+bundled + generated skills, with top matches prepended to context); six terminal backends (local, Docker, SSH,
+Daytona, Singularity, Modal); 40+ built-in tools; **multi-platform messaging gateway — 16 supported platforms**
+(Telegram, Discord, Slack, WhatsApp, Signal, iMessage via BlueBubbles, WeChat/WeCom, Android/Termux native, CLI, …).
 
-**Relative standing:** Hermes Agent is the most direct architectural peer discovered to date — persistent,
-containerized, self-hosted, multi-agent-capable. Its layered memory stack (FTS5 + LLM summarization + pluggable
-providers) and auto-skill-generation are materially ahead of this project's flat markdown files and static skill
-documents. Its messaging-first gateway (Telegram, Slack, Discord) is out of scope for this project's A2A/HTTP model, but
-the auto-skill-generation pattern is directly applicable.
+**v0.9.0 (2026-04-13, "The Everywhere Release"):** Android/Termux native, iMessage via BlueBubbles, WeChat/WeCom
+callback mode, Fast Mode (`/fast`), local web dashboard, background-process monitoring, native xAI (Grok) + Xiaomi
+MiMo providers, pluggable context engine.
 
-### AutoGPT
+**v0.10.0 (2026-04-16, "The Tool Gateway Release"):** Nous Portal subscribers get web search, image gen, TTS, and
+browser automation (Firecrawl, FAL/FLUX 2 Pro, OpenAI TTS, Browser Use) bundled without separate API keys — a
+subscription-bundled tool gateway that is a new monetization vector for the category.
 
-**Autonomy model:** Semi-autonomous to autonomous (platform mode runs agents as persistent services; classic CLI mode is
-human-initiated per run; the managed platform supports scheduled and event-driven execution — the closest reference
-product to this project's model)
-
-AutoGPT (v0.6.9+) runs as a managed platform with a visual workflow builder, agent marketplace, and server/frontend
-architecture. Maintains short-term and long-term memory with self-reflection after each action. 167,000+ GitHub stars.
-Has shifted from a developer framework toward a no-code platform.
-
-**Relative standing:** AutoGPT's tiered memory is more mature than this project's flat markdown files. Its platform
-direction (visual builder, marketplace) is out of scope here.
+**Relative standing:** Hermes Agent is the most direct architectural peer in the open-source world on the
+consumer / personal-assistant axis. Its layered memory stack (FTS5 + LLM summarization + pluggable providers) and
+auto-skill-generation are materially ahead of this project's flat markdown files and static skill documents. Its
+messaging-first gateway is out of scope for this project's A2A/HTTP model. The auto-skill-generation pattern
+remains the most transferable idea.
 
 ### CrewAI
 
 **Autonomy model:** Human-driven (a crew is instantiated and kicked off by Python code a human runs; event-driven Flows
 add reactivity but crews do not self-schedule — they are called)
 
-Multi-agent orchestration framework. The headline 2025–2026 development is the **unified Memory class**: a single
-intelligent API replacing the prior four-way split, with LLM-inferred hierarchical scopes (filesystem-style paths like
-`/project/alpha`), composite recall scoring (semantic similarity + recency decay + importance weighting), and
-non-blocking background saves. A `crewai memory` terminal browser enables direct inspection. **RuntimeState
-serialization** (v1.13.0, April 2026) enables snapshots of crew state for crash recovery. Token usage tracking landed in
-`LLMCallCompletedEvent`. Qdrant Edge added for on-device vector storage. Enterprise Control Plane adds real-time tracing
-and a unified control plane; 1.4B agentic automations claimed.
+Multi-agent orchestration framework. **Current: v1.14.2 (2026-04-17).** Headline 2025–2026 capabilities:
+**unified Memory class** (LLM-inferred hierarchical scopes, composite recall scoring, non-blocking background saves,
+`crewai memory` terminal browser), **Tool search** (dynamic tool injection — loads only tools relevant to the current
+task rather than the full allow-list), Qdrant Edge for on-device vector storage, Enterprise Control Plane with
+real-time tracing.
 
-**March 2026 additions:** Automatic `root_scope` for hierarchical memory isolation — memory hierarchies are now inferred
-automatically rather than requiring manual scope configuration. **Agent skills** were implemented as a first-class
-concept. **Tool search** dynamically injects appropriate tools during execution rather than loading all tools upfront,
-saving tokens. These additions bring CrewAI closer to this project's skill-document and tool-selection patterns.
+**v1.14.0 (2026-04-07) — checkpoint/resume primitives:** First-class `CheckpointConfig` auto-checkpointing, `checkpoint
+list` / `checkpoint info` CLI, `SqliteProvider` checkpoint store, runtime-state checkpointing with event-system refactor,
+`guardrail_type` + name labels on traces. SSRF and path-traversal protections added to RAG tools. Excluded embedding
+vectors from memory serialization (token savings). Bumped `litellm ≥1.83.0` to pick up a CVE patch (CVE-2026-35030).
 
-A 2026 documented limitation: when a crew completes its task, coordination patterns, delegation decisions, and role
-effectiveness data are lost — without shared persistent memory, teams cannot compound intelligence over time.
+**v1.14.2 (2026-04-17):** Fix for `flow_finished` event after HITL resume; `cryptography` bump to 46.0.7 for
+CVE-2026-39892. The two CVE patches in a single minor cycle signal CrewAI maturing its enterprise-security posture.
 
-**Relative standing:** CrewAI's unified structured memory with composite recall and hierarchical scoping remains the
-clearest memory gap relative to this project. RuntimeState serialization advances the durability story. CrewAI's new
-tool search (dynamic tool injection) is interesting — this project's `ALLOWED_TOOLS` env var is static per agent. The
-automatic `root_scope` for memory isolation validates the value of hierarchical scoping for multi-agent teams. This
-project uses A2A for coordination (distributed, standard, network-based); CrewAI uses in-process Python calls (tighter
-coupling, lower latency).
+**Relative standing:** CrewAI's unified structured memory with composite recall remains the clearest memory gap
+relative to this project. Its new tool search (dynamic, task-aware tool injection — loading only tools relevant to
+the current prompt) is the state of the art here and a real gap; this project has static `ALLOWED_TOOLS` per agent.
+Checkpoint/resume primitives at v1.14.0 advance the durability story. This project uses A2A for coordination
+(distributed, standard, network-based); CrewAI uses in-process Python calls (tighter coupling, lower latency).
 
-### LangGraph
+### LangGraph / LangGraph Platform
 
-**Autonomy model:** Human-driven to semi-autonomous (graphs are triggered by external events or human calls; LangGraph
-Cloud adds persistent deployment and event-driven triggers, pushing toward semi-autonomous)
+**Autonomy model:** Human-driven to semi-autonomous (graphs are triggered by external events or human calls;
+**LangGraph Platform** adds persistent deployment + event-driven triggers, pushing toward semi-autonomous)
 
-**LangGraph 2.0 (February 2026)** is a significant production-focused release. Key changes:
+**Current: LangGraph v1.1.0 (2026-03-10) + LangGraph Platform GA (late 2025).** An earlier pass of this doc
+mislabeled deferred nodes and node-level caching as "v2.0" features — they are **v1.x** features shipped during the
+2025 LangGraph Release Week. There is no v2.0 on PyPI as of April 2026; the stable line is v1.x.
 
-- **HITL redesigned:** `interrupt()` now uses structured payloads (replacing the exception-based `NodeInterrupt`) —
-  intent is unambiguous, code is cleaner. Resume via `Command(resume=value)` unchanged.
-- **Checkpointing mandatory:** Required at graph initialization (breaking change from 1.x). PostgreSQL checkpointers
-  gained connection pooling (`pool_size`, `schema_name`) for multi-tenant production deployments.
-- **Guardrail nodes as first-class primitives:** Content filtering, rate limiting (per-user/per-thread/global), and
-  audit logging with field redaction are now declarative config rather than custom code.
-- **MCPToolkit:** Standardized MCP integration for agent-to-tool connections.
-- **A2A integration:** Cross-framework agent-to-agent communication via message brokers, confirming A2A as the emerging
+**Key v1.x capabilities (accumulated through v1.1.0):**
+
+- **HITL via `interrupt()`** with structured payloads + resume via `Command(resume=value)`.
+- **Checkpointing mandatory** at graph initialization, with PostgreSQL checkpointer pooling for multi-tenant
+  deployments.
+- **Guardrail nodes as first-class primitives** (content filtering, per-user/per-thread/global rate limiting, audit
+  logging with field redaction).
+- **MCPToolkit** for standardized MCP integration.
+- **Native A2A integration** — cross-framework agent-to-agent over message brokers, confirming A2A as the emerging
   coordination protocol.
-- **"Deep Agents":** Agents that plan, spawn subagents, and leverage file systems for complex multi-step tasks.
+- **Deferred nodes** (v1.x) — delay node execution until all upstream paths complete; canonical map-reduce / consensus
+  / multi-agent fan-out-fan-in implementation.
+- **Node-level caching** (v1.x) — cache individual node results to skip redundant computation during iterative
+  development and replay.
+- **Type-safe `invoke()` / `stream()` via `version="v2"`** with Pydantic / dataclass coercion of state values.
+- **Deploy CLI** (`langgraph deploy`) pushes a graph to LangGraph Platform in one step.
 
-**LangGraph v1.1 (March 2026)** is a fully backwards-compatible follow-on release. Key additions:
+**LangGraph Platform (GA, late 2025):** Purpose-built runtime for long-running, stateful agents. Durable state
+persistence, resume-from-interruption, built-in HITL, streaming. **~400 companies running it in production** as of
+the March 2026 LangChain newsletter. The Platform — not the library alone — is the right reference for a
+production-grade comparable to this project's harness + scheduler surface.
 
-- **Type-safe invoke/stream (`version="v2"`):** `invoke()` and `stream()` now accept `version="v2"` for structured
-  `GraphOutput` and `StreamPart` return types — cleaner application-layer integration.
-- **Pydantic and dataclass coercion:** State values are automatically coerced to declared model types in v2 mode.
-- **Node caching:** Cache individual node results to skip redundant computation — especially useful for iterative
-  development and replay workflows.
-- **Deferred nodes:** Delay node execution until all upstream paths complete — the canonical implementation of
-  map-reduce, consensus, and collaborative multi-agent fan-out/fan-in patterns.
-- **Deploy CLI:** `langgraph deploy` pushes a graph to LangSmith Deployment in one step.
-- **Bug fix:** Time-travel with interrupts and subgraphs now correctly restores parent checkpoint state.
-
-**Relative standing:** LangGraph 2.0's mandatory checkpointing validates F-005 (implemented). Its declarative guardrail
-nodes and A2A integration confirm the direction of F-009. The HITL `interrupt()` redesign reinforces the value of F-001.
-The A2A integration confirms this project's protocol choice is converging with the broader ecosystem. LangGraph v1.1's
-deferred nodes are the reference implementation of the map-reduce coordination pattern relevant to future multi-agent
-work; node caching is the reference for memoized agenda runs.
+**Relative standing:** LangGraph Platform is now a peer production runtime; its checkpointing model validates F-005
+(implemented). Declarative guardrail nodes and A2A integration reinforce F-009 direction. HITL `interrupt()`
+redesign reinforces the value of F-001. This project's differentiator vs. LangGraph Platform is **multi-backend
+routing under one named-agent identity** (LangGraph Platform is single-framework — agents are LangGraph-authored),
+plus the full scheduler-primitive surface (jobs / tasks / triggers / heartbeats / continuations / webhooks) vs.
+LangGraph's graph-execution model.
 
 ### A2A Protocol (Ecosystem)
 
 **Autonomy model:** Protocol-level (A2A defines how agents communicate regardless of autonomy model; this project uses
 it as the coordination layer between autonomous agents)
 
-The protocol ecosystem has expanded to four recognized layers: **MCP** (agent-to-tool), **A2A v0.3** (agent-to-agent —
-gRPC transport, signed agent security cards, 150+ supporting organizations), **ACP** (lightweight async messaging), and
-**UCP** (agentic commerce — co-developed with Shopify, Visa, Mastercard, January 2026). LangGraph 2.0 added native A2A
-integration. **Microsoft Foundry** added an A2A Tool (Preview) in early 2026, letting Foundry agents call any
-A2A-protocol endpoint with explicit auth and clean call/response semantics — further validating A2A as the
-cross-platform agent communication standard. The W3C AI Agent Protocol Community Group is working toward official web
-standards (expected 2026–2027). The winning production coordination topology: hybrid — a high-level orchestrator for
-strategic decisions + local mesh networks for tactical execution.
+**A2A v1.0 is now the stable version.** Governance has been donated to the **Linux Foundation** as an official
+project; one-year anniversary milestone (2026-04-09) reports 150+ participating organizations and 22k+ GitHub stars.
+Production deployments include Azure AI Foundry and Amazon Bedrock AgentCore (both of which embed A2A as their
+native cross-agent protocol). v1.0 adds **Signed Agent Cards** — cryptographic signatures on Agent Cards to prevent
+forgery and card-redirect attacks, closing a real multi-tenant security gap.
 
-This project already implements A2A and is well-positioned within this growing ecosystem. The hybrid topology insight
-aligns with the project's existing design (heartbeat-driven orchestration + A2A delegation).
+The broader protocol ecosystem continues to be four layers: **MCP** (agent-to-tool), **A2A v1.0** (agent-to-agent),
+**ACP** (lightweight async messaging), and **UCP** (agentic commerce — co-developed with Shopify, Visa, Mastercard).
+Native A2A support is now present in LangGraph v1.x, Microsoft Foundry Agent Service, kagent, and Amazon Bedrock
+AgentCore. The W3C AI Agent Protocol Community Group is working toward official web standards (expected 2026–2027).
+
+**Relative standing:** This project already implements A2A as a first-class citizen — harness routes any inbound
+message to backend agents, named agents are reachable from peer named agents over A2A, and the hybrid
+orchestrator-plus-local-mesh topology identified in 2026 matches this project's heartbeat + delegation design.
+v1.0's Signed Agent Cards is the next conformance milestone — verifying signatures on inbound agent cards before
+accepting requests is a straightforward gap to close.
+
+### OpenClaw (Peter Steinberger / community)
+
+**Autonomy model:** Autonomous (self-hosted personal agent, runs 24/7, messaging-driven; the closest philosophical
+peer to this project in the open-source world)
+
+OpenClaw originated as "Clawdbot" in November 2025, was renamed "Moltbot" on 2026-01-27 under Anthropic trademark
+pressure, and three days later settled on **OpenClaw**. **Over 160,000 GitHub stars.** Runs on user-controlled
+infrastructure (notable community trend: a Mac Mini hardware rush for 24/7 hosting). Access surface is chat UIs in
+Signal / Telegram / Discord / WhatsApp. Connects to Claude, DeepSeek, and OpenAI models.
+
+**Kubernetes posture:** A dedicated `openclaw-rocks/openclaw-operator` explicitly offers "production-grade security,
+observability, and lifecycle management" — a direct parallel to this project's nyx-operator. AWS published a "Run
+OpenClaw on Amazon Lightsail" blog; NVIDIA shipped **NemoClaw** safety tooling for it. Security posture is a
+publicly-acknowledged weakness (third-party skills remote-code-execution, exposed instances).
+
+**Relative standing:** OpenClaw is the single strongest direct open-source competitor to this project. It ships
+containerized, multi-backend (Claude / OpenAI / DeepSeek), operator-managed, 24/7 autonomous — nearly every axis we
+position around. Key differentiators in this project's favor: (1) stronger safety posture via the `hooks.yaml`
+declarative policy + MCP allow-list + session-id HMAC binding; (2) A2A-native team coordination vs. OpenClaw's
+single-agent framing; (3) a published event-stream wire contract that multiple clients (dashboard, `ww` CLI, future
+mobile) consume. OpenClaw's differentiator in its favor: category-leading install base + community skill ecosystem.
+
+### kagent (Solo.io / CNCF sandbox)
+
+**Autonomy model:** Autonomous, Kubernetes-native
+
+Open-source framework for building, deploying, and running AI agents on Kubernetes. Initial announce March 2025;
+contributed to CNCF sandbox at KubeCon EU 2025; active 2026 development. Built on **A2A + ADK + MCP**, with pre-built
+tools for Prometheus, pod logs, and standard Kubernetes APIs — a direct overlap with this project's
+mcp-kubernetes / mcp-helm / mcp-prometheus surface. Runtime is Microsoft AutoGen. CNCF backing gives kagent distribution
+weight this project doesn't have.
+
+**Relative standing:** Our nearest cloud-native OSS competitor. Both projects are Kubernetes-native and lead with
+A2A + MCP; kagent doesn't offer a multi-backend router analogous to this project's `backend.yaml` routing across
+Claude / Codex / Gemini under one named-agent identity, and uses AutoGen rather than direct SDK wrappers. The
+clearest question for our positioning: "multi-backend under one identity" and "scheduler-primitives-first" (jobs +
+tasks + heartbeats + triggers + continuations + webhooks) are the defensible differentiators vs. kagent's
+AutoGen-runtime-plus-prebuilt-tools approach.
+
+### Amazon Bedrock AgentCore (AWS)
+
+**Autonomy model:** Autonomous, managed cloud
+
+Managed platform for "securely deploy and operate AI agents at any scale" — preview 2025; **Policy GA 2026-03-03,
+Evaluations GA 2026-03-31.** Surface includes a runtime, a gateway (tool/MCP access), memory, identity,
+observability, policy (governance), and evaluations (quality). Covers the same infrastructure concerns as this
+project's harness, but as an AWS-managed service. Locked to Bedrock-hosted models.
+
+**Relative standing:** Mandatory hyperscaler reference. AgentCore's Policy + Evaluations track directly against this
+project's hook policy engine + emerging smoke-test surface. Differentiators: we're open-source, self-hosted, and
+model-backend-agnostic (Claude / Codex / Gemini); AgentCore is closed, managed, Bedrock-only. The competitive
+dynamic is hyperscaler-managed-SaaS vs. self-hosted-Kubernetes — classic split.
+
+### Microsoft Agent Framework + Foundry Agent Service (Microsoft)
+
+**Autonomy model:** Semi-autonomous (orchestration framework + managed runtime)
+
+**Agent Framework:** Open-source framework (Python + .NET) for building and orchestrating multi-agent workflows,
+public preview late 2025. First-class A2A, MCP, and OpenTelemetry — exactly the same tripod we ship.
+
+**Foundry Agent Service:** GA announced March 2026. OpenAI Responses-compatible API; hosts DeepSeek, xAI, Meta,
+LangChain, LangGraph models (in addition to Azure OpenAI). Directly overlaps this project's cross-backend
+orchestration. Differentiator is Azure-first deployment; not Kubernetes-operator-native.
+
+**Relative standing:** The Microsoft entry in the category. A2A + MCP + OTel parity at the framework level
+forecloses our "we ship these" differentiator from Option A framing — narrowing to *how* we compose them is the
+right response. Microsoft's strength is Azure distribution and OpenAI Responses compatibility; ours is
+infrastructure-as-code Kubernetes posture and multi-backend routing across three distinct LLM vendors rather than
+a single API surface.
+
+### Cloudflare Agent Cloud (Cloudflare)
+
+**Autonomy model:** Autonomous, managed edge platform
+
+Launched during **Agents Week (2026-04-13 to 2026-04-17)** — the same week this doc is being revised.
+
+- **Cloudflare Mesh** — private-networking "single secure fabric" for agents / humans / multicloud; branded to
+  secure the AI agent lifecycle end-to-end.
+- **Dynamic Workers** — millisecond-spawn sandboxes for agent-generated code.
+- **AI Gateway** — unifies 70+ models across 12+ providers (directly parallel to this project's multi-backend routing
+  — but much broader).
+
+**Relative standing:** Category-defining launch in the very week of this research. Cloudflare's positioning of
+"Agent Cloud" is itself a category signal — "Agent Fabric / Mesh / Cloud" is consolidating as THE 2026 term for the
+space. Our counter-positioning: Cloudflare runs on Workers (edge compute with millisecond spawn), while this
+project runs Kubernetes Pods (persistent, stateful, per-agent filesystem). Different deployment models; some
+workloads need one, some need the other. The AI Gateway is a serious differentiation challenge to our
+backend-routing story — Cloudflare covers vastly more providers.
+
+---
+
+## Category references
+
+These products anchor category vocabulary but aren't primary competitors — noted here so the doc's language aligns
+with where the market is converging.
+
+### NVIDIA NeMo Agent Toolkit (NAT)
+
+Previously branded AIQ; renamed NAT in early 2026; **GTC 2026 (March 16–19) partner launch with ~16 platform
+vendors** (Adobe, Atlassian, Box, Cadence, Cisco, CrowdStrike, SAP, Salesforce, ServiceNow, Siemens, Synopsys,
+others) standardizing on it. Open-source library for connecting / evaluating / accelerating teams of agents;
+framework-agnostic instrumentation across LangChain / LlamaIndex / CrewAI / Microsoft Semantic Kernel / Google ADK.
+**FastMCP Workflow Publishing** lets NAT workflows publish as MCP servers — crossing the observability-to-tooling
+boundary. Matters not as a head-to-head competitor but as a cross-cutting standardization layer that changes how
+the rest of the landscape integrates.
+
+### Salesforce Agent Fabric
+
+Agent Fabric with Guided Determinism + centralized governance controls, Flex Gateway, Runtime Fabric support.
+Positioned as "trusted agent control plane for a rapidly evolving multi-vendor AI landscape" — automated discovery,
+authoring, and centralized LLM governance across vendors. Our harness is architecturally the same role (routing +
+governance across multiple backends) in a Kubernetes-native form. Noted here because **"Agent Fabric" is becoming
+the canonical enterprise category name** alongside "Agent Mesh" and "Agent Cloud."
 
 ---
 
@@ -536,15 +662,16 @@ _Last updated: 2026-04-07 by local-agent_
   extraction, retry, and HMAC signing. Devin's self-scheduling validates the agenda model. The remaining gap is dynamic
   tooling and deeper external system integrations.
 
-- **Observability and debuggability:** Now a strength, not a gap. 100+ Prometheus metrics across harness,
-  backends, operator, and MCP tools with a shared `backend_*` baseline (claude is the superset; peers fill
-  placeholders so cross-backend PromQL joins stay clean). OpenTelemetry distributed tracing is wired
-  end-to-end — Python SDK bootstrap in `shared/otel.py`, Go operator instrumentation, and W3C `traceparent`
-  propagation across every service boundary (harness → backends → MCP tools → operator reconciles).
-  Beyond metrics and traces, `/events/stream` gives real-time event-level observability with a published
-  schema (`docs/events/events.schema.json`) — the observability-first story is the differentiator now,
-  not the catch-up. Remaining gap at the frontier: per-agent RED-method + USE-method dashboards bundled
-  as default Grafana JSON (partially started via `charts/nyx/dashboards/` at the "Overview" level).
+- **Observability and debuggability:** Metrics + distributed tracing are now baseline across the space —
+  Bedrock AgentCore ships observability by default, kagent includes Prometheus as a pre-built tool, Cloudflare
+  Agent Cloud and Microsoft Agent Framework lead with OpenTelemetry. Shipping `backend_*` metrics +
+  `traceparent` propagation is therefore no longer a differentiator; it's entry to the category. The actual
+  differentiator is the **published event-stream wire contract consumed by multiple independent clients** —
+  `/events/stream` with 14 typed event shapes documented in `docs/events/events.schema.json`, same schema
+  consumed by the web dashboard today and by the `ww` CLI + future mobile clients. Most competitors' event
+  observability is coupled to their proprietary UI (AgentCore console, LangSmith, Devin IDE embed); publishing
+  it as a first-class multi-client contract is the remaining edge. Remaining gap: per-agent RED / USE
+  dashboards bundled as default Grafana JSON (partially started via `charts/nyx/dashboards/`).
 
 - **Safety and guardrails:** Microsoft released the Agent Governance Toolkit (April 2, 2026, MIT license) — the first
   toolkit to address all 10 OWASP Agentic Top 10 risks with deterministic, sub-millisecond policy enforcement. OWASP
@@ -567,6 +694,20 @@ _Last updated: 2026-04-07 by local-agent_
   (`mcp_tool_budget_exhausted_total`). Dynamic *task-aware* tool injection (CrewAI's tool search —
   loading only the tools relevant to the current prompt rather than the full allow-list) is still the
   open frontier.
+
+- **Kubernetes-native agent infrastructure (contested lane, April 2026):** The position this project has
+  held is no longer uncontested. kagent (CNCF sandbox, Solo.io), OpenClaw's dedicated operator, OpenHands
+  v1.6 Kubernetes + RBAC support, and kubernetes.io's "Agent Sandbox" blog all now occupy the same lane.
+  Differentiators that *do* hold up head-to-head with these: (1) **multi-backend routing under one named
+  agent identity** — Claude / Codex / Gemini behind `backend.yaml` routing rules with per-concern dispatch
+  (heartbeat to claude, jobs to codex, etc.) is unique in the Kubernetes-native OSS set; competitors are
+  mostly single-framework (kagent on AutoGen) or single-model. (2) **Scheduler primitive breadth** — jobs,
+  tasks, heartbeats, triggers, continuations, webhooks as first-class `.nyx/` frontmatter files. kagent
+  and OpenClaw don't ship equivalents. (3) **Per-agent cross-pod topology** — harness + backends + shared
+  MCP tools is a production-ready shape that OpenClaw's single-agent framing doesn't match. (4)
+  **Declarative CRD lifecycle via `NyxAgent` + `NyxPrompt`** going through a dedicated operator with
+  status phases, finalizers, and multi-tenant manifest ConfigMaps. kagent is closer to ours on this axis
+  but uses CRDs only for agent definition, not prompt lifecycle.
 
 - **Cost and resource management:** `task_budget` env var is proposed (#69, open) but not implemented. Industry finding:
   90% of production agents are over-resourced in 2026; cost control is treated as a first-class architectural concern.
