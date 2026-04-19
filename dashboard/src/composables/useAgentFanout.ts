@@ -1,12 +1,21 @@
 import { onMounted, onUnmounted, ref, unref, watch } from "vue";
 import type { Ref } from "vue";
 import { apiGet, ApiError } from "../api/client";
+import { useTeam } from "./useTeam";
 
 // Generic per-agent fan-out + polling. Hits /api/agents/<name>/<endpoint> for
 // every team member in parallel, tags each item with its source agent name,
 // and merges into a single flat array. Polling cancels in-flight requests on
 // unmount, keeping the dashboard's network profile tidy when the user
 // navigates between views.
+//
+// Team directory (#1006): subscribe to the shared useTeam singleton rather
+// than fetching /api/team per tick. A view mounting N fan-outs (e.g.
+// AutomationView with 6) previously issued N × /api/team requests per
+// interval — each fan-out had its own directory fetch, undoing #742. By
+// reading the team list off the shared singleton's members ref, the
+// dashboard issues exactly one /api/team per useTeam interval regardless
+// of how many fan-outs are active.
 
 interface TeamDirectoryEntry {
   name: string;
@@ -53,6 +62,12 @@ interface FetchOneResult<T> {
 export function useAgentFanout<T>(opts: UseAgentFanoutOptions) {
   const intervalMs = opts.intervalMs ?? 5000;
   const tolerateIndividualErrors = opts.tolerateIndividualErrors ?? true;
+
+  // Share the team directory with every other dashboard consumer (#1006).
+  // useTeam is a ref-counted module-level singleton (see #742); subscribing
+  // here does NOT add a second /api/team poller — it reuses the existing
+  // one (or starts it exactly once if we're the first mount).
+  const team = useTeam({ intervalMs });
 
   const items = ref<(T & AgentSourced)[]>([]);
   const perAgentErrors = ref<PerAgentErrors>({});
@@ -110,7 +125,13 @@ export function useAgentFanout<T>(opts: UseAgentFanoutOptions) {
     const localAborter = aborter;
     const signal = aborter.signal;
     try {
-      const directory = await apiGet<TeamDirectoryEntry[]>("/team", { signal });
+      // Directory comes from the shared useTeam singleton (#1006), which
+      // polls /api/team exactly once per effective interval regardless of
+      // subscriber count. Derive the thin {name,url} shape locally.
+      const directory: TeamDirectoryEntry[] = team.members.value.map((m) => ({
+        name: m.name,
+        url: m.url,
+      }));
       const perAgent = await Promise.all(
         directory.map((entry) => fetchOne(entry, signal)),
       );
@@ -137,6 +158,16 @@ export function useAgentFanout<T>(opts: UseAgentFanoutOptions) {
     void refresh();
     timer = setInterval(() => void refresh(), intervalMs);
   });
+
+  // Re-fetch when the shared team directory changes (agent added/removed).
+  // Key off a stable scalar (joined names) so identical-content updates
+  // don't trigger spurious re-fetches.
+  watch(
+    () => team.members.value.map((m) => m.name).join("\u0000"),
+    () => {
+      void refresh();
+    },
+  );
 
   // When a reactive query (ref/computed/getter) is supplied, re-fetch on
   // change so dropdown-driven params (e.g. limit) take effect immediately
