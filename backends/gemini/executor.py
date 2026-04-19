@@ -537,6 +537,13 @@ async def _emit_afc_history(
     # Secondary flat FIFO preserved only for cross-tool fallback ordering.
     pending_by_index: list[dict] = []
     call_counter = 0
+    # Coalesce cross-tool FIFO fallback warnings to one line per
+    # _emit_afc_history invocation (#998). A multi-tool AFC turn with
+    # SDK-version-dropped fr ids previously emitted one WARN per
+    # response part, flooding logs while communicating nothing
+    # actionable beyond "SDK drift is active this turn".
+    _cross_tool_fallback_count = 0
+    _cross_tool_fallback_example: tuple[str, str] | None = None
 
     # Seed pending tables from prefix_history (#996) so any unmatched
     # function_call from a prior turn can still pair with a
@@ -689,12 +696,16 @@ async def _emit_afc_history(
                                 _xq.remove(matched)
                             except ValueError:
                                 pass
-                        logger.warning(
-                            "AFC pairing: no same-tool pending for %r; "
-                            "cross-tool FIFO fallback matched pending %r — "
-                            "tool_use_id/duration label may be imprecise (#887).",
-                            name, matched.get("name"),
-                        )
+                        # #998: coalesce the cross-tool FIFO fallback
+                        # warning to a single summary line per
+                        # _emit_afc_history invocation. Record a
+                        # representative (fr_name, matched_fc_name) pair
+                        # the first time it fires so operators have
+                        # enough detail to diagnose SDK drift without
+                        # log spam.
+                        _cross_tool_fallback_count += 1
+                        if _cross_tool_fallback_example is None:
+                            _cross_tool_fallback_example = (name, matched.get("name") or "")
                 tool_use_id = matched["id"] if matched else None
                 ts = datetime.now(timezone.utc).isoformat()
                 entry = {
@@ -785,6 +796,19 @@ async def _emit_afc_history(
                     )
                 except Exception:
                     pass
+
+    # #998: emit a single cross-tool FIFO fallback warning per
+    # invocation, carrying an occurrence count and a representative
+    # (fr_name, matched_fc_name) pair so operators retain enough detail
+    # to diagnose SDK-version drift without per-part log spam.
+    if _cross_tool_fallback_count > 0:
+        _fr_name, _fc_name = _cross_tool_fallback_example or ("?", "?")
+        logger.warning(
+            "AFC pairing: %d cross-tool FIFO fallback pair(s) this turn; "
+            "example: fr name=%r matched pending fc name=%r — "
+            "tool_use_id/duration label may be imprecise (#887, #998).",
+            _cross_tool_fallback_count, _fr_name, _fc_name,
+        )
 
 
 async def _append_tool_audit(entry: dict) -> None:
