@@ -606,12 +606,27 @@ async def main():
             limit = int(limit_raw) if limit_raw else 20
         except ValueError:
             limit = 20
+        if limit <= 0:
+            limit = 20
+        # Offset-based pagination (#1101). Parity with claude / gemini.
+        try:
+            offset_raw = request.query_params.get("offset")
+            offset = int(offset_raw) if offset_raw else 0
+        except ValueError:
+            offset = 0
+        if offset < 0:
+            offset = 0
         try:
             from otel import get_in_memory_traces  # type: ignore
             traces = get_in_memory_traces()
         except Exception:
             traces = []
-        return JSONResponse({"data": traces[:limit], "total": len(traces)})
+        return JSONResponse({
+            "data": traces[offset:offset + limit],
+            "total": len(traces),
+            "offset": offset,
+            "limit": limit,
+        })
 
     async def otel_traces_detail_handler(request: Request) -> JSONResponse:
         unauthorized = _require_traces_auth(request)
