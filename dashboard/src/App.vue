@@ -2,6 +2,7 @@
 import { RouterLink, RouterView } from "vue-router";
 import { useHealth } from "./composables/useHealth";
 import { usePollingControl } from "./composables/usePollingControl";
+import AlertBanner from "./components/AlertBanner.vue";
 
 // App shell. Simple button-style nav matching the legacy ui/ pattern —
 // compact, dark-surface, one entry per view. Status dot in the header
@@ -102,6 +103,7 @@ const { paused, visible, toggle: togglePolling } = usePollingControl();
       </button>
       <span class="version" data-testid="dashboard-version">v0.1.0-alpha</span>
     </header>
+    <AlertBanner />
     <main id="app-main" class="app-main" tabindex="-1">
       <RouterView />
     </main>
