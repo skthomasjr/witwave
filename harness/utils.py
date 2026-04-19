@@ -296,6 +296,18 @@ async def run_awatch_loop(
                 logger_.error(f"{_name} _scan crashed: %r", t.exception())
 
         _scan_task.add_done_callback(_scan_done)
+        # #1185: await the concurrent scan before draining awatch so any
+        # on_change / on_delete calls emitted by the watcher during the scan
+        # are serialised *after* the scan's initial registration pass. Without
+        # this, a file changed between scan-start and scan-finish could be
+        # processed in parallel — the watcher event racing with the scan's
+        # call to the same on_change handler. Errors from _scan are still
+        # observable via the _scan_done callback logged above.
+        try:
+            await _scan_task
+        except Exception:
+            # Already logged by _scan_done; swallow here so awatch still runs.
+            pass
         async for changes in awatch(directory):
             if watcher_events_metric is not None:
                 watcher_events_metric.labels(watcher=watcher_name).inc()

@@ -63,6 +63,12 @@ rules:
   - apiGroups: [monitoring.coreos.com]
     resources: [servicemonitors, podmonitors]
     verbs: [create, delete, get, list, patch, update, watch]
+  # networking.k8s.io — the operator reconciles a per-agent
+  # NetworkPolicy (#971) and the dashboard Ingress (#831). Both verbs
+  # are required; restricting them silently wedged reconciles (#1224).
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies", "ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: [nyx.ai]
     resources: [nyxagents]
     verbs: [create, delete, get, list, patch, update, watch]

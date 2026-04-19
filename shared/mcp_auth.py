@@ -65,7 +65,7 @@ def require_bearer_token(
         # (#848). Kubernetes kubelet probes cannot carry bearer tokens,
         # and the endpoint exposes only static JSON so gating it would
         # add operational risk without security benefit.
-        if scope.get("path") == "/health" and scope.get("method", "GET") == "GET":
+        if scope.get("path") == "/health" and scope.get("method", "GET") in ("GET", "HEAD"):
             await _send_health(send)
             return
         token = os.environ.get("MCP_TOOL_AUTH_TOKEN", "").strip()

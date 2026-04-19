@@ -119,8 +119,18 @@ def parse_continuation_file(path: str) -> "ContinuationItem | object | None":
         # just means the display shows "—" — the user is parking the
         # file while figuring out what it should chain off of.
         if not continues_after and enabled:
-            logger.warning(f"Continuation file {path}: missing required 'continues-after' field, skipping.")
-            return _DISABLED
+            # #1184: a missing continues-after on an *enabled* item is a parse
+            # failure, not a "disabled" signal. Returning _DISABLED here caused
+            # _register to unregister a healthy last-known-good entry on every
+            # subsequent reload that happened to trip this branch (e.g. a
+            # transient frontmatter edit mid-save). Return None so _register
+            # preserves the previous registration until a fully-valid file
+            # reappears.
+            logger.warning(
+                f"Continuation file {path}: missing required 'continues-after' field, "
+                "treating as parse error (preserving last-known-good registration)."
+            )
+            return None
 
         filename = Path(path).stem
         name = fields.get("name") or filename
@@ -283,11 +293,16 @@ class ContinuationRunner:
         self._active_fires: set[asyncio.Task] = set()
         # Per-continuation in-flight tasks, keyed by continuation name.
         self._fires_by_name: dict[str, set[asyncio.Task]] = {}
-        # Fan-in state: maps (continuation_name, session_id) -> (monotonic_ts, set
+        # Fan-in state: maps (continuation_path, session_id) -> (monotonic_ts, set
         # of upstream kind patterns satisfied so far).  Cleared on each fire;
         # stale partial entries are evicted after CONTINUATION_FANIN_TTL to
         # prevent unbounded growth when a required upstream never completes
         # (#557).
+        #
+        # #1187: keyed by the continuation *file path* rather than the
+        # mutable ``item.name`` so a rename (``name:`` edit) mid-fan-in
+        # doesn't orphan previously-accumulated state under the old name.
+        # Path is stable for the lifetime of a registration.
         self._fanin_state: dict[tuple[str, str], tuple[float, set[str]]] = {}
 
     def _register(self, path: str) -> None:
@@ -319,8 +334,9 @@ class ContinuationRunner:
         existing = self._items.pop(path, None)
         if existing is not None:
             logger.info(f"Continuation '{existing.name}' unregistered.")
-            # Drop any in-progress fan-in state for this continuation.
-            stale = [k for k in self._fanin_state if k[0] == existing.name]
+            # #1187: match fan-in state by path (the stable key), not by
+            # item.name (mutable across a rename).
+            stale = [k for k in self._fanin_state if k[0] == path]
             for k in stale:
                 del self._fanin_state[k]
         if harness_continuation_items_registered is not None:
@@ -341,7 +357,13 @@ class ContinuationRunner:
         cutoff = now - CONTINUATION_FANIN_TTL
         stale_keys = [k for k, (ts, _seen) in self._fanin_state.items() if ts < cutoff]
         for key in stale_keys:
-            name, _session = key
+            # #1187: key[0] is now the continuation file path; resolve back to
+            # the current item.name for log + metric labels so operator-facing
+            # signals stay stable. Falls back to path basename if the item has
+            # been unregistered before the evict pass observed it.
+            _path, _session = key
+            _item = self._items.get(_path)
+            name = _item.name if _item is not None else Path(_path).stem
             del self._fanin_state[key]
             logger.info(
                 f"Continuation '{name}': evicted stale fan-in state "
@@ -448,7 +470,8 @@ class ContinuationRunner:
                 # after seeing any one upstream whose pattern-shape overlapped
                 # with another required pattern, regardless of whether the
                 # other upstream had actually completed.
-                key = (item.name, session_id)
+                # #1187: key by path (stable) rather than item.name (mutable).
+                key = (item.path, session_id)
                 entry = self._fanin_state.get(key)
                 if entry is None:
                     seen: set[str] = set()

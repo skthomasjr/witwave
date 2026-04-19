@@ -62,6 +62,12 @@ rules:
   - apiGroups: [monitoring.coreos.com]
     resources: [servicemonitors, podmonitors]
     verbs: [create, delete, get, list, patch, update, watch]
+  # networking.k8s.io — per-agent NetworkPolicy (#971) + dashboard
+  # Ingress (#831). Same scope as the ClusterRole variant (#1224);
+  # missing these verbs silently wedged both features in namespace mode.
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies", "ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: [nyx.ai]
     resources: [nyxagents]
     verbs: [create, delete, get, list, patch, update, watch]

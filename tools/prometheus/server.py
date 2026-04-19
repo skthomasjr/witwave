@@ -37,6 +37,7 @@ from typing import Any
 
 import httpx
 from mcp.server.fastmcp import FastMCP
+from urllib.parse import urlparse
 
 # shared/otel.py is copied into the image (see Dockerfile) and imported
 # as a top-level module. Falls back to no-op shims if the shared module
@@ -84,6 +85,27 @@ mcp = FastMCP("prometheus")
 # the chart values (env on the MCP tool pod). Stripped of any trailing
 # slash so our endpoint joiner can safely concatenate "/api/v1/...".
 _PROMETHEUS_URL = (os.environ.get("PROMETHEUS_URL") or "").rstrip("/")
+
+# Validate the scheme at module load time (#1213). An LLM-supplied or
+# misconfigured URL with a file:// or gopher:// scheme would otherwise
+# silently hand control to httpx's default transport and could be used
+# to exfiltrate or probe unintended surfaces. Accept only http/https.
+if _PROMETHEUS_URL:
+    _parsed_prom_url = urlparse(_PROMETHEUS_URL)
+    if _parsed_prom_url.scheme not in ("http", "https"):
+        raise RuntimeError(
+            f"mcp-prometheus: PROMETHEUS_URL must use http:// or https:// "
+            f"(got scheme {_parsed_prom_url.scheme!r} from {_PROMETHEUS_URL!r}). "
+            "See #1213."
+        )
+
+# Hard byte cap for Prometheus response bodies (#1211). Streamed reads
+# abort once the cap is exceeded so one pathological query cannot pin
+# the pod's memory. Default 1MiB — Prometheus query results that exceed
+# this either need narrower selectors or a shorter time range.
+_MCP_PROM_MAX_RESPONSE_BYTES = int(
+    os.environ.get("MCP_PROM_MAX_RESPONSE_BYTES") or str(1 * 1024 * 1024)
+)
 
 # Optional bearer token for the Prometheus endpoint itself (distinct
 # from the MCP_TOOL_AUTH_TOKEN that gates callers coming *into* this
@@ -176,9 +198,44 @@ def _prom_get(endpoint: str, params: dict[str, Any]) -> Any:
         kind=SPAN_KIND_INTERNAL,
         attributes={"prom.endpoint": endpoint},
     ) as _exec_span:
+        # Stream the response body with a hard byte cap (#1211). Buffer
+        # incrementally via ``iter_bytes`` so a pathological query that
+        # returns multi-GB of JSON aborts at the cap instead of pinning
+        # the pod's memory. We still need the full (bounded) buffer to
+        # parse JSON, but we guarantee the buffer cannot exceed the cap.
+        cap = _MCP_PROM_MAX_RESPONSE_BYTES
         try:
             with httpx.Client(timeout=_MCP_REQUEST_TIMEOUT_SECONDS) as client:
-                resp = client.get(url, params=clean_params, headers=headers)
+                with client.stream(
+                    "GET", url, params=clean_params, headers=headers
+                ) as resp:
+                    status = resp.status_code
+                    buf = bytearray()
+                    truncated = False
+                    for chunk in resp.iter_bytes():
+                        if not chunk:
+                            continue
+                        remaining = cap - len(buf)
+                        if remaining <= 0:
+                            truncated = True
+                            break
+                        if len(chunk) > remaining:
+                            buf.extend(chunk[:remaining])
+                            truncated = True
+                            break
+                        buf.extend(chunk)
+                    if truncated:
+                        err = PrometheusError(
+                            f"prometheus {endpoint} response exceeded "
+                            f"MCP_PROM_MAX_RESPONSE_BYTES ({cap} bytes); "
+                            "aborted before full body was received. Narrow "
+                            "the time range, lower `step`, or add label "
+                            "filters."
+                        )
+                        set_span_error(_exec_span, err)
+                        raise err
+        except PrometheusError:
+            raise
         except httpx.TimeoutException as exc:
             err = PrometheusError(
                 f"prometheus {endpoint} timed out after "
@@ -191,18 +248,34 @@ def _prom_get(endpoint: str, params: dict[str, Any]) -> Any:
             set_span_error(_exec_span, err)
             raise err from exc
 
-        if resp.status_code != 200:
-            err = PrometheusError(
-                f"prometheus {endpoint} HTTP {resp.status_code}: "
-                f"{resp.text[:512]}"
+        if status != 200:
+            # Log the upstream body snippet for operator debugging but
+            # never return it to the caller (#1212) — upstream bodies
+            # can leak Prometheus internals / tenancy data / stack
+            # traces into agent memory. Return only the status code.
+            try:
+                snippet = bytes(buf[:512]).decode("utf-8", errors="replace")
+            except Exception:
+                snippet = "<undecodable>"
+            log.info(
+                "prometheus %s upstream HTTP %d body snippet: %s",
+                endpoint, status, snippet,
             )
+            err = PrometheusError(f"prometheus returned HTTP {status}")
             set_span_error(_exec_span, err)
             raise err
         try:
-            body = resp.json()
+            body = json.loads(bytes(buf).decode("utf-8", errors="replace"))
         except ValueError as exc:
+            try:
+                snippet = bytes(buf[:512]).decode("utf-8", errors="replace")
+            except Exception:
+                snippet = "<undecodable>"
+            log.info(
+                "prometheus %s non-JSON body snippet: %s", endpoint, snippet,
+            )
             err = PrometheusError(
-                f"prometheus {endpoint} returned non-JSON body: {resp.text[:512]}"
+                f"prometheus {endpoint} returned non-JSON body"
             )
             set_span_error(_exec_span, err)
             raise err from exc

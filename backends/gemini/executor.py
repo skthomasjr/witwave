@@ -161,6 +161,7 @@ from tool_audit import (  # type: ignore
 from exceptions import BudgetExceededError
 from validation import parse_max_tokens, sanitize_model_label
 from otel import start_span, set_span_error
+from redact import redact_text, should_redact
 
 
 def _pre_tool_use_gate(
@@ -533,6 +534,12 @@ def _current_trace_id_hex() -> str | None:
 
 async def log_entry(role: str, text: str, session_id: str, model: str | None = None, tokens: int | None = None) -> None:
     try:
+        # Opt-in redaction pass (#1193, parity with claude). Guarded on
+        # LOG_REDACT so existing deployments retain identical output
+        # without the regex cost; operators flip the env var to take the
+        # safer posture when conversation.jsonl is read by humans or
+        # forwarded to an external log store.
+        _text_for_log = redact_text(text) if should_redact() else text
         entry = {
             "ts": datetime.now(timezone.utc).isoformat(),
             "agent": AGENT_NAME,
@@ -540,7 +547,7 @@ async def log_entry(role: str, text: str, session_id: str, model: str | None = N
             "role": role,
             "model": model,
             "tokens": tokens,
-            "text": text,
+            "text": _text_for_log,
         }
         # Stamp trace_id from the active OTel span so conversation rows can be
         # joined with backend/harness traces (#636). Absent when OTel is off.

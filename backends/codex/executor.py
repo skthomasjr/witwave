@@ -117,6 +117,7 @@ from tool_audit import (  # type: ignore
 from exceptions import BudgetExceededError
 from validation import parse_max_tokens, sanitize_model_label
 from otel import start_span, set_span_error
+from redact import redact_text, should_redact
 
 logger = logging.getLogger(__name__)
 
@@ -365,8 +366,7 @@ except Exception as _baseline_import_exc:  # noqa: BLE001 — documented single-
     if backend_hooks_config_errors_total is not None:
         try:
             backend_hooks_config_errors_total.labels(
-                agent=AGENT_NAME, agent_id=AGENT_ID, backend="codex",
-                reason="baseline_import",
+                **_LABELS, reason="baseline_import",
             ).inc()
         except Exception:
             # Metric emission must never mask the import failure.
@@ -430,8 +430,7 @@ def _evaluate_shell_baseline(cmd_parts: list[str]) -> tuple[str, str] | None:
 def _pre_tool_use_gate(
     tool_name: str,
     tool_input: dict,
-    *,
-    state: "hooks_engine.HookState | None" = None,  # type: ignore[name-defined]
+    rules: list | None = None,
 ) -> tuple[str, str] | None:
     """Centralised PreToolUse gate for non-shell tools (#799, SCAFFOLD).
 
@@ -474,26 +473,21 @@ def _pre_tool_use_gate(
             "fail-open for %s.", _imp_exc, tool_name,
         )
         return None
+    _rules = rules if rules is not None else list(_SHARED_BASELINE_RULES or [])
     try:
-        decision = evaluate_pre_tool_use(tool_name, tool_input, state=state)
+        # Shared-engine contract (#1194): returns (decision, matched_rule).
+        decision, matched = evaluate_pre_tool_use(tool_name, tool_input, _rules)
     except Exception as _eval_exc:
         logger.warning(
             "_pre_tool_use_gate: evaluate raised for %s: %r — fail-open.",
             tool_name, _eval_exc,
         )
         return None
-    # evaluate_pre_tool_use returns (decision, rule, reason) on the shared
-    # contract; normalise to the (rule, reason) shape _shell_executor uses.
-    if decision is None:
-        return None
-    try:
-        verdict = getattr(decision, "decision", None) or decision[0]
-        rule = getattr(decision, "rule", None) or decision[1]
-        reason = getattr(decision, "reason", None) or decision[2]
-    except Exception:
-        return None
-    if str(verdict).lower() == "deny":
-        return str(rule), str(reason)
+    if str(decision).lower() == "deny" and matched is not None:
+        return (
+            str(getattr(matched, "name", "?")),
+            str(getattr(matched, "reason", "denied")),
+        )
     return None
 
 
@@ -1362,6 +1356,12 @@ def _current_trace_id_hex() -> str | None:
 
 async def log_entry(role: str, text: str, session_id: str, model: str | None = None, tokens: int | None = None) -> None:
     try:
+        # Opt-in redaction pass (#1193, parity with claude). Guarded on LOG_REDACT
+        # so existing deployments retain identical output without the regex cost;
+        # operators flip the env var to take the safer posture when
+        # conversation.jsonl is read by humans or forwarded to an external log
+        # store.
+        _text_for_log = redact_text(text) if should_redact() else text
         entry = {
             "ts": datetime.now(timezone.utc).isoformat(),
             "agent": AGENT_NAME,
@@ -1369,7 +1369,7 @@ async def log_entry(role: str, text: str, session_id: str, model: str | None = N
             "role": role,
             "model": model,
             "tokens": tokens,
-            "text": text,
+            "text": _text_for_log,
         }
         # Stamp trace_id from the active OTel span so conversation rows can be
         # joined with backend/harness traces (#636). Absent when OTel is off.
@@ -2784,8 +2784,6 @@ class AgentExecutor(A2AAgentExecutor):
 
         async def _emit_chunk(text: str) -> None:
             nonlocal _chunks_emitted
-            if backend_streaming_events_emitted_total is not None:
-                backend_streaming_events_emitted_total.labels(**_LABELS, model=_streaming_label_model).inc()
             # Per-session SSE drill-down (#1110 phase 4). Publish before
             # enqueue so the session stream sees the chunk even if the
             # A2A enqueue fails (client sees overrun separately via
@@ -2818,6 +2816,11 @@ class AgentExecutor(A2AAgentExecutor):
                 _attempted_texts.append((False, text))
                 raise
             _chunks_emitted += 1
+            # Only count the emission metric AFTER the enqueue succeeded
+            # (#1199). Incrementing before enqueue previously overcounted
+            # chunks that failed to reach the client.
+            if backend_streaming_events_emitted_total is not None:
+                backend_streaming_events_emitted_total.labels(**_LABELS, model=_streaming_label_model).inc()
             _emitted_texts.append(text)
             _attempted_texts.append((True, text))
 

@@ -223,6 +223,7 @@ async def _run_inner(
     max_tokens: int | None = None,
     trace_context: TraceContext | None = None,
     caller_id: str | None = None,
+    consensus_mode: bool = False,
 ) -> str:
     resolved_id = backend_id or default_backend_id
     backend = backends.get(resolved_id)
@@ -235,7 +236,12 @@ async def _run_inner(
     is_new = session_id not in sessions
     if not is_new and harness_session_idle_seconds is not None:
         harness_session_idle_seconds.observe(time.monotonic() - sessions[session_id])
-    if harness_session_starts_total is not None:
+    # #1188: under consensus, a single logical prompt fans out to N backends
+    # and each leg calls _run_inner with the same session_id — incrementing
+    # session_starts_total once per leg inflates the metric by the consensus
+    # fan-out factor. The caller (run_consensus) accounts for the logical
+    # session start separately, so skip the per-leg increment here.
+    if not consensus_mode and harness_session_starts_total is not None:
         harness_session_starts_total.labels(type="new" if is_new else "resumed").inc()
     _track_session(sessions, session_id)
 
@@ -359,6 +365,7 @@ async def run_consensus(
                 prompt, session_id, sessions, backends, default_backend_id,
                 backend_id=bid, model=model, max_tokens=max_tokens,
                 trace_context=trace_context,
+                consensus_mode=True,  # #1188
             )
             return call_key, result
         except Exception as exc:
@@ -425,6 +432,7 @@ async def run_consensus(
             backend_id=synthesis_backend_id or default_backend_id,
             model=synthesis_model, max_tokens=max_tokens,
             trace_context=trace_context,
+            consensus_mode=True,  # #1188 — synthesis is still part of the consensus flow
         )
     except Exception as exc:
         logger.error(f"Consensus synthesis pass failed: {exc!r} — returning concatenated responses.")
@@ -931,7 +939,7 @@ class AgentExecutor(A2AAgentExecutor):
                     set_span_error(_span, _exc)
                     raise
         finally:
-            self.track_background(
+            _task = self.track_background(
                 self.on_prompt_completed(
                     source="a2a",
                     kind="a2a",
@@ -945,6 +953,40 @@ class AgentExecutor(A2AAgentExecutor):
                 ),
                 source="a2a",
             )
+            if _task is None:
+                # #1181: track_background shed the on_prompt_completed
+                # fan-out due to background-task pressure. Invoke the
+                # non-blocking fire-and-forget paths synchronously so
+                # continuations and webhooks still receive the completion
+                # signal. Both runners use asyncio.ensure_future / their
+                # own queues internally — neither blocks the caller.
+                try:
+                    if self._continuation_runner is not None and self._bus is not None:
+                        self._continuation_runner.notify(
+                            "a2a",
+                            session_id,
+                            _success,
+                            _response or "",
+                            self._bus,
+                            trace_context=trace_context,
+                        )
+                except Exception as _ec:  # noqa: BLE001 — shed-path must never raise
+                    logger.error(f"shed-path continuation notify failed: {_ec!r}")
+                try:
+                    if self._webhook_runner is not None:
+                        self._webhook_runner.fire(
+                            source="a2a",
+                            kind="a2a",
+                            session_id=session_id,
+                            success=_success,
+                            response=_response or "",
+                            duration_seconds=time.monotonic() - _exec_start,
+                            error=_error,
+                            model=model,
+                            trace_context=trace_context,
+                        )
+                except Exception as _ew:  # noqa: BLE001
+                    logger.error(f"shed-path webhook fire failed: {_ew!r}")
             if harness_a2a_request_duration_seconds is not None:
                 harness_a2a_request_duration_seconds.observe(time.monotonic() - _exec_start)
             if harness_a2a_last_request_timestamp_seconds is not None:
@@ -1092,7 +1134,7 @@ class AgentExecutor(A2AAgentExecutor):
             if message.result is not None and not message.result.done():
                 message.result.set_exception(e)
         finally:
-            self.track_background(
+            _task = self.track_background(
                 self.on_prompt_completed(
                     source="bus",
                     kind=message.kind,
@@ -1106,3 +1148,35 @@ class AgentExecutor(A2AAgentExecutor):
                 ),
                 source="bus",
             )
+            if _task is None:
+                # #1181: shed-path fallback — fire continuation/webhook
+                # runners synchronously so bus-kind completions (heartbeat,
+                # job, task, trigger, continuation) still propagate when
+                # track_background drops the wrapper coroutine.
+                try:
+                    if self._continuation_runner is not None and self._bus is not None:
+                        self._continuation_runner.notify(
+                            message.kind,
+                            _session_id,
+                            _success,
+                            _response or "",
+                            self._bus,
+                            trace_context=_trace_context,
+                        )
+                except Exception as _ec:  # noqa: BLE001
+                    logger.error(f"shed-path continuation notify failed: {_ec!r}")
+                try:
+                    if self._webhook_runner is not None:
+                        self._webhook_runner.fire(
+                            source="bus",
+                            kind=message.kind,
+                            session_id=_session_id,
+                            success=_success,
+                            response=_response or "",
+                            duration_seconds=time.monotonic() - _bus_start,
+                            error=_error,
+                            model=_model,
+                            trace_context=_trace_context,
+                        )
+                except Exception as _ew:  # noqa: BLE001
+                    logger.error(f"shed-path webhook fire failed: {_ew!r}")

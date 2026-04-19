@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -182,13 +183,10 @@ func (r *NyxPromptReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}
 
-	// Flush outcomes exactly once per binding (#906). The per-outcome
-	// counter no longer carries an agent label (#1070) to avoid
-	// unbounded cardinality from malformed specs with thousands of
-	// referenced-but-nonexistent agent names.
-	for _, outcome := range finalOutcome {
-		nyxpromptBindingOutcomesTotal.WithLabelValues(outcome).Inc()
-	}
+	// #1228: outcomes counter flush is deferred until AFTER the status
+	// patch succeeds — mirrors the gauge pattern below so a 409-exhausted
+	// patch does not leave dashboards advertising apply_success counts
+	// for a reconcile whose status write never landed.
 
 	// GC any NyxPrompt-owned ConfigMaps whose (prompt, agent) pair is no
 	// longer in the spec. Controller-runtime's OwnerReferences GC covers
@@ -256,6 +254,12 @@ func (r *NyxPromptReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if statusErr == nil {
 		nyxpromptReadyCount.WithLabelValues(prompt.Namespace, prompt.Name).Set(float64(readyCount))
 		nyxpromptDesiredCount.WithLabelValues(prompt.Namespace, prompt.Name).Set(float64(desiredCount))
+		// #1228: flush outcomes exactly once per binding AFTER status
+		// patch success. The per-outcome counter carries no agent label
+		// (#1070) to avoid unbounded cardinality from malformed specs.
+		for _, outcome := range finalOutcome {
+			nyxpromptBindingOutcomesTotal.WithLabelValues(outcome).Inc()
+		}
 	}
 
 	if len(reconcileErrs) > 0 {
@@ -265,7 +269,11 @@ func (r *NyxPromptReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			msg = append(msg, e.Error())
 		}
 		log.Error(fmt.Errorf("%s", strings.Join(msg, "; ")), "NyxPrompt reconcile encountered errors")
-		return ctrl.Result{}, reconcileErrs[0]
+		// #1227: return a joined error so controller-runtime's backoff
+		// path sees every failure, not just the first one. Collapsing
+		// to reconcileErrs[0] previously hid late-loop errors from
+		// operators triaging reconciles.
+		return ctrl.Result{}, errors.Join(reconcileErrs...)
 	}
 
 	return ctrl.Result{}, nil

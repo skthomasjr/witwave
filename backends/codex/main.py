@@ -177,7 +177,19 @@ async def _sub_app_lifespan(app):
             await shutdown
         except Exception as exc:
             logger.warning("Sub-app lifespan shutdown error: %s", exc)
-        await task
+        # Drain _run then propagate any captured exception (#1197).
+        try:
+            await task
+        except Exception:
+            pass
+        _task_exc: BaseException | None = None
+        if task.done() and not task.cancelled():
+            try:
+                _task_exc = task.exception()
+            except (asyncio.CancelledError, asyncio.InvalidStateError):
+                _task_exc = None
+        if _task_exc is not None:
+            raise _task_exc
 
 
 async def _guarded(coro_fn, *args, restart_delay: float = 5.0, critical: bool = False) -> None:

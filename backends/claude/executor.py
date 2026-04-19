@@ -124,6 +124,13 @@ from otel import start_span, set_span_error
 logger = logging.getLogger(__name__)
 
 
+try:
+    import unicodedata as _unicodedata_startup
+    _STARTUP_CWD = _unicodedata_startup.normalize("NFC", os.getcwd())
+except Exception:
+    _STARTUP_CWD = None
+
+
 def _session_file_path(session_id: str) -> "pathlib.Path | None":
     """Return the on-disk path for a Claude session file, or None on error.
 
@@ -816,7 +823,26 @@ _INFLIGHT_HOOK_POSTS_LOCK = threading.Lock()
 # When the harness is unreachable and tool calls fire rapidly, without
 # a cap the set would grow without bound along with httpx connections,
 # causing memory growth, pool exhaustion, and eventually OOM.
-_HOOK_POST_MAX_INFLIGHT = int(os.environ.get("HOOK_POST_MAX_INFLIGHT", "32"))
+_HOOK_POST_MAX_INFLIGHT_DEFAULT = 64
+try:
+    _HOOK_POST_MAX_INFLIGHT = int(os.environ.get("HOOK_POST_MAX_INFLIGHT", "32"))
+except (TypeError, ValueError):
+    logger.warning(
+        "HOOK_POST_MAX_INFLIGHT could not be parsed as int; "
+        "forcing safe default %d (#1196).", _HOOK_POST_MAX_INFLIGHT_DEFAULT,
+    )
+    _HOOK_POST_MAX_INFLIGHT = _HOOK_POST_MAX_INFLIGHT_DEFAULT
+if _HOOK_POST_MAX_INFLIGHT <= 0:
+    # A cap <= 0 means every post is shed, so tool-use hook decisions are
+    # never sent to the harness — an infinite shed loop with no forward
+    # progress (#1196). Force a safe default and log loud so operators
+    # see the misconfiguration on startup.
+    logger.warning(
+        "HOOK_POST_MAX_INFLIGHT=%d is non-positive; forcing safe default %d "
+        "to avoid infinite hook-post shedding (#1196).",
+        _HOOK_POST_MAX_INFLIGHT, _HOOK_POST_MAX_INFLIGHT_DEFAULT,
+    )
+    _HOOK_POST_MAX_INFLIGHT = _HOOK_POST_MAX_INFLIGHT_DEFAULT
 # One-shot warning guard for the "shed because at cap" log so bursts
 # don't spam the log per tool call. Both the set/re-arm paths write
 # this global from different callbacks — the done callback fires on
@@ -1265,12 +1291,20 @@ def _load_mcp_config() -> dict:
             data = json.load(f)
         # mcp.json may be in Claude's native format {"mcpServers": {...}}.
         # The SDK expects the inner servers dict directly, not the wrapper object.
-        if isinstance(data, dict) and "mcpServers" in data and isinstance(data["mcpServers"], dict):
-            sanitized = _sanitize_mcp_servers(data["mcpServers"])
-        elif not isinstance(data, dict):
+        if not isinstance(data, dict):
             raise ValueError(
                 f"mcp.json must be a JSON object (got {type(data).__name__})"
             )
+        if "mcpServers" in data:
+            # Wrapper shape: the inner value must be a dict. Previously a
+            # malformed value (e.g. a list) fell through to the else-branch
+            # and silently sanitised the wrapper object itself, masking the
+            # config error (#1200). Raise explicitly so the caller's
+            # error-counter path fires and the operator sees the malformed
+            # config at WARNING.
+            if not isinstance(data["mcpServers"], dict):
+                raise ValueError("mcp.json: mcpServers must be a dict")
+            sanitized = _sanitize_mcp_servers(data["mcpServers"])
         else:
             sanitized = _sanitize_mcp_servers(data)
         valid, rejected = _validate_mcp_servers_shape(sanitized)
@@ -1288,33 +1322,55 @@ def _load_mcp_config() -> dict:
         raise
 
 
+_sessions_lock: asyncio.Lock | None = None
+
+
+def _get_sessions_lock() -> asyncio.Lock:
+    """Return the process-wide ``_sessions_lock``, creating it lazily (#1195).
+
+    Parity with the codex backend (``backends/codex/executor.py``): any
+    evict/unlink/insert mutation of the shared sessions OrderedDict must
+    serialise through this lock so concurrent A2A and /mcp paths cannot
+    interleave ``popitem(last=False)`` with post-await reinserts.
+    """
+    global _sessions_lock
+    if _sessions_lock is None:
+        _sessions_lock = asyncio.Lock()
+    return _sessions_lock
+
+
 async def _track_session(sessions: OrderedDict[str, float], session_id: str) -> None:
-    if session_id in sessions:
-        sessions.move_to_end(session_id)
-        sessions[session_id] = time.monotonic()
-    else:
-        if len(sessions) >= MAX_SESSIONS:
-            _evicted_id, last_used_at = sessions.popitem(last=False)
-            if backend_session_evictions_total is not None:
-                backend_session_evictions_total.labels(**_LABELS).inc()
-            if backend_session_age_seconds is not None:
-                backend_session_age_seconds.labels(**_LABELS).observe(time.monotonic() - last_used_at)
-            # Remove the on-disk session file for the evicted session so that
-            # disk space is reclaimed and a future request for the same session
-            # ID starts with a clean slate rather than stale history (#368).
-            # Run the unlink in a thread pool so the event loop is not blocked
-            # on slow/remote filesystems (#426).
-            _evicted_path = _session_file_path(_evicted_id)
-            if _evicted_path is not None:
-                try:
-                    await asyncio.to_thread(_evicted_path.unlink, missing_ok=True)
-                except OSError as _e:
-                    logger.warning("Failed to remove evicted session file %r: %s", _evicted_path, _e)
-        sessions[session_id] = time.monotonic()
-    if backend_active_sessions is not None:
-        backend_active_sessions.labels(**_LABELS).set(len(sessions))
-    if backend_lru_cache_utilization_percent is not None:
-        backend_lru_cache_utilization_percent.labels(**_LABELS).set(len(sessions) / MAX_SESSIONS * 100)
+    # Serialise evict/unlink/insert on the shared OrderedDict (#1195) so
+    # concurrent callers (A2A execute() and the /mcp tools/call path both
+    # share AgentExecutor._sessions) cannot interleave popitem(last=False)
+    # with the post-await reinsertion. Mirrors codex's #506/#725 pattern.
+    async with _get_sessions_lock():
+        if session_id in sessions:
+            sessions.move_to_end(session_id)
+            sessions[session_id] = time.monotonic()
+        else:
+            if len(sessions) >= MAX_SESSIONS:
+                _evicted_id, last_used_at = sessions.popitem(last=False)
+                if backend_session_evictions_total is not None:
+                    backend_session_evictions_total.labels(**_LABELS).inc()
+                if backend_session_age_seconds is not None:
+                    backend_session_age_seconds.labels(**_LABELS).observe(time.monotonic() - last_used_at)
+                # Remove the on-disk session file for the evicted session so that
+                # disk space is reclaimed and a future request for the same session
+                # ID starts with a clean slate rather than stale history (#368).
+                # Run the unlink in a thread pool so the event loop is not blocked
+                # on slow/remote filesystems (#426).
+                _evicted_path = _session_file_path(_evicted_id)
+                if _evicted_path is not None:
+                    try:
+                        await asyncio.to_thread(_evicted_path.unlink, missing_ok=True)
+                    except OSError as _e:
+                        logger.warning("Failed to remove evicted session file %r: %s", _evicted_path, _e)
+            sessions[session_id] = time.monotonic()
+        if backend_active_sessions is not None:
+            backend_active_sessions.labels(**_LABELS).set(len(sessions))
+        if backend_lru_cache_utilization_percent is not None:
+            backend_lru_cache_utilization_percent.labels(**_LABELS).set(len(sessions) / MAX_SESSIONS * 100)
 
 
 @dataclass(frozen=True)
@@ -1418,6 +1474,11 @@ async def _run_query_inner(
     # clients see the same on-wire shape as the non-streaming aggregation path
     # ("\n\n".join(collected) below) — see #500.
     _streamed_text_emitted = False
+    # Counts successfully-dispatched non-empty streaming chunks for this run so
+    # separator insertion doesn't desync on on_chunk timeouts (#1192). The
+    # boolean ``_streamed_text_emitted`` is retained for external compatibility
+    # but the authoritative separator gate is this counter.
+    _stream_chunks_emitted = 0
 
     # llm.request child span (#630) — one per Claude SDK round-trip. Scoped
     # around the client lifecycle + receive_response loop so tool / hook spans
@@ -1471,7 +1532,7 @@ async def _run_query_inner(
                                         # on_chunk so it counts as an emitted chunk,
                                         # keeping the _chunks_emitted==0 final-enqueue
                                         # guard accurate.
-                                        if _streamed_text_emitted:
+                                        if _stream_chunks_emitted > 0:
                                             await asyncio.wait_for(
                                                 on_chunk("\n\n"),
                                                 timeout=STREAM_CHUNK_TIMEOUT_SECONDS,
@@ -1480,6 +1541,12 @@ async def _run_query_inner(
                                             on_chunk(block.text),
                                             timeout=STREAM_CHUNK_TIMEOUT_SECONDS,
                                         )
+                                        # Only mark as emitted AFTER on_chunk
+                                        # succeeded (#1192). If the await
+                                        # above raised, the separator gate
+                                        # must stay false so the *next*
+                                        # chunk doesn't double-prefix.
+                                        _stream_chunks_emitted += 1
                                         _streamed_text_emitted = True
                                     except asyncio.TimeoutError:
                                         logger.warning(
@@ -1496,11 +1563,24 @@ async def _run_query_inner(
                                                 pass
                                     except Exception as _e:
                                         # Never let a streaming-side error abort the
-                                        # SDK iteration; log and continue buffering.
+                                        # SDK iteration; log with traceback so
+                                        # programming bugs surface (#1198), and
+                                        # reuse the drop counter to expose
+                                        # non-timeout losses — the existing metric
+                                        # has no ``reason`` label so we share the
+                                        # timeout series; operators can correlate
+                                        # with the WARNING log line.
                                         logger.warning(
                                             "Session %r: on_chunk callback raised: %s",
-                                            session_id, _e,
+                                            session_id, _e, exc_info=True,
                                         )
+                                        if backend_streaming_chunks_dropped_total is not None:
+                                            try:
+                                                backend_streaming_chunks_dropped_total.labels(
+                                                    **_LABELS, model=_chunk_label_model,
+                                                ).inc()
+                                            except Exception:
+                                                pass
                             elif isinstance(block, ToolUseBlock):
                                 _tool_names[block.id] = block.name
                                 _tool_start_times[block.id] = time.monotonic()

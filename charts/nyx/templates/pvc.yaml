@@ -15,8 +15,16 @@ metadata:
     helm.sh/resource-policy: keep
   {{- end }}
   labels:
+    # #1225: include name + managed-by so the operator's backend-PVC
+    # cleanup sweep (which matches on app.kubernetes.io/name + managed-by)
+    # can distinguish this shared-storage PVC from a backend PVC and
+    # skip it via the component label. Matches the operator's
+    # sharedStorageLabels pattern (componentSharedStorage distinguishes
+    # it from backend claims that share the same name/managed-by).
+    app.kubernetes.io/name: {{ .Release.Name }}
     app.kubernetes.io/component: shared-storage
     app.kubernetes.io/part-of: nyx
+    app.kubernetes.io/managed-by: nyx
 spec:
   accessModes:
     {{- if .Values.sharedStorage.accessModes }}

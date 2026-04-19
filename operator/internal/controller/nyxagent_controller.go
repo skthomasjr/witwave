@@ -329,6 +329,16 @@ func (r *NyxAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	if err := r.reconcileCredentialsSecrets(ctx, agent); err != nil {
 		reconcileErrs = append(reconcileErrs, err)
 	}
+	// #1219: when autoscaling has flipped off, delete the existing HPA
+	// BEFORE the Deployment SSA so ownership of spec.replicas transfers
+	// back to the operator cleanly. Otherwise the SSA would reclaim
+	// spec.replicas while the HPA is still alive, scaling pods down to
+	// the default desiredReplicas before the later reconcileHPA step
+	// removes the HPA. Ordering the delete-if-present first avoids the
+	// transient under-provisioning window.
+	if err := r.preflightDeleteHPAIfDisabled(ctx, agent); err != nil {
+		reconcileErrs = append(reconcileErrs, err)
+	}
 	if err := r.applyDeployment(ctx, agent); err != nil {
 		reconcileErrs = append(reconcileErrs, err)
 	}
@@ -465,6 +475,14 @@ func (r *NyxAgentReconciler) applyDeployment(ctx context.Context, agent *nyxv1al
 	prompts, err := r.listNyxPromptsForAgent(ctx, agent)
 	if err != nil {
 		return fmt.Errorf("list NyxPrompts: %w", err)
+	}
+	// #1222: refuse to render a pod whose harness + backend containers
+	// would collide on a computed metrics port. Failing fast here is
+	// safer than letting the Deployment land and crash-loop on bind.
+	// TODO(#1222): tighten appPort range in the validating webhook so
+	// this guard becomes a defence-in-depth rather than a front-line check.
+	if err := validateContainerMetricsPorts(agent); err != nil {
+		return fmt.Errorf("metrics port validation: %w", err)
 	}
 	desired := buildDeployment(agent, DefaultImageTag, prompts)
 	if err = controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
@@ -997,11 +1015,17 @@ func (r *NyxAgentReconciler) reconcileManifestConfigMap(ctx context.Context, age
 		ownerRefsEqual(existing.OwnerReferences, desired.OwnerReferences) {
 		return nil
 	}
-	if existing.Annotations == nil {
-		existing.Annotations = map[string]string{}
+	// #1215: merge labels/annotations rather than full-overwrite so a
+	// bystander (ArgoCD tracker, cost labeller, CSI snapshotter) writing
+	// between our Get and Update does not get clobbered. Only the keys
+	// this controller owns are (re)written; foreign keys pass through.
+	existing.Labels = mergeOwnedStringMap(existing.Labels, desired.Labels, nyxAgentOwnedLabelKeys)
+	desiredAnnotations := map[string]string{}
+	for k, v := range desired.Annotations {
+		desiredAnnotations[k] = v
 	}
-	existing.Annotations[manifestHashAnnotation] = desiredHash
-	existing.Labels = desired.Labels
+	desiredAnnotations[manifestHashAnnotation] = desiredHash
+	existing.Annotations = mergeOwnedStringMap(existing.Annotations, desiredAnnotations, nyxAgentOwnedAnnotationKeys)
 	// Converge ownerRefs to the desired multi-owner shape. This is the
 	// critical write for migrating off the legacy single-controller
 	// shape — we replace the whole slice rather than appending so any
@@ -1009,6 +1033,24 @@ func (r *NyxAgentReconciler) reconcileManifestConfigMap(ctx context.Context, age
 	existing.OwnerReferences = desired.OwnerReferences
 	existing.Data = desired.Data
 	return r.Update(ctx, existing)
+}
+
+// nyxAgentOwnedLabelKeys enumerates the metadata.labels keys the
+// NyxAgent controller stamps onto owned ConfigMaps (#1215, #1216).
+// Only these keys are (re)written on Update; foreign labels pass
+// through so bystander controllers' writes are preserved.
+var nyxAgentOwnedLabelKeys = []string{
+	labelName,
+	labelComponent,
+	labelPartOf,
+	labelManagedBy,
+}
+
+// nyxAgentOwnedAnnotationKeys enumerates the metadata.annotations keys
+// the NyxAgent controller writes on owned ConfigMaps. Foreign
+// annotations pass through on Update (#1215, #1216).
+var nyxAgentOwnedAnnotationKeys = []string{
+	manifestHashAnnotation,
 }
 
 func (r *NyxAgentReconciler) applyConfigMap(ctx context.Context, agent *nyxv1alpha1.NyxAgent, desired *corev1.ConfigMap) error {
@@ -1024,7 +1066,11 @@ func (r *NyxAgentReconciler) applyConfigMap(ctx context.Context, agent *nyxv1alp
 		return err
 	}
 	existing.Data = desired.Data
-	existing.Labels = desired.Labels
+	// #1216: merge labels/annotations rather than full-overwrite. See
+	// applyConfigMap sibling (manifest CM path) and the NyxPrompt CM
+	// path at nyxprompt_controller.go for the same pattern.
+	existing.Labels = mergeOwnedStringMap(existing.Labels, desired.Labels, nyxAgentOwnedLabelKeys)
+	existing.Annotations = mergeOwnedStringMap(existing.Annotations, desired.Annotations, nyxAgentOwnedAnnotationKeys)
 	return r.Update(ctx, existing)
 }
 
@@ -1078,6 +1124,20 @@ func (r *NyxAgentReconciler) applyBackendPVCs(ctx context.Context, agent *nyxv1a
 			continue
 		case err != nil:
 			return err
+		}
+		// #1218: guard the in-place Update behind an IsControlledBy check
+		// so we never clobber a PVC whose name collides with an agent
+		// backend's generated name but whose controllerRef points at a
+		// different agent (or a user-created claim that matched our
+		// naming). Mirrors the HPA/PDB guard; emit a Warning Event so
+		// operators notice the collision.
+		if !metav1.IsControlledBy(existing, agent) {
+			if r.Recorder != nil {
+				r.Recorder.Eventf(agent, corev1.EventTypeWarning, "BackendStorageCollision",
+					"backend PVC %q exists but is not controlled by this agent — skipping update", d.Name)
+			}
+			span.AddEvent("pvc.skip.not-controlled", trace.WithAttributes(attribute.String("nyx.pvc.name", d.Name)))
+			continue
 		}
 		// PVC specs are largely immutable after creation; only labels are
 		// reconciled in-place. Size changes would need an expand-volume flow.
@@ -1193,11 +1253,54 @@ func (r *NyxAgentReconciler) reconcileSharedStoragePVC(ctx context.Context, agen
 	case err != nil:
 		return err
 	}
+	// #1217: guard the in-place Update behind an IsControlledBy check.
+	// When the existing shared PVC is not controlled by this agent
+	// (e.g. a user-created claim or one owned by a sibling agent in a
+	// renamed/cloned deployment) the controller must not silently
+	// mutate it. Emit a Warning Event and skip — mirrors HPA/PDB.
+	if !metav1.IsControlledBy(existing, agent) {
+		if r.Recorder != nil {
+			r.Recorder.Eventf(agent, corev1.EventTypeWarning, "SharedStorageCollision",
+				"shared-storage PVC %q exists but is not controlled by this agent — skipping update", desired.Name)
+		}
+		return nil
+	}
 	// PVC specs are largely immutable post-creation; reconcile labels
 	// only so cleanup selectors stay accurate across spec edits.
 	existing.Labels = desired.Labels
 	if err := r.Update(ctx, existing); err != nil {
 		return fmt.Errorf("update shared-storage PVC: %w", err)
+	}
+	return nil
+}
+
+// preflightDeleteHPAIfDisabled deletes a lingering controller-owned HPA
+// when autoscaling has flipped to disabled (#1219). Running this BEFORE
+// the Deployment SSA prevents the Deployment from briefly running at its
+// default replica count between SSA reasserting ownership of
+// spec.replicas and the subsequent reconcileHPA removing the HPA.
+// Non-controller-owned HPAs are left alone (mirrors reconcileHPA).
+func (r *NyxAgentReconciler) preflightDeleteHPAIfDisabled(ctx context.Context, agent *nyxv1alpha1.NyxAgent) error {
+	// Only act when autoscaling is disabled in the current spec. When
+	// autoscaling is enabled the regular reconcileHPA path handles
+	// create/update and applyDeployment already drops replicas from the
+	// SSA so the HPA keeps ownership of spec.replicas.
+	if agent.Spec.Autoscaling != nil && agent.Spec.Autoscaling.Enabled {
+		return nil
+	}
+	key := client.ObjectKey{Namespace: agent.Namespace, Name: agent.Name}
+	existing := &autoscalingv2.HorizontalPodAutoscaler{}
+	if err := r.Get(ctx, key, existing); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if !metav1.IsControlledBy(existing, agent) {
+		return nil
+	}
+	if err := r.Delete(ctx, existing); err != nil && !apierrors.IsNotFound(err) {
+		return err
 	}
 	return nil
 }

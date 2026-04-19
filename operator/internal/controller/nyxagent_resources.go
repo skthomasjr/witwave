@@ -362,6 +362,16 @@ func sharedStorageVolumeForPod(agent *nyxv1alpha1.NyxAgent) *corev1.Volume {
 	case nyxv1alpha1.SharedStorageTypeHostPath:
 		s := agent.Spec.SharedStorage
 		if s == nil || s.HostPath == "" {
+			// #1221: log a WARNING when hostPath mode is requested but
+			// HostPath is empty. Recorder is not plumbed through at this
+			// call site (renderer, not reconciler) — emit a loud log so
+			// operators notice. CRD validation + webhook should catch
+			// this upstream; this is the renderer's last line of defence.
+			logf.Log.WithName("nyxagent-shared-storage").Info(
+				"SharedStorageMisconfig: hostPath mode requested but HostPath is empty — skipping volume",
+				"agent", agent.Name,
+				"namespace", agent.Namespace,
+			)
 			return nil
 		}
 		hpType := corev1.HostPathDirectoryOrCreate
@@ -1209,12 +1219,67 @@ func containerMetricsPort(overrideMetricsPort int32, appPort int32) int32 {
 	}
 	p := appPort + 1000
 	if p > 65535 {
+		// #1222: clamp-to-65535 is a dangerous fallback — two containers
+		// with appPort >= 65000 would both land on 65535 and collide at
+		// runtime. We preserve the clamp here to avoid breaking the
+		// non-error return signature used by three call sites, but the
+		// collision detection in validateContainerMetricsPorts refuses
+		// to render a pod that would produce duplicates. The CRD
+		// validating webhook should reject appPort >= 64536 upstream;
+		// TODO(#1222): tighten the appPort upper bound in the webhook.
 		return 65535
 	}
 	if p <= 0 {
 		return 9000
 	}
 	return p
+}
+
+// validateContainerMetricsPorts returns an error when the pod spec the
+// renderer is about to produce would contain two containers whose
+// metrics listener port is forced into the 65535 clamp region and
+// thereby collides. Pre-fix the renderer silently clamped appPort+1000
+// to 65535 for any appPort >= 65000, which meant two backends with
+// appPort >= 65000 both landed on 65535 and crash-looped at bind. (#1222)
+//
+// Non-clamp collisions (e.g. harness and a backend both defaulting to
+// appPort=8000 → 9000) are pre-existing behaviour: the harness owns the
+// pod's single metrics endpoint by convention and backends that need
+// their own scrape target set spec.metricsPort on the backend. Moving
+// this validation stricter would be a behaviour change, not a bug fix.
+// TODO(#1222): tighten spec.port / backend.port upper bounds in the
+// validating webhook so the clamp code path is unreachable.
+func validateContainerMetricsPorts(agent *nyxv1alpha1.NyxAgent) error {
+	// Only guard against the clamp-induced collision: if two containers
+	// both hit the 65535 clamp they will fight over the same port.
+	const clamped int32 = 65535
+	harnessPort := agent.Spec.Port
+	if harnessPort == 0 {
+		harnessPort = 8000
+	}
+	clampedNames := []string{}
+	if agent.Spec.MetricsPort == 0 && harnessPort+1000 > 65535 {
+		clampedNames = append(clampedNames, "harness")
+	}
+	for _, b := range agent.Spec.Backends {
+		if !backendEnabled(b) {
+			continue
+		}
+		bPort := b.Port
+		if bPort == 0 {
+			bPort = 8000
+		}
+		if agent.Spec.MetricsPort == 0 && bPort+1000 > 65535 {
+			clampedNames = append(clampedNames, b.Name)
+		}
+	}
+	if len(clampedNames) > 1 {
+		return fmt.Errorf(
+			"metrics port collision: containers %v all have appPort>=%d and would clamp to %d; set spec.metricsPort explicitly or lower the app ports",
+			clampedNames, 65535-999, clamped,
+		)
+	}
+	return nil
 }
 
 // backendEnabled reports the per-backend enabled flag with default-true
@@ -1229,7 +1294,10 @@ func preStopLifecycle(agent *nyxv1alpha1.NyxAgent) *corev1.Lifecycle {
 		return nil
 	}
 	delay := agent.Spec.PreStop.DelaySeconds
-	if delay <= 0 {
+	// #1223: honour an explicit 0 as "no sleep". Only negative values
+	// fall back to the 5s chart default — a user who wrote 0 in the CR
+	// means "skip the preStop sleep", not "I want the default".
+	if delay < 0 {
 		delay = 5
 	}
 	return &corev1.Lifecycle{
@@ -1338,6 +1406,22 @@ func buildPDB(agent *nyxv1alpha1.NyxAgent) *policyv1.PodDisruptionBudget {
 		Spec: policyv1.PodDisruptionBudgetSpec{
 			Selector: &metav1.LabelSelector{MatchLabels: selectorLabels(agent)},
 		},
+	}
+	// #1220: when both MinAvailable and MaxUnavailable are set the
+	// validating webhook should reject the spec, but the renderer also
+	// runs in webhook-bypass paths (unit tests, older clusters without
+	// the webhook wired in). Log a WARNING so the "picking MaxUnavailable"
+	// behaviour does not silently ship with a surprising choice. Recorder
+	// is not plumbed through at this call site — threading it would touch
+	// every caller; the log suffices until the webhook is universally on.
+	if p.MaxUnavailable != nil && p.MinAvailable != nil {
+		logf.Log.WithName("nyxagent-pdb").Info(
+			"PDBConflict: both MinAvailable and MaxUnavailable set — picking MaxUnavailable; set exactly one",
+			"agent", agent.Name,
+			"namespace", agent.Namespace,
+			"minAvailable", *p.MinAvailable,
+			"maxUnavailable", *p.MaxUnavailable,
+		)
 	}
 	if p.MaxUnavailable != nil {
 		v := intstr.FromInt(int(*p.MaxUnavailable))

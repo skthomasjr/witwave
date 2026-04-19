@@ -177,7 +177,24 @@ async def _sub_app_lifespan(app):
             await shutdown
         except Exception as exc:
             logger.warning("Sub-app lifespan shutdown error: %s", exc)
-        await task
+        # Drain the _run task, then propagate any exception it captured
+        # so the main lifespan fails loud instead of silently swallowing
+        # an error inside the sub-app's shutdown path (#1197).
+        try:
+            await task
+        except Exception:
+            # The _run wrapper catches exceptions and records them on the
+            # task; a direct re-raise here is uncommon but don't let it
+            # mask the check below.
+            pass
+        _task_exc: BaseException | None = None
+        if task.done() and not task.cancelled():
+            try:
+                _task_exc = task.exception()
+            except (asyncio.CancelledError, asyncio.InvalidStateError):
+                _task_exc = None
+        if _task_exc is not None:
+            raise _task_exc
 
 
 async def _guarded(coro_fn, *args, restart_delay: float = 5.0, critical: bool = False) -> None:
@@ -521,7 +538,7 @@ async def main():
                     ):
                         _mcp_caller_identities.add(_caller_identity)
                     backend_session_caller_cardinality.labels(
-                        agent=AGENT_NAME, agent_id=AGENT_ID, backend=_BACKEND_ID
+                        agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID
                     ).set(len(_mcp_caller_identities))
                 except Exception:
                     pass

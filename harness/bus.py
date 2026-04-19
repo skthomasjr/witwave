@@ -74,8 +74,12 @@ class MessageBus:
         self._pending_kinds: set[str] = set()
 
     async def send(self, message: Message) -> str:
-        if message.result is None:
-            message.result = asyncio.get_running_loop().create_future()
+        loop = asyncio.get_running_loop()
+        # #1182: re-mint the future if the Message is being reused and its
+        # previous future is already resolved. A stale done future would
+        # short-circuit the ``await message.result`` below.
+        if message.result is None or message.result.done():
+            message.result = loop.create_future()
         self._pending_kinds.add(message.kind)
         if harness_bus_pending_kinds is not None:
             harness_bus_pending_kinds.set(len(self._pending_kinds))
@@ -116,7 +120,9 @@ class MessageBus:
             if harness_bus_queue_depth is not None:
                 harness_bus_queue_depth.set(self._queue.qsize())
             return False
-        if message.result is None:
+        # #1182: re-mint the future if a reused Message's previous future
+        # is already resolved.
+        if message.result is None or message.result.done():
             message.result = asyncio.get_running_loop().create_future()
         self._pending_kinds.add(message.kind)
         if harness_bus_pending_kinds is not None:
@@ -293,14 +299,35 @@ def start_hook_decision_dispatcher(loop: "asyncio.AbstractEventLoop") -> "asynci
     async def _dispatch_loop() -> None:
         q = _hook_decision_queue
         assert q is not None
+        # #1183: wrap the inner drain in a self-restarting supervisor. An
+        # unexpected exception at the ``await q.get()`` boundary (or
+        # anywhere below) would previously kill the dispatcher task for the
+        # lifetime of the process — hook.decision events would then silently
+        # accumulate up to _HOOK_DECISION_QUEUE_MAX and get dropped. By
+        # catching non-cancellation Exception at the outer while, the loop
+        # is self-healing without changing how it's scheduled in main.py.
         while True:
-            event = await q.get()
-            for listener in list(_hook_decision_listeners):
-                try:
-                    listener(event)
-                except Exception as exc:  # pragma: no cover — best-effort side channel
-                    logger.warning("hook.decision listener %r raised: %r", listener, exc)
-                    _bump_listener_error(listener, exc)
+            try:
+                while True:
+                    event = await q.get()
+                    for listener in list(_hook_decision_listeners):
+                        try:
+                            listener(event)
+                        except Exception as exc:  # pragma: no cover — best-effort side channel
+                            logger.warning(
+                                "hook.decision listener %r raised: %r", listener, exc
+                            )
+                            _bump_listener_error(listener, exc)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.error(
+                    "hook.decision dispatcher crashed — restarting loop: %r",
+                    exc,
+                    exc_info=True,
+                )
+                # Yield to the loop so a tight crash doesn't spin.
+                await asyncio.sleep(0)
 
     return loop.create_task(_dispatch_loop(), name="hook_decision_dispatcher")
 

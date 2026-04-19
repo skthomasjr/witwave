@@ -193,8 +193,16 @@ spec:
 {{- end }}
 
 {{/* --- MCP tools (one NP per enabled tool) --- */}}
+{{/* #1226: scalar entries under mcpTools are silently skipped by the
+     `kindIs "map"` gate, which hid typos like `mcpTools.kubernetes: true`
+     (meant to be a nested `enabled: true`). Fail loudly unless the key
+     is the dedicated `metricsPort` scalar carried on the same map. */}}
 {{- range $toolName, $toolSpec := .Values.mcpTools }}
-{{- if and (kindIs "map" $toolSpec) (hasKey $toolSpec "enabled") }}
+{{- if not (kindIs "map" $toolSpec) }}
+{{-   if ne $toolName "metricsPort" }}
+{{-     fail (printf "mcpTools.%s must be a map (with an .enabled field); got a scalar %v. If you meant to set the shared metrics port use mcpTools.metricsPort; otherwise restructure the entry, e.g. `mcpTools.%s.enabled: true`." $toolName $toolSpec $toolName) }}
+{{-   end }}
+{{- else if hasKey $toolSpec "enabled" }}
 {{- if $toolSpec.enabled }}
 {{- $fullName := printf "%s-mcp-%s" $.Release.Name $toolName }}
 {{- $mcpMetricsPort := ($.Values.mcpTools.metricsPort | default 9000) }}

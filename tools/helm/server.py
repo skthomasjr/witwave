@@ -257,27 +257,128 @@ def _helm(
         attributes={"helm.command": command, "helm.args": " ".join(args)},
     ) as _exec_span:
         try:
-            proc = subprocess.run(
+            # Stream stdout/stderr through a hard byte cap (#1204). The
+            # previous `subprocess.run(capture_output=True)` let helm's
+            # stdout buffer grow unbounded — a rogue `get manifest` on a
+            # huge chart, or a wedged `--wait` that retries log output
+            # forever, could pin the pod's memory. Cap at the smaller of
+            # MCP_RESPONSE_MAX_BYTES*4 and 32MiB so the subprocess layer
+            # is strictly larger than the response cap (leaves headroom
+            # for JSON we'll still parse) but still bounded.
+            _subp_cap = min(max(_MCP_RESPONSE_MAX_BYTES, 0) * 4, 32 * 1024 * 1024)
+            if _subp_cap <= 0:
+                _subp_cap = 32 * 1024 * 1024
+            proc = subprocess.Popen(
                 cmd,
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=_HELM_SUBPROCESS_TIMEOUT_SECONDS,
-                input=stdin,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                stdin=subprocess.PIPE if stdin is not None else None,
             )
-            if proc.returncode != 0:
+            import threading as _threading
+            _stdout_buf = bytearray()
+            _stderr_buf = bytearray()
+            _stdout_truncated = [False]
+            _stderr_truncated = [False]
+
+            def _drain(stream, buf, trunc_flag):
+                try:
+                    while True:
+                        chunk = stream.read(8192)
+                        if not chunk:
+                            break
+                        remaining = _subp_cap - len(buf)
+                        if remaining <= 0:
+                            trunc_flag[0] = True
+                            break
+                        if len(chunk) > remaining:
+                            buf.extend(chunk[:remaining])
+                            trunc_flag[0] = True
+                            break
+                        buf.extend(chunk)
+                except Exception:
+                    pass
+
+            t_out = _threading.Thread(
+                target=_drain, args=(proc.stdout, _stdout_buf, _stdout_truncated),
+                daemon=True,
+            )
+            t_err = _threading.Thread(
+                target=_drain, args=(proc.stderr, _stderr_buf, _stderr_truncated),
+                daemon=True,
+            )
+            t_out.start()
+            t_err.start()
+
+            try:
+                if stdin is not None and proc.stdin is not None:
+                    try:
+                        proc.stdin.write(stdin.encode("utf-8"))
+                    finally:
+                        try:
+                            proc.stdin.close()
+                        except Exception:
+                            pass
+                proc.wait(timeout=_HELM_SUBPROCESS_TIMEOUT_SECONDS)
+            finally:
+                t_out.join(timeout=1.0)
+                t_err.join(timeout=1.0)
+
+            # If either stream was truncated, kill the process so we
+            # don't leak a still-running helm invocation past the
+            # handler return.
+            if _stdout_truncated[0] or _stderr_truncated[0]:
+                if proc.poll() is None:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+                    try:
+                        proc.wait(timeout=2.0)
+                    except Exception:
+                        pass
+
+            stdout_text = _stdout_buf.decode("utf-8", errors="replace")
+            stderr_text = _stderr_buf.decode("utf-8", errors="replace")
+            truncated = _stdout_truncated[0] or _stderr_truncated[0]
+            returncode = proc.returncode if proc.returncode is not None else -1
+
+            if returncode != 0:
                 err = HelmError(
-                    f"helm {' '.join(args)} exited {proc.returncode}: "
-                    f"{(proc.stderr or proc.stdout).strip()}"
+                    f"helm {' '.join(args)} exited {returncode}: "
+                    f"{(stderr_text or stdout_text).strip()}"
+                    + (f" (output truncated at {_subp_cap} bytes, #1204)"
+                       if truncated else "")
                 )
                 set_span_error(_exec_span, err)
                 _subp_outcome = "error"
                 raise err
             if parse_json:
-                out = proc.stdout.strip()
+                out = stdout_text.strip()
+                if truncated:
+                    # Can't trust JSON parse on a truncated stream; return
+                    # the marker envelope instead.
+                    return {
+                        "_truncated": True,
+                        "_cap_bytes": _subp_cap,
+                        "_note": (
+                            f"helm {' '.join(args)} output exceeded "
+                            f"{_subp_cap} bytes; subprocess killed (#1204). "
+                            "Narrow the query or raise the cap."
+                        ),
+                    }
                 return json.loads(out) if out else None
-            return proc.stdout
+            if truncated:
+                stdout_text += (
+                    f"\n\n# [mcp-helm] subprocess output truncated at "
+                    f"{_subp_cap} bytes (#1204); process killed."
+                )
+            return stdout_text
         except subprocess.TimeoutExpired as exc:
+            try:
+                proc.kill()
+                proc.wait(timeout=2.0)
+            except Exception:
+                pass
             _subp_outcome = "timeout"
             # subprocess.run has already killed the child and reaped it by
             # the time TimeoutExpired reaches us. Surface a HelmError so the
@@ -424,6 +525,11 @@ def _reject_flag_like(**named: str | None) -> None:
     so an LLM-supplied value can't inject a helm flag (#693). Empty/None
     values are allowed — caller may opt them out of the check by omitting
     the keyword.
+
+    Also rejects whitespace/control/non-printable characters (#1206):
+    newline, carriage return, tab, NUL, and anything ``str.isprintable``
+    returns False for. These can smuggle extra argv tokens, corrupt
+    audit output, or break CLI parsers in surprising ways.
     """
     for label, value in named.items():
         if value is None or value == "":
@@ -435,6 +541,18 @@ def _reject_flag_like(**named: str | None) -> None:
         if value.startswith("-"):
             raise ValueError(
                 f"helm: {label!r} must not start with '-' (got {value!r})"
+            )
+        # #1206: control / whitespace / non-printable characters.
+        for _bad in ("\n", "\r", "\t", "\0"):
+            if _bad in value:
+                raise ValueError(
+                    f"helm: {label!r} must not contain control characters "
+                    f"(newline/CR/tab/NUL) (got {value!r})"
+                )
+        if not value.isprintable():
+            raise ValueError(
+                f"helm: {label!r} must contain only printable characters "
+                f"(got {value!r})"
             )
 
 
@@ -652,9 +770,14 @@ def _redact_manifest(manifest: str) -> str:
             f"({type(_parse_exc).__name__}) — raw output suppressed to "
             "avoid leaking Secret contents (#918).\n"
         )
+    # See #1203 — redact data/stringData on any secret-like kind, not
+    # just the core Secret kind. Sealed Secrets, External Secrets, and
+    # Vault Secret CRDs all carry credential material in the same
+    # field shapes; a helm-rendered chart can emit any of them.
+    _SECRET_KINDS = ("Secret", "SealedSecret", "ExternalSecret", "VaultSecret")
     out_docs: list[Any] = []
     for doc in docs:
-        if isinstance(doc, dict) and doc.get("kind") == "Secret":
+        if isinstance(doc, dict) and doc.get("kind") in _SECRET_KINDS:
             for field in ("data", "stringData"):
                 payload = doc.get(field)
                 if isinstance(payload, dict):
@@ -1058,14 +1181,29 @@ def diff(
 
 
 def _kubectl_present() -> bool:
-    """Probe whether kubectl is on PATH for diff_manifest (#1127)."""
+    """Probe whether kubectl is on PATH for diff_manifest (#1127).
+
+    Only ``FileNotFoundError`` (PATH miss) is treated as 'not installed'
+    (#1205); any other exception is surfaced so operators see the real
+    failure rather than silently pretending kubectl is absent. Timeouts
+    and permission errors are logged at WARN and surfaced as a distinct
+    False return (with a logged reason) so the caller's downstream
+    message to the LLM is still "kubectl not available" — the operator
+    gets the diagnostic in pod logs.
+    """
     try:
         proc = subprocess.run(
             ["kubectl", "version", "--client=true", "--output=yaml"],
             capture_output=True, text=True, check=False, timeout=5,
         )
         return proc.returncode == 0
-    except Exception:
+    except FileNotFoundError:
+        return False
+    except subprocess.TimeoutExpired as exc:
+        log.warning("kubectl presence probe timed out: %s", exc)
+        return False
+    except PermissionError as exc:
+        log.warning("kubectl presence probe permission error: %s", exc)
         return False
 
 
@@ -1217,10 +1355,63 @@ def uninstall(
             raise
 
 
+def _repo_url_allowlist() -> set[str]:
+    """Parse MCP_HELM_REPO_URL_ALLOWLIST into a hostname set (#1202)."""
+    raw = os.environ.get("MCP_HELM_REPO_URL_ALLOWLIST", "")
+    return {h.strip().lower() for h in raw.split(",") if h.strip()}
+
+
+def _repo_allow_any() -> bool:
+    return os.environ.get("MCP_HELM_ALLOW_ANY_REPO", "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
 @mcp.tool()
 def repo_add(name: str, url: str) -> str:
-    """Add a chart repository."""
+    """Add a chart repository.
+
+    URL is gated by ``MCP_HELM_REPO_URL_ALLOWLIST`` (comma-separated
+    hostnames) + ``MCP_HELM_ALLOW_ANY_REPO`` (bool, default false) to
+    stop an LLM-supplied registry from shipping chart code the operator
+    never vetted (#1202). When the allow-list is empty and
+    ``MCP_HELM_ALLOW_ANY_REPO`` is not truthy, ``repo_add`` fails
+    closed. When the allow-list is populated, only URLs whose hostname
+    is in the list are accepted.
+    """
     _reject_flag_like(name=name, url=url)
+    # #1202: validate the URL against the operator allow-list before
+    # letting helm reach out to it.
+    from urllib.parse import urlparse as _urlparse
+    parsed = _urlparse(url)
+    hostname = (parsed.hostname or "").lower()
+    if parsed.scheme not in ("http", "https", "oci"):
+        raise HelmError(
+            f"helm repo_add: URL scheme must be http/https/oci (got "
+            f"{parsed.scheme!r}). See #1202."
+        )
+    if not hostname:
+        raise HelmError(
+            f"helm repo_add: URL must have a hostname (got {url!r}). "
+            "See #1202."
+        )
+    allowlist = _repo_url_allowlist()
+    allow_any = _repo_allow_any()
+    if not allowlist and not allow_any:
+        raise HelmError(
+            "helm repo_add: refused because MCP_HELM_REPO_URL_ALLOWLIST "
+            "is empty and MCP_HELM_ALLOW_ANY_REPO is not set. Operators "
+            "must opt into each chart registry by listing its hostname "
+            "in MCP_HELM_REPO_URL_ALLOWLIST (comma-separated), or set "
+            "MCP_HELM_ALLOW_ANY_REPO=true to accept any host (not "
+            "recommended). See #1202."
+        )
+    if allowlist and hostname not in allowlist:
+        raise HelmError(
+            f"helm repo_add: host {hostname!r} is not in "
+            f"MCP_HELM_REPO_URL_ALLOWLIST. Allowed hosts: "
+            f"{sorted(allowlist)}. See #1202."
+        )
     with _handler_span("repo_add", {"helm.repo": name}) as _h:
         try:
             return _helm(["repo", "add", name, url])

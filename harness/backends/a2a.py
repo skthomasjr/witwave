@@ -443,7 +443,13 @@ class A2ABackend:
                 self._observe_backend_request(_req_start, _result_label)
 
             if attempt < _MAX_RETRIES - 1:
-                delay = _RETRY_BACKOFF_BASE * (2 ** attempt) + random.uniform(0, _RETRY_BACKOFF_BASE)
+                # #1186: cap exponential backoff at 30s so high _MAX_RETRIES
+                # values (or future tuning) can't produce multi-minute sleeps
+                # that exceed upstream task timeouts. Jitter is preserved.
+                delay = min(
+                    _RETRY_BACKOFF_BASE * (2 ** attempt) + random.uniform(0, _RETRY_BACKOFF_BASE),
+                    30.0,
+                )
                 await asyncio.sleep(delay)
 
         raise ConnectionError(

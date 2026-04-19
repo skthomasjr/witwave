@@ -17,8 +17,31 @@ MAX_LOG_BACKUP_COUNT = int(os.environ.get("MAX_LOG_BACKUP_COUNT", "1"))
 # Track writability state per log dir (#738, re-arm in #1035). -1 means
 # the dir passed the probe. Any non-negative value is appends-since-warn.
 _WRITABILITY_STATE: dict[str, int] = {}
-_WRITABILITY_LOCK = threading.Lock()
+# Per-dir lock map (#1201) — one lock per log dir so writability probes
+# on dir A don't serialise behind probes on dir B. ``_dir_locks_guard``
+# guards lazy creation of the per-dir locks only; real work happens
+# under the per-dir lock returned from ``_get_dir_lock``.
+_dir_locks: dict[str, threading.Lock] = {}
+_dir_locks_guard = threading.Lock()
 _WRITABILITY_REARM_EVERY = int(os.environ.get("LOG_WRITABILITY_REARM_EVERY", "500"))
+
+
+def _get_dir_lock(log_dir: str) -> threading.Lock:
+    """Return the threading.Lock for *log_dir*, creating it lazily.
+
+    The short critical section over ``_dir_locks_guard`` only covers dict
+    lookup + insertion; the returned lock is used by the caller for the
+    actual writability bookkeeping.
+    """
+    lock = _dir_locks.get(log_dir)
+    if lock is not None:
+        return lock
+    with _dir_locks_guard:
+        lock = _dir_locks.get(log_dir)
+        if lock is None:
+            lock = threading.Lock()
+            _dir_locks[log_dir] = lock
+        return lock
 
 # Optional Prometheus counter surface. Callers set this to a Counter
 # with .inc(); we bump on every re-warn.
@@ -32,7 +55,7 @@ def _check_writability(log_dir: str) -> None:
     appends after a failed probe so sustained readonly-mount outages
     stay visible.
     """
-    with _WRITABILITY_LOCK:
+    with _get_dir_lock(log_dir):
         state = _WRITABILITY_STATE.get(log_dir)
         if state == -1:
             return

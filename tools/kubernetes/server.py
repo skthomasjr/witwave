@@ -20,6 +20,7 @@ import logging
 import os
 import re
 import sys
+import threading
 from typing import Any
 
 import yaml
@@ -298,17 +299,32 @@ def _load_kube_config() -> None:
         log.info("loaded local kube config")
 
 
+# Lazy-init locks (#1209). FastMCP streamable-http dispatches tool calls
+# concurrently from a shared event loop, so two first-requests racing
+# into _dyn() could each trigger a DynamicClient discovery pass — which
+# costs a round-trip per apiserver resource and (with stale caches) can
+# even return inconsistent discovery results. These helpers run under
+# synchronous Python so threading.Lock is sufficient; asyncio.Lock is
+# not needed because neither helper awaits.
+_api_lock = threading.Lock()
+_dyn_lock = threading.Lock()
+
+
 def _api() -> client.ApiClient:
     global _api_client
     if _api_client is None:
-        _api_client = client.ApiClient()
+        with _api_lock:
+            if _api_client is None:
+                _api_client = client.ApiClient()
     return _api_client
 
 
 def _dyn() -> dynamic.DynamicClient:
     global _dyn_client
     if _dyn_client is None:
-        _dyn_client = dynamic.DynamicClient(_api())
+        with _dyn_lock:
+            if _dyn_client is None:
+                _dyn_client = dynamic.DynamicClient(_api())
     return _dyn_client
 
 
@@ -320,6 +336,12 @@ def _reload_kube_clients() -> None:
     _load_kube_config()
 
 
+# TODO(#1208): describe() resource.get, describe() list_namespaced_event /
+# list_event_for_all_namespaces, apply() resource.patch, and delete()
+# resource.delete are not yet wrapped in with_kube_retry. The top-5
+# highest-volume read paths are covered (list_namespace, list_resources,
+# get_resource, read_namespaced_secret, read_namespaced_pod_log); the
+# write and multi-call paths will follow in a separate pass.
 def with_kube_retry(fn, *args, **kwargs):
     """Run ``fn`` and retry once on 401 after reloading kube config (#1082).
 
@@ -489,8 +511,11 @@ def list_namespaces() -> list[str]:
         try:
             core = client.CoreV1Api(_api())
             with _api_span("list", "Namespace"):
-                resp = core.list_namespace(
-                    _request_timeout=_MCP_REQUEST_TIMEOUT_SECONDS,
+                # #1208: retry once on 401 (projected SA token rotation).
+                resp = with_kube_retry(
+                    lambda: core.list_namespace(
+                        _request_timeout=_MCP_REQUEST_TIMEOUT_SECONDS,
+                    )
                 )
             return [ns.metadata.name for ns in resp.items]
         except Exception as exc:
@@ -543,7 +568,9 @@ def list_resources(
             # task indefinitely.
             kwargs["_request_timeout"] = _MCP_REQUEST_TIMEOUT_SECONDS
             with _api_span("list", kind, {"k8s.namespace": namespace}):
-                result = resource.get(**kwargs)
+                # #1208: retry once on 401 so projected SA rotation
+                # doesn't surface as a user-visible error.
+                result = with_kube_retry(lambda: resource.get(**kwargs))
             items = getattr(result, "items", None) or []
             next_token = ""
             metadata = getattr(result, "metadata", None)
@@ -593,8 +620,9 @@ def get_resource(
             with _api_span("get", kind, {"k8s.name": name, "k8s.namespace": namespace}):
                 # Redact Secret payload then enforce response-size cap
                 # (#778) so a pathologically large CR body cannot OOM
-                # the handler.
-                obj = _redact_secret_payload(_to_dict(resource.get(**kwargs)))
+                # the handler. #1208: retry once on 401.
+                fetched = with_kube_retry(lambda: resource.get(**kwargs))
+                obj = _redact_secret_payload(_to_dict(fetched))
                 return _truncate_json(obj, tool="get_resource")
         except Exception as exc:
             set_span_error(_h, exc)
@@ -695,6 +723,20 @@ def read_secret_value(
     ``confirm=True`` — exposes them. The span attributes mark the call
     as secret-bearing so OTel/alerting can raise on usage.
     """
+    # Operator-level kill switch (#1207). Distinct from MCP_READ_ONLY
+    # because secret-read can be a concern even when the tool server is
+    # otherwise read-write — an operator may want apply/delete enabled
+    # but Secret material off-limits. Checked first so we refuse
+    # without touching the apiserver.
+    if os.environ.get("MCP_K8S_READ_SECRETS_DISABLED", "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }:
+        raise PermissionError(
+            "read_secret_value: refused because MCP_K8S_READ_SECRETS_DISABLED "
+            "is set — the operator has disabled raw Secret payload reads on "
+            "this tool server (#1207). Unset the env var or restart the pod "
+            "without it to allow this tool."
+        )
     if not isinstance(name, str) or not _DNS1123_SUBDOMAIN_RE.fullmatch(name):
         raise ValueError(
             f"read_secret_value: 'name' must be a DNS-1123 subdomain (got {name!r})"
@@ -721,9 +763,12 @@ def read_secret_value(
         try:
             core = client.CoreV1Api(_api())
             with _api_span("get", "Secret", {"k8s.name": name, "k8s.namespace": namespace}):
-                sec = core.read_namespaced_secret(
-                    name=name, namespace=namespace,
-                    _request_timeout=_MCP_REQUEST_TIMEOUT_SECONDS,
+                # #1208: retry once on 401.
+                sec = with_kube_retry(
+                    lambda: core.read_namespaced_secret(
+                        name=name, namespace=namespace,
+                        _request_timeout=_MCP_REQUEST_TIMEOUT_SECONDS,
+                    )
                 )
             return {
                 "name": name,
@@ -789,12 +834,26 @@ def logs(
                 effective_tail = min(tail_lines, _LOGS_TAIL_LINES_MAX)
             kwargs["tail_lines"] = effective_tail
             if since_seconds is not None:
+                # Bounds-check since_seconds (#1210). Reject non-int /
+                # <1 / >one week. Upper cap stops a caller from asking
+                # for effectively unbounded history (which the apiserver
+                # would then stream in full, pinning kubelet + apiserver).
+                if not isinstance(since_seconds, int) or isinstance(since_seconds, bool):
+                    raise ValueError("logs: 'since_seconds' must be an int")
+                if since_seconds < 1 or since_seconds > 604800:
+                    raise ValueError(
+                        "logs: 'since_seconds' must be between 1 and 604800 "
+                        "(one week) (#1210)"
+                    )
                 kwargs["since_seconds"] = since_seconds
             # Per-call network timeout (#778). Prevents a wedged pod
             # log stream from pinning the handler indefinitely.
             kwargs["_request_timeout"] = _MCP_REQUEST_TIMEOUT_SECONDS
             with _api_span("logs", "Pod", {"k8s.pod": pod, "k8s.namespace": namespace}):
-                raw = core.read_namespaced_pod_log(**kwargs)
+                # #1208: retry once on 401.
+                raw = with_kube_retry(
+                    lambda: core.read_namespaced_pod_log(**kwargs)
+                )
             # Byte-cap the log payload (#778). Even at a bounded line
             # count a single line can carry arbitrary bytes, so measure
             # the final string rather than trusting tail_lines alone.
