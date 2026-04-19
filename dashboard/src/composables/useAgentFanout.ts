@@ -173,12 +173,28 @@ export function useAgentFanout<T>(opts: UseAgentFanoutOptions) {
   // change so dropdown-driven params (e.g. limit) take effect immediately
   // rather than waiting for the next poll tick. Plain-object queries have no
   // reactive dependencies, so the watcher simply never fires.
+  //
+  // #1063: key off a stable scalar (JSON of sorted entries) rather than the
+  // raw object. A computed-returned QueryRecord has new identity on every
+  // access, which combined with `deep: true` caused the watcher to fire on
+  // mount even when nothing had changed — each useAgentFanout instance then
+  // double-fetched on mount (once from onMounted, once from the watcher).
+  // AutomationView constructs six fan-outs so the effect compounded. A
+  // stable string key only fires when the serialised query *contents*
+  // differ, so mount emits exactly one refresh() per instance.
   if (opts.query !== undefined) {
-    watch(
-      () => resolveQuery(opts.query),
-      () => void refresh(),
-      { deep: true },
-    );
+    const queryKey = (): string => {
+      const q = resolveQuery(opts.query) ?? {};
+      const keys = Object.keys(q).sort();
+      const pairs: string[] = [];
+      for (const k of keys) {
+        const v = q[k];
+        if (v === undefined) continue;
+        pairs.push(`${k}=${v}`);
+      }
+      return pairs.join("&");
+    };
+    watch(queryKey, () => void refresh());
   }
 
   onUnmounted(() => {
