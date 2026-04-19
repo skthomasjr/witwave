@@ -145,17 +145,70 @@ def redact_text(text: str) -> str:
     UUIDs, W3C trace-ids (32 hex), and span-ids (16 hex) are shielded
     before pattern substitution and restored afterwards so downstream
     tooling can still join across traces (#1034).
+
+    Merge-spans semantics (#1043)
+    -----------------------------
+    All patterns match against the *original* shielded string. Candidate
+    matches are sorted by pattern priority (position in ``_PATTERNS``;
+    lower index = more specific = wins overlaps) and position. A
+    non-overlapping interval set is selected greedily, then replaced in a
+    single pass. This is idempotent by construction —
+    ``redact_text(redact_text(x)) == redact_text(x)`` — and eliminates
+    the previous surface where a first pattern's rewrite could expose
+    trailing context that a later pattern would then match differently.
     """
     if not text or not should_redact():
         return text
     shielded, mapping = _shield_identifiers(text)
-    out = shielded
-    for name, pat in _PATTERNS:
-        if name == "authorization_header":
-            out = pat.sub(r"\1" + _REDACTED, out)
-        else:
-            out = pat.sub(_REDACTED, out)
+
+    # Build the ordered pattern list for this call. High-entropy is
+    # always lowest priority (most generic) so shape-specific rules
+    # win every overlap.
+    patterns = list(_PATTERNS)
     if high_entropy_enabled():
-        _, hi_pat = _HIGH_ENTROPY_PATTERN
-        out = hi_pat.sub(_REDACTED, out)
-    return _restore_identifiers(out, mapping)
+        patterns.append(_HIGH_ENTROPY_PATTERN)
+
+    # Collect candidate (start, end, replacement, priority) tuples from
+    # every pattern, matched against the *original* shielded string.
+    # priority is the pattern's index in ``patterns`` — lower = more
+    # specific = wins.
+    candidates: list[tuple[int, int, str, int]] = []
+    for priority, (name, pat) in enumerate(patterns):
+        for m in pat.finditer(shielded):
+            if name == "authorization_header":
+                # Keep group 1 ("authorization: ") literal so log
+                # readers still see the header shape; mask only the
+                # bearer value.
+                replacement = m.group(1) + _REDACTED
+            else:
+                replacement = _REDACTED
+            candidates.append((m.start(), m.end(), replacement, priority))
+
+    # Sort by priority (ascending — specific first), then by start
+    # position for a deterministic tie-break between same-priority
+    # overlaps.
+    candidates.sort(key=lambda c: (c[3], c[0]))
+
+    # Greedy non-overlap selection. A higher-priority match in the
+    # sorted order claims its span first; any lower-priority candidate
+    # that overlaps is discarded. Same-priority overlaps (rare — regex
+    # engine already produces non-overlapping matches within one
+    # pattern) resolve to earliest-start.
+    chosen: list[tuple[int, int, str]] = []
+    for start, end, repl, _ in candidates:
+        if all(end <= cs or start >= ce for cs, ce, _ in chosen):
+            chosen.append((start, end, repl))
+
+    if not chosen:
+        return _restore_identifiers(shielded, mapping)
+
+    # Sort chosen spans by position for the single rewrite pass.
+    chosen.sort(key=lambda c: c[0])
+    parts: list[str] = []
+    pos = 0
+    for start, end, repl in chosen:
+        parts.append(shielded[pos:start])
+        parts.append(repl)
+        pos = end
+    parts.append(shielded[pos:])
+    return _restore_identifiers("".join(parts), mapping)

@@ -183,6 +183,62 @@ def test_redact_text_credit_card_requires_separators(monkeypatch):
     assert "4111" not in out
 
 
+# ----- merge-spans idempotency + priority (#1043) ----------------
+
+
+@pytest.mark.parametrize("sample", [
+    "hello world",
+    "AKIAIOSFODNN7EXAMPLE",
+    "prefix ghp_" + "a" * 40 + " suffix",
+    "Authorization: Bearer abcdef12345",
+    "trace=0af7651916cd43dd8448eb211c80319c span=b7ad6b7169203331",
+    "token=aaaaaaaaaaaa.bbbbbbbbbbbb.cccccccccccc trailing=Bearer foo",
+    "4111 1111 1111 1111 and 123-45-6789 and user@example.com",
+    "",
+    "   ",
+    "plain text 42",
+])
+def test_redact_text_is_idempotent(monkeypatch, sample):
+    """redact_text(redact_text(x)) == redact_text(x) for any input (#1043).
+
+    Under the merge-spans rewrite, all patterns match the original
+    string so a second pass cannot re-trigger on the literal
+    '[REDACTED]' sentinel or on context exposed by a prior rewrite.
+    """
+    r = _reload(monkeypatch, high_entropy="true")
+    once = r.redact_text(sample)
+    twice = r.redact_text(once)
+    assert once == twice, f"not idempotent: {once!r} -> {twice!r}"
+
+
+def test_redact_text_authorization_header_wins_overlap(monkeypatch):
+    """auth_header must win over high_entropy on the bearer token (#1043).
+
+    The overlap was the issue's core symptom: with high-entropy on,
+    the bearer value was historically at risk of a second-pass match
+    that exposed trailing context. Under merge-spans the more-specific
+    auth_header rule claims the span first.
+    """
+    r = _reload(monkeypatch, high_entropy="true")
+    out = r.redact_text("Authorization: Bearer " + "Z" * 40)
+    # Prefix kept, token fully replaced, no doubled sentinel, no leak
+    # of the raw Z-run.
+    assert out.lower().startswith("authorization:")
+    assert r._REDACTED in out
+    assert r._REDACTED + r._REDACTED not in out
+    assert "Z" * 40 not in out
+
+
+def test_redact_text_specific_pattern_beats_generic(monkeypatch):
+    """An OpenAI key must claim its span; high_entropy must not double-wrap."""
+    r = _reload(monkeypatch, high_entropy="true")
+    out = r.redact_text("cfg=sk-" + "x" * 40 + " tail")
+    assert "sk-" not in out
+    assert r._REDACTED + r._REDACTED not in out
+    # Exactly one sentinel for the key span.
+    assert out.count(r._REDACTED) == 1
+
+
 # ----- ReDoS wall-clock bound ------------------------------------
 
 
