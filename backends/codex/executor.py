@@ -397,6 +397,76 @@ def _evaluate_shell_baseline(cmd_parts: list[str]) -> tuple[str, str] | None:
     return None
 
 
+def _pre_tool_use_gate(
+    tool_name: str,
+    tool_input: dict,
+    *,
+    state: "hooks_engine.HookState | None" = None,  # type: ignore[name-defined]
+) -> tuple[str, str] | None:
+    """Centralised PreToolUse gate for non-shell tools (#799, SCAFFOLD).
+
+    Invokes ``shared/hooks_engine.evaluate_pre_tool_use`` with the tool name
+    and a dict-shaped input payload. Returns ``None`` on allow, or a
+    ``(rule_name, reason)`` tuple on deny so callers can emit the
+    ``backend_hooks_denials_total`` counter and raise a deny exception with
+    consistent wording.
+
+    STATUS — this function is ready to fire but has **no callers yet for
+    non-shell tools**. The Agents SDK (openai-agents==0.9.3) does not expose
+    a per-tool-call pre-invoke callback for ``WebSearchTool``, ``ComputerTool``,
+    or MCP stdio/HTTP tools; only ``LocalShellTool`` accepts an ``executor=``
+    which is already gated by :func:`_evaluate_shell_baseline`. Invoking
+    this gate for the remaining tools requires either:
+
+      1. Upstream: a pre-invoke callback on the SDK's tool dispatcher, or
+      2. In-repo: wrapping each tool with a thin subclass whose ``invoke``
+         method calls this gate before delegating — feasible but non-trivial
+         because ``Computer`` and the MCP ``MCPServer*`` classes have internal
+         contracts we'd be replacing.
+
+    Until one of those lands, this helper centralises the evaluate call so
+    new interposition points can wire in with a single line:
+
+        denied = _pre_tool_use_gate(name, input)
+        if denied is not None:
+            raise HookDenyError(*denied)
+
+    TODO(#799): subclass ``WebSearchTool`` / ``ComputerTool`` / add an MCP
+    proxy wrapper and route every invocation through this gate. When done,
+    remove the "scaffold" wording from this docstring and add coverage in
+    backends/codex/tests/.
+    """
+    try:
+        from hooks_engine import evaluate_pre_tool_use  # type: ignore
+    except Exception as _imp_exc:
+        logger.warning(
+            "_pre_tool_use_gate: hooks_engine import failed (%r); "
+            "fail-open for %s.", _imp_exc, tool_name,
+        )
+        return None
+    try:
+        decision = evaluate_pre_tool_use(tool_name, tool_input, state=state)
+    except Exception as _eval_exc:
+        logger.warning(
+            "_pre_tool_use_gate: evaluate raised for %s: %r — fail-open.",
+            tool_name, _eval_exc,
+        )
+        return None
+    # evaluate_pre_tool_use returns (decision, rule, reason) on the shared
+    # contract; normalise to the (rule, reason) shape _shell_executor uses.
+    if decision is None:
+        return None
+    try:
+        verdict = getattr(decision, "decision", None) or decision[0]
+        rule = getattr(decision, "rule", None) or decision[1]
+        reason = getattr(decision, "reason", None) or decision[2]
+    except Exception:
+        return None
+    if str(verdict).lower() == "deny":
+        return str(rule), str(reason)
+    return None
+
+
 async def _append_tool_audit(entry: dict) -> None:
     """Append an ``event_type='tool_audit'`` row via the shared helper (#858).
 
