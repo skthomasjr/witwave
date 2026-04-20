@@ -229,6 +229,22 @@ var (
 		},
 		[]string{"namespace"},
 	)
+
+	// WitwaveAgentLeaderElectionRenewFailuresTotal counts renewal-deadline
+	// misses by the operator's leader-election machinery (#1475). A non-zero
+	// rate on a cluster with 3+ operator replicas indicates a slow
+	// apiserver (control-plane upgrade, networking hiccup, etcd pressure)
+	// false-positive-demoting the active leader — the newly-promoted
+	// leader then re-reconciles the world, producing a stampede. The
+	// metric is populated by a lease-renewal error hook wired into the
+	// manager's leader-election config; a jump in the counter paired
+	// with a WitwaveAgent reconcile-rate spike is the canonical signal.
+	WitwaveAgentLeaderElectionRenewFailuresTotal = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "witwaveagent_leader_election_renew_failures_total",
+			Help: "Total leader-election renew-deadline misses (#1475). Each miss demotes the active leader; a second replica promotes on the next RetryPeriod. Non-zero rate correlates with reconcile stampedes — consider widening --leader-election-lease-duration on slow-apiserver clusters.",
+		},
+	)
 )
 
 func init() {
@@ -246,5 +262,6 @@ func init() {
 		WitwaveAgentCredentialRotationsTotal,
 		WitwaveAgentCredentialWatchListErrorsTotal,
 		witwaveagentManifestOwnerRefSkippedNoUIDTotal,
+		WitwaveAgentLeaderElectionRenewFailuresTotal,
 	)
 }

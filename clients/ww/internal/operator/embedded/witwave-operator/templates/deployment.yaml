@@ -65,6 +65,16 @@ spec:
                    so single-replica local runs still opt out cleanly. */}}
             {{- if .Values.leaderElection.enabled }}
             - --leader-elect=true
+            {{- /* #1475: lease-duration knobs for slow-apiserver clusters. */}}
+            {{- with .Values.leaderElection.leaseDuration }}
+            - --leader-election-lease-duration={{ . }}
+            {{- end }}
+            {{- with .Values.leaderElection.renewDeadline }}
+            - --leader-election-renew-deadline={{ . }}
+            {{- end }}
+            {{- with .Values.leaderElection.retryPeriod }}
+            - --leader-election-retry-period={{ . }}
+            {{- end }}
             {{- else }}
             - --leader-elect=false
             {{- end }}

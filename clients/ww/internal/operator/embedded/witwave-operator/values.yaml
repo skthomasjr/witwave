@@ -76,8 +76,19 @@ rbac:
 
 # Leader election — required when replicaCount > 1 to ensure a single
 # active controller. Harmless for replicaCount=1.
+#
+# Lease-duration knobs (#1475) are exposed for clusters whose apiserver
+# is slow enough (control-plane upgrades, etcd pressure) that the
+# default controller-runtime timings produce false-positive demotions.
+# Leave empty to use controller-runtime's defaults (15s / 10s / 2s).
+# Order of operations when widening: leaseDuration first, then
+# renewDeadline (must be < leaseDuration), then retryPeriod (must be <
+# renewDeadline).
 leaderElection:
   enabled: true
+  leaseDuration: ""   # e.g. "30s" — controller-runtime default is 15s
+  renewDeadline: ""   # e.g. "20s" — controller-runtime default is 10s
+  retryPeriod: ""     # e.g. "4s"  — controller-runtime default is 2s
 
 # Prometheus metrics endpoint (controller-runtime metrics).
 # When enabled, a ClusterIP Service is created on metrics.port routing to

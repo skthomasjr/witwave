@@ -89,6 +89,21 @@ func main() {
 			"Enabling this will ensure there is only one active controller manager. "+
 			"Default is true to make replicas>1 deployments safe out of the box (#752); "+
 			"pass --leader-elect=false for single-replica local runs.")
+	// #1475: expose controller-runtime's leader-election timing knobs
+	// as flags so slow-apiserver clusters can widen the lease before
+	// false-positive demotions cascade into reconcile stampedes.
+	// Defaults match controller-runtime's own defaults (15s / 10s / 2s);
+	// the manager derives its lease duration from these three.
+	var leaderElectionLeaseDuration, leaderElectionRenewDeadline, leaderElectionRetryPeriod time.Duration
+	flag.DurationVar(&leaderElectionLeaseDuration, "leader-election-lease-duration", 15*time.Second,
+		"The duration that non-leader candidates will wait to force-acquire leadership. "+
+			"Widen on slow-apiserver clusters (e.g. during control-plane upgrades) to prevent "+
+			"false-positive demotions. Must be > renew-deadline. Default matches controller-runtime.")
+	flag.DurationVar(&leaderElectionRenewDeadline, "leader-election-renew-deadline", 10*time.Second,
+		"The interval between attempts by the acting leader to renew its lease before giving up. "+
+			"Must be < lease-duration. Default matches controller-runtime.")
+	flag.DurationVar(&leaderElectionRetryPeriod, "leader-election-retry-period", 2*time.Second,
+		"The duration leader-election clients wait between action attempts. Default matches controller-runtime.")
 	flag.BoolVar(&secureMetrics, "metrics-secure", true,
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	flag.StringVar(&webhookCertPath, "webhook-cert-path", "", "The directory that contains the webhook certificate.")
@@ -269,6 +284,11 @@ func main() {
 		// a crashed leader would take, which reduces the duplicate-
 		// reconcile blast window during a rolling restart.
 		LeaderElectionReleaseOnCancel: true,
+		// #1475: lease-duration knobs plumbed from flags so operators
+		// can tune for slow-apiserver clusters.
+		LeaseDuration: &leaderElectionLeaseDuration,
+		RenewDeadline: &leaderElectionRenewDeadline,
+		RetryPeriod:   &leaderElectionRetryPeriod,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
