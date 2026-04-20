@@ -163,7 +163,7 @@ backend:
   agents:
     - id: claude
       url: http://localhost:8010
-      model: claude-opus-4-6
+      model: claude-opus-4-7
 
     - id: codex
       url: http://localhost:8011
@@ -175,25 +175,25 @@ backend:
   routing:
     default:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7
     a2a:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7
     heartbeat:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7
     job:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7
     task:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7
     trigger:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7
     continuation:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7
 ```
 
 Routing values can be a plain agent ID string or an object with `agent:` and optional `model:` fields.
@@ -251,7 +251,7 @@ Agent identity and behavior are file-based — nothing is baked into images.
 ├── active/                  # Active (production-like) agents: iris, nova, kira
 │   ├── manifest.json        # Registry of all agents in this deployment
 │   └── <name>/              # Per-agent directory (see layout above)
-└── test/                    # Test agents: bob
+└── test/                    # Test agents: bob, fred (deployed); jack, luke (scaffolds only, see port table below)
     ├── manifest.json
     └── <name>/
 

@@ -21,7 +21,7 @@ go install github.com/skthomasjr/autonomous-agent/clients/ww@latest
 When the Homebrew tap lands:
 
 ```bash
-brew install skthomasjr/ww/ww
+brew install skthomasjr/homebrew-ww/ww
 ```
 
 ## Quick start
