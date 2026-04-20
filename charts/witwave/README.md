@@ -186,7 +186,7 @@ backends:
 agents:
   - name: bob
     gitSyncs:
-      - name: autonomous-agent
+      - name: witwave
         repo: https://github.com/org/repo
         # Per-entry override (omit to inherit chart-global default).
         credentials:

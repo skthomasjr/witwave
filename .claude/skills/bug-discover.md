@@ -1,12 +1,12 @@
 ---
 name: bug-discover
-description: Analyze one or all components of the autonomous-agent platform for bugs and record findings as tracked bugs. Trigger when the user says "find bugs", "discover bugs", "look for bugs", "scan for bugs", "search for bugs", or "run bug discover" — with or without a component name.
+description: Analyze one or all components of the witwave platform for bugs and record findings as tracked bugs. Trigger when the user says "find bugs", "discover bugs", "look for bugs", "scan for bugs", "search for bugs", or "run bug discover" — with or without a component name.
 version: 1.1.0
 ---
 
 # bug-discover
 
-Analyze a specific component of the autonomous-agent platform for bugs.
+Analyze a specific component of the witwave platform for bugs.
 
 ## Instructions
 

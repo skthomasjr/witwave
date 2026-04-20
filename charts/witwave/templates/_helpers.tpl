@@ -426,7 +426,7 @@ Call site passes a dict with:
   .creds        — the per-entry credentials block (may be empty)
   .default      — the chart-global fallback credentials block (may be empty)
   .secretName   — the name the chart-rendered Secret should use in inline mode
-                  (e.g. "bob-claude-credentials", "bob-autonomous-agent-gitsync-credentials")
+                  (e.g. "bob-claude-credentials", "bob-witwave-gitsync-credentials")
   .context      — string used in error messages to identify the caller
                   (e.g. "agents[0].backends[0] (bob/claude)")
 

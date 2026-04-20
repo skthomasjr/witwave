@@ -27,7 +27,7 @@ or otherwise), `AGENT_NAME` is not set — in that case, `<agent-name>` is `loca
 
 ## Project Overview
 
-autonomous-agent is a multi-container autonomous agent platform. Each named agent (iris, nova, kira, …) consists of:
+witwave is a multi-container autonomous agent platform. Each named agent (iris, nova, kira, …) consists of:
 
 - A **harness** container — the infrastructure layer (A2A relay, heartbeat scheduler, job scheduler). It owns
   no LLM itself; it forwards all work to a backend.

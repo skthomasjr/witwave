@@ -6,7 +6,7 @@ version: 0.1.0
 appVersion: "0.1.0"
 kubeVersion: ">=1.25.0"
 keywords:
-  - autonomous-agent
+  - witwave
   - ai
   - llm
   - operator

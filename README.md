@@ -1,4 +1,4 @@
-# autonomous-agent
+# witwave
 
 A platform for building persistent, self-directed AI agents that can work autonomously on software projects — including
 improving themselves.

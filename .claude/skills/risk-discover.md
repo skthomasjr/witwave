@@ -1,12 +1,12 @@
 ---
 name: risk-discover
-description: Analyze one or all components of the autonomous-agent platform for risks and record findings as tracked risks. Trigger when the user says "find risks", "discover risks", "look for risks", "scan for risks", "search for risks", or "run risk discover" — with or without a component name.
+description: Analyze one or all components of the witwave platform for risks and record findings as tracked risks. Trigger when the user says "find risks", "discover risks", "look for risks", "scan for risks", "search for risks", or "run risk discover" — with or without a component name.
 version: 1.0.1
 ---
 
 # risk-discover
 
-Analyze a specific component of the autonomous-agent platform for risks.
+Analyze a specific component of the witwave platform for risks.
 
 ## Instructions
 

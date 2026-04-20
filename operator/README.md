@@ -170,7 +170,7 @@ same three-mode resolver (parity with the Helm chart's
 ```yaml
 # Production: reference a pre-created Secret
 gitSyncs:
-  - name: autonomous-agent
+  - name: witwave
     repo: https://github.com/org/repo
     credentials:
       existingSecret: agent-github-credentials   # must contain GITSYNC_USERNAME + GITSYNC_PASSWORD
@@ -181,7 +181,7 @@ gitSyncs:
 # webhook rejects the CR — inline values land in etcd + `kubectl get
 # witwaveagent -o yaml`, so the ack flag is the explicit opt-in.
 gitSyncs:
-  - name: autonomous-agent
+  - name: witwave
     repo: https://github.com/org/repo
     credentials:
       username: dev-user
@@ -190,7 +190,7 @@ gitSyncs:
 
 # Legacy: raw envFrom (unchanged — works when credentials is empty)
 gitSyncs:
-  - name: autonomous-agent
+  - name: witwave
     envFrom:
       - secretRef:
           name: my-existing-secret

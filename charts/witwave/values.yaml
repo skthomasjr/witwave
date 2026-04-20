@@ -1128,7 +1128,7 @@ agents:
     # # GITSYNC_USERNAME / GITSYNC_PASSWORD for HTTPS, or mount an SSH key).
     # gitSyncs:
     #   - # Unique name for this git-sync sidecar.
-    #     name: autonomous-agent
+    #     name: witwave
     #     # Git repository URL (HTTPS or SSH).
     #     repo: https://github.com/org/repo
     #     # Branch, tag, or commit SHA to sync. Defaults to HEAD.
@@ -1162,7 +1162,7 @@ agents:
     # # gitSync must match a name in gitSyncs above.
     # gitMappings:
     #   - # Name of the gitSync entry to source from.
-    #     gitSync: autonomous-agent
+    #     gitSync: witwave
     #     # Source path within the repo (trailing / = directory copy).
     #     src: .agents/active/iris/.witwave/
     #     # Destination path inside the container.
@@ -1226,7 +1226,7 @@ agents:
         # # Git mappings for this backend. Same semantics as agent-level gitMappings
         # # but scoped to this backend container.
         # gitMappings:
-        #   - gitSync: autonomous-agent
+        #   - gitSync: witwave
         #     src: .agents/active/iris/.claude/
         #     dest: /home/agent/.claude/
 

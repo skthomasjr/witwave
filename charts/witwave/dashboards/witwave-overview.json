@@ -493,7 +493,7 @@
   "refresh": "30s",
   "schemaVersion": 38,
   "style": "dark",
-  "tags": ["witwave", "autonomous-agent"],
+  "tags": ["witwave", "witwave"],
   "templating": {
     "list": [
       {

@@ -65,7 +65,7 @@ agents:
       - name: WEBHOOK_TEST_BEARER
         value: REPLACE_ME_WITH_GENERATED_TOKEN
     gitSyncs:
-      - name: autonomous-agent
+      - name: witwave
         repo: https://github.com/skthomasjr/witwave
         ref: main
         depth: 1
@@ -74,7 +74,7 @@ agents:
           - secretRef:
               name: git-sync-credentials
     gitMappings:
-      - gitSync: autonomous-agent
+      - gitSync: witwave
         src: .agents/test/bob/.witwave/
         dest: /home/agent/.witwave/
 
@@ -89,7 +89,7 @@ agents:
           - secretRef:
               name: bob-claude-secrets
         gitMappings:
-          - gitSync: autonomous-agent
+          - gitSync: witwave
             src: .agents/test/bob/.claude/
             dest: /home/agent/.claude/
         storage:
@@ -118,7 +118,7 @@ agents:
           - secretRef:
               name: bob-codex-secrets
         gitMappings:
-          - gitSync: autonomous-agent
+          - gitSync: witwave
             src: .agents/test/bob/.codex/
             dest: /home/agent/.codex/
         storage:
@@ -144,7 +144,7 @@ agents:
           - secretRef:
               name: bob-gemini-secrets
         gitMappings:
-          - gitSync: autonomous-agent
+          - gitSync: witwave
             src: .agents/test/bob/.gemini/
             dest: /home/agent/.gemini/
         storage:
@@ -166,7 +166,7 @@ agents:
       - name: CORS_ALLOW_ORIGINS
         value: "http://localhost:5173,http://localhost:3000"
     gitSyncs:
-      - name: autonomous-agent
+      - name: witwave
         repo: https://github.com/skthomasjr/witwave
         ref: main
         depth: 1
@@ -175,7 +175,7 @@ agents:
           - secretRef:
               name: git-sync-credentials
     gitMappings:
-      - gitSync: autonomous-agent
+      - gitSync: witwave
         src: .agents/test/fred/.witwave/
         dest: /home/agent/.witwave/
 
@@ -190,7 +190,7 @@ agents:
           - secretRef:
               name: fred-claude-secrets
         gitMappings:
-          - gitSync: autonomous-agent
+          - gitSync: witwave
             src: .agents/test/fred/.claude/
             dest: /home/agent/.claude/
         storage:
