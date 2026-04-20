@@ -1,7 +1,7 @@
 # charts/witwave/values-psa-audit.yaml — #1377
 #
 # This values file turns on every opt-in component so the chart-CI
-# PSA-restricted audit job (in .github/workflows/charts-ci.yml) sees
+# PSA-restricted audit job (in .github/workflows/ci-charts.yml) sees
 # the full rendered resource set, not just the defaults + values-test.
 # Without this file, new optional components (mcp-prometheus is one)
 # ship with a missing securityContext baseline and admission-time PSS

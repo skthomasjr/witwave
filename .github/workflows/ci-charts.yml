@@ -1,17 +1,17 @@
-name: Charts CI
+name: CI — Charts
 
 on:
   pull_request:
     paths:
       - "charts/**"
       - "tools/**"
-      - ".github/workflows/charts-ci.yml"
+      - ".github/workflows/ci-charts.yml"
   push:
     branches: ["main"]
     paths:
       - "charts/**"
       - "tools/**"
-      - ".github/workflows/charts-ci.yml"
+      - ".github/workflows/ci-charts.yml"
 
 # Lint + render + schema-validate every Helm chart in this repo on every
 # relevant PR (#838). Catches syntax drift, template regressions, schema

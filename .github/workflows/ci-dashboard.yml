@@ -13,15 +13,15 @@ on:
   pull_request:
     paths:
       - "clients/dashboard/**"
-      - ".github/workflows/dashboard-ci.yml"
+      - ".github/workflows/ci-dashboard.yml"
   push:
     branches: [main]
     paths:
       - "clients/dashboard/**"
-      - ".github/workflows/dashboard-ci.yml"
+      - ".github/workflows/ci-dashboard.yml"
 
 concurrency:
-  group: dashboard-ci-${{ github.ref }}
+  group: ci-dashboard-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

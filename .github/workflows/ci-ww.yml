@@ -2,7 +2,7 @@ name: CI — ww CLI
 
 # Per-PR validation for the ww CLI. Runs on any change under clients/ww/**
 # or to this workflow file itself; other components have their own CI
-# (charts-ci.yml, etc.) and don't need to pay the Go toolchain tax.
+# (ci-charts.yml, etc.) and don't need to pay the Go toolchain tax.
 #
 # Flat-tag convention: release.yml fires on `v*.*.*` tags across the whole
 # platform. This CI is the pre-merge gate that keeps ww releasable.
@@ -11,15 +11,15 @@ on:
   pull_request:
     paths:
       - "clients/ww/**"
-      - ".github/workflows/ww-ci.yml"
+      - ".github/workflows/ci-ww.yml"
   push:
     branches: [main]
     paths:
       - "clients/ww/**"
-      - ".github/workflows/ww-ci.yml"
+      - ".github/workflows/ci-ww.yml"
 
 concurrency:
-  group: ww-ci-${{ github.ref }}
+  group: ci-ww-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
