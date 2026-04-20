@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/skthomasjr/witwave/clients/ww/internal/k8s"
 	"github.com/skthomasjr/witwave/clients/ww/internal/operator"
@@ -76,7 +77,60 @@ func newOperatorCmd() *cobra.Command {
 	cmd.AddCommand(newOperatorInstallCmd(f))
 	cmd.AddCommand(newOperatorUpgradeCmd(f))
 	cmd.AddCommand(newOperatorUninstallCmd(f))
+	cmd.AddCommand(newOperatorLogsCmd(f))
 	return cmd
+}
+
+// ---------------------------------------------------------------------------
+// logs — read-only; tails operator pod logs.
+// ---------------------------------------------------------------------------
+
+func newOperatorLogsCmd(f *operatorFlags) *cobra.Command {
+	var (
+		tail     int64
+		since    time.Duration
+		noFollow bool
+		pod      string
+	)
+	cmd := &cobra.Command{
+		Use:   "logs",
+		Short: "Tail witwave-operator pod logs",
+		Long: "Streams pod logs from every pod matching\n" +
+			"app.kubernetes.io/name=witwave-operator in the target namespace.\n" +
+			"When multiple pods are present, each line is prefixed with\n" +
+			"[pod-name] so sources can be distinguished. Ctrl-C exits cleanly.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runOperatorLogs(cmd.Context(), f, operator.LogsOptions{
+				Namespace: f.namespace,
+				Follow:    !noFollow,
+				TailLines: tail,
+				Since:     since,
+				Pod:       pod,
+				Out:       os.Stdout,
+			})
+		},
+	}
+	cmd.Flags().Int64Var(&tail, "tail", 100,
+		"Number of recent log lines to emit before following (0 = full history)")
+	cmd.Flags().DurationVar(&since, "since", 0,
+		"Lookback duration, e.g. 1h or 30m (empty = no limit)")
+	cmd.Flags().BoolVar(&noFollow, "no-follow", false,
+		"Print current log contents and exit without streaming")
+	cmd.Flags().StringVar(&pod, "pod", "",
+		"Target a specific pod by name instead of all operator pods")
+	return cmd
+}
+
+func runOperatorLogs(ctx context.Context, f *operatorFlags, opts operator.LogsOptions) error {
+	_, resolver, err := f.resolveTarget()
+	if err != nil {
+		return err
+	}
+	cfg, err := resolver.REST()
+	if err != nil {
+		return err
+	}
+	return operator.Logs(ctx, cfg, opts)
 }
 
 // ---------------------------------------------------------------------------
