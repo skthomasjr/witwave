@@ -12,6 +12,10 @@ project_name: ww
 
 before:
   hooks:
+    # Sync the embedded witwave-operator chart before ANY build step so
+    # `go:embed` picks up the current charts/witwave-operator contents.
+    # CI guards this via the --check variant; releases always write.
+    - ../../scripts/sync-embedded-chart.sh
     - go mod tidy
     # goreleaser runs from clients/ww/ but the Apache-2.0 LICENSE sits
     # at the repo root. `src: ../../LICENSE` in archives.files doesn't

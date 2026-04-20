@@ -11,11 +11,17 @@ on:
   pull_request:
     paths:
       - "clients/ww/**"
+      # ww embeds the witwave-operator chart via go:embed — edits to the
+      # canonical chart MUST re-trigger ww's CI so the drift check runs.
+      - "charts/witwave-operator/**"
+      - "scripts/sync-embedded-chart.sh"
       - ".github/workflows/ci-ww.yml"
   push:
     branches: [main]
     paths:
       - "clients/ww/**"
+      - "charts/witwave-operator/**"
+      - "scripts/sync-embedded-chart.sh"
       - ".github/workflows/ci-ww.yml"
 
 concurrency:
@@ -45,6 +51,17 @@ jobs:
           go-version-file: clients/ww/go.mod
           cache: true
           cache-dependency-path: clients/ww/go.sum
+
+      - name: Embedded chart drift check
+        # The operator chart is maintained canonically at
+        # charts/witwave-operator/ and mirrored into
+        # clients/ww/internal/operator/embedded/witwave-operator/ so
+        # go:embed has something to read. Without this check, someone
+        # can edit the canonical chart and forget to sync — the ww
+        # binary would ship a stale chart without any PR review
+        # catching it.
+        working-directory: .
+        run: scripts/sync-embedded-chart.sh --check
 
       - name: gofmt check
         run: |

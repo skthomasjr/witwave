@@ -6,6 +6,7 @@ import (
 	"io"
 	"text/tabwriter"
 
+	"github.com/Masterminds/semver/v3"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -129,29 +130,41 @@ func (s *Status) Render(out io.Writer) {
 	}
 }
 
-// skewLabel returns the "(match)" / "(patch skew)" / "(minor skew)" /
-// "(major skew)" decoration for the ww-version line. Naïve string
-// compare for now — we bump to proper semver comparison when we start
-// enforcing skew policy.
+// skewLabel returns the decoration for the ww-version line. Classifies
+// into match / patch skew / minor skew / major skew / unknown using
+// proper semver comparison (Masterminds/semver) so developers building
+// from source (ww version = "dev") get a readable output rather than
+// a false "skew" verdict.
 func skewLabel(wwVersion string, rel *ReleaseInfo) string {
 	if rel == nil || rel.AppVersion == "" {
 		return ""
 	}
-	ww := stripV(wwVersion)
-	rv := stripV(rel.AppVersion)
-	if ww == rv {
+	// "dev" / "unknown" / empty — can't compare, surface that state
+	// explicitly instead of lying.
+	if wwVersion == "" || wwVersion == "dev" || wwVersion == "unknown" {
+		return "(local build — skew unknown)"
+	}
+	ww, wwErr := semver.NewVersion(wwVersion)
+	rv, rvErr := semver.NewVersion(rel.AppVersion)
+	if wwErr != nil || rvErr != nil {
+		// One of the versions isn't valid semver — e.g. a custom
+		// fork's tag. Fall back to string compare so we at least show
+		// match when they're byte-equal.
+		if wwVersion == rel.AppVersion {
+			return "(match)"
+		}
+		return "(skew — non-semver version)"
+	}
+	switch {
+	case ww.Equal(rv):
 		return "(match)"
+	case ww.Major() != rv.Major():
+		return "(major skew — upgrade blocked)"
+	case ww.Minor() != rv.Minor():
+		return "(minor skew)"
+	default:
+		return "(patch skew)"
 	}
-	// Very coarse — any mismatch shows as "skew" for the status page; the
-	// upgrade command does the fine-grained check.
-	return "(skew)"
-}
-
-func stripV(s string) string {
-	if len(s) > 0 && (s[0] == 'v' || s[0] == 'V') {
-		return s[1:]
-	}
-	return s
 }
 
 func joinVersions(vs []string) string {
