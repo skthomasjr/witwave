@@ -173,6 +173,51 @@ func TestChecker_Check_CachedResult_NoAPICall(t *testing.T) {
 	}
 }
 
+func TestChecker_Check_CurrentMatchesCachedLatest_ReFetches(t *testing.T) {
+	// When the on-disk cache says "latest = v0.5.0" and we're running
+	// v0.5.0 ourselves, the cache tells us nothing actionable. Bypass
+	// it and hit the API so a fresh release cut after we upgraded to
+	// v0.5.0 is visible on the next run, not up to Interval later.
+	apiHits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		apiHits++
+		_ = json.NewEncoder(w).Encode(Release{TagName: "v0.5.1", HTMLURL: "https://example.com/v0.5.1"})
+	}))
+	defer srv.Close()
+
+	tmp := t.TempDir()
+	cachePath := filepath.Join(tmp, "cache.json")
+
+	// Seed: cached latest equals our running version (we upgraded to
+	// whatever was "latest" at check-time, so the cache is telling us
+	// "you're current" but a new release may have since shipped).
+	cache := Cache{
+		Channel:   ChannelStable,
+		CheckedAt: time.Now().Add(-1 * time.Minute),
+		LatestTag: "v0.5.0",
+		LatestURL: "https://example.com/v0.5.0",
+	}
+	if err := writeCache(cachePath, cache); err != nil {
+		t.Fatalf("seed cache: %v", err)
+	}
+
+	c := &Checker{
+		CurrentVersion: "v0.5.0", // same as cached latest — cache is "useless"
+		Channel:        ChannelStable,
+		Interval:       DefaultInterval,
+		APIBase:        srv.URL,
+		HTTPClient:     srv.Client(),
+		CachePath:      cachePath,
+	}
+	notice := c.Check(context.Background())
+	if apiHits != 1 {
+		t.Errorf("current==cached_latest should trigger a fresh fetch, got %d hits", apiHits)
+	}
+	if notice == nil || notice.LatestTag != "v0.5.1" {
+		t.Errorf("expected fresh v0.5.1 notice, got %+v", notice)
+	}
+}
+
 func TestChecker_Check_StaleCache_Refreshes(t *testing.T) {
 	apiHits := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

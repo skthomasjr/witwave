@@ -157,10 +157,23 @@ type Notice struct {
 func (c *Checker) Check(ctx context.Context) *Notice {
 	cachePath := c.resolveCachePath()
 
-	// Cache hit — fresh AND matching the configured channel.
+	// Cache hit — fresh AND matching the configured channel AND the
+	// cached "latest" is actually ahead of our running version. When
+	// the cached latest matches our version (user is up to date), we
+	// intentionally bypass the cache and re-fetch on the next call so
+	// a freshly-cut release is visible within one command, not up to
+	// `Interval` later. The cost is one extra API call per run for
+	// users who stay current, which is negligible (the call is ~500ms
+	// and the GitHub API quota is 60/hr).
 	if cached, ok := readCache(cachePath); ok {
 		if cached.Channel == c.Channel && time.Since(cached.CheckedAt) < c.Interval {
-			return c.buildNotice(cached.LatestTag, cached.LatestURL)
+			if cmp, ok := compareSemver(c.CurrentVersion, cached.LatestTag); ok && cmp < 0 {
+				// Cached answer is strictly "newer than us" — use it.
+				return c.buildNotice(cached.LatestTag, cached.LatestURL)
+			}
+			// Cache says "you're on the latest" (or tag is newer-but-
+			// unparseable). Fall through and re-fetch so a freshly
+			// cut release is detected promptly.
 		}
 	}
 
@@ -172,8 +185,9 @@ func (c *Checker) Check(ctx context.Context) *Notice {
 		return nil
 	}
 
-	// Persist whatever we got, even if no upgrade is available, so the
-	// cache's CheckedAt timestamp rate-limits future API calls.
+	// Persist whatever we got, even if no upgrade is available. The
+	// cache's CheckedAt still rate-limits older-binary polling; the
+	// "current == latest" case above just reads and bypasses it.
 	_ = writeCache(cachePath, Cache{
 		Channel:   c.Channel,
 		CheckedAt: time.Now().UTC(),
