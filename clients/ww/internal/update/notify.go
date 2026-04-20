@@ -133,15 +133,13 @@ func runUpgrade(ctx context.Context, method InstallMethod, stdout, stderr io.Wri
 
 	switch method {
 	case InstallMethodBrew:
-		// Tap-scoped `brew update` refreshes just witwave-ai/homebrew-ww
-		// rather than every tap the user has installed. Errors here
-		// don't block the upgrade — brew falls back to its cached
-		// formula, and `brew upgrade` will itself report if something is
-		// truly wrong.
-		tapCmd := exec.CommandContext(ctx, "brew", "update", "witwave-ai/homebrew-ww")
-		tapCmd.Stdout, tapCmd.Stderr = stdout, stderr
-		_ = tapCmd.Run()
-
+		// `brew upgrade` performs its own auto-update of installed
+		// taps (unless the user set HOMEBREW_NO_AUTO_UPDATE=1), so a
+		// pre-step `brew update` is redundant and, depending on the
+		// command shape, either silently no-ops or surfaces a
+		// "No available formula" warning (brew's `update` takes a
+		// repo path, not a formula name). Just run the upgrade and
+		// let brew handle its own tap freshness.
 		upgradeCmd := exec.CommandContext(ctx, "brew", "upgrade", "ww")
 		upgradeCmd.Stdout, upgradeCmd.Stderr = stdout, stderr
 		if err := upgradeCmd.Run(); err != nil {

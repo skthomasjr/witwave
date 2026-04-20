@@ -13,6 +13,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"golang.org/x/term"
 )
 
 // Mode is how ww should react when a newer release is detected.
@@ -123,9 +125,13 @@ func truthy(s string) bool {
 }
 
 func defaultIsStdinTTY() bool {
-	info, err := os.Stdin.Stat()
-	if err != nil {
-		return false
-	}
-	return info.Mode()&os.ModeCharDevice != 0
+	// golang.org/x/term.IsTerminal uses the OS-appropriate syscall
+	// (ioctl(TIOCGETA) on Unix, GetConsoleMode on Windows) to answer
+	// "is this fd actually a terminal", not the cheaper-but-wrong
+	// `Mode()&os.ModeCharDevice != 0` that counts /dev/null as a TTY
+	// because /dev/null is a character device. A user redirecting
+	// stdin from /dev/null (e.g. in a background script) must be
+	// treated as non-interactive so prompt mode doesn't render a
+	// question they can never answer.
+	return term.IsTerminal(int(os.Stdin.Fd()))
 }
