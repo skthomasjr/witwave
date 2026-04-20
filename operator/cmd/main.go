@@ -318,6 +318,21 @@ func main() {
 		setupLog.Error(err, "unable to register field indexer", "field", controller.WitwaveAgentTeamIndex)
 		os.Exit(1)
 	}
+	// #1474: credential-Secret → agents indexer. Without this, a
+	// Secret rotation on a 100+-agent cluster triggered a full
+	// in-namespace List on every Secret update — a reconcile
+	// thundering herd at fleet scale. The indexer narrows the
+	// enqueue set to exactly the agents that reference the
+	// rotated Secret.
+	if err := mgr.GetFieldIndexer().IndexField(
+		context.Background(),
+		&witwavev1alpha1.WitwaveAgent{},
+		controller.WitwaveAgentCredentialSecretRefsIndex,
+		controller.WitwaveAgentCredentialSecretRefsExtractor,
+	); err != nil {
+		setupLog.Error(err, "unable to register field indexer", "field", controller.WitwaveAgentCredentialSecretRefsIndex)
+		os.Exit(1)
+	}
 
 	if err := (&controller.WitwaveAgentReconciler{
 		Client:    mgr.GetClient(),
