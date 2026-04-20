@@ -100,15 +100,15 @@ rather than first appearing at reconcile time. Run with `pytest tools/kubernetes
 
 ## Tools
 
-| Tool              | Description                                                                     |
-| ----------------- | ------------------------------------------------------------------------------- |
-| `list_namespaces` | List namespaces visible to the ServiceAccount.                                  |
-| `list_resources`  | List resources of a kind; optional `namespace`, `api_version`, selectors.       |
-| `get_resource`    | Fetch a single resource by kind / namespace / name.                             |
-| `describe`        | Return `{object, events}` for a resource — structured, not kubectl-formatted.  |
-| `logs`            | Pod logs with `container`, `tail_lines`, `since_seconds`, `previous` options.   |
-| `apply`           | Server-side apply a YAML/JSON manifest (multi-doc supported).                   |
-| `delete`          | Delete by kind / namespace / name with configurable propagation policy.         |
+| Tool                | Description                                                                    |
+| ------------------- | ------------------------------------------------------------------------------ |
+| `list_namespaces`   | List namespaces visible to the ServiceAccount.                                 |
+| `list_resources`    | List resources of a kind; optional `namespace`, `api_version`, selectors.      |
+| `get_resource`      | Fetch a single resource by kind / namespace / name.                            |
+| `describe`          | Return `{object, events}` for a resource — structured, not kubectl-formatted. |
+| `logs`              | Pod logs with `container`, `tail_lines`, `since_seconds`, `previous` options.  |
+| `apply`             | Server-side apply a YAML/JSON manifest (multi-doc supported).                  |
+| `delete`            | Delete by kind / namespace / name with configurable propagation policy.        |
 | `read_secret_value` | Fetch a Secret's decoded value, gated on `confirm=True` + `MCP_K8S_READ_SECRETS_DISABLED=false`. Every call is audit-logged. Prefer `get_resource` (returns the Secret envelope without decoded data) for normal reads. |
 
 `api_version` is optional but required to disambiguate kinds served by
