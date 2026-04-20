@@ -1,0 +1,62 @@
+name: CI — Dashboard
+
+# Per-PR validation for the Vue 3 dashboard. Runs on any change under
+# clients/dashboard/** or to this workflow file itself. The dashboard
+# has 112 unit tests; before this workflow existed, those tests never
+# ran in CI (discovered while fixing #1453), so any dashboard change
+# landed on main without automated verification.
+#
+# Skips Playwright e2e for now — e2e requires a running harness stack
+# and is not currently part of the pre-merge gate.
+
+on:
+  pull_request:
+    paths:
+      - "clients/dashboard/**"
+      - ".github/workflows/dashboard-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "clients/dashboard/**"
+      - ".github/workflows/dashboard-ci.yml"
+
+concurrency:
+  group: dashboard-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: typecheck + test + build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    defaults:
+      run:
+        working-directory: clients/dashboard
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          # Vite 5 / vue-tsc 2 / vitest 3 all work comfortably on
+          # Node 20. Pinning here so a new LTS doesn't silently
+          # change behaviour on PRs.
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: clients/dashboard/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check + build (matches `npm run build`)
+        # vue-tsc --noEmit is the strict TypeScript gate; the build
+        # step catches compile-time errors that tests don't exercise
+        # (template type inference, etc.).
+        run: npm run build
+
+      - name: Unit tests
+        run: npm test
