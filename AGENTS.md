@@ -91,7 +91,7 @@ Each backend:
 - Exposes `/` as the A2A JSON-RPC task endpoint
 - Exposes `/health` for health checks
 - Exposes `/metrics` for Prometheus scraping (when `METRICS_ENABLED` is set)
-- Exposes `/conversations`, `/trace`, `/mcp`, and claude's `/api/traces[/<id>]` guarded by the same bearer token
+- Exposes `/conversations`, `/trace`, `/mcp`, and `/api/traces[/<id>]` guarded by the same bearer token
   (`CONVERSATIONS_AUTH_TOKEN`) — parity across all three backends (#510, #516, #518). An empty token logs a
   startup warning (#517) and the shared guard refuses to serve protected endpoints unless the operator opts in
   with `CONVERSATIONS_AUTH_DISABLED=true` (documented escape hatch for local dev, loud startup log)

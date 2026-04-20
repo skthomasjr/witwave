@@ -163,7 +163,7 @@ backend_sqlite_task_store_lock_wait_seconds: prometheus_client.Histogram | None 
 
 if _enabled:
     backend_up = prometheus_client.Gauge("backend_up", "Backend agent is running", ["agent", "agent_id", "backend"])
-    backend_info = prometheus_client.Info("a2", "Static backend agent metadata.")
+    backend_info = prometheus_client.Info("backend", "Static backend agent metadata.")
     backend_sdk_info = prometheus_client.Info(
         "backend_sdk",
         "Underlying SDK package + version (resolved via importlib.metadata). "
