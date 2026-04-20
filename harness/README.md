@@ -142,7 +142,7 @@ deployments can adjust behaviour without a code change.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `AGENT_NAME` | `local-agent` | Agent identity; surfaced in conversation logs, Prometheus labels, and cross-agent manifest entries. |
+| `AGENT_NAME` | `witwave` | Agent identity; surfaced in conversation logs, Prometheus labels, and cross-agent manifest entries. |
 | `HARNESS_PORT` | `8000` | App listener port. |
 | `METRICS_ENABLED` | `false` | Enable the dedicated Prometheus listener on `METRICS_PORT`. |
 | `METRICS_PORT` | `9000` | Dedicated metrics/internal-events listener port. `/internal/events/hook-decision` binds here when enabled (#924). |

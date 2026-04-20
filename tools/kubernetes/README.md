@@ -109,6 +109,7 @@ rather than first appearing at reconcile time. Run with `pytest tools/kubernetes
 | `logs`            | Pod logs with `container`, `tail_lines`, `since_seconds`, `previous` options.   |
 | `apply`           | Server-side apply a YAML/JSON manifest (multi-doc supported).                   |
 | `delete`          | Delete by kind / namespace / name with configurable propagation policy.         |
+| `read_secret_value` | Fetch a Secret's decoded value, gated on `confirm=True` + `MCP_K8S_READ_SECRETS_DISABLED=false`. Every call is audit-logged. Prefer `get_resource` (returns the Secret envelope without decoded data) for normal reads. |
 
 `api_version` is optional but required to disambiguate kinds served by
 multiple groups (e.g. `Ingress` in `extensions/v1beta1` vs

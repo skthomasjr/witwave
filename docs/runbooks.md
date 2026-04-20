@@ -59,9 +59,9 @@ tool calls at unusual volume.
 # Which agent + backend?
 # The {agent, backend} labels are on the metric.
 
-# Recent tool-audit shows WHICH tools are being denied:
+# Recent trace shows WHICH tools are being denied:
 curl -H "Authorization: Bearer $CONVERSATIONS_AUTH_TOKEN" \
-  "$BACKEND_URL/tool-audit?decision=deny&limit=20"
+  "$BACKEND_URL/trace?decision=deny&limit=20"
 ```
 
 **Remediation.**

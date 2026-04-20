@@ -98,7 +98,7 @@ across the two controllers — pick one.
 
 Full migration procedure (PVC preservation, CR authoring, rollback
 notes) lives in
-[`operator/README.md#migrating-from-the-agent-chart-chartswitwave`](../../operator/README.md#migrating-from-the-agent-chart-chartswitwave).
+[`operator/README.md#migrating-from-the-agent-chart-charts-witwave`](../../operator/README.md#migrating-from-the-agent-chart-charts-witwave).
 
 ## Values
 

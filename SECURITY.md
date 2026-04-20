@@ -203,8 +203,8 @@ direct-binary users (GitHub Releases download):
 cosign verify-blob \
   --certificate-identity-regexp="^https://github.com/skthomasjr/witwave/\.github/workflows/release-ww\.yml@refs/tags/v.*$" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-  --bundle ww_v0.5.4_darwin_arm64.tar.gz.cosign.bundle \
-  ww_v0.5.4_darwin_arm64.tar.gz
+  --bundle ww_v0.5.6_darwin_arm64.tar.gz.cosign.bundle \
+  ww_v0.5.6_darwin_arm64.tar.gz
 ```
 
 The `.cosign.bundle` file is published alongside each release asset.

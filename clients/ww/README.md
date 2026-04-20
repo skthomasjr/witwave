@@ -6,9 +6,10 @@ surface: tail the live event stream, send A2A prompts, inspect scheduler
 configuration (jobs / tasks / triggers / continuations / heartbeat), and
 validate scheduler files — all without a browser.
 
-> Early days. This is v0.1: the primary commands exist, output is stable
-> enough to script against, and the wire formats are the same ones the
-> dashboard already uses.
+> Output is stable enough to script against, and the wire formats are
+> the same ones the dashboard already uses. Versioned releases ship
+> regularly — see `ww version` for the running binary and
+> [CHANGELOG.md](../../CHANGELOG.md) for release history.
 
 ## Install
 
@@ -73,6 +74,7 @@ Every command supports `--help`. Summary:
 | `ww validate <file>`      | POST a file to `/validate`. Kind inferred from path or passed via `--kind`.              |
 | `ww version`              | Print the version, commit, and build date. `--short` prints just the semver.             |
 | `ww operator [cmd]`       | Install / upgrade / inspect / uninstall the witwave-operator Helm release on a Kubernetes cluster; plus `logs` and `events` for diagnostics. See below. |
+| `ww config [cmd]`         | Read, write, and inspect `ww` configuration values — `get`, `set`, `unset`, `list-keys`, `path`. See [Managing config from the CLI](#managing-config-from-the-cli). |
 | `ww update`               | Check for and install a newer `ww` release. See [Staying up to date](#staying-up-to-date). |
 
 ### Streaming
@@ -202,9 +204,9 @@ Target cluster: docker-desktop  (context: docker-desktop)
 Witwave Operator
   Namespace:      witwave-system
   Release:        witwave-operator (Helm, rev 2, deployed)
-  Chart version:  0.5.2
-  App version:    0.5.2
-  ww version:     0.5.2  (match)
+  Chart version:  <X.Y.Z>
+  App version:    <X.Y.Z>
+  ww version:     <X.Y.Z>  (match)
 
 Pods
   witwave-operator-abc123  Running
@@ -429,7 +431,7 @@ go build -ldflags "\
 " -o bin/ww .
 ```
 
-## Scope notes (v0.1)
+## Implementation notes
 
 - `ww status` hits the harness `/agents` endpoint. A dashboard-proxied
   `/api/team` endpoint also exists in Witwave deployments and returns the

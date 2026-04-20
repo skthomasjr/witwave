@@ -14,6 +14,7 @@ door, no cross-agent fan-out inside any one agent's pod.
 | Tool Trace        | Unified tool-activity feed across the team — tool_use rows paired with tool_result (duration/status) and folded with any matching tool_audit row (response preview, matched hook rule, `denied` status). Standalone audit rows surface hook-blocked calls that never produced a tool_use. Filter by agent, tool, status, or event type. The legacy `/tool-audit` path redirects here. |
 | OTel Traces       | Distributed trace viewer (#632): recent traces + span-tree drawer from an operator-configured Jaeger/Tempo HTTP API. `/otel-traces/:traceId` deep-links straight into the detail drawer |
 | Metrics           | Label-breakdown bar/doughnut charts from each agent's /metrics                   |
+| Timeline          | Live event-stream feed from `/events/stream` SSE — per-agent or aggregate, with reconnection + `Last-Event-ID` resume |
 
 ## Development
 
@@ -187,6 +188,6 @@ clients/dashboard/
 │   ├── utils/             # markdown.ts (marked+DOMPurify), prometheus.ts
 │   ├── composables/       # useTeam, useChat, useAgentFanout, useMetrics, useHealth
 │   ├── components/        # AgentCard, AgentList, BackendBubble, AgentDetail, ChatPanel, ListView
-│   └── views/             # TeamView, JobsView, TasksView, … (ten views)
+│   └── views/             # TeamView, AutomationView, ConversationsView, TraceView, OTelTracesView, MetricsView, TimelineView
 └── tests/unit/            # Vitest smoke specs
 ```

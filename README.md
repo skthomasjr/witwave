@@ -146,10 +146,10 @@ or the main agent chart which isn't yet CLI-managed):
 
 ```bash
 # Agent chart — deploys witwave agents directly via templated manifests.
-helm install witwave oci://ghcr.io/skthomasjr/charts/witwave --version 0.5.2 --namespace witwave --create-namespace
+helm install witwave oci://ghcr.io/skthomasjr/charts/witwave --version 0.5.6 --namespace witwave --create-namespace
 
 # Operator chart — installs the witwave-operator controller and the WitwaveAgent CRD.
-helm install witwave-operator oci://ghcr.io/skthomasjr/charts/witwave-operator --version 0.5.2 --namespace witwave-system --create-namespace
+helm install witwave-operator oci://ghcr.io/skthomasjr/charts/witwave-operator --version 0.5.6 --namespace witwave-system --create-namespace
 ```
 
 See [charts/witwave/README.md](charts/witwave/README.md) and
