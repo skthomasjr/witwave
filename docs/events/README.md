@@ -179,3 +179,85 @@ conversation stream (drill-down only, where auth already scopes access).
 query-param token fallback — clients that can't set headers natively
 (browser `EventSource`) use the `fetch` + `ReadableStream` pattern
 instead.
+
+## Versioning
+
+Every envelope carries a required `version: integer` field (starts
+at `1`). Bump rules:
+
+### Additive changes — no version bump
+
+- New event `type` value.
+- New **optional** field on an existing type's `payload`.
+- New optional top-level envelope field (only done with care; the
+  envelope is the cross-type contract).
+- Widening an enum to accept a new value AND all existing consumers
+  treat unknown enum values as either ignore-with-warning or passthrough.
+
+Schema revision lands in the same version; `docs/events/events.schema.json`
+is updated, no wire-format version change. Subscribers SHOULD ignore
+unknown fields and unknown event types — both are always legal.
+
+### Breaking changes — major version bump
+
+- A previously-optional field becomes required, OR a required field
+  is removed.
+- A field's type changes (string → int, scalar → object, etc.).
+- An enum value is removed.
+- The envelope's shape changes (timestamp format, ID format,
+  agent_id semantics).
+- Semantic changes to a field — e.g. "`payload.outcome`: success
+  now means something different than it did in v1."
+
+### Compat window
+
+During a major-version transition, the harness accepts events with
+`version = N` AND `version = N-1` for at least one full **minor**
+ww/harness release. The overlap exists so dashboards / CLIs on the
+older wire format have time to upgrade. When the overlap ends, the
+harness drops support for `version = N-1` and the schema.json file
+is trimmed back to the single supported major version.
+
+Concretely: if v1 → v2 lands in harness v0.7.0, harness accepts both
+v1 and v2 events through v0.8.x; harness v0.9.0 drops v1. The
+release that introduces the new major bumps the `appVersion` in the
+charts and is called out in CHANGELOG.md under **Changed**.
+
+### Subscriber contract
+
+Every subscriber MUST:
+
+- **Ignore unknown event types.** The harness may emit new types
+  without warning; subscribers that explode on unknown types forfeit
+  forward compatibility.
+- **Ignore unknown fields on known types.** Same rationale —
+  additive changes should not break existing clients.
+- **Honour the `version` field.** Subscribers that only know how to
+  process `version = 1` MUST skip events with `version >= 2` (not
+  explode, not silently misparse). The dashboard's
+  `useEventStream` composable does this via a `knownVersions`
+  sanity check; other clients should mirror the pattern.
+
+### Detection
+
+Subscribers detect a version change by reading `envelope.version`
+on every frame. There is NO handshake / capability-negotiation
+endpoint — the wire format is intentionally stateless. Dashboards
+render a one-time banner when they see an envelope with a higher
+version than their baked-in `knownVersions` max and recommend a
+reload.
+
+### Deprecation signalling
+
+A future addition (not yet implemented): when a type is scheduled
+for removal in the next major bump, the harness adds a
+`payload.deprecated: true` field plus a `payload.deprecated_since`
+version. Subscribers can surface this in a developer-tools warning.
+
+### Where the version lives
+
+Both in code (the `publish()` path in `harness/events.py` validates
+every envelope against `shared/event_schema.py`) and in the wire
+contract (`docs/events/events.schema.json`). The schema is the
+source of truth; when the schema and code drift, the code is
+wrong — tests in `harness/test_events.py` cover the round-trip.

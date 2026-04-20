@@ -146,3 +146,103 @@ Tell us how you'd like to be listed — by name, handle, or anonymously.
 None. The project is pre-1.0 and privately funded. We can offer credit,
 gratitude, and a fix that benefits everyone running the platform. That's
 what we've got.
+
+## Token + secret rotation
+
+### `HOMEBREW_TAP_GITHUB_TOKEN` — `ww` release-to-tap PAT
+
+**Scope.** Fine-grained PAT on the
+[witwave-ai/homebrew-ww](https://github.com/witwave-ai/homebrew-ww)
+tap repository. Minimum permissions: **Contents: Read and Write**.
+No other scopes — do NOT grant Administration, Pull Requests,
+Secrets, or any other verbs.
+
+**Where it lives.** Organization-level secret on `skthomasjr` (the
+release-source org) referenced as `secrets.HOMEBREW_TAP_GITHUB_TOKEN`
+by `.github/workflows/release-ww.yml`. The workflow is hard-gated on
+`github.ref_type == 'tag'` (see #1378) so the token is unreachable
+from `pull_request` / `workflow_dispatch` / forked contributor runs.
+
+**Rotation cadence.** **90 days**, or immediately on any of:
+
+- Release workflow returns 401 or 403 on the tap push step.
+- Token appears in a workflow log (should never happen — the PAT is
+  masked — but if it does, rotate anyway).
+- The person who generated the PAT leaves the project.
+
+**Rotation procedure.**
+
+1. Generate a new fine-grained PAT at
+   https://github.com/settings/personal-access-tokens with scope
+   **Contents: Read and Write on `witwave-ai/homebrew-ww`** and a
+   90-day expiry. Set the resource owner to `witwave-ai`.
+2. Update `HOMEBREW_TAP_GITHUB_TOKEN` on the `skthomasjr` org secrets
+   (GitHub Settings → Organizations → skthomasjr → Secrets and
+   variables → Actions). Paste the new token value.
+3. Trigger a dry-run of the release path — easiest is to cut a
+   throwaway `v*.*.*-rc.*` tag (matches the release-ww workflow
+   trigger), verify the tap push succeeds, then delete the tag +
+   release.
+4. Revoke the previous PAT from the original generator's PAT page.
+   Don't wait for it to expire.
+
+**Long-term replacement.** Fine-grained PATs are still tied to one
+person's GitHub identity. A GitHub App installation on
+`witwave-ai/homebrew-ww` with `contents:write` and OIDC federation
+to the release workflow would remove the human-in-the-loop. Tracked
+informally; file an issue when the human-PAT model actually bites.
+
+### `SESSION_ID_SECRET` — MCP session-ID binding
+
+**What it does.** `shared/session_binding.derive_session_id` HMAC-binds
+each `/mcp` session-id to the caller's bearer-token fingerprint using
+`SESSION_ID_SECRET`. Two callers presenting the same raw `session_id`
+land in disjoint sessions; a compromised session-id alone is useless
+without the original caller's token.
+
+**Why rotate.** Defense-in-depth against a leaked secret (logs, env
+dumps, backup snapshots). The rotation mechanism exists; this section
+documents the operator-facing procedure.
+
+**Two-secret grace window.** The shared binding helper reads
+`SESSION_ID_SECRET` (current) and `SESSION_ID_SECRET_PREV` (previous).
+On the **write** path it always uses the current secret to derive
+new IDs. On the **read** path it probes `[current, prev]` and emits a
+one-shot WARN log per process when it gets a prev-secret hit — so
+operators can tell when the grace window has drained.
+
+**Observability signal.** A WARN log fires once per process on first
+prev-secret hit so operators know when traffic is still resuming
+against the old secret. During rotation you'll see these warnings,
+then they'll stop as long-lived sessions finish. When no pod has
+warned for at least the longest plausible session lifetime,
+`SESSION_ID_SECRET_PREV` is safe to drop.
+
+**Rotation procedure.**
+
+1. Generate a new random secret — 32+ bytes from a cryptographic RNG
+   (`openssl rand -base64 32` is fine). Do NOT reuse a secret from
+   another system.
+2. In every pod that mounts the MCP session secret (typically the
+   harness + each backend), set `SESSION_ID_SECRET_PREV` to the
+   CURRENT value of `SESSION_ID_SECRET`. Apply, roll pods.
+3. After the pods are all re-reading the prev secret, set
+   `SESSION_ID_SECRET` to the NEW secret. Apply, roll pods.
+4. Monitor for "prev secret hit" WARN logs across the fleet — they
+   fire once per process so a fresh spike after the rollout is
+   expected and decays as long-lived sessions finish.
+5. When the prev-hit warnings have been silent for longer than any
+   plausible session could last (err on the side of longer — 24 hours
+   is a reasonable default for interactive agent workloads), unset
+   `SESSION_ID_SECRET_PREV`. Apply, roll pods. Rotation done.
+
+**Cadence.** No fixed cadence. Rotate on:
+
+- Suspicion the secret leaked (log dump, repo push of an env file,
+  former-maintainer departure with access).
+- Major version bump where you want a clean break of session-id
+  derivation.
+
+**Local-dev note.** Unset `SESSION_ID_SECRET` is the development
+default — session IDs are then HMAC'd with an empty string (i.e.
+effectively unbound). Don't ship production with it unset.
