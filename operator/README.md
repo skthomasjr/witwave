@@ -16,12 +16,43 @@ method while the operator is in `v1alpha1`.
 
 ## Requirements
 
-- Go 1.24+
-- Operator SDK v1.42+
-- `kubectl` against a cluster (kind, minikube, EKS, etc.) for `make install`
-  and `make deploy`
+- `kubectl` against a cluster (kind, minikube, EKS, etc.) — the runtime target.
+- For developing the controller itself: Go 1.24+ and Operator SDK v1.42+.
 
-## Getting Started
+## Getting Started — the `ww` CLI path (recommended for users)
+
+The fastest install path is via the [`ww`](../clients/ww/) CLI, which
+ships with the operator chart embedded. No Helm repo, no `helm`
+binary, no clone of this repo required:
+
+```bash
+brew install witwave-ai/homebrew-ww/ww
+ww operator install              # installs into witwave-system
+ww operator status               # verify
+```
+
+`ww operator install` runs singleton detection (refuses when another
+release exists), RBAC preflight via `SelfSubjectAccessReview`, and
+Helm install of the embedded chart. `ww operator upgrade` runs a CRD
+server-side-apply pre-step so new CRD fields land before the pod
+rolls. See [`clients/ww/README.md`](../clients/ww/README.md#operator-management)
+for the full command surface (`--kubeconfig`, `--context`, `--namespace`,
+`--yes`, `--dry-run`, `--adopt`, `--delete-crds`, `--force`).
+
+## Getting Started — Helm directly
+
+For users who prefer Helm (GitOps pipelines, custom values, chart
+forks), the chart is published to GHCR:
+
+```bash
+helm install witwave-operator oci://ghcr.io/skthomasjr/charts/witwave-operator \
+  --version <tag> --namespace witwave-system --create-namespace
+```
+
+See [charts/witwave-operator/README.md](../charts/witwave-operator/README.md)
+for the full values reference.
+
+## Getting Started — developing the controller
 
 Build and install CRDs against the current kubeconfig context:
 
@@ -51,13 +82,15 @@ kubectl apply -k config/samples/
 kubectl get witwaveagent
 ```
 
-Uninstall:
+Uninstall (development target):
 
 ```bash
 kubectl delete -k config/samples/
 make undeploy
 make uninstall
 ```
+
+For a ww-installed operator, use `ww operator uninstall` instead.
 
 ## The `WitwaveAgent` resource
 

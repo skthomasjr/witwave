@@ -367,6 +367,28 @@ docker build -f harness/Dockerfile -t harness:latest . \
   && helm upgrade --install witwave ./charts/witwave -f ./charts/witwave/values-test.yaml -n witwave --create-namespace
 ```
 
+## Installing the operator via ww
+
+The `ww` CLI ships with the witwave-operator chart embedded (v0.5.0+)
+and is the recommended way to install the operator:
+
+```bash
+ww operator install              # into witwave-system by default
+ww operator status               # release + pods + CRDs + CR counts
+ww operator upgrade              # SSA CRDs → helm upgrade
+ww operator uninstall            # CRDs + CRs preserved by default
+```
+
+The embedded chart is mirrored from `charts/witwave-operator/` via
+`scripts/sync-embedded-chart.sh` (CI-guarded drift check). Release
+builds also run `scripts/bump-embedded-chart-version.sh` so the
+embedded chart's version + appVersion match the release tag, not the
+canonical `0.1.0` placeholder on main.
+
+See `clients/ww/README.md` for the full command surface including
+`--yes` / `--dry-run` / `--adopt` / `--delete-crds` + the
+local-cluster prompt heuristic.
+
 ## Interacting with Agents
 
 Use the `/remote` skill to interact with running agents. Always target the **witwave agent by name** — witwave routes the
@@ -429,6 +451,12 @@ Harness, operator, and MCP tool metrics use their own prefixes (`harness_*`, `wi
 - Secret-backed tokens never land in chart-rendered ConfigMaps. The dashboard injects its harness
   bearer via a Secret → env → nginx `envsubst` → `sub_filter` chain; the literal token lives only in
   the pod's `/etc/nginx/conf.d/default.conf`, not anywhere `kubectl get cm` can reach.
+- A2A relay outbound: when a backend's `auth_env` is configured but the referenced env var is
+  empty, harness raises `ConnectionError` at request time with a clear diagnostic (v0.5.0+).
+  The previous behaviour — silently sending unauthenticated and letting the backend 401 — masked
+  operator misconfig as "backend instability" in circuit-breaker dashboards (#1349 correctly filters
+  4xx from the breaker). Clear `auth_env` in `backend.yaml` if the backend actually doesn't require
+  auth; otherwise set the referenced env var to a real token.
 
 ### Redaction + logging
 
@@ -471,7 +499,9 @@ AGENTS.md is deliberately high-level. For specifics, go to the source of truth:
   (tracked by #1416 — documented but needs values plumbing):
   `SESSION_STREAM_MAX_PER_CALLER`, `CONVERSATION_STREAM_{QUEUE_MAX,RING_MAX,GRACE_SEC,KEEPALIVE_SEC}`,
   `WEBHOOK_RETRY_BYTES_PER_SUB`, `WEBHOOK_ALLOW_LOOPBACK_HOSTS`,
-  `A2A_SESSION_CONTEXT_CACHE_MAX`, `TASKS_SHUTDOWN_DRAIN_TIMEOUT`,
+  `A2A_SESSION_CONTEXT_CACHE_MAX`, `A2A_MAX_RESPONSE_BYTES`,
+  `HARNESS_PROXY_MAX_RESPONSE_BYTES`,
+  `TASKS_SHUTDOWN_DRAIN_TIMEOUT`,
   `JOBS_SHUTDOWN_DRAIN_TIMEOUT`, `CONTINUATIONS_SHUTDOWN_DRAIN_TIMEOUT`,
   `MCP_HELM_REPO_URL_ALLOWLIST`, `MCP_HELM_ALLOW_ANY_REPO`,
   `MCP_K8S_READ_SECRETS_DISABLED`, `MCP_PROM_MAX_RESPONSE_BYTES`.

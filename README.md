@@ -126,14 +126,30 @@ The latest released tag is visible on the [GitHub Releases](https://github.com/s
 
 ## Helm Charts
 
-Two Helm charts are published to GHCR alongside the images on every release tag:
+Two Helm charts are published to GHCR alongside the images on every
+release tag. The fastest install for the **operator** is the `ww` CLI
+— it embeds the chart so you don't need `helm` on PATH or any repo
+configured:
+
+```bash
+# Install `ww` then use it to install the operator.
+brew install witwave-ai/homebrew-ww/ww
+ww operator install                 # into witwave-system namespace
+ww operator status                  # verify
+```
+
+See [clients/ww/README.md](clients/ww/README.md#operator-management)
+for the full `ww operator` surface.
+
+For direct Helm installs (GitOps workflows, non-Homebrew environments,
+or the main agent chart which isn't yet CLI-managed):
 
 ```bash
 # Agent chart — deploys witwave agents directly via templated manifests.
-helm install witwave oci://ghcr.io/skthomasjr/charts/witwave --version 0.4.0 --namespace witwave --create-namespace
+helm install witwave oci://ghcr.io/skthomasjr/charts/witwave --version 0.5.2 --namespace witwave --create-namespace
 
 # Operator chart — installs the witwave-operator controller and the WitwaveAgent CRD.
-helm install witwave-operator oci://ghcr.io/skthomasjr/charts/witwave-operator --version 0.4.0 --namespace witwave --create-namespace
+helm install witwave-operator oci://ghcr.io/skthomasjr/charts/witwave-operator --version 0.5.2 --namespace witwave-system --create-namespace
 ```
 
 See [charts/witwave/README.md](charts/witwave/README.md) and

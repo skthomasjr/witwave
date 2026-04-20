@@ -12,16 +12,16 @@ validate scheduler files — all without a browser.
 
 ## Install
 
-For now, from a checkout of `skthomasjr/witwave`:
+```bash
+brew install witwave-ai/homebrew-ww/ww
+```
+
+The [witwave-ai/homebrew-ww](https://github.com/witwave-ai/homebrew-ww)
+tap is the primary distribution path. For a non-Homebrew install from
+source:
 
 ```bash
 go install github.com/skthomasjr/witwave/clients/ww@latest
-```
-
-When the Homebrew tap lands:
-
-```bash
-brew install witwave-ai/homebrew-ww/ww
 ```
 
 ## Quick start
@@ -72,6 +72,8 @@ Every command supports `--help`. Summary:
 | `ww continuations […]`    | Read `/continuations`.                                                                   |
 | `ww validate <file>`      | POST a file to `/validate`. Kind inferred from path or passed via `--kind`.              |
 | `ww version`              | Print the version, commit, and build date. `--short` prints just the semver.             |
+| `ww operator [cmd]`       | Install / upgrade / inspect / uninstall the witwave-operator Helm release on a Kubernetes cluster. See below. |
+| `ww update`               | Check for and install a newer `ww` release. See [Staying up to date](#staying-up-to-date). |
 
 ### Streaming
 
@@ -110,6 +112,115 @@ per-session drill-down stream at `/api/sessions/<id>/stream`.
 `--backend claude|codex|gemini` adds `metadata.backend_id`; harness
 executors already honour that field. `--context` reuses an existing
 `contextId` for multi-turn sessions.
+
+## Operator management
+
+`ww operator` manages the witwave-operator Helm release — the cluster-
+scoped CRD controller that reconciles `WitwaveAgent` and `WitwavePrompt`
+resources. The operator chart is **embedded** into the `ww` binary via
+`go:embed`, so you don't need Helm installed locally or any repo
+configured; `ww` ships with a known-good chart pinned to its own
+release version.
+
+```bash
+ww operator install             # embedded chart → witwave-system namespace
+ww operator status              # release, pods, CRDs, live CR counts
+ww operator upgrade             # CRD server-side apply + helm upgrade
+ww operator uninstall           # removes release; CRDs + CRs preserved by default
+ww operator uninstall --delete-crds [--force]
+```
+
+All four commands honour the ambient kubeconfig and current-context (or
+`--kubeconfig` / `--context` / `--namespace` to override). The three
+mutating commands (`install`, `upgrade`, `uninstall`) print a preflight
+banner showing the target cluster and either prompt or auto-proceed
+based on a local-vs-production heuristic:
+
+- **Local clusters skip the prompt** — context name matching `kind-*`,
+  `minikube`, `docker-desktop`, `rancher-desktop`, `orbstack`, `k3d-*`,
+  `colima`, or a server URL pointing at `localhost` / `127.0.0.1` /
+  `kubernetes.docker.internal`.
+- **Everything else prompts** — EKS/GKE/AKS ARNs, external IPs,
+  unknown context names. Must type `y` to proceed.
+
+Overrides: `--yes` / `-y` or `WW_ASSUME_YES=true` to skip the prompt
+unconditionally (scripts + CI); `--dry-run` to print the plan and exit
+without touching the cluster.
+
+### Singleton enforcement
+
+The operator is a cluster-scoped singleton. `ww operator install`
+refuses when a release already exists cluster-wide. Matrix of outcomes
+on install:
+
+- **Clean cluster** → proceeds with the install.
+- **CRDs present, no Helm release** → refuses unless you pass
+  `--adopt`. Useful for clusters where someone applied the CRDs
+  manually via `kubectl apply`; `--adopt` takes over management.
+- **Helm release exists** → refuses, points at `ww operator upgrade`.
+
+### Values passthrough
+
+For changes to the operator's chart values (replicas, image overrides,
+HPA, affinity, etc.), the canonical path is Helm — but `--set key=val`
+and `-f values.yaml` on `install`/`upgrade` are planned follow-ups. In
+the meantime users with non-default values should pull the chart
+directly:
+
+```bash
+helm pull oci://ghcr.io/skthomasjr/charts/witwave-operator --version <tag>
+helm upgrade --install witwave-operator ./witwave-operator \
+  -n witwave-system --create-namespace \
+  -f my-operator-values.yaml
+```
+
+### Upgrade flow
+
+`ww operator upgrade` server-side-applies the embedded chart's CRDs
+**before** running `helm upgrade --skip-crds`. This works around
+Helm's long-standing "crds/ is install-only, never updated" semantics
+so new CRD fields (new `status` columns, added `MaxItems` markers,
+the eventual v1beta1 storage-version switch) land on the apiserver
+before the operator pod rolls with code that expects them.
+
+### Uninstall safety
+
+Default uninstall preserves CRDs + CRs, so a mis-click cannot
+cascade-delete user data. Pass `--delete-crds` to remove the CRDs too;
+when any live `WitwaveAgent` or `WitwavePrompt` CRs exist, `ww`
+refuses unless you also pass `--force`. The preflight banner prints a
+loud `WARNING: N CRs will be deleted` line in that case.
+
+### Status output
+
+```text
+$ ww operator status
+Target cluster: docker-desktop  (context: docker-desktop)
+
+Witwave Operator
+  Namespace:      witwave-system
+  Release:        witwave-operator (Helm, rev 2, deployed)
+  Chart version:  0.5.2
+  App version:    0.5.2
+  ww version:     0.5.2  (match)
+
+Pods
+  witwave-operator-abc123  Running
+
+CRDs
+  witwaveagents.witwave.ai           v1alpha1
+  witwaveprompts.witwave.ai           v1alpha1
+
+Reconciles managed
+  WitwaveAgent:   3
+  WitwavePrompt:  1
+```
+
+The `ww version` line renders `(match)` / `(patch skew)` /
+`(minor skew)` / `(major skew — upgrade blocked)` so operator and
+binary version mismatches are visible at a glance. Local `ww` builds
+(built outside the release path) render `(local build — skew unknown)`
+instead of a phantom "skew" warning.
 
 ## Config
 
