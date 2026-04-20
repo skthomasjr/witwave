@@ -35,9 +35,17 @@ ww operator status               # verify
 release exists), RBAC preflight via `SelfSubjectAccessReview`, and
 Helm install of the embedded chart. `ww operator upgrade` runs a CRD
 server-side-apply pre-step so new CRD fields land before the pod
-rolls. See [`clients/ww/README.md`](../clients/ww/README.md#operator-management)
+rolls. Paired diagnostics:
+
+```bash
+ww operator logs      # tail operator pod logs
+ww operator events    # Kubernetes events for operator + CRs
+```
+
+See [`clients/ww/README.md`](../clients/ww/README.md#operator-management)
 for the full command surface (`--kubeconfig`, `--context`, `--namespace`,
-`--yes`, `--dry-run`, `--adopt`, `--delete-crds`, `--force`).
+`--yes`, `--dry-run`, `--adopt`, `--delete-crds`, `--force`, `--watch`,
+`--warnings`, `--tail`).
 
 ## Getting Started — Helm directly
 

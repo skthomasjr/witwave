@@ -72,7 +72,7 @@ Every command supports `--help`. Summary:
 | `ww continuations […]`    | Read `/continuations`.                                                                   |
 | `ww validate <file>`      | POST a file to `/validate`. Kind inferred from path or passed via `--kind`.              |
 | `ww version`              | Print the version, commit, and build date. `--short` prints just the semver.             |
-| `ww operator [cmd]`       | Install / upgrade / inspect / uninstall the witwave-operator Helm release on a Kubernetes cluster. See below. |
+| `ww operator [cmd]`       | Install / upgrade / inspect / uninstall the witwave-operator Helm release on a Kubernetes cluster; plus `logs` and `events` for diagnostics. See below. |
 | `ww update`               | Check for and install a newer `ww` release. See [Staying up to date](#staying-up-to-date). |
 
 ### Streaming
@@ -128,6 +128,8 @@ ww operator status              # release, pods, CRDs, live CR counts
 ww operator upgrade             # CRD server-side apply + helm upgrade
 ww operator uninstall           # removes release; CRDs + CRs preserved by default
 ww operator uninstall --delete-crds [--force]
+ww operator logs                # tail operator pod logs
+ww operator events              # Kubernetes events for operator + CRs
 ```
 
 All four commands honour the ambient kubeconfig and current-context (or
@@ -221,6 +223,50 @@ The `ww version` line renders `(match)` / `(patch skew)` /
 binary version mismatches are visible at a glance. Local `ww` builds
 (built outside the release path) render `(local build — skew unknown)`
 instead of a phantom "skew" warning.
+
+### Operator diagnostics — logs + events
+
+```bash
+ww operator logs                   # tail 100 lines + follow
+ww operator logs --tail 500
+ww operator logs --since 1h
+ww operator logs --no-follow       # snapshot
+ww operator logs --pod <name>      # specific pod
+
+ww operator events                 # last 1h of operator + CR events
+ww operator events --watch         # or -w; stream new events
+ww operator events --warnings      # Warning type only
+ww operator events --since 15m
+```
+
+Both commands auto-resolve the target cluster + namespace from the
+parent flags (`--kubeconfig`, `--context`, `--namespace`) so you don't
+re-type.
+
+**`ww operator logs`** tails every pod matching
+`app.kubernetes.io/name=witwave-operator` in the operator namespace.
+Multi-pod output gets a `[pod-name]` prefix; single-pod output doesn't.
+Scanner buffer is bumped to 1 MiB so controller-runtime's long
+structured-log lines (stack traces, big reconcile payloads) don't
+truncate.
+
+**`ww operator events`** shows three sources merged:
+
+1. Events on `WitwaveAgent` CRs (any namespace by default — CRs live
+   wherever users deploy them).
+2. Events on `WitwavePrompt` CRs (same scope).
+3. Events in the operator's own namespace — Pod scheduling failures,
+   image-pull errors, crash loops on the operator itself.
+
+Defaults to the last 1 hour so first paint is bounded. `--warnings`
+filters to `type=Warning` which is the "what's going wrong?" signal.
+`--watch` opens watch streams against each source and fans new events
+into the same table format as the initial listing.
+
+Scope note: `-n <ns>` on the parent narrows CR-event listing to one
+namespace. Without it, CR events are listed cluster-wide (the sensible
+default for CRs). The operator-namespace listing always stays on
+`witwave-system` regardless.
 
 ## Config
 

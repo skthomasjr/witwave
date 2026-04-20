@@ -78,7 +78,70 @@ func newOperatorCmd() *cobra.Command {
 	cmd.AddCommand(newOperatorUpgradeCmd(f))
 	cmd.AddCommand(newOperatorUninstallCmd(f))
 	cmd.AddCommand(newOperatorLogsCmd(f))
+	cmd.AddCommand(newOperatorEventsCmd(f))
 	return cmd
+}
+
+// ---------------------------------------------------------------------------
+// events — read-only; lists Kubernetes events related to the operator.
+// ---------------------------------------------------------------------------
+
+func newOperatorEventsCmd(f *operatorFlags) *cobra.Command {
+	var (
+		watch    bool
+		warnings bool
+		since    time.Duration
+	)
+	cmd := &cobra.Command{
+		Use:   "events",
+		Short: "Show Kubernetes events related to the witwave operator",
+		Long: "Lists events the operator emits (on WitwaveAgent / WitwavePrompt CRs\n" +
+			"and their owned resources) plus events on the operator's own pods\n" +
+			"in witwave-system. --watch streams new events until Ctrl-C.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runOperatorEvents(cmd.Context(), f, operator.EventsOptions{
+				// CRs live in user namespaces; list cluster-wide by default.
+				// --namespace on the parent command overrides, but unlike
+				// install/upgrade/status where --namespace targets the
+				// operator's own ns, for events the semantic is "only CRs
+				// in this namespace." Pass through verbatim — empty string
+				// means cluster-wide.
+				Namespace:         f.namespace,
+				OperatorNamespace: operator.DefaultNamespace,
+				Watch:             watch,
+				WarningsOnly:      warnings,
+				Since:             since,
+				Out:               os.Stdout,
+			})
+		},
+	}
+	cmd.Flags().BoolVarP(&watch, "watch", "w", false,
+		"Stream new events until interrupted")
+	cmd.Flags().BoolVar(&warnings, "warnings", false,
+		"Only show events of type Warning")
+	cmd.Flags().DurationVar(&since, "since", time.Hour,
+		"Lookback window for the initial listing, e.g. 10m or 6h")
+	return cmd
+}
+
+func runOperatorEvents(ctx context.Context, f *operatorFlags, opts operator.EventsOptions) error {
+	_, resolver, err := f.resolveTarget()
+	if err != nil {
+		return err
+	}
+	cfg, err := resolver.REST()
+	if err != nil {
+		return err
+	}
+	// The parent --namespace defaults to witwave-system which is perfect
+	// for install/upgrade/status/logs. For events, witwave-system would
+	// silently hide every CR event. Detect the default and broaden to
+	// cluster-wide so `ww operator events` DTRT without requiring
+	// `-n ""` gymnastics.
+	if opts.Namespace == operator.DefaultNamespace {
+		opts.Namespace = ""
+	}
+	return operator.Events(ctx, cfg, opts)
 }
 
 // ---------------------------------------------------------------------------

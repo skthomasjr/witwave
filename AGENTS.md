@@ -370,13 +370,15 @@ docker build -f harness/Dockerfile -t harness:latest . \
 ## Installing the operator via ww
 
 The `ww` CLI ships with the witwave-operator chart embedded (v0.5.0+)
-and is the recommended way to install the operator:
+and is the recommended way to install the operator. Lifecycle + diagnostics:
 
 ```bash
 ww operator install              # into witwave-system by default
 ww operator status               # release + pods + CRDs + CR counts
 ww operator upgrade              # SSA CRDs → helm upgrade
 ww operator uninstall            # CRDs + CRs preserved by default
+ww operator logs                 # tail operator pod logs
+ww operator events               # Kubernetes events for operator + CRs
 ```
 
 The embedded chart is mirrored from `charts/witwave-operator/` via
