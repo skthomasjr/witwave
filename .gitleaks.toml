@@ -1,11 +1,18 @@
 # gitleaks config (#1462) — customises the default rule set for this
-# repository. Format reference: https://github.com/gitleaks/gitleaks#configuration
+# repository. Format reference:
+# https://github.com/gitleaks/gitleaks?tab=readme-ov-file#configuration
 #
 # Policy: zero tolerance for REAL leaked secrets. Silence false
 # positives here with tight-scoped allow-list entries, never disable
 # a rule globally. When in doubt, rotate the candidate secret first
 # (SECURITY.md § Token + secret rotation) and silence the finding
 # afterwards.
+#
+# NOTE on schema: gitleaks 8.24 (the version gitleaks-action@v2 ships)
+# expects a SINGLE `[allowlist]` map, not `[[allowlist]]` array-of-
+# tables. The `paths` and `regexes` fields below are merged into one
+# allowlist that covers every carve-out; the leading comments indicate
+# which use case each entry serves.
 
 # Inherit gitleaks' default detection ruleset. Extending gives us the
 # maintained upstream detectors for AWS keys, GCP service-account
@@ -14,57 +21,37 @@
 [extend]
 useDefault = true
 
-# -----------------------------------------------------------------------------
-# Path-scoped allow-list entries — narrow + commented.
-# -----------------------------------------------------------------------------
-
-# Claude Code bundles a local SQLite task database for session state
-# under clients/ww/.pytest_cache and various test_*.pkl files. None
-# of those are ever secret, but they occasionally trip the entropy
-# detector with base64-encoded SHA digests. Silence binaries under
-# any .pytest_cache directory.
-[[allowlist]]
-description = "pytest cache artefacts are non-secret test scratch data"
-paths = ['''\.pytest_cache/''']
-
-# Go module download caches (GOMODCACHE) occasionally end up in a
-# pushed branch during a CI-caching experiment. These are public
-# checksums, not secrets.
-[[allowlist]]
-description = "go module cache artefacts are public package hashes"
-paths = ['''go\.sum$''', '''vendor/''']
-
-# npm lockfiles include integrity hashes (sha512-…) that look like
-# secrets to entropy detectors. Pure integrity data, no secret value.
-[[allowlist]]
-description = "npm/yarn lockfile integrity hashes are content checksums, not secrets"
+[allowlist]
+description = "Documented non-secret noise — pytest cache, lockfiles, doc placeholders"
 paths = [
-    '''package-lock\.json$''',
-    '''pnpm-lock\.yaml$''',
-    '''yarn\.lock$''',
+  # pytest scratch artefacts look high-entropy to detectors but are
+  # non-secret test data.
+  '''\.pytest_cache/''',
+
+  # Go module download caches + vendored deps are public content
+  # checksums, not secrets.
+  '''go\.sum$''',
+  '''vendor/''',
+
+  # npm / pnpm / yarn lockfiles include integrity hashes (sha512-…)
+  # that trip entropy detectors. Pure content checksums.
+  '''package-lock\.json$''',
+  '''pnpm-lock\.yaml$''',
+  '''yarn\.lock$''',
+
+  # Example / placeholder tokens live in schema files, docs, and the
+  # SECURITY policy. Keep the allow-list path-tight here rather than
+  # globally; real secrets in these files would still be caught by a
+  # content scanner on other paths.
+  '''values\.schema\.json$''',
+  '''docs/''',
+  '''SECURITY\.md$''',
 ]
 
-# Helm chart `values.schema.json` and rendered-manifest fixtures carry
-# example tokens in documentation blocks. Keep this tight: only
-# files named values.schema.json or under docs/.
-[[allowlist]]
-description = "example / placeholder tokens in schemas + docs"
-paths = [
-    '''values\.schema\.json$''',
-    '''docs/''',
-    '''SECURITY\.md$''',
-]
-
-# -----------------------------------------------------------------------------
-# Content-scoped allow-list — specific known-safe strings.
-# -----------------------------------------------------------------------------
-
-# The repo ships a placeholder token value in values-test.yaml +
-# values-psa-audit.yaml that operators MUST replace before deploy
-# (#760 enforces via a Helm template fail). The placeholder is
-# documented as an intentional non-secret string.
-[[allowlist]]
-description = "REPLACE_ME token placeholder is intentional; chart fails render if it reaches deploy"
+# Specific known-safe strings that must never trip a rule anywhere
+# in the repo. The REPLACE_ME_WITH_GENERATED_TOKEN placeholder is
+# intentional and enforced by a Helm template fail-on-render (#760) so
+# a real token never ships with that value.
 regexes = [
-    '''REPLACE_ME_WITH_GENERATED_TOKEN''',
+  '''REPLACE_ME_WITH_GENERATED_TOKEN''',
 ]
