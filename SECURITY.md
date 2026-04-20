@@ -147,6 +147,85 @@ None. The project is pre-1.0 and privately funded. We can offer credit,
 gratitude, and a fix that benefits everyone running the platform. That's
 what we've got.
 
+## Verifying signed release artefacts
+
+### Container images
+
+Every image published under `ghcr.io/skthomasjr/images/*` on a tag
+release is cosign-signed via Sigstore's keyless (OIDC) flow (#1460).
+No long-lived signing key lives in this repo — the certificate
+identity is the release workflow itself, bound to the tag the image
+was built from.
+
+To verify an image before running it:
+
+```bash
+IMAGE=ghcr.io/skthomasjr/images/operator:v0.5.4
+
+cosign verify \
+  --certificate-identity-regexp="^https://github.com/skthomasjr/witwave/\.github/workflows/release\.yaml@refs/tags/v.*$" \
+  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+  "$IMAGE"
+```
+
+Expected output: a JSON payload echoing the signing certificate's
+identity + Rekor log index. Any of the following mean **do not run
+the image**:
+
+- Non-zero exit — the signature doesn't verify, the cert identity
+  doesn't match, or Rekor has no record.
+- `no matching signatures` — image was pushed without a signature
+  (e.g. a dev build, a pre-release tag before #1460 shipped, or a
+  compromise that swapped the image without updating the signature).
+- `certificate verification failure` — the signing identity isn't
+  our release workflow; refuse.
+
+### Cluster-side enforcement (optional)
+
+Running a verifying admission controller — Sigstore's
+[policy-controller](https://docs.sigstore.dev/policy-controller/overview/)
+or [Kyverno](https://kyverno.io/policies/cleanup/cleanup-sigstore-verify-images/)
+— makes the check happen automatically at pod schedule time and
+refuses unsigned images cluster-wide. The witwave-operator chart
+doesn't ship such a policy today; it's a follow-up when demand
+materialises. For now, verification is a consumer-opt-in step.
+
+### `ww` CLI binaries
+
+Homebrew installs already verify via the tap's signature chain. For
+direct-binary users (GitHub Releases download):
+
+```bash
+cosign verify-blob \
+  --certificate-identity-regexp="^https://github.com/skthomasjr/witwave/\.github/workflows/release-ww\.yml@refs/tags/v.*$" \
+  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+  --bundle ww_v0.5.4_darwin_arm64.tar.gz.cosign.bundle \
+  ww_v0.5.4_darwin_arm64.tar.gz
+```
+
+The `.cosign.bundle` file is published alongside each release asset.
+
+### Helm charts
+
+Charts published to `oci://ghcr.io/skthomasjr/charts/*` are signed at
+push time. Verify via:
+
+```bash
+cosign verify \
+  --certificate-identity-regexp="^https://github.com/skthomasjr/witwave/\.github/workflows/release-helm\.yml@refs/tags/v.*$" \
+  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+  oci://ghcr.io/skthomasjr/charts/witwave-operator:0.5.4
+```
+
+### What signing does NOT prove
+
+Signatures certify **provenance** (this image was built by our
+release workflow on this specific tag), not safety. A signed image
+can still ship a bug, a vulnerability, or a compromised dependency
+that was in the source tree at build time. Verification only tells
+you the bits came from us; whether the bits are *correct* is a
+separate question that scanning + code review answer.
+
 ## Token + secret rotation
 
 ### `HOMEBREW_TAP_GITHUB_TOKEN` — `ww` release-to-tap PAT

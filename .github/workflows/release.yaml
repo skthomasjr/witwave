@@ -19,6 +19,12 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # #1460: OIDC token for cosign keyless signing. The token is
+      # scoped per-job and expires in minutes; GitHub's OIDC endpoint
+      # is the authoritative issuer and cosign exchanges this for a
+      # short-lived Fulcio certificate bound to the workflow identity.
+      # No long-lived signing key in this repo.
+      id-token: write
 
     strategy:
       matrix:
@@ -76,6 +82,7 @@ jobs:
             type=raw,value=latest,enable=${{ !contains(github.ref, '-beta.') }}
 
       - name: Build and push ${{ matrix.image }}
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
@@ -89,3 +96,26 @@ jobs:
           # images ignore the build-arg, which is harmless.
           build-args: |
             VERSION=${{ github.ref_name }}
+
+      # #1460: cosign keyless signing of every pushed image. Uses
+      # Sigstore's public-good Fulcio CA + Rekor transparency log —
+      # no long-lived key material in this repo. The signature is
+      # written to GHCR as a sibling OCI artifact next to the image
+      # (same registry path, suffix .sig on the digest). Verification
+      # recipe lives in SECURITY.md § Verifying signed container
+      # images.
+      #
+      # Signed BY DIGEST, not tag: tags are mutable (a `latest` push
+      # reuses the tag); digests are immutable content hashes. Signing
+      # the tag would let a later mutation leave an old signature
+      # attached to new bits. Signing the digest means the signature
+      # is tied to the exact content we just pushed, full stop.
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign ${{ matrix.image }} image
+        env:
+          IMAGE_REF: ghcr.io/${{ github.repository_owner }}/images/${{ matrix.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          cosign sign --yes "${IMAGE_REF}@${DIGEST}"
