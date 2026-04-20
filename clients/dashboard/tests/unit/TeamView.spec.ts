@@ -3,6 +3,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import PrimeVue from "primevue/config";
 import { createPinia, setActivePinia } from "pinia";
 import TeamView from "../../src/views/TeamView.vue";
+import { __resetForTesting as resetUseTeam } from "../../src/composables/useTeam";
 
 // Dashboard TeamView smoke tests. Shape matches harness /team contract
 // (src/types/team.ts) — array of team members each with an `agents` array of
@@ -10,12 +11,22 @@ import TeamView from "../../src/views/TeamView.vue";
 // the loading/error/empty placeholders. Live chat send/receive is exercised
 // separately in ChatPanel.spec.ts.
 
+// Track the mounted wrapper so afterEach can unmount it. useTeam
+// keeps module-level singleton state (shared members / error /
+// loading refs + the poll subscriber map) that survives beyond a
+// single wrapper's lifetime. Without an explicit unmount between
+// tests, test 1's `sharedMembers` leaks into test 2's TeamView
+// render, which then sees members.length > 0 and skips the
+// loading/error/empty placeholder branches the assertion targets.
+let currentWrapper: ReturnType<typeof mount> | null = null;
+
 function mountView() {
-  return mount(TeamView, {
+  currentWrapper = mount(TeamView, {
     global: {
       plugins: [PrimeVue, createPinia()],
     },
   });
+  return currentWrapper;
 }
 
 function okJson(data: unknown): Response {
@@ -77,6 +88,16 @@ describe("TeamView", () => {
   });
 
   afterEach(() => {
+    // Unmount first so useTeam's onUnmounted hook stops the poll
+    // timer and clears the subscribers map, then explicitly reset
+    // the shared refs (sharedMembers / sharedError / sharedLoading).
+    // onUnmounted deliberately does NOT reset those in production —
+    // cached data across mount/unmount is a feature for nav-away-and-back
+    // UX — but tests need a clean slate between `it` blocks or test 1's
+    // fetched members leak into test 2's placeholder-render assertions.
+    currentWrapper?.unmount();
+    currentWrapper = null;
+    resetUseTeam();
     vi.useRealTimers();
     vi.restoreAllMocks();
   });

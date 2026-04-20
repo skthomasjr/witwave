@@ -292,3 +292,23 @@ export function useTeam(opts: UseTeamOptions = {}) {
     refresh: sharedRefresh,
   };
 }
+
+// __resetForTesting wipes the module-level shared state back to its
+// initial shape. Only intended for unit tests: production deliberately
+// retains cached members across mount/unmount cycles (navigating away
+// and back shows prior data while the poller re-catches up), but tests
+// need a clean slate between `it` blocks so a previous test's fetched
+// members don't leak into the next test's render assertions. Exported
+// under the __-prefix + Testing suffix convention to signal
+// "do not call from app code."
+export function __resetForTesting(): void {
+  stopShared();
+  subscribers.clear();
+  subscriberCount = 0;
+  effectiveIntervalMs = 5000;
+  currentMemberTimeoutMs = 5000;
+  currentDirectoryTimeoutMs = 5000;
+  sharedMembers.value = [];
+  sharedError.value = "";
+  sharedLoading.value = true;
+}
