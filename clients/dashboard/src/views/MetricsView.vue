@@ -732,14 +732,14 @@ const rawRows = computed<RawRow[]>(() => {
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--nyx-border);
-  background: var(--nyx-surface);
+  border-bottom: 1px solid var(--witwave-border);
+  background: var(--witwave-surface);
   flex-shrink: 0;
 }
 
 .title {
   font-size: 12px;
-  color: var(--nyx-bright);
+  color: var(--witwave-bright);
   text-transform: uppercase;
   letter-spacing: 0.07em;
   margin: 0;
@@ -748,24 +748,24 @@ const rawRows = computed<RawRow[]>(() => {
 
 .toolbar-lbl {
   font-size: 10px;
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   text-transform: uppercase;
   letter-spacing: 0.07em;
 }
 
 .select {
-  background: var(--nyx-bg);
-  border: 1px solid var(--nyx-border);
-  color: var(--nyx-text);
-  font-family: var(--nyx-mono);
+  background: var(--witwave-bg);
+  border: 1px solid var(--witwave-border);
+  color: var(--witwave-text);
+  font-family: var(--witwave-mono);
   font-size: 11px;
   padding: 4px 8px;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
   cursor: pointer;
 }
 .select:focus {
   outline: none;
-  border-color: var(--nyx-accent);
+  border-color: var(--witwave-accent);
 }
 
 .toggle {
@@ -773,19 +773,19 @@ const rawRows = computed<RawRow[]>(() => {
   align-items: center;
   gap: 6px;
   font-size: 10px;
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   cursor: pointer;
 }
 .toggle input {
-  accent-color: var(--nyx-accent, #7c6af7);
+  accent-color: var(--witwave-accent, #7c6af7);
   cursor: pointer;
 }
 
 .ts {
   font-size: 11px;
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   margin-left: auto;
 }
 
@@ -794,28 +794,28 @@ const rawRows = computed<RawRow[]>(() => {
 }
 .raw-table-wrap {
   overflow-x: auto;
-  border: 1px solid var(--nyx-border);
-  border-radius: var(--nyx-radius);
-  background: var(--nyx-surface);
+  border: 1px solid var(--witwave-border);
+  border-radius: var(--witwave-radius);
+  background: var(--witwave-surface);
 }
 .raw-table {
   width: 100%;
   border-collapse: collapse;
-  font-family: var(--nyx-mono);
+  font-family: var(--witwave-mono);
   font-size: 10.5px;
 }
 .raw-table th,
 .raw-table td {
   padding: 5px 10px;
-  border-bottom: 1px solid var(--nyx-border);
+  border-bottom: 1px solid var(--witwave-border);
   text-align: left;
   vertical-align: top;
 }
 .raw-table th {
   position: sticky;
   top: 0;
-  background: var(--nyx-bg);
-  color: var(--nyx-dim);
+  background: var(--witwave-bg);
+  color: var(--witwave-dim);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-weight: 600;
@@ -823,15 +823,15 @@ const rawRows = computed<RawRow[]>(() => {
 }
 .raw-table td.v {
   text-align: right;
-  color: var(--nyx-bright);
+  color: var(--witwave-bright);
   white-space: nowrap;
 }
 .raw-table td.labels {
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   word-break: break-word;
 }
 .raw-table td.empty {
-  color: var(--nyx-muted);
+  color: var(--witwave-muted);
   font-style: italic;
 }
 .raw-table tr:last-child td {
@@ -843,9 +843,9 @@ const rawRows = computed<RawRow[]>(() => {
   align-items: center;
   gap: 4px;
   font-size: 10px;
-  color: var(--nyx-red);
-  border: 1px solid var(--nyx-red);
-  border-radius: var(--nyx-radius);
+  color: var(--witwave-red);
+  border: 1px solid var(--witwave-red);
+  border-radius: var(--witwave-radius);
   padding: 2px 6px;
   cursor: help;
   white-space: nowrap;
@@ -853,20 +853,20 @@ const rawRows = computed<RawRow[]>(() => {
 
 .refresh {
   background: none;
-  border: 1px solid var(--nyx-border);
-  color: var(--nyx-dim);
-  font-family: var(--nyx-mono);
+  border: 1px solid var(--witwave-border);
+  color: var(--witwave-dim);
+  font-family: var(--witwave-mono);
   font-size: 11px;
   padding: 4px 10px;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 .refresh:hover:not(:disabled) {
-  color: var(--nyx-text);
-  border-color: var(--nyx-muted);
+  color: var(--witwave-text);
+  border-color: var(--witwave-muted);
 }
 .refresh:disabled {
   opacity: 0.4;
@@ -885,14 +885,14 @@ const rawRows = computed<RawRow[]>(() => {
 .state,
 .placeholder {
   padding: 30px;
-  color: var(--nyx-muted);
+  color: var(--witwave-muted);
   font-size: 12px;
   text-align: center;
   grid-column: 1 / -1;
 }
 
 .state-error {
-  color: var(--nyx-red);
+  color: var(--witwave-red);
 }
 
 .section {
@@ -905,12 +905,12 @@ const rawRows = computed<RawRow[]>(() => {
   display: flex;
   align-items: baseline;
   gap: 10px;
-  border-bottom: 1px solid var(--nyx-border);
+  border-bottom: 1px solid var(--witwave-border);
   padding-bottom: 6px;
 }
 .section-title {
   font-size: 12px;
-  color: var(--nyx-bright);
+  color: var(--witwave-bright);
   text-transform: uppercase;
   letter-spacing: 0.09em;
   margin: 0;
@@ -919,7 +919,7 @@ const rawRows = computed<RawRow[]>(() => {
 .section-sub {
   margin: 0;
   font-size: 11px;
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   line-height: 1.3;
 }
 
@@ -930,32 +930,32 @@ const rawRows = computed<RawRow[]>(() => {
 }
 
 .stat {
-  background: var(--nyx-surface);
-  border: 1px solid var(--nyx-border);
+  background: var(--witwave-surface);
+  border: 1px solid var(--witwave-border);
   border-left-width: 3px;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
   padding: 13px 15px;
   cursor: help;
 }
 .stat-ok {
-  border-left-color: var(--nyx-green, #4ade80);
+  border-left-color: var(--witwave-green, #4ade80);
 }
 .stat-warn {
-  border-left-color: var(--nyx-yellow, #fbbf24);
+  border-left-color: var(--witwave-yellow, #fbbf24);
 }
 .stat-err {
-  border-left-color: var(--nyx-red, #f87171);
+  border-left-color: var(--witwave-red, #f87171);
 }
 
 .stat-lbl {
   font-size: 10px;
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   text-transform: uppercase;
   letter-spacing: 0.07em;
 }
 .stat-val {
   font-size: 1.45rem;
-  color: var(--nyx-bright);
+  color: var(--witwave-bright);
   margin-top: 5px;
   line-height: 1;
 }
@@ -967,15 +967,15 @@ const rawRows = computed<RawRow[]>(() => {
 }
 
 .chart-card {
-  background: var(--nyx-surface);
-  border: 1px solid var(--nyx-border);
-  border-radius: var(--nyx-radius);
+  background: var(--witwave-surface);
+  border: 1px solid var(--witwave-border);
+  border-radius: var(--witwave-radius);
   padding: 15px;
 }
 
 .chart-card h4 {
   font-size: 10px;
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   text-transform: uppercase;
   letter-spacing: 0.07em;
   margin: 0 0 12px;

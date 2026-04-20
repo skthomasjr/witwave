@@ -98,7 +98,7 @@ def _refuse_if_read_only(tool: str) -> None:
             "Unset the env var or restart the pod without it to allow mutations."
         )
 
-FIELD_MANAGER = "nyx-mcp-kubernetes"
+FIELD_MANAGER = "witwave-mcp-kubernetes"
 
 # Per-call network timeout applied to Kubernetes API requests (#778).
 # Defends against a stalled apiserver / slow log stream / hung watch
@@ -910,7 +910,7 @@ def apply(
     """Server-side apply a YAML or JSON manifest (supports multi-doc YAML).
 
     ``caller_id`` is appended to the SSA field_manager as a sanitised
-    suffix (``nyx-mcp-kubernetes:<caller_id>``) so two agents racing
+    suffix (``witwave-mcp-kubernetes:<caller_id>``) so two agents racing
     on the same resource surface distinct SSA conflict messages and
     audit trails (#776). Falls back to the AGENT_NAME env var, then
     the bare base manager when neither is supplied.

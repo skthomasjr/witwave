@@ -85,7 +85,7 @@ export interface UseConversationStreamReturn {
   close: () => void;
 }
 
-// Note: `window.__NYX_CONFIG__` is declared globally in
+// Note: `window.__WITWAVE_CONFIG__` is declared globally in
 // `src/stores/timeline.ts`; declaring it again here with a differently-
 // shaped intersection type trips TS2717, so we read the field through
 // an indirected access pattern instead.
@@ -96,8 +96,8 @@ function resolveToken(explicit?: string): string | undefined {
   if (explicit) return explicit;
   if (typeof window === "undefined") return undefined;
   const cfg = (window as unknown as {
-    __NYX_CONFIG__?: { harnessBearerToken?: string };
-  }).__NYX_CONFIG__;
+    __WITWAVE_CONFIG__?: { harnessBearerToken?: string };
+  }).__WITWAVE_CONFIG__;
   const tok = cfg?.harnessBearerToken;
   return typeof tok === "string" && tok.length > 0 ? tok : undefined;
 }

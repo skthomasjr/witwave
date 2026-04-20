@@ -11,8 +11,8 @@ const TEAM_FIXTURE = [
 
 const AGENTS_FIXTURE = [
   {
-    id: "iris-nyx",
-    role: "nyx",
+    id: "iris-witwave",
+    role: "witwave",
     url: "http://iris:8000",
     card: { name: "iris", description: "Primary agent" },
   },

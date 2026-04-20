@@ -1,0 +1,1318 @@
+# Vue 3 dashboard — the witwave web interface. Disabled by default; enable to
+# deploy it alongside the agent harnesses in the same release.
+dashboard:
+  enabled: false
+  image:
+    repository: ghcr.io/skthomasjr/images/dashboard
+    # # Image tag. Defaults to .Chart.AppVersion when omitted.
+    # tag: ""
+    # # Image pull policy.
+    # pullPolicy: IfNotPresent
+  # Service port (the container always listens on 3000; this is the Service port).
+  port: 80
+  # # Kubernetes cluster DNS domain (used by the dashboard's nginx reverse-proxy
+  # # to resolve per-agent backend Services). Override on clusters that use a
+  # # non-default service DNS domain.
+  # clusterDomain: cluster.local
+  # Number of replicas.
+  # replicas: 1
+  # # Image pull secrets for private registries.
+  # imagePullSecrets:
+  #   - name: ghcr-credentials
+  # # Resource requests and limits.
+  # resources:
+  #   requests:
+  #     cpu: 50m
+  #     memory: 64Mi
+  #   limits:
+  #     cpu: 250m
+  #     memory: 128Mi
+  # # Pod-level securityContext (the dashboard image runs as non-root and
+  # # binds port 3000, so the Pod Security Standards "restricted" profile is
+  # # applicable out of the box when you supply a matching context here).
+  # securityContext:
+  #   runAsNonRoot: true
+  #   runAsUser: 1000
+  #   runAsGroup: 1000
+  #   fsGroup: 1000
+
+  # Runtime config injected into window.__WITWAVE_CONFIG__ by nginx at
+  # serve time (#1110 / #1061). The dashboard SPA reads these on boot —
+  # trace API URL, locale, theme, timeline event-stream overrides.
+  # Rendered verbatim as JSON into the index.html response via
+  # `sub_filter` in the ConfigMap.
+  #
+  # Non-secret values only. The harness bearer token goes through the
+  # separate harnessBearerTokenSecret block below — a plain
+  # `kubectl get cm` must not leak it.
+  runtimeConfig: {}
+    # # External trace backend URL (Jaeger / Tempo / Grafana). Empty
+    # # disables the OTelTraces view. Must be same-origin OR operators
+    # # must set traceApiAllowCrossOrigin=true AND widen the dashboard
+    # # CSP connect-src directive (#1061).
+    # traceApiUrl: "https://jaeger.example.com"
+    # traceApiAllowCrossOrigin: false
+    # # Override the default timeline stream URL. Default is
+    # # /events/stream (single-harness dev mode). For fleet deployments,
+    # # multi-agent fanout uses /api/agents/<name>/events/stream per
+    # # team member and this override is not required.
+    # timelineEventsUrl: "/events/stream"
+    # # Default locale for the dashboard i18n layer. Falls back to
+    # # navigator.language then "en" when unset (#819).
+    # locale: "en"
+
+  # Secret-backed harness bearer token for the timeline SSE stream
+  # (#1110 phase 3.5). When `name` is set, the dashboard pod gains:
+  #   - an env var `HARNESS_BEARER_TOKEN` sourced from the Secret
+  #   - an nginx sub_filter that injects `window.__WITWAVE_CONFIG__
+  #     .harnessBearerToken = "${HARNESS_BEARER_TOKEN}"` into every
+  #     HTML response, substituted at container start via envsubst
+  # The literal token therefore lives in the pod's
+  # /etc/nginx/conf.d/default.conf (readable only via pod shell) —
+  # NOT in the Helm-rendered ConfigMap visible to `kubectl get cm`.
+  #
+  # The Secret's key defaults to `token`. The `NGINX_ENVSUBST_FILTER`
+  # env var is auto-set so envsubst only substitutes this and
+  # NGINX_LOCAL_RESOLVERS, preventing accidental substitution of
+  # other `${...}` patterns in the nginx config.
+  #
+  # Leave `name` empty (default) to skip all of the above — the
+  # timeline stream then runs unauthenticated (CONVERSATIONS_AUTH_DISABLED
+  # on the harness) or authenticated via an operator-supplied
+  # __WITWAVE_CONFIG__ override.
+  harnessBearerTokenSecret:
+    name: ""
+    key: "token"
+
+# Ingress for the dashboard. Disabled by default — enable to expose the dashboard externally (#424).
+#
+# SECURITY (#528): When the dashboard is exposed via Ingress, the nginx pod
+# reverse-proxies every enabled agent's API (conversations, triggers, jobs).
+# Unauthenticated exposure is treated as unauthenticated remote code execution
+# against the cluster, so this chart FAILS TEMPLATE RENDER when ingress.enabled=true
+# unless one of the following is configured:
+#   1. ingress.auth.enabled=true (chart renders an auth block — default), or
+#   2. ingress.auth.allowInsecure=true (explicit opt-out — you own the auth gateway), or
+#   3. ingress.annotations includes one of: nginx.ingress.kubernetes.io/auth-url,
+#      nginx.ingress.kubernetes.io/auth-signin, or traefik.ingress.kubernetes.io/router.middlewares
+#      (you're wiring your own auth proxy / middleware).
+# ----------------------------------------------------------------------------
+# cert-manager integration (#639).
+#
+# When enabled, the chart can auto-issue TLS certs for the dashboard ingress
+# (and, in the future, for any other TLS surface) through cert-manager. Three
+# install modes:
+#
+#   1. Chart renders its own selfSigned Issuer (default when certManager.enabled=true).
+#      Simplest for internal clusters; certs are self-signed so browsers will warn
+#      unless you trust the CA.
+#
+#   2. Chart creates no Issuer; point at an existing (Cluster)Issuer via issuerRef.
+#      Typical for production (Let's Encrypt via an ClusterIssuer you already run).
+#
+#   3. certManager.enabled=false (default): chart does not render any cert-manager
+#      resources. If you want TLS, set ingress.tls directly yourself.
+#
+# Values shape mirrors charts/witwave-operator so operators see the same knobs.
+certManager:
+  enabled: false
+  # Render a chart-owned Issuer. Set false when using an external (Cluster)Issuer
+  # via issuerRef below. Note: setting createIssuer=false WITHOUT populating
+  # issuerRef.name fails render — the Certificate would otherwise point at a
+  # non-existent issuer.
+  createIssuer: true
+  # Kind of the Issuer the CHART creates when createIssuer=true.
+  # "Issuer" is namespaced to the release; "ClusterIssuer" is global.
+  # Ignored entirely when createIssuer=false — see issuerRef.kind for the
+  # corresponding knob on external issuers.
+  issuerKind: Issuer
+  # Reference to an existing (Cluster)Issuer. When name is set, createIssuer is
+  # ignored and the chart references this issuer instead. issuerRef.kind
+  # defaults to "ClusterIssuer" when unset — if you're pointing at a namespaced
+  # "Issuer" you MUST set kind explicitly.
+  issuerRef:
+    name: ""
+    kind: ""   # defaults to "ClusterIssuer" when empty; set to "Issuer" for namespaced issuers
+
+ingress:
+  enabled: false
+  # # Ingress class name (e.g. nginx, traefik).
+  # className: nginx
+  # # Annotations to add to the Ingress resource.
+  # annotations:
+  #   nginx.ingress.kubernetes.io/rewrite-target: /
+  # # Hostnames and paths.
+  # hosts:
+  #   - host: witwave.example.com
+  #     path: /
+  #     pathType: Prefix
+  # # TLS configuration.
+  # #
+  # # Two ways to populate this list:
+  # #
+  # # (a) Let the chart auto-populate it via certManager.enabled=true AND
+  # #     ingress.tls.enabled=true. The chart will synthesize a tls entry from
+  # #     ingress.hosts and render a cert-manager Certificate targeting the
+  # #     secret below.
+  # #
+  # # (b) Provide the list directly (skip certManager entirely) for bring-your-own
+  # #     TLS setups.
+  # tls: []
+  # #   - secretName: witwave-dashboard-tls
+  # #     hosts:
+  # #       - witwave.example.com
+  #
+  # # cert-manager-driven TLS (#639). Requires certManager.enabled=true above.
+  # # When enabled:
+  # #   - chart renders a cert-manager Certificate for the ingress host(s)
+  # #   - secret name defaults to <release>-dashboard-tls when unset
+  # #   - ingress emits a tls: entry automatically
+  # # Mutually exclusive with manually populating ingress.tls as a list.
+  # tlsEnabled: false
+  # tlsSecretName: ""
+
+  # Auth configuration for the dashboard ingress (#528).
+  # Default: basic auth, enabled, credentials rendered from ingress.auth.basic
+  # into a chart-managed Secret and wired via nginx-ingress auth annotations.
+  auth:
+    # Master toggle. When true (default), the chart renders an auth block
+    # (type=basic -> Secret + nginx auth-* annotations). Set false only in
+    # combination with allowInsecure=true or a user-supplied auth annotation.
+    enabled: true
+    # Auth mechanism. Currently supported: "basic".
+    # For oauth2-proxy / custom auth-url setups, set enabled=false and provide
+    # nginx.ingress.kubernetes.io/auth-url (or a traefik middleware) in
+    # ingress.annotations directly.
+    type: basic
+    # Default-closed escape hatch. Set to true to deploy the ingress with no
+    # chart-managed auth AND no detected user-supplied auth annotation. This
+    # exposes every agent API unauthenticated — use only on isolated networks
+    # (smoke tests, internal clusters behind a separate auth gateway).
+    allowInsecure: false
+    # Basic auth settings. Used when type=basic and enabled=true.
+    basic:
+      # Reference an existing Secret containing an htpasswd `auth` key.
+      # When set, the chart does NOT render credentials and does NOT create
+      # a Secret — the referenced Secret is used as-is.
+      existingSecret: ""
+      # Inline htpasswd line(s). Rendered into a chart-managed Secret when
+      # existingSecret is empty. Generate with e.g.:
+      #   htpasswd -nbB admin 'choose-a-strong-password'
+      # Multiple users: supply a multiline string with one htpasswd entry per line.
+      # Leaving this empty while enabled=true and existingSecret="" fails
+      # template render — the chart refuses to render an empty auth Secret.
+      htpasswd: ""
+      # Realm shown in the browser auth prompt.
+      realm: "witwave dashboard"
+
+# ----------------------------------------------------------------------------
+# Replica topology — single-replica default is INTENTIONAL (#559).
+#
+# Each agent's Deployment renders `replicas: 1` by default (see the Deployment
+# template). This is deliberate for per-agent workloads: harness owns the
+# heartbeat scheduler, job scheduler, task scheduler, trigger handler, and
+# continuation runner, and running two harness pods for the same agent would
+# cause those schedulers to fire twice. Backends are mostly stateless but
+# still keep per-session conversation logs on a local volume — running two
+# backend pods for the same agent can interleave writes.
+#
+# The trade-off: with replicas=1 AND PDB/HPA disabled, any voluntary
+# disruption (`kubectl drain`, node upgrade, cluster autoscaler scale-down)
+# causes a brief outage. Scheduled jobs/heartbeats miss fire windows,
+# inbound triggers return 503, and in-flight A2A calls fail.
+#
+# HA opt-in path (requires coordination — DO NOT just flip replicas > 1):
+#   1. Land default resource requests/limits (#553 — already landed).
+#   2. Enable `podDisruptionBudget.enabled: true` with `minAvailable: 1` to
+#      block node drains until a replacement pod is Ready elsewhere. Safe
+#      even at replicas=1 (blocks the drain instead of dropping the pod).
+#   3. Only raise `replicas > 1` or `autoscaling.minReplicas >= 2` AFTER
+#      backends are updated to use shared storage or externalized session
+#      state — otherwise scheduled jobs will double-fire and conversation
+#      logs will interleave.
+# ----------------------------------------------------------------------------
+
+# Horizontal autoscaling for agent Deployments. Disabled by default — enable
+# per-agent via agents[].autoscaling to override these defaults. When enabled,
+# the Deployment's replicas field is omitted so the HPA owns replica count
+# (#434). NOTE: Enabling autoscaling currently conflicts with the harness's
+# singleton schedulers — see the Replica topology note above before enabling.
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+  # # Optional: memory target (requires container resources to be set).
+  # targetMemoryUtilizationPercentage: 80
+
+# PodDisruptionBudget for agent Deployments. Disabled by default — enable to
+# limit voluntary disruption during node drain and cluster upgrades (#435).
+# STRONGLY RECOMMENDED for production: with replicas=1 and PDB disabled, every
+# node drain drops the pod immediately, suspending heartbeats/jobs/triggers
+# until the new pod is Ready (typically ~30s). Setting `enabled: true` with
+# `minAvailable: 1` blocks the drain until a replacement pod is Ready on
+# another node — safe even at replicas=1, and the recommended production
+# default. Leaving it disabled is fine for dev/test (#559).
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+  # # Alternative: cap unavailable pods instead of guaranteeing available.
+  # maxUnavailable: 1
+
+# Pod termination grace period (#547). Must be strictly greater than
+# preStop.delaySeconds so the harness + backends have time to receive SIGTERM
+# and run graceful shutdown (drain in-flight A2A requests, flush conversation
+# logs, flush Prometheus counters) before the kubelet sends SIGKILL. Default
+# 60s preserves prior hardcoded behaviour; the chart's fail guard enforces the
+# `preStop.delaySeconds < terminationGracePeriodSeconds` invariant when preStop
+# is enabled.
+terminationGracePeriodSeconds: 60
+
+# preStop lifecycle hook for graceful drain on pod termination. When enabled,
+# every container in the agent pod sleeps for delaySeconds before SIGTERM
+# arrives, giving in-flight A2A requests, scheduled jobs, and webhook
+# deliveries a coordinated drain window (#447). Off by default — opt in for
+# production deployments where graceful shutdown matters. Keep delaySeconds
+# strictly less than terminationGracePeriodSeconds so SIGTERM fires with
+# enough remaining grace to complete graceful shutdown (#547).
+preStop:
+  enabled: false
+  delaySeconds: 5
+
+# Pod security hardening (#948). Applied uniformly to every operator-rendered
+# container (harness, backends, dashboard, mcp tools). ON by default as of
+# #1073 so the chart is PSS-restricted-compliant out of the box. MCP tools
+# that need a writable cache dir (e.g. helm) receive emptyDir carve-outs at
+# the correct mountPath automatically; set this to `false` if you run a
+# custom tool that writes outside any mounted volume and cannot be fixed.
+podSecurity:
+  # When true, sets securityContext.readOnlyRootFilesystem on each managed
+  # container so a code-exec attacker cannot overwrite binaries in /.
+  readOnlyRootFilesystem: true
+
+# Scheduling controls applied to every agent pod unless the per-agent entry
+# overrides them (#603). Mirrors the witwave-operator chart's value names exactly
+# so a WitwaveAgent CRD → chart values translation is 1:1 (pairs with #605).
+# Per-agent values REPLACE these (not merge) — matches the existing
+# autoscaling / podDisruptionBudget semantics. Leave empty/unset to place
+# no scheduling constraints on the pod.
+#
+# nodeSelector:
+#   workload-class: ai-memory-optimized
+# tolerations:
+#   - key: dedicated
+#     operator: Equal
+#     value: ai
+#     effect: NoSchedule
+# affinity:
+#   nodeAffinity:
+#     requiredDuringSchedulingIgnoredDuringExecution:
+#       nodeSelectorTerms:
+#         - matchExpressions:
+#             - key: node.kubernetes.io/instance-type
+#               operator: In
+#               values: [r6i.xlarge, r6i.2xlarge]
+# topologySpreadConstraints:
+#   # Spread replicas of the same agent across zones. Pairs naturally with
+#   # podDisruptionBudget.enabled=true once multi-replica is safe (#559).
+#   - maxSkew: 1
+#     topologyKey: topology.kubernetes.io/zone
+#     whenUnsatisfiable: ScheduleAnyway
+#     labelSelector:
+#       matchLabels:
+#         app.kubernetes.io/name: adam
+# priorityClassName: system-cluster-critical
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+priorityClassName: ""
+
+# Liveness and readiness probe timing for all containers.
+# Defaults match the values previously hardcoded in templates (#425).
+#
+# startup gives cold-starting pods a long grace window before kubelet begins
+# enforcing readiness/liveness (#580). Backends (Claude Agent SDK, OpenAI
+# Agents SDK, google-genai) pay SDK import cost + MCP server handshakes on
+# first boot; without a startupProbe, the tight readiness defaults below flap
+# NotReady → Ready → NotReady during warm-up and liveness can restart a pod
+# before it ever finishes initialising. The defaults here (failureThreshold 30
+# × periodSeconds 10 = 5 minutes) are strictly additive: once startup succeeds
+# once, kubelet switches to the readiness/liveness cadence below. Point the
+# probe at the same health endpoint used by readiness (hardcoded per-container
+# in the template: /health/ready for harness, /health for backends). Bump
+# failureThreshold if your cold-start genuinely exceeds 5 minutes.
+probes:
+  liveness:
+    initialDelaySeconds: 10
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readiness:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  startup:
+    initialDelaySeconds: 0
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 30
+
+# Default git-sync image used by all gitSyncs entries unless overridden per-entry.
+gitSync:
+  # Default git-sync image used by all gitSyncs entries that don't override
+  # via .gitSyncs[].image. Tracks .Chart.AppVersion the same way every other
+  # image in this chart does, so beta installs get pinned bits instead of
+  # silently following ":latest" (#457). Override per-entry for sticky pins.
+  image:
+    repository: ghcr.io/skthomasjr/images/git-sync
+    # tag defaults to .Chart.AppVersion when empty
+    tag: ""
+
+  # Default credentials for every agents[].gitSyncs[] entry unless overridden
+  # per-entry via agents[].gitSyncs[].credentials. Mirrors the pattern the
+  # ingress.auth block already uses for basic-auth (#528) — three mutually
+  # exclusive modes, in precedence order:
+  #
+  #   1. existingSecret — reference a pre-created Secret in the release
+  #      namespace. The recommended path for production.
+  #
+  #   2. inline username + token + acknowledgeInsecureInline=true — chart
+  #      renders a Secret for you. Convenient for local dev and smoke tests
+  #      (our own values-test.yaml uses this path), but tokens land in etcd
+  #      release state + `helm get values` + `kubectl describe`, so NEVER
+  #      commit a values file with inline tokens to a shared repo.
+  #
+  #   3. empty (default) — no auth envFrom rendered. Fine for anonymous
+  #      clones of public repos.
+  #
+  # When both existingSecret and inline token are populated, existingSecret
+  # wins and a warning is logged via NOTES.txt. When inline username/token
+  # are populated but acknowledgeInsecureInline stays false, chart aborts
+  # render with a clear message pointing at this comment.
+  credentials:
+    existingSecret: ""
+    username: ""
+    token: ""
+    acknowledgeInsecureInline: false
+
+# Enable Prometheus metrics for all agents and their backends.
+# When enabled, prometheus.io scrape annotations are added to each agent Service
+# and the /metrics endpoint is activated on both harness and backend containers.
+# Override per agent with agents[].metrics.enabled.
+metrics:
+  # Master toggle for Prometheus metrics. When false, the harness still
+  # exposes /metrics but no scrape annotations / ServiceMonitor are
+  # rendered.
+  enabled: false
+
+  # DEPRECATED (#687): metrics.port is no longer honored for harness or
+  # backend containers — those use app_port+1000 per-container so
+  # colocated pod containers don't fight for a shared port. The value
+  # was only ever honored by MCP tool pods; use `mcpTools.metricsPort`
+  # for that. Setting this key emits a deprecation warning via NOTES.txt
+  # and is otherwise ignored.
+  #
+  # Default intentionally left unset (#764) so the NOTES.txt `hasKey`
+  # guard only fires when the user explicitly keeps the deprecated key
+  # in their own values file — no warning on an unedited chart install.
+  # port: 9000
+
+  # Where Prometheus scrape annotations land. Both can be true at the
+  # same time — Prometheus configs that use both `kubernetes_sd_configs.
+  # role: service` and `role: pod` will discover both targets and need
+  # standard relabel rules to dedupe (kube-prometheus-stack defaults
+  # already do this). Both default to backward-compatible behaviour:
+  # serviceAnnotations on, podAnnotations off (#472).
+  #
+  # Per-agent overrides:
+  #   agents[].metrics.serviceAnnotations: false
+  #   agents[].metrics.podAnnotations:     true
+  serviceAnnotations: true
+  podAnnotations: false
+
+# ServiceMonitor for the Prometheus Operator (#449). Off by default so the
+# chart never references monitoring.coreos.com CRDs unless the user opts in
+# (clusters without the Prometheus Operator installed should leave this off).
+# When enabled, one ServiceMonitor is rendered per agent that has metrics
+# enabled — symmetric with the witwave-operator chart but adapted for the witwave
+# chart's per-agent Service layout.
+serviceMonitor:
+  enabled: false
+  # Forwarded to each ServiceMonitor's endpoints[]; defaults align with the
+  # witwave-operator chart and kubebuilder conventions.
+  scrapeInterval: 30s
+  scrapeTimeout: 10s
+  # Extra labels merged into every ServiceMonitor's metadata. Useful when
+  # the cluster's Prometheus selects ServiceMonitors by a tenancy label
+  # (e.g. release: kube-prometheus-stack).
+  labels: {}
+  # Cardinality + size safety (#1076). Prometheus Operator maps these to
+  # the per-target / per-scrape limits on the rendered ServiceMonitor. The
+  # defaults are conservative enough for a single-team deployment but
+  # keep a hostile backend from blowing up shared Prometheus tenants via
+  # unbounded label values (tool=..., rule_id=..., model=...). Set any to
+  # 0 to disable that particular cap; leave unset to render nothing.
+  sampleLimit: 10000
+  targetLimit: 100
+  labelValueLengthLimit: 256
+  # Passthrough for Prometheus Operator metricRelabelings, applied before
+  # ingestion. Default drops the worst-case unbounded label values (tool
+  # names longer than 128 chars). Override to an empty list to scrape
+  # everything as-is.
+  metricRelabelings:
+    - sourceLabels: [tool]
+      regex: ".{129,}"
+      action: drop
+
+# PodMonitor for the Prometheus Operator (#582). Scrapes backend /metrics
+# endpoints directly on the pod. Required for backend observability because
+# the per-agent Service only publishes the harness port — ServiceMonitor
+# cannot reach backend container ports through it. When enabled, one
+# PodMonitor is rendered per agent that has metrics enabled, with one
+# endpoint per enabled backend. Off by default so the chart never references
+# monitoring.coreos.com CRDs unless the user opts in.
+# Service-mesh sidecar injection (#1121). Single toggle that renders
+# the mesh-appropriate pod annotation across every pod template in
+# this chart (agents, mcp-tools, dashboard). Pre-#1121 operators
+# hand-assembled per-mesh annotations across four separate
+# podAnnotations blocks.
+#
+# type=linkerd  → renders `linkerd.io/inject: enabled`
+# type=istio    → renders `sidecar.istio.io/inject: "true"`
+# type=none     → emits nothing (explicit opt-out shape, default)
+#
+# The chart does NOT install the mesh control plane; that's the
+# cluster admin's job. witwave only requests sidecar injection for its
+# own pods.
+serviceMesh:
+  enabled: false
+  type: none
+
+podMonitor:
+  enabled: false
+  # Forwarded to each PodMonitor's podMetricsEndpoints[].
+  scrapeInterval: 30s
+  scrapeTimeout: 10s
+  # Extra labels merged into every PodMonitor's metadata. Useful when
+  # the cluster's Prometheus selects PodMonitors by a tenancy label
+  # (e.g. release: kube-prometheus-stack).
+  labels: {}
+  # Cardinality + size safety (#1076). Per-agent + per-MCP-tool PodMonitor
+  # fan-out means unbounded tool/rule/model labels can blow up a shared
+  # Prometheus tenant. Same shape as serviceMonitor.* so operators can
+  # tune both in lockstep.
+  sampleLimit: 10000
+  targetLimit: 100
+  labelValueLengthLimit: 256
+  metricRelabelings:
+    - sourceLabels: [tool]
+      regex: ".{129,}"
+      action: drop
+
+# Prometheus Operator PrometheusRule (#1117). Ships opinionated default
+# alerts so a fresh install has usable paging day one: backend pod down,
+# hook-denial spike, MCP auth failure, webhook timeouts, SQLite
+# task-store lock-wait saturation. Disabled by default (like every
+# other monitor resource in this chart); enable + tune the individual
+# alert thresholds as needed.
+#
+# The template renders under the `additionalLabels` you provide so
+# kube-prometheus-stack's default rule selector (`release:
+# kube-prometheus-stack`) picks it up without further templating.
+prometheusRule:
+  enabled: false
+  # Extra labels merged into the PrometheusRule metadata. Set to
+  # `release: kube-prometheus-stack` (or whatever your stack uses)
+  # so the Prometheus CR picks these rules up.
+  additionalLabels: {}
+  # Per-alert thresholds. Set to null to suppress that alert entirely.
+  alerts:
+    backendDown:
+      enabled: true
+      # Minutes the pod must report absent before the alert fires.
+      forMinutes: 5
+      severity: critical
+    hookDenialSpike:
+      enabled: true
+      # Rate (denials/sec over 5m) at which the alert fires.
+      rateThreshold: 0.5
+      forMinutes: 10
+      severity: warning
+    mcpAuthFailure:
+      enabled: true
+      # Rate (rejected requests/sec over 5m) at which the alert fires.
+      rateThreshold: 0.1
+      forMinutes: 5
+      severity: warning
+    webhookTimeout:
+      enabled: true
+      # Rate (timeouts/sec over 5m) at which the alert fires.
+      rateThreshold: 0.05
+      forMinutes: 10
+      severity: warning
+    lockWaitSaturation:
+      enabled: true
+      # 99th-percentile lock-wait seconds over 5m that triggers the alert.
+      p99Seconds: 1.0
+      forMinutes: 10
+      severity: warning
+
+# Grafana dashboards (#1118). Ships a default "witwave — Overview" dashboard
+# as a ConfigMap labelled for kube-prometheus-stack's grafana sidecar
+# (`grafana_dashboard: "1"` by default). Panels source from the backend_*
+# / harness_* / witwaveprompt_* metric surface documented in AGENTS.md.
+#
+# Disabled by default because the sidecar convention assumes Grafana is
+# already deployed and watching a specific label selector — shipping the
+# ConfigMap unconditionally would pollute clusters that don't have a
+# sidecar listening.
+#
+# Drop additional JSON dashboards into charts/witwave/dashboards/ and they are
+# picked up automatically via .Files.Glob.
+grafanaDashboards:
+  enabled: false
+  # Label key → value map the grafana sidecar watches. kube-prometheus-stack
+  # defaults to `grafana_dashboard: "1"`; override per your operator's
+  # convention (e.g. `grafana_dashboard: "true"` or a tenancy label).
+  label:
+    grafana_dashboard: "1"
+  # Extra labels merged onto the ConfigMap (e.g. for tenancy selectors the
+  # sidecar ANDs against its primary label).
+  additionalLabels: {}
+  # Annotations merged onto the ConfigMap (e.g. grafana folder metadata:
+  # `grafana_folder: "witwave"` for the grafana-operator sidecar).
+  annotations: {}
+
+# VerticalPodAutoscaler per agent (#1120). Disabled by default. Requires
+# the VerticalPodAutoscaler CRD from the kubernetes-sigs/autoscaler addon;
+# this chart does NOT install the addon.
+#
+# LLM backends have wildly divergent memory envelopes per model, so
+# recommend-mode (`updateMode: Off`) is the sensible default: VPA emits
+# recommendations visible via `kubectl describe vpa`, humans apply them.
+# Flip `updateMode: Initial` / `Recreate` / `Auto` when you're comfortable
+# letting the VPA actually move the pod.
+#
+# HPA + VPA on the same resource is only safe when the VPA's resourcePolicy
+# omits the metric the HPA targets (or vice versa). If you enable both
+# `autoscaling.enabled=true` (CPU-target HPA) and VPA on CPU, they will
+# fight. Scope the VPA to memory via containerPolicies.controlledResources
+# when using both.
+vpa:
+  enabled: false
+  # Off | Initial | Recreate | Auto
+  updateMode: "Off"
+  # # Optional: floor on the number of replicas the VPA will update.
+  # # Ignored when updateMode=Off.
+  # minReplicas: 1
+  # Passthrough for spec.resourcePolicy. Most commonly used to scope which
+  # containers or resources the VPA manages. Examples:
+  #
+  # resourcePolicy:
+  #   containerPolicies:
+  #     - containerName: harness
+  #       controlledResources: ["memory"]
+  #     - containerName: '*'
+  #       minAllowed:
+  #         cpu: 10m
+  #         memory: 64Mi
+  #       maxAllowed:
+  #         cpu: 2
+  #         memory: 4Gi
+  resourcePolicy: {}
+
+# OpenTelemetry tracing (#634). End-to-end opt-in wiring for distributed
+# traces across harness, backends, and operator. Disabled by default so
+# existing deployments are unaffected.
+#
+# When observability.tracing.enabled=true, every harness and backend pod
+# receives the standard OTel env vars (OTEL_ENABLED, OTEL_EXPORTER_OTLP_ENDPOINT,
+# OTEL_TRACES_SAMPLER, OTEL_TRACES_SAMPLER_ARG, OTEL_SERVICE_NAME). The Python
+# SDK bootstrap in shared/otel.py and the Go bootstrap in
+# operator/internal/tracing/otel.go both honour these variables.
+#
+# This chart does NOT deploy an OpenTelemetry Collector. Matching the wider
+# Kubernetes operator ecosystem (Strimzi, cert-manager, Istio, Elastic ECK,
+# Knative, Argo, Crossplane, grafana-operator all take the same approach)
+# witwave only emits OTLP to a user-provided collector endpoint. Install
+# opentelemetry-operator and create an OpenTelemetryCollector CR, or point
+# observability.tracing.endpoint at any OTLP-compatible target (Jaeger,
+# Tempo, Honeycomb, Grafana Cloud, Datadog).
+observability:
+  tracing:
+    # Master toggle. When false, no OTEL_* env vars are injected.
+    enabled: false
+
+    # OTLP endpoint the pods export to. Full URL including scheme and port:
+    #   http://otel-collector.observability:4318   (OTLP/HTTP)
+    #   http://otel-collector.observability:4317   (OTLP/gRPC)
+    # Required when tracing.enabled=true — leave empty to omit the env var
+    # and let the OTel SDK fall back to its own default (which typically
+    # means "no exporter wired, traces dropped").
+    endpoint: ""
+
+    # OTel trace sampler name — forwarded verbatim as OTEL_TRACES_SAMPLER.
+    # Common values: "parentbased_always_on" (SDK default), "always_on",
+    # "always_off", "traceidratio", "parentbased_traceidratio". Leave empty
+    # to accept the SDK default.
+    sampler: ""
+
+    # OTEL_TRACES_SAMPLER_ARG — only meaningful for ratio-based samplers
+    # (e.g. "0.1" for 10% sampling with parentbased_traceidratio).
+    samplerArg: ""
+
+# Cross-origin Resource Sharing policy for harness HTTP endpoints (#763).
+# Surfaced as a first-class key rather than a stringly-typed env entry so
+# values.schema.json can validate it and the template can reject the
+# wildcard when ingress is enabled. Empty list ≡ CORS disabled (the
+# safest default; browser origins are blocked unless explicitly allowed).
+cors:
+  # Explicit list of allowed Origin values (e.g. "https://witwave.example").
+  # Wildcards may be permitted only when ingress.enabled is false — the
+  # deployment.yaml template fails render otherwise, since browsers treat
+  # `Access-Control-Allow-Origin: *` with credentials as a disclosure hole
+  # across /triggers and /conversations.
+  allowOrigins: []
+
+# Optional NetworkPolicy (#759). Default off, shipped off, documented.
+# Turn on in clusters that need pod-level isolation; the policies target
+# only chart-rendered Deployments (agents, dashboard, MCP tools), so an
+# operator can leave other workloads in the namespace untouched.
+networkPolicy:
+  # Toggle. When false, no NetworkPolicy objects are rendered and the
+  # chart's historical default-open posture is preserved.
+  enabled: false
+  # Ingress peers. When enabled=true AND ingress is empty, ALL ingress
+  # is denied — a deliberate default-closed posture operators must
+  # opt-out of peer-by-peer.
+  ingress:
+    # Allow the chart-rendered dashboard pod (when dashboard.enabled) to
+    # reach the harness + backend + MCP-tool app ports. Default true
+    # because the dashboard has no alternate reach path.
+    allowDashboard: true
+    # Allow every pod in the release namespace to reach every port on
+    # every chart-rendered pod. Useful for trusted-namespace deployments;
+    # keep false for the strict posture that matches the CIS Benchmarks.
+    allowSameNamespace: false
+    # Allow other witwave-managed pods (anything with
+    # `app.kubernetes.io/part-of: witwave`) to reach chart-rendered MCP tool
+    # pods on their app port. Default true because the agent → MCP tool
+    # call path is the whole point of shipping MCP infra (#1074). When
+    # false, MCP tool pods refuse all agent traffic unless an explicit
+    # entry under `additionalFrom` authorises it. Only applies to MCP
+    # tool NetworkPolicies — agent and dashboard policies ignore this
+    # knob.
+    allowWitwaveAgents: true
+    # Allowed sources for the metrics port (app_port+1000). Entries are
+    # raw NetworkPolicyPeer objects so operators can mix
+    # namespaceSelector, podSelector, or ipBlock without further
+    # templating gymnastics. Default: a single namespaceSelector keyed
+    # on the well-known `kubernetes.io/metadata.name=monitoring` label
+    # (the default label set by Kubernetes >=1.22 on every namespace).
+    metricsFrom:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: monitoring
+    # Additional peers applied to ALL ports on chart-rendered pods. Use
+    # sparingly — prefer scoping via metricsFrom for scrape traffic or
+    # allowDashboard for intra-release dashboard traffic.
+    additionalFrom: []
+  # Egress stays open by default because backends need to reach the
+  # Kubernetes API (MCP-kubernetes), the Helm release API
+  # (MCP-helm), harness webhook destinations, OTel collectors, DNS, and
+  # each other. Set egressOpen=false to enforce explicit egress rules,
+  # then populate `egress` with the peers you want to allow.
+  egressOpen: true
+  # Raw list of NetworkPolicyEgressRule entries applied when
+  # egressOpen=false. Empty = no egress allowed. Typical entries:
+  #   - to: [{namespaceSelector: {}}]  # allow all cluster egress
+  #   - to: [{ipBlock: {cidr: 10.0.0.0/8}}]
+  #     ports:
+  #       - protocol: TCP
+  #         port: 443
+  egress: []
+
+# Global storage options applied across shared + per-backend PVCs (#767).
+storage:
+  # When true, every chart-owned PersistentVolumeClaim is annotated with
+  # helm.sh/resource-policy=keep so `helm uninstall` leaves the PVC in
+  # place — useful when the cluster's default StorageClass has
+  # ReclaimPolicy=Delete and you want to avoid destroying conversation
+  # logs / memory / sessions on accidental uninstall. Operators must
+  # clean the PVCs up manually if/when they choose to.
+  retainOnUninstall: false
+
+# Shared storage volume mounted into all agent pods and backend sidecars.
+sharedStorage:
+  # Enable shared storage.
+  enabled: false
+  # Mount path inside each container.
+  mountPath: /data/shared
+  # Storage type: pvc or hostPath.
+  # Use hostPath for single-node clusters (e.g. Docker Desktop).
+  # Use pvc with a ReadWriteMany-capable storage class for multi-node clusters.
+  storageType: pvc
+  # PVC storage request size.
+  size: 1Gi
+  # # Storage class name. Leave empty to use the cluster default.
+  # storageClassName: ""
+  # # PVC access modes.
+  # accessModes:
+  #   - ReadWriteMany
+  # # Name of a pre-existing PVC to use instead of creating one.
+  # existingClaim: ""
+  # # Host path on the node. Only used when storageType is hostPath.
+  # # Required when storageType is hostPath — must be a non-empty absolute path.
+  # hostPath: /tmp/witwave-shared
+
+# Chart-wide defaults applied to every agent pod when the per-agent /
+# per-backend entry does not set its own value (#553).
+#
+# Resource requests and limits default to conservative values so the chart
+# installs with Guaranteed/Burstable QoS out of the box instead of BestEffort.
+# Without requests, HPA `targetCPUUtilizationPercentage` (see `autoscaling`
+# above) is a no-op (FailedGetResourceMetric) and pods are the first to be
+# evicted under node pressure. These defaults exist so a vanilla `helm install`
+# stands on something reasonable; tune them per workload.
+#
+# Precedence:
+#   agents[].resources                            → overrides harness default
+#   agents[].backends[].resources                 → overrides backend default
+#   defaults.resources.backends.<backend-name>    → per-backend-type default,
+#                                                    keyed by backend.name
+#                                                    (claude / codex / gemini)
+#   defaults.resources.backend                    → shared fallback for any
+#                                                    backend name not listed
+#                                                    under .backends above
+#   defaults.resources.harness                    → harness container
+#
+# Set any leaf to null (`~`) to disable the default and render no resources
+# block for that container (back to pre-#553 BestEffort behaviour).
+defaults:
+  resources:
+    # harness orchestrator is pure-Python infrastructure (no LLM): small,
+    # bursty CPU and a low-memory steady state.
+    harness:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    # Shared default for any backend sidecar whose name is not listed under
+    # `backends` below. Backends run LLM clients and scale with concurrent
+    # sessions, so they need more headroom than harness.
+    backend:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+    # Per-backend-type overrides, keyed by backend.name. Users running heavy
+    # concurrency (especially on claude, whose memory scales with active
+    # Claude Code subprocess sessions) should raise these on the specific
+    # backend entry — these defaults are a soft ceiling, not a recommendation.
+    backends:
+      claude:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+      codex:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+      gemini:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+
+# Default credentials for every agents[].backends[] entry unless overridden
+# per-backend via agents[].backends[].credentials. Three mutually exclusive
+# paths, mirroring the gitSync.credentials pattern above:
+#
+#   1. existingSecret — reference a pre-created Secret with the env vars the
+#      backend needs (CLAUDE_CODE_OAUTH_TOKEN, OPENAI_API_KEY, GEMINI_API_KEY,
+#      or whatever the specific backend reads). Recommended for production.
+#
+#   2. inline secrets: {} map + acknowledgeInsecureInline=true — chart renders
+#      a Secret from the map entries and wires envFrom automatically. Dev only;
+#      tokens end up in etcd release state + `helm get values`.
+#
+#   3. empty (default) — no auth envFrom rendered. Backend starts but will
+#      fail at first LLM call. Useful for smoke-testing the harness path
+#      without exercising the LLM API.
+#
+# Chart-global defaults rarely make sense here because each backend type
+# takes different credentials — prefer per-backend `agents[].backends[].credentials`
+# over chart-global. This block exists mainly so single-backend-type
+# deployments (only claude across all agents, say) can set one token once.
+backends:
+  credentials:
+    existingSecret: ""
+    secrets: {}                  # map of env-var-name → value; dev only
+    acknowledgeInsecureInline: false
+
+# MCP tool servers (#644). Each enabled entry renders one Deployment +
+# Service in the release namespace, listening on port 8000 with
+# FastMCP's streamable-http transport. Agent backends reach them by URL
+# (http://<release>-mcp-<name>:8000) configured in each backend's
+# `.claude/mcp.json` / `.codex/mcp.json` / `.gemini/mcp.json`. This
+# matches the architectural intent in AGENTS.md that MCP components are
+# independently deployable and shared across agents.
+#
+# Disabled by default — opt in per tool. The `mcp-kubernetes` tool
+# reaches the cluster API in-cluster, so it needs a ServiceAccount with
+# appropriate RBAC (BYO via `serviceAccountName`); `mcp-helm` shells out
+# to the helm CLI and also typically needs cluster RBAC.
+mcpTools:
+  # Port the dedicated Prometheus metrics listener binds to for MCP tool
+  # pods. Renamed from metrics.port in #687 — metrics.port now only
+  # exists as a backward-compatibility shim that emits a deprecation
+  # warning. Harness and backends use app_port+1000 and do not consult
+  # either key.
+  metricsPort: 9000
+
+  kubernetes:
+    enabled: false
+    # # Three-state override (#856). When set, honoured verbatim on the
+    # # pod spec. Omit to default to true. Set to false when the pod
+    # # should reach the control plane via IRSA / workload identity
+    # # (the SA is still attached for annotations; the in-pod
+    # # projected SA token is suppressed).
+    # automountServiceAccountToken: true
+    image:
+      repository: ghcr.io/skthomasjr/images/mcp-kubernetes
+      # # Image tag. Defaults to .Chart.AppVersion when omitted.
+      # tag: ""
+      # # Immutable digest pin (#855). When set (e.g.
+      # # "sha256:abc123..."), the chart renders
+      # # `repository@<digest>` and ignores `tag`. Use this in
+      # # production to prevent silent pulls of re-tagged "latest"
+      # # images into a pod that holds a cluster ServiceAccount token.
+      # digest: ""
+      # pullPolicy: IfNotPresent
+    # # Number of replicas.
+    # replicas: 1
+    # # Pod-level ServiceAccount. When rbac.create=true the chart renders
+    # # a dedicated SA ("<release>-mcp-kubernetes") plus a minimal
+    # # read-only ClusterRole/Binding. Override to reuse a pre-existing
+    # # SA; when set the chart skips ClusterRole/Binding render too.
+    # serviceAccountName: ""
+    # # imagePullSecrets: []
+    # # resources: {}
+    # # env: []
+    # # envFrom: []
+    #
+    # # Scheduling overrides (#1116). Each field defaults to the chart-
+    # # global value of the same name (nodeSelector / tolerations /
+    # # affinity / topologySpreadConstraints / priorityClassName); set
+    # # here to override per MCP tool. Pre-#1116 these fields were
+    # # documented but silently dropped by templates/mcp-tools.yaml.
+    # nodeSelector: {}
+    # tolerations: []
+    # affinity: {}
+    # topologySpreadConstraints: []
+    # priorityClassName: ""
+    #
+    # Ship minimal RBAC by default so enabling the tool does not 403 out
+    # of the box (#762). Baseline grants read on common core/apps/batch/
+    # networking resources — adjust `rules` to widen or narrow. When
+    # create=false and no serviceAccountName is provided, chart render
+    # fails loudly rather than silently deploying a broken tool that
+    # the operator would eventually work around with cluster-admin.
+    #
+    # clusterWide (#1074): when false (the new default), the chart
+    # renders Role+RoleBinding in the release namespace so a compromise
+    # of this pod cannot pivot into other tenants' namespaces. Opt in
+    # to cluster-wide RBAC by setting clusterWide:true — the original
+    # pre-#1074 posture.
+    rbac:
+      create: true
+      clusterWide: false
+      rules:
+        - apiGroups: [""]
+          resources: ["namespaces", "pods", "services", "configmaps",
+                      "persistentvolumeclaims", "persistentvolumes",
+                      "events", "nodes"]
+          verbs: ["get", "list", "watch"]
+        - apiGroups: ["apps"]
+          resources: ["deployments", "statefulsets", "daemonsets",
+                      "replicasets"]
+          verbs: ["get", "list", "watch"]
+        - apiGroups: ["batch"]
+          resources: ["jobs", "cronjobs"]
+          verbs: ["get", "list", "watch"]
+        - apiGroups: ["networking.k8s.io"]
+          resources: ["ingresses", "networkpolicies"]
+          verbs: ["get", "list", "watch"]
+
+  helm:
+    enabled: false
+    # # Three-state override (#856). See kubernetes.automountServiceAccountToken.
+    # automountServiceAccountToken: true
+    image:
+      repository: ghcr.io/skthomasjr/images/mcp-helm
+      # tag: ""
+      # # Immutable digest pin (#855). When set, renders
+      # # `repository@<digest>` and ignores `tag`. See kubernetes.image.digest
+      # # above for the full rationale.
+      # digest: ""
+      # pullPolicy: IfNotPresent
+    # replicas: 1
+    # serviceAccountName: ""
+    # imagePullSecrets: []
+    # resources: {}
+    # env: []
+    # envFrom: []
+    #
+    # Helm's storage backend is cluster Secrets, so the tool needs
+    # Secret CRUD on the namespaces it manages, plus read on rendered
+    # resources.
+    #
+    # clusterWide (#1074): defaults to FALSE so the chart renders a
+    # Role+RoleBinding scoped to the release namespace — a compromise
+    # of mcp-helm cannot read or overwrite Secrets in other tenants'
+    # namespaces. Pre-#1074, mcp-helm ran with a cluster-wide Secret
+    # CRUD ClusterRole, which pooled privilege across every namespace
+    # in the cluster. Set clusterWide:true to opt back into the old
+    # posture (e.g. when Helm releases span multiple namespaces) and
+    # make the blast radius explicit in values.
+    rbac:
+      create: true
+      clusterWide: false
+      rules:
+        - apiGroups: [""]
+          resources: ["secrets"]
+          verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+        - apiGroups: [""]
+          resources: ["configmaps", "namespaces", "services", "serviceaccounts"]
+          verbs: ["get", "list", "watch"]
+        - apiGroups: ["apps"]
+          resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+          verbs: ["get", "list", "watch"]
+        - apiGroups: ["rbac.authorization.k8s.io"]
+          resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+          verbs: ["get", "list", "watch"]
+
+  # mcp-prometheus (#853). Wraps a Prometheus HTTP API endpoint so
+  # agents can issue PromQL queries against a deployed Prometheus
+  # instance. Unlike mcp-kubernetes / mcp-helm, this tool speaks to an
+  # out-of-cluster-or-in-cluster HTTP endpoint (set via env.PROMETHEUS_URL)
+  # rather than the apiserver — no cluster RBAC required. The chart still
+  # renders an SA for pod identity; rbac.rules is left empty by default.
+  #
+  # Grafana / Loki / OTel query surfaces are tracked as follow-up tools
+  # (#853 close comment); this entry ships only Prometheus scaffolding.
+  prometheus:
+    enabled: false
+    # # Three-state override (#856). See kubernetes.automountServiceAccountToken.
+    # automountServiceAccountToken: true
+    image:
+      repository: ghcr.io/skthomasjr/images/mcp-prometheus
+      # tag: ""
+      # # Immutable digest pin (#855).
+      # digest: ""
+      # pullPolicy: IfNotPresent
+    # replicas: 1
+    # serviceAccountName: ""
+    # imagePullSecrets: []
+    # resources: {}
+    #
+    # Point at the cluster Prometheus HTTP endpoint. Required — the tool
+    # refuses every call with a clear error until this is set.
+    env:
+      - name: PROMETHEUS_URL
+        value: ""
+      # # Optional bearer token when Prometheus is fronted by a gateway.
+      # - name: PROMETHEUS_BEARER_TOKEN
+      #   valueFrom:
+      #     secretKeyRef:
+      #       name: mcp-prometheus-auth
+      #       key: token
+    # envFrom: []
+    #
+    # Minimal RBAC — the tool does not touch the apiserver itself. An
+    # empty rules list keeps the SA in place (for logging/audit) without
+    # granting any cluster verbs. Operators who front Prometheus via an
+    # in-cluster Service can leave this untouched.
+    rbac:
+      create: true
+      clusterWide: false
+      rules: []
+
+# List of agents to deploy. Each agent runs as a single pod containing
+# the harness orchestrator and one or more backend sidecars.
+agents:
+  - # Agent name. Used as the pod name prefix, service name, and AGENT_NAME env var.
+    name: adam
+
+    # Port the harness listens on. Also used for the Service and health probes.
+    # Must be unique per agent when multiple agents share a namespace with hostPort.
+    port: 8000
+
+    # harness orchestrator image.
+    image:
+      # Image repository.
+      repository: ghcr.io/skthomasjr/images/harness
+      # # Image tag. Defaults to .Chart.AppVersion when omitted.
+      # tag: ""
+      # Image pull policy. Use Always for mutable tags (e.g. latest, beta).
+      # pullPolicy: IfNotPresent
+
+    # # Image pull secrets for private registries.
+    # imagePullSecrets:
+    #   - name: ghcr-credentials
+
+    # # Per-agent scheduling overrides (#603). Each field REPLACES the chart-global
+    # # value (nodeSelector / tolerations / affinity / topologySpreadConstraints /
+    # # priorityClassName) — same semantics as autoscaling / podDisruptionBudget.
+    # # Field names mirror the witwave-operator chart and the WitwaveAgent CRD (#605).
+    # nodeSelector:
+    #   workload-class: ai-memory-optimized
+    # tolerations:
+    #   - key: dedicated
+    #     operator: Equal
+    #     value: ai
+    #     effect: NoSchedule
+    # affinity:
+    #   podAntiAffinity:
+    #     preferredDuringSchedulingIgnoredDuringExecution:
+    #       - weight: 100
+    #         podAffinityTerm:
+    #           labelSelector:
+    #             matchLabels:
+    #               app.kubernetes.io/name: adam
+    #           topologyKey: kubernetes.io/hostname
+    # topologySpreadConstraints:
+    #   - maxSkew: 1
+    #     topologyKey: topology.kubernetes.io/zone
+    #     whenUnsatisfiable: ScheduleAnyway
+    #     labelSelector:
+    #       matchLabels:
+    #         app.kubernetes.io/name: adam
+    # priorityClassName: system-cluster-critical
+
+    # # Resource requests and limits for the harness orchestrator container.
+    # # Overrides `defaults.resources.harness` above. harness is lightweight
+    # # (pure Python, no LLM) — CPU and memory needs are low; only raise if a
+    # # single agent hosts a very large number of jobs/triggers/webhooks.
+    # resources:
+    #   requests:
+    #     cpu: 100m
+    #     memory: 256Mi
+    #   limits:
+    #     cpu: 500m
+    #     memory: 512Mi
+
+    # # Per-agent metrics override. Takes precedence over global metrics.enabled.
+    # metrics:
+    #   enabled: true
+
+    # # Git-sync sidecars. Each entry clones a git repo into /git on the pod and
+    # # keeps it in sync. All containers in the pod share the /git volume.
+    # # An init container performs the initial clone so the repo is ready before
+    # # the agent starts. Auth credentials are injected via envFrom referencing a
+    # # Secret (see git-sync docs for supported env vars, e.g.
+    # # GITSYNC_USERNAME / GITSYNC_PASSWORD for HTTPS, or mount an SSH key).
+    # gitSyncs:
+    #   - # Unique name for this git-sync sidecar.
+    #     name: autonomous-agent
+    #     # Git repository URL (HTTPS or SSH).
+    #     repo: https://github.com/org/repo
+    #     # Branch, tag, or commit SHA to sync. Defaults to HEAD.
+    #     # ref: main
+    #     # Sync interval (e.g. 30s, 1m). Defaults to 60s.
+    #     # period: 60s
+    #     # Clone depth. 1 is sufficient for config-only repos.
+    #     # depth: 1
+    #     # git-sync image. Defaults to the internal image (upstream git-sync + rsync).
+    #     # image: ghcr.io/skthomasjr/images/git-sync:latest
+    #     # Credentials for the sidecar. Three mutually exclusive paths — the
+    #     # `credentials:` block takes precedence over the legacy `envFrom:` shape
+    #     # when both are set. Leave empty to inherit top-level gitSync.credentials.
+    #     # credentials:
+    #     #   # Path 1: reference a pre-created Secret (production default).
+    #     #   existingSecret: bob-github-pat
+    #     #   # Path 2: inline dev credentials. MUST also set acknowledgeInsecureInline=true.
+    #     #   username: skthomasjr
+    #     #   token: ghp_xxxxxxxxxxxxxxxxxxxx
+    #     #   acknowledgeInsecureInline: true
+    #     #
+    #     # Legacy escape hatch — raw envFrom list for custom auth setups (SSH key
+    #     # secrets, multiple secrets, etc.) that the credentials block doesn't cover.
+    #     # envFrom:
+    #     #   - secretRef:
+    #     #       name: git-sync-credentials
+
+    # # Git mappings. After each git-sync, copies files or directories from the
+    # # synced repo into the container. Runs once at pod startup via an init
+    # # container, then again after every subsequent sync via exechook.
+    # # gitSync must match a name in gitSyncs above.
+    # gitMappings:
+    #   - # Name of the gitSync entry to source from.
+    #     gitSync: autonomous-agent
+    #     # Source path within the repo (trailing / = directory copy).
+    #     src: .agents/active/iris/.witwave/
+    #     # Destination path inside the container.
+    #     dest: /home/agent/.witwave/
+
+    # # Environment variables sourced from Secrets or ConfigMaps, injected into
+    # # the harness container.
+    # envFrom:
+    #   - secretRef:
+    #       name: adam-secrets
+
+    # # Inline config files mounted into the harness container.
+    # # Each entry is added as a key in a ConfigMap and mounted at mountPath.
+    # config:
+    #   - name: HEARTBEAT.md
+    #     mountPath: /home/agent/.witwave/HEARTBEAT.md
+    #     content: |
+    #       ---
+    #       schedule: "0 * * * *"
+    #       ---
+    #       What is the current status?
+    #   - name: agent-card.md
+    #     mountPath: /home/agent/.witwave/agent-card.md
+    #     content: |
+    #       An autonomous agent.
+
+    # Backend sidecars. Each entry deploys one backend container alongside harness.
+    backends:
+      - # Backend name. Used as the sidecar container name and backend ID in routing.
+        name: claude
+
+        # Backend container image.
+        image:
+          # Image repository.
+          repository: ghcr.io/skthomasjr/images/claude
+          # # Image tag. Defaults to .Chart.AppVersion when omitted.
+          # tag: ""
+          # # Image pull policy.
+          # pullPolicy: IfNotPresent
+
+        # Port the backend listens on. Must be unique across all backends in the same agent.
+        port: 8000
+
+        # Default model for this backend.
+        model: claude-opus-4-7
+
+        # # Resource requests and limits for this backend container.
+        # # Overrides `defaults.resources.backends.claude` above. Claude backends
+        # # spawn a Claude Code subprocess per session — memory usage scales with
+        # # concurrent sessions and context window size. CPU is bursty during
+        # # active queries but mostly idle between them. Operators running heavy
+        # # concurrency should raise memory (e.g. 2Gi limit) and CPU.
+        # resources:
+        #   requests:
+        #     cpu: 250m
+        #     memory: 512Mi
+        #   limits:
+        #     cpu: "2"
+        #     memory: 2Gi
+
+        # # Git mappings for this backend. Same semantics as agent-level gitMappings
+        # # but scoped to this backend container.
+        # gitMappings:
+        #   - gitSync: autonomous-agent
+        #     src: .agents/active/iris/.claude/
+        #     dest: /home/agent/.claude/
+
+        # # Additional environment variables injected into the backend container.
+        # # Common backend env vars:
+        # #   gemini: GEMINI_MAX_HISTORY_TURNS (max turns persisted per session; default 100; 0 = unlimited)
+        # #              SESSION_STORE_DIR (session JSON directory; default /home/agent/.gemini/memory/sessions)
+        # #              MAX_SESSIONS (LRU cache size; default 10000)
+        # #   claude: LOG_PROMPT_MAX_BYTES (max bytes of prompt logged at INFO; default 200; 0 = suppress)
+        # #   codex:  CODEX_MODEL (model override; default gpt-5.1-codex)
+        # env:
+        #   - name: GEMINI_MAX_HISTORY_TURNS
+        #     value: "100"
+
+        # # Backend credentials. Three mutually exclusive paths — see
+        # # backends.credentials top-level comment for the full picture.
+        # # credentials:
+        # #   existingSecret: adam-claude-secrets          # production default
+        # #
+        # #   # OR inline (dev only) — MUST also set acknowledgeInsecureInline=true.
+        # #   # `secrets:` is a free-form map of env-var-name → value. The backend
+        # #   # reads whichever env vars it needs (CLAUDE_CODE_OAUTH_TOKEN for
+        # #   # claude, OPENAI_API_KEY for codex, GEMINI_API_KEY for gemini).
+        # #   secrets:
+        # #     CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat-xxxxxxxxxxxxxxxxxxxx"
+        # #   acknowledgeInsecureInline: true
+        #
+        # # Legacy escape hatch — raw envFrom list for custom auth setups
+        # # (SSH-key secrets, multiple secrets, ConfigMaps, etc.) that the
+        # # credentials block doesn't cover. When both credentials and envFrom
+        # # are set, credentials takes precedence.
+        # envFrom:
+        #   - secretRef:
+        #       name: adam-claude-secrets
+
+        # # Persistent storage for this backend. A PVC named witwave-<agent>-<backend>-data
+        # # is created automatically unless existingClaim is set.
+        # storage:
+        #   # Enable persistent storage for this backend.
+        #   enabled: false
+        #   # PVC storage request size.
+        #   size: 1Gi
+        #   # # Storage class name. Leave empty to use the cluster default.
+        #   # storageClassName: ""
+        #   # # Name of a pre-existing PVC to use instead of creating one.
+        #   # existingClaim: ""
+        #   # Subdirectory mounts from the PVC into the container.
+        #   # Each entry maps a subPath within the PVC to a container mountPath.
+        #   mounts:
+        #     - subPath: projects
+        #       mountPath: /home/agent/.claude/projects
+        #     - subPath: sessions
+        #       mountPath: /home/agent/.claude/sessions
+        #     - subPath: backups
+        #       mountPath: /home/agent/.claude/backups
+        #     - subPath: memory
+        #       mountPath: /home/agent/.claude/memory   # or .codex/memory / .gemini/memory for those backends
+
+        # # Inline config files mounted into the backend container.
+        # # Each entry is added as a key in a ConfigMap and mounted at mountPath.
+        # config:
+        #   - name: agent-card.md
+        #     mountPath: /home/agent/.claude/agent-card.md
+        #     content: |
+        #       An autonomous agent named adam.
+        #   - name: CLAUDE.md
+        #     mountPath: /home/agent/.claude/CLAUDE.md
+        #     content: |
+        #       # adam
+        #       You are adam, an autonomous agent.
+        #   - name: hello.md
+        #     mountPath: /home/agent/.claude/skills/hello.md
+        #     content: |
+        #       ---
+        #       name: hello
+        #       description: A dummy skill.
+        #       version: 1.0.0
+        #       ---
+        #       Say hello.
+        #   - name: mcp.json
+        #     mountPath: /home/agent/.claude/mcp.json
+        #     content: |
+        #       {
+        #         "mcpServers": {}
+        #       }
+        #   - name: settings.json
+        #     mountPath: /home/agent/.claude/settings.json
+        #     content: |
+        #       {}

@@ -14,7 +14,7 @@ A simpler approach: create a trigger whose content instructs the agent to respon
 Create a trigger for this test:
 
 ```
-cat > .agents/test/bob/.nyx/triggers/error-test-trigger.md << 'EOF'
+cat > .agents/test/bob/.witwave/triggers/error-test-trigger.md << 'EOF'
 ---
 name: Error Test Trigger
 description: Trigger for testing continuation on-error vs on-success behavior.
@@ -27,7 +27,7 @@ EOF
 Create the success-only continuation (default behavior):
 
 ```
-cat > .agents/test/bob/.nyx/continuations/on-success-test.md << 'EOF'
+cat > .agents/test/bob/.witwave/continuations/on-success-test.md << 'EOF'
 ---
 name: On Success Test
 description: Should fire only on success.
@@ -42,7 +42,7 @@ EOF
 Create the error-only continuation:
 
 ```
-cat > .agents/test/bob/.nyx/continuations/on-error-test.md << 'EOF'
+cat > .agents/test/bob/.witwave/continuations/on-error-test.md << 'EOF'
 ---
 name: On Error Test
 description: Should fire only on error — not expected to fire in this test.
@@ -75,9 +75,9 @@ Poll the conversation log at `.agents/test/bob/logs/conversation.jsonl` every 2 
 ## Cleanup
 
 ```
-rm .agents/test/bob/.nyx/triggers/error-test-trigger.md
-rm .agents/test/bob/.nyx/continuations/on-success-test.md
-rm .agents/test/bob/.nyx/continuations/on-error-test.md
+rm .agents/test/bob/.witwave/triggers/error-test-trigger.md
+rm .agents/test/bob/.witwave/continuations/on-success-test.md
+rm .agents/test/bob/.witwave/continuations/on-error-test.md
 ```
 
 ## Pass/Fail Criteria

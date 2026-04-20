@@ -1,0 +1,26 @@
+apiVersion: witwave.ai/v1alpha1
+kind: WitwaveAgent
+metadata:
+  labels:
+    app.kubernetes.io/name: operator
+    app.kubernetes.io/managed-by: kustomize
+  name: adam
+spec:
+  port: 8000
+  image:
+    repository: ghcr.io/skthomasjr/images/harness
+    # tag defaults to the operator's DefaultImageTag when unset
+  metrics:
+    enabled: false
+  backends:
+    - name: claude
+      image:
+        repository: ghcr.io/skthomasjr/images/claude
+      port: 8000
+      model: claude-opus-4-6
+      # envFrom references a Secret the user creates separately, e.g.
+      # kubectl create secret generic adam-claude-secrets \
+      #   --from-literal=ANTHROPIC_API_KEY=sk-ant-...
+      # envFrom:
+      #   - secretRef:
+      #       name: adam-claude-secrets

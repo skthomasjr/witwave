@@ -1,0 +1,76 @@
+{{- /* storage.retainOnUninstall (#767): when true, mark chart-owned PVCs
+       with helm.sh/resource-policy=keep so `helm uninstall` leaves them
+       in-place. Default is false (existing behavior — PVCs are deleted
+       on uninstall, which on clusters with ReclaimPolicy=Delete
+       permanently removes conversation logs, memory, sessions). */}}
+{{- $retainStorage := (.Values.storage).retainOnUninstall | default false }}
+{{- if and .Values.sharedStorage.enabled (eq .Values.sharedStorage.storageType "pvc") (not .Values.sharedStorage.existingClaim) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-shared
+  {{- if $retainStorage }}
+  annotations:
+    helm.sh/resource-policy: keep
+  {{- end }}
+  labels:
+    # #1225: include name + managed-by so the operator's backend-PVC
+    # cleanup sweep (which matches on app.kubernetes.io/name + managed-by)
+    # can distinguish this shared-storage PVC from a backend PVC and
+    # skip it via the component label. Matches the operator's
+    # sharedStorageLabels pattern (componentSharedStorage distinguishes
+    # it from backend claims that share the same name/managed-by).
+    app.kubernetes.io/name: {{ .Release.Name }}
+    app.kubernetes.io/component: shared-storage
+    app.kubernetes.io/part-of: witwave
+    app.kubernetes.io/managed-by: witwave
+spec:
+  accessModes:
+    {{- if .Values.sharedStorage.accessModes }}
+    {{- toYaml .Values.sharedStorage.accessModes | nindent 4 }}
+    {{- else }}
+    - ReadWriteMany
+    {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.sharedStorage.size | default "1Gi" }}
+  {{- if .Values.sharedStorage.storageClassName }}
+  storageClassName: {{ .Values.sharedStorage.storageClassName }}
+  {{- end }}
+{{- end }}
+{{- range .Values.agents }}
+{{- if eq (include "witwave.enabled" .) "true" }}
+{{- $agentName := .name }}
+{{- range .backends }}
+{{- if eq (include "witwave.enabled" .) "true" }}
+{{- if and (.storage).enabled (not (.storage).existingClaim) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $.Release.Name }}-{{ $agentName }}-{{ .name }}-data
+  {{- if $retainStorage }}
+  annotations:
+    helm.sh/resource-policy: keep
+  {{- end }}
+  labels:
+    {{- include "witwave.backendLabels" (dict "agentName" $agentName "backendName" .name "root" $) | nindent 4 }}
+spec:
+  accessModes:
+    {{- if (.storage).accessModes }}
+    {{- toYaml (.storage).accessModes | nindent 4 }}
+    {{- else }}
+    - ReadWriteOnce
+    {{- end }}
+  resources:
+    requests:
+      storage: {{ (.storage).size | default "1Gi" }}
+  {{- if (.storage).storageClassName }}
+  storageClassName: {{ (.storage).storageClassName }}
+  {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

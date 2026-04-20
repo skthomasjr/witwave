@@ -22,7 +22,7 @@ resources:
 # default, aiding admins in cluster management. Those roles are
 # not used by the operator itself. You can comment the following lines
 # if you do not want those helpers be installed with your Project.
-- nyxagent_admin_role.yaml
-- nyxagent_editor_role.yaml
-- nyxagent_viewer_role.yaml
+- witwaveagent_admin_role.yaml
+- witwaveagent_editor_role.yaml
+- witwaveagent_viewer_role.yaml
 

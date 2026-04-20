@@ -10,8 +10,8 @@ import { ref, watch } from "vue";
 // degradation: if localStorage is unavailable (private mode, quota)
 // we still drive the in-memory UI, we just don't persist.
 
-const PINS_KEY = "nyx.team.pinnedAgents";
-const ONLY_DEGRADED_KEY = "nyx.team.onlyDegraded";
+const PINS_KEY = "witwave.team.pinnedAgents";
+const ONLY_DEGRADED_KEY = "witwave.team.onlyDegraded";
 
 function readPins(): string[] {
   try {

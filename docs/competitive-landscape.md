@@ -334,7 +334,7 @@ infrastructure (notable community trend: a Mac Mini hardware rush for 24/7 hosti
 Signal / Telegram / Discord / WhatsApp. Connects to Claude, DeepSeek, and OpenAI models.
 
 **Kubernetes posture:** A dedicated `openclaw-rocks/openclaw-operator` explicitly offers "production-grade security,
-observability, and lifecycle management" — a direct parallel to this project's nyx-operator. AWS published a "Run
+observability, and lifecycle management" — a direct parallel to this project's witwave-operator. AWS published a "Run
 OpenClaw on Amazon Lightsail" blog; NVIDIA shipped **NemoClaw** safety tooling for it. Security posture is a
 publicly-acknowledged weakness (third-party skills remote-code-execution, exposed instances).
 
@@ -561,7 +561,7 @@ _Last updated: 2026-04-07 by local-agent_
   consumed by the web dashboard today and by the `ww` CLI + future mobile clients. Most competitors' event
   observability is coupled to their proprietary UI (AgentCore console, LangSmith, Devin IDE embed); publishing
   it as a first-class multi-client contract is the remaining edge. Remaining gap: per-agent RED / USE
-  dashboards bundled as default Grafana JSON (partially started via `charts/nyx/dashboards/`).
+  dashboards bundled as default Grafana JSON (partially started via `charts/witwave/dashboards/`).
 
 - **Safety and guardrails:** Microsoft released the Agent Governance Toolkit (April 2, 2026, MIT license) — the first
   toolkit to address all 10 OWASP Agentic Top 10 risks with deterministic, sub-millisecond policy enforcement. OWASP
@@ -592,10 +592,10 @@ _Last updated: 2026-04-07 by local-agent_
   agent identity** — Claude / Codex / Gemini behind `backend.yaml` routing rules with per-concern dispatch
   (heartbeat to claude, jobs to codex, etc.) is unique in the Kubernetes-native OSS set; competitors are
   mostly single-framework (kagent on AutoGen) or single-model. (2) **Scheduler primitive breadth** — jobs,
-  tasks, heartbeats, triggers, continuations, webhooks as first-class `.nyx/` frontmatter files. kagent
+  tasks, heartbeats, triggers, continuations, webhooks as first-class `.witwave/` frontmatter files. kagent
   and OpenClaw don't ship equivalents. (3) **Per-agent cross-pod topology** — harness + backends + shared
   MCP tools is a production-ready shape that OpenClaw's single-agent framing doesn't match. (4)
-  **Declarative CRD lifecycle via `NyxAgent` + `NyxPrompt`** going through a dedicated operator with
+  **Declarative CRD lifecycle via `WitwaveAgent` + `WitwavePrompt`** going through a dedicated operator with
   status phases, finalizers, and multi-tenant manifest ConfigMaps. kagent is closer to ours on this axis
   but uses CRDs only for agent definition, not prompt lifecycle.
 

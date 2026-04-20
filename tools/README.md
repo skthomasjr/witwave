@@ -6,7 +6,7 @@ Model Context Protocol and is consumed by backends via their MCP configuration
 (`mcp.json` under `.claude/`, `.codex/`, or `.gemini/` — all three backends use
 the same wire format).
 
-MCP servers are designed to run inside the Kubernetes cluster where nyx is
+MCP servers are designed to run inside the Kubernetes cluster where witwave is
 deployed and operate against that cluster via in-cluster credentials
 (ServiceAccount token + RBAC). They are shared infrastructure — one deployment
 typically serves every agent in the cluster rather than being replicated
@@ -41,7 +41,7 @@ the startup log is loud on purpose.
 
 ## Chart schema coverage (#973)
 
-`charts/nyx/values.schema.json` now validates `mcpTools.<name>.rbac.{create,rules}` so a typo in the RBAC
+`charts/witwave/values.schema.json` now validates `mcpTools.<name>.rbac.{create,rules}` so a typo in the RBAC
 block fails `helm template` / `helm install --dry-run` loudly instead of silently yielding a tool pod with
 a ServiceAccount but no Role binding.
 
@@ -52,7 +52,7 @@ liveness / readiness probes.
 
 ## Digest pinning (#855)
 
-The `nyx` Helm chart accepts a `digest` field alongside `repository`/`tag`
+The `witwave` Helm chart accepts a `digest` field alongside `repository`/`tag`
 on every MCP tool (`mcpTools.<name>.image.digest`). When set the template
 renders `repository@<digest>` and `tag` is ignored. Prefer an immutable
 digest over a rolling tag in production: MCP pods typically hold a

@@ -84,7 +84,7 @@ Create a Kubernetes secret with the required credentials before deploying:
 ```bash
 kubectl create secret generic <agent>-codex-secrets \
   --from-literal=OPENAI_API_KEY=sk-... \
-  --namespace nyx
+  --namespace witwave
 ```
 
 Reference the secret in your Helm values:

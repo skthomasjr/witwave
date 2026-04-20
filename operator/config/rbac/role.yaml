@@ -77,35 +77,6 @@ rules:
   - update
   - watch
 - apiGroups:
-  - nyx.ai
-  resources:
-  - nyxagents
-  - nyxprompts
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - nyx.ai
-  resources:
-  - nyxagents/finalizers
-  - nyxprompts/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - nyx.ai
-  resources:
-  - nyxagents/status
-  - nyxprompts/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
   - policy
   resources:
   - poddisruptionbudgets
@@ -117,3 +88,32 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - witwave.ai
+  resources:
+  - witwaveagents
+  - witwaveprompts
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - witwave.ai
+  resources:
+  - witwaveagents/finalizers
+  - witwaveprompts/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - witwave.ai
+  resources:
+  - witwaveagents/status
+  - witwaveprompts/status
+  verbs:
+  - get
+  - patch
+  - update

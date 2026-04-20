@@ -1,0 +1,736 @@
+{{- /* Guard: backend names must be unique within each agent. Mirrors the
+       operator's `validateBackendNamesUnique` admission webhook so the
+       chart rendering path refuses the same mistake it rejects via
+       admission control. Duplicates would silently cause one backend's
+       Deployment-embedded container + PVC + ConfigMap to shadow the
+       other's (every owned resource embeds backend name in its own name). */}}
+{{- range .Values.agents }}
+{{- $agentName := .name }}
+{{- $seen := dict }}
+{{- range .backends }}
+{{- if hasKey $seen .name }}
+{{- fail (printf "agents[%q].backends: duplicate name %q — backend names must be unique per agent (Service/PVC/ConfigMap names embed the backend name; duplicates silently shadow each other)" $agentName .name) }}
+{{- end }}
+{{- $_ := set $seen .name true }}
+{{- end }}
+{{- end }}
+{{- /* Guard: reject unreplaced `REPLACE_ME*` placeholders on any security-
+       sensitive env var (#760). values-test.yaml ships literal REPLACE_ME_
+       tokens that are not empty strings — they pass the existing "is this
+       set?" checks and boot with a deterministic, publicly-known shared
+       secret. Fail-render instead so `helm install -f values-test.yaml`
+       without editing values refuses to produce output. Inspected keys are
+       the ones that gate trigger/webhook/CORS/hook endpoints; extend this
+       list whenever a new auth env var lands. */}}
+{{- $sensitiveEnvKeys := list
+    "TRIGGERS_AUTH_TOKEN"
+    "WEBHOOK_TEST_BEARER"
+    "HOOK_EVENTS_AUTH_TOKEN"
+    "HARNESS_EVENTS_AUTH_TOKEN"
+    "ADHOC_RUN_AUTH_TOKEN"
+    "CONVERSATIONS_AUTH_TOKEN"
+    "BACKEND_CONVERSATIONS_AUTH_TOKEN" }}
+{{- /* Shared backend credentials default — inline secrets resolved from
+       chart-global `backends.credentials.secrets` (#1022). Checked once
+       outside the per-agent loop because its REPLACE_ME value would
+       otherwise leak through to every backend that doesn't override
+       credentials. */}}
+{{- $defBackendSecrets := dict }}
+{{- if and (.Values.backends) (.Values.backends).credentials }}
+{{- if (.Values.backends).credentials.secrets }}
+{{- $defBackendSecrets = .Values.backends.credentials.secrets }}
+{{- end }}
+{{- end }}
+{{- range $k, $v := $defBackendSecrets }}
+{{- if has $k $sensitiveEnvKeys }}
+{{- if hasPrefix "REPLACE_ME" ($v | toString) }}
+{{- fail (printf "backends.credentials.secrets[%q] still carries a REPLACE_ME placeholder (%q) — generate a real token before deploying. See #760, #1022." $k ($v | toString)) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- range .Values.agents }}
+{{- $agentName := .name }}
+{{- range $i, $e := .env }}
+{{- if and (hasKey $e "name") (hasKey $e "value") }}
+{{- if has $e.name $sensitiveEnvKeys }}
+{{- if hasPrefix "REPLACE_ME" ($e.value | toString) }}
+{{- fail (printf "agents[%q].env[%q] still carries a REPLACE_ME placeholder (%q) — generate a real token (e.g. `openssl rand -hex 32`) before deploying. See #760." $agentName $e.name ($e.value | toString)) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- /* #1022 + #1072: valueFrom.secretKeyRef bypass. Any env entry (not
+       just the sensitive-key allow-list) may reference a denylisted
+       placeholder Secret; #1072 widened this from REPLACE_ME-only to
+       REPLACE_ME + *-test-* + witwave-test-credentials because operators
+       rename the env key but leave the Secret name unchanged. */}}
+{{- if and (hasKey $e "name") (hasKey $e "valueFrom") }}
+{{- $vf := $e.valueFrom }}
+{{- if $vf.secretKeyRef }}
+{{- $skr := $vf.secretKeyRef }}
+{{- $refName := ($skr.name | default "" | toString) }}
+{{- $refKey := ($skr.key | default "" | toString) }}
+{{- if has $e.name $sensitiveEnvKeys }}
+{{- if or (hasPrefix "REPLACE_ME" $refName) (hasPrefix "REPLACE_ME" $refKey) }}
+{{- fail (printf "agents[%q].env[%q].valueFrom.secretKeyRef points at a REPLACE_ME-shaped reference (name=%q, key=%q) — replace the placeholder Secret/key with a real one before deploying. See #1022." $agentName $e.name $refName $refKey) }}
+{{- end }}
+{{- end }}
+{{- include "witwave.assertSecretRefSafe" (dict "name" $refName "context" (printf "agents[%q].env[%d] (%q).valueFrom.secretKeyRef" $agentName $i $e.name)) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- /* #1072: envFrom[].secretRef.name denylist. envFrom pulls every key
+       from a Secret into the container environment, so a
+       placeholder-named Secret is the most obvious production-vs-test
+       bypass and it was not inspected at all before #1072. */}}
+{{- range $i, $ef := (.envFrom | default list) }}
+{{- if $ef.secretRef }}
+{{- $refName := ($ef.secretRef.name | default "" | toString) }}
+{{- include "witwave.assertSecretRefSafe" (dict "name" $refName "context" (printf "agents[%q].envFrom[%d].secretRef" $agentName $i)) }}
+{{- end }}
+{{- end }}
+{{- /* #1072: gitSyncs[].envFrom[].secretRef.name denylist. gitSync
+       credentials land as GITSYNC_USERNAME/PASSWORD in the sidecar
+       container; a placeholder Secret there leaks repo access. */}}
+{{- range $gsi, $gs := (.gitSyncs | default list) }}
+{{- range $i, $ef := ($gs.envFrom | default list) }}
+{{- if $ef.secretRef }}
+{{- $refName := ($ef.secretRef.name | default "" | toString) }}
+{{- include "witwave.assertSecretRefSafe" (dict "name" $refName "context" (printf "agents[%q].gitSyncs[%d].envFrom[%d].secretRef" $agentName $gsi $i)) }}
+{{- end }}
+{{- end }}
+{{- if $gs.credentials }}
+{{- $existing := ($gs.credentials.existingSecret | default "" | toString) }}
+{{- include "witwave.assertSecretRefSafe" (dict "name" $existing "context" (printf "agents[%q].gitSyncs[%d].credentials.existingSecret" $agentName $gsi)) }}
+{{- end }}
+{{- end }}
+{{- range .backends }}
+{{- $backendName := .name }}
+{{- range $i, $e := (.env | default list) }}
+{{- if and (hasKey $e "name") (hasKey $e "value") }}
+{{- if has $e.name $sensitiveEnvKeys }}
+{{- if hasPrefix "REPLACE_ME" ($e.value | toString) }}
+{{- fail (printf "agents[%q].backends[%q].env[%q] still carries a REPLACE_ME placeholder (%q) — generate a real token before deploying. See #760." $agentName $backendName $e.name ($e.value | toString)) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- /* #1022 + #1072: valueFrom.secretKeyRef check on backend env. */}}
+{{- if and (hasKey $e "name") (hasKey $e "valueFrom") }}
+{{- $vf := $e.valueFrom }}
+{{- if $vf.secretKeyRef }}
+{{- $skr := $vf.secretKeyRef }}
+{{- $refName := ($skr.name | default "" | toString) }}
+{{- $refKey := ($skr.key | default "" | toString) }}
+{{- if has $e.name $sensitiveEnvKeys }}
+{{- if or (hasPrefix "REPLACE_ME" $refName) (hasPrefix "REPLACE_ME" $refKey) }}
+{{- fail (printf "agents[%q].backends[%q].env[%q].valueFrom.secretKeyRef points at a REPLACE_ME-shaped reference (name=%q, key=%q) — replace the placeholder Secret/key with a real one before deploying. See #1022." $agentName $backendName $e.name $refName $refKey) }}
+{{- end }}
+{{- end }}
+{{- include "witwave.assertSecretRefSafe" (dict "name" $refName "context" (printf "agents[%q].backends[%q].env[%d] (%q).valueFrom.secretKeyRef" $agentName $backendName $i $e.name)) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- /* #1072: backend envFrom[].secretRef denylist. */}}
+{{- range $i, $ef := (.envFrom | default list) }}
+{{- if $ef.secretRef }}
+{{- $refName := ($ef.secretRef.name | default "" | toString) }}
+{{- include "witwave.assertSecretRefSafe" (dict "name" $refName "context" (printf "agents[%q].backends[%q].envFrom[%d].secretRef" $agentName $backendName $i)) }}
+{{- end }}
+{{- end }}
+{{- /* #1072: backends[].credentials.existingSecret denylist. */}}
+{{- if .credentials }}
+{{- $existing := (.credentials.existingSecret | default "" | toString) }}
+{{- include "witwave.assertSecretRefSafe" (dict "name" $existing "context" (printf "agents[%q].backends[%q].credentials.existingSecret" $agentName $backendName)) }}
+{{- end }}
+{{- /* #1022: inline backend credentials (stringData in the chart-rendered
+       Secret) bypass the `.env` guard because they land in the pod via
+       envFrom. Walk the resolved inline secrets map for REPLACE_ME values
+       on sensitive keys. */}}
+{{- $bCreds := (.credentials | default dict) }}
+{{- $bSecrets := $bCreds.secrets | default $defBackendSecrets | default dict }}
+{{- range $k, $v := $bSecrets }}
+{{- if has $k $sensitiveEnvKeys }}
+{{- if hasPrefix "REPLACE_ME" ($v | toString) }}
+{{- fail (printf "agents[%q].backends[%q].credentials.secrets[%q] still carries a REPLACE_ME placeholder (%q) — generate a real token before deploying. See #760, #1022." $agentName $backendName $k ($v | toString)) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- /* Guard: reject embedded credentials in gitSyncs[].repo (#1077).
+       A URL shaped `https://user:token@host/org/repo` lands in the pod
+       spec, helm release state (`helm get values`, sh.helm.release.v1.*
+       Secret), apiserver audit logs (CREATE Pod request body), and
+       every operator's `kubectl get pod -oyaml` — none of which
+       tolerate token exposure. The only safe wiring is an env var
+       fed from a Secret via envFrom, which git-sync reads as
+       GITSYNC_USERNAME / GITSYNC_PASSWORD. Fail render if the repo
+       URL itself carries credentials so the footgun can't slip
+       through. Regex matches `proto://[any-non-slash]:[any-non-slash]@`. */}}
+{{- range .Values.agents }}
+{{- $agentName := .name }}
+{{- range $gsi, $gs := (.gitSyncs | default list) }}
+{{- $repo := ($gs.repo | default "" | toString) }}
+{{- if $repo }}
+{{- if regexMatch `^https?://[^/]*:[^/]*@` $repo }}
+{{- fail (printf "agents[%q].gitSyncs[%d].repo=%q carries embedded credentials (https://user:token@...) — this URL is persisted to the pod spec, the helm release Secret (helm get values / sh.helm.release.v1.*), and apiserver audit logs. Move the token to a Secret and wire it via gitSyncs[].envFrom or gitSyncs[].credentials so git-sync picks it up as GITSYNC_USERNAME / GITSYNC_PASSWORD (#1077)." $agentName $gsi $repo) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- /* Guard: CORS + ingress interaction (#763). `*` or wildcard origins
+       combined with `allow_credentials=true` (the harness's default when
+       any CORS origin is configured) let browser JS on arbitrary origins
+       call /triggers and /conversations with credentials. When ingress
+       is enabled we refuse to render a wildcard so operators can't copy
+       the dev-test pattern into production. Set `cors.allowOrigins: []`
+       (empty) to disable CORS entirely. */}}
+{{- if (.Values.cors).allowOrigins }}
+{{- if .Values.ingress.enabled }}
+{{- range .Values.cors.allowOrigins }}
+{{- if or (eq . "*") (hasPrefix "*" (. | toString)) }}
+{{- fail (printf "cors.allowOrigins[] contains %q while ingress.enabled is true — wildcard CORS with credentials is a disclosure hole (see #763). Use explicit origins (e.g. https://witwave.example) or disable ingress." .) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- /* Guard: when preStop is enabled, preStop.delaySeconds must be strictly
+       less than terminationGracePeriodSeconds so SIGTERM actually fires with
+       enough remaining grace for A2A requests, jobs, and webhook deliveries
+       to drain before SIGKILL (#547, mirrors #512). */}}
+{{- if .Values.preStop.enabled }}
+{{- /* Compute the effective delay once using the hasKey-branch pattern so the
+       guard and the two preStop command sites see the same value (#1262). The
+       prior `| default 5` in the command sites collapsed an explicit 0 to 5,
+       disagreeing with this guard which read the raw value. */}}
+{{- $preStopDelay := 5 }}
+{{- if hasKey .Values.preStop "delaySeconds" }}{{- $preStopDelay = .Values.preStop.delaySeconds }}{{- end }}
+{{- if ge (int $preStopDelay) (int (.Values.terminationGracePeriodSeconds | default 60)) }}
+{{- fail (printf "preStop.delaySeconds (%d) must be strictly less than terminationGracePeriodSeconds (%d)" (int $preStopDelay) (int (.Values.terminationGracePeriodSeconds | default 60))) }}
+{{- end }}
+{{- end }}
+{{- range .Values.agents }}
+{{- if eq (include "witwave.enabled" .) "true" }}
+{{- $agentAutoscaling := dict }}
+{{- if .autoscaling }}
+{{- $agentAutoscaling = .autoscaling }}
+{{- else if $.Values.autoscaling }}
+{{- $agentAutoscaling = $.Values.autoscaling }}
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $.Release.Name }}-{{ .name }}
+  labels:
+    {{- include "witwave.agentLabels" (dict "name" .name "root" $) | nindent 4 }}
+spec:
+  {{- if not $agentAutoscaling.enabled }}
+  replicas: 1
+  {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .name }}
+  template:
+    metadata:
+      labels:
+        {{- /* Pod labels (#477): user podLabels first, then canonical agent
+              labels on top so selectors never drift. Keys that collide with
+              the Deployment selector keys (app.kubernetes.io/name / component
+              / part-of / managed-by) are dropped from the user map — the
+              operator applies the exact same rule. */}}
+        {{- $reservedKeys := list "app.kubernetes.io/name" "app.kubernetes.io/component" "app.kubernetes.io/part-of" "app.kubernetes.io/managed-by" }}
+        {{- range $k, $v := .podLabels }}
+        {{- if not (has $k $reservedKeys) }}
+        {{ $k }}: {{ $v | quote }}
+        {{- end }}
+        {{- end }}
+        {{- include "witwave.agentLabels" (dict "name" .name "root" $) | nindent 8 }}
+      {{- /* Resolve metrics + podAnnotations toggles. hasKey is required
+            because sprig's `default` treats `false` as empty, so the
+            obvious `((.metrics).podAnnotations | default $.Values.metrics.podAnnotations)`
+            pattern fails when the per-agent override is explicitly false
+            (#472, #1018). */}}
+      {{- $metricsOn := $.Values.metrics.enabled }}
+      {{- if (.metrics) }}{{- if hasKey .metrics "enabled" }}{{- $metricsOn = .metrics.enabled }}{{- end }}{{- end }}
+      {{- $podAnnOn := $.Values.metrics.podAnnotations }}
+      {{- if (.metrics) }}{{- if hasKey .metrics "podAnnotations" }}{{- $podAnnOn = .metrics.podAnnotations }}{{- end }}{{- end }}
+      {{- $meshAnn := include "witwave.serviceMeshPodAnnotations" (dict "root" $) }}
+      {{- if or .podAnnotations (and $metricsOn $podAnnOn) $meshAnn }}
+      annotations:
+        {{- if and $metricsOn $podAnnOn }}
+        prometheus.io/scrape: "true"
+        # The harness and backend metrics listeners bind at
+        # app_port+1000 (#643). Advertise the harness port here since
+        # scrape-annotations only support one port value; operators
+        # wanting per-backend scrape should use a ServiceMonitor or
+        # PodMonitor instead (#687).
+        prometheus.io/port: {{ add (int (.port | default 8000)) 1000 | quote }}
+        prometheus.io/path: "/metrics"
+        {{- end }}
+        {{- /* #1121: service-mesh sidecar-injection annotations, rendered
+               uniformly across every pod template in the chart. */}}
+        {{- with $meshAnn }}
+        {{- . | trim | nindent 8 }}
+        {{- end }}
+        {{- with .podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
+    spec:
+      terminationGracePeriodSeconds: {{ $.Values.terminationGracePeriodSeconds | default 60 }}
+      {{- /* ServiceAccount + automount (#538). Defaults match the operator:
+            no SA → token not mounted (hardened); SA set → token auto-mounted
+            so in-cluster MCP tools can reach the Kubernetes API.
+            automountServiceAccountToken on the spec always wins. */}}
+      {{- if .serviceAccountName }}
+      serviceAccountName: {{ .serviceAccountName }}
+      {{- end }}
+      {{- if hasKey . "automountServiceAccountToken" }}
+      automountServiceAccountToken: {{ .automountServiceAccountToken }}
+      {{- else if .serviceAccountName }}
+      automountServiceAccountToken: true
+      {{- else }}
+      automountServiceAccountToken: false
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      {{- if .imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml .imagePullSecrets | nindent 8 }}
+      {{- end }}
+      {{- if .gitSyncs }}
+      {{- $agent := . }}
+      initContainers:
+        {{- range .gitSyncs }}
+        - name: git-sync-init-{{ .name }}
+          image: {{ .image | default (include "witwave.gitSyncImage" $) }}
+          securityContext:
+            {{- include "witwave.hardenedContainerSecurityContext" (dict "root" $) | nindent 12 }}
+          {{- /* #1077: --repo moved to GITSYNC_REPO env so the URL is not
+                 stamped into args. Args still land in the pod spec but
+                 operators are far more likely to add secret-scrubbing to
+                 env-based paths than to arbitrary positional flags. */}}
+          args:
+            - --root=/git
+            - --one-time
+            {{- if .ref }}
+            - --ref={{ .ref }}
+            {{- end }}
+            {{- if .depth }}
+            - --depth={{ .depth | toString }}
+            {{- end }}
+          env:
+            - name: GITSYNC_REPO
+              value: {{ .repo | quote }}
+            {{- /* #1265: point HOME at a per-pod path under /git (the
+                   git-sync data volume) so git's ~/.gitconfig / credential
+                   helper scratch files land alongside the clone and not
+                   in the emptyDir shared with unrelated containers. */}}
+            - name: HOME
+              value: /git/.home
+          {{- include "witwave.renderGitSyncEnvFrom" (dict "gs" . "agent" $agent "default" (($.Values.gitSync).credentials | default dict) "release" $.Release.Name) | nindent 10 }}
+          volumeMounts:
+            - name: git-sync-data
+              mountPath: /git
+            # #1265: git-sync /tmp is isolated from the pod-wide witwave-tmp.
+            - name: witwave-tmp-gitsync
+              mountPath: /tmp
+        {{- end }}
+        {{- if include "witwave.hasMappings" $agent }}
+        - name: git-map-init
+          image: {{ include "witwave.gitSyncImage" $ }}
+          securityContext:
+            {{- include "witwave.hardenedContainerSecurityContext" (dict "root" $) | nindent 12 }}
+          command: ["/bin/sh", "/witwave-scripts/git-sync.sh"]
+          env:
+            - name: HOME
+              value: /git/.home
+          volumeMounts:
+            - name: git-sync-data
+              mountPath: /git
+            # #1265: git-sync /tmp is isolated from the pod-wide witwave-tmp.
+            - name: witwave-tmp-gitsync
+              mountPath: /tmp
+            {{- include "witwave.gitMappingMounts" (dict "agent" $agent "release" $.Release.Name) | nindent 12 }}
+        {{- end }}
+      {{- end }}
+      containers:
+        {{- if .gitSyncs }}
+        {{- $agent := . }}
+        {{- range .gitSyncs }}
+        - name: git-sync-{{ .name }}
+          image: {{ .image | default (include "witwave.gitSyncImage" $) }}
+          securityContext:
+            {{- include "witwave.hardenedContainerSecurityContext" (dict "root" $) | nindent 12 }}
+          {{- /* #1077: --repo moved to GITSYNC_REPO env; see initContainer. */}}
+          args:
+            - --root=/git
+            - --period={{ .period | default "60s" }}
+            {{- if .ref }}
+            - --ref={{ .ref }}
+            {{- end }}
+            {{- if .depth }}
+            - --depth={{ .depth | toString }}
+            {{- end }}
+            {{- if include "witwave.hasMappings" $agent }}
+            - --exechook-command=/witwave-scripts/git-sync.sh
+            {{- end }}
+          env:
+            - name: GITSYNC_REPO
+              value: {{ .repo | quote }}
+            - name: HOME
+              value: /git/.home
+          {{- include "witwave.renderGitSyncEnvFrom" (dict "gs" . "agent" $agent "default" (($.Values.gitSync).credentials | default dict) "release" $.Release.Name) | nindent 10 }}
+          volumeMounts:
+            - name: git-sync-data
+              mountPath: /git
+            # #1265: git-sync /tmp is isolated from the pod-wide witwave-tmp.
+            - name: witwave-tmp-gitsync
+              mountPath: /tmp
+            {{- if include "witwave.hasMappings" $agent }}
+            {{- include "witwave.gitMappingMounts" (dict "agent" $agent "release" $.Release.Name) | nindent 12 }}
+            {{- end }}
+        {{- end }}
+        {{- end }}
+        - name: harness
+          image: {{ .image.repository }}:{{ .image.tag | default $.Chart.AppVersion }}
+          imagePullPolicy: {{ .image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            {{- include "witwave.hardenedContainerSecurityContext" (dict "root" $) | nindent 12 }}
+          {{- if $.Values.preStop.enabled }}
+          lifecycle:
+            preStop:
+              exec:
+                # Sleep before SIGTERM to give in-flight A2A requests, jobs,
+                # and webhook deliveries a coordinated drain window (#447).
+                # Use the hasKey-branch pattern so an explicit 0 (disable
+                # the sleep) is not silently collapsed to 5 by
+                # `| default 5` (#1261, #1262).
+                command: ["/bin/sh", "-c", "sleep {{- if hasKey $.Values.preStop "delaySeconds" }} {{ $.Values.preStop.delaySeconds }}{{- else }} 5{{- end }}"]
+          {{- end }}
+          {{- $harnessMetricsPort := add (int (.port | default 8000)) 1000 }}
+          ports:
+            - name: http
+              containerPort: {{ .port | default 8000 }}
+            {{- if $metricsOn }}
+            # Dedicated Prometheus metrics listener (#643); split from the
+            # app port so NetworkPolicy / auth can differ. Per-container
+            # offset = app_port + 1000 so colocated containers in the same
+            # pod don't fight for a shared port.
+            - name: metrics
+              containerPort: {{ $harnessMetricsPort }}
+            {{- end }}
+          # startupProbe gives the harness a long grace window on cold-start
+          # before readiness/liveness begin enforcing (#580). Points at the
+          # same endpoint as readiness; kubelet suspends readiness/liveness
+          # until this succeeds once.
+          startupProbe:
+            httpGet:
+              path: /health/ready
+              port: {{ .port | default 8000 }}
+            initialDelaySeconds: {{ $.Values.probes.startup.initialDelaySeconds }}
+            periodSeconds: {{ $.Values.probes.startup.periodSeconds }}
+            timeoutSeconds: {{ $.Values.probes.startup.timeoutSeconds }}
+            failureThreshold: {{ $.Values.probes.startup.failureThreshold }}
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: {{ .port | default 8000 }}
+            initialDelaySeconds: {{ $.Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ $.Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ $.Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ $.Values.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: {{ .port | default 8000 }}
+            initialDelaySeconds: {{ $.Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ $.Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ $.Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ $.Values.probes.readiness.failureThreshold }}
+          {{- $harnessResources := include "witwave.harnessResources" (dict "agent" . "Values" $.Values) }}
+          {{- if $harnessResources }}
+          resources:
+            {{- $harnessResources | nindent 12 }}
+          {{- end }}
+          env:
+            - name: AGENT_NAME
+              value: {{ .name }}
+            - name: HARNESS_PORT
+              value: {{ .port | default 8000 | quote }}
+            - name: METRICS_ENABLED
+              value: {{ $metricsOn | toString | quote }}
+            - name: METRICS_PORT
+              value: {{ $harnessMetricsPort | quote }}
+            {{- include "witwave.otelEnv" (dict "root" $ "serviceName" (printf "harness-%s" .name)) | nindent 12 }}
+            {{- /* Surface cors.allowOrigins as CORS_ALLOW_ORIGINS (#763) so
+                   operators set this via a first-class chart value rather
+                   than hand-rolling an env entry per agent. Per-agent .env
+                   still wins: the later-merged entry overrides this one
+                   when both are set. */}}
+            {{- if ($.Values.cors).allowOrigins }}
+            - name: CORS_ALLOW_ORIGINS
+              value: {{ join "," $.Values.cors.allowOrigins | quote }}
+            {{- end }}
+            {{- if .env }}
+            {{- toYaml .env | nindent 12 }}
+            {{- end }}
+          {{- if .envFrom }}
+          envFrom:
+            {{- toYaml .envFrom | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: witwave-tmp
+              mountPath: /tmp
+            - name: manifest
+              mountPath: /home/agent/manifest.json
+              subPath: manifest.json
+            {{- if .gitSyncs }}
+            - name: git-sync-data
+              mountPath: /git
+            {{- end }}
+            {{- $agentNameForGM := .name }}
+            {{- range .gitMappings }}
+            - name: {{ include "witwave.gmVolumeName" (dict "agentName" $agentNameForGM "context" "agent" "dest" .dest) }}
+              mountPath: {{ .dest }}
+            {{- end }}
+            {{- range .config }}
+            - name: harness-config
+              mountPath: {{ .mountPath }}
+              subPath: {{ .name }}
+            {{- end }}
+            {{- if $.Values.sharedStorage.enabled }}
+            - name: witwave-shared
+              mountPath: {{ $.Values.sharedStorage.mountPath }}
+            {{- end }}
+{{- $agentName := .name }}
+{{- /* Per-agent metrics.enabled override must honour explicit `false` (#1018).
+       sprig's `default` treats `false` as empty so the obvious
+       `(.metrics).enabled | default $.Values.metrics.enabled` silently
+       re-enables metrics on an opted-out agent. */}}
+{{- $agentMetricsEnabled := $.Values.metrics.enabled }}
+{{- if (.metrics) }}{{- if hasKey .metrics "enabled" }}{{- $agentMetricsEnabled = .metrics.enabled }}{{- end }}{{- end }}
+{{- $hasGitSyncs := .gitSyncs }}
+{{- $harnessPort := .port | default 8000 }}
+{{- range .backends }}
+{{- if eq (include "witwave.enabled" .) "true" }}
+{{- $storageEnabled := ((.storage).enabled) }}
+        - name: {{ .name }}
+          image: {{ .image.repository }}:{{ .image.tag | default $.Chart.AppVersion }}
+          imagePullPolicy: {{ .image.pullPolicy | default "IfNotPresent" }}
+          securityContext:
+            {{- include "witwave.hardenedContainerSecurityContext" (dict "root" $) | nindent 12 }}
+          {{- if $.Values.preStop.enabled }}
+          lifecycle:
+            preStop:
+              exec:
+                # Sleep before SIGTERM to give in-flight backend queries a
+                # coordinated drain window (#447). Use the hasKey-branch
+                # pattern so an explicit 0 is not silently collapsed to 5
+                # by `| default 5` (#1261, #1262).
+                command: ["/bin/sh", "-c", "sleep {{- if hasKey $.Values.preStop "delaySeconds" }} {{ $.Values.preStop.delaySeconds }}{{- else }} 5{{- end }}"]
+          {{- end }}
+          {{- $backendMetricsPort := add (int .port) 1000 }}
+          ports:
+            - name: http
+              containerPort: {{ .port }}
+            {{- if $agentMetricsEnabled }}
+            # Dedicated Prometheus metrics listener (#643). Per-container
+            # offset = app_port + 1000 so colocated pod containers bind
+            # distinct ports within the shared network namespace.
+            - name: metrics
+              containerPort: {{ $backendMetricsPort }}
+            {{- end }}
+          # startupProbe gives the backend a long grace window on cold-start
+          # before readiness/liveness begin enforcing (#580). Backends pay
+          # SDK import cost + MCP server handshakes on first boot; without
+          # this, readiness can flap during warm-up.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: {{ .port }}
+            initialDelaySeconds: {{ $.Values.probes.startup.initialDelaySeconds }}
+            periodSeconds: {{ $.Values.probes.startup.periodSeconds }}
+            timeoutSeconds: {{ $.Values.probes.startup.timeoutSeconds }}
+            failureThreshold: {{ $.Values.probes.startup.failureThreshold }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .port }}
+            initialDelaySeconds: {{ $.Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ $.Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ $.Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ $.Values.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .port }}
+            initialDelaySeconds: {{ $.Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ $.Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ $.Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ $.Values.probes.readiness.failureThreshold }}
+          {{- $backendResources := include "witwave.backendResources" (dict "backend" . "Values" $.Values) }}
+          {{- if $backendResources }}
+          resources:
+            {{- $backendResources | nindent 12 }}
+          {{- end }}
+          env:
+            - name: AGENT_NAME
+              value: {{ $agentName }}-{{ .name }}
+            - name: AGENT_OWNER
+              value: {{ $agentName }}
+            - name: AGENT_ID
+              value: {{ .name }}
+            - name: AGENT_URL
+              value: http://localhost:{{ .port }}
+            - name: BACKEND_PORT
+              value: {{ .port | quote }}
+            - name: METRICS_ENABLED
+              value: {{ $agentMetricsEnabled | toString | quote }}
+            - name: METRICS_PORT
+              value: {{ $backendMetricsPort | quote }}
+            # Backend→harness transport for hook.decision events (#641).
+            # #1329: points at the harness metrics port because the
+            # receiving route /internal/events/hook-decision is bound
+            # to the dedicated metrics listener (#924) when
+            # metrics.enabled=true (the default). Prior default pointed
+            # at the app port and 404'd every POST.  Empty string
+            # disables the POST cleanly; the in-process OTel span event
+            # emission from #633 still fires regardless.
+            # #1330: HOOK_EVENTS_AUTH_TOKEN must be set on BOTH the
+            # harness (receiver) and the backend (sender) — the
+            # harness explicitly refuses a TRIGGERS_AUTH_TOKEN fallback
+            # (see harness/main.py line 266, related #700). Pass the
+            # shared secret via envFrom/SecretRef on both containers.
+            - name: HARNESS_EVENTS_URL
+              value: http://localhost:{{ $harnessMetricsPort }}
+            {{- if .model }}
+            - name: BACKEND_MODEL
+              value: {{ .model | quote }}
+            {{- end }}
+            {{- include "witwave.otelEnv" (dict "root" $ "serviceName" (printf "%s-%s" $agentName .name)) | nindent 12 }}
+            {{- if .env }}
+            {{- toYaml .env | nindent 12 }}
+            {{- end }}
+          {{- include "witwave.renderBackendEnvFrom" (dict "backend" . "agent" (dict "name" $agentName) "default" (($.Values.backends).credentials | default dict) "release" $.Release.Name) | nindent 10 }}
+          volumeMounts:
+            - name: witwave-tmp
+              mountPath: /tmp
+            {{- if $storageEnabled }}
+            {{- $backendNameForStorage := .name }}
+            {{- range (.storage).mounts }}
+            - name: {{ $agentName }}-{{ $backendNameForStorage }}-storage
+              mountPath: {{ .mountPath }}
+              subPath: {{ .subPath }}
+            {{- end }}
+            {{- end }}
+            {{- if $hasGitSyncs }}
+            - name: git-sync-data
+              mountPath: /git
+            {{- end }}
+            {{- $backendName := .name }}
+            {{- range .gitMappings }}
+            - name: {{ include "witwave.gmVolumeName" (dict "agentName" $agentName "context" $backendName "dest" .dest) }}
+              mountPath: {{ .dest }}
+            {{- end }}
+            {{- if $.Values.sharedStorage.enabled }}
+            - name: witwave-shared
+              mountPath: {{ $.Values.sharedStorage.mountPath }}
+            {{- end }}
+            {{- $backendName := .name }}
+            {{- range .config }}
+            - name: {{ $backendName }}-config
+              mountPath: {{ .mountPath }}
+              subPath: {{ .name }}
+            {{- end }}
+{{- end }}
+{{- end }}
+      {{- /* Scheduling controls (#603). Each field is resolved per-agent first,
+             falling back to the chart-global value. Per-agent replaces global
+             (not merge) — matches the existing autoscaling / podDisruptionBudget
+             semantics. Mirrors the witwave-operator chart's value names exactly so
+             WitwaveAgent → chart translation is 1:1 (pairs with #605). */}}
+      {{- with (.nodeSelector | default $.Values.nodeSelector) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (.tolerations | default $.Values.tolerations) }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (.affinity | default $.Values.affinity) }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (.topologySpreadConstraints | default $.Values.topologySpreadConstraints) }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (.priorityClassName | default $.Values.priorityClassName) }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      volumes:
+        - name: manifest
+          configMap:
+            name: {{ $.Release.Name }}-manifest
+        {{- /* #1073: emptyDir for /tmp so readOnlyRootFilesystem=true
+               doesn't break Python's tempfile / uv / git-sync temp writes.
+               Mounted on every container/initContainer in the pod. */}}
+        - name: witwave-tmp
+          emptyDir: {}
+        {{- if .gitSyncs }}
+        - name: git-sync-data
+          emptyDir: {}
+        {{- /* Dedicated /tmp for git-sync (#1265). Previously git-sync
+               shared the pod-wide `witwave-tmp` emptyDir with the harness and
+               every backend; a hostile commit's post-clone hook or any
+               transient tempfile from git-sync leaked into filesystem
+               views the app containers already trust. Scoping git-sync's
+               /tmp to its own emptyDir closes that seam. Only the
+               git-sync init + sidecar mount this volume. */}}
+        - name: witwave-tmp-gitsync
+          emptyDir: {}
+        {{- end }}
+        {{- if .config }}
+        - name: harness-config
+          configMap:
+            name: {{ $.Release.Name }}-{{ .name }}-config
+        {{- end }}
+        {{- range .backends }}
+        {{- if eq (include "witwave.enabled" .) "true" }}
+        {{- if (.storage).enabled }}
+        - name: {{ $agentName }}-{{ .name }}-storage
+          persistentVolumeClaim:
+            claimName: {{ (.storage).existingClaim | default (printf "%s-%s-%s-data" $.Release.Name $agentName .name) }}
+        {{- end }}
+        {{- if .config }}
+        - name: {{ .name }}-config
+          configMap:
+            name: {{ $.Release.Name }}-{{ $agentName }}-{{ .name }}-config
+        {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- if $.Values.sharedStorage.enabled }}
+        - name: witwave-shared
+          {{- if eq $.Values.sharedStorage.storageType "hostPath" }}
+          {{- if not $.Values.sharedStorage.hostPath }}
+          {{- fail "sharedStorage.hostPath must be set when storageType is hostPath" }}
+          {{- end }}
+          hostPath:
+            path: {{ $.Values.sharedStorage.hostPath }}
+            type: {{ $.Values.sharedStorage.hostPathType | default "DirectoryOrCreate" }}
+          {{- else }}
+          persistentVolumeClaim:
+            claimName: {{ $.Values.sharedStorage.existingClaim | default (printf "%s-shared" $.Release.Name) }}
+          {{- end }}
+        {{- end }}
+        {{- if include "witwave.hasMappings" . }}
+        {{- include "witwave.gitMappingVolumes" (dict "agent" . "release" $.Release.Name) | nindent 8 }}
+        {{- end }}
+{{- end }}
+{{- end }}

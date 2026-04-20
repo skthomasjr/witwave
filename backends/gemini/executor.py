@@ -2609,7 +2609,7 @@ class AgentExecutor(A2AAgentExecutor):
                         )
                         continue
                     # #814: URL-shaped MCP entries (production in-cluster
-                    # Services such as http://nyx-mcp-kubernetes:8000) now
+                    # Services such as http://witwave-mcp-kubernetes:8000) now
                     # map to FastMCP's streamable-http transport, with SSE
                     # as a fallback for servers that predate streamable-http.
                     # Claude and codex already branch on this shape; gemini

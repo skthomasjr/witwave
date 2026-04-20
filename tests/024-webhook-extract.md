@@ -7,7 +7,7 @@ This test verifies the LLM extraction pipeline: the webhook runner sends the con
 `{{response_preview}}` substituted in) plus the extraction prompt to the backend LLM, uses the response as a
 variable, and substitutes it into the `body:` template before POSTing.
 
-The webhook fixture is `.agents/test/bob/.nyx/webhooks/test-extract.md`. It fires when a response contains
+The webhook fixture is `.agents/test/bob/.witwave/webhooks/test-extract.md`. It fires when a response contains
 `WEBHOOK_EXTRACT_FIRE` and:
 
 1. Substitutes `{{response_preview}}` into the markdown body (which becomes the extraction context).

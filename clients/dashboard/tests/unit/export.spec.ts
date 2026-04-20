@@ -35,7 +35,7 @@ describe("csvEscape", () => {
 
 describe("timestamped", () => {
   it("returns prefix-YYYYMMDD-HHMMSS.ext", () => {
-    const out = timestamped("nyx-conversations", "csv");
-    expect(out).toMatch(/^nyx-conversations-\d{8}-\d{6}\.csv$/);
+    const out = timestamped("witwave-conversations", "csv");
+    expect(out).toMatch(/^witwave-conversations-\d{8}-\d{6}\.csv$/);
   });
 });

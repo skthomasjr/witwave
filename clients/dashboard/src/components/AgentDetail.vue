@@ -17,9 +17,9 @@ const emit = defineEmits<{
   (e: "select-backend", backendId: string): void;
 }>();
 
-const nyxAgent = computed(() => props.member?.agents.find((a) => a.role === "nyx") ?? null);
+const witwaveAgent = computed(() => props.member?.agents.find((a) => a.role === "witwave") ?? null);
 const backends = computed(() => props.member?.agents.filter((a) => a.role === "backend") ?? []);
-const descriptionHtml = computed(() => renderMarkdown(nyxAgent.value?.card?.description));
+const descriptionHtml = computed(() => renderMarkdown(witwaveAgent.value?.card?.description));
 </script>
 
 <template>
@@ -33,7 +33,7 @@ const descriptionHtml = computed(() => renderMarkdown(nyxAgent.value?.card?.desc
         <span class="detail-url">{{ member.url }}</span>
       </header>
 
-      <section v-if="nyxAgent?.card?.description" class="detail-section">
+      <section v-if="witwaveAgent?.card?.description" class="detail-section">
         <div class="detail-desc" v-html="descriptionHtml" />
       </section>
 
@@ -62,7 +62,7 @@ const descriptionHtml = computed(() => renderMarkdown(nyxAgent.value?.card?.desc
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--nyx-muted);
+  color: var(--witwave-muted);
   font-size: 11px;
 }
 
@@ -82,26 +82,26 @@ const descriptionHtml = computed(() => renderMarkdown(nyxAgent.value?.card?.desc
   display: flex;
   align-items: baseline;
   gap: 12px;
-  border-bottom: 1px solid var(--nyx-border);
+  border-bottom: 1px solid var(--witwave-border);
 }
 
 .detail-title {
   font-size: 1rem;
-  color: var(--nyx-bright);
+  color: var(--witwave-bright);
   letter-spacing: 0.04em;
   margin: 0;
   font-weight: 600;
 }
 
 .detail-url {
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   font-size: 11px;
   word-break: break-all;
 }
 
 .detail-desc {
   font-size: 12px;
-  color: var(--nyx-text);
+  color: var(--witwave-text);
   line-height: 1.6;
   margin: 0;
 }
@@ -118,7 +118,7 @@ const descriptionHtml = computed(() => renderMarkdown(nyxAgent.value?.card?.desc
 .detail-desc :deep(h2),
 .detail-desc :deep(h3) {
   font-size: 12px;
-  color: var(--nyx-bright);
+  color: var(--witwave-bright);
   margin: 8px 0 4px;
 }
 
@@ -133,14 +133,14 @@ const descriptionHtml = computed(() => renderMarkdown(nyxAgent.value?.card?.desc
 }
 
 .detail-desc :deep(code) {
-  background: var(--nyx-border);
+  background: var(--witwave-border);
   border-radius: 3px;
   padding: 1px 4px;
   font-size: 11px;
 }
 
 .detail-desc :deep(a) {
-  color: var(--nyx-accent);
+  color: var(--witwave-accent);
   text-decoration: none;
 }
 
@@ -158,34 +158,34 @@ const descriptionHtml = computed(() => renderMarkdown(nyxAgent.value?.card?.desc
   grid-template-columns: 160px 1fr auto;
   gap: 10px;
   padding: 6px 10px;
-  border: 1px solid var(--nyx-border);
-  border-radius: var(--nyx-radius);
+  border: 1px solid var(--witwave-border);
+  border-radius: var(--witwave-radius);
   font-size: 11px;
-  background: var(--nyx-surface);
+  background: var(--witwave-surface);
 }
 
 .detail-list li.is-active {
-  border-color: var(--nyx-accent);
+  border-color: var(--witwave-accent);
 }
 
 .detail-list-id {
-  color: var(--nyx-bright);
+  color: var(--witwave-bright);
 }
 
 .detail-list-url {
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   word-break: break-all;
 }
 
 .detail-list-state {
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   font-size: 10px;
   text-transform: uppercase;
 }
 
 .detail-note {
   font-size: 11px;
-  color: var(--nyx-muted);
+  color: var(--witwave-muted);
   margin: 0;
 }
 </style>

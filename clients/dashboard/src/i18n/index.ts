@@ -10,7 +10,7 @@ import en from "./locales/en.json";
 // Locale resolution order:
 //   1. `VITE_LOCALE` build-time env (for CI builds or opinionated
 //      deployments)
-//   2. `window.__NYX_CONFIG__.locale` runtime injection (for helm/
+//   2. `window.__WITWAVE_CONFIG__.locale` runtime injection (for helm/
 //      configmap-driven deploys)
 //   3. Browser `navigator.language`
 //   4. Fallback `en`
@@ -34,8 +34,8 @@ function detectLocale(): SupportedLocale {
   }
   if (typeof window !== "undefined") {
     const runtime = (window as unknown as {
-      __NYX_CONFIG__?: { locale?: string };
-    }).__NYX_CONFIG__?.locale;
+      __WITWAVE_CONFIG__?: { locale?: string };
+    }).__WITWAVE_CONFIG__?.locale;
     if (runtime && runtime in messages) {
       return runtime as SupportedLocale;
     }

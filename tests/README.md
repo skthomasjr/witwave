@@ -1,7 +1,7 @@
 # Smoke tests
 
-End-to-end smoke tests for the nyx autonomous agent platform, exercised against a running test deployment of the
-`nyx` Helm chart with `values-test.yaml` (agents `bob` and `fred` in the `nyx` namespace).
+End-to-end smoke tests for the witwave autonomous agent platform, exercised against a running test deployment of the
+`witwave` Helm chart with `values-test.yaml` (agents `bob` and `fred` in the `witwave` namespace).
 
 ## Running
 
@@ -48,7 +48,7 @@ decision so the reviewer can tell skip-from-spec apart from skip-from-absent-fix
 
 The harness rejects every trigger POST that lacks either a per-trigger HMAC secret or a Bearer token matching
 `TRIGGERS_AUTH_TOKEN` (security-by-default since 2026-04-12). The test stack ships `TRIGGERS_AUTH_TOKEN=smoke-test-token`
-in bob's environment via `charts/nyx/values-test.yaml`, plus webhook env vars (`WEBHOOK_TEST_HOST`,
+in bob's environment via `charts/witwave/values-test.yaml`, plus webhook env vars (`WEBHOOK_TEST_HOST`,
 `WEBHOOK_TEST_URL_FEATURE_SINK`, `WEBHOOK_TEST_URL_WEBHOOK_SINK`, `WEBHOOK_TEST_TOKEN`, `WEBHOOK_TEST_BEARER`).
 Smoke tests use:
 

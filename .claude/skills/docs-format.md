@@ -25,8 +25,8 @@ If the caller specified a list of files, format only those. If no files were spe
 - `<repo-root>/tools/README.md`
 - `<repo-root>/tools/kubernetes/README.md`
 - `<repo-root>/tools/helm/README.md`
-- `<repo-root>/charts/nyx/README.md`
-- `<repo-root>/charts/nyx-operator/README.md`
+- `<repo-root>/charts/witwave/README.md`
+- `<repo-root>/charts/witwave-operator/README.md`
 - `<repo-root>/tests/README.md`
 - `<repo-root>/docs/**/*.md`
 

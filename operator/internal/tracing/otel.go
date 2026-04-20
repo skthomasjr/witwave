@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package tracing — OpenTelemetry bootstrap for the nyx-operator (#471 part B).
+// Package tracing — OpenTelemetry bootstrap for the witwave-operator (#471 part B).
 //
 // Mirrors the Python-side shared/otel.py shape: a single InitOTel that is a
 // no-op unless OTEL_ENABLED is truthy, plus a Tracer() helper that always
@@ -24,7 +24,7 @@ limitations under the License.
 // Standard OTel env vars apply unchanged: OTEL_EXPORTER_OTLP_ENDPOINT,
 // OTEL_TRACES_SAMPLER, etc. Resource attributes added on top:
 //
-//	service.name=nyx-operator (overridable via OTEL_SERVICE_NAME)
+//	service.name=witwave-operator (overridable via OTEL_SERVICE_NAME)
 //	k8s.namespace (POD_NAMESPACE if set)
 //	k8s.pod.name  (POD_NAME if set)
 package tracing
@@ -49,9 +49,9 @@ import (
 const (
 	// TracerName is the package-level name for the operator's tracer.
 	// All spans emitted by the operator come from this tracer.
-	TracerName = "github.com/nyx-ai/nyx-operator"
+	TracerName = "github.com/witwave-ai/witwave-operator"
 
-	defaultServiceName = "nyx-operator"
+	defaultServiceName = "witwave-operator"
 )
 
 // enabledEnv reports whether OTel should be initialised. Mirrors the Python

@@ -451,13 +451,13 @@ const exportColumns = [
   "text",
 ];
 function onExportJson(): void {
-  exportJson(filtered.value, timestamped("nyx-conversations", "json"));
+  exportJson(filtered.value, timestamped("witwave-conversations", "json"));
 }
 function onExportCsv(): void {
   exportCsv(
     filtered.value as unknown as Record<string, unknown>[],
     exportColumns,
-    timestamped("nyx-conversations", "csv"),
+    timestamped("witwave-conversations", "csv"),
   );
 }
 
@@ -652,15 +652,15 @@ const activeItemCount = computed(() =>
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--nyx-border);
-  background: var(--nyx-surface);
+  border-bottom: 1px solid var(--witwave-border);
+  background: var(--witwave-surface);
   flex-shrink: 0;
   flex-wrap: wrap;
 }
 
 .title {
   font-size: 12px;
-  color: var(--nyx-bright);
+  color: var(--witwave-bright);
   text-transform: uppercase;
   letter-spacing: 0.07em;
   margin: 0;
@@ -670,35 +670,35 @@ const activeItemCount = computed(() =>
 .search {
   flex: 1;
   min-width: 200px;
-  background: var(--nyx-bg);
-  border: 1px solid var(--nyx-border);
-  color: var(--nyx-text);
-  font-family: var(--nyx-mono);
+  background: var(--witwave-bg);
+  border: 1px solid var(--witwave-border);
+  color: var(--witwave-text);
+  font-family: var(--witwave-mono);
   font-size: 11px;
   padding: 4px 8px;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
 }
 
 .select {
-  background: var(--nyx-bg);
-  border: 1px solid var(--nyx-border);
-  color: var(--nyx-text);
-  font-family: var(--nyx-mono);
+  background: var(--witwave-bg);
+  border: 1px solid var(--witwave-border);
+  color: var(--witwave-text);
+  font-family: var(--witwave-mono);
   font-size: 11px;
   padding: 4px 8px;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
   cursor: pointer;
 }
 
 .search:focus,
 .select:focus {
   outline: none;
-  border-color: var(--nyx-accent);
+  border-color: var(--witwave-accent);
 }
 
 .count {
   font-size: 10px;
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
 }
 
 .pill {
@@ -706,7 +706,7 @@ const activeItemCount = computed(() =>
   align-items: center;
   gap: 4px;
   font-size: 10px;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
   padding: 2px 6px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -714,18 +714,18 @@ const activeItemCount = computed(() =>
 }
 
 .pill-live {
-  color: var(--nyx-green, #3fb950);
-  border: 1px solid var(--nyx-green, #3fb950);
+  color: var(--witwave-green, #3fb950);
+  border: 1px solid var(--witwave-green, #3fb950);
 }
 
 .pill-reconnecting {
-  color: var(--nyx-yellow, #d29922);
-  border: 1px solid var(--nyx-yellow, #d29922);
+  color: var(--witwave-yellow, #d29922);
+  border: 1px solid var(--witwave-yellow, #d29922);
 }
 
 .pill-polling {
-  color: var(--nyx-red, #f85149);
-  border: 1px solid var(--nyx-red, #f85149);
+  color: var(--witwave-red, #f85149);
+  border: 1px solid var(--witwave-red, #f85149);
 }
 
 .degraded {
@@ -733,9 +733,9 @@ const activeItemCount = computed(() =>
   align-items: center;
   gap: 4px;
   font-size: 10px;
-  color: var(--nyx-red);
-  border: 1px solid var(--nyx-red);
-  border-radius: var(--nyx-radius);
+  color: var(--witwave-red);
+  border: 1px solid var(--witwave-red);
+  border-radius: var(--witwave-radius);
   padding: 2px 6px;
   cursor: help;
   white-space: nowrap;
@@ -743,18 +743,18 @@ const activeItemCount = computed(() =>
 
 .refresh {
   background: none;
-  border: 1px solid var(--nyx-border);
-  color: var(--nyx-dim);
+  border: 1px solid var(--witwave-border);
+  color: var(--witwave-dim);
   padding: 4px 10px;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
 }
 
 .refresh:hover:not(:disabled) {
-  color: var(--nyx-text);
-  border-color: var(--nyx-muted);
+  color: var(--witwave-text);
+  border-color: var(--witwave-muted);
 }
 
 .refresh:disabled {
@@ -773,13 +773,13 @@ const activeItemCount = computed(() =>
 
 .state {
   padding: 30px;
-  color: var(--nyx-muted);
+  color: var(--witwave-muted);
   font-size: 11px;
   text-align: center;
 }
 
 .state-error {
-  color: var(--nyx-red);
+  color: var(--witwave-red);
 }
 
 .cm {
@@ -803,37 +803,37 @@ const activeItemCount = computed(() =>
   display: flex;
   gap: 10px;
   font-size: 10px;
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .meta-team {
-  color: var(--nyx-accent);
+  color: var(--witwave-accent);
 }
 
 .meta-model {
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
 }
 
 .meta-trace {
-  color: var(--nyx-accent);
+  color: var(--witwave-accent);
   text-decoration: none;
   letter-spacing: 0.04em;
 }
 
 .meta-trace:hover {
-  color: var(--nyx-bright);
+  color: var(--witwave-bright);
   text-decoration: underline;
 }
 
 .bbl {
-  background: var(--nyx-surface);
-  border: 1px solid var(--nyx-border);
-  border-radius: var(--nyx-radius);
+  background: var(--witwave-surface);
+  border: 1px solid var(--witwave-border);
+  border-radius: var(--witwave-radius);
   padding: 8px 12px;
   font-size: 12px;
-  color: var(--nyx-text);
+  color: var(--witwave-text);
   line-height: 1.55;
   word-break: break-word;
 }
@@ -846,9 +846,9 @@ const activeItemCount = computed(() =>
 }
 
 .cm.user .bbl {
-  background: color-mix(in srgb, var(--nyx-accent) 18%, var(--nyx-surface));
-  border-color: color-mix(in srgb, var(--nyx-accent) 35%, var(--nyx-border));
-  color: var(--nyx-bright);
+  background: color-mix(in srgb, var(--witwave-accent) 18%, var(--witwave-surface));
+  border-color: color-mix(in srgb, var(--witwave-accent) 35%, var(--witwave-border));
+  color: var(--witwave-bright);
 }
 
 .cm.agent .bbl :deep(p) {
@@ -861,24 +861,24 @@ const activeItemCount = computed(() =>
 .cm.agent .bbl :deep(h2),
 .cm.agent .bbl :deep(h3) {
   font-size: 12px;
-  color: var(--nyx-bright);
+  color: var(--witwave-bright);
   margin: 8px 0 4px;
 }
 .cm.agent .bbl :deep(code) {
-  background: var(--nyx-border);
+  background: var(--witwave-border);
   border-radius: 3px;
   padding: 1px 4px;
   font-size: 11px;
 }
 .cm.agent .bbl :deep(pre) {
-  background: var(--nyx-bg);
-  border: 1px solid var(--nyx-border);
-  border-radius: var(--nyx-radius);
+  background: var(--witwave-bg);
+  border: 1px solid var(--witwave-border);
+  border-radius: var(--witwave-radius);
   padding: 8px 10px;
   overflow-x: auto;
 }
 .cm.agent .bbl :deep(a) {
-  color: var(--nyx-accent);
+  color: var(--witwave-accent);
   text-decoration: none;
 }
 
@@ -895,7 +895,7 @@ const activeItemCount = computed(() =>
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: var(--nyx-muted);
+  background: var(--witwave-muted);
   animation: typing-pulse 1.2s infinite ease-in-out;
 }
 

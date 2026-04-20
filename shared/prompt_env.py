@@ -62,7 +62,7 @@ def _config() -> tuple[bool, list[str]]:
     )
     allowlist_raw = os.environ.get("PROMPT_ENV_ALLOWLIST", "") or ""
     # Split on commas; strip whitespace; drop empties. Each entry is a prefix
-    # OR a glob (supports ``*`` and ``?``). Example: ``NYX_*,DEPLOY_ENV``.
+    # OR a glob (supports ``*`` and ``?``). Example: ``WITWAVE_*,DEPLOY_ENV``.
     allow = [p.strip() for p in allowlist_raw.split(",") if p.strip()]
     return enabled, allow
 

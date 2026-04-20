@@ -37,7 +37,7 @@ describe("OTelTracesView", () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     // Scrub any runtime-injected trace URL left behind by a previous test.
-    delete (window as unknown as { __NYX_CONFIG__?: unknown }).__NYX_CONFIG__;
+    delete (window as unknown as { __WITWAVE_CONFIG__?: unknown }).__WITWAVE_CONFIG__;
   });
 
   it("falls back to in-cluster mode when no trace URL is set", async () => {
@@ -140,16 +140,16 @@ describe("OTelTracesView", () => {
     expect(drawer.text()).toContain("deadbeef");
   });
 
-  it("honours window.__NYX_CONFIG__.traceApiUrl over in-cluster fallback (#826)", async () => {
+  it("honours window.__WITWAVE_CONFIG__.traceApiUrl over in-cluster fallback (#826)", async () => {
     // Runtime-injected config should win: fetch must target the external
     // base URL, not the /api/team in-cluster fan-out. Cross-origin URL
     // requires the explicit opt-in flag (#1061) — otherwise the same-origin
     // guard rejects it to keep CSP connect-src in sync with the feature.
     (
       window as unknown as {
-        __NYX_CONFIG__: { traceApiUrl: string; traceApiAllowCrossOrigin: boolean };
+        __WITWAVE_CONFIG__: { traceApiUrl: string; traceApiAllowCrossOrigin: boolean };
       }
-    ).__NYX_CONFIG__ = {
+    ).__WITWAVE_CONFIG__ = {
       traceApiUrl: "https://tempo.example:16686",
       traceApiAllowCrossOrigin: true,
     };
@@ -185,9 +185,9 @@ describe("OTelTracesView", () => {
     // opt-in (#1061).
     (
       window as unknown as {
-        __NYX_CONFIG__: { traceApiUrl: string; traceApiAllowCrossOrigin: boolean };
+        __WITWAVE_CONFIG__: { traceApiUrl: string; traceApiAllowCrossOrigin: boolean };
       }
-    ).__NYX_CONFIG__ = {
+    ).__WITWAVE_CONFIG__ = {
       traceApiUrl: "http://jaeger.test",
       traceApiAllowCrossOrigin: true,
     };

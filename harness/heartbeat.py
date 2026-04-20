@@ -27,10 +27,10 @@ from watchfiles import awatch
 
 logger = logging.getLogger(__name__)
 
-HEARTBEAT_PATH = os.environ.get("HEARTBEAT_PATH", "/home/agent/.nyx/HEARTBEAT.md")
+HEARTBEAT_PATH = os.environ.get("HEARTBEAT_PATH", "/home/agent/.witwave/HEARTBEAT.md")
 DEFAULT_SCHEDULE = "*/30 * * * *"
 HEARTBEAT_DIR = os.path.dirname(HEARTBEAT_PATH)
-AGENT_NAME = os.environ.get("AGENT_NAME", "nyx")
+AGENT_NAME = os.environ.get("AGENT_NAME", "witwave")
 # #1390: deterministic uuid5 derived from AGENT_NAME. In multi-tenant
 # deployments where agent names are public (visible via /agents or
 # k8s manifest), SESSION_ID_SECRET must be set so downstream

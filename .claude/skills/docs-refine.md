@@ -23,8 +23,8 @@ The documents covered by this skill are:
 - `<repo-root>/tools/README.md` — MCP component index
 - `<repo-root>/tools/kubernetes/README.md` — mcp-kubernetes MCP server
 - `<repo-root>/tools/helm/README.md` — mcp-helm MCP server
-- `<repo-root>/charts/nyx/README.md` — nyx Helm chart (agents)
-- `<repo-root>/charts/nyx-operator/README.md` — nyx-operator Helm chart
+- `<repo-root>/charts/witwave/README.md` — witwave Helm chart (agents)
+- `<repo-root>/charts/witwave-operator/README.md` — witwave-operator Helm chart
 - `<repo-root>/tests/README.md` — smoke-test suite index
 - `<repo-root>/docs/` — all files, including the `prompts/` subdirectory
 

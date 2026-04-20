@@ -8,7 +8,7 @@ import vue from "@vitejs/plugin-vue";
 //
 // VITE_TEAM is a JSON string like:
 //   [{"name":"bob","url":"http://localhost:8099"},{"name":"fred","url":"http://localhost:8098"}]
-// Each URL should point at a kubectl port-forward of that agent's nyx service.
+// Each URL should point at a kubectl port-forward of that agent's witwave service.
 // When VITE_TEAM is unset only static routes serve; /api/* won't work.
 
 interface TeamEntry {

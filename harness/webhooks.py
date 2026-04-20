@@ -57,8 +57,8 @@ from utils import parse_duration, parse_frontmatter, run_awatch_loop
 
 logger = logging.getLogger(__name__)
 
-WEBHOOKS_DIR = os.environ.get("WEBHOOKS_DIR", "/home/agent/.nyx/webhooks")
-AGENT_NAME = os.environ.get("AGENT_NAME", "nyx")
+WEBHOOKS_DIR = os.environ.get("WEBHOOKS_DIR", "/home/agent/.witwave/webhooks")
+AGENT_NAME = os.environ.get("AGENT_NAME", "witwave")
 
 
 def _publish_webhook_event(
@@ -1185,9 +1185,9 @@ async def deliver(
         "webhook.deliver",
         kind="client",
         attributes={
-            "nyx.webhook.name": sub.name,
-            "nyx.kind": kind,
-            "nyx.session_id": session_id,
+            "witwave.webhook.name": sub.name,
+            "witwave.kind": kind,
+            "witwave.session_id": session_id,
             "http.url": url,
         },
     ) as _span:
@@ -1443,10 +1443,10 @@ async def _deliver_hook_decision(
         "webhook.hook_decision",
         kind="client",
         attributes={
-            "nyx.webhook.name": sub.name,
-            "nyx.hook.decision": context.get("decision", ""),
-            "nyx.hook.tool": context.get("tool", ""),
-            "nyx.hook.rule_name": context.get("rule_name", ""),
+            "witwave.webhook.name": sub.name,
+            "witwave.hook.decision": context.get("decision", ""),
+            "witwave.hook.tool": context.get("tool", ""),
+            "witwave.hook.rule_name": context.get("rule_name", ""),
             "http.url": url,
         },
     ) as _span:

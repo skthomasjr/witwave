@@ -1,0 +1,90 @@
+{{- if and .Values.rbac.create (eq (default "cluster" .Values.rbac.scope) "cluster") }}
+---
+# ClusterRole aggregating every permission the witwave-operator reconciler needs.
+# Kept in sync with operator/config/rbac/role.yaml — update both when new
+# owned resource types are added.
+#
+# Only rendered when rbac.scope=cluster (default). For per-namespace installs
+# set rbac.scope=namespace and the chart installs a Role + RoleBinding in each
+# rbac.watchNamespaces entry instead (#532).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "witwave-operator.fullname" . }}-manager
+  labels:
+    {{- include "witwave-operator.labels" . | nindent 4 }}
+rules:
+  # configmaps / PVCs / services keep the full verb set — the operator
+  # needs to create/update/delete these as part of normal WitwaveAgent
+  # reconciliation.
+  - apiGroups: [""]
+    resources:
+      - configmaps
+      - persistentvolumeclaims
+      - services
+    verbs: [create, delete, get, list, patch, update, watch]
+  # Secrets get the FULL verb set split from the other core/v1
+  # resources so the threat-model is explicit (#761).  The operator
+  # reconciles credential Secrets for inline backend credentials
+  # (reconcileCredentialsSecrets), so create/delete/patch/update are
+  # required — but they now sit in their own rule, clearly flagged as
+  # a known blast-radius item in the audit trail.  Operators who do
+  # NOT use inline backend credentials can drop the second rule and
+  # run with read-only secret access; the helper below only renders
+  # the write verbs when ``rbac.secretsWrite`` is true (default).
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list, watch]
+  {{- /* Render the Secret WRITE rule unless operators explicitly opt
+         out via rbac.secretsWrite=false. Helm `default` folds `false`
+         into its fallback so we compare strings directly. */}}
+  {{- $secretsWrite := "true" }}
+  {{- if hasKey .Values.rbac "secretsWrite" }}{{ $secretsWrite = toString .Values.rbac.secretsWrite }}{{ end }}
+  {{- if ne $secretsWrite "false" }}
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [create, delete, patch, update]
+  {{- end }}
+  - apiGroups: [""]
+    resources: [events]
+    # WitwaveAgent CRs may live in any namespace; the leader-election Role only
+    # grants events in the operator's own namespace, so the manager
+    # ClusterRole needs cluster-wide events:create/patch for #442.
+    verbs: [create, patch]
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [create, delete, get, list, patch, update, watch]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [create, delete, get, list, patch, update, watch]
+  - apiGroups: [policy]
+    resources: [poddisruptionbudgets]
+    verbs: [create, delete, get, list, patch, update, watch]
+  - apiGroups: [monitoring.coreos.com]
+    resources: [servicemonitors, podmonitors]
+    verbs: [create, delete, get, list, patch, update, watch]
+  # networking.k8s.io — the operator reconciles a per-agent
+  # NetworkPolicy (#971) and the dashboard Ingress (#831). Both verbs
+  # are required; restricting them silently wedged reconciles (#1224).
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies", "ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [witwave.ai]
+    resources: [witwaveagents]
+    verbs: [create, delete, get, list, patch, update, watch]
+  - apiGroups: [witwave.ai]
+    resources: [witwaveagents/status]
+    verbs: [get, patch, update]
+  - apiGroups: [witwave.ai]
+    resources: [witwaveagents/finalizers]
+    verbs: [update]
+  - apiGroups: [witwave.ai]
+    resources: [witwaveprompts]
+    verbs: [create, delete, get, list, patch, update, watch]
+  - apiGroups: [witwave.ai]
+    resources: [witwaveprompts/status]
+    verbs: [get, patch, update]
+  - apiGroups: [witwave.ai]
+    resources: [witwaveprompts/finalizers]
+    verbs: [update]
+{{- end }}

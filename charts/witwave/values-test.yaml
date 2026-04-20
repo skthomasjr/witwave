@@ -1,0 +1,206 @@
+dashboard:
+  enabled: true
+  image:
+    repository: ghcr.io/skthomasjr/images/dashboard
+    tag: "0.3.0-beta.8"
+  imagePullSecrets:
+    - name: ghcr-credentials
+
+sharedStorage:
+  enabled: true
+  storageType: pvc
+  mountPath: /data/shared
+
+metrics:
+  enabled: true
+  # Opt the test stack into both Service and Pod scrape annotations so we
+  # validate the new podAnnotations toggle (#472) end-to-end.
+  serviceAnnotations: true
+  podAnnotations: true
+
+gitSync:
+  image:
+    repository: ghcr.io/skthomasjr/images/git-sync
+    tag: 0.3.0-beta.8
+
+agents:
+  - name: bob
+    port: 8099
+    image:
+      repository: ghcr.io/skthomasjr/images/harness
+      tag: "0.3.0-beta.8"
+    imagePullSecrets:
+      - name: ghcr-credentials
+    env:
+      # Dev/smoke-only CORS allow-list. Do NOT copy this file as a starting
+      # point for production — add explicit origins there instead of "*".
+      - name: CORS_ALLOW_ORIGINS
+        value: "http://localhost:5173,http://localhost:3000"
+      # Smoke-test trigger auth token. The harness rejects every trigger
+      # POST that lacks either a per-trigger HMAC secret or this Bearer
+      # token (security-by-default). Generate a local token before running
+      # smoke tests (e.g. `openssl rand -hex 32`) and export it via the
+      # CI secret that backs this env var; the placeholder below fails
+      # fast so nobody deploys with a known/published token. The chart's
+      # deployment.yaml render guard (#760) refuses any REPLACE_ME* value
+      # on security-sensitive env vars, so `helm install -f values-test.yaml`
+      # without editing will error out cleanly.
+      - name: TRIGGERS_AUTH_TOKEN
+        value: REPLACE_ME_WITH_GENERATED_TOKEN
+      # Webhook tests use these to template URLs / headers / Authorization
+      # without baking the cluster-specific service name into webhook .md
+      # files. WEBHOOK_TEST_BEARER must equal TRIGGERS_AUTH_TOKEN above
+      # so webhook deliveries to bob's own triggers authenticate.
+      - name: WEBHOOK_TEST_HOST
+        value: witwave-bob:8099
+      # Full URLs for webhook smoke tests. Env-derived URLs must be
+      # resolved via `url-env-var` (not via {{env.VAR}} templating in
+      # the `url:` field), so each smoke-test sink has its own full URL.
+      - name: WEBHOOK_TEST_URL_FEATURE_SINK
+        value: http://witwave-bob:8099/triggers/feature-sink
+      - name: WEBHOOK_TEST_URL_WEBHOOK_SINK
+        value: http://witwave-bob:8099/triggers/webhook-sink
+      - name: WEBHOOK_TEST_TOKEN
+        value: test-token-abc123
+      - name: WEBHOOK_TEST_BEARER
+        value: REPLACE_ME_WITH_GENERATED_TOKEN
+    gitSyncs:
+      - name: autonomous-agent
+        repo: https://github.com/skthomasjr/autonomous-agent
+        ref: main
+        depth: 1
+        period: 60s
+        envFrom:
+          - secretRef:
+              name: git-sync-credentials
+    gitMappings:
+      - gitSync: autonomous-agent
+        src: .agents/test/bob/.witwave/
+        dest: /home/agent/.witwave/
+
+    backends:
+      - name: claude
+        image:
+          repository: ghcr.io/skthomasjr/images/claude
+          tag: "0.3.0-beta.8"
+        port: 8090
+        model: claude-opus-4-7
+        envFrom:
+          - secretRef:
+              name: bob-claude-secrets
+        gitMappings:
+          - gitSync: autonomous-agent
+            src: .agents/test/bob/.claude/
+            dest: /home/agent/.claude/
+        storage:
+          enabled: true
+          mounts:
+            - subPath: projects
+              mountPath: /home/agent/.claude/projects
+            - subPath: sessions
+              mountPath: /home/agent/.claude/sessions
+            - subPath: backups
+              mountPath: /home/agent/.claude/backups
+            - subPath: memory
+              mountPath: /home/agent/.claude/memory
+
+      - name: codex
+        # Disabled: out of OpenAI credits. All bob routing now targets claude
+        # (see .agents/test/bob/.witwave/backend.yaml). Flip back to true + top up
+        # the OpenAI account to restore the codex backend.
+        enabled: false
+        image:
+          repository: ghcr.io/skthomasjr/images/codex
+          tag: "0.3.0-beta.8"
+        port: 8091
+        model: gpt-5.1-codex-max
+        envFrom:
+          - secretRef:
+              name: bob-codex-secrets
+        gitMappings:
+          - gitSync: autonomous-agent
+            src: .agents/test/bob/.codex/
+            dest: /home/agent/.codex/
+        storage:
+          enabled: true
+          mounts:
+            - subPath: memory
+              mountPath: /home/agent/.codex/memory
+
+      - name: gemini
+        # Disabled: no Gemini API key available for the local test stack.
+        # Leave the config intact so re-enabling is a one-liner once a key is
+        # provisioned. Flip to true to restore the backend container, PVC,
+        # git-mappings ConfigMap, and Service port (#beta.32).
+        enabled: false
+        image:
+          repository: ghcr.io/skthomasjr/images/gemini
+          tag: "0.3.0-beta.8"
+        port: 8092
+        env:
+          - name: GEMINI_MAX_HISTORY_TURNS
+            value: "100"
+        envFrom:
+          - secretRef:
+              name: bob-gemini-secrets
+        gitMappings:
+          - gitSync: autonomous-agent
+            src: .agents/test/bob/.gemini/
+            dest: /home/agent/.gemini/
+        storage:
+          enabled: true
+          mounts:
+            - subPath: memory
+              mountPath: /home/agent/.gemini/memory
+
+  - name: fred
+    port: 8098
+    image:
+      repository: ghcr.io/skthomasjr/images/harness
+      tag: "0.3.0-beta.8"
+    imagePullSecrets:
+      - name: ghcr-credentials
+    env:
+      # Dev/smoke-only CORS allow-list. Do NOT copy this file as a starting
+      # point for production — add explicit origins there instead of "*".
+      - name: CORS_ALLOW_ORIGINS
+        value: "http://localhost:5173,http://localhost:3000"
+    gitSyncs:
+      - name: autonomous-agent
+        repo: https://github.com/skthomasjr/autonomous-agent
+        ref: main
+        depth: 1
+        period: 60s
+        envFrom:
+          - secretRef:
+              name: git-sync-credentials
+    gitMappings:
+      - gitSync: autonomous-agent
+        src: .agents/test/fred/.witwave/
+        dest: /home/agent/.witwave/
+
+    backends:
+      - name: claude
+        image:
+          repository: ghcr.io/skthomasjr/images/claude
+          tag: "0.3.0-beta.8"
+        port: 8089
+        model: claude-opus-4-7
+        envFrom:
+          - secretRef:
+              name: fred-claude-secrets
+        gitMappings:
+          - gitSync: autonomous-agent
+            src: .agents/test/fred/.claude/
+            dest: /home/agent/.claude/
+        storage:
+          enabled: true
+          mounts:
+            - subPath: projects
+              mountPath: /home/agent/.claude/projects
+            - subPath: sessions
+              mountPath: /home/agent/.claude/sessions
+            - subPath: backups
+              mountPath: /home/agent/.claude/backups
+            - subPath: memory
+              mountPath: /home/agent/.claude/memory

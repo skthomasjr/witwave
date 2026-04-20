@@ -58,27 +58,27 @@ const { active, dismiss } = useAlerts();
   align-items: flex-start;
   gap: 12px;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--nyx-border);
-  font-family: var(--nyx-mono);
+  border-bottom: 1px solid var(--witwave-border);
+  font-family: var(--witwave-mono);
   font-size: 12px;
   line-height: 1.4;
 }
 
 .sev-error {
   background: rgba(255, 80, 80, 0.1);
-  color: var(--nyx-red);
-  border-bottom-color: var(--nyx-red);
+  color: var(--witwave-red);
+  border-bottom-color: var(--witwave-red);
 }
 
 .sev-warning {
   background: rgba(255, 200, 0, 0.08);
-  color: var(--nyx-yellow);
-  border-bottom-color: var(--nyx-yellow);
+  color: var(--witwave-yellow);
+  border-bottom-color: var(--witwave-yellow);
 }
 
 .sev-info {
   background: rgba(0, 180, 220, 0.08);
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
 }
 
 .sev-icon {

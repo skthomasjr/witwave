@@ -9,7 +9,7 @@ import type { ComputedRef, Ref } from "vue";
 // The resolved palette is applied via `data-theme="light"|"dark"` on
 // <html> so tokens.css can swap variables with a top-level attribute
 // selector. The user choice is persisted in localStorage under
-// `nyx.theme`; absence of a stored value defaults to "auto" so new
+// `witwave.theme`; absence of a stored value defaults to "auto" so new
 // visitors respect whatever their OS advertises.
 //
 // Module-level refs keep every composable consumer consistent: the
@@ -19,7 +19,7 @@ import type { ComputedRef, Ref } from "vue";
 export type ThemeChoice = "light" | "dark" | "auto";
 export type ResolvedTheme = "light" | "dark";
 
-const STORAGE_KEY = "nyx.theme";
+const STORAGE_KEY = "witwave.theme";
 const VALID: ReadonlySet<ThemeChoice> = new Set(["light", "dark", "auto"]);
 
 function readPersisted(): ThemeChoice {

@@ -7,12 +7,12 @@ differs only in how and when it is triggered — the body is always the prompt t
 
 | Type                              | File location             | Trigger                                  |
 | --------------------------------- | ------------------------- | ---------------------------------------- |
-| [Heartbeat](heartbeat.md)         | `.nyx/HEARTBEAT.md`       | Cron schedule (single file)              |
-| [Jobs](jobs.md)                   | `.nyx/jobs/*.md`          | Cron schedule (one file per job)         |
-| [Tasks](tasks.md)                 | `.nyx/tasks/*.md`         | Calendar window (days, time, date range) |
-| [Triggers](triggers.md)           | `.nyx/triggers/*.md`      | Inbound HTTP POST                        |
-| [Continuations](continuations.md) | `.nyx/continuations/*.md` | Upstream prompt completion               |
-| [Webhooks](webhooks.md)           | `.nyx/webhooks/*.md`      | Outbound HTTP after any prompt completes |
+| [Heartbeat](heartbeat.md)         | `.witwave/HEARTBEAT.md`       | Cron schedule (single file)              |
+| [Jobs](jobs.md)                   | `.witwave/jobs/*.md`          | Cron schedule (one file per job)         |
+| [Tasks](tasks.md)                 | `.witwave/tasks/*.md`         | Calendar window (days, time, date range) |
+| [Triggers](triggers.md)           | `.witwave/triggers/*.md`      | Inbound HTTP POST                        |
+| [Continuations](continuations.md) | `.witwave/continuations/*.md` | Upstream prompt completion               |
+| [Webhooks](webhooks.md)           | `.witwave/webhooks/*.md`      | Outbound HTTP after any prompt completes |
 
 All prompt files support `model:` and `agent:` frontmatter fields to override the default backend routing on a
 per-prompt basis. All prompt files also support `consensus:` (a list of backend entries to fan out to; see below) and

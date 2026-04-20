@@ -28,7 +28,7 @@ describe("TraceView", () => {
         const url = typeof input === "string" ? input : (input as URL).toString();
         if (url.includes("/api/team")) {
           return Promise.resolve(
-            okJson([{ name: "bob", url: "http://nyx-bob:8099" }]),
+            okJson([{ name: "bob", url: "http://witwave-bob:8099" }]),
           );
         }
         if (url.includes("/agents/bob/trace")) {

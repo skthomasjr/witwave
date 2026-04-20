@@ -10,7 +10,7 @@ This test creates a two-level continuation chain: the trigger ping fires, which 
 Create the first continuation (fires after trigger:ping):
 
 ```
-cat > .agents/test/bob/.nyx/continuations/chain-1.md << 'EOF'
+cat > .agents/test/bob/.witwave/continuations/chain-1.md << 'EOF'
 ---
 name: Chain Step 1
 description: First link in the chain — fires after trigger:ping.
@@ -23,7 +23,7 @@ EOF
 Create the second continuation (fires after continuation:Chain Step 1):
 
 ```
-cat > .agents/test/bob/.nyx/continuations/chain-2.md << 'EOF'
+cat > .agents/test/bob/.witwave/continuations/chain-2.md << 'EOF'
 ---
 name: Chain Step 2
 description: Second link in the chain — fires after continuation:Chain Step 1.
@@ -54,8 +54,8 @@ Poll the conversation log at `.agents/test/bob/logs/conversation.jsonl` every 2 
 ## Cleanup
 
 ```
-rm .agents/test/bob/.nyx/continuations/chain-1.md
-rm .agents/test/bob/.nyx/continuations/chain-2.md
+rm .agents/test/bob/.witwave/continuations/chain-1.md
+rm .agents/test/bob/.witwave/continuations/chain-2.md
 ```
 
 ## Pass/Fail Criteria

@@ -100,7 +100,7 @@ function pinnedFor(name: string): boolean {
 }
 
 .agents-placeholder {
-  color: var(--nyx-muted);
+  color: var(--witwave-muted);
   font-size: 11px;
   padding: 20px 10px;
   text-align: center;
@@ -112,8 +112,8 @@ function pinnedFor(name: string): boolean {
 
 .agents-card-row.is-pinned {
   /* Subtle left border to signal pin without changing card layout. */
-  box-shadow: inset 3px 0 0 var(--nyx-yellow);
-  border-radius: var(--nyx-radius);
+  box-shadow: inset 3px 0 0 var(--witwave-yellow);
+  border-radius: var(--witwave-radius);
 }
 
 .pin-btn {
@@ -122,10 +122,10 @@ function pinnedFor(name: string): boolean {
   right: 8px;
   background: none;
   border: none;
-  color: var(--nyx-muted);
+  color: var(--witwave-muted);
   cursor: pointer;
   padding: 4px 6px;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
   font-size: 12px;
   opacity: 0;
   transition: opacity 0.12s, color 0.12s;
@@ -138,17 +138,17 @@ function pinnedFor(name: string): boolean {
 }
 
 .pin-btn.is-pinned {
-  color: var(--nyx-yellow);
+  color: var(--witwave-yellow);
 }
 
 .pin-btn:hover {
-  color: var(--nyx-bright);
+  color: var(--witwave-bright);
 }
 
 .agents-footer {
   flex-shrink: 0;
   padding: 5px 14px;
-  border-top: 1px solid var(--nyx-border);
+  border-top: 1px solid var(--witwave-border);
   font-size: 10px;
   color: #333;
   letter-spacing: 0.03em;

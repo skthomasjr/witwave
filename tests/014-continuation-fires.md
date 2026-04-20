@@ -10,7 +10,7 @@ This test creates a run-once job and a matching continuation, fires the job on s
 Create a run-once job (no schedule — fires immediately when registered):
 
 ```
-cat > .agents/test/bob/.nyx/jobs/continuation-probe.md << 'EOF'
+cat > .agents/test/bob/.witwave/jobs/continuation-probe.md << 'EOF'
 ---
 name: Continuation Probe
 description: Run-once job used to verify continuation wiring.
@@ -22,7 +22,7 @@ EOF
 Create a continuation that fires after the job:
 
 ```
-cat > .agents/test/bob/.nyx/continuations/continuation-probe.md << 'EOF'
+cat > .agents/test/bob/.witwave/continuations/continuation-probe.md << 'EOF'
 ---
 name: Continuation Probe
 description: Fires after the run-once continuation-probe job.
@@ -41,8 +41,8 @@ Poll the conversation log at `.agents/test/bob/logs/conversation.jsonl` every 2 
 ## Cleanup
 
 ```
-rm .agents/test/bob/.nyx/jobs/continuation-probe.md
-rm .agents/test/bob/.nyx/continuations/continuation-probe.md
+rm .agents/test/bob/.witwave/jobs/continuation-probe.md
+rm .agents/test/bob/.witwave/continuations/continuation-probe.md
 ```
 
 ## Pass/Fail Criteria

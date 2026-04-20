@@ -44,7 +44,7 @@ import { __resetUseAlerts } from "../composables/useAlerts";
 // agents at runtime does not require a page reload.
 //
 // Auth sharing: every agent stream uses the same bearer pulled from
-// `__NYX_CONFIG__.harnessBearerToken`. Single-secret deployments are the
+// `__WITWAVE_CONFIG__.harnessBearerToken`. Single-secret deployments are the
 // common case today; per-agent tokens can be layered in later without
 // touching the merge path (add a `tokenFor(name)` hook, flow it into
 // `openStreamFor`, done).
@@ -74,7 +74,7 @@ const DEFAULT_EVENTS_URL = "/events/stream";
 //                         passes `opts.url` (fanout path ignores this).
 declare global {
   interface Window {
-    __NYX_CONFIG__?: {
+    __WITWAVE_CONFIG__?: {
       harnessBearerToken?: string;
       timelineEventsUrl?: string;
       basePath?: string;
@@ -83,11 +83,11 @@ declare global {
 }
 
 // Resolve the deployment base path prefix. Dashboard instances deployed
-// under a sub-path (e.g. /nyx) need every proxy URL to share that
+// under a sub-path (e.g. /witwave) need every proxy URL to share that
 // prefix. (#1163)
 function resolveBasePath(): string {
   if (typeof window === "undefined") return "";
-  const cfg = window.__NYX_CONFIG__;
+  const cfg = window.__WITWAVE_CONFIG__;
   if (!cfg) return "";
   const bp = cfg.basePath;
   if (typeof bp !== "string" || bp.length === 0) return "";
@@ -101,7 +101,7 @@ function resolveBasePath(): string {
 function resolveBearerToken(explicit?: string): string | undefined {
   if (explicit) return explicit;
   if (typeof window === "undefined") return undefined;
-  const cfg = window.__NYX_CONFIG__;
+  const cfg = window.__WITWAVE_CONFIG__;
   if (!cfg) return undefined;
   const tok = cfg.harnessBearerToken;
   return typeof tok === "string" && tok.length > 0 ? tok : undefined;
@@ -110,7 +110,7 @@ function resolveBearerToken(explicit?: string): string | undefined {
 function resolveSingleEventsUrl(explicit?: string): string {
   if (explicit) return explicit;
   if (typeof window !== "undefined") {
-    const cfg = window.__NYX_CONFIG__;
+    const cfg = window.__WITWAVE_CONFIG__;
     if (cfg && typeof cfg.timelineEventsUrl === "string" && cfg.timelineEventsUrl) {
       return cfg.timelineEventsUrl;
     }
@@ -120,8 +120,8 @@ function resolveSingleEventsUrl(explicit?: string): string {
 
 // Per-agent stream URL — nginx proxies /api/agents/<name>/* straight to
 // that agent's harness. Path parity with the rest of the dashboard's
-// per-agent API surface. Honors `__NYX_CONFIG__.basePath` so deployments
-// under a sub-path (e.g. /nyx) get the correct proxy prefix. (#1163)
+// per-agent API surface. Honors `__WITWAVE_CONFIG__.basePath` so deployments
+// under a sub-path (e.g. /witwave) get the correct proxy prefix. (#1163)
 export function agentStreamUrl(name: string): string {
   return `${resolveBasePath()}/api/agents/${encodeURIComponent(name)}/events/stream`;
 }
@@ -601,7 +601,7 @@ export type { EventEnvelope } from "../composables/useEventStream";
 //
 // Future work:
 //   - Per-agent bearer tokens. Today every stream shares
-//     `__NYX_CONFIG__.harnessBearerToken`. If a deployment rotates tokens
+//     `__WITWAVE_CONFIG__.harnessBearerToken`. If a deployment rotates tokens
 //     independently per agent, add a `tokenFor(name)` hook and flow it
 //     through `openStreamFor`.
 //   - Backpressure feedback. If one agent's stream produces events

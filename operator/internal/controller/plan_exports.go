@@ -18,9 +18,9 @@ package controller
 
 // Plan-mode exports (#1111). Thin wrappers over the private buildXxx
 // functions so ``operator/cmd/plan`` (and future validator tooling)
-// can render the full resource set for a NyxAgent spec without
+// can render the full resource set for a WitwaveAgent spec without
 // touching a cluster. These wrappers are pure — they consume only the
-// in-memory NyxAgent CR, matching controller's build-layer contract,
+// in-memory WitwaveAgent CR, matching controller's build-layer contract,
 // and add no new public reconcile surface.
 
 import (
@@ -31,25 +31,25 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 
-	nyxv1alpha1 "github.com/nyx-ai/nyx-operator/api/v1alpha1"
+	witwavev1alpha1 "github.com/witwave-ai/witwave-operator/api/v1alpha1"
 )
 
 // BuildDeploymentForPlan renders the agent Deployment as the operator
 // would on a fresh install (no prompt bindings; prompts require live
-// NyxPrompt state and aren't available in plan mode).
-func BuildDeploymentForPlan(agent *nyxv1alpha1.NyxAgent) *appsv1.Deployment {
+// WitwavePrompt state and aren't available in plan mode).
+func BuildDeploymentForPlan(agent *witwavev1alpha1.WitwaveAgent) *appsv1.Deployment {
 	return buildDeployment(agent, DefaultImageTag, nil)
 }
 
 // BuildServiceForPlan renders the agent Service.
-func BuildServiceForPlan(agent *nyxv1alpha1.NyxAgent) *corev1.Service {
+func BuildServiceForPlan(agent *witwavev1alpha1.WitwaveAgent) *corev1.Service {
 	return buildService(agent)
 }
 
 // BuildConfigMapsForPlan renders every ConfigMap the reconciler would
 // apply from spec.config and spec.backends[].config, in the same order
 // reconcileConfigMaps processes them.
-func BuildConfigMapsForPlan(agent *nyxv1alpha1.NyxAgent) []*corev1.ConfigMap {
+func BuildConfigMapsForPlan(agent *witwavev1alpha1.WitwaveAgent) []*corev1.ConfigMap {
 	var out []*corev1.ConfigMap
 	if cm := buildConfigMap(agent, agentConfigMapName(agent, ""), agent.Spec.Config); cm != nil {
 		out = append(out, cm)
@@ -73,41 +73,41 @@ func BuildConfigMapsForPlan(agent *nyxv1alpha1.NyxAgent) []*corev1.ConfigMap {
 // BuildBackendPVCsForPlan renders the per-backend PVCs. The second
 // return value holds build errors (e.g. unparseable storage.size) so
 // callers can surface warnings without aborting the render.
-func BuildBackendPVCsForPlan(agent *nyxv1alpha1.NyxAgent) ([]*corev1.PersistentVolumeClaim, []*PVCBuildError) {
+func BuildBackendPVCsForPlan(agent *witwavev1alpha1.WitwaveAgent) ([]*corev1.PersistentVolumeClaim, []*PVCBuildError) {
 	return buildBackendPVCs(agent)
 }
 
 // BuildSharedStoragePVCForPlan renders the shared-storage PVC if
 // spec.sharedStorage is configured. Returns (nil, nil) when no shared
 // storage is requested.
-func BuildSharedStoragePVCForPlan(agent *nyxv1alpha1.NyxAgent) (*corev1.PersistentVolumeClaim, error) {
+func BuildSharedStoragePVCForPlan(agent *witwavev1alpha1.WitwaveAgent) (*corev1.PersistentVolumeClaim, error) {
 	return buildSharedStoragePVC(agent)
 }
 
 // BuildHPAForPlan renders the HorizontalPodAutoscaler when
 // spec.autoscaling.enabled=true; otherwise returns nil.
-func BuildHPAForPlan(agent *nyxv1alpha1.NyxAgent) *autoscalingv2.HorizontalPodAutoscaler {
+func BuildHPAForPlan(agent *witwavev1alpha1.WitwaveAgent) *autoscalingv2.HorizontalPodAutoscaler {
 	return buildHPA(agent)
 }
 
 // BuildPDBForPlan renders the PodDisruptionBudget when spec.pdb is set.
-func BuildPDBForPlan(agent *nyxv1alpha1.NyxAgent) *policyv1.PodDisruptionBudget {
+func BuildPDBForPlan(agent *witwavev1alpha1.WitwaveAgent) *policyv1.PodDisruptionBudget {
 	return buildPDB(agent)
 }
 
 // BuildDashboardConfigMapForPlan renders the dashboard nginx config
 // map when spec.dashboard.enabled=true.
-func BuildDashboardConfigMapForPlan(agent *nyxv1alpha1.NyxAgent) *corev1.ConfigMap {
+func BuildDashboardConfigMapForPlan(agent *witwavev1alpha1.WitwaveAgent) *corev1.ConfigMap {
 	return buildDashboardConfigMap(agent)
 }
 
 // BuildDashboardDeploymentForPlan renders the dashboard Deployment.
-func BuildDashboardDeploymentForPlan(agent *nyxv1alpha1.NyxAgent) *appsv1.Deployment {
+func BuildDashboardDeploymentForPlan(agent *witwavev1alpha1.WitwaveAgent) *appsv1.Deployment {
 	return buildDashboardDeployment(agent, DefaultImageTag)
 }
 
 // BuildDashboardServiceForPlan renders the dashboard Service.
-func BuildDashboardServiceForPlan(agent *nyxv1alpha1.NyxAgent) *corev1.Service {
+func BuildDashboardServiceForPlan(agent *witwavev1alpha1.WitwaveAgent) *corev1.Service {
 	return buildDashboardService(agent)
 }
 
@@ -124,13 +124,13 @@ func BuildDashboardServiceForPlan(agent *nyxv1alpha1.NyxAgent) *corev1.Service {
 // builder does not currently return an error, so we synthesise one
 // when the rendered ConfigMap comes back nil — that keeps the contract
 // forward-compatible for follow-ups that add real validation.
-func BuildManifestConfigMapForPlan(agent *nyxv1alpha1.NyxAgent) (*corev1.ConfigMap, error) {
+func BuildManifestConfigMapForPlan(agent *witwavev1alpha1.WitwaveAgent) (*corev1.ConfigMap, error) {
 	port := agent.Spec.Port
 	if port == 0 {
 		port = 8000
 	}
 	members := []manifestMember{{Name: agent.Name, Port: port}}
-	cm, _ := buildManifestConfigMap(agent, []*nyxv1alpha1.NyxAgent{agent}, members)
+	cm, _ := buildManifestConfigMap(agent, []*witwavev1alpha1.WitwaveAgent{agent}, members)
 	if cm == nil {
 		return nil, fmt.Errorf("build manifest ConfigMap for %s/%s: builder returned nil", agent.Namespace, agent.Name)
 	}

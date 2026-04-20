@@ -38,7 +38,7 @@ const selectedTypes = ref<string[]>([]);
 const searchTerm = ref<string>("");
 const expandedIds = ref<Set<string>>(new Set());
 
-const PINNED_STORAGE_KEY = "nyx.timeline.pinned";
+const PINNED_STORAGE_KEY = "witwave.timeline.pinned";
 const pinnedIds = ref<Set<string>>(new Set(readPinnedFromStorage()));
 
 function readPinnedFromStorage(): string[] {
@@ -387,15 +387,15 @@ function formatPayload(e: EventEnvelope): string {
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--nyx-border);
-  background: var(--nyx-surface);
+  border-bottom: 1px solid var(--witwave-border);
+  background: var(--witwave-surface);
   flex-shrink: 0;
   flex-wrap: wrap;
 }
 
 .title {
   font-size: 12px;
-  color: var(--nyx-bright);
+  color: var(--witwave-bright);
   text-transform: uppercase;
   letter-spacing: 0.07em;
   margin: 0;
@@ -405,23 +405,23 @@ function formatPayload(e: EventEnvelope): string {
 .search {
   flex: 1;
   min-width: 200px;
-  background: var(--nyx-bg);
-  border: 1px solid var(--nyx-border);
-  color: var(--nyx-text);
-  font-family: var(--nyx-mono);
+  background: var(--witwave-bg);
+  border: 1px solid var(--witwave-border);
+  color: var(--witwave-text);
+  font-family: var(--witwave-mono);
   font-size: 11px;
   padding: 4px 8px;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
 }
 
 .select {
-  background: var(--nyx-bg);
-  border: 1px solid var(--nyx-border);
-  color: var(--nyx-text);
-  font-family: var(--nyx-mono);
+  background: var(--witwave-bg);
+  border: 1px solid var(--witwave-border);
+  color: var(--witwave-text);
+  font-family: var(--witwave-mono);
   font-size: 11px;
   padding: 4px 6px;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
 }
 
 .select.multi {
@@ -431,8 +431,8 @@ function formatPayload(e: EventEnvelope): string {
 }
 
 .count {
-  color: var(--nyx-dim);
-  font-family: var(--nyx-mono);
+  color: var(--witwave-dim);
+  font-family: var(--witwave-mono);
   font-size: 11px;
 }
 
@@ -442,11 +442,11 @@ function formatPayload(e: EventEnvelope): string {
   gap: 4px;
   padding: 2px 8px;
   border-radius: 999px;
-  font-family: var(--nyx-mono);
+  font-family: var(--witwave-mono);
   font-size: 10px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  border: 1px solid var(--nyx-border);
+  border: 1px solid var(--witwave-border);
 }
 
 .pill::before {
@@ -455,34 +455,34 @@ function formatPayload(e: EventEnvelope): string {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--nyx-muted);
+  background: var(--witwave-muted);
 }
 
 .pill-live {
-  color: var(--nyx-green);
-  border-color: var(--nyx-green);
+  color: var(--witwave-green);
+  border-color: var(--witwave-green);
 }
 
 .pill-live::before {
-  background: var(--nyx-green);
+  background: var(--witwave-green);
 }
 
 .pill-reconnecting {
-  color: var(--nyx-yellow);
-  border-color: var(--nyx-yellow);
+  color: var(--witwave-yellow);
+  border-color: var(--witwave-yellow);
 }
 
 .pill-reconnecting::before {
-  background: var(--nyx-yellow);
+  background: var(--witwave-yellow);
 }
 
 .pill-disconnected {
-  color: var(--nyx-red);
-  border-color: var(--nyx-red);
+  color: var(--witwave-red);
+  border-color: var(--witwave-red);
 }
 
 .pill-disconnected::before {
-  background: var(--nyx-red);
+  background: var(--witwave-red);
 }
 
 .feed {
@@ -493,8 +493,8 @@ function formatPayload(e: EventEnvelope): string {
 
 .state {
   padding: 24px 14px;
-  color: var(--nyx-dim);
-  font-family: var(--nyx-mono);
+  color: var(--witwave-dim);
+  font-family: var(--witwave-mono);
   font-size: 12px;
   text-align: center;
 }
@@ -506,27 +506,27 @@ function formatPayload(e: EventEnvelope): string {
 }
 
 .row {
-  border-bottom: 1px solid var(--nyx-border);
+  border-bottom: 1px solid var(--witwave-border);
   padding: 6px 14px;
   cursor: pointer;
-  font-family: var(--nyx-mono);
+  font-family: var(--witwave-mono);
   font-size: 11px;
   transition: background 0.08s;
 }
 
 .row:hover {
-  background: var(--nyx-surface);
+  background: var(--witwave-surface);
 }
 
 .row.pinned {
-  background: color-mix(in srgb, var(--nyx-accent) 8%, transparent);
-  border-left: 2px solid var(--nyx-accent);
+  background: color-mix(in srgb, var(--witwave-accent) 8%, transparent);
+  border-left: 2px solid var(--witwave-accent);
   padding-left: 12px;
 }
 
 .row.gap {
-  background: color-mix(in srgb, var(--nyx-yellow) 10%, transparent);
-  border-left: 2px solid var(--nyx-yellow);
+  background: color-mix(in srgb, var(--witwave-yellow) 10%, transparent);
+  border-left: 2px solid var(--witwave-yellow);
   padding-left: 12px;
 }
 
@@ -540,23 +540,23 @@ function formatPayload(e: EventEnvelope): string {
 .pin-btn {
   background: none;
   border: none;
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   cursor: pointer;
   padding: 2px 4px;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
 }
 
 .pin-btn:hover {
-  color: var(--nyx-text);
-  background: var(--nyx-bg);
+  color: var(--witwave-text);
+  background: var(--witwave-bg);
 }
 
 .pin-btn.is-pinned {
-  color: var(--nyx-accent);
+  color: var(--witwave-accent);
 }
 
 .ts {
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   min-width: 90px;
 }
 
@@ -569,19 +569,19 @@ function formatPayload(e: EventEnvelope): string {
 }
 
 .chip-agent {
-  background: var(--nyx-bg);
-  border: 1px solid var(--nyx-border);
-  color: var(--nyx-text);
+  background: var(--witwave-bg);
+  border: 1px solid var(--witwave-border);
+  color: var(--witwave-text);
 }
 
 .chip-type {
-  background: color-mix(in srgb, var(--nyx-teal) 14%, transparent);
-  color: var(--nyx-teal);
-  border: 1px solid color-mix(in srgb, var(--nyx-teal) 30%, transparent);
+  background: color-mix(in srgb, var(--witwave-teal) 14%, transparent);
+  color: var(--witwave-teal);
+  border: 1px solid color-mix(in srgb, var(--witwave-teal) 30%, transparent);
 }
 
 .summary {
-  color: var(--nyx-text);
+  color: var(--witwave-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -589,13 +589,13 @@ function formatPayload(e: EventEnvelope): string {
 }
 
 .payload {
-  background: var(--nyx-bg);
-  border: 1px solid var(--nyx-border);
-  border-radius: var(--nyx-radius);
+  background: var(--witwave-bg);
+  border: 1px solid var(--witwave-border);
+  border-radius: var(--witwave-radius);
   padding: 8px 10px;
   margin: 6px 0 2px 24px;
   font-size: 11px;
-  color: var(--nyx-text);
+  color: var(--witwave-text);
   max-height: 320px;
   overflow: auto;
   white-space: pre-wrap;

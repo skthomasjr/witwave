@@ -1,7 +1,7 @@
 # Triggers
 
 Triggers are HTTP-driven endpoints served directly by harness. Each trigger is defined as a `*.md` file in the agent's
-`.nyx/triggers/` directory. When harness receives a `POST /triggers/{endpoint}` request, it builds a prompt from the
+`.witwave/triggers/` directory. When harness receives a `POST /triggers/{endpoint}` request, it builds a prompt from the
 request payload and the trigger's markdown body, then dispatches the prompt to the configured backend as a background
 task and returns `202 Accepted` immediately.
 

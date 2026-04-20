@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Deploy (or upgrade) the nyx-test smoke stack using credentials from .env.
+# Deploy (or upgrade) the witwave-test smoke stack using credentials from .env.
 #
 # Usage: scripts/deploy-test.sh
 #
 # Sources .env at the repo root, verifies required vars are present, and
-# runs `helm upgrade --install nyx-test ./charts/nyx -f values-test.yaml`
+# runs `helm upgrade --install witwave-test ./charts/witwave -f values-test.yaml`
 # passing credentials as --set flags. Uses the inline-credentials pattern
 # (gitSync.credentials, backends.credentials) with acknowledgeInsecureInline=true
 # so the chart renders Secrets for us; no manual `kubectl create secret` needed.
@@ -19,17 +19,17 @@
 #   GEMINI_API_KEY           — a2-gemini backends
 #
 # Optional environment variables (override before invoking the script):
-#   RELEASE_NAME             — helm release name (default: nyx-test)
-#   NAMESPACE                — target namespace (default: nyx-test)
-#   VALUES_FILE              — values overlay path (default: ./charts/nyx/values-test.yaml)
+#   RELEASE_NAME             — helm release name (default: witwave-test)
+#   NAMESPACE                — target namespace (default: witwave-test)
+#   VALUES_FILE              — values overlay path (default: ./charts/witwave/values-test.yaml)
 
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-RELEASE_NAME="${RELEASE_NAME:-nyx-test}"
-NAMESPACE="${NAMESPACE:-nyx-test}"
-VALUES_FILE="${VALUES_FILE:-./charts/nyx/values-test.yaml}"
+RELEASE_NAME="${RELEASE_NAME:-witwave-test}"
+NAMESPACE="${NAMESPACE:-witwave-test}"
+VALUES_FILE="${VALUES_FILE:-./charts/witwave/values-test.yaml}"
 
 # ---------------------------------------------------------------------------
 # Load .env
@@ -94,7 +94,7 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "helm upgrade --install $RELEASE_NAME (-f $VALUES_FILE -n $NAMESPACE)"
-helm upgrade --install "$RELEASE_NAME" ./charts/nyx \
+helm upgrade --install "$RELEASE_NAME" ./charts/witwave \
   -f "$VALUES_FILE" \
   --set-string gitSync.credentials.username="$GITSYNC_USERNAME" \
   --set-string gitSync.credentials.token="$GITSYNC_PASSWORD" \

@@ -39,9 +39,9 @@ from utils import (
 
 logger = logging.getLogger(__name__)
 
-JOBS_DIR = os.environ.get("JOBS_DIR", "/home/agent/.nyx/jobs")
+JOBS_DIR = os.environ.get("JOBS_DIR", "/home/agent/.witwave/jobs")
 CHECKPOINT_DIR = os.path.join(JOBS_DIR, ".checkpoints")
-AGENT_NAME = os.environ.get("AGENT_NAME", "nyx")
+AGENT_NAME = os.environ.get("AGENT_NAME", "witwave")
 _JOBS_MAX_CONCURRENT = int(os.environ.get("JOBS_MAX_CONCURRENT", "0"))
 
 

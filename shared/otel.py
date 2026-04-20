@@ -98,7 +98,7 @@ def init_otel_if_enabled(
         logger.warning("OTel requested but opentelemetry packages missing: %s — staying disabled.", exc)
         return False
 
-    _service = service_name or os.environ.get("OTEL_SERVICE_NAME") or "nyx"
+    _service = service_name or os.environ.get("OTEL_SERVICE_NAME") or "witwave"
     # #1291: Populate OTel semantic-convention Resource attributes
     # (service.name, service.namespace, service.instance.id) alongside
     # the legacy flat attributes (agent, agent_id, backend). Downstream
@@ -117,7 +117,7 @@ def init_otel_if_enabled(
     }
     # When running inside a backend container, prefer BACKEND_NAME /
     # BACKEND_ID for service.name so emitted spans self-identify as
-    # (e.g.) "iris-claude" rather than the generic "nyx" fallback.
+    # (e.g.) "iris-claude" rather than the generic "witwave" fallback.
     _backend_name = os.environ.get("BACKEND_NAME") or os.environ.get("BACKEND_ID") or ""
     if _backend_name and not service_name and not os.environ.get("OTEL_SERVICE_NAME"):
         attrs["service.name"] = _backend_name
@@ -172,7 +172,7 @@ def _get_tracer() -> Any:
     try:
         from opentelemetry import trace as _otel_trace
 
-        return _otel_trace.get_tracer("nyx")
+        return _otel_trace.get_tracer("witwave")
     except ImportError:
         return None
 

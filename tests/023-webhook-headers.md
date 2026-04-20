@@ -8,9 +8,9 @@ This test verifies that a webhook with a `headers:` map — including a header w
 trigger endpoint returns 202 (meaning harness accepted the POST), and the backend produces `FEATURE_SINK_OK`,
 confirming the full delivery path completed.
 
-The webhook fixture is `.agents/test/bob/.nyx/webhooks/test-headers.md`. It fires when a response contains
+The webhook fixture is `.agents/test/bob/.witwave/webhooks/test-headers.md`. It fires when a response contains
 `WEBHOOK_HEADERS_FIRE` and POSTs to the URL held in `WEBHOOK_TEST_URL_FEATURE_SINK` (resolves to
-`http://nyx-bob:8099/triggers/feature-sink`) with:
+`http://witwave-bob:8099/triggers/feature-sink`) with:
 - `X-Test-Token: test-token-abc123` (resolved from `{{env.WEBHOOK_TEST_TOKEN}}`)
 - `X-Static-Header: static-value`
 

@@ -6,7 +6,7 @@ enabled: true
 Bring down the test stack and remove containers:
 
 ```
-helm uninstall nyx-test -n nyx-test
+helm uninstall witwave-test -n witwave-test
 ```
 
 If the command fails, do your best to diagnose and fix the issue — for example, manually stopping containers or removing networks — until the environment is clean.

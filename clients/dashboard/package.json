@@ -1,8 +1,8 @@
 {
-  "name": "nyx-dashboard",
+  "name": "witwave-dashboard",
   "version": "0.1.0-alpha.0",
   "private": true,
-  "description": "Vue 3 + PrimeVue dashboard for the nyx autonomous agent platform.",
+  "description": "Vue 3 + PrimeVue dashboard for the witwave autonomous agent platform.",
   "type": "module",
   "scripts": {
     "dev": "vite",

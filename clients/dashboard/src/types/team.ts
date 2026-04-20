@@ -20,7 +20,7 @@ export interface AgentCard {
   family?: string;
 }
 
-export type AgentRole = "nyx" | "backend";
+export type AgentRole = "witwave" | "backend";
 
 export interface Agent {
   id: string;

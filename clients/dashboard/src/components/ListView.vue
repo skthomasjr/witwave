@@ -192,14 +192,14 @@ function cellFor(row: T, col: Column<T>): { text: string; className: string } {
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--nyx-border);
-  background: var(--nyx-surface);
+  border-bottom: 1px solid var(--witwave-border);
+  background: var(--witwave-surface);
   flex-shrink: 0;
 }
 
 .title {
   font-size: 12px;
-  color: var(--nyx-bright);
+  color: var(--witwave-bright);
   text-transform: uppercase;
   letter-spacing: 0.07em;
   margin: 0;
@@ -208,28 +208,28 @@ function cellFor(row: T, col: Column<T>): { text: string; className: string } {
 
 .search {
   flex: 1;
-  background: var(--nyx-bg);
-  border: 1px solid var(--nyx-border);
-  color: var(--nyx-text);
-  font-family: var(--nyx-mono);
+  background: var(--witwave-bg);
+  border: 1px solid var(--witwave-border);
+  color: var(--witwave-text);
+  font-family: var(--witwave-mono);
   font-size: 11px;
   padding: 4px 8px;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
 }
 
 .search:focus {
   outline: none;
-  border-color: var(--nyx-accent);
+  border-color: var(--witwave-accent);
 }
 
 .count {
   font-size: 10px;
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
 }
 
 .ts {
   font-size: 10px;
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   white-space: nowrap;
 }
 
@@ -238,9 +238,9 @@ function cellFor(row: T, col: Column<T>): { text: string; className: string } {
   align-items: center;
   gap: 4px;
   font-size: 10px;
-  color: var(--nyx-red);
-  border: 1px solid var(--nyx-red);
-  border-radius: var(--nyx-radius);
+  color: var(--witwave-red);
+  border: 1px solid var(--witwave-red);
+  border-radius: var(--witwave-radius);
   padding: 2px 6px;
   cursor: help;
   white-space: nowrap;
@@ -248,12 +248,12 @@ function cellFor(row: T, col: Column<T>): { text: string; className: string } {
 
 .refresh {
   background: none;
-  border: 1px solid var(--nyx-border);
-  color: var(--nyx-dim);
-  font-family: var(--nyx-mono);
+  border: 1px solid var(--witwave-border);
+  color: var(--witwave-dim);
+  font-family: var(--witwave-mono);
   font-size: 11px;
   padding: 4px 10px;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -261,8 +261,8 @@ function cellFor(row: T, col: Column<T>): { text: string; className: string } {
 }
 
 .refresh:hover:not(:disabled) {
-  color: var(--nyx-text);
-  border-color: var(--nyx-muted);
+  color: var(--witwave-text);
+  border-color: var(--witwave-muted);
 }
 
 .refresh:disabled {
@@ -282,13 +282,13 @@ function cellFor(row: T, col: Column<T>): { text: string; className: string } {
 
 .state {
   padding: 30px;
-  color: var(--nyx-muted);
+  color: var(--witwave-muted);
   font-size: 11px;
   text-align: center;
 }
 
 .state-error {
-  color: var(--nyx-red);
+  color: var(--witwave-red);
 }
 
 .list-table {
@@ -300,9 +300,9 @@ function cellFor(row: T, col: Column<T>): { text: string; className: string } {
 .list-table thead th {
   position: sticky;
   top: 0;
-  background: var(--nyx-bg);
-  border-bottom: 1px solid var(--nyx-border);
-  color: var(--nyx-dim);
+  background: var(--witwave-bg);
+  border-bottom: 1px solid var(--witwave-border);
+  color: var(--witwave-dim);
   text-transform: uppercase;
   letter-spacing: 0.07em;
   font-weight: 500;
@@ -313,34 +313,34 @@ function cellFor(row: T, col: Column<T>): { text: string; className: string } {
 }
 
 .list-table tbody tr {
-  border-bottom: 1px solid var(--nyx-border);
+  border-bottom: 1px solid var(--witwave-border);
   transition: background 0.1s;
 }
 
 .list-table tbody tr:hover {
-  background: var(--nyx-surface);
+  background: var(--witwave-surface);
 }
 
 .list-table tbody td {
   padding: 8px 12px;
-  color: var(--nyx-text);
+  color: var(--witwave-text);
   vertical-align: top;
   word-break: break-word;
 }
 
 .cell-dim {
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
 }
 
 .cell-running {
-  color: var(--nyx-green);
+  color: var(--witwave-green);
 }
 
 .cell-disabled {
-  color: var(--nyx-red);
+  color: var(--witwave-red);
 }
 
 .cell-accent {
-  color: var(--nyx-accent);
+  color: var(--witwave-accent);
 }
 </style>

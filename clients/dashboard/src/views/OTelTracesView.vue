@@ -76,20 +76,20 @@ const otelListColumns = [
   "rootOperation",
 ];
 function onExportListJson(): void {
-  exportJson(list.value, timestamped("nyx-otel-traces", "json"));
+  exportJson(list.value, timestamped("witwave-otel-traces", "json"));
 }
 function onExportListCsv(): void {
   exportCsv(
     list.value as unknown as Record<string, unknown>[],
     otelListColumns,
-    timestamped("nyx-otel-traces", "csv"),
+    timestamped("witwave-otel-traces", "csv"),
   );
 }
 function onExportDetailJson(): void {
   if (!detail.value) return;
   exportJson(
     [detail.value],
-    timestamped(`nyx-otel-trace-${detail.value.traceID}`, "json"),
+    timestamped(`witwave-otel-trace-${detail.value.traceID}`, "json"),
   );
 }
 
@@ -342,15 +342,15 @@ const totalDuration = computed<number>(() => {
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--nyx-border);
-  background: var(--nyx-surface);
+  border-bottom: 1px solid var(--witwave-border);
+  background: var(--witwave-surface);
   flex-shrink: 0;
   flex-wrap: wrap;
 }
 
 .title {
   font-size: 12px;
-  color: var(--nyx-bright);
+  color: var(--witwave-bright);
   text-transform: uppercase;
   letter-spacing: 0.07em;
   margin: 0;
@@ -359,32 +359,32 @@ const totalDuration = computed<number>(() => {
 
 .search {
   min-width: 240px;
-  background: var(--nyx-bg);
-  border: 1px solid var(--nyx-border);
-  color: var(--nyx-text);
-  font-family: var(--nyx-mono);
+  background: var(--witwave-bg);
+  border: 1px solid var(--witwave-border);
+  color: var(--witwave-text);
+  font-family: var(--witwave-mono);
   font-size: 11px;
   padding: 4px 8px;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
 }
 
 .select,
 .btn,
 .refresh {
-  background: var(--nyx-bg);
-  border: 1px solid var(--nyx-border);
-  color: var(--nyx-text);
-  font-family: var(--nyx-mono);
+  background: var(--witwave-bg);
+  border: 1px solid var(--witwave-border);
+  color: var(--witwave-text);
+  font-family: var(--witwave-mono);
   font-size: 11px;
   padding: 4px 10px;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
   cursor: pointer;
 }
 
 .btn:hover,
 .refresh:hover:not(:disabled) {
-  color: var(--nyx-bright);
-  border-color: var(--nyx-muted);
+  color: var(--witwave-bright);
+  border-color: var(--witwave-muted);
 }
 
 .refresh:disabled {
@@ -395,7 +395,7 @@ const totalDuration = computed<number>(() => {
 .count,
 .endpoint {
   font-size: 10px;
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
 }
 
 .endpoint {
@@ -407,10 +407,10 @@ const totalDuration = computed<number>(() => {
 
 .badge-incluster {
   font-size: 10px;
-  font-family: var(--nyx-mono);
-  color: var(--nyx-accent);
-  background: color-mix(in srgb, var(--nyx-accent) 12%, var(--nyx-surface));
-  border: 1px solid color-mix(in srgb, var(--nyx-accent) 40%, var(--nyx-border));
+  font-family: var(--witwave-mono);
+  color: var(--witwave-accent);
+  background: color-mix(in srgb, var(--witwave-accent) 12%, var(--witwave-surface));
+  border: 1px solid color-mix(in srgb, var(--witwave-accent) 40%, var(--witwave-border));
   border-radius: 3px;
   padding: 1px 6px;
   text-transform: uppercase;
@@ -420,12 +420,12 @@ const totalDuration = computed<number>(() => {
 .state .hint {
   margin-top: 8px;
   font-size: 10px;
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
 }
 
 .state .hint code {
-  background: var(--nyx-bg);
-  border: 1px solid var(--nyx-border);
+  background: var(--witwave-bg);
+  border: 1px solid var(--witwave-border);
   border-radius: 3px;
   padding: 1px 4px;
 }
@@ -444,7 +444,7 @@ const totalDuration = computed<number>(() => {
 }
 
 .list-pane.has-detail {
-  border-right: 1px solid var(--nyx-border);
+  border-right: 1px solid var(--witwave-border);
   max-width: 55%;
 }
 
@@ -453,7 +453,7 @@ const totalDuration = computed<number>(() => {
   min-width: 420px;
   overflow: auto;
   padding: 14px;
-  background: var(--nyx-surface);
+  background: var(--witwave-surface);
 }
 
 .drawer-head {
@@ -462,56 +462,56 @@ const totalDuration = computed<number>(() => {
   justify-content: space-between;
   padding-bottom: 10px;
   margin-bottom: 10px;
-  border-bottom: 1px solid var(--nyx-border);
+  border-bottom: 1px solid var(--witwave-border);
 }
 
 .drawer-title {
   font-size: 12px;
-  color: var(--nyx-bright);
-  font-family: var(--nyx-mono);
+  color: var(--witwave-bright);
+  font-family: var(--witwave-mono);
 }
 
 .drawer-sub {
   font-size: 10px;
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
 }
 
 .state {
   padding: 30px;
-  color: var(--nyx-muted);
+  color: var(--witwave-muted);
   font-size: 11px;
   text-align: center;
 }
 
 .state-error {
-  color: var(--nyx-red);
+  color: var(--witwave-red);
 }
 
 .state-unconfigured {
   text-align: left;
   max-width: 720px;
   margin: 30px auto;
-  color: var(--nyx-text);
+  color: var(--witwave-text);
   font-size: 12px;
   line-height: 1.55;
 }
 
 .state-unconfigured h3 {
   font-size: 13px;
-  color: var(--nyx-bright);
+  color: var(--witwave-bright);
   margin: 0 0 8px;
 }
 
 .state-unconfigured code {
-  background: var(--nyx-bg);
-  border: 1px solid var(--nyx-border);
+  background: var(--witwave-bg);
+  border: 1px solid var(--witwave-border);
   border-radius: 3px;
   padding: 1px 4px;
   font-size: 11px;
 }
 
 .state-unconfigured .hint {
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   font-size: 11px;
 }
 
@@ -519,24 +519,24 @@ const totalDuration = computed<number>(() => {
   width: 100%;
   border-collapse: collapse;
   font-size: 11px;
-  font-family: var(--nyx-mono);
+  font-family: var(--witwave-mono);
 }
 
 .tbl th,
 .tbl td {
   text-align: left;
   padding: 6px 10px;
-  border-bottom: 1px solid var(--nyx-border);
+  border-bottom: 1px solid var(--witwave-border);
   vertical-align: top;
 }
 
 .tbl th {
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   font-size: 10px;
   font-weight: 600;
-  background: var(--nyx-surface);
+  background: var(--witwave-surface);
   position: sticky;
   top: 0;
   z-index: 1;
@@ -547,27 +547,27 @@ const totalDuration = computed<number>(() => {
 }
 
 .trace-row:hover {
-  background: var(--nyx-surface);
+  background: var(--witwave-surface);
 }
 
 .trace-row.selected {
-  background: color-mix(in srgb, var(--nyx-accent) 14%, var(--nyx-surface));
+  background: color-mix(in srgb, var(--witwave-accent) 14%, var(--witwave-surface));
 }
 
 .ts,
 .tid {
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   white-space: nowrap;
 }
 
 .svc,
 .op {
-  color: var(--nyx-text);
+  color: var(--witwave-text);
 }
 
 .dur,
 .spans {
-  color: var(--nyx-bright);
+  color: var(--witwave-bright);
   white-space: nowrap;
 }
 
@@ -582,29 +582,29 @@ const totalDuration = computed<number>(() => {
   flex-direction: column;
   gap: 3px;
   padding: 4px 6px;
-  border: 1px solid var(--nyx-border);
-  border-radius: var(--nyx-radius);
-  background: var(--nyx-bg);
+  border: 1px solid var(--witwave-border);
+  border-radius: var(--witwave-radius);
+  background: var(--witwave-bg);
 }
 
 .span-row.status-error {
-  border-color: color-mix(in srgb, var(--nyx-red) 40%, var(--nyx-border));
+  border-color: color-mix(in srgb, var(--witwave-red) 40%, var(--witwave-border));
 }
 
 .span-meta {
   display: flex;
   gap: 8px;
   font-size: 11px;
-  font-family: var(--nyx-mono);
+  font-family: var(--witwave-mono);
   align-items: baseline;
 }
 
 .span-svc {
-  color: var(--nyx-accent);
+  color: var(--witwave-accent);
 }
 
 .span-op {
-  color: var(--nyx-text);
+  color: var(--witwave-text);
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -612,14 +612,14 @@ const totalDuration = computed<number>(() => {
 }
 
 .span-dur {
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   font-size: 10px;
 }
 
 .span-bar-track {
   position: relative;
   height: 6px;
-  background: var(--nyx-surface);
+  background: var(--witwave-surface);
   border-radius: 2px;
 }
 
@@ -627,13 +627,13 @@ const totalDuration = computed<number>(() => {
   position: absolute;
   top: 0;
   bottom: 0;
-  background: var(--nyx-accent);
+  background: var(--witwave-accent);
   border-radius: 2px;
   min-width: 2px;
 }
 
 .status-error .span-bar {
-  background: var(--nyx-red);
+  background: var(--witwave-red);
 }
 
 .span-tags {
@@ -644,11 +644,11 @@ const totalDuration = computed<number>(() => {
 
 .tag {
   font-size: 10px;
-  font-family: var(--nyx-mono);
-  background: var(--nyx-surface);
-  border: 1px solid var(--nyx-border);
+  font-family: var(--witwave-mono);
+  background: var(--witwave-surface);
+  border: 1px solid var(--witwave-border);
   border-radius: 3px;
   padding: 0 5px;
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
 }
 </style>

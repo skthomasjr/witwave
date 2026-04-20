@@ -79,8 +79,8 @@ describe("ConversationsView", () => {
         if (url.includes("/api/team")) {
           return Promise.resolve(
             okJson([
-              { name: "bob", url: "http://nyx-bob:8099" },
-              { name: "fred", url: "http://nyx-fred:8098" },
+              { name: "bob", url: "http://witwave-bob:8099" },
+              { name: "fred", url: "http://witwave-fred:8098" },
             ]),
           );
         }
@@ -152,7 +152,7 @@ describe("ConversationsView", () => {
         const url = typeof input === "string" ? input : (input as URL).toString();
         if (url.includes("/api/team")) {
           return Promise.resolve(
-            okJson([{ name: "bob", url: "http://nyx-bob:8099" }]),
+            okJson([{ name: "bob", url: "http://witwave-bob:8099" }]),
           );
         }
         if (url.includes("/agents/bob/conversations")) {
@@ -203,7 +203,7 @@ describe("ConversationsView", () => {
         const url = typeof input === "string" ? input : (input as URL).toString();
         if (url.includes("/api/team")) {
           return Promise.resolve(
-            okJson([{ name: "bob", url: "http://nyx-bob:8099" }]),
+            okJson([{ name: "bob", url: "http://witwave-bob:8099" }]),
           );
         }
         if (url.includes("/agents/bob/conversations")) {
@@ -278,7 +278,7 @@ describe("ConversationsView", () => {
         const url = typeof input === "string" ? input : (input as URL).toString();
         if (url.includes("/api/team")) {
           return Promise.resolve(
-            okJson([{ name: "bob", url: "http://nyx-bob:8099" }]),
+            okJson([{ name: "bob", url: "http://witwave-bob:8099" }]),
           );
         }
         if (url.includes("/agents/bob/conversations")) {
@@ -337,7 +337,7 @@ describe("ConversationsView", () => {
         const url = typeof input === "string" ? input : (input as URL).toString();
         if (url.includes("/api/team")) {
           return Promise.resolve(
-            okJson([{ name: "bob", url: "http://nyx-bob:8099" }]),
+            okJson([{ name: "bob", url: "http://witwave-bob:8099" }]),
           );
         }
         if (url.includes("/agents/bob/conversations")) {

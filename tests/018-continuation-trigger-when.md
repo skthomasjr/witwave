@@ -3,7 +3,7 @@ description: Verifies that trigger-when filtering allows a continuation to fire 
 enabled: true
 ---
 
-Bob has a continuation at `.agents/test/bob/.nyx/continuations/ping-delayed.md` with `continues-after: task:Task Ping` and `trigger-when: TASK_OK`. This continuation only fires if the upstream response contains `TASK_OK`.
+Bob has a continuation at `.agents/test/bob/.witwave/continuations/ping-delayed.md` with `continues-after: task:Task Ping` and `trigger-when: TASK_OK`. This continuation only fires if the upstream response contains `TASK_OK`.
 
 This test uses a different approach — create two continuations on the same upstream (trigger:ping): one with a `trigger-when` string that will appear in the response, and one with a string that will not. Only the first should fire.
 
@@ -12,7 +12,7 @@ This test uses a different approach — create two continuations on the same ups
 Create a continuation that should fire (trigger-when matches the response):
 
 ```
-cat > .agents/test/bob/.nyx/continuations/trigger-when-match.md << 'EOF'
+cat > .agents/test/bob/.witwave/continuations/trigger-when-match.md << 'EOF'
 ---
 name: Trigger When Match
 description: Should fire — trigger-when matches TRIGGER_OK which appears in the upstream response.
@@ -26,7 +26,7 @@ EOF
 Create a continuation that should NOT fire (trigger-when does not match):
 
 ```
-cat > .agents/test/bob/.nyx/continuations/trigger-when-nomatch.md << 'EOF'
+cat > .agents/test/bob/.witwave/continuations/trigger-when-nomatch.md << 'EOF'
 ---
 name: Trigger When No Match
 description: Should not fire — trigger-when string will not appear in the upstream response.
@@ -58,8 +58,8 @@ Poll the conversation log at `.agents/test/bob/logs/conversation.jsonl` every 2 
 ## Cleanup
 
 ```
-rm .agents/test/bob/.nyx/continuations/trigger-when-match.md
-rm .agents/test/bob/.nyx/continuations/trigger-when-nomatch.md
+rm .agents/test/bob/.witwave/continuations/trigger-when-match.md
+rm .agents/test/bob/.witwave/continuations/trigger-when-nomatch.md
 ```
 
 ## Pass/Fail Criteria

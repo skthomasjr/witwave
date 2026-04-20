@@ -158,7 +158,7 @@ def context_from_inbound(header_value: str | None) -> tuple[TraceContext, bool]:
 # ---------------------------------------------------------------------------
 
 _current_trace_id: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "nyx_trace_id", default=""
+    "witwave_trace_id", default=""
 )
 
 

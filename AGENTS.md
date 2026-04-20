@@ -37,7 +37,7 @@ autonomous-agent is a multi-container autonomous agent platform. Each named agen
   focused set of cluster- or system-level capabilities to backends over the Model Context Protocol. All entries
   under `tools/` are equal MCP components; backends opt into them via their own MCP configuration.
 
-Multiple named agents can collaborate as a team via the A2A protocol, but the named agent (nyx + its backends) is the
+Multiple named agents can collaborate as a team via the A2A protocol, but the named agent (witwave + its backends) is the
 deployable unit. MCP components are shared infrastructure — one deployment typically serves every agent in the
 cluster rather than being replicated per agent.
 
@@ -61,18 +61,18 @@ Each named agent runs a containerized instance of the `harness` image. harness i
   (job, task, trigger, a2a, or another continuation) completes, enabling prompt chaining without hardcoded sequences.
 - **Router** — reads `backend.yaml` to decide which named backend handles each concern (a2a, heartbeat, job, task, trigger, continuation).
 
-Prompts can land in `.nyx/{jobs,tasks,triggers,continuations,webhooks}/` (or at `HEARTBEAT.md`) via two paths:
+Prompts can land in `.witwave/{jobs,tasks,triggers,continuations,webhooks}/` (or at `HEARTBEAT.md`) via two paths:
 
 1. **gitSync materialisation** — a gitSync sidecar rsyncs `.md` files from a repo.
-2. **`NyxPrompt` CR** (operator-only) — declarative Kubernetes resource that binds one prompt to one or more `NyxAgent`s;
-   the operator reconciles a ConfigMap per `(NyxPrompt, agent)` pair that mounts at the same path. See
-   `operator/README.md#the-nyxprompt-resource` and `operator/config/samples/nyx_v1alpha1_nyxprompt.yaml`.
+2. **`WitwavePrompt` CR** (operator-only) — declarative Kubernetes resource that binds one prompt to one or more `WitwaveAgent`s;
+   the operator reconciles a ConfigMap per `(WitwavePrompt, agent)` pair that mounts at the same path. See
+   `operator/README.md#the-witwaveprompt-resource` and `operator/config/samples/witwave_v1alpha1_witwaveprompt.yaml`.
 
 harness retains no LLM of its own. All conversation state, session continuity, memory, and conversation logging
 live in the backend container.
 
 Every container in the stack exposes `/metrics` on a **dedicated port** (9000 by default, set via `METRICS_PORT`
-env / `metrics.port` chart value / `NyxAgentSpec.MetricsPort` CRD field) separate from the app listener (#643).
+env / `metrics.port` chart value / `WitwaveAgentSpec.MetricsPort` CRD field) separate from the app listener (#643).
 The split lets NetworkPolicy and auth posture diverge between app traffic and monitoring scrapes. The shared
 helper `shared/metrics_server.py` implements both the asyncio-task listener (harness + backends) and the
 daemon-thread variant (FastMCP-hosted MCP tools).
@@ -132,7 +132,7 @@ Each MCP component:
   ```json
   {
     "mcpServers": {
-      "kubernetes": { "url": "http://nyx-mcp-kubernetes:8000" }
+      "kubernetes": { "url": "http://witwave-mcp-kubernetes:8000" }
     }
   }
   ```
@@ -152,11 +152,11 @@ Each MCP component:
 Add a new MCP component by creating `tools/<name>/` with a `Dockerfile`, `server.py`, and `requirements.txt`
 (server must call `mcp.run(transport="streamable-http", host="0.0.0.0", port=8000)`), add an `EXPOSE 8000` to
 the Dockerfile, then register a `mcp-<name>:latest` build in the [Building Images](#building-images) section
-and a `mcpTools.<name>` block in `charts/nyx/values.yaml`. Tag related issues/PRs with the `mcp` GitHub label.
+and a `mcpTools.<name>` block in `charts/witwave/values.yaml`. Tag related issues/PRs with the `mcp` GitHub label.
 
 ### Routing configuration
 
-`backend.yaml` (in `.nyx/`) controls which backend handles each concern:
+`backend.yaml` (in `.witwave/`) controls which backend handles each concern:
 
 ```yaml
 backend:
@@ -210,7 +210,7 @@ Agent identity and behavior are file-based — nothing is baked into images.
 ```text
 .agents/active/<name>/
 ├── agent-card.md            # A2A identity description text (mounted into all containers at /home/agent/agent-card.md)
-├── .nyx/                    # Runtime config (mounted into harness)
+├── .witwave/                    # Runtime config (mounted into harness)
 │   ├── backend.yaml         # Backend selection and routing
 │   ├── HEARTBEAT.md         # Proactive heartbeat schedule and prompt
 │   ├── jobs/                # Scheduled job definitions (*.md with cron frontmatter)
@@ -306,10 +306,10 @@ clients/                     # User-facing interfaces to the platform
 └── ww/                      # Go + cobra CLI (ships via Homebrew tap)
 
 charts/                      # Helm charts
-├── nyx/                     # nyx Helm chart (deploys agents to Kubernetes)
-└── nyx-operator/            # nyx-operator Helm chart (deploys the NyxAgent controller)
+├── witwave/                     # witwave Helm chart (deploys agents to Kubernetes)
+└── witwave-operator/            # witwave-operator Helm chart (deploys the WitwaveAgent controller)
 
-operator/                    # Kubernetes operator (Go) — reconciles NyxAgent CRDs
+operator/                    # Kubernetes operator (Go) — reconciles WitwaveAgent CRDs
 
 shared/                      # Python modules shared across harness + backends + MCP tools
                              #   otel.py, metrics_server.py, log_utils.py,
@@ -364,12 +364,12 @@ docker build -f harness/Dockerfile -t harness:latest . \
   && docker build -f backends/gemini/Dockerfile -t gemini:latest . \
   && docker build -f tools/kubernetes/Dockerfile -t mcp-kubernetes:latest . \
   && docker build -f tools/helm/Dockerfile -t mcp-helm:latest . \
-  && helm upgrade --install nyx ./charts/nyx -f ./charts/nyx/values-test.yaml -n nyx --create-namespace
+  && helm upgrade --install witwave ./charts/witwave -f ./charts/witwave/values-test.yaml -n witwave --create-namespace
 ```
 
 ## Interacting with Agents
 
-Use the `/remote` skill to interact with running agents. Always target the **nyx agent by name** — nyx routes the
+Use the `/remote` skill to interact with running agents. Always target the **witwave agent by name** — witwave routes the
 request internally to its configured backend. Never target backend services directly.
 
 | Agent | Harness | claude | codex | gemini |
@@ -389,7 +389,7 @@ still use agent-unique backend ports because they're deployed together in
 
 Test agents `jack` (codex-only) and `luke` (gemini-only) exist as filesystem
 scaffolds under `.agents/test/` but are not wired into
-`charts/nyx/values-test.yaml` yet. Port assignments will land when they're
+`charts/witwave/values-test.yaml` yet. Port assignments will land when they're
 deployed.
 
 The `/remote` skill derives the session ID automatically from the current Claude Code session. Pass it explicitly only
@@ -407,11 +407,11 @@ All three backends share a common `backend_*` metric baseline so cross-backend d
 metric that exists on one backend exists on claude; peers fill in placeholders where a series doesn't
 apply (e.g. codex's `backend_sdk_subprocess_spawn_duration_seconds` is a zero-value placeholder because
 the Agents SDK runs in-process). Look at each backend's `metrics.py` for the live catalog; look at
-`charts/nyx/dashboards/*.json` for the rendered Grafana views; look at
-`charts/nyx/templates/prometheusrule.yaml` for the default alert set.
+`charts/witwave/dashboards/*.json` for the rendered Grafana views; look at
+`charts/witwave/templates/prometheusrule.yaml` for the default alert set.
 
-Harness, operator, and MCP tool metrics use their own prefixes (`harness_*`, `nyxagent_*`,
-`nyxprompt_*`, `mcp_*`) and are documented in the same per-service `metrics.py` files.
+Harness, operator, and MCP tool metrics use their own prefixes (`harness_*`, `witwaveagent_*`,
+`witwaveprompt_*`, `mcp_*`) and are documented in the same per-service `metrics.py` files.
 
 ## Conventions
 
@@ -455,7 +455,7 @@ Harness, operator, and MCP tool metrics use their own prefixes (`harness_*`, `ny
 
 ### Operator RBAC
 
-- Operator runs with a split RBAC surface: `rbac.secretsWrite=false` on `charts/nyx-operator` drops
+- Operator runs with a split RBAC surface: `rbac.secretsWrite=false` on `charts/witwave-operator` drops
   the Secret write verbs while keeping reads, letting operators use pre-provisioned Secrets via
   `existingSecret`. Credential Secrets carry `app.kubernetes.io/component: credentials` and are
   dual-checked (label + `IsControlledBy`) before any update or delete — the operator never touches
@@ -465,7 +465,7 @@ Harness, operator, and MCP tool metrics use their own prefixes (`harness_*`, `ny
 
 AGENTS.md is deliberately high-level. For specifics, go to the source of truth:
 
-- **Chart values + env var reference** — `charts/nyx/values.yaml` and `charts/nyx-operator/values.yaml`
+- **Chart values + env var reference** — `charts/witwave/values.yaml` and `charts/witwave-operator/values.yaml`
   carry inline comments on every field. Service-specific env vars are declared in each Dockerfile's
   `ENV` directives. Env vars added in later fix cycles that aren't yet surfaced as chart values
   (tracked by #1416 — documented but needs values plumbing):
@@ -476,8 +476,8 @@ AGENTS.md is deliberately high-level. For specifics, go to the source of truth:
   `MCP_HELM_REPO_URL_ALLOWLIST`, `MCP_HELM_ALLOW_ANY_REPO`,
   `MCP_K8S_READ_SECRETS_DISABLED`, `MCP_PROM_MAX_RESPONSE_BYTES`.
   All read via `os.environ.get(...)` at startup; no hot-reload.
-- **Metric catalog** — per-service `metrics.py`; rendered dashboards at `charts/nyx/dashboards/`;
-  default alert thresholds at `charts/nyx/templates/prometheusrule.yaml`.
+- **Metric catalog** — per-service `metrics.py`; rendered dashboards at `charts/witwave/dashboards/`;
+  default alert thresholds at `charts/witwave/templates/prometheusrule.yaml`.
 - **Event stream wire contract** — `docs/events/README.md` + `docs/events/events.schema.json`.
 - **HTTP route surface** — each service's `main.py` route declarations; harness
   `/.well-known/agent-runs.json` for runtime discovery of ad-hoc-run endpoints.

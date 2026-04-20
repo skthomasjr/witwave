@@ -10,7 +10,7 @@ This test creates disabled fixtures for each feature type, waits to confirm they
 Create a disabled job file:
 
 ```
-cat > .agents/test/bob/.nyx/jobs/disabled-test.md << 'EOF'
+cat > .agents/test/bob/.witwave/jobs/disabled-test.md << 'EOF'
 ---
 name: Disabled Job Test
 description: Should never fire — enabled is false.
@@ -24,7 +24,7 @@ EOF
 Create a disabled trigger file:
 
 ```
-cat > .agents/test/bob/.nyx/triggers/disabled-test.md << 'EOF'
+cat > .agents/test/bob/.witwave/triggers/disabled-test.md << 'EOF'
 ---
 name: Disabled Trigger Test
 description: Should never be reachable — enabled is false.
@@ -38,7 +38,7 @@ EOF
 Create a disabled continuation file:
 
 ```
-cat > .agents/test/bob/.nyx/continuations/disabled-test.md << 'EOF'
+cat > .agents/test/bob/.witwave/continuations/disabled-test.md << 'EOF'
 ---
 name: Disabled Continuation Test
 description: Should never fire — enabled is false.
@@ -52,9 +52,9 @@ EOF
 Disable the heartbeat by replacing HEARTBEAT.md with an `enabled: false` version:
 
 ```
-cp .agents/test/bob/.nyx/HEARTBEAT.md .agents/test/bob/.nyx/HEARTBEAT.md.bak
+cp .agents/test/bob/.witwave/HEARTBEAT.md .agents/test/bob/.witwave/HEARTBEAT.md.bak
 
-cat > .agents/test/bob/.nyx/HEARTBEAT.md << 'EOF'
+cat > .agents/test/bob/.witwave/HEARTBEAT.md << 'EOF'
 ---
 description: Disabled heartbeat — should not fire.
 schedule: "* * * * *"
@@ -94,10 +94,10 @@ Check the conversation log at `.agents/test/bob/logs/conversation.jsonl` for any
 Remove the test fixtures and restore the heartbeat:
 
 ```
-rm .agents/test/bob/.nyx/jobs/disabled-test.md
-rm .agents/test/bob/.nyx/triggers/disabled-test.md
-rm .agents/test/bob/.nyx/continuations/disabled-test.md
-mv .agents/test/bob/.nyx/HEARTBEAT.md.bak .agents/test/bob/.nyx/HEARTBEAT.md
+rm .agents/test/bob/.witwave/jobs/disabled-test.md
+rm .agents/test/bob/.witwave/triggers/disabled-test.md
+rm .agents/test/bob/.witwave/continuations/disabled-test.md
+mv .agents/test/bob/.witwave/HEARTBEAT.md.bak .agents/test/bob/.witwave/HEARTBEAT.md
 ```
 
 ## Pass/Fail Criteria

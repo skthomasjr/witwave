@@ -1,0 +1,345 @@
+{{/*
+MCP tool Deployments + Services (#644).
+
+One entry in .Values.mcpTools produces one Deployment and one Service,
+both named "<release>-mcp-<name>". The container listens on port 8000
+(FastMCP streamable-http; see tools/../server.py). Agent backends reach
+the tool via the in-cluster DNS name and port that the Service exposes.
+
+Each tool keeps its own ServiceAccount/RBAC out of scope. The
+mcp-kubernetes tool typically needs cluster-read perms, mcp-helm
+typically needs release-management perms. Operators wire those up
+separately and point serviceAccountName at the matching SA; this chart
+does not render ServiceAccount or Role/RoleBinding.
+
+The templating walks .Values.mcpTools as a dict so adding a third tool
+is a two-line values change plus a new image build; no template edits.
+*/}}
+{{- range $name, $tool := .Values.mcpTools }}
+{{- /* Skip non-dict entries (e.g. mcpTools.metricsPort scalar introduced
+       in #687). Only dict values with an enabled field are tools. */}}
+{{- if and (kindIs "map" $tool) $tool.enabled }}
+{{- $fullName := printf "%s-mcp-%s" $.Release.Name $name }}
+{{- /* RBAC resolution for MCP tools (#762). When rbac.create=true the
+       chart renders a dedicated SA + ClusterRole + ClusterRoleBinding
+       bound to it. The pod uses either the chart-rendered SA or a
+       user-supplied serviceAccountName. Fail render if BOTH sources
+       are absent — the tool will 403 at runtime otherwise and the
+       failure mode is invisible until someone looks at MCP errors. */}}
+{{- $rbac := default dict $tool.rbac }}
+{{- $rbacCreate := default false $rbac.create }}
+{{- /* #1074: narrow by default. clusterWide:true reverts to the
+       pre-#1074 ClusterRole/ClusterRoleBinding pair — required when
+       the tool genuinely manages multi-namespace state (e.g.
+       mcp-helm driving releases across tenants). Unset/false
+       renders a namespace-scoped Role + RoleBinding in the release
+       namespace so a compromise does not pool cross-tenant privilege. */}}
+{{- $rbacClusterWide := default false $rbac.clusterWide }}
+{{- $userSA := default "" $tool.serviceAccountName }}
+{{- /* Trim before the empty check so a whitespace-only override
+       ("serviceAccountName: ' '") can't slip past the fail-render
+       guard and produce an obscure admission error at pod start
+       (#1024). */}}
+{{- $userSATrimmed := trim $userSA }}
+{{- if and (not $rbacCreate) (eq $userSATrimmed "") }}
+  {{- fail (printf "witwave chart: mcpTools.%s.enabled=true but no serviceAccount wiring is configured. Set mcpTools.%s.rbac.create=true to let the chart render a minimal default, or provide mcpTools.%s.serviceAccountName to reuse a pre-existing SA with the appropriate (Cluster)Role." $name $name $name) }}
+{{- end }}
+{{- $saName := ternary $userSATrimmed $fullName (ne $userSATrimmed "") }}
+{{- /* When rbacCreate is true and user did not override SA, the chart
+       renders $fullName as the SA. When user overrode, they own RBAC
+       (we skip ClusterRole/Binding so we do not widen their SA's
+       perms unexpectedly). */}}
+{{- $imageTag := default $.Chart.AppVersion $tool.image.tag }}
+{{- /* Digest pinning (#855): when image.digest is set, render
+       repository@sha256:... and ignore tag. Immutable digests guard
+       against a mutable registry tag silently pulling a newer — possibly
+       vulnerable — image into a pod that holds a cluster ServiceAccount
+       token. */}}
+{{- $imageDigest := default "" $tool.image.digest }}
+{{- $imageRef := ternary (printf "%s@%s" $tool.image.repository $imageDigest) (printf "%s:%s" $tool.image.repository $imageTag) (ne $imageDigest "") }}
+{{- $pullPolicy := default "IfNotPresent" $tool.image.pullPolicy }}
+{{- /* MCP Service now exposes the metrics port when metrics.enabled so
+       ServiceMonitor / plain Prometheus scrape discovery can reach the
+       in-container listener (#688). */}}
+{{- $svcMetricsOn := $.Values.metrics.enabled }}
+{{- $svcMetricsPort := ($.Values.mcpTools.metricsPort | default ($.Values.metrics.port | default 9000)) }}
+{{- if and $rbacCreate (eq $userSATrimmed "") }}
+---
+# ServiceAccount for mcp-{{ $name }} (#762). Created when rbac.create=true
+# and no user-provided serviceAccountName; chart also renders the
+# ClusterRole + ClusterRoleBinding below.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $fullName }}
+  labels:
+    app.kubernetes.io/name: {{ $fullName }}
+    app.kubernetes.io/component: mcp-tool
+    app.kubernetes.io/part-of: witwave
+    app.kubernetes.io/managed-by: {{ $.Release.Service }}
+{{- if $rbacClusterWide }}
+---
+# Cluster-wide role (#1074 opt-in). The chart only renders this pair
+# when rbac.clusterWide=true — otherwise the namespace-scoped
+# Role+RoleBinding below is used instead so a compromise of this pod
+# cannot pivot into Secrets / workloads in other tenants' namespaces.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $fullName }}
+  labels:
+    app.kubernetes.io/name: {{ $fullName }}
+    app.kubernetes.io/component: mcp-tool
+    app.kubernetes.io/part-of: witwave
+    app.kubernetes.io/managed-by: {{ $.Release.Service }}
+rules:
+{{ toYaml ($rbac.rules | default list) | indent 2 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $fullName }}
+  labels:
+    app.kubernetes.io/name: {{ $fullName }}
+    app.kubernetes.io/component: mcp-tool
+    app.kubernetes.io/part-of: witwave
+    app.kubernetes.io/managed-by: {{ $.Release.Service }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $fullName }}
+    namespace: {{ $.Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $fullName }}
+{{- else }}
+---
+# Namespace-scoped Role + RoleBinding (#1074 default). Scopes the MCP
+# tool's verbs to the release namespace only. For the mcp-helm case
+# this means Secret CRUD is bounded to the namespace this chart
+# installs into — the pre-#1074 default of cluster-wide Secret CRUD
+# was the single biggest cross-tenant privilege pool in the chart.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $fullName }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ $fullName }}
+    app.kubernetes.io/component: mcp-tool
+    app.kubernetes.io/part-of: witwave
+    app.kubernetes.io/managed-by: {{ $.Release.Service }}
+rules:
+{{ toYaml ($rbac.rules | default list) | indent 2 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $fullName }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ $fullName }}
+    app.kubernetes.io/component: mcp-tool
+    app.kubernetes.io/part-of: witwave
+    app.kubernetes.io/managed-by: {{ $.Release.Service }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $fullName }}
+    namespace: {{ $.Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $fullName }}
+{{- end }}
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullName }}
+  labels:
+    app.kubernetes.io/name: {{ $fullName }}
+    app.kubernetes.io/component: mcp-tool
+    app.kubernetes.io/part-of: witwave
+    app.kubernetes.io/managed-by: {{ $.Release.Service }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: {{ $fullName }}
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+      protocol: TCP
+    {{- if $svcMetricsOn }}
+    # Dedicated metrics port (#688) — the in-container FastMCP
+    # metrics listener binds here so Prometheus can scrape the tool
+    # without piggybacking on the app port.
+    - name: metrics
+      port: {{ $svcMetricsPort }}
+      targetPort: metrics
+      protocol: TCP
+    {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullName }}
+  labels:
+    app.kubernetes.io/name: {{ $fullName }}
+    app.kubernetes.io/component: mcp-tool
+    app.kubernetes.io/part-of: witwave
+    app.kubernetes.io/managed-by: {{ $.Release.Service }}
+spec:
+  {{- /* hasKey branch so replicas: 0 is honored (#912, shared audit).
+         sprig's `default` treats 0 as empty and falls back to 1,
+         silently breaking the temporary-scale-to-zero workflow. */}}
+  {{- if hasKey $tool "replicas" }}
+  replicas: {{ $tool.replicas }}
+  {{- else }}
+  replicas: 1
+  {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $fullName }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ $fullName }}
+        app.kubernetes.io/component: mcp-tool
+        app.kubernetes.io/part-of: witwave
+        app.kubernetes.io/managed-by: {{ $.Release.Service }}
+      {{- /* #1121: service-mesh injection annotations, uniform across
+             every pod template. */}}
+      {{- $meshAnn := include "witwave.serviceMeshPodAnnotations" (dict "root" $) }}
+      {{- if $meshAnn }}
+      annotations:
+        {{- $meshAnn | trim | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- /* Use the resolved SA ($saName): chart-rendered when
+             rbac.create=true and no user override, user-supplied
+             otherwise. automountServiceAccountToken is three-state
+             (#856): when $tool.automountServiceAccountToken is
+             set by the operator, honour it verbatim (true or false);
+             otherwise default to true whenever an SA is in effect
+             (#762). Setting it false lets IRSA / workload identity
+             deployments attach the SA for IAM role annotations
+             while suppressing the in-pod token mount. */}}
+      serviceAccountName: {{ $saName }}
+      {{- if hasKey $tool "automountServiceAccountToken" }}
+      automountServiceAccountToken: {{ $tool.automountServiceAccountToken }}
+      {{- else }}
+      automountServiceAccountToken: true
+      {{- end }}
+      {{- with $tool.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- /* Scheduling knobs (#1116). Each honours per-tool override
+             first, then falls back to the chart-global default so the
+             documented values.yaml shape (nodeSelector / tolerations /
+             affinity / topologySpreadConstraints / priorityClassName)
+             actually takes effect for MCP tool pods. Pre-#1116 the
+             templates silently dropped every one of these — operators
+             set them and watched pods land wherever. Matches the
+             agent-pod wiring in templates/deployment.yaml. */}}
+      {{- with ($tool.nodeSelector | default $.Values.nodeSelector) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with ($tool.tolerations | default $.Values.tolerations) }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with ($tool.affinity | default $.Values.affinity) }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with ($tool.topologySpreadConstraints | default $.Values.topologySpreadConstraints) }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with ($tool.priorityClassName | default $.Values.priorityClassName) }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      {{- $metricsOn := $.Values.metrics.enabled }}
+      {{- /* mcpTools.metricsPort is the canonical key (#687).
+             Fall back to the deprecated metrics.port so existing installs
+             that still set the old key keep rendering the same port for
+             MCP tools; NOTES.txt warns operators to migrate. */}}
+      {{- $metricsPort := ($.Values.mcpTools.metricsPort | default ($.Values.metrics.port | default 9000)) }}
+      containers:
+        - name: mcp
+          image: "{{ $imageRef }}"
+          imagePullPolicy: {{ $pullPolicy }}
+          securityContext:
+            {{- include "witwave.hardenedContainerSecurityContext" (dict "root" $) | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8000
+            {{- if $metricsOn }}
+            # Dedicated Prometheus metrics listener (#643, #649/#650).
+            - name: metrics
+              containerPort: {{ $metricsPort }}
+            {{- end }}
+          env:
+            - name: METRICS_ENABLED
+              value: {{ $metricsOn | toString | quote }}
+            - name: METRICS_PORT
+              value: {{ $metricsPort | quote }}
+            {{- with $tool.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with $tool.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $tool.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- /* Liveness + readiness probes (#848). The mcp_auth
+                 middleware exempts /health so kubelet can probe without
+                 a bearer token. Delays are overridable per tool via
+                 .probes.* to accommodate slow-starting cluster clients
+                 (e.g. mcp-kubernetes's DynamicClient discovery). */}}
+          {{- $probes := default dict $tool.probes }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: {{ default 10 $probes.livenessInitialDelaySeconds }}
+            periodSeconds: {{ default 20 $probes.livenessPeriodSeconds }}
+            timeoutSeconds: {{ default 3 $probes.livenessTimeoutSeconds }}
+            failureThreshold: {{ default 3 $probes.livenessFailureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: {{ default 2 $probes.readinessInitialDelaySeconds }}
+            periodSeconds: {{ default 10 $probes.readinessPeriodSeconds }}
+            timeoutSeconds: {{ default 2 $probes.readinessTimeoutSeconds }}
+            failureThreshold: {{ default 3 $probes.readinessFailureThreshold }}
+          {{- /* #1073: emptyDir carve-outs for readOnlyRootFilesystem=true.
+                 /tmp covers generic Python tempfile writes; /home/agent/.cache
+                 covers helm's repo + plugin cache (mcp-helm shells out to the
+                 helm CLI, which refuses to run without a writable HELM_CACHE). */}}
+          volumeMounts:
+            - name: witwave-tmp
+              mountPath: /tmp
+            - name: witwave-home-cache
+              mountPath: /home/agent/.cache
+      volumes:
+        - name: witwave-tmp
+          emptyDir: {}
+        - name: witwave-home-cache
+          emptyDir: {}
+{{- end }}
+{{- end }}

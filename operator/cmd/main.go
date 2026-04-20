@@ -46,10 +46,10 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	nyxv1alpha1 "github.com/nyx-ai/nyx-operator/api/v1alpha1"
-	"github.com/nyx-ai/nyx-operator/internal/controller"
-	"github.com/nyx-ai/nyx-operator/internal/tracing"
-	webhookv1alpha1 "github.com/nyx-ai/nyx-operator/internal/webhook/v1alpha1"
+	witwavev1alpha1 "github.com/witwave-ai/witwave-operator/api/v1alpha1"
+	"github.com/witwave-ai/witwave-operator/internal/controller"
+	"github.com/witwave-ai/witwave-operator/internal/tracing"
+	webhookv1alpha1 "github.com/witwave-ai/witwave-operator/internal/webhook/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -61,7 +61,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
-	utilruntime.Must(nyxv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(witwavev1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -136,10 +136,10 @@ func main() {
 	if controller.DefaultImageTag == controller.DefaultImageTagSentinel {
 		setupLog.Info(
 			"WARNING: DefaultImageTag was not injected at build time — "+
-				"NyxAgent specs that omit spec.image.tag (and per-backend image.tag) "+
+				"WitwaveAgent specs that omit spec.image.tag (and per-backend image.tag) "+
 				"will fail to render valid image references; "+
-				"set explicit image tags per NyxAgent or rebuild with "+
-				"-ldflags \"-X github.com/nyx-ai/nyx-operator/internal/controller.DefaultImageTag=<version>\"",
+				"set explicit image tags per WitwaveAgent or rebuild with "+
+				"-ldflags \"-X github.com/witwave-ai/witwave-operator/internal/controller.DefaultImageTag=<version>\"",
 			"defaultImageTag", controller.DefaultImageTag,
 		)
 	}
@@ -260,7 +260,7 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		Cache:                  cacheOpts,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "2658b259.nyx.ai",
+		LeaderElectionID:       "2658b259.witwave.ai",
 		// LeaderElectionReleaseOnCancel=true (#752): the binary exits
 		// immediately after mgr.Start returns (no external cleanup runs
 		// past that point), so it is safe to release the lease on
@@ -282,39 +282,39 @@ func main() {
 	// regression in production.
 	if err := mgr.GetFieldIndexer().IndexField(
 		context.Background(),
-		&nyxv1alpha1.NyxPrompt{},
-		controller.NyxPromptAgentRefIndex,
-		controller.NyxPromptAgentRefExtractor,
+		&witwavev1alpha1.WitwavePrompt{},
+		controller.WitwavePromptAgentRefIndex,
+		controller.WitwavePromptAgentRefExtractor,
 	); err != nil {
-		setupLog.Error(err, "unable to register field indexer", "field", controller.NyxPromptAgentRefIndex)
+		setupLog.Error(err, "unable to register field indexer", "field", controller.WitwavePromptAgentRefIndex)
 		os.Exit(1)
 	}
 	if err := mgr.GetFieldIndexer().IndexField(
 		context.Background(),
-		&nyxv1alpha1.NyxAgent{},
-		controller.NyxAgentTeamIndex,
-		controller.NyxAgentTeamExtractor,
+		&witwavev1alpha1.WitwaveAgent{},
+		controller.WitwaveAgentTeamIndex,
+		controller.WitwaveAgentTeamExtractor,
 	); err != nil {
-		setupLog.Error(err, "unable to register field indexer", "field", controller.NyxAgentTeamIndex)
+		setupLog.Error(err, "unable to register field indexer", "field", controller.WitwaveAgentTeamIndex)
 		os.Exit(1)
 	}
 
-	if err := (&controller.NyxAgentReconciler{
+	if err := (&controller.WitwaveAgentReconciler{
 		Client:    mgr.GetClient(),
 		APIReader: mgr.GetAPIReader(),
 		Scheme:    mgr.GetScheme(),
-		Recorder:  mgr.GetEventRecorderFor("nyxagent-controller"),
+		Recorder:  mgr.GetEventRecorderFor("witwaveagent-controller"),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "NyxAgent")
+		setupLog.Error(err, "unable to create controller", "controller", "WitwaveAgent")
 		os.Exit(1)
 	}
 
-	if err := (&controller.NyxPromptReconciler{
+	if err := (&controller.WitwavePromptReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("nyxprompt-controller"),
+		Recorder: mgr.GetEventRecorderFor("witwaveprompt-controller"),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "NyxPrompt")
+		setupLog.Error(err, "unable to create controller", "controller", "WitwavePrompt")
 		os.Exit(1)
 	}
 
@@ -322,17 +322,17 @@ func main() {
 	// so non-webhook installs (local dev, clusters without cert-manager)
 	// still boot cleanly without failing Complete() on the missing TLS pair.
 	if len(webhookCertPath) > 0 {
-		if err := webhookv1alpha1.SetupNyxAgentWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "NyxAgent")
+		if err := webhookv1alpha1.SetupWitwaveAgentWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "WitwaveAgent")
 			os.Exit(1)
 		}
-		// Field indexer for heartbeat NyxPrompt singleton validation
-		// (#755) is now registered inside SetupNyxPromptWebhookWithManager
+		// Field indexer for heartbeat WitwavePrompt singleton validation
+		// (#755) is now registered inside SetupWitwavePromptWebhookWithManager
 		// so the validator flips its indexRegistered flag only on actual
 		// success (#1247) — a failed registration falls back to the full-
 		// namespace scan rather than wedging admission cluster-wide.
-		if err := webhookv1alpha1.SetupNyxPromptWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "NyxPrompt")
+		if err := webhookv1alpha1.SetupWitwavePromptWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "WitwavePrompt")
 			os.Exit(1)
 		}
 	} else {
@@ -412,7 +412,7 @@ func main() {
 
 	// Leader-election gauge hook (#1115). controller-runtime exposes an
 	// Elected() channel that closes once this replica wins the lease;
-	// wire a runnable that blocks on it and flips nyxagent_leader{pod}
+	// wire a runnable that blocks on it and flips witwaveagent_leader{pod}
 	// to 1 so dashboards can alert on "no leader for > N seconds" and
 	// see per-pod handoffs during rollouts.
 	podName := firstNonEmpty(os.Getenv("POD_NAME"), os.Getenv("HOSTNAME"), "unknown")
@@ -422,14 +422,14 @@ func main() {
 	if err := mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
 		select {
 		case <-mgr.Elected():
-			controller.NyxAgentLeader.WithLabelValues(podName).Set(1)
+			controller.WitwaveAgentLeader.WithLabelValues(podName).Set(1)
 		case <-ctx.Done():
 			return nil
 		}
 		<-ctx.Done()
 		// Release the gauge on shutdown so the next leader's 1 is not
 		// double-counted with this pod's stale 1.
-		controller.NyxAgentLeader.DeleteLabelValues(podName)
+		controller.WitwaveAgentLeader.DeleteLabelValues(podName)
 		return nil
 	})); err != nil {
 		setupLog.Error(err, "unable to register leader-election metric runnable")

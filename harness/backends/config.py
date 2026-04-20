@@ -1,6 +1,6 @@
 """Backend configuration loader.
 
-Reads backend.yaml from BACKEND_CONFIG_PATH (default: /home/agent/.nyx/backend.yaml).
+Reads backend.yaml from BACKEND_CONFIG_PATH (default: /home/agent/.witwave/backend.yaml).
 
 Example backend.yaml:
 
@@ -52,7 +52,7 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-BACKEND_CONFIG_PATH = os.environ.get("BACKEND_CONFIG_PATH", "/home/agent/.nyx/backend.yaml")
+BACKEND_CONFIG_PATH = os.environ.get("BACKEND_CONFIG_PATH", "/home/agent/.witwave/backend.yaml")
 
 
 @dataclass

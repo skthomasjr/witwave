@@ -27,7 +27,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/nyx-ai/nyx-operator/test/utils"
+	"github.com/witwave-ai/witwave-operator/test/utils"
 )
 
 // namespace where the project is deployed in
@@ -259,70 +259,70 @@ var _ = Describe("Manager", Ordered, func() {
 		// +kubebuilder:scaffold:e2e-webhooks-checks
 	})
 
-	// NyxAgent reconciliation lifecycle (#628).
+	// WitwaveAgent reconciliation lifecycle (#628).
 	//
 	// Pairs with the envtest unit coverage added in #627. Where the unit tests
 	// cover builder/reconciler logic in milliseconds, this spec exercises the
-	// real kind API server end-to-end: apply a minimal NyxAgent, wait for the
+	// real kind API server end-to-end: apply a minimal WitwaveAgent, wait for the
 	// operator to reconcile a Deployment + Service with the right ownerRefs
-	// and pod readiness, then delete the NyxAgent and assert cascade teardown.
+	// and pod readiness, then delete the WitwaveAgent and assert cascade teardown.
 	//
 	// The spec skips when kubeconfig / cluster access is unavailable (SKIP_E2E
 	// set, or KUBECONFIG/~/.kube/config missing) so developers can run `go
 	// test ./test/e2e/...` without a cluster.
-	Context("NyxAgent reconciliation", func() {
+	Context("WitwaveAgent reconciliation", func() {
 		const (
-			nyxAgentName      = "e2e-nyxagent"
-			nyxAgentNamespace = "operator-system"
+			witwaveAgentName      = "e2e-witwaveagent"
+			witwaveAgentNamespace = "operator-system"
 			harnessImage      = "ghcr.io/skthomasjr/images/harness:latest"
 			backendImage      = "ghcr.io/skthomasjr/images/claude:latest"
 		)
 
 		BeforeEach(func() {
 			if os.Getenv("SKIP_E2E") != "" {
-				Skip("SKIP_E2E set; skipping NyxAgent reconciliation spec")
+				Skip("SKIP_E2E set; skipping WitwaveAgent reconciliation spec")
 			}
 			if !kubeconfigAvailable() {
-				Skip("no KUBECONFIG / ~/.kube/config available; skipping NyxAgent reconciliation spec")
+				Skip("no KUBECONFIG / ~/.kube/config available; skipping WitwaveAgent reconciliation spec")
 			}
 		})
 
 		AfterEach(func() {
 			// Best-effort cleanup in case a spec aborted mid-way. Ignore
 			// errors — the resource may already be gone.
-			cmd := exec.Command("kubectl", "delete", "nyxagent", nyxAgentName,
-				"-n", nyxAgentNamespace, "--ignore-not-found", "--wait=false")
+			cmd := exec.Command("kubectl", "delete", "witwaveagent", witwaveAgentName,
+				"-n", witwaveAgentNamespace, "--ignore-not-found", "--wait=false")
 			_, _ = utils.Run(cmd)
 		})
 
-		It("should reconcile a minimal NyxAgent to a ready Deployment + Service and cascade-delete", func() {
-			By("applying a minimal NyxAgent CR")
-			manifest := minimalNyxAgentManifest(nyxAgentName, nyxAgentNamespace, harnessImage, backendImage)
-			manifestPath := filepath.Join(os.TempDir(), fmt.Sprintf("%s.yaml", nyxAgentName))
+		It("should reconcile a minimal WitwaveAgent to a ready Deployment + Service and cascade-delete", func() {
+			By("applying a minimal WitwaveAgent CR")
+			manifest := minimalWitwaveAgentManifest(witwaveAgentName, witwaveAgentNamespace, harnessImage, backendImage)
+			manifestPath := filepath.Join(os.TempDir(), fmt.Sprintf("%s.yaml", witwaveAgentName))
 			Expect(os.WriteFile(manifestPath, []byte(manifest), 0o644)).To(Succeed())
 			defer func() { _ = os.Remove(manifestPath) }()
 
 			cmd := exec.Command("kubectl", "apply", "-f", manifestPath)
 			_, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred(), "Failed to apply NyxAgent CR")
+			Expect(err).NotTo(HaveOccurred(), "Failed to apply WitwaveAgent CR")
 
 			By("waiting for the reconciler to create the agent Deployment")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "deployment", nyxAgentName, "-n", nyxAgentNamespace)
+				cmd := exec.Command("kubectl", "get", "deployment", witwaveAgentName, "-n", witwaveAgentNamespace)
 				_, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred(), "Deployment not yet created by reconciler")
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
-			By("asserting the Deployment's ownerReference points at the NyxAgent")
-			cmd = exec.Command("kubectl", "get", "deployment", nyxAgentName, "-n", nyxAgentNamespace,
+			By("asserting the Deployment's ownerReference points at the WitwaveAgent")
+			cmd = exec.Command("kubectl", "get", "deployment", witwaveAgentName, "-n", witwaveAgentNamespace,
 				"-o", "jsonpath={.metadata.ownerReferences[0].kind}")
 			ownerKind, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(ownerKind).To(Equal("NyxAgent"), "Deployment should be owned by NyxAgent for cascade delete")
+			Expect(ownerKind).To(Equal("WitwaveAgent"), "Deployment should be owned by WitwaveAgent for cascade delete")
 
 			By("waiting for the reconciler to create the agent Service")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "service", nyxAgentName, "-n", nyxAgentNamespace)
+				cmd := exec.Command("kubectl", "get", "service", witwaveAgentName, "-n", witwaveAgentNamespace)
 				_, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred(), "Service not yet created by reconciler")
 			}, 1*time.Minute, 2*time.Second).Should(Succeed())
@@ -336,16 +336,16 @@ var _ = Describe("Manager", Ordered, func() {
 			// pulled, this will time out and the AfterEach dump will surface
 			// the ImagePullBackOff event for the debugger.
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "deployment", nyxAgentName, "-n", nyxAgentNamespace,
+				cmd := exec.Command("kubectl", "get", "deployment", witwaveAgentName, "-n", witwaveAgentNamespace,
 					"-o", "jsonpath={.status.availableReplicas}")
 				out, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(out).To(Equal("1"), "Deployment has no available replicas yet")
 			}, 5*time.Minute, 5*time.Second).Should(Succeed())
 
-			By("asserting the NyxAgent status observedGeneration tracks spec.generation")
+			By("asserting the WitwaveAgent status observedGeneration tracks spec.generation")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "nyxagent", nyxAgentName, "-n", nyxAgentNamespace,
+				cmd := exec.Command("kubectl", "get", "witwaveagent", witwaveAgentName, "-n", witwaveAgentNamespace,
 					"-o", "jsonpath={.status.observedGeneration}")
 				out, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -353,21 +353,21 @@ var _ = Describe("Manager", Ordered, func() {
 				g.Expect(out).NotTo(Equal("0"), "status.observedGeneration should advance past 0 after reconcile")
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
-			By("deleting the NyxAgent and waiting for owned resources to be garbage-collected")
-			cmd = exec.Command("kubectl", "delete", "nyxagent", nyxAgentName, "-n", nyxAgentNamespace, "--wait=true")
+			By("deleting the WitwaveAgent and waiting for owned resources to be garbage-collected")
+			cmd = exec.Command("kubectl", "delete", "witwaveagent", witwaveAgentName, "-n", witwaveAgentNamespace, "--wait=true")
 			_, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred(), "Failed to delete NyxAgent CR")
+			Expect(err).NotTo(HaveOccurred(), "Failed to delete WitwaveAgent CR")
 
 			By("confirming the Deployment is gone (cascade)")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "deployment", nyxAgentName, "-n", nyxAgentNamespace)
+				cmd := exec.Command("kubectl", "get", "deployment", witwaveAgentName, "-n", witwaveAgentNamespace)
 				_, err := utils.Run(cmd)
 				g.Expect(err).To(HaveOccurred(), "Deployment should be deleted via ownerRef cascade")
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
 
 			By("confirming the Service is gone (cascade)")
 			Eventually(func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "service", nyxAgentName, "-n", nyxAgentNamespace)
+				cmd := exec.Command("kubectl", "get", "service", witwaveAgentName, "-n", witwaveAgentNamespace)
 				_, err := utils.Run(cmd)
 				g.Expect(err).To(HaveOccurred(), "Service should be deleted via ownerRef cascade")
 			}, 2*time.Minute, 2*time.Second).Should(Succeed())
@@ -395,13 +395,13 @@ func kubeconfigAvailable() bool {
 	return false
 }
 
-// minimalNyxAgentManifest renders the smallest NyxAgent that passes CRD
+// minimalWitwaveAgentManifest renders the smallest WitwaveAgent that passes CRD
 // validation: one backend, required image repositories, everything else left
 // to kubebuilder defaults. Kept inline so the spec isn't coupled to the
 // `config/samples/` fixture (which may evolve independently).
-func minimalNyxAgentManifest(name, namespace, harnessImage, backendImage string) string {
-	return fmt.Sprintf(`apiVersion: nyx.ai/v1alpha1
-kind: NyxAgent
+func minimalWitwaveAgentManifest(name, namespace, harnessImage, backendImage string) string {
+	return fmt.Sprintf(`apiVersion: witwave.ai/v1alpha1
+kind: WitwaveAgent
 metadata:
   name: %s
   namespace: %s

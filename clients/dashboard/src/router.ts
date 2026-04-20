@@ -39,7 +39,7 @@ export const router = createRouter({
     { path: "/heartbeat", redirect: { name: "automation" } },
     { path: "/conversations", name: "conversations", component: ConversationsView },
     // Deep-link shape for the Conversations drawer (#969). agent is the
-    // NyxAgent name; sessionId is the conversation session id the view
+    // WitwaveAgent name; sessionId is the conversation session id the view
     // already uses to build /api/agents/{agent}/conversations/{sessionId}.
     {
       path: "/conversations/:agent/:sessionId",

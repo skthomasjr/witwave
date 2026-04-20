@@ -33,7 +33,7 @@ from utils import (
 
 logger = logging.getLogger(__name__)
 
-CONTINUATIONS_DIR = os.environ.get("CONTINUATIONS_DIR", "/home/agent/.nyx/continuations")
+CONTINUATIONS_DIR = os.environ.get("CONTINUATIONS_DIR", "/home/agent/.witwave/continuations")
 
 # Sentinel returned by parse_continuation_file() when the file is explicitly
 # disabled (enabled: false).  Distinct from None (parse error) so that
@@ -250,7 +250,7 @@ async def _fire(
             _parsed_name = _rest or _parsed_name
     elif upstream_kind_label in {"job", "task", "trigger", "a2a", "continuation"}:
         _parsed_kind = upstream_kind_label
-    _agent_name = os.environ.get("AGENT_NAME", "nyx")
+    _agent_name = os.environ.get("AGENT_NAME", "witwave")
     try:
         # Propagate the upstream trace_context (#784) so the continuation
         # span joins the same trace as its originating

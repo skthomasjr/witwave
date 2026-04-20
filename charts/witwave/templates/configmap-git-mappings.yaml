@@ -1,0 +1,138 @@
+{{- $hasAnyMappings := false }}
+{{- range .Values.agents }}
+{{- if eq (include "witwave.enabled" .) "true" }}
+{{- if .gitMappings }}{{- $hasAnyMappings = true }}{{- end }}
+{{- range .backends }}
+{{- if eq (include "witwave.enabled" .) "true" }}
+{{- if .gitMappings }}{{- $hasAnyMappings = true }}{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if $hasAnyMappings }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $.Release.Name }}-git-sync-script
+  labels:
+    app.kubernetes.io/component: witwave-git-sync
+    app.kubernetes.io/part-of: witwave
+    app.kubernetes.io/managed-by: helm
+data:
+  git-sync.sh: |
+    #!/bin/sh
+    set -e
+    MAPPINGS_DIR="${1:-/witwave-mappings}"
+    # Failure marker path (risk #584): when any mapping fails, we drop a
+    # timestamped marker file here so that a readiness probe or sidecar check
+    # can surface the failure externally. The exechook itself only logs to
+    # stderr, which is invisible outside `kubectl logs -c git-sync-<name>`.
+    # Consumers: mount an emptyDir at /var/run/git-sync shared between the
+    # git-sync sidecar and the harness container, and have the harness
+    # readiness endpoint fail if this file exists.
+    FAILURE_MARKER="/var/run/git-sync/failed"
+    failed=0
+    apply_mappings() {
+      MAPPINGS_FILE="$1"
+      # mappings.tsv format: one mapping per line, "<src>\t<dest>" (tab-separated).
+      # Emitted by Helm at render time so shell never has to parse YAML. Tab is
+      # used as the delimiter because ':' and whitespace are legal in paths but
+      # tabs effectively never are; this removes the substring-match ambiguity
+      # of the previous line-based parser (see risk #577).
+      while IFS="$(printf '\t')" read -r src dest; do
+        if [ -z "$src" ] && [ -z "$dest" ]; then
+          continue
+        fi
+        if [ -z "$src" ] || [ -z "$dest" ]; then
+          echo "ERROR: malformed mapping line (src='$src' dest='$dest') in $MAPPINGS_FILE" >&2
+          failed=1
+          continue
+        fi
+        case "$src" in
+          */)
+            echo "Syncing dir  $src -> $dest"
+            if ! mkdir -p "$dest"; then
+              echo "ERROR: failed to create dir $dest" >&2
+              failed=1
+            elif ! rsync -a --omit-dir-times --no-perms --delete --exclude='*.checkpoint' "$src" "$dest"; then
+              echo "ERROR: failed to sync dir $src -> $dest" >&2
+              failed=1
+            fi
+            ;;
+          *)
+            echo "Syncing file $src -> $dest"
+            if ! mkdir -p "$(dirname "$dest")" || ! rsync -a --omit-dir-times --no-perms "$src" "$dest"; then
+              echo "ERROR: failed to sync file $src -> $dest" >&2
+              failed=1
+            fi
+            ;;
+        esac
+      done < "$MAPPINGS_FILE"
+    }
+    for f in "$MAPPINGS_DIR"/*/mappings.tsv; do
+      [ -f "$f" ] || continue
+      echo "Applying mappings from $f"
+      apply_mappings "$f"
+    done
+    if [ "$failed" -ne 0 ]; then
+      echo "ERROR: one or more mappings failed" >&2
+      # Write failure marker (risk #584). Best-effort: if the marker
+      # directory isn't mounted we still exit 1 so the pod-level signal is
+      # preserved. Timestamp is ISO-8601 UTC to make the file self-describing.
+      if mkdir -p "$(dirname "$FAILURE_MARKER")" 2>/dev/null; then
+        date -u +"%Y-%m-%dT%H:%M:%SZ" > "$FAILURE_MARKER" 2>/dev/null || true
+      fi
+      exit 1
+    fi
+    # Clear any stale failure marker from a previous failed run so that
+    # readiness can recover once mappings succeed again.
+    rm -f "$FAILURE_MARKER" 2>/dev/null || true
+{{- end }}
+{{- range .Values.agents }}
+{{- if eq (include "witwave.enabled" .) "true" }}
+{{- $agentName := .name }}
+{{- if .gitMappings }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $.Release.Name }}-{{ $agentName }}-git-mappings
+  labels:
+    {{- include "witwave.agentLabels" (dict "name" $agentName "root" $) | nindent 4 }}
+data:
+  mappings.yaml: |
+    {{- range .gitMappings }}
+    - src: /git/{{ .gitSync }}/{{ .src }}
+      dest: {{ .dest }}
+    {{- end }}
+  mappings.tsv: |
+    {{- range .gitMappings }}
+    {{ printf "/git/%s/%s\t%s" .gitSync .src .dest }}
+    {{- end }}
+{{- end }}
+{{- range .backends }}
+{{- if eq (include "witwave.enabled" .) "true" }}
+{{- if .gitMappings }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $.Release.Name }}-{{ $agentName }}-{{ .name }}-git-mappings
+  labels:
+    {{- include "witwave.backendLabels" (dict "agentName" $agentName "backendName" .name "root" $) | nindent 4 }}
+data:
+  mappings.yaml: |
+    {{- range .gitMappings }}
+    - src: /git/{{ .gitSync }}/{{ .src }}
+      dest: {{ .dest }}
+    {{- end }}
+  mappings.tsv: |
+    {{- range .gitMappings }}
+    {{ printf "/git/%s/%s\t%s" .gitSync .src .dest }}
+    {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

@@ -76,7 +76,7 @@ const themeLabel = computed(() => {
          tokens.css until it receives focus. -->
     <a href="#app-main" class="skip-to-main">Skip to main content</a>
     <header class="app-header">
-      <h1 class="brand">nyx</h1>
+      <h1 class="brand">witwave</h1>
       <nav class="app-nav">
         <RouterLink
           v-for="item in navItems"
@@ -170,14 +170,14 @@ const themeLabel = computed(() => {
   padding: 0 18px;
   height: 46px;
   flex-shrink: 0;
-  border-bottom: 1px solid var(--nyx-border);
-  background: var(--nyx-surface);
+  border-bottom: 1px solid var(--witwave-border);
+  background: var(--witwave-surface);
 }
 
 .brand {
   font-size: 1rem;
   letter-spacing: 0.25em;
-  color: var(--nyx-bright);
+  color: var(--witwave-bright);
   margin: 0;
   font-weight: 600;
 }
@@ -194,9 +194,9 @@ const themeLabel = computed(() => {
   border: none;
   cursor: pointer;
   padding: 5px 13px;
-  border-radius: var(--nyx-radius);
-  color: var(--nyx-dim);
-  font-family: var(--nyx-mono);
+  border-radius: var(--witwave-radius);
+  color: var(--witwave-dim);
+  font-family: var(--witwave-mono);
   font-size: 12px;
   letter-spacing: 0.04em;
   text-decoration: none;
@@ -205,13 +205,13 @@ const themeLabel = computed(() => {
 }
 
 .nav-link:hover {
-  color: var(--nyx-text);
-  background: var(--nyx-bg);
+  color: var(--witwave-text);
+  background: var(--witwave-bg);
 }
 
 .nav-link.is-active {
-  color: var(--nyx-bright);
-  background: var(--nyx-bg);
+  color: var(--witwave-bright);
+  background: var(--witwave-bg);
 }
 
 .status {
@@ -227,39 +227,39 @@ const themeLabel = computed(() => {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--nyx-muted);
+  background: var(--witwave-muted);
 }
 
 .status-ok {
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
 }
 
 .status-ok::before {
-  background: var(--nyx-green);
+  background: var(--witwave-green);
 }
 
 .status-partial {
-  color: var(--nyx-yellow);
+  color: var(--witwave-yellow);
 }
 
 .status-partial::before {
-  background: var(--nyx-yellow);
+  background: var(--witwave-yellow);
 }
 
 .status-err {
-  color: var(--nyx-red);
+  color: var(--witwave-red);
 }
 
 .status-err::before {
-  background: var(--nyx-red);
+  background: var(--witwave-red);
 }
 
 .status-connecting {
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
 }
 
 .version {
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   font-size: 11px;
 }
 
@@ -268,29 +268,29 @@ const themeLabel = computed(() => {
   align-items: center;
   gap: 4px;
   background: none;
-  border: 1px solid var(--nyx-border);
-  border-radius: var(--nyx-radius);
-  color: var(--nyx-dim);
+  border: 1px solid var(--witwave-border);
+  border-radius: var(--witwave-radius);
+  color: var(--witwave-dim);
   cursor: pointer;
   padding: 3px 8px;
-  font-family: var(--nyx-mono);
+  font-family: var(--witwave-mono);
   font-size: 11px;
   letter-spacing: 0.04em;
   transition: color 0.12s, background 0.12s, border-color 0.12s;
 }
 
 .pause-toggle:hover {
-  color: var(--nyx-text);
-  background: var(--nyx-bg);
+  color: var(--witwave-text);
+  background: var(--witwave-bg);
 }
 
 .pause-toggle.is-paused {
-  color: var(--nyx-yellow);
-  border-color: var(--nyx-yellow);
+  color: var(--witwave-yellow);
+  border-color: var(--witwave-yellow);
 }
 
 .pause-toggle.is-hidden {
-  color: var(--nyx-muted);
+  color: var(--witwave-muted);
 }
 
 .pause-label {
@@ -302,20 +302,20 @@ const themeLabel = computed(() => {
   align-items: center;
   gap: 4px;
   background: none;
-  border: 1px solid var(--nyx-border);
-  border-radius: var(--nyx-radius);
-  color: var(--nyx-dim);
+  border: 1px solid var(--witwave-border);
+  border-radius: var(--witwave-radius);
+  color: var(--witwave-dim);
   cursor: pointer;
   padding: 3px 8px;
-  font-family: var(--nyx-mono);
+  font-family: var(--witwave-mono);
   font-size: 11px;
   letter-spacing: 0.04em;
   transition: color 0.12s, background 0.12s, border-color 0.12s;
 }
 
 .theme-toggle:hover {
-  color: var(--nyx-text);
-  background: var(--nyx-bg);
+  color: var(--witwave-text);
+  background: var(--witwave-bg);
 }
 
 .theme-label {

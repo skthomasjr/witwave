@@ -1,0 +1,34 @@
+apiVersion: witwave.ai/v1alpha1
+kind: WitwavePrompt
+metadata:
+  labels:
+    app.kubernetes.io/name: operator
+    app.kubernetes.io/managed-by: kustomize
+  name: health-check
+spec:
+  # Harness scheduler directory this prompt targets. One of:
+  #   job | task | trigger | continuation | webhook | heartbeat
+  kind: job
+
+  # WitwaveAgents this prompt materialises into. Multi-bind supported from v1.
+  # The operator reconciles one ConfigMap per (prompt, agent) pair.
+  agentRefs:
+    - name: adam
+    # - name: iris
+    # - name: nova
+
+  # YAML frontmatter rendered at the top of the generated .md file. The
+  # harness reads it the same way it reads gitSync-materialised prompts.
+  # Required keys depend on kind:
+  #   job / task:    schedule
+  #   trigger:       endpoint
+  #   continuation:  continues-after
+  #   webhook:       url
+  #   heartbeat:     none required (singleton-per-agent enforced by webhook)
+  frontmatter:
+    schedule: "*/5 * * * *"
+    enabled: true
+
+  # Prompt body — everything after the frontmatter fence.
+  body: |
+    Run a health check and report status. Respond with JOB_OK on success.

@@ -8,7 +8,7 @@ This test creates a run-once task (no `window-start`) which fires immediately wh
 ## Setup
 
 ```
-cat > .agents/test/bob/.nyx/tasks/task-smoke.md << 'EOF'
+cat > .agents/test/bob/.witwave/tasks/task-smoke.md << 'EOF'
 ---
 name: Task Smoke
 description: Run-once task used to verify the task scheduler fires and the backend responds.
@@ -26,7 +26,7 @@ Poll the conversation log at `.agents/test/bob/logs/conversation.jsonl` every 2 
 ## Cleanup
 
 ```
-rm .agents/test/bob/.nyx/tasks/task-smoke.md
+rm .agents/test/bob/.witwave/tasks/task-smoke.md
 ```
 
 ## Pass/Fail Criteria

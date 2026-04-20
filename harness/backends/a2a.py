@@ -349,10 +349,10 @@ class A2ABackend:
             _outbound_traceparent = trace_context.child().to_header()
 
         _span_attrs = {
-            "nyx.backend_id": self.id,
-            "nyx.url": self._url,
-            "nyx.model": model or "",
-            "nyx.session_id": session_id,
+            "witwave.backend_id": self.id,
+            "witwave.url": self._url,
+            "witwave.model": model or "",
+            "witwave.session_id": session_id,
             "http.request.method": "POST",
         }
         # Gate this call against the circuit breaker (#655). When the

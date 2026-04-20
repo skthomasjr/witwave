@@ -80,7 +80,7 @@ _OTEL_SPAN_RE = re.compile(r"\b[0-9a-f]{16}\b")
 # Sentinel used to mask identifier shapes so the subsequent redaction
 # pass can't clobber them. Chosen to be ASCII-only, unlikely to appear
 # in real text.
-_IDENT_SENTINEL = "\x00NYX_IDENT_{}\x00"
+_IDENT_SENTINEL = "\x00WITWAVE_IDENT_{}\x00"
 
 
 # Ordered from most-specific to most-generic. Shape-specific rules fire

@@ -100,8 +100,8 @@ func newRoot() (*cobra.Command, *rootFlags) {
 	rf := &rootFlags{}
 	cmd := &cobra.Command{
 		Use:   "ww",
-		Short: "witwave CLI — operate the Nyx agent platform",
-		Long: "ww is the command-line companion for the Nyx / witwave agent platform.\n" +
+		Short: "witwave CLI — operate the Witwave agent platform",
+		Long: "ww is the command-line companion for the Witwave / witwave agent platform.\n" +
 			"It talks to a harness over the shared event + REST surface: tail the live\n" +
 			"event stream, send A2A prompts, inspect jobs / tasks / triggers, and\n" +
 			"validate scheduler files — all without a browser.",

@@ -1,4 +1,4 @@
-module github.com/nyx-ai/nyx-operator
+module github.com/witwave-ai/witwave-operator
 
 go 1.25.0
 

@@ -1,0 +1,67 @@
+{{- range .Values.agents }}
+{{- if eq (include "witwave.enabled" .) "true" }}
+{{- $agent := . }}
+{{- /* Resolve $svcPort the same way service.yaml does (#908): `port`
+       is the container port, `.service.port` (when present) overrides
+       the Service front port. The test pod connects via the Service,
+       so it must honor the Service port override — the previous code
+       always curled .port|default 8000 and hit connection-refused on
+       any deployment that set .service.port. */}}
+{{- $containerPort := .port | default 8000 }}
+{{- $svcPort := $containerPort }}
+{{- if and (.service) (hasKey .service "port") }}
+{{- $svcPort = .service.port }}
+{{- end }}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ $.Release.Name }}-{{ .name }}-test-health
+  labels:
+    {{- include "witwave.agentLabels" (dict "name" .name "root" $) | nindent 4 }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  activeDeadlineSeconds: 60
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 100
+    runAsGroup: 101
+    # PSS-restricted compatibility (#847).
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: test
+      image: curlimages/curl:8.7.1
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+        seccompProfile:
+          type: RuntimeDefault
+      command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          echo "Testing harness health/ready for {{ .name }}..."
+          curl -sf --connect-timeout 3 --max-time 10 http://{{ $.Release.Name }}-{{ .name }}:{{ $svcPort }}/health/ready
+          echo ""
+          echo "Testing A2A discovery for {{ .name }}..."
+          curl -sf --connect-timeout 3 --max-time 10 http://{{ $.Release.Name }}-{{ .name }}:{{ $svcPort }}/.well-known/agent.json
+          echo ""
+          echo "Testing backend connectivity for {{ .name }}..."
+          agents=$(curl -sf --connect-timeout 3 --max-time 20 http://{{ $.Release.Name }}-{{ .name }}:{{ $svcPort }}/agents)
+          echo "$agents"
+          {{- range .backends }}
+          {{- if eq (include "witwave.enabled" .) "true" }}
+          echo "$agents" | grep -q '"id":"{{ .name }}"' || { echo "ERROR: backend {{ .name }} not found in /agents response" >&2; exit 1; }
+          echo "$agents" | grep -q '"id":"{{ .name }}".*"card":{' || { echo "ERROR: backend {{ .name }} card is null — backend may be unreachable" >&2; exit 1; }
+          {{- end }}
+          {{- end }}
+          echo ""
+          echo "All checks passed for {{ .name }}."
+{{- end }}
+{{- end }}

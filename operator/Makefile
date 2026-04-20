@@ -28,8 +28,8 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 # This variable is used to construct full image tags for bundle and catalog images.
 #
 # For example, running 'make bundle-build bundle-push catalog-build catalog-push' will build and push both
-# nyx.ai/operator-bundle:$VERSION and nyx.ai/operator-catalog:$VERSION.
-IMAGE_TAG_BASE ?= nyx.ai/operator
+# witwave.ai/operator-bundle:$VERSION and witwave.ai/operator-catalog:$VERSION.
+IMAGE_TAG_BASE ?= witwave.ai/operator
 
 # BUNDLE_IMG defines the image:tag used for the bundle.
 # You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)
@@ -157,7 +157,7 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 
 .PHONY: build
 build: manifests generate fmt vet ## Build manager binary.
-	go build -ldflags "-X github.com/nyx-ai/nyx-operator/internal/controller.DefaultImageTag=$(VERSION)" -o bin/manager cmd/main.go
+	go build -ldflags "-X github.com/witwave-ai/witwave-operator/internal/controller.DefaultImageTag=$(VERSION)" -o bin/manager cmd/main.go
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.

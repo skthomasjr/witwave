@@ -1,4 +1,4 @@
 ## Append samples of your project ##
 resources:
-- nyx_v1alpha1_nyxagent.yaml
+- witwave_v1alpha1_witwaveagent.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

@@ -255,14 +255,14 @@ function exportRowToPlain(row: RenderRow): Record<string, unknown> {
 function onExportTraceJson(): void {
   exportJson(
     filtered.value.map(exportRowToPlain),
-    timestamped("nyx-trace", "json"),
+    timestamped("witwave-trace", "json"),
   );
 }
 function onExportTraceCsv(): void {
   exportCsv(
     filtered.value.map(exportRowToPlain),
     traceExportColumns,
-    timestamped("nyx-trace", "csv"),
+    timestamped("witwave-trace", "csv"),
   );
 }
 
@@ -418,15 +418,15 @@ function formatInput(v: unknown): string {
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--nyx-border);
-  background: var(--nyx-surface);
+  border-bottom: 1px solid var(--witwave-border);
+  background: var(--witwave-surface);
   flex-shrink: 0;
   flex-wrap: wrap;
 }
 
 .title {
   font-size: 12px;
-  color: var(--nyx-bright);
+  color: var(--witwave-bright);
   text-transform: uppercase;
   letter-spacing: 0.07em;
   margin: 0;
@@ -436,35 +436,35 @@ function formatInput(v: unknown): string {
 .search {
   flex: 1;
   min-width: 200px;
-  background: var(--nyx-bg);
-  border: 1px solid var(--nyx-border);
-  color: var(--nyx-text);
-  font-family: var(--nyx-mono);
+  background: var(--witwave-bg);
+  border: 1px solid var(--witwave-border);
+  color: var(--witwave-text);
+  font-family: var(--witwave-mono);
   font-size: 11px;
   padding: 4px 8px;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
 }
 
 .select {
-  background: var(--nyx-bg);
-  border: 1px solid var(--nyx-border);
-  color: var(--nyx-text);
-  font-family: var(--nyx-mono);
+  background: var(--witwave-bg);
+  border: 1px solid var(--witwave-border);
+  color: var(--witwave-text);
+  font-family: var(--witwave-mono);
   font-size: 11px;
   padding: 4px 8px;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
   cursor: pointer;
 }
 
 .search:focus,
 .select:focus {
   outline: none;
-  border-color: var(--nyx-accent);
+  border-color: var(--witwave-accent);
 }
 
 .count {
   font-size: 10px;
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
 }
 
 .degraded {
@@ -472,9 +472,9 @@ function formatInput(v: unknown): string {
   align-items: center;
   gap: 4px;
   font-size: 10px;
-  color: var(--nyx-red);
-  border: 1px solid var(--nyx-red);
-  border-radius: var(--nyx-radius);
+  color: var(--witwave-red);
+  border: 1px solid var(--witwave-red);
+  border-radius: var(--witwave-radius);
   padding: 2px 6px;
   cursor: help;
   white-space: nowrap;
@@ -482,18 +482,18 @@ function formatInput(v: unknown): string {
 
 .refresh {
   background: none;
-  border: 1px solid var(--nyx-border);
-  color: var(--nyx-dim);
+  border: 1px solid var(--witwave-border);
+  color: var(--witwave-dim);
   padding: 4px 10px;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
 }
 
 .refresh:hover:not(:disabled) {
-  color: var(--nyx-text);
-  border-color: var(--nyx-muted);
+  color: var(--witwave-text);
+  border-color: var(--witwave-muted);
 }
 
 .refresh:disabled {
@@ -509,72 +509,72 @@ function formatInput(v: unknown): string {
 
 .state {
   padding: 30px;
-  color: var(--nyx-muted);
+  color: var(--witwave-muted);
   font-size: 11px;
   text-align: center;
 }
 
 .state-error {
-  color: var(--nyx-red);
+  color: var(--witwave-red);
 }
 
 .tbl {
   width: 100%;
   border-collapse: collapse;
   font-size: 11px;
-  font-family: var(--nyx-mono);
+  font-family: var(--witwave-mono);
 }
 
 .tbl th,
 .tbl td {
   text-align: left;
   padding: 6px 10px;
-  border-bottom: 1px solid var(--nyx-border);
+  border-bottom: 1px solid var(--witwave-border);
   vertical-align: top;
 }
 
 .tbl th {
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   font-size: 10px;
   font-weight: 600;
-  background: var(--nyx-surface);
+  background: var(--witwave-surface);
   position: sticky;
   top: 0;
   z-index: 1;
 }
 
 .tbl tbody tr:hover {
-  background: var(--nyx-surface);
+  background: var(--witwave-surface);
 }
 
 .ts {
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   white-space: nowrap;
 }
 
 .tool {
-  color: var(--nyx-bright);
+  color: var(--witwave-bright);
   white-space: nowrap;
 }
 
 .dur {
-  color: var(--nyx-text);
+  color: var(--witwave-text);
   white-space: nowrap;
 }
 
 .agent-name {
-  color: var(--nyx-text);
+  color: var(--witwave-text);
 }
 
 .team {
-  color: var(--nyx-accent);
+  color: var(--witwave-accent);
   margin-left: 6px;
 }
 
 .session {
-  color: var(--nyx-muted);
+  color: var(--witwave-muted);
   font-size: 10px;
   max-width: 120px;
   overflow: hidden;
@@ -583,7 +583,7 @@ function formatInput(v: unknown): string {
 }
 
 .input {
-  color: var(--nyx-text);
+  color: var(--witwave-text);
   max-width: 400px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -593,59 +593,59 @@ function formatInput(v: unknown): string {
 .pill {
   display: inline-block;
   padding: 1px 6px;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .pill-ok {
-  background: color-mix(in srgb, var(--nyx-green) 20%, transparent);
-  color: var(--nyx-green);
-  border: 1px solid color-mix(in srgb, var(--nyx-green) 35%, var(--nyx-border));
+  background: color-mix(in srgb, var(--witwave-green) 20%, transparent);
+  color: var(--witwave-green);
+  border: 1px solid color-mix(in srgb, var(--witwave-green) 35%, var(--witwave-border));
 }
 
 .pill-error {
-  background: color-mix(in srgb, var(--nyx-red) 20%, transparent);
-  color: var(--nyx-red);
-  border: 1px solid color-mix(in srgb, var(--nyx-red) 35%, var(--nyx-border));
+  background: color-mix(in srgb, var(--witwave-red) 20%, transparent);
+  color: var(--witwave-red);
+  border: 1px solid color-mix(in srgb, var(--witwave-red) 35%, var(--witwave-border));
 }
 
 .pill-pending {
-  background: color-mix(in srgb, var(--nyx-yellow) 20%, transparent);
-  color: var(--nyx-yellow);
-  border: 1px solid color-mix(in srgb, var(--nyx-yellow) 35%, var(--nyx-border));
+  background: color-mix(in srgb, var(--witwave-yellow) 20%, transparent);
+  color: var(--witwave-yellow);
+  border: 1px solid color-mix(in srgb, var(--witwave-yellow) 35%, var(--witwave-border));
 }
 
 .pill-denied {
-  background: color-mix(in srgb, var(--nyx-red) 14%, transparent);
-  color: var(--nyx-red);
-  border: 1px solid color-mix(in srgb, var(--nyx-red) 50%, var(--nyx-border));
+  background: color-mix(in srgb, var(--witwave-red) 14%, transparent);
+  color: var(--witwave-red);
+  border: 1px solid color-mix(in srgb, var(--witwave-red) 50%, var(--witwave-border));
   font-weight: 600;
 }
 
 .pill-kind-tool_use {
-  background: var(--nyx-surface);
-  color: var(--nyx-dim);
-  border: 1px solid var(--nyx-border);
+  background: var(--witwave-surface);
+  color: var(--witwave-dim);
+  border: 1px solid var(--witwave-border);
 }
 
 .pill-kind-tool_audit {
-  background: color-mix(in srgb, var(--nyx-accent) 14%, transparent);
-  color: var(--nyx-accent);
-  border: 1px solid color-mix(in srgb, var(--nyx-accent) 40%, var(--nyx-border));
+  background: color-mix(in srgb, var(--witwave-accent) 14%, transparent);
+  color: var(--witwave-accent);
+  border: 1px solid color-mix(in srgb, var(--witwave-accent) 40%, var(--witwave-border));
 }
 
 .rule {
   margin-left: 4px;
   font-size: 10px;
-  color: var(--nyx-dim);
-  font-family: var(--nyx-mono);
+  color: var(--witwave-dim);
+  font-family: var(--witwave-mono);
 }
 
 .preview {
   font-size: 10px;
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   margin-top: 2px;
   max-width: 420px;
   overflow: hidden;

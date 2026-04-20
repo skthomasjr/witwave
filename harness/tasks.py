@@ -42,9 +42,9 @@ from utils import (
 
 logger = logging.getLogger(__name__)
 
-TASKS_DIR = os.environ.get("TASKS_DIR", "/home/agent/.nyx/tasks")
+TASKS_DIR = os.environ.get("TASKS_DIR", "/home/agent/.witwave/tasks")
 CHECKPOINT_DIR = os.path.join(TASKS_DIR, ".checkpoints")
-AGENT_NAME = os.environ.get("AGENT_NAME", "nyx")
+AGENT_NAME = os.environ.get("AGENT_NAME", "witwave")
 _TASKS_MAX_CONCURRENT = int(os.environ.get("TASKS_MAX_CONCURRENT", "0"))
 
 _DAY_ABBREVS = {

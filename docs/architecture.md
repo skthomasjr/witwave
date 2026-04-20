@@ -24,7 +24,7 @@ reference for "what file is where" and stays current because coding agents read 
 At the top level, the repo is split into two buckets plus shared infrastructure:
 
 - **Platform infrastructure** — `harness/`, `backends/{claude,codex,gemini}/`, `operator/`, `tools/`
-  (MCP servers: `kubernetes`, `helm`, `prometheus`), `charts/{nyx,nyx-operator}/`, `shared/`.
+  (MCP servers: `kubernetes`, `helm`, `prometheus`), `charts/{witwave,witwave-operator}/`, `shared/`.
 - **Client surfaces** (under `clients/`) — `clients/dashboard/` (Vue 3 web UI), `clients/ww/` (Go CLI).
 - **Agent configs** (`.agents/`) — per-named-agent filesystem config that gets mounted into the
   platform containers. `active/` for production-like (`iris`, `nova`, `kira`); `test/` for
@@ -145,7 +145,7 @@ anyone curl-ing the harness directly).
 ### Dedicated metrics listener (`shared/metrics_server.py`)
 
 Every container in the stack — harness, each backend, each MCP tool — runs `/metrics` on a **dedicated port** (9000
-by default, set via `METRICS_PORT` env / `metrics.port` chart value / `NyxAgentSpec.MetricsPort` CRD field)
+by default, set via `METRICS_PORT` env / `metrics.port` chart value / `WitwaveAgentSpec.MetricsPort` CRD field)
 separate from the app listener (#643). The split lets NetworkPolicy and auth posture diverge cleanly between app
 traffic (A2A, triggers, conversations, MCP) and monitoring scrapes. `shared/metrics_server.py` exposes two
 entry points: an asyncio-task variant for containers that own the main event loop (harness, backends), and a
@@ -177,14 +177,14 @@ Agent identity and behavior are entirely file-based. No identity is baked into a
 
 | File                 | Location              | Purpose                                                 |
 | -------------------- | --------------------- | ------------------------------------------------------- |
-| `agent-card.md`      | `.nyx/`               | A2A identity description for the harness agent card |
-| `backend.yaml`       | `.nyx/`               | Backend definitions and routing                         |
-| `HEARTBEAT.md`       | `.nyx/`               | Heartbeat schedule and prompt                           |
-| `jobs/*.md`          | `.nyx/jobs/`          | Scheduled jobs — cron frontmatter                       |
-| `tasks/*.md`         | `.nyx/tasks/`         | Calendar tasks — days/window frontmatter                |
-| `triggers/*.md`      | `.nyx/triggers/`      | Inbound HTTP trigger definitions                        |
-| `continuations/*.md` | `.nyx/continuations/` | Continuation definitions — fires on upstream completion |
-| `webhooks/*.md`      | `.nyx/webhooks/`      | Outbound webhook subscriptions                          |
+| `agent-card.md`      | `.witwave/`               | A2A identity description for the harness agent card |
+| `backend.yaml`       | `.witwave/`               | Backend definitions and routing                         |
+| `HEARTBEAT.md`       | `.witwave/`               | Heartbeat schedule and prompt                           |
+| `jobs/*.md`          | `.witwave/jobs/`          | Scheduled jobs — cron frontmatter                       |
+| `tasks/*.md`         | `.witwave/tasks/`         | Calendar tasks — days/window frontmatter                |
+| `triggers/*.md`      | `.witwave/triggers/`      | Inbound HTTP trigger definitions                        |
+| `continuations/*.md` | `.witwave/continuations/` | Continuation definitions — fires on upstream completion |
+| `webhooks/*.md`      | `.witwave/webhooks/`      | Outbound webhook subscriptions                          |
 
 ### Backend config files
 
@@ -206,11 +206,11 @@ Agent identity and behavior are entirely file-based. No identity is baked into a
 
 | Variable                                    | Default                         | Description                                                                                                                    |
 | ------------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `AGENT_NAME`                                | `nyx`                           | Agent display name (e.g. `iris`)                                                                                               |
+| `AGENT_NAME`                                | `witwave`                           | Agent display name (e.g. `iris`)                                                                                               |
 | `HARNESS_HOST`                              | `0.0.0.0`                       | Interface the harness binds to                                                                                                 |
 | `HARNESS_PORT`                              | `8000`                          | HTTP port the harness listens on                                                                                               |
 | `HARNESS_URL`                               | `http://localhost:$HARNESS_PORT/` | Public URL published on the A2A agent card                                                                                   |
-| `BACKEND_CONFIG_PATH`                       | `/home/agent/.nyx/backend.yaml` | Path to backend routing config                                                                                                 |
+| `BACKEND_CONFIG_PATH`                       | `/home/agent/.witwave/backend.yaml` | Path to backend routing config                                                                                                 |
 | `METRICS_ENABLED`                           | _(unset)_                       | Enable Prometheus `/metrics`                                                                                                   |
 | `METRICS_AUTH_TOKEN`                        | _(unset)_                       | Bearer token required to access `/metrics`                                                                                     |
 | `METRICS_CACHE_TTL`                         | `15`                            | Seconds to cache aggregated backend metrics between scrapes                                                                    |
@@ -254,8 +254,8 @@ Agent identity and behavior are entirely file-based. No identity is baked into a
 
 ### A2A Protocol
 
-Agents communicate via the A2A protocol (HTTP/JSON-RPC). External callers always target the **nyx agent** by its
-hostname/port. nyx reads the `routing.a2a` entry from `backend.yaml` and forwards the request unchanged to the
+Agents communicate via the A2A protocol (HTTP/JSON-RPC). External callers always target the **witwave agent** by its
+hostname/port. witwave reads the `routing.a2a` entry from `backend.yaml` and forwards the request unchanged to the
 configured backend. The backend session ID matches the session ID provided by the external caller, preserving
 conversation continuity across turns.
 
@@ -349,8 +349,8 @@ Phase 17:    docs refinement
 Installation commands live with the artifacts they deploy:
 
 - Local Helm install (with values-test.yaml) — [`AGENTS.md` → Running Locally](../AGENTS.md#running-locally)
-- Production nyx agent install (published chart) — [`charts/nyx/README.md`](../charts/nyx/README.md)
-- Operator install — [`charts/nyx-operator/README.md`](../charts/nyx-operator/README.md)
+- Production witwave agent install (published chart) — [`charts/witwave/README.md`](../charts/witwave/README.md)
+- Operator install — [`charts/witwave-operator/README.md`](../charts/witwave-operator/README.md)
 - Operator development (`make install` / `make run`) — [`operator/README.md`](../operator/README.md)
 - ww CLI — [`clients/ww/README.md`](../clients/ww/README.md)
 
@@ -382,7 +382,7 @@ to match the source exactly.
 
 ### Patterns in Use
 
-**nyx as pure infrastructure.** harness owns the scheduling and relay layer; LLM execution is the sole
+**witwave as pure infrastructure.** harness owns the scheduling and relay layer; LLM execution is the sole
 responsibility of backend containers. This separation allows each layer to evolve independently and enables swapping LLM
 backends without touching the scheduler.
 
@@ -443,7 +443,7 @@ a second prompt on the same or a different agent.
 
 ## backend.yaml Reference
 
-`backend.yaml` lives in `.nyx/` and controls which backend handles each concern. It has a top-level `backend:` key
+`backend.yaml` lives in `.witwave/` and controls which backend handles each concern. It has a top-level `backend:` key
 containing an `agents:` list and a `routing:` block.
 
 **Minimal single-backend config:**

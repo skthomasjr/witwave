@@ -1,8 +1,8 @@
 name: Release — Helm charts
 
 # Canonical publisher for every Helm chart under charts/ (currently
-# charts/nyx and charts/nyx-operator). release.yaml used to publish
-# charts/nyx in parallel which raced this workflow on the same tag
+# charts/witwave and charts/witwave-operator). release.yaml used to publish
+# charts/witwave in parallel which raced this workflow on the same tag
 # (#1257); that job has been removed — all chart packaging/pushing
 # is owned here. Container images are built by release.yaml.
 
@@ -25,8 +25,8 @@ jobs:
       fail-fast: false
       matrix:
         chart:
-          - nyx
-          - nyx-operator
+          - witwave
+          - witwave-operator
 
     steps:
       - name: Checkout

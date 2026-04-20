@@ -10,7 +10,7 @@ enabled: true
 Tear down any existing test environment before starting fresh:
 
 ```
-helm uninstall nyx-test -n nyx-test 2>/dev/null || true
+helm uninstall witwave-test -n witwave-test 2>/dev/null || true
 ```
 
 Clear all test agent logs so tests start with a clean slate:
@@ -30,13 +30,13 @@ The fastest path — deploy via the project's helper script:
 The script sources `.env` at the repo root, validates required vars
 (`CLAUDE_CODE_OAUTH_TOKEN`, `GITSYNC_USERNAME`, `GITSYNC_PASSWORD`), creates
 the `ghcr-credentials` image-pull secret from the dev's local
-`~/.docker/config.json`, and runs `helm upgrade --install nyx-test ./charts/nyx
+`~/.docker/config.json`, and runs `helm upgrade --install witwave-test ./charts/witwave
 -f values-test.yaml ...` with credentials passed as `--set` flags.
 
 The chart's inline-credentials pattern (`gitSync.credentials` +
 `backends.credentials` with `acknowledgeInsecureInline=true`) renders the
 per-agent Secrets for us — no manual `kubectl create secret` chain needed.
-See `charts/nyx/README.md#credentials-for-gitsync--backends` for the full
+See `charts/witwave/README.md#credentials-for-gitsync--backends` for the full
 shape, three install modes, and the explicit dev-only tradeoff of landing
 tokens in `helm get values`.
 
@@ -66,14 +66,14 @@ If you need to bypass the script — say you're deploying with a
 non-`.env` secret source — the underlying call is just `helm upgrade`:
 
 ```
-helm upgrade --install nyx-test ./charts/nyx \
-  -f ./charts/nyx/values-test.yaml \
+helm upgrade --install witwave-test ./charts/witwave \
+  -f ./charts/witwave/values-test.yaml \
   --set-string gitSync.credentials.username="$GITSYNC_USERNAME" \
   --set-string gitSync.credentials.token="$GITSYNC_PASSWORD" \
   --set        gitSync.credentials.acknowledgeInsecureInline=true \
   --set-string "backends.credentials.secrets.CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_CODE_OAUTH_TOKEN" \
   --set        backends.credentials.acknowledgeInsecureInline=true \
-  -n nyx-test --create-namespace
+  -n witwave-test --create-namespace
 ```
 
 ### Legacy path (pre-existing-Secrets approach)
@@ -88,14 +88,14 @@ If any step fails, do your best to diagnose and fix the issue — for example, a
 
 Once the stack is up, poll each service until it reports ready or until 60 seconds have elapsed:
 
-- Bob nyx agent: GET http://localhost:8099/health/ready — expect 200 with `"status": "ready"`
+- Bob witwave agent: GET http://localhost:8099/health/ready — expect 200 with `"status": "ready"`
 - Bob claude backend: GET http://localhost:8090/health — expect 200 with `"status": "ok"`
 - Bob codex backend: GET http://localhost:8091/health — expect 200 with `"status": "ok"`
 - Bob gemini backend: GET http://localhost:8092/health — expect 200 with `"status": "ok"`
 
 If any service fails to become ready within 60 seconds, fail immediately with a clear message identifying which service failed. Do not proceed with the remaining tests.
 
-**Trigger auth.** The harness rejects every trigger POST that lacks either a per-trigger HMAC secret or a Bearer token matching `TRIGGERS_AUTH_TOKEN` (security-by-default since 2026-04-12). The test stack ships `TRIGGERS_AUTH_TOKEN=smoke-test-token` in bob's environment via `charts/nyx/values-test.yaml`. Smoke tests use `Authorization: Bearer ${TRIGGERS_AUTH_TOKEN:-smoke-test-token}` in their curl examples — set the env var if you've overridden it, otherwise the default works.
+**Trigger auth.** The harness rejects every trigger POST that lacks either a per-trigger HMAC secret or a Bearer token matching `TRIGGERS_AUTH_TOKEN` (security-by-default since 2026-04-12). The test stack ships `TRIGGERS_AUTH_TOKEN=smoke-test-token` in bob's environment via `charts/witwave/values-test.yaml`. Smoke tests use `Authorization: Bearer ${TRIGGERS_AUTH_TOKEN:-smoke-test-token}` in their curl examples — set the env var if you've overridden it, otherwise the default works.
 
 If all services are healthy, continue with the dashboard wire-up below before declaring ready.
 
@@ -103,11 +103,11 @@ If all services are healthy, continue with the dashboard wire-up below before de
 
 Whenever the smoke-test stack comes up, finish the initialisation sequence by getting the dashboard reachable from a browser:
 
-1. **Wire up the dashboard.** The chart renders a `nyx-dashboard` Deployment + Service when `dashboard.enabled=true` (the default in `values-test.yaml`). Confirm the Service exists and has an endpoint:
+1. **Wire up the dashboard.** The chart renders a `witwave-dashboard` Deployment + Service when `dashboard.enabled=true` (the default in `values-test.yaml`). Confirm the Service exists and has an endpoint:
 
    ```
-   kubectl get svc nyx-dashboard -n nyx-test
-   kubectl get endpoints nyx-dashboard -n nyx-test
+   kubectl get svc witwave-dashboard -n witwave-test
+   kubectl get endpoints witwave-dashboard -n witwave-test
    ```
 
    Both should return a non-empty entry. If the Service has no endpoints, the dashboard pod is still coming up — wait for it.
@@ -115,7 +115,7 @@ Whenever the smoke-test stack comes up, finish the initialisation sequence by ge
 2. **Port-forward the dashboard** so it's reachable from `localhost`:
 
    ```
-   kubectl port-forward -n nyx-test svc/nyx-dashboard 8080:80 &
+   kubectl port-forward -n witwave-test svc/witwave-dashboard 8080:80 &
    ```
 
    Run it in the background so the smoke run can continue. Record the PID so a later spec or cleanup step can `kill` it.

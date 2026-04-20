@@ -111,7 +111,7 @@ brews:
       branch: main
     directory: Formula
     homepage: https://github.com/skthomasjr/autonomous-agent
-    description: witwave CLI for the Nyx multi-container agent platform
+    description: witwave CLI for the Witwave multi-container agent platform
     license: Apache-2.0
     test: |
       system "#{bin}/ww", "version"

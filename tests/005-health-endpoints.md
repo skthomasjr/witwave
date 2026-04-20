@@ -3,7 +3,7 @@ description: Verifies all three health endpoints return the expected status code
 enabled: true
 ---
 
-Check each health endpoint on bob's nyx agent:
+Check each health endpoint on bob's witwave agent:
 
 ```
 curl -s http://localhost:8099/health/start

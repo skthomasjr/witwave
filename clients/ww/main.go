@@ -1,4 +1,4 @@
-// Command ww is the command-line companion for the Nyx / witwave agent
+// Command ww is the command-line companion for the Witwave / witwave agent
 // platform. It talks to a harness over the shared event + REST surface:
 // tail the live event stream, send A2A prompts, inspect scheduler
 // configuration, and validate scheduler files — all without a browser.

@@ -44,8 +44,8 @@ cluster.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: nyx-mcp-helm
-  namespace: nyx
+  name: witwave-mcp-helm
+  namespace: witwave
 ---
 # Minimum Role for read-only Helm: list_releases, get_release, get_values,
 # get_manifest, history. Helm stores release state as Secrets with
@@ -56,8 +56,8 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: nyx-mcp-helm-read
-  namespace: nyx
+  name: witwave-mcp-helm-read
+  namespace: witwave
 rules:
   - apiGroups: [""]
     resources: ["secrets"]
@@ -74,15 +74,15 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: nyx-mcp-helm-read
-  namespace: nyx
+  name: witwave-mcp-helm-read
+  namespace: witwave
 subjects:
   - kind: ServiceAccount
-    name: nyx-mcp-helm
-    namespace: nyx
+    name: witwave-mcp-helm
+    namespace: witwave
 roleRef:
   kind: Role
-  name: nyx-mcp-helm-read
+  name: witwave-mcp-helm-read
   apiGroup: rbac.authorization.k8s.io
 ```
 

@@ -25,8 +25,8 @@ jobs:
       fail-fast: false
       matrix:
         chart:
-          - charts/nyx
-          - charts/nyx-operator
+          - charts/witwave
+          - charts/witwave-operator
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -81,25 +81,25 @@ jobs:
       # `helm lint` with --strict honours the schema when present, so we
       # explicitly run it for every values file in charts that ship a
       # schema (#843).
-      - name: helm lint --strict against schema (nyx)
+      - name: helm lint --strict against schema (witwave)
         run: |
-          helm lint charts/nyx --strict
+          helm lint charts/witwave --strict
           # values-test.yaml exercises the same schema.
           sed 's/REPLACE_ME_WITH_GENERATED_TOKEN/ci-fake-token/g' \
-            charts/nyx/values-test.yaml > /tmp/values-test-ci.yaml
-          helm lint charts/nyx --strict --values /tmp/values-test-ci.yaml
+            charts/witwave/values-test.yaml > /tmp/values-test-ci.yaml
+          helm lint charts/witwave --strict --values /tmp/values-test-ci.yaml
 
-      - name: helm lint --strict (nyx-operator)
+      - name: helm lint --strict (witwave-operator)
         run: |
-          if [ -f charts/nyx-operator/values.schema.json ]; then
-            helm lint charts/nyx-operator --strict
+          if [ -f charts/witwave-operator/values.schema.json ]; then
+            helm lint charts/witwave-operator --strict
           else
-            helm lint charts/nyx-operator --strict || true
-            echo "nyx-operator has no schema.json yet; ran --strict anyway"
+            helm lint charts/witwave-operator --strict || true
+            echo "witwave-operator has no schema.json yet; ran --strict anyway"
           fi
 
   operator-webhook-tls-modes:
-    # Coverage for the two webhook TLS branches in nyx-operator (#846):
+    # Coverage for the two webhook TLS branches in witwave-operator (#846):
     #   * cert-manager — chart issues the serving cert, no caBundle needed.
     #   * BYO Secret  — operator supplies a pre-created tls.crt + tls.key
     #                   Secret and a base64-PEM caBundle.
@@ -123,7 +123,7 @@ jobs:
 
       - name: Render + verify cert-manager branch
         run: |
-          helm template op charts/nyx-operator \
+          helm template op charts/witwave-operator \
             --set webhooks.enabled=true \
             --set webhooks.certManager.enabled=true \
             --set webhooks.certManager.createIssuer=true \
@@ -148,7 +148,7 @@ jobs:
       - name: Render + verify BYO Secret branch
         run: |
           CA_B64=$(printf 'FAKE CA BUNDLE' | base64 -w0)
-          helm template op charts/nyx-operator \
+          helm template op charts/witwave-operator \
             --set webhooks.enabled=true \
             --set webhooks.existingSecret=my-tls-secret \
             --set-string webhooks.caBundle="${CA_B64}" \
@@ -184,7 +184,7 @@ jobs:
       - name: Render + verify fail-fast guards
         run: |
           # BYO without caBundle → render must fail loudly.
-          if helm template op charts/nyx-operator \
+          if helm template op charts/witwave-operator \
               --set webhooks.enabled=true \
               --set webhooks.existingSecret=my-secret \
               > /dev/null 2>&1; then
@@ -194,7 +194,7 @@ jobs:
           # Neither cert-manager nor BYO → render must fail loudly.
           # (cert-manager defaults to enabled in values.yaml, so we flip
           # it off explicitly for this negative case.)
-          if helm template op charts/nyx-operator \
+          if helm template op charts/witwave-operator \
               --set webhooks.enabled=true \
               --set webhooks.certManager.enabled=false \
               > /dev/null 2>&1; then
@@ -258,23 +258,23 @@ jobs:
       - name: Render charts (values-test with placeholder-token swap)
         run: |
           sed 's/REPLACE_ME_WITH_GENERATED_TOKEN/ci-fake-token/g' \
-            charts/nyx/values-test.yaml > /tmp/values-test-ci.yaml
-          helm template nyx charts/nyx -f /tmp/values-test-ci.yaml > /tmp/nyx.yaml
-          helm template op charts/nyx-operator > /tmp/nyx-operator.yaml
+            charts/witwave/values-test.yaml > /tmp/values-test-ci.yaml
+          helm template witwave charts/witwave -f /tmp/values-test-ci.yaml > /tmp/witwave.yaml
+          helm template op charts/witwave-operator > /tmp/witwave-operator.yaml
 
       # #1377: render a THIRD variant with every opt-in component on so
       # PSA audits new flags before they hit a real cluster. Append to
-      # /tmp/nyx.yaml so the PSS walker below picks them up.
+      # /tmp/witwave.yaml so the PSS walker below picks them up.
       - name: Render PSA-audit variant (all features on)
         # #1405: fail loudly on values-psa-audit.yaml render errors.
         # The prior `|| echo "failed; continuing"` suppressed the exit
         # status and defeated the stated purpose (catch new optional
         # components before they hit a real cluster).
         run: |
-          if [ -f charts/nyx/values-psa-audit.yaml ]; then
-            echo "---" >> /tmp/nyx.yaml
-            helm template nyx charts/nyx -f charts/nyx/values-psa-audit.yaml \
-              >> /tmp/nyx.yaml
+          if [ -f charts/witwave/values-psa-audit.yaml ]; then
+            echo "---" >> /tmp/witwave.yaml
+            helm template witwave charts/witwave -f charts/witwave/values-psa-audit.yaml \
+              >> /tmp/witwave.yaml
           else
             echo "[PSA] no values-psa-audit.yaml present — skipping"
           fi
@@ -343,7 +343,7 @@ jobs:
                       yield f"{ctx}: capabilities.drop must contain ALL (got {caps_drop})"
 
           violations = []
-          for path in ("/tmp/nyx.yaml", "/tmp/nyx-operator.yaml"):
+          for path in ("/tmp/witwave.yaml", "/tmp/witwave-operator.yaml"):
               raw = pathlib.Path(path).read_text()
               for doc in yaml.safe_load_all(raw):
                   if not doc:

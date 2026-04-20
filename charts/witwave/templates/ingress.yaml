@@ -1,0 +1,129 @@
+{{- if and .Values.ingress.enabled .Values.dashboard.enabled }}
+{{- /*
+Dashboard ingress auth guard (#528).
+
+The dashboard nginx reverse-proxies every agent API, so exposing this ingress
+unauthenticated is equivalent to unauthenticated remote code execution against
+the cluster. This template refuses to render unless ONE of the following is
+true:
+
+  1. .Values.ingress.auth.enabled=true      (chart renders auth; default)
+  2. .Values.ingress.auth.allowInsecure=true (explicit opt-out)
+  3. The user has supplied their own auth annotation in .Values.ingress.annotations
+     (nginx auth-url/auth-signin or a Traefik middleware).
+
+Any other combination aborts `helm template`/`helm install` with a clear error.
+*/ -}}
+{{- $ingAuth := .Values.ingress.auth | default dict -}}
+{{- $userAnns := .Values.ingress.annotations | default dict -}}
+{{- $hasUserAuthAnn := false -}}
+{{- range $k, $v := $userAnns -}}
+  {{- if or (hasPrefix "nginx.ingress.kubernetes.io/auth-" $k) (eq $k "traefik.ingress.kubernetes.io/router.middlewares") -}}
+    {{- $hasUserAuthAnn = true -}}
+  {{- end -}}
+{{- end -}}
+{{- if not (or (or $ingAuth.enabled $ingAuth.allowInsecure) $hasUserAuthAnn) -}}
+  {{- fail (printf "witwave chart: ingress.enabled=true requires auth (#528). Set ingress.auth.enabled=true (default), or supply your own auth-* annotation in ingress.annotations, or explicitly acknowledge the risk with ingress.auth.allowInsecure=true.") -}}
+{{- end -}}
+{{- $authType := $ingAuth.type | default "basic" -}}
+{{- $basic := $ingAuth.basic | default dict -}}
+{{- $existingSecret := $basic.existingSecret | default "" -}}
+{{- $htpasswd := $basic.htpasswd | default "" -}}
+{{- $realm := $basic.realm | default "witwave dashboard" -}}
+{{- $authSecretName := "" -}}
+{{- if and $ingAuth.enabled (eq $authType "basic") -}}
+  {{- if $existingSecret -}}
+    {{- $authSecretName = $existingSecret -}}
+  {{- else -}}
+    {{- if not $htpasswd -}}
+      {{- fail "witwave chart: ingress.auth.enabled=true with type=basic requires either ingress.auth.basic.existingSecret or ingress.auth.basic.htpasswd (#528). Generate an htpasswd line with: htpasswd -nbB admin 'password'." -}}
+    {{- end -}}
+    {{- $authSecretName = printf "%s-dashboard-basic-auth" .Release.Name -}}
+  {{- end -}}
+{{- end -}}
+{{- if and $ingAuth.enabled (eq $authType "basic") (not $existingSecret) }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $authSecretName }}
+  labels:
+    app.kubernetes.io/name: {{ $.Release.Name }}-dashboard
+    app.kubernetes.io/component: dashboard-auth
+    app.kubernetes.io/part-of: witwave
+    app.kubernetes.io/managed-by: helm
+type: Opaque
+stringData:
+  # Consumed by nginx-ingress auth-type=basic via auth-secret annotation.
+  # Contents are htpasswd lines (one per line) supplied in ingress.auth.basic.htpasswd.
+  auth: |
+    {{- range (splitList "\n" (trim $htpasswd)) }}
+    {{ . }}
+    {{- end }}
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $.Release.Name }}-dashboard
+  labels:
+    app.kubernetes.io/name: {{ $.Release.Name }}-dashboard
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/part-of: witwave
+    app.kubernetes.io/managed-by: helm
+  {{- /*
+  Merge chart-managed auth annotations (#528) with user-supplied annotations.
+  User-supplied values win on key collision so BYO auth setups (oauth2-proxy,
+  traefik middleware) are never silently overridden.
+  */}}
+  {{- $chartAnns := dict }}
+  {{- if and $ingAuth.enabled (eq $authType "basic") $authSecretName }}
+    {{- $_ := set $chartAnns "nginx.ingress.kubernetes.io/auth-type" "basic" }}
+    {{- $_ := set $chartAnns "nginx.ingress.kubernetes.io/auth-secret" $authSecretName }}
+    {{- $_ := set $chartAnns "nginx.ingress.kubernetes.io/auth-realm" $realm }}
+  {{- end }}
+  {{- $mergedAnns := merge (deepCopy $userAnns) $chartAnns }}
+  {{- if $mergedAnns }}
+  annotations:
+    {{- toYaml $mergedAnns | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- /*
+  TLS block precedence (#639):
+    1. User-supplied ingress.tls list wins verbatim (BYO TLS path).
+    2. certManager.enabled + ingress.tlsEnabled auto-synthesize a tls entry
+       from ingress.hosts, pointing at the Certificate's secret (see
+       certificate.yaml).
+    3. Neither → no tls block.
+  */}}
+  {{- $tlsFromUser := .Values.ingress.tls | default list -}}
+  {{- $cmTls := and .Values.certManager.enabled (default false .Values.ingress.tlsEnabled) -}}
+  {{- if $tlsFromUser }}
+  tls:
+    {{- toYaml $tlsFromUser | nindent 4 }}
+  {{- else if $cmTls }}
+  {{- $secret := .Values.ingress.tlsSecretName | default (printf "%s-dashboard-tls" .Release.Name) }}
+  tls:
+    - secretName: {{ $secret | quote }}
+      hosts:
+        {{- range .Values.ingress.hosts }}
+        - {{ .host | quote }}
+        {{- end }}
+  {{- end }}
+  rules:
+    {{- range .Values.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          - path: {{ .path | default "/" }}
+            pathType: {{ .pathType | default "Prefix" }}
+            backend:
+              service:
+                name: {{ $.Release.Name }}-dashboard
+                port:
+                  number: {{ $.Values.dashboard.port | default 80 }}
+    {{- end }}
+{{- end }}

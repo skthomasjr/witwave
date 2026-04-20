@@ -23,8 +23,8 @@ from utils import (
 
 logger = logging.getLogger(__name__)
 
-TRIGGERS_DIR = os.environ.get("TRIGGERS_DIR", "/home/agent/.nyx/triggers")
-AGENT_NAME = os.environ.get("AGENT_NAME", "nyx")
+TRIGGERS_DIR = os.environ.get("TRIGGERS_DIR", "/home/agent/.witwave/triggers")
+AGENT_NAME = os.environ.get("AGENT_NAME", "witwave")
 
 _ENDPOINT_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 

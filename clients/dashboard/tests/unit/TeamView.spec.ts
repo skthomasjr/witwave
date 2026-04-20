@@ -6,7 +6,7 @@ import TeamView from "../../src/views/TeamView.vue";
 
 // Dashboard TeamView smoke tests. Shape matches harness /team contract
 // (src/types/team.ts) — array of team members each with an `agents` array of
-// nyx + backend cards. Covers list render, selection, chat-panel mount, and
+// witwave + backend cards. Covers list render, selection, chat-panel mount, and
 // the loading/error/empty placeholders. Live chat send/receive is exercised
 // separately in ChatPanel.spec.ts.
 
@@ -28,7 +28,7 @@ function okJson(data: unknown): Response {
 
 // Path-aware fetch mock — matches the new direct-routing dashboard API:
 //   GET  /api/team                      → directory of members
-//   GET  /api/agents/<name>/agents      → that member's nyx + backend cards
+//   GET  /api/agents/<name>/agents      → that member's witwave + backend cards
 //   GET  /api/agents/<name>/conversations → empty list (ChatPanel will
 //                                          fetch this on mount once the
 //                                          right-pane is shown)
@@ -88,8 +88,8 @@ describe("TeamView", () => {
         url: "http://iris:8000",
         agents: [
           {
-            id: "iris-nyx",
-            role: "nyx",
+            id: "iris-witwave",
+            role: "witwave",
             url: "http://iris:8000",
             card: { name: "iris", description: "Primary agent" },
           },
@@ -104,7 +104,7 @@ describe("TeamView", () => {
       {
         name: "nova",
         url: "http://nova:8001",
-        agents: [{ id: "nova-nyx", role: "nyx", url: "http://nova:8001", card: { name: "nova" } }],
+        agents: [{ id: "nova-witwave", role: "witwave", url: "http://nova:8001", card: { name: "nova" } }],
       },
     ]);
 
@@ -165,7 +165,7 @@ describe("TeamView", () => {
         name: "iris",
         url: "http://iris:8000",
         agents: [
-          { id: "iris-nyx", role: "nyx", url: "http://iris:8000", card: { name: "iris" } },
+          { id: "iris-witwave", role: "witwave", url: "http://iris:8000", card: { name: "iris" } },
           {
             id: "iris-claude",
             role: "backend",

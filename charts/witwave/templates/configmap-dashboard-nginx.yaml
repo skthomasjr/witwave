@@ -1,0 +1,185 @@
+{{- if .Values.dashboard.enabled }}
+{{/*
+Dashboard nginx template — sourced from .Values.agents so the dashboard can
+route browser requests directly to each named agent's in-cluster service
+(#470). This eliminates the "one agent pod fans out for the whole team"
+design: the dashboard pod owns routing, each agent only speaks for itself,
+and an outage of any single agent cannot take the whole UI down.
+
+The ConfigMap is mounted at /etc/nginx/templates/ in the dashboard pod; the
+nginx-unprivileged entrypoint runs envsubst over it at container start so
+${NGINX_LOCAL_RESOLVERS} is substituted before nginx reads the config.
+*/}}
+{{- $release := .Release.Name }}
+{{- /* Cluster DNS zone (#581). Defaults to cluster.local so existing installs
+       keep working byte-for-byte. Override `dashboard.clusterDomain` when the
+       cluster was bootstrapped with a non-default `--service-dns-domain`
+       (e.g. cluster.example) — nginx's resolver doesn't apply /etc/resolv.conf's
+       search list, so proxy_pass upstreams must be fully-qualified. Mirrors
+       the operator's DashboardSpec.ClusterDomain field. */}}
+{{- $clusterDomain := .Values.dashboard.clusterDomain | default "cluster.local" }}
+{{- $enabledAgents := list }}
+{{- range .Values.agents }}
+{{- if eq (include "witwave.enabled" .) "true" }}
+{{- $enabledAgents = append $enabledAgents . }}
+{{- end }}
+{{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $release }}-dashboard-nginx
+  labels:
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/part-of: witwave
+    app.kubernetes.io/managed-by: helm
+data:
+  default.conf.template: |
+    server {
+      listen 3000;
+      server_name _;
+
+      # Required for any proxy_pass that contains a variable (the per-agent
+      # regex captures below do). Without it nginx fails with "no resolver
+      # defined" at request time — literal upstreams would resolve once at
+      # startup, but the per-agent routes below are dynamic and need this.
+      # NGINX_LOCAL_RESOLVERS is populated by the nginx-unprivileged image's
+      # /docker-entrypoint.d/15-local-resolvers.envsh from /etc/resolv.conf,
+      # so this works in any cluster without hardcoding kube-dns addresses.
+      resolver ${NGINX_LOCAL_RESOLVERS} valid=30s ipv6=off;
+
+      root /usr/share/nginx/html;
+      index index.html;
+
+      # Baseline security headers (#739). The SPA renders agent output via v-html
+      # at six sites; DOMPurify is the in-process defense, these headers are the
+      # outer ring. `always` forces emission even on non-2xx responses.
+      # - default-src 'self'                 — every asset comes from the same origin
+      # - script-src 'self'                  — block inline/eval (Vite-built bundle)
+      # - style-src 'self' 'unsafe-inline'   — required by PrimeVue runtime styles
+      # - img-src 'self' data:               — base64 icons are inlined
+      # - connect-src 'self'                 — fetch only to same-origin /api/*
+      # - object-src 'none'                  — no <object>/<embed>
+      # - frame-ancestors 'none'             — clickjacking (supersedes XFO)
+      # - base-uri 'self'                    — prevent base tag hijack
+      # - form-action 'self'                 — no off-origin form posts
+      #
+      # CSP ↔ traceApiUrl coordination (#1061). When an operator points the
+      # dashboard at a cross-origin Jaeger/Tempo backend via
+      # __WITWAVE_CONFIG__.traceApiUrl they MUST also:
+      #   1. Set __WITWAVE_CONFIG__.traceApiAllowCrossOrigin=true in the runtime
+      #      config (dashboard same-origin guard refuses the URL otherwise).
+      #   2. Widen this connect-src directive to include the trace backend
+      #      origin (e.g. `connect-src 'self' https://jaeger.example`),
+      #      either by templating this ConfigMap or by layering an additional
+      #      header via your ingress. Without it the fetch is silently
+      #      blocked by CSP.
+      # Keep the two settings in sync — a lone traceApiUrl bypasses nothing,
+      # but a lone CSP widening leaves an attack surface no feature uses.
+      add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header Referrer-Policy "no-referrer" always;
+
+      # History-mode fallback so deep-linked routes (e.g. /team) hit index.html
+      # rather than returning 404 from nginx's static resolver.
+      #
+      # Runtime config injection (#1110 / #1061). Dashboard composables read
+      # from `window.__WITWAVE_CONFIG__` at boot (trace API url, locale, theme
+      # preference, timeline event stream overrides, …). The SPA index.html
+      # is static — it has no way to learn deployment-specific values at
+      # build time — so nginx substitutes a single `<script>` tag into the
+      # HTML response via `sub_filter` right before `</head>`. The tag is
+      # rendered from Helm `.Values.dashboard.runtimeConfig` at chart-
+      # template time; operators update values.yaml and the next rollout
+      # publishes new config.
+      #
+      # Secret-backed bearer (#1110 phase 3.5). When
+      # `dashboard.harnessBearerTokenSecret.name` is set, this template
+      # emits `"harnessBearerToken":"${HARNESS_BEARER_TOKEN}"` into the
+      # sub_filter literal. The nginx-unprivileged image's envsubst pass
+      # on /etc/nginx/templates/* substitutes `${HARNESS_BEARER_TOKEN}`
+      # from the container env (populated via a secretKeyRef in
+      # dashboard.yaml) when writing /etc/nginx/conf.d/default.conf, so
+      # the rendered ConfigMap visible to `kubectl get cm` carries the
+      # literal placeholder, NOT the token.
+      #
+      # Non-secret fields from `.Values.dashboard.runtimeConfig` are
+      # merged in verbatim — those are ConfigMap-safe by design.
+      {{- $rc := .Values.dashboard.runtimeConfig | default dict }}
+      {{- if .Values.dashboard.harnessBearerTokenSecret.name }}
+      {{- $rc = merge (dict "harnessBearerToken" "${HARNESS_BEARER_TOKEN}") $rc }}
+      {{- end }}
+      location / {
+        try_files $uri $uri/ /index.html;
+        sub_filter_once on;
+        sub_filter_types text/html;
+        sub_filter '</head>' '<script>window.__WITWAVE_CONFIG__=Object.freeze({{ $rc | toJson }});</script></head>';
+      }
+
+      # Dashboard-local health probe (distinct from any upstream agent's /health).
+      location = /health {
+        access_log off;
+        add_header Content-Type application/json;
+        return 200 '{"status":"ok","component":"dashboard"}';
+      }
+
+      # Team discovery — served directly by this nginx from .Values.agents at
+      # Helm render time. The dashboard client uses this to learn member names
+      # and URLs, then fans out to /api/agents/<name>/agents for the full cards.
+      # Keeps discovery off the agent pods (no SPOF on any one harness).
+      location = /api/team {
+        default_type application/json;
+        return 200 '[{{- range $i, $agent := $enabledAgents -}}{{- if $i -}},{{- end -}}{"name":{{ $agent.name | quote }},"url":"http://{{ $release }}-{{ $agent.name }}:{{ $agent.port | default 8000 }}"}{{- end -}}]';
+      }
+
+{{ range $agent := $enabledAgents }}
+      # Per-agent metrics route — scraped at the dedicated metrics port
+      # (#643), which is separate from the app port so NetworkPolicy /
+      # auth can differ. Per-container offset: metrics_port = app_port +
+      # 1000, so colocated pod containers don't fight for a shared port.
+      # Must come BEFORE the regex catch-all below for nginx to match
+      # the exact path.
+      {{- $agentMetricsPort := add (int ($agent.port | default 8000)) 1000 }}
+      {{- /* Only render this route when the agent's Service actually
+             exposes the metrics port — service.yaml / servicemonitor.yaml
+             use the same hasKey-branch pattern (#1019, #1256). The
+             previous `default` collapsed `enabled: false` to the global
+             value because `false | default X` returns X. Without this
+             guard the dashboard returned 502 for /api/agents/<name>/metrics
+             when metrics were disabled per-agent. */}}
+      {{- $agentMetricsEnabled := $.Values.metrics.enabled }}
+      {{- if ($agent.metrics) }}{{- if hasKey $agent.metrics "enabled" }}{{- $agentMetricsEnabled = $agent.metrics.enabled }}{{- end }}{{- end }}
+      {{- if $agentMetricsEnabled }}
+      location = /api/agents/{{ $agent.name }}/metrics {
+        proxy_pass http://{{ $release }}-{{ $agent.name }}.{{ $.Release.Namespace }}.svc.{{ $clusterDomain }}:{{ $agentMetricsPort }}/metrics;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_read_timeout 310s;
+        client_max_body_size 1m;
+      }
+      {{- end }}
+
+      # Per-agent direct route — browser → dashboard nginx → {{ $release }}-{{ $agent.name }}
+      # No cross-agent fan-out through another harness, no localhost-scoped
+      # backend URLs on the wire (#470 design note).
+      location ~ ^/api/agents/{{ $agent.name }}/(.*)$ {
+        proxy_pass http://{{ $release }}-{{ $agent.name }}.{{ $.Release.Namespace }}.svc.{{ $clusterDomain }}:{{ $agent.port | default 8000 }}/$1$is_args$args;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_read_timeout 310s;
+        client_max_body_size 1m;
+      }
+{{ end }}
+      # Anything under /api/* that didn't match a per-agent route above is
+      # intentionally 404 — the legacy /api/proxy/<name>, /api/conversations/
+      # <name>, and /api/team fallbacks were retired once every consumer
+      # migrated to direct per-agent routing (#470).
+      location /api/ {
+        return 404;
+      }
+    }
+{{- end }}

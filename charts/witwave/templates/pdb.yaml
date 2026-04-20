@@ -1,0 +1,28 @@
+{{- range $agent := .Values.agents }}
+{{- if eq (include "witwave.enabled" $agent) "true" }}
+{{- $pdb := dict }}
+{{- if $agent.podDisruptionBudget }}
+{{- $pdb = $agent.podDisruptionBudget }}
+{{- else if $.Values.podDisruptionBudget }}
+{{- $pdb = $.Values.podDisruptionBudget }}
+{{- end }}
+{{- if $pdb.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $.Release.Name }}-{{ $agent.name }}
+  labels:
+    {{- include "witwave.agentLabels" (dict "name" $agent.name "root" $) | nindent 4 }}
+spec:
+  {{- if hasKey $pdb "maxUnavailable" }}
+  maxUnavailable: {{ $pdb.maxUnavailable }}
+  {{- else }}
+  minAvailable: {{ $pdb.minAvailable | default 1 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $agent.name }}
+{{- end }}
+{{- end }}
+{{- end }}

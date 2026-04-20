@@ -15,14 +15,14 @@ limitations under the License.
 */
 
 // Command plan renders the full set of resources the operator would
-// apply for a given NyxAgent spec, without touching a cluster (#1111).
+// apply for a given WitwaveAgent spec, without touching a cluster (#1111).
 //
 // Usage:
 //
 //	operator-plan -f agent.yaml
 //	cat agent.yaml | operator-plan
 //
-// The input is one or more YAML documents containing NyxAgent CRs. For
+// The input is one or more YAML documents containing WitwaveAgent CRs. For
 // each document, plan emits the rendered Deployment, Service,
 // ConfigMaps, PVCs, HPA, PDB, dashboard resources, and manifest-team
 // ConfigMap (if the agent is a solo team) as a single multi-document
@@ -49,13 +49,13 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	sigyaml "sigs.k8s.io/yaml"
 
-	nyxv1alpha1 "github.com/nyx-ai/nyx-operator/api/v1alpha1"
-	"github.com/nyx-ai/nyx-operator/internal/controller"
+	witwavev1alpha1 "github.com/witwave-ai/witwave-operator/api/v1alpha1"
+	"github.com/witwave-ai/witwave-operator/internal/controller"
 )
 
 func main() {
 	var inputPath string
-	flag.StringVar(&inputPath, "f", "", "Path to a YAML file containing one or more NyxAgent documents. Reads stdin when unset.")
+	flag.StringVar(&inputPath, "f", "", "Path to a YAML file containing one or more WitwaveAgent documents. Reads stdin when unset.")
 	flag.Parse()
 
 	var input io.Reader = os.Stdin
@@ -74,8 +74,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "register core scheme: %v\n", err)
 		os.Exit(1)
 	}
-	if err := nyxv1alpha1.AddToScheme(scheme); err != nil {
-		fmt.Fprintf(os.Stderr, "register nyx scheme: %v\n", err)
+	if err := witwavev1alpha1.AddToScheme(scheme); err != nil {
+		fmt.Fprintf(os.Stderr, "register witwave scheme: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -100,13 +100,13 @@ func main() {
 			fmt.Fprintf(os.Stderr, "re-marshal document %d: %v\n", docIdx, err)
 			os.Exit(1)
 		}
-		agent := &nyxv1alpha1.NyxAgent{}
+		agent := &witwavev1alpha1.WitwaveAgent{}
 		if err := sigyaml.Unmarshal(raw, agent); err != nil {
-			fmt.Fprintf(os.Stderr, "parse NyxAgent document %d: %v\n", docIdx, err)
+			fmt.Fprintf(os.Stderr, "parse WitwaveAgent document %d: %v\n", docIdx, err)
 			os.Exit(1)
 		}
-		if agent.Kind != "" && agent.Kind != "NyxAgent" {
-			fmt.Fprintf(os.Stderr, "skipping document %d: kind=%q is not NyxAgent\n", docIdx, agent.Kind)
+		if agent.Kind != "" && agent.Kind != "WitwaveAgent" {
+			fmt.Fprintf(os.Stderr, "skipping document %d: kind=%q is not WitwaveAgent\n", docIdx, agent.Kind)
 			continue
 		}
 		if agent.Namespace == "" {
@@ -123,7 +123,7 @@ func main() {
 // renderAgent writes every resource controller.buildXxx would produce
 // for “agent“ as a multi-document YAML stream. Resource ordering
 // mirrors Reconcile.
-func renderAgent(agent *nyxv1alpha1.NyxAgent, w io.Writer) error {
+func renderAgent(agent *witwavev1alpha1.WitwaveAgent, w io.Writer) error {
 	emit := func(kind, name string, obj interface{}) error {
 		if obj == nil {
 			return nil
@@ -141,7 +141,7 @@ func renderAgent(agent *nyxv1alpha1.NyxAgent, w io.Writer) error {
 		return nil
 	}
 
-	fmt.Fprintf(w, "# === plan for NyxAgent %s/%s ===\n", agent.Namespace, agent.Name)
+	fmt.Fprintf(w, "# === plan for WitwaveAgent %s/%s ===\n", agent.Namespace, agent.Name)
 
 	if dep := controller.BuildDeploymentForPlan(agent); dep != nil {
 		if err := emit("Deployment", dep.Name, dep); err != nil {

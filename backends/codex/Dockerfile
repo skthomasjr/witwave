@@ -24,7 +24,7 @@ RUN apt-get update && apt-get install -y \
 # upfront list duplicated that work, wasted build time, and drifted
 # silently when playwright updated its dep set.
 # Note: iptables was removed (#1260). The container runs without NET_ADMIN
-# (PSS-restricted drops ALL caps in charts/nyx/templates/deployment.yaml),
+# (PSS-restricted drops ALL caps in charts/witwave/templates/deployment.yaml),
 # so the binary couldn't modify kernel tables anyway — it was just dead
 # attack surface.
 

@@ -25,7 +25,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/nyx-ai/nyx-operator/test/utils"
+	"github.com/witwave-ai/witwave-operator/test/utils"
 )
 
 var (

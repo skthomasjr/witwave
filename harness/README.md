@@ -10,7 +10,7 @@ Every named agent (iris, nova, kira, …) runs one instance of this image alongs
 acts as the single entry point for all inbound requests and all scheduled work.
 
 **A2A relay** — Receives A2A JSON-RPC requests and forwards them to the backend configured for the `a2a` routing slot.
-Returns the response verbatim. External callers always target nyx; they never talk to backends directly.
+Returns the response verbatim. External callers always target witwave; they never talk to backends directly.
 
 **Heartbeat scheduler** — Fires a prompt on a cron schedule defined in `HEARTBEAT.md`. Used to give an agent a regular
 opportunity to reflect, check in, or take proactive action.
@@ -168,7 +168,7 @@ localhost sidecars. See the repo root `AGENTS.md` under "Routing configuration" 
 
 ## Runtime
 
-harness is a Docker container. It mounts the agent's `.nyx/` directory for configuration and writes conversation and
+harness is a Docker container. It mounts the agent's `.witwave/` directory for configuration and writes conversation and
 trace logs to individual files under `logs/`. The `MANIFEST_PATH` environment variable points to the team manifest
 (`manifest.json`), which lists all agents in the deployment by name and URL.
 
@@ -187,7 +187,7 @@ the whole process on SIGTERM:
 4. **Phase 4 — close backends.** A2A HTTP clients, trace exporters, and the internal bus are closed last.
 
 Keep `terminationGracePeriodSeconds > preStop.delaySeconds` (the chart enforces this — see
-`charts/nyx/README.md`). Breaking the ordering — for example by teardown-ing `WebhookRunner` ahead of the bus
+`charts/witwave/README.md`). Breaking the ordering — for example by teardown-ing `WebhookRunner` ahead of the bus
 consumers — dropped in-flight deliveries silently before #923.
 
 ## Internal events (hook-decision) transport

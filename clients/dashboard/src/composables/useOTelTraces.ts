@@ -6,12 +6,12 @@ import type { ComputedRef } from "vue";
 // Targets Jaeger's /api/traces endpoints, which Tempo also implements for
 // the list + get-by-id shapes we rely on here. The trace backend URL is not
 // the dashboard's /api/* path — it's a fully separate URL the operator
-// points at (e.g. http://nyx-jaeger-query.observability:16686). Operators
+// points at (e.g. http://witwave-jaeger-query.observability:16686). Operators
 // typically front that URL with their own auth proxy; we intentionally do
 // not send credentials from this client. See dashboard/README.md.
 //
 // Resolution order for the base URL:
-//   1. window.__NYX_CONFIG__.traceApiUrl   (runtime override, nginx-injected)
+//   1. window.__WITWAVE_CONFIG__.traceApiUrl   (runtime override, nginx-injected)
 //   2. import.meta.env.VITE_TRACE_API_URL  (build-time)
 // Returns null if neither is set so the view can render a "not configured"
 // empty state instead of blasting out 404s.
@@ -74,7 +74,7 @@ export interface TraceListRow {
   rootOperation: string;
 }
 
-interface NyxRuntimeConfig {
+interface WitwaveRuntimeConfig {
   traceApiUrl?: string;
   // Explicit operator opt-in to point traceApiUrl at a cross-origin
   // Jaeger/Tempo host (#1061). When absent/false, a cross-origin
@@ -94,7 +94,7 @@ interface NyxRuntimeConfig {
 // Same-origin by default (#1061). The dashboard's baseline CSP is
 // `connect-src 'self'`, so any cross-origin traceApiUrl would be silently
 // blocked by the browser at fetch() time. Reject cross-origin URLs unless
-// the operator explicitly opts in via __NYX_CONFIG__.traceApiAllowCrossOrigin,
+// the operator explicitly opts in via __WITWAVE_CONFIG__.traceApiAllowCrossOrigin,
 // which also signals they've widened the CSP connect-src directive to
 // cover the target origin. The two settings are deliberately coupled so
 // a ConfigMap mutation that flipped only one of them (e.g. a compromised
@@ -128,7 +128,7 @@ function validateTraceBaseUrl(
   } catch {
     // eslint-disable-next-line no-console
     console.warn(
-      "[nyx] traceApiUrl rejected: not a valid absolute URL:",
+      "[witwave] traceApiUrl rejected: not a valid absolute URL:",
       trimmed,
     );
     return null;
@@ -136,7 +136,7 @@ function validateTraceBaseUrl(
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     // eslint-disable-next-line no-console
     console.warn(
-      `[nyx] traceApiUrl rejected: protocol ${parsed.protocol} not in {http:, https:}`,
+      `[witwave] traceApiUrl rejected: protocol ${parsed.protocol} not in {http:, https:}`,
       trimmed,
     );
     return null;
@@ -144,7 +144,7 @@ function validateTraceBaseUrl(
   if (!allowCrossOrigin && !isSameOrigin(parsed)) {
     // eslint-disable-next-line no-console
     console.warn(
-      "[nyx] traceApiUrl rejected: cross-origin without __NYX_CONFIG__.traceApiAllowCrossOrigin=true " +
+      "[witwave] traceApiUrl rejected: cross-origin without __WITWAVE_CONFIG__.traceApiAllowCrossOrigin=true " +
         "(CSP connect-src 'self' would block this fetch; set allowCrossOrigin " +
         "AND widen nginx connect-src to the trace backend origin)",
       trimmed,
@@ -159,8 +159,8 @@ function resolveBaseUrl(): string | null {
   // rebuild. Kept optional: when nginx hasn't injected anything we fall
   // through to the build-time env, and then to null — which triggers
   // the in-cluster fallback below.
-  const runtime = (window as unknown as { __NYX_CONFIG__?: NyxRuntimeConfig })
-    .__NYX_CONFIG__;
+  const runtime = (window as unknown as { __WITWAVE_CONFIG__?: WitwaveRuntimeConfig })
+    .__WITWAVE_CONFIG__;
   const allowCrossOrigin = runtime?.traceApiAllowCrossOrigin === true;
   if (runtime && typeof runtime.traceApiUrl === "string" && runtime.traceApiUrl) {
     const safe = validateTraceBaseUrl(runtime.traceApiUrl, allowCrossOrigin);

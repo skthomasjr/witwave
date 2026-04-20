@@ -12,7 +12,7 @@ This test creates a run-once job, waits for it to fire, recreates it to fire a s
 Create the run-once session probe job:
 
 ```
-cat > .agents/test/bob/.nyx/jobs/session-probe.md << 'EOF'
+cat > .agents/test/bob/.witwave/jobs/session-probe.md << 'EOF'
 ---
 name: Session Probe
 description: Run-once job used to verify deterministic session ID persistence.
@@ -28,9 +28,9 @@ Wait 10 seconds for the job to fire and the response to land in the log.
 Delete and recreate the file to trigger a second run:
 
 ```
-rm .agents/test/bob/.nyx/jobs/session-probe.md
+rm .agents/test/bob/.witwave/jobs/session-probe.md
 
-cat > .agents/test/bob/.nyx/jobs/session-probe.md << 'EOF'
+cat > .agents/test/bob/.witwave/jobs/session-probe.md << 'EOF'
 ---
 name: Session Probe
 description: Run-once job used to verify deterministic session ID persistence.
@@ -44,7 +44,7 @@ Wait 10 seconds for the second run.
 ## Cleanup
 
 ```
-rm .agents/test/bob/.nyx/jobs/session-probe.md
+rm .agents/test/bob/.witwave/jobs/session-probe.md
 ```
 
 ## Verification

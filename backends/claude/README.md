@@ -78,7 +78,7 @@ Create a Kubernetes secret with the required credentials before deploying:
 ```bash
 kubectl create secret generic <agent>-claude-secrets \
   --from-literal=ANTHROPIC_API_KEY=sk-ant-... \
-  --namespace nyx
+  --namespace witwave
 ```
 
 For Claude Max (OAuth), use `CLAUDE_CODE_OAUTH_TOKEN` instead of `ANTHROPIC_API_KEY`.

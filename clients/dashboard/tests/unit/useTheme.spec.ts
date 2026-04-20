@@ -100,7 +100,7 @@ describe("useTheme", () => {
   });
 
   it("returns the localStorage value when set, else auto", async () => {
-    window.localStorage.setItem("nyx.theme", "light");
+    window.localStorage.setItem("witwave.theme", "light");
     const mod = await freshImport();
     const { theme } = run(() => mod.useTheme());
     expect(theme.value).toBe("light");
@@ -121,12 +121,12 @@ describe("useTheme", () => {
 
     api.setTheme("dark");
     await nextTick();
-    expect(window.localStorage.getItem("nyx.theme")).toBe("dark");
+    expect(window.localStorage.getItem("witwave.theme")).toBe("dark");
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
 
     api.setTheme("light");
     await nextTick();
-    expect(window.localStorage.getItem("nyx.theme")).toBe("light");
+    expect(window.localStorage.getItem("witwave.theme")).toBe("light");
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
 
     // Invalid value is ignored — current theme preserved.
@@ -135,7 +135,7 @@ describe("useTheme", () => {
     // exercising here.
     (api.setTheme as unknown as (v: string) => void)("not-a-theme");
     await nextTick();
-    expect(window.localStorage.getItem("nyx.theme")).toBe("light");
+    expect(window.localStorage.getItem("witwave.theme")).toBe("light");
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
   });
 

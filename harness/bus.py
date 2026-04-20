@@ -384,7 +384,7 @@ def _emit_hook_decision_event_stream(event: HookDecisionEvent) -> None:
     session_id is hashed to a SHA-256 prefix so dashboards can group by
     session without ever seeing the HMAC-bound raw id. agent field on the
     HookDecisionEvent is the backend name (claude/codex/gemini); the
-    envelope's agent_id is the named Nyx agent (iris/nova/…) taken from
+    envelope's agent_id is the named Witwave agent (iris/nova/…) taken from
     AGENT_NAME.
     """
     try:
@@ -424,7 +424,7 @@ def _emit_hook_decision_event_stream(event: HookDecisionEvent) -> None:
             payload["rule_id"] = event.rule_name
         if event.reason:
             payload["reason"] = event.reason
-        agent_name = os.environ.get("AGENT_NAME", "nyx")
+        agent_name = os.environ.get("AGENT_NAME", "witwave")
         get_event_stream().publish(
             "hook.decision", payload, agent_id=agent_name
         )

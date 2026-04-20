@@ -183,8 +183,8 @@ const subtitle = computed(() => {
 .drawer {
   width: min(720px, 92vw);
   height: 100%;
-  background: var(--nyx-bg);
-  border-left: 1px solid var(--nyx-border);
+  background: var(--witwave-bg);
+  border-left: 1px solid var(--witwave-border);
   display: flex;
   flex-direction: column;
   box-shadow: -8px 0 24px rgba(0, 0, 0, 0.4);
@@ -195,8 +195,8 @@ const subtitle = computed(() => {
   align-items: flex-start;
   gap: 10px;
   padding: 14px 18px;
-  border-bottom: 1px solid var(--nyx-border);
-  background: var(--nyx-surface);
+  border-bottom: 1px solid var(--witwave-border);
+  background: var(--witwave-surface);
   flex-shrink: 0;
 }
 .heads {
@@ -208,25 +208,25 @@ const subtitle = computed(() => {
 }
 .drawer-title {
   font-size: 13px;
-  color: var(--nyx-bright);
+  color: var(--witwave-bright);
   margin: 0;
   font-weight: 600;
-  font-family: var(--nyx-mono);
+  font-family: var(--witwave-mono);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .drawer-sub {
   font-size: 10px;
-  color: var(--nyx-dim);
-  font-family: var(--nyx-mono);
+  color: var(--witwave-dim);
+  font-family: var(--witwave-mono);
 }
 
 .drawer-close {
   background: none;
-  border: 1px solid var(--nyx-border);
-  color: var(--nyx-dim);
-  border-radius: var(--nyx-radius);
+  border: 1px solid var(--witwave-border);
+  color: var(--witwave-dim);
+  border-radius: var(--witwave-radius);
   width: 28px;
   height: 28px;
   display: flex;
@@ -235,8 +235,8 @@ const subtitle = computed(() => {
   cursor: pointer;
 }
 .drawer-close:hover {
-  color: var(--nyx-text);
-  border-color: var(--nyx-muted);
+  color: var(--witwave-text);
+  border-color: var(--witwave-muted);
 }
 
 .drawer-body {
@@ -247,13 +247,13 @@ const subtitle = computed(() => {
 
 .state {
   padding: 30px;
-  color: var(--nyx-muted);
+  color: var(--witwave-muted);
   font-size: 12px;
   text-align: center;
-  font-family: var(--nyx-mono);
+  font-family: var(--witwave-mono);
 }
 .state-error {
-  color: var(--nyx-red);
+  color: var(--witwave-red);
 }
 
 .messages {
@@ -263,22 +263,22 @@ const subtitle = computed(() => {
 }
 
 .msg {
-  border: 1px solid var(--nyx-border);
-  border-radius: var(--nyx-radius);
+  border: 1px solid var(--witwave-border);
+  border-radius: var(--witwave-radius);
   padding: 10px 12px;
-  background: var(--nyx-surface);
-  font-family: var(--nyx-mono);
+  background: var(--witwave-surface);
+  font-family: var(--witwave-mono);
   font-size: 11.5px;
   line-height: 1.45;
 }
 .msg.role-user {
-  border-left: 3px solid var(--nyx-accent, #7c6af7);
+  border-left: 3px solid var(--witwave-accent, #7c6af7);
 }
 .msg.role-agent {
-  border-left: 3px solid var(--nyx-green, #4ade80);
+  border-left: 3px solid var(--witwave-green, #4ade80);
 }
 .msg.role-other {
-  border-left: 3px solid var(--nyx-muted);
+  border-left: 3px solid var(--witwave-muted);
   opacity: 0.85;
 }
 
@@ -288,19 +288,19 @@ const subtitle = computed(() => {
   align-items: center;
   margin-bottom: 6px;
   font-size: 9px;
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
 .msg-role {
   font-weight: 700;
-  color: var(--nyx-bright);
+  color: var(--witwave-bright);
 }
 .msg-ts {
-  color: var(--nyx-muted);
+  color: var(--witwave-muted);
 }
 .msg-model {
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   margin-left: auto;
 }
 
@@ -311,15 +311,15 @@ const subtitle = computed(() => {
   margin-bottom: 0;
 }
 .msg-text :deep(code) {
-  background: var(--nyx-bg);
+  background: var(--witwave-bg);
   padding: 1px 4px;
   border-radius: 3px;
   font-size: 10.5px;
 }
 .msg-text :deep(pre) {
-  background: var(--nyx-bg);
+  background: var(--witwave-bg);
   padding: 8px 10px;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
   overflow-x: auto;
   font-size: 10.5px;
 }

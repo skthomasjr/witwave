@@ -14,7 +14,7 @@ import type { ComputedRef, Ref } from "vue";
 // tracked via a single document-level listener installed lazily on the
 // first subscription.
 
-const STORAGE_KEY = "nyx.polling.paused";
+const STORAGE_KEY = "witwave.polling.paused";
 
 function readPersisted(): boolean {
   try {

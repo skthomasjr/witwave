@@ -1,4 +1,4 @@
-# Multi-stage build for the nyx dashboard (#470).
+# Multi-stage build for the witwave dashboard (#470).
 # Stage 1 compiles the Vite bundle; stage 2 serves the static artefact via
 # nginx with a /api/* reverse proxy to the harness service. This mirrors how
 # the vite dev server proxies in development (see vite.config.ts) so the
@@ -27,7 +27,7 @@ FROM nginxinc/nginx-unprivileged:1.27-bookworm
 # The image ships a baseline default.conf.template that serves the static
 # SPA and returns 404 for /api/*. In Kubernetes the Helm chart overrides
 # this with a ConfigMap that adds per-agent /api/agents/<name>/ routes
-# templated from .Values.agents (see charts/nyx/templates/
+# templated from .Values.agents (see charts/witwave/templates/
 # configmap-dashboard-nginx.yaml).
 COPY --chown=nginx:nginx clients/dashboard/nginx.conf /etc/nginx/templates/default.conf.template
 COPY --from=build --chown=nginx:nginx /build/dist /usr/share/nginx/html

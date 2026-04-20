@@ -40,8 +40,8 @@ describe("a11y smoke", () => {
           url: "http://iris:8000",
           agents: [
             {
-              id: "iris-nyx",
-              role: "nyx",
+              id: "iris-witwave",
+              role: "witwave",
               url: "http://iris:8000",
               card: { name: "iris", description: "Primary agent" },
             },

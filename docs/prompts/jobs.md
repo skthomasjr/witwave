@@ -1,6 +1,6 @@
 # Jobs
 
-Jobs are defined as `*.md` files in the agent's `.nyx/jobs/` directory. Each file is an independent scheduled prompt.
+Jobs are defined as `*.md` files in the agent's `.witwave/jobs/` directory. Each file is an independent scheduled prompt.
 The job scheduler watches the directory for changes and registers or unregisters jobs at runtime — no restart needed.
 
 **Minimal test job** (fires every 5 minutes, verifies job scheduler + backend are alive):

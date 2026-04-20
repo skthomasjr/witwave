@@ -1,0 +1,37 @@
+{{- range .Values.agents }}
+{{- if eq (include "witwave.enabled" .) "true" }}
+{{- if .config }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $.Release.Name }}-{{ .name }}-config
+  labels:
+    {{- include "witwave.agentLabels" (dict "name" .name "root" $) | nindent 4 }}
+data:
+{{- range .config }}
+  {{ .name }}: |
+    {{- .content | nindent 4 }}
+{{- end }}
+{{- end }}
+{{- $agentName := .name }}
+{{- range .backends }}
+{{- if eq (include "witwave.enabled" .) "true" }}
+{{- if .config }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $.Release.Name }}-{{ $agentName }}-{{ .name }}-config
+  labels:
+    {{- include "witwave.backendLabels" (dict "agentName" $agentName "backendName" .name "root" $) | nindent 4 }}
+data:
+{{- range .config }}
+  {{ .name }}: |
+    {{- .content | nindent 4 }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

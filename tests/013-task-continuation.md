@@ -10,7 +10,7 @@ This test creates a run-once task and a continuation that fires after it with a 
 Create the run-once task:
 
 ```
-cat > .agents/test/bob/.nyx/tasks/task-continuation-probe.md << 'EOF'
+cat > .agents/test/bob/.witwave/tasks/task-continuation-probe.md << 'EOF'
 ---
 name: Task Continuation Probe
 description: Run-once task used to verify task-to-continuation wiring.
@@ -22,7 +22,7 @@ EOF
 Create a continuation that fires after the task (trigger-when matches the response):
 
 ```
-cat > .agents/test/bob/.nyx/continuations/task-continuation-probe.md << 'EOF'
+cat > .agents/test/bob/.witwave/continuations/task-continuation-probe.md << 'EOF'
 ---
 name: Task Continuation Probe
 description: Fires after the run-once task-continuation-probe task.
@@ -36,7 +36,7 @@ EOF
 Create a continuation that should NOT fire (trigger-when does not match):
 
 ```
-cat > .agents/test/bob/.nyx/continuations/task-continuation-probe-nomatch.md << 'EOF'
+cat > .agents/test/bob/.witwave/continuations/task-continuation-probe-nomatch.md << 'EOF'
 ---
 name: Task Continuation Probe No Match
 description: Should not fire — trigger-when will not appear in the task response.
@@ -56,9 +56,9 @@ Poll the conversation log at `.agents/test/bob/logs/conversation.jsonl` every 2 
 ## Cleanup
 
 ```
-rm .agents/test/bob/.nyx/tasks/task-continuation-probe.md
-rm .agents/test/bob/.nyx/continuations/task-continuation-probe.md
-rm .agents/test/bob/.nyx/continuations/task-continuation-probe-nomatch.md
+rm .agents/test/bob/.witwave/tasks/task-continuation-probe.md
+rm .agents/test/bob/.witwave/continuations/task-continuation-probe.md
+rm .agents/test/bob/.witwave/continuations/task-continuation-probe-nomatch.md
 ```
 
 ## Pass/Fail Criteria

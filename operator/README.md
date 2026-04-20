@@ -1,18 +1,18 @@
-# nyx-operator
+# witwave-operator
 
-A Kubernetes operator for the nyx platform. Provides the `NyxAgent` custom
+A Kubernetes operator for the witwave platform. Provides the `WitwaveAgent` custom
 resource, which deploys one named agent — a harness orchestrator plus one
 or more backend sidecars (claude, codex, gemini) — as a
 `Deployment` + `Service` + optional `ConfigMap`, `HPA`, `PDB`, and `PVC`.
 
 Built with Operator SDK v1.42 (Go). Mirrors the deployment shape of the
-[nyx Helm chart](../charts/nyx/) and is intended as an alternative install
+[witwave Helm chart](../charts/witwave/) and is intended as an alternative install
 path once the CRD is stable. The Helm chart remains the supported install
 method while the operator is in `v1alpha1`.
 
-> **Status:** first pass. The `NyxAgent` type and reconciler are in place.
+> **Status:** first pass. The `WitwaveAgent` type and reconciler are in place.
 > Git-sync sidecars, cross-agent manifest, UI, and Ingress are deferred to
-> a future `NyxPlatform` CRD — run the Helm chart alongside for those for now.
+> a future `WitwavePlatform` CRD — run the Helm chart alongside for those for now.
 
 ## Requirements
 
@@ -44,11 +44,11 @@ make docker-build docker-push IMG=<registry>/operator:<tag>
 make deploy IMG=<registry>/operator:<tag>
 ```
 
-Apply the sample `NyxAgent`:
+Apply the sample `WitwaveAgent`:
 
 ```bash
 kubectl apply -k config/samples/
-kubectl get nyxagent
+kubectl get witwaveagent
 ```
 
 Uninstall:
@@ -59,14 +59,14 @@ make undeploy
 make uninstall
 ```
 
-## The `NyxAgent` resource
+## The `WitwaveAgent` resource
 
-One `NyxAgent` corresponds to one named agent (e.g. `iris`, `nova`, `kira`).
+One `WitwaveAgent` corresponds to one named agent (e.g. `iris`, `nova`, `kira`).
 Its spec mirrors the per-agent shape used by the Helm chart's `agents[]`
-list. See `config/samples/nyx_v1alpha1_nyxagent.yaml` for a minimal example
-and `api/v1alpha1/nyxagent_types.go` for the full schema.
+list. See `config/samples/witwave_v1alpha1_witwaveagent.yaml` for a minimal example
+and `api/v1alpha1/witwaveagent_types.go` for the full schema.
 
-Owned resources per `NyxAgent`:
+Owned resources per `WitwaveAgent`:
 
 | Resource                    | When                                                     |
 | --------------------------- | -------------------------------------------------------- |
@@ -89,20 +89,20 @@ when `spec.metrics.enabled && spec.metrics.podAnnotations` is true; the
 Service-level equivalents are gated on `spec.metrics.serviceAnnotations`
 (default true).
 
-All owned resources carry `ownerReferences` pointing at the `NyxAgent`,
+All owned resources carry `ownerReferences` pointing at the `WitwaveAgent`,
 so deleting the CR cascades their deletion.
 
-## The `NyxPrompt` resource
+## The `WitwavePrompt` resource
 
-One `NyxPrompt` declares a single prompt definition that binds to one or
-more `NyxAgent`s. The operator reconciles a `ConfigMap` per
-`(NyxPrompt, agent)` pair; the NyxAgent pod mounts each ConfigMap as a
-subPath file at `/home/agent/.nyx/<kind>/nyxprompt-<name>.md` (or
+One `WitwavePrompt` declares a single prompt definition that binds to one or
+more `WitwaveAgent`s. The operator reconciles a `ConfigMap` per
+`(WitwavePrompt, agent)` pair; the WitwaveAgent pod mounts each ConfigMap as a
+subPath file at `/home/agent/.witwave/<kind>/witwaveprompt-<name>.md` (or
 `HEARTBEAT.md` for kind=heartbeat) so the harness scheduler picks them up
 alongside anything gitSync dropped into the same directory.
 
-See `config/samples/nyx_v1alpha1_nyxprompt.yaml` for a runnable example
-and `api/v1alpha1/nyxprompt_types.go` for the full schema.
+See `config/samples/witwave_v1alpha1_witwaveprompt.yaml` for a runnable example
+and `api/v1alpha1/witwaveprompt_types.go` for the full schema.
 
 ### Kinds
 
@@ -111,18 +111,18 @@ singleton heartbeat file):
 
 | `spec.kind`    | Target path                                                  | Required frontmatter |
 | -------------- | ------------------------------------------------------------ | -------------------- |
-| `job`          | `/home/agent/.nyx/jobs/nyxprompt-<name>.md`                  | `schedule` (cron)    |
-| `task`         | `/home/agent/.nyx/tasks/nyxprompt-<name>.md`                 | `schedule` (cron)    |
-| `trigger`      | `/home/agent/.nyx/triggers/nyxprompt-<name>.md`              | `endpoint`           |
-| `continuation` | `/home/agent/.nyx/continuations/nyxprompt-<name>.md`         | `continues-after` (string or list) |
-| `webhook`      | `/home/agent/.nyx/webhooks/nyxprompt-<name>.md`              | `url`                |
-| `heartbeat`    | `/home/agent/.nyx/HEARTBEAT.md` (singleton per agent)        | none                 |
+| `job`          | `/home/agent/.witwave/jobs/witwaveprompt-<name>.md`                  | `schedule` (cron)    |
+| `task`         | `/home/agent/.witwave/tasks/witwaveprompt-<name>.md`                 | `schedule` (cron)    |
+| `trigger`      | `/home/agent/.witwave/triggers/witwaveprompt-<name>.md`              | `endpoint`           |
+| `continuation` | `/home/agent/.witwave/continuations/witwaveprompt-<name>.md`         | `continues-after` (string or list) |
+| `webhook`      | `/home/agent/.witwave/webhooks/witwaveprompt-<name>.md`              | `url`                |
+| `heartbeat`    | `/home/agent/.witwave/HEARTBEAT.md` (singleton per agent)        | none                 |
 
 ### Multi-bind
 
-`spec.agentRefs[]` lists every NyxAgent the prompt binds to. The operator
+`spec.agentRefs[]` lists every WitwaveAgent the prompt binds to. The operator
 renders one ConfigMap per agent (name pattern
-`nyxprompt-<crname>-<agent>`) with owner-reference cascade and stale-
+`witwaveprompt-<crname>-<agent>`) with owner-reference cascade and stale-
 binding garbage collection. An optional `filenameSuffix` on each ref
 disambiguates when the same CR binds to multiple agents that already
 have a gitSync-managed prompt sharing the default filename.
@@ -134,7 +134,7 @@ The `ValidatingWebhookConfiguration` enforces:
 - Kind-specific required frontmatter keys (see table above)
 - `continues-after` must be a non-empty string or list of strings
 - Duplicate `agentRefs` entries rejected
-- `kind: heartbeat` is singleton-per-agent — no two NyxPrompts can both
+- `kind: heartbeat` is singleton-per-agent — no two WitwavePrompts can both
   target the same agent with heartbeat, since the harness reads a single
   `HEARTBEAT.md` and the writes would race
 
@@ -150,7 +150,7 @@ Each reconcile writes `.status` via the subresource:
 - `readyCount` — number of bindings whose ConfigMap applied cleanly
 - `bindings[]` — one entry per `spec.agentRefs`, keyed by `agentName`,
   with `configMapName`, `filename`, `ready`, and a `message` when a
-  binding failed (e.g. "target NyxAgent not found")
+  binding failed (e.g. "target WitwaveAgent not found")
 - `conditions[]` — one `Ready` condition, `True` when every binding is
   ready
 
@@ -165,7 +165,7 @@ the runtime-status proposal.
 
 Both `GitSyncSpec.credentials` and `BackendSpec.credentials` accept the
 same three-mode resolver (parity with the Helm chart's
-`nyx.resolveCredentials` helper):
+`witwave.resolveCredentials` helper):
 
 ```yaml
 # Production: reference a pre-created Secret
@@ -176,10 +176,10 @@ gitSyncs:
       existingSecret: agent-github-credentials   # must contain GITSYNC_USERNAME + GITSYNC_PASSWORD
 
 # Dev: inline values. Operator reconciles a Secret named
-# <agent>-<entry>-gitsync-credentials owned by the NyxAgent (GC'd on
+# <agent>-<entry>-gitsync-credentials owned by the WitwaveAgent (GC'd on
 # removal). acknowledgeInsecureInline MUST be true or the admission
 # webhook rejects the CR — inline values land in etcd + `kubectl get
-# nyxagent -o yaml`, so the ack flag is the explicit opt-in.
+# witwaveagent -o yaml`, so the ack flag is the explicit opt-in.
 gitSyncs:
   - name: autonomous-agent
     repo: https://github.com/org/repo
@@ -208,7 +208,7 @@ touched.
 ## Admission webhook TLS
 
 The controller-manager's admission webhook server (port 9443) needs a
-TLS cert. The `nyx-operator` Helm chart supports two modes:
+TLS cert. The `witwave-operator` Helm chart supports two modes:
 
 - **cert-manager** (default): chart renders a Certificate + Issuer, CA
   bundle auto-injected into the webhook configs
@@ -217,10 +217,10 @@ TLS cert. The `nyx-operator` Helm chart supports two modes:
   this when cert-manager isn't available (air-gapped, service mesh,
   Vault PKI, strict RBAC).
 
-Full setup in `charts/nyx-operator/README.md` — both modes are covered
+Full setup in `charts/witwave-operator/README.md` — both modes are covered
 with copy-paste snippets.
 
-## `NyxAgent` status
+## `WitwaveAgent` status
 
 The controller writes the following status fields:
 
@@ -235,10 +235,10 @@ The controller writes the following status fields:
 
 Two indexers feed the reconciler's reverse-lookup paths without triggering full-list fan-outs:
 
-- `NyxPromptAgentRefIndex` — indexes each `NyxPrompt.spec.agentRefs[].name`, so a `NyxAgent` reconcile can
-  enumerate every NyxPrompt bound to it in O(1) for rebind / teardown.
-- `NyxAgentTeamIndex` — indexes `NyxAgent` by team label so cross-agent views can resolve team membership
-  without listing every NyxAgent in the namespace.
+- `WitwavePromptAgentRefIndex` — indexes each `WitwavePrompt.spec.agentRefs[].name`, so a `WitwaveAgent` reconcile can
+  enumerate every WitwavePrompt bound to it in O(1) for rebind / teardown.
+- `WitwaveAgentTeamIndex` — indexes `WitwaveAgent` by team label so cross-agent views can resolve team membership
+  without listing every WitwaveAgent in the namespace.
 
 Leader election is on by default (`--leader-elect=true`). Multi-replica operator rollouts are safe without
 additional flags.
@@ -246,22 +246,22 @@ additional flags.
 ## Per-container metrics port
 
 Every managed container (harness, backends, MCP tools) exposes `/metrics` on `app_port + 1000` by default,
-matching the chart (#687) and removing the need for per-container `MetricsPort` overrides on the NyxAgent
+matching the chart (#687) and removing the need for per-container `MetricsPort` overrides on the WitwaveAgent
 CR. The CRD's `MetricsPort` field is deprecated — set only if you need to override the convention.
 
-## NyxPrompt CRD installation
+## WitwavePrompt CRD installation
 
-The NyxPrompt CRD is wired into `config/crd/kustomization.yaml` alongside NyxAgent, so `make install` now
+The WitwavePrompt CRD is wired into `config/crd/kustomization.yaml` alongside WitwaveAgent, so `make install` now
 applies both CRDs in one pass.
 
 ## Chart / operator feature fidelity
 
-The Helm chart (`charts/nyx`) and this operator render equivalent
+The Helm chart (`charts/witwave`) and this operator render equivalent
 workloads for the same inputs. Remaining by-design asymmetries:
 
 | Concept                          | Chart | Operator | Notes |
 | -------------------------------- | ----- | -------- | ----- |
-| `NyxPrompt` CRD                  | —     | ✓        | Operator-only; chart path uses gitSync mappings to materialise prompts. |
+| `WitwavePrompt` CRD                  | —     | ✓        | Operator-only; chart path uses gitSync mappings to materialise prompts. |
 | Dashboard `Ingress` + basic auth | ✓     | —        | Operator delegates: BYO `Ingress` / `HTTPRoute` / `Route` pointing at the `<agent>-dashboard` Service. Matches Strimzi / cert-manager / Argo / ECK convention. |
 | Trigger Ingress (external webhooks reaching `/triggers/*`) | — | — | Neither path emits it. Users hand-roll or use service mesh routing. Design discussion is [request #trigger-ingress](https://github.com/skthomasjr/autonomous-agent/issues) (pending filing). |
 
@@ -269,7 +269,7 @@ Tracked open requests (not gaps):
 
 | Topic                                            | Issue | State |
 | ------------------------------------------------ | ----- | ----- |
-| NyxPrompt runtime execution status on CR         | [#642](https://github.com/skthomasjr/autonomous-agent/issues/642) | request, Ready: false |
+| WitwavePrompt runtime execution status on CR         | [#642](https://github.com/skthomasjr/autonomous-agent/issues/642) | request, Ready: false |
 
 ## Metrics
 
@@ -277,20 +277,20 @@ The manager exposes `/metrics` (controller-runtime default) on the port
 configured by `--metrics-bind-address`. Standard reconcile / workqueue /
 client-go counters come for free.
 
-NyxAgent-specific domain metrics added on top (#471):
+WitwaveAgent-specific domain metrics added on top (#471):
 
 | Metric                                | Type    | Labels             | Meaning                                                                          |
 | ------------------------------------- | ------- | ------------------ | -------------------------------------------------------------------------------- |
-| `nyxagent_phase_transitions_total`    | counter | `from`, `to`       | Status.phase transitions (Pending → Ready, Ready → Degraded, etc.)               |
-| `nyxagent_pvc_build_errors_total`     | counter | `backend`          | Backend PVC entries skipped due to invalid spec (e.g. `storage.size` parse fail) |
-| `nyxagent_dashboard_enabled`          | gauge   | `namespace`, `name`| 1 when `spec.dashboard.enabled=true`, 0 otherwise. `sum()` for cluster total.    |
-| `nyxagent_teardown_step_errors_total` | counter | `kind`, `reason`   | Per-kind teardown failures when `spec.enabled=false` or the CR is deleted; useful for alerting when cascade cleanup is partial |
-| `nyxprompt_status_patch_conflicts_total` | counter | `namespace`, `name` | `NyxPrompt` status subresource patch 409 conflicts retried with fresh `resourceVersion` (#950). Sustained non-zero rate points at a noisy reconciler (too many concurrent writers) or cache lag under load. |
+| `witwaveagent_phase_transitions_total`    | counter | `from`, `to`       | Status.phase transitions (Pending → Ready, Ready → Degraded, etc.)               |
+| `witwaveagent_pvc_build_errors_total`     | counter | `backend`          | Backend PVC entries skipped due to invalid spec (e.g. `storage.size` parse fail) |
+| `witwaveagent_dashboard_enabled`          | gauge   | `namespace`, `name`| 1 when `spec.dashboard.enabled=true`, 0 otherwise. `sum()` for cluster total.    |
+| `witwaveagent_teardown_step_errors_total` | counter | `kind`, `reason`   | Per-kind teardown failures when `spec.enabled=false` or the CR is deleted; useful for alerting when cascade cleanup is partial |
+| `witwaveprompt_status_patch_conflicts_total` | counter | `namespace`, `name` | `WitwavePrompt` status subresource patch 409 conflicts retried with fresh `resourceVersion` (#950). Sustained non-zero rate points at a noisy reconciler (too many concurrent writers) or cache lag under load. |
 
-NyxPrompt binding-outcome metrics (label schema `namespace`, `name`) track per-binding ConfigMap apply
+WitwavePrompt binding-outcome metrics (label schema `namespace`, `name`) track per-binding ConfigMap apply
 results so operators can alert on chronically unready bindings.
 
-The gauges (`nyxagent_dashboard_enabled`, NyxPrompt binding gauges) are dropped on resource deletion; the
+The gauges (`witwaveagent_dashboard_enabled`, WitwavePrompt binding gauges) are dropped on resource deletion; the
 counters persist (Prometheus convention — counters are monotonic).
 
 ### Prometheus Operator integration
@@ -313,14 +313,14 @@ automatically once the CRDs appear.
 ## Tracing (OpenTelemetry)
 
 When `OTEL_ENABLED=true`, the manager emits one server span per
-`Reconcile()` call (`nyxagent.reconcile`) attributed with `nyx.namespace`,
-`nyx.name`, and the resulting `nyx.phase`. Errors are recorded on the span
+`Reconcile()` call (`witwaveagent.reconcile`) attributed with `witwave.namespace`,
+`witwave.name`, and the resulting `witwave.phase`. Errors are recorded on the span
 so collectors flag them red. W3C trace-context propagator matches the
 Python side (#468/#469) so inbound `traceparent` headers propagate across
 the agent boundary.
 
 Standard OTel env vars apply: `OTEL_EXPORTER_OTLP_ENDPOINT`,
-`OTEL_SERVICE_NAME` (defaults to `nyx-operator`), `OTEL_TRACES_SAMPLER`.
+`OTEL_SERVICE_NAME` (defaults to `witwave-operator`), `OTEL_TRACES_SAMPLER`.
 `POD_NAMESPACE` and `POD_NAME` (set via downward API in the chart's pod
 spec) feed `k8s.namespace` and `k8s.pod.name` resource attributes.
 
@@ -329,7 +329,7 @@ and the per-reconcile overhead is a single branch + interface dispatch.
 
 **The operator does not deploy an OpenTelemetry Collector.** Matching the
 idiomatic pattern across Strimzi, cert-manager, Istio, Elastic ECK,
-Knative, Argo, Crossplane, and grafana-operator, nyx-operator emits OTLP
+Knative, Argo, Crossplane, and grafana-operator, witwave-operator emits OTLP
 to a user-provided endpoint and delegates collector deployment to
 something purpose-built for that job:
 
@@ -340,7 +340,7 @@ something purpose-built for that job:
 - **Alternative:** point at any OTLP-compatible target directly —
   Jaeger, Tempo, Honeycomb, Grafana Cloud, Datadog.
 
-Wiring per NyxAgent:
+Wiring per WitwaveAgent:
 
 ```yaml
 spec:

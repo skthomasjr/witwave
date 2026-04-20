@@ -68,12 +68,12 @@ function onClick(e: MouseEvent) {
 }
 
 .backend-bubble:focus-visible {
-  outline: 2px solid var(--nyx-accent);
+  outline: 2px solid var(--witwave-accent);
   outline-offset: 2px;
 }
 
 .backend-bubble.active-backend {
-  outline: 2px solid var(--nyx-accent);
+  outline: 2px solid var(--witwave-accent);
   outline-offset: 1px;
 }
 
@@ -82,19 +82,19 @@ function onClick(e: MouseEvent) {
   height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
-  background: var(--nyx-muted);
+  background: var(--witwave-muted);
 }
 
 .bb-dot.up {
-  background: var(--nyx-green) !important;
+  background: var(--witwave-green) !important;
 }
 
 .bb-dot.down {
-  background: var(--nyx-red) !important;
+  background: var(--witwave-red) !important;
 }
 
 .bb-label {
-  color: var(--nyx-bright);
+  color: var(--witwave-bright);
   white-space: nowrap;
 }
 
@@ -104,22 +104,22 @@ function onClick(e: MouseEvent) {
 }
 
 .backend-bubble.claude {
-  background: color-mix(in srgb, var(--nyx-brand-claude) 12%, transparent);
-  border-color: color-mix(in srgb, var(--nyx-brand-claude) 35%, transparent);
+  background: color-mix(in srgb, var(--witwave-brand-claude) 12%, transparent);
+  border-color: color-mix(in srgb, var(--witwave-brand-claude) 35%, transparent);
 }
 
 .backend-bubble.codex {
-  background: color-mix(in srgb, var(--nyx-brand-codex) 12%, transparent);
-  border-color: color-mix(in srgb, var(--nyx-brand-codex) 35%, transparent);
+  background: color-mix(in srgb, var(--witwave-brand-codex) 12%, transparent);
+  border-color: color-mix(in srgb, var(--witwave-brand-codex) 35%, transparent);
 }
 
 .backend-bubble.gemini {
-  background: color-mix(in srgb, var(--nyx-brand-gemini) 12%, transparent);
-  border-color: color-mix(in srgb, var(--nyx-brand-gemini) 35%, transparent);
+  background: color-mix(in srgb, var(--witwave-brand-gemini) 12%, transparent);
+  border-color: color-mix(in srgb, var(--witwave-brand-gemini) 35%, transparent);
 }
 
 .backend-bubble.unknown {
-  background: color-mix(in srgb, var(--nyx-muted) 12%, transparent);
-  border-color: color-mix(in srgb, var(--nyx-muted) 35%, transparent);
+  background: color-mix(in srgb, var(--witwave-muted) 12%, transparent);
+  border-color: color-mix(in srgb, var(--witwave-muted) 35%, transparent);
 }
 </style>

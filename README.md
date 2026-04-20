@@ -35,7 +35,7 @@ Three tiers to keep straight:
    own session state, memory, conversation log, and metrics, and is callable standalone over A2A.
 3. **Named agent** — the deployable unit (`iris`, `nova`, `kira`, …). From outside it presents as a single A2A agent
    via the harness's endpoint. Inside, the harness orchestrates one or more backend agents using routing rules in
-   `.nyx/backend.yaml`.
+   `.witwave/backend.yaml`.
 
 A named agent is both an agent **and** an orchestrator of sub-agents. Because the harness treats any A2A URL as a
 valid dispatch target, peer named agents are reachable the same way local backend agents are — teams of named agents
@@ -63,9 +63,9 @@ autonomous agent.
 | **MCP tools**      | `tools/`               | Tool infrastructure| `mcp-kubernetes`, `mcp-helm`, `mcp-prometheus` — shared MCP servers backends opt into.                                     |
 | **Dashboard**      | `clients/dashboard/`   | Web client         | Vue 3 + PrimeVue web UI.                                                                                                    |
 | **ww CLI**         | `clients/ww/`          | Client             | Go + cobra command-line interface (`brew install ww`).                                                                      |
-| **Operator**       | `operator/`            | Kubernetes operator| Go controller that reconciles `NyxAgent` CRDs.                                                                              |
-| **Agent chart**    | `charts/nyx/`          | Deployment         | Helm chart that deploys nyx agents via templated manifests.                                                                  |
-| **Operator chart** | `charts/nyx-operator/` | Deployment         | Helm chart that installs the operator + CRD.                                                                                 |
+| **Operator**       | `operator/`            | Kubernetes operator| Go controller that reconciles `WitwaveAgent` CRDs.                                                                              |
+| **Agent chart**    | `charts/witwave/`          | Deployment         | Helm chart that deploys witwave agents via templated manifests.                                                                  |
+| **Operator chart** | `charts/witwave-operator/` | Deployment         | Helm chart that installs the operator + CRD.                                                                                 |
 
 The harness routes work to backend agents but does no LLM execution itself. Client surfaces (dashboard + ww) provide
 visibility and interaction; they don't participate in agent workflows. The operator and its chart are an alternative
@@ -117,15 +117,15 @@ The latest released tag is visible in the [GitHub Releases](https://github.com/s
 Two Helm charts are published to GHCR alongside the images on every release tag:
 
 ```bash
-# Agent chart — deploys nyx agents directly via templated manifests.
-helm install nyx oci://ghcr.io/skthomasjr/charts/nyx --version 0.2.0-beta.37 --namespace nyx --create-namespace
+# Agent chart — deploys witwave agents directly via templated manifests.
+helm install witwave oci://ghcr.io/skthomasjr/charts/witwave --version 0.2.0-beta.37 --namespace witwave --create-namespace
 
-# Operator chart — installs the nyx-operator controller and the NyxAgent CRD.
-helm install nyx-operator oci://ghcr.io/skthomasjr/charts/nyx-operator --version 0.2.0-beta.37 --namespace nyx --create-namespace
+# Operator chart — installs the witwave-operator controller and the WitwaveAgent CRD.
+helm install witwave-operator oci://ghcr.io/skthomasjr/charts/witwave-operator --version 0.2.0-beta.37 --namespace witwave --create-namespace
 ```
 
-See [charts/nyx/README.md](charts/nyx/README.md) and
-[charts/nyx-operator/README.md](charts/nyx-operator/README.md) for full installation instructions.
+See [charts/witwave/README.md](charts/witwave/README.md) and
+[charts/witwave-operator/README.md](charts/witwave-operator/README.md) for full installation instructions.
 
 ## Getting Started
 
@@ -160,7 +160,7 @@ export GEMINI_API_KEY=your-key-here
 ### 3. Start the agents
 
 ```bash
-helm upgrade --install nyx ./charts/nyx -f ./charts/nyx/values-test.yaml -n nyx --create-namespace
+helm upgrade --install witwave ./charts/witwave -f ./charts/witwave/values-test.yaml -n witwave --create-namespace
 ```
 
 ### 4. Verify
@@ -182,25 +182,25 @@ curl http://localhost:8012/health
 
 ## Agent Structure
 
-Active agents are defined under `.agents/active/`. Each named agent has its own directory containing nyx config, backend
+Active agents are defined under `.agents/active/`. Each named agent has its own directory containing witwave config, backend
 instances, logs, and memory.
 
 ```text
 .agents/
 ├── active/
-│   ├── iris/          # Iris (nyx: 8000 | claude: 8010 | codex: 8011 | gemini: 8012)
-│   ├── nova/          # Nova (nyx: 8001 | claude: 8020 | codex: 8021 | gemini: 8022)
-│   └── kira/          # Kira (nyx: 8002 | claude: 8030 | codex: 8031 | gemini: 8032)
+│   ├── iris/          # Iris (witwave: 8000 | claude: 8010 | codex: 8011 | gemini: 8012)
+│   ├── nova/          # Nova (witwave: 8001 | claude: 8020 | codex: 8021 | gemini: 8022)
+│   └── kira/          # Kira (witwave: 8002 | claude: 8030 | codex: 8031 | gemini: 8032)
 └── test/
-    ├── bob/           # Bob  (nyx: 8099 | claude: 8090 | codex: 8091 | gemini: 8092)
-    └── fred/          # Fred (nyx: 8098 | claude: 8089 — single-backend test agent)
+    ├── bob/           # Bob  (witwave: 8099 | claude: 8090 | codex: 8091 | gemini: 8092)
+    └── fred/          # Fred (witwave: 8098 | claude: 8089 — single-backend test agent)
 ```
 
 Each agent directory contains:
 
 ```text
 <agent>/
-├── .nyx/              # Runtime config (agent-card.md, backend.yaml, HEARTBEAT.md, jobs/)
+├── .witwave/              # Runtime config (agent-card.md, backend.yaml, HEARTBEAT.md, jobs/)
 ├── .claude/           # Claude backend config (CLAUDE.md, agent-card.md, mcp.json, settings.json)
 ├── .codex/            # Codex backend config (AGENTS.md, agent-card.md, config.toml)
 ├── .gemini/           # Gemini backend config (GEMINI.md, agent-card.md)
@@ -219,7 +219,7 @@ Each agent directory contains:
 
 ## Routing Configuration
 
-Each agent's `backend.yaml` (under `.nyx/`) controls where nyx routes each type of work:
+Each agent's `backend.yaml` (under `.witwave/`) controls where witwave routes each type of work:
 
 ```yaml
 backend:
@@ -302,7 +302,7 @@ sessions), so each job/task/trigger invocation gets a fresh budget. All three ba
    cp -r .agents/active/iris .agents/active/<name>
    ```
 
-2. Update the agent's `agent-card.md` in `.nyx/` (mounted at `/home/agent/.nyx/agent-card.md`) with the agent's identity
+2. Update the agent's `agent-card.md` in `.witwave/` (mounted at `/home/agent/.witwave/agent-card.md`) with the agent's identity
    and role; update each backend's `agent-card.md` in `.claude/`, `.codex/`, and `.gemini/` if those directories are
    used
 
@@ -310,21 +310,21 @@ sessions), so each job/task/trigger invocation gets a fresh budget. All three ba
    `/home/agent/.codex/AGENTS.md`), and `GEMINI.md` (at `/home/agent/.gemini/GEMINI.md`) with backend-specific
    behavioral instructions
 
-4. Update `.agents/active/<name>/.nyx/backend.yaml` with the new agent's backend service names and URLs
+4. Update `.agents/active/<name>/.witwave/backend.yaml` with the new agent's backend service names and URLs
 
-5. Add the agent to `charts/nyx/values-test.yaml` (or your own overrides file) with its backends, config, and storage
+5. Add the agent to `charts/witwave/values-test.yaml` (or your own overrides file) with its backends, config, and storage
 
 6. Register the agent in `.agents/active/manifest.json`
 
 7. Deploy:
 
    ```bash
-   helm upgrade --install nyx ./charts/nyx -f ./charts/nyx/values-test.yaml -n nyx
+   helm upgrade --install witwave ./charts/witwave -f ./charts/witwave/values-test.yaml -n witwave
    ```
 
 ## Communication
 
-Agents communicate over the [A2A protocol](https://a2a-protocol.org) via JSON-RPC. Each nyx agent exposes:
+Agents communicate over the [A2A protocol](https://a2a-protocol.org) via JSON-RPC. Each witwave agent exposes:
 
 - `/.well-known/agent.json` — agent card (identity and capabilities)
 - `/` — A2A JSON-RPC endpoint (`message/send`)
@@ -390,7 +390,7 @@ Session IDs on multi-tenant surfaces are HMAC-bound to the caller via `SESSION_I
 
 MCP stdio entries are gated by a per-backend command allow-list (`MCP_ALLOWED_COMMANDS`, `MCP_ALLOWED_COMMAND_PREFIXES`, `MCP_ALLOWED_CWD_PREFIXES`); rejections bump `backend_mcp_command_rejected_total{reason}`. Every MCP tool container enforces its own bearer (`MCP_TOOL_AUTH_TOKEN`) via `shared/mcp_auth.py`. Outbound webhooks go through an SSRF-resistant URL check that re-resolves the hostname at delivery time.
 
-The nyx-operator chart runs with a split RBAC surface (`rbac.secretsWrite=false` drops Secret write verbs while keeping reads). Credential Secrets are dual-checked (label + `IsControlledBy`) before any update/delete so the operator never touches user-created Secrets.
+The witwave-operator chart runs with a split RBAC surface (`rbac.secretsWrite=false` drops Secret write verbs while keeping reads). Credential Secrets are dual-checked (label + `IsControlledBy`) before any update/delete so the operator never touches user-created Secrets.
 
 See `AGENTS.md` → "Conventions" for the full auth / redaction / MCP / RBAC posture, `shared/redact.py` for the conversation-log redaction rules (idempotent merge-spans with UUID / OTel-trace shielding), and each chart's `values.yaml` for the full surface of security-affecting knobs.
 
@@ -400,11 +400,11 @@ See `AGENTS.md` → "Conventions" for the full auth / redaction / MCP / RBAC pos
 
 | Variable                                    | Default                         | Description                                                                                                                                           |
 | ------------------------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AGENT_NAME`                                | `nyx`                           | Agent display name (e.g. `iris`)                                                                                                                      |
+| `AGENT_NAME`                                | `witwave`                           | Agent display name (e.g. `iris`)                                                                                                                      |
 | `HARNESS_HOST`                              | `0.0.0.0`                       | Interface the harness binds to                                                                                                                        |
 | `HARNESS_PORT`                              | `8000`                          | HTTP port the harness listens on                                                                                                                      |
 | `HARNESS_URL`                               | `http://localhost:$HARNESS_PORT/` | Public URL published on the A2A agent card                                                                                                          |
-| `BACKEND_CONFIG_PATH`                       | `/home/agent/.nyx/backend.yaml` | Path to the backend routing config file                                                                                                               |
+| `BACKEND_CONFIG_PATH`                       | `/home/agent/.witwave/backend.yaml` | Path to the backend routing config file                                                                                                               |
 | `METRICS_ENABLED`                           | _(unset)_                       | Set to any non-empty value to expose `/metrics`                                                                                                       |
 | `METRICS_PORT`                              | `9000`                          | Dedicated port the metrics listener binds to (split from the app port so NetworkPolicy + auth can differ, #643)                                       |
 | `METRICS_AUTH_TOKEN`                        | _(unset)_                       | Bearer token required to access `/metrics` (recommended in production)                                                                                |
@@ -462,7 +462,7 @@ When `METRICS_ENABLED` is set, Prometheus metrics are served at `/metrics` on a 
 
 Each backend exposes `backend_*`-prefixed metrics; **claude is the superset** and peers track placeholders so cross-backend PromQL joins don't lose label sets. Harness exposes `harness_*`-prefixed infrastructure metrics. The harness `/metrics` endpoint also aggregates all backend `/metrics` endpoints with a `backend="<id>"` label injected per sample, so a single scrape captures the full deployment.
 
-For the full catalog, read each component's `metrics.py`. For the rendered view, see `charts/nyx/dashboards/` (Grafana sidecar) and `charts/nyx/templates/prometheusrule.yaml` (default alerts).
+For the full catalog, read each component's `metrics.py`. For the rendered view, see `charts/witwave/dashboards/` (Grafana sidecar) and `charts/witwave/templates/prometheusrule.yaml` (default alerts).
 
 ```bash
 curl -s http://localhost:9000/metrics | head
@@ -487,7 +487,7 @@ Two env vars control the feature, both set on the harness container:
 | Variable                 | Default   | Description                                                                                              |
 | ------------------------ | --------- | -------------------------------------------------------------------------------------------------------- |
 | `PROMPT_ENV_ENABLED`     | unset     | Master toggle. When unset/false, prompt bodies pass through verbatim. Operators opt in.                  |
-| `PROMPT_ENV_ALLOWLIST`   | empty     | Comma-separated prefixes or globs (`NYX_*,DEPLOY_*`). References outside the allowlist become `""`.      |
+| `PROMPT_ENV_ALLOWLIST`   | empty     | Comma-separated prefixes or globs (`WITWAVE_*,DEPLOY_*`). References outside the allowlist become `""`.      |
 
 Missing vars (and non-allowlisted references) are substituted with an empty string and a warning is logged once per
 variable. For triggers specifically, interpolation is applied to the operator-authored `.md` body **only** — inbound
@@ -496,7 +496,7 @@ read local env vars.
 
 ## Outbound Webhooks
 
-Webhooks fire after a prompt completes. Each webhook subscription is a markdown file under `.nyx/webhooks/` with
+Webhooks fire after a prompt completes. Each webhook subscription is a markdown file under `.witwave/webhooks/` with
 frontmatter fields:
 
 | Field                | Required | Description                                                                        |
@@ -545,17 +545,17 @@ If the body is empty, a default JSON envelope is sent.
 
 ## Observability
 
-Prometheus metrics are opt-in per-agent; see `charts/nyx` values for `metrics.*`, `serviceMonitor.*`, and
+Prometheus metrics are opt-in per-agent; see `charts/witwave` values for `metrics.*`, `serviceMonitor.*`, and
 `podMonitor.*`.
 
 Distributed tracing (OpenTelemetry) is also opt-in and spans harness + backends + operator when enabled. The
 pod-side SDK bootstraps already honour the standard OTel env vars (`shared/otel.py`,
 `operator/internal/tracing/otel.go`); the Helm charts own the wiring end-to-end (#634):
 
-- `charts/nyx` — `observability.tracing.enabled` + `observability.tracing.collector.enabled` deploys an in-cluster
+- `charts/witwave` — `observability.tracing.enabled` + `observability.tracing.collector.enabled` deploys an in-cluster
   OpenTelemetry Collector and points every agent pod at it. Set `observability.tracing.endpoint` to forward to an
   out-of-band collector instead.
-- `charts/nyx-operator` — matching `observability.tracing.*` block; wire the same endpoint to trace the reconciler
+- `charts/witwave-operator` — matching `observability.tracing.*` block; wire the same endpoint to trace the reconciler
   alongside the agents.
 
-See `charts/nyx/README.md` → "Enabling distributed tracing" for Jaeger and Tempo recipes.
+See `charts/witwave/README.md` → "Enabling distributed tracing" for Jaeger and Tempo recipes.

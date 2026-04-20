@@ -67,7 +67,7 @@ from metrics import (
 
 logger = logging.getLogger(__name__)
 
-AGENT_NAME = os.environ.get("AGENT_NAME", "nyx")
+AGENT_NAME = os.environ.get("AGENT_NAME", "witwave")
 CONVERSATION_LOG = os.environ.get("CONVERSATION_LOG", "/home/agent/logs/conversation.jsonl")
 
 MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "10000"))
@@ -932,7 +932,7 @@ class AgentExecutor(A2AAgentExecutor):
             _rcv_payload: dict = {"concern": "a2a"}
             if model:
                 _rcv_payload["model"] = model
-            _agent_name = os.environ.get("AGENT_NAME", "nyx")
+            _agent_name = os.environ.get("AGENT_NAME", "witwave")
             get_event_stream().publish(
                 "a2a.request.received", _rcv_payload, agent_id=_agent_name
             )
@@ -954,11 +954,11 @@ class AgentExecutor(A2AAgentExecutor):
         _success = False
         _error: str | None = None
         _span_attrs = {
-            "nyx.session_id": session_id,
-            "nyx.backend_id": backend_id or self._default_backend_id,
-            "nyx.model": model or "",
-            "nyx.trace_id": trace_context.trace_id,
-            "nyx.has_inbound_trace": _had_inbound,
+            "witwave.session_id": session_id,
+            "witwave.backend_id": backend_id or self._default_backend_id,
+            "witwave.model": model or "",
+            "witwave.trace_id": trace_context.trace_id,
+            "witwave.has_inbound_trace": _had_inbound,
         }
         try:
             with start_span(
@@ -1061,7 +1061,7 @@ class AgentExecutor(A2AAgentExecutor):
                 }
                 if not _success and _error:
                     _comp_payload["error"] = _error[:512]
-                _agent_name = os.environ.get("AGENT_NAME", "nyx")
+                _agent_name = os.environ.get("AGENT_NAME", "witwave")
                 get_event_stream().publish(
                     "a2a.request.completed", _comp_payload, agent_id=_agent_name
                 )

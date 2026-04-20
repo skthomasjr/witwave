@@ -161,7 +161,7 @@ describe("TimelineView", () => {
     // errors in that mode. In a real browser the guard's write path is
     // exercised by the e2e suite.
     try {
-      const stored = window.localStorage.getItem("nyx.timeline.pinned");
+      const stored = window.localStorage.getItem("witwave.timeline.pinned");
       if (stored) {
         expect(JSON.parse(stored)).toContain("1");
       }

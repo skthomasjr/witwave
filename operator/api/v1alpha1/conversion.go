@@ -36,9 +36,9 @@ You may obtain a copy of the License at
 // existing CR to be re-applied by hand.
 package v1alpha1
 
-// Hub marks NyxAgent v1alpha1 as the conversion hub. Required signature
+// Hub marks WitwaveAgent v1alpha1 as the conversion hub. Required signature
 // for sigs.k8s.io/controller-runtime's conversion machinery.
-func (*NyxAgent) Hub() {}
+func (*WitwaveAgent) Hub() {}
 
-// Hub marks NyxPrompt v1alpha1 as the conversion hub.
-func (*NyxPrompt) Hub() {}
+// Hub marks WitwavePrompt v1alpha1 as the conversion hub.
+func (*WitwavePrompt) Hub() {}

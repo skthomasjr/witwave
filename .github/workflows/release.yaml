@@ -3,7 +3,7 @@ name: Release
 # Chart publishing lives in .github/workflows/release-helm.yml — this workflow
 # only builds and pushes container images. The previous `publish-charts` job
 # raced with release-helm.yml on the same tag (both packaged and pushed
-# charts/nyx to oci://ghcr.io/.../charts), producing duplicate OCI pushes
+# charts/witwave to oci://ghcr.io/.../charts), producing duplicate OCI pushes
 # and occasionally two differing chart manifests for the same version
 # (#1257). Keep image builds here; charts are owned by release-helm.yml.
 

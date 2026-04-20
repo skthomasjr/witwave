@@ -66,7 +66,7 @@ Create a Kubernetes secret with the required credentials before deploying:
 ```bash
 kubectl create secret generic <agent>-gemini-secrets \
   --from-literal=GEMINI_API_KEY=... \
-  --namespace nyx
+  --namespace witwave
 ```
 
 `GOOGLE_API_KEY` is also accepted as an alternative to `GEMINI_API_KEY`.

@@ -1,7 +1,7 @@
 # Webhooks
 
 Webhooks fire outbound HTTP POST requests after a prompt run completes. Each webhook is defined as a `*.md` file in the
-agent's `.nyx/webhooks/` directory. The webhook runner evaluates all filters after every prompt — from any source (A2A,
+agent's `.witwave/webhooks/` directory. The webhook runner evaluates all filters after every prompt — from any source (A2A,
 heartbeat, job, task, trigger, continuation) — and POSTs to the subscription's URL only if all pass.
 
 Webhooks complement inbound triggers: triggers are internet → agent; webhooks are agent → internet.

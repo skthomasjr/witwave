@@ -4,7 +4,7 @@ FROM golang:1.25 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 # VERSION is injected into the manager binary via -ldflags so the operator
-# knows what tag to fall back to when a NyxAgent omits spec.image.tag (#440).
+# knows what tag to fall back to when a WitwaveAgent omits spec.image.tag (#440).
 # Defaults to "unset" (the same sentinel the controller uses) so untagged
 # local builds trip the startup warning instead of silently pulling "latest".
 ARG VERSION=unset
@@ -28,7 +28,7 @@ COPY internal/ internal/
 # the docker BUILDPLATFORM arg will be linux/arm64 when for Apple x86 it will be linux/amd64. Therefore,
 # by leaving it empty we can ensure that the container and binary shipped on it will have the same platform.
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build \
-    -ldflags "-X github.com/nyx-ai/nyx-operator/internal/controller.DefaultImageTag=${VERSION}" \
+    -ldflags "-X github.com/witwave-ai/witwave-operator/internal/controller.DefaultImageTag=${VERSION}" \
     -a -o manager cmd/main.go
 
 # Use distroless as minimal base image to package the manager binary

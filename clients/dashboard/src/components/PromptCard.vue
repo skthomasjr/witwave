@@ -198,17 +198,17 @@ const isDisabled = computed<boolean>(() => props.item.enabled === false);
 
 <style scoped>
 .prompt-card {
-  background: var(--nyx-surface);
-  border: 1px solid var(--nyx-border);
+  background: var(--witwave-surface);
+  border: 1px solid var(--witwave-border);
   border-left: 3px solid var(--kind-color);
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
   padding: 12px 14px;
   display: flex;
   flex-direction: column;
   gap: 8px;
   text-align: left;
-  font-family: var(--nyx-mono);
-  color: var(--nyx-text);
+  font-family: var(--witwave-mono);
+  color: var(--witwave-text);
   cursor: default;
   transition: border-color 0.12s, background 0.12s;
   width: 100%;
@@ -218,7 +218,7 @@ const isDisabled = computed<boolean>(() => props.item.enabled === false);
 }
 .prompt-card.is-clickable:hover {
   border-color: var(--kind-color);
-  background: var(--nyx-bg);
+  background: var(--witwave-bg);
 }
 .prompt-card:disabled {
   opacity: 0.75;
@@ -246,12 +246,12 @@ const isDisabled = computed<boolean>(() => props.item.enabled === false);
   border: 1px solid var(--kind-color);
   background: rgba(255, 255, 255, 0.02);
   padding: 2px 6px;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
   flex-shrink: 0;
 }
 .name {
   font-size: 12px;
-  color: var(--nyx-bright);
+  color: var(--witwave-bright);
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
@@ -261,16 +261,16 @@ const isDisabled = computed<boolean>(() => props.item.enabled === false);
 }
 .chip-agent {
   font-size: 10px;
-  color: var(--nyx-dim);
-  background: var(--nyx-bg);
+  color: var(--witwave-dim);
+  background: var(--witwave-bg);
   padding: 2px 8px;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
   flex-shrink: 0;
 }
 
 .primary {
   font-size: 11px;
-  color: var(--nyx-text);
+  color: var(--witwave-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -284,24 +284,24 @@ const isDisabled = computed<boolean>(() => props.item.enabled === false);
 .chip {
   font-size: 9px;
   padding: 2px 6px;
-  border-radius: var(--nyx-radius);
-  color: var(--nyx-dim);
-  border: 1px solid var(--nyx-border);
+  border-radius: var(--witwave-radius);
+  color: var(--witwave-dim);
+  border: 1px solid var(--witwave-border);
   white-space: nowrap;
 }
 .chip-ok {
-  color: var(--nyx-green);
-  border-color: var(--nyx-green);
+  color: var(--witwave-green);
+  border-color: var(--witwave-green);
 }
 .chip-warn {
-  color: var(--nyx-yellow);
-  border-color: var(--nyx-yellow);
+  color: var(--witwave-yellow);
+  border-color: var(--witwave-yellow);
 }
 .chip-err {
-  color: var(--nyx-red);
-  border-color: var(--nyx-red);
+  color: var(--witwave-red);
+  border-color: var(--witwave-red);
 }
 .chip-dim {
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
 }
 </style>

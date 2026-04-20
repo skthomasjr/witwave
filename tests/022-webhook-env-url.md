@@ -7,9 +7,9 @@ This test verifies that a webhook whose URL is resolved via the `url-env-var` fi
 named environment variable at parse time and successfully POSTs to the resolved URL. Inline `{{env.VAR}}`
 interpolation in the `url:` field is not supported (see #524) — env-derived URLs must go through `url-env-var`.
 
-The webhook fixture is `.agents/test/bob/.nyx/webhooks/test-env-url.md`. It fires when a response contains
+The webhook fixture is `.agents/test/bob/.witwave/webhooks/test-env-url.md`. It fires when a response contains
 `WEBHOOK_ENV_URL_FIRE` and POSTs to `WEBHOOK_TEST_URL_FEATURE_SINK`, which resolves to
-`http://nyx-bob:8099/triggers/feature-sink`. That trigger dispatches a prompt to the backend which responds with
+`http://witwave-bob:8099/triggers/feature-sink`. That trigger dispatches a prompt to the backend which responds with
 `FEATURE_SINK_OK`.
 
 ## Step 1 — Send a prompt that produces WEBHOOK_ENV_URL_FIRE

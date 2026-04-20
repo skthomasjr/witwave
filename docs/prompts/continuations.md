@@ -1,7 +1,7 @@
 # Continuations
 
 Continuations fire a prompt when a named upstream source completes. They enable chaining without hardcoding sequences
-inside prompts. Each continuation is defined as a `*.md` file in the agent's `.nyx/continuations/` directory. The
+inside prompts. Each continuation is defined as a `*.md` file in the agent's `.witwave/continuations/` directory. The
 continuation runner watches the directory for changes and registers listeners at runtime — no restart needed.
 
 A continuation fires every time the upstream completes. A continuation can continue after another continuation, since

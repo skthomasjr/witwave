@@ -751,7 +751,7 @@ def _load_mcp_config() -> dict:
 
 
 # MCP stdio command allow-list (#720 — parity with claude #711). Without
-# this guard, a malicious mcp.json landed via gitSync or the NyxPrompt
+# this guard, a malicious mcp.json landed via gitSync or the WitwavePrompt
 # path could spawn an arbitrary binary inside the codex backend pod.
 #
 # #964: The rule now lives in shared/mcp_command_allowlist.py — the
@@ -1162,7 +1162,7 @@ def _session_layout_self_test() -> None:
         )
         return
 
-    probe_id = "__nyx_codex_session_probe__"
+    probe_id = "__witwave_codex_session_probe__"
     try:
         # (1) Ensure parent dir exists + is writable.
         parent = os.path.dirname(db_path) or "."

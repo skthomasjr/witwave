@@ -1,0 +1,42 @@
+{{- /*
+Grafana dashboards ConfigMap (#1118). Ships default dashboards discoverable
+by kube-prometheus-stack's grafana sidecar (or any sidecar following the
+`grafana_dashboard: "1"` label convention).
+
+Disabled by default — enable by setting `grafanaDashboards.enabled=true`.
+The label key/value pair the sidecar looks for is operator-tunable via
+`grafanaDashboards.label` so clusters using a bespoke grafana-operator
+convention (`grafana_dashboard: "true"`, extra tenancy labels, etc.) can
+override without templating the ConfigMap by hand.
+
+The dashboard JSON payload is pulled from `charts/witwave/dashboards/*.json`
+via `.Files.Glob` so additional JSON files dropped into that directory are
+picked up automatically on the next `helm upgrade`.
+*/ -}}
+{{- if .Values.grafanaDashboards.enabled }}
+{{- $files := .Files.Glob "dashboards/*.json" }}
+{{- if $files }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-grafana-dashboards
+  labels:
+    app.kubernetes.io/part-of: witwave
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    {{- range $k, $v := .Values.grafanaDashboards.label }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+    {{- with .Values.grafanaDashboards.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.grafanaDashboards.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+data:
+  {{- range $path, $_ := $files }}
+  {{ base $path }}: |-
+{{ $.Files.Get $path | indent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}

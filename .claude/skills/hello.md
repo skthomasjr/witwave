@@ -1,6 +1,6 @@
 ---
 name: hello
-description: A dummy skill used to demonstrate skill mounting in the nyx Helm chart. Trigger when the user says "hello" or "say hello".
+description: A dummy skill used to demonstrate skill mounting in the witwave Helm chart. Trigger when the user says "hello" or "say hello".
 version: 1.0.0
 ---
 
@@ -8,4 +8,4 @@ version: 1.0.0
 
 Say hello.
 
-Respond with: "Hello from the nyx agent!"
+Respond with: "Hello from the witwave agent!"

@@ -124,7 +124,7 @@ function onTogglePin(name: string): void {
 }
 
 .team-splitter :deep(.p-splitter-gutter) {
-  background: var(--nyx-border);
+  background: var(--witwave-border);
 }
 
 .team-splitter :deep(.p-splitterpanel) {
@@ -138,10 +138,10 @@ function onTogglePin(name: string): void {
   align-items: center;
   gap: 16px;
   padding: 6px 14px;
-  border-bottom: 1px solid var(--nyx-border);
-  font-family: var(--nyx-mono);
+  border-bottom: 1px solid var(--witwave-border);
+  font-family: var(--witwave-mono);
   font-size: 11px;
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   flex-shrink: 0;
 }
 
@@ -156,6 +156,6 @@ function onTogglePin(name: string): void {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: var(--nyx-yellow);
+  color: var(--witwave-yellow);
 }
 </style>

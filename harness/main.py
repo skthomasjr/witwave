@@ -98,7 +98,7 @@ from tracing import install_trace_id_log_filter  # noqa: E402 — must run after
 install_trace_id_log_filter()
 logger = logging.getLogger(__name__)
 
-AGENT_NAME = os.environ.get("AGENT_NAME", "nyx")
+AGENT_NAME = os.environ.get("AGENT_NAME", "witwave")
 HARNESS_HOST = os.environ.get("HARNESS_HOST", "0.0.0.0")
 HARNESS_PORT = int(os.environ.get("HARNESS_PORT", "8000"))
 HARNESS_URL = os.environ.get("HARNESS_URL", f"http://localhost:{HARNESS_PORT}/")
@@ -127,7 +127,7 @@ _metrics_cache_expires: float = 0.0
 # Single-flight lock: serialises concurrent refreshes at the cache-expiry
 # boundary so N concurrent Prometheus scrapers do not all fan out to every
 # backend's /metrics endpoint (see #536).  The lock guards only the refresh
-# critical section; the cheap nyx-own generate_latest() call stays outside.
+# critical section; the cheap witwave-own generate_latest() call stays outside.
 _metrics_cache_lock: asyncio.Lock = asyncio.Lock()
 
 # Short-TTL cache for the health_ready backend sweep (#542).  Readiness probes
@@ -461,7 +461,7 @@ MAX_ADHOC_BODY_BYTES = 65_536
 
 def load_agent_description() -> str:
     try:
-        with open("/home/agent/.nyx/agent-card.md") as f:
+        with open("/home/agent/.witwave/agent-card.md") as f:
             return f.read()
     except OSError:
         return os.environ.get("AGENT_DESCRIPTION", "A Claude Code agent.")
@@ -813,7 +813,7 @@ async def main():
     _metrics_auth_token = os.environ.get("METRICS_AUTH_TOKEN", "")
 
     async def metrics_handler(request: Request) -> Response:
-        """Return nyx metrics plus relabelled metrics from all reachable backends.
+        """Return witwave metrics plus relabelled metrics from all reachable backends.
 
         Backend metrics are cached for METRICS_CACHE_TTL seconds to avoid
         making N outbound HTTP calls on every Prometheus scrape.
@@ -827,7 +827,7 @@ async def main():
                     status_code=401,
                     headers={"WWW-Authenticate": 'Bearer realm="metrics"'},
                 )
-        nyx_output = prometheus_client.exposition.generate_latest().decode("utf-8")
+        witwave_output = prometheus_client.exposition.generate_latest().decode("utf-8")
         now = time.monotonic()
         if now >= _metrics_cache_expires:
             # Single-flight refresh (#536): N concurrent scrapers at the cache
@@ -846,7 +846,7 @@ async def main():
                     backend_configs = [b._config for b in executor._backends.values()]
                     _metrics_cache_body = await fetch_backend_metrics(backend_configs)
                     _metrics_cache_expires = now + METRICS_CACHE_TTL
-        body = nyx_output + _metrics_cache_body
+        body = witwave_output + _metrics_cache_body
         return Response(
             content=body,
             media_type=prometheus_client.exposition.CONTENT_TYPE_LATEST,
@@ -861,7 +861,7 @@ async def main():
         agents = [{
             "id": AGENT_NAME,
             "url": HARNESS_URL,
-            "role": "nyx",
+            "role": "witwave",
             "card": own_card.model_dump() if hasattr(own_card, "model_dump") else vars(own_card),
         }]
         # Fan out backend card fetches concurrently so that one slow or
@@ -1693,7 +1693,7 @@ async def main():
     async def routing_handler(request: Request) -> JSONResponse:
         """Return a read-only view of the backend.yaml routing config (#638).
 
-        Shape mirrors the structure of `.nyx/backend.yaml`'s `routing:` block
+        Shape mirrors the structure of `.witwave/backend.yaml`'s `routing:` block
         so clients (e.g. the dashboard chat selector in #597) can discover
         which backend handles each kind and the default fallback without
         needing to re-parse the YAML themselves.

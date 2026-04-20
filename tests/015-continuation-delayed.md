@@ -3,7 +3,7 @@ description: Verifies that a continuation with a delay fires after an upstream t
 enabled: true
 ---
 
-Bob has a continuation registered at `.agents/test/bob/.nyx/continuations/trigger-ping.md` that continues after `trigger:ping` with a 5-second delay and responds with `CONTINUATION_TRIGGER_OK`.
+Bob has a continuation registered at `.agents/test/bob/.witwave/continuations/trigger-ping.md` that continues after `trigger:ping` with a 5-second delay and responds with `CONTINUATION_TRIGGER_OK`.
 
 Step 1 — fire the upstream trigger:
 

@@ -12,9 +12,9 @@ Bob's heartbeat is scheduled at `0 * * * *` (every hour). To avoid waiting an ho
 ## Setup — replace heartbeat with fast schedule
 
 ```
-cp .agents/test/bob/.nyx/HEARTBEAT.md .agents/test/bob/.nyx/HEARTBEAT.md.bak
+cp .agents/test/bob/.witwave/HEARTBEAT.md .agents/test/bob/.witwave/HEARTBEAT.md.bak
 
-cat > .agents/test/bob/.nyx/HEARTBEAT.md << 'EOF'
+cat > .agents/test/bob/.witwave/HEARTBEAT.md << 'EOF'
 ---
 description: Fast heartbeat for session persistence test.
 schedule: "* * * * *"
@@ -33,7 +33,7 @@ Poll the conversation log at `.agents/test/bob/logs/conversation.jsonl` every 5 
 ## Restore original heartbeat
 
 ```
-mv .agents/test/bob/.nyx/HEARTBEAT.md.bak .agents/test/bob/.nyx/HEARTBEAT.md
+mv .agents/test/bob/.witwave/HEARTBEAT.md.bak .agents/test/bob/.witwave/HEARTBEAT.md
 ```
 
 ## Pass/Fail Criteria

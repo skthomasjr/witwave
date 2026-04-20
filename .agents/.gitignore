@@ -1,5 +1,5 @@
-**/.nyx/jobs/.checkpoints/
-**/.nyx/tasks/.checkpoints/
+**/.witwave/jobs/.checkpoints/
+**/.witwave/tasks/.checkpoints/
 **/.claude/backups/
 **/.claude/memory/
 **/.claude/plans/

@@ -5,7 +5,7 @@ import BackendBubble from "./BackendBubble.vue";
 import { renderMarkdown } from "../utils/markdown";
 
 // Single agent card for the left-hand list. Mirrors the legacy renderAgentCards
-// output in ui/index.html (nyx-card with ac-header + ac-desc + backends-row).
+// output in ui/index.html (witwave-card with ac-header + ac-desc + backends-row).
 // Descriptions render through marked + DOMPurify — same pipeline as the
 // legacy UI — so heading/list/code formatting matches byte-for-byte.
 
@@ -20,14 +20,14 @@ const emit = defineEmits<{
   (e: "select-backend", backendId: string): void;
 }>();
 
-const nyxAgent = computed(() => props.member.agents.find((a) => a.role === "nyx"));
+const witwaveAgent = computed(() => props.member.agents.find((a) => a.role === "witwave"));
 const backends = computed(() => props.member.agents.filter((a) => a.role === "backend"));
-const reachable = computed(() => !!nyxAgent.value?.card);
+const reachable = computed(() => !!witwaveAgent.value?.card);
 const unreachable = computed(() => !reachable.value && !!props.member.error);
 const displayName = computed(
-  () => props.member.name || nyxAgent.value?.card?.name || nyxAgent.value?.id || props.member.url,
+  () => props.member.name || witwaveAgent.value?.card?.name || witwaveAgent.value?.id || props.member.url,
 );
-const description = computed(() => (nyxAgent.value?.card?.description ?? "").trim());
+const description = computed(() => (witwaveAgent.value?.card?.description ?? "").trim());
 const descriptionHtml = computed(() => renderMarkdown(description.value));
 </script>
 
@@ -42,22 +42,22 @@ const descriptionHtml = computed(() => renderMarkdown(description.value));
     @keydown.enter.prevent="emit('select')"
     @keydown.space.prevent="emit('select')"
   >
-    <div v-if="unreachable" class="nyx-card" data-testid="agent-card-unreachable">
+    <div v-if="unreachable" class="witwave-card" data-testid="agent-card-unreachable">
       <div class="ac-header">
         <div class="ac-name">{{ displayName }}</div>
-        <span class="ac-badge nyx">nyx</span>
+        <span class="ac-badge witwave">witwave</span>
       </div>
       <div class="ac-status">
-        <div class="nyx-status-dot down" />
+        <div class="witwave-status-dot down" />
         <span>unreachable</span>
       </div>
     </div>
 
-    <div v-else class="nyx-card" data-testid="agent-card">
+    <div v-else class="witwave-card" data-testid="agent-card">
       <div class="ac-header">
-        <span class="ac-badge nyx">
+        <span class="ac-badge witwave">
           <div
-            class="nyx-status-dot"
+            class="witwave-status-dot"
             :class="{ up: reachable, down: !reachable }"
             :title="reachable ? 'online' : 'offline'"
           />
@@ -92,21 +92,21 @@ const descriptionHtml = computed(() => renderMarkdown(description.value));
   outline: none;
 }
 
-.named-agent:focus-visible > .nyx-card {
-  outline: 2px solid var(--nyx-accent);
+.named-agent:focus-visible > .witwave-card {
+  outline: 2px solid var(--witwave-accent);
   outline-offset: 2px;
 }
 
-.named-agent.selected > .nyx-card {
-  border-color: var(--nyx-accent);
+.named-agent.selected > .witwave-card {
+  border-color: var(--witwave-accent);
 }
 
-.nyx-card {
+.witwave-card {
   cursor: pointer;
-  background: var(--nyx-surface);
-  border: 1px solid var(--nyx-border);
-  border-top: 2px solid var(--nyx-accent);
-  border-radius: var(--nyx-radius);
+  background: var(--witwave-surface);
+  border: 1px solid var(--witwave-border);
+  border-top: 2px solid var(--witwave-accent);
+  border-radius: var(--witwave-radius);
   padding: 14px;
   display: flex;
   flex-direction: column;
@@ -123,7 +123,7 @@ const descriptionHtml = computed(() => renderMarkdown(description.value));
 
 .ac-name {
   font-size: 0.95rem;
-  color: var(--nyx-bright);
+  color: var(--witwave-bright);
   letter-spacing: 0.04em;
 }
 
@@ -131,39 +131,39 @@ const descriptionHtml = computed(() => renderMarkdown(description.value));
   font-size: 10px;
   padding: 2px 7px;
   border-radius: 10px;
-  background: var(--nyx-border);
-  color: var(--nyx-dim);
+  background: var(--witwave-border);
+  color: var(--witwave-dim);
   flex-shrink: 0;
 }
 
-.ac-badge.nyx {
+.ac-badge.witwave {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  background: color-mix(in srgb, var(--nyx-accent) 20%, transparent);
-  color: var(--nyx-accent);
+  background: color-mix(in srgb, var(--witwave-accent) 20%, transparent);
+  color: var(--witwave-accent);
 }
 
-.nyx-status-dot {
+.witwave-status-dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--nyx-muted);
+  background: var(--witwave-muted);
   flex-shrink: 0;
   display: inline-block;
 }
 
-.nyx-status-dot.up {
-  background: var(--nyx-green);
+.witwave-status-dot.up {
+  background: var(--witwave-green);
 }
 
-.nyx-status-dot.down {
-  background: var(--nyx-red);
+.witwave-status-dot.down {
+  background: var(--witwave-red);
 }
 
 .ac-desc {
   font-size: 11px;
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   line-height: 1.6;
 }
 
@@ -180,7 +180,7 @@ const descriptionHtml = computed(() => renderMarkdown(description.value));
 .ac-desc :deep(h2),
 .ac-desc :deep(h3) {
   font-size: 11px;
-  color: var(--nyx-text);
+  color: var(--witwave-text);
   margin: 6px 0 3px;
 }
 
@@ -195,14 +195,14 @@ const descriptionHtml = computed(() => renderMarkdown(description.value));
 }
 
 .ac-desc :deep(code) {
-  background: var(--nyx-border);
+  background: var(--witwave-border);
   border-radius: 3px;
   padding: 1px 4px;
   font-size: 10px;
 }
 
 .ac-desc :deep(a) {
-  color: var(--nyx-accent);
+  color: var(--witwave-accent);
   text-decoration: none;
 }
 
@@ -211,7 +211,7 @@ const descriptionHtml = computed(() => renderMarkdown(description.value));
   align-items: center;
   gap: 6px;
   font-size: 11px;
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
 }
 
 .backends-row {

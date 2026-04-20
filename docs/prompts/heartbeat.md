@@ -1,7 +1,7 @@
 # Heartbeat
 
 A heartbeat fires on a cron schedule and dispatches a prompt to the agent's default backend. It is defined in a single
-`HEARTBEAT.md` file in the agent's `.nyx/` directory.
+`HEARTBEAT.md` file in the agent's `.witwave/` directory.
 
 **Minimal test heartbeat** (fires every hour, verifies scheduler + backend are alive):
 

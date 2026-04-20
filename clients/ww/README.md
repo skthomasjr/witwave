@@ -1,6 +1,6 @@
 # ww — witwave CLI
 
-`ww` is the command-line companion for the Nyx / witwave multi-container
+`ww` is the command-line companion for the Witwave / witwave multi-container
 agent platform. It talks to a harness over the shared REST + SSE event
 surface: tail the live event stream, send A2A prompts, inspect scheduler
 configuration (jobs / tasks / triggers / continuations / heartbeat), and
@@ -53,7 +53,7 @@ ww heartbeat view
 ww continuations
 
 # Validate a trigger file before committing it.
-ww validate .agents/active/iris/.nyx/triggers/notify.md
+ww validate .agents/active/iris/.witwave/triggers/notify.md
 ```
 
 ## Commands
@@ -124,7 +124,7 @@ run_token = "..."
 timeout   = "30s"
 
 [profile.prod]
-base_url  = "https://nyx.example.com"
+base_url  = "https://witwave.example.com"
 token     = "..."
 ```
 
@@ -172,7 +172,7 @@ go build -ldflags "\
 ## Scope notes (v0.1)
 
 - `ww status` hits the harness `/agents` endpoint. A dashboard-proxied
-  `/api/team` endpoint also exists in Nyx deployments and returns the
+  `/api/team` endpoint also exists in Witwave deployments and returns the
   same information in a slightly different shape — switching to it is a
   follow-up once `ww` grows a dashboard-proxy mode.
 - The SSE parser is intentionally minimal — it implements the subset

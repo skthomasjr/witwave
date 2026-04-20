@@ -10,19 +10,19 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /mutate-nyx-ai-v1alpha1-nyxagent
+      path: /mutate-witwave-ai-v1alpha1-witwaveagent
   failurePolicy: Fail
-  name: mnyxagent.kb.io
+  name: mwitwaveagent.kb.io
   rules:
   - apiGroups:
-    - nyx.ai
+    - witwave.ai
     apiVersions:
     - v1alpha1
     operations:
     - CREATE
     - UPDATE
     resources:
-    - nyxagents
+    - witwaveagents
   sideEffects: None
 ---
 apiVersion: admissionregistration.k8s.io/v1
@@ -36,19 +36,19 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-nyx-ai-v1alpha1-nyxagent
+      path: /validate-witwave-ai-v1alpha1-witwaveagent
   failurePolicy: Fail
-  name: vnyxagent.kb.io
+  name: vwitwaveagent.kb.io
   rules:
   - apiGroups:
-    - nyx.ai
+    - witwave.ai
     apiVersions:
     - v1alpha1
     operations:
     - CREATE
     - UPDATE
     resources:
-    - nyxagents
+    - witwaveagents
   sideEffects: None
 - admissionReviewVersions:
   - v1
@@ -56,17 +56,17 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-nyx-ai-v1alpha1-nyxprompt
+      path: /validate-witwave-ai-v1alpha1-witwaveprompt
   failurePolicy: Fail
-  name: vnyxprompt.kb.io
+  name: vwitwaveprompt.kb.io
   rules:
   - apiGroups:
-    - nyx.ai
+    - witwave.ai
     apiVersions:
     - v1alpha1
     operations:
     - CREATE
     - UPDATE
     resources:
-    - nyxprompts
+    - witwaveprompts
   sideEffects: None

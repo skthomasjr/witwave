@@ -1,6 +1,6 @@
-# nyx dashboard
+# witwave dashboard
 
-Vue 3 + Vite + PrimeVue + Vitest dashboard for the nyx autonomous agent platform (#470). Browser talks to the
+Vue 3 + Vite + PrimeVue + Vitest dashboard for the witwave autonomous agent platform (#470). Browser talks to the
 dashboard pod, which fans out to each agent's harness directly via nginx per-agent routes — no single-harness front
 door, no cross-agent fan-out inside any one agent's pod.
 
@@ -22,8 +22,8 @@ each agent's harness:
 
 ```bash
 # Terminal 1: port-forward each agent's harness
-kubectl port-forward -n nyx svc/nyx-bob 8099:8099 &
-kubectl port-forward -n nyx svc/nyx-fred 8098:8098 &
+kubectl port-forward -n witwave svc/witwave-bob 8099:8099 &
+kubectl port-forward -n witwave svc/witwave-fred 8098:8098 &
 
 # Terminal 2: run the dev server with the team list
 cd dashboard
@@ -39,8 +39,8 @@ The `OTel Traces` view (#632) queries an external Jaeger or Tempo query API dire
 through `/api/*`. Point the dashboard at that backend with one of:
 
 - **Build time:** set `VITE_TRACE_API_URL` before `npm run build`
-  (e.g. `VITE_TRACE_API_URL=http://nyx-jaeger-query.observability:16686 npm run build`).
-- **Runtime:** have nginx or your platform inject `window.__NYX_CONFIG__ = { traceApiUrl: "…" }`
+  (e.g. `VITE_TRACE_API_URL=http://witwave-jaeger-query.observability:16686 npm run build`).
+- **Runtime:** have nginx or your platform inject `window.__WITWAVE_CONFIG__ = { traceApiUrl: "…" }`
   into `index.html` at startup. The runtime override wins if both are present.
 
 Endpoints the view calls (standard Jaeger v1 query-service shape, which Tempo also exposes):
@@ -50,9 +50,9 @@ Endpoints the view calls (standard Jaeger v1 query-service shape, which Tempo al
 | List recent traces | `GET <base>/api/traces?limit=<N>[&service=<name>]` |
 | Load a single trace | `GET <base>/api/traces/<traceID>` |
 
-When neither `VITE_TRACE_API_URL` nor `window.__NYX_CONFIG__.traceApiUrl` is set, the view renders a clear
+When neither `VITE_TRACE_API_URL` nor `window.__WITWAVE_CONFIG__.traceApiUrl` is set, the view renders a clear
 "tracing not configured" empty state and makes no network calls. The referenced Helm values land with
-`charts/nyx` `observability.tracing` (feature #634).
+`charts/witwave` `observability.tracing` (feature #634).
 
 The view intentionally does **not** attach authentication headers. Operators who run Jaeger/Tempo on a
 non-public network typically front it with their own auth proxy (oauth2-proxy, ingress auth, etc.). If your
@@ -98,7 +98,7 @@ npm run build
 ```
 
 Produces `dist/`, which the Dockerfile copies into `/usr/share/nginx/html`. The image's baseline `nginx.conf`
-returns 404 for `/api/*`; the Helm chart (charts/nyx/templates/configmap-dashboard-nginx.yaml) mounts a ConfigMap
+returns 404 for `/api/*`; the Helm chart (charts/witwave/templates/configmap-dashboard-nginx.yaml) mounts a ConfigMap
 over `/etc/nginx/templates/` at deploy time with per-agent routes templated from `.Values.agents`.
 
 The baseline `nginx.conf` also sets `Content-Security-Policy`, `X-Content-Type-Options: nosniff`, and
@@ -135,7 +135,7 @@ can add additional locales without touching component source.
 Locale resolution order at startup:
 
 1. `VITE_LOCALE` build-time env (e.g. `VITE_LOCALE=en npm run build`).
-2. `window.__NYX_CONFIG__.locale` runtime injection (helm/configmap-driven deploy).
+2. `window.__WITWAVE_CONFIG__.locale` runtime injection (helm/configmap-driven deploy).
 3. Browser `navigator.language` (first two chars).
 4. Fallback `en`.
 
@@ -157,15 +157,15 @@ and land additional locale files as `src/i18n/locales/<code>.json` when translat
 
 ## Runtime-config validation (`traceApiUrl`)
 
-`VITE_TRACE_API_URL` / `window.__NYX_CONFIG__.traceApiUrl` is validated at runtime — empty, non-URL, or
+`VITE_TRACE_API_URL` / `window.__WITWAVE_CONFIG__.traceApiUrl` is validated at runtime — empty, non-URL, or
 non-`http(s)` values are rejected with a clear message in the OTel Traces view rather than silently issuing
 malformed requests.
 
 ## Deployment
 
-- **Helm (cluster-wide dashboard):** set `dashboard.enabled: true` in `charts/nyx` values. Renders one dashboard
+- **Helm (cluster-wide dashboard):** set `dashboard.enabled: true` in `charts/witwave` values. Renders one dashboard
   that knows about every enabled agent via the ConfigMap described above.
-- **Operator (per-agent dashboard):** set `spec.dashboard.enabled: true` on a `NyxAgent` CR. Operator renders a
+- **Operator (per-agent dashboard):** set `spec.dashboard.enabled: true` on a `WitwaveAgent` CR. Operator renders a
   Deployment + Service + ConfigMap scoped to the one agent. Only that agent is visible from that dashboard.
 
 ## Directory layout

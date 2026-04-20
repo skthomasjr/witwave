@@ -16,7 +16,7 @@ import type {
 // Unified "Automation" view (#prompt-cards-v1). Replaces the six
 // separate nav tabs for jobs, tasks, triggers, webhooks, continuations,
 // and heartbeat — every prompt kind is one conceptual thing (a file in
-// `.nyx/<kind>/` OR a NyxPrompt CR, describing when/how to fire a
+// `.witwave/<kind>/` OR a WitwavePrompt CR, describing when/how to fire a
 // prompt). Operators see the whole automation posture of the team in
 // one scroll, grouped by kind, and can click any card to inspect the
 // conversation that came out of its session.
@@ -376,15 +376,15 @@ const drawerAgent = computed<string | null>(
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--nyx-border);
-  background: var(--nyx-surface);
+  border-bottom: 1px solid var(--witwave-border);
+  background: var(--witwave-surface);
   flex-shrink: 0;
   flex-wrap: wrap;
 }
 
 .title {
   font-size: 12px;
-  color: var(--nyx-bright);
+  color: var(--witwave-bright);
   text-transform: uppercase;
   letter-spacing: 0.07em;
   margin: 0;
@@ -392,33 +392,33 @@ const drawerAgent = computed<string | null>(
 }
 
 .search {
-  background: var(--nyx-bg);
-  border: 1px solid var(--nyx-border);
-  color: var(--nyx-text);
-  font-family: var(--nyx-mono);
+  background: var(--witwave-bg);
+  border: 1px solid var(--witwave-border);
+  color: var(--witwave-text);
+  font-family: var(--witwave-mono);
   font-size: 11px;
   padding: 5px 8px;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
   width: 200px;
 }
 .search:focus {
   outline: none;
-  border-color: var(--nyx-accent);
+  border-color: var(--witwave-accent);
 }
 
 .select {
-  background: var(--nyx-bg);
-  border: 1px solid var(--nyx-border);
-  color: var(--nyx-text);
-  font-family: var(--nyx-mono);
+  background: var(--witwave-bg);
+  border: 1px solid var(--witwave-border);
+  color: var(--witwave-text);
+  font-family: var(--witwave-mono);
   font-size: 11px;
   padding: 4px 8px;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
   cursor: pointer;
 }
 .select:focus {
   outline: none;
-  border-color: var(--nyx-accent);
+  border-color: var(--witwave-accent);
 }
 
 .toggle {
@@ -426,13 +426,13 @@ const drawerAgent = computed<string | null>(
   align-items: center;
   gap: 6px;
   font-size: 10px;
-  color: var(--nyx-dim);
-  font-family: var(--nyx-mono);
+  color: var(--witwave-dim);
+  font-family: var(--witwave-mono);
   text-transform: lowercase;
   cursor: pointer;
 }
 .toggle input {
-  accent-color: var(--nyx-accent, #7c6af7);
+  accent-color: var(--witwave-accent, #7c6af7);
   cursor: pointer;
 }
 
@@ -443,10 +443,10 @@ const drawerAgent = computed<string | null>(
 }
 
 .kind-pill {
-  background: var(--nyx-bg);
-  border: 1px solid var(--nyx-border);
-  color: var(--nyx-dim);
-  font-family: var(--nyx-mono);
+  background: var(--witwave-bg);
+  border: 1px solid var(--witwave-border);
+  color: var(--witwave-dim);
+  font-family: var(--witwave-mono);
   font-size: 10px;
   padding: 3px 10px;
   border-radius: 12px;
@@ -455,13 +455,13 @@ const drawerAgent = computed<string | null>(
   letter-spacing: 0.05em;
 }
 .kind-pill:hover {
-  color: var(--nyx-text);
-  border-color: var(--nyx-muted);
+  color: var(--witwave-text);
+  border-color: var(--witwave-muted);
 }
 .kind-pill.active {
-  color: var(--nyx-bright);
-  background: var(--nyx-surface);
-  border-color: var(--nyx-muted);
+  color: var(--witwave-bright);
+  background: var(--witwave-surface);
+  border-color: var(--witwave-muted);
 }
 .kind-pill.active[data-kind="job"] {
   border-color: #7c6af7;
@@ -488,12 +488,12 @@ const drawerAgent = computed<string | null>(
   color: #4ade80;
 }
 .kind-pill.reset {
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
 }
 
 .ts {
   font-size: 11px;
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   margin-left: auto;
 }
 
@@ -502,9 +502,9 @@ const drawerAgent = computed<string | null>(
   align-items: center;
   gap: 4px;
   font-size: 10px;
-  color: var(--nyx-red);
-  border: 1px solid var(--nyx-red);
-  border-radius: var(--nyx-radius);
+  color: var(--witwave-red);
+  border: 1px solid var(--witwave-red);
+  border-radius: var(--witwave-radius);
   padding: 2px 6px;
   cursor: help;
   white-space: nowrap;
@@ -512,20 +512,20 @@ const drawerAgent = computed<string | null>(
 
 .refresh {
   background: none;
-  border: 1px solid var(--nyx-border);
-  color: var(--nyx-dim);
-  font-family: var(--nyx-mono);
+  border: 1px solid var(--witwave-border);
+  color: var(--witwave-dim);
+  font-family: var(--witwave-mono);
   font-size: 11px;
   padding: 4px 10px;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 .refresh:hover:not(:disabled) {
-  color: var(--nyx-text);
-  border-color: var(--nyx-muted);
+  color: var(--witwave-text);
+  border-color: var(--witwave-muted);
 }
 .refresh:disabled {
   opacity: 0.4;
@@ -543,10 +543,10 @@ const drawerAgent = computed<string | null>(
 
 .state {
   padding: 30px;
-  color: var(--nyx-muted);
+  color: var(--witwave-muted);
   font-size: 12px;
   text-align: center;
-  font-family: var(--nyx-mono);
+  font-family: var(--witwave-mono);
 }
 
 .section {
@@ -558,12 +558,12 @@ const drawerAgent = computed<string | null>(
   display: flex;
   align-items: baseline;
   gap: 10px;
-  border-bottom: 1px solid var(--nyx-border);
+  border-bottom: 1px solid var(--witwave-border);
   padding-bottom: 6px;
 }
 .section-title {
   font-size: 11px;
-  color: var(--nyx-bright);
+  color: var(--witwave-bright);
   text-transform: uppercase;
   letter-spacing: 0.09em;
   margin: 0;
@@ -571,9 +571,9 @@ const drawerAgent = computed<string | null>(
 }
 .section-count {
   font-size: 10px;
-  color: var(--nyx-dim);
-  background: var(--nyx-surface);
-  border: 1px solid var(--nyx-border);
+  color: var(--witwave-dim);
+  background: var(--witwave-surface);
+  border: 1px solid var(--witwave-border);
   padding: 1px 8px;
   border-radius: 10px;
 }

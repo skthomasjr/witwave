@@ -1,0 +1,33 @@
+apiVersion: v2
+name: witwave-operator
+description: Helm chart for the witwave operator — deploys the witwave-operator controller manager and CRDs.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.25.0"
+keywords:
+  - autonomous-agent
+  - ai
+  - llm
+  - operator
+home: https://github.com/witwave-ai/witwave-operator
+sources:
+  - https://github.com/skthomasjr/autonomous-agent
+maintainers:
+  - name: Scott Thomas
+    url: https://github.com/skthomasjr
+annotations:
+  artifacthub.io/category: AI
+  artifacthub.io/licenses: Apache-2.0
+  artifacthub.io/prerelease: "true"
+  artifacthub.io/operator: "true"
+  artifacthub.io/operatorCapabilities: Basic Install
+  artifacthub.io/links: |
+    - name: source
+      url: https://github.com/skthomasjr/autonomous-agent
+  artifacthub.io/crds: |
+    - kind: WitwaveAgent
+      version: v1alpha1
+      name: witwaveagents.witwave.ai
+      displayName: Witwave Agent
+      description: A witwave agent — orchestrator plus backend sidecars.

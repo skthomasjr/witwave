@@ -144,30 +144,30 @@ To get a clean conversation log — no leftover data from a previous deploy — 
 
 ```bash
 # Scale down first so PVCs are released
-helm uninstall nyx-test -n nyx
+helm uninstall witwave-test -n witwave
 
 # Delete all PVCs for the test release
-kubectl delete pvc -n nyx \
-  nyx-test-bob-claude-data \
-  nyx-test-bob-codex-data \
-  nyx-test-bob-gemini-data \
-  nyx-test-fred-claude-data \
-  nyx-test-shared
+kubectl delete pvc -n witwave \
+  witwave-test-bob-claude-data \
+  witwave-test-bob-codex-data \
+  witwave-test-bob-gemini-data \
+  witwave-test-fred-claude-data \
+  witwave-test-shared
 
 # Redeploy — PVCs are recreated and run-once jobs fire fresh
-helm upgrade --install nyx-test ./charts/nyx \
-  -f ./charts/nyx/values-test.yaml \
-  -n nyx --create-namespace
+helm upgrade --install witwave-test ./charts/witwave \
+  -f ./charts/witwave/values-test.yaml \
+  -n witwave --create-namespace
 ```
 
 ---
 
 ## Viewing the conversation (dashboard)
 
-The test stack deploys the web dashboard at `nyx-test-dashboard`. Port-forward it locally:
+The test stack deploys the web dashboard at `witwave-test-dashboard`. Port-forward it locally:
 
 ```bash
-kubectl port-forward svc/nyx-test-dashboard 5173:80 -n nyx
+kubectl port-forward svc/witwave-test-dashboard 5173:80 -n witwave
 ```
 
 Then open http://localhost:5173. The Team view lists every agent with per-backend health bubbles; click one to
@@ -208,7 +208,7 @@ Planned additions. Kept here so the intent stays visible without cluttering the 
 | **Concurrent load ordering** | Multiple jobs firing at the same cron tick all complete without scheduler interleaving bugs | Needs 3+ jobs with identical `schedule:` plus log-ordering assertions the doc can explain clearly |
 | **Session persistence across pod restart** | Session ID and memory survive a pod restart (PVC persistence works end-to-end) | Requires manual deploy-time choreography — seed session, restart pod, verify memory — not a single-file change |
 | **Per-message `model` override via A2A metadata** | `metadata.model` on an inbound A2A request overrides the routing default and lands in the log | Triggers don't yet propagate `metadata.model` from the HTTP payload to the dispatch; needs trigger-side plumbing before a smoke test fits |
-| **Gemini backend parity** | `backend-check-gemini`, `model-check-gemini-*`, `animal-memory-gemini`, `ping-gemini` | Gemini backend is supported; the gap is a deployed test agent — `.agents/test/luke/` is scaffolded but not yet wired into `charts/nyx/values-test.yaml`. Once `luke` (or `bob-gemini`) lands in the test chart, promote these rows into the active tables. |
+| **Gemini backend parity** | `backend-check-gemini`, `model-check-gemini-*`, `animal-memory-gemini`, `ping-gemini` | Gemini backend is supported; the gap is a deployed test agent — `.agents/test/luke/` is scaffolded but not yet wired into `charts/witwave/values-test.yaml`. Once `luke` (or `bob-gemini`) lands in the test chart, promote these rows into the active tables. |
 
 ### Not a fit for this document
 

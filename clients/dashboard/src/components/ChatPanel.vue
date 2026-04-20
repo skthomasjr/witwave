@@ -194,7 +194,7 @@ onMounted(async () => {
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  border-top: 1px solid var(--nyx-border);
+  border-top: 1px solid var(--witwave-border);
 }
 
 .chat-toolbar {
@@ -202,31 +202,31 @@ onMounted(async () => {
   align-items: center;
   gap: 8px;
   padding: 8px 14px;
-  border-bottom: 1px solid var(--nyx-border);
-  background: var(--nyx-bg);
+  border-bottom: 1px solid var(--witwave-border);
+  background: var(--witwave-bg);
 }
 
 .chat-toolbar-label {
   font-size: 10px;
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   text-transform: uppercase;
   letter-spacing: 0.07em;
 }
 
 .chat-backend-select {
-  background: var(--nyx-surface);
-  border: 1px solid var(--nyx-border);
-  color: var(--nyx-text);
-  font-family: var(--nyx-mono);
+  background: var(--witwave-surface);
+  border: 1px solid var(--witwave-border);
+  color: var(--witwave-text);
+  font-family: var(--witwave-mono);
   font-size: 11px;
   padding: 4px 8px;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
   cursor: pointer;
 }
 
 .chat-backend-select:focus {
   outline: none;
-  border-color: var(--nyx-accent);
+  border-color: var(--witwave-accent);
 }
 
 .chat-feed {
@@ -239,14 +239,14 @@ onMounted(async () => {
 }
 
 .chat-empty {
-  color: var(--nyx-muted);
+  color: var(--witwave-muted);
   font-size: 11px;
   text-align: center;
   padding: 18px;
 }
 
 .chat-empty.chat-error {
-  color: var(--nyx-red);
+  color: var(--witwave-red);
 }
 
 .cm {
@@ -269,18 +269,18 @@ onMounted(async () => {
 
 .cm .role {
   font-size: 10px;
-  color: var(--nyx-dim);
+  color: var(--witwave-dim);
   text-transform: uppercase;
   letter-spacing: 0.07em;
 }
 
 .cm .bbl {
-  background: var(--nyx-surface);
-  border: 1px solid var(--nyx-border);
-  border-radius: var(--nyx-radius);
+  background: var(--witwave-surface);
+  border: 1px solid var(--witwave-border);
+  border-radius: var(--witwave-radius);
   padding: 8px 12px;
   font-size: 12px;
-  color: var(--nyx-text);
+  color: var(--witwave-text);
   line-height: 1.55;
   word-break: break-word;
 }
@@ -295,14 +295,14 @@ onMounted(async () => {
 }
 
 .cm.user .bbl {
-  background: color-mix(in srgb, var(--nyx-accent) 18%, var(--nyx-surface));
-  border-color: color-mix(in srgb, var(--nyx-accent) 35%, var(--nyx-border));
-  color: var(--nyx-bright);
+  background: color-mix(in srgb, var(--witwave-accent) 18%, var(--witwave-surface));
+  border-color: color-mix(in srgb, var(--witwave-accent) 35%, var(--witwave-border));
+  color: var(--witwave-bright);
 }
 
 .cm.error .bbl {
-  border-color: color-mix(in srgb, var(--nyx-red) 45%, var(--nyx-border));
-  color: var(--nyx-red);
+  border-color: color-mix(in srgb, var(--witwave-red) 45%, var(--witwave-border));
+  color: var(--witwave-red);
 }
 
 .cm.thinking .bbl {
@@ -315,7 +315,7 @@ onMounted(async () => {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--nyx-dim);
+  background: var(--witwave-dim);
   animation: chat-dot 1s infinite ease-in-out;
 }
 
@@ -349,7 +349,7 @@ onMounted(async () => {
 .cm.agent .bbl :deep(h2),
 .cm.agent .bbl :deep(h3) {
   font-size: 12px;
-  color: var(--nyx-bright);
+  color: var(--witwave-bright);
   margin: 8px 0 4px;
 }
 .cm.agent .bbl :deep(ul),
@@ -358,15 +358,15 @@ onMounted(async () => {
   margin: 4px 0;
 }
 .cm.agent .bbl :deep(code) {
-  background: var(--nyx-border);
+  background: var(--witwave-border);
   border-radius: 3px;
   padding: 1px 4px;
   font-size: 11px;
 }
 .cm.agent .bbl :deep(pre) {
-  background: var(--nyx-bg);
-  border: 1px solid var(--nyx-border);
-  border-radius: var(--nyx-radius);
+  background: var(--witwave-bg);
+  border: 1px solid var(--witwave-border);
+  border-radius: var(--witwave-radius);
   padding: 8px 10px;
   overflow-x: auto;
   margin: 6px 0;
@@ -376,7 +376,7 @@ onMounted(async () => {
   padding: 0;
 }
 .cm.agent .bbl :deep(a) {
-  color: var(--nyx-accent);
+  color: var(--witwave-accent);
   text-decoration: none;
 }
 
@@ -385,19 +385,19 @@ onMounted(async () => {
   align-items: stretch;
   gap: 8px;
   padding: 10px 14px;
-  border-top: 1px solid var(--nyx-border);
-  background: var(--nyx-bg);
+  border-top: 1px solid var(--witwave-border);
+  background: var(--witwave-bg);
 }
 
 .chat-input textarea {
   flex: 1;
-  background: var(--nyx-surface);
-  border: 1px solid var(--nyx-border);
-  color: var(--nyx-text);
-  font-family: var(--nyx-mono);
+  background: var(--witwave-surface);
+  border: 1px solid var(--witwave-border);
+  color: var(--witwave-text);
+  font-family: var(--witwave-mono);
   font-size: 12px;
   padding: 8px 10px;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
   resize: vertical;
   min-height: 56px;
   line-height: 1.45;
@@ -405,14 +405,14 @@ onMounted(async () => {
 
 .chat-input textarea:focus {
   outline: none;
-  border-color: var(--nyx-accent);
+  border-color: var(--witwave-accent);
 }
 
 .chat-send-btn {
-  background: var(--nyx-accent);
-  color: var(--nyx-bright);
+  background: var(--witwave-accent);
+  color: var(--witwave-bright);
   border: none;
-  border-radius: var(--nyx-radius);
+  border-radius: var(--witwave-radius);
   width: 36px;
   height: 36px;
   display: inline-flex;
@@ -438,6 +438,6 @@ onMounted(async () => {
 }
 
 .chat-cancel-btn {
-  background: var(--nyx-red, #b94a4a);
+  background: var(--witwave-red, #b94a4a);
 }
 </style>

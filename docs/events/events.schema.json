@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/skthomasjr/autonomous-agent/docs/events/events.schema.json",
-  "title": "Nyx event stream envelope and per-type payloads",
+  "title": "Witwave event stream envelope and per-type payloads",
   "description": "Phase-1 event types for GET /events/stream on the harness. See ./README.md for wire format and rationale.",
   "type": "object",
   "required": ["type", "version", "id", "ts", "agent_id", "payload"],

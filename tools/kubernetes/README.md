@@ -36,8 +36,8 @@ workload truly needs cross-namespace reach).
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: nyx-mcp-kubernetes
-  namespace: nyx
+  name: witwave-mcp-kubernetes
+  namespace: witwave
 ---
 # Least-privilege Role: read core workload and config kinds, plus the
 # pods/log subresource so `logs` works. Does NOT include secrets, SA
@@ -46,8 +46,8 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: nyx-mcp-kubernetes-read
-  namespace: nyx
+  name: witwave-mcp-kubernetes-read
+  namespace: witwave
 rules:
   - apiGroups: [""]
     resources:
@@ -75,15 +75,15 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: nyx-mcp-kubernetes-read
-  namespace: nyx
+  name: witwave-mcp-kubernetes-read
+  namespace: witwave
 subjects:
   - kind: ServiceAccount
-    name: nyx-mcp-kubernetes
-    namespace: nyx
+    name: witwave-mcp-kubernetes
+    namespace: witwave
 roleRef:
   kind: Role
-  name: nyx-mcp-kubernetes-read
+  name: witwave-mcp-kubernetes-read
   apiGroup: rbac.authorization.k8s.io
 ```
 
