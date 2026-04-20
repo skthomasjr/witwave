@@ -1,7 +1,9 @@
 """Fetch and merge conversation and trace logs from backend agents."""
 
 import asyncio
+import json
 import logging
+import os
 import time
 
 import httpx
@@ -10,6 +12,60 @@ from backends.config import BackendConfig
 from metrics import harness_backend_proxy_fetch_errors_total
 
 logger = logging.getLogger(__name__)
+
+# Cap on per-backend fan-out response size. The 5s timeout bounds wall-clock
+# but a misbehaving peer on the pod-local network can still push hundreds of
+# MiB within that window. Multiple concurrent clients requesting trace/
+# conversations for the same session would each buffer a full copy; a cap
+# here keeps harness memory pressure bounded on any single proxy call.
+# Set via HARNESS_PROXY_MAX_RESPONSE_BYTES; values <= 0 disable the cap.
+_PROXY_MAX_RESPONSE_BYTES = int(
+    os.environ.get("HARNESS_PROXY_MAX_RESPONSE_BYTES", str(64 * 1024 * 1024))
+)
+
+
+async def _capped_get_json(
+    client: httpx.AsyncClient,
+    url: str,
+    params: dict,
+    headers: dict,
+) -> tuple[int, list | dict | None]:
+    """GET *url* and parse JSON, capping the buffered body size.
+
+    Returns ``(status_code, parsed_or_none)``. ``parsed_or_none`` is the
+    decoded body on 2xx when the size cap is not exceeded, else ``None``.
+    Non-2xx responses still return their status so the caller can log it;
+    a cap-exceeded or malformed-JSON body returns status 200 with
+    ``parsed=None`` so the caller treats it as an empty page.
+    """
+    async with client.stream("GET", url, params=params, headers=headers) as resp:
+        if resp.status_code != 200:
+            # Drain to avoid leaking the connection.
+            await resp.aread()
+            return resp.status_code, None
+        if _PROXY_MAX_RESPONSE_BYTES <= 0:
+            await resp.aread()
+            try:
+                return 200, json.loads(resp.text)
+            except (ValueError, json.JSONDecodeError):
+                return 200, None
+        chunks: list[bytes] = []
+        total = 0
+        async for chunk in resp.aiter_bytes():
+            total += len(chunk)
+            if total > _PROXY_MAX_RESPONSE_BYTES:
+                logger.warning(
+                    "harness proxy response from %s exceeds "
+                    "HARNESS_PROXY_MAX_RESPONSE_BYTES=%d; truncating",
+                    url, _PROXY_MAX_RESPONSE_BYTES,
+                )
+                return 200, None
+            chunks.append(chunk)
+        body = b"".join(chunks).decode(resp.encoding or "utf-8", errors="replace")
+        try:
+            return 200, json.loads(body)
+        except (ValueError, json.JSONDecodeError):
+            return 200, None
 
 # Log-flood guard: throttle warning-level emissions per (backend_id, endpoint)
 # to at most once per _LOG_THROTTLE_SECONDS. Further failures within the window
@@ -68,9 +124,8 @@ async def fetch_backend_conversations(
             return []
         url = backend.url.rstrip("/") + "/conversations"
         try:
-            resp = await client.get(url, params=params, headers=headers)
-            if resp.status_code == 200:
-                entries = resp.json()
+            status, entries = await _capped_get_json(client, url, params, headers)
+            if status == 200:
                 if isinstance(entries, list):
                     return entries
             else:
@@ -78,7 +133,7 @@ async def fetch_backend_conversations(
                 _log_fetch_error(
                     backend.id,
                     "conversations",
-                    f"Backend {backend.id!r} /conversations returned {resp.status_code} — skipping",
+                    f"Backend {backend.id!r} /conversations returned {status} — skipping",
                 )
         except Exception as exc:
             _count_fetch_error(backend.id, "conversations")
@@ -156,9 +211,8 @@ async def fetch_backend_tool_audit(
             return []
         url = backend.url.rstrip("/") + "/tool-audit"
         try:
-            resp = await client.get(url, params=params, headers=headers)
-            if resp.status_code == 200:
-                entries = resp.json()
+            status, entries = await _capped_get_json(client, url, params, headers)
+            if status == 200:
                 if isinstance(entries, list):
                     return entries
             else:
@@ -166,7 +220,7 @@ async def fetch_backend_tool_audit(
                 _log_fetch_error(
                     backend.id,
                     "tool_audit",
-                    f"Backend {backend.id!r} /tool-audit returned {resp.status_code} — skipping",
+                    f"Backend {backend.id!r} /tool-audit returned {status} — skipping",
                 )
         except Exception as exc:
             _count_fetch_error(backend.id, "tool_audit")
@@ -241,9 +295,8 @@ async def fetch_backend_trace(
             return []
         url = backend.url.rstrip("/") + "/trace"
         try:
-            resp = await client.get(url, params=params, headers=headers)
-            if resp.status_code == 200:
-                entries = resp.json()
+            status, entries = await _capped_get_json(client, url, params, headers)
+            if status == 200:
                 if isinstance(entries, list):
                     return entries
             else:
@@ -251,7 +304,7 @@ async def fetch_backend_trace(
                 _log_fetch_error(
                     backend.id,
                     "trace",
-                    f"Backend {backend.id!r} /trace returned {resp.status_code} — skipping",
+                    f"Backend {backend.id!r} /trace returned {status} — skipping",
                 )
         except Exception as exc:
             _count_fetch_error(backend.id, "trace")

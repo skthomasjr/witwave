@@ -680,7 +680,9 @@ if _enabled:
     )
     harness_consensus_backend_errors_total = prometheus_client.Counter(
         "harness_consensus_backend_errors_total",
-        "Total backend failures during consensus fan-out.",
+        "Total backend failures during consensus fan-out. reason is a bounded "
+        "classification: timeout|connection|backend_error|other.",
+        ["reason"],
     )
     harness_metrics_backend_fetch_errors_total = prometheus_client.Counter(
         "harness_metrics_backend_fetch_errors_total",

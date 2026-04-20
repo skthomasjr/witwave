@@ -536,7 +536,24 @@ func (r *WitwaveAgentReconciler) applyDeployment(ctx context.Context, agent *wit
 	getErr := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
 	switch {
 	case apierrors.IsNotFound(getErr):
-		// fall through — SSA handles create and update uniformly below.
+		// First-install seed: when autoscaling is enabled, buildDeployment
+		// leaves Replicas=nil so the HPA can own the field after the
+		// initial apply. But reconcileHPA runs later in the reconcile
+		// chain — between this create and HPA-create, Kubernetes fills
+		// Replicas with its default of 1, producing a transient
+		// under-provisioning window relative to the user's declared
+		// autoscaling floor. Seed the initial Replicas to the declared
+		// minReplicas so the pod count starts at the floor; the very
+		// next reconcile (after HPA exists) takes the update branch below
+		// and drops Replicas=nil again so SSA relinquishes ownership to
+		// the HPA for all subsequent scaling.
+		if agent.Spec.Autoscaling != nil && agent.Spec.Autoscaling.Enabled {
+			minR := agent.Spec.Autoscaling.MinReplicas
+			if minR < 1 {
+				minR = 1
+			}
+			desired.Spec.Replicas = int32Ptr(minR)
+		}
 		span.SetAttributes(attribute.String("witwave.resource.action", "create"))
 	case getErr != nil:
 		err = getErr

@@ -381,12 +381,32 @@ async def run_consensus(
 
     raw_results = await asyncio.gather(*[_call(k, bid, m) for k, bid, m in resolved])
 
+    def _classify_consensus_error(exc: BaseException) -> str:
+        """Bounded classification for the consensus error counter's reason label.
+
+        Keep the label cardinality small so the counter is safe to scrape —
+        raw exception class names would let a misbehaving backend blow the
+        cardinality budget. Only four buckets: timeout (deadline hit),
+        connection (network / 5xx bubbled up as ConnectionError), backend_error
+        (backend returned a structured error via RuntimeError from the A2A
+        relay), other (anything else — unexpected; investigate if it shows up).
+        """
+        if isinstance(exc, asyncio.TimeoutError):
+            return "timeout"
+        if isinstance(exc, ConnectionError):
+            return "connection"
+        if isinstance(exc, RuntimeError):
+            return "backend_error"
+        return "other"
+
     responses: dict[str, str] = {}
     for call_key, outcome in raw_results:
         if isinstance(outcome, Exception):
             logger.error(f"Consensus backend {call_key!r} failed: {outcome!r}")
             if harness_consensus_backend_errors_total is not None:
-                harness_consensus_backend_errors_total.inc()
+                harness_consensus_backend_errors_total.labels(
+                    reason=_classify_consensus_error(outcome)
+                ).inc()
         else:
             responses[call_key] = outcome
 

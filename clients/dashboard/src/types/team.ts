@@ -33,6 +33,11 @@ export interface Agent {
   // harness decides to surface it at the Agent level instead of (or in
   // addition to) the card.
   family?: string;
+  // Optional model identifier surfaced by harness/main.py:team_handler from
+  // each backend's configured model. Declared here so the type fully
+  // describes what the harness actually returns — currently unused by the
+  // UI but silently dropped before this field was declared.
+  model?: string;
 }
 
 export interface TeamMember {

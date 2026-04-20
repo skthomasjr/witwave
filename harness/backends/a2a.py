@@ -59,6 +59,14 @@ def _resolve_max_retries() -> int:
 _MAX_RETRIES = _resolve_max_retries()
 _RETRY_BACKOFF_BASE = float(os.environ.get("A2A_BACKEND_RETRY_BACKOFF", "1.0"))
 
+# Cap on the total bytes read from a single A2A response body. A misbehaving
+# or compromised backend that streams a multi-GB response would otherwise
+# be fully buffered into memory by `resp.text`, OOMing the harness pod.
+# 256 MiB default leaves plenty of headroom for legitimate tool output while
+# preventing pathological payloads from taking the process down. Set via
+# A2A_MAX_RESPONSE_BYTES; values <= 0 disable the cap.
+_A2A_MAX_RESPONSE_BYTES = int(os.environ.get("A2A_MAX_RESPONSE_BYTES", str(256 * 1024 * 1024)))
+
 # Transient status codes that are safe to retry.
 _RETRYABLE_STATUS_CODES: frozenset[int] = frozenset({429, 502, 503, 504})
 
@@ -445,7 +453,23 @@ class A2ABackend:
             # Record a successful outcome so the failure counter resets
             # and the breaker closes from half_open if applicable.
             await self._circuit_record(ok=True)
-            return self._extract_text(result)
+            texts = self._extract_text(result)
+            if not texts:
+                # Every known A2A response shape ran through _extract_text
+                # and yielded nothing. Surface the top-level keys of the
+                # response so operators can diagnose schema drift (e.g.
+                # a backend SDK update that renamed `artifacts` →
+                # `outputs`) without having to enable debug logging and
+                # reproduce. Keys only — values may contain secrets.
+                _shape = (
+                    sorted(result.keys())[:20] if isinstance(result, dict) else type(result).__name__
+                )
+                logger.warning(
+                    "A2A backend '%s' returned no extractable text for session=%s; "
+                    "top-level result keys=%s",
+                    self.id, session_id, _shape,
+                )
+            return texts
 
     def _observe_backend_request(self, start_monotonic: float, result: str) -> None:
         """Record one outbound-request observation for this backend (#622).
@@ -481,38 +505,77 @@ class A2ABackend:
         if traceparent is not None:
             _headers["traceparent"] = traceparent
         # Resolve auth token at call time (not __init__) so token rotation takes
-        # effect without a container restart. When auth_env is unset or the env
-        # var is empty, no Authorization header is added. Never log the token
-        # value — only its presence is safe to surface.
+        # effect without a container restart. Never log the token value — only
+        # its presence is safe to surface.
+        #
+        # Two semantics on auth_env:
+        #   * auth_env unset  — no auth required; send without Authorization.
+        #   * auth_env set    — a token IS required. An empty value here means
+        #                       operator misconfig (typo in env-var name,
+        #                       missing Secret key). Fail-fast with a clear
+        #                       error instead of silently sending unauth and
+        #                       letting the backend 401 — that path makes an
+        #                       auth misconfig look like a backend outage in
+        #                       the circuit-breaker dashboards (#1349 filters
+        #                       4xx from the breaker, which is correct for
+        #                       legitimate auth errors but masks the config
+        #                       fingerprint here).
         if self._auth_env:
             _token = os.environ.get(self._auth_env) or ""
-            if _token:
-                _headers["Authorization"] = f"Bearer {_token}"
+            if not _token:
+                raise ConnectionError(
+                    f"A2A backend '{self.id}' auth_env={self._auth_env} is "
+                    f"unset or empty — refusing to send unauthenticated "
+                    f"request. Fix the env var or clear auth_env in backend "
+                    f"config if auth is not required."
+                )
+            _headers["Authorization"] = f"Bearer {_token}"
         for attempt in range(_MAX_RETRIES):
             client = self._get_client()
             _req_start = time.monotonic()
             _result_label = "ok"  # re-set below in each error branch
             try:
-                resp = await client.post(
+                # Stream the response so we can cap the total body size
+                # before it's fully buffered in memory. Without the cap a
+                # pathological backend can OOM the harness pod with a
+                # multi-GB payload; `client.post` would buffer the whole
+                # body before returning.
+                async with client.stream(
+                    "POST",
                     url,
                     content=body,
                     headers=_headers,
-                )
-                if resp.status_code in _RETRYABLE_STATUS_CODES:
-                    logger.warning(
-                        f"A2A backend '{self.id}' returned HTTP {resp.status_code} "
-                        f"(attempt {attempt + 1}/{_MAX_RETRIES}) — retrying"
-                    )
-                    last_exc = ConnectionError(
-                        f"A2A backend '{self.id}' returned HTTP {resp.status_code}"
-                    )
-                    _result_label = "error_status"
-                    # Fall through to the shared backoff block below so that
-                    # retryable HTTP codes (429, 502, 503, 504) wait the same
-                    # exponential delay as connection-level errors.
-                else:
-                    resp.raise_for_status()
-                    return resp.text
+                ) as resp:
+                    if resp.status_code in _RETRYABLE_STATUS_CODES:
+                        logger.warning(
+                            f"A2A backend '{self.id}' returned HTTP {resp.status_code} "
+                            f"(attempt {attempt + 1}/{_MAX_RETRIES}) — retrying"
+                        )
+                        last_exc = ConnectionError(
+                            f"A2A backend '{self.id}' returned HTTP {resp.status_code}"
+                        )
+                        _result_label = "error_status"
+                        # Fall through to the shared backoff block below so that
+                        # retryable HTTP codes (429, 502, 503, 504) wait the same
+                        # exponential delay as connection-level errors.
+                    else:
+                        resp.raise_for_status()
+                        if _A2A_MAX_RESPONSE_BYTES > 0:
+                            chunks: list[bytes] = []
+                            total = 0
+                            async for chunk in resp.aiter_bytes():
+                                total += len(chunk)
+                                if total > _A2A_MAX_RESPONSE_BYTES:
+                                    raise ConnectionError(
+                                        f"A2A backend '{self.id}' response exceeds "
+                                        f"A2A_MAX_RESPONSE_BYTES={_A2A_MAX_RESPONSE_BYTES}"
+                                    )
+                                chunks.append(chunk)
+                            return b"".join(chunks).decode(
+                                resp.encoding or "utf-8", errors="replace"
+                            )
+                        await resp.aread()
+                        return resp.text
             except (httpx.ReadTimeout, httpx.WriteTimeout, httpx.PoolTimeout) as exc:
                 logger.warning(
                     f"A2A backend '{self.id}' transient error on attempt {attempt + 1}/{_MAX_RETRIES}: {exc!r}"
