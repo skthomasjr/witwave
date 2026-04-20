@@ -62,7 +62,7 @@ autonomous agent.
 | **Gemini backend** | `backends/gemini/`     | Backend agent      | Executes prompts via the Google Gemini SDK.                                                                                 |
 | **MCP tools**      | `tools/`               | Tool infrastructure| `mcp-kubernetes`, `mcp-helm`, `mcp-prometheus` — shared MCP servers backends opt into.                                     |
 | **Dashboard**      | `clients/dashboard/`   | Web client         | Vue 3 + PrimeVue web UI.                                                                                                    |
-| **ww CLI**         | `clients/ww/`          | Client             | Go + cobra command-line interface (`brew install ww`).                                                                      |
+| **ww CLI**         | `clients/ww/`          | Client             | Go + cobra command-line interface (`brew install witwave-ai/homebrew-ww/ww`).                                               |
 | **Operator**       | `operator/`            | Kubernetes operator| Go controller that reconciles `WitwaveAgent` CRDs.                                                                              |
 | **Agent chart**    | `charts/witwave/`          | Deployment         | Helm chart that deploys witwave agents via templated manifests.                                                                  |
 | **Operator chart** | `charts/witwave-operator/` | Deployment         | Helm chart that installs the operator + CRD.                                                                                 |
@@ -107,10 +107,22 @@ automatically on every release tag.
 | `mcp-helm`       | `ghcr.io/skthomasjr/images/mcp-helm:latest`       |
 | `mcp-prometheus` | `ghcr.io/skthomasjr/images/mcp-prometheus:latest` |
 
-The `ww` CLI ships as a standalone binary on [GitHub Releases](https://github.com/skthomasjr/witwave/releases) (plus `brew install ww` once the tap lands — tracked in issue #1128).
+The `ww` CLI ships via Homebrew (the [witwave-ai/homebrew-ww](https://github.com/witwave-ai/homebrew-ww) tap) and as standalone binaries on [GitHub Releases](https://github.com/skthomasjr/witwave/releases):
 
-Pull a specific version with a semver tag, e.g. `ghcr.io/skthomasjr/images/harness:0.2.0-beta.37`.
-The latest released tag is visible in the [GitHub Releases](https://github.com/skthomasjr/witwave/releases) page; substitute it for the version below.
+```bash
+brew install witwave-ai/homebrew-ww/ww
+```
+
+`ww` checks for newer releases on startup and surfaces a one-line banner (configurable via `ww config set update.mode ...`). To upgrade explicitly at any time:
+
+```bash
+ww update              # check + upgrade if newer
+ww update --check      # check only
+ww update --force      # run the upgrade unconditionally
+```
+
+Pull a specific image version with a semver tag, e.g. `ghcr.io/skthomasjr/images/harness:0.4.0`.
+The latest released tag is visible on the [GitHub Releases](https://github.com/skthomasjr/witwave/releases) page; substitute it for the version below.
 
 ## Helm Charts
 
@@ -118,10 +130,10 @@ Two Helm charts are published to GHCR alongside the images on every release tag:
 
 ```bash
 # Agent chart — deploys witwave agents directly via templated manifests.
-helm install witwave oci://ghcr.io/skthomasjr/charts/witwave --version 0.2.0-beta.37 --namespace witwave --create-namespace
+helm install witwave oci://ghcr.io/skthomasjr/charts/witwave --version 0.4.0 --namespace witwave --create-namespace
 
 # Operator chart — installs the witwave-operator controller and the WitwaveAgent CRD.
-helm install witwave-operator oci://ghcr.io/skthomasjr/charts/witwave-operator --version 0.2.0-beta.37 --namespace witwave --create-namespace
+helm install witwave-operator oci://ghcr.io/skthomasjr/charts/witwave-operator --version 0.4.0 --namespace witwave --create-namespace
 ```
 
 See [charts/witwave/README.md](charts/witwave/README.md) and
