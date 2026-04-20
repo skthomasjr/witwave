@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -157,7 +158,24 @@ func Load(cfgPath string, overrides FlagOverrides, getenv func(string) string) (
 		}
 	}
 
-	fileProf := file.Profile[profile]
+	fileProf, profileFound := file.Profile[profile]
+
+	// Warn on a profile that the user selected but the file doesn't
+	// define. The layering still proceeds (env + flags + defaults may
+	// supply what the file didn't), but the user almost certainly
+	// typoed — silent fallback to a zero-valued Profile can connect
+	// to the compiled-in default harness when the user expected prod
+	// credentials. The warning gives them a chance to notice before
+	// a command actually runs against the wrong target. Skipped for
+	// the "default" profile because an absent [profile.default]
+	// section is the legitimate zero-config case.
+	if !profileFound && profile != "default" && v.ConfigFileUsed() != "" {
+		fmt.Fprintf(os.Stderr,
+			"ww: warning: profile %q not found in %s — falling back to env/flag/defaults. "+
+				"Known profiles: %s\n",
+			profile, v.ConfigFileUsed(), knownProfiles(file),
+		)
+	}
 
 	// Apply layering: flag > env > file > default.
 	r := Resolved{
@@ -267,6 +285,22 @@ func defaultConfigPaths(getenv func(string) string) []string {
 		paths = append(paths, filepath.Join(ucd, "ww"))
 	}
 	return paths
+}
+
+// knownProfiles returns a comma-separated list of profiles defined in
+// the file, or "(none)" if the Profile map is empty. Purely for the
+// "profile not found" warning message — small UX polish that makes
+// the "did I typo?" check actionable without a separate subcommand.
+func knownProfiles(file File) string {
+	if len(file.Profile) == 0 {
+		return "(none)"
+	}
+	names := make([]string, 0, len(file.Profile))
+	for name := range file.Profile {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return strings.Join(names, ", ")
 }
 
 func firstNonEmpty(vals ...string) string {

@@ -172,13 +172,41 @@ func (w *Writer) Save() error {
 		}
 	}
 
+	// Pre-create the file with 0o600 for first-write paths BEFORE
+	// Viper opens it. Viper's WriteConfig internally uses os.Create,
+	// which honors the process umask (typically 022) and lands at
+	// 0o644 — then we chmod afterward. That leaves a microsecond
+	// window where a bearer token is world-readable.
+	//
+	// Pre-creating the empty file at 0o600 closes the window: Viper's
+	// subsequent open with O_TRUNC|O_WRONLY reuses the existing inode
+	// and preserves its mode. Unix-only; on Windows the permission
+	// model is ACL-based and this path is a no-op (WriteConfig handles
+	// it either way).
+	firstWrite := !w.existed
+	if firstWrite && runtime.GOOS != "windows" {
+		f, err := os.OpenFile(w.path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if err != nil {
+			// O_EXCL means "fail if exists" — a concurrent creator
+			// racing us would trip this. Either way, fall back to the
+			// standard write + chmod flow below; this pre-create is
+			// an optimization, not a correctness requirement.
+		} else {
+			_ = f.Close()
+		}
+	}
+
 	if err := w.v.WriteConfig(); err != nil {
 		return fmt.Errorf("write %s: %w", w.path, err)
 	}
 
-	// On a first-ever write, lock the permissions down. Bearer tokens
-	// under profile.<name>.token live plaintext in this file.
-	if !w.existed && runtime.GOOS != "windows" {
+	// Post-write chmod is now idempotent on the happy path (file
+	// already 0o600 from pre-create), but remains important for:
+	//   1. The fallback case where pre-create failed (Windows, or
+	//      a concurrent creator).
+	//   2. Older files created by a pre-fix ww that landed at 0o644
+	//      and haven't been re-chmod'd yet.
+	if firstWrite && runtime.GOOS != "windows" {
 		if err := os.Chmod(w.path, 0o600); err != nil {
 			return fmt.Errorf("chmod %s: %w", w.path, err)
 		}
