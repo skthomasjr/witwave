@@ -8,6 +8,87 @@ section of each entry.
 
 ## [Unreleased]
 
+## [0.5.5] — 2026-04-20
+
+Substantial follow-up to v0.5.4 — ten issues closed across security,
+observability, operator scale-readiness, and docs. No user-visible
+behaviour changes on the happy path; all additions are opt-in or
+silent hardening.
+
+### Added
+
+- **Cosign keyless signing on every container image** (#1460). All
+  ten images published under `ghcr.io/skthomasjr/images/*` on a tag
+  release are now signed via Sigstore's OIDC flow — no long-lived
+  signing key in the repo. Verification is opt-in; `docker pull` /
+  `helm install` / `ww operator install` continue to work identically.
+  See SECURITY.md § Verifying signed release artefacts for the
+  `cosign verify` recipe.
+- **Gitleaks pre-merge secrets scan** (#1462). New workflow
+  `.github/workflows/ci-secrets.yml` runs on every PR + main push
+  plus a weekly cron sweep. Allow-list lives at `.gitleaks.toml`;
+  policy is zero tolerance for real secrets.
+- **Four new Prometheus alerts** (#1465, #1467, #1469, plus #1466):
+  `WitwavePVCFillWarning` + `WitwavePVCFillCritical` (70% / 90%
+  kubelet_volume_stats thresholds), `WitwaveA2ALatencyHigh` (p99
+  harness → backend latency), `WitwaveEventValidationErrors`
+  (non-zero schema validation failure rate), and
+  `WitwaveWebhookRetryBytesHalfFull` (early warning before
+  retry-bytes shedding begins). All eleven alerts (five existing +
+  six new across this release) now carry `runbook_url` annotations
+  pointing at `docs/runbooks.md` (#1468).
+- **Webhook retry-bytes in-flight gauges** (#1466).
+  `harness_webhooks_retry_bytes_in_flight{subscription}`,
+  `harness_webhooks_retry_bytes_in_flight_total`, and
+  `harness_webhooks_retry_bytes_budget_bytes{scope}` — the gauge
+  signal that was missing when the shed counter was the only
+  observable retry-bytes signal.
+- **Operator leader-election flag surface + metric** (#1475). New
+  `--leader-election-lease-duration` / `--leader-election-renew-deadline` /
+  `--leader-election-retry-period` flags exposed by the operator and
+  plumbed through `charts/witwave-operator/values.yaml`. New metric
+  `witwaveagent_leader_election_renew_failures_total` declared for
+  the alert-key slot; wiring to the renewal-error hook is a
+  follow-up.
+- **CRD `MaxItems` / `MaxProperties` caps** (#1471) on
+  `WitwaveAgent.spec.Backends`, `GitSyncs`, `Config`,
+  `PodAnnotations`, `PodLabels`, and `WitwavePrompt.spec.AgentRefs` —
+  apiserver-side rejection of pathological CRs before they hit
+  etcd's 1MB object-size ceiling.
+- **Credential-watch secondary indexer** (#1474) —
+  `WitwaveAgentCredentialSecretRefsIndex` field indexer narrows a
+  Secret rotation's enqueue set to exactly the agents that reference
+  it. At 100+ agents + bulk rotation, eliminates the reconcile
+  thundering herd the old full-List mapper produced.
+- **`checksum/config` + `checksum/manifest` pod annotations** on the
+  harness Deployment (#1476). `kubectl edit cm` / `helm upgrade`
+  with ConfigMap-only changes now roll the pod, instead of silently
+  no-op'ing from the pod's perspective on config files the
+  backends_watcher doesn't hot-reload.
+- **CHANGELOG.md** (#1472) at the repo root, format follows
+  Keep a Changelog 1.1.0. Backfilled entries for v0.4.0 → v0.5.5.
+- **Token + secret rotation procedures** in SECURITY.md (#1463,
+  #1464). Covers `HOMEBREW_TAP_GITHUB_TOKEN` (release-to-tap PAT;
+  90-day rotation cadence) and `SESSION_ID_SECRET` (MCP session-ID
+  HMAC binding; two-secret grace-window rotation).
+- **Event schema versioning policy** in docs/events/README.md
+  (#1473). Documents additive-vs-breaking bump rules, compat
+  windows across major-version transitions, and the subscriber
+  contract.
+- **`operator/MIGRATION.md`** (#1470) — CRD deprecation policy
+  (2 minor-version served-version overlap), conversion-webhook
+  architecture, manual `jq`-based fallback, test matrix contract.
+  Sets expectations now so the first `v1alpha1` → `v1beta1`
+  transition doesn't surprise anyone.
+- **`docs/runbooks.md`** (#1468) — on-call playbook per alert.
+
+### Fixed
+
+- Gitleaks config schema (`.gitleaks.toml`) — original commit used
+  `[[allowlist]]` (array of tables) syntax from a newer gitleaks
+  release; gitleaks 8.24 bundled by `gitleaks-action@v2` wants a
+  single `[allowlist]` map. Config refactored to match.
+
 ## [0.5.4] — 2026-04-20
 
 ### Fixed
@@ -183,7 +264,8 @@ section of each entry.
   (`.witwave/`), and environment variables (`WITWAVE_*`) migrated in
   one sweep on 2026-04-19 (commit b966b40).
 
-[Unreleased]: https://github.com/skthomasjr/witwave/compare/v0.5.4...HEAD
+[Unreleased]: https://github.com/skthomasjr/witwave/compare/v0.5.5...HEAD
+[0.5.5]: https://github.com/skthomasjr/witwave/releases/tag/v0.5.5
 [0.5.4]: https://github.com/skthomasjr/witwave/releases/tag/v0.5.4
 [0.5.3]: https://github.com/skthomasjr/witwave/releases/tag/v0.5.3
 [0.5.2]: https://github.com/skthomasjr/witwave/releases/tag/v0.5.2
