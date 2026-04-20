@@ -1,0 +1,106 @@
+{{- if and .Values.rbac.create (eq (default "cluster" .Values.rbac.scope) "namespace") }}
+{{- $fullName := include "witwave-operator.fullname" . -}}
+{{- $saName := include "witwave-operator.serviceAccountName" . -}}
+{{- $saNamespace := .Release.Namespace -}}
+{{- $labels := include "witwave-operator.labels" . -}}
+{{- $watchNamespaces := .Values.rbac.watchNamespaces | default (list .Release.Namespace) -}}
+# Per-namespace Role + RoleBinding pair for rbac.scope=namespace installs
+# (#532). The operator's ServiceAccount (in the release namespace) is granted
+# the exact same resource verbs as the ClusterRole variant, but only within
+# each entry in rbac.watchNamespaces. No cluster-wide privileges are granted.
+#
+# When using this mode the operator MUST be started with
+# --watch-namespaces=<comma-separated list> so controller-runtime restricts
+# its cache to the same namespaces — otherwise it tries to LIST cluster-wide
+# and fails at startup. Use values.yaml `extraArgs` to pass the flag.
+#
+# The witwaveagents/status and witwaveagents/finalizers subresources remain bound to
+# the CRD; they are listed here because the reconciler updates them on each
+# Reconcile iteration.
+{{- range $ns := $watchNamespaces }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $fullName }}-manager
+  namespace: {{ $ns }}
+  labels:
+    {{- $labels | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources:
+      - configmaps
+      - persistentvolumeclaims
+      - services
+    verbs: [create, delete, get, list, patch, update, watch]
+  # Secret verbs split for #761 parity with the ClusterRole variant.
+  # Namespace-scoped Role already limits blast radius to the watched
+  # namespace, but operators who don't use inline backend credentials
+  # can still drop write verbs by setting rbac.secretsWrite=false.
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list, watch]
+  {{- $secretsWrite := "true" }}
+  {{- if hasKey $.Values.rbac "secretsWrite" }}{{ $secretsWrite = toString $.Values.rbac.secretsWrite }}{{ end }}
+  {{- if ne $secretsWrite "false" }}
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [create, delete, patch, update]
+  {{- end }}
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create, patch]
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [create, delete, get, list, patch, update, watch]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [create, delete, get, list, patch, update, watch]
+  - apiGroups: [policy]
+    resources: [poddisruptionbudgets]
+    verbs: [create, delete, get, list, patch, update, watch]
+  - apiGroups: [monitoring.coreos.com]
+    resources: [servicemonitors, podmonitors]
+    verbs: [create, delete, get, list, patch, update, watch]
+  # networking.k8s.io — per-agent NetworkPolicy (#971) + dashboard
+  # Ingress (#831). Same scope as the ClusterRole variant (#1224);
+  # missing these verbs silently wedged both features in namespace mode.
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies", "ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [witwave.ai]
+    resources: [witwaveagents]
+    verbs: [create, delete, get, list, patch, update, watch]
+  - apiGroups: [witwave.ai]
+    resources: [witwaveagents/status]
+    verbs: [get, patch, update]
+  - apiGroups: [witwave.ai]
+    resources: [witwaveagents/finalizers]
+    verbs: [update]
+  - apiGroups: [witwave.ai]
+    resources: [witwaveprompts]
+    verbs: [create, delete, get, list, patch, update, watch]
+  - apiGroups: [witwave.ai]
+    resources: [witwaveprompts/status]
+    verbs: [get, patch, update]
+  - apiGroups: [witwave.ai]
+    resources: [witwaveprompts/finalizers]
+    verbs: [update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $fullName }}-manager
+  namespace: {{ $ns }}
+  labels:
+    {{- $labels | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $fullName }}-manager
+subjects:
+  - kind: ServiceAccount
+    name: {{ $saName }}
+    namespace: {{ $saNamespace }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,24 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+---
+# Optional PodDisruptionBudget for the operator manager pod (#464). Mirrors
+# the per-agent PDB pattern in the witwave chart but scoped to the single
+# operator deployment. Default minAvailable: 1 is sensible given the typical
+# replicaCount=1 with leader election; raise minAvailable when running
+# multiple replicas for HA scrape coverage.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "witwave-operator.fullname" . }}
+  labels:
+    {{- include "witwave-operator.labels" . | nindent 4 }}
+    control-plane: controller-manager
+spec:
+  {{- if hasKey .Values.podDisruptionBudget "maxUnavailable" }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  {{- else }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable | default 1 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "witwave-operator.selectorLabels" . | nindent 6 }}
+{{- end }}

@@ -1,0 +1,9 @@
+witwave-operator has been deployed.
+
+Release: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+
+The witwave-operator controller manager is now running and watching for witwave.ai CRDs.
+
+Check operator status:
+  kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "witwave-operator.name" . }}

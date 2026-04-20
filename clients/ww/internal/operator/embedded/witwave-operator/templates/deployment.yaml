@@ -1,0 +1,202 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "witwave-operator.fullname" . }}
+  labels:
+    {{- include "witwave-operator.labels" . | nindent 4 }}
+    control-plane: controller-manager
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "witwave-operator.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+        {{- /* #1121: service-mesh sidecar-injection annotations, matched
+               to the witwave chart's shape so a single serviceMesh.type +
+               serviceMesh.enabled pair lights up both charts. */}}
+        {{- if (.Values.serviceMesh).enabled }}
+        {{- $type := (.Values.serviceMesh.type | default "none" | toString | lower) }}
+        {{/* #1392: fail loudly on unknown types so a typo like "Linkerd"
+             (capital L) doesn't silently no-op. Keep "none" as a valid
+             sentinel (enabled=true + type=none is still wrong; caught). */}}
+        {{- $validTypes := list "linkerd" "istio" "none" }}
+        {{- if not (has $type $validTypes) }}
+        {{- fail (printf "serviceMesh.type=%q is not in %v (case-sensitive lowercase). See #1392." $type $validTypes) }}
+        {{- end }}
+        {{- if eq $type "linkerd" }}
+        linkerd.io/inject: enabled
+        {{- end }}
+        {{- if eq $type "istio" }}
+        sidecar.istio.io/inject: "true"
+        {{- end }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "witwave-operator.labels" . | nindent 8 }}
+        control-plane: controller-manager
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "witwave-operator.serviceAccountName" . }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds | default 30 }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: manager
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /manager
+          args:
+            {{- /* Manager default is --leader-elect=true (#752). Pass an
+                   explicit false to disable rather than omitting the flag,
+                   so single-replica local runs still opt out cleanly. */}}
+            {{- if .Values.leaderElection.enabled }}
+            - --leader-elect=true
+            {{- else }}
+            - --leader-elect=false
+            {{- end }}
+            - --health-probe-bind-address=:{{ .Values.probes.port }}
+            {{- if .Values.metrics.enabled }}
+            - --metrics-bind-address=:{{ .Values.metrics.port }}
+            - --metrics-secure={{ .Values.metrics.secure }}
+            {{- else }}
+            # Disable the metrics endpoint entirely.
+            - --metrics-bind-address=0
+            {{- end }}
+            {{- if .Values.webhooks.enabled }}
+            - --webhook-cert-path={{ .Values.webhooks.certDir }}
+            {{- end }}
+            {{- with .Values.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          env:
+            # Downward-API namespace + pod name feed the OTel resource
+            # attributes k8s.namespace and k8s.pod.name when tracing is
+            # enabled (#471 part B). Empty otherwise — the operator's
+            # tracing.InitOTel falls back to defaults.
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            {{- include "witwave-operator.otelEnv" . | nindent 12 }}
+            {{- with .Values.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: probes
+              containerPort: {{ .Values.probes.port }}
+              protocol: TCP
+            {{- if .Values.metrics.enabled }}
+            - name: metrics
+              containerPort: {{ .Values.metrics.port }}
+              protocol: TCP
+            {{- end }}
+            {{- if .Values.webhooks.enabled }}
+            - name: webhook
+              containerPort: {{ .Values.webhooks.port | default 9443 }}
+              protocol: TCP
+            {{- end }}
+          {{- if .Values.webhooks.enabled }}
+          volumeMounts:
+            - name: webhook-cert
+              mountPath: {{ .Values.webhooks.certDir | quote }}
+              readOnly: true
+          {{- end }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.preStop.enabled }}
+          lifecycle:
+            preStop:
+              exec:
+                # Drain window for in-flight reconciliations before SIGTERM (#465).
+                command: ["/bin/sh", "-c", "sleep {{ .Values.preStop.delaySeconds | default 5 }}"]
+          {{- end }}
+          # startupProbe gives the manager a long grace window on
+          # cold-start (CRD conversion, webhook TLS wait, leader-lease
+          # acquisition) before readiness/liveness begin enforcing (#765).
+          startupProbe:
+            httpGet:
+              path: /readyz
+              port: probes
+            initialDelaySeconds: {{ .Values.probes.startup.initialDelaySeconds | default 0 }}
+            periodSeconds: {{ .Values.probes.startup.periodSeconds | default 10 }}
+            timeoutSeconds: {{ .Values.probes.startup.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold | default 30 }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: probes
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds | default 15 }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds | default 20 }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold | default 3 }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: probes
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds | default 5 }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds | default 10 }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold | default 3 }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- /* Scheduling parity with the witwave chart (#1119). The operator is
+             a control-plane singleton that reconciles every WitwaveAgent and
+             admits every CR — surviving node pressure matters. Wire
+             topologySpreadConstraints + priorityClassName so operators
+             can pin it to system-cluster-critical and spread replicas
+             across zones when leaderElection is enabled. */}}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      {{- if .Values.webhooks.enabled }}
+      {{- /* Webhook serving cert Secret. Two sources:
+             - BYO mode: webhooks.existingSecret references a user-
+               pre-created Secret with tls.crt + tls.key.
+             - cert-manager mode: the Certificate resource in webhook.yaml
+               writes to `<fullname>-webhook-serving-cert`.
+             webhook.yaml enforces that exactly one of these is active. */}}
+      {{- $byoSecret := .Values.webhooks.existingSecret | default "" }}
+      {{- $cmSecret := printf "%s-webhook-serving-cert" (include "witwave-operator.fullname" .) }}
+      volumes:
+        - name: webhook-cert
+          secret:
+            secretName: {{ (ternary $byoSecret $cmSecret (ne $byoSecret "")) | quote }}
+      {{- end }}

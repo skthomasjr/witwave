@@ -1,0 +1,116 @@
+{{/*
+helm test that exercises the admission webhook (#840).
+
+When webhooks.enabled=true, this applies a known-bad WitwaveAgent and
+asserts the validator rejects it at apply time. If the webhook
+Service is down, cert plumbing is broken, or the validator logic
+regresses, the bad apply succeeds and the test fails — catching the
+class of bug where an operator only notices the webhook missed a
+release at reconcile time (Pending pods, bad applies already through).
+
+No-op when webhooks.enabled=false — the chart deliberately skips all
+webhook resources, so exercising validation would be meaningless.
+*/}}
+{{- if .Values.webhooks.enabled }}
+{{- $fullName := include "witwave-operator.fullname" . -}}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $fullName }}-test-webhook
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $fullName }}-test-webhook
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+rules:
+  # Needs create access to WitwaveAgent so the apply can reach the
+  # ValidatingWebhook. The test object is immediately rejected — no
+  # persistent WitwaveAgent is created.
+  - apiGroups: ["witwave.ai"]
+    resources: ["witwaveagents"]
+    verbs: ["create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $fullName }}-test-webhook
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+subjects:
+  - kind: ServiceAccount
+    name: {{ $fullName }}-test-webhook
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $fullName }}-test-webhook
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ $fullName }}-test-webhook
+  labels:
+    {{- include "witwave-operator.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  activeDeadlineSeconds: 120
+  serviceAccountName: {{ $fullName }}-test-webhook
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: test
+      image: bitnami/kubectl:1.30.4
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+      command:
+        - /bin/sh
+        - -c
+        - |
+          set -eu
+          cat > /tmp/bad.yaml <<'YAML'
+          apiVersion: witwave.ai/v1alpha1
+          kind: WitwaveAgent
+          metadata:
+            name: helm-test-webhook-reject
+          spec:
+            # Intentionally invalid: empty string fails validator's
+            # required-name / required-backend guards. The webhook
+            # should reject this with a 4xx status.
+            name: ""
+            backends: []
+          YAML
+          echo "Submitting known-bad WitwaveAgent; expecting webhook rejection..."
+          if kubectl apply -f /tmp/bad.yaml 2>/tmp/err; then
+            kubectl delete -f /tmp/bad.yaml || true
+            echo "ERROR: admission webhook did NOT reject invalid WitwaveAgent" >&2
+            cat /tmp/err >&2 || true
+            exit 1
+          fi
+          echo "Webhook rejection text:"
+          cat /tmp/err
+          # Confirm the rejection came from the validating webhook, not a
+          # generic API server 404 / RBAC error — the webhook error body
+          # contains "admission webhook" or the webhook name.
+          if ! grep -qiE 'admission webhook|vwitwaveagent' /tmp/err; then
+            echo "ERROR: rejection did not originate from admission webhook" >&2
+            exit 1
+          fi
+          echo "Admission webhook rejected the bad WitwaveAgent as expected."
+{{- end }}

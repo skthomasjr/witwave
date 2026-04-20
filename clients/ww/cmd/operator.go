@@ -145,52 +145,124 @@ func cmpDisplay(cluster, server string) string {
 // ---------------------------------------------------------------------------
 
 func newOperatorInstallCmd(f *operatorFlags) *cobra.Command {
+	var adopt bool
 	cmd := &cobra.Command{
 		Use:   "install",
 		Short: "Install the witwave-operator Helm release (embedded chart)",
 		Long: "Installs the embedded witwave-operator chart into the target cluster.\n\n" +
-			"Not yet implemented — see https://github.com/skthomasjr/witwave/issues/1477\n" +
-			"for scope, decisions, and progress. Runs the Helm-SDK install path,\n" +
-			"singleton detection, RBAC preflight, and the CRD server-side apply.",
+			"Runs singleton detection (refuses when another release is already\n" +
+			"installed cluster-wide), preflight banner + confirmation on\n" +
+			"production-looking contexts, RBAC SelfSubjectAccessReview, namespace\n" +
+			"ensure, and the Helm install. Use --adopt to take over a\n" +
+			"cluster whose CRDs were installed manually (via `kubectl apply`).",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("ww operator install not yet implemented — see #1477")
+			return runOperatorInstall(cmd.Context(), f, adopt)
 		},
 	}
 	bindMutatingFlags(cmd, f)
+	cmd.Flags().BoolVar(&adopt, "adopt", false,
+		"Proceed when operator CRDs already exist on the cluster without a Helm release "+
+			"(ww will take over management via Helm)")
 	return cmd
+}
+
+func runOperatorInstall(ctx context.Context, f *operatorFlags, adopt bool) error {
+	target, resolver, err := f.resolveTarget()
+	if err != nil {
+		return err
+	}
+	cfg, err := resolver.REST()
+	if err != nil {
+		return err
+	}
+	assumeYes := f.assumeYes || os.Getenv("WW_ASSUME_YES") == "true"
+	return operator.Install(ctx, target, cfg, resolver.ConfigFlags(), operator.InstallOptions{
+		Namespace: f.namespace,
+		Adopt:     adopt,
+		AssumeYes: assumeYes,
+		DryRun:    f.dryRun,
+		Out:       os.Stdout,
+		In:        os.Stdin,
+	})
 }
 
 func newOperatorUpgradeCmd(f *operatorFlags) *cobra.Command {
+	var force bool
 	cmd := &cobra.Command{
 		Use:   "upgrade",
 		Short: "Upgrade the witwave-operator Helm release to the embedded chart version",
-		Long: "Upgrades in place. CRDs are server-side applied first, then the Helm\n" +
-			"upgrade runs.\n\n" +
-			"Not yet implemented — see https://github.com/skthomasjr/witwave/issues/1477.",
+		Long: "Upgrades in place. The embedded chart's CRDs are server-side applied\n" +
+			"first (this works around Helm's 'crds/ is install-only' semantics so\n" +
+			"new CRD fields land on the apiserver before the Deployment rolls),\n" +
+			"then the Helm upgrade runs. Refuses when no release exists — use\n" +
+			"`ww operator install` first.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("ww operator upgrade not yet implemented — see #1477")
+			return runOperatorUpgrade(cmd.Context(), f, force)
 		},
 	}
 	bindMutatingFlags(cmd, f)
+	cmd.Flags().BoolVar(&force, "force", false,
+		"Reserved for future skew-policy overrides; accepted today for flag compatibility")
 	return cmd
 }
 
+func runOperatorUpgrade(ctx context.Context, f *operatorFlags, force bool) error {
+	target, resolver, err := f.resolveTarget()
+	if err != nil {
+		return err
+	}
+	cfg, err := resolver.REST()
+	if err != nil {
+		return err
+	}
+	assumeYes := f.assumeYes || os.Getenv("WW_ASSUME_YES") == "true"
+	return operator.Upgrade(ctx, target, cfg, resolver.ConfigFlags(), operator.UpgradeOptions{
+		Namespace: f.namespace,
+		AssumeYes: assumeYes,
+		DryRun:    f.dryRun,
+		Force:     force,
+		Out:       os.Stdout,
+		In:        os.Stdin,
+	})
+}
+
 func newOperatorUninstallCmd(f *operatorFlags) *cobra.Command {
-	var deleteCRDs bool
+	var deleteCRDs, force bool
 	cmd := &cobra.Command{
 		Use:   "uninstall",
 		Short: "Uninstall the witwave-operator Helm release",
 		Long: "Removes the operator's Helm release. By default CRDs and the CRs\n" +
 			"they own are preserved — use --delete-crds to remove them too\n" +
-			"(requires --force when any CRs still exist).\n\n" +
-			"Not yet implemented — see https://github.com/skthomasjr/witwave/issues/1477.",
+			"(refuses when any CRs exist; --force overrides with a warning).",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_ = deleteCRDs
-			return fmt.Errorf("ww operator uninstall not yet implemented — see #1477")
+			return runOperatorUninstall(cmd.Context(), f, deleteCRDs, force)
 		},
 	}
 	bindMutatingFlags(cmd, f)
 	cmd.Flags().BoolVar(&deleteCRDs, "delete-crds", false,
 		"Also delete the WitwaveAgent / WitwavePrompt CRDs (refuses when live CRs exist; --force overrides)")
+	cmd.Flags().BoolVar(&force, "force", false,
+		"Override safety gates (cascade-delete CRs when --delete-crds + live CRs; dangerous)")
 	return cmd
+}
+
+func runOperatorUninstall(ctx context.Context, f *operatorFlags, deleteCRDs, force bool) error {
+	target, resolver, err := f.resolveTarget()
+	if err != nil {
+		return err
+	}
+	cfg, err := resolver.REST()
+	if err != nil {
+		return err
+	}
+	assumeYes := f.assumeYes || os.Getenv("WW_ASSUME_YES") == "true"
+	return operator.Uninstall(ctx, target, cfg, resolver.ConfigFlags(), operator.UninstallOptions{
+		Namespace:  f.namespace,
+		DeleteCRDs: deleteCRDs,
+		Force:      force,
+		AssumeYes:  assumeYes,
+		DryRun:     f.dryRun,
+		Out:        os.Stdout,
+		In:         os.Stdin,
+	})
 }

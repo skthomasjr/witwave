@@ -1,0 +1,207 @@
+{{- /*
+Admission webhook resources for the witwave-operator (#624).
+
+Renders only when webhooks.enabled=true. Two TLS modes are supported:
+
+  1. cert-manager (default)
+     - Chart renders a cert-manager Certificate + (optional) Issuer.
+     - MutatingWebhookConfiguration / ValidatingWebhookConfiguration carry
+       the `cert-manager.io/inject-ca-from` annotation so the CA bundle
+       is filled in by cert-manager's CA injector at reconcile time.
+     - Activated when webhooks.certManager.enabled=true AND
+       webhooks.existingSecret is empty.
+
+  2. BYO Secret
+     - User pre-creates a Secret with `tls.crt` + `tls.key` keys, sets
+       webhooks.existingSecret to its name, and supplies the PEM CA
+       bundle (base64-encoded) via webhooks.caBundle.
+     - No Certificate / Issuer / CA-injection annotation rendered — the
+       chart stamps the user-supplied caBundle literally onto the webhook
+       configs.
+     - Use this path when cert-manager isn't installed or appropriate
+       (air-gapped, service mesh, Vault PKI, strict RBAC).
+
+A third path — webhooks disabled entirely — is handled by the
+`webhooks.enabled` guard at the top.
+*/ -}}
+{{- if .Values.webhooks.enabled -}}
+{{- $fullName := include "witwave-operator.fullname" . -}}
+{{- $ns := .Release.Namespace -}}
+{{- $svcName := printf "%s-webhook" $fullName -}}
+{{- $certName := printf "%s-webhook-serving-cert" $fullName -}}
+{{- $issuerName := printf "%s-selfsigned" $fullName -}}
+{{- $caInject := printf "%s/%s" $ns $certName -}}
+{{- $issuerKind := .Values.webhooks.certManager.issuerKind | default "Issuer" -}}
+{{- $extRef := and .Values.webhooks.certManager.issuerRef .Values.webhooks.certManager.issuerRef.name -}}
+{{- $byo := ne (default "" .Values.webhooks.existingSecret) "" -}}
+{{- $cm  := and (not $byo) .Values.webhooks.certManager.enabled -}}
+{{- /*
+Fail-fast guard: webhooks need SOMEWHERE to get TLS from. Refuse render
+when neither mode is configured — the manager would start serving on
+:9443 with no cert and every admission call would error out.
+*/ -}}
+{{- if and (not $byo) (not $cm) -}}
+  {{- fail "witwave-operator chart: webhooks.enabled=true requires either webhooks.certManager.enabled=true OR webhooks.existingSecret set. Neither is configured — the webhook server would boot without TLS and every admission call would fail." -}}
+{{- end -}}
+{{- /*
+Fail-fast guard: BYO Secret needs the caBundle too, or the webhook
+configs have no CA to validate the serving cert against and the
+apiserver will refuse to call the webhook.
+*/ -}}
+{{- if and $byo (eq (default "" .Values.webhooks.caBundle) "") -}}
+  {{- fail "witwave-operator chart: webhooks.existingSecret is set but webhooks.caBundle is empty. Supply the base64-encoded PEM CA that signed the Secret's tls.crt (one-liner: `base64 -w0 < ca.crt`) so the MutatingWebhookConfiguration / ValidatingWebhookConfiguration can validate the serving cert." -}}
+{{- end -}}
+{{- /*
+Fail-fast guard (cert-manager path only): if neither a chart-owned
+Issuer nor an external issuerRef is available, the Certificate points
+at a non-existent issuer and cert-manager emits events forever without
+issuing — which blocks the webhook from ever coming up.
+*/ -}}
+{{- if and $cm (not .Values.webhooks.certManager.createIssuer) (not $extRef) -}}
+  {{- fail "witwave-operator chart: webhooks.certManager.enabled=true requires either webhooks.certManager.createIssuer=true (chart renders a selfSigned Issuer) OR webhooks.certManager.issuerRef.name set (reference an external (Cluster)Issuer). Neither is configured — the webhook serving cert would point at a non-existent issuer and the manager would never come up." -}}
+{{- end -}}
+---
+# Webhook Service — selects the controller-manager pods via the deployment's
+# standard `control-plane: controller-manager` label.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $svcName }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "witwave-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook
+spec:
+  type: ClusterIP
+  ports:
+    - name: webhook
+      port: 443
+      targetPort: webhook
+      protocol: TCP
+  selector:
+    {{- include "witwave-operator.selectorLabels" . | nindent 4 }}
+{{- if $cm }}
+{{- if and .Values.webhooks.certManager.createIssuer (not $extRef) }}
+---
+apiVersion: cert-manager.io/v1
+kind: {{ $issuerKind | quote }}
+metadata:
+  name: {{ $issuerName }}
+  {{- if eq $issuerKind "Issuer" }}
+  namespace: {{ $ns }}
+  {{- end }}
+  labels:
+    {{- include "witwave-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cert-manager
+spec:
+  selfSigned: {}
+{{- end }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $certName }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "witwave-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook
+spec:
+  secretName: {{ $certName | quote }}
+  dnsNames:
+    - {{ printf "%s.%s.svc" $svcName $ns | quote }}
+    - {{ printf "%s.%s.svc.cluster.local" $svcName $ns | quote }}
+  issuerRef:
+    {{- if $extRef }}
+    name: {{ .Values.webhooks.certManager.issuerRef.name | quote }}
+    kind: {{ .Values.webhooks.certManager.issuerRef.kind | default "ClusterIssuer" | quote }}
+    {{- else }}
+    name: {{ $issuerName }}
+    kind: {{ $issuerKind | quote }}
+    {{- end }}
+{{- end }}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ printf "%s-mutating" $fullName }}
+  annotations:
+    {{- if $cm }}
+    cert-manager.io/inject-ca-from: {{ $caInject | quote }}
+    {{- end }}
+    # #1075: checksum annotation on the webhook bundle forces a roll of
+    # the MWC whenever the rendered config (including caBundle under BYO
+    # mode) changes. Without this, a rotated Secret + helm upgrade would
+    # leave the MWC pinned at the old CA and every admission call would
+    # 500 until the admin force-deleted the MWC.
+    witwave.ai/webhook-cert-checksum: {{ printf "%v|%v|%v" (default "" .Values.webhooks.caBundle) (default "" .Values.webhooks.existingSecret) (default "" .Values.webhooks.certManager.enabled) | sha256sum }}
+  labels:
+    {{- include "witwave-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook
+webhooks:
+  - name: mwitwaveagent.kb.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: {{ .Values.webhooks.failurePolicy | default "Fail" | quote }}
+    clientConfig:
+      service:
+        name: {{ $svcName }}
+        namespace: {{ $ns }}
+        path: /mutate-witwave-ai-v1alpha1-witwaveagent
+      {{- if $byo }}
+      caBundle: {{ .Values.webhooks.caBundle | quote }}
+      {{- end }}
+    rules:
+      - apiGroups: ["witwave.ai"]
+        apiVersions: ["v1alpha1"]
+        resources: ["witwaveagents"]
+        operations: ["CREATE", "UPDATE"]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: {{ printf "%s-validating" $fullName }}
+  annotations:
+    {{- if $cm }}
+    cert-manager.io/inject-ca-from: {{ $caInject | quote }}
+    {{- end }}
+    # #1075: see MWC above for the rationale.
+    witwave.ai/webhook-cert-checksum: {{ printf "%v|%v|%v" (default "" .Values.webhooks.caBundle) (default "" .Values.webhooks.existingSecret) (default "" .Values.webhooks.certManager.enabled) | sha256sum }}
+  labels:
+    {{- include "witwave-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook
+webhooks:
+  - name: vwitwaveagent.kb.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: {{ .Values.webhooks.failurePolicy | default "Fail" | quote }}
+    clientConfig:
+      service:
+        name: {{ $svcName }}
+        namespace: {{ $ns }}
+        path: /validate-witwave-ai-v1alpha1-witwaveagent
+      {{- if $byo }}
+      caBundle: {{ .Values.webhooks.caBundle | quote }}
+      {{- end }}
+    rules:
+      - apiGroups: ["witwave.ai"]
+        apiVersions: ["v1alpha1"]
+        resources: ["witwaveagents"]
+        operations: ["CREATE", "UPDATE"]
+  - name: vwitwaveprompt.kb.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: {{ .Values.webhooks.failurePolicy | default "Fail" | quote }}
+    clientConfig:
+      service:
+        name: {{ $svcName }}
+        namespace: {{ $ns }}
+        path: /validate-witwave-ai-v1alpha1-witwaveprompt
+      {{- if $byo }}
+      caBundle: {{ .Values.webhooks.caBundle | quote }}
+      {{- end }}
+    rules:
+      - apiGroups: ["witwave.ai"]
+        apiVersions: ["v1alpha1"]
+        resources: ["witwaveprompts"]
+        operations: ["CREATE", "UPDATE"]
+{{- end -}}

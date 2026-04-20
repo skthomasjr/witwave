@@ -1,0 +1,52 @@
+{{- if .Values.metrics.enabled }}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "witwave-operator.fullname" . }}-test-metrics
+  labels:
+    {{- include "witwave-operator.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  activeDeadlineSeconds: 60
+  # Run under the operator's ServiceAccount so controller-runtime's
+  # metrics auth filter (authn/authz via TokenReview +
+  # SubjectAccessReview) accepts the projected token when
+  # metrics.secure=true (#690). The operator SA already holds the
+  # nonResourceURLs ["/metrics"] permission required for scrape.
+  serviceAccountName: {{ include "witwave-operator.serviceAccountName" . }}
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 100
+    runAsGroup: 101
+    # PSS-restricted compatibility (#847).
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: test
+      image: curlimages/curl:8.7.1
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+        seccompProfile:
+          type: RuntimeDefault
+      command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          echo "Testing operator /metrics endpoint..."
+          {{- if .Values.metrics.secure }}
+          TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+          curl -sf -k --connect-timeout 3 --max-time 10 \
+            -H "Authorization: Bearer ${TOKEN}" \
+            https://{{ include "witwave-operator.fullname" . }}-metrics:{{ .Values.metrics.port }}/metrics >/dev/null
+          {{- else }}
+          curl -sf --connect-timeout 3 --max-time 10 http://{{ include "witwave-operator.fullname" . }}-metrics:{{ .Values.metrics.port }}/metrics >/dev/null
+          {{- end }}
+          echo "Operator metrics endpoint reachable."
+{{- end }}
