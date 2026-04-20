@@ -8,6 +8,51 @@ section of each entry.
 
 ## [Unreleased]
 
+## [0.5.8] — 2026-04-20
+
+### Added
+
+- **`ww tui` subcommand** (#1450 stub). Launches an interactive
+  terminal UI: welcome banner, "what's coming" bullets,
+  tracking-issue pointer, and live confirmation of the target
+  kubeconfig context (cluster, context, namespace). Kubeconfig
+  resolution is best-effort — if it fails the TUI still launches
+  and shows a "No cluster configured" diagnostic in place of the
+  context block. Exit with `q`, `esc`, or `ctrl-c`. No feature
+  panels yet; the point of this release is to establish the
+  framework. `--kubeconfig` / `--context` / `--namespace` flags
+  mirror the `ww operator *` surface.
+
+### Changed
+
+- **TUI framework locked in as `rivo/tview`.** Shipped the stub
+  on `charmbracelet/bubbletea` in one intermediate commit, then
+  switched to tview before release on reflection that the
+  long-term UX target is k9s-style (agent list → drill in →
+  watch logs/events/sessions), and k9s runs on tview. Matching
+  the framework means users who know k9s carry muscle memory
+  across for free. The stub is small enough that the swap was
+  nearly free; the same swap after real feature panels shipped
+  would have been expensive.
+- **Competitive landscape doc updated** to reflect fresh research
+  on OpenClaw (20+ chat-platform integrations, macOS menu-bar
+  companion with voice wake, TypeScript/Node.js implementation,
+  MIT license, calendar-versioned release cadence) and to
+  capture the "witwave is OpenClaw for teams with Kubernetes
+  clusters" positioning frame in the Reference Products entry.
+  Marked OpenClaw explicitly as "primary open-source
+  competitor" in the section heading and restructured
+  Relative-standing into explicit differentiator lists
+  (5 in witwave's favor, 4 in OpenClaw's).
+
+### Deps
+
+- Added: `github.com/rivo/tview`, `github.com/gdamore/tcell/v2`
+  (tview + the low-level terminal library it builds on).
+- Net go.sum reduction — tview's transitive graph is lighter
+  than the Charm ecosystem chain we temporarily added and
+  then removed.
+
 ## [0.5.7] — 2026-04-20
 
 Docs-only release. No code changes, no behaviour changes. Closes
@@ -363,7 +408,8 @@ silent hardening.
   (`.witwave/`), and environment variables (`WITWAVE_*`) migrated in
   one sweep on 2026-04-19 (commit b966b40).
 
-[Unreleased]: https://github.com/skthomasjr/witwave/compare/v0.5.7...HEAD
+[Unreleased]: https://github.com/skthomasjr/witwave/compare/v0.5.8...HEAD
+[0.5.8]: https://github.com/skthomasjr/witwave/releases/tag/v0.5.8
 [0.5.7]: https://github.com/skthomasjr/witwave/releases/tag/v0.5.7
 [0.5.6]: https://github.com/skthomasjr/witwave/releases/tag/v0.5.6
 [0.5.5]: https://github.com/skthomasjr/witwave/releases/tag/v0.5.5
