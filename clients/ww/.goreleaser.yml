@@ -116,11 +116,15 @@ brews:
     # Tap repo under the witwave-ai org. Formula push requires
     # HOMEBREW_TAP_GITHUB_TOKEN (fine-grained PAT with Contents:
     # Read-and-Write on witwave-ai/homebrew-ww); default GITHUB_TOKEN
-    # can't push across owners.
+    # can't push across owners. goreleaser v2 dropped the v1
+    # auto-detection of HOMEBREW_TAP_GITHUB_TOKEN, so the token must be
+    # wired explicitly via repository.token for the tap push to use it
+    # instead of falling back to GITHUB_TOKEN.
     repository:
       owner: witwave-ai
       name: homebrew-ww
       branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     directory: Formula
     homepage: https://github.com/skthomasjr/autonomous-agent
     description: witwave CLI for the Witwave multi-container agent platform
