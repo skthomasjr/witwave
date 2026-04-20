@@ -208,6 +208,11 @@ instances, logs, and memory.
     └── fred/          # Fred (witwave: 8098 | claude: 8089 — single-backend test agent)
 ```
 
+Port numbers above are example assignments from the bundled `values-test.yaml` and the default `values.yaml`
+layout — not hardcoded in any image. Each container reads its own port from an environment variable
+(`HARNESS_PORT`, `BACKEND_PORT`, `METRICS_PORT`) and can be remapped per deployment via Helm values or the
+`WitwaveAgent` CRD.
+
 Each agent directory contains:
 
 ```text

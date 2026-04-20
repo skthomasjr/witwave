@@ -109,7 +109,8 @@ codex mounts:
 
 Key environment variables: `AGENT_NAME` (instance name), `AGENT_OWNER` (named agent, e.g. `iris`), `AGENT_ID` (backend
 slot id, e.g. `codex`), `AGENT_URL`, `BACKEND_PORT`, `OPENAI_API_KEY`, `CODEX_MODEL` (model override,
-default `gpt-5.1-codex`), `METRICS_ENABLED`, `CONVERSATIONS_AUTH_TOKEN`,
+default `gpt-5.1-codex` — a placeholder used by the test suite; production deployments must override with a real
+OpenAI model id such as `gpt-4o`, `gpt-4-turbo`, or `o1-preview`), `METRICS_ENABLED`, `CONVERSATIONS_AUTH_TOKEN`,
 `CONVERSATIONS_AUTH_DISABLED` (explicit escape hatch for no-auth mode, #718), `LOG_REDACT` (conversation
 redaction toggle, #714), `TASK_STORE_PATH`, `WORKER_MAX_RESTARTS`, `COMPUTER_USE_ENABLED` (activates
 Playwright browser tool), `LOG_PROMPT_MAX_BYTES` (max bytes of prompt logged at INFO; default 200; set to 0
