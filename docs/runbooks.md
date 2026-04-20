@@ -192,6 +192,55 @@ backend will start dropping conversation history.
 
 ---
 
+## `witwavewebhookretrybyteshalffull`
+
+**What fires it.** `harness_webhooks_retry_bytes_in_flight_total /
+harness_webhooks_retry_bytes_budget_bytes{scope="global"}` exceeds
+the ratio threshold (default 0.5 — i.e. 50% of
+`WEBHOOK_RETRY_BYTES_BUDGET`).
+
+This is an **early-warning** signal. The shed counter
+(`harness_webhooks_delivery_total{result="shed_retry_bytes"}`) is
+a lagging signal — by the time events are being dropped, you've
+already lost delivery. The gauge-based alert gives operators
+headroom to act.
+
+**First checks.**
+
+```promql
+# Per-subscription culprit:
+harness_webhooks_retry_bytes_in_flight
+
+# Current cap:
+harness_webhooks_retry_bytes_budget_bytes{scope="global"}
+```
+
+Identify the subscription with the largest `_in_flight` value — it's
+the one whose sink is slow or unreachable.
+
+**Remediation.**
+
+- **Slow sink:** contact the receiver; verify they're up and
+  processing. `harness_webhooks_delivery_total{result="timeout_total"}`
+  spiking confirms sink-side latency.
+- **Unreachable sink:** NetworkPolicy blocking egress, DNS failure,
+  or a URL typo. Test with `kubectl exec` + `curl` from the harness
+  pod.
+- **Legitimate burst:** a real event storm (e.g. dashboards firing
+  on every reconcile) can temporarily saturate the budget. Raise
+  `WEBHOOK_RETRY_BYTES_BUDGET` via chart values OR tune the
+  subscription's retry count down if the delivery is non-critical.
+- **Runaway subscription:** one sub dominating the total is what
+  `WEBHOOK_RETRY_BYTES_PER_SUB` is for — if the per-sub cap isn't
+  binding, lower it in chart values.
+
+**Escalation.** If the ratio stays above 50% for > 30 minutes with
+no per-sub culprit AND the sink is reachable, suspect a harness-side
+accounting bug (a decrement path that's not releasing slots). File
+an issue referencing this alert + current gauge values.
+
+---
+
 ## `witwavea2alatencyhigh`
 
 **What fires it.** `harness_a2a_backend_request_duration_seconds` p99

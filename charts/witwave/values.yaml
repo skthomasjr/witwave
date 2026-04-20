@@ -584,6 +584,15 @@ prometheusRule:
       p99Seconds: 30
       forMinutes: 5
       severity: warning
+    # Webhook retry-bytes budget saturation (#1466). The shed counter
+    # is a lagging signal — this alert fires at 50% of the configured
+    # WEBHOOK_RETRY_BYTES_BUDGET so there's headroom to act before
+    # deliveries start dropping. Tune `ratio` down for tighter SLOs.
+    webhookRetryBytesHalfFull:
+      enabled: true
+      ratio: 0.5
+      forMinutes: 5
+      severity: warning
     # Event schema validation failures (#1469). Any non-zero rate means
     # the emitter and schema have drifted; downstream subscribers
     # never see the dropped events. Fires on > 0/s by default — tune

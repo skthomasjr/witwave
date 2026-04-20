@@ -111,6 +111,15 @@ harness_webhooks_delivery_shed_total: prometheus_client.Counter | None = None
 harness_webhooks_parse_errors_total: prometheus_client.Counter | None = None
 harness_webhooks_reloads_total: prometheus_client.Counter | None = None
 harness_webhooks_items_registered: prometheus_client.Gauge | None = None
+# #1466: in-flight retry-bytes budget visibility. Two gauges — one
+# labelled by subscription (operators see which sub is hogging the
+# budget) and one un-labelled global sum for total-budget alerting.
+# The budget itself is exposed once as a constant-labelled gauge so
+# alert PromQL can divide in_flight / budget_bytes without hardcoding
+# the env-var value.
+harness_webhooks_retry_bytes_in_flight: prometheus_client.Gauge | None = None
+harness_webhooks_retry_bytes_in_flight_total: prometheus_client.Gauge | None = None
+harness_webhooks_retry_bytes_budget_bytes: prometheus_client.Gauge | None = None
 # #1389: count body-size-cap truncations per subscription so operators
 # alert on malformed bodies downstream.
 harness_webhooks_body_truncated_total: prometheus_client.Counter | None = None
@@ -609,6 +618,34 @@ if _enabled:
     harness_webhooks_reloads_total = prometheus_client.Counter(
         "harness_webhooks_reloads_total",
         "Total webhook file-change reload events.",
+    )
+    # #1466: in-flight retry-bytes visibility. The admission-control
+    # code in harness/webhooks.py accounts for pending retry bodies
+    # against WEBHOOK_RETRY_BYTES_BUDGET (global) and
+    # WEBHOOK_RETRY_BYTES_PER_SUB (per-sub). Without gauges there's
+    # no way to see HOW CLOSE you are to the cap — operators first
+    # learn about retry-bytes pressure via shed events in the
+    # delivery counter, which is a lagging signal.
+    harness_webhooks_retry_bytes_in_flight = prometheus_client.Gauge(
+        "harness_webhooks_retry_bytes_in_flight",
+        "Current in-flight retry-bytes attributed to each subscription "
+        "(#1466). Sum per-sub may not equal the global total when a "
+        "sub's chain has just completed but the gauge hasn't ticked.",
+        ["subscription"],
+    )
+    harness_webhooks_retry_bytes_in_flight_total = prometheus_client.Gauge(
+        "harness_webhooks_retry_bytes_in_flight_total",
+        "Global in-flight retry-bytes across all subscriptions (#1466). "
+        "Divide against harness_webhooks_retry_bytes_budget_bytes{scope=\"global\"} "
+        "to get utilisation.",
+    )
+    harness_webhooks_retry_bytes_budget_bytes = prometheus_client.Gauge(
+        "harness_webhooks_retry_bytes_budget_bytes",
+        "Configured retry-bytes budget, in bytes (#1466). scope=\"global\" "
+        "is WEBHOOK_RETRY_BYTES_BUDGET; scope=\"per_sub\" is "
+        "WEBHOOK_RETRY_BYTES_PER_SUB. Set once at module import; does "
+        "not change during a pod's lifetime.",
+        ["scope"],
     )
     harness_backends_reload_errors_total = prometheus_client.Counter(
         "harness_backends_reload_errors_total",

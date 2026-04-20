@@ -51,6 +51,9 @@ from metrics import (
     harness_webhooks_items_registered,
     harness_webhooks_parse_errors_total,
     harness_webhooks_reloads_total,
+    harness_webhooks_retry_bytes_budget_bytes,
+    harness_webhooks_retry_bytes_in_flight,
+    harness_webhooks_retry_bytes_in_flight_total,
     harness_watcher_events_total,
 )
 from utils import parse_duration, parse_frontmatter, run_awatch_loop
@@ -207,6 +210,21 @@ def _resolve_per_sub_budget() -> int:
 
 WEBHOOK_RETRY_BYTES_PER_SUB = _resolve_per_sub_budget()
 _webhook_retry_bytes_per_sub: dict[str, int] = {}
+
+# #1466: publish the configured budget once at module load so alert
+# PromQL can divide in_flight / budget without hardcoding the cap.
+# The gauge is static during the pod's lifetime — env vars are read
+# at startup only.
+if harness_webhooks_retry_bytes_budget_bytes is not None:
+    try:
+        harness_webhooks_retry_bytes_budget_bytes.labels(scope="global").set(
+            float(WEBHOOK_RETRY_BYTES_BUDGET)
+        )
+        harness_webhooks_retry_bytes_budget_bytes.labels(scope="per_sub").set(
+            float(WEBHOOK_RETRY_BYTES_PER_SUB)
+        )
+    except Exception:  # pragma: no cover — observability must never break logic
+        pass
 
 # HTTP status codes that are safe to retry — mirrors the inbound A2A pattern
 # at backends/a2a.py:35 (#598). 408 (Request Timeout) and 429 (Too Many
@@ -1303,6 +1321,23 @@ async def deliver(
                     return
                 _webhook_retry_bytes_inflight += _retry_bytes
                 _webhook_retry_bytes_per_sub[sub.name] = _sub_inflight + _retry_bytes
+                # #1466: surface the post-grant state so operators see
+                # how close we are to the cap before the first shed
+                # event fires.
+                if harness_webhooks_retry_bytes_in_flight is not None:
+                    try:
+                        harness_webhooks_retry_bytes_in_flight.labels(
+                            subscription=sub.name
+                        ).set(float(_webhook_retry_bytes_per_sub[sub.name]))
+                    except Exception:
+                        pass
+                if harness_webhooks_retry_bytes_in_flight_total is not None:
+                    try:
+                        harness_webhooks_retry_bytes_in_flight_total.set(
+                            float(_webhook_retry_bytes_inflight)
+                        )
+                    except Exception:
+                        pass
 
         async def _tracked_retry() -> None:
             await registered.wait()
@@ -1355,6 +1390,22 @@ async def deliver(
                             _webhook_retry_bytes_per_sub.pop(sub.name, None)
                         else:
                             _webhook_retry_bytes_per_sub[sub.name] = _new
+                        # #1466: mirror the release onto the gauges so
+                        # the signal decays as chains finish.
+                        if harness_webhooks_retry_bytes_in_flight is not None:
+                            try:
+                                harness_webhooks_retry_bytes_in_flight.labels(
+                                    subscription=sub.name
+                                ).set(float(_new))
+                            except Exception:
+                                pass
+                        if harness_webhooks_retry_bytes_in_flight_total is not None:
+                            try:
+                                harness_webhooks_retry_bytes_in_flight_total.set(
+                                    float(_webhook_retry_bytes_inflight)
+                                )
+                            except Exception:
+                                pass
 
         _retry_task = asyncio.ensure_future(_tracked_retry())
         # Notify the caller (e.g. WebhookRunner.fire) so it can register the

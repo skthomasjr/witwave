@@ -28,6 +28,10 @@ Alerts shipped:
   WitwavePVCFillCritical          kubelet_volume_stats_capacity_bytes above
                               70% / 90% on a witwave-named PVC (#1465).
                               Usually conversation JSONL filling the volume.
+  WitwaveWebhookRetryBytesHalfFull
+                              — in-flight webhook retry bytes above 50% of
+                              WEBHOOK_RETRY_BYTES_BUDGET (#1466). Early
+                              warning before deliveries start dropping.
   WitwaveA2ALatencyHigh         — harness_a2a_backend_request_duration_seconds
                               p99 exceeds threshold (#1467); pool exhaustion
                               or wedged backend.
@@ -192,6 +196,35 @@ spec:
             summary: "witwave PVC {{`{{ $labels.persistentvolumeclaim }}`}} nearly full ({{ printf "%.0f" (mulf .fillRatio 100.0) }}%+)"
             description: "Persistent volume {{`{{ $labels.persistentvolumeclaim }}`}} is above {{ printf "%.0f" (mulf .fillRatio 100.0) }}% capacity. Pod eviction risk; act immediately to free space or resize."
             runbook_url: "https://github.com/skthomasjr/witwave/blob/main/docs/runbooks.md#witwavepvcfillwarning--witwavepvcfillcritical"
+        {{- end }}
+        {{- end }}
+    - name: witwave.retry_bytes
+      rules:
+        {{- with $alerts.webhookRetryBytesHalfFull }}
+        {{- if .enabled }}
+        - alert: WitwaveWebhookRetryBytesHalfFull
+          # #1466: retry-bytes budget saturation early warning. The shed
+          # counter is a lagging signal — by the time events are being
+          # dropped, operators already missed work. This alert fires at
+          # 50% of WEBHOOK_RETRY_BYTES_BUDGET so there's headroom to
+          # scale the sink / raise the cap / drain a slow subscription
+          # before the drop.
+          expr: |
+            (
+              harness_webhooks_retry_bytes_in_flight_total
+              /
+              clamp_min(
+                max(harness_webhooks_retry_bytes_budget_bytes{scope="global"}), 1
+              )
+            ) > {{ .ratio }}
+          for: {{ .forMinutes }}m
+          labels:
+            severity: {{ .severity | quote }}
+            part_of: witwave
+          annotations:
+            summary: "witwave webhook retry-byte budget above {{ printf "%.0f" (mulf .ratio 100.0) }}% utilisation"
+            description: "harness_webhooks_retry_bytes_in_flight_total is above {{ printf "%.0f" (mulf .ratio 100.0) }}% of WEBHOOK_RETRY_BYTES_BUDGET. Sink is slow; next step is drops via result=\"shed_retry_bytes\". Identify the offending subscription via per-sub gauge."
+            runbook_url: "https://github.com/skthomasjr/witwave/blob/main/docs/runbooks.md#witwavewebhookretrybyteshalffull"
         {{- end }}
         {{- end }}
     - name: witwave.a2a
