@@ -10,9 +10,13 @@ Built with Operator SDK v1.42 (Go). Mirrors the deployment shape of the
 path once the CRD is stable. The Helm chart remains the supported install
 method while the operator is in `v1alpha1`.
 
-> **Status:** first pass. The `WitwaveAgent` type and reconciler are in place.
-> Git-sync sidecars, cross-agent manifest, UI, and Ingress are deferred to
-> a future `WitwavePlatform` CRD — run the Helm chart alongside for those for now.
+> **Status:** v1alpha1, published to GHCR, installable via the `ww`
+> CLI or raw Helm. `WitwaveAgent` and `WitwavePrompt` resources are
+> both in-tree. Git-sync sidecars render as part of the agent
+> Deployment. Dashboard and Ingress still live in the agent Helm
+> chart (`charts/witwave`) — a future `WitwavePlatform` CRD would
+> subsume those, but today the two-chart split is the supported
+> shape.
 
 ## Requirements
 

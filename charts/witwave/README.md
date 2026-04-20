@@ -1,8 +1,10 @@
 # witwave
 
-Helm chart for the witwave platform — witwave harness and backends (claude, codex, gemini).
-
-> **Note:** This chart is a work in progress. Templates and values will be added as the chart is built out.
+Helm chart for the witwave platform — witwave harness and backends
+(claude, codex, gemini), MCP tool servers, and optional dashboard.
+Deploys one pod per named agent with the harness + backends + git-sync
+sidecars colocated; MCP tools run as shared cluster-wide Deployments.
+Released to GHCR on every tag alongside `witwave-operator`.
 
 ## Prerequisites
 
