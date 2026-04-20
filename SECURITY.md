@@ -160,7 +160,11 @@ was built from.
 To verify an image before running it:
 
 ```bash
-IMAGE=ghcr.io/skthomasjr/images/operator:v0.5.4
+# Note: image tags strip the leading "v" — the git tag v0.5.5 pushes
+# images tagged 0.5.5 (docker/metadata-action@v5 default semver
+# normalisation). Helm chart tags also strip the v. `latest` and
+# `<major>.<minor>` aliases exist as well.
+IMAGE=ghcr.io/skthomasjr/images/operator:0.5.5
 
 cosign verify \
   --certificate-identity-regexp="^https://github.com/skthomasjr/witwave/\.github/workflows/release\.yaml@refs/tags/v.*$" \
@@ -214,7 +218,7 @@ push time. Verify via:
 cosign verify \
   --certificate-identity-regexp="^https://github.com/skthomasjr/witwave/\.github/workflows/release-helm\.yml@refs/tags/v.*$" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-  oci://ghcr.io/skthomasjr/charts/witwave-operator:0.5.4
+  oci://ghcr.io/skthomasjr/charts/witwave-operator:0.5.5
 ```
 
 ### What signing does NOT prove
