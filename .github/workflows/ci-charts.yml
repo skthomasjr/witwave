@@ -13,6 +13,13 @@ on:
       - "tools/**"
       - ".github/workflows/ci-charts.yml"
 
+# Explicit workflow-level permissions (matches ci-ww.yml + ci-dashboard.yml).
+# Defensive against org default-permission drift — lint + render is
+# strictly read-only; no reason any job in this workflow should need
+# write access to contents, packages, or anything else.
+permissions:
+  contents: read
+
 # Lint + render + schema-validate every Helm chart in this repo on every
 # relevant PR (#838). Catches syntax drift, template regressions, schema
 # vs values desync (#843), and malformed YAML before a tag ships. Does

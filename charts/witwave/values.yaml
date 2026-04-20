@@ -1017,8 +1017,15 @@ mcpTools:
   # (#853 close comment); this entry ships only Prometheus scaffolding.
   prometheus:
     enabled: false
-    # # Three-state override (#856). See kubernetes.automountServiceAccountToken.
-    # automountServiceAccountToken: true
+    # #1455: the prometheus MCP tool does NOT talk to the apiserver
+    # (tools/prometheus/server.py calls httpx against PROMETHEUS_URL
+    # only — no kubernetes.client, no load_incluster_config). Defaulting
+    # the projected SA-token mount to false is strictly tighter than
+    # the sibling kubernetes/helm tools which genuinely need it. Operators
+    # who front Prometheus via an auth-gated proxy that USES the
+    # SA-token for authentication can override this back to true.
+    # Three-state semantics documented at kubernetes.automountServiceAccountToken.
+    automountServiceAccountToken: false
     image:
       repository: ghcr.io/skthomasjr/images/mcp-prometheus
       # tag: ""
