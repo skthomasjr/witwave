@@ -208,6 +208,23 @@ Channels:
 - `beta` — includes prereleases (`v*-beta.N`, `v*-rc.N`). Use this to
   track the bleeding edge.
 
+### Upgrade on demand
+
+The config-driven banner is passive. To trigger an upgrade explicitly
+(without waiting for the next check cycle or flipping `mode`), run:
+
+```bash
+ww update             # check + upgrade if newer
+ww update --check     # check only, don't upgrade
+ww update --force     # skip the check; always run the upgrade
+```
+
+`ww update` delegates to the installer matching the current binary's
+provenance (`brew upgrade ww` for Homebrew, `go install ...@latest`
+for `go install` users, a download hint for standalone binaries).
+Works even when `mode = off` — the subcommand is an explicit request,
+not a passive check.
+
 ### Environment overrides
 
 All of these win over `config.toml`:

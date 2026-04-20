@@ -105,6 +105,7 @@ func Execute() int {
 	root.AddCommand(newContinuationsCmd())
 	root.AddCommand(newValidateCmd())
 	root.AddCommand(newConfigCmd())
+	root.AddCommand(newUpdateCmd())
 
 	err := root.Execute()
 	// Finish the async update check regardless of command outcome.

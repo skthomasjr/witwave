@@ -52,10 +52,10 @@ func Notify(
 		if !askYesNo(stdin, stderr, "Upgrade now?") {
 			return nil
 		}
-		return runUpgrade(ctx, method, stdout, stderr)
+		return RunUpgrade(ctx, method, stdout, stderr)
 
 	case ModeAuto:
-		return runUpgrade(ctx, method, stdout, stderr)
+		return RunUpgrade(ctx, method, stdout, stderr)
 	}
 	return nil
 }
@@ -113,7 +113,7 @@ func askYesNo(stdin io.Reader, stderr io.Writer, prompt string) bool {
 	}
 }
 
-// runUpgrade dispatches to the installer command matching the detected
+// RunUpgrade dispatches to the installer command matching the detected
 // install method. For brew installs it first refreshes the witwave-ai
 // tap so a newly-pushed Formula/ww.rb is visible; then runs
 // `brew upgrade ww`. For go-install it runs `go install @latest`.
@@ -123,7 +123,7 @@ func askYesNo(stdin io.Reader, stderr io.Writer, prompt string) bool {
 // stdout/stderr are plumbed through to the child process so the user
 // sees the installer's output in real time. This is important for brew
 // in particular, which can take tens of seconds.
-func runUpgrade(ctx context.Context, method InstallMethod, stdout, stderr io.Writer) error {
+func RunUpgrade(ctx context.Context, method InstallMethod, stdout, stderr io.Writer) error {
 	if stdout == nil {
 		stdout = os.Stdout
 	}
