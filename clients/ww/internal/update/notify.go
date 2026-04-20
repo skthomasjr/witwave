@@ -52,10 +52,10 @@ func Notify(
 		if !askYesNo(stdin, stderr, "Upgrade now?") {
 			return nil
 		}
-		return RunUpgrade(ctx, method, stdout, stderr)
+		return RunUpgrade(ctx, method, notice.CurrentVersion, stdout, stderr)
 
 	case ModeAuto:
-		return RunUpgrade(ctx, method, stdout, stderr)
+		return RunUpgrade(ctx, method, notice.CurrentVersion, stdout, stderr)
 	}
 	return nil
 }
@@ -123,7 +123,7 @@ func askYesNo(stdin io.Reader, stderr io.Writer, prompt string) bool {
 // stdout/stderr are plumbed through to the child process so the user
 // sees the installer's output in real time. This is important for brew
 // in particular, which can take tens of seconds.
-func RunUpgrade(ctx context.Context, method InstallMethod, stdout, stderr io.Writer) error {
+func RunUpgrade(ctx context.Context, method InstallMethod, currentVersion string, stdout, stderr io.Writer) error {
 	if stdout == nil {
 		stdout = os.Stdout
 	}
@@ -133,19 +133,62 @@ func RunUpgrade(ctx context.Context, method InstallMethod, stdout, stderr io.Wri
 
 	switch method {
 	case InstallMethodBrew:
-		// `brew upgrade` performs its own auto-update of installed
-		// taps (unless the user set HOMEBREW_NO_AUTO_UPDATE=1), so a
-		// pre-step `brew update` is redundant and, depending on the
-		// command shape, either silently no-ops or surfaces a
-		// "No available formula" warning (brew's `update` takes a
-		// repo path, not a formula name). Just run the upgrade and
-		// let brew handle its own tap freshness.
+		// Explicitly refresh all taps FIRST. We used to rely on
+		// `brew upgrade`'s own auto-update — but that path is
+		// heuristic (once-per-24h by default, skipped entirely when
+		// HOMEBREW_NO_AUTO_UPDATE=1 is set), so a ww user whose brew
+		// cache was "recent enough" would hit the path where `brew
+		// upgrade ww` sees the stale tap index, reports "already
+		// installed", and ww printed a lying "Upgraded." line.
+		// Running `brew update` (no args) refreshes every tap
+		// including witwave-ai/ww and is a reliable ~1s call.
+		// On failure we don't bail — log it and try the upgrade
+		// anyway; if the user really is already current the upgrade
+		// is a no-op, and we'll detect that below regardless.
+		updateCmd := exec.CommandContext(ctx, "brew", "update")
+		updateCmd.Stdout, updateCmd.Stderr = stdout, stderr
+		if err := updateCmd.Run(); err != nil {
+			fmt.Fprintf(stderr, "warning: `brew update` failed: %v — continuing with upgrade anyway\n", err)
+		}
+
 		upgradeCmd := exec.CommandContext(ctx, "brew", "upgrade", "ww")
 		upgradeCmd.Stdout, upgradeCmd.Stderr = stdout, stderr
 		if err := upgradeCmd.Run(); err != nil {
 			return fmt.Errorf("brew upgrade ww: %w", err)
 		}
-		fmt.Fprintln(stderr, "Upgraded. Run your ww command again to use the new version.")
+
+		// Verify the upgrade actually took. `brew upgrade` exits 0
+		// both when it upgraded AND when it thinks nothing to do,
+		// so we can't trust the exit code alone. Ask brew what
+		// version is installed now and compare against what the
+		// caller expected — if brew still reports the old version,
+		// the user likely has a stale tap pin or a HOMEBREW_* env
+		// var interfering. Surface that explicitly instead of
+		// printing "Upgraded." when nothing moved.
+		installed, err := brewInstalledVersion(ctx)
+		if err != nil {
+			// Don't fail the overall command on a diagnostic probe
+			// — the upgrade may have worked; we just can't confirm.
+			fmt.Fprintf(stderr, "note: couldn't verify installed version via brew: %v\n", err)
+			fmt.Fprintln(stderr, "Run your ww command again to use the new version.")
+			return nil
+		}
+		stripped := strings.TrimPrefix(currentVersion, "v")
+		if installed != "" && installed == stripped {
+			fmt.Fprintf(stderr,
+				"ww is already at %s according to brew, even though GitHub reports a newer release. "+
+					"This usually means HOMEBREW_NO_AUTO_UPDATE=1 is set or the witwave-ai/ww tap is "+
+					"pinned/forked locally. Try `brew untap witwave-ai/ww && brew tap witwave-ai/ww` "+
+					"and re-run `ww update`.\n",
+				installed,
+			)
+			return nil
+		}
+		if installed != "" {
+			fmt.Fprintf(stderr, "Upgraded to %s. Run your ww command again to use the new version.\n", installed)
+		} else {
+			fmt.Fprintln(stderr, "Upgraded. Run your ww command again to use the new version.")
+		}
 		return nil
 
 	case InstallMethodGoInstall:
@@ -166,4 +209,28 @@ func RunUpgrade(ctx context.Context, method InstallMethod, stdout, stderr io.Wri
 		)
 		return nil
 	}
+}
+
+// brewInstalledVersion returns the version string brew reports as the
+// currently-installed version of ww, or empty when brew doesn't have
+// it installed. Output shape is `ww 0.5.0` — we split on whitespace
+// and take the last token. Best-effort: any parse failure returns
+// ("", err) so callers can degrade gracefully instead of crashing.
+func brewInstalledVersion(ctx context.Context) (string, error) {
+	cmd := exec.CommandContext(ctx, "brew", "list", "--versions", "ww")
+	out, err := cmd.Output()
+	if err != nil {
+		// `brew list --versions` exits non-zero when the formula isn't
+		// installed. Don't treat that as a hard failure — just return
+		// empty + nil so the caller prints a neutral message.
+		return "", nil
+	}
+	fields := strings.Fields(strings.TrimSpace(string(out)))
+	if len(fields) < 2 {
+		return "", fmt.Errorf("brew list output had %d fields, expected >= 2: %q", len(fields), string(out))
+	}
+	// Last field is the version string (brew can list multiple if
+	// multiple kegs are installed; we take the last reported one as
+	// that's typically the most recent).
+	return fields[len(fields)-1], nil
 }

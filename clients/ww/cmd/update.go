@@ -89,7 +89,7 @@ func runUpdate(cc *cobra.Command, force, check bool) error {
 	// decides whether anything needs doing (e.g. `brew upgrade`
 	// no-ops when already at the latest tap version).
 	if force {
-		return update.RunUpgrade(context.Background(), method, os.Stdout, os.Stderr)
+		return update.RunUpgrade(context.Background(), method, Version, os.Stdout, os.Stderr)
 	}
 
 	// Default + --check: perform the channel query first.
@@ -135,7 +135,7 @@ func runUpdate(cc *cobra.Command, force, check bool) error {
 	// Default flow: run the upgrade. Empty line so the brew output
 	// below doesn't visually mash against our banner.
 	fmt.Println()
-	return update.RunUpgrade(context.Background(), method, os.Stdout, os.Stderr)
+	return update.RunUpgrade(context.Background(), method, Version, os.Stdout, os.Stderr)
 }
 
 // resolveInterval turns the optional config string into a duration,
