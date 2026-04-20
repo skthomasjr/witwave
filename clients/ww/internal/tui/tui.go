@@ -2,23 +2,28 @@
 //
 // Current state: stub. One screen with a welcome banner + context
 // confirmation + tracking-issue pointer. No cluster API calls; no
-// feature panels yet. Establishes the bubbletea framework that
-// future panels (status, logs, events, session drill-down) will
-// plug into.
+// feature panels yet. Establishes the tview framework that future
+// panels (status, logs, events, session drill-down) will plug into.
+//
+// Framework choice: `rivo/tview` on `gdamore/tcell` — matches k9s,
+// which is the UX reference for what `ww tui` will ultimately
+// become (agent list → drill in → watch logs/events/sessions,
+// vim-style navigation, slash-to-filter). Using the same framework
+// means users carry over their k9s muscle memory for free;
+// divergence would be a UX tax forever.
 //
 // Design notes:
 //
-//   - Single persistent view. No splash-then-main transition —
-//     bubbletea apps launch fast enough that a timed splash would
-//     feel like an artificial pause. The welcome sits directly in
-//     the main view's header area.
-//   - Graceful degradation. If kubeconfig resolution fails
-//     (missing file, no current-context, parse error) the TUI
-//     still launches and shows a "No cluster configured"
-//     message. Never blocks on missing config.
-//   - Exit in three forms (q / esc / ctrl-c) all routed to the
-//     same clean-shutdown path. No confirm dialog for a read-only
-//     surface.
+//   - Single-screen stub today. The Flex-based composition +
+//     modal-overlay patterns that the real panels will use are
+//     already established in `Run()` so future PRs only add
+//     pages to the existing Pages container.
+//   - Graceful degradation. If kubeconfig resolution fails, the
+//     TUI still launches and shows a "No cluster configured"
+//     message in place of the context block. Never blocks on
+//     missing config.
+//   - Exit in three forms (q / esc / ctrl-c) all routed to
+//     app.Stop(). No confirm dialog for a read-only surface.
 package tui
 
 import (
@@ -27,239 +32,141 @@ import (
 
 	"github.com/skthomasjr/witwave/clients/ww/internal/k8s"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
-// Model is the bubbletea Model for the TUI stub. Exported so tests
-// (when we add them alongside real panels) can construct one
-// directly without going through the entry-point cobra command.
-type Model struct {
-	version    string
-	target     *k8s.Target
-	contextErr string // non-empty when kubeconfig resolution failed; shown in place of the cluster block
+// Run starts the tview application with the given version +
+// resolved context (or diagnostic string). Blocks until the user
+// quits. Terminal state is restored automatically on exit via
+// tview's own shutdown path.
+func Run(version string, target *k8s.Target, contextErr string) error {
+	app := tview.NewApplication()
 
-	width  int
-	height int
-}
+	// Root layout uses a Pages container so future panels (status,
+	// logs, events, session drill) can register as pages without
+	// rearchitecting the entry point. The stub registers a single
+	// "welcome" page today.
+	pages := tview.NewPages()
+	pages.AddPage("welcome", welcomePage(version, target, contextErr), true, true)
 
-// New builds an initial Model with the resolved context (or the
-// diagnostic message from a failed resolution). Always succeeds —
-// a TUI that can't launch because of kubeconfig issues would be
-// the wrong UX for an interactive surface.
-func New(version string, target *k8s.Target, contextErr string) Model {
-	return Model{
-		version:    version,
-		target:     target,
-		contextErr: contextErr,
-	}
-}
-
-// Run starts the bubbletea program and blocks until the user
-// quits. The alt-screen is entered automatically; the terminal is
-// restored to its pre-launch state on exit via bubbletea's own
-// shutdown path.
-func Run(m Model) error {
-	p := tea.NewProgram(m, tea.WithAltScreen())
-	_, err := p.Run()
-	return err
-}
-
-// Init is the bubbletea Model contract. No startup commands for the
-// stub — future panels will kick off data loads here.
-func (m Model) Init() tea.Cmd {
-	return nil
-}
-
-// Update routes keyboard + window-size events. Quit handling is
-// centralised so q / esc / ctrl-c all reach the same shutdown path.
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
-		return m, nil
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "q", "esc", "ctrl+c":
-			return m, tea.Quit
+	// Global key bindings. Future per-page key handlers install
+	// themselves on each primitive; the app-level handler only
+	// owns actions that should work from every page (currently
+	// just quit).
+	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyCtrlC, tcell.KeyEscape:
+			app.Stop()
+			return nil
+		case tcell.KeyRune:
+			if event.Rune() == 'q' {
+				app.Stop()
+				return nil
+			}
 		}
-	}
-	return m, nil
+		return event
+	})
+
+	return app.SetRoot(pages, true).EnableMouse(false).Run()
 }
 
-// --- styles ---
-
-var (
-	// Header + footer strips use the same muted border colour so the
-	// frame reads as one bounded workspace. Colour choices are
-	// terminal-palette-agnostic; lipgloss maps these onto whatever
-	// the terminal has available.
-	borderStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("240"))
-
-	titleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("39")) // bright cyan for the ww brand
-
-	versionStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("246")) // dim
-
-	welcomeStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("255")) // bright white
-
-	bodyStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("252")) // light grey, easy on eyes
-
-	bulletStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("244")) // dimmer grey for list items
-
-	linkStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("39")).
-			Underline(true)
-
-	contextLabelStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("246")).
-				Bold(true)
-
-	contextValueStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("252"))
-
-	warnStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("214")) // orange — stands out without shouting
-
-	footerStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("246"))
-)
-
-// View renders the current Model as a string. Bubbletea calls this
-// after every Update; the framework handles differential screen
-// updates under the hood.
-func (m Model) View() string {
-	width := m.width
-	if width <= 0 {
-		width = 80 // pre-WindowSizeMsg default; avoids zero-width renders on the first frame
-	}
-	// Clamp inner content to a comfortable max width so the layout
-	// doesn't sprawl across ultra-wide terminals.
-	inner := width - 4
-	if inner > 76 {
-		inner = 76
-	}
-	if inner < 40 {
-		inner = 40
-	}
-
+// welcomePage builds the stub's single page — header strip,
+// centered welcome content, context block, footer strip. Returns
+// a tview.Primitive so the caller can add it straight into a
+// Pages container.
+func welcomePage(version string, target *k8s.Target, contextErr string) tview.Primitive {
 	// --- Header strip: "ww · TUI" left, version right ---
-	left := titleStyle.Render("ww · TUI")
-	right := versionStyle.Render(m.version)
-	headerGap := inner - lipgloss.Width(left) - lipgloss.Width(right)
-	if headerGap < 1 {
-		headerGap = 1
-	}
-	header := left + strings.Repeat(" ", headerGap) + right
+	header := tview.NewTextView().
+		SetDynamicColors(true).
+		SetRegions(false).
+		SetScrollable(false).
+		SetTextAlign(tview.AlignLeft).
+		SetText(fmt.Sprintf(
+			"[::b][#00afff]ww · TUI[-:-:-]%s[#a0a0a0]%s[-:-:-]",
+			strings.Repeat(" ", 60),
+			version,
+		))
 
-	// --- Welcome area ---
-	welcome := welcomeStyle.Render("Welcome to ww")
+	// --- Welcome body (centered) ---
+	body := tview.NewTextView().
+		SetDynamicColors(true).
+		SetRegions(false).
+		SetScrollable(false).
+		SetTextAlign(tview.AlignCenter).
+		SetWrap(true)
+	body.SetText(buildBodyText(target, contextErr))
 
-	intro := bodyStyle.Render("The full interactive dashboard is on its way.")
+	// --- Footer strip: keybindings ---
+	footer := tview.NewTextView().
+		SetDynamicColors(true).
+		SetTextAlign(tview.AlignCenter).
+		SetText("[#808080]q · esc · ctrl-c  —  quit[-:-:-]")
 
-	bullets := strings.Join([]string{
-		bulletStyle.Render("  • Live operator status, logs, events"),
-		bulletStyle.Render("  • Session drill-down with event stream"),
-		bulletStyle.Render("  • Agent send + tail without leaving the terminal"),
-	}, "\n")
+	// --- Compose with a Flex in column mode ---
+	//
+	// Flex{ header (1) | body (auto-expand) | footer (1) }. tview
+	// handles terminal resize; the body re-flows automatically.
+	root := tview.NewFlex().
+		SetDirection(tview.FlexRow).
+		AddItem(header, 1, 0, false).
+		AddItem(tview.NewBox(), 1, 0, false). // one-line gap under header
+		AddItem(body, 0, 1, false).           // flex-expand to fill
+		AddItem(tview.NewBox(), 1, 0, false). // one-line gap above footer
+		AddItem(footer, 1, 0, false)
 
-	followAlong := bodyStyle.Render("Follow along → ") +
-		linkStyle.Render("https://github.com/skthomasjr/witwave/issues/1450")
+	// Wrap the root in a bordered Frame so the window reads as
+	// one bounded workspace. The Frame will later carry status-
+	// bar text at the top/bottom edges when real panels land.
+	frame := tview.NewFrame(root).
+		SetBorders(0, 0, 1, 1, 2, 2)
+	frame.SetBorder(true).
+		SetBorderColor(tcell.ColorDimGray).
+		SetTitle(" ww tui ").
+		SetTitleColor(tcell.ColorSilver)
 
-	// --- Cluster context block (or degraded message) ---
-	var contextBlock string
-	if m.target != nil && m.contextErr == "" {
-		contextBlock = renderContextBlock(m.target)
+	return frame
+}
+
+// buildBodyText assembles the centered welcome content including
+// the "what's coming" bullets, the tracking-issue pointer, and
+// the context block (or degraded message). Returns tview-tagged
+// text so colours render without touching tcell directly.
+func buildBodyText(target *k8s.Target, contextErr string) string {
+	var b strings.Builder
+	b.WriteString("\n\n\n")
+	b.WriteString("[white::b]Welcome to ww[-:-:-]\n\n")
+	b.WriteString("[#d0d0d0]The full interactive dashboard is on its way.[-:-:-]\n\n")
+	b.WriteString("[#a0a0a0]  • Live operator status, logs, events[-:-:-]\n")
+	b.WriteString("[#a0a0a0]  • Session drill-down with event stream[-:-:-]\n")
+	b.WriteString("[#a0a0a0]  • Agent send + tail without leaving the terminal[-:-:-]\n\n")
+	b.WriteString("[#d0d0d0]Follow along → [-:-:-][#00afff::u]https://github.com/skthomasjr/witwave/issues/1450[-:-:-]\n\n\n")
+
+	// Context block OR degraded message.
+	if target != nil && contextErr == "" {
+		cluster := target.Cluster
+		if cluster == "" {
+			cluster = target.Server
+		}
+		if cluster == "" {
+			cluster = "(unknown)"
+		}
+		ns := target.Namespace
+		if ns == "" {
+			ns = "default"
+		}
+		// Fixed-indent label/value rows so the block reads as a
+		// coherent unit even on narrow terminals.
+		b.WriteString(fmt.Sprintf("[#a0a0a0::b]Target cluster:[-:-:-]  [#d0d0d0]%s[-:-:-]\n", cluster))
+		b.WriteString(fmt.Sprintf("[#a0a0a0::b]Context:[-:-:-]         [#d0d0d0]%s[-:-:-]\n", target.Context))
+		b.WriteString(fmt.Sprintf("[#a0a0a0::b]Namespace:[-:-:-]       [#d0d0d0]%s[-:-:-]\n", ns))
 	} else {
-		msg := m.contextErr
+		msg := contextErr
 		if msg == "" {
 			msg = "No cluster configured — set $KUBECONFIG or pass --kubeconfig to ww tui."
 		}
-		contextBlock = warnStyle.Render(msg)
+		b.WriteString("[#ffaf00]" + msg + "[-:-:-]\n")
 	}
 
-	// --- Footer strip: keybindings ---
-	footer := footerStyle.Render("q / esc / ctrl-c — quit")
-
-	// --- Compose ---
-	//
-	// Vertical stack with centered blocks. lipgloss.PlaceHorizontal
-	// centers each piece inside `inner`; JoinVertical stacks them.
-	content := lipgloss.JoinVertical(
-		lipgloss.Center,
-		"",
-		"",
-		lipgloss.PlaceHorizontal(inner, lipgloss.Center, welcome),
-		"",
-		lipgloss.PlaceHorizontal(inner, lipgloss.Center, intro),
-		"",
-		lipgloss.PlaceHorizontal(inner, lipgloss.Center, bullets),
-		"",
-		lipgloss.PlaceHorizontal(inner, lipgloss.Center, followAlong),
-		"",
-		"",
-		lipgloss.PlaceHorizontal(inner, lipgloss.Center, contextBlock),
-		"",
-	)
-
-	// Box everything in a rounded border; the border colour matches
-	// the header/footer muted palette so the frame doesn't shout.
-	framed := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("240")).
-		Width(inner).
-		Padding(0, 1).
-		Render(lipgloss.JoinVertical(
-			lipgloss.Left,
-			header,
-			borderStyle.Render(strings.Repeat("─", inner)),
-			content,
-			borderStyle.Render(strings.Repeat("─", inner)),
-			lipgloss.PlaceHorizontal(inner, lipgloss.Center, footer),
-		))
-
-	// Center the whole frame in the viewport.
-	if m.height > 0 {
-		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, framed)
-	}
-	return framed
-}
-
-// renderContextBlock formats the three kubeconfig fields as aligned
-// label-value rows so they read as a coherent unit.
-func renderContextBlock(t *k8s.Target) string {
-	cluster := t.Cluster
-	if cluster == "" {
-		cluster = t.Server
-	}
-	if cluster == "" {
-		cluster = "(unknown)"
-	}
-	ns := t.Namespace
-	if ns == "" {
-		ns = "default"
-	}
-	rows := []string{
-		fmt.Sprintf("%s  %s",
-			contextLabelStyle.Render("Target cluster:"),
-			contextValueStyle.Render(cluster),
-		),
-		fmt.Sprintf("%s         %s",
-			contextLabelStyle.Render("Context:"),
-			contextValueStyle.Render(t.Context),
-		),
-		fmt.Sprintf("%s       %s",
-			contextLabelStyle.Render("Namespace:"),
-			contextValueStyle.Render(ns),
-		),
-	}
-	return strings.Join(rows, "\n")
+	return b.String()
 }

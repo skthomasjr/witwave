@@ -59,6 +59,5 @@ func runTui(kubeconfig, contextName, namespace string) error {
 		target = r.Target()
 	}
 
-	m := tui.New(Version, target, contextErr)
-	return tui.Run(m)
+	return tui.Run(Version, target, contextErr)
 }
