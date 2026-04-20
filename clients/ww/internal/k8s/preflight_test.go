@@ -8,9 +8,9 @@ import (
 
 func TestIsLocalCluster(t *testing.T) {
 	cases := []struct {
-		name    string
-		target  *Target
-		want    bool
+		name   string
+		target *Target
+		want   bool
 	}{
 		{"nil target", nil, false},
 		{"empty target", &Target{}, false},

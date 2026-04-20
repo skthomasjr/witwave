@@ -60,10 +60,10 @@ func isLocalContextName(name string) bool {
 }
 
 var localHosts = map[string]struct{}{
-	"localhost":                   {},
-	"127.0.0.1":                   {},
-	"::1":                         {},
-	"kubernetes.docker.internal":  {},
+	"localhost":                  {},
+	"127.0.0.1":                  {},
+	"::1":                        {},
+	"kubernetes.docker.internal": {},
 }
 
 func isLocalServer(server string) bool {

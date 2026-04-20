@@ -32,10 +32,10 @@ type InstallPreflightResult struct {
 type PreflightAction string
 
 const (
-	ActionCleanInstall   PreflightAction = "clean-install"
-	ActionAdoptCRDs      PreflightAction = "adopt-crds"
-	ActionRefuseExists   PreflightAction = "refuse-already-installed"
-	ActionRefuseCorrupt  PreflightAction = "refuse-corrupt-state"
+	ActionCleanInstall  PreflightAction = "clean-install"
+	ActionAdoptCRDs     PreflightAction = "adopt-crds"
+	ActionRefuseExists  PreflightAction = "refuse-already-installed"
+	ActionRefuseCorrupt PreflightAction = "refuse-corrupt-state"
 )
 
 // CheckInstall scans the cluster for the singleton pre-conditions.

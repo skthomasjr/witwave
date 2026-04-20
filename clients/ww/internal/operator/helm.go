@@ -22,9 +22,9 @@ import (
 // cares about for managing the operator release. One HelmClient per
 // command invocation — don't reuse across namespaces.
 type HelmClient struct {
-	cfg       *action.Configuration
-	settings  *cli.EnvSettings
-	namespace string
+	cfg         *action.Configuration
+	settings    *cli.EnvSettings
+	namespace   string
 	releaseName string
 }
 
