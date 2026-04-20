@@ -11,6 +11,7 @@ import (
 	"github.com/skthomasjr/witwave/clients/ww/internal/client"
 	"github.com/skthomasjr/witwave/clients/ww/internal/config"
 	"github.com/skthomasjr/witwave/clients/ww/internal/output"
+	"github.com/skthomasjr/witwave/clients/ww/internal/update"
 	"github.com/spf13/cobra"
 )
 
@@ -29,7 +30,20 @@ var (
 	ctxKeyClient = &contextKey{"client"}
 	ctxKeyOut    = &contextKey{"out"}
 	ctxKeyCfg    = &contextKey{"cfg"}
+	ctxKeyUpdate = &contextKey{"update"}
 )
+
+// pendingUpdateCheck is stashed in the per-command context by
+// PersistentPreRunE (when the update check is enabled) and consumed by
+// PersistentPostRunE after the user's command has finished. The check
+// itself runs asynchronously in a goroutine so it never adds latency
+// to the happy path: if the command completes before the check does,
+// PostRunE waits a short additional window and then gives up silently.
+type pendingUpdateCheck struct {
+	mode     update.Mode
+	resultCh chan *update.Notice
+	cancel   context.CancelFunc
+}
 
 // ClientFromCtx retrieves the configured HTTP client or panics.
 func ClientFromCtx(ctx context.Context) *client.Client {
@@ -66,6 +80,15 @@ type rootFlags struct {
 	verbose    int
 	jsonOut    bool
 	compact    bool
+
+	// pendingUpdate carries the result of the async update check from
+	// PersistentPreRunE to Execute(). Stored on rootFlags rather than
+	// the per-command context because root.Context() doesn't see the
+	// context that subcommand PreRunE sets on the invoked subcommand
+	// via cc.SetContext — stashing here side-steps the lookup mismatch
+	// and lets Execute() consume the check regardless of which
+	// subcommand ran or whether it succeeded.
+	pendingUpdate *pendingUpdateCheck
 }
 
 // Execute runs the root command. Returns the intended exit code.
@@ -82,7 +105,18 @@ func Execute() int {
 	root.AddCommand(newContinuationsCmd())
 	root.AddCommand(newValidateCmd())
 
-	if err := root.Execute(); err != nil {
+	err := root.Execute()
+	// Finish the async update check regardless of command outcome.
+	// Cobra's PersistentPostRunE is skipped when RunE fails, which
+	// would hide the "you're out of date" hint in exactly the cases
+	// where a stale client might be contributing to the failure.
+	// Running it here ensures the banner fires whether the command
+	// succeeded or failed. finishUpdateCheck is safe to call with a
+	// nil pending (the version subcommand opts out of PreRunE and
+	// never kicks off a check, so rf.pendingUpdate stays nil there).
+	finishUpdateCheck(rf.pendingUpdate)
+
+	if err != nil {
 		// Errors already printed by runWithExit helper; fall back here
 		// if cobra reports a flag parse error or similar.
 		var ce *commandErr
@@ -141,9 +175,22 @@ func newRoot() (*cobra.Command, *rootFlags) {
 			ctx = context.WithValue(ctx, ctxKeyClient, hc)
 			ctx = context.WithValue(ctx, ctxKeyOut, out)
 			ctx = context.WithValue(ctx, ctxKeyCfg, resolved)
+
+			// Kick off the version check asynchronously so the user's
+			// command never waits on it. Execute() consumes the result
+			// with a short deadline after root.Execute() returns.
+			// Stashed on rootFlags (not ctx) so Execute() can reach it
+			// regardless of whether the subcommand succeeded or failed.
+			rf.pendingUpdate = startUpdateCheck(resolved)
+
 			cc.SetContext(ctx)
 			return nil
 		},
+		// PersistentPostRunE is intentionally NOT set here: cobra skips
+		// it on command failure, and we want the "newer version
+		// available" banner to fire whether the command succeeded or
+		// failed. Execute() calls finishUpdateCheck() after
+		// root.Execute() returns, covering both paths uniformly.
 	}
 	p := cmd.PersistentFlags()
 	p.StringVar(&rf.configPath, "config", "", "path to ww config (default: $XDG_CONFIG_HOME/ww/config.toml)")
@@ -208,4 +255,94 @@ func handleErr(out *output.Writer, err error) error {
 	}
 	out.Errorf("%v", err)
 	return transportErr(err)
+}
+
+// startUpdateCheck parses the [update] config, applies runtime
+// guardrails (CI, non-TTY, WW_NO_UPDATE_CHECK), and if still enabled
+// kicks off an asynchronous GitHub Releases API check. Returns nil
+// when the check is disabled — callers MUST treat nil as "nothing to
+// consume in PostRunE" without panicking.
+//
+// Running async keeps the version check off the happy path: even on a
+// cache miss (once per 24h per user) the user's command starts
+// executing immediately while the HTTP request is in flight. PostRunE
+// collects the result with a short wait-budget and silently gives up
+// if the check hasn't finished.
+//
+// Config-parse errors (e.g. "mode = wubwub" in config.toml) degrade
+// to a disabled check rather than failing the command — we warn once
+// on stderr so the misconfiguration is visible but do not block.
+func startUpdateCheck(resolved config.Resolved) *pendingUpdateCheck {
+	mode, err := update.ParseMode(resolved.Update.Mode)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ww: warning: %v (update check disabled)\n", err)
+		return nil
+	}
+	mode = update.EffectiveMode(mode, os.Getenv, nil)
+	if mode == update.ModeOff {
+		return nil
+	}
+
+	channel, err := update.ParseChannel(resolved.Update.Channel)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ww: warning: %v (update check disabled)\n", err)
+		return nil
+	}
+
+	var interval time.Duration
+	if s := resolved.Update.Interval; s != "" {
+		if d, err := time.ParseDuration(s); err == nil && d > 0 {
+			interval = d
+		}
+		// Bad interval value silently falls through to the package default.
+	}
+
+	checker := update.NewChecker(Version, channel, interval)
+	resultCh := make(chan *update.Notice, 1)
+	// Independent context so the check survives its own deadline rather
+	// than being tied to the user's command deadline. 3s is generous
+	// vs the HTTPClient's 2s timeout — leaves room for DNS + TLS setup.
+	checkCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	go func() {
+		defer cancel()
+		resultCh <- checker.Check(checkCtx)
+	}()
+
+	return &pendingUpdateCheck{
+		mode:     mode,
+		resultCh: resultCh,
+		cancel:   cancel,
+	}
+}
+
+// finishUpdateCheck waits briefly for the async check to complete, then
+// (if a notice was produced) dispatches to the update package's Notify
+// to print the banner and optionally run the upgrade delegate. Safe to
+// call with a nil pendingUpdateCheck (e.g. when the check was disabled
+// or the subcommand opted out of PersistentPreRunE).
+func finishUpdateCheck(pending *pendingUpdateCheck) {
+	if pending == nil {
+		return
+	}
+	// Short grace window after the command completed. The check
+	// usually finishes in a few hundred ms (the HTTP timeout is 2s);
+	// we give it a touch longer so a fresh cache write can finish too.
+	var notice *update.Notice
+	select {
+	case notice = <-pending.resultCh:
+	case <-time.After(750 * time.Millisecond):
+		// Check still running; cancel it and give up. The user's
+		// command already completed — we don't delay their prompt.
+		pending.cancel()
+		return
+	}
+	if notice == nil {
+		return
+	}
+	method := update.DetectInstallMethod(nil, nil)
+	// Notify errors are deliberately swallowed: the version-check
+	// system must not turn a successful command into a failed one.
+	// Independent context so a cancelled command context doesn't
+	// abort the brew-upgrade shell-out.
+	_ = update.Notify(context.Background(), pending.mode, notice, method, os.Stdout, os.Stderr, os.Stdin)
 }

@@ -24,9 +24,27 @@ type Profile struct {
 	Timeout  string `toml:"timeout"` // duration string, optional
 }
 
+// UpdateConfig is the on-disk [update] block that controls the
+// "newer version available" check and optional delegated upgrade. All
+// fields are optional; zero values resolve to package defaults in the
+// update package.
+type UpdateConfig struct {
+	// Mode is one of off, notify, prompt, auto. Empty string resolves
+	// to the notify default. See the update package for semantics.
+	Mode string `toml:"mode"`
+	// Interval is the duration string ("24h", "1h", "7d"-style). Empty
+	// string resolves to the 24h default. Zero or negative values are
+	// rejected by the update package's parser and fall back.
+	Interval string `toml:"interval"`
+	// Channel selects stable-only vs include-prerelease candidates.
+	// One of stable, beta. Empty string resolves to stable.
+	Channel string `toml:"channel"`
+}
+
 // File is the on-disk TOML shape.
 type File struct {
 	Profile map[string]Profile `toml:"profile"`
+	Update  UpdateConfig       `toml:"update"`
 }
 
 // Resolved carries the final effective settings for a single CLI
@@ -37,6 +55,7 @@ type Resolved struct {
 	Token    string
 	RunToken string
 	Timeout  time.Duration
+	Update   UpdateConfig // raw strings; parsed by the update package
 }
 
 // FlagOverrides carries the command-line values. Empty-string means
@@ -137,6 +156,20 @@ func Load(cfgPath string, overrides FlagOverrides, getenv func(string) string) (
 		timeout = DefaultTimeout
 	}
 	r.Timeout = timeout
+
+	// [update] block: file values feed through; env vars override.
+	// The update package parses the strings at use-time and applies
+	// its own defaults, so we pass whatever we have through raw.
+	r.Update = file.Update
+	if v := getenv("WW_UPDATE_MODE"); v != "" {
+		r.Update.Mode = v
+	}
+	if v := getenv("WW_UPDATE_CHANNEL"); v != "" {
+		r.Update.Channel = v
+	}
+	if v := getenv("WW_UPDATE_INTERVAL"); v != "" {
+		r.Update.Interval = v
+	}
 	return r, nil
 }
 

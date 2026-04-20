@@ -139,6 +139,65 @@ Ad-hoc run endpoints use `run_token` when set; otherwise `ww` falls
 back to `token` and logs a warning to stderr. Set both when you have a
 harness that distinguishes them.
 
+## Staying up to date
+
+`ww` checks once per day (cached on disk) whether a newer release is
+available and prints a one-line banner after the command runs:
+
+```
+↑ ww v0.5.0 is available (you're on v0.4.0). https://github.com/skthomasjr/witwave/releases/tag/v0.5.0
+  To upgrade: brew upgrade ww
+```
+
+The upgrade instruction is tailored to how `ww` was installed —
+Homebrew taps get `brew upgrade ww`, `go install` users get the
+matching `go install` command, standalone binaries get a download URL.
+
+### Configuration
+
+```toml
+[update]
+mode     = "notify"   # off | notify | prompt | auto
+interval = "24h"      # cache TTL between GitHub API calls
+channel  = "stable"   # stable | beta
+```
+
+| Mode     | Behavior                                                                            |
+| -------- | ----------------------------------------------------------------------------------- |
+| `off`    | No check, no network, no banner                                                     |
+| `notify` | *(default)* Print the banner after the command                                      |
+| `prompt` | Print the banner, ask `Upgrade now? [Y/n]`, and run the matching installer on `Y`   |
+| `auto`   | Print the banner and run the matching installer without asking — unattended upgrades |
+
+`prompt` auto-downgrades to `notify` when stdin is not a TTY (scripts,
+pipelines, CI). `auto` is only recommended if you've explicitly opted
+in to unattended upgrades.
+
+Channels:
+
+- `stable` — only surfaces non-prerelease tags. Users on a beta still
+  get notified when a stable release ships, because per SemVer
+  `v0.4.0 > v0.4.0-beta.N`.
+- `beta` — includes prereleases (`v*-beta.N`, `v*-rc.N`). Use this to
+  track the bleeding edge.
+
+### Environment overrides
+
+All of these win over `config.toml`:
+
+| Variable                | Effect                                          |
+| ----------------------- | ----------------------------------------------- |
+| `WW_UPDATE_MODE`        | Override `mode` (`off`/`notify`/`prompt`/`auto`) |
+| `WW_UPDATE_CHANNEL`     | Override `channel` (`stable`/`beta`)            |
+| `WW_UPDATE_INTERVAL`    | Override `interval` (duration string)           |
+| `WW_NO_UPDATE_CHECK=1`  | Force mode = `off` for this run                 |
+
+The check is also force-disabled when any of `CI`, `GITHUB_ACTIONS`,
+`BUILDKITE`, `CIRCLECI`, or `GITLAB_CI` is truthy — automated runners
+never get banners or prompts. A version-check failure (network down,
+API outage, JSON parse error) is always silent and never interferes
+with the actual command.
+
 ## Output modes
 
 - Default: colored, tabular human output when stdout is a TTY. Colors
