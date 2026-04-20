@@ -558,6 +558,41 @@ prometheusRule:
       p99Seconds: 1.0
       forMinutes: 10
       severity: warning
+    # PVC fill-ratio alerts (#1465). kubelet_volume_stats_* come from
+    # cadvisor / kubelet — no witwave labels on the metric, so we
+    # match by PVC name regex. Override pvcNameRegex if your release
+    # name produces PVCs that don't contain the word "witwave".
+    pvcFillWarning:
+      enabled: true
+      fillRatio: 0.70
+      forMinutes: 10
+      severity: warning
+      pvcNameRegex: ".*witwave.*"
+    pvcFillCritical:
+      enabled: true
+      fillRatio: 0.90
+      forMinutes: 5
+      severity: critical
+      pvcNameRegex: ".*witwave.*"
+    # A2A relay p99 latency (#1467). The histogram
+    # harness_a2a_backend_request_duration_seconds already observes
+    # every attempt (see harness/backends/a2a.py); this just surfaces
+    # the signal operators need to notice pool exhaustion or a wedged
+    # backend before users do.
+    a2aLatencyHigh:
+      enabled: true
+      p99Seconds: 30
+      forMinutes: 5
+      severity: warning
+    # Event schema validation failures (#1469). Any non-zero rate means
+    # the emitter and schema have drifted; downstream subscribers
+    # never see the dropped events. Fires on > 0/s by default — tune
+    # up if a development branch is expected to emit invalid events.
+    eventValidationErrors:
+      enabled: true
+      rateThreshold: 0
+      forMinutes: 5
+      severity: warning
 
 # Grafana dashboards (#1118). Ships a default "witwave — Overview" dashboard
 # as a ConfigMap labelled for kube-prometheus-stack's grafana sidecar
