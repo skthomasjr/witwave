@@ -4,10 +4,10 @@ import "testing"
 
 func TestDetectInstallMethod(t *testing.T) {
 	cases := []struct {
-		name  string
-		exe   string
-		env   map[string]string
-		want  InstallMethod
+		name string
+		exe  string
+		env  map[string]string
+		want InstallMethod
 	}{
 		{
 			name: "homebrew apple silicon cellar",

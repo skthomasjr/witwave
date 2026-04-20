@@ -28,9 +28,9 @@ import (
 // our documented config surface is small, users who annotate
 // heavily can edit the file directly.
 type Writer struct {
-	v        *viper.Viper
-	path     string
-	existed  bool
+	v       *viper.Viper
+	path    string
+	existed bool
 	// dirty tracks whether any Set call changed state since the last
 	// Save. Used so `ww config set` can error early when the caller
 	// did nothing actionable.

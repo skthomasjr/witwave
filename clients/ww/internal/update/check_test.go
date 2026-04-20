@@ -25,12 +25,12 @@ func TestCompareSemver(t *testing.T) {
 		{"v0.4.0-beta.5", "v0.4.0", -1, true},
 		{"v0.4.0", "v0.4.0-beta.5", 1, true},
 		{"v0.4.0-beta.5", "v0.4.0-beta.6", -1, true},
-		{"v0.4.0-beta.10", "v0.4.0-beta.2", 1, true},   // numeric, not lexical
-		{"v0.4.0-rc.1", "v0.4.0-beta.5", 1, true},      // alphabetic compare: rc > beta
-		{"v0.4.0-beta.5", "v0.4.0-beta", 1, true},      // longer prerelease > shorter
-		{"dev", "v0.4.0", 0, false},                    // unparseable current
-		{"v0.4.0", "garbage", 0, false},                // unparseable latest
-		{"v0.4.0+build1", "v0.4.0+build2", 0, true},    // build metadata ignored
+		{"v0.4.0-beta.10", "v0.4.0-beta.2", 1, true}, // numeric, not lexical
+		{"v0.4.0-rc.1", "v0.4.0-beta.5", 1, true},    // alphabetic compare: rc > beta
+		{"v0.4.0-beta.5", "v0.4.0-beta", 1, true},    // longer prerelease > shorter
+		{"dev", "v0.4.0", 0, false},                  // unparseable current
+		{"v0.4.0", "garbage", 0, false},              // unparseable latest
+		{"v0.4.0+build1", "v0.4.0+build2", 0, true},  // build metadata ignored
 		{"v1.0.0-alpha.1", "v1.0.0-alpha.beta", -1, true},
 	}
 	for _, tc := range cases {
