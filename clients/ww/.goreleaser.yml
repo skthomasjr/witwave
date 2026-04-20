@@ -2,8 +2,10 @@
 # Run `goreleaser release --clean` from clients/ww; requires GITHUB_TOKEN
 # and HOMEBREW_TAP_GITHUB_TOKEN env vars at release time.
 #
-# The tap repo (skthomasjr/homebrew-ww) does not exist yet — the
-# Homebrew publish step will fail cleanly until it's created.
+# Tap repo: witwave-ai/homebrew-ww (created as part of the witwave-era
+# beta; formula push requires HOMEBREW_TAP_GITHUB_TOKEN — a
+# fine-grained PAT scoped to the tap repo with Contents:Read-and-Write.
+# The source repo's default GITHUB_TOKEN cannot push across owners.
 version: 2
 
 project_name: ww
@@ -44,7 +46,12 @@ archives:
         formats: [zip]
     files:
       - README.md
-      - LICENSE*
+      # The repo-root LICENSE sits two levels up from this config
+      # (clients/ww/.goreleaser.yml → repo root). Explicit src/dst so
+      # the archive carries the Apache-2.0 text even though goreleaser
+      # runs from clients/ww/.
+      - src: ../../LICENSE
+        dst: LICENSE
 
 checksum:
   name_template: checksums.txt
@@ -103,10 +110,12 @@ brews:
   - name: ww
     ids:
       - ww
-    # Tap repo — will be created in a follow-up; release will fail at
-    # this step until the repo exists + token has write access.
+    # Tap repo under the witwave-ai org. Formula push requires
+    # HOMEBREW_TAP_GITHUB_TOKEN (fine-grained PAT with Contents:
+    # Read-and-Write on witwave-ai/homebrew-ww); default GITHUB_TOKEN
+    # can't push across owners.
     repository:
-      owner: skthomasjr
+      owner: witwave-ai
       name: homebrew-ww
       branch: main
     directory: Formula

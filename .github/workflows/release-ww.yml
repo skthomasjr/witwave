@@ -6,12 +6,16 @@ name: Release — ww CLI
 # every platform plus a Homebrew formula.
 #
 # Prerequisites for a successful run:
-#   1. The Homebrew tap repo github.com/${{ github.repository_owner }}/homebrew-ww
-#      must exist (empty is fine; the formula is auto-generated).
-#   2. A PAT with `repo` scope on the tap repo must be configured as the
-#      `HOMEBREW_TAP_GITHUB_TOKEN` secret on this repo.
+#   1. The Homebrew tap repo github.com/witwave-ai/homebrew-ww must exist
+#      (it does as of the v0.4 series; seeded with a README so goreleaser
+#      can push Formula/). Tap owner/name is pinned in
+#      clients/ww/.goreleaser.yml under brews[].repository.
+#   2. A fine-grained PAT scoped to witwave-ai/homebrew-ww with
+#      Contents: Read-and-Write must be configured as the
+#      `HOMEBREW_TAP_GITHUB_TOKEN` secret on this repo. The default
+#      GITHUB_TOKEN cannot push across owners.
 #
-# Without (1) + (2), this workflow succeeds at building + uploading the
+# Without (2), this workflow succeeds at building + uploading the
 # binaries to the GitHub Release but fails at the Homebrew publish step.
 # That's a supported interim state — users can `go install` or download
 # binaries from Releases while brew is being wired up.
@@ -76,8 +80,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Required for the Homebrew formula to be pushed to the
-          # skthomasjr/homebrew-ww tap. Scoped PAT with `repo`
-          # permissions. Optional until the tap repo exists — goreleaser
-          # will fail loudly at the publish step, which is the signal to
-          # provision the tap + secret.
+          # witwave-ai/homebrew-ww tap. Fine-grained PAT with
+          # Contents: Read-and-Write on that repo (the default
+          # GITHUB_TOKEN cannot push across owners). Without this
+          # secret, goreleaser fails loudly at the formula-publish
+          # step but the binaries + GitHub Release still ship.
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}

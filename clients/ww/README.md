@@ -21,7 +21,7 @@ go install github.com/skthomasjr/autonomous-agent/clients/ww@latest
 When the Homebrew tap lands:
 
 ```bash
-brew install skthomasjr/homebrew-ww/ww
+brew install witwave-ai/homebrew-ww/ww
 ```
 
 ## Quick start
@@ -180,6 +180,8 @@ go build -ldflags "\
   proxies awake. Field-name-only lines per the broader SSE spec are
   tolerated but not exercised.
 - Goreleaser config ships darwin/linux amd64+arm64 builds and a
-  Homebrew formula targeting `skthomasjr/homebrew-ww` — the tap repo
-  does not exist yet, so `goreleaser release` will fail cleanly at the
-  Homebrew publish step until it does.
+  Homebrew formula targeting `witwave-ai/homebrew-ww`. The tap repo
+  exists; `goreleaser release` additionally requires the
+  `HOMEBREW_TAP_GITHUB_TOKEN` repo secret (a fine-grained PAT scoped
+  to the tap with Contents: Read-and-Write) — without it, the formula
+  push step fails but the binaries + GitHub Release still ship.
