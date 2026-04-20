@@ -82,6 +82,24 @@ helm install witwave oci://ghcr.io/skthomasjr/charts/witwave --version 0.1.0 --n
 helm uninstall witwave --namespace witwave
 ```
 
+PVCs survive by default (reclaim policy permitting) so conversation
+logs and session memory are preserved across a `helm uninstall`.
+
+## Migrating to the operator
+
+The `charts/witwave-operator` controller path is an alternative way
+to deploy agents — same end-state (harness + backends in a pod),
+different provisioning mechanism. The two paths use different
+resource naming conventions: this chart produces
+`{release}-{agent}` Deployments, the operator produces bare
+`{agent}` Deployments. Running BOTH against overlapping agent
+names in the same namespace produces doubled resources split-brained
+across the two controllers — pick one.
+
+Full migration procedure (PVC preservation, CR authoring, rollback
+notes) lives in
+[`operator/README.md#migrating-from-the-agent-chart-chartswitwave`](../../operator/README.md#migrating-from-the-agent-chart-chartswitwave).
+
 ## Values
 
 The authoritative reference is **[`values.yaml`](./values.yaml)** — every field has inline comments

@@ -104,6 +104,106 @@ make uninstall
 
 For a ww-installed operator, use `ww operator uninstall` instead.
 
+## Migrating from the agent chart (`charts/witwave`)
+
+The operator and the agent Helm chart (`charts/witwave`) are two
+independent deployment paths that both produce agent Deployments.
+Running BOTH against overlapping agent names in the same namespace
+produces duplicate resources — one named `{release}-{agent}` (from
+the chart) and one named `{agent}` (from the operator) — each with
+its own pods, HPA, PDB, configs. No silent corruption happens, but
+you'll have doubled resources split-brained across two controllers.
+Pick one.
+
+Tracked caveat: this is a known footgun on deliberate migration,
+not a defect in either path. Tracked for polish as
+[#1478](https://github.com/skthomasjr/witwave/issues/1478). The
+procedure below is the supported migration path today.
+
+### Chart → operator
+
+Premise: you have agents running via `helm install <release>
+./charts/witwave -f values.yaml` and want to adopt the operator.
+
+1. **Inventory what you're migrating.** List Deployments, Services,
+   ConfigMaps, PVCs, and Secrets produced by the chart for each
+   agent you're moving. `kubectl get all,cm,pvc,secret -l
+   app.kubernetes.io/part-of=witwave -n <ns>` covers most of it.
+
+2. **Preserve PVC data if any.** Backend conversation logs and
+   session memory live on per-agent PVCs. The chart's PVCs survive
+   `helm uninstall` by default — verify your PVC reclaim policy is
+   `Retain` (not `Delete`) before step 3. `kubectl get pvc -n <ns>`
+   → check each PVC's StorageClass reclaim policy.
+
+3. **Uninstall the chart.** `helm uninstall <release> -n <ns>`.
+   This removes Deployments + Services + ConfigMaps but leaves
+   PVCs intact (per step 2). Agent pods stop serving traffic at
+   this moment.
+
+4. **Install the operator** if you haven't already:
+   `ww operator install` (see the ww CLI path above).
+
+5. **Write a `WitwaveAgent` CR per agent**, naming the CR with
+   exactly the bare agent name — NOT the prefixed `{release}-{name}`.
+   Point `spec.storage.existingClaim` at each preserved PVC from
+   step 2 so the new operator-managed pod adopts the existing
+   conversation + memory data.
+
+   ```yaml
+   apiVersion: witwave.ai/v1alpha1
+   kind: WitwaveAgent
+   metadata:
+     name: iris          # bare name; NO `prod-` prefix
+     namespace: <ns>
+   spec:
+     backends:
+       - name: claude
+         storage:
+           existingClaim: prod-iris-claude-memory   # your surviving PVC
+         credentials:
+           existingSecret: ...                      # pre-provisioned
+   ```
+
+6. **Apply the CRs.** `kubectl apply -f witwaveagent-*.yaml`.
+   Operator reconciles each, creates new Deployments (named bare
+   `iris`, not `prod-iris`), mounts the preserved PVCs.
+
+7. **Verify with `ww operator status`** — pods Running, CRs Ready,
+   no leftover chart-rendered resources in `kubectl get
+   deployments`.
+
+### What's preserved vs lost on migration
+
+| Preserved | Lost |
+|---|---|
+| Backend conversation logs on PVC | In-memory session state (pods restart) |
+| `.witwave/` prompts materialised via git-sync if the new pod mounts the same source | A2A request queues mid-flight during step 3 |
+| Referenced Secrets (if `existingSecret`) | Nothing that wasn't already lost on any pod restart |
+
+No data copying required — the storage class does the work. The
+downtime is however long it takes to apply the CRs and let the
+operator reconcile: typically 30 seconds to a few minutes.
+
+### Operator → chart (reverse migration)
+
+Rare, but the shape is the same with sides swapped. Delete
+`WitwaveAgent` CRs (the operator GC's owned resources on CR delete),
+then `helm install <release> ./charts/witwave` with matching agent
+names + `existingClaim` pointing at the surviving PVCs. The new
+resources will be named `{release}-{agent}` per the chart
+convention.
+
+### Why both paths produce different names
+
+The agent chart prefixes Deployments with the Helm release name
+because multiple chart installs coexist on one cluster (e.g.
+`prod` + `test` namespaces with different release names). The
+operator skips the prefix because it's a singleton-per-cluster
+controller whose CR `metadata.name` already uniquely identifies
+the agent. The two conventions don't interoperate; migration is
+always a rename.
+
 ## The `WitwaveAgent` resource
 
 One `WitwaveAgent` corresponds to one named agent (e.g. `iris`, `nova`, `kira`).

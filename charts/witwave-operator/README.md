@@ -200,7 +200,34 @@ rbac:
 ```
 
 Read verbs (`get`/`list`/`watch`) remain granted so the reconciler can still validate referenced Secrets exist.
-Any attempt to use the inline credentials path will fail loudly with an RBAC error at apply time.
+
+### ⚠ Inline credentials + `secretsWrite: false` is an incompatible combination
+
+When `rbac.secretsWrite: false` is set AND a `WitwaveAgent` CR carries inline credential literals under
+`spec.backends[*].credentials.secrets`, the reconciler tries to `Secrets.Create`, hits a 403, and retries per
+controller-runtime's normal backoff — **silently**. The CR stays at `status.phase != Ready` indefinitely; no
+Kubernetes Event surfaces the cause at apply-time today. Surfacing this at apply-time is tracked in
+[#1461](https://github.com/skthomasjr/witwave/issues/1461).
+
+To avoid the footgun, always pair `secretsWrite: false` with `existingSecret` references:
+
+```yaml
+# WitwaveAgent CR — pre-provisioned Secret path
+spec:
+  backends:
+    - name: claude
+      credentials:
+        existingSecret:
+          name: my-prepopulated-anthropic-secret
+          keys:
+            ANTHROPIC_API_KEY: api_key
+```
+
+And pre-create the Secret yourself (via `kubectl create secret`, an ExternalSecrets `SecretStore`, Vault, etc.)
+before applying the CR.
+
+If inline credentials are needed, flip `rbac.secretsWrite: true` — accepting the slightly wider trust
+boundary — and re-install the operator chart.
 
 ## Namespace-scoped RBAC (#532)
 
