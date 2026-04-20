@@ -1,14 +1,12 @@
 # Competitive Landscape
 
-Last updated: 2026-04-19 by local-agent (tenth pass — aggressive cut of Research Themes from deep
-research-synthesis bibliography to one-paragraph navigational scaffolding per theme, pointing at
-Reference Products for current state. Industry statistics that were previously inline have been retired;
-they drift invisibly and can't be kept honest without quarterly refresh discipline. The preceding ninth
-pass earlier today did the full Reference Products refresh: added 5 competitors (OpenClaw, kagent,
-Amazon Bedrock AgentCore, Microsoft Agent Framework + Foundry, Cloudflare Agent Cloud); dropped 2
-(AutoGPT, SWE-agent); corrected LangGraph v2.0 framing; bumped 5 entries to April 2026 releases;
-added Category references appendix; revised Positioning + Gap Analysis for the three market realities
-that have coalesced in the last 60 days.)
+Last updated: 2026-04-20 by local-agent (eleventh pass — rewrote the OpenClaw entry with fresh research from
+<https://openclaw.ai/> and <https://github.com/openclaw/openclaw> pulled during a session-end strategic discussion.
+Captured owner's "witwave is OpenClaw for teams with Kubernetes clusters" positioning frame and listed OpenClaw's 20+
+chat-platform integrations, menu-bar voice-wake companion, workspace skills system with agent-written-skill loop, and
+MIT + calendar-versioned release cadence. Marked OpenClaw as "primary open-source competitor" in the section heading;
+added explicit differentiator lists in both directions. Earlier tenth pass (2026-04-19) aggressively cut Research Themes
+from deep research-synthesis bibliography to one-paragraph navigational scaffolding per theme.)
 
 ---
 
@@ -30,38 +28,37 @@ That distinction shapes the comparison below. Each reference product is labeled 
 Most reference products are human-driven tools that happen to use agents internally. This project targets the autonomous
 tier — infrastructure that hosts agents rather than a tool a developer runs.
 
-A second positioning axis the project asserts publicly: **this repository is an experiment in AI-operated
-open source**. Every line of code is written by AI, every bug is diagnosed and fixed by AI, every issue
-is answered by AI, every PR is opened / reviewed / merged by AI. Humans file issues and make strategic
-calls — that is the contribution model. This is distinct from "AI-assisted development" (humans write
-code with AI help) and from the reference products below (which help a developer do their job). The
-project and the platform are the same artifact: the agents this platform deploys are the agents that
-maintain its code. No comparable reference project asserts this constraint as a design goal. See
+A second positioning axis the project asserts publicly: **this repository is an experiment in AI-operated open source**.
+Every line of code is written by AI, every bug is diagnosed and fixed by AI, every issue is answered by AI, every PR is
+opened / reviewed / merged by AI. Humans file issues and make strategic calls — that is the contribution model. This is
+distinct from "AI-assisted development" (humans write code with AI help) and from the reference products below (which
+help a developer do their job). The project and the platform are the same artifact: the agents this platform deploys are
+the agents that maintain its code. No comparable reference project asserts this constraint as a design goal. See
 `CONTRIBUTING.md` and `docs/product-vision.md` → "AI-Operated Open Source" for the full statement.
 
-A third positioning axis: **real-time observability with a pinned wire contract**. Because agents run as
-services rather than developer sessions, operators need a live window into fleet behaviour — not periodic
-pulls or webhook fan-out. The platform exposes a versioned Server-Sent Events stream (`/events/stream`) with
-14 typed event shapes (`job.fired`, `webhook.delivered`, `conversation.turn`, `tool.use`, `trace.span`, …),
-`Last-Event-ID` resume, and per-session drill-down streams that carry token-level `conversation.chunk`
-events. Every client (web dashboard, `ww` CLI, future mobile) consumes the same schema documented in
-`docs/events/`. Most reference products either don't ship a live observability stream or couple it to a
-proprietary UI; publishing the schema as a first-class multi-client contract is a differentiator.
+A third positioning axis: **real-time observability with a pinned wire contract**. Because agents run as services rather
+than developer sessions, operators need a live window into fleet behaviour — not periodic pulls or webhook fan-out. The
+platform exposes a versioned Server-Sent Events stream (`/events/stream`) with 14 typed event shapes (`job.fired`,
+`webhook.delivered`, `conversation.turn`, `tool.use`, `trace.span`, …), `Last-Event-ID` resume, and per-session
+drill-down streams that carry token-level `conversation.chunk` events. Every client (web dashboard, `ww` CLI, future
+mobile) consumes the same schema documented in `docs/events/`. Most reference products either don't ship a live
+observability stream or couple it to a proprietary UI; publishing the schema as a first-class multi-client contract is a
+differentiator.
 
 **Category context (April 2026).** Three market realities shape the comparisons below:
 
-1. **"Agent Fabric / Agent Mesh / Agent Cloud"** has coalesced as the enterprise-category name in the last
-   60 days — Cloudflare, Salesforce, MuleSoft, ServiceNow, Equinix, Nutanix all use one of these three
-   phrases. This project's harness + A2A + multi-backend routing sits squarely in that category
-   architecturally, though the project's positioning language is still "autonomous-agent infrastructure."
-2. **Kubernetes-native agent infrastructure is no longer empty space.** kagent is in the CNCF sandbox,
-   OpenClaw has a dedicated operator, OpenHands v1.6 added Kubernetes deployment + RBAC (March 2026), and
-   kubernetes.io published an "Agent Sandbox" post. What was a wide lane is now contested — differentiation
-   moves to specifics (multi-backend routing under one identity, scheduler-primitives breadth, etc.).
-3. **A2A + MCP + OpenTelemetry are now the assumed baseline tripod.** Every 2026 launch — Microsoft Agent
-   Framework, kagent, Bedrock AgentCore Gateway, Cloudflare Agent Cloud — leads with all three. Shipping
-   them is no longer a differentiator; *how* they compose (cross-pod topology, per-named-agent routing,
-   published event schema) is where the differentiation now lives.
+1. **"Agent Fabric / Agent Mesh / Agent Cloud"** has coalesced as the enterprise-category name in the last 60 days —
+   Cloudflare, Salesforce, MuleSoft, ServiceNow, Equinix, Nutanix all use one of these three phrases. This project's
+   harness + A2A + multi-backend routing sits squarely in that category architecturally, though the project's
+   positioning language is still "autonomous-agent infrastructure."
+2. **Kubernetes-native agent infrastructure is no longer empty space.** kagent is in the CNCF sandbox, OpenClaw has a
+   dedicated operator, OpenHands v1.6 added Kubernetes deployment + RBAC (March 2026), and kubernetes.io published an
+   "Agent Sandbox" post. What was a wide lane is now contested — differentiation moves to specifics (multi-backend
+   routing under one identity, scheduler-primitives breadth, etc.).
+3. **A2A + MCP + OpenTelemetry are now the assumed baseline tripod.** Every 2026 launch — Microsoft Agent Framework,
+   kagent, Bedrock AgentCore Gateway, Cloudflare Agent Cloud — leads with all three. Shipping them is no longer a
+   differentiator; _how_ they compose (cross-pod topology, per-named-agent routing, published event schema) is where the
+   differentiation now lives.
 
 ---
 
@@ -108,10 +105,10 @@ mode (read-only + plan file) provides the native primitive to implement the same
 **Autonomy model:** Human-driven (Claude Code is an interactive CLI; the Agent SDK is a library for building agents, not
 an autonomous runtime by itself — this project is the autonomous harness built on top of it)
 
-The Claude Agent SDK (renamed from Claude Code SDK, late 2025) is the runtime this project builds on. **The Claude
-Agent SDK for Python was formally released on 2026-04-18** (bundles Claude Code CLI; requires Python 3.10+) — the
-SDK is now a first-party supported product line, not a thin wrapper. Claude Code shipped 30+ releases during a
-five-week sprint in April 2026. Recent notables:
+The Claude Agent SDK (renamed from Claude Code SDK, late 2025) is the runtime this project builds on. **The Claude Agent
+SDK for Python was formally released on 2026-04-18** (bundles Claude Code CLI; requires Python 3.10+) — the SDK is now a
+first-party supported product line, not a thin wrapper. Claude Code shipped 30+ releases during a five-week sprint in
+April 2026. Recent notables:
 
 - **Ultraplan early preview (Apr 6–10, 2026):** Cloud-drafted plans with a web editor; plans can run locally or
   remotely. Pushes Claude Code further toward cloud-hosted agent execution.
@@ -193,16 +190,16 @@ shipped by any agent product.
 
 **Schedule Devins (March 2026) — self-scheduling and parallel delegation:** Devin can now set up its own recurring
 schedules from natural language descriptions, carrying state between runs via persistent notes. A coordinator Devin
-delegates to managed Devins — each a full isolated VM — that work in parallel. Architecturally close to this
-project's agenda + A2A delegation model, except Devin infers the schedule from natural language rather than requiring
-explicit cron expressions.
+delegates to managed Devins — each a full isolated VM — that work in parallel. Architecturally close to this project's
+agenda + A2A delegation model, except Devin infers the schedule from natural language rather than requiring explicit
+cron expressions.
 
-**Devin-in-Windsurf (2026-04-15):** Cognition integrated cloud Devin with Windsurf local dev, letting developers
-hand off tasks between a local IDE session and a remote Devin instance on the same repo. Plus progressive web app
+**Devin-in-Windsurf (2026-04-15):** Cognition integrated cloud Devin with Windsurf local dev, letting developers hand
+off tasks between a local IDE session and a remote Devin instance on the same repo. Plus progressive web app
 installation (desktop + mobile), browser-tab favicon session-status dots, a **PR Digest** (read-only view of
-Devin-session PRs for users who haven't yet connected GitHub), **GitHub Enterprise Server support** in the Review
-flow, repository-level Review permission enforcement, and IDP (Okta) groups management UI in Enterprise settings.
-The IDE-adjacent integration + enterprise identity / review-governance posture is Cognition's 2026-Q2 theme.
+Devin-session PRs for users who haven't yet connected GitHub), **GitHub Enterprise Server support** in the Review flow,
+repository-level Review permission enforcement, and IDP (Okta) groups management UI in Enterprise settings. The
+IDE-adjacent integration + enterprise identity / review-governance posture is Cognition's 2026-Q2 theme.
 
 **Relative standing:** Devin is a vertical product; this project is infrastructure. Transferable lessons: show the plan
 before acting, structure work for parallel execution, make agent actions observable mid-run, and carry state across
@@ -218,59 +215,60 @@ operates proactively — the closest architectural peer to this project in the n
 
 Hermes Agent (MIT, NousResearch, released February 2026, **v0.10.0 on 2026-04-16**) is built around the thesis that an
 agent should learn from completed work and get measurably better the longer it runs. Ships weekly. Key capabilities:
-persistent memory via prompt-injected files + SQLite FTS5 with LLM-powered summarization; **auto-generated skills**
-— after completing a complex task the agent writes a new skill document for future reuse (FTS5 now indexes 118+
-bundled + generated skills, with top matches prepended to context); six terminal backends (local, Docker, SSH,
-Daytona, Singularity, Modal); 40+ built-in tools; **multi-platform messaging gateway — 16 supported platforms**
-(Telegram, Discord, Slack, WhatsApp, Signal, iMessage via BlueBubbles, WeChat/WeCom, Android/Termux native, CLI, …).
+persistent memory via prompt-injected files + SQLite FTS5 with LLM-powered summarization; **auto-generated skills** —
+after completing a complex task the agent writes a new skill document for future reuse (FTS5 now indexes 118+ bundled +
+generated skills, with top matches prepended to context); six terminal backends (local, Docker, SSH, Daytona,
+Singularity, Modal); 40+ built-in tools; **multi-platform messaging gateway — 16 supported platforms** (Telegram,
+Discord, Slack, WhatsApp, Signal, iMessage via BlueBubbles, WeChat/WeCom, Android/Termux native, CLI, …).
 
 **v0.9.0 (2026-04-13, "The Everywhere Release"):** Android/Termux native, iMessage via BlueBubbles, WeChat/WeCom
-callback mode, Fast Mode (`/fast`), local web dashboard, background-process monitoring, native xAI (Grok) + Xiaomi
-MiMo providers, pluggable context engine.
+callback mode, Fast Mode (`/fast`), local web dashboard, background-process monitoring, native xAI (Grok) + Xiaomi MiMo
+providers, pluggable context engine.
 
 **v0.10.0 (2026-04-16, "The Tool Gateway Release"):** Nous Portal subscribers get web search, image gen, TTS, and
 browser automation (Firecrawl, FAL/FLUX 2 Pro, OpenAI TTS, Browser Use) bundled without separate API keys — a
 subscription-bundled tool gateway that is a new monetization vector for the category.
 
-**Relative standing:** Hermes Agent is the most direct architectural peer in the open-source world on the
-consumer / personal-assistant axis. Its layered memory stack (FTS5 + LLM summarization + pluggable providers) and
+**Relative standing:** Hermes Agent is the most direct architectural peer in the open-source world on the consumer /
+personal-assistant axis. Its layered memory stack (FTS5 + LLM summarization + pluggable providers) and
 auto-skill-generation are materially ahead of this project's flat markdown files and static skill documents. Its
-messaging-first gateway is out of scope for this project's A2A/HTTP model. The auto-skill-generation pattern
-remains the most transferable idea.
+messaging-first gateway is out of scope for this project's A2A/HTTP model. The auto-skill-generation pattern remains the
+most transferable idea.
 
 ### CrewAI
 
 **Autonomy model:** Human-driven (a crew is instantiated and kicked off by Python code a human runs; event-driven Flows
 add reactivity but crews do not self-schedule — they are called)
 
-Multi-agent orchestration framework. **Current: v1.14.2 (2026-04-17).** Headline 2025–2026 capabilities:
-**unified Memory class** (LLM-inferred hierarchical scopes, composite recall scoring, non-blocking background saves,
+Multi-agent orchestration framework. **Current: v1.14.2 (2026-04-17).** Headline 2025–2026 capabilities: **unified
+Memory class** (LLM-inferred hierarchical scopes, composite recall scoring, non-blocking background saves,
 `crewai memory` terminal browser), **Tool search** (dynamic tool injection — loads only tools relevant to the current
-task rather than the full allow-list), Qdrant Edge for on-device vector storage, Enterprise Control Plane with
-real-time tracing.
+task rather than the full allow-list), Qdrant Edge for on-device vector storage, Enterprise Control Plane with real-time
+tracing.
 
-**v1.14.0 (2026-04-07) — checkpoint/resume primitives:** First-class `CheckpointConfig` auto-checkpointing, `checkpoint
-list` / `checkpoint info` CLI, `SqliteProvider` checkpoint store, runtime-state checkpointing with event-system refactor,
-`guardrail_type` + name labels on traces. SSRF and path-traversal protections added to RAG tools. Excluded embedding
-vectors from memory serialization (token savings). Bumped `litellm ≥1.83.0` to pick up a CVE patch (CVE-2026-35030).
+**v1.14.0 (2026-04-07) — checkpoint/resume primitives:** First-class `CheckpointConfig` auto-checkpointing,
+`checkpoint list` / `checkpoint info` CLI, `SqliteProvider` checkpoint store, runtime-state checkpointing with
+event-system refactor, `guardrail_type` + name labels on traces. SSRF and path-traversal protections added to RAG tools.
+Excluded embedding vectors from memory serialization (token savings). Bumped `litellm ≥1.83.0` to pick up a CVE patch
+(CVE-2026-35030).
 
 **v1.14.2 (2026-04-17):** Fix for `flow_finished` event after HITL resume; `cryptography` bump to 46.0.7 for
 CVE-2026-39892. The two CVE patches in a single minor cycle signal CrewAI maturing its enterprise-security posture.
 
-**Relative standing:** CrewAI's unified structured memory with composite recall remains the clearest memory gap
-relative to this project. Its new tool search (dynamic, task-aware tool injection — loading only tools relevant to
-the current prompt) is the state of the art here and a real gap; this project has static `ALLOWED_TOOLS` per agent.
+**Relative standing:** CrewAI's unified structured memory with composite recall remains the clearest memory gap relative
+to this project. Its new tool search (dynamic, task-aware tool injection — loading only tools relevant to the current
+prompt) is the state of the art here and a real gap; this project has static `ALLOWED_TOOLS` per agent.
 Checkpoint/resume primitives at v1.14.0 advance the durability story. This project uses A2A for coordination
 (distributed, standard, network-based); CrewAI uses in-process Python calls (tighter coupling, lower latency).
 
 ### LangGraph / LangGraph Platform
 
-**Autonomy model:** Human-driven to semi-autonomous (graphs are triggered by external events or human calls;
-**LangGraph Platform** adds persistent deployment + event-driven triggers, pushing toward semi-autonomous)
+**Autonomy model:** Human-driven to semi-autonomous (graphs are triggered by external events or human calls; **LangGraph
+Platform** adds persistent deployment + event-driven triggers, pushing toward semi-autonomous)
 
-**Current: LangGraph v1.1.0 (2026-03-10) + LangGraph Platform GA (late 2025).** An earlier pass of this doc
-mislabeled deferred nodes and node-level caching as "v2.0" features — they are **v1.x** features shipped during the
-2025 LangGraph Release Week. There is no v2.0 on PyPI as of April 2026; the stable line is v1.x.
+**Current: LangGraph v1.1.0 (2026-03-10) + LangGraph Platform GA (late 2025).** An earlier pass of this doc mislabeled
+deferred nodes and node-level caching as "v2.0" features — they are **v1.x** features shipped during the 2025 LangGraph
+Release Week. There is no v2.0 on PyPI as of April 2026; the stable line is v1.x.
 
 **Key v1.x capabilities (accumulated through v1.1.0):**
 
@@ -282,68 +280,119 @@ mislabeled deferred nodes and node-level caching as "v2.0" features — they are
 - **MCPToolkit** for standardized MCP integration.
 - **Native A2A integration** — cross-framework agent-to-agent over message brokers, confirming A2A as the emerging
   coordination protocol.
-- **Deferred nodes** (v1.x) — delay node execution until all upstream paths complete; canonical map-reduce / consensus
-  / multi-agent fan-out-fan-in implementation.
+- **Deferred nodes** (v1.x) — delay node execution until all upstream paths complete; canonical map-reduce / consensus /
+  multi-agent fan-out-fan-in implementation.
 - **Node-level caching** (v1.x) — cache individual node results to skip redundant computation during iterative
   development and replay.
 - **Type-safe `invoke()` / `stream()` via `version="v2"`** with Pydantic / dataclass coercion of state values.
 - **Deploy CLI** (`langgraph deploy`) pushes a graph to LangGraph Platform in one step.
 
 **LangGraph Platform (GA, late 2025):** Purpose-built runtime for long-running, stateful agents. Durable state
-persistence, resume-from-interruption, built-in HITL, streaming. **~400 companies running it in production** as of
-the March 2026 LangChain newsletter. The Platform — not the library alone — is the right reference for a
-production-grade comparable to this project's harness + scheduler surface.
+persistence, resume-from-interruption, built-in HITL, streaming. **~400 companies running it in production** as of the
+March 2026 LangChain newsletter. The Platform — not the library alone — is the right reference for a production-grade
+comparable to this project's harness + scheduler surface.
 
 **Relative standing:** LangGraph Platform is now a peer production runtime; its checkpointing model validates F-005
-(implemented). Declarative guardrail nodes and A2A integration reinforce F-009 direction. HITL `interrupt()`
-redesign reinforces the value of F-001. This project's differentiator vs. LangGraph Platform is **multi-backend
-routing under one named-agent identity** (LangGraph Platform is single-framework — agents are LangGraph-authored),
-plus the full scheduler-primitive surface (jobs / tasks / triggers / heartbeats / continuations / webhooks) vs.
-LangGraph's graph-execution model.
+(implemented). Declarative guardrail nodes and A2A integration reinforce F-009 direction. HITL `interrupt()` redesign
+reinforces the value of F-001. This project's differentiator vs. LangGraph Platform is **multi-backend routing under one
+named-agent identity** (LangGraph Platform is single-framework — agents are LangGraph-authored), plus the full
+scheduler-primitive surface (jobs / tasks / triggers / heartbeats / continuations / webhooks) vs. LangGraph's
+graph-execution model.
 
 ### A2A Protocol (Ecosystem)
 
 **Autonomy model:** Protocol-level (A2A defines how agents communicate regardless of autonomy model; this project uses
 it as the coordination layer between autonomous agents)
 
-**A2A v1.0 is now the stable version.** Governance has been donated to the **Linux Foundation** as an official
-project; one-year anniversary milestone (2026-04-09) reports 150+ participating organizations and 22k+ GitHub stars.
-Production deployments include Azure AI Foundry and Amazon Bedrock AgentCore (both of which embed A2A as their
-native cross-agent protocol). v1.0 adds **Signed Agent Cards** — cryptographic signatures on Agent Cards to prevent
-forgery and card-redirect attacks, closing a real multi-tenant security gap.
+**A2A v1.0 is now the stable version.** Governance has been donated to the **Linux Foundation** as an official project;
+one-year anniversary milestone (2026-04-09) reports 150+ participating organizations and 22k+ GitHub stars. Production
+deployments include Azure AI Foundry and Amazon Bedrock AgentCore (both of which embed A2A as their native cross-agent
+protocol). v1.0 adds **Signed Agent Cards** — cryptographic signatures on Agent Cards to prevent forgery and
+card-redirect attacks, closing a real multi-tenant security gap.
 
 The broader protocol ecosystem continues to be four layers: **MCP** (agent-to-tool), **A2A v1.0** (agent-to-agent),
 **ACP** (lightweight async messaging), and **UCP** (agentic commerce — co-developed with Shopify, Visa, Mastercard).
 Native A2A support is now present in LangGraph v1.x, Microsoft Foundry Agent Service, kagent, and Amazon Bedrock
 AgentCore. The W3C AI Agent Protocol Community Group is working toward official web standards (expected 2026–2027).
 
-**Relative standing:** This project already implements A2A as a first-class citizen — harness routes any inbound
-message to backend agents, named agents are reachable from peer named agents over A2A, and the hybrid
-orchestrator-plus-local-mesh topology identified in 2026 matches this project's heartbeat + delegation design.
-v1.0's Signed Agent Cards is the next conformance milestone — verifying signatures on inbound agent cards before
-accepting requests is a straightforward gap to close.
+**Relative standing:** This project already implements A2A as a first-class citizen — harness routes any inbound message
+to backend agents, named agents are reachable from peer named agents over A2A, and the hybrid
+orchestrator-plus-local-mesh topology identified in 2026 matches this project's heartbeat + delegation design. v1.0's
+Signed Agent Cards is the next conformance milestone — verifying signatures on inbound agent cards before accepting
+requests is a straightforward gap to close.
 
-### OpenClaw (Peter Steinberger / community)
+### OpenClaw (Peter Steinberger / community) — primary open-source competitor
 
-**Autonomy model:** Autonomous (self-hosted personal agent, runs 24/7, messaging-driven; the closest philosophical
-peer to this project in the open-source world)
+**Autonomy model:** Autonomous (self-hosted personal agent, runs 24/7, messaging-driven; the closest philosophical peer
+to this project in the open-source world)
+
+**The one-line positioning frame:** witwave is OpenClaw for teams with Kubernetes clusters — same autonomy model, same
+messaging-first interaction surface, same multi-backend LLM routing, but deployed as a cluster-resident multi-agent
+platform rather than a personal local daemon. OpenClaw targets the individual running a 24/7 assistant on a Mac Mini;
+this project targets the team running coordinated agents as cluster workloads.
 
 OpenClaw originated as "Clawdbot" in November 2025, was renamed "Moltbot" on 2026-01-27 under Anthropic trademark
-pressure, and three days later settled on **OpenClaw**. **Over 160,000 GitHub stars.** Runs on user-controlled
-infrastructure (notable community trend: a Mac Mini hardware rush for 24/7 hosting). Access surface is chat UIs in
-Signal / Telegram / Discord / WhatsApp. Connects to Claude, DeepSeek, and OpenAI models.
+pressure, and three days later settled on **OpenClaw**. Category-leading install base (six-figure GitHub stars; verify
+current number before quoting — it's grown through 2026 and drift-checkable numbers retire fast). Runs on
+user-controlled infrastructure (notable community trend: a Mac Mini hardware rush for 24/7 hosting). Connects to Claude,
+OpenAI, DeepSeek, and local models. **MIT licensed; calendar-versioned releases (`vYYYY.M.D`) with beta and dev
+channels; very active development cadence.**
+
+**Implementation + architecture:** TypeScript / Node.js (v22.16+, v24 recommended). The Gateway is a local control plane
+deployed on user machines (macOS, Linux, Windows via WSL2). No cloud requirement; runs entirely on user infrastructure.
+
+**Interface surface — breadth over depth:**
+
+- **CLI (`openclaw …`):** onboard, gateway, agent, message send, pairing, etc. — primary admin surface.
+- **20+ chat-platform integrations:** Signal, Telegram, Discord, Slack, WhatsApp, iMessage (via BlueBubbles), Google
+  Chat, Matrix, Microsoft Teams, Feishu, LINE, Mattermost, Nextcloud Talk, Nostr, Synology Chat, Tlon, Twitch, Zalo,
+  WeChat, QQ, WebChat, IRC, plus a built-in inbox. This is the dashboard replacement for their product category.
+- **macOS menu-bar companion app (beta):** voice wake + push-to-talk overlay, WebChat, and remote gateway control — a
+  lightweight tray surface complementing the CLI.
+- **Mobile (iOS / Android):** optional nodes pair as WebSocket clients for remote access.
+
+**Extensibility:** workspace-based skills (`~/.openclaw/workspace/skills/`) with bundled + managed + custom variants —
+and notably the assistant **can write its own skill documents** after completing complex tasks, closing the
+execution-to-skill-synthesis loop. Prompt injection points: `AGENTS.md`, `SOUL.md`, `TOOLS.md`. MCP supported as a
+standard integration mechanism.
 
 **Kubernetes posture:** A dedicated `openclaw-rocks/openclaw-operator` explicitly offers "production-grade security,
 observability, and lifecycle management" — a direct parallel to this project's witwave-operator. AWS published a "Run
 OpenClaw on Amazon Lightsail" blog; NVIDIA shipped **NemoClaw** safety tooling for it. Security posture is a
-publicly-acknowledged weakness (third-party skills remote-code-execution, exposed instances).
+publicly-acknowledged weakness (third-party skills remote-code-execution risk, exposed instances in the wild).
 
-**Relative standing:** OpenClaw is the single strongest direct open-source competitor to this project. It ships
-containerized, multi-backend (Claude / OpenAI / DeepSeek), operator-managed, 24/7 autonomous — nearly every axis we
-position around. Key differentiators in this project's favor: (1) stronger safety posture via the `hooks.yaml`
-declarative policy + MCP allow-list + session-id HMAC binding; (2) A2A-native team coordination vs. OpenClaw's
-single-agent framing; (3) a published event-stream wire contract that multiple clients (dashboard, `ww` CLI, future
-mobile) consume. OpenClaw's differentiator in its favor: category-leading install base + community skill ecosystem.
+**Relative standing:** The single strongest direct open-source competitor to this project. Ships containerized,
+multi-backend (Claude / OpenAI / DeepSeek), operator-managed, 24/7 autonomous — nearly every axis we position around.
+
+_Differentiators in this project's favor:_
+
+1. **Kubernetes-native multi-agent team posture.** witwave is a cluster-resident platform with A2A-native coordination
+   between named agents; OpenClaw targets a single-user, single-machine personal assistant. "witwave is OpenClaw for
+   teams with Kubernetes clusters" captures the split.
+2. **Multi-backend routing under one agent identity.** `backend.yaml` routes per-concern (heartbeat → claude, jobs →
+   codex, etc.) within one named agent; OpenClaw's multi-model support is per-conversation, not
+   per-concern-within-agent.
+3. **Stronger safety posture.** Declarative `hooks.yaml` policy + MCP allow-list + session-id HMAC binding address the
+   skill-RCE class OpenClaw publicly acknowledges.
+4. **Scheduler-primitives breadth.** Jobs / tasks / heartbeats / triggers / continuations / webhooks as first-class
+   `.witwave/` frontmatter files. OpenClaw has none of these; agenda is implicit in the conversation.
+5. **Published event-stream wire contract.** `/events/stream` with 14 typed shapes, consumed by multiple independent
+   clients; OpenClaw's observability is coupled to its proprietary surfaces.
+
+_OpenClaw's differentiators in its favor:_
+
+1. **Category-leading install base and community** — an order of magnitude more users and a bigger skill ecosystem.
+2. **Chat-platform breadth.** 20+ platforms out of the box. witwave ships none today (trigger + webhook primitives could
+   build a subset; real work).
+3. **Skill auto-generation.** The execution-to-skill-synthesis loop is shipped; witwave's skill documents are static
+   (see Research Themes → Self-Improvement).
+4. **Menu-bar / voice-wake surface.** OpenClaw has a live notification / voice interaction surface; witwave has a web
+   dashboard on the way to maintenance-mode.
+
+**Direction implication.** If witwave's strategic direction is "CLI-first bootstrap + chat-platform integrations as user
+surface + menu-bar/tray for glance-level status + no dashboard" (patterned on OpenClaw), the competitive positioning is:
+_OpenClaw for teams deploying agents to shared Kubernetes infrastructure_. The chat-platform integration work (new issue
+not yet filed at the time of this pass) is the biggest shared-axis gap.
 
 ### kagent (Solo.io / CNCF sandbox)
 
@@ -351,47 +400,46 @@ mobile) consume. OpenClaw's differentiator in its favor: category-leading instal
 
 Open-source framework for building, deploying, and running AI agents on Kubernetes. Initial announce March 2025;
 contributed to CNCF sandbox at KubeCon EU 2025; active 2026 development. Built on **A2A + ADK + MCP**, with pre-built
-tools for Prometheus, pod logs, and standard Kubernetes APIs — a direct overlap with this project's
-mcp-kubernetes / mcp-helm / mcp-prometheus surface. Runtime is Microsoft AutoGen. CNCF backing gives kagent distribution
-weight this project doesn't have.
+tools for Prometheus, pod logs, and standard Kubernetes APIs — a direct overlap with this project's mcp-kubernetes /
+mcp-helm / mcp-prometheus surface. Runtime is Microsoft AutoGen. CNCF backing gives kagent distribution weight this
+project doesn't have.
 
-**Relative standing:** Our nearest cloud-native OSS competitor. Both projects are Kubernetes-native and lead with
-A2A + MCP; kagent doesn't offer a multi-backend router analogous to this project's `backend.yaml` routing across
-Claude / Codex / Gemini under one named-agent identity, and uses AutoGen rather than direct SDK wrappers. The
-clearest question for our positioning: "multi-backend under one identity" and "scheduler-primitives-first" (jobs +
-tasks + heartbeats + triggers + continuations + webhooks) are the defensible differentiators vs. kagent's
-AutoGen-runtime-plus-prebuilt-tools approach.
+**Relative standing:** Our nearest cloud-native OSS competitor. Both projects are Kubernetes-native and lead with A2A +
+MCP; kagent doesn't offer a multi-backend router analogous to this project's `backend.yaml` routing across Claude /
+Codex / Gemini under one named-agent identity, and uses AutoGen rather than direct SDK wrappers. The clearest question
+for our positioning: "multi-backend under one identity" and "scheduler-primitives-first" (jobs + tasks + heartbeats +
+triggers + continuations + webhooks) are the defensible differentiators vs. kagent's AutoGen-runtime-plus-prebuilt-tools
+approach.
 
 ### Amazon Bedrock AgentCore (AWS)
 
 **Autonomy model:** Autonomous, managed cloud
 
 Managed platform for "securely deploy and operate AI agents at any scale" — preview 2025; **Policy GA 2026-03-03,
-Evaluations GA 2026-03-31.** Surface includes a runtime, a gateway (tool/MCP access), memory, identity,
-observability, policy (governance), and evaluations (quality). Covers the same infrastructure concerns as this
-project's harness, but as an AWS-managed service. Locked to Bedrock-hosted models.
+Evaluations GA 2026-03-31.** Surface includes a runtime, a gateway (tool/MCP access), memory, identity, observability,
+policy (governance), and evaluations (quality). Covers the same infrastructure concerns as this project's harness, but
+as an AWS-managed service. Locked to Bedrock-hosted models.
 
 **Relative standing:** Mandatory hyperscaler reference. AgentCore's Policy + Evaluations track directly against this
 project's hook policy engine + emerging smoke-test surface. Differentiators: we're open-source, self-hosted, and
-model-backend-agnostic (Claude / Codex / Gemini); AgentCore is closed, managed, Bedrock-only. The competitive
-dynamic is hyperscaler-managed-SaaS vs. self-hosted-Kubernetes — classic split.
+model-backend-agnostic (Claude / Codex / Gemini); AgentCore is closed, managed, Bedrock-only. The competitive dynamic is
+hyperscaler-managed-SaaS vs. self-hosted-Kubernetes — classic split.
 
 ### Microsoft Agent Framework + Foundry Agent Service (Microsoft)
 
 **Autonomy model:** Semi-autonomous (orchestration framework + managed runtime)
 
-**Agent Framework:** Open-source framework (Python + .NET) for building and orchestrating multi-agent workflows,
-public preview late 2025. First-class A2A, MCP, and OpenTelemetry — exactly the same tripod we ship.
+**Agent Framework:** Open-source framework (Python + .NET) for building and orchestrating multi-agent workflows, public
+preview late 2025. First-class A2A, MCP, and OpenTelemetry — exactly the same tripod we ship.
 
 **Foundry Agent Service:** GA announced March 2026. OpenAI Responses-compatible API; hosts DeepSeek, xAI, Meta,
-LangChain, LangGraph models (in addition to Azure OpenAI). Directly overlaps this project's cross-backend
-orchestration. Differentiator is Azure-first deployment; not Kubernetes-operator-native.
+LangChain, LangGraph models (in addition to Azure OpenAI). Directly overlaps this project's cross-backend orchestration.
+Differentiator is Azure-first deployment; not Kubernetes-operator-native.
 
-**Relative standing:** The Microsoft entry in the category. A2A + MCP + OTel parity at the framework level
-forecloses our "we ship these" differentiator from Option A framing — narrowing to *how* we compose them is the
-right response. Microsoft's strength is Azure distribution and OpenAI Responses compatibility; ours is
-infrastructure-as-code Kubernetes posture and multi-backend routing across three distinct LLM vendors rather than
-a single API surface.
+**Relative standing:** The Microsoft entry in the category. A2A + MCP + OTel parity at the framework level forecloses
+our "we ship these" differentiator from Option A framing — narrowing to _how_ we compose them is the right response.
+Microsoft's strength is Azure distribution and OpenAI Responses compatibility; ours is infrastructure-as-code Kubernetes
+posture and multi-backend routing across three distinct LLM vendors rather than a single API surface.
 
 ### Cloudflare Agent Cloud (Cloudflare)
 
@@ -399,59 +447,60 @@ a single API surface.
 
 Launched during **Agents Week (2026-04-13 to 2026-04-17)** — the same week this doc is being revised.
 
-- **Cloudflare Mesh** — private-networking "single secure fabric" for agents / humans / multicloud; branded to
-  secure the AI agent lifecycle end-to-end.
+- **Cloudflare Mesh** — private-networking "single secure fabric" for agents / humans / multicloud; branded to secure
+  the AI agent lifecycle end-to-end.
 - **Dynamic Workers** — millisecond-spawn sandboxes for agent-generated code.
-- **AI Gateway** — unifies 70+ models across 12+ providers (directly parallel to this project's multi-backend routing
-  — but much broader).
+- **AI Gateway** — unifies 70+ models across 12+ providers (directly parallel to this project's multi-backend routing —
+  but much broader).
 
-**Relative standing:** Category-defining launch in the very week of this research. Cloudflare's positioning of
-"Agent Cloud" is itself a category signal — "Agent Fabric / Mesh / Cloud" is consolidating as THE 2026 term for the
-space. Our counter-positioning: Cloudflare runs on Workers (edge compute with millisecond spawn), while this
-project runs Kubernetes Pods (persistent, stateful, per-agent filesystem). Different deployment models; some
-workloads need one, some need the other. The AI Gateway is a serious differentiation challenge to our
-backend-routing story — Cloudflare covers vastly more providers.
+**Relative standing:** Category-defining launch in the very week of this research. Cloudflare's positioning of "Agent
+Cloud" is itself a category signal — "Agent Fabric / Mesh / Cloud" is consolidating as THE 2026 term for the space. Our
+counter-positioning: Cloudflare runs on Workers (edge compute with millisecond spawn), while this project runs
+Kubernetes Pods (persistent, stateful, per-agent filesystem). Different deployment models; some workloads need one, some
+need the other. The AI Gateway is a serious differentiation challenge to our backend-routing story — Cloudflare covers
+vastly more providers.
 
 ---
 
 ## Category references
 
-These products anchor category vocabulary but aren't primary competitors — noted here so the doc's language aligns
-with where the market is converging.
+These products anchor category vocabulary but aren't primary competitors — noted here so the doc's language aligns with
+where the market is converging.
 
 ### NVIDIA NeMo Agent Toolkit (NAT)
 
-Previously branded AIQ; renamed NAT in early 2026; **GTC 2026 (March 16–19) partner launch with ~16 platform
-vendors** (Adobe, Atlassian, Box, Cadence, Cisco, CrowdStrike, SAP, Salesforce, ServiceNow, Siemens, Synopsys,
-others) standardizing on it. Open-source library for connecting / evaluating / accelerating teams of agents;
-framework-agnostic instrumentation across LangChain / LlamaIndex / CrewAI / Microsoft Semantic Kernel / Google ADK.
-**FastMCP Workflow Publishing** lets NAT workflows publish as MCP servers — crossing the observability-to-tooling
-boundary. Matters not as a head-to-head competitor but as a cross-cutting standardization layer that changes how
-the rest of the landscape integrates.
+Previously branded AIQ; renamed NAT in early 2026; **GTC 2026 (March 16–19) partner launch with ~16 platform vendors**
+(Adobe, Atlassian, Box, Cadence, Cisco, CrowdStrike, SAP, Salesforce, ServiceNow, Siemens, Synopsys, others)
+standardizing on it. Open-source library for connecting / evaluating / accelerating teams of agents; framework-agnostic
+instrumentation across LangChain / LlamaIndex / CrewAI / Microsoft Semantic Kernel / Google ADK. **FastMCP Workflow
+Publishing** lets NAT workflows publish as MCP servers — crossing the observability-to-tooling boundary. Matters not as
+a head-to-head competitor but as a cross-cutting standardization layer that changes how the rest of the landscape
+integrates.
 
 ### Salesforce Agent Fabric
 
-Agent Fabric with Guided Determinism + centralized governance controls, Flex Gateway, Runtime Fabric support.
-Positioned as "trusted agent control plane for a rapidly evolving multi-vendor AI landscape" — automated discovery,
-authoring, and centralized LLM governance across vendors. Our harness is architecturally the same role (routing +
-governance across multiple backends) in a Kubernetes-native form. Noted here because **"Agent Fabric" is becoming
-the canonical enterprise category name** alongside "Agent Mesh" and "Agent Cloud."
+Agent Fabric with Guided Determinism + centralized governance controls, Flex Gateway, Runtime Fabric support. Positioned
+as "trusted agent control plane for a rapidly evolving multi-vendor AI landscape" — automated discovery, authoring, and
+centralized LLM governance across vendors. Our harness is architecturally the same role (routing + governance across
+multiple backends) in a Kubernetes-native form. Noted here because **"Agent Fabric" is becoming the canonical enterprise
+category name** alongside "Agent Mesh" and "Agent Cloud."
 
 ---
 
 ## Research Themes
 
-Thin navigational scaffolding — one paragraph per theme pointing at the relevant entries in Reference Products
-and Gap Analysis for current state. Not a research bibliography; the competitor-specific detail lives with each
-competitor's section (which ages on a clear cadence), and industry statistics that were previously inline have
-been retired because they drift invisibly and can't be kept honest without quarterly refresh discipline.
+Thin navigational scaffolding — one paragraph per theme pointing at the relevant entries in Reference Products and Gap
+Analysis for current state. Not a research bibliography; the competitor-specific detail lives with each competitor's
+section (which ages on a clear cadence), and industry statistics that were previously inline have been retired because
+they drift invisibly and can't be kept honest without quarterly refresh discipline.
 
 ### Memory
 
-Persistent structured memory across runs. CrewAI's unified Memory class with LLM-inferred hierarchical scopes + composite
-recall is the leading open-source implementation. Hermes Agent's SQLite FTS5 + auto-generated skills is the consumer-side
-peer. This project uses flat markdown files, which work for prose notes but are fragile for structured data needing
-reliable read/update. Candidate: shared structured memory index (F-003, on hold pending shared-volume infrastructure).
+Persistent structured memory across runs. CrewAI's unified Memory class with LLM-inferred hierarchical scopes +
+composite recall is the leading open-source implementation. Hermes Agent's SQLite FTS5 + auto-generated skills is the
+consumer-side peer. This project uses flat markdown files, which work for prose notes but are fragile for structured
+data needing reliable read/update. Candidate: shared structured memory index (F-003, on hold pending shared-volume
+infrastructure).
 
 ### Observability
 
@@ -464,14 +513,15 @@ mobile — most competitors couple event observability to proprietary UIs. See G
 
 Approval gates before destructive actions. LangGraph's `interrupt()` with structured payloads is the reference pattern.
 The Claude Agent SDK ships `AskUserQuestion` as a built-in HITL tool. Devin shows plan-before-code as a hard checkpoint.
-This project has `AskUserQuestion` available but not yet enabled (F-001, open — one-line wiring change in `executor.py`).
+This project has `AskUserQuestion` available but not yet enabled (F-001, open — one-line wiring change in
+`executor.py`).
 
 ### Guardrails / Safety
 
 Prevention-first control hierarchy: hooks → human intervention → trace log. LangGraph ships declarative guardrail nodes.
-The Claude Agent SDK's `PreToolUse` hook supports `updatedInput` for argument rewriting (not just blocking). This project
-ships the hook runtime (`hooks.yaml` baseline + per-agent extensions, hot-reloaded) plus MCP command + cwd allow-lists;
-see the Claude Code / SDK entry for the specific API surface and Gap Analysis → Safety for what remains.
+The Claude Agent SDK's `PreToolUse` hook supports `updatedInput` for argument rewriting (not just blocking). This
+project ships the hook runtime (`hooks.yaml` baseline + per-agent extensions, hot-reloaded) plus MCP command + cwd
+allow-lists; see the Claude Code / SDK entry for the specific API surface and Gap Analysis → Safety for what remains.
 
 ### Coordination
 
@@ -484,28 +534,28 @@ hybrid heartbeat-orchestrator + A2A-delegation model aligns with the winning top
 ### Durability / Crash Recovery
 
 Checkpointing is mandatory in production systems post-LangGraph-1.x (which made it a hard requirement). Temporal.io's
-durable workflow model is the broader 2026 reference architecture. CrewAI's v1.14.0 checkpoint/resume primitives are
-now the OSS peer reference. This project has stale-checkpoint detection on startup (F-005); full session resume past
+durable workflow model is the broader 2026 reference architecture. CrewAI's v1.14.0 checkpoint/resume primitives are now
+the OSS peer reference. This project has stale-checkpoint detection on startup (F-005); full session resume past
 `resume=session_id` remains a longer-term follow-on.
 
 ### Tooling / MCP
 
 MCP is under Linux Foundation governance (donated December 2025). Hundreds of community MCP servers cover browsers,
 databases, APIs, system integrations. Native MCP support is ubiquitous across the landscape — table stakes. This project
-ships three MCP tool servers (`mcp-kubernetes`, `mcp-helm`, `mcp-prometheus`), each bearer-auth-gated and call-budget-capped.
-Dynamic *task-aware* tool injection (CrewAI's Tool Search — load only the tools relevant to the current prompt) is the
-remaining frontier; see Gap Analysis → Tooling.
+ships three MCP tool servers (`mcp-kubernetes`, `mcp-helm`, `mcp-prometheus`), each bearer-auth-gated and
+call-budget-capped. Dynamic _task-aware_ tool injection (CrewAI's Tool Search — load only the tools relevant to the
+current prompt) is the remaining frontier; see Gap Analysis → Tooling.
 
 ### Planning / Task Decomposition
 
 Plan-before-code as a hard checkpoint pattern. OpenHands's Planning Agent (read-only until `PLAN.md` is finalized) + the
-Claude Agent SDK's `permission_mode="plan"` are the reference implementations. Research confirms planning phases
-produce fewer cascading failures. This project has neither a planning mode nor a plan-gate (F-012, open).
+Claude Agent SDK's `permission_mode="plan"` are the reference implementations. Research confirms planning phases produce
+fewer cascading failures. This project has neither a planning mode nor a plan-gate (F-012, open).
 
 ### Safety / Governance
 
-Microsoft's Agent Governance Toolkit (MIT license, 2026-04-02) is the first toolkit to address all 10 OWASP Agentic Top 10
-risks with deterministic sub-millisecond policy enforcement. EU AI Act high-risk obligations take effect August 2026;
+Microsoft's Agent Governance Toolkit (MIT license, 2026-04-02) is the first toolkit to address all 10 OWASP Agentic Top
+10 risks with deterministic sub-millisecond policy enforcement. EU AI Act high-risk obligations take effect August 2026;
 Colorado AI Act becomes enforceable June 2026 (verify specifics before quoting — regulation dates shift). This project's
 `hooks.yaml` declarative policy engine provides the enforcement primitive; the gap is OWASP-category labelling on rules
 so it becomes a direct comparable to the MS toolkit. See Gap Analysis → Safety for specifics.
@@ -523,7 +573,8 @@ Candidate: post-task skill synthesis that evaluates whether a completed run yiel
 Token budgeting + context-usage monitoring to prevent runaway bills and silent tail-end degradation. The Claude Agent
 SDK ships `task_budget` (per-session cap) and `get_context_usage()` (real-time consumption by category). CrewAI tracks
 token usage in `LLMCallCompletedEvent`. Production agents are widely over-resourced (industry finding; verify current
-figure before citing). This project has `get_context_usage()` wired; `task_budget` is proposed but unimplemented (F-010).
+figure before citing). This project has `get_context_usage()` wired; `task_budget` is proposed but unimplemented
+(F-010).
 
 ---
 
@@ -552,52 +603,49 @@ _Last updated: 2026-04-07 by local-agent_
   extraction, retry, and HMAC signing. Devin's self-scheduling validates the agenda model. The remaining gap is dynamic
   tooling and deeper external system integrations.
 
-- **Observability and debuggability:** Metrics + distributed tracing are now baseline across the space —
-  Bedrock AgentCore ships observability by default, kagent includes Prometheus as a pre-built tool, Cloudflare
-  Agent Cloud and Microsoft Agent Framework lead with OpenTelemetry. Shipping `backend_*` metrics +
-  `traceparent` propagation is therefore no longer a differentiator; it's entry to the category. The actual
-  differentiator is the **published event-stream wire contract consumed by multiple independent clients** —
-  `/events/stream` with 14 typed event shapes documented in `docs/events/events.schema.json`, same schema
-  consumed by the web dashboard today and by the `ww` CLI + future mobile clients. Most competitors' event
-  observability is coupled to their proprietary UI (AgentCore console, LangSmith, Devin IDE embed); publishing
-  it as a first-class multi-client contract is the remaining edge. Remaining gap: per-agent RED / USE
-  dashboards bundled as default Grafana JSON (partially started via `charts/witwave/dashboards/`).
+- **Observability and debuggability:** Metrics + distributed tracing are now baseline across the space — Bedrock
+  AgentCore ships observability by default, kagent includes Prometheus as a pre-built tool, Cloudflare Agent Cloud and
+  Microsoft Agent Framework lead with OpenTelemetry. Shipping `backend_*` metrics + `traceparent` propagation is
+  therefore no longer a differentiator; it's entry to the category. The actual differentiator is the **published
+  event-stream wire contract consumed by multiple independent clients** — `/events/stream` with 14 typed event shapes
+  documented in `docs/events/events.schema.json`, same schema consumed by the web dashboard today and by the `ww` CLI +
+  future mobile clients. Most competitors' event observability is coupled to their proprietary UI (AgentCore console,
+  LangSmith, Devin IDE embed); publishing it as a first-class multi-client contract is the remaining edge. Remaining
+  gap: per-agent RED / USE dashboards bundled as default Grafana JSON (partially started via
+  `charts/witwave/dashboards/`).
 
 - **Safety and guardrails:** Microsoft released the Agent Governance Toolkit (April 2, 2026, MIT license) — the first
   toolkit to address all 10 OWASP Agentic Top 10 risks with deterministic, sub-millisecond policy enforcement. OWASP
   published the Top 10 for Agentic Applications in December 2025. EU AI Act high-risk obligations take effect
-  August 2026. This project has a two-layer declarative policy system: a conservative built-in **baseline** of
-  deny rules (shipped in the claude executor) plus **per-agent extensions** loaded from `hooks.yaml` and
-  hot-reloaded at runtime. PostToolUse audit writes one row per tool call to `tool-activity.jsonl` for a
-  forensic trail. MCP transport is separately gated by command + cwd allow-lists
-  (`MCP_ALLOWED_COMMANDS` / `MCP_ALLOWED_COMMAND_PREFIXES` / `MCP_ALLOWED_CWD_PREFIXES` + positional-script
-  rejection in `mcp_command_args_safe()`). The remaining gap is **OWASP-category labelling** — rules in
-  `hooks.yaml` are ad-hoc-named today; mapping each to the OWASP Agentic Top 10 categories (`A01:
-  prompt-injection`, `A02: tool-misuse`, etc.) would turn the declarative layer into a direct comparable
-  with Microsoft's toolkit.
+  August 2026. This project has a two-layer declarative policy system: a conservative built-in **baseline** of deny
+  rules (shipped in the claude executor) plus **per-agent extensions** loaded from `hooks.yaml` and hot-reloaded at
+  runtime. PostToolUse audit writes one row per tool call to `tool-activity.jsonl` for a forensic trail. MCP transport
+  is separately gated by command + cwd allow-lists (`MCP_ALLOWED_COMMANDS` / `MCP_ALLOWED_COMMAND_PREFIXES` /
+  `MCP_ALLOWED_CWD_PREFIXES` + positional-script rejection in `mcp_command_args_safe()`). The remaining gap is
+  **OWASP-category labelling** — rules in `hooks.yaml` are ad-hoc-named today; mapping each to the OWASP Agentic Top 10
+  categories (`A01: prompt-injection`, `A02: tool-misuse`, etc.) would turn the declarative layer into a direct
+  comparable with Microsoft's toolkit.
 
-- **Tooling and integrations (MCP, webhooks, APIs):** MCP configuration is implemented (F-004, closed).
-  Outbound webhooks and inbound triggers are implemented. **Static `ALLOWED_TOOLS` is implemented on
-  claude** (hot-reloadable via `settings.json`) and **scaffolded on gemini** (env + reload counter in
-  place, pending the hand-rolled AFC loop). Three MCP tool servers ship (`mcp-kubernetes`, `mcp-helm`,
-  `mcp-prometheus`); each enforces its own bearer auth and a per-(server, tool) call-budget knob
-  (`mcp_tool_budget_exhausted_total`). Dynamic *task-aware* tool injection (CrewAI's tool search —
-  loading only the tools relevant to the current prompt rather than the full allow-list) is still the
-  open frontier.
+- **Tooling and integrations (MCP, webhooks, APIs):** MCP configuration is implemented (F-004, closed). Outbound
+  webhooks and inbound triggers are implemented. **Static `ALLOWED_TOOLS` is implemented on claude** (hot-reloadable via
+  `settings.json`) and **scaffolded on gemini** (env + reload counter in place, pending the hand-rolled AFC loop). Three
+  MCP tool servers ship (`mcp-kubernetes`, `mcp-helm`, `mcp-prometheus`); each enforces its own bearer auth and a
+  per-(server, tool) call-budget knob (`mcp_tool_budget_exhausted_total`). Dynamic _task-aware_ tool injection (CrewAI's
+  tool search — loading only the tools relevant to the current prompt rather than the full allow-list) is still the open
+  frontier.
 
-- **Kubernetes-native agent infrastructure (contested lane, April 2026):** The position this project has
-  held is no longer uncontested. kagent (CNCF sandbox, Solo.io), OpenClaw's dedicated operator, OpenHands
-  v1.6 Kubernetes + RBAC support, and kubernetes.io's "Agent Sandbox" blog all now occupy the same lane.
-  Differentiators that *do* hold up head-to-head with these: (1) **multi-backend routing under one named
-  agent identity** — Claude / Codex / Gemini behind `backend.yaml` routing rules with per-concern dispatch
-  (heartbeat to claude, jobs to codex, etc.) is unique in the Kubernetes-native OSS set; competitors are
-  mostly single-framework (kagent on AutoGen) or single-model. (2) **Scheduler primitive breadth** — jobs,
-  tasks, heartbeats, triggers, continuations, webhooks as first-class `.witwave/` frontmatter files. kagent
-  and OpenClaw don't ship equivalents. (3) **Per-agent cross-pod topology** — harness + backends + shared
-  MCP tools is a production-ready shape that OpenClaw's single-agent framing doesn't match. (4)
-  **Declarative CRD lifecycle via `WitwaveAgent` + `WitwavePrompt`** going through a dedicated operator with
-  status phases, finalizers, and multi-tenant manifest ConfigMaps. kagent is closer to ours on this axis
-  but uses CRDs only for agent definition, not prompt lifecycle.
+- **Kubernetes-native agent infrastructure (contested lane, April 2026):** The position this project has held is no
+  longer uncontested. kagent (CNCF sandbox, Solo.io), OpenClaw's dedicated operator, OpenHands v1.6 Kubernetes + RBAC
+  support, and kubernetes.io's "Agent Sandbox" blog all now occupy the same lane. Differentiators that _do_ hold up
+  head-to-head with these: (1) **multi-backend routing under one named agent identity** — Claude / Codex / Gemini behind
+  `backend.yaml` routing rules with per-concern dispatch (heartbeat to claude, jobs to codex, etc.) is unique in the
+  Kubernetes-native OSS set; competitors are mostly single-framework (kagent on AutoGen) or single-model. (2)
+  **Scheduler primitive breadth** — jobs, tasks, heartbeats, triggers, continuations, webhooks as first-class
+  `.witwave/` frontmatter files. kagent and OpenClaw don't ship equivalents. (3) **Per-agent cross-pod topology** —
+  harness + backends + shared MCP tools is a production-ready shape that OpenClaw's single-agent framing doesn't match.
+  (4) **Declarative CRD lifecycle via `WitwaveAgent` + `WitwavePrompt`** going through a dedicated operator with status
+  phases, finalizers, and multi-tenant manifest ConfigMaps. kagent is closer to ours on this axis but uses CRDs only for
+  agent definition, not prompt lifecycle.
 
 - **Cost and resource management:** `task_budget` env var is proposed (#69, open) but not implemented. Industry finding:
   90% of production agents are over-resourced in 2026; cost control is treated as a first-class architectural concern.
