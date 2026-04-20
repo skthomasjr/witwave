@@ -13,6 +13,13 @@ project_name: ww
 before:
   hooks:
     - go mod tidy
+    # goreleaser runs from clients/ww/ but the Apache-2.0 LICENSE sits
+    # at the repo root. `src: ../../LICENSE` in archives.files doesn't
+    # work (goreleaser rejects parent-dir prefixes for archive globs,
+    # see v0.4.0-beta.2 CI log). Copy the file into the build dir
+    # before archiving; it's gitignored here so local dev doesn't end
+    # up with a stray duplicate.
+    - cp ../../LICENSE LICENSE
 
 builds:
   - id: ww
@@ -46,12 +53,8 @@ archives:
         formats: [zip]
     files:
       - README.md
-      # The repo-root LICENSE sits two levels up from this config
-      # (clients/ww/.goreleaser.yml → repo root). Explicit src/dst so
-      # the archive carries the Apache-2.0 text even though goreleaser
-      # runs from clients/ww/.
-      - src: ../../LICENSE
-        dst: LICENSE
+      # LICENSE is copied into clients/ww/ by the before-hook above.
+      - LICENSE
 
 checksum:
   name_template: checksums.txt

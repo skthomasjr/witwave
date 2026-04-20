@@ -40,3 +40,7 @@ node_modules/
 .claude/projects/
 .claude/plans/
 .claude/backups/
+
+# ww CLI release pipeline: transient LICENSE copy + goreleaser dist/
+clients/ww/LICENSE
+clients/ww/dist/
