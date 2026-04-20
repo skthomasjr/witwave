@@ -47,6 +47,13 @@ jobs:
       # that happen to mention the token name still fail CI.
       - name: helm template (default values)
         run: |
+          # matrix.chart is "charts/witwave" — the inner slash means
+          # the output path becomes /tmp/charts/<name>-default.yaml,
+          # which requires /tmp/charts/ to exist. On a fresh runner
+          # that dir is absent, so the redirect fails silently and
+          # the grep/cat fallback trips on a missing /tmp/helm-err
+          # too (#1449). Create the parent before the redirect.
+          mkdir -p /tmp/charts
           helm template ci-default ${{ matrix.chart }} --validate=false \
             > /tmp/${{ matrix.chart }}-default.yaml 2> /tmp/helm-err \
             || (grep -qE 'REPLACE_ME_WITH_GENERATED_TOKEN|refusing to render placeholder token' /tmp/helm-err \
