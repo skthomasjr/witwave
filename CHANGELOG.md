@@ -8,6 +8,67 @@ section of each entry.
 
 ## [Unreleased]
 
+## [0.5.6] — 2026-04-20
+
+Follow-up to v0.5.5. Three real changes — the LLM-billing defensive
+work, a cosign verify-recipe fix surfaced during v0.5.5 validation,
+and the chart ↔ operator migration documentation.
+
+### Added
+
+- **A2A retry-policy guard** (#1457): new `A2A_RETRY_POLICY=fast-only|always|never`
+  env (default `fast-only`) + `A2A_RETRY_FAST_ONLY_MS` threshold
+  (default 5000ms). Under the default, 5xx responses that came back
+  AFTER the threshold are refused instead of retried — the theory
+  being that a slow 5xx almost always means the backend's LLM call
+  ran to completion and only failed on the return path, so retrying
+  would bill the prompt a second time.
+  `harness_a2a_backend_slow_5xx_no_retry_total{backend,status}`
+  counts every refused retry. Policy `always` restores legacy
+  behaviour; `never` is the strictest no-double-bill posture.
+- **Outer-timeout cancellation observability** (#1457): structured
+  WARN on `asyncio.TimeoutError` with `session_id`, `backend`,
+  `elapsed_seconds`, `prompt_bytes`, `trace_id` — the fields
+  operators need to audit LLM billing for potential double-charges.
+  New dedicated counter
+  `harness_task_outer_timeout_cancel_total{backend}` distinct from
+  the generic `harness_tasks_total{status="timeout"}`.
+- **Chart ↔ operator migration documentation** (#1478): full
+  seven-step procedure in `operator/README.md`, pointer in
+  `charts/witwave/README.md`. Covers PVC preservation, CR
+  authoring with `existingClaim`, verification, and the explicit
+  "pick one" constraint.
+- **Reduced-RBAC footgun callout** (#1461 Option A): explicit ⚠
+  callout in the operator chart README naming the
+  `rbac.secretsWrite: false` + inline credentials incompatibility
+  that today produces a silent reconcile loop, with concrete
+  `existingSecret` guidance and a forward-reference to #1461 for
+  the apply-time surfacing work.
+
+### Fixed
+
+- **Cosign verify recipe in SECURITY.md**: images strip the leading
+  `v` from release tags (docker/metadata-action@v5 default semver
+  normalisation), so `v0.5.5` in the image path returned
+  MANIFEST_UNKNOWN. Recipe now uses the bare `0.5.5` tag and
+  includes an inline comment explaining the convention.
+- **ConnectionError propagation** in `harness/backends/a2a.py`:
+  added a narrow `except ConnectionError: raise` above the generic
+  exception handler so our deliberate error surfaces (slow-5xx
+  guard, response-size cap) propagate with their intended metric
+  labels instead of being reclassified as `"unexpected error"`.
+
+### Follow-ups tracked
+
+- **#1479** Idempotency-Key header on A2A retries for backend-side
+  dedupe (closes the remaining fast-5xx double-bill window; needs
+  backend cooperation).
+- **#1480** A2A cancellation verb (closes the outer-timeout window;
+  blocked on upstream A2A spec work).
+- **#1461** Options B (reconciler short-circuit) and C (admission
+  webhook) remain deferred as the security-posture UX improvements
+  they are, not bugs.
+
 ## [0.5.5] — 2026-04-20
 
 Substantial follow-up to v0.5.4 — ten issues closed across security,
@@ -264,7 +325,8 @@ silent hardening.
   (`.witwave/`), and environment variables (`WITWAVE_*`) migrated in
   one sweep on 2026-04-19 (commit b966b40).
 
-[Unreleased]: https://github.com/skthomasjr/witwave/compare/v0.5.5...HEAD
+[Unreleased]: https://github.com/skthomasjr/witwave/compare/v0.5.6...HEAD
+[0.5.6]: https://github.com/skthomasjr/witwave/releases/tag/v0.5.6
 [0.5.5]: https://github.com/skthomasjr/witwave/releases/tag/v0.5.5
 [0.5.4]: https://github.com/skthomasjr/witwave/releases/tag/v0.5.4
 [0.5.3]: https://github.com/skthomasjr/witwave/releases/tag/v0.5.3
