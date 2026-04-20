@@ -107,10 +107,10 @@ automatically on every release tag.
 | `mcp-helm`       | `ghcr.io/skthomasjr/images/mcp-helm:latest`       |
 | `mcp-prometheus` | `ghcr.io/skthomasjr/images/mcp-prometheus:latest` |
 
-The `ww` CLI ships as a standalone binary on [GitHub Releases](https://github.com/skthomasjr/autonomous-agent/releases) (plus `brew install ww` once the tap lands — tracked in issue #1128).
+The `ww` CLI ships as a standalone binary on [GitHub Releases](https://github.com/skthomasjr/witwave/releases) (plus `brew install ww` once the tap lands — tracked in issue #1128).
 
 Pull a specific version with a semver tag, e.g. `ghcr.io/skthomasjr/images/harness:0.2.0-beta.37`.
-The latest released tag is visible in the [GitHub Releases](https://github.com/skthomasjr/autonomous-agent/releases) page; substitute it for the version below.
+The latest released tag is visible in the [GitHub Releases](https://github.com/skthomasjr/witwave/releases) page; substitute it for the version below.
 
 ## Helm Charts
 

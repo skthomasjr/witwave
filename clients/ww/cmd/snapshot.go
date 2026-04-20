@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/skthomasjr/autonomous-agent/clients/ww/internal/client"
-	"github.com/skthomasjr/autonomous-agent/clients/ww/internal/output"
+	"github.com/skthomasjr/witwave/clients/ww/internal/client"
+	"github.com/skthomasjr/witwave/clients/ww/internal/output"
 )
 
 // snapshotEntry is the normalised view of a single job/task/trigger/

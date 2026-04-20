@@ -1,4 +1,4 @@
-module github.com/skthomasjr/autonomous-agent/clients/ww
+module github.com/skthomasjr/witwave/clients/ww
 
 go 1.26.2
 

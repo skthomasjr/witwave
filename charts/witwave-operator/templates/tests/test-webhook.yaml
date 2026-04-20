@@ -33,7 +33,7 @@ rules:
   # Needs create access to WitwaveAgent so the apply can reach the
   # ValidatingWebhook. The test object is immediately rejected — no
   # persistent WitwaveAgent is created.
-  - apiGroups: ["witwave.autonomous-agent.io"]
+  - apiGroups: ["witwave.ai"]
     resources: ["witwaveagents"]
     verbs: ["create", "delete"]
 ---
@@ -85,7 +85,7 @@ spec:
         - |
           set -eu
           cat > /tmp/bad.yaml <<'YAML'
-          apiVersion: witwave.autonomous-agent.io/v1alpha1
+          apiVersion: witwave.ai/v1alpha1
           kind: WitwaveAgent
           metadata:
             name: helm-test-webhook-reject

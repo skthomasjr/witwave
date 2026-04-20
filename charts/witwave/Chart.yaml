@@ -10,9 +10,9 @@ keywords:
   - ai
   - llm
   - a2a
-home: https://github.com/skthomasjr/autonomous-agent
+home: https://github.com/skthomasjr/witwave
 sources:
-  - https://github.com/skthomasjr/autonomous-agent
+  - https://github.com/skthomasjr/witwave
 maintainers:
   - name: Scott Thomas
     url: https://github.com/skthomasjr
@@ -22,4 +22,4 @@ annotations:
   artifacthub.io/prerelease: "true"
   artifacthub.io/links: |
     - name: source
-      url: https://github.com/skthomasjr/autonomous-agent
+      url: https://github.com/skthomasjr/witwave

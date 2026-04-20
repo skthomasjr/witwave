@@ -12,10 +12,10 @@ validate scheduler files — all without a browser.
 
 ## Install
 
-For now, from a checkout of `skthomasjr/autonomous-agent`:
+For now, from a checkout of `skthomasjr/witwave`:
 
 ```bash
-go install github.com/skthomasjr/autonomous-agent/clients/ww@latest
+go install github.com/skthomasjr/witwave/clients/ww@latest
 ```
 
 When the Homebrew tap lands:
@@ -163,9 +163,9 @@ dumps request and response bodies (truncated at 4 KiB per direction).
 
 ```bash
 go build -ldflags "\
-  -X 'github.com/skthomasjr/autonomous-agent/clients/ww/cmd.Version=0.1.0' \
-  -X 'github.com/skthomasjr/autonomous-agent/clients/ww/cmd.Commit=$(git rev-parse --short HEAD)' \
-  -X 'github.com/skthomasjr/autonomous-agent/clients/ww/cmd.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)' \
+  -X 'github.com/skthomasjr/witwave/clients/ww/cmd.Version=0.1.0' \
+  -X 'github.com/skthomasjr/witwave/clients/ww/cmd.Commit=$(git rev-parse --short HEAD)' \
+  -X 'github.com/skthomasjr/witwave/clients/ww/cmd.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)' \
 " -o bin/ww .
 ```
 

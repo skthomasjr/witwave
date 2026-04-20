@@ -14,8 +14,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/skthomasjr/autonomous-agent/clients/ww/internal/client"
-	"github.com/skthomasjr/autonomous-agent/clients/ww/internal/output"
+	"github.com/skthomasjr/witwave/clients/ww/internal/client"
+	"github.com/skthomasjr/witwave/clients/ww/internal/output"
 	"github.com/spf13/cobra"
 )
 
