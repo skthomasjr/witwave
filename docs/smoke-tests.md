@@ -17,7 +17,7 @@ These fire immediately when the stack comes up. Look for them near the top of th
 | `backend-check-claude` | bob-claude | Response identifies itself as Claude; logged under `bob-claude` |
 | `backend-check-codex` | bob-codex | Response identifies itself as Codex; logged under `bob-codex` |
 | `model-check-claude-default` | bob-claude | `model` field in log matches the default Claude model in `backend.yaml` |
-| `model-check-claude-opus` | bob-claude | `model` field = `claude-opus-4-6` |
+| `model-check-claude-opus` | bob-claude | `model` field = `claude-opus-4-7` |
 | `model-check-claude-sonnet` | bob-claude | `model` field = `claude-sonnet-4-6` |
 | `model-check-claude-haiku` | bob-claude | `model` field = `claude-haiku-4-5-20251001` |
 | `model-check-codex-default` | bob-codex | `model` field matches the default Codex model in `backend.yaml` |
@@ -67,7 +67,7 @@ Two jobs fan out to three backends (Codex Max, Claude Sonnet, Claude Haiku) inde
 | Job | Synthesizer | What to check |
 |---|---|---|
 | `consensus-test-codex` | bob-codex / `gpt-5.1-codex-max` | Synthesis prompt logged under `bob-codex`; synthesis response present |
-| `consensus-test-claude` | bob-claude / `claude-opus-4-6` | Synthesis prompt logged under `bob-claude`; synthesis response present |
+| `consensus-test-claude` | bob-claude / `claude-opus-4-7` | Synthesis prompt logged under `bob-claude`; synthesis response present |
 
 ### Tasks
 

@@ -16,13 +16,13 @@ agents:
   - name: psa-audit-agent
     harness:
       image:
-        repository: ghcr.io/skthomasjr/autonomous-agent/harness
+        repository: ghcr.io/skthomasjr/images/harness
         tag: latest
       port: 8000
     backends:
       - name: claude
         image:
-          repository: ghcr.io/skthomasjr/autonomous-agent/claude
+          repository: ghcr.io/skthomasjr/images/claude
           tag: latest
         port: 8010
     dashboard:
@@ -37,17 +37,17 @@ mcpTools:
   kubernetes:
     enabled: true
     image:
-      repository: ghcr.io/skthomasjr/autonomous-agent/mcp-kubernetes
+      repository: ghcr.io/skthomasjr/images/mcp-kubernetes
       tag: latest
   helm:
     enabled: true
     image:
-      repository: ghcr.io/skthomasjr/autonomous-agent/mcp-helm
+      repository: ghcr.io/skthomasjr/images/mcp-helm
       tag: latest
   prometheus:
     enabled: true
     image:
-      repository: ghcr.io/skthomasjr/autonomous-agent/mcp-prometheus
+      repository: ghcr.io/skthomasjr/images/mcp-prometheus
       tag: latest
 
 # -- every NetworkPolicy surface enabled ------------------------------
