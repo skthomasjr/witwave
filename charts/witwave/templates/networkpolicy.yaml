@@ -241,14 +241,17 @@ spec:
            this release's agents without broadening to "every pod in
            the namespace" the way allowSameNamespace does. */ -}}
     {{- if (hasKey $ing "allowWitwaveAgents" | ternary $ing.allowWitwaveAgents true) }}
+    {{/* #1379: explicit namespaceSelector pinned to this release's namespace.
+         NetworkPolicy semantics implicitly scope podSelector-only `from:`
+         entries to the NP's own namespace, but the inconsistency with
+         dashboardPeer (which pins namespaceSelector explicitly) is a
+         comprehension hazard — a copy-paste of this block could silently
+         broaden to cross-namespace. #1450: trim directives removed from
+         this comment to stop the trailing `-}}` from eating the newline
+         between `- from:` and `- namespaceSelector:` when the block
+         renders for MCP NetworkPolicies, producing `- from:- namespaceSelector:`
+         (invalid YAML). */}}
     - from:
-        {{- /* #1379: explicit namespaceSelector pinned to this release's
-               namespace. NetworkPolicy semantics implicitly scope
-               `podSelector:`-only `from:` entries to the NP's own
-               namespace, but the inconsistency with the dashboardPeer
-               (which pins namespaceSelector explicitly) is a
-               comprehension hazard — a copy-paste of this block could
-               silently broaden to cross-namespace. */ -}}
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: {{ $.Release.Namespace | quote }}

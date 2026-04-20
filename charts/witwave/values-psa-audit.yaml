@@ -12,19 +12,23 @@
 # syntactically-valid fake so the render actually succeeds.
 
 # -- core agents (minimum viable to render) ---------------------------
+# Chart expects port / image / backends at the top level of each
+# agent entry (see templates/deployment.yaml referencing `.image` on
+# the agent scope). A non-"latest" tag is required by values.schema.json
+# (#1450) — `0.0.1-ci-audit` is an obvious-fake marker so nobody
+# accidentally believes this file produces a deployable render.
 agents:
   - name: psa-audit-agent
-    harness:
-      image:
-        repository: ghcr.io/skthomasjr/images/harness
-        tag: latest
-      port: 8000
+    port: 8000
+    image:
+      repository: ghcr.io/skthomasjr/images/harness
+      tag: "0.0.1-ci-audit"
     backends:
       - name: claude
+        port: 8010
         image:
           repository: ghcr.io/skthomasjr/images/claude
-          tag: latest
-        port: 8010
+          tag: "0.0.1-ci-audit"
     dashboard:
       enabled: true
       auth:
@@ -38,17 +42,17 @@ mcpTools:
     enabled: true
     image:
       repository: ghcr.io/skthomasjr/images/mcp-kubernetes
-      tag: latest
+      tag: "0.0.1-ci-audit"
   helm:
     enabled: true
     image:
       repository: ghcr.io/skthomasjr/images/mcp-helm
-      tag: latest
+      tag: "0.0.1-ci-audit"
   prometheus:
     enabled: true
     image:
       repository: ghcr.io/skthomasjr/images/mcp-prometheus
-      tag: latest
+      tag: "0.0.1-ci-audit"
 
 # -- every NetworkPolicy surface enabled ------------------------------
 networkPolicy:
