@@ -8,6 +8,44 @@ section of each entry.
 
 ## [Unreleased]
 
+## [0.5.7] — 2026-04-20
+
+Docs-only release. No code changes, no behaviour changes. Closes
+out the doc audit + prettier/markdownlint conformance work that
+surfaced during session wrap-up.
+
+### Fixed
+
+- Documentation audit across the 8 most-read markdown files (README,
+  SECURITY, CHANGELOG, operator + chart READMEs, ww + dashboard
+  READMEs, runbooks): 12 stale-version / broken-link / wrong-
+  endpoint / docs-vs-code-drift issues corrected. Notably: README
+  Helm-install chart version 0.5.2 → 0.5.6; `ww operator status`
+  sample output switched to `<X.Y.Z>` placeholders so it no longer
+  goes stale every release; `docs/runbooks.md` `/tool-audit`
+  → `/trace?decision=deny` (the former endpoint doesn't exist);
+  `harness/README.md` AGENT_NAME default corrected to `witwave`
+  (code default, not the documented `local-agent`).
+- Table column realignment on the `tools/kubernetes/README.md`
+  Tools table after the `read_secret_value` row was added in
+  commit 423ae13.
+
+### Changed
+
+- Applied `prettier --write` + `markdownlint` across all 8
+  audit-pass files. Respects the repo's `.prettierrc.yaml`
+  (proseWrap: always, printWidth: 120) and `.markdownlint.yaml`
+  (MD013 line length, MD034 bare URLs, MD040 fenced-code language
+  tags, MD051 link fragments). Largest diffs come from reflowing
+  paragraphs that had been manually wrapped at ~80 chars; no
+  content change beyond the six markdownlint fixes listed in the
+  commit.
+- New request filed: #1481 (enforce markdown linting in CI). The
+  tools sat as standards-documents rather than gates, which is
+  how the drift accumulated. Tracking issue captures the design
+  trade-offs (pre-merge vs main-only scans, repo-wide cleanup vs
+  incremental enforcement).
+
 ## [0.5.6] — 2026-04-20
 
 Follow-up to v0.5.5. Three real changes — the LLM-billing defensive
@@ -325,7 +363,8 @@ silent hardening.
   (`.witwave/`), and environment variables (`WITWAVE_*`) migrated in
   one sweep on 2026-04-19 (commit b966b40).
 
-[Unreleased]: https://github.com/skthomasjr/witwave/compare/v0.5.6...HEAD
+[Unreleased]: https://github.com/skthomasjr/witwave/compare/v0.5.7...HEAD
+[0.5.7]: https://github.com/skthomasjr/witwave/releases/tag/v0.5.7
 [0.5.6]: https://github.com/skthomasjr/witwave/releases/tag/v0.5.6
 [0.5.5]: https://github.com/skthomasjr/witwave/releases/tag/v0.5.5
 [0.5.4]: https://github.com/skthomasjr/witwave/releases/tag/v0.5.4
