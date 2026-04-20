@@ -84,13 +84,15 @@ spec:
                       pattern: ^[a-z0-9][a-z0-9-]*$
                       type: string
                     name:
-                      description: Name is the WitwaveAgent name this prompt binds to.
+                      description: Name is the WitwaveAgent name this prompt binds
+                        to.
                       minLength: 1
                       pattern: ^[a-z0-9][a-z0-9-]*$
                       type: string
                   required:
                   - name
                   type: object
+                maxItems: 100
                 minItems: 1
                 type: array
               body:

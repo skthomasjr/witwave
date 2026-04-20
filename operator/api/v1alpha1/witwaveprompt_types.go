@@ -88,6 +88,7 @@ type WitwavePromptSpec struct {
 	// this is the only selector mode; `agentSelector` and `allAgents`
 	// forms are deliberately deferred (#WitwavePrompt-v2).
 	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=100
 	AgentRefs []WitwavePromptAgentRef `json:"agentRefs"`
 
 	// Frontmatter is the YAML frontmatter block the harness will see at

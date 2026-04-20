@@ -1047,6 +1047,7 @@ spec:
                         - mountPath
                         - name
                         type: object
+                      maxItems: 50
                       type: array
                     credentials:
                       description: |-
@@ -1460,6 +1461,7 @@ spec:
                   - image
                   - name
                   type: object
+                maxItems: 50
                 minItems: 1
                 type: array
               config:
@@ -2078,6 +2080,7 @@ spec:
                   - name
                   - repo
                   type: object
+                maxItems: 20
                 type: array
               image:
                 description: Image is the harness orchestrator image.
@@ -3952,6 +3955,7 @@ spec:
                   `spec.metrics.podAnnotations` is enabled — #472). This prevents
                   silent loss of operator behaviour when users and the operator pick
                   overlapping keys.
+                maxProperties: 100
                 type: object
               podDisruptionBudget:
                 description: PodDisruptionBudget optionally creates a PDB for the
@@ -3982,6 +3986,7 @@ spec:
                   Deployment's selector keys (labelName / labelComponent /
                   labelPartOf / labelManagedBy) are ignored so the selector cannot
                   drift and orphan pods.
+                maxProperties: 100
                 type: object
               podMonitor:
                 description: |-

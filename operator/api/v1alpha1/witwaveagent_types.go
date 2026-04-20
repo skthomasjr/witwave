@@ -253,6 +253,7 @@ type BackendSpec struct {
 
 	// Config mounts inline config files into the backend container.
 	// +optional
+	// +kubebuilder:validation:MaxItems=50
 	Config []ConfigFile `json:"config,omitempty"`
 
 	// Storage provisions or references a PVC for backend persistence.
@@ -643,6 +644,7 @@ type WitwaveAgentSpec struct {
 
 	// Backends lists the backend sidecars (claude, codex, gemini, …).
 	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=50
 	Backends []BackendSpec `json:"backends"`
 
 	// SharedStorage optionally mounts a volume into every container of the
@@ -659,6 +661,7 @@ type WitwaveAgentSpec struct {
 	// containers in the pod share the /git volume. Mirrors the chart's
 	// per-agent `gitSyncs` block (#475).
 	// +optional
+	// +kubebuilder:validation:MaxItems=20
 	GitSyncs []GitSyncSpec `json:"gitSyncs,omitempty"`
 
 	// GitMappings materialise files or directories from named GitSyncs
@@ -726,6 +729,7 @@ type WitwaveAgentSpec struct {
 	// silent loss of operator behaviour when users and the operator pick
 	// overlapping keys.
 	// +optional
+	// +kubebuilder:validation:MaxProperties=100
 	PodAnnotations map[string]string `json:"podAnnotations,omitempty"`
 
 	// PodLabels are merged onto the agent pod template's `metadata.labels`.
@@ -739,6 +743,7 @@ type WitwaveAgentSpec struct {
 	// labelPartOf / labelManagedBy) are ignored so the selector cannot
 	// drift and orphan pods.
 	// +optional
+	// +kubebuilder:validation:MaxProperties=100
 	PodLabels map[string]string `json:"podLabels,omitempty"`
 
 	// NodeSelector constrains the agent pod onto nodes whose labels match
