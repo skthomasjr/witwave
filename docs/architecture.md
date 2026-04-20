@@ -163,9 +163,9 @@ server).
 **`executor.py`** — Implements the A2A `AgentExecutor` interface. Manages session continuity using the session ID passed
 in the A2A request metadata. Writes `conversation.jsonl` to the mounted logs directory.
 
-**`metrics.py`** — Prometheus metric definitions with `a2_*` prefix. `claude` exposes a superset including tool call,
+**`metrics.py`** — Prometheus metric definitions with `backend_*` prefix. `claude` exposes a superset including tool call,
 context window, and MCP metrics; `codex` also exposes tool-call and context-window metrics; `gemini` exposes
-context-window metrics. All three share the common `a2_*` baseline set.
+context-window metrics. All three share the common `backend_*` baseline set.
 
 ---
 
@@ -465,7 +465,7 @@ backend:
   agents:
     - id: claude
       url: http://localhost:8010
-      model: claude-opus-4-6
+      model: claude-opus-4-7
 
     - id: codex
       url: http://localhost:8011
@@ -477,25 +477,25 @@ backend:
   routing:
     default:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7
     a2a:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7
     heartbeat:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7
     job:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7
     task:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7
     trigger:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7
     continuation:
       agent: claude
-      model: claude-opus-4-6
+      model: claude-opus-4-7
 ```
 
 Routing values can be a plain agent ID string (`default: claude`) or an object with `agent:` and optional `model:`

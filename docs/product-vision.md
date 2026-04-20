@@ -78,23 +78,30 @@ compatibility:
 
 ### Deployment Roadmap
 
-| Artifact            | Status      | Description                                         |
-| ------------------- | ----------- | --------------------------------------------------- |
-| Helm chart          | Shipped     | Parameterized Kubernetes deployment                 |
-| Kubernetes Operator | In Development | Declarative agent lifecycle management via CRDs     |
+| Artifact            | Status              | Description                                                                                     |
+| ------------------- | ------------------- | ----------------------------------------------------------------------------------------------- |
+| Helm chart          | Shipped             | Parameterized Kubernetes deployment                                                             |
+| Kubernetes Operator | Shipped (v1alpha1)  | Declarative agent lifecycle management via `WitwaveAgent` / `WitwavePrompt` CRDs (per-agent)    |
 
 ---
 
 ## Support Workloads
 
-The core platform is the agent runtime. The following support workloads are on the roadmap as the platform matures:
+The core platform is the agent runtime. The following support workloads surround it:
 
-- **UI** — a lightweight web interface for monitoring agent activity, reviewing logs, triggering agenda items, and
-  managing GitHub Issues — aimed at the individual and small-team audience
+**Shipped**
+
+- **UI** — Vue 3 + PrimeVue web dashboard (`clients/dashboard/`) for monitoring agent activity, reviewing logs,
+  triggering agenda items, and managing GitHub Issues — aimed at the individual and small-team audience. Enabled via
+  the Helm chart's `dashboard:` block.
+- **Metrics aggregation** — per-service `/metrics` Prometheus endpoints, PodMonitor/ServiceMonitor templates, bundled
+  Grafana dashboards (`charts/witwave/dashboards/`), and opinionated default alerts via `PrometheusRule`
+  (`charts/witwave/templates/prometheusrule.yaml`). See F-008.
+
+**On the roadmap**
+
 - **Shared memory service** — a structured key-value store accessible to all agents on the team, replacing the current
   flat markdown memory files for data that requires reliable read/write semantics (see F-003)
-- **Metrics aggregation** — a Prometheus-compatible scrape target and optional Grafana dashboard for teams running
-  agents at scale (see F-008)
 
 ---
 
