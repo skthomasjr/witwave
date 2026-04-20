@@ -189,8 +189,8 @@ instances, logs, and memory.
 .agents/
 ├── active/
 │   ├── iris/          # Iris (witwave: 8000 | claude: 8010 | codex: 8011 | gemini: 8012)
-│   ├── nova/          # Nova (witwave: 8001 | claude: 8020 | codex: 8021 | gemini: 8022)
-│   └── kira/          # Kira (witwave: 8002 | claude: 8030 | codex: 8031 | gemini: 8032)
+│   ├── nova/          # Nova (witwave: 8001 | claude: 8010 | codex: 8011 | gemini: 8012)
+│   └── kira/          # Kira (witwave: 8002 | claude: 8010 | codex: 8011 | gemini: 8012)
 └── test/
     ├── bob/           # Bob  (witwave: 8099 | claude: 8090 | codex: 8091 | gemini: 8092)
     └── fred/          # Fred (witwave: 8098 | claude: 8089 — single-backend test agent)
@@ -258,10 +258,10 @@ then the responses are aggregated:
 
 ```yaml
 consensus:
-  - backend: "iris-claude"
-    model: "claude-opus-4-6"
-  - backend: "iris-codex*" # glob — matches all codex backends
-  - backend: "iris-claude"
+  - backend: "claude"
+    model: "claude-opus-4-7"
+  - backend: "codex*" # glob — matches any backend whose id starts with "codex"
+  - backend: "claude"
     model: "claude-haiku-4-5" # same backend, different model = two parallel calls
 ```
 
