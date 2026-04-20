@@ -16,6 +16,14 @@ before:
     # `go:embed` picks up the current charts/witwave-operator contents.
     # CI guards this via the --check variant; releases always write.
     - ../../scripts/sync-embedded-chart.sh
+    # Bump the embedded chart's version + appVersion to match the
+    # release tag. Without this the shipped binary would report
+    # chart version 0.1.0 (the canonical placeholder on main) instead
+    # of the actual release — making `ww operator status` misleading
+    # when paired with a released ww. The canonical Chart.yaml in the
+    # repo stays at its placeholder; only the embedded copy bundled
+    # into this release gets rewritten.
+    - 'bash -c "../../scripts/bump-embedded-chart-version.sh ${GORELEASER_CURRENT_TAG:-}"'
     - go mod tidy
     # goreleaser runs from clients/ww/ but the Apache-2.0 LICENSE sits
     # at the repo root. `src: ../../LICENSE` in archives.files doesn't
