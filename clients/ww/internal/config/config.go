@@ -1,8 +1,16 @@
 // Package config loads ww's layered configuration: defaults → file →
 // env vars → command-line flags.
+//
+// File discovery uses Viper (github.com/spf13/viper) so we get a
+// battle-tested multi-path search + a write-back path for free (see
+// writer.go). Env-var and flag layering stays hand-rolled on top: Viper
+// can't cleanly model our "WW_BASE_URL wins regardless of active
+// profile" semantics because it binds env names to nested keys, and
+// our env names intentionally omit the profile segment.
 package config
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,17 +19,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/BurntSushi/toml"
+	"github.com/spf13/viper"
 )
 
 // Profile is a single named set of connection settings in the config
 // file. Only known fields are honored; unknown keys are ignored so
 // future ww versions can add fields without breaking older callers.
 type Profile struct {
-	BaseURL  string `toml:"base_url"`
-	Token    string `toml:"token"`
-	RunToken string `toml:"run_token"`
-	Timeout  string `toml:"timeout"` // duration string, optional
+	BaseURL  string `mapstructure:"base_url"`
+	Token    string `mapstructure:"token"`
+	RunToken string `mapstructure:"run_token"`
+	Timeout  string `mapstructure:"timeout"` // duration string, optional
 }
 
 // UpdateConfig is the on-disk [update] block that controls the
@@ -31,20 +39,20 @@ type Profile struct {
 type UpdateConfig struct {
 	// Mode is one of off, notify, prompt, auto. Empty string resolves
 	// to the notify default. See the update package for semantics.
-	Mode string `toml:"mode"`
+	Mode string `mapstructure:"mode"`
 	// Interval is the duration string ("24h", "1h", "7d"-style). Empty
 	// string resolves to the 24h default. Zero or negative values are
 	// rejected by the update package's parser and fall back.
-	Interval string `toml:"interval"`
+	Interval string `mapstructure:"interval"`
 	// Channel selects stable-only vs include-prerelease candidates.
 	// One of stable, beta. Empty string resolves to stable.
-	Channel string `toml:"channel"`
+	Channel string `mapstructure:"channel"`
 }
 
 // File is the on-disk TOML shape.
 type File struct {
-	Profile map[string]Profile `toml:"profile"`
-	Update  UpdateConfig       `toml:"update"`
+	Profile map[string]Profile `mapstructure:"profile"`
+	Update  UpdateConfig       `mapstructure:"update"`
 }
 
 // Resolved carries the final effective settings for a single CLI
@@ -56,6 +64,10 @@ type Resolved struct {
 	RunToken string
 	Timeout  time.Duration
 	Update   UpdateConfig // raw strings; parsed by the update package
+	// LoadedFrom is the absolute path of the config file that supplied
+	// values for this invocation, or "" when no file was found. The
+	// config writer uses this to target the right file on save.
+	LoadedFrom string
 }
 
 // FlagOverrides carries the command-line values. Empty-string means
@@ -76,8 +88,16 @@ const DefaultBaseURL = "http://localhost:8000"
 const DefaultTimeout = 30 * time.Second
 
 // Load applies the precedence rules: flag > env > file > default.
-// cfgPath may be empty to use the XDG default. The returned Resolved
-// is usable even if the config file does not exist.
+// cfgPath may be empty to use the default search path (see
+// defaultConfigPaths). The returned Resolved is usable even if the
+// config file does not exist.
+//
+// File discovery order (first existing file wins):
+//  1. --config <path> flag (cfgPath argument)
+//  2. WW_CONFIG env var
+//  3. $HOME/.witwave/config.toml (brand-aligned dotfile dir)
+//  4. $XDG_CONFIG_HOME/ww/config.toml
+//  5. os.UserConfigDir() / ww / config.toml (platform default)
 func Load(cfgPath string, overrides FlagOverrides, getenv func(string) string) (Resolved, error) {
 	if getenv == nil {
 		getenv = os.Getenv
@@ -91,56 +111,69 @@ func Load(cfgPath string, overrides FlagOverrides, getenv func(string) string) (
 		profile = "default"
 	}
 
-	var file File
-	path := cfgPath
-	if path == "" {
-		path = defaultConfigPath(getenv)
+	// WW_CONFIG is the env-var path override. Only consulted when the
+	// --config flag wasn't passed — flag still wins.
+	if cfgPath == "" {
+		cfgPath = getenv("WW_CONFIG")
 	}
-	if path != "" {
-		if st, err := os.Stat(path); err == nil {
-			// #1395: refuse non-regular files (named pipes, devices) so
-			// a hostile XDG_CONFIG_HOME pointing at /dev/stdin or a
-			// named FIFO can't hang the CLI or exfiltrate via stdout.
-			if !st.Mode().IsRegular() {
-				return Resolved{}, fmt.Errorf(
-					"config path %s is not a regular file (mode=%s)",
-					path, st.Mode(),
-				)
-			}
-			// #1358: warn (but proceed) when config.toml is readable by
-			// others — bearer tokens live plaintext inside. Unix-only
-			// check; Windows permission model differs and this block
-			// is a no-op there (Mode().Perm() returns a best-effort
-			// value).
-			if runtime.GOOS != "windows" && st.Mode().Perm()&0o077 != 0 {
-				fmt.Fprintf(os.Stderr,
-					"ww: warning: config %s has permissive mode %04o; "+
-						"bearer tokens are readable by other users. "+
-						"Run: chmod 600 %s\n",
-					path, st.Mode().Perm(), path,
-				)
-			}
-			if _, err := toml.DecodeFile(path, &file); err != nil {
-				return Resolved{}, fmt.Errorf("parse %s: %w", path, err)
-			}
+
+	// Build a Viper instance for file discovery + parse. We deliberately
+	// do NOT use Viper's env binding or flag binding here — the layering
+	// logic below covers those with clearer precedence + compat with
+	// our pre-Viper env var names (which don't include the "ww" prefix
+	// Viper would normally apply nor the profile path segment).
+	v := viper.New()
+	v.SetConfigType("toml")
+
+	if cfgPath != "" {
+		// Explicit path — don't fall back to search paths; respect
+		// the user's intent (including "this file doesn't exist yet").
+		v.SetConfigFile(cfgPath)
+	} else {
+		v.SetConfigName("config")
+		for _, p := range defaultConfigPaths(getenv) {
+			v.AddConfigPath(p)
 		}
 	}
+
+	var file File
+	if err := v.ReadInConfig(); err != nil {
+		// A missing file is fine — defaults still apply. Any other
+		// error (parse failure, permission denied) surfaces.
+		var notFoundErr viper.ConfigFileNotFoundError
+		if !errors.As(err, &notFoundErr) && !os.IsNotExist(err) {
+			return Resolved{}, fmt.Errorf("read config: %w", err)
+		}
+	} else {
+		// Found + parsed. Apply pre-flight safety checks on the path.
+		loaded := v.ConfigFileUsed()
+		if loaded != "" {
+			if err := validateConfigFile(loaded); err != nil {
+				return Resolved{}, err
+			}
+		}
+		if err := v.Unmarshal(&file); err != nil {
+			return Resolved{}, fmt.Errorf("decode config: %w", err)
+		}
+	}
+
 	fileProf := file.Profile[profile]
 
-	// Apply layering.
+	// Apply layering: flag > env > file > default.
 	r := Resolved{
-		Profile:  profile,
-		BaseURL:  firstNonEmpty(overrides.BaseURL, getenv("WW_BASE_URL"), fileProf.BaseURL, DefaultBaseURL),
-		Token:    firstNonEmpty(overrides.Token, getenv("WW_TOKEN"), fileProf.Token),
-		RunToken: firstNonEmpty(overrides.RunToken, getenv("WW_RUN_TOKEN"), fileProf.RunToken),
+		Profile:    profile,
+		BaseURL:    firstNonEmpty(overrides.BaseURL, getenv("WW_BASE_URL"), fileProf.BaseURL, DefaultBaseURL),
+		Token:      firstNonEmpty(overrides.Token, getenv("WW_TOKEN"), fileProf.Token),
+		RunToken:   firstNonEmpty(overrides.RunToken, getenv("WW_RUN_TOKEN"), fileProf.RunToken),
+		LoadedFrom: v.ConfigFileUsed(),
 	}
 
 	timeout := overrides.Timeout
 	if timeout == 0 {
-		if v := getenv("WW_TIMEOUT"); v != "" {
-			d, err := time.ParseDuration(v)
+		if s := getenv("WW_TIMEOUT"); s != "" {
+			d, err := time.ParseDuration(s)
 			if err != nil {
-				return r, fmt.Errorf("WW_TIMEOUT %q: %w", v, err)
+				return r, fmt.Errorf("WW_TIMEOUT %q: %w", s, err)
 			}
 			timeout = d
 		}
@@ -173,21 +206,67 @@ func Load(cfgPath string, overrides FlagOverrides, getenv func(string) string) (
 	return r, nil
 }
 
-// defaultConfigPath returns the path to ww/config.toml inside the
-// per-OS user config directory. XDG_CONFIG_HOME (via getenv) always
-// wins so the env-override seam remains testable on every platform;
-// otherwise os.UserConfigDir() provides the OS-appropriate location
-// (%AppData%\ww\config.toml on Windows, ~/Library/Application
-// Support/ww/config.toml on macOS, ~/.config/ww/config.toml on Linux).
-func defaultConfigPath(getenv func(string) string) string {
+// validateConfigFile applies the safety checks we previously ran inline
+// before parsing: refuse non-regular paths, warn on world-readable mode
+// because bearer tokens live plaintext in the file.
+func validateConfigFile(path string) error {
+	st, err := os.Stat(path)
+	if err != nil {
+		return nil // Viper didn't find it; not our problem
+	}
+	// #1395: refuse non-regular files (named pipes, devices) so a
+	// hostile XDG_CONFIG_HOME pointing at /dev/stdin or a named FIFO
+	// can't hang the CLI or exfiltrate via stdout.
+	if !st.Mode().IsRegular() {
+		return fmt.Errorf("config path %s is not a regular file (mode=%s)", path, st.Mode())
+	}
+	// #1358: warn (but proceed) when config.toml is readable by others —
+	// bearer tokens live plaintext inside. Unix-only check; Windows
+	// permission model differs and this block is a no-op there.
+	if runtime.GOOS != "windows" && st.Mode().Perm()&0o077 != 0 {
+		fmt.Fprintf(os.Stderr,
+			"ww: warning: config %s has permissive mode %04o; "+
+				"bearer tokens are readable by other users. "+
+				"Run: chmod 600 %s\n",
+			path, st.Mode().Perm(), path,
+		)
+	}
+	return nil
+}
+
+// defaultConfigPaths returns the search list Viper walks to find the
+// config file, in precedence order (first match wins). XDG_CONFIG_HOME
+// threads through getenv so tests can exercise every branch.
+//
+// Note: $HOME/.witwave/ and $XDG_CONFIG_HOME/ww/ are distinct spaces.
+// The platform also uses .witwave/ as a per-agent runtime-config dir
+// (e.g. .agents/<env>/<agent>/.witwave/) — that's repo-scoped and
+// unrelated to this user-level CLI config.
+func defaultConfigPaths(getenv func(string) string) []string {
+	var paths []string
+
+	// 1. $HOME/.witwave/ — brand-aligned dotfile dir. Preferred first
+	//    so a user who chooses this location doesn't need any env
+	//    or flag setup.
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		paths = append(paths, filepath.Join(home, ".witwave"))
+	}
+
+	// 2. $XDG_CONFIG_HOME/ww/ — XDG Base Directory Specification.
+	//    Separate from os.UserConfigDir() because a user may
+	//    deliberately set XDG_CONFIG_HOME to something non-default.
 	if xdg := getenv("XDG_CONFIG_HOME"); xdg != "" {
-		return filepath.Join(xdg, "ww", "config.toml")
+		paths = append(paths, filepath.Join(xdg, "ww"))
 	}
-	dir, err := os.UserConfigDir()
-	if err != nil || dir == "" {
-		return ""
+
+	// 3. Platform-default user config dir (ww/ under it). On Linux this
+	//    typically duplicates #2 (both resolve to ~/.config/ww/) but
+	//    Viper dedupes search paths internally; on macOS this is
+	//    ~/Library/Application Support/ww/, on Windows %AppData%\ww\.
+	if ucd, err := os.UserConfigDir(); err == nil && ucd != "" {
+		paths = append(paths, filepath.Join(ucd, "ww"))
 	}
-	return filepath.Join(dir, "ww", "config.toml")
+	return paths
 }
 
 func firstNonEmpty(vals ...string) string {
@@ -201,10 +280,17 @@ func firstNonEmpty(vals ...string) string {
 
 // Dump writes a redacted summary of the resolved config for --verbose.
 func (r Resolved) Dump(w io.Writer) {
-	fmt.Fprintf(w, "profile=%s base_url=%s timeout=%s token=%s run_token=%s\n",
+	fmt.Fprintf(w, "profile=%s base_url=%s timeout=%s token=%s run_token=%s loaded_from=%s\n",
 		r.Profile, r.BaseURL, r.Timeout,
-		redact(r.Token), redact(r.RunToken),
+		redact(r.Token), redact(r.RunToken), displayPath(r.LoadedFrom),
 	)
+}
+
+func displayPath(p string) string {
+	if p == "" {
+		return "<none>"
+	}
+	return p
 }
 
 func redact(s string) string {

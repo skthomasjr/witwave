@@ -104,6 +104,7 @@ func Execute() int {
 	root.AddCommand(newTriggersCmd())
 	root.AddCommand(newContinuationsCmd())
 	root.AddCommand(newValidateCmd())
+	root.AddCommand(newConfigCmd())
 
 	err := root.Execute()
 	// Finish the async update check regardless of command outcome.

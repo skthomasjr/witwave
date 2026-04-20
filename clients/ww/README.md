@@ -135,6 +135,33 @@ Precedence, high to low:
 3. Config file profile (selected by `--profile` / `WW_PROFILE`, default `default`).
 4. Compiled-in default (`http://localhost:8000`, 30 s timeout).
 
+### Config file discovery
+
+The config file is resolved in this order (first match wins):
+
+1. `--config <path>` CLI flag
+2. `WW_CONFIG` env var
+3. `$HOME/.witwave/config.toml` *(preferred default — brand-aligned dotfile dir)*
+4. `$XDG_CONFIG_HOME/ww/config.toml`
+5. Platform user-config dir (`~/.config/ww/config.toml` on Linux, `~/Library/Application Support/ww/config.toml` on macOS, `%AppData%\ww\config.toml` on Windows)
+
+The CLI creates `$HOME/.witwave/config.toml` on the first `ww config set` when no existing file is found.
+
+### Managing config from the CLI
+
+Use `ww config` to read, write, and inspect config values without opening the file by hand:
+
+```bash
+ww config path                                         # where the file lives
+ww config list-keys                                    # valid keys + value shapes
+ww config set update.mode notify                       # persist a value
+ww config set profile.default.base_url https://.../    # persist a URL
+ww config get update.channel                           # read current value
+ww config unset update.mode                            # remove a key
+```
+
+Every value is validated against the key's schema before being written (mode must be one of `off/notify/prompt/auto`, channel must be `stable` or `beta`, duration strings must parse, base URLs must have a scheme). The file is created with mode `0600` on first write because bearer tokens live plaintext inside.
+
 Ad-hoc run endpoints use `run_token` when set; otherwise `ww` falls
 back to `token` and logs a warning to stderr. Set both when you have a
 harness that distinguishes them.
