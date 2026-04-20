@@ -52,6 +52,7 @@ from metrics import (
     harness_task_error_duration_seconds,
     harness_task_last_error_timestamp_seconds,
     harness_task_last_success_timestamp_seconds,
+    harness_task_outer_timeout_cancel_total,
     harness_task_restarts_total,
     harness_task_timeout_headroom_seconds,
     harness_tasks_total,
@@ -277,11 +278,32 @@ async def _run_inner(
             timeout=TASK_TIMEOUT_SECONDS,
         )
     except asyncio.TimeoutError:
-        logger.error(f"Session {session_id!r}: backend {resolved_id!r} timed out after {TASK_TIMEOUT_SECONDS}s.")
+        # #1457: elevate the existing timeout log to structured WARN
+        # with the identifying fields operators need to audit for
+        # potential double-billing. When TASK_TIMEOUT_SECONDS fires
+        # mid-LLM-call, the backend may continue running to
+        # completion without a client to return to — tokens still
+        # billed, no response delivered. The bill-reconciliation
+        # audit needs session_id + backend + prompt_length +
+        # trace_id; this log line is where that audit starts.
+        _elapsed = time.monotonic() - _start
+        _trace_id = trace_context.trace_id if trace_context is not None else ""
+        logger.warning(
+            "session_timeout_cancel session_id=%s backend=%s "
+            "elapsed_seconds=%.2f prompt_bytes=%d trace_id=%s "
+            "likely_double_bill=server-side LLM call may have continued "
+            "without client to return to; reconcile against billing",
+            session_id, resolved_id, _elapsed, len(prompt.encode()), _trace_id,
+        )
         if harness_tasks_total is not None:
             harness_tasks_total.labels(status="timeout").inc()
+        if harness_task_outer_timeout_cancel_total is not None:
+            try:
+                harness_task_outer_timeout_cancel_total.labels(backend=resolved_id).inc()
+            except Exception:
+                pass
         if harness_task_error_duration_seconds is not None:
-            harness_task_error_duration_seconds.observe(time.monotonic() - _start)
+            harness_task_error_duration_seconds.observe(_elapsed)
         if harness_task_last_error_timestamp_seconds is not None:
             harness_task_last_error_timestamp_seconds.set(time.time())
         raise

@@ -18,6 +18,7 @@ from metrics import (
     harness_a2a_backend_circuit_transitions_total,
     harness_a2a_backend_request_duration_seconds,
     harness_a2a_backend_requests_total,
+    harness_a2a_backend_slow_5xx_no_retry_total,
 )
 from tracing import TraceContext, inject_traceparent, set_span_error, start_span
 
@@ -69,6 +70,39 @@ _A2A_MAX_RESPONSE_BYTES = int(os.environ.get("A2A_MAX_RESPONSE_BYTES", str(256 *
 
 # Transient status codes that are safe to retry.
 _RETRYABLE_STATUS_CODES: frozenset[int] = frozenset({429, 502, 503, 504})
+
+# Retry-policy selector (#1457). The default `fast-only` refuses to
+# retry 5xx responses that came back AFTER A2A_RETRY_FAST_ONLY_MS —
+# on the theory that a slow 5xx almost always means the backend ran
+# the LLM call to completion and only failed on the return path, so
+# retrying would bill the prompt a second time. A fast 5xx
+# (connection reset, proxy 502 before the request reached the LLM)
+# is safe to retry. Selectable modes:
+#   * fast-only (default) — 5xx retried only when elapsed <= threshold.
+#   * always              — retry every retryable 5xx regardless of
+#                           elapsed time. Legacy behaviour; use when
+#                           the backend is known to be idempotent.
+#   * never               — never retry 5xx; surface immediately.
+#                           Strictest no-double-bill posture for
+#                           cost-sensitive deployments.
+# Network-level errors (ConnectTimeout, ReadTimeout, ConnectError) are
+# retried regardless of policy — they almost never indicate server-side
+# LLM work happened.
+def _resolve_retry_policy() -> str:
+    """Read A2A_RETRY_POLICY with validation + clear warning on bad input."""
+    _log = logging.getLogger(__name__)
+    _raw = os.environ.get("A2A_RETRY_POLICY", "fast-only").strip().lower()
+    if _raw in {"fast-only", "always", "never"}:
+        return _raw
+    _log.warning(
+        "A2A_RETRY_POLICY=%r is not one of fast-only|always|never — "
+        "falling back to fast-only", _raw,
+    )
+    return "fast-only"
+
+
+_A2A_RETRY_POLICY = _resolve_retry_policy()
+_A2A_RETRY_FAST_ONLY_MS = int(os.environ.get("A2A_RETRY_FAST_ONLY_MS", "5000"))
 
 # Circuit-breaker configuration (#609). A simple consecutive-failure breaker
 # avoids running the full retry cycle against a known-bad backend. When the
@@ -547,9 +581,45 @@ class A2ABackend:
                     headers=_headers,
                 ) as resp:
                     if resp.status_code in _RETRYABLE_STATUS_CODES:
+                        # #1457: slow-5xx retry guard. If the response came
+                        # back AFTER the fast-only threshold, the backend
+                        # most likely ran the LLM call to completion and
+                        # only failed on the return path — retrying would
+                        # bill the prompt a second time. Decide whether to
+                        # retry based on the configured policy.
+                        _elapsed_ms = int((time.monotonic() - _req_start) * 1000)
+                        _should_retry = True
+                        if _A2A_RETRY_POLICY == "never":
+                            _should_retry = False
+                        elif _A2A_RETRY_POLICY == "fast-only" and _elapsed_ms > _A2A_RETRY_FAST_ONLY_MS:
+                            _should_retry = False
+                            if harness_a2a_backend_slow_5xx_no_retry_total is not None:
+                                try:
+                                    harness_a2a_backend_slow_5xx_no_retry_total.labels(
+                                        backend=self.id, status=str(resp.status_code)
+                                    ).inc()
+                                except Exception:
+                                    pass
+                        if not _should_retry:
+                            logger.warning(
+                                f"A2A backend '{self.id}' returned HTTP {resp.status_code} "
+                                f"after {_elapsed_ms}ms on attempt {attempt + 1}/{_MAX_RETRIES}; "
+                                f"refusing to retry (policy={_A2A_RETRY_POLICY}, "
+                                f"threshold={_A2A_RETRY_FAST_ONLY_MS}ms) to avoid "
+                                f"double-billing the prompt. Surface as ConnectionError."
+                            )
+                            # _result_label is labelled error_status so the
+                            # existing finally block's _observe_backend_request
+                            # call records the attempt correctly; don't call
+                            # _observe explicitly here (would double-count).
+                            _result_label = "error_status"
+                            raise ConnectionError(
+                                f"A2A backend '{self.id}' returned HTTP {resp.status_code} "
+                                f"after {_elapsed_ms}ms — not retried (#1457 guard)."
+                            )
                         logger.warning(
                             f"A2A backend '{self.id}' returned HTTP {resp.status_code} "
-                            f"(attempt {attempt + 1}/{_MAX_RETRIES}) — retrying"
+                            f"after {_elapsed_ms}ms (attempt {attempt + 1}/{_MAX_RETRIES}) — retrying"
                         )
                         last_exc = ConnectionError(
                             f"A2A backend '{self.id}' returned HTTP {resp.status_code}"
@@ -599,6 +669,12 @@ class A2ABackend:
                 raise ConnectionError(
                     f"A2A backend '{self.id}' returned HTTP {exc.response.status_code}"
                 ) from exc
+            except ConnectionError:
+                # #1457: propagate our own deliberate surfaces (slow-5xx
+                # guard, body-size cap) as-is. Labels were set at the
+                # raise site; re-logging as "unexpected error" would
+                # misclassify them in the downstream metrics label.
+                raise
             except Exception as exc:
                 logger.error(f"A2A backend '{self.id}' unexpected error: {exc!r}")
                 _result_label = "error_connection"

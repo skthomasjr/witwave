@@ -135,6 +135,18 @@ harness_a2a_backend_requests_total: prometheus_client.Counter | None = None
 harness_a2a_backend_request_duration_seconds: prometheus_client.Histogram | None = None
 harness_a2a_backend_circuit_state: prometheus_client.Gauge | None = None
 harness_a2a_backend_circuit_transitions_total: prometheus_client.Counter | None = None
+# #1457: counts slow-5xx responses the retry guard refused to retry.
+# A non-zero rate means the backend is returning 5xx AFTER the LLM
+# call ran to completion (slow return-path failures). Each increment
+# prevented a potential double-bill. Operators can tune
+# A2A_RETRY_FAST_ONLY_MS / A2A_RETRY_POLICY when the rate is high.
+harness_a2a_backend_slow_5xx_no_retry_total: prometheus_client.Counter | None = None
+# #1457: counts sessions killed by the outer asyncio.wait_for deadline.
+# Distinct from the generic task-timeout counter because this specific
+# path is the one that risks server-side LLM work continuing without a
+# client to return to — the counter is what operators reconcile against
+# LLM bills when auditing for double-charges.
+harness_task_outer_timeout_cancel_total: prometheus_client.Counter | None = None
 harness_backends_reload_errors_total: prometheus_client.Counter | None = None
 harness_backends_config_stale: prometheus_client.Gauge | None = None
 harness_task_store_errors_total: prometheus_client.Counter | None = None
@@ -780,6 +792,31 @@ if _enabled:
         "Labels `from` and `to` identify the transition; both take values "
         "closed | open | half_open.",
         ["backend", "from", "to"],
+    )
+    # #1457: slow-5xx retry guard hits. Each increment is one retry that
+    # would have likely re-billed an LLM call; the guard refused it.
+    # Pair with A2A_RETRY_FAST_ONLY_MS / A2A_RETRY_POLICY to tune.
+    harness_a2a_backend_slow_5xx_no_retry_total = prometheus_client.Counter(
+        "harness_a2a_backend_slow_5xx_no_retry_total",
+        "Retry attempts refused by the slow-5xx guard (#1457). A 5xx "
+        "response that came back after A2A_RETRY_FAST_ONLY_MS almost "
+        "always means the backend LLM call ran to completion and failed "
+        "only on the return path; retrying would double-bill. Labels: "
+        "backend + the HTTP status code that triggered the refusal.",
+        ["backend", "status"],
+    )
+    # #1457: outer task-timeout cancellations. Distinct from the generic
+    # task-timeout counter (harness_tasks_total{status=\"timeout\"})
+    # because this path specifically risks server-side LLM work
+    # continuing without a client. Operators reconcile against LLM
+    # billing to audit for potential double-charges.
+    harness_task_outer_timeout_cancel_total = prometheus_client.Counter(
+        "harness_task_outer_timeout_cancel_total",
+        "Sessions killed by the outer asyncio.wait_for deadline (#1457). "
+        "Each increment is a session where the harness abandoned the call "
+        "before the backend finished; server-side LLM work may have "
+        "continued billing. Labels: backend the request was routed to.",
+        ["backend"],
     )
     harness_event_stream_subscribers = prometheus_client.Gauge(
         "harness_event_stream_subscribers",
