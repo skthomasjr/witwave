@@ -255,8 +255,24 @@ spec:
       {{- $podAnnOn := $.Values.metrics.podAnnotations }}
       {{- if (.metrics) }}{{- if hasKey .metrics "podAnnotations" }}{{- $podAnnOn = .metrics.podAnnotations }}{{- end }}{{- end }}
       {{- $meshAnn := include "witwave.serviceMeshPodAnnotations" (dict "root" $) }}
-      {{- if or .podAnnotations (and $metricsOn $podAnnOn) $meshAnn }}
+      {{- /* #1476: checksum annotations so `helm upgrade` rolls the pod
+             when a mounted ConfigMap changes. Without this, editing a
+             ConfigMap via `kubectl edit cm` or a `helm upgrade` that
+             only touched ConfigMap content would silently no-op from
+             the pod's perspective — the harness's backends_watcher
+             hot-reloads backend.yaml, but inline config files
+             (agent-card.md, CLAUDE.md / AGENTS.md / GEMINI.md, hooks.yaml)
+             and the cross-agent manifest are loaded once at start.
+             Checksumming the full rendered CM templates here is a
+             superset: the pod rolls whenever any CM content changes,
+             which is redundant-but-correct for hot-reloaded fields and
+             load-bearing for everything else. A finer-grained
+             per-agent checksum is a follow-up. */}}
+      {{- $_configChecksum := include (print $.Template.BasePath "/configmap-config.yaml") $ | sha256sum }}
+      {{- $_manifestChecksum := include (print $.Template.BasePath "/configmap-manifest.yaml") $ | sha256sum }}
       annotations:
+        checksum/config: {{ $_configChecksum }}
+        checksum/manifest: {{ $_manifestChecksum }}
         {{- if and $metricsOn $podAnnOn }}
         prometheus.io/scrape: "true"
         # The harness and backend metrics listeners bind at
@@ -275,7 +291,6 @@ spec:
         {{- with .podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-      {{- end }}
     spec:
       terminationGracePeriodSeconds: {{ $.Values.terminationGracePeriodSeconds | default 60 }}
       {{- /* ServiceAccount + automount (#538). Defaults match the operator:
