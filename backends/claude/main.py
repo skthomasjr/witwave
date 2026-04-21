@@ -83,6 +83,19 @@ start_time: datetime = datetime.now(timezone.utc)
 # gauge is updated each request to reflect len(_mcp_caller_identities).
 _MCP_CALLER_CARDINALITY_CAP: int = 10_000
 _mcp_caller_identities: set[str] = set()
+# #1486: serialise the check-then-add on _mcp_caller_identities so two
+# concurrent /mcp handlers at cardinality cap-1 cannot both pass the cap
+# check and both .add(), exceeding the intended cap. Lazy-init to avoid
+# binding the lock to the wrong loop on module import.
+_mcp_caller_identities_lock: "asyncio.Lock | None" = None
+
+
+def _get_mcp_caller_identities_lock() -> asyncio.Lock:
+    """Lazy accessor for the cardinality-tracker lock (#1486)."""
+    global _mcp_caller_identities_lock
+    if _mcp_caller_identities_lock is None:
+        _mcp_caller_identities_lock = asyncio.Lock()
+    return _mcp_caller_identities_lock
 
 
 def load_agent_description() -> str:
@@ -603,14 +616,18 @@ async def main():
             # is a no-op; migrate to per-caller tokens). See #1049.
             if _caller_identity is not None and backend_session_caller_cardinality is not None:
                 try:
-                    if (
-                        _caller_identity not in _mcp_caller_identities
-                        and len(_mcp_caller_identities) < _MCP_CALLER_CARDINALITY_CAP
-                    ):
-                        _mcp_caller_identities.add(_caller_identity)
+                    # #1486: serialise the check-then-add to keep the set
+                    # strictly bounded by _MCP_CALLER_CARDINALITY_CAP.
+                    async with _get_mcp_caller_identities_lock():
+                        if (
+                            _caller_identity not in _mcp_caller_identities
+                            and len(_mcp_caller_identities) < _MCP_CALLER_CARDINALITY_CAP
+                        ):
+                            _mcp_caller_identities.add(_caller_identity)
+                        _cardinality = len(_mcp_caller_identities)
                     backend_session_caller_cardinality.labels(
                         agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID
-                    ).set(len(_mcp_caller_identities))
+                    ).set(_cardinality)
                 except Exception:
                     pass
             session_id = derive_session_id(_raw_sid, caller_identity=_caller_identity)
