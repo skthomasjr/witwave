@@ -4,10 +4,29 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/skthomasjr/witwave/clients/ww/internal/config"
 	"github.com/spf13/cobra"
 )
+
+// isSecretKey reports whether a config key names a credential that must not
+// be echoed back to the terminal (shell history, scrollback, or CI logs).
+// Matches anything ending in `.token`, `.run_token`, or `.password`, plus
+// the top-level `token` key if present. Keep the list conservative — it's
+// cheaper to redact a non-secret than to leak a real one.
+func isSecretKey(key string) bool {
+	k := strings.ToLower(key)
+	if k == "token" || k == "password" {
+		return true
+	}
+	for _, suffix := range []string{".token", ".run_token", ".password", ".bearer", ".secret"} {
+		if strings.HasSuffix(k, suffix) {
+			return true
+		}
+	}
+	return false
+}
 
 // newConfigCmd builds the `ww config` subcommand tree. Verbs:
 //
@@ -120,7 +139,14 @@ func newConfigSetCmd() *cobra.Command {
 			if created {
 				action = "created"
 			}
-			fmt.Fprintf(os.Stderr, "%s %s (%s = %s)\n", action, w.Path(), args[0], args[1])
+			// Redact credential values so shell history, scrollback, and
+			// CI logs never see the raw token. Non-secret keys still echo
+			// as before so operators can verify the write.
+			if isSecretKey(args[0]) {
+				fmt.Fprintf(os.Stderr, "%s %s (%s = <redacted>)\n", action, w.Path(), args[0])
+			} else {
+				fmt.Fprintf(os.Stderr, "%s %s (%s = %s)\n", action, w.Path(), args[0], args[1])
+			}
 			return nil
 		},
 	}
