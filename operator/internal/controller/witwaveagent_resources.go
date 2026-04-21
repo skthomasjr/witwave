@@ -834,6 +834,12 @@ func buildDeployment(agent *witwavev1alpha1.WitwaveAgent, appVersion string, pro
 	}
 
 	return &appsv1.Deployment{
+		// #1565: stamp TypeMeta so applySSA never depends on scheme
+		// lookup for GVK inference.
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "apps/v1",
+			Kind:       "Deployment",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      agent.Name,
 			Namespace: agent.Namespace,
@@ -1012,6 +1018,12 @@ func buildService(agent *witwavev1alpha1.WitwaveAgent) *corev1.Service {
 	}
 
 	return &corev1.Service{
+		// #1565: stamp TypeMeta so applySSA never depends on scheme
+		// lookup for GVK inference.
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Service",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        agent.Name,
 			Namespace:   agent.Namespace,

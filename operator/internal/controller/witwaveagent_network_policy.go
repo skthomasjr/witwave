@@ -99,6 +99,14 @@ func buildNetworkPolicy(agent *witwavev1alpha1.WitwaveAgent) *networkingv1.Netwo
 	}
 
 	return &networkingv1.NetworkPolicy{
+		// #1565: stamp TypeMeta explicitly so applySSA no longer
+		// depends on scheme lookup to infer the GVK. A missing GVK
+		// path through SSA surfaces as a confusing generic Patch
+		// error; the stamp here is a belt-and-suspenders fix.
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "networking.k8s.io/v1",
+			Kind:       "NetworkPolicy",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      agent.Name,
 			Namespace: agent.Namespace,
