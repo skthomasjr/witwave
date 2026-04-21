@@ -1512,6 +1512,19 @@ async def run_query(
     # Read the key per-request so OPENAI_API_KEY_FILE rotation takes effect on
     # the next call without a pod restart (#728).
     _live_openai_key = _current_openai_api_key()
+    if not _live_openai_key:
+        # #1501: loud operator-facing error so a missing OPENAI_API_KEY
+        # doesn't silently fall through to the Agents SDK's implicit
+        # default (opaque deep-SDK failure). Logged at ERROR with
+        # actionable text; the run still proceeds with run_config=None
+        # so behaviour on recovered keys is unchanged.
+        logger.error(
+            "OPENAI_API_KEY is unset for session %r — Agents SDK will fall back "
+            "to its own env/default lookup, which typically produces an opaque "
+            "401/auth error. Set OPENAI_API_KEY (or OPENAI_API_KEY_FILE for "
+            "rotation) in the backend environment. See #728 / #1501.",
+            session_id,
+        )
     run_config = RunConfig(model_provider=MultiProvider(openai_api_key=_live_openai_key)) if _live_openai_key else None
 
     collected: list[str] = []
