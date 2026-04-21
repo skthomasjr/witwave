@@ -18,9 +18,18 @@ data:
         {{- end }}
         {{- end }}
         {{- range $i, $agent := $agents }}
+        {{- /* #1587: mirror the service template's $svcPort resolution
+               so the manifest URL points at the Service's exposed port,
+               not the container port, when `service.port` overrides the
+               default. */}}
+        {{- $containerPort := $agent.port | default 8000 }}
+        {{- $svcPort := $containerPort }}
+        {{- if and ($agent.service) (hasKey $agent.service "port") }}
+        {{- $svcPort = $agent.service.port }}
+        {{- end }}
         {
           "name": {{ $agent.name | quote }},
-          "url": "http://{{ $.Release.Name }}-{{ $agent.name }}:{{ $agent.port | default 8000 }}"
+          "url": "http://{{ $.Release.Name }}-{{ $agent.name }}:{{ $svcPort }}"
         }{{ if lt $i (sub (len $agents) 1) }},{{ end }}
         {{- end }}
       ]
