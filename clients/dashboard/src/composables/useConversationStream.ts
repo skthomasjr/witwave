@@ -92,12 +92,32 @@ export interface UseConversationStreamReturn {
 
 const DEFAULT_MAX_TURNS = 500;
 
+// Auth scope (#1543): per-session SSE streams live on the per-agent
+// backend under `/api/agents/<agent>/api/sessions/<id>/stream`, which
+// the harness proxies through to the backend's own
+// `CONVERSATIONS_AUTH_TOKEN`-guarded endpoint. In today's default
+// deployment the harness and every backend share one
+// `CONVERSATIONS_AUTH_TOKEN`, so `harnessBearerToken` IS the
+// backend-scope token — reuse is intentional, not a layering violation.
+// Deployments that split tokens per backend can override via
+// `__WITWAVE_CONFIG__.backendBearerToken`; when set, the dashboard sends
+// that in preference to `harnessBearerToken` on per-session streams.
+// Explicit `options.token` still wins over both so callers/tests stay
+// deterministic.
 function resolveToken(explicit?: string): string | undefined {
   if (explicit) return explicit;
   if (typeof window === "undefined") return undefined;
   const cfg = (window as unknown as {
-    __WITWAVE_CONFIG__?: { harnessBearerToken?: string };
+    __WITWAVE_CONFIG__?: {
+      harnessBearerToken?: string;
+      backendBearerToken?: string;
+    };
   }).__WITWAVE_CONFIG__;
+  // Prefer a backend-specific token when deployments have split auth.
+  const backendTok = cfg?.backendBearerToken;
+  if (typeof backendTok === "string" && backendTok.length > 0) {
+    return backendTok;
+  }
   const tok = cfg?.harnessBearerToken;
   return typeof tok === "string" && tok.length > 0 ? tok : undefined;
 }
