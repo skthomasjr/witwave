@@ -808,9 +808,15 @@ func (r *WitwaveAgentReconciler) applyService(ctx context.Context, agent *witwav
 	if err = controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
 		return fmt.Errorf("set owner on Service: %w", err)
 	}
-	// Preserve ClusterIP across updates — the apiserver rejects attempts to
-	// change it. Read the live object only to carry that immutable field
-	// forward; everything else is expressed via SSA (#751).
+	// #1563: don't copy the live ClusterIP into the desired object. The
+	// apiserver owns ClusterIP (allocated from the service-CIDR on
+	// create, immutable after). SSA with apiserver-owned fields left
+	// unset is the documented SSA behaviour: the apiserver's fieldmanager
+	// keeps ownership, and our Apply won't attempt to rewrite it.
+	// Writing our own value (even one read from the live object) makes
+	// the operator the field's manager, which breaks the #751 design by
+	// claiming co-ownership of a field we don't control. The live Get
+	// here is only kept to label the trace span with create vs apply.
 	existing := &corev1.Service{}
 	getErr := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
 	switch {
@@ -821,7 +827,6 @@ func (r *WitwaveAgentReconciler) applyService(ctx context.Context, agent *witwav
 		return err
 	default:
 		span.SetAttributes(attribute.String("witwave.resource.action", "apply"))
-		desired.Spec.ClusterIP = existing.Spec.ClusterIP
 	}
 	if err = applySSA(ctx, r.Client, desired); err != nil {
 		return err
