@@ -174,9 +174,16 @@ def _truncate_json(value: Any, *, tool: str) -> Any:
         _target_k = max(1, min(_n, cap // (_avg + 1)))
         trimmed: list[Any] = []
         running = 2
-        # Only iterate up to 2× the estimated K so pathological skewed
-        # item sizes still trim accurately without scanning the full list.
-        for item in value[: _target_k * 2]:
+        # #1522: previously we hard-capped iteration at ``_target_k * 2``
+        # so pathological small items caused early termination and
+        # callers got far fewer rows than the cap allowed (continue
+        # token was simultaneously cleared, so paging couldn't recover).
+        # Let the per-item running-size check drive termination; the
+        # _target_k/_avg estimate is still useful as the initial guess
+        # but is no longer a scan ceiling. Full-list scan bounded by the
+        # fact that we break the moment running + chunk exceeds cap.
+        _ = _target_k  # retained for potential future heuristics
+        for item in value:
             try:
                 chunk = _json.dumps(item, default=str)
             except Exception:
