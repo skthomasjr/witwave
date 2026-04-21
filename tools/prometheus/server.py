@@ -99,6 +99,45 @@ if _PROMETHEUS_URL:
             "See #1213."
         )
 
+# #1528: warn when PROMETHEUS_URL points at a link-local or cloud-
+# metadata IP. These are common misconfigurations that silently send
+# bearer tokens to attacker-controlled or introspection endpoints.
+# Optional hard allow-list via MCP_PROM_URL_ALLOWLIST (comma-separated
+# hostnames, matching the mcp-helm pattern). Empty allow-list means
+# "warn but accept"; populated means "refuse anything not on the list".
+if _PROMETHEUS_URL:
+    import ipaddress as _ipaddress
+    import logging as _logging
+    _prom_hostname = (_parsed_prom_url.hostname or "").lower().rstrip(".")
+    _prom_allowlist_raw = os.environ.get("MCP_PROM_URL_ALLOWLIST", "")
+    _prom_allowlist = {
+        h.strip().lower() for h in _prom_allowlist_raw.split(",") if h.strip()
+    }
+    _prom_log = _logging.getLogger("tools.prometheus")
+    if _prom_allowlist and _prom_hostname not in _prom_allowlist:
+        raise RuntimeError(
+            f"mcp-prometheus: PROMETHEUS_URL host {_prom_hostname!r} is "
+            f"not in MCP_PROM_URL_ALLOWLIST ({sorted(_prom_allowlist)!r}). "
+            "See #1528."
+        )
+    # Even without an allow-list, flag obviously-dangerous hosts so
+    # operators notice in pod logs.
+    if _prom_hostname:
+        try:
+            _prom_ip = _ipaddress.ip_address(_prom_hostname)
+        except ValueError:
+            _prom_ip = None
+        if _prom_ip is not None and (
+            _prom_ip.is_link_local
+            or str(_prom_ip) in {"169.254.169.254", "fd00:ec2::254"}
+        ):
+            _prom_log.warning(
+                "mcp-prometheus: PROMETHEUS_URL points at a link-local / "
+                "cloud-metadata host (%s). Any bearer token will be sent "
+                "there. Set MCP_PROM_URL_ALLOWLIST to constrain. (#1528)",
+                _prom_hostname,
+            )
+
 # Hard byte cap for Prometheus response bodies (#1211). Streamed reads
 # abort once the cap is exceeded so one pathological query cannot pin
 # the pod's memory. Default 1MiB — Prometheus query results that exceed
