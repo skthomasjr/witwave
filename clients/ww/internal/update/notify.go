@@ -147,12 +147,22 @@ func RunUpgrade(ctx context.Context, method InstallMethod, currentVersion string
 		// is a no-op, and we'll detect that below regardless.
 		updateCmd := exec.CommandContext(ctx, "brew", "update")
 		updateCmd.Stdout, updateCmd.Stderr = stdout, stderr
+		// #1554: refuse to inherit stdin on any brew call. Both
+		// `brew update` and `brew upgrade` can trigger interactive
+		// prompts (sudo for /usr/local writes on older macOS, "Y/n"
+		// on certain cask upgrades, the GitHub-API rate-limit
+		// login prompt). Inheriting the parent's stdin makes an
+		// unattended self-upgrade block indefinitely when we hit
+		// one of those branches. Closing stdin lets brew fail fast
+		// with "needs tty" rather than wedging the parent.
+		updateCmd.Stdin = nil
 		if err := updateCmd.Run(); err != nil {
 			fmt.Fprintf(stderr, "warning: `brew update` failed: %v — continuing with upgrade anyway\n", err)
 		}
 
 		upgradeCmd := exec.CommandContext(ctx, "brew", "upgrade", "ww")
 		upgradeCmd.Stdout, upgradeCmd.Stderr = stdout, stderr
+		upgradeCmd.Stdin = nil // #1554 — see update call above.
 		if err := upgradeCmd.Run(); err != nil {
 			return fmt.Errorf("brew upgrade ww: %w", err)
 		}
