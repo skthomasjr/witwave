@@ -1970,12 +1970,25 @@ async def run_query(
         else:
             streamed = "".join(collected)
             if final != streamed:
+                # #1497: previously the log said "using streamed content" —
+                # which dropped the authoritative final_output in favour
+                # of possibly-partial streamed deltas. Prefer final_output
+                # and bump a divergence counter so operators can alert on
+                # frequent mismatches.
                 logger.debug(
-                    "final_output differs from streamed deltas — using streamed content "
+                    "final_output differs from streamed deltas — using final_output "
                     "(len streamed=%d, len final=%d)",
                     len(streamed),
                     len(final),
                 )
+                try:
+                    from metrics import backend_final_output_divergence_total as _bfod
+                    if _bfod is not None:
+                        _bfod.labels(**_LABELS).inc()
+                except Exception:
+                    pass
+                collected.clear()
+                collected.append(final)
 
     full_response = "".join(collected)
     if full_response:

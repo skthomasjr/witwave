@@ -57,6 +57,10 @@ backend_prompt_length_bytes: prometheus_client.Histogram | None = None
 backend_response_length_bytes: prometheus_client.Histogram | None = None
 backend_empty_responses_total: prometheus_client.Counter | None = None
 backend_empty_prompts_total: prometheus_client.Counter | None = None
+# #1497: counts turns where result.final_output differed from the streamed
+# deltas. When non-zero, the executor now returns final_output (the SDK's
+# authoritative answer) rather than the streamed intermediate content.
+backend_final_output_divergence_total: prometheus_client.Counter | None = None
 backend_stderr_lines_per_task: prometheus_client.Histogram | None = None
 backend_tasks_with_stderr_total: prometheus_client.Counter | None = None
 
@@ -360,6 +364,11 @@ if _enabled:
     backend_empty_prompts_total = prometheus_client.Counter(
         "backend_empty_prompts_total",
         "Total execute() invocations rejected because the resolved prompt was empty or whitespace-only (#544 / #801).",
+        ["agent", "agent_id", "backend"],
+    )
+    backend_final_output_divergence_total = prometheus_client.Counter(
+        "backend_final_output_divergence_total",
+        "Total turns where result.final_output differed from the streamed deltas (#1497).",
         ["agent", "agent_id", "backend"],
     )
     # Per-task SDK error/noise (#802). Parity with claude's subprocess-stderr
