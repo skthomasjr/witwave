@@ -629,8 +629,13 @@ async def main():
                 # supplying a session_id, preserve the session state for
                 # the next call — skip cleanup on that path.
                 if not _caller_requested_continuation:
+                    # #1494: serialise the pop under _get_sessions_lock so
+                    # we cannot interleave with _track_session's
+                    # popitem/move_to_end on the shared OrderedDict and
+                    # skew the #506/#725 session gauges.
                     try:
-                        executor._sessions.pop(session_id, None)
+                        async with executor._get_sessions_lock():
+                            executor._sessions.pop(session_id, None)
                     except Exception:
                         pass
                     # Import the already-resolved DB path from executor
