@@ -591,6 +591,11 @@ async def main():
                         "rpc.id": str(rpc_id) if rpc_id is not None else "",
                     },
                 ) as _mcp_span:
+                    # #1493: route through _acquire_mcp_stack so a
+                    # concurrent hot-reload can't aclose() the stack
+                    # mid-request. Without the refcount held, a
+                    # snapshot alone defeats the #667 reload safety.
+                    _mcp_servers_snapshot, _mcp_stack_held = await executor._acquire_mcp_stack()
                     try:
                         from executor import run as _run_for_mcp
                         response = await _run_for_mcp(
@@ -600,11 +605,13 @@ async def main():
                             executor._agent_md_content,
                             model=None,
                             max_tokens=mcp_max_tokens,
-                            live_mcp_servers=await executor._snapshot_live_mcp_servers(),
+                            live_mcp_servers=_mcp_servers_snapshot,
                         )
                     except Exception as exc:
                         _set_span_error(_mcp_span, exc)
                         raise
+                    finally:
+                        await executor._release_mcp_stack(_mcp_stack_held)
             except Exception as exc:
                 _failed = True
                 logger.error(f"MCP tools/call error: {exc!r}")
