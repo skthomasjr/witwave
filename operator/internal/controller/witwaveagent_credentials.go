@@ -288,7 +288,19 @@ func (r *WitwaveAgentReconciler) reconcileCredentialsSecrets(ctx context.Context
 		if err := controllerutil.SetControllerReference(agent, existing, r.Scheme); err != nil {
 			return fmt.Errorf("set owner on existing Secret %s: %w", sec.Name, err)
 		}
-		existing.Data = sec.Data
+		// #1562: merge Data rather than overwriting so a user who
+		// kubectl-patched an extra key onto a managed credential Secret
+		// (common pattern for adding a sidecar env / pull-through token)
+		// doesn't lose it on every reconcile. The operator's keys are
+		// authoritative — desired values overwrite — but foreign keys
+		// pass through unchanged. Matches the labels/annotations merge
+		// posture in mergeOwnedStringMap.
+		if existing.Data == nil {
+			existing.Data = map[string][]byte{}
+		}
+		for k, v := range sec.Data {
+			existing.Data[k] = v
+		}
 		existing.Labels = mergeOwnedStringMap(existing.Labels, sec.Labels, witwaveAgentOwnedLabelKeys)
 		existing.Type = sec.Type
 		if err := r.Update(ctx, existing); err != nil {
