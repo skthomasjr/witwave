@@ -69,7 +69,11 @@ interface SubscriberEntry {
 }
 const subscribers = new Map<symbol, SubscriberEntry>();
 let effectiveIntervalMs = 5000;
-let subscriberCount = 0;
+// #1535: subscriberCount was a redundant counter alongside subscribers.size.
+// Under rapid mount/unmount the two could drift (e.g. when onMounted ran
+// but the token registration in startShared later hit an early-return, or
+// tests called __reset* between the two). Source of truth is now
+// subscribers.size; references below read from the map directly.
 let pollerTimer: ReturnType<typeof setInterval> | null = null;
 let pollerAborter: AbortController | null = null;
 
@@ -237,7 +241,6 @@ function unregisterSubscriber(token: symbol): void {
 // the stable surface consumed by views.
 export function __resetSharedTeamPoller(): void {
   stopShared();
-  subscriberCount = 0;
   subscribers.clear();
   effectiveIntervalMs = 5000;
   currentMemberTimeoutMs = 5000;
@@ -261,13 +264,19 @@ export function useTeam(opts: UseTeamOptions = {}) {
   let token: symbol | null = null;
 
   onMounted(() => {
-    subscriberCount += 1;
     token = startShared(intervalMs, memberTimeoutMs, directoryTimeoutMs);
   });
 
   onUnmounted(() => {
-    subscriberCount = Math.max(0, subscriberCount - 1);
-    if (subscriberCount === 0) {
+    // Unregister this token first, then check subscribers.size directly —
+    // the map is the single source of truth (#1535). Previously a parallel
+    // subscriberCount could drift from subscribers.size under rapid
+    // mount/unmount and the cleanup branch was skipped while stale entries
+    // still lived in the map.
+    if (token !== null) {
+      subscribers.delete(token);
+    }
+    if (subscribers.size === 0) {
       // Last subscriber leaving: tear everything down AND clear the
       // subscriber map so the poller starts cleanly on next mount.
       stopShared();
@@ -280,7 +289,21 @@ export function useTeam(opts: UseTeamOptions = {}) {
       // Recompute min(interval) / max(timeouts). If this subscriber was
       // the tightest-cadence one, the poller should relax (#891); if it
       // was the longest-timeout one, timeouts contract back (#951).
-      unregisterSubscriber(token);
+      // We already removed the token from `subscribers` above, so
+      // recompute directly instead of calling unregisterSubscriber
+      // (which would try to .delete() an already-absent token).
+      recomputeTimeouts();
+      if (pollerTimer !== null) {
+        const newEffective = recomputeEffectiveInterval();
+        if (newEffective !== effectiveIntervalMs) {
+          clearInterval(pollerTimer);
+          effectiveIntervalMs = newEffective;
+          pollerTimer = setInterval(() => {
+            if (pollingShouldSkipTick()) return;
+            void sharedRefresh();
+          }, effectiveIntervalMs);
+        }
+      }
       token = null;
     }
   });
@@ -304,7 +327,6 @@ export function useTeam(opts: UseTeamOptions = {}) {
 export function __resetForTesting(): void {
   stopShared();
   subscribers.clear();
-  subscriberCount = 0;
   effectiveIntervalMs = 5000;
   currentMemberTimeoutMs = 5000;
   currentDirectoryTimeoutMs = 5000;
