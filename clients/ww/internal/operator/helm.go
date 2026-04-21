@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"strings"
+	"time"
 
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
@@ -115,16 +116,49 @@ func (c *HelmClient) Upgrade(ctx context.Context, ch *chart.Chart, values map[st
 // Uninstall removes the Helm release. CRD deletion is NOT part of
 // Helm's uninstall and MUST be handled separately — callers decide
 // whether to delete CRDs based on --delete-crds + CR-existence safety.
+//
+// Helm's action.Uninstall does not expose a RunWithContext entry point,
+// so ctx is honoured two ways: (1) when ctx has a deadline, the
+// remaining time is copied into act.Timeout so the SDK's own wait
+// mechanisms cut over; (2) the Run call executes in a goroutine and
+// ctx.Done() wins the race so the caller returns immediately on Ctrl-C,
+// letting the helm call finish in the background rather than blocking
+// the command (#1548).
 func (c *HelmClient) Uninstall(ctx context.Context) (*release.UninstallReleaseResponse, error) {
 	act := action.NewUninstall(c.cfg)
-	act.Timeout = 0 // no explicit timeout; context cancellation is authoritative
+	// Propagate any caller deadline into Helm's own timeout so the SDK
+	// has a chance to abort cleanly rather than relying purely on the
+	// goroutine shim below.
+	if deadline, ok := ctx.Deadline(); ok {
+		if remaining := time.Until(deadline); remaining > 0 {
+			act.Timeout = remaining
+		}
+	}
 	// Keep history off so a re-install lands cleanly.
 	act.KeepHistory = false
-	resp, err := act.Run(c.releaseName)
-	if err != nil {
-		return nil, fmt.Errorf("helm uninstall: %w", err)
+
+	type result struct {
+		resp *release.UninstallReleaseResponse
+		err  error
 	}
-	return resp, nil
+	done := make(chan result, 1)
+	go func() {
+		resp, err := act.Run(c.releaseName)
+		done <- result{resp: resp, err: err}
+	}()
+
+	select {
+	case <-ctx.Done():
+		// Release control back to the caller immediately; the in-flight
+		// Run will finish (or fail) asynchronously. Wrap ctx.Err so
+		// callers can detect cancellation via errors.Is.
+		return nil, fmt.Errorf("helm uninstall: %w", ctx.Err())
+	case r := <-done:
+		if r.err != nil {
+			return nil, fmt.Errorf("helm uninstall: %w", r.err)
+		}
+		return r.resp, nil
+	}
 }
 
 // Get returns the current release info or nil if not installed.
