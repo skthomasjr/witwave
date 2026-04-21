@@ -366,6 +366,17 @@ func writeCache(path string, c Cache) error {
 		_ = f.Close()
 		return err
 	}
+	// #1553: pin the mode to 0600 explicitly. os.CreateTemp today lands
+	// at 0600 on POSIX, but that's documented as an implementation
+	// choice, not a contract; a future refactor to WriteFile/OpenFile
+	// with different defaults would silently expose cached metadata
+	// (last-checked timestamp, seen-version) to other users on the
+	// host. Chmod before Rename so the final file never spends a cycle
+	// with a looser mode.
+	if err := f.Chmod(0o600); err != nil {
+		_ = f.Close()
+		return err
+	}
 	if err := f.Close(); err != nil {
 		return err
 	}
