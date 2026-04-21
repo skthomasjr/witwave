@@ -184,8 +184,16 @@ def _redact_helm_error_text(text: str, argv: list[str] | None = None) -> str:
             if value:
                 # Only substitute non-trivial values to avoid masking
                 # harmless short tokens that collide with real output.
-                if len(value) >= 4:
-                    out = out.replace(value, _REDACTED)
+                # #1521: unbounded .replace() on the bare value mangled
+                # common substrings like 'true', 'chart', 'system' when
+                # those appeared as --set values. Require (a) a minimum
+                # length floor, (b) word-boundary anchors via regex so
+                # we only substitute standalone tokens, and (c) some
+                # non-alphabetic mix so pure English words are skipped.
+                if len(value) >= 8 and not value.isalpha():
+                    import re as _re
+                    _pat = _re.compile(r"\b" + _re.escape(value) + r"\b")
+                    out = _pat.sub(_REDACTED, out)
             i += 1
     return out
 
