@@ -10,7 +10,9 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -41,6 +43,11 @@ type Config struct {
 type Client struct {
 	cfg Config
 	hc  *http.Client
+	// runTokenFallbackWarned gates the one-shot warning emitted when a
+	// caller asks for RunToken but the client only has Token configured.
+	// #1547 — the fallback is an accepted safety net, but silently
+	// reusing Token hides auth-split misconfig in CI logs.
+	runTokenFallbackWarned sync.Once
 }
 
 // New constructs a Client from cfg. Mutations to cfg after New have no
@@ -288,8 +295,22 @@ func (c *Client) OpenStream(ctx context.Context, method, path string, body any, 
 
 func (c *Client) applyHeaders(req *http.Request, useRunToken, hasBody bool) {
 	tok := c.cfg.Token
-	if useRunToken && c.cfg.RunToken != "" {
-		tok = c.cfg.RunToken
+	if useRunToken {
+		if c.cfg.RunToken != "" {
+			tok = c.cfg.RunToken
+		} else if c.cfg.Token != "" {
+			// Fallback is accepted (some deployments share a single
+			// token across conversations + ad-hoc-run) but should not
+			// be silent — log exactly once per Client so CI output
+			// surfaces the misconfig without spamming the tail.
+			c.runTokenFallbackWarned.Do(func() {
+				w := c.cfg.Logger
+				if w == nil {
+					w = os.Stderr
+				}
+				fmt.Fprintln(w, "ww: warning: ADHOC_RUN_AUTH_TOKEN is unset; falling back to CONVERSATIONS_AUTH_TOKEN for ad-hoc-run calls")
+			})
+		}
 	}
 	if tok != "" {
 		req.Header.Set("Authorization", "Bearer "+tok)
