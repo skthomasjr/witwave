@@ -2095,9 +2095,15 @@ async def _run_inner(
     if backend_model_requests_total is not None:
         backend_model_requests_total.labels(**_LABELS, model=sanitize_model_label(resolved_model)).inc()
 
-    is_new = session_id not in sessions and not await asyncio.to_thread(_sqlite_session_exists, session_id)
+    # #1499: snapshot membership + last-used under the shared sessions
+    # lock so concurrent _track_session mutations (popitem/move_to_end)
+    # cannot flip the is_new result between the membership check and
+    # the SQLite probe, which would mis-label backend_session_starts_total.
+    async with _get_sessions_lock():
+        _in_memory = session_id in sessions
+        _last_used = sessions.get(session_id) if _in_memory else None
+    is_new = not _in_memory and not await asyncio.to_thread(_sqlite_session_exists, session_id)
     if not is_new and backend_session_idle_seconds is not None:
-        _last_used = sessions.get(session_id)
         if _last_used is not None:
             backend_session_idle_seconds.labels(**_LABELS).observe(time.monotonic() - _last_used)
     if backend_session_starts_total is not None:
