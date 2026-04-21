@@ -1554,6 +1554,32 @@ func (r *WitwaveAgentReconciler) teardownDisabledAgent(ctx context.Context, agen
 			}
 		}
 	}
+	// #1558: credential Secrets (gitSync + backend) live outside the
+	// ConfigMap/PVC cleanup pass because they carry an additional
+	// component=credentials label. Without this step, flipping
+	// spec.enabled=false would leave live tokens / SSH keys in etcd even
+	// though every other owned resource is torn down. Dual-check label
+	// + IsControlledBy before deleting so user-created Secrets that
+	// happen to carry the agent's name label are never touched.
+	credSel := client.MatchingLabels{
+		labelName:      agent.Name,
+		labelComponent: componentCredentials,
+		labelManagedBy: managedBy,
+	}
+	credSecrets := &corev1.SecretList{}
+	if err := r.List(ctx, credSecrets, client.InNamespace(agent.Namespace), credSel); err != nil {
+		recordErr("Secret", "list", err)
+	} else {
+		for i := range credSecrets.Items {
+			sec := &credSecrets.Items[i]
+			if !metav1.IsControlledBy(sec, agent) {
+				continue
+			}
+			if err := r.Delete(ctx, sec); err != nil && !apierrors.IsNotFound(err) {
+				recordErr("Secret", "delete", fmt.Errorf("%s: %w", sec.Name, err))
+			}
+		}
+	}
 	// Force the dashboard teardown regardless of spec.dashboard.enabled
 	// (#682). Without the forceDelete flag, reconcileDashboard's apply
 	// path would keep (or even create) the dashboard stack pointing at
