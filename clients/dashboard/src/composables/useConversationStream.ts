@@ -365,7 +365,11 @@ export function useConversationStream(
   // Process every envelope that we haven't handled yet, keyed by `id`.
   // Survives ring evictions in the underlying stream — each envelope is
   // processed exactly once regardless of positional shifts. (#1156)
-  watch(
+  // #1534: capture the stop handle returned by `watch()` so `close()`
+  // can tear it down on session switch. Previously the watcher leaked
+  // across every session switch and kept firing against the closed
+  // stream's refs.
+  const stopEventsWatcher = watch(
     stream.events,
     (arr) => {
       const events = arr as EventEnvelope[];
@@ -402,6 +406,13 @@ export function useConversationStream(
       stream.close();
     } catch {
       // ignore — close is best-effort.
+    }
+    // #1534: stop the events watcher so a session switch cannot leak
+    // a live reactive subscription across composable lifetimes.
+    try {
+      stopEventsWatcher();
+    } catch {
+      // ignore — watcher may already be stopped.
     }
     // Reset dedupe state so a later reopen (same composable instance is
     // unusual, but callers can still trigger the path indirectly via the
