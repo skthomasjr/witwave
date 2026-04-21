@@ -1118,6 +1118,16 @@ _session_cleanup_epoch: dict[str, int] = {}
 # discards completed tasks so the set does not grow unbounded.
 _EVICT_REMOVE_TASKS: set[asyncio.Task] = set()
 
+# #1513: bound concurrent deferred-eviction tasks under churn. Each task
+# awaits the pending history-save with a 5s timeout, so a bursty eviction
+# pattern (many sessions touched then LRU-evicted in quick succession)
+# could balloon the set. Cap via env; when the cap is reached, callers
+# fall back to the synchronous os.remove path so backpressure is visible
+# and memory growth is bounded independent of eviction rate.
+_EVICT_REMOVE_TASKS_MAX = int(
+    os.environ.get("GEMINI_EVICT_REMOVE_TASKS_MAX") or "256"
+)
+
 
 def _bump_cleanup_epoch(session_id: str) -> int:
     """Increment and return the cleanup epoch for ``session_id`` (#732)."""
@@ -1511,13 +1521,34 @@ def _track_session(
                         )
                     _bump_cleanup_epoch(_ev_id)
                     _session_cleanup_epoch.pop(_ev_id, None)
-                _evict_task = _loop.create_task(_deferred_evict_remove())
-                # Hold a strong reference so loop shutdown doesn't
-                # garbage-collect the task mid-flight (#999). The
-                # done-callback discards the reference on completion
-                # so the set stays bounded under sustained eviction.
-                _EVICT_REMOVE_TASKS.add(_evict_task)
-                _evict_task.add_done_callback(_EVICT_REMOVE_TASKS.discard)
+                # #1513: bound the deferred-eviction task set. Under
+                # sustained churn the 5s wait-for on each task could let
+                # the set grow proportionally to eviction backlog.
+                if len(_EVICT_REMOVE_TASKS) >= _EVICT_REMOVE_TASKS_MAX:
+                    # Backpressure: fall back to the synchronous remove
+                    # path (foregoing the pending history-save wait) so
+                    # eviction stays bounded and the history-save epoch
+                    # guard (#732) still blocks any racing late os.replace.
+                    try:
+                        os.remove(_evicted_path)
+                    except FileNotFoundError:
+                        pass
+                    except OSError as e:
+                        logger.warning(
+                            "Could not remove evicted session file %s "
+                            "(deferred cap reached): %s",
+                            _evicted_path, e,
+                        )
+                    _bump_cleanup_epoch(_evicted_id)
+                    _session_cleanup_epoch.pop(_evicted_id, None)
+                else:
+                    _evict_task = _loop.create_task(_deferred_evict_remove())
+                    # Hold a strong reference so loop shutdown doesn't
+                    # garbage-collect the task mid-flight (#999). The
+                    # done-callback discards the reference on completion
+                    # so the set stays bounded under sustained eviction.
+                    _EVICT_REMOVE_TASKS.add(_evict_task)
+                    _evict_task.add_done_callback(_EVICT_REMOVE_TASKS.discard)
             else:
                 try:
                     os.remove(_evicted_path)
