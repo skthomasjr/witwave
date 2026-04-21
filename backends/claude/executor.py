@@ -1044,18 +1044,26 @@ def _make_pre_tool_use_hook(state: HookState, session_id_ref: dict | None = None
             # threading.Lock never wraps an asyncio-scheduler call
             # (#983). If create_task raises or returns, we defensively
             # reconcile the in-flight set afterwards.
-            with _INFLIGHT_HOOK_POSTS_LOCK:
-                _size_before = len(_INFLIGHT_HOOK_POSTS)
-                _over_cap = _size_before >= _HOOK_POST_MAX_INFLIGHT
+            # #1487: hold _HOOK_POST_SHED_WARNED_LOCK across the cap-check
+            # + warning emit + flag-set so a concurrent _done reset (which
+            # also grabs _HOOK_POST_SHED_WARNED_LOCK) cannot interleave
+            # between the cap-check and the warning emit and cause the
+            # per-drain-cycle warning to re-fire more than once. We take
+            # SHED_WARNED first, then read INFLIGHT nested under its own
+            # lock — safe because every other call site takes the two
+            # locks sequentially (not nested), so no deadlock arises.
+            global _HOOK_POST_SHED_WARNED
+            with _HOOK_POST_SHED_WARNED_LOCK:
+                with _INFLIGHT_HOOK_POSTS_LOCK:
+                    _size_before = len(_INFLIGHT_HOOK_POSTS)
+                    _over_cap = _size_before >= _HOOK_POST_MAX_INFLIGHT
+                if _over_cap and not _HOOK_POST_SHED_WARNED:
+                    logger.warning(
+                        "hook.decision POST shed: %d in-flight at cap=%d (further shed suppressed until drain)",
+                        _size_before, _HOOK_POST_MAX_INFLIGHT,
+                    )
+                    _HOOK_POST_SHED_WARNED = True
             if _over_cap:
-                global _HOOK_POST_SHED_WARNED
-                with _HOOK_POST_SHED_WARNED_LOCK:
-                    if not _HOOK_POST_SHED_WARNED:
-                        logger.warning(
-                            "hook.decision POST shed: %d in-flight at cap=%d (further shed suppressed until drain)",
-                            _size_before, _HOOK_POST_MAX_INFLIGHT,
-                        )
-                        _HOOK_POST_SHED_WARNED = True
                 if backend_hooks_shed_total is not None:
                     try:
                         backend_hooks_shed_total.labels(**_LABELS).inc()
