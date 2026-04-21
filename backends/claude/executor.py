@@ -1097,6 +1097,18 @@ def _make_pre_tool_use_hook(state: HookState, session_id_ref: dict | None = None
                 except RuntimeError as _rt_exc:
                     # Event loop closing / no running loop. Not fatal —
                     # the span event above already captured the decision.
+                    # #1492: bump the shed counter here too so a burst of
+                    # tool calls during shutdown (when create_task raises
+                    # with "loop is closed") isn't silently dropped from
+                    # the shed-rate dashboard. Reuse the same metric as
+                    # the cap-based shed path — operators can't
+                    # distinguish the two reasons but the counter stays
+                    # complete.
+                    if backend_hooks_shed_total is not None:
+                        try:
+                            backend_hooks_shed_total.labels(**_LABELS).inc()
+                        except Exception:
+                            pass
                     logger.debug(
                         "hook.decision transport scheduling skipped (loop not running): %r",
                         _rt_exc,
