@@ -170,8 +170,18 @@ function startShared(
   // (#891); a later subscriber with a tighter timeout is ignored so
   // healthy-but-busy agents aren't aborted mid-poll (#951).
   const token = Symbol("useTeamSubscriber");
+  // #1539: capture previous timeouts before recompute so we can detect
+  // a timeout-only change (interval unchanged). Previously the timeout
+  // recompute landed but the in-flight refresh kept running with the
+  // stale value, violating the #951 invariant that "max(timeouts) is
+  // active" for the current tick.
+  const _prevMemberTimeout = currentMemberTimeoutMs;
+  const _prevDirTimeout = currentDirectoryTimeoutMs;
   subscribers.set(token, { intervalMs, memberTimeoutMs, directoryTimeoutMs });
   recomputeTimeouts();
+  const _timeoutsChanged =
+    _prevMemberTimeout !== currentMemberTimeoutMs
+    || _prevDirTimeout !== currentDirectoryTimeoutMs;
 
   const newEffective = recomputeEffectiveInterval();
 
@@ -202,6 +212,12 @@ function startShared(
       if (pollingShouldSkipTick()) return;
       void sharedRefresh();
     }, effectiveIntervalMs);
+  } else if (_timeoutsChanged) {
+    // #1539: timeout changed without an interval change — cancel the
+    // in-flight refresh and reissue so the updated max(timeouts) takes
+    // effect immediately instead of waiting for the next tick.
+    pollerAborter?.abort();
+    void sharedRefresh();
   }
   return token;
 }
