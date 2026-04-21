@@ -142,7 +142,26 @@ export function useAgentFanout<T>(opts: UseAgentFanoutOptions) {
       const perAgent = await Promise.all(
         directory.map((entry) => fetchOne(entry, signal)),
       );
-      if (signal.aborted) return;
+      if (signal.aborted) {
+        // #1542: an aborted cycle must still clear stale per-agent
+        // errors for agents that recovered before the abort fired.
+        // Without this, a transient outage entry in perAgentErrors from
+        // a previous cycle sticks across every aborted successor cycle
+        // and the degraded banner never clears for a recovered agent.
+        // We don't touch items.value or lastUpdated (those remain
+        // owned by the last fully-completed cycle), but we do narrow
+        // the error map to what the partial fetch observed.
+        const partialErrs: PerAgentErrors = { ...perAgentErrors.value };
+        for (const r of perAgent) {
+          if (r.error !== undefined) {
+            partialErrs[r.agent] = r.error;
+          } else {
+            delete partialErrs[r.agent];
+          }
+        }
+        perAgentErrors.value = partialErrs;
+        return;
+      }
       items.value = perAgent.flatMap((r) => r.items);
       const errs: PerAgentErrors = {};
       for (const r of perAgent) {
