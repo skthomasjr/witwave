@@ -2014,7 +2014,12 @@ async def run_query(
             # is still returned to the caller.  Mark the session in history_save_failed
             # so the next request starts fresh rather than resuming inconsistent state (#409).
             try:
-                await _save_history(session_id, chat.history)
+                # #1511: snapshot chat.history before handing it to
+                # _save_history. The SDK can mutate the list concurrently
+                # (AFC continuation appends, background turn finalisers)
+                # and iteration over the live list risks "list changed
+                # size during iteration" at the part-dump loop.
+                await _save_history(session_id, list(chat.history or []))
                 if history_save_failed is not None:
                     history_save_failed.discard(session_id)
             except Exception as _save_exc:
