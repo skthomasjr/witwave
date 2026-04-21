@@ -1,7 +1,16 @@
 # ww CLI build artifacts
 /ww
+/clients/ww/ww
 /bin/
 dist/
+
+# Agent / audit scratch binaries — running `go build` without `-o` in any
+# Go module dir dumps a binary named after the package (ww, operator, etc.)
+# in the cwd. Ad-hoc test scratch files from audit agents (test_*_logic,
+# test_*_scratch) also show up here. Keep them out of git.
+/test_*_logic
+/test_*_scratch
+/scratch_*
 
 # macOS
 .DS_Store
