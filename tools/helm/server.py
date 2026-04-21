@@ -1696,17 +1696,34 @@ def repo_add(name: str, url: str) -> str:
     # #1369: IDN / punycode normalisation so homograph hosts that
     # visually resemble allow-list entries can't slip past the string
     # compare. idna.encode is stricter than ascii-lowered .hostname.
+    # #1520: idna rejects IPv4/IPv6 literals (air-gapped clusters and
+    # private OCI registries often sit on stable IPs); skip idna for
+    # valid IP literals after normalising IPv6 via ipaddress.
     if hostname:
+        import ipaddress as _ipaddress
+        _hostname_for_ip = hostname
+        # urllib strips [] from IPv6 hosts already, so .hostname is
+        # already the bare address; ip_address round-trips collapse
+        # "::1" / "::0001" into a canonical form.
+        _is_ip = False
         try:
-            import idna as _idna
-            hostname = _idna.encode(hostname).decode("ascii")
-        except Exception:
-            # idna not installed or invalid name — reject rather than
-            # fall through to the less-strict .lower() compare.
-            raise HelmError(
-                f"helm repo_add: hostname {parsed.hostname!r} failed IDN "
-                "normalisation. See #1369."
-            )
+            _hostname_for_ip = str(_ipaddress.ip_address(hostname))
+            _is_ip = True
+        except ValueError:
+            _is_ip = False
+        if _is_ip:
+            hostname = _hostname_for_ip
+        else:
+            try:
+                import idna as _idna
+                hostname = _idna.encode(hostname).decode("ascii")
+            except Exception:
+                # idna not installed or invalid name — reject rather than
+                # fall through to the less-strict .lower() compare.
+                raise HelmError(
+                    f"helm repo_add: hostname {parsed.hostname!r} failed IDN "
+                    "normalisation. See #1369."
+                )
     if parsed.scheme not in ("http", "https", "oci"):
         raise HelmError(
             f"helm repo_add: URL scheme must be http/https/oci (got "
