@@ -119,6 +119,15 @@ _MCP_RESPONSE_MAX_BYTES = int(
     os.environ.get("MCP_RESPONSE_MAX_BYTES") or str(8 * 1024 * 1024)
 )
 
+# #1526: upper bound on the caller-supplied ``limit`` in list_resources.
+# Without a cap, an LLM-supplied ``limit=1000000`` makes the apiserver
+# build a response body we'll only truncate client-side, wasting
+# apiserver CPU and etcd bandwidth. 500 is the Kubernetes-project
+# default chunk size; operators can raise or lower via env.
+_MCP_LIST_LIMIT_MAX = int(
+    os.environ.get("MCP_LIST_LIMIT_MAX") or "500"
+)
+
 # Hard ceiling on the tail_lines argument for logs() (#778). Even when
 # the byte cap is disabled, the apiserver should not be asked for an
 # unbounded log tail — the worst case is a multi-GB streaming fetch that
@@ -623,6 +632,18 @@ def list_resources(
             if limit is not None:
                 if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
                     raise ValueError("list_resources: 'limit' must be a positive int")
+                # #1526: cap above MCP_LIST_LIMIT_MAX. Client-side
+                # truncation happens anyway after the apiserver has
+                # already built the oversized response body; coerce the
+                # limit down at the edge so the apiserver / etcd don't
+                # pay for bytes the caller will discard.
+                if limit > _MCP_LIST_LIMIT_MAX:
+                    log.info(
+                        "list_resources: coercing limit %d down to "
+                        "MCP_LIST_LIMIT_MAX=%d (#1526)",
+                        limit, _MCP_LIST_LIMIT_MAX,
+                    )
+                    limit = _MCP_LIST_LIMIT_MAX
                 kwargs["limit"] = limit
             if continue_token:
                 kwargs["_continue"] = continue_token
