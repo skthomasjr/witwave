@@ -1794,9 +1794,29 @@ async def run_query(
                         _AFC_HISTORY_SOFT_CAP_BYTES > 0
                         and (_message_count & 0x3) == 0
                     ):
+                        # #1507: switch from len(repr(_h)) to the same
+                        # model_dump + json.dumps byte count the save
+                        # path uses (_SAVE_HISTORY_MAX_BYTES). repr() on
+                        # pydantic Content/Part does not correlate with
+                        # serialised byte size (e.g. it includes type-
+                        # name prefixes + quoting that scale
+                        # non-linearly with payload) so the soft cap
+                        # was effectively arbitrary. Errors fall back
+                        # to 0 so the soft cap never false-trips.
                         try:
-                            _hist_bytes = sum(
-                                len(repr(_h)) for _h in (chat.history or [])
+                            _raw_for_sizing = []
+                            for _h in (chat.history or []):
+                                _parts = [
+                                    p.model_dump(exclude_none=True)
+                                    for p in (getattr(_h, "parts", None) or [])
+                                    if p
+                                ]
+                                if _parts:
+                                    _raw_for_sizing.append(
+                                        {"role": getattr(_h, "role", ""), "parts": _parts}
+                                    )
+                            _hist_bytes = len(
+                                json.dumps(_raw_for_sizing, default=str).encode("utf-8")
                             )
                         except Exception:
                             _hist_bytes = 0
