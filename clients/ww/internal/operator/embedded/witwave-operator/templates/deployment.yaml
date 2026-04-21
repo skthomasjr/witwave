@@ -48,6 +48,10 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "witwave-operator.serviceAccountName" . }}
+      # #1595: the pod-level field overrides the ServiceAccount setting
+      # and must be stamped here or `serviceAccount.automount=false` is
+      # ignored on the operator pod. Mirrors the agent chart pattern.
+      automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds | default 30 }}
       {{- with .Values.podSecurityContext }}
       securityContext:
