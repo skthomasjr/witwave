@@ -3,6 +3,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -219,20 +220,12 @@ type commandErr struct {
 func (e *commandErr) Error() string { return e.msg }
 
 // extract returns true if err is (or wraps) *commandErr and stashes it.
+// #1552: delegate to errors.As so multi-error wrappers (errors.Join,
+// any custom multi-unwrap) are traversed correctly — the previous
+// manual single-Unwrap loop missed *commandErr values buried inside a
+// joined error tree and returned wrong exit codes.
 func extract(err error, out **commandErr) bool {
-	for err != nil {
-		if ce, ok := err.(*commandErr); ok {
-			*out = ce
-			return true
-		}
-		type unwrapper interface{ Unwrap() error }
-		u, ok := err.(unwrapper)
-		if !ok {
-			return false
-		}
-		err = u.Unwrap()
-	}
-	return false
+	return errors.As(err, out)
 }
 
 func transportErr(err error) error {
