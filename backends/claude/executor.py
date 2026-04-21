@@ -933,14 +933,15 @@ async def _post_hook_event_to_harness(event_dict: dict) -> None:
         logger.warning("hook.decision POST to %s failed: %r", url, exc)
 
 
-def _make_pre_tool_use_hook(state: HookState, session_id_ref: dict | None = None):
+def _make_pre_tool_use_hook(state: HookState, session_id_ref: dict | None = None, state_lock: "threading.Lock | None" = None):
     """Build the PreToolUse hook callable bound to *state*.
 
     The callable is closed over *state* so it always sees the latest rule
     set, even after ``hooks.yaml`` hot-reload mutates ``state.extensions``.
     ``session_id_ref`` mirrors the PostToolUse pattern so the hook event
     payload carries the backend-derived (HMAC-bound) session_id rather than
-    the SDK-internal id (#871).
+    the SDK-internal id (#871). ``state_lock`` serialises the
+    ``active_rules()`` snapshot against the watcher's extension swap (#1488).
     """
 
     async def _hook(input_data: dict, tool_use_id: str | None, context) -> dict:
@@ -958,7 +959,14 @@ def _make_pre_tool_use_hook(state: HookState, session_id_ref: dict | None = None
                 "tool.name": tool_name or "",
             },
         ):
-            rules = state.active_rules()
+            # #1488: snapshot rules under the hook-state lock (if provided)
+            # so a concurrent hot-reload can't interleave the baseline +
+            # extensions read with the writer's extension swap.
+            if state_lock is not None:
+                with state_lock:
+                    rules = state.active_rules()
+            else:
+                rules = state.active_rules()
             decision, matched = evaluate_pre_tool_use(tool_name, tool_input, rules)
 
         # Bump the evaluations-total denominator once per call so operators
@@ -1471,10 +1479,13 @@ def _make_options(
             ],
         }
         if _active:
+            # #1488: retrieve the sidecar lock attached by the executor's
+            # __init__ so the hook can snapshot active_rules() under it.
+            _state_lock = getattr(hook_state, "_state_lock", None)
             hooks_cfg["PreToolUse"] = [
                 HookMatcher(
                     matcher="*",
-                    hooks=[_make_pre_tool_use_hook(hook_state, _session_ref)],
+                    hooks=[_make_pre_tool_use_hook(hook_state, _session_ref, state_lock=_state_lock)],
                 ),
             ]
 
@@ -2123,6 +2134,22 @@ class AgentExecutor(A2AAgentExecutor):
             baseline=list(BASELINE_RULES) if HOOKS_BASELINE_ENABLED else [],
             extensions=[],
         )
+        # #1488: serialise writes to hook_state.extensions against readers
+        # taking an active_rules() snapshot. The writer path runs on the
+        # watcher's event loop; readers run on the pre-tool-use hook
+        # callback thread. A threading.Lock works for both — the hot path
+        # is a single attribute swap inside the lock so event-loop
+        # blocking is negligible. Attach to the HookState instance too
+        # so _make_options can forward it to _make_pre_tool_use_hook
+        # without a new parameter.
+        self._hook_state_lock: threading.Lock = threading.Lock()
+        try:
+            setattr(self._hook_state, "_state_lock", self._hook_state_lock)
+        except Exception:
+            # Attribute set on a dataclass instance; should never fail,
+            # but be defensive so executor import never breaks on
+            # HookState stub fallback (#1050).
+            pass
         if backend_hooks_active_rules is not None:
             backend_hooks_active_rules.labels(**_LABELS, source="baseline").set(len(self._hook_state.baseline))
             backend_hooks_active_rules.labels(**_LABELS, source="extension").set(0)
@@ -2221,7 +2248,11 @@ class AgentExecutor(A2AAgentExecutor):
 
         # hooks.yaml extensions. Only mark 'done' on success (#978).
         try:
-            self._hook_state.extensions = await asyncio.to_thread(load_hooks_config_sync)
+            _new_ext = await asyncio.to_thread(load_hooks_config_sync)
+            # #1488: swap under the hook-state lock so a concurrent
+            # PreToolUse reader cannot snapshot a partial state.
+            with self._hook_state_lock:
+                self._hook_state.extensions = _new_ext
         except Exception as exc:
             logger.warning("hooks.yaml initial load failed: %r (baseline-only)", exc)
         else:
@@ -2363,7 +2394,10 @@ class AgentExecutor(A2AAgentExecutor):
         """
         # Skipped when perform_initial_loads already ran on startup (#869).
         if not getattr(self, "_initial_hooks_loaded", False):
-            self._hook_state.extensions = await asyncio.to_thread(load_hooks_config_sync)
+            _initial_ext = await asyncio.to_thread(load_hooks_config_sync)
+            # #1488: swap under the hook-state lock (see __init__).
+            with self._hook_state_lock:
+                self._hook_state.extensions = _initial_ext
             if backend_hooks_active_rules is not None:
                 backend_hooks_active_rules.labels(**_LABELS, source="extension").set(len(self._hook_state.extensions))
             logger.info(
@@ -2386,7 +2420,9 @@ class AgentExecutor(A2AAgentExecutor):
                     if os.path.abspath(path) == os.path.abspath(HOOKS_CONFIG_PATH):
                         try:
                             new_rules = await asyncio.to_thread(load_hooks_config_sync)
-                            self._hook_state.extensions = new_rules
+                            # #1488: serialise swap against readers.
+                            with self._hook_state_lock:
+                                self._hook_state.extensions = new_rules
                             if backend_hooks_active_rules is not None:
                                 backend_hooks_active_rules.labels(**_LABELS, source="extension").set(len(new_rules))
                             if backend_hooks_config_reloads_total is not None:
