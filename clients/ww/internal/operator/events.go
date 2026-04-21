@@ -346,4 +346,3 @@ func truncateMessage(msg string, max int) string {
 	}
 	return msg[:max-1] + "…"
 }
-

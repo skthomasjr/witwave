@@ -274,8 +274,8 @@ var _ = Describe("Manager", Ordered, func() {
 		const (
 			witwaveAgentName      = "e2e-witwaveagent"
 			witwaveAgentNamespace = "operator-system"
-			harnessImage      = "ghcr.io/skthomasjr/images/harness:latest"
-			backendImage      = "ghcr.io/skthomasjr/images/claude:latest"
+			harnessImage          = "ghcr.io/skthomasjr/images/harness:latest"
+			backendImage          = "ghcr.io/skthomasjr/images/claude:latest"
 		)
 
 		BeforeEach(func() {

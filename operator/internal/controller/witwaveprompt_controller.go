@@ -234,7 +234,7 @@ func (r *WitwavePromptReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if err := r.List(ctx, existing,
 		client.InNamespace(prompt.Namespace),
 		client.MatchingLabels{
-			labelManagedBy:     managedBy,
+			labelManagedBy:         managedBy,
 			labelWitwavePromptName: prompt.Name,
 		},
 	); err != nil {
@@ -560,10 +560,10 @@ func buildWitwavePromptConfigMap(prompt *witwavev1alpha1.WitwavePrompt, ref witw
 			Name:      witwavePromptConfigMapName(prompt.Name, ref.Name),
 			Namespace: prompt.Namespace,
 			Labels: map[string]string{
-				labelName:                 ref.Name,
-				labelComponent:            componentWitwavePrompt,
-				labelPartOf:               partOf,
-				labelManagedBy:            managedBy,
+				labelName:                     ref.Name,
+				labelComponent:                componentWitwavePrompt,
+				labelPartOf:                   partOf,
+				labelManagedBy:                managedBy,
 				labelWitwavePromptName:        prompt.Name,
 				labelWitwavePromptTargetAgent: ref.Name,
 				labelWitwavePromptKind:        string(prompt.Spec.Kind),
