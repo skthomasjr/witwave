@@ -13,7 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sort"
+	"strconv"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -75,12 +75,34 @@ func LookupRelease(ctx context.Context, k8s kubernetes.Interface, ns, name strin
 		return nil, nil
 	}
 
-	// Pick the highest revision.
-	sort.Slice(list.Items, func(i, j int) bool {
-		return list.Items[i].Labels["version"] < list.Items[j].Labels["version"]
-	})
-	latest := &list.Items[len(list.Items)-1]
+	// Pick the highest revision. Helm stores the revision in the "version"
+	// label as a decimal integer; sort numerically so revision 10 beats 9
+	// (lexicographic sort returns "9" > "10", stranding ww on an old
+	// release after 10+ revisions).
+	latest := &list.Items[0]
+	latestRev := parseRevisionLabel(latest.Labels["version"])
+	for i := 1; i < len(list.Items); i++ {
+		rev := parseRevisionLabel(list.Items[i].Labels["version"])
+		if rev > latestRev {
+			latest = &list.Items[i]
+			latestRev = rev
+		}
+	}
 	return decodeReleaseSecret(latest)
+}
+
+// parseRevisionLabel returns the int value of Helm's "version" label, or -1
+// if the label is missing / unparsable. Unparsable labels are ordered below
+// any valid revision so a stray Secret can't displace a real release.
+func parseRevisionLabel(v string) int {
+	if v == "" {
+		return -1
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return -1
+	}
+	return n
 }
 
 // FindReleaseCluster-wide returns the namespace in which a release of the
