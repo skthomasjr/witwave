@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/skthomasjr/witwave/clients/ww/internal/client"
 	"github.com/spf13/cobra"
 )
 
@@ -133,8 +134,19 @@ func resolveSendURL(ctx context.Context, c any, agent string) (string, error) {
 		return "", fmt.Errorf("client type assertion failed")
 	}
 	if err := hc.DoJSON(ctx, http.MethodGet, "/agents", nil, &agents, false); err != nil {
-		// Can't list agents — fall back to the dashboard-style proxy
-		// path so send still works against cluster deployments.
+		// #1555: only fall back to the dashboard-style proxy path for
+		// errors that indicate "/agents isn't exposed here" — a 404
+		// from a plain harness, or a transport error where the
+		// directory endpoint simply can't be reached. Auth failures
+		// (401/403), server errors (5xx), and other 4xx responses
+		// propagate so the user sees a real diagnostic instead of a
+		// masked token/scope problem dressed up as a silent fallback.
+		if he, ok := client.IsHTTPError(err); ok {
+			if he.StatusCode != http.StatusNotFound {
+				return "", err
+			}
+			// 404 → fall through to proxy path below.
+		}
 		return "/agents/" + agent + "/", nil
 	}
 	for _, a := range agents {
