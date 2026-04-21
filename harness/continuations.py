@@ -517,12 +517,19 @@ class ContinuationRunner:
                 entry = self._fanin_state.get(key)
                 if entry is None:
                     seen: set[str] = set()
+                    _prior_ts: float | None = None
                 else:
-                    _ts, seen = entry
+                    _prior_ts, seen = entry
+                _pre_size = len(seen)
                 seen.add(kind)
-                # Refresh timestamp on every update so active fan-ins are kept
-                # alive and only truly stale partial state ages out (#557).
-                self._fanin_state[key] = (time.monotonic(), seen)
+                # #1578: only refresh the TTL when the event advances fan-in
+                # readiness (new kind added). Repeat events from a noisy
+                # upstream would otherwise keep partial fan-in state alive
+                # indefinitely past the configured window.
+                if len(seen) > _pre_size or _prior_ts is None:
+                    self._fanin_state[key] = (time.monotonic(), seen)
+                else:
+                    self._fanin_state[key] = (_prior_ts, seen)
                 # Every configured pattern must be satisfied by at least one
                 # observed upstream kind.
                 ready = all(
