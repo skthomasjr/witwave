@@ -1893,6 +1893,11 @@ async def run_query(
                 effective_model=effective_model,
                 max_tokens=max_tokens,
                 on_chunk=on_chunk,
+                # #1485: pass tool_use_flag on the retry path too so the
+                # idempotency marker gets updated if the resumed attempt
+                # executes any tool_use. Without this, a subsequent failure
+                # after retry would not reflect the replayed tool activity.
+                tool_use_flag=_tool_use_flag,
             )
         raise
     finally:
