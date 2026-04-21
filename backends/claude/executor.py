@@ -1558,20 +1558,51 @@ async def _run_query_inner(
                                     # the chunk and bump the drop counter so
                                     # operators can alert on back-pressure.
                                     _chunk_label_model = sanitize_model_label(effective_model)
-                                    try:
-                                        # Insert "\n\n" separator before any subsequent
-                                        # non-empty TextBlock so streaming clients see
-                                        # the same shape as non-streaming callers, which
-                                        # receive "\n\n".join(collected) at line 808
-                                        # (#500). The separator is routed through
-                                        # on_chunk so it counts as an emitted chunk,
-                                        # keeping the _chunks_emitted==0 final-enqueue
-                                        # guard accurate.
-                                        if _stream_chunks_emitted > 0:
+                                    # #1484: Split separator emission into its
+                                    # own try/except/increment. Previously the
+                                    # separator and the text block shared one
+                                    # try/except — if "\n\n" succeeded but
+                                    # block.text then timed out, the emitted
+                                    # counter stayed at its old value and the
+                                    # next block re-emitted "\n\n" yielding
+                                    # "\n\n\n\ntext" on the stream.
+                                    if _stream_chunks_emitted > 0:
+                                        try:
                                             await asyncio.wait_for(
                                                 on_chunk("\n\n"),
                                                 timeout=STREAM_CHUNK_TIMEOUT_SECONDS,
                                             )
+                                            # Count the separator as an emitted
+                                            # chunk so a subsequent text-block
+                                            # timeout cannot cause a double-
+                                            # prefix on the following block.
+                                            _stream_chunks_emitted += 1
+                                        except asyncio.TimeoutError:
+                                            logger.warning(
+                                                "Session %r: on_chunk separator timed out after %.3fs; "
+                                                "dropping separator and continuing stream (#1091/#1484)",
+                                                session_id, STREAM_CHUNK_TIMEOUT_SECONDS,
+                                            )
+                                            if backend_streaming_chunks_dropped_total is not None:
+                                                try:
+                                                    backend_streaming_chunks_dropped_total.labels(
+                                                        **_LABELS, model=_chunk_label_model,
+                                                    ).inc()
+                                                except Exception:
+                                                    pass
+                                        except Exception as _e:
+                                            logger.warning(
+                                                "Session %r: on_chunk separator raised: %s",
+                                                session_id, _e, exc_info=True,
+                                            )
+                                            if backend_streaming_chunks_dropped_total is not None:
+                                                try:
+                                                    backend_streaming_chunks_dropped_total.labels(
+                                                        **_LABELS, model=_chunk_label_model,
+                                                    ).inc()
+                                                except Exception:
+                                                    pass
+                                    try:
                                         await asyncio.wait_for(
                                             on_chunk(block.text),
                                             timeout=STREAM_CHUNK_TIMEOUT_SECONDS,
