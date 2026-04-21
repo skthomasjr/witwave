@@ -1718,7 +1718,12 @@ async def run_query(
                     _token_count = getattr(_usage_meta, "total_token_count", None)
                     if _token_count is not None:
                         _total_tokens = int(_token_count)
-                    if max_tokens is not None and _token_count is not None and _total_tokens >= max_tokens:
+                    # #1503: budget check must run on every chunk against the
+                    # accumulated _total_tokens, not only on chunks that
+                    # carried usage_metadata. Otherwise a sequence of chunks
+                    # with no usage field could push the running total past
+                    # max_tokens silently and defeat the budget control.
+                    if max_tokens is not None and _total_tokens >= max_tokens:
                         if backend_budget_exceeded_total is not None:
                             backend_budget_exceeded_total.labels(**_LABELS).inc()
                         raise BudgetExceededError(_total_tokens, max_tokens, list(collected))
