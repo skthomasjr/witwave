@@ -261,11 +261,19 @@ func main() {
 			}
 			nsSet[ns] = cache.Config{}
 		}
-		if len(nsSet) > 0 {
-			cacheOpts.DefaultNamespaces = nsSet
-			setupLog.Info("restricting controller cache to namespaces",
-				"namespaces", watchNamespacesRaw)
+		// #1569: --watch-namespaces is a security-relevant scoping flag;
+		// silently falling through to all-namespace mode when the raw
+		// value parses to an empty set (e.g. `--watch-namespaces=,,,`)
+		// hides an operator misconfig that would expand the cache's
+		// blast radius. Fail closed instead.
+		if len(nsSet) == 0 {
+			setupLog.Error(nil, "--watch-namespaces was set but resolved to an empty set after trimming; refusing to fall through to all-namespace mode",
+				"raw", watchNamespacesRaw)
+			os.Exit(1)
 		}
+		cacheOpts.DefaultNamespaces = nsSet
+		setupLog.Info("restricting controller cache to namespaces",
+			"namespaces", watchNamespacesRaw)
 	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
