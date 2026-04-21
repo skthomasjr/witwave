@@ -58,12 +58,19 @@ const sessionFilter = ref<string>("");
 // selected) we ignore `items` and surface merged backlog+stream rows
 // instead; this keeps the existing empty/loading/degraded affordances
 // wired for the overview case.
+// #1538: pause the fanout while drilling into a single session. Stream
+// mode ignores the fanout's items entirely so the per-interval /
+// conversations fetches were wasted bandwidth. streamMode flips true
+// once both agent and session filters are set; the paused getter reads
+// that reactively so toggling the filters re-engages fanout without
+// re-instantiating the composable.
 const { items, perAgentErrors, loading, error, refresh } = useAgentFanout<ConversationEntry>({
   endpoint: "conversations",
   // Pass the computed itself (not `.value`) so the composable can watch the
   // limit dropdown and re-fetch when it changes. Previously `.value` captured
   // the mount-time snapshot and further dropdown changes were ignored (#495).
   query: computed(() => ({ limit: String(limit.value) })),
+  paused: () => streamMode.value,
 });
 
 const degradedEntries = computed<[string, string][]>(() =>

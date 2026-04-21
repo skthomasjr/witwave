@@ -46,6 +46,12 @@ export interface UseAgentFanoutOptions {
   // When true, individual agent failures do not set the overall error —
   // items from reachable agents still render. Default true for list views.
   tolerateIndividualErrors?: boolean;
+  // #1538: Ref/computed that, when truthy, skips every poll tick (and
+  // the mount-time refresh if already truthy at mount). Lets views
+  // suspend the fanout during a stream drill-down without tearing the
+  // composable instance down. Team-directory watcher still fires so
+  // re-enabling reflects any agents that joined while paused.
+  paused?: Ref<boolean> | (() => boolean);
 }
 
 function resolveQuery(q: QueryInput | undefined): QueryRecord | undefined {
@@ -155,11 +161,25 @@ export function useAgentFanout<T>(opts: UseAgentFanoutOptions) {
     }
   }
 
+  const isPaused = (): boolean => {
+    const p = opts.paused;
+    if (p === undefined) return false;
+    if (typeof p === "function") return Boolean(p());
+    return Boolean(unref(p));
+  };
+
   onMounted(() => {
-    void refresh();
+    // #1538: don't fire a mount-time refresh when we're already paused
+    // — ConversationsView instantiates the fanout at mount but flips
+    // paused=true as soon as streamMode engages via the agent+session
+    // filters, so running the first refresh would waste a round trip.
+    if (!isPaused()) void refresh();
     timer = setInterval(() => {
       // #1107: skip ticks when polling is paused or the tab is hidden.
       if (pollingShouldSkipTick()) return;
+      // #1538: skip when the consumer has suspended fanout (e.g.
+      // per-session stream drill-down is active).
+      if (isPaused()) return;
       void refresh();
     }, intervalMs);
   });
