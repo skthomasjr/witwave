@@ -1383,6 +1383,18 @@ func (r *WitwaveAgentReconciler) reconcileHPA(ctx context.Context, agent *witwav
 	case err != nil:
 		return err
 	}
+	// #1557: never clobber an HPA we don't own. Mirrors the PVC /
+	// shared-storage guard — emit a Warning Event so operators notice
+	// the name collision instead of silently overwriting a user-authored
+	// HPA that shares our generated name.
+	if !metav1.IsControlledBy(existing, agent) {
+		if r.Recorder != nil {
+			r.Recorder.Eventf(agent, corev1.EventTypeWarning, "HPACollision",
+				"HPA %q exists but is not controlled by this agent — skipping update", existing.Name)
+		}
+		span.AddEvent("hpa.skip.not-controlled", trace.WithAttributes(attribute.String("witwave.hpa.name", existing.Name)))
+		return nil
+	}
 	existing.Spec = desired.Spec
 	existing.Labels = desired.Labels
 	err = r.Update(ctx, existing)
@@ -1425,6 +1437,15 @@ func (r *WitwaveAgentReconciler) reconcilePDB(ctx context.Context, agent *witwav
 		return err
 	case err != nil:
 		return err
+	}
+	// #1557: never clobber a PDB we don't own.
+	if !metav1.IsControlledBy(existing, agent) {
+		if r.Recorder != nil {
+			r.Recorder.Eventf(agent, corev1.EventTypeWarning, "PDBCollision",
+				"PDB %q exists but is not controlled by this agent — skipping update", existing.Name)
+		}
+		span.AddEvent("pdb.skip.not-controlled", trace.WithAttributes(attribute.String("witwave.pdb.name", existing.Name)))
+		return nil
 	}
 	existing.Spec = desired.Spec
 	existing.Labels = desired.Labels
