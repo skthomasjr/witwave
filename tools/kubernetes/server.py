@@ -212,10 +212,23 @@ def _truncate_json(value: Any, *, tool: str) -> Any:
             # token points PAST our trimmed rows. Returning it would
             # cause callers to skip data. Null it out so callers lower
             # `limit` and re-issue from the same position.
-            if "continue" in out or "_continue" in out or "metadata" in out:
+            # #1524: only write the top-level ``continue`` key when the
+            # input envelope actually carried one. Previously any dict
+            # with a ``metadata`` field picked up ``out["continue"] = ""``,
+            # which callers reading ``result.get("continue")`` would
+            # interpret as "paging exhausted" and stop — hiding truncation
+            # from clients that don't speak the marker fields.
+            _touched = False
+            if "continue" in out:
                 out["continue"] = ""
-                if isinstance(out.get("metadata"), dict):
-                    out["metadata"] = {**out["metadata"], "continue": ""}
+                _touched = True
+            if "_continue" in out:
+                out["_continue"] = ""
+                _touched = True
+            if isinstance(out.get("metadata"), dict):
+                out["metadata"] = {**out["metadata"], "continue": ""}
+                _touched = True
+            if _touched:
                 out["_continue_cleared_due_to_truncation"] = True
         else:
             out["items"] = inner
