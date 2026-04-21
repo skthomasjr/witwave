@@ -113,7 +113,15 @@ data:
         try_files $uri $uri/ /index.html;
         sub_filter_once on;
         sub_filter_types text/html;
-        sub_filter '</head>' '<script>window.__WITWAVE_CONFIG__=Object.freeze({{ $rc | toJson }});</script></head>';
+        # #1594: use double-quoted outer string for the replacement so
+        # apostrophes inside the JSON payload (e.g. a config value
+        # containing "user's") don't break nginx parsing and CrashLoop
+        # the dashboard pod. The match pattern stays single-quoted
+        # (the literal </head> never contains a quote). The toJson
+        # replace drops double-quote-safe JSON into the outer double
+        # quotes — no further escape needed because Helm renders the
+        # JSON with escaped internal quotes.
+        sub_filter '</head>' "<script>window.__WITWAVE_CONFIG__=Object.freeze({{ $rc | toJson | replace "\"" "\\\"" }});</script></head>";
       }
 
       # Dashboard-local health probe (distinct from any upstream agent's /health).
