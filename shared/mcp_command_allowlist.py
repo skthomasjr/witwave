@@ -125,7 +125,12 @@ def mcp_command_allowed(
         # allow-list into a per-file bypass (#862). Absolute paths now
         # require an explicit prefix match.
         for prefix in prefixes:
-            if cmd.startswith(prefix):
+            # #1574: normalise prefix with trailing slash so
+            # "/usr/local/bin" doesn't admit "/usr/local/bindoor/python".
+            # Exact match is still allowed (treating the prefix as a
+            # concrete path).
+            norm = prefix if prefix.endswith("/") else prefix + "/"
+            if cmd == prefix or cmd.startswith(norm):
                 return True, "absolute_prefix"
         return False, "absolute_not_on_prefix"
     # Non-absolute path — allowed only when the bare basename matches.
