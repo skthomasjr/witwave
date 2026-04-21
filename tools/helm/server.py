@@ -842,6 +842,7 @@ def _redact_diff(diff_text: str) -> str:
     out_lines: list[str] = []
     in_secret = False
     in_data_map = False
+    data_map_indent = -1  # indent of the data:/stringData: header itself
     for line in diff_text.splitlines():
         # Explicitly skip unified-diff file-header + hunk-header lines
         # before any prefix-stripping so they never participate in state
@@ -879,12 +880,14 @@ def _redact_diff(diff_text: str) -> str:
         if stripped == "---":
             in_secret = False
             in_data_map = False
+            data_map_indent = -1
             out_lines.append(line)
             continue
         if stripped.startswith("kind:"):
             _kind_val = stripped.split(":", 1)[1].strip()
             in_secret = _kind_val == "Secret"
             in_data_map = False
+            data_map_indent = -1
             out_lines.append(line)
             continue
 
@@ -895,24 +898,39 @@ def _redact_diff(diff_text: str) -> str:
         # Inside a Secret block. Entering data:/stringData: map?
         if stripped in ("data:", "stringData:"):
             in_data_map = True
+            data_map_indent = len(content) - len(content.lstrip())
             out_lines.append(line)
             continue
 
         # Leaf inside data: map — indented key: value under data/stringData.
-        if in_data_map and ":" in stripped and content.startswith(("  ", "\t")):
+        if in_data_map and content.startswith((" ", "\t")):
             indent = len(content) - len(content.lstrip())
-            # Still inside the data/stringData map while indent > 0.
-            # in_data_map is only cleared when a new ``kind:`` header or
-            # a standalone ``---`` doc separator is seen (#1031) — the
-            # previous "un-indented non-blank exits the map" heuristic
-            # was load-bearing for blank-line safety but also caused
-            # false exits on non-data lines inside the same Secret, and
-            # blank lines left the flag asserted anyway. Scoping the
-            # reset to doc/kind boundaries keeps the machine simple and
-            # predictable.
-            key, _, _value = content[indent:].partition(":")
-            out_lines.append(f"{prefix}{' ' * indent}{key}: {_REDACTED}")
-            continue
+            # Still inside the data/stringData map while indent exceeds
+            # the header's own indent. in_data_map is only cleared when
+            # a new ``kind:`` header or a standalone ``---`` doc separator
+            # is seen (#1031) — the previous "un-indented non-blank exits
+            # the map" heuristic was load-bearing for blank-line safety
+            # but also caused false exits on non-data lines inside the
+            # same Secret, and blank lines left the flag asserted anyway.
+            # Scoping the reset to doc/kind boundaries keeps the machine
+            # simple and predictable.
+            if indent > data_map_indent:
+                # Any more-indented line under data/stringData is either
+                # a ``key: value`` leaf or a block-scalar continuation
+                # (``|``/``>`` bodies: PEM certs, dockerconfigjson,
+                # private keys, etc.). Previously the redactor required
+                # ``:`` in the line, so continuation bytes of a block
+                # scalar passed through verbatim and leaked the payload
+                # (#1518). Collapse every indented line inside the map
+                # to a single redacted leaf.
+                if ":" in stripped:
+                    key, _, _value = content[indent:].partition(":")
+                    out_lines.append(
+                        f"{prefix}{' ' * indent}{key}: {_REDACTED}"
+                    )
+                else:
+                    out_lines.append(f"{prefix}{' ' * indent}{_REDACTED}")
+                continue
 
         out_lines.append(line)
     return "\n".join(out_lines)
