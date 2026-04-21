@@ -137,6 +137,12 @@ metadata:
   labels:
     {{- include "witwave-operator.labels" . | nindent 4 }}
     app.kubernetes.io/component: webhook
+{{- /* #1591: intentional asymmetry — only WitwaveAgent has a mutating
+       default (operator/internal/webhook/v1alpha1/witwaveagent_webhook.go).
+       WitwavePrompt has validation only (witwaveprompt_webhook.go,
+       `mutating=false`), so no mwitwaveprompt.kb.io entry is
+       registered here. If a WitwavePromptCustomDefaulter is ever added
+       to the operator, add a matching entry below. */}}
 webhooks:
   - name: mwitwaveagent.kb.io
     admissionReviewVersions: ["v1"]
