@@ -820,14 +820,36 @@ async def main():
     except Exception as exc:
         logger.error("perform_initial_loads failed: %r — watchers will retry", exc)
 
-    # Start MCP watcher tasks (none for codex, but kept for structural parity)
+    # #1502: the previous comment claimed "none for codex" but
+    # _mcp_watchers() returns four watchers (AGENTS.md, mcp.json,
+    # config.toml, api_key_file). Start each as a guarded task and
+    # install a done_callback that distinguishes normal cancellation
+    # (shutdown) from unexpected exits with or without an exception.
+    def _make_watcher_done_cb(_wn: str):
+        def _cb(t: asyncio.Task) -> None:
+            if t.cancelled():
+                # Normal shutdown path — nothing to report.
+                return
+            exc = t.exception()
+            if exc is not None:
+                logger.error(
+                    "MCP watcher %r exited unexpectedly with exception: %r", _wn, exc,
+                )
+            else:
+                # Non-exception, non-cancelled exit: the watcher's
+                # while-True loop returned normally (e.g. early return
+                # on an unset env var). Log at WARNING so operators
+                # know the background task is no longer running.
+                logger.warning(
+                    "MCP watcher %r exited normally (no exception, not cancelled) — "
+                    "background task will not restart on its own.",
+                    _wn,
+                )
+        return _cb
+
     for _w in executor._mcp_watchers():
         _mcp_task = asyncio.create_task(_guarded(_w))
-        _mcp_task.add_done_callback(
-            lambda t, _wn=_w.__name__: logger.error(f"MCP watcher {_wn!r} exited unexpectedly: {t.exception()!r}")
-            if not t.cancelled() and t.exception() is not None
-            else None
-        )
+        _mcp_task.add_done_callback(_make_watcher_done_cb(_w.__name__))
         executor._mcp_watcher_tasks.append(_mcp_task)
 
     await asyncio.gather(
