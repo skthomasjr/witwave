@@ -1487,6 +1487,23 @@ _genai_client: genai.Client | None = None
 import threading as _threading
 _genai_client_lock = _threading.Lock()
 
+# #1505: serialise the api-key-file watcher's env mutation + _close_client
+# sequence. Without this, two rapid rotations could interleave env writes
+# and client closes so an in-flight rotation's _close_client races with
+# the next rotation's os.environ update, producing a window where the
+# cached client is closed but the env still holds the old key, or vice
+# versa. Lazily constructed on first use so module import stays
+# event-loop-free. Created under an import-safe sentinel.
+_api_key_rotation_lock: "asyncio.Lock | None" = None
+
+
+def _get_api_key_rotation_lock() -> asyncio.Lock:
+    """Lazy accessor for the rotation serialisation lock (#1505)."""
+    global _api_key_rotation_lock
+    if _api_key_rotation_lock is None:
+        _api_key_rotation_lock = asyncio.Lock()
+    return _api_key_rotation_lock
+
 
 def _get_client(model_label: str | None = None) -> genai.Client:
     """Return the module-level genai.Client singleton, creating it on first call.
@@ -2442,28 +2459,31 @@ class AgentExecutor(A2AAgentExecutor):
                                 "request picks up the rotated key.",
                                 key_file,
                             )
-                            # Re-read the file contents into the env so the
-                            # next _get_client sees the new key. Failures
-                            # are logged but non-fatal — if the operator
-                            # wrote a partial file mid-atomic-rename, the
-                            # watcher will re-fire when the rename completes.
-                            try:
-                                with open(key_file, "r") as _fh:
-                                    _new_key = _fh.read().strip()
-                                if _new_key:
-                                    os.environ["GEMINI_API_KEY"] = _new_key
-                            except Exception as _read_exc:
-                                logger.warning(
-                                    "api_key_file_watcher: failed to read %r: %r",
-                                    key_file, _read_exc,
-                                )
-                            try:
-                                await _close_client()
-                            except Exception as _close_exc:
-                                logger.warning(
-                                    "api_key_file_watcher: _close_client raised %r",
-                                    _close_exc,
-                                )
+                            # #1505: serialise env mutation + _close_client
+                            # so two rapid rotations can't interleave (env
+                            # for rotation A with close for rotation B).
+                            # Read-then-write under the rotation lock so
+                            # a concurrent _get_client never observes a
+                            # half-rotated (new env, closed client or
+                            # stale env, live client) state window.
+                            async with _get_api_key_rotation_lock():
+                                try:
+                                    with open(key_file, "r") as _fh:
+                                        _new_key = _fh.read().strip()
+                                    if _new_key:
+                                        os.environ["GEMINI_API_KEY"] = _new_key
+                                except Exception as _read_exc:
+                                    logger.warning(
+                                        "api_key_file_watcher: failed to read %r: %r",
+                                        key_file, _read_exc,
+                                    )
+                                try:
+                                    await _close_client()
+                                except Exception as _close_exc:
+                                    logger.warning(
+                                        "api_key_file_watcher: _close_client raised %r",
+                                        _close_exc,
+                                    )
                             break
             except Exception as _w_exc:
                 logger.warning(
