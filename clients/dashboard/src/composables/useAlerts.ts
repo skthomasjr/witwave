@@ -413,6 +413,12 @@ function wireOnce(): void {
     ([conn]) => {
       if (conn) {
         clearStreamDown();
+        // #1536: also auto-clear the stream-gap banner on reconnect.
+        // Previously it was emitted on each stream.gap/overrun but had
+        // no clear path, so long-lived tabs accumulated a permanent
+        // "caught up after reconnect" alert that trained operators to
+        // ignore the alert surface entirely.
+        clearAlert("stream-gap");
         return;
       }
       // Post-guard: `conn` is false here, so we're always in the
