@@ -182,11 +182,17 @@ def bind_event_loop(loop: "asyncio.AbstractEventLoop") -> None:
 # Module-level httpx client. Created lazily on first post to avoid
 # instantiating one before the backend's event loop is running.
 _client: httpx.AsyncClient | None = None
-_client_lock = asyncio.Lock()
+# #1581: lazy-init the lock under the running loop. Instantiating
+# ``asyncio.Lock()`` at import bound it to whichever loop existed (or
+# none), so tests with fresh loops and hot-restart paths hit
+# "different loop" errors the first time they awaited _get_client.
+_client_lock: asyncio.Lock | None = None
 
 
 async def _get_client() -> httpx.AsyncClient:
-    global _client
+    global _client, _client_lock
+    if _client_lock is None:
+        _client_lock = asyncio.Lock()
     async with _client_lock:
         if _client is None or _client.is_closed:
             _client = httpx.AsyncClient(
