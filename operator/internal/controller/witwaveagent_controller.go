@@ -2054,6 +2054,14 @@ func (r *WitwaveAgentReconciler) reconcileServiceMonitor(ctx context.Context, ag
 	// uid, etc.).
 	existing.Object["spec"] = desired.Object["spec"]
 	existing.SetLabels(desired.GetLabels())
+	// #1560: re-assert the GVK before the Update. The controller-runtime
+	// typed-client path has occasionally decoded unstructured objects
+	// with an empty TypeMeta when a cache layer stripped apiVersion/kind
+	// under specific RESTMapper states; an Update without the GVK then
+	// fails (or, worse, succeeds with a stripped TypeMeta). SetGVK is a
+	// cheap belt-and-suspenders that keeps the Update independent of
+	// those edge cases.
+	existing.SetGroupVersionKind(serviceMonitorGVK)
 	if err := r.Update(ctx, existing); err != nil {
 		if _, skip := handleDownstreamNoMatch(smCacheKey, err); skip {
 			return nil
@@ -2179,6 +2187,8 @@ func (r *WitwaveAgentReconciler) reconcilePodMonitor(ctx context.Context, agent 
 	}
 	existing.Object["spec"] = desired.Object["spec"]
 	existing.SetLabels(desired.GetLabels())
+	// #1560: re-assert GVK before Update — see reconcileServiceMonitor.
+	existing.SetGroupVersionKind(podMonitorGVK)
 	if err := r.Update(ctx, existing); err != nil {
 		if _, skip := handleDownstreamNoMatch(pmCacheKey, err); skip {
 			return nil
