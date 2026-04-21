@@ -437,6 +437,11 @@ spec:
             # app port so NetworkPolicy / auth can differ. Per-container
             # offset = app_port + 1000 so colocated containers in the same
             # pod don't fight for a shared port.
+            # #1588: port name must be unique per pod. Harness keeps the
+            # canonical ``metrics`` port name (Service targetPort: metrics
+            # and ServiceMonitor/PodMonitor port: metrics both resolve to
+            # this container); backend containers use
+            # ``<backend>-metrics`` so k8s validation accepts the pod.
             - name: metrics
               containerPort: {{ $harnessMetricsPort }}
             {{- end }}
@@ -558,7 +563,11 @@ spec:
             # Dedicated Prometheus metrics listener (#643). Per-container
             # offset = app_port + 1000 so colocated pod containers bind
             # distinct ports within the shared network namespace.
-            - name: metrics
+            # #1588: unique per-pod port name — backend containers can't
+            # share the harness's ``metrics`` name. Downstream PodMonitor
+            # scrapes each metrics port by container offset, not by name,
+            # so renaming here is safe.
+            - name: {{ .name | trunc 7 }}-metrics
               containerPort: {{ $backendMetricsPort }}
             {{- end }}
           # startupProbe gives the backend a long grace window on cold-start
