@@ -64,7 +64,7 @@ _PREV_ENV_VAR = "SESSION_ID_SECRET_PREV"
 # alert on the rate.
 _missing_caller_count = 0
 _warn_lock = threading.Lock()
-_SESSION_BIND_REARM_EVERY = int(os.environ.get("SESSION_BIND_WARN_REARM_EVERY", "500"))
+_SESSION_BIND_REARM_EVERY = max(1, int(os.environ.get("SESSION_BIND_WARN_REARM_EVERY", "500")))  # #1572: clamp to ≥1 (used as modulus)
 missing_caller_total = None  # type: ignore[assignment]
 
 # #1103: labelled fallback counter. Backends register a Prometheus
@@ -199,7 +199,7 @@ def derive_session_id(
 # counter if backends wire one in. The miss count is process-local.
 _prev_hit_count = 0
 _prev_hit_lock = threading.Lock()
-_PREV_HIT_REARM_EVERY = int(os.environ.get("SESSION_PREV_HIT_WARN_REARM_EVERY", "500"))
+_PREV_HIT_REARM_EVERY = max(1, int(os.environ.get("SESSION_PREV_HIT_WARN_REARM_EVERY", "500")))  # #1572: clamp to ≥1 (used as modulus)
 prev_secret_hit_total = None  # type: ignore[assignment]
 
 
