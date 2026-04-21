@@ -640,6 +640,12 @@ async def _emit_afc_history(
     # Secondary flat FIFO preserved only for cross-tool fallback ordering.
     pending_by_index: list[dict] = []
     call_counter = 0
+    # #1510: separate counter for unpaired function_response rows. The
+    # synthesized fr id previously reused call_counter (the fc counter),
+    # so two unpaired fr entries within a turn collided on the same id
+    # and broke dashboard joins / OTel dedup. Increment fr_counter only
+    # for unpaired fr entries.
+    fr_counter = 0
     # Coalesce cross-tool FIFO fallback warnings to one line per
     # _emit_afc_history invocation (#998). A multi-tool AFC turn with
     # SDK-version-dropped fr ids previously emitted one WARN per
@@ -811,10 +817,17 @@ async def _emit_afc_history(
                             _cross_tool_fallback_example = (name, matched.get("name") or "")
                 tool_use_id = matched["id"] if matched else None
                 ts = datetime.now(timezone.utc).isoformat()
+                # #1510: increment fr_counter only when the fr is
+                # unpaired (no matched tool_use_id). Using the shared
+                # call_counter here would collide on duplicate fr ids
+                # when two unpaired fr entries land without an
+                # intervening fc bump.
+                if not tool_use_id:
+                    fr_counter += 1
                 entry = {
                     "ts": ts,
                     "event_type": "tool_result",
-                    "id": f"{tool_use_id}-resp" if tool_use_id else f"fr-{session_id[:8]}-{call_counter}",
+                    "id": f"{tool_use_id}-resp" if tool_use_id else f"fr-{session_id[:8]}-{fr_counter}",
                     "tool_use_id": tool_use_id,
                     "content": response_j,
                     "is_error": is_error,
