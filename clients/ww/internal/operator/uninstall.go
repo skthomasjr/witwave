@@ -68,21 +68,28 @@ func Uninstall(ctx context.Context, target *k8s.Target, cfg *rest.Config, flags 
 			ReleaseName, opts.Namespace)
 	}
 
-	// Step 2 — CR-existence safety gate.
-	counts, err := CountCRs(ctx, dyn)
-	if err != nil {
-		return fmt.Errorf("count CRs: %w", err)
-	}
+	// Step 2 — CR-existence safety gate. Only needed when --delete-crds
+	// is in play (#1551). Without --delete-crds, CRDs are preserved, so
+	// running a cluster-wide list of every managed CR on every plain
+	// uninstall is wasted RBAC + API-server load just to print a "CRDs
+	// preserved" banner.
+	var counts map[string]int
 	totalCRs := 0
-	for _, n := range counts {
-		totalCRs += n
-	}
-	if opts.DeleteCRDs && totalCRs > 0 && !opts.Force {
-		return fmt.Errorf("refusing to delete CRDs: %d managed custom resources still exist "+
-			"(%d WitwaveAgent + %d WitwavePrompt). Delete them first with "+
-			"`kubectl delete witwaveagent --all --all-namespaces` etc., or re-run "+
-			"with --force (which will cascade-delete these resources along with the CRDs)",
-			totalCRs, counts["WitwaveAgent"], counts["WitwavePrompt"])
+	if opts.DeleteCRDs {
+		counts, err = CountCRs(ctx, dyn)
+		if err != nil {
+			return fmt.Errorf("count CRs: %w", err)
+		}
+		for _, n := range counts {
+			totalCRs += n
+		}
+		if totalCRs > 0 && !opts.Force {
+			return fmt.Errorf("refusing to delete CRDs: %d managed custom resources still exist "+
+				"(%d WitwaveAgent + %d WitwavePrompt). Delete them first with "+
+				"`kubectl delete witwaveagent --all --all-namespaces` etc., or re-run "+
+				"with --force (which will cascade-delete these resources along with the CRDs)",
+				totalCRs, counts["WitwaveAgent"], counts["WitwavePrompt"])
+		}
 	}
 
 	// Step 3 — preflight banner.
