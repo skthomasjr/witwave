@@ -369,8 +369,13 @@ export function useEventStream(
         maxDelayMs,
         initialDelayMs * Math.pow(2, Math.max(0, attempt)),
       );
-      delay = Math.max(MIN_BACKOFF_MS, Math.floor(Math.random() * ceiling));
+      delay = Math.floor(Math.random() * ceiling);
     }
+    // Apply MIN_BACKOFF_MS floor across BOTH branches (#1531). Previously
+    // only the jitter branch enforced the floor, so a server-issued
+    // ``retry: 0`` hint triggered a tight reconnect loop against an
+    // unhealthy harness.
+    delay = Math.max(MIN_BACKOFF_MS, delay);
     attempt += 1;
 
     reconnectTimer = setTimeout(() => {
