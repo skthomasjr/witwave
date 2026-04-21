@@ -44,7 +44,7 @@ _ENV_VAR_RE = re.compile(r"\{\{env\.(\w+)\}\}")
 # re-emit every N occurrences so operators keep seeing the signal.
 _warned_vars: dict[str, int] = {}
 _warned_no_allowlist_count = 0
-_PROMPT_ENV_REARM_EVERY = int(os.environ.get("PROMPT_ENV_WARN_REARM_EVERY", "500"))
+_PROMPT_ENV_REARM_EVERY = max(1, int(os.environ.get("PROMPT_ENV_WARN_REARM_EVERY", "500")))  # #1573: clamp to ≥1 (used as modulus)
 
 # Optional Prometheus counter surface (#1089). Callers set this to a
 # CounterVec with labels (var, result); leaving None keeps the module
