@@ -374,14 +374,22 @@ const filtered = computed(() => {
 // the same key (no DOM reuse collision) while completed-turn rows
 // still disambiguate off (agent|session|ts|role).
 const _rowKeyCache = new WeakMap<Row, string>();
-const _usedKeys = new Set<string>();
-const _nextSuffix = new Map<string, number>();
 const rowKeys = computed(() => {
+  // Rebuild the used-key set + suffix map from scratch on every
+  // recompute (#1532). Previously these were module-scope and only
+  // ever grew; on long-lived tabs they ballooned memory indefinitely
+  // as rows aged out of `filtered` but their keys stayed in the Set.
+  // Scoping them to this recompute keeps the WeakMap-cached keys for
+  // still-visible rows (so Vue doesn't remount DOM) while freeing keys
+  // for rows that have dropped out of the view.
+  const usedKeys = new Set<string>();
+  const nextSuffix = new Map<string, number>();
   const out = new Map<Row, string>();
   for (const row of filtered.value) {
     const cached = _rowKeyCache.get(row);
     if (cached !== undefined) {
       out.set(row, cached);
+      usedKeys.add(cached);
       continue;
     }
     const turnId = (row as Row & { __turnId?: string }).__turnId;
@@ -389,15 +397,15 @@ const rowKeys = computed(() => {
       ? `turn:${turnId}`
       : `${row._agent}|${row.session_id ?? ""}|${row.ts}|${row.role}`;
     let key: string;
-    if (!_usedKeys.has(base)) {
+    if (!usedKeys.has(base)) {
       key = base;
     } else {
-      let n = _nextSuffix.get(base) ?? 1;
-      while (_usedKeys.has(`${base}#${n}`)) n += 1;
+      let n = nextSuffix.get(base) ?? 1;
+      while (usedKeys.has(`${base}#${n}`)) n += 1;
       key = `${base}#${n}`;
-      _nextSuffix.set(base, n + 1);
+      nextSuffix.set(base, n + 1);
     }
-    _usedKeys.add(key);
+    usedKeys.add(key);
     _rowKeyCache.set(row, key);
     out.set(row, key);
   }
