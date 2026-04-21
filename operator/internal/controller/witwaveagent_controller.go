@@ -1471,12 +1471,19 @@ func (r *WitwaveAgentReconciler) teardownDisabledAgent(ctx context.Context, agen
 	key := client.ObjectKey{Namespace: agent.Namespace, Name: agent.Name}
 
 	var teardownErrs []error
+	// #1561: keep the metric labels (kind, reason) stable to avoid
+	// per-object cardinality, but always wrap the joined error with the
+	// namespaced object identity so log triage doesn't lose track of
+	// *which* Deployment/Service/PVC failed to tear down. The existing
+	// callers for list-driven (ConfigMap/PVC/Secret) deletes already
+	// pass `%s: %w` with the object name; this shape matches so the
+	// aggregated error message is consistent.
 	recordErr := func(kind, reason string, err error) {
 		if err == nil {
 			return
 		}
 		witwaveagentTeardownStepErrorsTotal.WithLabelValues(kind, reason).Inc()
-		teardownErrs = append(teardownErrs, fmt.Errorf("%s %s: %w", reason, kind, err))
+		teardownErrs = append(teardownErrs, fmt.Errorf("%s %s %s/%s: %w", reason, kind, key.Namespace, key.Name, err))
 	}
 
 	// Helper closure: fetch the resource at `key`, delete only if owned
