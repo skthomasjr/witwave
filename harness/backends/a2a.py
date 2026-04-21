@@ -166,9 +166,14 @@ class A2ABackend:
         # that differ only in '-' vs '_' (iris-claude vs iris_claude)
         # collide under the upper+replace mapping.
         import re as _re
-        if not _re.fullmatch(r"[a-z0-9][a-z0-9-]*", config.id):
+        # #1579: the previous regex ^[a-z0-9][a-z0-9-]*$ permitted a
+        # trailing '-', which maps to "A2A_URL_FOO_" — a valid shell
+        # env-var name but one the chart/operator never sets, so the
+        # override silently no-ops. Require [a-z0-9] at both ends and
+        # allow single-char ids.
+        if not _re.fullmatch(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?", config.id):
             raise ValueError(
-                f"Backend id {config.id!r}: must match ^[a-z0-9][a-z0-9-]*$ so "
+                f"Backend id {config.id!r}: must match ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ so "
                 "the derived A2A_URL_<ID> env-var name is shell-safe."
             )
         _env_var = "A2A_URL_" + config.id.upper().replace("-", "_")
