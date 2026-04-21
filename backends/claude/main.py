@@ -600,7 +600,17 @@ async def main():
             # Bump a dedicated reason so operators can alert on
             # unauthenticated /mcp hits even when SESSION_ID_SECRET is
             # unset. Logged at WARNING (re-armed by the shared path).
-            if _caller_identity is None and backend_session_binding_fallback_total is not None:
+            # #1490: under the sanctioned local-dev escape hatch
+            # (CONVERSATIONS_AUTH_DISABLED=true), no bearer is expected;
+            # bumping mcp_no_bearer fires false-positive alerts for the
+            # operator-acknowledged no-auth mode. Skip the counter in
+            # that case — the startup log already flagged the escape
+            # hatch loudly.
+            if (
+                _caller_identity is None
+                and backend_session_binding_fallback_total is not None
+                and not auth_disabled_escape_hatch()
+            ):
                 try:
                     backend_session_binding_fallback_total.labels(
                         agent=AGENT_OWNER,
