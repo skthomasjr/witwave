@@ -415,6 +415,10 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
         # it, even when resolve_prompt_env (or any earlier statement) raises
         # before the in-body assignment is reached (#658, mirrors #657).
         _task_start = time.monotonic()
+        # #1571: initialise before the try so the CancelledError branch can
+        # reference _send_task even when resolve_prompt_env (or any earlier
+        # statement) raises before the asyncio.ensure_future assignment.
+        _send_task: asyncio.Task | None = None
         try:
             from prompt_env import resolve_prompt_env  # noqa: E402 — scoped import keeps startup simple
 
