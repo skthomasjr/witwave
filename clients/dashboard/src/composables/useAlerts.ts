@@ -215,12 +215,18 @@ function handleWebhookFailed(event: EventEnvelope): void {
   const urlHost = typeof payload.url_host === "string" ? payload.url_host : "unknown";
   const agent = event.agent_id ?? "harness";
 
-  upsertAlert({
-    id: `webhook.${agent}.${name}.${urlHost}`,
-    severity: "warning",
-    title: `Webhook ${name} failing on ${agent}`,
-    detail: `Delivery to ${urlHost} failed (${reason}).`,
-  });
+  // #1537: pass unDismiss so a new incident outside the dedupe window
+  // re-surfaces a previously-dismissed alert. The option existed but
+  // no call site passed it, leaving dismissed alerts permanently hidden.
+  upsertAlert(
+    {
+      id: `webhook.${agent}.${name}.${urlHost}`,
+      severity: "warning",
+      title: `Webhook ${name} failing on ${agent}`,
+      detail: `Delivery to ${urlHost} failed (${reason}).`,
+    },
+    { unDismiss: true },
+  );
 }
 
 function handleHookDecision(event: EventEnvelope): void {
@@ -254,12 +260,16 @@ function handleHookDecision(event: EventEnvelope): void {
 
   if (pruned.length >= HOOK_DENY_FIRE_THRESHOLD) {
     hookDenyArmed.add(backend);
-    upsertAlert({
-      id: key,
-      severity: "warning",
-      title: `Hook denial spike on ${backend} backend`,
-      detail: `${pruned.length} deny decisions in the last 5 minutes.`,
-    });
+    upsertAlert(
+      {
+        id: key,
+        severity: "warning",
+        title: `Hook denial spike on ${backend} backend`,
+        detail: `${pruned.length} deny decisions in the last 5 minutes.`,
+      },
+      // #1537: re-surface after dismissal on a fresh spike.
+      { unDismiss: true },
+    );
   }
 }
 
@@ -289,12 +299,16 @@ function handleAgentLifecycle(event: EventEnvelope): void {
   if (evt === "stopped") {
     lifecycleStopped.add(agent);
     const backend = typeof payload.backend === "string" ? `${payload.backend} backend` : "backend";
-    upsertAlert({
-      id: key,
-      severity: "error",
-      title: `Agent ${agent} stopped`,
-      detail: `${backend} lifecycle event reported a stop.`,
-    });
+    upsertAlert(
+      {
+        id: key,
+        severity: "error",
+        title: `Agent ${agent} stopped`,
+        detail: `${backend} lifecycle event reported a stop.`,
+      },
+      // #1537: a new stop after a prior dismissal should re-surface.
+      { unDismiss: true },
+    );
     return;
   }
 
