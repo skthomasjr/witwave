@@ -107,6 +107,14 @@ func (v *WitwavePromptCustomValidator) ValidateDelete(ctx context.Context, _ run
 func validateWitwavePromptSpec(p *witwavev1alpha1.WitwavePrompt) error {
 	seen := make(map[string]int, len(p.Spec.AgentRefs))
 	for i, ref := range p.Spec.AgentRefs {
+		// #1564: reject empty agentRef names at admission instead of
+		// letting them reach the reconciler, where they'd trigger a
+		// noisy NotFound loop on Get("") for every reconcile.
+		if ref.Name == "" {
+			return apierrors.NewForbidden(witwavepromptGR, p.Name, fmt.Errorf(
+				"spec.agentRefs[%d].name must be non-empty", i,
+			))
+		}
 		if prev, dup := seen[ref.Name]; dup {
 			return apierrors.NewForbidden(witwavepromptGR, p.Name, fmt.Errorf(
 				"spec.agentRefs[%d].name %q duplicates spec.agentRefs[%d].name; list each target agent once",
