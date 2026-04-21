@@ -1450,23 +1450,93 @@ def diff_manifest(manifest: str, redact: bool = True) -> str:
     ) as _h:
         try:
             # kubectl diff exits 0 (no diff) or 1 (diff present); other
-            # non-zero codes are real errors. We capture both streams
-            # and only raise on a real failure.
-            proc = subprocess.run(
+            # non-zero codes are real errors. Stream both streams through
+            # a hard byte cap (#1517) mirroring _helm's pattern — previous
+            # subprocess.run(capture_output=True) bypassed the 32MiB cap
+            # and could OOM the pod on a large manifest diff.
+            _subp_cap = min(max(_MCP_RESPONSE_MAX_BYTES, 0) * 4, 32 * 1024 * 1024)
+            if _subp_cap <= 0:
+                _subp_cap = 32 * 1024 * 1024
+            proc = subprocess.Popen(
                 ["kubectl", "diff", "-f", "-"],
-                input=manifest,
-                capture_output=True, text=True, check=False,
-                timeout=_HELM_SUBPROCESS_TIMEOUT_SECONDS,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 env=_filtered_env(),
             )
-            if proc.returncode not in (0, 1):
+            import threading as _threading
+            _stdout_buf = bytearray()
+            _stderr_buf = bytearray()
+            _stdout_truncated = [False]
+            _stderr_truncated = [False]
+
+            def _drain(stream, buf, trunc_flag):
+                try:
+                    while True:
+                        chunk = stream.read(8192)
+                        if not chunk:
+                            break
+                        remaining = _subp_cap - len(buf)
+                        if remaining <= 0:
+                            trunc_flag[0] = True
+                            break
+                        if len(chunk) > remaining:
+                            buf.extend(chunk[:remaining])
+                            trunc_flag[0] = True
+                            break
+                        buf.extend(chunk)
+                except Exception:
+                    pass
+
+            t_out = _threading.Thread(
+                target=_drain,
+                args=(proc.stdout, _stdout_buf, _stdout_truncated),
+                daemon=True,
+            )
+            t_err = _threading.Thread(
+                target=_drain,
+                args=(proc.stderr, _stderr_buf, _stderr_truncated),
+                daemon=True,
+            )
+            t_out.start()
+            t_err.start()
+            try:
+                if proc.stdin is not None:
+                    try:
+                        proc.stdin.write(manifest.encode("utf-8"))
+                    finally:
+                        try:
+                            proc.stdin.close()
+                        except Exception:
+                            pass
+                proc.wait(timeout=_HELM_SUBPROCESS_TIMEOUT_SECONDS)
+            finally:
+                t_out.join(timeout=1.0)
+                t_err.join(timeout=1.0)
+                for _stream in (proc.stdout, proc.stderr, proc.stdin):
+                    if _stream is not None:
+                        try:
+                            _stream.close()
+                        except Exception:
+                            pass
+
+            stdout_text = _stdout_buf.decode("utf-8", errors="replace")
+            stderr_text = _stderr_buf.decode("utf-8", errors="replace")
+            returncode = proc.returncode if proc.returncode is not None else -1
+            truncated = _stdout_truncated[0] or _stderr_truncated[0]
+            if returncode not in (0, 1):
                 err = HelmError(
-                    f"kubectl diff exited {proc.returncode}: "
-                    f"{(proc.stderr or proc.stdout).strip()}"
+                    f"kubectl diff exited {returncode}: "
+                    f"{(stderr_text or stdout_text).strip()}"
                 )
                 set_span_error(_h, err)
                 raise err
-            raw = proc.stdout or ""
+            raw = stdout_text
+            if truncated:
+                raw += (
+                    f"\n\n# [mcp-helm] kubectl diff output truncated at "
+                    f"{_subp_cap} bytes (#1517); process still exited {returncode}."
+                )
             if redact and raw:
                 try:
                     return _truncate_text(_redact_diff(raw), tool="diff_manifest")
