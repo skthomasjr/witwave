@@ -1340,8 +1340,17 @@ async def deliver(
                         pass
 
         async def _tracked_retry() -> None:
-            await registered.wait()
+            # #1466 / bug-cycle fix: `registered.wait()` MUST live inside
+            # the try so the `finally` block below always releases the
+            # reserved retry-bytes accounting — even when the task is
+            # cancelled before it runs (e.g. `on_retry_task(_retry_task)`
+            # below raises, then cancels this task while it's still
+            # waiting on `registered`). Previously this line was above
+            # the try and the CancelledError at the await skipped the
+            # finally, leaking the grant and producing stale per-sub +
+            # total in-flight gauge values forever.
             try:
+                await registered.wait()
                 _retry_coro = _retry_deliver(
                     sub=sub,
                     url=url,

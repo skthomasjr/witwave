@@ -11,7 +11,7 @@ import (
 // newTuiCmd wires `ww tui` — the interactive terminal surface
 // tracked in #1450. Currently a stub: single-screen welcome + live
 // kubeconfig-context confirmation + tracking-issue pointer, no
-// cluster API calls, no feature panels. Establishes the bubbletea
+// cluster API calls, no feature panels. Establishes the tview
 // framework so future PRs add panels rather than set up
 // infrastructure.
 func newTuiCmd() *cobra.Command {
@@ -19,7 +19,7 @@ func newTuiCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "tui",
 		Short: "Open the interactive ww terminal UI (stub — full dashboard coming in #1450)",
-		Long: "Launches a bubbletea-based terminal UI for ww. Currently a\n" +
+		Long: "Launches a tview-based terminal UI for ww. Currently a\n" +
 			"stub that shows a welcome banner and confirms the target\n" +
 			"Kubernetes context you're about to work against. Full\n" +
 			"operator status / logs / events / session panels are\n" +
@@ -40,7 +40,7 @@ func newTuiCmd() *cobra.Command {
 
 // runTui resolves the requested kubeconfig context (best-effort —
 // a failure does NOT block launch) and hands the resulting Target
-// (or the diagnostic string) to the bubbletea model.
+// (or the diagnostic string) to the tview application.
 func runTui(kubeconfig, contextName, namespace string) error {
 	var target *k8s.Target
 	var contextErr string

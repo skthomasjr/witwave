@@ -30,7 +30,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -187,7 +186,7 @@ func (r *WitwaveAgentReconciler) enqueueAgentsReferencingSecret(ctx context.Cont
 		client.InNamespace(sec.Namespace),
 		client.MatchingFields{WitwaveAgentCredentialSecretRefsIndex: sec.Name},
 	)
-	if err != nil && isIndexNotRegistered(err) {
+	if err != nil && IsFieldIndexMissing(err) {
 		// Fallback: no indexer → full List + in-memory filter.
 		return r.enqueueAgentsReferencingSecretLegacy(ctx, sec, log)
 	}
@@ -261,15 +260,12 @@ func (r *WitwaveAgentReconciler) enqueueAgentsReferencingSecretLegacy(
 	return out
 }
 
-// isIndexNotRegistered detects the error controller-runtime returns
-// when a MatchingFields predicate references a field that wasn't
-// installed via mgr.GetFieldIndexer().IndexField(). The sentinel
-// shape is stable across recent controller-runtime versions:
-// "Index with name field:... does not exist".
-func isIndexNotRegistered(err error) bool {
-	if err == nil {
-		return false
-	}
-	s := err.Error()
-	return strings.Contains(s, "does not exist") && strings.Contains(s, "Index with name")
-}
+// isIndexNotRegistered removed (bug-cycle fix). The original local
+// sentinel was the loose substring-pair match
+// `strings.Contains(s, "does not exist") && strings.Contains(s, "Index with name")`
+// — exactly the false-positive shape the shared
+// `IsFieldIndexMissing()` regex in witwaveagent_controller.go was
+// written to guard against (wrapped errors like
+// `"context deadline exceeded; index X does not exist"` would
+// silently degrade to the full-List fallback instead of propagating).
+// The indexed mapper path above now delegates to the shared helper.
