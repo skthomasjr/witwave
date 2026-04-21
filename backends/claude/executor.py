@@ -837,6 +837,11 @@ async def _close_hook_http_client() -> None:
 # emitted from _post_hook_event_to_harness (#666). Keeps the misconfig
 # visible at default log levels without spamming once per tool call.
 _HARNESS_EVENTS_AUTH_TOKEN_WARNED = False
+# #1489: guard the check-then-set so the "token missing" warning
+# emits at most once under concurrent _post_hook_event_to_harness
+# coroutines. Without this, two concurrent calls can both read False
+# and both emit the warning.
+_HARNESS_EVENTS_AUTH_TOKEN_WARNED_LOCK = threading.Lock()
 
 
 # Module-level strong-ref set for fire-and-forget hook.decision POST tasks.
@@ -911,8 +916,14 @@ async def _post_hook_event_to_harness(event_dict: dict) -> None:
         # need this visible at default log levels (#666). Subsequent calls
         # still early-return but stay quiet to avoid log spam per tool use.
         global _HARNESS_EVENTS_AUTH_TOKEN_WARNED
-        if not _HARNESS_EVENTS_AUTH_TOKEN_WARNED:
-            _HARNESS_EVENTS_AUTH_TOKEN_WARNED = True
+        # #1489: check-then-set under lock so concurrent callers can't
+        # both pass the guard and emit the warning twice.
+        _should_emit = False
+        with _HARNESS_EVENTS_AUTH_TOKEN_WARNED_LOCK:
+            if not _HARNESS_EVENTS_AUTH_TOKEN_WARNED:
+                _HARNESS_EVENTS_AUTH_TOKEN_WARNED = True
+                _should_emit = True
+        if _should_emit:
             logger.warning(
                 "hook.decision transport DISABLED: HARNESS_EVENTS_URL is set "
                 "but HARNESS_EVENTS_AUTH_TOKEN is empty. Set the token so the "
