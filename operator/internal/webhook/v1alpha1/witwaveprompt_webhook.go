@@ -275,7 +275,11 @@ func (v *WitwavePromptCustomValidator) validateHeartbeatSingletonFull(ctx contex
 	}
 	for i := range all.Items {
 		other := &all.Items[i]
-		if other.Name == p.Name {
+		// #1568: harmonize with the fast path — compare Name AND
+		// Namespace so a future cluster-scope move (or a caller that
+		// lists across namespaces) can't misclassify the object under
+		// validation as its own collision.
+		if other.Name == p.Name && other.Namespace == p.Namespace {
 			continue
 		}
 		if other.Spec.Kind != witwavev1alpha1.WitwavePromptKindHeartbeat {
