@@ -2351,6 +2351,11 @@ class AgentExecutor(A2AAgentExecutor):
         self._mcp_config: dict = {}
         self._mcp_stack: AsyncExitStack | None = None
         self._live_mcp_servers: list = []
+        # #1509: Kept as Optional + lazy so unit-test paths that
+        # instantiate AgentExecutor off-loop can still construct the
+        # instance. Production callers should invoke
+        # ``bind_to_event_loop()`` from main() on the serving loop to
+        # eliminate "Lock bound to different event loop" hazards.
         self._mcp_servers_lock: asyncio.Lock | None = None
         # Track every MCP server name that has had backend_mcp_server_up
         # set to a non-zero value so hot-reload / shutdown can zero-out
@@ -2465,6 +2470,21 @@ class AgentExecutor(A2AAgentExecutor):
                     pass
         except Exception as _hev_exc:
             logger.debug("hook.decision transport scheduling failed: %r", _hev_exc)
+
+    async def bind_to_event_loop(self) -> None:
+        """Construct loop-bound primitives on the serving event loop (#1509).
+
+        Call this from main() once the uvicorn loop is running. Without
+        this, lazy construction of _mcp_servers_lock in the first /mcp
+        or hot-reload path could bind it to whichever loop happened to
+        be current — typically fine in production but brittle under
+        tests that mix asyncio.run() with pre-built executors, and
+        cross-loop use surfaces as "Lock bound to different event loop".
+
+        Idempotent: safe to call twice; a second call is a no-op.
+        """
+        if self._mcp_servers_lock is None:
+            self._mcp_servers_lock = asyncio.Lock()
 
     def _mcp_watchers(self):
         """Return callables for GEMINI.md, hooks.yaml, mcp.json, parked-stack watchdog,

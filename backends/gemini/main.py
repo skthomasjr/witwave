@@ -323,6 +323,11 @@ async def main():
 
     agent_card = build_agent_card()
     executor = AgentExecutor()
+    # #1509: bind loop-scoped primitives (_mcp_servers_lock) on the
+    # serving loop now so they aren't lazily constructed against
+    # whichever loop happens to be running on the first /mcp or
+    # hot-reload request.
+    await executor.bind_to_event_loop()
     # #1099: register the executor so the module-level /health handler can
     # surface mcp_servers_active / session_cache_utilization_percent /
     # history_save_failed without needing the executor threaded through.
