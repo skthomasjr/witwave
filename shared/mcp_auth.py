@@ -30,7 +30,7 @@ from typing import Any, Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
-_FAIL_CLOSED_WARNED: set[int] = set()
+_FAIL_CLOSED_WARNED: set[tuple[bool, bool]] = set()  # #1585: (token_present, disabled)
 # #1359: re-arm the one-shot warning every N rejects so long-running
 # misconfig (days of 401s after a pod-start log line) re-surfaces in
 # logs. Parity with shared/hook_events.py warn pattern.
@@ -82,7 +82,12 @@ def require_bearer_token(
         disabled = _auth_disabled_escape_hatch()
         # One-shot warning per process per posture so operators see
         # the misconfig in kubectl logs without per-request spam.
-        posture_key = (hash(("tok" if token else "none", disabled))) & 0xFFFFFFFF
+        # #1585: key on the binary (token_present, disabled) tuple
+        # directly. The previous implementation hashed to a 32-bit int
+        # which the re-arm path only cleared for the *current* key, so
+        # flipping posture left stale entries that silently suppressed
+        # the warning when the posture flipped back.
+        posture_key = (bool(token), bool(disabled))
         # #1359 + #1406: periodic re-arm, protected by a lock so concurrent
         # rejects can't double-fire or skip the threshold.
         global _FAIL_CLOSED_COUNT_SINCE_WARN
