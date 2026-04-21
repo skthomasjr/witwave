@@ -419,8 +419,17 @@ export function useEventStream(
     void loop(gen);
   }
 
+  // neverOpen gates the autoConnect microtask so a synchronous close()
+  // before the microtask runs prevents the connection from ever opening
+  // (#1541). Distinct from `closed`: an explicit open() resets `closed`
+  // to false (legitimate reopen from a stopped composable), but once
+  // neverOpen is true the autoConnect shim stays suppressed — callers
+  // that want to reopen still call open() explicitly.
+  let neverOpen = false;
+
   function close(): void {
     closed = true;
+    neverOpen = true;
     // Bump generation so any in-flight awaiters (fetch, reader.read,
     // pending reconnect timer) no-op when they wake. (#1153)
     currentGen += 1;
@@ -445,7 +454,8 @@ export function useEventStream(
     // first chunk lands. Unit tests that pass `autoConnect: false` get
     // deterministic control over when the fetch fires.
     queueMicrotask(() => {
-      if (!closed) open();
+      if (neverOpen || closed) return;
+      open();
     });
   }
 
