@@ -542,12 +542,18 @@ def schedule_event_post(
                     _INFLIGHT_CF.add(cf)
 
                     def _done_cb(_fut: "concurrent.futures.Future[Any]") -> None:
-                        _INFLIGHT_CF.discard(_fut)
+                        # #1580: mutate _INFLIGHT_CF under _inflight_lock so
+                        # the cap check (which reads len() under the same
+                        # lock) can't race the discard and over-admit or
+                        # prematurely shed cross-thread dispatches.
+                        with _inflight_lock:
+                            _INFLIGHT_CF.discard(_fut)
 
                     try:
                         cf.add_done_callback(_done_cb)
                     except Exception:  # pragma: no cover
-                        _INFLIGHT_CF.discard(cf)
+                        with _inflight_lock:
+                            _INFLIGHT_CF.discard(cf)
                     return True
                 # #1362: one-shot WARN so operators see the gap. A
                 # new backend that forgets to call bind_event_loop()
