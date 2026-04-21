@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/fs"
 	"path"
-	"path/filepath"
 	"strings"
 
 	"helm.sh/helm/v3/pkg/chart"
@@ -75,16 +74,28 @@ func collectEmbeddedFiles() ([]*loader.BufferedFile, error) {
 		if err != nil {
 			return fmt.Errorf("read embedded %s: %w", p, err)
 		}
-		// Strip the embed prefix and normalise to forward slashes so
-		// the result matches what loader.LoadDir would have produced
-		// from disk on any platform.
-		rel, err := filepath.Rel(embeddedChartRoot, p)
-		if err != nil {
-			return fmt.Errorf("relativise %s: %w", p, err)
+		// embed.FS always uses forward slashes (documented io/fs
+		// contract) regardless of host OS, so filepath.Rel — which is
+		// OS-aware and uses \ on Windows — produces bogus paths.
+		// strings.TrimPrefix on the embed's canonical "/"-separated
+		// path is the correct stripper.
+		rel := strings.TrimPrefix(p, embeddedChartRoot+"/")
+		if rel == p {
+			// p was the root itself (handled by d.IsDir above) or
+			// lived outside the embed prefix — ignore.
+			return nil
 		}
-		rel = filepath.ToSlash(rel)
 		// Skip editor turd files the sync might accidentally pick up.
-		if strings.HasSuffix(rel, "~") || strings.HasPrefix(path.Base(rel), ".") {
+		// Dot-prefixed files are generally fine to drop (.DS_Store,
+		// .swp, .idea/...) EXCEPT Helm's .helmignore, which the SDK
+		// reads at render time — omitting it causes spurious files
+		// (e.g. *.bak, OWNERS) to ship when the chart author relied on
+		// it for filtering.
+		base := path.Base(rel)
+		if strings.HasSuffix(rel, "~") {
+			return nil
+		}
+		if strings.HasPrefix(base, ".") && base != ".helmignore" {
 			return nil
 		}
 		files = append(files, &loader.BufferedFile{Name: rel, Data: data})
