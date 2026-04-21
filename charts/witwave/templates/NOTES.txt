@@ -35,7 +35,12 @@ REQUIRED SECRETS
   `witwave.resolveCredentials` helper the templates use, and emit one line per
   backend describing how its credentials arrive.
 */ -}}
-{{- $defaultBackendCreds := .Values.defaultBackendCredentials | default dict -}}
+{{- /* #1586: the canonical top-level key is `backends.credentials`, not
+       a flat `defaultBackendCredentials`. The old read always resolved
+       to an empty dict so NOTES reported "NO credentials resolved"
+       even when the operator had set `existingSecret` at the backends
+       default level. */}}
+{{- $defaultBackendCreds := (.Values.backends).credentials | default dict -}}
 {{- $needMissing := list -}}
 {{- range $agent := .Values.agents }}
 {{- if eq (include "witwave.enabled" $agent) "true" }}
