@@ -653,6 +653,18 @@ def parse_webhook_file(path: str) -> "WebhookSubscription | object | None":
         if not url_template:
             logger.warning(f"Webhook file {path}: no resolvable URL — skipping.")
             return None
+        # #1583: env-var-resolved URLs are treated as literal URLs, not
+        # templates. If the resolved value accidentally contains `{{`
+        # tokens (operator typo, legacy URL), _substitute_url will strip
+        # / mangle it at fire time. Reject up-front so the
+        # misconfiguration is visible at load, not at delivery.
+        if url_from_env_var and "{{" in url_template:
+            logger.error(
+                f"Webhook file {path}: url-env-var resolved value contains "
+                "'{{' — env-derived URLs must be literal; templating is "
+                "only supported via the `url` field."
+            )
+            return None
         if not url_from_env_var:
             forbidden = _url_template_has_forbidden_refs(url_template)
             if forbidden is not None:
