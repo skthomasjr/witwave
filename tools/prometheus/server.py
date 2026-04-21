@@ -284,9 +284,24 @@ def _prom_get(endpoint: str, params: dict[str, Any]) -> Any:
     if _PROMETHEUS_BEARER_TOKEN:
         headers["Authorization"] = f"Bearer {_PROMETHEUS_BEARER_TOKEN}"
     # Strip None-valued params so we don't send "&foo=" on the wire.
-    clean_params: dict[str, Any] = {
-        k: v for k, v in params.items() if v is not None and v != ""
-    }
+    # #1529: keep empty-string params and warn instead. Silently
+    # dropping ``v == ""`` masked caller mistakes (a blank ``query``
+    # or missing ``match[]`` used to return a seemingly-fine response
+    # for the wrong question). An empty string is still sent as
+    # ``&foo=`` so Prometheus returns a clear 400 that the caller can
+    # act on; only None keys are stripped.
+    clean_params: dict[str, Any] = {}
+    for k, v in params.items():
+        if v is None:
+            continue
+        if v == "":
+            log.warning(
+                "prom._prom_get: caller supplied empty-string param %r "
+                "on %s — forwarding to prometheus so the misuse surfaces "
+                "as a 400 instead of a silent success (#1529).",
+                k, endpoint,
+            )
+        clean_params[k] = v
     with start_span(
         "prom.api.call",
         kind=SPAN_KIND_INTERNAL,
