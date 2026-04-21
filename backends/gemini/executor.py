@@ -1078,19 +1078,32 @@ def _bump_cleanup_epoch(session_id: str) -> int:
     return nxt
 
 
-def _write_history_respecting_epoch(
-    tmp_path: str, path: str, raw: list, session_id: str, expected_epoch: int
-) -> bool:
-    """Blocking write helper (#732) that aborts ``os.replace`` when the
-    cleanup epoch advanced since the writer was dispatched.
+def _write_history_tmp_blocking(tmp_path: str, raw: list) -> None:
+    """Blocking helper: write ``raw`` to ``tmp_path`` as JSON (#732).
 
-    Returns True when the replace succeeded, False when the cleanup
-    epoch check tripped and the tmp file was cleaned up without
-    publishing.  The tmp file is always removed in the abort branch so
-    a sustained race cannot leak half-written ``*.tmp`` siblings.
+    Kept as a separate function so the to_thread dispatch only does
+    filesystem I/O — the cleanup-epoch check and os.replace now run
+    back on the event-loop thread (see #1504) so we don't read the
+    ``_session_cleanup_epoch`` dict cross-thread where memory
+    visibility + stale-read races could resurrect a cleaned-up file.
     """
     with open(tmp_path, "w") as f:
         json.dump(raw, f)
+
+
+def _write_history_respecting_epoch(
+    tmp_path: str, path: str, raw: list, session_id: str, expected_epoch: int
+) -> bool:
+    """Backwards-compatible thin wrapper retained for callers/tests.
+
+    Newer call sites (see ``_save_history``) split the tmp write onto
+    a worker thread and do the epoch check + ``os.replace`` on the
+    event-loop thread (#1504). This helper performs the full sequence
+    synchronously under the assumption that the caller is single-
+    threaded, and is kept as a stable API surface for any out-of-tree
+    callers.
+    """
+    _write_history_tmp_blocking(tmp_path, raw)
     current_epoch = _session_cleanup_epoch.get(session_id, 0)
     if current_epoch != expected_epoch:
         try:
@@ -1225,17 +1238,29 @@ async def _save_history(session_id: str, history: list[types.Content]) -> None:
     try:
         for attempt in range(_SAVE_HISTORY_MAX_RETRIES):
             try:
-                published = await asyncio.to_thread(
-                    _write_history_respecting_epoch,
-                    tmp_path, path, raw, session_id, expected_epoch,
-                )
-                if not published:
+                # #1504: split the write so only filesystem I/O runs on
+                # the worker thread. The cleanup-epoch recheck +
+                # os.replace run back on the event-loop thread so we
+                # never read _session_cleanup_epoch from another thread
+                # (cross-thread dict memory-visibility + stale-read race
+                # could resurrect a file an eviction just removed).
+                await asyncio.to_thread(_write_history_tmp_blocking, tmp_path, raw)
+                current_epoch = _session_cleanup_epoch.get(session_id, 0)
+                if current_epoch != expected_epoch:
+                    try:
+                        os.remove(tmp_path)
+                    except FileNotFoundError:
+                        pass
                     logger.info(
                         "Session %r: cleanup epoch advanced during save — "
                         "dropping this write to avoid resurrecting a removed "
                         "history file (#732).",
                         session_id,
                     )
+                    return
+                # os.replace is atomic on POSIX; run on the loop thread
+                # so it is sequenced with the epoch read above.
+                os.replace(tmp_path, path)
                 return
             except Exception as e:
                 last_exc = e
