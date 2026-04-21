@@ -73,6 +73,14 @@ const (
 	annotationWitwavePromptFilename = "witwave.ai/witwaveprompt-filename"
 )
 
+// witwavePromptFinalizer guarantees the operator observes WitwavePrompt deletion
+// so it can drain the per-CR Prometheus gauges before the apiserver
+// removes the object (#1559). Without a finalizer the "gauge reset" in the
+// IsNotFound branch is racy: if the cached informer lags, a Reconcile for
+// a just-deleted object may never fire, and ready/desired series for
+// (namespace, name) labels persist across operator restarts.
+const witwavePromptFinalizer = "witwaveprompt.witwave.ai/finalizer"
+
 // WitwavePromptReconciler reconciles a WitwavePrompt object.
 //
 // One reconcile produces one ConfigMap per (WitwavePrompt, target agent) pair.
@@ -97,15 +105,45 @@ func (r *WitwavePromptReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	prompt := &witwavev1alpha1.WitwavePrompt{}
 	if err := r.Get(ctx, req.NamespacedName, prompt); err != nil {
 		if apierrors.IsNotFound(err) {
-			// ConfigMap GC is handled by OwnerReferences. Drain
-			// per-prompt timeseries (#1070) so Prometheus doesn't
-			// carry stale (namespace, name) labels for a deleted CR.
+			// Belt-and-suspenders: with the finalizer (#1559) the
+			// deletion path below already drains gauges before the
+			// object disappears. Still drain here so a prompt deleted
+			// by an operator that removed the finalizer externally
+			// doesn't leak stale (namespace, name) series.
 			witwavepromptReadyAgents.DeleteLabelValues(req.Namespace, req.Name)
 			witwavepromptDesiredAgents.DeleteLabelValues(req.Namespace, req.Name)
 			witwavepromptStatusPatchConflictsTotal.DeleteLabelValues(req.Namespace, req.Name)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
+	}
+
+	// Finalizer lifecycle (#1559). Mirrors the WitwaveAgent pattern: drain
+	// per-CR metric series on deletion, then remove the finalizer so the
+	// apiserver can GC the object. Finalizer mutations go through
+	// client.Patch(MergeFrom) so concurrent spec writers don't race the
+	// metadata-only update.
+	if !prompt.DeletionTimestamp.IsZero() {
+		if controllerutil.ContainsFinalizer(prompt, witwavePromptFinalizer) {
+			witwavepromptReadyAgents.DeleteLabelValues(prompt.Namespace, prompt.Name)
+			witwavepromptDesiredAgents.DeleteLabelValues(prompt.Namespace, prompt.Name)
+			witwavepromptStatusPatchConflictsTotal.DeleteLabelValues(prompt.Namespace, prompt.Name)
+			before := prompt.DeepCopy()
+			controllerutil.RemoveFinalizer(prompt, witwavePromptFinalizer)
+			if err := r.Patch(ctx, prompt, client.MergeFrom(before)); err != nil {
+				return ctrl.Result{}, fmt.Errorf("remove WitwavePrompt finalizer: %w", err)
+			}
+		}
+		return ctrl.Result{}, nil
+	}
+	if !controllerutil.ContainsFinalizer(prompt, witwavePromptFinalizer) {
+		before := prompt.DeepCopy()
+		if controllerutil.AddFinalizer(prompt, witwavePromptFinalizer) {
+			if err := r.Patch(ctx, prompt, client.MergeFrom(before)); err != nil {
+				return ctrl.Result{}, fmt.Errorf("add WitwavePrompt finalizer: %w", err)
+			}
+			return ctrl.Result{}, nil
+		}
 	}
 	// Compute the desired ConfigMap set.
 	desired := map[string]*corev1.ConfigMap{}
