@@ -2787,7 +2787,14 @@ func (r *WitwaveAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.ConfigMap{}).
-		Owns(&corev1.Secret{}).
+		// #1566: drop Owns(&corev1.Secret{}). The operator-owned
+		// credential Secrets are already enqueued by the
+		// `Watches(&corev1.Secret{}, enqueueAgentsReferencingSecret)`
+		// handler below (it matches both operator-managed and
+		// ExistingSecret refs via the credential index). Keeping
+		// both fired the map-func twice per Secret change and
+		// inflated credential-watch error counters for no additional
+		// coverage.
 		Owns(&corev1.PersistentVolumeClaim{}).
 		Owns(&autoscalingv2.HorizontalPodAutoscaler{}).
 		Owns(&policyv1.PodDisruptionBudget{}).
