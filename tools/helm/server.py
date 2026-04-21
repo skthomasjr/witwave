@@ -1418,6 +1418,9 @@ def diff(
             raise
 
 
+_KUBECTL_PRESENT_CACHE: bool | None = None
+
+
 def _kubectl_present() -> bool:
     """Probe whether kubectl is on PATH for diff_manifest (#1127).
 
@@ -1428,17 +1431,31 @@ def _kubectl_present() -> bool:
     False return (with a logged reason) so the caller's downstream
     message to the LLM is still "kubectl not available" — the operator
     gets the diagnostic in pod logs.
+
+    #1530: the result is cached on first use. kubectl is built into
+    the container image and cannot appear/disappear at runtime, so
+    shelling out per diff_manifest call wasted a fork each time and
+    inflated p95. Explicitly reset via _kubectl_present.cache_clear()
+    if a test needs a fresh probe.
     """
+    global _KUBECTL_PRESENT_CACHE
+    if _KUBECTL_PRESENT_CACHE is not None:
+        return _KUBECTL_PRESENT_CACHE
     try:
         proc = subprocess.run(
             ["kubectl", "version", "--client=true", "--output=yaml"],
             capture_output=True, text=True, check=False, timeout=5, env=_filtered_env(),
         )
-        return proc.returncode == 0
+        _KUBECTL_PRESENT_CACHE = proc.returncode == 0
+        return _KUBECTL_PRESENT_CACHE
     except FileNotFoundError:
+        _KUBECTL_PRESENT_CACHE = False
         return False
     except subprocess.TimeoutExpired as exc:
         log.warning("kubectl presence probe timed out: %s", exc)
+        # Do not cache a timeout — transient (fork stall, io pressure)
+        # and rerunning next call is cheap relative to the false-negative
+        # cost of wedging diff_manifest for the pod's lifetime.
         return False
     except PermissionError as exc:
         log.warning("kubectl presence probe permission error: %s", exc)
