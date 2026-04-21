@@ -139,15 +139,23 @@ async def health(request: Request) -> JSONResponse:
             from executor import MAX_SESSIONS as _MAX
             _sessions = getattr(_exec, "_sessions", None)
             if _sessions is not None and _MAX > 0:
+                # #1515: snapshot via dict(...) before len() so a
+                # concurrent mutator (session touch / LRU evict) can't
+                # reshape the dict mid-read. CPython's dict.__len__ is
+                # currently atomic under the GIL but the invariant is
+                # not language-guaranteed; this keeps the health handler
+                # safe against future threaded paths and against the
+                # general "RuntimeError: dictionary changed size during
+                # iteration" class if we ever swap to an iterator view.
                 session_cache_utilization_percent = round(
-                    (len(_sessions) / _MAX) * 100.0, 2
+                    (len(dict(_sessions)) / _MAX) * 100.0, 2
                 )
         except Exception:
             pass
         try:
-            history_save_failed_count = len(
-                getattr(_exec, "_history_save_failed", set()) or set()
-            )
+            _hsf = getattr(_exec, "_history_save_failed", set()) or set()
+            # Same snapshot pattern for the failed-save set (#1515).
+            history_save_failed_count = len(set(_hsf))
         except Exception:
             pass
     subsystem = {
