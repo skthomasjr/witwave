@@ -1773,7 +1773,11 @@ func (r *WitwaveAgentReconciler) reconcileDashboardInternal(ctx context.Context,
 			}
 		} else {
 			existingCM.Data = desiredCM.Data
-			existingCM.Labels = desiredCM.Labels
+			// #1567: merge rather than overwrite so foreign labels
+			// (ArgoCD tracking, cost labellers, CSI snapshotters)
+			// stamped onto the ConfigMap between our Get + Update
+			// don't flap on every reconcile.
+			existingCM.Labels = mergeOwnedStringMap(existingCM.Labels, desiredCM.Labels, witwaveAgentOwnedLabelKeys)
 			if err := r.Update(ctx, existingCM); err != nil {
 				return fmt.Errorf("update dashboard ConfigMap: %w", err)
 			}
@@ -1795,7 +1799,8 @@ func (r *WitwaveAgentReconciler) reconcileDashboardInternal(ctx context.Context,
 		}
 	} else {
 		existingDep.Spec = desiredDep.Spec
-		existingDep.Labels = desiredDep.Labels
+		// #1567: merge foreign labels on update.
+		existingDep.Labels = mergeOwnedStringMap(existingDep.Labels, desiredDep.Labels, witwaveAgentOwnedLabelKeys)
 		if err := r.Update(ctx, existingDep); err != nil {
 			return fmt.Errorf("update dashboard Deployment: %w", err)
 		}
@@ -1819,7 +1824,8 @@ func (r *WitwaveAgentReconciler) reconcileDashboardInternal(ctx context.Context,
 			// Preserve ClusterIP (immutable) while patching the rest.
 			desiredSvc.Spec.ClusterIP = existingSvc.Spec.ClusterIP
 			existingSvc.Spec = desiredSvc.Spec
-			existingSvc.Labels = desiredSvc.Labels
+			// #1567: merge foreign labels on update.
+			existingSvc.Labels = mergeOwnedStringMap(existingSvc.Labels, desiredSvc.Labels, witwaveAgentOwnedLabelKeys)
 			if err := r.Update(ctx, existingSvc); err != nil {
 				return fmt.Errorf("update dashboard Service: %w", err)
 			}
