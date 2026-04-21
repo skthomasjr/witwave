@@ -443,7 +443,13 @@ def _resolve(kind: str, api_version: str | None = None):
         if not is_missing:
             raise
         global _dyn_client
-        _dyn_client = None
+        # #1523: hold the reload lock around the reset+rebuild so
+        # concurrent 404s serialise on a single discovery pass instead
+        # of each racing their own DynamicClient rebuild. _dyn() inside
+        # _do() re-acquires the same lock via its double-checked lazy
+        # init, so only the first caller pays the discovery cost.
+        with _reload_lock:
+            _dyn_client = None
         try:
             result = _do()
         except Exception:
