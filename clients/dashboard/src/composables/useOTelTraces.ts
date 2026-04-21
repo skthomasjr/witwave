@@ -1,5 +1,6 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import type { ComputedRef } from "vue";
+import { pollingShouldSkipTick } from "./usePollingControl";
 
 // Thin Jaeger-HTTP-API client for the dashboard OTel trace viewer (#632).
 //
@@ -665,7 +666,14 @@ export function useOTelTraces(opts: UseOTelTracesOptions = {}) {
 
   onMounted(() => {
     void refreshList();
-    timer = setInterval(() => void refreshList(), intervalMs);
+    // #1533: gate each tick on pollingShouldSkipTick() so hidden or
+    // paused tabs stop burning bandwidth/CPU on the Jaeger/Tempo list
+    // endpoint. Mirrors the guard already in useMetrics/useAgentFanout/
+    // useTeam (#1107).
+    timer = setInterval(() => {
+      if (pollingShouldSkipTick()) return;
+      void refreshList();
+    }, intervalMs);
   });
 
   onUnmounted(() => {
