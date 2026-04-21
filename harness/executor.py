@@ -235,6 +235,16 @@ async def _run_inner(
     consensus_mode: bool = False,
 ) -> str:
     resolved_id = backend_id or default_backend_id
+    # #1575: surface a clearer diagnostic when routing yields no backend id
+    # at all (empty routing + unset default). The generic "No backend
+    # configured with id 'None'" message misled operators during graceful
+    # startup into thinking a named backend was misconfigured.
+    if resolved_id is None:
+        raise ValueError(
+            "No backend id resolved — routing yielded no entry and no "
+            "default backend is configured (backend.yaml empty or still "
+            "loading)."
+        )
     backend = backends.get(resolved_id)
     if backend is None:
         raise ValueError(f"No backend configured with id '{resolved_id}'")
