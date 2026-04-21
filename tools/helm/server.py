@@ -925,6 +925,27 @@ def _redact_diff(diff_text: str) -> str:
             out_lines.append(line)
             continue
 
+        # Flow-style inline mapping: ``data: {TOKEN: abc, …}`` or
+        # ``stringData: {pw: hunter2}``. Previous block-scalar check
+        # (``stripped in ("data:", "stringData:")``) missed these entirely
+        # so inline-map Secret bodies bypassed redaction (#1519). Match
+        # the header prefix and redact the payload to a single opaque
+        # inline-map marker; we can't safely key-preserve without a real
+        # YAML parse, so the whole body is masked.
+        _head_match = None
+        for _hd in ("data:", "stringData:"):
+            if stripped.startswith(_hd) and stripped[len(_hd):].lstrip().startswith("{"):
+                _head_match = _hd
+                break
+        if _head_match is not None:
+            indent = len(content) - len(content.lstrip())
+            out_lines.append(
+                f"{prefix}{' ' * indent}{_head_match} {{{_REDACTED}}}"
+            )
+            # Keep in_data_map false — the payload is on the same line and
+            # nothing further is "inside" the map.
+            continue
+
         # Leaf inside data: map — indented key: value under data/stringData.
         if in_data_map and content.startswith((" ", "\t")):
             indent = len(content) - len(content.lstrip())
