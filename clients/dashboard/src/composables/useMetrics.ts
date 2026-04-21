@@ -54,10 +54,24 @@ async function fetchText(
       typeof AnyAbortSignal.any === "function" &&
       typeof AnyAbortSignal.timeout === "function"
     ) {
-      effectiveSignal = AnyAbortSignal.any([
-        signal,
-        AnyAbortSignal.timeout(timeoutMs),
-      ]);
+      // #1540: AbortSignal.timeout() allocates an internal timer that
+      // can't be cancelled from the outside, but the combined signal
+      // returned by AbortSignal.any can be dropped from our retained
+      // closures on cleanup so the merged chain is eligible for GC
+      // once the fetch settles. Previously `cleanup` stayed a no-op
+      // and the merged signal + its listener hookups were retained
+      // until the AbortSignal.timeout's internal timer fired, bloating
+      // heap on long-lived tabs doing many short fetches.
+      const timeoutSignal = AnyAbortSignal.timeout(timeoutMs);
+      effectiveSignal = AnyAbortSignal.any([signal, timeoutSignal]);
+      cleanup = () => {
+        // Null out our local reference so the combined signal and its
+        // listener chain are GC-eligible as soon as fetch settles.
+        // The timeout signal's internal timer will still fire on its
+        // schedule (no public clear), but the reference graph rooted
+        // here won't retain the merged signal past this call.
+        effectiveSignal = signal;
+      };
     } else {
       const controller = new AbortController();
       // If the outer signal is already aborted before we wire up the
