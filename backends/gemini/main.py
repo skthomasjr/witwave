@@ -217,9 +217,14 @@ async def _sub_app_lifespan(app):
     except Exception:
         # Sub-app startup failed; cancel and drain the _run task before propagating
         # so we don't leak a suspended coroutine waiting on do_shutdown.wait().
+        # #1512: wrap the await in asyncio.shield so an outer cancellation
+        # can't abandon the task reference mid-teardown. Previously a caller
+        # cancelling us during this branch would propagate CancelledError
+        # into `await task` and leave _run still running, holding the
+        # sub-app lifespan open and leaking the asyncio.Task object.
         task.cancel()
         try:
-            await task
+            await asyncio.shield(task)
         except (asyncio.CancelledError, Exception):
             pass
         raise
