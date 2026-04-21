@@ -1988,7 +1988,10 @@ async def _run_inner(
         # manager is cancelled mid-stream, so the session state may be
         # inconsistent. Evicting it ensures the next call starts a fresh
         # session rather than trying to resume a potentially broken one.
-        sessions.pop(ctx.session_id, None)
+        # #1483: serialise under _get_sessions_lock() to match _track_session's
+        # popitem/move_to_end path on the shared OrderedDict.
+        async with _get_sessions_lock():
+            sessions.pop(ctx.session_id, None)
         # Also remove the on-disk session file so the next request for this
         # session_id starts with empty history rather than reloading the
         # potentially stale or mid-stream snapshot written before the timeout.
