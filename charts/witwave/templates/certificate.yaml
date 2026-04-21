@@ -21,6 +21,13 @@ ever issuing). Force the operator to pick one.
 {{- if and (not .Values.certManager.createIssuer) (not $extRef) -}}
   {{- fail "witwave chart: certManager.enabled=true + ingress.tlsEnabled=true requires either certManager.createIssuer=true (chart renders a selfSigned Issuer) OR certManager.issuerRef.name set (reference an external (Cluster)Issuer). Neither is configured — the Certificate would point at a non-existent issuer." -}}
 {{- end -}}
+{{- /* #1593: refuse render when the operator supplied issuerRef.name
+       but forgot issuerRef.kind. Silently defaulting to ClusterIssuer
+       points a namespaced-Issuer install at a non-existent resource
+       and cert-manager emits events forever without issuing. */ -}}
+{{- if and $extRef (not .Values.certManager.issuerRef.kind) -}}
+  {{- fail "witwave chart: certManager.issuerRef.name is set but certManager.issuerRef.kind is empty. Set kind explicitly to \"Issuer\" (namespaced) or \"ClusterIssuer\" — the previous silent default to ClusterIssuer hid namespaced-Issuer misconfig." -}}
+{{- end -}}
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
