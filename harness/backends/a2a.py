@@ -138,6 +138,20 @@ import weakref as _weakref
 _pending_backends: "_weakref.WeakSet[A2ABackend]" = _weakref.WeakSet()
 
 
+class _SlowFiveXXPolicyRefusal(ConnectionError):
+    """Distinct subclass for slow-5xx retry-policy refusals (#1576).
+
+    The outer call site opens the circuit breaker on any ConnectionError
+    that doesn't look client-side (4xx). A slow-5xx refusal is a
+    deliberate policy decision (we saw a 5xx but chose not to retry
+    because of A2A_RETRY_POLICY=fast-only); it's still a backend
+    problem, but we already surface it as a single failure and don't
+    want one slow-5xx to stack toward the breaker threshold identically
+    to a run of hard connect failures. Callers opt this out of the
+    breaker record.
+    """
+
+
 class A2ABackend:
     """Backend that forwards run_query calls to a remote A2A agent."""
 
@@ -448,7 +462,11 @@ class A2ABackend:
                     f"HTTP {code}" in _exc_msg
                     for code in (400, 401, 403, 404, 405, 406, 409, 410, 413, 414, 415, 422)
                 )
-                if not _is_client_side:
+                # #1576: slow-5xx policy refusals are deliberate non-retries,
+                # not evidence of a hard-down backend; don't let them stack
+                # toward the breaker threshold the way connect failures do.
+                _is_policy_refusal = isinstance(_exc, _SlowFiveXXPolicyRefusal)
+                if not _is_client_side and not _is_policy_refusal:
                     await self._circuit_record(ok=False)
                 set_span_error(_span, _exc)
                 raise
@@ -613,7 +631,7 @@ class A2ABackend:
                             # call records the attempt correctly; don't call
                             # _observe explicitly here (would double-count).
                             _result_label = "error_status"
-                            raise ConnectionError(
+                            raise _SlowFiveXXPolicyRefusal(
                                 f"A2A backend '{self.id}' returned HTTP {resp.status_code} "
                                 f"after {_elapsed_ms}ms — not retried (#1457 guard)."
                             )
