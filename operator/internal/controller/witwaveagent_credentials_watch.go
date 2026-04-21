@@ -191,21 +191,14 @@ func (r *WitwaveAgentReconciler) enqueueAgentsReferencingSecret(ctx context.Cont
 		return r.enqueueAgentsReferencingSecretLegacy(ctx, sec, log)
 	}
 	if err != nil {
-		// #1170: don't silently drop the event. Log ERROR + retry
-		// once; if the retry also fails, bump the counter and return
-		// an empty set (upstream is free to re-fire).
-		log.Error(err, "credentials watch: indexed List failed; retrying")
+		// #1170 / #1570: record one error per failed event and drop the
+		// inline retry. Retrying without backoff doubled the counter
+		// under sustained apiserver 5xx; controller-runtime's watch
+		// rate-limiter will re-fire the Secret event, so this path only
+		// needs to log + bump the counter once and return empty.
+		log.Error(err, "credentials watch: indexed List failed; returning empty enqueue set")
 		WitwaveAgentCredentialWatchListErrorsTotal.WithLabelValues(sec.Namespace).Inc()
-		retry := &witwavev1alpha1.WitwaveAgentList{}
-		if rErr := r.List(ctx, retry,
-			client.InNamespace(sec.Namespace),
-			client.MatchingFields{WitwaveAgentCredentialSecretRefsIndex: sec.Name},
-		); rErr != nil {
-			log.Error(rErr, "credentials watch: retry indexed List failed; returning empty enqueue set")
-			WitwaveAgentCredentialWatchListErrorsTotal.WithLabelValues(sec.Namespace).Inc()
-			return nil
-		}
-		list = retry
+		return nil
 	}
 
 	out := make([]reconcile.Request, 0, len(list.Items))
@@ -232,15 +225,12 @@ func (r *WitwaveAgentReconciler) enqueueAgentsReferencingSecretLegacy(
 ) []reconcile.Request {
 	list := &witwavev1alpha1.WitwaveAgentList{}
 	if err := r.List(ctx, list, client.InNamespace(sec.Namespace)); err != nil {
-		log.Error(err, "credentials watch: failed to List WitwaveAgents for Secret rotation; retrying")
+		// #1570: single counter bump per event; inline retry removed so
+		// sustained apiserver 5xx no longer produces O(N) counter
+		// explosion. Watch event will re-fire via controller-runtime.
+		log.Error(err, "credentials watch: failed to List WitwaveAgents for Secret rotation; returning empty enqueue set")
 		WitwaveAgentCredentialWatchListErrorsTotal.WithLabelValues(sec.Namespace).Inc()
-		retry := &witwavev1alpha1.WitwaveAgentList{}
-		if rErr := r.List(ctx, retry, client.InNamespace(sec.Namespace)); rErr != nil {
-			log.Error(rErr, "credentials watch: retry List failed; returning empty enqueue set")
-			WitwaveAgentCredentialWatchListErrorsTotal.WithLabelValues(sec.Namespace).Inc()
-			return nil
-		}
-		list = retry
+		return nil
 	}
 	var out []reconcile.Request
 	for i := range list.Items {
