@@ -128,14 +128,14 @@ spec:
         {{- if .enabled }}
         - alert: WitwaveWebhookTimeout
           expr: |
-            sum by (subscription) (rate(harness_webhooks_delivery_total{result="timeout_total"}[5m])) > {{ .rateThreshold }}
+            sum by (subscription) (rate(harness_webhooks_delivery_total{result=~"timeout.*"}[5m])) > {{ .rateThreshold }}
           for: {{ .forMinutes }}m
           labels:
             severity: {{ .severity | quote }}
             part_of: witwave
           annotations:
             summary: "witwave webhook deliveries timing out on {{`{{ $labels.subscription }}`}}"
-            description: "harness_webhooks_delivery_total{result=\"timeout_total\"} 5m rate > {{ .rateThreshold }}/s. Webhook sink is slow or unreachable; downstream automation is missing events. (#1423: metric was `backend_webhook_timeout_total` in older docs but only ever existed on the harness side.)"
+            description: "harness_webhooks_delivery_total{result=~\"timeout.*\"} 5m rate > {{ .rateThreshold }}/s. Webhook sink is slow or unreachable; downstream automation is missing events. (#1423: metric was `backend_webhook_timeout_total` in older docs but only ever existed on the harness side. #1589: matcher widened to `timeout.*` so future canonical timeout result values still fire the alert without requiring a chart bump.)"
             runbook_url: "https://github.com/skthomasjr/witwave/blob/main/docs/runbooks.md#witwavewebhooktimeout"
         {{- end }}
         {{- end }}
