@@ -62,6 +62,19 @@ func NewHelmClient(flags *genericclioptions.ConfigFlags, namespace, releaseName 
 // actions (e.g. status probes).
 func Noop(string, ...interface{}) {}
 
+// helmReleaseStatus reads release.Info.Status safely. The Helm SDK has
+// shipped releases where Install/Upgrade returned a *release.Release
+// whose Info pointer was nil (early-failure paths, or drivers mid-
+// migration between schema versions). Dereferencing blindly turns a
+// successful install into a panic-level exit (#1550). When Info is nil,
+// return "(unknown)" so the success banner still renders.
+func helmReleaseStatus(rel *release.Release) string {
+	if rel == nil || rel.Info == nil {
+		return "(unknown)"
+	}
+	return string(rel.Info.Status)
+}
+
 // StderrLog returns a log function that writes Helm's progress output
 // to the given writer. Each message gets a "helm: " prefix so users
 // can separate it from ww's own output.

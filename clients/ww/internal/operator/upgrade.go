@@ -100,7 +100,7 @@ func Upgrade(ctx context.Context, target *k8s.Target, cfg *rest.Config, flags *g
 	if err != nil {
 		return fmt.Errorf("helm upgrade step: %w", err)
 	}
-	fmt.Fprintf(opts.Out, "\nUpgraded %s to revision %d (%s).\n", newRel.Name, newRel.Version, newRel.Info.Status)
+	fmt.Fprintf(opts.Out, "\nUpgraded %s to revision %d (%s).\n", newRel.Name, newRel.Version, helmReleaseStatus(newRel))
 	return nil
 }
 

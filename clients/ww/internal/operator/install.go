@@ -129,6 +129,6 @@ func Install(ctx context.Context, target *k8s.Target, cfg *rest.Config, flags *g
 		return fmt.Errorf("helm install step: %w", err)
 	}
 	fmt.Fprintf(opts.Out, "\nInstalled %s revision %d (%s). Run `ww operator status` to verify.\n",
-		rel.Name, rel.Version, rel.Info.Status)
+		rel.Name, rel.Version, helmReleaseStatus(rel))
 	return nil
 }
