@@ -2835,14 +2835,25 @@ class AgentExecutor(A2AAgentExecutor):
 
         # Per-session SSE drill-down stream (#1110 phase 4). Best-effort
         # — a broadcaster fault must not break the A2A response path.
+        #
+        # #1498: use a per-turn LOCAL seq counter instead of the shared
+        # broadcaster's reset_turn_seq/next_turn_seq. The broadcaster is
+        # per-session and shared across concurrent requests; calling
+        # reset_turn_seq() mid-way through another turn would break the
+        # strictly-monotonic seq invariant that SSE consumers rely on.
+        # The publish_chunk API already accepts an external seq so the
+        # per-turn counter can live entirely in this function scope.
+        _turn_seq_counter: list[int] = [0]
+        def _next_seq() -> int:
+            n = _turn_seq_counter[0]
+            _turn_seq_counter[0] = n + 1
+            return n
         try:
             from session_stream import get_session_stream as _get_session_stream
             _sess_stream = _get_session_stream(session_id, agent_id=AGENT_OWNER)
-            # Per-turn seq covers user+assistant chunks (#1139).
-            _sess_stream.reset_turn_seq()
             _sess_stream.publish_chunk(
                 role="user",
-                seq=_sess_stream.next_turn_seq(),
+                seq=_next_seq(),
                 content=prompt,
                 final=True,
             )
@@ -2860,7 +2871,7 @@ class AgentExecutor(A2AAgentExecutor):
                 try:
                     _sess_stream.publish_chunk(
                         role="assistant",
-                        seq=_sess_stream.next_turn_seq(),
+                        seq=_next_seq(),  # #1498: local per-turn counter
                         content=text,
                         final=False,
                     )
@@ -3002,7 +3013,7 @@ class AgentExecutor(A2AAgentExecutor):
                     try:
                         _sess_stream.publish_chunk(
                             role="assistant",
-                            seq=_sess_stream.next_turn_seq(),
+                            seq=_next_seq(),  # #1498: local per-turn counter
                             content="",
                             final=True,
                         )
@@ -3026,7 +3037,7 @@ class AgentExecutor(A2AAgentExecutor):
                 try:
                     _sess_stream.publish_chunk(
                         role="assistant",
-                        seq=_sess_stream.next_turn_seq(),
+                        seq=_next_seq(),  # #1498: local per-turn counter
                         content="",
                         final=True,
                     )
