@@ -84,6 +84,33 @@ create a Secret for each, or set `existingSecret:` / `secrets:` in values:
 {{- end }}
 {{- end }}
 
+HOOK EVENTS TOKEN (REQUIRED FOR BACKEND→HARNESS HOOK.DECISION POSTS)
+--------------------------------------------------------------------
+The harness exposes /internal/events/hook-decision on the metrics listener
+(#924) and rejects every unauthenticated request. Backends POST hook.decision
+events there via HARNESS_EVENTS_URL (auto-wired by this chart) and must
+carry a matching bearer. The chart does NOT render this Secret for you —
+the same token must land on BOTH the harness container AND every backend
+container in the pod.
+
+Create a shared Secret per agent and reference it via envFrom on both
+containers (example wires `adam`):
+
+  kubectl create secret generic {{ .Release.Name }}-adam-hook-events \
+    --from-literal=HOOK_EVENTS_AUTH_TOKEN=$(openssl rand -hex 32) \
+    -n {{ .Release.Namespace }}
+
+Then in values.yaml for the agent add:
+
+  envFrom:
+    - secretRef:
+        name: {{ .Release.Name }}-adam-hook-events
+  # …and the SAME entry under each backend's envFrom.
+
+Leaving HOOK_EVENTS_AUTH_TOKEN unset is a supported posture (hook.decision
+POSTs are disabled) but the in-process OTel span emission still fires.
+See #1590.
+
 If using git-sync with inline credentials, the chart renders the Secret for you.
 For an `existingSecret:`-backed gitSync credentials, create it yourself:
   kubectl create secret generic <my-gitsync-secret> \
