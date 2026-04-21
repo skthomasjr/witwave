@@ -660,16 +660,23 @@ async def _emit_afc_history(
     # pending tables any fc/fr that were already paired in the prefix;
     # we only want the unmatched tail.
     if prefix_history:
+        # #1514: use a counter local to the prefix seed loop so it
+        # cannot leak into the current-turn ``call_counter``. Previously
+        # prefix fcs bumped ``call_counter`` without decrementing when a
+        # paired fr removed them from pending, leaving the current-turn
+        # synthesized ids starting at a non-contiguous offset and
+        # breaking trace correlation across resume.
+        _pre_call_counter = 0
         for _pre_content in prefix_history:
             _pre_parts = getattr(_pre_content, "parts", None) or []
             for _pre_part in _pre_parts:
                 _pre_fc = getattr(_pre_part, "function_call", None)
                 _pre_fr = getattr(_pre_part, "function_response", None)
                 if _pre_fc is not None:
-                    call_counter += 1
+                    _pre_call_counter += 1
                     _pre_name = getattr(_pre_fc, "name", None) or "<unknown>"
                     _pre_fc_id = getattr(_pre_fc, "id", None)
-                    _pre_call_id = _pre_fc_id or f"fc-{session_id[:8]}-{call_counter}"
+                    _pre_call_id = _pre_fc_id or f"fc-{session_id[:8]}-pre-{_pre_call_counter}"
                     _pre_ts = datetime.now(timezone.utc).isoformat()
                     _pre_entry = {
                         "id": _pre_call_id, "ts": _pre_ts,
