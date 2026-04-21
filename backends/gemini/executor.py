@@ -1257,7 +1257,20 @@ async def _save_history(session_id: str, history: list[types.Content]) -> None:
                         "history file (#732).",
                         session_id,
                     )
-                    return
+                    # #1506: raise instead of silent return. The caller
+                    # treated a silent return as success, so its
+                    # history_save_failed bookkeeping was not updated and
+                    # a subsequent request could reload a stale on-disk
+                    # snapshot (or, if the eviction had already removed
+                    # the file, fail to spot that in-memory history
+                    # never reached disk). Use a RuntimeError with a
+                    # sentinel message and break out of the retry loop
+                    # — retrying does not undo an epoch advance.
+                    last_exc = RuntimeError(
+                        f"cleanup epoch advanced during save for {session_id!r} "
+                        f"(expected={expected_epoch}, current={current_epoch})"
+                    )
+                    break
                 # os.replace is atomic on POSIX; run on the loop thread
                 # so it is sequenced with the epoch read above.
                 os.replace(tmp_path, path)
