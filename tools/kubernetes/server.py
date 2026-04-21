@@ -952,7 +952,9 @@ def apply(
         try:
             log.info("apply: field_manager=%s dry_run=%s", field_manager, dry_run)
             docs = [d for d in yaml.safe_load_all(manifest) if d]
-            results: list[dict] = []
+            # Pre-resolve every doc up front so apiVersion/kind/metadata
+            # validation happens before any write hits the cluster.
+            prepared: list[tuple[Any, dict[str, Any], dict[str, Any]]] = []
             for doc in docs:
                 api_version = doc.get("apiVersion")
                 kind = doc.get("kind")
@@ -976,6 +978,42 @@ def apply(
                 }
                 if ns:
                     patch_kwargs["namespace"] = ns
+                # Per-call network timeout (#778).
+                patch_kwargs["_request_timeout"] = _MCP_REQUEST_TIMEOUT_SECONDS
+                span_attrs = {
+                    "k8s.name": name,
+                    "k8s.namespace": ns,
+                    "k8s.api_version": api_version,
+                    "k8s.field_manager": field_manager,
+                }
+                prepared.append((resource, patch_kwargs, span_attrs))
+
+            # #1525: multi-doc manifests were applied sequentially with no
+            # preflight — a failure on doc N left docs 0..N-1 committed and
+            # the cluster in a partial state invisible to the caller.
+            # When not already a dry-run, run a server-side dry-run over
+            # every doc first; only if every doc validates does the real
+            # apply proceed. This narrows the partial-apply window to
+            # "dry-run passed but real apply failed" (admission races,
+            # quota, conflicts between the two phases), which callers can
+            # distinguish by the presence of ``_applied_before_failure`` in
+            # the error context — we re-raise with a suppressed inner
+            # exception to preserve the original trace.
+            if not dry_run:
+                for resource, patch_kwargs, span_attrs in prepared:
+                    dry_kwargs = dict(patch_kwargs)
+                    dry_kwargs["dry_run"] = "All"
+                    with _api_span(
+                        "apply",
+                        span_attrs.get("k8s.api_version", ""),
+                        {**span_attrs, "k8s.dry_run": True,
+                         "k8s.apply_phase": "preflight"},
+                    ):
+                        resource.patch(**dry_kwargs)
+
+            results: list[dict] = []
+            for resource, patch_kwargs, span_attrs in prepared:
+                live_kwargs = dict(patch_kwargs)
                 if dry_run:
                     # Server-side dry-run (#854, #917): the apiserver
                     # resolves the apply end-to-end (admission, defaulting,
@@ -985,21 +1023,21 @@ def apply(
                     # others silently drop it and persist the object. Use
                     # the explicit string form that every shipped kubernetes
                     # client translates to ``?dryRun=All`` on the wire.
-                    patch_kwargs["dry_run"] = "All"
-                # Per-call network timeout (#778).
-                patch_kwargs["_request_timeout"] = _MCP_REQUEST_TIMEOUT_SECONDS
+                    live_kwargs["dry_run"] = "All"
                 with _api_span(
                     "apply",
-                    kind,
-                    {
-                        "k8s.name": name,
-                        "k8s.namespace": ns,
-                        "k8s.api_version": api_version,
-                        "k8s.field_manager": field_manager,
-                        "k8s.dry_run": dry_run,
-                    },
+                    span_attrs.get("k8s.api_version", ""),
+                    {**span_attrs, "k8s.dry_run": dry_run,
+                     "k8s.apply_phase": "commit"},
                 ):
-                    applied = resource.patch(**patch_kwargs)
+                    try:
+                        applied = resource.patch(**live_kwargs)
+                    except Exception as _commit_exc:
+                        # Attach count of already-committed docs to the
+                        # error for operator triage; re-raise to preserve
+                        # the original traceback.
+                        _commit_exc._applied_before_failure = len(results)  # type: ignore[attr-defined]
+                        raise
                 results.append(_to_dict(applied))
             return results
         except Exception as exc:
