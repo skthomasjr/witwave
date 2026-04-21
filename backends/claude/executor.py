@@ -2521,7 +2521,18 @@ class AgentExecutor(A2AAgentExecutor):
                             # the metric value reflects the population still
                             # holding the old permission set (#934).
                             _active_at_reload = len(self._sessions) if hasattr(self, "_sessions") else 0
-                            ALLOWED_TOOLS[:] = new_list
+                            # #1491: rebind the module-level name to a new
+                            # list instead of mutating in place. Slice
+                            # assignment (ALLOWED_TOOLS[:] = new_list)
+                            # briefly produces a list of the new length
+                            # with old-position values remaining for the
+                            # trailing / leading slots during the copy; a
+                            # concurrent _make_options read could observe
+                            # that transient state. Reference reassignment
+                            # is atomic in CPython so readers always see
+                            # the old or new list in full.
+                            global ALLOWED_TOOLS
+                            ALLOWED_TOOLS = list(new_list)
                             try:
                                 from metrics import backend_allowed_tools_reload_total as _bar
                                 if _bar is not None:
