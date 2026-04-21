@@ -46,6 +46,7 @@ const mcpToolPort int32 = 8000
 var defaultMCPToolImages = map[string]string{
 	"kubernetes": "ghcr.io/skthomasjr/images/mcp-kubernetes",
 	"helm":       "ghcr.io/skthomasjr/images/mcp-helm",
+	"prometheus": "ghcr.io/skthomasjr/images/mcp-prometheus", // #1354, #1556
 }
 
 // reconcileMCPTools walks every tool the spec asks for and reconciles a
