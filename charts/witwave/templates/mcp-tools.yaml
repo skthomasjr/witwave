@@ -60,8 +60,12 @@ is a two-line values change plus a new image build; no template edits.
 {{- $pullPolicy := default "IfNotPresent" $tool.image.pullPolicy }}
 {{- /* MCP Service now exposes the metrics port when metrics.enabled so
        ServiceMonitor / plain Prometheus scrape discovery can reach the
-       in-container listener (#688). */}}
+       in-container listener (#688).
+       #1597: honour a per-tool override (mcpTools.<name>.metrics.enabled)
+       using the hasKey-branch pattern so an explicit `false` is not
+       collapsed back to the global default by sprig `default`. */}}
 {{- $svcMetricsOn := $.Values.metrics.enabled }}
+{{- if ($tool.metrics) }}{{- if hasKey $tool.metrics "enabled" }}{{- $svcMetricsOn = $tool.metrics.enabled }}{{- end }}{{- end }}
 {{- $svcMetricsPort := ($.Values.mcpTools.metricsPort | default ($.Values.metrics.port | default 9000)) }}
 {{- if and $rbacCreate (eq $userSATrimmed "") }}
 ---
