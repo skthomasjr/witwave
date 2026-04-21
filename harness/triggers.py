@@ -67,14 +67,20 @@ def parse_trigger_file(path: str) -> TriggerItem | object | None:
             enabled = str(fields["enabled"]).lower() not in ("false", "no", "off", "n", "0", "")
 
         endpoint = fields.get("endpoint") or None
+        _is_disabled_placeholder = False
         if not endpoint and not enabled:
             # Disabled trigger with no endpoint — still list it so the
             # dashboard can show it. Use a placeholder endpoint for display.
             endpoint = f"disabled:{Path(path).stem}"
+            _is_disabled_placeholder = True
         if not endpoint:
             logger.warning(f"Trigger file {path}: missing 'endpoint' in frontmatter, skipping.")
             return None
-        if not _ENDPOINT_RE.match(endpoint):
+        # #1577: the "disabled:<stem>" placeholder contains a colon and
+        # therefore fails the endpoint regex; skip validation when we
+        # minted it ourselves so the disabled trigger still surfaces to
+        # the dashboard instead of being silently dropped.
+        if not _is_disabled_placeholder and not _ENDPOINT_RE.match(endpoint):
             logger.warning(
                 f"Trigger file {path}: 'endpoint' {endpoint!r} is invalid — "
                 "must match ^[a-z0-9][a-z0-9-]*$, skipping."
