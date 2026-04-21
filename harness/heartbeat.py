@@ -125,7 +125,20 @@ async def _run_loop(
     # NTP step adjustments (#659). Initialised to None; the first
     # iteration anchors at wall-clock.
     last_scheduled: datetime | None = None
-    stop_waiter = asyncio.create_task(stop_event.wait())
+    # #1584: recreate stop_waiter each iteration so a transient
+    # set/clear on stop_event (e.g. reload paths that clear mid-tick)
+    # can't leave a stale `done` task that short-circuits every
+    # subsequent asyncio.wait back to FIRST_COMPLETED immediately.
+    def _make_stop_waiter() -> asyncio.Task:
+        if stop_event.is_set():
+            # Already set — create a task that completes immediately so
+            # callers still get a valid Task to pass to asyncio.wait.
+            async def _noop() -> None:
+                return None
+            return asyncio.create_task(_noop())
+        return asyncio.create_task(stop_event.wait())
+
+    stop_waiter = _make_stop_waiter()
     # Wait for backends to pass /health before firing the first heartbeat
     # (#785). Without this, a */1 schedule would dispatch at *:00 while
     # the backend container was still warming up and the prompt would
@@ -142,6 +155,11 @@ async def _run_loop(
             return
     try:
         while not stop_event.is_set():
+            # #1584: ensure stop_waiter reflects the *current* stop_event
+            # state at the top of each iteration. If a prior external
+            # clear() left the task done, recreate it.
+            if stop_waiter.done():
+                stop_waiter = _make_stop_waiter()
             now = datetime.now(timezone.utc)
             # Anchor cron from max(now, last_scheduled) every iteration so
             # cumulative drift (overrunning backend calls, reload-error
