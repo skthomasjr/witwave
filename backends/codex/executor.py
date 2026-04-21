@@ -8,7 +8,7 @@ import re
 import subprocess
 import time
 import uuid
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from contextlib import AsyncExitStack
 from datetime import datetime, timezone
 from typing import Awaitable, Callable
@@ -1522,6 +1522,13 @@ async def run_query(
     _message_count = 0
     _tool_call_names: dict[str, str] = {}  # call_id -> tool name
     _tool_start_times: dict[str, float] = {}  # call_id -> monotonic start time
+    # #1495: FIFO of synthesized ids for tool_calls that arrived without a
+    # raw call_id/id. When the matching tool_output also lacks a call_id we
+    # can't string-match, so fall back to FIFO order. Parallel calls without
+    # ids are otherwise indistinguishable; FIFO keeps elapsed > 0 and keeps
+    # tool_name correlation in dispatch order rather than collapsing to the
+    # first synth entry.
+    _pending_synth_call_ids: deque[str] = deque()
     _tool_call_count = 0
     # Per-task SDK error/noise tally (#802). Mirrors claude's subprocess-stderr
     # line count; observed at end-of-task into backend_stderr_lines_per_task.
@@ -1656,11 +1663,16 @@ async def run_query(
                     # nor id so parallel calls don't collapse into a shared
                     # "" key (which would reset start-time bookkeeping and
                     # yield elapsed ≈ 0 for all but the first call, #671).
-                    call_id = (
-                        getattr(raw, "call_id", None)
-                        or getattr(raw, "id", None)
-                        or f"synth-{uuid.uuid4().hex}"
-                    )
+                    _raw_call_id = getattr(raw, "call_id", None) or getattr(raw, "id", None)
+                    if _raw_call_id:
+                        call_id = _raw_call_id
+                    else:
+                        call_id = f"synth-{uuid.uuid4().hex}"
+                        # #1495: remember synth ids in FIFO order so the
+                        # matching tool_output (which also won't have a
+                        # call_id on the raw item) can recover the right
+                        # name + start-time key.
+                        _pending_synth_call_ids.append(call_id)
                     name = getattr(raw, "name", None) or getattr(raw, "type", "unknown")
                     # For local_shell, extract command as input
                     if hasattr(raw, "action") and hasattr(raw.action, "command"):
@@ -1763,6 +1775,18 @@ async def run_query(
                 elif isinstance(item, ToolCallOutputItem):
                     raw = item.raw_item
                     call_id = raw.get("call_id", "") if isinstance(raw, dict) else getattr(raw, "call_id", "")
+                    # #1495: output side gets no call_id when the tool-call
+                    # side had to synthesize one. Recover the synth key in
+                    # FIFO order so parallel tool calls don't collapse onto
+                    # a single bookkeeping entry (elapsed ≈ 0 for all but
+                    # the first) and tool_name stays correlated.
+                    if not call_id and _pending_synth_call_ids:
+                        call_id = _pending_synth_call_ids.popleft()
+                    else:
+                        try:
+                            _pending_synth_call_ids.remove(call_id)
+                        except ValueError:
+                            pass
                     tool_name = _tool_call_names.get(call_id, "unknown")
                     output = item.output
                     content_full = str(output)
