@@ -997,15 +997,50 @@ def _load_history(session_id: str) -> list[types.Content]:
     try:
         with open(path) as f:
             raw = json.load(f)
-        history: list[types.Content] = []
-        for entry in raw:
-            parts = [types.Part(**p) for p in entry.get("parts", []) if p]
-            if parts:
-                history.append(types.Content(role=entry["role"], parts=parts))
-        return history
     except Exception as e:
+        # File-level corruption (bad JSON / unreadable): we can't recover
+        # partial rows without a parseable object, so return []. Keep
+        # WARNING so operators see the event.
         logger.warning(f"Failed to load session history for {session_id!r}: {e}")
         return []
+    # #1508: per-entry + per-part exception handling so a single corrupt
+    # Part (e.g. after an SDK schema bump that introduced a new field
+    # validator) doesn't nuke the entire conversation. Skip the bad
+    # rows, log at WARNING, and return everything else. Previously a
+    # ValidationError on one Part raised out to the broad except above
+    # and discarded the whole history.
+    history: list[types.Content] = []
+    _dropped_parts = 0
+    _dropped_entries = 0
+    for entry in raw if isinstance(raw, list) else []:
+        parts: list = []
+        for p in entry.get("parts", []) if isinstance(entry, dict) else []:
+            if not p:
+                continue
+            try:
+                parts.append(types.Part(**p))
+            except Exception as _pe:
+                _dropped_parts += 1
+                logger.debug(
+                    "Session %r: dropping corrupt Part during load: %r", session_id, _pe,
+                )
+        if not parts:
+            _dropped_entries += 1
+            continue
+        try:
+            history.append(types.Content(role=entry["role"], parts=parts))
+        except Exception as _ce:
+            _dropped_entries += 1
+            logger.debug(
+                "Session %r: dropping corrupt Content during load: %r", session_id, _ce,
+            )
+    if _dropped_parts or _dropped_entries:
+        logger.warning(
+            "Session %r: partial history load — dropped %d bad part(s) and %d "
+            "bad entry/entries; retained %d entries. (#1508)",
+            session_id, _dropped_parts, _dropped_entries, len(history),
+        )
+    return history
 
 
 _SAVE_HISTORY_MAX_RETRIES = int(os.environ.get("GEMINI_SAVE_HISTORY_MAX_RETRIES", "3"))
