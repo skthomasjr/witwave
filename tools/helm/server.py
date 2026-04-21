@@ -543,6 +543,29 @@ def _helm(
                 proc.wait(timeout=2.0)
             except Exception:
                 pass
+            # #1516: join drain threads and close pipe FDs on the timeout
+            # path too, mirroring the success/finally cleanup above. Without
+            # this, every timeout leaked two daemon threads + pipe FDs that
+            # only freed at process exit, accumulating FD/thread counts
+            # under repeated timeouts.
+            try:
+                t_out.join(timeout=1.0)
+                t_err.join(timeout=1.0)
+            except Exception:
+                pass
+            for _stream in (proc.stdout, proc.stderr, proc.stdin):
+                if _stream is not None:
+                    try:
+                        _stream.close()
+                    except Exception:
+                        pass
+            if t_out.is_alive() or t_err.is_alive():
+                log.warning(
+                    "helm subprocess drain threads outlived timeout handler "
+                    "(stdout_alive=%s stderr_alive=%s); pipe FDs held "
+                    "until process exit. (#1516)",
+                    t_out.is_alive(), t_err.is_alive(),
+                )
             _subp_outcome = "timeout"
             # subprocess.run has already killed the child and reaped it by
             # the time TimeoutExpired reaches us. Surface a HelmError so the
