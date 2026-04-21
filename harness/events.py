@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import threading
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -125,6 +126,10 @@ class EventStream:
         self._ring: deque[EventEnvelope] = deque(maxlen=self._ring_max)
         self._subscribers: set[_Subscriber] = set()
         self._next_id: int = 0
+        # #1582: cross-thread publish() calls (OTel span processor
+        # threads, webhook callbacks) could corrupt the inc/dec sequence
+        # and hand duplicate ids to SSE clients. Guard both mutations.
+        self._id_lock = threading.Lock()
         self._metrics = _PublisherMetrics()
 
     # ---------- metrics wiring ----------
@@ -206,14 +211,16 @@ class EventStream:
         Returns the envelope that was broadcast, or ``None`` when the
         event failed validation and was dropped.  Never raises.
         """
-        self._next_id += 1
+        with self._id_lock:
+            self._next_id += 1
+            _assigned_id = self._next_id
         # #1231: single now() sample avoids seconds/ms sampled across a
         # sub-millisecond rollover producing a non-monotonic ts.
         _now = datetime.now(timezone.utc)
         envelope = EventEnvelope(
             type=type_,
             version=version,
-            id=str(self._next_id),
+            id=str(_assigned_id),
             ts=_now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{_now.microsecond // 1000:03d}Z",
             agent_id=agent_id,
             payload=dict(payload),
@@ -225,8 +232,13 @@ class EventStream:
             self._bump(self._metrics.dropped_total, labels={"reason": "validation"})
             # Roll the id back so the next successful publish keeps the
             # id sequence contiguous — clients passing Last-Event-ID must
-            # not see synthetic gaps from validation drops.
-            self._next_id -= 1
+            # not see synthetic gaps from validation drops. Only roll
+            # back if no other publisher has moved the counter past
+            # _assigned_id; otherwise we'd hand the same id out twice
+            # (#1582).
+            with self._id_lock:
+                if self._next_id == _assigned_id:
+                    self._next_id -= 1
             return None
 
         self._ring.append(envelope)
