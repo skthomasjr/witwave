@@ -382,7 +382,7 @@ def _session_path_self_test() -> None:
 
 AGENT_NAME = os.environ.get("AGENT_NAME", "claude")
 AGENT_OWNER = os.environ.get("AGENT_OWNER") or AGENT_NAME
-AGENT_ID = os.environ.get("AGENT_ID", "claude")
+AGENT_ID = os.environ.get("AGENT_ID") or os.environ.get("HOSTNAME") or "claude"
 
 # Backend→harness generic event channel (#1110 phase 3). Imported lazily
 # so the backend still works without PYTHONPATH=shared/ (e.g. in unit
