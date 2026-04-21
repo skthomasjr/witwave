@@ -1,6 +1,7 @@
 """Playwright-backed AsyncComputer implementation for ComputerTool."""
 import asyncio
 import base64
+import contextlib
 import logging
 import os
 import time
@@ -407,7 +408,14 @@ class BrowserPool:
             try:
                 await asyncio.wait_for(self._sweeper_task, timeout=5.0)
             except (asyncio.TimeoutError, asyncio.CancelledError):
+                # #1500: after cancel() we must await the task so it
+                # actually observes the CancelledError and finishes its
+                # teardown (close Playwright IPC, flush telemetry). Without
+                # the await, asyncio reports "Task was destroyed but it is
+                # pending" and Playwright child processes can linger.
                 self._sweeper_task.cancel()
+                with contextlib.suppress(BaseException):
+                    await self._sweeper_task
             except Exception:
                 pass
             self._sweeper_task = None
