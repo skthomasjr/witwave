@@ -2308,7 +2308,19 @@ class AgentExecutor(A2AAgentExecutor):
         if self._mcp_config:
             logger.info("MCP config loaded (initial): %s", list(self._mcp_config.keys()))
         try:
-            await self._apply_mcp_config(self._mcp_config)
+            # #1496: shield the MCP stack setup so a perform_initial_loads()
+            # timeout in main.py cannot cancel _apply_mcp_config mid-enter,
+            # which would leave stdio MCP subprocesses orphaned (the
+            # AsyncExitStack wouldn't have been aenter'd fully yet so no
+            # __aexit__ runs to kill the child). The caller's wait_for
+            # still raises TimeoutError; the shielded task completes on
+            # its own and the watchers remain authoritative.
+            await asyncio.shield(self._apply_mcp_config(self._mcp_config))
+        except asyncio.CancelledError:
+            # Propagate cancellation cleanly; the shielded inner task has
+            # its own lifetime and will tear itself down via the
+            # AsyncExitStack when it finishes.
+            raise
         except Exception as exc:
             logger.warning("Initial MCP stack start failed: %r", exc)
         self._initial_mcp_loaded = True
