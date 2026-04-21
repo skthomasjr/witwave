@@ -113,6 +113,37 @@ _MCP_PROM_MAX_RESPONSE_BYTES = int(
 # requires auth.
 _PROMETHEUS_BEARER_TOKEN = os.environ.get("PROMETHEUS_BEARER_TOKEN") or ""
 
+# #1527: refuse to attach a bearer token on a plain-http URL — the token
+# would cross the wire in cleartext and could be sniffed on any shared
+# network hop between this pod and Prometheus. Operators running a
+# genuinely trusted in-cluster link (mesh with mTLS, loopback-only
+# topology) can opt in via PROMETHEUS_ALLOW_PLAINTEXT_BEARER=true; the
+# startup log stays loud so the decision is auditable.
+_PROMETHEUS_ALLOW_PLAINTEXT_BEARER = os.environ.get(
+    "PROMETHEUS_ALLOW_PLAINTEXT_BEARER", ""
+).strip().lower() in {"1", "true", "yes", "on"}
+if (
+    _PROMETHEUS_BEARER_TOKEN
+    and _PROMETHEUS_URL
+    and urlparse(_PROMETHEUS_URL).scheme == "http"
+):
+    if not _PROMETHEUS_ALLOW_PLAINTEXT_BEARER:
+        raise RuntimeError(
+            "mcp-prometheus: PROMETHEUS_BEARER_TOKEN is set but "
+            f"PROMETHEUS_URL is plaintext http:// ({_PROMETHEUS_URL!r}). "
+            "Refusing to send the token in cleartext. Either switch "
+            "PROMETHEUS_URL to https://, or set "
+            "PROMETHEUS_ALLOW_PLAINTEXT_BEARER=true to acknowledge the "
+            "in-cleartext posture. See #1527."
+        )
+    # Loud WARN when the escape hatch is engaged so the choice shows
+    # up in pod logs and dashboards.
+    log.warning(
+        "mcp-prometheus: bearer token will be sent over plaintext http "
+        "because PROMETHEUS_ALLOW_PLAINTEXT_BEARER=true. Token is "
+        "exposed to any on-path observer. See #1527."
+    )
+
 # Request timeout on Prometheus HTTP calls (#778 parity). Prometheus's
 # own query budget is already short; a slow query usually means the
 # server is genuinely struggling or the operator supplied a pathological
