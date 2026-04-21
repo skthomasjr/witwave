@@ -57,8 +57,14 @@ stringData:
   # Consumed by nginx-ingress auth-type=basic via auth-secret annotation.
   # Contents are htpasswd lines (one per line) supplied in ingress.auth.basic.htpasswd.
   auth: |
+    {{- /* #1592: strip trailing CR (CRLF-saved values) and skip
+           blank lines so nginx-ingress gets a clean htpasswd file
+           that passes its stricter line parser. */}}
     {{- range (splitList "\n" (trim $htpasswd)) }}
-    {{ . }}
+    {{- $line := trimSuffix "\r" . | trim }}
+    {{- if $line }}
+    {{ $line }}
+    {{- end }}
     {{- end }}
 {{- end }}
 ---
