@@ -47,9 +47,11 @@ spec:
   labelValueLengthLimit: {{ . }}
   {{- end }}
   endpoints:
-    # Scrape the dedicated metrics listener (#643). Service exposes port
-    # "metrics" on .Values.metrics.port (default 9000), targetPort bound
-    # to the harness container's named `metrics` port.
+    # Scrape the dedicated metrics listener (#643, #687). Service exposes
+    # port "metrics" at app_port+1000 (harness default 9000 when
+    # .port=8000); targetPort resolves to the harness container's
+    # named `metrics` port. #1596: removed stale reference to the
+    # deprecated scalar `.Values.metrics.port` key.
     - port: metrics
       path: /metrics
       interval: {{ $.Values.serviceMonitor.scrapeInterval }}
