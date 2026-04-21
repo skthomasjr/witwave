@@ -72,11 +72,11 @@ func Events(ctx context.Context, cfg *rest.Config, opts EventsOptions) error {
 	}
 
 	// --- Initial snapshot ---
-	events, err := listInitialEvents(ctx, k8s, opts)
+	snap, err := listInitialEvents(ctx, k8s, opts)
 	if err != nil {
 		return err
 	}
-	renderEvents(opts.Out, events, opts)
+	renderEvents(opts.Out, snap.events, opts)
 
 	if !opts.Watch {
 		return nil
@@ -95,19 +95,22 @@ func Events(ctx context.Context, cfg *rest.Config, opts EventsOptions) error {
 		_ = tw.Flush()
 	}
 
-	// Resource version to resume from — use the latest RV from the
-	// snapshot so watch doesn't replay every event already shown.
-	rv := latestResourceVersion(events)
-
+	// Resource version to resume from — each source uses the RV returned
+	// by *its own* List call (list.ResourceVersion). Mixing RVs across
+	// sources can trigger TooLargeResourceVersion on a source whose
+	// storage lags, or drop events on a source whose storage leads
+	// (#1546). An empty RV from List is passed through unchanged; the
+	// apiserver interprets that as "resume from now."
 	var wg sync.WaitGroup
 	errCh := make(chan error, len(kindsOfInterest)+1)
 
 	for _, kind := range kindsOfInterest {
 		wg.Add(1)
 		k := kind
+		kindRV := snap.kindRVs[k]
 		go func() {
 			defer wg.Done()
-			if err := watchKindEvents(ctx, k8s, opts.Namespace, k, rv, writeEvent); err != nil && ctx.Err() == nil {
+			if err := watchKindEvents(ctx, k8s, opts.Namespace, k, kindRV, writeEvent); err != nil && ctx.Err() == nil {
 				errCh <- fmt.Errorf("watch %s events: %w", k, err)
 			}
 		}()
@@ -115,7 +118,7 @@ func Events(ctx context.Context, cfg *rest.Config, opts EventsOptions) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := watchNamespaceEvents(ctx, k8s, opts.OperatorNamespace, rv, writeEvent); err != nil && ctx.Err() == nil {
+		if err := watchNamespaceEvents(ctx, k8s, opts.OperatorNamespace, snap.nsEventRV, writeEvent); err != nil && ctx.Err() == nil {
 			errCh <- fmt.Errorf("watch %s namespace events: %w", opts.OperatorNamespace, err)
 		}
 	}()
@@ -128,9 +131,20 @@ func Events(ctx context.Context, cfg *rest.Config, opts EventsOptions) error {
 	return nil
 }
 
+// initialSnapshot is the result of listInitialEvents: the deduped + filtered
+// event set plus the per-source list ResourceVersions. Each watch stream
+// must resume from the RV returned by *its own* List call — mixing RVs
+// across sources causes TooLargeResourceVersion errors or silent gaps
+// when one source's storage is ahead of another's (#1546).
+type initialSnapshot struct {
+	events    []corev1.Event
+	kindRVs   map[string]string // kind -> list.ResourceVersion for that kind
+	nsEventRV string            // list.ResourceVersion for operator-namespace events
+}
+
 // listInitialEvents runs the three LIST calls, deduplicates, filters
 // by opts.WarningsOnly + opts.Since, and sorts oldest-first.
-func listInitialEvents(ctx context.Context, k8s kubernetes.Interface, opts EventsOptions) ([]corev1.Event, error) {
+func listInitialEvents(ctx context.Context, k8s kubernetes.Interface, opts EventsOptions) (*initialSnapshot, error) {
 	seen := map[string]struct{}{}
 	var all []corev1.Event
 
@@ -154,12 +168,15 @@ func listInitialEvents(ctx context.Context, k8s kubernetes.Interface, opts Event
 		}
 	}
 
+	snap := &initialSnapshot{kindRVs: map[string]string{}}
+
 	// Per-kind list across the requested namespace (empty = all namespaces).
 	for _, kind := range kindsOfInterest {
 		list, err := listEventsForKind(ctx, k8s, opts.Namespace, kind)
 		if err != nil {
 			return nil, err
 		}
+		snap.kindRVs[kind] = list.ResourceVersion
 		add(list.Items)
 	}
 
@@ -168,12 +185,14 @@ func listInitialEvents(ctx context.Context, k8s kubernetes.Interface, opts Event
 	if err != nil {
 		return nil, fmt.Errorf("list events in %s: %w", opts.OperatorNamespace, err)
 	}
+	snap.nsEventRV = list.ResourceVersion
 	add(list.Items)
 
 	sort.Slice(all, func(i, j int) bool {
 		return effectiveTimestamp(&all[i]).Before(effectiveTimestamp(&all[j]))
 	})
-	return all, nil
+	snap.events = all
+	return snap, nil
 }
 
 func listEventsForKind(ctx context.Context, k8s kubernetes.Interface, ns, kind string) (*corev1.EventList, error) {
@@ -328,32 +347,3 @@ func truncateMessage(msg string, max int) string {
 	return msg[:max-1] + "…"
 }
 
-// latestResourceVersion finds the highest-numbered RV in a list; the
-// watch call uses it as a starting point. An empty string or "0"
-// would cause the watch to replay from the server's earliest retained
-// event, duplicating every entry in the snapshot we just printed.
-func latestResourceVersion(events []corev1.Event) string {
-	var highest int
-	var highestStr string
-	for i := range events {
-		rv := events[i].ResourceVersion
-		if rv == "" {
-			continue
-		}
-		// ResourceVersions are opaque strings but typically integer-
-		// valued. When we can parse, prefer the higher value; when we
-		// can't, keep whatever we've seen last — still better than 0.
-		n := 0
-		if _, err := fmt.Sscanf(rv, "%d", &n); err != nil {
-			if highestStr == "" {
-				highestStr = rv
-			}
-			continue
-		}
-		if n > highest {
-			highest = n
-			highestStr = rv
-		}
-	}
-	return highestStr
-}
