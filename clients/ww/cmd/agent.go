@@ -87,7 +87,243 @@ func newAgentCmd() *cobra.Command {
 	cmd.AddCommand(newAgentLogsCmd(f))
 	cmd.AddCommand(newAgentEventsCmd(f))
 	cmd.AddCommand(newAgentScaffoldCmd())
+	cmd.AddCommand(newAgentGitCmd(f))
 	return cmd
+}
+
+// ---------------------------------------------------------------------------
+// git (attach / detach / list gitSync on a WitwaveAgent)
+// ---------------------------------------------------------------------------
+
+func newAgentGitCmd(f *agentFlags) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "git",
+		Short: "Attach, detach, or list gitSync repos on a WitwaveAgent",
+		Long: "Wires a running WitwaveAgent to a git repository via the operator's\n" +
+			"gitSync sidecar. Content under `.agents/<name>/.witwave/` and\n" +
+			"`.agents/<name>/.<backend>/` lands in the agent pod on each sync\n" +
+			"interval — typically the repo produced by `ww agent scaffold`.\n\n" +
+			"Auth posture — three ways to provide a credential Secret:\n\n" +
+			"  --auth-secret <name>     reference an existing K8s Secret (production)\n" +
+			"  --auth-from-gh           mint one from `gh auth token` (dev laptops)\n" +
+			"  --auth-from-env <VAR>    mint one from the named env var (CI/CD / .env)\n\n" +
+			"Public repos need no auth flag. Secrets minted by ww carry an\n" +
+			"`app.kubernetes.io/managed-by: ww` label so detach + delete can\n" +
+			"distinguish ww-created Secrets from hand-authored ones.",
+	}
+	cmd.AddCommand(newAgentGitAddCmd(f))
+	cmd.AddCommand(newAgentGitListCmd(f))
+	cmd.AddCommand(newAgentGitRemoveCmd(f))
+	return cmd
+}
+
+func newAgentGitAddCmd(f *agentFlags) *cobra.Command {
+	var (
+		repo           string
+		repoPath       string
+		group          string
+		branch         string
+		period         string
+		syncName       string
+		authSecret     string
+		authFromGH     bool
+		authFromEnv    string
+		authSecretName string
+	)
+	cmd := &cobra.Command{
+		Use:   "add <agent>",
+		Short: "Attach a gitSync to a WitwaveAgent (repo content → agent pod)",
+		Long: "Patches the existing WitwaveAgent CR to add (or replace) a gitSync\n" +
+			"entry plus the conventional harness + per-backend gitMappings.\n" +
+			"Idempotent: re-running with the same --sync-name updates every\n" +
+			"field ww owns and leaves unrelated mappings untouched.\n\n" +
+			"--repo-path defaults to `.agents/<agent>/` (or `.agents/<group>/<agent>/`\n" +
+			"when --group is set), matching the layout produced by `ww agent scaffold`.\n" +
+			"Override explicitly for non-standard repo layouts.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runAgentGitAdd(cmd.Context(), f, args[0], agent.GitAddOptions{
+				Repo:      repo,
+				RepoPath:  repoPath,
+				Group:     group,
+				Branch:    branch,
+				Period:    period,
+				SyncName:  syncName,
+				AssumeYes: f.assumeYes,
+				DryRun:    f.dryRun,
+				Out:       os.Stdout,
+				In:        os.Stdin,
+				Auth: agent.GitAuthResolver{
+					Mode:           chooseAuthMode(authSecret, authFromGH, authFromEnv),
+					ExistingSecret: authSecret,
+					EnvVar:         authFromEnv,
+					SecretName:     authSecretName,
+				},
+			})
+		},
+	}
+	bindAgentMutatingFlags(cmd, f)
+	cmd.Flags().StringVar(&repo, "repo", "",
+		"Remote repo (owner/repo, host/owner/repo, full URL, or git@host:owner/repo) — required")
+	_ = cmd.MarkFlagRequired("repo")
+	cmd.Flags().StringVar(&repoPath, "repo-path", "",
+		"Path within the repo (default: `.agents/<agent>/` or `.agents/<group>/<agent>/`)")
+	cmd.Flags().StringVar(&group, "group", "",
+		"Group segment used to derive --repo-path when it's unset (mirrors scaffold's --group)")
+	cmd.Flags().StringVar(&branch, "branch", "",
+		"Branch / tag / commit to sync (default: remote HEAD)")
+	cmd.Flags().StringVar(&period, "period", agent.DefaultGitPeriod,
+		"Sync interval (e.g. 30s, 1m, 5m)")
+	cmd.Flags().StringVar(&syncName, "sync-name", agent.DefaultGitSyncName,
+		"Name for the gitSyncs[] entry (unique within the agent)")
+	cmd.Flags().StringVar(&authSecret, "auth-secret", "",
+		"Reference an existing K8s Secret with GITSYNC_USERNAME / GITSYNC_PASSWORD")
+	cmd.Flags().BoolVar(&authFromGH, "auth-from-gh", false,
+		"Mint a K8s Secret from `gh auth token` (reads gh's current session)")
+	cmd.Flags().StringVar(&authFromEnv, "auth-from-env", "",
+		"Mint a K8s Secret from a named env var (e.g. GITHUB_TOKEN)")
+	cmd.Flags().StringVar(&authSecretName, "auth-secret-name", "",
+		"Name to use when minting a Secret (default: <agent>-git-credentials)")
+	return cmd
+}
+
+// chooseAuthMode collapses the three mutually-exclusive auth flags into
+// a single GitAuthMode. Exactly one may be set; more than one is a
+// usage error surfaced at validation time.
+func chooseAuthMode(secret string, fromGH bool, env string) agent.GitAuthMode {
+	switch {
+	case secret != "":
+		return agent.GitAuthExistingSecret
+	case fromGH:
+		return agent.GitAuthFromGH
+	case env != "":
+		return agent.GitAuthFromEnv
+	}
+	return agent.GitAuthNone
+}
+
+func runAgentGitAdd(ctx context.Context, f *agentFlags, name string, opts agent.GitAddOptions) error {
+	target, resolver, err := f.resolveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	cfg, err := resolver.REST()
+	if err != nil {
+		return err
+	}
+	ns := agent.ResolveNamespace(f.namespace, target.Namespace)
+	if f.namespace == "" {
+		fmt.Fprintf(os.Stdout, "Using namespace: %s (from kubeconfig context)\n", ns)
+	}
+	// Validate mutual exclusivity up-front so users get a crisp error
+	// rather than having the auth resolver pick one silently.
+	if err := assertOneAuthMode(opts.Auth); err != nil {
+		return err
+	}
+	opts.Agent = name
+	opts.Namespace = ns
+	return agent.GitAdd(ctx, cfg, opts)
+}
+
+func assertOneAuthMode(auth agent.GitAuthResolver) error {
+	set := 0
+	if auth.ExistingSecret != "" {
+		set++
+	}
+	if auth.Mode == agent.GitAuthFromGH {
+		set++
+	}
+	if auth.EnvVar != "" {
+		set++
+	}
+	if set > 1 {
+		return fmt.Errorf("pick at most one of --auth-secret / --auth-from-gh / --auth-from-env")
+	}
+	return nil
+}
+
+func newAgentGitListCmd(f *agentFlags) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "list <agent>",
+		Short: "Show the gitSyncs + mappings configured on a WitwaveAgent",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runAgentGitList(cmd.Context(), f, args[0])
+		},
+	}
+	return cmd
+}
+
+func runAgentGitList(ctx context.Context, f *agentFlags, name string) error {
+	target, resolver, err := f.resolveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	cfg, err := resolver.REST()
+	if err != nil {
+		return err
+	}
+	ns := agent.ResolveNamespace(f.namespace, target.Namespace)
+	if f.namespace == "" {
+		fmt.Fprintf(os.Stdout, "Using namespace: %s (from kubeconfig context)\n\n", ns)
+	}
+	return agent.GitList(ctx, cfg, agent.GitListOptions{
+		Agent:     name,
+		Namespace: ns,
+		Out:       os.Stdout,
+	})
+}
+
+func newAgentGitRemoveCmd(f *agentFlags) *cobra.Command {
+	var (
+		syncName     string
+		deleteSecret bool
+	)
+	cmd := &cobra.Command{
+		Use:   "remove <agent>",
+		Short: "Detach a gitSync from a WitwaveAgent",
+		Long: "Removes the named gitSyncs[] entry and every harness + per-backend\n" +
+			"gitMapping tied to it. Mappings tied to other gitSyncs are preserved.\n\n" +
+			"By default the ww-managed credential Secret is kept so a later\n" +
+			"`ww agent git add` can re-attach without re-resolving auth. Pass\n" +
+			"--delete-secret to remove it (user-created Secrets under the same\n" +
+			"name are always preserved — the managed-by label gates deletion).",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runAgentGitRemove(cmd.Context(), f, args[0], syncName, deleteSecret)
+		},
+	}
+	bindAgentMutatingFlags(cmd, f)
+	cmd.Flags().StringVar(&syncName, "sync-name", agent.DefaultGitSyncName,
+		"Name of the gitSyncs[] entry to detach")
+	cmd.Flags().BoolVar(&deleteSecret, "delete-secret", false,
+		"Also delete the ww-managed credential Secret for this sync")
+	return cmd
+}
+
+func runAgentGitRemove(ctx context.Context, f *agentFlags, name, syncName string, deleteSecret bool) error {
+	target, resolver, err := f.resolveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	cfg, err := resolver.REST()
+	if err != nil {
+		return err
+	}
+	ns := agent.ResolveNamespace(f.namespace, target.Namespace)
+	if f.namespace == "" {
+		fmt.Fprintf(os.Stdout, "Using namespace: %s (from kubeconfig context)\n", ns)
+	}
+	return agent.GitRemove(ctx, cfg, agent.GitRemoveOptions{
+		Agent:        name,
+		Namespace:    ns,
+		SyncName:     syncName,
+		DeleteSecret: deleteSecret,
+		AssumeYes:    f.assumeYes,
+		DryRun:       f.dryRun,
+		Out:          os.Stdout,
+		In:           os.Stdin,
+	})
 }
 
 // ---------------------------------------------------------------------------
