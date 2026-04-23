@@ -110,6 +110,47 @@ given TCP port at a time.
 
 ---
 
+## Subsystem enablement (dormant-by-default)
+
+The harness has six optional subsystems — heartbeat, jobs, tasks,
+triggers, continuations, webhooks — each keyed on a well-known path
+under `.witwave/`. An agent's enabled subsystems are expressed through
+**file presence, not CRD fields**. This is a deliberate architectural
+choice, not an accident.
+
+- **SUB-1.** A harness subsystem is enabled iff its content exists in
+  the agent pod's filesystem:
+  - `HEARTBEAT.md` enables heartbeat
+  - `jobs/*.md` enables jobs (directory + at least one `.md` file)
+  - `tasks/*.md` enables tasks
+  - `triggers/*.md` enables triggers
+  - `continuations/*.md` enables continuations
+  - `webhooks/*.md` enables webhooks
+
+  Content can land via any mount path the operator supports (gitSync,
+  `spec.config` inline entries, mounted ConfigMaps/Secrets, emptyDir +
+  init container, …). The harness doesn't care how content arrives —
+  only that it's present.
+- **SUB-2.** The absence of a subsystem's content is a **normal,
+  expected state**. It means "this agent intentionally does not use
+  this subsystem." A fresh agent is dormant on every optional
+  subsystem by default; it answers A2A requests and nothing else.
+- **SUB-3.** The harness MUST NOT emit INFO-level logs for missing
+  subsystem content. Missing content is a DEBUG signal — visible under
+  `-v` for diagnostics, silent at default levels. The
+  transition *missing → present* (content materialised, e.g. via a
+  gitSync pull or a later ConfigMap mount) IS an INFO signal: operators
+  want to see the moment a subsystem comes online.
+- **SUB-4.** Neither CRD fields nor CLI flags exist to toggle
+  subsystem enablement explicitly. Future CLI verbs that enable a
+  subsystem (e.g. `ww agent add-job <file>`) do so by materialising
+  content under the corresponding path — no bit-flipping, no
+  redundant fields. Rationale: two ways to express enablement
+  (file presence + a CRD field) drift apart over time; one source of
+  truth keeps the mental model clean.
+
+---
+
 ## Namespace handling (tenant subtrees)
 
 Rules governing how `ww agent` (and future tenant-scoped subtrees like

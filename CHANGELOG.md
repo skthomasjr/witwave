@@ -8,6 +8,39 @@ section of each entry.
 
 ## [Unreleased]
 
+## [0.7.2] — 2026-04-23
+
+### Changed
+
+- **Harness watchers go quiet when their directories are absent.**
+  The five optional subsystems (jobs, tasks, triggers, continuations,
+  webhooks) used to INFO-log `"<name> directory not found — retrying in
+  10s"` every 10 seconds forever when content was missing. That's 30
+  lines/minute of noise on a hello-world agent that legitimately uses
+  none of those subsystems. Missing-directory logs now fire at DEBUG
+  (visible under `-v`, silent by default). The *missing → present*
+  transition — when content actually materialises, e.g. via a gitSync
+  pull or a later ConfigMap mount — is preserved as a single INFO line
+  so operators see the moment a subsystem comes online.
+
+  The readiness gate (`/health/ready`) is unchanged: it continues to
+  depend on backend routing config, not on optional-subsystem content.
+  A dormant agent is now correctly both quiet AND schema-Ready.
+
+### Added
+
+- **DESIGN.md — SUB-1..4** codify the "file-presence-as-enablement"
+  architectural property. An agent's enabled subsystems are expressed
+  through content on disk under `.witwave/`, not through CRD fields.
+  The absence of content is a normal, expected state that means "this
+  agent intentionally does not use this subsystem." Future CLI verbs
+  that enable a subsystem (e.g. `ww agent add-job <file>`) will do so
+  by materialising content — no CRD bit-flipping, one source of truth.
+- **`harness/test_run_awatch_loop_logging.py`** — 3 tests covering the
+  dormant-directory contract: DEBUG-only on every miss, INFO exactly
+  once on transition missing → present, and no transition-INFO when
+  the directory exists on the first iteration (boot).
+
 ## [0.7.1] — 2026-04-23
 
 ### Fixed

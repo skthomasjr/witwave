@@ -291,11 +291,40 @@ async def run_awatch_loop(
     # watchfiles is absent at module load time).
     from watchfiles import awatch
 
+    # Dormant-directory tracking. Per the file-presence-as-enablement
+    # model (see DESIGN.md: harness subsystems are opt-in by content),
+    # a missing directory is a normal, expected state — it means "this
+    # agent is not using this subsystem." So the default-level log on
+    # a missing directory is DEBUG, not INFO: no noise for agents that
+    # intentionally run dormant on a subsystem.
+    #
+    # The one INFO-level signal we DO emit is the transition
+    # missing → present. That's interesting: content just appeared,
+    # the watcher is now active. Operators want to see that moment.
+    was_missing: bool | None = None  # None = pre-flight; first iteration decides
+
     while True:
         if not os.path.isdir(directory):
-            logger_.info(not_found_message)
+            # DEBUG on every miss — visible under `-v` for diagnostics,
+            # silent by default. No distinction between first-miss and
+            # subsequent-miss: both are the same expected state.
+            logger_.debug(not_found_message)
+            was_missing = True
             await asyncio.sleep(retry_delay)
             continue
+
+        # Directory present. When we just transitioned from missing →
+        # present, announce it — operators want to see when content
+        # actually materialises (e.g. via gitSync or a later ConfigMap
+        # mount). `is True` excludes the pre-flight (None) case; on
+        # initial boot with content already present we don't need a
+        # "transition" log because the subsequent scan/register cycle
+        # will log its own lifecycle signal for each entry.
+        if was_missing is True:
+            logger_.info(
+                "%s directory %r now present — starting watcher", watcher_name, directory,
+            )
+        was_missing = False
 
         # Schedule scan() as a concurrent task so it runs *after* awatch()
         # has entered its RustNotify context manager (i.e. after the OS-level
