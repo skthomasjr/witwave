@@ -8,6 +8,54 @@ section of each entry.
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-04-23
+
+### Added
+
+- **`ww agent` subtree** — new command family for managing WitwaveAgent
+  custom resources from the CLI. Closes the hello-world loop: a new user
+  can go from zero to a working agent round-trip in two commands
+  (`ww operator install && ww agent create hello && ww agent send hello "ping"`)
+  with no API keys required.
+  - `ww agent create <name>` — apply a minimum-viable WitwaveAgent CR.
+    Defaults to the echo backend (no credentials required). Waits up to
+    `--timeout` (default 2m) for the operator to report Ready; `--no-wait`
+    opts out. `--backend echo|claude|codex|gemini` selects the backend;
+    `--dry-run` renders the preflight banner and exits.
+  - `ww agent list [-A]` — kubectl-style table with phase, ready count,
+    backends, age. `-A` lists cluster-wide.
+  - `ww agent status <name>` — curated describe: phase, ready replicas,
+    backend summary, last-5 reconcile history.
+  - `ww agent delete <name>` — deletes the CR; the operator cascades
+    pod/Service cleanup via owner refs.
+  - `ww agent send <name> "<prompt>"` — A2A `message/send` round-trip via
+    the Kubernetes apiserver's built-in Service proxy. Works with any
+    ClusterIP Service (no port-forward lifecycle, no external LoadBalancer
+    required). `--raw` prints the full JSON-RPC envelope.
+  - `ww agent logs <name>` — multi-pod container log streaming. Default
+    container `harness`; `-c <name>` for backend/sidecar containers.
+  - `ww agent events <name>` — scoped event snapshot: CR events + events
+    on pods matching `app.kubernetes.io/name=<agent-name>`. `--warnings`,
+    `--since`.
+- **DESIGN.md — namespace rules NS-1..4** codify tenant-subtree namespace
+  handling: default to the context's namespace with fallback to `default`
+  (NS-1), always print the resolved namespace (NS-2), `-A` only on read
+  verbs (NS-3), `create` exempt from the "explicit `-n` required for
+  mutations" discipline for hello-world ergonomics (NS-4).
+
+### Implementation notes
+
+- Package layout mirrors `internal/operator/`: one file per concern
+  (create, list, status, delete, send, logs, events) plus pure helpers
+  (types, defaults, validate, build). Uses dynamic client +
+  `unstructured.Unstructured` rather than a typed generated client —
+  same pattern as `internal/operator/install.go`, avoids cross-module
+  dependency on `operator/api/v1alpha1`.
+- 30+ test assertions cover pure-function surface: DNS-1123 name
+  validation + 50-char length cap, image-ref resolution (release / dev /
+  empty versions, port-in-registry edge case), namespace precedence,
+  CR builder invariants.
+
 ## [0.6.0] — 2026-04-23
 
 ### Added
