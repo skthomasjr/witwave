@@ -8,6 +8,8 @@ section of each entry.
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-04-23
+
 ### Added
 
 - **`echo` backend** — a fourth backend image (`backends/echo/`) that ships
