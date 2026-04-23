@@ -135,6 +135,7 @@ func Execute() int {
 	root.AddCommand(newConfigCmd())
 	root.AddCommand(newUpdateCmd())
 	root.AddCommand(newOperatorCmd())
+	root.AddCommand(newAgentCmd())
 	root.AddCommand(newTuiCmd())
 
 	err := root.Execute()

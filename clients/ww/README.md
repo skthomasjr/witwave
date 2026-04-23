@@ -243,6 +243,46 @@ initial listing.
 Scope note: `-n <ns>` on the parent narrows CR-event listing to one namespace. Without it, CR events are listed
 cluster-wide (the sensible default for CRs). The operator-namespace listing always stays on `witwave-system` regardless.
 
+## Agent management
+
+`ww agent` creates, lists, inspects, and deletes `WitwaveAgent` custom resources. The witwave-operator (installed via
+`ww operator install`) reconciles each CR into a running agent pod with harness + backend sidecars.
+
+```bash
+ww agent create hello          # deploy an agent running the echo backend (no API keys)
+ww agent send hello "ping"     # round-trip A2A call via the apiserver Service proxy
+ww agent logs hello            # tail the harness container (-c <backend> for a sidecar)
+ww agent events hello          # CR + pod events scoped to this agent
+ww agent list                  # list agents in the context's namespace
+ww agent list -A               # list across every namespace you can read
+ww agent status hello          # phase, backends, last reconcile history
+ww agent delete hello          # operator cascades pod cleanup via owner refs
+```
+
+With no flags, `ww agent create <name>` deploys the **echo backend** — a zero-dependency stub that returns a canned
+response quoting the caller's prompt (see [`backends/echo/`](../../backends/echo/README.md)). Pick a real LLM backend
+with `--backend claude|codex|gemini`; the chosen backend's image is published at the same version as the `ww` binary.
+
+Namespace handling follows DESIGN.md NS-1..4:
+
+- No `-n` → the kubeconfig context's namespace (falls back to `default`). The command always prints the resolved
+  namespace at the top of its output.
+- `-A` is only valid on `list` — never on `create`, `status`, or `delete`.
+
+Create waits up to `--timeout` (default `2m`) for the operator to report the agent Ready. Pass `--no-wait` to return as
+soon as the CR is accepted (scripts + CI). All mutating commands (`create`, `delete`) honour `--yes` /
+`WW_ASSUME_YES=true` and `--dry-run` the same way `ww operator install` does.
+
+`ww agent send` uses the Kubernetes apiserver's built-in Service proxy so any `ClusterIP` Service is reachable without
+local port-forwarding or an external LoadBalancer. This makes round-trip A2A calls from a laptop against a cluster-only
+agent Just Work. Caveats: the apiserver proxy has payload size caps and isn't suited for streaming — use `ww agent
+logs -f` for live observation, or the dedicated `ww send --base-url ...` path for long-running streams against an
+externally-reachable harness URL.
+
+`ww agent events` is a one-shot scoped variant of `ww operator events`: events on the WitwaveAgent CR plus events on
+pods matching `app.kubernetes.io/name=<agent-name>`. No `--watch` mode — when you need live signal, `ww agent logs -f`
+usually tells you more.
+
 ## Config
 
 Config lives at `$XDG_CONFIG_HOME/ww/config.toml`, falling back to `~/.config/ww/config.toml`. TOML shape:

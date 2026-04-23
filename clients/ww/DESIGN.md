@@ -79,6 +79,34 @@ kubectl/helm/flux semantics for free and must not deviate.
 
 ---
 
+## Namespace handling (tenant subtrees)
+
+Rules governing how `ww agent` (and future tenant-scoped subtrees like
+`ww prompt`) resolve `-n/--namespace`. Operator-scoped subtrees use
+fixed per-subtree defaults per KC-6 and are exempt from NS-1..3.
+
+- **NS-1.** Tenant-subtree commands with no `-n` flag MUST default to the
+  kubeconfig context's namespace. If the context has no namespace set, fall
+  back to `"default"`. This matches kubectl's precedence exactly.
+- **NS-2.** Every tenant-subtree command MUST print the resolved namespace
+  at the top of its output when `-n` was not explicitly supplied. A single
+  line — e.g. `Using namespace: prod-agents (from kubeconfig context)` — is
+  enough. Rationale: operators forget `-n`; the echo is their only fallback
+  visibility for where a mutation actually landed. Never silently act on a
+  defaulted namespace.
+- **NS-3.** `-A/--all-namespaces` is valid only on **read** verbs (list,
+  status-across-all-agents, etc.). Never on mutating verbs (create, delete,
+  update). Rationale: `-A` multiplies blast radius; a single misplaced `-A`
+  on a mutating verb is a cross-namespace incident.
+- **NS-4.** `create` is the one mutating verb exempt from the "must specify
+  `-n`" discipline other tenant-scoped CLIs enforce. It MAY land in the
+  context's namespace by default because (a) hello-world ergonomics outrank
+  purity for the onboarding path, and (b) `create` is idempotent — a
+  re-run against an already-created name surfaces `AlreadyExists` cleanly.
+  NS-2's print-the-resolved-ns rule still applies.
+
+---
+
 ## Flags
 
 *To be populated as flag conventions are established. Reserve:*
