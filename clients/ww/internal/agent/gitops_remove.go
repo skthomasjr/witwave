@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -52,10 +53,6 @@ func GitRemove(
 	if err := ValidateName(opts.Agent); err != nil {
 		return err
 	}
-	syncName := opts.SyncName
-	if syncName == "" {
-		syncName = DefaultGitSyncName
-	}
 
 	dyn, err := newDynamicClient(cfg)
 	if err != nil {
@@ -70,6 +67,35 @@ func GitRemove(
 	if err != nil {
 		return err
 	}
+
+	// Default sync-name resolution. When the caller didn't pass
+	// --sync-name, auto-select the agent's only gitSync (common case).
+	// Zero syncs = nothing to remove, crisp error. Multiple syncs =
+	// refuse with the full list so the user can pick one by name.
+	syncName := opts.SyncName
+	if syncName == "" {
+		switch len(syncs) {
+		case 0:
+			return fmt.Errorf(
+				"WitwaveAgent %s/%s has no gitSyncs configured — nothing to remove",
+				opts.Namespace, opts.Agent,
+			)
+		case 1:
+			syncName, _ = syncs[0]["name"].(string)
+		default:
+			names := make([]string, 0, len(syncs))
+			for _, s := range syncs {
+				if n, _ := s["name"].(string); n != "" {
+					names = append(names, n)
+				}
+			}
+			return fmt.Errorf(
+				"WitwaveAgent %s/%s has %d gitSyncs [%s] — pick one with --sync-name <name>",
+				opts.Namespace, opts.Agent, len(syncs), strings.Join(names, ", "),
+			)
+		}
+	}
+
 	idx, entry := syncEntryByName(syncs, syncName)
 	if idx < 0 {
 		return fmt.Errorf(

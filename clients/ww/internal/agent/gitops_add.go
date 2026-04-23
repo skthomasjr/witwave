@@ -129,10 +129,14 @@ func GitAdd(
 		return err
 	}
 
-	// Apply conventional defaults.
+	// Apply conventional defaults. Sync name derives from the repo's
+	// last path segment (sanitised to DNS-1123) when not overridden, so
+	// `ww agent git add hello --repo owner/my-repo` produces
+	// `/git/my-repo/` on the pod filesystem — matches what the user
+	// typed rather than a generic product-name label.
 	syncName := opts.SyncName
 	if syncName == "" {
-		syncName = DefaultGitSyncName
+		syncName = DeriveGitSyncName(opts.Repo)
 	}
 	period := opts.Period
 	if period == "" {

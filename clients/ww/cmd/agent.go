@@ -174,8 +174,10 @@ func newAgentGitAddCmd(f *agentFlags) *cobra.Command {
 		"Branch / tag / commit to sync (default: remote HEAD)")
 	cmd.Flags().StringVar(&period, "period", agent.DefaultGitPeriod,
 		"Sync interval (e.g. 30s, 1m, 5m)")
-	cmd.Flags().StringVar(&syncName, "sync-name", agent.DefaultGitSyncName,
-		"Name for the gitSyncs[] entry (unique within the agent)")
+	cmd.Flags().StringVar(&syncName, "sync-name", "",
+		"Name for the gitSyncs[] entry (default: sanitised basename of --repo, e.g. "+
+			"`owner/my.repo` → `my-repo`). Pick explicitly when wiring two gitSyncs "+
+			"with the same repo basename or two branches of the same repo")
 	cmd.Flags().StringVar(&authSecret, "auth-secret", "",
 		"Reference an existing K8s Secret with GITSYNC_USERNAME / GITSYNC_PASSWORD")
 	cmd.Flags().BoolVar(&authFromGH, "auth-from-gh", false,
@@ -294,8 +296,9 @@ func newAgentGitRemoveCmd(f *agentFlags) *cobra.Command {
 		},
 	}
 	bindAgentMutatingFlags(cmd, f)
-	cmd.Flags().StringVar(&syncName, "sync-name", agent.DefaultGitSyncName,
-		"Name of the gitSyncs[] entry to detach")
+	cmd.Flags().StringVar(&syncName, "sync-name", "",
+		"Name of the gitSyncs[] entry to detach (default: the agent's only "+
+			"gitSync when exactly one is configured; required when 2+)")
 	cmd.Flags().BoolVar(&deleteSecret, "delete-secret", false,
 		"Also delete the ww-managed credential Secret for this sync")
 	return cmd

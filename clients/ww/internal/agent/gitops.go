@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -12,10 +13,61 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-// Default gitSync entry name. One sidecar per agent is the common case;
-// this name keeps the CR readable and predictable. Override via the
-// --sync-name flag if multiple gitSyncs are wired to the same agent.
-const DefaultGitSyncName = "witwave"
+// FallbackGitSyncName is used only when a gitSync name can't be derived
+// from the supplied repo (e.g. a URL whose path segment sanitises to
+// nothing). Every real user flow should end up with a repo-based name
+// via DeriveGitSyncName below; this is just the terminal fallback.
+const FallbackGitSyncName = "witwave"
+
+// DeriveGitSyncName returns the default gitSync entry name for a given
+// repo. The algorithm is:
+//
+//  1. Take the last path segment of the repo URL (e.g.
+//     `owner/witwave-test` → `witwave-test`), stripping any trailing
+//     `.git` suffix first.
+//  2. Lowercase everything and replace `.` / `_` / `+` with `-`, which
+//     matches how most community tools de-shoutify repo names.
+//  3. Drop any character that isn't DNS-1123 legal (alphanumeric or
+//     `-`), then collapse repeated `-`s.
+//  4. Trim leading/trailing `-`.
+//  5. If the result is empty, fall back to FallbackGitSyncName.
+//
+// The point of the sanitisation is to produce a name that matches what
+// users expect when they see the rsync source path (`/git/<name>/…`)
+// without forcing them to know the CR-level GitSync.Name validation
+// rules. They just pass `--repo owner/my.repo` and get `/git/my-repo/`.
+func DeriveGitSyncName(repo string) string {
+	ref, err := parseRepoRef(repo)
+	if err != nil {
+		return FallbackGitSyncName
+	}
+	// Display is already the `owner/repo` shape for URL forms; for
+	// SSH-shorthand it's the same. Take the trailing segment.
+	parts := strings.Split(ref.Display, "/")
+	last := parts[len(parts)-1]
+	last = strings.TrimSuffix(last, ".git")
+	last = strings.ToLower(last)
+
+	var b strings.Builder
+	prevHyphen := false
+	for _, r := range last {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			b.WriteRune(r)
+			prevHyphen = false
+		case r == '.' || r == '_' || r == '+' || r == '-':
+			if !prevHyphen {
+				b.WriteByte('-')
+				prevHyphen = true
+			}
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if out == "" {
+		return FallbackGitSyncName
+	}
+	return out
+}
 
 // DefaultGitPeriod matches the chart's default sync interval
 // (charts/witwave/values.yaml gitSyncs[].period comment). Chosen to
