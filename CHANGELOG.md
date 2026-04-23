@@ -8,6 +8,53 @@ section of each entry.
 
 ## [Unreleased]
 
+## [0.7.3] — 2026-04-23
+
+### Added
+
+- **`ww agent scaffold <name> --repo <…>`** — seeds a ww-conformant
+  agent directory structure on a remote git repo using the user's
+  existing system git credentials. No ww-managed credential store; auth
+  resolution walks env tokens → `gh auth token` → `git credential
+  fill` → ssh-agent in that order. Empty-repo bootstrap is handled (go-
+  git's `PlainInit` path). Phase 1 of the gitOps wiring plan.
+- **Scaffold seeds hourly `HEARTBEAT.md`** by default — gives every
+  scaffolded agent a self-exercising proof-of-life signal from the
+  moment it's wired up. Pass `--no-heartbeat` to opt out. Documented
+  exception to DESIGN.md SUB-4; every other dormant subsystem remains
+  absent.
+- **Scaffold branch auto-detection** — `--branch` defaults to empty;
+  scaffold queries the remote's HEAD symref (`git ls-remote --symref`)
+  and uses the repo's real default branch. Covers `master`/`develop`/
+  `trunk` without requiring the flag. Falls back to `main` on empty
+  repos.
+- **Scaffold merges on existing agents** — re-running `ww agent
+  scaffold <existing>` no longer refuses. Missing files land; identical
+  files are silent; drifted files are **preserved** (kubectl-apply-style
+  merge). `--force` overwrites drifted files only — never touches
+  user-added content outside the skeleton list.
+- **`ww agent git {add,list,remove}`** — Phase 2 gitOps verbs.
+  `git add` attaches a gitSync sidecar + harness/per-backend
+  gitMappings to an existing WitwaveAgent CR. Three mutually-exclusive
+  auth paths:
+  `--auth-secret <name>` (reference pre-created K8s Secret, production),
+  `--auth-from-gh` (mint from `gh auth token`, dev laptops),
+  `--auth-from-env <VAR>` (mint from a named env var, CI/CD / .env).
+  ww-minted Secrets carry `app.kubernetes.io/managed-by: ww` so
+  `remove --delete-secret` can distinguish them from user-managed
+  Secrets and refuse to clobber the latter.
+
+### Fixed
+
+- **Release pipeline built the operator with `DefaultImageTag=v<ver>`**
+  (the raw `github.ref_name`) while `docker-metadata-action` published
+  images with the `v` stripped. The operator then rendered pods that
+  requested e.g. `git-sync:v0.7.2` and got GHCR 404 → ImagePullBackOff.
+  `.github/workflows/release.yaml` now derives a stripped version
+  (`${GITHUB_REF_NAME#v}`) and passes that as the `VERSION` build-arg.
+  Non-tag runs (branch pushes) have no `v` prefix so the strip is a
+  no-op.
+
 ## [0.7.2] — 2026-04-23
 
 ### Changed
