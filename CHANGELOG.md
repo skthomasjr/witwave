@@ -8,6 +8,29 @@ section of each entry.
 
 ## [Unreleased]
 
+## [0.7.5] — 2026-04-23
+
+### Changed
+
+- **`ww agent git add` gitSync default name now derives from the repo.**
+  Previously the default `gitSyncs[].name` was the hardcoded label
+  `witwave`, producing `/git/witwave/` on the pod regardless of which
+  repo was wired. The new default sanitises the repo's basename to
+  DNS-1123 (lowercase, `.`/`_`/`+` → `-`, trim hyphens), so
+  `--repo skthomasjr/witwave-test` produces a gitSync named
+  `witwave-test` and a filesystem at `/git/witwave-test/…` — matching
+  what the user typed. Pass `--sync-name <name>` explicitly when
+  wiring two repos with the same basename, or two branches of the
+  same repo. The literal `witwave` label remains as a terminal
+  fallback (exposed as `FallbackGitSyncName`) when sanitisation
+  produces an empty string.
+- **`ww agent git remove` auto-selects the sole gitSync.** When the
+  agent has exactly one sync configured and `--sync-name` isn't
+  passed, remove picks that one automatically. Zero → "nothing to
+  remove" error. Multiple → refuse with the list of names so the
+  caller can disambiguate. Eliminates the "what was that sync-name
+  I used?" round-trip via `git list`.
+
 ## [0.7.4] — 2026-04-23
 
 ### Fixed
