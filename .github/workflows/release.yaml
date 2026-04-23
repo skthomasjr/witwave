@@ -41,6 +41,9 @@ jobs:
           - image: gemini
             file: backends/gemini/Dockerfile
             context: .
+          - image: echo
+            file: backends/echo/Dockerfile
+            context: .
           - image: operator
             file: operator/Dockerfile
             context: operator

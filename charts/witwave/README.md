@@ -1,6 +1,6 @@
 # witwave
 
-Helm chart for the witwave platform — witwave harness and backends (claude, codex, gemini), MCP tool servers, and
+Helm chart for the witwave platform — witwave harness and backends (claude, codex, gemini, echo), MCP tool servers, and
 optional dashboard. Deploys one pod per named agent with the harness + backends + git-sync sidecars colocated; MCP tools
 run as shared cluster-wide Deployments. Released to GHCR on every tag alongside `witwave-operator`.
 
@@ -42,6 +42,7 @@ READMEs for details:
 - [claude secrets](../../backends/claude/README.md#secrets) — `ANTHROPIC_API_KEY`
 - [codex secrets](../../backends/codex/README.md#secrets) — `OPENAI_API_KEY`
 - [gemini secrets](../../backends/gemini/README.md#secrets) — `GEMINI_API_KEY`
+- [echo](../../backends/echo/README.md) — no secrets required (stub backend, no LLM)
 
 Example for an agent named `adam` using the Claude backend:
 

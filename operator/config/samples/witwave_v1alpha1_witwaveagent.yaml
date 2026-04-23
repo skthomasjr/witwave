@@ -24,3 +24,12 @@ spec:
       # envFrom:
       #   - secretRef:
       #       name: adam-claude-secrets
+    # Echo is a zero-dependency stub backend used as the hello-world default
+    # for `ww agent create`. No credentials, no envFrom, no model — it returns
+    # a canned response quoting the caller's prompt. Handy to keep alongside
+    # a real backend for smoke tests without burning LLM credits; remove it
+    # once you no longer need the sanity-check surface. See backends/echo/README.md.
+    - name: echo
+      image:
+        repository: ghcr.io/skthomasjr/images/echo
+      port: 8001

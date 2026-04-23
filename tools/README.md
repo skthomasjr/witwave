@@ -3,8 +3,8 @@
 Every subdirectory here is an **MCP component**, treated equally regardless of
 what it wraps. "MCP" is the component name in this repo — each server speaks the
 Model Context Protocol and is consumed by backends via their MCP configuration
-(`mcp.json` under `.claude/`, `.codex/`, or `.gemini/` — all three backends use
-the same wire format).
+(`mcp.json` under `.claude/`, `.codex/`, or `.gemini/` — all three LLM backends
+use the same wire format; the `echo` backend has no MCP integration by design).
 
 MCP servers are designed to run inside the Kubernetes cluster where witwave is
 deployed and operate against that cluster via in-cluster credentials

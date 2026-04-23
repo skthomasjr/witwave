@@ -8,6 +8,33 @@ section of each entry.
 
 ## [Unreleased]
 
+### Added
+
+- **`echo` backend** — a fourth backend image (`backends/echo/`) that ships
+  as a zero-dependency stub A2A server. Returns a canned response quoting
+  the caller's prompt; requires no API keys or external services. Serves
+  two purposes: (1) the hello-world default for `ww agent create` so a new
+  user can deploy a live agent with "access to a Kubernetes cluster and
+  the CLI" as the only prerequisites, and (2) a reference implementation
+  of the common A2A backend contract — demonstrates the dedicated-port
+  metrics listener, the common `backend_*` metric baseline, and the
+  contract-conformance pytest template for future backend types. See
+  `backends/echo/README.md` for the in-scope vs intentional-non-scope list.
+- **Release matrix** (`.github/workflows/release.yaml`) now publishes
+  `ghcr.io/skthomasjr/images/echo` on every tag.
+- **Chart integration** — `charts/witwave/values.yaml` defines
+  proportionally small resource defaults for echo (~1/10th the envelope
+  of an LLM-backed sidecar) and includes a commented `backends[]`
+  example. `operator/config/samples/witwave_v1alpha1_witwaveagent.yaml`
+  and the operator chart README now reference echo as a valid backend.
+- **Events schema** (`docs/events/events.schema.json`) extended the
+  `HookDecision.backend` and `AgentLifecycle.backend` enums to accept
+  `echo` — prevents runtime validation rejection of echo-sourced events.
+- **Dashboard** — `BackendType` now accepts `echo`; `BackendBubble.vue`
+  and `tokens.css` carry a neutral slate palette entry for echo
+  (`--witwave-brand-echo`), visually distinguishing it from the
+  vendor-branded LLM backends.
+
 ## [0.5.8] — 2026-04-20
 
 ### Added

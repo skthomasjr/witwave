@@ -14,9 +14,9 @@ export interface AgentCard {
   skills?: unknown[];
   capabilities?: Record<string, unknown>;
   // Optional executor family surfaced by the harness (e.g. "claude", "codex",
-  // "gemini"). When present, this is the authoritative source for backend
-  // classification; backendType() falls back to id-suffix / substring inference
-  // only when the field is absent.
+  // "gemini", "echo"). When present, this is the authoritative source for
+  // backend classification; backendType() falls back to id-suffix / substring
+  // inference only when the field is absent.
   family?: string;
 }
 
@@ -50,22 +50,24 @@ export interface TeamMember {
 
 export type TeamResponse = TeamMember[];
 
-export type BackendType = "claude" | "codex" | "gemini" | "unknown";
+export type BackendType = "claude" | "codex" | "gemini" | "echo" | "unknown";
 
 // Known families. Keep in sync with BackendType above.
 const KNOWN_FAMILIES: ReadonlySet<BackendType> = new Set([
   "claude",
   "codex",
   "gemini",
+  "echo",
 ]);
 
 // Structured id-suffix mapping. Matches the canonical backend container names
-// (e.g. "iris-claude", "nova-codex", "kira-gemini") without relying on
-// free-form substring matches anywhere in the id.
+// (e.g. "iris-claude", "nova-codex", "kira-gemini", "iris-echo") without
+// relying on free-form substring matches anywhere in the id.
 const BACKEND_ID_SUFFIXES: ReadonlyArray<readonly [string, BackendType]> = [
   ["-claude", "claude"],
   ["-codex", "codex"],
   ["-gemini", "gemini"],
+  ["-echo", "echo"],
 ];
 
 // Dev-only: warn once per unknown id so drift is visible without flooding
@@ -88,6 +90,7 @@ function fallbackFromId(id: string): BackendType {
   if (s.includes("claude")) return "claude";
   if (s.includes("codex") || s.includes("openai") || s.includes("gpt")) return "codex";
   if (s.includes("gemini") || s.includes("google")) return "gemini";
+  if (s.includes("echo")) return "echo";
   return "unknown";
 }
 

@@ -32,10 +32,14 @@
   --witwave-radius: 6px;
   --witwave-mono: "SF Mono", "Fira Code", "Menlo", monospace;
 
-  /* Backend brand colors — match legacy ui/index.html backend-bubble rules. */
+  /* Backend brand colors — match legacy ui/index.html backend-bubble rules.
+     Echo uses a neutral slate rather than a vendor brand — it's the stub
+     backend, not a third-party LLM, so it deliberately doesn't claim a
+     brand identity. */
   --witwave-brand-claude: #da7756;
   --witwave-brand-codex: #74aa9c;
   --witwave-brand-gemini: #8e44ec;
+  --witwave-brand-echo: #94a3b8;
 }
 
 /* Light palette. Inversions are hand-tuned rather than pure hue flips:
@@ -63,6 +67,7 @@
   --witwave-brand-claude: #b85a3b;
   --witwave-brand-codex: #4f8a7b;
   --witwave-brand-gemini: #6f2fc9;
+  --witwave-brand-echo: #64748b;
 }
 
 /* Auto mode — no `data-theme` attribute means the user hasn't chosen.
@@ -88,6 +93,7 @@
     --witwave-brand-claude: #b85a3b;
     --witwave-brand-codex: #4f8a7b;
     --witwave-brand-gemini: #6f2fc9;
+    --witwave-brand-echo: #64748b;
   }
 }
 

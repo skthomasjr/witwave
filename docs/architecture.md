@@ -23,7 +23,7 @@ reference for "what file is where" and stays current because coding agents read 
 
 At the top level, the repo is split into two buckets plus shared infrastructure:
 
-- **Platform infrastructure** — `harness/`, `backends/{claude,codex,gemini}/`, `operator/`, `tools/`
+- **Platform infrastructure** — `harness/`, `backends/{claude,codex,gemini,echo}/`, `operator/`, `tools/`
   (MCP servers: `kubernetes`, `helm`, `prometheus`), `charts/{witwave,witwave-operator}/`, `shared/`.
 - **Client surfaces** (under `clients/`) — `clients/dashboard/` (Vue 3 web UI), `clients/ww/` (Go CLI).
 - **Agent configs** (`.agents/`) — per-named-agent filesystem config that gets mounted into the
@@ -51,6 +51,9 @@ Each named agent is a cluster of containers:
    conversation logging.
 3. **codex** (per agent) — a standalone A2A server backed by the OpenAI Agents SDK. Same interface as claude.
 4. **gemini** (per agent) — a standalone A2A server backed by the Google Gemini SDK. Same interface as claude.
+5. **echo** (optional, per agent) — a zero-dependency stub A2A server. Returns a canned response quoting the caller's
+   prompt; requires no API keys. Ships as the hello-world default for `ww agent create` and doubles as the reference
+   implementation of the common A2A backend contract (see `backends/echo/README.md`).
 
 ```text
 External A2A caller
@@ -151,9 +154,11 @@ traffic (A2A, triggers, conversations, MCP) and monitoring scrapes. `shared/metr
 entry points: an asyncio-task variant for containers that own the main event loop (harness, backends), and a
 daemon-thread variant for FastMCP-hosted containers (MCP tools) that don't.
 
-### Backend Components (claude, codex, gemini)
+### Backend Components (claude, codex, gemini, echo)
 
-All three backends share identical structure and API surface; they differ only in their LLM SDK.
+All four backends share identical A2A API surface; the three LLM-backed backends (claude, codex, gemini) also share
+structure and differ only in their LLM SDK. The echo backend is deliberately stripped — it has no MCP, no conversation
+persistence, no hooks, no session binding — because its role is zero-dependency onboarding, not LLM work.
 
 **`main.py`** — Builds the A2A `AgentCard` from the mounted `agent-card.md` file, wires the `AgentExecutor` and task
 store (`SqliteTaskStore` when `TASK_STORE_PATH` is set, `InMemoryTaskStore` otherwise), and serves the full Starlette
@@ -165,7 +170,8 @@ in the A2A request metadata. Writes `conversation.jsonl` to the mounted logs dir
 
 **`metrics.py`** — Prometheus metric definitions with `backend_*` prefix. `claude` exposes a superset including tool call,
 context window, and MCP metrics; `codex` also exposes tool-call and context-window metrics; `gemini` exposes
-context-window metrics. All three share the common `backend_*` baseline set.
+context-window metrics. All four share the common `backend_*` baseline set; `echo` implements only that baseline and
+documents it as the reference definition of what a well-behaved backend must emit.
 
 ---
 

@@ -198,7 +198,7 @@ type BackendStorageSpec struct {
 
 // BackendSpec defines one backend sidecar container.
 type BackendSpec struct {
-	// Name identifies the backend (e.g. claude, codex, gemini). Used as the
+	// Name identifies the backend (e.g. claude, codex, gemini, echo). Used as the
 	// container name and the backend ID in routing. MaxLength caps the
 	// name well under the Kubernetes container-name limit (63) so the
 	// downstream container name `<agent>-<backend>` still fits comfortably
@@ -642,7 +642,7 @@ type WitwaveAgentSpec struct {
 	// +optional
 	PodDisruptionBudget *PodDisruptionBudgetSpec `json:"podDisruptionBudget,omitempty"`
 
-	// Backends lists the backend sidecars (claude, codex, gemini, …).
+	// Backends lists the backend sidecars (claude, codex, gemini, echo, …).
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=50
 	Backends []BackendSpec `json:"backends"`

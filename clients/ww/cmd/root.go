@@ -32,7 +32,28 @@ var (
 	ctxKeyOut    = &contextKey{"out"}
 	ctxKeyCfg    = &contextKey{"cfg"}
 	ctxKeyUpdate = &contextKey{"update"}
+	ctxKeyK8s    = &contextKey{"k8s"}
 )
+
+// K8sFlags carries the cluster-identity flags from the root command down
+// to cluster-touching subtrees (today: `ww operator`). Per DESIGN.md KC-5,
+// --kubeconfig and --context are persistent on the root command; harness
+// subcommands inherit them harmlessly and ignore them. Namespace is
+// deliberately absent — per KC-6 it lives on each cluster-touching subtree
+// with subtree-specific defaults.
+type K8sFlags struct {
+	Kubeconfig string
+	Context    string
+}
+
+// K8sFromCtx retrieves the root's cluster-identity flags. Returns the
+// zero value when called from a command invocation that did not run
+// PersistentPreRunE — callers MUST treat empty strings as "fall through
+// to client-go defaults," which is the same contract as k8s.Options.
+func K8sFromCtx(ctx context.Context) K8sFlags {
+	k, _ := ctx.Value(ctxKeyK8s).(K8sFlags)
+	return k
+}
 
 // pendingUpdateCheck is stashed in the per-command context by
 // PersistentPreRunE (when the update check is enabled) and consumed by
@@ -81,6 +102,12 @@ type rootFlags struct {
 	verbose    int
 	jsonOut    bool
 	compact    bool
+
+	// Cluster-identity flags — see DESIGN.md KC-5. Populated on every
+	// invocation regardless of subcommand; consumed only by cluster-touching
+	// subtrees (today: `ww operator`) via K8sFromCtx.
+	kubeconfig string
+	kubectx    string
 
 	// pendingUpdate carries the result of the async update check from
 	// PersistentPreRunE to Execute(). Stored on rootFlags rather than
@@ -180,6 +207,10 @@ func newRoot() (*cobra.Command, *rootFlags) {
 			ctx = context.WithValue(ctx, ctxKeyClient, hc)
 			ctx = context.WithValue(ctx, ctxKeyOut, out)
 			ctx = context.WithValue(ctx, ctxKeyCfg, resolved)
+			ctx = context.WithValue(ctx, ctxKeyK8s, K8sFlags{
+				Kubeconfig: rf.kubeconfig,
+				Context:    rf.kubectx,
+			})
 
 			// Kick off the version check asynchronously so the user's
 			// command never waits on it. Execute() consumes the result
@@ -207,6 +238,12 @@ func newRoot() (*cobra.Command, *rootFlags) {
 	p.CountVarP(&rf.verbose, "verbose", "v", "increase verbosity (-v: requests, -vv: bodies)")
 	p.BoolVar(&rf.jsonOut, "json", false, "emit JSON (pretty for snapshots, line-delimited for streams)")
 	p.BoolVar(&rf.compact, "compact", false, "with --json, emit compact single-line JSON for snapshots")
+	// Cluster-identity flags (DESIGN.md KC-5). Harmless on harness-only
+	// subcommands; consumed by cluster-touching subtrees such as `ww operator`.
+	p.StringVar(&rf.kubeconfig, "kubeconfig", "",
+		"path to kubeconfig (overrides KUBECONFIG env var and ~/.kube/config)")
+	p.StringVar(&rf.kubectx, "context", "",
+		"kubeconfig context to use (defaults to current-context)")
 	return cmd, rf
 }
 

@@ -104,8 +104,8 @@ directory directly. `ww tail --agent iris --session abc` switches to the backend
 }
 ```
 
-`--backend claude|codex|gemini` adds `metadata.backend_id`; harness executors already honour that field. `--context`
-reuses an existing `contextId` for multi-turn sessions.
+`--backend claude|codex|gemini|echo` adds `metadata.backend_id`; harness executors already honour that field.
+`--context` reuses an existing `contextId` for multi-turn sessions.
 
 ## Operator management
 
@@ -124,9 +124,10 @@ ww operator logs                # tail operator pod logs
 ww operator events              # Kubernetes events for operator + CRs
 ```
 
-All four commands honour the ambient kubeconfig and current-context (or `--kubeconfig` / `--context` / `--namespace` to
-override). The three mutating commands (`install`, `upgrade`, `uninstall`) print a preflight banner showing the target
-cluster and either prompt or auto-proceed based on a local-vs-production heuristic:
+All six commands honour the ambient kubeconfig and current-context. `--kubeconfig` and `--context` are **global flags on
+`ww` itself** (so they work on any subcommand); `--namespace` / `-n` is local to `ww operator` and defaults to
+`witwave-system`. The three mutating commands (`install`, `upgrade`, `uninstall`) print a preflight banner showing the
+target cluster and either prompt or auto-proceed based on a local-vs-production heuristic:
 
 - **Local clusters skip the prompt** — context name matching `kind-*`, `minikube`, `docker-desktop`, `rancher-desktop`,
   `orbstack`, `k3d-*`, `colima`, or a server URL pointing at `localhost` / `127.0.0.1` / `kubernetes.docker.internal`.
@@ -134,6 +135,12 @@ cluster and either prompt or auto-proceed based on a local-vs-production heurist
 
 Overrides: `--yes` / `-y` or `WW_ASSUME_YES=true` to skip the prompt unconditionally (scripts + CI); `--dry-run` to
 print the plan and exit without touching the cluster.
+
+> **`$KUBECONFIG` with multiple files (gotcha).** When `$KUBECONFIG` points at a colon-separated list
+> (`KUBECONFIG=a.yaml:b.yaml`), client-go merges the files but `current-context` comes from the **first** file that sets
+> one — not the last. If you set up a `dev.yaml` and expect it to win over an earlier `prod.yaml`, it won't. Use
+> `--context <name>` explicitly, or put the intended file first in the list. `ww` inherits this behaviour from kubectl
+> and helm; don't try to "fix" it by reordering merges.
 
 ### Singleton enforcement
 
@@ -378,6 +385,13 @@ always silent and never interferes with the actual command.
 
 `-v` logs each request line + status to stderr. `-vv` additionally dumps request and response bodies (truncated at 4 KiB
 per direction).
+
+## Design rules
+
+Design invariants for the CLI (kubeconfig handling, command taxonomy, flag
+conventions, exit codes) live in [DESIGN.md](DESIGN.md). Read it before adding
+a new command; cite rule numbers (`KC-3`, `TAX-1`, …) in PRs when a change
+touches one.
 
 ## Building from source
 

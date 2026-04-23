@@ -5,7 +5,7 @@ import { backendType } from "../types/team";
 
 // Pill rendered for each backend under an agent card. Dot is green/red by
 // reachability (card present = up). Type class drives brand color — see
-// tokens.css for the claude/codex/gemini palette.
+// tokens.css for the claude/codex/gemini/echo palette.
 
 const props = defineProps<{
   backend: Agent;
@@ -116,6 +116,11 @@ function onClick(e: MouseEvent) {
 .backend-bubble.gemini {
   background: color-mix(in srgb, var(--witwave-brand-gemini) 12%, transparent);
   border-color: color-mix(in srgb, var(--witwave-brand-gemini) 35%, transparent);
+}
+
+.backend-bubble.echo {
+  background: color-mix(in srgb, var(--witwave-brand-echo) 12%, transparent);
+  border-color: color-mix(in srgb, var(--witwave-brand-echo) 35%, transparent);
 }
 
 .backend-bubble.unknown {

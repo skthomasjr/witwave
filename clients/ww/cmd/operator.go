@@ -12,12 +12,18 @@ import (
 )
 
 // operatorFlags are inherited by every `ww operator *` subcommand so
-// the kubeconfig + context + namespace discovery stays uniform across
+// the namespace and confirmation behaviour stays uniform across
 // install / upgrade / status / uninstall.
+//
+// Cluster-identity flags (--kubeconfig, --context) live on the root
+// command per DESIGN.md KC-5 and reach us via K8sFromCtx. --namespace
+// is persistent here rather than on root per DESIGN.md KC-6: the
+// operator subtree's namespace defaults to witwave-system, whereas
+// future tenant-scoped subtrees (agent, prompt) will default to the
+// context's namespace — one global default would be wrong for at least
+// one subtree.
 type operatorFlags struct {
-	kubeconfig string
-	context    string
-	namespace  string
+	namespace string
 	// --yes — skip preflight confirmation on production-looking targets.
 	// Also honoured via WW_ASSUME_YES=true.
 	assumeYes bool
@@ -27,10 +33,6 @@ type operatorFlags struct {
 }
 
 func bindOperatorFlags(cmd *cobra.Command, f *operatorFlags) {
-	cmd.PersistentFlags().StringVar(&f.kubeconfig, "kubeconfig", "",
-		"Path to kubeconfig (overrides KUBECONFIG env var and ~/.kube/config)")
-	cmd.PersistentFlags().StringVar(&f.context, "context", "",
-		"Kubeconfig context to use (defaults to current-context)")
 	cmd.PersistentFlags().StringVarP(&f.namespace, "namespace", "n", operator.DefaultNamespace,
 		"Namespace the operator is installed in")
 }
@@ -46,11 +48,14 @@ func bindMutatingFlags(cmd *cobra.Command, f *operatorFlags) {
 
 // resolveTarget runs the kubeconfig loader and returns the populated
 // Target + REST config. Surfaces the friendly "no kubeconfig / no context"
-// error when applicable.
-func (f *operatorFlags) resolveTarget() (*k8s.Target, *k8s.Resolver, error) {
+// error when applicable. Cluster-identity flags come from the root
+// command via K8sFromCtx (DESIGN.md KC-5); namespace is the operator
+// subtree's own persistent flag (KC-6).
+func (f *operatorFlags) resolveTarget(ctx context.Context) (*k8s.Target, *k8s.Resolver, error) {
+	kc := K8sFromCtx(ctx)
 	r, err := k8s.NewResolver(k8s.Options{
-		KubeconfigPath: f.kubeconfig,
-		Context:        f.context,
+		KubeconfigPath: kc.Kubeconfig,
+		Context:        kc.Context,
 		Namespace:      f.namespace,
 	})
 	if err != nil {
@@ -69,7 +74,8 @@ func newOperatorCmd() *cobra.Command {
 		Long: "Install, upgrade, inspect, or uninstall the witwave-operator Helm release.\n\n" +
 			"The operator is a cluster-scoped singleton — one install per cluster. These\n" +
 			"commands use the ambient kubeconfig (--kubeconfig / KUBECONFIG / ~/.kube/config)\n" +
-			"and the current-context by default; override with --context.",
+			"and the current-context by default; override with the root's --context flag.\n" +
+			"Use --namespace / -n to target a non-default operator namespace (default: " + operator.DefaultNamespace + ").",
 	}
 	bindOperatorFlags(cmd, f)
 
@@ -125,7 +131,7 @@ func newOperatorEventsCmd(f *operatorFlags) *cobra.Command {
 }
 
 func runOperatorEvents(ctx context.Context, f *operatorFlags, opts operator.EventsOptions) error {
-	_, resolver, err := f.resolveTarget()
+	_, resolver, err := f.resolveTarget(ctx)
 	if err != nil {
 		return err
 	}
@@ -185,7 +191,7 @@ func newOperatorLogsCmd(f *operatorFlags) *cobra.Command {
 }
 
 func runOperatorLogs(ctx context.Context, f *operatorFlags, opts operator.LogsOptions) error {
-	_, resolver, err := f.resolveTarget()
+	_, resolver, err := f.resolveTarget(ctx)
 	if err != nil {
 		return err
 	}
@@ -215,7 +221,7 @@ func newOperatorStatusCmd(f *operatorFlags) *cobra.Command {
 }
 
 func runOperatorStatus(ctx context.Context, f *operatorFlags) error {
-	target, resolver, err := f.resolveTarget()
+	target, resolver, err := f.resolveTarget(ctx)
 	if err != nil {
 		return err
 	}
@@ -255,10 +261,9 @@ func cmpDisplay(cluster, server string) string {
 }
 
 // ---------------------------------------------------------------------------
-// install / upgrade / uninstall — stubs until the Helm SDK is integrated.
-// Each subcommand wires --yes / --dry-run today so the flag surface is
-// stable when the implementation lands. Currently returns a clear
-// "not yet implemented" error pointing at the tracking issue.
+// install / upgrade / uninstall — mutating; each runs the shared preflight
+// banner + confirmation (k8s.Confirm) before any API mutation per DESIGN.md
+// KC-4. Implementation lives in internal/operator/{install,upgrade,uninstall}.go.
 // ---------------------------------------------------------------------------
 
 func newOperatorInstallCmd(f *operatorFlags) *cobra.Command {
@@ -284,7 +289,7 @@ func newOperatorInstallCmd(f *operatorFlags) *cobra.Command {
 }
 
 func runOperatorInstall(ctx context.Context, f *operatorFlags, adopt bool) error {
-	target, resolver, err := f.resolveTarget()
+	target, resolver, err := f.resolveTarget(ctx)
 	if err != nil {
 		return err
 	}
@@ -324,7 +329,7 @@ func newOperatorUpgradeCmd(f *operatorFlags) *cobra.Command {
 }
 
 func runOperatorUpgrade(ctx context.Context, f *operatorFlags, force bool) error {
-	target, resolver, err := f.resolveTarget()
+	target, resolver, err := f.resolveTarget(ctx)
 	if err != nil {
 		return err
 	}
@@ -364,7 +369,7 @@ func newOperatorUninstallCmd(f *operatorFlags) *cobra.Command {
 }
 
 func runOperatorUninstall(ctx context.Context, f *operatorFlags, deleteCRDs, force bool) error {
-	target, resolver, err := f.resolveTarget()
+	target, resolver, err := f.resolveTarget(ctx)
 	if err != nil {
 		return err
 	}

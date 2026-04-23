@@ -79,11 +79,16 @@ daemon-thread variant (FastMCP-hosted MCP tools).
 
 ### Backend containers
 
-Three backend types exist, each implemented as a standalone A2A server:
+Four backend types exist, each implemented as a standalone A2A server:
 
 - **`claude`** — Claude Agent SDK backend. Source in `backends/claude/`. Image: `claude:latest`.
 - **`codex`** — OpenAI Agents SDK (Codex) backend. Source in `backends/codex/`. Image: `codex:latest`.
 - **`gemini`** — Google Gemini backend (google-genai SDK). Source in `backends/gemini/`. Image: `gemini:latest`.
+- **`echo`** — zero-dependency stub backend that returns a canned response. Ships as the default
+  for `ww agent create` hello-world onboarding; no API keys required. Also used for harness
+  regression tests and CI smoke tests. Source in `backends/echo/`. Image: `echo:latest`.
+  Deliberately minimal: A2A + `/health` only — no MCP, no metrics, no conversation persistence,
+  no hooks, no session binding. See `backends/echo/README.md` for the intentional-non-scope list.
 
 Each backend:
 
@@ -338,6 +343,9 @@ docker build -f backends/codex/Dockerfile -t codex:latest .
 # Gemini backend
 docker build -f backends/gemini/Dockerfile -t gemini:latest .
 
+# Echo backend (hello-world default; no API keys required)
+docker build -f backends/echo/Dockerfile -t echo:latest .
+
 # Kubernetes MCP tool
 docker build -f tools/kubernetes/Dockerfile -t mcp-kubernetes:latest .
 
@@ -362,6 +370,7 @@ docker build -f harness/Dockerfile -t harness:latest . \
   && docker build -f backends/claude/Dockerfile -t claude:latest . \
   && docker build -f backends/codex/Dockerfile -t codex:latest . \
   && docker build -f backends/gemini/Dockerfile -t gemini:latest . \
+  && docker build -f backends/echo/Dockerfile -t echo:latest . \
   && docker build -f tools/kubernetes/Dockerfile -t mcp-kubernetes:latest . \
   && docker build -f tools/helm/Dockerfile -t mcp-helm:latest . \
   && helm upgrade --install witwave ./charts/witwave -f ./charts/witwave/values-test.yaml -n witwave --create-namespace
@@ -520,3 +529,6 @@ AGENTS.md is deliberately high-level. For specifics, go to the source of truth:
   gemini, dashboard, operator, charts, mcp, cli` + cross-cutting).
 - **Operator CRD reference** — `operator/api/v1alpha1/*_types.go` Go types + generated CRD schemas
   under `operator/config/crd/bases/`; sample manifests in `operator/config/samples/`.
+- **`ww` CLI design rules** — `clients/ww/DESIGN.md` codifies the CLI's design invariants
+  (kubeconfig handling, command taxonomy, flag conventions, exit codes). Rules are numbered
+  (`KC-*`, `TAX-*`, …) and should be cited in PRs that touch CLI behavior.

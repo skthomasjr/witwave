@@ -22,6 +22,8 @@ why this is a first-class project goal rather than a convention.
 Built on the [A2A protocol](https://a2a-protocol.org). Each named agent is a set of containers: a **harness**
 infrastructure layer (A2A relay, heartbeat scheduler, job scheduler) and one or more **backend agent** containers that
 do the actual LLM work (Claude Agent SDK via `claude`, OpenAI Agents SDK via `codex`, Google Gemini SDK via `gemini`).
+A fourth backend, `echo`, ships as a zero-dependency stub — it returns a canned response quoting the caller's prompt and
+is the hello-world default for `ww agent create` when no API key is configured.
 
 Multiple agents can collaborate as a team, but the named agent (harness + its backend agents) is the deployable unit.
 
@@ -31,8 +33,9 @@ Three tiers to keep straight:
 
 1. **A2A agent** — any server that publishes `/.well-known/agent.json`. The protocol's unit of identity. Both the
    harness and each backend agent qualify.
-2. **Backend agent** — the LLM-wrapping worker. One image per LLM family (`claude`, `codex`, `gemini`). Each owns its
-   own session state, memory, conversation log, and metrics, and is callable standalone over A2A.
+2. **Backend agent** — the LLM-wrapping worker. One image per LLM family (`claude`, `codex`, `gemini`), plus the
+   zero-dependency `echo` stub. Each owns its own session state, memory, conversation log, and metrics, and is callable
+   standalone over A2A.
 3. **Named agent** — the deployable unit (`iris`, `nova`, `kira`, …). From outside it presents as a single A2A agent via
    the harness's endpoint. Inside, the harness orchestrates one or more backend agents using routing rules in
    `.witwave/backend.yaml`.
@@ -59,6 +62,7 @@ agents and you have a scheduler with nothing to dispatch to — no intelligence.
 | **Claude backend** | `backends/claude/`         | Backend agent       | Executes prompts via the Claude Agent SDK.                                                           |
 | **Codex backend**  | `backends/codex/`          | Backend agent       | Executes prompts via the OpenAI Agents SDK. Supports web search and headless browser via Playwright. |
 | **Gemini backend** | `backends/gemini/`         | Backend agent       | Executes prompts via the Google Gemini SDK.                                                          |
+| **Echo backend**   | `backends/echo/`           | Backend agent       | Zero-dependency stub. Returns a canned response quoting the prompt. Hello-world default + reference. |
 | **MCP tools**      | `tools/`                   | Tool infrastructure | `mcp-kubernetes`, `mcp-helm`, `mcp-prometheus` — shared MCP servers backends opt into.               |
 | **Dashboard**      | `clients/dashboard/`       | Web client          | Vue 3 + PrimeVue web UI.                                                                             |
 | **ww CLI**         | `clients/ww/`              | Client              | Go + cobra command-line interface (`brew install witwave-ai/homebrew-ww/ww`).                        |
@@ -87,6 +91,7 @@ Operational details that complement the Agent Model above:
 - A Claude Code OAuth token (`claude setup-token`) or Anthropic API key (for `claude`)
 - An OpenAI API key (for `codex`)
 - A Gemini API key (for `gemini`)
+- Nothing extra for `echo` — the stub backend runs without credentials or network access
 
 ## Container Images
 
@@ -99,6 +104,7 @@ on every release tag.
 | `claude`         | `ghcr.io/skthomasjr/images/claude:latest`         |
 | `codex`          | `ghcr.io/skthomasjr/images/codex:latest`          |
 | `gemini`         | `ghcr.io/skthomasjr/images/gemini:latest`         |
+| `echo`           | `ghcr.io/skthomasjr/images/echo:latest`           |
 | `dashboard`      | `ghcr.io/skthomasjr/images/dashboard:latest`      |
 | `operator`       | `ghcr.io/skthomasjr/images/operator:latest`       |
 | `git-sync`       | `ghcr.io/skthomasjr/images/git-sync:latest`       |
@@ -165,6 +171,7 @@ docker pull ghcr.io/skthomasjr/images/harness:latest
 docker pull ghcr.io/skthomasjr/images/claude:latest
 docker pull ghcr.io/skthomasjr/images/codex:latest
 docker pull ghcr.io/skthomasjr/images/gemini:latest
+docker pull ghcr.io/skthomasjr/images/echo:latest
 ```
 
 Or build locally:
@@ -174,6 +181,7 @@ docker build -f harness/Dockerfile -t harness:latest .
 docker build -f backends/claude/Dockerfile -t claude:latest .
 docker build -f backends/codex/Dockerfile -t codex:latest .
 docker build -f backends/gemini/Dockerfile -t gemini:latest .
+docker build -f backends/echo/Dockerfile -t echo:latest .
 ```
 
 ### 2. Configure credentials

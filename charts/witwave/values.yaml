@@ -881,6 +881,18 @@ defaults:
         limits:
           cpu: "1"
           memory: 1Gi
+      # Echo is a stub A2A backend (no LLM, no subprocess, no external calls).
+      # Its footprint is roughly 1/10th of an LLM-backed sidecar, so the
+      # defaults are deliberately small — using the shared fallback here
+      # would over-allocate by ~10x per echo pod. Ships as the hello-world
+      # default for `ww agent create`; see backends/echo/README.md.
+      echo:
+        requests:
+          cpu: 25m
+          memory: 32Mi
+        limits:
+          cpu: 100m
+          memory: 128Mi
 
 # Default credentials for every agents[].backends[] entry unless overridden
 # per-backend via agents[].backends[].credentials. Three mutually exclusive
@@ -1367,3 +1379,15 @@ agents:
         #     mountPath: /home/agent/.claude/settings.json
         #     content: |
         #       {}
+
+      # # Example: echo backend — zero-dependency stub A2A backend used as
+      # # the hello-world default for `ww agent create`. No credentials, no
+      # # model, no persistent storage, no env overrides. Appending this as
+      # # a second backend entry alongside claude is a valid way to give an
+      # # agent a smoke-test surface without burning API credits.
+      # # See backends/echo/README.md for the contract + intentional-non-scope list.
+      # - name: echo
+      #   image:
+      #     repository: ghcr.io/skthomasjr/images/echo
+      #     # tag defaults to .Chart.AppVersion
+      #   port: 8001  # must be unique across an agent's backends
