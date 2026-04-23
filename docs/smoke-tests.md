@@ -1,6 +1,19 @@
 # Smoke Tests
 
-This document describes what to look for in the conversation log after deploying the test stack. All tests run automatically on deploy (run-once jobs) or on a recurring schedule. Check the conversation at `GET /conversations/bob` and `GET /conversations/fred`.
+Two distinct smoke surfaces live in this repo:
+
+1. **Deployed-agent conversation smoke** (this document, below). Tests that the three LLM backends produce the expected canonical responses when the test stack (`bob`, `fred`) has been deployed. Runs automatically on deploy via scheduler-fired jobs; operators inspect the conversation log at `GET /conversations/bob` / `GET /conversations/fred` after the fact.
+
+2. **CLI hello-world smoke** (`scripts/smoke-ww-agent.sh`). Tests that the `ww agent` subtree works end-to-end against a real cluster: `create`, `list`, `status`, `send`, `logs`, `events`, `delete`, plus the validation paths (invalid names, duplicate create). Creates one throwaway agent backed by the echo image (no API keys required), asserts expected output, and deletes at the end. Run after cutting a new `ww` release against a cluster with the operator installed:
+
+   ```bash
+   ww operator install                # one-time per cluster
+   ./scripts/smoke-ww-agent.sh        # ~60s against a local cluster
+   ```
+
+   Knobs via env: `WW_BIN`, `WW_SMOKE_NS`, `WW_SMOKE_AGENT`, `WW_SMOKE_KEEP`. See the script header for details.
+
+This document describes the **deployed-agent conversation smoke** — what to look for in the conversation log after deploying the test stack. All tests run automatically on deploy (run-once jobs) or on a recurring schedule. Check the conversation at `GET /conversations/bob` and `GET /conversations/fred`.
 
 The authoritative model for each call is in the conversation log, not the response text — models often misreport their own version.
 
