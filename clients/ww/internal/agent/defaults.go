@@ -14,10 +14,10 @@ const imageRepoPrefix = "ghcr.io/skthomasjr/images/"
 // NetworkPolicy rules, Service definitions, and operators adding a
 // backend by hand can rely on a predictable range:
 //
-//   Harness:              8000
-//   Backend sidecars:     8001-8050 (8001 + index, 0-based)
-//   Metrics listener:     9000 (every container, on a dedicated port —
-//                         see shared/metrics_server.py)
+//	Harness:              8000
+//	Backend sidecars:     8001-8050 (8001 + index, 0-based)
+//	Metrics listener:     9000 (every container, on a dedicated port —
+//	                      see shared/metrics_server.py)
 //
 // The CRD caps `.spec.backends` at 50 entries (maxItems: 50), so the
 // range 8001-8050 is an exact fit: one port per possible backend slot
