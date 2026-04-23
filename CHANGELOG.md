@@ -8,6 +8,19 @@ section of each entry.
 
 ## [Unreleased]
 
+## [0.7.4] — 2026-04-23
+
+### Fixed
+
+- **Operator git-sync wiring was broken for CR-based gitOps.** The
+  mapping helper anchored rsync sources at `/git/<gs.Name>/<src>` but
+  the init + sidecar containers never told git-sync to symlink at that
+  path. git-sync v4 defaults `--link` to `HEAD`, so the actual
+  symlink lived at `/git/HEAD/` and every mapping hit ENOENT →
+  `git-map-init` crash-looped indefinitely. Fix: pass
+  `--link=<gs.Name>` in both args builders so the init's and sidecar's
+  symlink names match the path the helper constructs.
+
 ## [0.7.3] — 2026-04-23
 
 ### Added
