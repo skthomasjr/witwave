@@ -267,7 +267,10 @@ func cmpDisplay(cluster, server string) string {
 // ---------------------------------------------------------------------------
 
 func newOperatorInstallCmd(f *operatorFlags) *cobra.Command {
-	var adopt bool
+	var (
+		adopt     bool
+		ifMissing bool
+	)
 	cmd := &cobra.Command{
 		Use:   "install",
 		Short: "Install the witwave-operator Helm release (embedded chart)",
@@ -276,19 +279,26 @@ func newOperatorInstallCmd(f *operatorFlags) *cobra.Command {
 			"installed cluster-wide), preflight banner + confirmation on\n" +
 			"production-looking contexts, RBAC SelfSubjectAccessReview, namespace\n" +
 			"ensure, and the Helm install. Use --adopt to take over a\n" +
-			"cluster whose CRDs were installed manually (via `kubectl apply`).",
+			"cluster whose CRDs were installed manually (via `kubectl apply`).\n\n" +
+			"--if-missing makes the install idempotent: when the operator is\n" +
+			"already installed, the command logs a no-op line and returns\n" +
+			"success instead of refusing. Useful for scripts that want to\n" +
+			"\"ensure the operator is present\" without caring whether this run\n" +
+			"is the one that installed it.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runOperatorInstall(cmd.Context(), f, adopt)
+			return runOperatorInstall(cmd.Context(), f, adopt, ifMissing)
 		},
 	}
 	bindMutatingFlags(cmd, f)
 	cmd.Flags().BoolVar(&adopt, "adopt", false,
 		"Proceed when operator CRDs already exist on the cluster without a Helm release "+
 			"(ww will take over management via Helm)")
+	cmd.Flags().BoolVar(&ifMissing, "if-missing", false,
+		"Return success without acting when the operator is already installed (idempotent mode)")
 	return cmd
 }
 
-func runOperatorInstall(ctx context.Context, f *operatorFlags, adopt bool) error {
+func runOperatorInstall(ctx context.Context, f *operatorFlags, adopt, ifMissing bool) error {
 	target, resolver, err := f.resolveTarget(ctx)
 	if err != nil {
 		return err
@@ -301,6 +311,7 @@ func runOperatorInstall(ctx context.Context, f *operatorFlags, adopt bool) error
 	return operator.Install(ctx, target, cfg, resolver.ConfigFlags(), operator.InstallOptions{
 		Namespace: f.namespace,
 		Adopt:     adopt,
+		IfMissing: ifMissing,
 		AssumeYes: assumeYes,
 		DryRun:    f.dryRun,
 		Out:       os.Stdout,

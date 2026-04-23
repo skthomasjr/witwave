@@ -8,6 +8,40 @@ section of each entry.
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-04-23
+
+### Fixed
+
+- **`ww agent create` produced unhealthy pods.** The CR builder put both
+  the harness and backend sidecar on port 8000. Pods share one network
+  namespace, so one container's readiness probe hit the other's HTTP
+  server and failed. Fixed by offsetting backends to 8001-8050 (one port
+  per CRD-allowed backend slot). Codified as DESIGN.md PORT-1..4.
+- **Harness never flipped Ready without an inline routing config.** The
+  minimal CR from `ww agent create` didn't include `.witwave/backend.yaml`,
+  so `/health/ready` stayed 503 with reason `no-backends-configured`
+  (harness/main.py:524-534). The builder now stamps an inline config
+  entry rendering a single-backend routing YAML that points the harness
+  at the sidecar.
+
+### Added
+
+- **`ww operator install --if-missing`** — new flag that makes install
+  idempotent. When the operator is already installed, logs a one-line
+  no-op instead of refusing with `ErrPreflightRefused`. Useful for
+  "ensure the operator is here" flows in scripts and CI.
+- **`scripts/smoke-ww-agent.sh`** self-heals via `--if-missing` if the
+  operator isn't installed when the smoke begins. Smoke is now truly
+  turn-key: just `./scripts/smoke-ww-agent.sh` against any cluster.
+
+### Design rules
+
+DESIGN.md gains **PORT-1..4** codifying the agent-pod port contract:
+harness on 8000 (hard-coded), backends on 8001-8050 (CRD cap fits the
+range exactly), metrics on 9000 (dedicated listener), callers may
+override via explicit CR fields but ww's builder enforces PORT-1..3
+on generated CRs.
+
 ## [0.7.0] — 2026-04-23
 
 ### Added

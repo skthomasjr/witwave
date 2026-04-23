@@ -82,16 +82,35 @@ func Build(opts BuildOptions) (*unstructured.Unstructured, error) {
 		obj.SetAnnotations(annotations)
 	}
 
+	backendPort := BackendPort(0)
+
 	spec := map[string]interface{}{
-		"port": int64(DefaultPort),
+		"port": int64(DefaultHarnessPort),
 		"image": map[string]interface{}{
 			"repository": splitRepo(harnessImage),
 			"tag":        splitTag(harnessImage),
 		},
+		// Inline backend.yaml so the harness can route A2A requests to
+		// the sidecar without needing gitSync or a pre-populated
+		// ConfigMap. Without this, harness health-ready stays 503 with
+		// reason=no-backends-configured (harness/main.py:524-534) and
+		// the pod never flips Ready. See harness/backends/config.py for
+		// the file shape.
+		"config": []interface{}{
+			map[string]interface{}{
+				"name":      "backend.yaml",
+				"mountPath": "/home/agent/.witwave/backend.yaml",
+				"content":   renderBackendYAML(backend, backendPort),
+			},
+		},
+		// Single-backend default. Port is offset from the harness port
+		// (8001 vs 8000) so the harness + backend sidecars don't race
+		// to bind the same TCP port — pods share a network namespace
+		// and only one container per pod can hold a given port.
 		"backends": []interface{}{
 			map[string]interface{}{
 				"name": backend,
-				"port": int64(DefaultPort),
+				"port": int64(backendPort),
 				"image": map[string]interface{}{
 					"repository": splitRepo(backendImage),
 					"tag":        splitTag(backendImage),
@@ -151,3 +170,32 @@ func splitTag(ref string) string {
 // Enforce package compile-time that metav1 is actually used — we export
 // the TypeMeta shape implicitly via APIVersionString / Kind.
 var _ = metav1.TypeMeta{}
+
+// renderBackendYAML generates the single-backend routing config the
+// harness expects at BACKEND_CONFIG_PATH. Every concern (a2a, heartbeat,
+// job, task, trigger, continuation) routes to the same backend —
+// hello-world setups only have the one to route to. See
+// harness/backends/config.py for the authoritative shape.
+func renderBackendYAML(backend string, port int32) string {
+	return fmt.Sprintf(`backend:
+  agents:
+    - id: %[1]s
+      url: http://localhost:%[2]d
+
+  routing:
+    default:
+      agent: %[1]s
+    a2a:
+      agent: %[1]s
+    heartbeat:
+      agent: %[1]s
+    job:
+      agent: %[1]s
+    task:
+      agent: %[1]s
+    trigger:
+      agent: %[1]s
+    continuation:
+      agent: %[1]s
+`, backend, port)
+}

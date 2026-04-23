@@ -79,6 +79,37 @@ kubectl/helm/flux semantics for free and must not deviate.
 
 ---
 
+## Port assignment (agent pods)
+
+Every agent pod is a single Kubernetes pod with N+1 containers (harness +
+N backend sidecars). Containers in the same pod share one network
+namespace, so **ports MUST be distinct** — only one container can bind a
+given TCP port at a time.
+
+- **PORT-1.** The harness container listens on port **8000**. Hard-coded
+  because dashboards, NetworkPolicy, and the operator's default Service
+  template all assume it. Changing this invalidates a lot of downstream
+  wiring; don't.
+- **PORT-2.** Backend sidecars listen on ports **8001–8050**, offset by
+  their index in `spec.backends[]` (0-based). The CRD caps
+  `spec.backends` at 50 entries (`maxItems: 50`), so 8001–8050 is an
+  exact fit — one port per possible backend slot. Ship a new backend
+  type and you don't have to think about port allocation; `ww agent
+  create` / `ww agent backend add` pick the next free port automatically.
+- **PORT-3.** The Prometheus metrics listener lives on port **9000**
+  across every container, on a dedicated listener that `shared/
+  metrics_server.py` manages. Intentionally outside the app-port range
+  so NetworkPolicy rules can diverge between app traffic and
+  monitoring scrapes.
+- **PORT-4.** Callers can override any of these via explicit
+  `spec.image.port` / `spec.backends[].port` fields on the CR. ww only
+  enforces PORT-1..3 when it's the one generating the CR — hand-authored
+  YAML is the user's responsibility. If a legacy backend insists on port
+  8000 (collides with the harness), the user is expected to move it, not
+  the harness.
+
+---
+
 ## Namespace handling (tenant subtrees)
 
 Rules governing how `ww agent` (and future tenant-scoped subtrees like

@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 )
@@ -9,9 +10,54 @@ import (
 // project publishes.
 const imageRepoPrefix = "ghcr.io/skthomasjr/images/"
 
-// Default listen port for the harness + every backend sidecar. The chart
-// uses the same default so there's nothing special to coordinate.
-const DefaultPort int32 = 8000
+// Port convention for ww-minted WitwaveAgent CRs. Documented so
+// NetworkPolicy rules, Service definitions, and operators adding a
+// backend by hand can rely on a predictable range:
+//
+//   Harness:              8000
+//   Backend sidecars:     8001-8050 (8001 + index, 0-based)
+//   Metrics listener:     9000 (every container, on a dedicated port —
+//                         see shared/metrics_server.py)
+//
+// The CRD caps `.spec.backends` at 50 entries (maxItems: 50), so the
+// range 8001-8050 is an exact fit: one port per possible backend slot
+// with no overflow into the metrics port. The harness + every backend
+// share a pod network namespace, so ports MUST be distinct — mirrors
+// the chart's values-test.yaml pattern (e.g. bob: harness=8099,
+// claude=8090, codex=8091).
+//
+// Callers that need a port outside this range (e.g. to match a legacy
+// backend container's listener) can set `spec.backends[].port`
+// explicitly in the CR; ww doesn't enforce the convention at CR-apply
+// time, only at Build() time from this package.
+const (
+	DefaultHarnessPort     int32 = 8000
+	DefaultBackendBasePort int32 = 8001
+	DefaultBackendMaxPort  int32 = 8050
+	DefaultMetricsPort     int32 = 9000
+)
+
+// BackendPort returns the port the Nth backend (0-indexed) should listen
+// on. Offset from DefaultBackendBasePort so concurrent backends never
+// collide with the harness or each other. Panics when `index` would
+// push the port above DefaultBackendMaxPort — i.e. past the CRD's
+// 50-backend cap — because that state is unreachable from a
+// schema-valid CR.
+func BackendPort(index int) int32 {
+	p := DefaultBackendBasePort + int32(index)
+	if p > DefaultBackendMaxPort {
+		panic(fmt.Sprintf(
+			"agent: backend index %d exceeds CRD's 50-backend cap (port %d > max %d)",
+			index, p, DefaultBackendMaxPort,
+		))
+	}
+	return p
+}
+
+// DefaultPort is kept as an alias for DefaultHarnessPort so existing
+// references (tests, docs) continue to resolve. New code should prefer
+// the explicit DefaultHarnessPort / BackendPort pair.
+const DefaultPort = DefaultHarnessPort
 
 // Backend-type identifiers the CLI knows about today. Keep this list
 // aligned with `backends/` subdirectories and the dashboard's

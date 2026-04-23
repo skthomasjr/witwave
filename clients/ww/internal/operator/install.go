@@ -21,6 +21,13 @@ type InstallOptions struct {
 	// present on the cluster without a Helm release (ActionAdoptCRDs).
 	// Corresponds to `ww operator install --adopt`.
 	Adopt bool
+	// IfMissing — when true, detect an existing install and silently
+	// return success instead of surfacing the "already installed"
+	// refusal. Makes `ww operator install --if-missing` idempotent, the
+	// pattern the CLI smoke script and any "ensure the operator is
+	// here before I do agent work" flow wants. Corresponds to
+	// `ww operator install --if-missing`.
+	IfMissing bool
 	// AssumeYes + DryRun — forwarded to the k8s.Confirm banner.
 	AssumeYes bool
 	DryRun    bool
@@ -74,7 +81,19 @@ func Install(ctx context.Context, target *k8s.Target, cfg *rest.Config, flags *g
 				"with the embedded chart's versions)", pre.Reason)
 		}
 		fmt.Fprintln(opts.Out, "Adopting pre-existing CRDs — they will be replaced with the embedded chart's versions.")
-	case ActionRefuseExists, ActionRefuseCorrupt:
+	case ActionRefuseExists:
+		if opts.IfMissing {
+			// --if-missing: an existing install is the desired end state,
+			// so return success without going through the rest of the
+			// flow. Log a one-liner so automation sees that the no-op
+			// path fired instead of a real install.
+			fmt.Fprintln(opts.Out, "Operator already installed — no action taken (--if-missing).")
+			return nil
+		}
+		return fmt.Errorf("%w: %s", ErrPreflightRefused, pre.Reason)
+	case ActionRefuseCorrupt:
+		// Corrupt state is NEVER safe to paper over with --if-missing —
+		// the cluster has partial state that needs explicit resolution.
 		return fmt.Errorf("%w: %s", ErrPreflightRefused, pre.Reason)
 	}
 

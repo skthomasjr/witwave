@@ -104,7 +104,12 @@ run_captured() {
     if [[ $LAST_STATUS -ne 0 ]]; then
         printf '%s  (exit %d — output follows)%s\n' "$C_DIM" "$LAST_STATUS" "$C_RESET"
         printf '%s  ---%s\n' "$C_DIM" "$C_RESET"
-        printf '%s' "$LAST_OUTPUT" | sed "s|^|$C_DIM  | |" | sed "s|$| $C_RESET|"
+        # Indent each output line with a dim prefix. Avoid sed's delimiter
+        # shenanigans (BSD sed on macOS parses `|` inside a substitution
+        # as a flag separator) by using a pure-bash loop.
+        while IFS= read -r line; do
+            printf '%s  %s%s\n' "$C_DIM" "$line" "$C_RESET"
+        done <<<"$LAST_OUTPUT"
         printf '%s  ---%s\n' "$C_DIM" "$C_RESET"
     fi
 }
@@ -153,20 +158,41 @@ else
     exit 2
 fi
 
-run_captured "cluster reachable" "$WW_BIN" status
-if [[ $LAST_STATUS -eq 0 ]] || grep -qE 'context|cluster|namespace' <<<"$LAST_OUTPUT"; then
-    pass "cluster reachable (ww status exited)"
-else
-    fail "cluster not reachable" "ensure kubeconfig is set and cluster is up"
+# Cluster reachability + operator installation are checked in one shot
+# via `ww operator status`, which necessarily touches the Kubernetes API
+# and then introspects the operator Helm release. Merging the two into a
+# single probe avoids an orthogonal ww status call that would require a
+# configured harness URL — unrelated to whether the cluster is reachable.
+#
+# Content check matters: `ww operator status` exits 0 even when the
+# operator is absent (it successfully reported "(not installed)"), so we
+# have to grep the output to tell "installed" from "not installed" /
+# "CRDs absent". Missing CRDs are fatal — no point continuing to the
+# agent lifecycle phase because every create/list call would 404 on the
+# dynamic client.
+run_captured "cluster + operator" "$WW_BIN" operator status
+if [[ $LAST_STATUS -ne 0 ]]; then
+    if grep -qEi 'kubeconfig|no.+context|connection refused|no such host|i/o timeout' <<<"$LAST_OUTPUT"; then
+        fail "cluster not reachable" "ensure kubeconfig is set and the cluster is up"
+    else
+        fail "operator status probe failed" "run: $WW_BIN operator status (inspect manually)"
+    fi
     exit 2
 fi
-
-run_captured "operator installed" "$WW_BIN" operator status
-if [[ $LAST_STATUS -eq 0 ]]; then
-    pass "witwave-operator responding"
+if grep -qE '\(not installed\)|absent' <<<"$LAST_OUTPUT"; then
+    # Self-heal: idempotently install the operator via --if-missing. Uses
+    # --yes because we're in a scripted flow. If the cluster isn't a
+    # local-cluster context the install command's own prompt-skip
+    # heuristic won't fire; --yes covers both cases.
+    printf '%s… operator missing; installing (--if-missing)%s\n' "$C_DIM" "$C_RESET"
+    run_captured "operator install --if-missing" "$WW_BIN" operator install --if-missing --yes
+    if [[ $LAST_STATUS -ne 0 ]]; then
+        fail "operator install" "check: $WW_BIN operator install --help"
+        exit 2
+    fi
+    pass "operator installed via --if-missing"
 else
-    fail "witwave-operator not responding" "run: $WW_BIN operator install"
-    exit 2
+    pass "cluster reachable + witwave-operator installed"
 fi
 
 # ---------------------------------------------------------------------------
