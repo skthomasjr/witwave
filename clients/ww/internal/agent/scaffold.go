@@ -51,6 +51,14 @@ type ScaffoldOptions struct {
 	// of populated content is rarely what the user meant.
 	Force bool
 
+	// NoHeartbeat skips writing `.witwave/HEARTBEAT.md`. Default false,
+	// i.e. scaffold seeds an hourly heartbeat. This is a documented
+	// exception to DESIGN.md SUB-4's "subsystems are dormant by
+	// default" — a heartbeat-on-scaffold is the cheapest possible
+	// proof-of-life that the dispatch path and backend sidecar
+	// actually work; users who genuinely want a silent agent opt out.
+	NoHeartbeat bool
+
 	// CLIVersion from cmd.Version; used when any skeleton content
 	// needs to reference a ww release (e.g. image tags in sample
 	// commentary). Empty / "dev" falls through to "latest" markers.
@@ -82,10 +90,26 @@ func Scaffold(ctx context.Context, opts ScaffoldOptions) error {
 	}
 	branch := opts.Branch
 	if branch == "" {
-		branch = "main"
+		// No explicit --branch → detect the remote's actual default by
+		// asking its HEAD symref. This covers repos whose default is
+		// `master`, `develop`, `trunk`, etc. without the user having to
+		// remember to pass the flag. Empty repos (no HEAD yet) fall
+		// through to the hardcoded fallback below.
+		if detected := detectRemoteDefaultBranch(ref.CloneURL); detected != "" {
+			branch = detected
+			fmt.Fprintf(opts.Out, "Detected default branch: %s\n", branch)
+		} else {
+			branch = "main"
+		}
 	}
 
-	skeleton := buildSkeleton(opts.Name, opts.Group, backend, opts.CLIVersion)
+	skeleton := buildSkeleton(skeletonOpts{
+		Name:        opts.Name,
+		Group:       opts.Group,
+		Backend:     backend,
+		CLIVersion:  opts.CLIVersion,
+		NoHeartbeat: opts.NoHeartbeat,
+	})
 
 	// Preflight banner — always renders, even under --dry-run.
 	printScaffoldPlan(opts.Out, opts, ref, backend, branch, skeleton)

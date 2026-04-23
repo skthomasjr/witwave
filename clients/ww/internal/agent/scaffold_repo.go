@@ -240,6 +240,43 @@ func ghAuthToken() (string, bool) {
 	return tok, true
 }
 
+// detectRemoteDefaultBranch resolves the default branch of a remote by
+// asking for its HEAD symref. Works against both go-git-style and
+// github.com-style remotes via `git ls-remote --symref <url> HEAD`.
+// Returns empty string when:
+//   - git isn't installed or returns an error
+//   - the remote has no HEAD (empty repo — the common case for a
+//     freshly-created GitHub repo)
+//   - the output can't be parsed
+//
+// Callers fall back to their own default ("main") on empty return.
+// The fallback is deliberate: empty repos have no meaningful default
+// yet, and "main" matches what GitHub creates on first push since 2020.
+func detectRemoteDefaultBranch(cloneURL string) string {
+	cmd := exec.Command("git", "ls-remote", "--symref", cloneURL, "HEAD")
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	// Expected output shape when the remote has a HEAD:
+	//   ref: refs/heads/main	HEAD
+	//   <sha>\tHEAD
+	// We only care about the first line's "refs/heads/<branch>" target.
+	for _, line := range strings.Split(string(out), "\n") {
+		if !strings.HasPrefix(line, "ref: ") {
+			continue
+		}
+		// Format: "ref: refs/heads/<branch>\tHEAD"
+		rest := strings.TrimPrefix(line, "ref: ")
+		if tab := strings.IndexByte(rest, '\t'); tab >= 0 {
+			rest = rest[:tab]
+		}
+		rest = strings.TrimSpace(rest)
+		return strings.TrimPrefix(rest, "refs/heads/")
+	}
+	return ""
+}
+
 // gitConfigGet runs `git config --get <key>` and returns the value,
 // trimmed. Empty string when git isn't installed, the key isn't set,
 // or any other failure — callers fall through to their defaults.

@@ -107,7 +107,7 @@ func TestAgentRepoRoot(t *testing.T) {
 
 func TestBuildSkeleton_EchoBackend(t *testing.T) {
 	t.Parallel()
-	files := buildSkeleton("hello", "", "echo", "0.7.2")
+	files := buildSkeleton(skeletonOpts{Name: "hello", Backend: "echo", CLIVersion: "0.7.2"})
 
 	paths := collectPaths(files)
 
@@ -115,6 +115,10 @@ func TestBuildSkeleton_EchoBackend(t *testing.T) {
 		".agents/hello/README.md",
 		".agents/hello/.witwave/backend.yaml",
 		".agents/hello/.echo/agent-card.md",
+		// HEARTBEAT is a documented exception to SUB-4 — scaffolded on
+		// by default so a freshly-created agent has a self-exercising
+		// proof-of-life signal out of the box.
+		".agents/hello/.witwave/HEARTBEAT.md",
 	}
 	for _, m := range must {
 		if !contains(paths, m) {
@@ -123,18 +127,58 @@ func TestBuildSkeleton_EchoBackend(t *testing.T) {
 	}
 
 	// Echo has no behaviour stub — that's an LLM-backend-only concept.
+	// Other subsystems (jobs/tasks/triggers/continuations/webhooks) stay
+	// dormant per SUB-1..4.
 	mustNot := []string{
 		".agents/hello/.echo/CLAUDE.md",
 		".agents/hello/.echo/AGENTS.md",
 		".agents/hello/.echo/GEMINI.md",
-		".agents/hello/.witwave/HEARTBEAT.md",
 		".agents/hello/.witwave/jobs",
+		".agents/hello/.witwave/tasks",
+		".agents/hello/.witwave/triggers",
+		".agents/hello/.witwave/continuations",
+		".agents/hello/.witwave/webhooks",
 	}
 	for _, m := range mustNot {
 		for _, p := range paths {
 			if strings.HasPrefix(p, m) {
-				t.Errorf("unexpected pre-created path %q (echo backend should skip, dormant SUB-1..4)", p)
+				t.Errorf("unexpected pre-created path %q (dormant SUB-1..4)", p)
 			}
+		}
+	}
+}
+
+// TestBuildSkeleton_NoHeartbeat verifies the opt-out path for users
+// who genuinely want a silent agent — `--no-heartbeat` must produce
+// a skeleton without HEARTBEAT.md.
+func TestBuildSkeleton_NoHeartbeat(t *testing.T) {
+	t.Parallel()
+	files := buildSkeleton(skeletonOpts{
+		Name: "silent", Backend: "echo", CLIVersion: "0.7.2", NoHeartbeat: true,
+	})
+	paths := collectPaths(files)
+	for _, p := range paths {
+		if strings.Contains(p, "HEARTBEAT.md") {
+			t.Errorf("--no-heartbeat was set but scaffold produced %q", p)
+		}
+	}
+}
+
+// TestRenderHeartbeat_ShapeValidates sanity-checks the emitted
+// HEARTBEAT.md against the frontmatter shape the harness expects
+// (`schedule`, `enabled`, plus a prompt body). If the harness's
+// accepted shape changes, this test catches the drift before a user
+// hits it.
+func TestRenderHeartbeat_ShapeValidates(t *testing.T) {
+	t.Parallel()
+	out := renderHeartbeat()
+	for _, want := range []string{
+		"schedule: \"0 * * * *\"", // hourly at minute 0
+		"enabled: true",
+		"HEARTBEAT_OK",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("renderHeartbeat output missing %q. got:\n%s", want, out)
 		}
 	}
 }
@@ -152,7 +196,7 @@ func TestBuildSkeleton_LLMBackends(t *testing.T) {
 		tc := tc
 		t.Run(tc.backend, func(t *testing.T) {
 			t.Parallel()
-			files := buildSkeleton("hello", "", tc.backend, "0.7.2")
+			files := buildSkeleton(skeletonOpts{Name: "hello", Backend: tc.backend, CLIVersion: "0.7.2"})
 			paths := collectPaths(files)
 			want := ".agents/hello/." + tc.backend + "/" + tc.behaviorFile
 			if !contains(paths, want) {
@@ -164,7 +208,9 @@ func TestBuildSkeleton_LLMBackends(t *testing.T) {
 
 func TestBuildSkeleton_WithGroup(t *testing.T) {
 	t.Parallel()
-	files := buildSkeleton("hello", "prod", "echo", "0.7.2")
+	files := buildSkeleton(skeletonOpts{
+		Name: "hello", Group: "prod", Backend: "echo", CLIVersion: "0.7.2",
+	})
 	paths := collectPaths(files)
 	for _, p := range paths {
 		if !strings.HasPrefix(p, ".agents/prod/hello/") {

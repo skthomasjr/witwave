@@ -289,15 +289,24 @@ ww agent scaffold hello --repo owner/repo --force
 .agents/hello/
 ├── README.md              # short human-readable description + next-step hints
 ├── .witwave/
-│   └── backend.yaml       # routing — single backend, ports 8001+ per PORT-1..4
+│   ├── backend.yaml       # routing — single backend, ports 8001+ per PORT-1..4
+│   └── HEARTBEAT.md       # hourly heartbeat (unless --no-heartbeat is set)
 └── .<backend>/
     ├── agent-card.md      # A2A identity card skeleton
     └── <CLAUDE|AGENTS|GEMINI>.md   # behavioural instructions (LLM backends only)
 ```
 
-Dormant subsystems (`HEARTBEAT.md`, `jobs/`, `tasks/`, `triggers/`, `continuations/`, `webhooks/`) are
-**not** pre-created — per DESIGN.md SUB-1..4 their absence is how an agent expresses "I don't use this
-yet." Future `ww agent add-job`, `add-task`, etc. verbs will materialise them on demand.
+`HEARTBEAT.md` ships on by default — an hourly `HEARTBEAT_OK` fires against the agent's A2A endpoint so
+you get an immediate, self-exercising proof-of-life signal without having to construct one yourself.
+Pass `--no-heartbeat` to scaffold a silent agent. Edit the file's `schedule:` frontmatter (cron) to
+customise, or delete the file to stop heartbeats cold — the harness picks up either change on the next
+gitSync tick. This is a documented exception to DESIGN.md SUB-4; every other dormant subsystem
+(`jobs/`, `tasks/`, `triggers/`, `continuations/`, `webhooks/`) stays absent until you explicitly drop
+content in.
+
+**Branch detection** — `--branch` defaults to the remote's own default (via HEAD symref), falling back
+to `main` only on empty repos that have no default yet. Repos on `master`, `develop`, etc. work without
+passing the flag.
 
 **Auth** — three paths, tried in order:
 

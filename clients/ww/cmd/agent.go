@@ -111,6 +111,7 @@ func newAgentScaffoldCmd() *cobra.Command {
 		noPush        bool
 		dryRun        bool
 		force         bool
+		noHeartbeat   bool
 	)
 	cmd := &cobra.Command{
 		Use:   "scaffold <name>",
@@ -146,6 +147,7 @@ func newAgentScaffoldCmd() *cobra.Command {
 				NoPush:        noPush,
 				DryRun:        dryRun,
 				Force:         force,
+				NoHeartbeat:   noHeartbeat,
 				CLIVersion:    Version,
 				Out:           os.Stdout,
 			})
@@ -158,8 +160,9 @@ func newAgentScaffoldCmd() *cobra.Command {
 		"Optional group segment — `.agents/<group>/<name>/` when set; flat `.agents/<name>/` otherwise")
 	cmd.Flags().StringVar(&backend, "backend", agent.DefaultBackend,
 		fmt.Sprintf("Backend type (one of: %s)", strings.Join(agent.KnownBackends(), ", ")))
-	cmd.Flags().StringVar(&branch, "branch", "main",
-		"Git branch to push to (scaffold also bootstraps this branch on an empty repo)")
+	cmd.Flags().StringVar(&branch, "branch", "",
+		"Git branch to push to. Unspecified: detects the remote's default "+
+			"(via HEAD symref) and falls back to \"main\" on empty repos")
 	cmd.Flags().StringVar(&commitMessage, "commit-message", "",
 		"Commit message (default: \"Scaffold agent <name>\")")
 	cmd.Flags().StringVar(&cloneTo, "clone-to", "",
@@ -170,6 +173,8 @@ func newAgentScaffoldCmd() *cobra.Command {
 		"Print the plan + file list and exit without touching the remote or disk")
 	cmd.Flags().BoolVar(&force, "force", false,
 		"Overwrite .agents/<group?>/<name>/ if it already exists on the remote")
+	cmd.Flags().BoolVar(&noHeartbeat, "no-heartbeat", false,
+		"Skip writing .witwave/HEARTBEAT.md (scaffold defaults to an hourly heartbeat)")
 	return cmd
 }
 
