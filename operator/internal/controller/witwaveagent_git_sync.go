@@ -433,6 +433,12 @@ func gitSyncInitContainers(agent *witwavev1alpha1.WitwaveAgent, appVersion strin
 		args := []string{
 			fmt.Sprintf("--repo=%s", gs.Repo),
 			fmt.Sprintf("--root=%s", gitSyncMountPath),
+			// --link pins the symlink name under --root so the rsync
+			// helper below can anchor mapping sources at
+			// /git/<gs.Name>/<src>. Without this, git-sync v4 defaults
+			// to --link=HEAD, and every mapping resolves to a path
+			// that doesn't exist → git-map-init crash-loops.
+			fmt.Sprintf("--link=%s", gs.Name),
 			"--one-time",
 		}
 		if gs.Ref != "" {
@@ -488,6 +494,11 @@ func gitSyncSidecarContainers(agent *witwavev1alpha1.WitwaveAgent, appVersion st
 		args := []string{
 			fmt.Sprintf("--repo=%s", gs.Repo),
 			fmt.Sprintf("--root=%s", gitSyncMountPath),
+			// Keep the sidecar's --link in lockstep with the init
+			// container above so the mapping path /git/<gs.Name>/<src>
+			// resolves on every periodic sync, not just the initial
+			// one. See the init-args comment for the full rationale.
+			fmt.Sprintf("--link=%s", gs.Name),
 			fmt.Sprintf("--period=%s", period),
 		}
 		if gs.Ref != "" {
