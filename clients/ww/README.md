@@ -259,6 +259,55 @@ ww agent status hello          # phase, backends, last reconcile history
 ww agent delete hello          # operator cascades pod cleanup via owner refs
 ```
 
+### GitOps scaffolding (repo-first workflow)
+
+`ww agent scaffold` materialises a ww-conformant agent directory structure on a remote git
+repo so a later `ww agent git add` can wire a deployed agent to pull from it. The scaffolder uses your
+machine's git credentials — whatever `git push` against that remote already works, `ww agent scaffold`
+works too.
+
+```bash
+# Scaffold into an empty repo (gets bootstrapped with an initial commit)
+ww agent scaffold hello --repo skthomasjr/witwave-test
+
+# With an optional group segment — lands in .agents/prod/hello/ instead of .agents/hello/
+ww agent scaffold iris --repo github.com/org/agents --group prod
+
+# Dry-run prints the plan and file list without touching disk or remote
+ww agent scaffold hello --repo owner/repo --dry-run
+
+# Retain the clone locally for inspection / iteration
+ww agent scaffold hello --repo owner/repo --clone-to ./local-agents
+
+# Re-scaffolding an existing agent is refused unless --force
+ww agent scaffold hello --repo owner/repo --force
+```
+
+**Layout produced** (flat default, no group):
+
+```
+.agents/hello/
+├── README.md              # short human-readable description + next-step hints
+├── .witwave/
+│   └── backend.yaml       # routing — single backend, ports 8001+ per PORT-1..4
+└── .<backend>/
+    ├── agent-card.md      # A2A identity card skeleton
+    └── <CLAUDE|AGENTS|GEMINI>.md   # behavioural instructions (LLM backends only)
+```
+
+Dormant subsystems (`HEARTBEAT.md`, `jobs/`, `tasks/`, `triggers/`, `continuations/`, `webhooks/`) are
+**not** pre-created — per DESIGN.md SUB-1..4 their absence is how an agent expresses "I don't use this
+yet." Future `ww agent add-job`, `add-task`, etc. verbs will materialise them on demand.
+
+**Auth** — three paths, tried in order:
+
+1. `GITHUB_TOKEN` / `GH_TOKEN` / `GIT_TOKEN` env vars (for CI + scripting)
+2. `gh auth token` (for gh-authenticated users — default on dev laptops)
+3. `git credential fill` (for non-GitHub remotes or users without gh)
+
+SSH URLs (`git@host:owner/repo`) use your ssh-agent. Credentials are never stored by ww — same posture
+as `git push`, just through a ww-friendly CLI.
+
 With no flags, `ww agent create <name>` deploys the **echo backend** — a zero-dependency stub that returns a canned
 response quoting the caller's prompt (see [`backends/echo/`](../../backends/echo/README.md)). Pick a real LLM backend
 with `--backend claude|codex|gemini`; the chosen backend's image is published at the same version as the `ww` binary.

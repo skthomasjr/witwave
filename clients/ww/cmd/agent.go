@@ -86,7 +86,96 @@ func newAgentCmd() *cobra.Command {
 	cmd.AddCommand(newAgentSendCmd(f))
 	cmd.AddCommand(newAgentLogsCmd(f))
 	cmd.AddCommand(newAgentEventsCmd(f))
+	cmd.AddCommand(newAgentScaffoldCmd())
 	return cmd
+}
+
+// ---------------------------------------------------------------------------
+// scaffold
+// ---------------------------------------------------------------------------
+//
+// scaffold is deliberately *not* a cluster-touching verb — it materialises
+// a ww-conformant agent directory structure on a remote git repo so a
+// future `ww agent git add` can wire a deployed agent to that directory.
+// It therefore doesn't share the agentFlags parent (which carries -n +
+// cluster preflight); it owns its own flag set.
+
+func newAgentScaffoldCmd() *cobra.Command {
+	var (
+		repo          string
+		group         string
+		backend       string
+		branch        string
+		commitMessage string
+		cloneTo       string
+		noPush        bool
+		dryRun        bool
+		force         bool
+	)
+	cmd := &cobra.Command{
+		Use:   "scaffold <name>",
+		Short: "Create a ww-conformant agent directory on a remote git repo",
+		Long: "Scaffolds the directory structure for a new agent on a remote git repo so it\n" +
+			"can later be wired up via gitSync. Default layout:\n\n" +
+			"  <repo>/.agents/<name>/\n" +
+			"    ├── README.md\n" +
+			"    ├── .witwave/backend.yaml\n" +
+			"    └── .<backend>/\n" +
+			"        ├── agent-card.md\n" +
+			"        └── <CLAUDE|AGENTS|GEMINI>.md   (LLM backends only)\n\n" +
+			"Pass --group to nest under `.agents/<group>/<name>/`. The scaffolder uses\n" +
+			"your machine's git credentials (credential helper, SSH agent, or\n" +
+			"GITHUB_TOKEN env) so whatever `git push` against this remote already\n" +
+			"works — `ww agent scaffold` works too. Empty remote repos are\n" +
+			"supported: the scaffolder initialises the first commit and pushes\n" +
+			"with --set-upstream semantics.\n\n" +
+			"Dormant subsystems (heartbeat, jobs, tasks, triggers, continuations,\n" +
+			"webhooks) are NOT pre-created — per DESIGN.md SUB-1..4, the absence of\n" +
+			"their content IS how you express \"this agent doesn't use that feature.\"\n" +
+			"Future `ww agent add-job` / `add-task` verbs will materialise them on\n" +
+			"demand.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runAgentScaffold(cmd.Context(), args[0], agent.ScaffoldOptions{
+				Repo:          repo,
+				Group:         group,
+				Backend:       backend,
+				Branch:        branch,
+				CommitMessage: commitMessage,
+				CloneTo:       cloneTo,
+				NoPush:        noPush,
+				DryRun:        dryRun,
+				Force:         force,
+				CLIVersion:    Version,
+				Out:           os.Stdout,
+			})
+		},
+	}
+	cmd.Flags().StringVar(&repo, "repo", "",
+		"Remote repo (owner/repo, github.com/owner/repo, full URL, or git@host:owner/repo) — required")
+	_ = cmd.MarkFlagRequired("repo")
+	cmd.Flags().StringVar(&group, "group", "",
+		"Optional group segment — `.agents/<group>/<name>/` when set; flat `.agents/<name>/` otherwise")
+	cmd.Flags().StringVar(&backend, "backend", agent.DefaultBackend,
+		fmt.Sprintf("Backend type (one of: %s)", strings.Join(agent.KnownBackends(), ", ")))
+	cmd.Flags().StringVar(&branch, "branch", "main",
+		"Git branch to push to (scaffold also bootstraps this branch on an empty repo)")
+	cmd.Flags().StringVar(&commitMessage, "commit-message", "",
+		"Commit message (default: \"Scaffold agent <name>\")")
+	cmd.Flags().StringVar(&cloneTo, "clone-to", "",
+		"Persist the clone at this path instead of using a temp dir; directory must be empty")
+	cmd.Flags().BoolVar(&noPush, "no-push", false,
+		"Stop after the commit is created; don't push to origin")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false,
+		"Print the plan + file list and exit without touching the remote or disk")
+	cmd.Flags().BoolVar(&force, "force", false,
+		"Overwrite .agents/<group?>/<name>/ if it already exists on the remote")
+	return cmd
+}
+
+func runAgentScaffold(ctx context.Context, name string, opts agent.ScaffoldOptions) error {
+	opts.Name = name
+	return agent.Scaffold(ctx, opts)
 }
 
 // ---------------------------------------------------------------------------
