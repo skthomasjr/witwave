@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -219,6 +221,135 @@ func TestBuildSkeleton_WithGroup(t *testing.T) {
 	}
 }
 
+func TestWriteSkeletonMerge(t *testing.T) {
+	t.Parallel()
+
+	t.Run("fresh dir — everything is Added", func(t *testing.T) {
+		t.Parallel()
+		root := t.TempDir()
+		files := []skeletonFile{
+			{Path: "README.md", Content: "hello"},
+			{Path: ".witwave/backend.yaml", Content: "backend: {}"},
+		}
+		outcome, err := writeSkeletonMerge(root, files, false)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(outcome.Added) != 2 {
+			t.Errorf("expected 2 Added, got %d (%v)", len(outcome.Added), outcome.Added)
+		}
+		if len(outcome.Preserved) != 0 || len(outcome.Overwrote) != 0 || len(outcome.Identical) != 0 {
+			t.Errorf("unexpected non-Added buckets: %+v", outcome)
+		}
+	})
+
+	t.Run("exact match — everything is Identical", func(t *testing.T) {
+		t.Parallel()
+		root := t.TempDir()
+		files := []skeletonFile{{Path: "README.md", Content: "hello"}}
+		_, _ = writeSkeletonMerge(root, files, false) // prime
+		outcome, err := writeSkeletonMerge(root, files, false)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(outcome.Identical) != 1 {
+			t.Errorf("expected 1 Identical, got %+v", outcome)
+		}
+		if len(outcome.Added)+len(outcome.Preserved)+len(outcome.Overwrote) != 0 {
+			t.Errorf("unexpected writes/overwrites: %+v", outcome)
+		}
+	})
+
+	t.Run("drift without --force — Preserved", func(t *testing.T) {
+		t.Parallel()
+		root := t.TempDir()
+		// Prime disk with a user-edited version.
+		userContent := "# My own README\nCustom prose here.\n"
+		if err := writeFile(root, "README.md", userContent); err != nil {
+			t.Fatalf("prime: %v", err)
+		}
+		outcome, err := writeSkeletonMerge(root, []skeletonFile{
+			{Path: "README.md", Content: "scaffold template content"},
+		}, false)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(outcome.Preserved) != 1 {
+			t.Errorf("expected 1 Preserved, got %+v", outcome)
+		}
+		// File on disk should still have the user's edits.
+		got := readFile(t, root, "README.md")
+		if got != userContent {
+			t.Errorf("user edits not preserved.\n got: %q\nwant: %q", got, userContent)
+		}
+	})
+
+	t.Run("drift with --force — Overwrote", func(t *testing.T) {
+		t.Parallel()
+		root := t.TempDir()
+		if err := writeFile(root, "README.md", "user edits"); err != nil {
+			t.Fatalf("prime: %v", err)
+		}
+		outcome, err := writeSkeletonMerge(root, []skeletonFile{
+			{Path: "README.md", Content: "scaffold template"},
+		}, true)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(outcome.Overwrote) != 1 {
+			t.Errorf("expected 1 Overwrote, got %+v", outcome)
+		}
+		got := readFile(t, root, "README.md")
+		if got != "scaffold template" {
+			t.Errorf("file not overwritten: %q", got)
+		}
+	})
+
+	t.Run("partial drift — mix of buckets", func(t *testing.T) {
+		t.Parallel()
+		root := t.TempDir()
+		// Prime one file with user edits, one with identical content,
+		// leave one missing.
+		_ = writeFile(root, "edited.md", "user's version")
+		_ = writeFile(root, "matching.md", "same")
+		outcome, err := writeSkeletonMerge(root, []skeletonFile{
+			{Path: "edited.md", Content: "template"},
+			{Path: "matching.md", Content: "same"},
+			{Path: "new.md", Content: "freshly added"},
+		}, false)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(outcome.Added) != 1 || outcome.Added[0] != "new.md" {
+			t.Errorf("Added = %v; want [new.md]", outcome.Added)
+		}
+		if len(outcome.Identical) != 1 || outcome.Identical[0] != "matching.md" {
+			t.Errorf("Identical = %v; want [matching.md]", outcome.Identical)
+		}
+		if len(outcome.Preserved) != 1 || outcome.Preserved[0] != "edited.md" {
+			t.Errorf("Preserved = %v; want [edited.md]", outcome.Preserved)
+		}
+	})
+
+	t.Run("user-added files never touched", func(t *testing.T) {
+		t.Parallel()
+		root := t.TempDir()
+		_ = writeFile(root, ".witwave/jobs/custom-job.md", "user job content")
+		_, err := writeSkeletonMerge(root, []skeletonFile{
+			{Path: "README.md", Content: "scaffold"},
+		}, true)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		// User-added file must survive --force untouched, since it's
+		// not in the skeleton list.
+		got := readFile(t, root, ".witwave/jobs/custom-job.md")
+		if got != "user job content" {
+			t.Errorf("user-added file was modified: %q", got)
+		}
+	})
+}
+
 func TestBehaviorFileName(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -363,4 +494,27 @@ func contains(haystack []string, needle string) bool {
 		}
 	}
 	return false
+}
+
+// writeFile creates parents-as-needed and writes contents at root/rel.
+// Helper for TestWriteSkeletonMerge to prime the tempdir with user-like
+// content.
+func writeFile(root, rel, contents string) error {
+	full := filepath.Join(root, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(full, []byte(contents), 0o644)
+}
+
+// readFile reads root/rel and returns its contents as a string, or
+// fails the test with a clear error. Deliberately test-only so the
+// happy-path asserts stay terse.
+func readFile(t *testing.T, root, rel string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+	if err != nil {
+		t.Fatalf("read %s: %v", rel, err)
+	}
+	return string(b)
 }

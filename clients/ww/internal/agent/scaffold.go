@@ -143,34 +143,39 @@ func Scaffold(ctx context.Context, opts ScaffoldOptions) error {
 		return err
 	}
 
-	// Collision check — refuse unless --force. Empty-repo case short-
-	// circuits: nothing to collide with.
-	if !wasEmpty && !opts.Force {
-		if err := refuseOnExisting(cloneDir, opts.Name, opts.Group); err != nil {
-			return err
-		}
-	}
-
-	// Materialise skeleton on the working tree. Directories are
-	// auto-created per file.
-	created, err := writeSkeleton(cloneDir, skeleton)
+	// Materialise skeleton on the working tree in merge mode:
+	// - Missing files are written.
+	// - Existing identical files are skipped silently.
+	// - Existing differing files are preserved (default) or overwritten
+	//   (--force). Files outside the skeleton list are never touched.
+	//
+	// Empty-repo short-circuit: when the remote had no commits yet,
+	// nothing can possibly collide; we skip the preserved-path entirely
+	// and just write everything.
+	_ = wasEmpty // reserved for future "first-scaffold" optimisations
+	outcome, err := writeSkeletonMerge(cloneDir, skeleton, opts.Force)
 	if err != nil {
 		return fmt.Errorf("write skeleton: %w", err)
 	}
-	if len(created) == 0 {
-		// All files already matched — nothing to commit. Not an error
-		// but worth calling out so the user knows nothing shipped.
-		fmt.Fprintln(opts.Out, "Skeleton already matches — nothing to commit.")
+	reportOutcome(opts.Out, outcome, opts.Force)
+
+	changed := append(append([]string{}, outcome.Added...), outcome.Overwrote...)
+	if len(changed) == 0 {
+		// Idempotent re-run or full drift preservation — nothing for
+		// git to track. Exit clean, still print the next-step hints
+		// so the user gets the same mental map on every invocation.
+		printNextSteps(opts.Out, opts, ref, false)
 		keepOnErr = false
 		return nil
 	}
 
-	// Stage + commit.
+	// Stage + commit only the files we actually changed. Preserved
+	// files are not re-added to the index — they were never modified.
 	commitMsg := opts.CommitMessage
 	if commitMsg == "" {
-		commitMsg = fmt.Sprintf("Scaffold agent %s", opts.Name)
+		commitMsg = defaultCommitMessage(opts.Name, outcome)
 	}
-	sha, err := commitSkeleton(repo, created, commitMsg)
+	sha, err := commitSkeleton(repo, changed, commitMsg)
 	if err != nil {
 		return fmt.Errorf("commit: %w", err)
 	}
@@ -186,18 +191,25 @@ func Scaffold(ctx context.Context, opts ScaffoldOptions) error {
 		return fmt.Errorf("push: %w", err)
 	}
 
-	fmt.Fprintln(opts.Out, "")
-	fmt.Fprintln(opts.Out, "Next steps:")
-	fmt.Fprintf(opts.Out, "  ww agent create %s\n", opts.Name)
-	fmt.Fprintf(opts.Out, "  ww agent send %s \"hello\"\n", opts.Name)
-	if !opts.Force {
-		fmt.Fprintf(opts.Out,
+	printNextSteps(opts.Out, opts, ref, true)
+	keepOnErr = false
+	return nil
+}
+
+// printNextSteps emits the post-scaffold hints. Rendered on both the
+// fresh-scaffold success path and the idempotent "nothing to change"
+// path so users get consistent guidance regardless of invocation shape.
+func printNextSteps(out io.Writer, opts ScaffoldOptions, ref repoRef, includeGitAdd bool) {
+	fmt.Fprintln(out, "")
+	fmt.Fprintln(out, "Next steps:")
+	fmt.Fprintf(out, "  ww agent create %s\n", opts.Name)
+	fmt.Fprintf(out, "  ww agent send %s \"hello\"\n", opts.Name)
+	if includeGitAdd {
+		fmt.Fprintf(out,
 			"\nWhen `ww agent git add` ships (Phase 2), wire the deployed agent to this repo:\n"+
 				"  ww agent git add %s --repo %s\n", opts.Name, ref.Display,
 		)
 	}
-	keepOnErr = false
-	return nil
 }
 
 func validateScaffoldOptions(opts *ScaffoldOptions) error {
@@ -334,49 +346,125 @@ func cloneOrInit(
 	return nil, false, fmt.Errorf("clone %s: %w", ref.Display, err)
 }
 
-// refuseOnExisting returns a usage-level error when `.agents/<group?>/<name>/`
-// already has any content on the cloned ref. Matches the Force
-// discipline: re-scaffolding on top of real work is rarely meant.
-func refuseOnExisting(dir, name, group string) error {
-	root := agentRepoRoot(name, group)
-	fullPath := filepath.Join(dir, root)
-	entries, err := os.ReadDir(fullPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return fmt.Errorf("check existing %s: %w", root, err)
-	}
-	if len(entries) == 0 {
-		return nil
-	}
-	return fmt.Errorf(
-		"%q already has %d entries on the remote. Pass --force to overwrite, "+
-			"or pick a different agent name", root, len(entries),
-	)
+// scaffoldOutcome records what happened to each skeleton file during a
+// merge. The four buckets let `reportOutcome` produce an accurate,
+// non-alarming summary — in particular distinguishing "these files are
+// already exactly what we'd scaffold" (Identical; silent) from "we
+// kept your edits" (Preserved; needs to be called out) from "we wrote
+// new content" (Added / Overwrote; commit candidates).
+type scaffoldOutcome struct {
+	Added     []string // didn't exist before; freshly written
+	Identical []string // existed and matched the template byte-for-byte
+	Preserved []string // existed and differed; left alone (default) — pass --force to overwrite
+	Overwrote []string // existed and differed; overwritten (--force was set)
 }
 
-// writeSkeleton materialises the skeleton files on disk. Returns the
-// list of paths actually written (skipped files are those whose exact
-// content already matches on disk — a tiny optimisation so re-runs
-// with --force don't produce empty commits).
-func writeSkeleton(root string, files []skeletonFile) ([]string, error) {
-	var written []string
+// writeSkeletonMerge materialises the skeleton into `root`, preserving
+// any existing file whose content differs from the template. Pass
+// force=true to replace drifted files with the current template.
+// Files outside the skeleton list are never read, written, or touched
+// — user-added content (jobs/, tasks/, customised HEARTBEAT.md, …) is
+// safe regardless of force.
+func writeSkeletonMerge(root string, files []skeletonFile, force bool) (scaffoldOutcome, error) {
+	var out scaffoldOutcome
 	for _, f := range files {
 		full := filepath.Join(root, filepath.FromSlash(f.Path))
-		if existing, err := os.ReadFile(full); err == nil && string(existing) == f.Content {
-			continue // already matches — skip
+		existing, readErr := os.ReadFile(full)
+		switch {
+		case readErr != nil && os.IsNotExist(readErr):
+			// Fresh write.
+			if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+				return out, err
+			}
+			if err := os.WriteFile(full, []byte(f.Content), 0o644); err != nil {
+				return out, err
+			}
+			out.Added = append(out.Added, f.Path)
+		case readErr != nil:
+			return out, fmt.Errorf("read %s: %w", f.Path, readErr)
+		case string(existing) == f.Content:
+			out.Identical = append(out.Identical, f.Path)
+		case force:
+			// Drifted + caller opted in to overwrite.
+			if err := os.WriteFile(full, []byte(f.Content), 0o644); err != nil {
+				return out, err
+			}
+			out.Overwrote = append(out.Overwrote, f.Path)
+		default:
+			// Drifted + default mode — user's content wins.
+			out.Preserved = append(out.Preserved, f.Path)
 		}
-		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-			return nil, err
-		}
-		if err := os.WriteFile(full, []byte(f.Content), 0o644); err != nil {
-			return nil, err
-		}
-		written = append(written, f.Path)
 	}
-	sort.Strings(written)
-	return written, nil
+	sort.Strings(out.Added)
+	sort.Strings(out.Identical)
+	sort.Strings(out.Preserved)
+	sort.Strings(out.Overwrote)
+	return out, nil
+}
+
+// reportOutcome prints a human-readable summary of what the merge did.
+// Skipped (Identical) files are silent — they're a normal re-run
+// idempotence signal, not something the user needs to see. Preserved
+// files are called out explicitly so users know (a) their edits weren't
+// blown away and (b) what flag to pass if they actually wanted the
+// scaffold template back.
+func reportOutcome(out io.Writer, outcome scaffoldOutcome, force bool) {
+	switch {
+	case len(outcome.Added) == 0 && len(outcome.Overwrote) == 0 &&
+		len(outcome.Preserved) == 0 && len(outcome.Identical) > 0:
+		fmt.Fprintln(out, "Already up to date — scaffold files match the current template.")
+	case len(outcome.Added) == 0 && len(outcome.Overwrote) == 0 && len(outcome.Preserved) > 0:
+		fmt.Fprintf(out,
+			"No changes needed — %d file(s) already exist with local edits (preserved). Pass --force to overwrite with the current template.\n",
+			len(outcome.Preserved),
+		)
+	default:
+		if len(outcome.Added) > 0 {
+			fmt.Fprintf(out, "Added %d file(s):\n", len(outcome.Added))
+			for _, p := range outcome.Added {
+				fmt.Fprintf(out, "  + %s\n", p)
+			}
+		}
+		if len(outcome.Overwrote) > 0 {
+			fmt.Fprintf(out, "Overwrote %d file(s) (--force):\n", len(outcome.Overwrote))
+			for _, p := range outcome.Overwrote {
+				fmt.Fprintf(out, "  ~ %s\n", p)
+			}
+		}
+	}
+	// Preserved is worth calling out even on the happy-path "we also
+	// added some files" case — the user needs to know their edits
+	// survived in every scenario.
+	if len(outcome.Preserved) > 0 && !force {
+		fmt.Fprintf(out, "Preserved %d file(s) with local edits (pass --force to overwrite):\n",
+			len(outcome.Preserved),
+		)
+		for _, p := range outcome.Preserved {
+			fmt.Fprintf(out, "  = %s\n", p)
+		}
+	}
+}
+
+// defaultCommitMessage builds a commit message that reflects what the
+// merge actually did. A pure "added N files" re-run shouldn't be
+// called "Scaffold agent X" — that misrepresents the history and
+// makes `git log` harder to read.
+func defaultCommitMessage(name string, outcome scaffoldOutcome) string {
+	switch {
+	case len(outcome.Added) > 0 && len(outcome.Overwrote) == 0:
+		if len(outcome.Added) == len(outcome.Added)+len(outcome.Identical)+len(outcome.Preserved)+len(outcome.Overwrote) {
+			return fmt.Sprintf("Scaffold agent %s", name)
+		}
+		return fmt.Sprintf("Scaffold agent %s: add %d missing file(s)",
+			name, len(outcome.Added))
+	case len(outcome.Overwrote) > 0 && len(outcome.Added) == 0:
+		return fmt.Sprintf("Scaffold agent %s: refresh %d scaffolded file(s)",
+			name, len(outcome.Overwrote))
+	case len(outcome.Added) > 0 && len(outcome.Overwrote) > 0:
+		return fmt.Sprintf("Scaffold agent %s: add %d + refresh %d file(s)",
+			name, len(outcome.Added), len(outcome.Overwrote))
+	}
+	return fmt.Sprintf("Scaffold agent %s", name)
 }
 
 // commitSkeleton stages every file in `paths` and creates a commit.

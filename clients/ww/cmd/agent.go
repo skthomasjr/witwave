@@ -172,7 +172,8 @@ func newAgentScaffoldCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false,
 		"Print the plan + file list and exit without touching the remote or disk")
 	cmd.Flags().BoolVar(&force, "force", false,
-		"Overwrite .agents/<group?>/<name>/ if it already exists on the remote")
+		"Overwrite scaffold files that have drifted from the template. "+
+			"Never touches files outside the skeleton list (user-added jobs/tasks/etc. are safe either way)")
 	cmd.Flags().BoolVar(&noHeartbeat, "no-heartbeat", false,
 		"Skip writing .witwave/HEARTBEAT.md (scaffold defaults to an hourly heartbeat)")
 	return cmd
