@@ -221,6 +221,14 @@ spec:
           name: my-prepopulated-anthropic-secret
           keys:
             ANTHROPIC_API_KEY: api_key
+    # The echo backend needs no credentials at all — it ships with the
+    # chart (ghcr.io/skthomasjr/images/echo) and returns a canned response
+    # quoting the caller's prompt. Useful alongside a real backend as a
+    # credential-free smoke-test surface. See backends/echo/README.md.
+    - name: echo
+      image:
+        repository: ghcr.io/skthomasjr/images/echo
+      port: 8001
 ```
 
 And pre-create the Secret yourself (via `kubectl create secret`, an ExternalSecrets `SecretStore`, Vault, etc.)
