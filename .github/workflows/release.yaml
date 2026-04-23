@@ -74,6 +74,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Strip the leading `v` from the tag so VERSION matches the image
+      # tag docker-metadata-action actually writes to GHCR. Without this,
+      # the operator binary gets DefaultImageTag=v0.7.2 while the images
+      # publish as `:0.7.2`, and the reconciler's ImagePullBackOffs are
+      # indistinguishable from "image doesn't exist." For non-tag runs
+      # (branch pushes), GITHUB_REF_NAME has no `v` prefix and the strip
+      # is a no-op — safe either way.
+      - name: Compute stripped version
+        id: tag_version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -97,8 +108,16 @@ jobs:
           # version into the binary at build time — currently the operator
           # uses it for ldflags injection of DefaultImageTag (#440). Other
           # images ignore the build-arg, which is harmless.
+          #
+          # Uses VERSION from the stripped-tag computed above so it
+          # matches the actual image tag on GHCR (docker-metadata-action
+          # strips `v` from semver tags — images land as `foo:0.7.2`,
+          # not `foo:v0.7.2`). Before this match, the operator was built
+          # with `DefaultImageTag=v0.7.2` and the reconciler would
+          # request e.g. `git-sync:v0.7.2`, which GHCR rejected with
+          # ImagePullBackOff. See #<pending-issue>.
           build-args: |
-            VERSION=${{ github.ref_name }}
+            VERSION=${{ steps.tag_version.outputs.version }}
 
       # #1460: cosign keyless signing of every pushed image. Uses
       # Sigstore's public-good Fulcio CA + Rekor transparency log —
