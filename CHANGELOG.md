@@ -8,6 +8,52 @@ section of each entry.
 
 ## [Unreleased]
 
+## [0.7.13] — 2026-04-24
+
+### Added
+
+- **`ww tui` · delete modal (`d` on the list)** — orange-bordered
+  confirmation dialog naming the target agent + namespace, with
+  three checkboxes mapping directly to the CLI flags:
+  `Remove repo folder`, `Delete ww-managed credential Secret(s)`,
+  and `Purge` (the convenience superset). Ticking `Purge`
+  auto-ticks the two granular flags so the form reflects the
+  actual blast radius. Submit invokes `agent.Delete`
+  asynchronously; the list's poll loop renders the row
+  disappearing within milliseconds (refreshNow ping) rather than
+  on the next 2s tick.
+
+### Changed
+
+- **`ww tui` · long-form create modal** — the 5-field skeleton
+  grows three more (Auth mode dropdown, Auth value input, GitOps
+  repo input). When `--repo` is set, submit runs three sequential
+  phases — `agent.Create` → `agent.Scaffold` → `agent.GitAdd` —
+  each with its own banner state ("creating CR…", "scaffolding
+  repo…", "attaching gitSync…") so the user sees progress.
+  Failures short-circuit and the error strip names the failing
+  phase plus a CLI command to retry the rest from. Modal height
+  bumped 18 → 22 so the new fields fit without form-internal
+  scroll.
+
+- **`ww tui` · `l` opens logs, Enter reserved for details** —
+  re-bound the list keymap so Enter is free for the upcoming
+  per-agent details view (status / events / conversation log /
+  send-prompt). `l` takes over the one-shot "tail logs" action;
+  matches the k9s convention of lowercase verbs for one-shot
+  actions and Enter for "drill in." Until the details view
+  lands, Enter flashes a 3-second hint in the footer naming the
+  agent + pointing at `l` and `ww agent status` from the CLI.
+
+### Fixed
+
+- **`ww tui` · ESC in the logs view returns to the list** instead
+  of quitting the app. The app-level `SetInputCapture` was
+  catching `KeyEscape` and calling `app.Stop()` before per-page
+  handlers could run; ESC is now page-local (logs view → back to
+  list, create / delete modal → cancel). Ctrl-C remains the
+  app-level emergency bail; `q` still quits from anywhere.
+
 ## [0.7.12] — 2026-04-24
 
 ### Changed
