@@ -883,18 +883,27 @@ func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []
 func newAgentListCmd(f *agentFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List WitwaveAgent CRs in the target namespace (or all with -A)",
+		Short: "List WitwaveAgent CRs across every namespace (narrow with --namespace)",
+		Long: "Lists WitwaveAgent CRs. The default scope is EVERY namespace the caller\n" +
+			"can read — matches the `kubectl get pods -A` muscle memory that most\n" +
+			"operators reach for anyway. Narrow to a single namespace with --namespace.\n\n" +
+			"The NAMESPACE column is always shown regardless of scope so sort / grep\n" +
+			"pipelines work the same across modes.\n\n" +
+			"DESIGN.md NS-3: list is a read verb — the cluster-wide default never\n" +
+			"applies to mutating verbs (create, delete, …), which still honour the\n" +
+			"context-ns-first resolution.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runAgentList(cmd.Context(), f)
 		},
 	}
 	cmd.Flags().BoolVarP(&f.allNamespaces, "all-namespaces", "A", false,
-		"List agents across every namespace the caller has access to")
+		"Explicit all-namespaces mode. Redundant — this is already the default — "+
+			"but accepted for kubectl parity so muscle-memory flags don't error.")
 	return cmd
 }
 
 func runAgentList(ctx context.Context, f *agentFlags) error {
-	target, resolver, err := f.resolveTarget(ctx)
+	_, resolver, err := f.resolveTarget(ctx)
 	if err != nil {
 		return err
 	}
@@ -902,17 +911,18 @@ func runAgentList(ctx context.Context, f *agentFlags) error {
 	if err != nil {
 		return err
 	}
-	// List suppresses the resolved-namespace notice when -A was passed
-	// (the output already reflects every namespace the caller can see).
+	// New default scope (DESIGN.md NS-3): list spans every namespace
+	// unless the user explicitly narrows it with -n. -A is preserved
+	// for kubectl parity — functionally redundant now since the
+	// default IS all-namespaces, but harmless to keep.
+	allNamespaces := f.allNamespaces || f.namespace == ""
 	var ns string
-	if f.allNamespaces {
-		ns = agent.ResolveNamespace(f.namespace, target.Namespace)
-	} else {
-		ns = logAndResolveNamespace(f.namespace, target.Namespace)
+	if !allNamespaces {
+		ns = f.namespace
 	}
 	return agent.List(ctx, cfg, agent.ListOptions{
 		Namespace:     ns,
-		AllNamespaces: f.allNamespaces,
+		AllNamespaces: allNamespaces,
 		Out:           os.Stdout,
 	})
 }

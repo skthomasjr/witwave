@@ -177,6 +177,13 @@ fixed per-subtree defaults per KC-6 and are exempt from NS-1..3.
   status-across-all-agents, etc.). Never on mutating verbs (create, delete,
   update). Rationale: `-A` multiplies blast radius; a single misplaced `-A`
   on a mutating verb is a cross-namespace incident.
+  Additionally, `ww agent list` defaults to cluster-wide scope — the
+  context-ns-first resolution in NS-1 does NOT apply to list, because
+  `kubectl get ... -A` is the idiom operators reach for anyway and
+  context-scoped lists systematically miss half the cluster. The
+  `-n/--namespace` flag narrows list to a single namespace on demand.
+  The NAMESPACE column is always shown regardless of scope so
+  grep/sort pipelines work uniformly.
 - **NS-4.** `create` is the one mutating verb exempt from the "must specify
   `-n`" discipline other tenant-scoped CLIs enforce. It MAY land in the
   context's namespace by default because (a) hello-world ergonomics outrank

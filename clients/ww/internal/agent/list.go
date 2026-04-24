@@ -15,8 +15,13 @@ import (
 )
 
 // ListOptions controls which WitwaveAgent CRs are returned.
+//
+// AllNamespaces is the default shape for `ww agent list` (see DESIGN.md
+// NS-3 — list spans the cluster unless the user explicitly narrows it).
+// Setting Namespace scopes to that namespace; leaving both empty +
+// AllNamespaces=false is a caller bug and produces a namespace-less
+// list call (which the apiserver rejects).
 type ListOptions struct {
-	// Namespace to list. Empty string + AllNamespaces=true → cluster-wide.
 	Namespace     string
 	AllNamespaces bool
 	Out           io.Writer
@@ -24,7 +29,9 @@ type ListOptions struct {
 
 // List renders a table of WitwaveAgent CRs to opts.Out. Columns match
 // the CRD's additionalPrinterColumns so operators see the same fields
-// they'd see from `kubectl get wwa`.
+// they'd see from `kubectl get wwa`. The NAMESPACE column is always
+// shown — kept uniform regardless of scope so users can grep/sort by
+// namespace without worrying about which mode they ran in.
 func List(ctx context.Context, cfg *rest.Config, opts ListOptions) error {
 	if opts.Out == nil {
 		return fmt.Errorf("ListOptions.Out is required")
@@ -54,22 +61,12 @@ func List(ctx context.Context, cfg *rest.Config, opts ListOptions) error {
 	}
 
 	tw := tabwriter.NewWriter(opts.Out, 0, 2, 2, ' ', 0)
-	if opts.AllNamespaces {
-		fmt.Fprintln(tw, "NAMESPACE\tNAME\tPHASE\tREADY\tBACKENDS\tAGE")
-	} else {
-		fmt.Fprintln(tw, "NAME\tPHASE\tREADY\tBACKENDS\tAGE")
-	}
+	fmt.Fprintln(tw, "NAMESPACE\tNAME\tPHASE\tREADY\tBACKENDS\tAGE")
 	for i := range items.Items {
 		row := agentRow(&items.Items[i])
-		if opts.AllNamespaces {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
-				row.namespace, row.name, row.phase, row.ready, row.backends, row.age,
-			)
-		} else {
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-				row.name, row.phase, row.ready, row.backends, row.age,
-			)
-		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
+			row.namespace, row.name, row.phase, row.ready, row.backends, row.age,
+		)
 	}
 	return tw.Flush()
 }

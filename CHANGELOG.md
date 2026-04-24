@@ -45,6 +45,14 @@ section of each entry.
 
 ### Changed
 
+- **`ww agent list` now defaults to cluster-wide scope** (was: context
+  namespace only). The `kubectl get pods -A` idiom most operators
+  reach for anyway is now the default; narrow to a single namespace
+  with `--namespace`. The NAMESPACE column is always shown regardless
+  of scope so grep/sort pipelines work uniformly. `-A` is preserved
+  for kubectl parity but is now functionally redundant. DESIGN.md
+  NS-3 updated to codify the read-verb carve-out from NS-1's
+  context-first resolution.
 - DESIGN.md gains a **TEAM-1..5 rules block** codifying the
   team-membership contract: label-based (not a CRD field), no default
   team, per-namespace scope, operator-owned cleanup, `--team`

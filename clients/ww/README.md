@@ -256,8 +256,8 @@ cluster-wide (the sensible default for CRs). The operator-namespace listing alwa
 # Lifecycle
 ww agent create hello --create-namespace        # deploy an agent running the echo backend (no API keys)
 ww agent create hello --team research           # stamp witwave.ai/team=research at creation
-ww agent list                                   # list agents in the context's namespace
-ww agent list -A                                # list across every namespace you can read
+ww agent list                                   # list across every namespace you can read (default)
+ww agent list --namespace witwave               # narrow to a single namespace
 ww agent status hello                           # phase, backends, last reconcile history
 ww agent delete hello                           # operator cascades pod cleanup via owner refs
 ww agent delete hello --purge                   # also wipe repo folder + ww-managed credential Secret
@@ -383,7 +383,13 @@ Namespace handling follows DESIGN.md NS-1..5:
   (`(from kubeconfig context)` vs `(ww default)`) tells you whether the fallback kicked in.
 - `ww agent create --create-namespace` provisions the target namespace if it doesn't already exist
   (labelled `app.kubernetes.io/managed-by: ww`) — mirrors `helm install --create-namespace`.
+- `ww agent list` defaults to cluster-wide scope — pass `--namespace` to narrow to one namespace.
+  NS-1's context-first resolution does not apply to list; the idiom is `kubectl get ... -A`, and
+  scoping a list silently to the kubeconfig context's namespace systematically hides half the
+  cluster. The `NAMESPACE` column is always shown so sort / grep pipelines work the same across
+  modes.
 - `-A` is only valid on `list` — never on `create`, `status`, `delete`, or any mutating verb.
+  On `list` it's redundant (the default is already all-namespaces) but accepted for kubectl parity.
 
 Create waits up to `--timeout` (default `2m`) for the operator to report the agent Ready. Pass `--no-wait` to return as
 soon as the CR is accepted (scripts + CI). All mutating commands (`create`, `delete`) honour `--yes` /
