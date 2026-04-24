@@ -274,6 +274,7 @@ ww agent git list hello                         # show the gitSyncs + mappings o
 ww agent git remove hello                       # detach gitSync (keeps ww-minted Secret unless --delete-secret)
 
 # Backend lifecycle on a running agent
+ww agent backend add    hello claude --auth oauth            # append; auto-assigns next free port + scaffolds .claude/ in the repo
 ww agent backend rename hello echo-2 echo-primary            # rename across CR + gitMappings + repo folder
 ww agent backend remove hello echo-2 --remove-repo-folder    # drop a backend + wipe its repo folder
 

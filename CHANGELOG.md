@@ -8,6 +8,47 @@ section of each entry.
 
 ## [Unreleased]
 
+### Added
+
+- **`ww agent backend add <agent> <name>[:<type>]`** — completes the
+  backend-lifecycle trio (add / remove / rename) that was missing
+  its third leg. Appends a backend to a running agent without the
+  delete+recreate dance that used to lose gitSync wiring, team
+  membership, and credentials.
+
+  Reuses the `BackendAuthResolver` + profile catalog from
+  `ww agent create --auth`. The three auth flags on `backend add`
+  drop the `<backend>=<value>` prefix because the backend is already
+  named positionally: `--auth oauth`, `--auth-from-env VAR[,VAR2]`,
+  `--auth-secret <name>`. Missing credentials on an LLM backend
+  surfaces a warning in the preflight banner rather than silently
+  allowing a broken pod.
+
+  Port picking: auto-assigns the first free slot in [8001, 8050];
+  fills gaps in sparse layouts rather than appending at end. CRD
+  `MaxItems: 50` cap caught with a nicer diagnostic than the
+  apiserver's schema-validation blob.
+
+  When the agent has exactly one gitSync wired, also scaffolds
+  `.agents/<…>/.<name>/agent-card.md` (+ behavioural stub for LLM
+  backends) to the repo and regenerates `.witwave/backend.yaml` to
+  list the new backend. Routing stays put — new backend is present
+  but idle until the user redistributes. Pass `--no-repo-folder`
+  for a CR-only change. 11 fake-client tests cover the full matrix
+  (happy path, duplicate-name, unknown type, invalid name, missing
+  agent, dry-run non-mutation, auth profile mint, no-auth LLM
+  warning, sparse-port gap fill, inline backend.yaml regeneration,
+  50-backend cap).
+
+### Changed
+
+- Drop duplicate `Cloning <repo> …` log line in four repo-touching
+  verbs (`backend add`, `backend remove`, `backend rename`,
+  `agent delete`). `cloneOrInit()` already prints it; every caller
+  was re-printing the same message, producing doubled log output.
+  No information lost — `scope.repoDisplay` and `ref.Display`
+  resolve to the same string.
+
 ## [0.7.10] — 2026-04-24
 
 ### Added

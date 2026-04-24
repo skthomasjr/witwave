@@ -491,13 +491,72 @@ without a pod restart.
 
 ---
 
-## 5. Backend lifecycle — rename, remove
+## 5. Backend lifecycle — add, rename, remove
 
-As agents evolve, backends get renamed (`echo` was a placeholder,
-rename to `smoke-test`) or removed (you're swapping echo for a real
-backend). Two verbs, both atomic across CR + repo:
+As agents evolve, backends get added (you started with `echo`, now
+you want `claude` alongside it), renamed (`echo` was a placeholder,
+rename to `smoke-test`), or removed (retiring a stub). Three verbs,
+all atomic across CR + repo:
 
-### 5a. Rename
+### 5a. Add
+
+Append a backend to a running agent without tearing it down. Port
+is auto-assigned to the first free slot in the 8001–8050 range;
+credentials resolve the same way as `ww agent create --auth`.
+
+```bash
+# Source your token so --auth oauth can read it
+source .env
+
+# Append claude to the consensus agent
+ww agent backend add consensus claude \
+    --namespace witwave \
+    --auth oauth
+```
+
+Expected:
+
+```
+Action:    add backend "claude" (type=claude, port=8002) on WitwaveAgent "consensus" in witwave
+  credentials: profile "oauth" → mint Secret "consensus-claude-credentials"
+  backend.yaml (gitSync-managed) — edit the repo's file to list the new backend (routing still flows through the primary)
+  repo scaffold: write .agents/consensus/.claude/agent-card.md to <you>/my-witwave-config (branch main)
+
+Added backend "claude" to WitwaveAgent witwave/consensus (port 8002).
+Committed abc1234: Add backend claude for agent consensus
+Pushed main.
+```
+
+**What happened, in order:**
+
+1. Auth resolved: `--auth oauth` read `$CLAUDE_CODE_OAUTH_TOKEN` and
+   minted `consensus-claude-credentials` in the namespace (labelled
+   `managed-by: ww` so `delete --purge` reaps it).
+2. CR update: `spec.backends[]` appended with `claude` at port 8002
+   and `credentials.existingSecret = consensus-claude-credentials`.
+3. Repo scaffold: `.agents/consensus/.claude/agent-card.md` +
+   `CLAUDE.md` (behavioural stub) written, `backend.yaml`
+   regenerated to list the new backend, one commit pushed.
+4. Operator reconciled a new pod (4 containers now — harness + echo
+   + claude + git-sync) and rolled it in.
+
+**Guard rails**
+
+- Backend name must be DNS-1123 and unique on this agent.
+- The CRD caps `spec.backends` at 50 items — a nicer error message
+  than the apiserver's schema blob when you hit it.
+- Routing stays put. The new backend is present but idle; to send
+  traffic to it, edit `.witwave/backend.yaml` (when gitSync-managed)
+  or update the inline config. The primary backend (first in the
+  list) keeps receiving all concerns until you redistribute.
+- No credentials on an LLM backend is allowed but warned — the pod
+  starts and errors on first request with a missing-key diagnostic.
+  Explicit is better than implicit.
+- `--no-repo-folder` skips the scaffold phase when you want a
+  CR-only change (e.g., you're staging the backend entry now and
+  will add the repo content later through a different flow).
+
+### 5b. Rename
 
 ```bash
 ww agent backend rename consensus echo-2 echo-backup \
@@ -527,7 +586,7 @@ Cloning ... Committed ... Pushing main ...
 If you want to rename only the CR and handle the repo yourself, pass
 `--no-repo-rename`.
 
-### 5b. Remove
+### 5c. Remove
 
 Remove a backend from both the CR and the repo:
 
@@ -719,7 +778,7 @@ Verbs already shipped — fully documented above:
 - **Interaction:** `send`, `logs`, `events`
 - **Scaffold:** `scaffold` (single + multi-backend, `--no-heartbeat`, merge-on-existing)
 - **GitOps:** `git add / list / remove` (three auth modes, `--delete-secret` on remove)
-- **Backend lifecycle:** `backend remove / rename` (with optional `--remove-repo-folder` / `--no-repo-rename`)
+- **Backend lifecycle:** `backend add / remove / rename` (auth-aware add with `--auth`, optional repo-folder scaffold on add, `--remove-repo-folder` / `--no-repo-rename` on the others)
 - **Team membership (advanced, optional):** `team join / leave / list / show` — subset peer discovery
   within a namespace via the `witwave.ai/team` label. Most users don't need this; the namespace-wide
   manifest already groups agents sensibly. If you want to split one namespace into unrelated cohorts,
@@ -728,8 +787,6 @@ Verbs already shipped — fully documented above:
 Verbs on the roadmap (shapes sketched in DESIGN.md, not yet
 implemented):
 
-- **`ww agent backend add`** — mint a new backend on an existing
-  agent (the inverse of backend remove).
 - **`ww agent add-job <file>`** / `add-task` / `add-trigger` etc. —
   materialise dormant-subsystem content into the repo with the
   right frontmatter shape, eliminating the need to hand-author
