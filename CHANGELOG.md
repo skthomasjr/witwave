@@ -8,6 +8,42 @@ section of each entry.
 
 ## [Unreleased]
 
+## [0.7.7] — 2026-04-23
+
+### Added
+
+- **`ww agent backend remove <agent> <backend>`** — drops a backend
+  from `spec.backends[]`, regenerates the inline `spec.config`
+  backend.yaml when ww owns it (agents: list + routing no longer
+  reference the removed entry), and refuses to remove the last
+  backend (CRD minItems: 1). Pass `--remove-repo-folder` to also
+  delete the corresponding `.agents/<…>/.<backend>/` folder from the
+  gitSync repo and rewrite the repo's backend.yaml to drop the
+  removed entry — one atomic commit, one push, same auth story as
+  `ww agent scaffold`.
+- **`ww agent backend rename <agent> <old> <new>`** — renames a
+  backend atomically across the CR, harness + per-backend gitMappings,
+  inline backend.yaml, AND the gitSync repo. The repo-side move uses
+  git's native rename detection (`git mv`), regenerates the repo's
+  `.witwave/backend.yaml` with the new name, and pushes in a single
+  commit. `--no-repo-rename` skips the repo phase. Refuses on DNS-1123
+  violations, same-name no-ops, and collisions with an existing
+  backend of the target name.
+- Repo-side cleanup + rename for both verbs is best-effort from the
+  user's perspective: the CR update lands first, so a push failure
+  prints a manual-recovery recipe instead of reverting cluster state.
+
+### Unlocks
+
+Lifecycle management on multi-backend agents without hand-editing
+either the CR or the repo:
+
+```bash
+ww agent create consensus --backend claude --backend codex --backend echo
+ww agent backend rename consensus echo smoke                   # echo → smoke
+ww agent backend remove consensus smoke --remove-repo-folder   # drop it cleanly
+```
+
 ## [0.7.6] — 2026-04-23
 
 ### Added
