@@ -139,6 +139,20 @@ func buildDeleteAgentForm(ctrl *agentListController, agentName, namespace string
 	form.SetButtonsAlign(tview.AlignCenter)
 	form.SetItemPadding(0)
 	form.SetCancelFunc(func() { ctrl.closeDeleteAgent() })
+
+	// Arrow-key navigation — same translation the create modal uses
+	// (Up → Backtab, Down → Tab) so muscle memory carries over
+	// between the two destructive forms.
+	form.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyDown:
+			return tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone)
+		case tcell.KeyUp:
+			return tcell.NewEventKey(tcell.KeyBacktab, 0, tcell.ModNone)
+		}
+		return event
+	})
+
 	bundle.form = form
 
 	hint := tview.NewTextView().

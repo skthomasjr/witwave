@@ -694,31 +694,55 @@ func newCreateAgentModal(ctrl *agentListController) tview.Primitive {
 
 	authModes := []string{"none", "profile", "from-env", "existing-secret"}
 
-	// Field width 26 leaves 40+ columns for the label at modal width
-	// 72, and the longest label below ("Auth value (profile / VAR / Secret)",
-	// 35 chars) plus the field stays comfortably inside the border.
+	// Field width 36 + 36-char label column = ~72 cols of content,
+	// fits inside the modal's 90 + 2 border. Placeholders show
+	// example values inline so users don't have to guess at the
+	// expected shape (especially for repo URLs).
 	form := tview.NewForm().
-		AddInputField("Name", "", 26, nil, func(v string) { cf.state.name = v }).
-		AddInputField("Namespace", ctrl.defaultCreateNamespace(), 26, nil, func(v string) { cf.state.namespace = v }).
+		AddInputField("Name", "", 36, nil, func(v string) { cf.state.name = v }).
+		AddInputField("Namespace", ctrl.defaultCreateNamespace(), 36, nil, func(v string) { cf.state.namespace = v }).
 		AddDropDown("Backend", backendTypes, 0, func(v string, _ int) { cf.state.backend = v }).
-		AddInputField("Team (optional)", "", 26, nil, func(v string) { cf.state.team = v }).
+		AddInputField("Team (optional)", "", 36, nil, func(v string) { cf.state.team = v }).
 		AddCheckbox("Create namespace (if missing)", true, func(v bool) { cf.state.createNamespace = v }).
 		AddDropDown("Auth mode (LLM backends)", authModes, 0, func(v string, _ int) { cf.state.authMode = v }).
-		AddInputField("Auth value (profile / VAR / Secret)", "", 26, nil, func(v string) { cf.state.authValue = v }).
-		AddInputField("GitOps repo (optional)", "", 26, nil, func(v string) { cf.state.gitopsRepo = v }).
+		AddInputField("Auth value (profile / VAR / Secret)", "", 36, nil, func(v string) { cf.state.authValue = v }).
+		AddInputField("GitOps repo (optional)", "", 36, nil, func(v string) { cf.state.gitopsRepo = v }).
 		AddButton("Create", func() { submitCreateAgent(ctrl, cf) }).
 		AddButton("Cancel", func() { ctrl.closeCreateAgent() })
+
+	// Placeholders — grayed-out example text that disappears when
+	// the user starts typing. Picks the most common case for each
+	// field so newcomers see the expected shape at a glance.
+	setInputPlaceholder(form, 0, "iris")
+	setInputPlaceholder(form, 3, "research")
+	setInputPlaceholder(form, 6, "oauth · api-key · ANTHROPIC_API_KEY · my-secret")
+	setInputPlaceholder(form, 7, "owner/repo  (e.g. skthomasjr/witwave-test)")
+
 	form.SetBorder(true).
 		SetTitle(" Create agent ").
 		SetTitleColor(tcell.ColorSilver).
 		SetBorderColor(tcell.ColorDimGray)
 	form.SetButtonsAlign(tview.AlignCenter)
-	// Tight item padding — default is 1 row between fields which
-	// wasted vertical space and pushed the button row close to the
-	// bottom border. 0-row padding keeps the form compact so buttons
-	// are always visible without scrolling.
-	form.SetItemPadding(0)
+	// One-row item padding so the long-form layout has visible
+	// breathing room between fields. The taller modal accommodates.
+	form.SetItemPadding(1)
 	form.SetCancelFunc(func() { ctrl.closeCreateAgent() }) // ESC → cancel
+
+	// Arrow-key navigation. tview.Form natively handles Tab /
+	// Shift-Tab; users (myself included) instinctively press Up /
+	// Down. Translate them at the form's input-capture layer by
+	// returning a synthesised Tab / Backtab event — tview handles
+	// that as a regular focus-cycle.
+	form.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyDown:
+			return tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone)
+		case tcell.KeyUp:
+			return tcell.NewEventKey(tcell.KeyBacktab, 0, tcell.ModNone)
+		}
+		return event
+	})
+
 	cf.form = form
 
 	ctrl.createAgentForm = cf
@@ -731,11 +755,11 @@ func newCreateAgentModal(ctrl *agentListController) tview.Primitive {
 		SetText("[#808080]Tab / ↑↓ navigate · Enter submit · ESC cancel[-:-:-]")
 
 	// Modal composition: error strip | form (fills) | hint strip.
-	// The outer Flex centers the body both horizontally and
-	// vertically via flex=1 spacer boxes. Body height 22 comfortably
-	// fits the 2-line border + 8 compact fields + button row + hint
-	// without the form's internal scroll kicking in. Modal width
-	// stays at 72 — the longest label is 35 chars + 26-wide input.
+	// Long-form layout: width 90 fits the 35-char labels + 36-wide
+	// inputs comfortably; height 30 accommodates 8 fields with
+	// 1-row item padding (8 fields + 7 gaps = 15) + 2-line border
+	// + 1-row error + 1-row hint + 2-row button area = 21, plus a
+	// few rows of breathing room for placeholder rendering.
 	body := tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(errView, 1, 0, false).
@@ -745,10 +769,23 @@ func newCreateAgentModal(ctrl *agentListController) tview.Primitive {
 		AddItem(tview.NewBox(), 0, 1, false).
 		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
 			AddItem(tview.NewBox(), 0, 1, false).
-			AddItem(body, 22, 1, true).
+			AddItem(body, 30, 1, true).
 			AddItem(tview.NewBox(), 0, 1, false),
-			72, 1, true).
+			90, 1, true).
 		AddItem(tview.NewBox(), 0, 1, false)
+}
+
+// setInputPlaceholder is a tiny helper that pulls a form item by
+// index and applies a placeholder string. Centralised so the create
+// modal's "show example data" config reads as a single block of
+// SetInputField → setInputPlaceholder calls. No-op if the item at
+// that index isn't an InputField (defensive against future field
+// reorder).
+func setInputPlaceholder(form *tview.Form, idx int, text string) {
+	if input, ok := form.GetFormItem(idx).(*tview.InputField); ok {
+		input.SetPlaceholder(text)
+		input.SetPlaceholderTextColor(tcell.ColorGray)
+	}
 }
 
 // submitCreateAgent runs the Create API call (and, when --repo is
