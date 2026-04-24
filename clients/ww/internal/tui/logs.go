@@ -25,6 +25,13 @@ const logsPageName = "agent-logs"
 // right tool, not a scroll-up session.
 const logsMaxLines = 5000
 
+// aggregateContainerSentinel is the rotation entry that means
+// "tail every container at once." Conceptually not a real container
+// name — the controller reacts to it specially and spawns one tail
+// per real container, each writing to the shared body with a
+// `[<container>] ` prefix so interleaved output is distinguishable.
+const aggregateContainerSentinel = "all"
+
 // agentLogsController owns the streaming log view for one selected
 // agent. Created on-demand when the user hits Enter on the list;
 // torn down on ESC back to the list page.
@@ -35,10 +42,12 @@ type agentLogsController struct {
 	agent     string
 	namespace string
 
-	// containers is the rotation order: always starts with "harness",
-	// followed by each declared backend's name. The git-sync sidecar
-	// is deliberately omitted — it logs noisily and has its own
-	// kubectl observability path.
+	// containers is the rotation order. First entry is always the
+	// `aggregateContainerSentinel` ("all") so the view opens with
+	// every container fanned in — the default a user drilling down
+	// from a degraded agent wants. Subsequent entries are "harness"
+	// plus each declared backend; the git-sync sidecar is
+	// deliberately omitted (logs noisily, its own kubectl path).
 	containers []string
 
 	// mu guards cycleIdx + cancel. Stream restarts on 'c' grab the
@@ -74,7 +83,9 @@ func (c *agentListController) openAgentLogs() {
 	}
 	s := snap[row-1]
 
-	containers := append([]string{"harness"}, s.Backends...)
+	// Rotation: aggregate first, then harness, then declared backends.
+	containers := []string{aggregateContainerSentinel, "harness"}
+	containers = append(containers, s.Backends...)
 
 	logs := &agentLogsController{
 		app:        c.app,
@@ -185,57 +196,96 @@ func (l *agentLogsController) cycleContainer() {
 	l.streamCurrent()
 }
 
-// streamCurrent cancels the previous stream goroutine (if any) and
-// starts a fresh one for the currently-selected container. Each
-// stream has its own context so cancellation signals to agent.Logs
-// that the caller walked away.
+// streamCurrent cancels the previous stream goroutine(s) (if any)
+// and starts fresh ones for the currently-selected rotation entry.
+// Single-container mode spawns one tail; aggregate mode spawns one
+// tail per real container and prefixes each line with
+// `[<container>] ` so the interleaved output is distinguishable.
+// Both share a single context so cancellation cleanly tears down
+// all goroutines at once.
 func (l *agentLogsController) streamCurrent() {
 	l.mu.Lock()
 	if l.cancel != nil {
 		l.cancel()
 	}
-	container := l.containers[l.cycleIdx]
+	entry := l.containers[l.cycleIdx]
 	ctx, cancel := context.WithCancel(context.Background())
 	l.cancel = cancel
 	l.lineCount = 0
 	l.mu.Unlock()
 
-	l.renderHeader(fmt.Sprintf("container=%s · tailing…", container))
-
-	// agent.Logs writes to an io.Writer; the bridge writer queues
-	// each write onto the UI thread via QueueUpdateDraw. Batching
-	// per-write (not per-line) keeps the repaint cost proportional
-	// to what the backend produces rather than to TextView updates.
-	writer := &tviewBridgeWriter{
+	// Shared bridge: agent.Logs' line writer → copy → TextView under
+	// QueueUpdateDraw. Per-container prefix wrappers compose over it
+	// in aggregate mode; single-container mode writes straight.
+	bridge := &tviewBridgeWriter{
 		app:   l.app,
 		view:  l.body,
 		onTap: func() { l.incLineCount() },
 	}
 
-	go func(ctx context.Context, container string) {
-		err := agent.Logs(ctx, l.parent.cfg, agent.LogsOptions{
-			Agent:     l.agent,
-			Namespace: l.namespace,
-			Container: container,
-			Follow:    true,
-			TailLines: 200,
-			Out:       writer,
-		})
-		if ctx.Err() != nil {
-			// Normal cancellation (container cycle or ESC) — no
-			// status update; the new stream already owns the header.
-			return
+	if entry == aggregateContainerSentinel {
+		l.renderHeader("all containers · tailing…")
+		// Aggregate: fan out one goroutine per real container (every
+		// entry after the sentinel). Each writes through a prefixing
+		// wrapper so an interleaved body like
+		//     [harness] routing message to echo
+		//     [echo] received prompt "ping"
+		// is trivially readable. One shared ctx cancels them all.
+		for _, container := range l.containers[1:] {
+			prefixed := &prefixingWriter{
+				inner:  bridge,
+				prefix: []byte("[" + container + "] "),
+			}
+			go l.tailOne(ctx, container, prefixed)
 		}
-		// Real error — surface in the header and stop. User can 'c'
-		// to try a different container or ESC back to the list.
-		msg := "stream ended"
-		if err != nil {
-			msg = "error: " + err.Error()
-		}
-		l.app.QueueUpdateDraw(func() {
+		return
+	}
+
+	l.renderHeader(fmt.Sprintf("container=%s · tailing…", entry))
+	go l.tailOne(ctx, entry, bridge)
+}
+
+// tailOne is the single-container tail goroutine body. Factored out
+// so aggregate mode can spawn many copies cheaply. Error surfacing
+// goes through the header and is suppressed on normal ctx cancel
+// (container cycle / ESC) so a rotation doesn't spam "stream ended"
+// on every swap.
+func (l *agentLogsController) tailOne(ctx context.Context, container string, out io.Writer) {
+	err := agent.Logs(ctx, l.parent.cfg, agent.LogsOptions{
+		Agent:     l.agent,
+		Namespace: l.namespace,
+		Container: container,
+		Follow:    true,
+		TailLines: 200,
+		Out:       out,
+	})
+	if ctx.Err() != nil {
+		return
+	}
+	msg := "stream ended"
+	if err != nil {
+		msg = "error: " + err.Error()
+	}
+	l.app.QueueUpdateDraw(func() {
+		// In aggregate mode we stamp the error with the container
+		// name so the user can tell which tail failed (the others
+		// may still be healthy). Single-container mode re-renders
+		// the canonical status line.
+		if l.isAggregate() {
+			l.renderHeader(fmt.Sprintf("all containers · %s: %s", container, msg))
+		} else {
 			l.renderHeader(fmt.Sprintf("container=%s · %s", container, msg))
-		})
-	}(ctx, container)
+		}
+	})
+}
+
+// isAggregate reports whether the current rotation entry is the
+// "all" sentinel. Guarded by the same mutex the cycle logic uses
+// so a cycling user can't race this check into the wrong branch.
+func (l *agentLogsController) isAggregate() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.containers[l.cycleIdx] == aggregateContainerSentinel
 }
 
 // close tears the logs page down and returns focus to the list.
@@ -260,9 +310,12 @@ func (l *agentLogsController) close() {
 // the main thread for simple text writes since tview.TextView's
 // SetText is goroutine-safe.
 func (l *agentLogsController) renderHeader(status string) {
+	// Header lists the REAL containers (skip the aggregate sentinel —
+	// it's a view mode, not a container).
+	real := l.containers[1:]
 	line1 := fmt.Sprintf(
 		"[::b]%s/%s[-:-:-]  [#808080]containers: %s[-:-:-]",
-		l.namespace, l.agent, strings.Join(l.containers, " / "),
+		l.namespace, l.agent, strings.Join(real, " / "),
 	)
 	line2 := fmt.Sprintf("[#d7af00]%s[-:-:-]", status)
 	l.header.SetText(line1 + "\n" + line2)
@@ -315,3 +368,40 @@ func (w *tviewBridgeWriter) Write(p []byte) (int, error) {
 // Compile-time assertion that the bridge writer matches io.Writer —
 // cheap, catches a drift in Write's signature before runtime.
 var _ io.Writer = (*tviewBridgeWriter)(nil)
+
+// ---------------------------------------------------------------------------
+// prefixingWriter — per-container tag for aggregate-mode fan-in
+// ---------------------------------------------------------------------------
+
+// prefixingWriter is an io.Writer that prepends a fixed byte slice
+// to every Write call before handing it to the inner writer. Used in
+// aggregate mode so the multiple tail-goroutines' output is readable
+// when interleaved in the body TextView (each line starts with
+// `[<container>] `).
+//
+// Assumes each Write call represents one complete log line — which is
+// true for agent.Logs' line-writer path (it calls the sink once per
+// scanner.Text()). If that contract changes the prefix would start
+// appearing mid-line; the assertion below guards the Writer
+// interface shape against drift.
+type prefixingWriter struct {
+	inner  io.Writer
+	prefix []byte
+}
+
+// Write composes the prefix with the incoming bytes into a single
+// Write on the inner writer. Returns len(p) on success so callers
+// see the "logical" count (they don't know about our prefix
+// bytes). Errors short-circuit; the inner writer is the error
+// surface.
+func (w *prefixingWriter) Write(p []byte) (int, error) {
+	combined := make([]byte, 0, len(w.prefix)+len(p))
+	combined = append(combined, w.prefix...)
+	combined = append(combined, p...)
+	if _, err := w.inner.Write(combined); err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}
+
+var _ io.Writer = (*prefixingWriter)(nil)
