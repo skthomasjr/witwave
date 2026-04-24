@@ -88,7 +88,160 @@ func newAgentCmd() *cobra.Command {
 	cmd.AddCommand(newAgentEventsCmd(f))
 	cmd.AddCommand(newAgentScaffoldCmd())
 	cmd.AddCommand(newAgentGitCmd(f))
+	cmd.AddCommand(newAgentBackendCmd(f))
 	return cmd
+}
+
+// ---------------------------------------------------------------------------
+// backend (attach / detach individual backends on an existing agent)
+// ---------------------------------------------------------------------------
+
+func newAgentBackendCmd(f *agentFlags) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "backend",
+		Short: "Add, remove, or inspect backends on an existing WitwaveAgent",
+		Long: "Manipulates the `spec.backends[]` array on a running agent's CR.\n" +
+			"Today covers `remove` only — `add` and `list` are Phase 3 follow-ups.\n" +
+			"For multi-backend agents declared at create time, use the repeatable\n" +
+			"`--backend` flag on `ww agent create` / `ww agent scaffold`.",
+	}
+	cmd.AddCommand(newAgentBackendRemoveCmd(f))
+	cmd.AddCommand(newAgentBackendRenameCmd(f))
+	return cmd
+}
+
+func newAgentBackendRenameCmd(f *agentFlags) *cobra.Command {
+	var (
+		noRepoRename  bool
+		commitMessage string
+	)
+	cmd := &cobra.Command{
+		Use:   "rename <agent> <old-name> <new-name>",
+		Short: "Rename a backend on a WitwaveAgent (both the CR and the repo folder)",
+		Long: "Renames a backend in three places, atomically:\n\n" +
+			"1. `spec.backends[<N>].name` on the CR.\n" +
+			"2. Every harness + per-backend `gitMappings[]` entry whose `src` or\n" +
+			"   `dest` path references the old name.\n" +
+			"3. When ww owns the inline backend.yaml (spec.config[0], scaffolded\n" +
+			"   at create time), regenerates it so `agents:` lists the new name\n" +
+			"   and all routing entries targeting the old name repoint at the new.\n\n" +
+			"Repo-side rename: when exactly one gitSync is wired AND --no-repo-\n" +
+			"rename isn't set, clones the repo, `git mv`s `.agents/<…>/.<old>/`\n" +
+			"to `.agents/<…>/.<new>/`, commits + pushes. Credentials inherit from\n" +
+			"the system the same way scaffold does (env token → gh auth → git\n" +
+			"credential helper → ssh agent).\n\n" +
+			"Refuses when:\n" +
+			"- old and new names match (nothing to do),\n" +
+			"- new name already exists on the agent (would overwrite),\n" +
+			"- new name isn't DNS-1123 compliant.\n\n" +
+			"Repo-side failure (clone / push) is non-fatal: the CR rename is\n" +
+			"preserved and a recovery recipe is printed.",
+		Args: cobra.ExactArgs(3),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runAgentBackendRename(cmd.Context(), f, args[0], args[1], args[2],
+				!noRepoRename, commitMessage)
+		},
+	}
+	bindAgentMutatingFlags(cmd, f)
+	cmd.Flags().BoolVar(&noRepoRename, "no-repo-rename", false,
+		"Rename the CR only; leave the repo folder alone for manual editing")
+	cmd.Flags().StringVar(&commitMessage, "commit-message", "",
+		"Custom commit message for the repo rename "+
+			"(default: \"Rename backend <old> → <new> for agent <name>\")")
+	return cmd
+}
+
+func runAgentBackendRename(ctx context.Context, f *agentFlags, name, oldName, newName string, repoRename bool, commitMessage string) error {
+	target, resolver, err := f.resolveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	cfg, err := resolver.REST()
+	if err != nil {
+		return err
+	}
+	ns := agent.ResolveNamespace(f.namespace, target.Namespace)
+	if f.namespace == "" {
+		fmt.Fprintf(os.Stdout, "Using namespace: %s (from kubeconfig context)\n", ns)
+	}
+	assumeYes := f.assumeYes || os.Getenv("WW_ASSUME_YES") == "true"
+	return agent.BackendRename(ctx, cfg, agent.BackendRenameOptions{
+		Agent:         name,
+		Namespace:     ns,
+		OldName:       oldName,
+		NewName:       newName,
+		RepoRename:    repoRename,
+		CommitMessage: commitMessage,
+		AssumeYes:     assumeYes,
+		DryRun:        f.dryRun,
+		Out:           os.Stdout,
+		In:            os.Stdin,
+	})
+}
+
+func newAgentBackendRemoveCmd(f *agentFlags) *cobra.Command {
+	var (
+		removeRepoFolder bool
+		commitMessage    string
+	)
+	cmd := &cobra.Command{
+		Use:   "remove <agent> <backend-name>",
+		Short: "Remove a backend from a WitwaveAgent (and optionally its repo folder)",
+		Long: "Drops the named backend from the agent's `spec.backends[]` array.\n\n" +
+			"When backend.yaml is inline (ww-managed via spec.config[0], the default\n" +
+			"for agents created via `ww agent create`), it is regenerated to exclude\n" +
+			"the removed backend and route every concern to the new primary (first\n" +
+			"remaining backend). Any user-customised routing in the inline file is\n" +
+			"lost; re-edit after the remove lands.\n\n" +
+			"When backend.yaml is gitSync-managed (a harness-level gitMapping mounts\n" +
+			".witwave/ from the repo), spec.config is left alone. Pass --remove-repo-\n" +
+			"folder to automate the repo-side cleanup: clone, git rm -r the\n" +
+			"`.agents/<…>/.<backend>/` folder, rewrite backend.yaml to exclude the\n" +
+			"removed backend, commit + push. Without the flag, the repo's copy is\n" +
+			"preserved and the user is responsible for editing it.\n\n" +
+			"Refuses to remove the last backend — the CRD requires at least one.\n" +
+			"Operator reconciles the pod to drop the sidecar on next reconcile.",
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runAgentBackendRemove(cmd.Context(), f, args[0], args[1],
+				removeRepoFolder, commitMessage)
+		},
+	}
+	bindAgentMutatingFlags(cmd, f)
+	cmd.Flags().BoolVar(&removeRepoFolder, "remove-repo-folder", false,
+		"Also remove the `.agents/<…>/.<backend>/` folder from the gitSync repo "+
+			"and rewrite backend.yaml to drop references to the backend")
+	cmd.Flags().StringVar(&commitMessage, "commit-message", "",
+		"Custom commit message for the repo removal "+
+			"(default: \"Remove backend <name> for agent <agent>\")")
+	return cmd
+}
+
+func runAgentBackendRemove(ctx context.Context, f *agentFlags, name, backendName string, removeRepoFolder bool, commitMessage string) error {
+	target, resolver, err := f.resolveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	cfg, err := resolver.REST()
+	if err != nil {
+		return err
+	}
+	ns := agent.ResolveNamespace(f.namespace, target.Namespace)
+	if f.namespace == "" {
+		fmt.Fprintf(os.Stdout, "Using namespace: %s (from kubeconfig context)\n", ns)
+	}
+	assumeYes := f.assumeYes || os.Getenv("WW_ASSUME_YES") == "true"
+	return agent.BackendRemove(ctx, cfg, agent.BackendRemoveOptions{
+		Agent:            name,
+		Namespace:        ns,
+		BackendName:      backendName,
+		RemoveRepoFolder: removeRepoFolder,
+		CommitMessage:    commitMessage,
+		AssumeYes:        assumeYes,
+		DryRun:           f.dryRun,
+		Out:              os.Stdout,
+		In:               os.Stdin,
+	})
 }
 
 // ---------------------------------------------------------------------------
