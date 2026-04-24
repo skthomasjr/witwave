@@ -2479,6 +2479,14 @@ class AgentExecutor(A2AAgentExecutor):
         ``_load_allowed_from_settings`` already logs and returns ``None`` in
         that case.
         """
+        # MUST be declared at the top of the function scope, before any
+        # read of ``ALLOWED_TOOLS`` in the diff/apply blocks below
+        # (Python: "name used prior to global declaration" SyntaxError
+        # otherwise). Required because we rebind the name on reload at
+        # line ~2546 after #1491; without the hoist, the earlier reads
+        # bind ALLOWED_TOOLS as a local and the module fails to parse,
+        # crash-looping the pod. See #1491 regression.
+        global ALLOWED_TOOLS
         if _tools_source == "env":
             logger.info(
                 "settings_watcher: ALLOWED_TOOLS env var is set — settings.json edits will be ignored "
@@ -2542,8 +2550,9 @@ class AgentExecutor(A2AAgentExecutor):
                             # concurrent _make_options read could observe
                             # that transient state. Reference reassignment
                             # is atomic in CPython so readers always see
-                            # the old or new list in full.
-                            global ALLOWED_TOOLS
+                            # the old or new list in full. The `global`
+                            # declaration that authorises this rebind
+                            # is at the top of settings_watcher above.
                             ALLOWED_TOOLS = list(new_list)
                             try:
                                 from metrics import backend_allowed_tools_reload_total as _bar
