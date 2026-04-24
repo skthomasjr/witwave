@@ -8,6 +8,25 @@ section of each entry.
 
 ## [Unreleased]
 
+## [0.7.12] — 2026-04-24
+
+### Changed
+
+- **`ww tui` · logs default to aggregate across all containers** —
+  Enter on a row now opens in "all containers" mode rather than
+  dropping straight into harness. Fans out one tail goroutine per
+  real container (harness + each declared backend); each writes
+  through an `io.Writer` decorator that prepends `[<container>] `
+  so the interleaved body reads as
+  `[harness] routing → echo` / `[echo] received prompt "ping"`.
+  `c` still cycles, but the rotation now starts with the aggregate
+  view and then proceeds through each individual container
+  (`all → harness → echo → … → all`). One shared cancel context
+  tears every tail down atomically on ESC / cycle — no goroutine
+  leaks on rapid key-mashing. Error reporting stamps the failing
+  container name in aggregate mode so you can tell which tail died
+  when the others are healthy.
+
 ## [0.7.11] — 2026-04-24
 
 ### Added
