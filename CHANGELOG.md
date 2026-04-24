@@ -8,7 +8,25 @@ section of each entry.
 
 ## [Unreleased]
 
+## [0.7.11] — 2026-04-24
+
 ### Added
+
+- **`ww tui` · per-agent logs drill-down (Enter on a row)** —
+  replaces the "drill down (soon)" stub with a live log-tailing
+  view. Header shows the agent identity + current container +
+  stream status; body autoscrolls new log lines from the
+  apiserver's `/logs?follow=true` stream; footer lists the two
+  navigation keys. `c` cycles through the agent's containers
+  (harness + each declared backend); ESC cancels the stream and
+  returns to the list with the previously-selected row still
+  highlighted. Reuses `agent.Logs` under the hood so buffer size,
+  SinceTime/TailLines, and multi-pod fan-in semantics match the
+  CLI exactly. Writes from the log goroutine are copied out of
+  bufio's reusable scanner buffer and queued onto tview's UI
+  thread via QueueUpdateDraw — no interleaved rendering.
+  MaxLines capped at 5000 for multi-hour tails; above that,
+  `kubectl logs --since` is the right tool.
 
 - **`ww agent backend add <agent> <name>[:<type>]`** — completes the
   backend-lifecycle trio (add / remove / rename) that was missing
@@ -48,6 +66,19 @@ section of each entry.
   was re-printing the same message, producing doubled log output.
   No information lost — `scope.repoDisplay` and `ref.Display`
   resolve to the same string.
+
+### Fixed
+
+- **claude backend: SyntaxError on import at `executor.py:2546`**
+  — #1491's rebind fix placed `global ALLOWED_TOOLS` mid-function
+  (inside `settings_watcher`), AFTER earlier reads of the name.
+  Python requires any `global` to come before every reference in
+  the same scope, so the module failed to parse at all and every
+  claude sidecar built from the #1491 merge crash-looped at
+  container start. Hoisted the declaration to the top of
+  `settings_watcher` (just after the docstring) and dropped the
+  duplicate at the rebind site. `py_compile` clean; new
+  `claude:latest` image built from this release picks up the fix.
 
 ## [0.7.10] — 2026-04-24
 
