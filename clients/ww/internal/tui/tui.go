@@ -64,11 +64,15 @@ func Run(version string, target *k8s.Target, cfg *rest.Config, contextErr string
 	app := tview.NewApplication()
 	pages := tview.NewPages()
 
-	// Global quit bindings work from every page. Page-specific
-	// handlers install themselves on the primitives they own.
+	// Global quit bindings. Ctrl-C and 'q' always exit the app from
+	// every page. ESC is DELIBERATELY not handled here — pages use
+	// it as a "go back / close modal" affordance (logs view → list,
+	// create-agent modal → list) and catching it at the app level
+	// would swallow the keystroke before the page's InputCapture
+	// runs. Users who need an emergency bail have Ctrl-C.
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
-		case tcell.KeyCtrlC, tcell.KeyEscape:
+		case tcell.KeyCtrlC:
 			app.Stop()
 			return nil
 		case tcell.KeyRune:
@@ -188,6 +192,13 @@ func newAgentListPage(app *tview.Application, version string, target *k8s.Target
 		switch event.Key() {
 		case tcell.KeyEnter:
 			ctrl.openAgentLogs()
+			return nil
+		case tcell.KeyEscape:
+			// ESC at the list level = quit. Inner pages (logs,
+			// create-agent modal) use ESC as "go back," but the
+			// list is the root — there's nowhere to go back to,
+			// so preserve kubectl/k9s muscle memory here.
+			ctrl.app.Stop()
 			return nil
 		case tcell.KeyRune:
 			switch event.Rune() {
