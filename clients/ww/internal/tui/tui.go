@@ -191,7 +191,12 @@ func newAgentListPage(app *tview.Application, version string, target *k8s.Target
 	ctrl.table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
 		case tcell.KeyEnter:
-			ctrl.openAgentLogs()
+			// Reserved for the per-agent details view (status,
+			// events, conversation log) — when it lands, Enter
+			// will be the obvious "drill in" key. For now it
+			// flashes a short hint in the footer so the keystroke
+			// does the obvious thing rather than silently no-op.
+			ctrl.showDetailsStub()
 			return nil
 		case tcell.KeyEscape:
 			// ESC at the list level = quit. Inner pages (logs,
@@ -216,6 +221,9 @@ func newAgentListPage(app *tview.Application, version string, target *k8s.Target
 				return nil
 			case 'd':
 				ctrl.openDeleteAgent()
+				return nil
+			case 'l':
+				ctrl.openAgentLogs()
 				return nil
 			}
 		}
@@ -468,8 +476,35 @@ func (c *agentListController) renderEmpty(msg string) {
 // the same keys work regardless of snapshot state.
 func (c *agentListController) renderFooter() {
 	c.footer.SetText(
-		"[#808080]↑/↓ move · a add · d delete · r refresh · ↵ logs · q/esc quit[-:-:-]",
+		"[#808080]↑/↓ move · a add · d delete · l logs · r refresh · ↵ details (soon) · q/esc quit[-:-:-]",
 	)
+}
+
+// showDetailsStub is what Enter does until the per-agent details
+// view lands (status / events / conversation log / send-prompt
+// tabs). Flashes a 3-second hint in the footer pointing users at
+// the keys that DO work today, then restores the canonical
+// keybinding strip. AfterFunc is fine here — SetText on
+// tview.TextView is goroutine-safe and we route through
+// QueueUpdateDraw on restoration so the repaint stays on the UI
+// thread.
+func (c *agentListController) showDetailsStub() {
+	c.mu.Lock()
+	snap := c.snapshot
+	c.mu.Unlock()
+
+	row, _ := c.table.GetSelection()
+	if row <= 0 || row-1 >= len(snap) {
+		return
+	}
+	s := snap[row-1]
+	c.footer.SetText(fmt.Sprintf(
+		"[#d7af00]details view for %s/%s coming soon — try `l` for logs or `ww agent status %s -n %s` from the CLI[-:-:-]",
+		s.Namespace, s.Name, s.Name, s.Namespace,
+	))
+	time.AfterFunc(3*time.Second, func() {
+		c.app.QueueUpdateDraw(c.renderFooter)
+	})
 }
 
 // ---------------------------------------------------------------------------
