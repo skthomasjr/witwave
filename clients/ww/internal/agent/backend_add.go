@@ -352,7 +352,6 @@ func addRepoFolder(ctx context.Context, cr *unstructured.Unstructured, opts Back
 	}
 	defer os.RemoveAll(tmp)
 
-	fmt.Fprintf(opts.Out, "Cloning %s …\n", scope.repoDisplay)
 	repo, _, err := cloneOrInit(ctx, tmp, ref, scope.branch, auth, opts.Out)
 	if err != nil {
 		return err

@@ -355,7 +355,6 @@ func renameRepoFolder(ctx context.Context, opts BackendRenameOptions, scope repo
 	}
 	defer os.RemoveAll(tmp)
 
-	fmt.Fprintf(opts.Out, "Cloning %s …\n", scope.repoDisplay)
 	repo, _, err := cloneOrInit(ctx, tmp, ref, scope.branch, auth, opts.Out)
 	if err != nil {
 		return err
