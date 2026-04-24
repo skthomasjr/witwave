@@ -53,6 +53,15 @@ type CreateOptions struct {
 	// joins the namespace-wide manifest before the label lands.
 	Team string
 
+	// BackendAuth carries the resolved --auth / --auth-from-env /
+	// --auth-secret flag values, one per backend the user wants to
+	// wire credentials for. Backends not referenced here create
+	// without a credentials field (fine for echo, a footgun for
+	// claude/codex/gemini — the operator will still start the pod,
+	// but the backend will error on first request with missing-key
+	// diagnostics).
+	BackendAuth []BackendAuthResolver
+
 	// Wait controls whether we block after Create until the CR's
 	// status.phase flips to Ready. Timeout bounds the wait.
 	Wait    bool
@@ -89,16 +98,11 @@ func Create(
 		backends = []BackendSpec{{Name: DefaultBackend, Type: DefaultBackend, Port: BackendPort(0)}}
 	}
 
-	obj, err := Build(BuildOptions{
-		Name:       opts.Name,
-		Namespace:  opts.Namespace,
-		Backends:   backends,
-		CLIVersion: opts.CLIVersion,
-		CreatedBy:  opts.CreatedBy,
-		Team:       opts.Team,
-	})
-	if err != nil {
-		return fmt.Errorf("build agent CR: %w", err)
+	// Validate every --auth* flag targets a real backend before we
+	// touch the cluster. Cheap to do up-front; saves the user from
+	// "typed `clade` instead of `claude`" confusion after a partial run.
+	if err := validateBackendAuthTargets(opts.BackendAuth, backends); err != nil {
+		return err
 	}
 
 	plan := []k8s.PlanLine{
@@ -110,6 +114,15 @@ func Create(
 		plan = append(plan, k8s.PlanLine{
 			Key:   "Team",
 			Value: fmt.Sprintf("%q (joins witwave-manifest-%s)", opts.Team, opts.Team),
+		})
+	}
+	// One line per backend that has credentials wired — lets the user
+	// see exactly what will be referenced (or minted) before they
+	// confirm, including which env var(s) the CLI is about to read.
+	for _, r := range opts.BackendAuth {
+		plan = append(plan, k8s.PlanLine{
+			Key:   fmt.Sprintf("Auth (%s)", r.Backend),
+			Value: summariseBackendAuth(r, opts.Name),
 		})
 	}
 	if IsDevVersion(opts.CLIVersion) {
@@ -139,6 +152,42 @@ func Create(
 		if err := ensureNamespace(ctx, cfg, opts.Namespace, opts.Out); err != nil {
 			return err
 		}
+	}
+
+	// Resolve per-backend credentials AFTER the namespace exists (so
+	// ensureNamespace can precede us) but BEFORE Build(). The CR
+	// carries credentials.existingSecret, so we need the Secret names
+	// before constructing the object. Minting runs even when no
+	// Secret needs creation (existing-secret mode just verifies the
+	// Secret is present).
+	if len(opts.BackendAuth) > 0 {
+		k8sClient, err := newKubernetesClient(cfg)
+		if err != nil {
+			return err
+		}
+		for i := range backends {
+			resolver := resolveBackendAuthFor(opts.BackendAuth, backends[i].Name)
+			if resolver == nil {
+				continue
+			}
+			secretName, err := resolver.resolve(ctx, k8sClient, opts.Namespace, opts.Name, backends[i].Type)
+			if err != nil {
+				return err
+			}
+			backends[i].CredentialSecret = secretName
+		}
+	}
+
+	obj, err := Build(BuildOptions{
+		Name:       opts.Name,
+		Namespace:  opts.Namespace,
+		Backends:   backends,
+		CLIVersion: opts.CLIVersion,
+		CreatedBy:  opts.CreatedBy,
+		Team:       opts.Team,
+	})
+	if err != nil {
+		return fmt.Errorf("build agent CR: %w", err)
 	}
 
 	created, err := dyn.Resource(GVR()).Namespace(opts.Namespace).Create(ctx, obj, metav1.CreateOptions{})
@@ -212,6 +261,49 @@ func ensureNamespace(ctx context.Context, cfg *rest.Config, name string, out io.
 // summariseBackends returns a compact "name:type/port" summary for the
 // preflight banner. `echo-1:echo/8001, echo-2:echo/8002` — enough
 // information for the user to confirm the shape at a glance.
+// summariseBackendAuth renders one line for the preflight banner
+// describing how a backend's credentials will be resolved. Deliberately
+// non-secret: env var NAMES land in the log, values never.
+func summariseBackendAuth(r BackendAuthResolver, agentName string) string {
+	switch r.Mode {
+	case BackendAuthProfile:
+		return fmt.Sprintf(
+			"profile %q → mint Secret %q from env (%s)",
+			r.Profile,
+			backendCredentialSecretName(agentName, r.Backend),
+			strings.Join(envVarsForProfile(r), ", "),
+		)
+	case BackendAuthFromEnv:
+		return fmt.Sprintf(
+			"from env → mint Secret %q from (%s)",
+			backendCredentialSecretName(agentName, r.Backend),
+			strings.Join(r.EnvVars, ", "),
+		)
+	case BackendAuthExistingSecret:
+		return fmt.Sprintf("reference existing Secret %q (verified, not modified)", r.ExistingSecret)
+	}
+	return "(no auth — backend will start without credentials)"
+}
+
+// envVarsForProfile looks up the env var list for a resolver in profile
+// mode. Split out so summariseBackendAuth can describe the plan without
+// triggering the resolver's error-surface for missing env vars — the
+// real read happens later in resolve().
+func envVarsForProfile(r BackendAuthResolver) []string {
+	// The backend-type is not on the resolver (resolvers are keyed by
+	// backend NAME, not type), so the banner search scans every known
+	// catalog entry for a matching profile name. Collision between two
+	// backend types on profile name would produce a stale banner, but
+	// the catalog is tiny and profiles are already namespaced by
+	// backend in ParseBackendAuth's validation.
+	for _, profiles := range credentialProfiles {
+		if p, ok := profiles[r.Profile]; ok {
+			return p.EnvVars
+		}
+	}
+	return []string{"?"}
+}
+
 func summariseBackends(backends []BackendSpec) string {
 	if len(backends) == 0 {
 		return "<none — default echo>"

@@ -124,14 +124,20 @@ func Build(opts BuildOptions) (*unstructured.Unstructured, error) {
 	specBackends := make([]interface{}, 0, len(backends))
 	for _, b := range backends {
 		img := BackendImage(b.Type, opts.CLIVersion)
-		specBackends = append(specBackends, map[string]interface{}{
+		entry := map[string]interface{}{
 			"name": b.Name,
 			"port": int64(b.Port),
 			"image": map[string]interface{}{
 				"repository": splitRepo(img),
 				"tag":        splitTag(img),
 			},
-		})
+		}
+		if b.CredentialSecret != "" {
+			entry["credentials"] = map[string]interface{}{
+				"existingSecret": b.CredentialSecret,
+			}
+		}
+		specBackends = append(specBackends, entry)
 	}
 
 	spec := map[string]interface{}{

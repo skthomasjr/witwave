@@ -262,17 +262,53 @@ wired.
 
 ### Multi-model consensus for real
 
-When you have API keys, the shape is the same:
+When you have API keys in your shell, credentials are a one-flag-per-
+backend add. `--auth <backend>=<profile>` reads the conventional env
+vars for that profile + mints one `<agent>-<backend>-credentials`
+Secret per backend (labelled `managed-by: ww` so `delete --purge`
+reaps it):
 
 ```bash
+# source .env first so the tokens land in your shell
+source .env
+
+# Claude via the Claude Code OAuth token (reads $CLAUDE_CODE_OAUTH_TOKEN)
+ww agent create research \
+    --namespace witwave \
+    --create-namespace \
+    --backend claude \
+    --auth claude=oauth
+
+# Claude via the Anthropic API key (reads $ANTHROPIC_API_KEY)
 ww agent create research \
     --namespace witwave \
     --backend claude \
-    --backend codex
-# (requires ANTHROPIC_API_KEY + OPENAI_API_KEY Secrets per-backend;
-#  future `ww agent backend set --api-key-secret ...` verb will make
-#  this one command.)
+    --auth claude=api-key
+
+# Multi-backend: repeat --auth per backend
+ww agent create consensus \
+    --namespace witwave \
+    --backend claude \
+    --backend codex \
+    --auth claude=oauth \
+    --auth codex=openai
 ```
+
+Three credential flags, all repeatable, all scoped per backend — pick
+ONE per backend:
+
+| Flag | Shape | When to use |
+|---|---|---|
+| `--auth` | `<backend>=<profile>` | Named profile reads conventional env var(s). Known profiles: `claude: api-key \| oauth`. |
+| `--auth-from-env` | `<backend>=<VAR>[,VAR2,...]` | Escape hatch: mint a Secret from arbitrary env vars. Secret keys match the var names verbatim. |
+| `--auth-secret` | `<backend>=<secret-name>` | Reference a Secret you already created (verified, never modified). Production default for ops with their own rotation story. |
+
+`--auth-secret` is the production path — pre-create a Secret with
+`kubectl create secret generic ... --from-literal=<KEY>=<value>` and
+rotate it on your own schedule; ww just references it. The mint
+variants (`--auth`, `--auth-from-env`) are dev-loop ergonomics — the
+minted Secret lives on the cluster forever until someone rotates or
+deletes it.
 
 ---
 

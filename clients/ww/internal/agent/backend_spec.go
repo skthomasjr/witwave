@@ -36,6 +36,14 @@ type BackendSpec struct {
 	// to recompute it in every codepath that writes it into the CR
 	// or the inline backend.yaml.
 	Port int32
+
+	// CredentialSecret, when non-empty, stamps
+	// `spec.backends[].credentials.existingSecret` on the generated CR.
+	// The operator wires this Secret into the backend container's
+	// envFrom at reconcile time, so whatever keys live in the Secret
+	// become env vars visible to the backend. Populated by Create's
+	// auth-resolution phase (see BackendAuthResolver.resolve).
+	CredentialSecret string
 }
 
 // ParseBackendSpecs converts the repeatable `--backend` flag values

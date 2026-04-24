@@ -346,6 +346,36 @@ With no flags, `ww agent create <name>` deploys the **echo backend** — a zero-
 response quoting the caller's prompt (see [`backends/echo/`](../../backends/echo/README.md)). Pick a real LLM backend
 with `--backend claude|codex|gemini`; the chosen backend's image is published at the same version as the `ww` binary.
 
+### Backend credentials — three paths
+
+LLM backends need an API key or OAuth token. `ww agent create` resolves per-backend credentials via
+three repeatable flags (pick ONE per backend):
+
+| Flag | Shape | Behavior |
+|---|---|---|
+| `--auth` | `<backend>=<profile>` | Named profile reads conventional env var(s) from the shell + mints a `<agent>-<backend>-credentials` Secret. MVP profiles: `claude: api-key \| oauth`. |
+| `--auth-from-env` | `<backend>=<VAR>[,VAR2,...]` | Escape hatch: mint a Secret from arbitrary env vars. Secret keys match var names verbatim. |
+| `--auth-secret` | `<backend>=<secret-name>` | Reference an existing Secret (verified, never modified). Production default. |
+
+```bash
+# OAuth path — reads $CLAUDE_CODE_OAUTH_TOKEN from the shell
+source .env && ww agent create iris --backend claude --auth claude=oauth
+
+# API-key path — reads $ANTHROPIC_API_KEY
+ww agent create iris --backend claude --auth claude=api-key
+
+# Pre-existing Secret — production path with out-of-band rotation
+ww agent create iris --backend claude --auth-secret claude=my-anthropic-pat
+
+# Multi-backend: one --auth per backend
+ww agent create consensus --backend claude --backend codex \
+  --auth claude=oauth --auth codex=openai
+```
+
+Minted Secrets carry `app.kubernetes.io/managed-by: ww` so `ww agent delete --purge` reaps them
+label-gated. Hand-rolled Secrets at the same name are refused — use `--auth-secret` to reference
+them instead, or `--auth-from-env` with a non-colliding name.
+
 Namespace handling follows DESIGN.md NS-1..5:
 
 - No `--namespace` → the kubeconfig context's namespace (falls back to `witwave`, the ww-wide default).

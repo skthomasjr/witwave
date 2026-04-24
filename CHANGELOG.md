@@ -10,6 +10,22 @@ section of each entry.
 
 ### Added
 
+- **`ww agent create --auth / --auth-from-env / --auth-secret`** —
+  three repeatable, per-backend credential flags that close the last
+  "CLI-only" gap. Previously users had to `kubectl create secret` and
+  `kubectl patch` the CR after `ww agent create`; now a Claude agent
+  with an OAuth token or API key is a single invocation:
+  `ww agent create iris --backend claude --auth claude=oauth` reads
+  `$CLAUDE_CODE_OAUTH_TOKEN` from the shell, mints a ww-labelled
+  Secret in the namespace, and stamps `spec.backends[].credentials.
+  existingSecret` on the CR so the operator wires it into the backend
+  container's envFrom at reconcile time. Profiles ship for claude
+  (`api-key`, `oauth`); more per-backend profiles and Vertex/Bedrock
+  shapes land as follow-ups. Pre-existing Secrets are referenced
+  verbatim via `--auth-secret` (verified, never modified). Arbitrary
+  env vars are liftable via `--auth-from-env` for custom setups not
+  covered by a named profile.
+
 - **`ww agent team {join, leave, list, show}`** — first-class CLI
   surface for the operator's existing team-membership plumbing. Team
   membership is the label `witwave.ai/team` on the WitwaveAgent CR;

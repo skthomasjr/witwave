@@ -780,6 +780,9 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 		timeout         time.Duration
 		createNamespace bool
 		team            string
+		authProfiles    []string
+		authFromEnv     []string
+		authSecrets     []string
 	)
 	cmd := &cobra.Command{
 		Use:   "create <name>",
@@ -802,7 +805,11 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runAgentCreate(cmd.Context(), f, args[0], specs, !noWait, timeout, createNamespace, team)
+			auth, err := agent.ParseBackendAuth(authProfiles, authFromEnv, authSecrets)
+			if err != nil {
+				return err
+			}
+			return runAgentCreate(cmd.Context(), f, args[0], specs, !noWait, timeout, createNamespace, team, auth)
 		},
 	}
 	bindAgentMutatingFlags(cmd, f)
@@ -823,10 +830,23 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 	cmd.Flags().StringVar(&team, "team", "",
 		"Stamp witwave.ai/team=<team> at creation (avoids a follow-up `ww agent team join`). "+
 			"Omit to leave the agent in the namespace-wide manifest.")
+	cmd.Flags().StringArrayVar(&authProfiles, "auth", nil,
+		fmt.Sprintf(
+			"Per-backend auth profile. Repeatable. Form: <backend>=<profile>.\n"+
+				"Profile reads conventional env var(s) from the shell + mints a K8s Secret.\n"+
+				"Known profiles: %s",
+			agent.KnownCredentialProfiles(),
+		))
+	cmd.Flags().StringArrayVar(&authFromEnv, "auth-from-env", nil,
+		"Escape hatch: mint a K8s Secret from arbitrary env vars. Repeatable. "+
+			"Form: <backend>=<VAR1>[,VAR2,...]. Secret keys match the env var names.")
+	cmd.Flags().StringArrayVar(&authSecrets, "auth-secret", nil,
+		"Reference an existing K8s Secret (verified, not modified). Repeatable. "+
+			"Form: <backend>=<secret-name>.")
 	return cmd
 }
 
-func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []agent.BackendSpec, wait bool, timeout time.Duration, createNamespace bool, team string) error {
+func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []agent.BackendSpec, wait bool, timeout time.Duration, createNamespace bool, team string, backendAuth []agent.BackendAuthResolver) error {
 	target, resolver, err := f.resolveTarget(ctx)
 	if err != nil {
 		return err
@@ -850,6 +870,7 @@ func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []
 		Timeout:         timeout,
 		CreateNamespace: createNamespace,
 		Team:            team,
+		BackendAuth:     backendAuth,
 		Out:             os.Stdout,
 		In:              os.Stdin,
 	})
