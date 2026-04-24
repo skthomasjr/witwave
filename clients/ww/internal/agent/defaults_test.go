@@ -65,7 +65,7 @@ func TestResolveNamespace(t *testing.T) {
 	}{
 		{"explicit", "ctx-ns", "explicit"},
 		{"", "ctx-ns", "ctx-ns"},
-		{"", "", "default"},
+		{"", "", DefaultAgentNamespace},
 		{"explicit", "", "explicit"},
 	}
 	for _, tc := range cases {

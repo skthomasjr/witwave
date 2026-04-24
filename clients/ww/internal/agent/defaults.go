@@ -128,16 +128,47 @@ func IsDevVersion(cliVersion string) bool {
 	return t == "" || t == "dev" || t == "unknown"
 }
 
+// DefaultAgentNamespace is the ww-specific fallback namespace for every
+// `ww agent *` operation when neither --namespace nor the kubeconfig
+// context pin one. Chosen to keep ww-managed resources out of the `default`
+// namespace by default — `default` is a shared free-for-all and ww agents
+// benefit from a dedicated blast radius.
+const DefaultAgentNamespace = "witwave"
+
 // ResolveNamespace picks the namespace for an `ww agent` operation.
-// Precedence matches kubectl: explicit flag → context's configured
-// namespace → "default". Callers MUST log the resolved value so the
+// Precedence: explicit flag → context's configured namespace →
+// DefaultAgentNamespace. Callers MUST log the resolved value so the
 // user sees where an unnamed invocation landed (DESIGN.md NS-2).
 func ResolveNamespace(flagValue, contextNS string) string {
+	ns, _ := ResolveNamespaceWithSource(flagValue, contextNS)
+	return ns
+}
+
+// NamespaceSource identifies where a resolved namespace came from. Used
+// by callers that log the resolution so the message can distinguish
+// "we picked this from your kubeconfig context" from "we fell back to
+// the ww default because nothing else was configured."
+type NamespaceSource int
+
+const (
+	// NamespaceFromFlag means the user passed --namespace / -n.
+	NamespaceFromFlag NamespaceSource = iota
+	// NamespaceFromContext means the kubeconfig context pinned a namespace.
+	NamespaceFromContext
+	// NamespaceFromDefault means nothing was pinned; ww fell back to
+	// DefaultAgentNamespace.
+	NamespaceFromDefault
+)
+
+// ResolveNamespaceWithSource mirrors ResolveNamespace but additionally
+// returns the source of the resolved value — so log lines can read
+// "(from kubeconfig context)" vs "(ww default)" accurately.
+func ResolveNamespaceWithSource(flagValue, contextNS string) (string, NamespaceSource) {
 	if flagValue != "" {
-		return flagValue
+		return flagValue, NamespaceFromFlag
 	}
 	if contextNS != "" {
-		return contextNS
+		return contextNS, NamespaceFromContext
 	}
-	return "default"
+	return DefaultAgentNamespace, NamespaceFromDefault
 }

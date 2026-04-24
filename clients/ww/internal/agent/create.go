@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -40,6 +41,11 @@ type CreateOptions struct {
 	AssumeYes bool
 	// DryRun renders the banner and exits without calling the API server.
 	DryRun bool
+
+	// CreateNamespace, when true, ensures the target namespace exists
+	// before creating the CR (creates it if missing, no-op if it already
+	// exists). Mirrors `helm install --create-namespace` semantics.
+	CreateNamespace bool
 
 	// Wait controls whether we block after Create until the CR's
 	// status.phase flips to Ready. Timeout bounds the wait.
@@ -116,6 +122,12 @@ func Create(
 		return fmt.Errorf("build dynamic client: %w", err)
 	}
 
+	if opts.CreateNamespace {
+		if err := ensureNamespace(ctx, cfg, opts.Namespace, opts.Out); err != nil {
+			return err
+		}
+	}
+
 	created, err := dyn.Resource(GVR()).Namespace(opts.Namespace).Create(ctx, obj, metav1.CreateOptions{})
 	if err != nil {
 		if apierrors.IsAlreadyExists(err) {
@@ -147,6 +159,40 @@ func Create(
 	fmt.Fprintln(opts.Out, "Next steps:")
 	fmt.Fprintln(opts.Out, "  ww agent status "+opts.Name+"  # see pod + reconcile state")
 	fmt.Fprintln(opts.Out, "  ww agent delete "+opts.Name+"  # clean up")
+	return nil
+}
+
+// ensureNamespace creates the target namespace if it doesn't already
+// exist. Idempotent: a pre-existing namespace is treated as success.
+// Respects the clientFactory indirection so tests can swap in a fake
+// kubernetes.Interface.
+func ensureNamespace(ctx context.Context, cfg *rest.Config, name string, out io.Writer) error {
+	k8sClient, err := newKubernetesClient(cfg)
+	if err != nil {
+		return err
+	}
+	_, err = k8sClient.CoreV1().Namespaces().Get(ctx, name, metav1.GetOptions{})
+	if err == nil {
+		return nil // already exists
+	}
+	if !apierrors.IsNotFound(err) {
+		return fmt.Errorf("check namespace %q: %w", name, err)
+	}
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+			Labels: map[string]string{
+				LabelManagedBy: LabelManagedByWW,
+			},
+		},
+	}
+	if _, err := k8sClient.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{}); err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			return nil // race: created between our Get and Create
+		}
+		return fmt.Errorf("create namespace %q: %w", name, err)
+	}
+	fmt.Fprintf(out, "Created namespace %s (labelled %s=%s).\n", name, LabelManagedBy, LabelManagedByWW)
 	return nil
 }
 

@@ -87,21 +87,22 @@ cluster-wide.
 ## 2. Your first agent (hello world)
 
 ```bash
-ww agent create hello
+ww agent create hello --create-namespace
 ```
 
 Expected output:
 
 ```
-Using namespace: default (from kubeconfig context)
+Using namespace: witwave (ww default)
 
 Target cluster:  docker-desktop  (context: docker-desktop)
-Namespace:       default
+Namespace:       witwave
 Action:          create WitwaveAgent "hello"
 Backends:        echo/8001
 Harness image:   ghcr.io/skthomasjr/images/harness:0.7.7
 
-Created WitwaveAgent hello in namespace default (uid=...)
+Created namespace witwave (labelled app.kubernetes.io/managed-by=ww).
+Created WitwaveAgent hello in namespace witwave (uid=...)
 Waiting up to 2m0s for agent to report Ready...
   phase: Pending
   phase: Ready
@@ -111,9 +112,14 @@ Agent hello is ready.
 
 **What just happened:**
 
-- `ww` created a `WitwaveAgent` custom resource in your context's
-  default namespace (ww always echoes which namespace it used when
-  you didn't pass `-n`).
+- `ww` resolved the target namespace to `witwave` — the ww-wide default
+  when neither `-n` nor your kubeconfig context pins one. (ww always
+  echoes which namespace it landed in; the parenthetical tells you the
+  source: `(from kubeconfig context)` vs `(ww default)`.)
+- `--create-namespace` provisioned the `witwave` namespace on first
+  use, carrying the `app.kubernetes.io/managed-by: ww` label so teardown
+  tooling can tell ww-created namespaces from hand-authored ones.
+  Subsequent runs skip the creation.
 - The CR declared one backend — the `echo` stub, which needs no API
   keys — on port 8001.
 - The operator reconciled the CR into a pod with two containers
@@ -322,14 +328,14 @@ ww agent git add consensus --repo ... --auth-secret my-github-pat
 Expected output (Option A):
 
 ```
-Action:    attach gitSync "my-witwave-config" to WitwaveAgent "consensus" in default
+Action:    attach gitSync "my-witwave-config" to WitwaveAgent "consensus" in witwave
   gitSync  "my-witwave-config"  repo=<you>/my-witwave-config  ref=<remote default>  period=60s
     credentials: minted Secret "consensus-git-credentials" from `gh auth token`
   mapping   .agents/consensus/.witwave/ → /home/agent/.witwave/ (harness)
   mapping   .agents/consensus/.echo-1/ → /home/agent/.echo-1/ (backend)
   mapping   .agents/consensus/.echo-2/ → /home/agent/.echo-2/ (backend)
 
-Attached gitSync "my-witwave-config" to WitwaveAgent default/consensus.
+Attached gitSync "my-witwave-config" to WitwaveAgent witwave/consensus.
 The operator will reconcile a git-sync sidecar shortly.
 ```
 
@@ -393,11 +399,11 @@ ww agent backend rename consensus echo-2 echo-backup
 Expected:
 
 ```
-Action:    rename backend "echo-2" → "echo-backup" on WitwaveAgent "consensus" in default
+Action:    rename backend "echo-2" → "echo-backup" on WitwaveAgent "consensus" in witwave
   CR:     spec.backends[].name + gitMappings + inline backend.yaml
   Repo:   <you>/my-witwave-config/echo-2/ → <you>/my-witwave-config/echo-backup/  on ... (branch main)
 
-Renamed backend "echo-2" → "echo-backup" on WitwaveAgent default/consensus.
+Renamed backend "echo-2" → "echo-backup" on WitwaveAgent witwave/consensus.
 Cloning ... Committed ... Pushing main ...
 ```
 
@@ -424,12 +430,12 @@ ww agent backend remove consensus echo-backup --remove-repo-folder
 Expected:
 
 ```
-Action:    remove backend "echo-backup" from WitwaveAgent "consensus" in default
+Action:    remove backend "echo-backup" from WitwaveAgent "consensus" in witwave
   backend   "echo-backup" (removed)
   remaining [echo-1]
   backend.yaml (gitSync-managed) — edit the repo's file manually to drop references to echo-backup
 
-Removed backend "echo-backup" from WitwaveAgent default/consensus.
+Removed backend "echo-backup" from WitwaveAgent witwave/consensus.
 Cloning ... Committed: Remove backend echo-backup for agent consensus ... Pushed main.
 ```
 

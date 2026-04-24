@@ -23,17 +23,33 @@
 #
 #     WW_BIN          path/name of the ww binary (default: ww)
 #     WW_SMOKE_NS     namespace to create the agent in
-#                     (default: kubeconfig context's ns, else `default`)
+#                     (default: `witwave` — the ww default). Always
+#                     passed explicitly to every ww invocation; the
+#                     script provisions the namespace if missing via
+#                     `--create-namespace` on the first create call.
 #     WW_SMOKE_AGENT  agent name to create
 #                     (default: smoke-<unix-timestamp>)
 #     WW_SMOKE_KEEP   "true" to skip the final delete — useful when
 #                     something fails and you want to poke at state
 #                     (default: false)
 #
+#     WW_SMOKE_GITHUB_REPO
+#                     When set, enables Phase 5 (gitOps round-trip):
+#                     scaffold → git add → rename → remove --remove-
+#                     repo-folder → clean. The repo must be writable
+#                     by the invoking user's git credentials (gh auth
+#                     token / credential helper / ssh agent). Each
+#                     run creates + removes a `smoke-git-<ts>/`
+#                     subdirectory, so concurrent runs don't collide.
+#                     Leave unset to skip the gitOps phase entirely —
+#                     the baseline smoke (phases 0–3 + teardown) runs
+#                     either way.
+#
 # Usage:
 #     ./scripts/smoke-ww-agent.sh
 #     WW_BIN=/usr/local/bin/ww-beta ./scripts/smoke-ww-agent.sh
 #     WW_SMOKE_NS=sandbox WW_SMOKE_KEEP=true ./scripts/smoke-ww-agent.sh
+#     WW_SMOKE_GITHUB_REPO=you/witwave-smoke ./scripts/smoke-ww-agent.sh
 #
 # Exit codes:
 #     0   all checks passed
@@ -49,6 +65,13 @@ set -euo pipefail
 WW_BIN="${WW_BIN:-ww}"
 WW_SMOKE_AGENT="${WW_SMOKE_AGENT:-smoke-$(date +%s)}"
 WW_SMOKE_KEEP="${WW_SMOKE_KEEP:-false}"
+
+# Always run inside a concrete, non-"default" namespace. "default" is a
+# shared free-for-all; ww agents get their own blast radius. The CLI's
+# own default for --namespace is `witwave`, so we mirror it here and pass
+# -n explicitly on every invocation. Use --create-namespace on the first
+# create call so the smoke can bootstrap a virgin cluster.
+WW_SMOKE_NS="${WW_SMOKE_NS:-witwave}"
 
 # --yes across every mutating call. The smoke is a scripted flow — no
 # humans expected to type "y" mid-run.
@@ -126,12 +149,23 @@ expect_grep() {
 # Cleanup — always runs
 # ---------------------------------------------------------------------------
 
+# Phase 5 sets these when it runs so cleanup can tear them down too.
+# Kept at top-level so `trap cleanup EXIT` sees them from any failure point.
+WW_SMOKE_GIT_AGENT=""
+WW_SMOKE_GIT_REPO=""
+
 cleanup() {
     if [[ "$WW_SMOKE_KEEP" == "true" ]]; then
         printf '\n%sKEEP mode:%s leaving agent %q in namespace %q for inspection.\n' \
             "$C_BOLD" "$C_RESET" "$WW_SMOKE_AGENT" "${WW_SMOKE_NS:-<default>}"
         printf '   Delete manually with: %s agent delete %s%s\n' \
             "$WW_BIN" "$WW_SMOKE_AGENT" "$([[ -n "${WW_SMOKE_NS:-}" ]] && echo " -n $WW_SMOKE_NS")"
+        if [[ -n "$WW_SMOKE_GIT_AGENT" ]]; then
+            printf '   Delete manually with: %s agent delete %s%s\n' \
+                "$WW_BIN" "$WW_SMOKE_GIT_AGENT" "$([[ -n "${WW_SMOKE_NS:-}" ]] && echo " -n $WW_SMOKE_NS")"
+            printf '   Remove scaffold: clone %s and `git rm -r .agents/%s`\n' \
+                "$WW_SMOKE_GIT_REPO" "$WW_SMOKE_GIT_AGENT"
+        fi
         return
     fi
     printf '\n%sCleanup:%s deleting agent %q\n' "$C_BOLD" "$C_RESET" "$WW_SMOKE_AGENT"
@@ -140,6 +174,54 @@ cleanup() {
     # shellcheck disable=SC2086
     "$WW_BIN" agent delete "$WW_SMOKE_AGENT" $ns_flag --yes >/dev/null 2>&1 || \
         printf '  %s(delete failed — manual cleanup may be needed)%s\n' "$C_DIM" "$C_RESET"
+
+    # Phase 5 teardown: git agent CR + scaffolded directory on the remote.
+    # Best-effort; never fails the overall run.
+    if [[ -n "$WW_SMOKE_GIT_AGENT" ]]; then
+        printf '%sCleanup:%s deleting git agent %q\n' "$C_BOLD" "$C_RESET" "$WW_SMOKE_GIT_AGENT"
+        # shellcheck disable=SC2086
+        "$WW_BIN" agent delete "$WW_SMOKE_GIT_AGENT" $ns_flag --yes >/dev/null 2>&1 || true
+        if [[ -n "$WW_SMOKE_GIT_REPO" ]]; then
+            cleanup_scaffold_dir "$WW_SMOKE_GIT_REPO" "$WW_SMOKE_GIT_AGENT"
+        fi
+    fi
+}
+
+# cleanup_scaffold_dir clones the repo, git-rm's the scaffolded directory,
+# commits + pushes. Mirrors the ad-hoc cleanup a human would do; no CLI
+# verb exists for "undo scaffold" because the scaffolded layout is meant
+# to live on past the CLI's involvement.
+cleanup_scaffold_dir() {
+    local repo="$1" name="$2"
+    local tmp
+    tmp="$(mktemp -d)"
+    printf '%s  (cleaning up %s/.agents/%s via git clone)%s\n' \
+        "$C_DIM" "$repo" "$name" "$C_RESET"
+    # Resolve the repo URL shape the same way the CLI does — accept
+    # owner/repo and expand to an https URL. Anything more exotic (full
+    # URL, ssh) is used verbatim.
+    local url="$repo"
+    if [[ "$repo" != *://* && "$repo" != git@* ]]; then
+        url="https://github.com/${repo}.git"
+    fi
+    if ! git clone --depth 1 --quiet "$url" "$tmp" 2>/dev/null; then
+        printf '  %s(clone failed — scaffold dir left in repo; delete manually)%s\n' \
+            "$C_DIM" "$C_RESET"
+        rm -rf "$tmp"
+        return
+    fi
+    (
+        cd "$tmp" || exit 0
+        if [[ -d ".agents/${name}" ]]; then
+            git rm -r --quiet ".agents/${name}" >/dev/null 2>&1 || true
+            git -c user.email="smoke@ww.local" -c user.name="ww smoke" \
+                commit --quiet -m "Clean up smoke scaffold ${name}" >/dev/null 2>&1 || true
+            git push --quiet >/dev/null 2>&1 || \
+                printf '  %s(push failed — scaffold dir left in repo; delete manually)%s\n' \
+                    "$C_DIM" "$C_RESET"
+        fi
+    )
+    rm -rf "$tmp"
 }
 trap cleanup EXIT
 
@@ -206,7 +288,7 @@ ns_flag=""
 
 # dry-run first — no API calls, just banner rendering
 # shellcheck disable=SC2086
-run_captured "agent create --dry-run" "$WW_BIN" agent create "$WW_SMOKE_AGENT" $ns_flag --dry-run
+run_captured "agent create --dry-run" "$WW_BIN" agent create "$WW_SMOKE_AGENT" $ns_flag --create-namespace --dry-run
 if [[ $LAST_STATUS -eq 0 ]] && expect_grep "create WitwaveAgent"; then
     pass "dry-run banner renders"
 else
@@ -215,7 +297,7 @@ fi
 
 # real create + wait for Ready
 # shellcheck disable=SC2086
-run_captured "agent create (real)" "$WW_BIN" agent create "$WW_SMOKE_AGENT" $ns_flag --timeout 3m
+run_captured "agent create (real)" "$WW_BIN" agent create "$WW_SMOKE_AGENT" $ns_flag --create-namespace --timeout 3m
 if [[ $LAST_STATUS -eq 0 ]] && expect_grep "is ready"; then
     pass "agent created and reported Ready"
 else
@@ -315,11 +397,125 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Phase 4 — teardown (delete tested explicitly; cleanup hook handles
+# Phase 5 — gitOps round-trip (scaffold → git add/list → rename → remove
+# --remove-repo-folder → git remove). Gated on WW_SMOKE_GITHUB_REPO because
+# it mutates a remote repo and needs credentials; leave unset to skip.
+#
+# Uses a dedicated multi-backend agent (`smoke-git-<ts>`) so the Phase 1
+# agent stays untouched. Cleanup is deferred to the EXIT trap, which
+# deletes the git agent CR and git-rm's `.agents/<name>/` from the repo
+# on a best-effort basis.
+# ---------------------------------------------------------------------------
+
+if [[ -n "${WW_SMOKE_GITHUB_REPO:-}" ]]; then
+    WW_SMOKE_GIT_AGENT="smoke-git-$(date +%s)"
+    WW_SMOKE_GIT_REPO="$WW_SMOKE_GITHUB_REPO"
+
+    section "Phase 5 — gitOps round-trip (${WW_SMOKE_GIT_AGENT} → ${WW_SMOKE_GITHUB_REPO})"
+
+    # 5.1 — scaffold dry-run. Verifies the scaffolder parses --repo and
+    # --backend without touching the remote.
+    run_captured "scaffold --dry-run" \
+        "$WW_BIN" agent scaffold "$WW_SMOKE_GIT_AGENT" \
+        --repo "$WW_SMOKE_GITHUB_REPO" \
+        --backend "echo-1:echo" --backend "echo-2:echo" \
+        --dry-run
+    if [[ $LAST_STATUS -eq 0 ]] && expect_grep "Scaffold"; then
+        pass "scaffold --dry-run renders plan"
+    else
+        fail "scaffold --dry-run" "expected plan banner"
+    fi
+
+    # 5.2 — real scaffold: writes .agents/<name>/ to the remote.
+    run_captured "scaffold (real)" \
+        "$WW_BIN" agent scaffold "$WW_SMOKE_GIT_AGENT" \
+        --repo "$WW_SMOKE_GITHUB_REPO" \
+        --backend "echo-1:echo" --backend "echo-2:echo"
+    if [[ $LAST_STATUS -eq 0 ]]; then
+        pass "scaffold committed + pushed to ${WW_SMOKE_GITHUB_REPO}"
+    else
+        fail "scaffold" "remote push failed; check git credentials"
+    fi
+
+    # 5.3 — create the multi-backend CR so git add has something to wire.
+    # shellcheck disable=SC2086
+    run_captured "create git agent" \
+        "$WW_BIN" agent create "$WW_SMOKE_GIT_AGENT" $ns_flag --create-namespace \
+        --backend "echo-1:echo" --backend "echo-2:echo" --timeout 3m
+    if [[ $LAST_STATUS -eq 0 ]] && expect_grep "is ready"; then
+        pass "multi-backend git agent created + Ready"
+    else
+        fail "create git agent" "expected 'is ready' confirmation"
+    fi
+
+    # 5.4 — attach the gitSync. Public repo path — no auth flag needed.
+    # shellcheck disable=SC2086
+    run_captured "git add" \
+        "$WW_BIN" agent git add "$WW_SMOKE_GIT_AGENT" $ns_flag \
+        --repo "$WW_SMOKE_GITHUB_REPO"
+    if [[ $LAST_STATUS -eq 0 ]] && expect_grep "Attached gitSync"; then
+        pass "git add wired the repo"
+    else
+        fail "git add" "expected 'Attached gitSync' confirmation"
+    fi
+
+    # 5.5 — list verifies the sync landed on the CR.
+    # shellcheck disable=SC2086
+    run_captured "git list" \
+        "$WW_BIN" agent git list "$WW_SMOKE_GIT_AGENT" $ns_flag
+    if [[ $LAST_STATUS -eq 0 ]] && expect_grep "$WW_SMOKE_GITHUB_REPO"; then
+        pass "git list shows configured sync"
+    else
+        fail "git list" "repo URL missing from list output"
+    fi
+
+    # 5.6 — backend rename (CR + repo folder, in one shot). Requires the
+    # gitSync from 5.4 — repo-side `git mv` only runs when exactly one
+    # sync is wired.
+    # shellcheck disable=SC2086
+    run_captured "backend rename" \
+        "$WW_BIN" agent backend rename "$WW_SMOKE_GIT_AGENT" "echo-2" "echo-2-renamed" $ns_flag
+    if [[ $LAST_STATUS -eq 0 ]] && expect_grep "Renamed backend"; then
+        pass "backend rename updated CR + repo"
+    else
+        fail "backend rename" "expected 'Renamed backend' confirmation"
+    fi
+
+    # 5.7 — backend remove --remove-repo-folder (clones, git rm's the
+    # backend's .<name>/ folder, rewrites backend.yaml, pushes).
+    # shellcheck disable=SC2086
+    run_captured "backend remove --remove-repo-folder" \
+        "$WW_BIN" agent backend remove "$WW_SMOKE_GIT_AGENT" "echo-2-renamed" $ns_flag \
+        --remove-repo-folder
+    if [[ $LAST_STATUS -eq 0 ]] && expect_grep "Removed backend"; then
+        pass "backend remove + repo-folder cleanup"
+    else
+        fail "backend remove" "expected 'Removed backend' confirmation"
+    fi
+
+    # 5.8 — git remove with --delete-secret. No ww-minted Secret exists
+    # for this public-repo sync, so the flag is a no-op here — but the
+    # verb itself should still succeed and the ww-labelled gate should
+    # log that nothing needs deleting.
+    # shellcheck disable=SC2086
+    run_captured "git remove" \
+        "$WW_BIN" agent git remove "$WW_SMOKE_GIT_AGENT" $ns_flag --delete-secret
+    if [[ $LAST_STATUS -eq 0 ]] && expect_grep "Detached gitSync"; then
+        pass "git remove detached the sync"
+    else
+        fail "git remove" "expected 'Detached gitSync' confirmation"
+    fi
+else
+    printf '\n%s(Phase 5 skipped — set WW_SMOKE_GITHUB_REPO=owner/repo to enable)%s\n' \
+        "$C_DIM" "$C_RESET"
+fi
+
+# ---------------------------------------------------------------------------
+# Phase 6 — teardown (delete tested explicitly; cleanup hook handles
 # the agent if this block is skipped by an earlier failure)
 # ---------------------------------------------------------------------------
 
-section "Phase 4 — teardown"
+section "Phase 6 — teardown"
 
 # shellcheck disable=SC2086
 run_captured "agent delete" "$WW_BIN" agent delete "$WW_SMOKE_AGENT" $ns_flag --yes

@@ -31,7 +31,7 @@ type agentFlags struct {
 
 func bindAgentFlags(cmd *cobra.Command, f *agentFlags) {
 	cmd.PersistentFlags().StringVarP(&f.namespace, "namespace", "n", "",
-		"Namespace for the agent (defaults to the kubeconfig context's namespace, then \"default\")")
+		fmt.Sprintf("Namespace for the agent (defaults to the kubeconfig context's namespace, then %q)", agent.DefaultAgentNamespace))
 }
 
 func bindAgentMutatingFlags(cmd *cobra.Command, f *agentFlags) {
@@ -63,6 +63,29 @@ func (f *agentFlags) resolveTarget(ctx context.Context) (*k8s.Target, *k8s.Resol
 	return r.Target(), r, nil
 }
 
+// logAndResolveNamespace resolves the namespace from flag / context /
+// ww default, prints a one-line notice to stdout when the flag was
+// omitted (so the user sees where the CR actually landed), and returns
+// the resolved value. The note distinguishes the source so
+// "(from kubeconfig context)" never misrepresents a ww-default fallback.
+// Keeps DESIGN.md NS-2 (always echo the resolved namespace) consistent
+// across every `ww agent *` verb.
+func logAndResolveNamespace(flagValue, contextNS string) string {
+	ns, source := agent.ResolveNamespaceWithSource(flagValue, contextNS)
+	if source == agent.NamespaceFromFlag {
+		return ns
+	}
+	var why string
+	switch source {
+	case agent.NamespaceFromContext:
+		why = "from kubeconfig context"
+	case agent.NamespaceFromDefault:
+		why = "ww default"
+	}
+	fmt.Fprintf(os.Stdout, "Using namespace: %s (%s)\n", ns, why)
+	return ns
+}
+
 // newAgentCmd is the parent command for `ww agent *`.
 func newAgentCmd() *cobra.Command {
 	f := &agentFlags{}
@@ -75,7 +98,8 @@ func newAgentCmd() *cobra.Command {
 			"(see `ww operator install`). Every `ww agent *` command honours the ambient\n" +
 			"kubeconfig and current-context (override via the root --kubeconfig / --context\n" +
 			"flags). Use --namespace / -n to target a specific namespace; omit to use the\n" +
-			"kubeconfig context's namespace (falling back to \"default\").",
+			"kubeconfig context's namespace (falling back to \"" + agent.DefaultAgentNamespace + "\").\n\n" +
+			"Use `ww agent create --create-namespace` to provision the namespace on first use.",
 	}
 	bindAgentFlags(cmd, f)
 
@@ -160,10 +184,7 @@ func runAgentBackendRename(ctx context.Context, f *agentFlags, name, oldName, ne
 	if err != nil {
 		return err
 	}
-	ns := agent.ResolveNamespace(f.namespace, target.Namespace)
-	if f.namespace == "" {
-		fmt.Fprintf(os.Stdout, "Using namespace: %s (from kubeconfig context)\n", ns)
-	}
+	ns := logAndResolveNamespace(f.namespace, target.Namespace)
 	assumeYes := f.assumeYes || os.Getenv("WW_ASSUME_YES") == "true"
 	return agent.BackendRename(ctx, cfg, agent.BackendRenameOptions{
 		Agent:         name,
@@ -226,10 +247,7 @@ func runAgentBackendRemove(ctx context.Context, f *agentFlags, name, backendName
 	if err != nil {
 		return err
 	}
-	ns := agent.ResolveNamespace(f.namespace, target.Namespace)
-	if f.namespace == "" {
-		fmt.Fprintf(os.Stdout, "Using namespace: %s (from kubeconfig context)\n", ns)
-	}
+	ns := logAndResolveNamespace(f.namespace, target.Namespace)
 	assumeYes := f.assumeYes || os.Getenv("WW_ASSUME_YES") == "true"
 	return agent.BackendRemove(ctx, cfg, agent.BackendRemoveOptions{
 		Agent:            name,
@@ -366,10 +384,7 @@ func runAgentGitAdd(ctx context.Context, f *agentFlags, name string, opts agent.
 	if err != nil {
 		return err
 	}
-	ns := agent.ResolveNamespace(f.namespace, target.Namespace)
-	if f.namespace == "" {
-		fmt.Fprintf(os.Stdout, "Using namespace: %s (from kubeconfig context)\n", ns)
-	}
+	ns := logAndResolveNamespace(f.namespace, target.Namespace)
 	// Validate mutual exclusivity up-front so users get a crisp error
 	// rather than having the auth resolver pick one silently.
 	if err := assertOneAuthMode(opts.Auth); err != nil {
@@ -418,9 +433,9 @@ func runAgentGitList(ctx context.Context, f *agentFlags, name string) error {
 	if err != nil {
 		return err
 	}
-	ns := agent.ResolveNamespace(f.namespace, target.Namespace)
+	ns := logAndResolveNamespace(f.namespace, target.Namespace)
 	if f.namespace == "" {
-		fmt.Fprintf(os.Stdout, "Using namespace: %s (from kubeconfig context)\n\n", ns)
+		fmt.Fprintln(os.Stdout)
 	}
 	return agent.GitList(ctx, cfg, agent.GitListOptions{
 		Agent:     name,
@@ -466,10 +481,7 @@ func runAgentGitRemove(ctx context.Context, f *agentFlags, name, syncName string
 	if err != nil {
 		return err
 	}
-	ns := agent.ResolveNamespace(f.namespace, target.Namespace)
-	if f.namespace == "" {
-		fmt.Fprintf(os.Stdout, "Using namespace: %s (from kubeconfig context)\n", ns)
-	}
+	ns := logAndResolveNamespace(f.namespace, target.Namespace)
 	return agent.GitRemove(ctx, cfg, agent.GitRemoveOptions{
 		Agent:        name,
 		Namespace:    ns,
@@ -594,9 +606,10 @@ func runAgentScaffold(ctx context.Context, name string, opts agent.ScaffoldOptio
 
 func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 	var (
-		backends []string
-		noWait   bool
-		timeout  time.Duration
+		backends        []string
+		noWait          bool
+		timeout         time.Duration
+		createNamespace bool
 	)
 	cmd := &cobra.Command{
 		Use:   "create <name>",
@@ -619,7 +632,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runAgentCreate(cmd.Context(), f, args[0], specs, !noWait, timeout)
+			return runAgentCreate(cmd.Context(), f, args[0], specs, !noWait, timeout, createNamespace)
 		},
 	}
 	bindAgentMutatingFlags(cmd, f)
@@ -635,10 +648,12 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 		"Return as soon as the CR is accepted; skip the readiness wait")
 	cmd.Flags().DurationVar(&timeout, "timeout", 2*time.Minute,
 		"Maximum time to wait for the agent to report Ready (ignored with --no-wait)")
+	cmd.Flags().BoolVar(&createNamespace, "create-namespace", false,
+		"Create the target namespace if it doesn't already exist (no-op otherwise)")
 	return cmd
 }
 
-func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []agent.BackendSpec, wait bool, timeout time.Duration) error {
+func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []agent.BackendSpec, wait bool, timeout time.Duration, createNamespace bool) error {
 	target, resolver, err := f.resolveTarget(ctx)
 	if err != nil {
 		return err
@@ -647,26 +662,22 @@ func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []
 	if err != nil {
 		return err
 	}
-	ns := agent.ResolveNamespace(f.namespace, target.Namespace)
-	// NS-2: always echo the resolved namespace. If the user didn't pass
-	// -n, this is their signal for where the CR landed.
-	if f.namespace == "" {
-		fmt.Fprintf(os.Stdout, "Using namespace: %s (from kubeconfig context)\n", ns)
-	}
+	ns := logAndResolveNamespace(f.namespace, target.Namespace)
 
 	assumeYes := f.assumeYes || os.Getenv("WW_ASSUME_YES") == "true"
 	return agent.Create(ctx, target, cfg, resolver.ConfigFlags(), agent.CreateOptions{
-		Name:       name,
-		Namespace:  ns,
-		Backends:   backends,
-		CLIVersion: Version,
-		CreatedBy:  fmt.Sprintf("ww agent create %s", name),
-		AssumeYes:  assumeYes,
-		DryRun:     f.dryRun,
-		Wait:       wait,
-		Timeout:    timeout,
-		Out:        os.Stdout,
-		In:         os.Stdin,
+		Name:            name,
+		Namespace:       ns,
+		Backends:        backends,
+		CLIVersion:      Version,
+		CreatedBy:       fmt.Sprintf("ww agent create %s", name),
+		AssumeYes:       assumeYes,
+		DryRun:          f.dryRun,
+		Wait:            wait,
+		Timeout:         timeout,
+		CreateNamespace: createNamespace,
+		Out:             os.Stdout,
+		In:              os.Stdin,
 	})
 }
 
@@ -696,9 +707,13 @@ func runAgentList(ctx context.Context, f *agentFlags) error {
 	if err != nil {
 		return err
 	}
-	ns := agent.ResolveNamespace(f.namespace, target.Namespace)
-	if !f.allNamespaces && f.namespace == "" {
-		fmt.Fprintf(os.Stdout, "Using namespace: %s (from kubeconfig context)\n", ns)
+	// List suppresses the resolved-namespace notice when -A was passed
+	// (the output already reflects every namespace the caller can see).
+	var ns string
+	if f.allNamespaces {
+		ns = agent.ResolveNamespace(f.namespace, target.Namespace)
+	} else {
+		ns = logAndResolveNamespace(f.namespace, target.Namespace)
 	}
 	return agent.List(ctx, cfg, agent.ListOptions{
 		Namespace:     ns,
@@ -732,9 +747,9 @@ func runAgentStatus(ctx context.Context, f *agentFlags, name string) error {
 	if err != nil {
 		return err
 	}
-	ns := agent.ResolveNamespace(f.namespace, target.Namespace)
+	ns := logAndResolveNamespace(f.namespace, target.Namespace)
 	if f.namespace == "" {
-		fmt.Fprintf(os.Stdout, "Using namespace: %s (from kubeconfig context)\n\n", ns)
+		fmt.Fprintln(os.Stdout)
 	}
 	return agent.Status(ctx, cfg, agent.StatusOptions{
 		Name:      name,
@@ -769,10 +784,7 @@ func runAgentDelete(ctx context.Context, f *agentFlags, name string) error {
 	if err != nil {
 		return err
 	}
-	ns := agent.ResolveNamespace(f.namespace, target.Namespace)
-	if f.namespace == "" {
-		fmt.Fprintf(os.Stdout, "Using namespace: %s (from kubeconfig context)\n", ns)
-	}
+	ns := logAndResolveNamespace(f.namespace, target.Namespace)
 	assumeYes := f.assumeYes || os.Getenv("WW_ASSUME_YES") == "true"
 	return agent.Delete(ctx, target, cfg, agent.DeleteOptions{
 		Name:      name,
@@ -826,10 +838,7 @@ func runAgentSend(ctx context.Context, f *agentFlags, name, prompt, messageID st
 	if err != nil {
 		return err
 	}
-	ns := agent.ResolveNamespace(f.namespace, target.Namespace)
-	if f.namespace == "" {
-		fmt.Fprintf(os.Stdout, "Using namespace: %s (from kubeconfig context)\n", ns)
-	}
+	ns := logAndResolveNamespace(f.namespace, target.Namespace)
 	return agent.Send(ctx, cfg, agent.SendOptions{
 		Agent:     name,
 		Namespace: ns,
@@ -893,10 +902,7 @@ func runAgentLogs(ctx context.Context, f *agentFlags, name string, opts agent.Lo
 	if err != nil {
 		return err
 	}
-	ns := agent.ResolveNamespace(f.namespace, target.Namespace)
-	if f.namespace == "" {
-		fmt.Fprintf(os.Stdout, "Using namespace: %s (from kubeconfig context)\n", ns)
-	}
+	ns := logAndResolveNamespace(f.namespace, target.Namespace)
 	opts.Agent = name
 	opts.Namespace = ns
 	return agent.Logs(ctx, cfg, opts)
@@ -942,10 +948,7 @@ func runAgentEvents(ctx context.Context, f *agentFlags, name string, opts agent.
 	if err != nil {
 		return err
 	}
-	ns := agent.ResolveNamespace(f.namespace, target.Namespace)
-	if f.namespace == "" {
-		fmt.Fprintf(os.Stdout, "Using namespace: %s (from kubeconfig context)\n", ns)
-	}
+	ns := logAndResolveNamespace(f.namespace, target.Namespace)
 	opts.Agent = name
 	opts.Namespace = ns
 	return agent.Events(ctx, cfg, opts)

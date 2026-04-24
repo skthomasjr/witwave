@@ -159,11 +159,18 @@ fixed per-subtree defaults per KC-6 and are exempt from NS-1..3.
 
 - **NS-1.** Tenant-subtree commands with no `-n` flag MUST default to the
   kubeconfig context's namespace. If the context has no namespace set, fall
-  back to `"default"`. This matches kubectl's precedence exactly.
+  back to `"witwave"` (the ww-wide default; see
+  `agent.DefaultAgentNamespace`). Rationale for diverging from kubectl:
+  ww-managed resources benefit from a dedicated blast radius, and
+  landing in `default` by accident invites cross-tenancy incidents on
+  shared clusters.
 - **NS-2.** Every tenant-subtree command MUST print the resolved namespace
   at the top of its output when `-n` was not explicitly supplied. A single
-  line — e.g. `Using namespace: prod-agents (from kubeconfig context)` — is
-  enough. Rationale: operators forget `-n`; the echo is their only fallback
+  line — e.g. `Using namespace: prod-agents (from kubeconfig context)` or
+  `Using namespace: witwave (ww default)` — is enough. The parenthetical
+  MUST distinguish context-supplied values from the ww-default fallback so
+  operators can tell an inherited namespace from a quiet fallback.
+  Rationale: operators forget `-n`; the echo is their only fallback
   visibility for where a mutation actually landed. Never silently act on a
   defaulted namespace.
 - **NS-3.** `-A/--all-namespaces` is valid only on **read** verbs (list,
@@ -176,6 +183,12 @@ fixed per-subtree defaults per KC-6 and are exempt from NS-1..3.
   purity for the onboarding path, and (b) `create` is idempotent — a
   re-run against an already-created name surfaces `AlreadyExists` cleanly.
   NS-2's print-the-resolved-ns rule still applies.
+- **NS-5.** `create` MUST accept a `--create-namespace` flag that
+  provisions the target namespace if it doesn't exist (no-op otherwise).
+  Mirrors `helm install --create-namespace` so a virgin cluster can go
+  zero-to-agent in a single invocation. The created namespace carries
+  the `app.kubernetes.io/managed-by: ww` label so teardown tooling can
+  tell ww-created namespaces from hand-authored ones.
 
 ---
 
