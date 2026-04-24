@@ -648,38 +648,56 @@ func newCreateAgentModal(ctrl *agentListController) tview.Primitive {
 
 	backendTypes := agent.KnownBackends()
 
+	// Field width 26 leaves 40+ columns for the label at modal width
+	// 72, and the longest label below ("Create namespace (if missing)",
+	// 29 chars) plus the field stays comfortably inside the border.
 	form := tview.NewForm().
-		AddInputField("Name", "", 32, nil, func(v string) { cf.state.name = v }).
-		AddInputField("Namespace", ctrl.defaultCreateNamespace(), 32, nil, func(v string) { cf.state.namespace = v }).
+		AddInputField("Name", "", 26, nil, func(v string) { cf.state.name = v }).
+		AddInputField("Namespace", ctrl.defaultCreateNamespace(), 26, nil, func(v string) { cf.state.namespace = v }).
 		AddDropDown("Backend", backendTypes, 0, func(v string, _ int) { cf.state.backend = v }).
-		AddInputField("Team (optional)", "", 32, nil, func(v string) { cf.state.team = v }).
-		AddCheckbox("Create namespace if missing", true, func(v bool) { cf.state.createNamespace = v }).
+		AddInputField("Team (optional)", "", 26, nil, func(v string) { cf.state.team = v }).
+		AddCheckbox("Create namespace (if missing)", true, func(v bool) { cf.state.createNamespace = v }).
 		AddButton("Create", func() { submitCreateAgent(ctrl, cf) }).
 		AddButton("Cancel", func() { ctrl.closeCreateAgent() })
 	form.SetBorder(true).
 		SetTitle(" Create agent ").
 		SetTitleColor(tcell.ColorSilver).
 		SetBorderColor(tcell.ColorDimGray)
+	form.SetButtonsAlign(tview.AlignCenter)
+	// Tight item padding — default is 1 row between fields which
+	// wasted vertical space and pushed the button row close to the
+	// bottom border. 0-row padding keeps the form compact so buttons
+	// are always visible without scrolling.
+	form.SetItemPadding(0)
 	form.SetCancelFunc(func() { ctrl.closeCreateAgent() }) // ESC → cancel
 	cf.form = form
 
 	ctrl.createAgentForm = cf
 
-	// Modal composition: center the form + error view vertically
-	// (fixed height) and horizontally (fixed width). Surrounding
-	// spacer Boxes use flex=1 so the center cell pins while the
-	// terminal resizes.
+	// Always-visible hint strip below the form so the user sees how
+	// to submit before they have to tab-hunt for the buttons.
+	hint := tview.NewTextView().
+		SetDynamicColors(true).
+		SetTextAlign(tview.AlignCenter).
+		SetText("[#808080]Tab / ↑↓ navigate · Enter submit · ESC cancel[-:-:-]")
+
+	// Modal composition: error strip | form (fills) | hint strip.
+	// The outer Flex centers the body both horizontally and
+	// vertically via flex=1 spacer boxes. Body height 18 comfortably
+	// fits the 2-line border + 5 compact fields + button row + hint
+	// without the form's internal scroll kicking in.
 	body := tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(errView, 1, 0, false).
-		AddItem(form, 0, 1, true)
+		AddItem(form, 0, 1, true).
+		AddItem(hint, 1, 0, false)
 	return tview.NewFlex().
 		AddItem(tview.NewBox(), 0, 1, false).
 		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
 			AddItem(tview.NewBox(), 0, 1, false).
-			AddItem(body, 15, 1, true).
+			AddItem(body, 18, 1, true).
 			AddItem(tview.NewBox(), 0, 1, false),
-			56, 1, true).
+			72, 1, true).
 		AddItem(tview.NewBox(), 0, 1, false)
 }
 
