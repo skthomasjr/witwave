@@ -731,8 +731,8 @@ func submitCreateAgent(c *agentListController, cf *createAgentForm) {
 				CreatedBy:       "ww tui · agent add",
 				Team:            state.team,
 				CreateNamespace: state.createNamespace,
-				AssumeYes:       true,   // skip k8s.Confirm (TUI can't prompt over tview)
-				Wait:            false,  // poll loop shows the phase flip
+				AssumeYes:       true,            // skip k8s.Confirm (TUI can't prompt over tview)
+				Wait:            false,           // poll loop shows the phase flip
 				Out:             discardWriter{}, // swallow Create's stdout chatter
 				In:              nil,
 			},
