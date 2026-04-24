@@ -214,6 +214,9 @@ func newAgentListPage(app *tview.Application, version string, target *k8s.Target
 			case 'a':
 				ctrl.openCreateAgent()
 				return nil
+			case 'd':
+				ctrl.openDeleteAgent()
+				return nil
 			}
 		}
 		return event
@@ -465,7 +468,7 @@ func (c *agentListController) renderEmpty(msg string) {
 // the same keys work regardless of snapshot state.
 func (c *agentListController) renderFooter() {
 	c.footer.SetText(
-		"[#808080]↑/↓ move · a add · r refresh · ↵ logs · q/esc quit[-:-:-]",
+		"[#808080]↑/↓ move · a add · d delete · r refresh · ↵ logs · q/esc quit[-:-:-]",
 	)
 }
 
@@ -554,12 +557,29 @@ func formatShortDuration(d time.Duration) string {
 // createAgentState is the mutable buffer the modal form writes into as
 // the user types. Read by the Submit callback, cleared by openCreateAgent
 // so re-opening the modal starts fresh.
+//
+// Mirrors `ww agent create`'s flag surface — when the form grows new
+// fields, populate them here rather than threading args through the
+// submit closure. CreateOptions construction is the single sink.
 type createAgentState struct {
 	name            string
 	namespace       string
 	backend         string
 	team            string
 	createNamespace bool
+
+	// Backend credentials (LLM backends only). authMode names which
+	// of the three CLI flags this maps to: "" / "none" → no Secret;
+	// "profile" → --auth claude=oauth; "from-env" → --auth-from-env;
+	// "existing" → --auth-secret. authValue is the per-mode payload.
+	authMode  string
+	authValue string
+
+	// GitOps repo. Empty = pure cluster-side create. Non-empty =
+	// after the CR lands, run scaffold (idempotent, merges with any
+	// existing layout) then attach gitSync via the same auth-from-gh
+	// path the CLI uses by default.
+	gitopsRepo string
 }
 
 // openCreateAgent surfaces the create-agent modal and hands focus to
@@ -607,6 +627,7 @@ func (f *createAgentForm) reset(ns string) {
 		namespace:       ns,
 		backend:         agent.DefaultBackend, // echo
 		createNamespace: true,
+		authMode:        "none", // first dropdown option
 	}
 	// Field ordering mirrors the form construction — keep these two
 	// in sync if newCreateAgentModal's field order changes.
@@ -615,6 +636,9 @@ func (f *createAgentForm) reset(ns string) {
 	f.form.GetFormItem(2).(*tview.DropDown).SetCurrentOption(0) // backend
 	f.form.GetFormItem(3).(*tview.InputField).SetText("")       // team
 	f.form.GetFormItem(4).(*tview.Checkbox).SetChecked(true)    // create-namespace
+	f.form.GetFormItem(5).(*tview.DropDown).SetCurrentOption(0) // auth mode
+	f.form.GetFormItem(6).(*tview.InputField).SetText("")       // auth value
+	f.form.GetFormItem(7).(*tview.InputField).SetText("")       // gitops repo
 	f.err.SetText("")
 	f.form.SetFocus(0)
 }
@@ -633,15 +657,20 @@ func newCreateAgentModal(ctrl *agentListController) tview.Primitive {
 
 	backendTypes := agent.KnownBackends()
 
+	authModes := []string{"none", "profile", "from-env", "existing-secret"}
+
 	// Field width 26 leaves 40+ columns for the label at modal width
-	// 72, and the longest label below ("Create namespace (if missing)",
-	// 29 chars) plus the field stays comfortably inside the border.
+	// 72, and the longest label below ("Auth value (profile / VAR / Secret)",
+	// 35 chars) plus the field stays comfortably inside the border.
 	form := tview.NewForm().
 		AddInputField("Name", "", 26, nil, func(v string) { cf.state.name = v }).
 		AddInputField("Namespace", ctrl.defaultCreateNamespace(), 26, nil, func(v string) { cf.state.namespace = v }).
 		AddDropDown("Backend", backendTypes, 0, func(v string, _ int) { cf.state.backend = v }).
 		AddInputField("Team (optional)", "", 26, nil, func(v string) { cf.state.team = v }).
 		AddCheckbox("Create namespace (if missing)", true, func(v bool) { cf.state.createNamespace = v }).
+		AddDropDown("Auth mode (LLM backends)", authModes, 0, func(v string, _ int) { cf.state.authMode = v }).
+		AddInputField("Auth value (profile / VAR / Secret)", "", 26, nil, func(v string) { cf.state.authValue = v }).
+		AddInputField("GitOps repo (optional)", "", 26, nil, func(v string) { cf.state.gitopsRepo = v }).
 		AddButton("Create", func() { submitCreateAgent(ctrl, cf) }).
 		AddButton("Cancel", func() { ctrl.closeCreateAgent() })
 	form.SetBorder(true).
@@ -668,9 +697,10 @@ func newCreateAgentModal(ctrl *agentListController) tview.Primitive {
 
 	// Modal composition: error strip | form (fills) | hint strip.
 	// The outer Flex centers the body both horizontally and
-	// vertically via flex=1 spacer boxes. Body height 18 comfortably
-	// fits the 2-line border + 5 compact fields + button row + hint
-	// without the form's internal scroll kicking in.
+	// vertically via flex=1 spacer boxes. Body height 22 comfortably
+	// fits the 2-line border + 8 compact fields + button row + hint
+	// without the form's internal scroll kicking in. Modal width
+	// stays at 72 — the longest label is 35 chars + 26-wide input.
 	body := tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(errView, 1, 0, false).
@@ -680,20 +710,30 @@ func newCreateAgentModal(ctrl *agentListController) tview.Primitive {
 		AddItem(tview.NewBox(), 0, 1, false).
 		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
 			AddItem(tview.NewBox(), 0, 1, false).
-			AddItem(body, 18, 1, true).
+			AddItem(body, 22, 1, true).
 			AddItem(tview.NewBox(), 0, 1, false),
 			72, 1, true).
 		AddItem(tview.NewBox(), 0, 1, false)
 }
 
-// submitCreateAgent runs the Create API call in a goroutine so the
-// UI doesn't freeze during the Ready wait. The form stays open on
-// error (populates the error strip); closes on success and nudges
-// the poll loop so the new agent appears in the list within
-// milliseconds of the API call returning, not 2s later.
+// submitCreateAgent runs the Create API call (and, when --repo is
+// set, scaffold + git add) in a goroutine so the UI doesn't freeze.
+// The form stays open on error with the error strip naming the step
+// that failed (create vs. scaffold vs. git-add), so the user can
+// adjust + retry without re-typing the rest of the form.
+//
+// Three sequential phases:
+//
+//  1. Create the CR (with credentials wired from the auth fields).
+//  2. If gitopsRepo is set: scaffold the repo (idempotent).
+//  3. If gitopsRepo is set: attach gitSync via --auth-from-gh.
+//
+// Each phase has its own banner state so the user sees progress;
+// failures short-circuit (don't run later phases against
+// half-applied state). Wait=false on Create so the modal closes as
+// soon as the CR is accepted — the list's poll loop renders the
+// Pending → Ready transition naturally.
 func submitCreateAgent(c *agentListController, cf *createAgentForm) {
-	// Validate up front so DNS-1123 errors don't bounce off the
-	// apiserver. Same helper the CLI uses.
 	state := cf.state
 	if err := agent.ValidateName(state.name); err != nil {
 		cf.err.SetText("[#ff5f00]" + err.Error() + "[-:-:-]")
@@ -709,14 +749,22 @@ func submitCreateAgent(c *agentListController, cf *createAgentForm) {
 			return
 		}
 	}
+	// Resolve auth flags from the dropdown + value field. "none"
+	// short-circuits to BackendAuthNone (legitimate for echo).
+	auth, authErr := resolveTUIAuth(state.backend, state.authMode, state.authValue)
+	if authErr != nil {
+		cf.err.SetText("[#ff5f00]auth: " + authErr.Error() + "[-:-:-]")
+		return
+	}
 
-	cf.err.SetText("[#d7af00]creating…[-:-:-]")
+	cf.err.SetText("[#d7af00]creating CR…[-:-:-]")
 
 	go func() {
-		// Wait=false: we let the poll loop show the Pending → Ready
-		// transition instead of freezing the modal for up to 2
-		// minutes. The moment the CR is accepted, we close the
-		// modal and force a refresh tick so the row appears.
+		// Phase 1 — Create the CR.
+		var backendAuth []agent.BackendAuthResolver
+		if auth.Mode != agent.BackendAuthNone {
+			backendAuth = []agent.BackendAuthResolver{auth}
+		}
 		err := agent.Create(
 			context.Background(),
 			c.target,
@@ -734,26 +782,131 @@ func submitCreateAgent(c *agentListController, cf *createAgentForm) {
 				CreatedBy:       "ww tui · agent add",
 				Team:            state.team,
 				CreateNamespace: state.createNamespace,
-				AssumeYes:       true,            // skip k8s.Confirm (TUI can't prompt over tview)
-				Wait:            false,           // poll loop shows the phase flip
-				Out:             discardWriter{}, // swallow Create's stdout chatter
+				BackendAuth:     backendAuth,
+				AssumeYes:       true,
+				Wait:            false,
+				Out:             discardWriter{},
 				In:              nil,
 			},
 		)
+		if err != nil {
+			c.app.QueueUpdateDraw(func() {
+				cf.err.SetText("[#ff5f00]create: " + err.Error() + "[-:-:-]")
+			})
+			return
+		}
+
+		// Phase 2 + 3 are GitOps-side, only when the user set --repo.
+		// Empty repo = pure cluster-side create; we're done.
+		if state.gitopsRepo == "" {
+			c.app.QueueUpdateDraw(func() {
+				c.closeCreateAgent()
+				select {
+				case c.refreshNow <- struct{}{}:
+				default:
+				}
+			})
+			return
+		}
+
+		// Phase 2 — scaffold the repo (idempotent).
 		c.app.QueueUpdateDraw(func() {
-			if err != nil {
-				cf.err.SetText("[#ff5f00]" + err.Error() + "[-:-:-]")
-				return
-			}
+			cf.err.SetText("[#d7af00]scaffolding repo…[-:-:-]")
+		})
+		if err := agent.Scaffold(context.Background(), agent.ScaffoldOptions{
+			Name: state.name,
+			Repo: state.gitopsRepo,
+			Backends: []agent.BackendSpec{{
+				Name: state.backend,
+				Type: state.backend,
+				Port: agent.BackendPort(0),
+			}},
+			CLIVersion: c.version,
+			Out:        discardWriter{},
+		}); err != nil {
+			c.app.QueueUpdateDraw(func() {
+				cf.err.SetText("[#ff5f00]scaffold: " + err.Error() +
+					" [#a0a0a0](CR created; retry the gitOps phase via `ww agent git add` or `ww agent scaffold` from the CLI)[-:-:-]")
+			})
+			return
+		}
+
+		// Phase 3 — attach gitSync (default to gh auth token).
+		c.app.QueueUpdateDraw(func() {
+			cf.err.SetText("[#d7af00]attaching gitSync…[-:-:-]")
+		})
+		if err := agent.GitAdd(context.Background(), c.cfg, agent.GitAddOptions{
+			Agent:     state.name,
+			Namespace: state.namespace,
+			Repo:      state.gitopsRepo,
+			Auth:      agent.GitAuthResolver{Mode: agent.GitAuthFromGH},
+			AssumeYes: true,
+			Out:       discardWriter{},
+		}); err != nil {
+			c.app.QueueUpdateDraw(func() {
+				cf.err.SetText("[#ff5f00]git add: " + err.Error() +
+					" [#a0a0a0](CR + repo scaffold succeeded; retry `ww agent git add` from the CLI)[-:-:-]")
+			})
+			return
+		}
+
+		c.app.QueueUpdateDraw(func() {
 			c.closeCreateAgent()
-			// Nudge the poll goroutine so the new row appears now,
-			// not on the next scheduled tick.
 			select {
 			case c.refreshNow <- struct{}{}:
 			default:
 			}
 		})
 	}()
+}
+
+// resolveTUIAuth maps the modal's authMode dropdown + authValue input
+// into a BackendAuthResolver the CLI's create path understands. The
+// dropdown's display strings (none / profile / from-env / existing-
+// secret) name the variant; the value field's contents fill in the
+// per-mode payload (profile name / env var(s) / Secret name).
+func resolveTUIAuth(backendName, mode, value string) (agent.BackendAuthResolver, error) {
+	switch mode {
+	case "", "none":
+		return agent.BackendAuthResolver{Mode: agent.BackendAuthNone}, nil
+	case "profile":
+		if value == "" {
+			return agent.BackendAuthResolver{}, fmt.Errorf("profile mode needs an Auth value (e.g. oauth, api-key)")
+		}
+		return agent.BackendAuthResolver{
+			Backend: backendName,
+			Mode:    agent.BackendAuthProfile,
+			Profile: value,
+		}, nil
+	case "from-env":
+		if value == "" {
+			return agent.BackendAuthResolver{}, fmt.Errorf("from-env mode needs an Auth value (e.g. CLAUDE_CODE_OAUTH_TOKEN)")
+		}
+		// Same comma-split convention as the CLI's --auth-from-env.
+		vars := strings.Split(value, ",")
+		out := make([]string, 0, len(vars))
+		for _, v := range vars {
+			v = strings.TrimSpace(v)
+			if v != "" {
+				out = append(out, v)
+			}
+		}
+		return agent.BackendAuthResolver{
+			Backend: backendName,
+			Mode:    agent.BackendAuthFromEnv,
+			EnvVars: out,
+		}, nil
+	case "existing-secret":
+		if value == "" {
+			return agent.BackendAuthResolver{}, fmt.Errorf("existing-secret mode needs an Auth value (the K8s Secret name)")
+		}
+		return agent.BackendAuthResolver{
+			Backend:        backendName,
+			Mode:           agent.BackendAuthExistingSecret,
+			ExistingSecret: value,
+		}, nil
+	}
+	return agent.BackendAuthResolver{}, fmt.Errorf("unknown auth mode %q", mode)
 }
 
 // discardWriter is an io.Writer that throws everything away. Used
