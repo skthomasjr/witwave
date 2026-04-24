@@ -109,7 +109,7 @@ func TestAgentRepoRoot(t *testing.T) {
 
 func TestBuildSkeleton_EchoBackend(t *testing.T) {
 	t.Parallel()
-	files := buildSkeleton(skeletonOpts{Name: "hello", Backend: "echo", CLIVersion: "0.7.2"})
+	files := buildSkeleton(skeletonOpts{Name: "hello", Backends: []BackendSpec{{Name: "echo", Type: "echo", Port: BackendPort(0)}}, CLIVersion: "0.7.2"})
 
 	paths := collectPaths(files)
 
@@ -156,7 +156,7 @@ func TestBuildSkeleton_EchoBackend(t *testing.T) {
 func TestBuildSkeleton_NoHeartbeat(t *testing.T) {
 	t.Parallel()
 	files := buildSkeleton(skeletonOpts{
-		Name: "silent", Backend: "echo", CLIVersion: "0.7.2", NoHeartbeat: true,
+		Name: "silent", Backends: []BackendSpec{{Name: "echo", Type: "echo", Port: BackendPort(0)}}, CLIVersion: "0.7.2", NoHeartbeat: true,
 	})
 	paths := collectPaths(files)
 	for _, p := range paths {
@@ -198,7 +198,11 @@ func TestBuildSkeleton_LLMBackends(t *testing.T) {
 		tc := tc
 		t.Run(tc.backend, func(t *testing.T) {
 			t.Parallel()
-			files := buildSkeleton(skeletonOpts{Name: "hello", Backend: tc.backend, CLIVersion: "0.7.2"})
+			files := buildSkeleton(skeletonOpts{
+				Name:       "hello",
+				Backends:   []BackendSpec{{Name: tc.backend, Type: tc.backend, Port: BackendPort(0)}},
+				CLIVersion: "0.7.2",
+			})
 			paths := collectPaths(files)
 			want := ".agents/hello/." + tc.backend + "/" + tc.behaviorFile
 			if !contains(paths, want) {
@@ -211,7 +215,10 @@ func TestBuildSkeleton_LLMBackends(t *testing.T) {
 func TestBuildSkeleton_WithGroup(t *testing.T) {
 	t.Parallel()
 	files := buildSkeleton(skeletonOpts{
-		Name: "hello", Group: "prod", Backend: "echo", CLIVersion: "0.7.2",
+		Name:       "hello",
+		Group:      "prod",
+		Backends:   []BackendSpec{{Name: "echo", Type: "echo", Port: BackendPort(0)}},
+		CLIVersion: "0.7.2",
 	})
 	paths := collectPaths(files)
 	for _, p := range paths {
@@ -401,8 +408,8 @@ func TestValidateScaffoldOptions(t *testing.T) {
 		},
 		{
 			name:    "unknown backend",
-			opts:    ScaffoldOptions{Name: "hello", Repo: "a/b", Backend: "mistral"},
-			wantErr: "unknown backend",
+			opts:    ScaffoldOptions{Name: "hello", Repo: "a/b", Backends: []BackendSpec{{Name: "mistral", Type: "mistral"}}},
+			wantErr: "unknown type",
 		},
 		{
 			name: "happy path — echo",
@@ -410,7 +417,7 @@ func TestValidateScaffoldOptions(t *testing.T) {
 		},
 		{
 			name: "happy path — claude with group",
-			opts: ScaffoldOptions{Name: "iris", Group: "prod", Repo: "a/b", Backend: "claude"},
+			opts: ScaffoldOptions{Name: "iris", Group: "prod", Repo: "a/b", Backends: []BackendSpec{{Name: "claude", Type: "claude", Port: BackendPort(0)}}},
 		},
 	}
 	for _, tc := range cases {

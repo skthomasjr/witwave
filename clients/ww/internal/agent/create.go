@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -21,7 +22,12 @@ import (
 type CreateOptions struct {
 	Name      string
 	Namespace string
-	Backend   string
+
+	// Backends is the list of declared backends. Empty → a single
+	// default-echo backend (the hello-world shortcut). Populate via
+	// ParseBackendSpecs to turn the repeatable --backend cobra flag
+	// into structured entries.
+	Backends []BackendSpec
 
 	// CLIVersion from cmd.Version; used to resolve image tags.
 	CLIVersion string
@@ -63,10 +69,18 @@ func Create(
 	if opts.Out == nil {
 		return fmt.Errorf("CreateOptions.Out is required")
 	}
+	// Fallback to a single-echo backend when caller didn't supply any —
+	// matches the legacy `Backend: ""` behaviour so the hello-world
+	// `ww agent create hello` (no flags) stays unchanged.
+	backends := opts.Backends
+	if len(backends) == 0 {
+		backends = []BackendSpec{{Name: DefaultBackend, Type: DefaultBackend, Port: BackendPort(0)}}
+	}
+
 	obj, err := Build(BuildOptions{
 		Name:       opts.Name,
 		Namespace:  opts.Namespace,
-		Backend:    opts.Backend,
+		Backends:   backends,
 		CLIVersion: opts.CLIVersion,
 		CreatedBy:  opts.CreatedBy,
 	})
@@ -76,9 +90,8 @@ func Create(
 
 	plan := []k8s.PlanLine{
 		{Key: "Action", Value: fmt.Sprintf("create WitwaveAgent %q", opts.Name)},
-		{Key: "Backend", Value: resolveBackend(opts.Backend)},
+		{Key: "Backends", Value: summariseBackends(backends)},
 		{Key: "Harness image", Value: HarnessImage(opts.CLIVersion)},
-		{Key: "Backend image", Value: BackendImage(resolveBackend(opts.Backend), opts.CLIVersion)},
 	}
 	if IsDevVersion(opts.CLIVersion) {
 		plan = append(plan, k8s.PlanLine{
@@ -137,13 +150,22 @@ func Create(
 	return nil
 }
 
-// resolveBackend returns the explicit opt or DefaultBackend. Separate
-// helper so the preflight banner and the CR body share the same lookup.
-func resolveBackend(opt string) string {
-	if opt == "" {
-		return DefaultBackend
+// summariseBackends returns a compact "name:type/port" summary for the
+// preflight banner. `echo-1:echo/8001, echo-2:echo/8002` — enough
+// information for the user to confirm the shape at a glance.
+func summariseBackends(backends []BackendSpec) string {
+	if len(backends) == 0 {
+		return "<none — default echo>"
 	}
-	return opt
+	parts := make([]string, 0, len(backends))
+	for _, b := range backends {
+		if b.Name == b.Type {
+			parts = append(parts, fmt.Sprintf("%s/%d", b.Name, b.Port))
+		} else {
+			parts = append(parts, fmt.Sprintf("%s:%s/%d", b.Name, b.Type, b.Port))
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 // waitForReady polls the CR's .status.phase until it reads "Ready" or

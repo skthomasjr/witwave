@@ -68,13 +68,84 @@ func TestBuild_UnknownBackend(t *testing.T) {
 	_, err := Build(BuildOptions{
 		Name:      "hello",
 		Namespace: "default",
-		Backend:   "mistral", // not yet supported
+		Backends:  []BackendSpec{{Name: "mistral", Type: "mistral", Port: 8001}},
 	})
 	if err == nil {
 		t.Fatal("expected error for unknown backend; got nil")
 	}
-	if !strings.Contains(err.Error(), "unknown backend") {
-		t.Errorf("unexpected error %q; want 'unknown backend' substring", err)
+	if !strings.Contains(err.Error(), "unknown type") {
+		t.Errorf("unexpected error %q; want 'unknown type' substring", err)
+	}
+}
+
+func TestBuild_MultipleBackends(t *testing.T) {
+	t.Parallel()
+	obj, err := Build(BuildOptions{
+		Name:      "consensus",
+		Namespace: "default",
+		Backends: []BackendSpec{
+			{Name: "echo-1", Type: "echo", Port: BackendPort(0)},
+			{Name: "echo-2", Type: "echo", Port: BackendPort(1)},
+		},
+		CLIVersion: "0.7.5",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Two entries in spec.backends[].
+	backends, found, err := unstructured.NestedSlice(obj.Object, "spec", "backends")
+	if err != nil || !found || len(backends) != 2 {
+		t.Fatalf("spec.backends: found=%v err=%v len=%d want 2",
+			found, err, len(backends))
+	}
+	names := []string{}
+	ports := []int64{}
+	for _, b := range backends {
+		m, _ := b.(map[string]interface{})
+		name, _ := m["name"].(string)
+		port, _ := m["port"].(int64)
+		names = append(names, name)
+		ports = append(ports, port)
+	}
+	if names[0] != "echo-1" || names[1] != "echo-2" {
+		t.Errorf("backend names = %v; want [echo-1 echo-2]", names)
+	}
+	if ports[0] != 8001 || ports[1] != 8002 {
+		t.Errorf("ports = %v; want [8001 8002] — distinct per PORT-2", ports)
+	}
+	// backend.yaml inline config should list both and route to first.
+	raw, _, _ := unstructured.NestedSlice(obj.Object, "spec", "config")
+	if len(raw) != 1 {
+		t.Fatalf("expected 1 config entry, got %d", len(raw))
+	}
+	cfg, _ := raw[0].(map[string]interface{})
+	content, _ := cfg["content"].(string)
+	for _, want := range []string{
+		"id: echo-1", "id: echo-2",
+		"url: http://localhost:8001", "url: http://localhost:8002",
+		"agent: echo-1", // every routing entry points at the primary
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("backend.yaml missing %q. content:\n%s", want, content)
+		}
+	}
+}
+
+func TestBuild_DuplicateBackendName(t *testing.T) {
+	t.Parallel()
+	_, err := Build(BuildOptions{
+		Name:      "hello",
+		Namespace: "default",
+		Backends: []BackendSpec{
+			{Name: "dup", Type: "echo", Port: 8001},
+			{Name: "dup", Type: "claude", Port: 8002},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error for duplicate backend name")
+	}
+	if !strings.Contains(err.Error(), "duplicate name") {
+		t.Errorf("error = %q; want 'duplicate name'", err)
 	}
 }
 

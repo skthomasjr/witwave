@@ -2,6 +2,7 @@ package agent
 
 import (
 	"fmt"
+	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -14,19 +15,23 @@ type BuildOptions struct {
 	Name string
 	// Namespace the CR will live in.
 	Namespace string
-	// Backend name — one of the known types (echo, claude, codex, gemini).
-	// Empty string defaults to DefaultBackend.
-	Backend string
+
+	// Backends is the list of declared backends. Empty → a single
+	// default-echo backend (the hello-world shortcut). Multiple entries
+	// produce a multi-sidecar agent with distinct names + ports.
+	// Populate via ParseBackendSpecs for cobra-parsed CLI flags, or
+	// construct directly for tests / programmatic use.
+	Backends []BackendSpec
+
 	// HarnessImage is the full image reference for the harness container.
 	// Empty string → HarnessImage(cliVersion).
 	HarnessImage string
-	// BackendImage is the full image reference for the backend sidecar.
-	// Empty string → BackendImage(backend, cliVersion).
-	BackendImage string
+
 	// CLIVersion from cmd.Version, used to resolve image tags when
-	// HarnessImage / BackendImage aren't supplied explicitly. Safe to
-	// pass the "dev" sentinel — imageRef handles it.
+	// HarnessImage / per-backend images aren't supplied explicitly.
+	// Safe to pass the "dev" sentinel — imageRef handles it.
 	CLIVersion string
+
 	// CreatedBy captures the command line that produced the CR. Landed
 	// as an annotation so operators can trace surprise CRs back to the
 	// invocation that created them.
@@ -47,24 +52,38 @@ func Build(opts BuildOptions) (*unstructured.Unstructured, error) {
 		return nil, fmt.Errorf("namespace is required")
 	}
 
-	backend := opts.Backend
-	if backend == "" {
-		backend = DefaultBackend
+	backends := opts.Backends
+	if len(backends) == 0 {
+		// Hello-world shortcut: empty → one default-echo backend.
+		// Keeps the single-backend code path unchanged for callers
+		// that don't care about multi-backend (tests, the simpler
+		// `ww agent create` invocations, …).
+		backends = []BackendSpec{{Name: DefaultBackend, Type: DefaultBackend, Port: BackendPort(0)}}
 	}
-	if !IsKnownBackend(backend) {
-		return nil, fmt.Errorf(
-			"unknown backend %q; valid backends: %v",
-			backend, KnownBackends(),
-		)
+	// Defense-in-depth: every backend's type must still be known, and
+	// names still unique. ParseBackendSpecs enforces this at flag-parse
+	// time but callers constructing BuildOptions directly (tests,
+	// programmatic use) may not have gone through it.
+	seen := make(map[string]bool, len(backends))
+	for i, b := range backends {
+		if err := ValidateName(b.Name); err != nil {
+			return nil, fmt.Errorf("backends[%d] name: %w", i, err)
+		}
+		if !IsKnownBackend(b.Type) {
+			return nil, fmt.Errorf(
+				"backends[%d] unknown type %q; valid: %v",
+				i, b.Type, KnownBackends(),
+			)
+		}
+		if seen[b.Name] {
+			return nil, fmt.Errorf("backends[%d]: duplicate name %q", i, b.Name)
+		}
+		seen[b.Name] = true
 	}
 
 	harnessImage := opts.HarnessImage
 	if harnessImage == "" {
 		harnessImage = HarnessImage(opts.CLIVersion)
-	}
-	backendImage := opts.BackendImage
-	if backendImage == "" {
-		backendImage = BackendImage(backend, opts.CLIVersion)
 	}
 
 	annotations := map[string]string{}
@@ -82,7 +101,21 @@ func Build(opts BuildOptions) (*unstructured.Unstructured, error) {
 		obj.SetAnnotations(annotations)
 	}
 
-	backendPort := BackendPort(0)
+	// Build spec.backends[] — one entry per declared backend. Image is
+	// derived from the TYPE (not the name), so `echo-1` and `echo-2`
+	// both pull the echo image.
+	specBackends := make([]interface{}, 0, len(backends))
+	for _, b := range backends {
+		img := BackendImage(b.Type, opts.CLIVersion)
+		specBackends = append(specBackends, map[string]interface{}{
+			"name": b.Name,
+			"port": int64(b.Port),
+			"image": map[string]interface{}{
+				"repository": splitRepo(img),
+				"tag":        splitTag(img),
+			},
+		})
+	}
 
 	spec := map[string]interface{}{
 		"port": int64(DefaultHarnessPort),
@@ -91,32 +124,21 @@ func Build(opts BuildOptions) (*unstructured.Unstructured, error) {
 			"tag":        splitTag(harnessImage),
 		},
 		// Inline backend.yaml so the harness can route A2A requests to
-		// the sidecar without needing gitSync or a pre-populated
-		// ConfigMap. Without this, harness health-ready stays 503 with
+		// at least one sidecar without waiting on a gitSync pull.
+		// Without this, harness /health/ready stays 503 with
 		// reason=no-backends-configured (harness/main.py:524-534) and
-		// the pod never flips Ready. See harness/backends/config.py for
-		// the file shape.
+		// the pod never flips Ready. See harness/backends/config.py
+		// for the shape. For multi-backend agents every declared
+		// backend is listed, but every concern routes to the FIRST —
+		// users redistribute routing by editing the file.
 		"config": []interface{}{
 			map[string]interface{}{
 				"name":      "backend.yaml",
 				"mountPath": "/home/agent/.witwave/backend.yaml",
-				"content":   renderBackendYAML(backend, backendPort),
+				"content":   renderBackendYAML(backends),
 			},
 		},
-		// Single-backend default. Port is offset from the harness port
-		// (8001 vs 8000) so the harness + backend sidecars don't race
-		// to bind the same TCP port — pods share a network namespace
-		// and only one container per pod can hold a given port.
-		"backends": []interface{}{
-			map[string]interface{}{
-				"name": backend,
-				"port": int64(backendPort),
-				"image": map[string]interface{}{
-					"repository": splitRepo(backendImage),
-					"tag":        splitTag(backendImage),
-				},
-			},
-		},
+		"backends": specBackends,
 	}
 	if err := unstructured.SetNestedField(obj.Object, spec, "spec"); err != nil {
 		return nil, fmt.Errorf("set spec: %w", err)
@@ -171,31 +193,41 @@ func splitTag(ref string) string {
 // the TypeMeta shape implicitly via APIVersionString / Kind.
 var _ = metav1.TypeMeta{}
 
-// renderBackendYAML generates the single-backend routing config the
-// harness expects at BACKEND_CONFIG_PATH. Every concern (a2a, heartbeat,
-// job, task, trigger, continuation) routes to the same backend —
-// hello-world setups only have the one to route to. See
+// renderBackendYAML generates the harness routing config consumed at
+// BACKEND_CONFIG_PATH. Every declared backend is enumerated in
+// `agents:`; every concern (a2a, heartbeat, job, task, trigger,
+// continuation) initially routes to the FIRST backend. Users with
+// multi-backend agents redistribute routing by editing the file —
+// picking defaults that put some on a "foreground" backend and others
+// on "background" is a product decision we don't want to guess. See
 // harness/backends/config.py for the authoritative shape.
-func renderBackendYAML(backend string, port int32) string {
+//
+// Single-backend callers get the same output as the pre-multi-backend
+// implementation: one entry under agents:, every concern pointed at
+// it. Backward-compatible.
+func renderBackendYAML(backends []BackendSpec) string {
+	var agents strings.Builder
+	for _, b := range backends {
+		fmt.Fprintf(&agents, "    - id: %s\n      url: http://localhost:%d\n", b.Name, b.Port)
+	}
+	primary := PrimaryBackend(backends).Name
 	return fmt.Sprintf(`backend:
   agents:
-    - id: %[1]s
-      url: http://localhost:%[2]d
-
+%[1]s
   routing:
     default:
-      agent: %[1]s
+      agent: %[2]s
     a2a:
-      agent: %[1]s
+      agent: %[2]s
     heartbeat:
-      agent: %[1]s
+      agent: %[2]s
     job:
-      agent: %[1]s
+      agent: %[2]s
     task:
-      agent: %[1]s
+      agent: %[2]s
     trigger:
-      agent: %[1]s
+      agent: %[2]s
     continuation:
-      agent: %[1]s
-`, backend, port)
+      agent: %[2]s
+`, strings.TrimRight(agents.String(), "\n"), primary)
 }

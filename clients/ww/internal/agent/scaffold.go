@@ -21,11 +21,15 @@ import (
 // ScaffoldOptions collects the runtime inputs for `ww agent scaffold`.
 // See the cobra command in cmd/agent.go for the user-facing flag names.
 type ScaffoldOptions struct {
-	Name    string
-	Group   string // optional; "" produces flat .agents/<name>/ layout
-	Repo    string // accepted shorthands: owner/repo, host/owner/repo, full URL, git@host:…
-	Branch  string // default "main"
-	Backend string // one of agent.KnownBackends(); default echo
+	Name   string
+	Group  string // optional; "" produces flat .agents/<name>/ layout
+	Repo   string // accepted shorthands: owner/repo, host/owner/repo, full URL, git@host:…
+	Branch string // default "main"
+
+	// Backends is the list of declared backends to scaffold folders +
+	// routing for. Empty → a single default-echo backend. Populate via
+	// ParseBackendSpecs for cobra-parsed CLI flags.
+	Backends []BackendSpec
 
 	// CommitMessage overrides the auto-generated commit subject. When
 	// empty, the scaffolder uses "Scaffold agent <name>".
@@ -84,10 +88,13 @@ func Scaffold(ctx context.Context, opts ScaffoldOptions) error {
 		return err
 	}
 
-	backend := opts.Backend
-	if backend == "" {
-		backend = DefaultBackend
+	// Backends default — same fallback semantics as Create: empty slice
+	// means "one echo backend", matching the hello-world shortcut.
+	backends := opts.Backends
+	if len(backends) == 0 {
+		backends = []BackendSpec{{Name: DefaultBackend, Type: DefaultBackend, Port: BackendPort(0)}}
 	}
+
 	branch := opts.Branch
 	if branch == "" {
 		// No explicit --branch → detect the remote's actual default by
@@ -106,13 +113,13 @@ func Scaffold(ctx context.Context, opts ScaffoldOptions) error {
 	skeleton := buildSkeleton(skeletonOpts{
 		Name:        opts.Name,
 		Group:       opts.Group,
-		Backend:     backend,
+		Backends:    backends,
 		CLIVersion:  opts.CLIVersion,
 		NoHeartbeat: opts.NoHeartbeat,
 	})
 
 	// Preflight banner — always renders, even under --dry-run.
-	printScaffoldPlan(opts.Out, opts, ref, backend, branch, skeleton)
+	printScaffoldPlan(opts.Out, opts, ref, backends, branch, skeleton)
 
 	if opts.DryRun {
 		fmt.Fprintln(opts.Out, "Dry-run mode — no files written, no push.")
@@ -224,9 +231,22 @@ func validateScaffoldOptions(opts *ScaffoldOptions) error {
 	if opts.Repo == "" {
 		return errors.New("repo is required (--repo)")
 	}
-	if opts.Backend != "" && !IsKnownBackend(opts.Backend) {
-		return fmt.Errorf("unknown backend %q; valid backends: %v",
-			opts.Backend, KnownBackends())
+	// Backend validation lives on ParseBackendSpecs for CLI-sourced
+	// input; here we only double-check that anything a programmatic
+	// caller populated is self-consistent.
+	seen := make(map[string]bool, len(opts.Backends))
+	for i, b := range opts.Backends {
+		if err := ValidateName(b.Name); err != nil {
+			return fmt.Errorf("backends[%d] name: %w", i, err)
+		}
+		if !IsKnownBackend(b.Type) {
+			return fmt.Errorf("backends[%d] unknown type %q; valid: %v",
+				i, b.Type, KnownBackends())
+		}
+		if seen[b.Name] {
+			return fmt.Errorf("backends[%d]: duplicate name %q", i, b.Name)
+		}
+		seen[b.Name] = true
 	}
 	return nil
 }
@@ -235,7 +255,7 @@ func validateScaffoldOptions(opts *ScaffoldOptions) error {
 // shape of k8s.Confirm's banner but doesn't gate on user confirmation
 // — scaffold acts on an external git remote, not on the cluster, and
 // the local-cluster heuristic doesn't apply.
-func printScaffoldPlan(out io.Writer, opts ScaffoldOptions, ref repoRef, backend, branch string, files []skeletonFile) {
+func printScaffoldPlan(out io.Writer, opts ScaffoldOptions, ref repoRef, backends []BackendSpec, branch string, files []skeletonFile) {
 	const pad = 14
 	fmt.Fprintln(out, "")
 	fmt.Fprintf(out, "%-*s %s\n", pad, "Action:", fmt.Sprintf("scaffold agent %q", opts.Name))
@@ -244,7 +264,11 @@ func printScaffoldPlan(out io.Writer, opts ScaffoldOptions, ref repoRef, backend
 	if opts.Group != "" {
 		fmt.Fprintf(out, "%-*s %s\n", pad, "Group:", opts.Group)
 	}
-	fmt.Fprintf(out, "%-*s %s\n", pad, "Backend:", backend)
+	label := "Backend:"
+	if len(backends) > 1 {
+		label = "Backends:"
+	}
+	fmt.Fprintf(out, "%-*s %s\n", pad, label, summariseBackends(backends))
 	fmt.Fprintf(out, "%-*s %s\n", pad, "Files:", fmt.Sprintf("%d", len(files)))
 	for _, f := range files {
 		fmt.Fprintf(out, "  - %s\n", f.Path)

@@ -343,7 +343,7 @@ func newAgentScaffoldCmd() *cobra.Command {
 	var (
 		repo          string
 		group         string
-		backend       string
+		backends      []string
 		branch        string
 		commitMessage string
 		cloneTo       string
@@ -376,10 +376,14 @@ func newAgentScaffoldCmd() *cobra.Command {
 			"demand.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			specs, err := agent.ParseBackendSpecs(backends)
+			if err != nil {
+				return err
+			}
 			return runAgentScaffold(cmd.Context(), args[0], agent.ScaffoldOptions{
 				Repo:          repo,
 				Group:         group,
-				Backend:       backend,
+				Backends:      specs,
 				Branch:        branch,
 				CommitMessage: commitMessage,
 				CloneTo:       cloneTo,
@@ -397,8 +401,16 @@ func newAgentScaffoldCmd() *cobra.Command {
 	_ = cmd.MarkFlagRequired("repo")
 	cmd.Flags().StringVar(&group, "group", "",
 		"Optional group segment — `.agents/<group>/<name>/` when set; flat `.agents/<name>/` otherwise")
-	cmd.Flags().StringVar(&backend, "backend", agent.DefaultBackend,
-		fmt.Sprintf("Backend type (one of: %s)", strings.Join(agent.KnownBackends(), ", ")))
+	cmd.Flags().StringArrayVar(&backends, "backend", nil,
+		fmt.Sprintf(
+			"Backend to scaffold. Repeatable. Two shapes accepted:\n"+
+				"  `<type>`        — name = type (single-backend shortcut)\n"+
+				"  `<name>:<type>` — explicit name + type pair (for multi-backend agents)\n"+
+				"Valid types: %s. Default when omitted: one %s backend.\n"+
+				"Example: --backend claude --backend codex  (multi-model consensus)\n"+
+				"Example: --backend echo-1:echo --backend echo-2:echo  (two echo backends)",
+			strings.Join(agent.KnownBackends(), ", "), agent.DefaultBackend,
+		))
 	cmd.Flags().StringVar(&branch, "branch", "",
 		"Git branch to push to. Unspecified: detects the remote's default "+
 			"(via HEAD symref) and falls back to \"main\" on empty repos")
@@ -429,27 +441,43 @@ func runAgentScaffold(ctx context.Context, name string, opts agent.ScaffoldOptio
 
 func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 	var (
-		backend string
-		noWait  bool
-		timeout time.Duration
+		backends []string
+		noWait   bool
+		timeout  time.Duration
 	)
 	cmd := &cobra.Command{
 		Use:   "create <name>",
 		Short: "Create a WitwaveAgent CR (defaults to the echo backend)",
-		Long: "Creates a WitwaveAgent with a single backend sidecar. With no flags, deploys\n" +
-			"the echo backend — a zero-dependency stub that requires no API keys — so you\n" +
-			"can exercise an agent end-to-end with \"access to a Kubernetes cluster and the\n" +
-			"CLI\" as the only prerequisites.\n\n" +
+		Long: "Creates a WitwaveAgent with one or more backend sidecars. With no flags,\n" +
+			"deploys a single echo backend — a zero-dependency stub that requires no API\n" +
+			"keys — so you can exercise an agent end-to-end with \"access to a Kubernetes\n" +
+			"cluster and the CLI\" as the only prerequisites.\n\n" +
+			"Pass --backend repeatedly to declare multiple backends:\n\n" +
+			"  ww agent create consensus-agent --backend claude --backend codex\n" +
+			"  ww agent create hello --backend echo-1:echo --backend echo-2:echo\n\n" +
+			"Each backend's folder in the gitOps repo (and the /home/agent/.<name>/ mount\n" +
+			"in the pod) is named after the backend's NAME, not its type — so two backends\n" +
+			"of the same type must use the `<name>:<type>` shape to differentiate them.\n\n" +
 			"After the CR is applied, waits up to --timeout for the operator to report the\n" +
 			"agent as Ready. Pass --no-wait to skip the readiness wait.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runAgentCreate(cmd.Context(), f, args[0], backend, !noWait, timeout)
+			specs, err := agent.ParseBackendSpecs(backends)
+			if err != nil {
+				return err
+			}
+			return runAgentCreate(cmd.Context(), f, args[0], specs, !noWait, timeout)
 		},
 	}
 	bindAgentMutatingFlags(cmd, f)
-	cmd.Flags().StringVar(&backend, "backend", agent.DefaultBackend,
-		fmt.Sprintf("Backend type to deploy (one of: %s)", strings.Join(agent.KnownBackends(), ", ")))
+	cmd.Flags().StringArrayVar(&backends, "backend", nil,
+		fmt.Sprintf(
+			"Backend to deploy. Repeatable. Two shapes accepted:\n"+
+				"  `<type>`        — name = type (single-backend shortcut)\n"+
+				"  `<name>:<type>` — explicit name + type pair (for multi-backend agents)\n"+
+				"Valid types: %s. Default when omitted: one %s backend",
+			strings.Join(agent.KnownBackends(), ", "), agent.DefaultBackend,
+		))
 	cmd.Flags().BoolVar(&noWait, "no-wait", false,
 		"Return as soon as the CR is accepted; skip the readiness wait")
 	cmd.Flags().DurationVar(&timeout, "timeout", 2*time.Minute,
@@ -457,7 +485,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 	return cmd
 }
 
-func runAgentCreate(ctx context.Context, f *agentFlags, name, backend string, wait bool, timeout time.Duration) error {
+func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []agent.BackendSpec, wait bool, timeout time.Duration) error {
 	target, resolver, err := f.resolveTarget(ctx)
 	if err != nil {
 		return err
@@ -477,7 +505,7 @@ func runAgentCreate(ctx context.Context, f *agentFlags, name, backend string, wa
 	return agent.Create(ctx, target, cfg, resolver.ConfigFlags(), agent.CreateOptions{
 		Name:       name,
 		Namespace:  ns,
-		Backend:    backend,
+		Backends:   backends,
 		CLIVersion: Version,
 		CreatedBy:  fmt.Sprintf("ww agent create %s", name),
 		AssumeYes:  assumeYes,
