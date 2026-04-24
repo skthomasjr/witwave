@@ -8,6 +8,85 @@ section of each entry.
 
 ## [Unreleased]
 
+## [0.7.8] — 2026-04-24
+
+### Added
+
+- **`ww agent create --create-namespace`** — mirrors
+  `helm install --create-namespace`. Provisions the target namespace
+  before the CR apply when it doesn't exist (labelled
+  `app.kubernetes.io/managed-by: ww` so teardown tooling can tell
+  ww-created namespaces from hand-authored ones); no-op otherwise.
+  Lets a virgin cluster go zero-to-agent in a single invocation.
+- **`ww agent delete --remove-repo-folder`** — clones the (single)
+  wired gitSync repo, `git rm -r`s the agent's `.agents/<…>/`
+  subtree, commits, pushes. Runs BEFORE the CR delete so a repo-side
+  failure leaves cluster state intact and the user can retry. Hard-
+  fails on multi-gitSync ambiguity; soft-skips when no gitSync is
+  wired.
+- **`ww agent delete --delete-git-secret`** — after the CR is gone,
+  reaps every ww-managed credential Secret referenced by the CR's
+  gitSyncs[]. User-created Secrets preserved via the managed-by
+  label gate.
+- **`ww agent delete --purge`** — convenience flag:
+  `--remove-repo-folder --delete-git-secret`. For decommissioning an
+  agent permanently in one command.
+- **End-to-end walkthrough** (`clients/ww/WALKTHROUGH.md`) — zero-to-
+  gitOps-wired-multi-backend-agent narrative with every verb
+  exercised. Long-form flags, multi-line snippets, copy-pasteable
+  throughout.
+- **Smoke Phase 5 (gitOps round-trip)** in `scripts/smoke-ww-agent.sh`
+  — gated on `WW_SMOKE_GITHUB_REPO`. Exercises scaffold → create
+  multi-backend → git add → rename → remove `--remove-repo-folder` →
+  delete `--purge` end-to-end against a real repo.
+- Fake-client unit tests for every CR-mutation verb (`GitAdd`,
+  `GitList`, `GitRemove`, `BackendRemove`, `BackendRename`, `Delete`
+  including all its new cleanup modes).
+
+### Changed
+
+- **Default namespace is now `witwave`** (was `default`). When
+  neither `--namespace` nor the kubeconfig context pins one, every
+  `ww agent *` verb falls back to `witwave` via the new
+  `agent.DefaultAgentNamespace` constant. Rationale: ww-managed
+  resources benefit from a dedicated blast radius, and landing in
+  `default` by accident invites cross-tenancy incidents on shared
+  clusters. Breaks kubectl parity by design — see DESIGN.md NS-1.
+- **Namespace-source log line** — the
+  `Using namespace: <ns> (<source>)` banner now distinguishes
+  `(from kubeconfig context)` from `(ww default)` so operators can
+  tell an inherited namespace from a quiet fallback (DESIGN.md NS-2).
+- DESIGN.md NS-1/NS-2 rewritten; new NS-5 codifies the
+  `--create-namespace` contract.
+
+### Unlocks
+
+Virgin cluster + virgin repo to a fully-wired agent, then full
+teardown, in flat flags:
+
+```bash
+ww agent create consensus \
+    --namespace witwave \
+    --create-namespace \
+    --backend echo-1:echo \
+    --backend echo-2:echo
+
+ww agent scaffold consensus --repo <you>/my-witwave-config \
+    --backend echo-1:echo \
+    --backend echo-2:echo
+
+ww agent git add consensus \
+    --namespace witwave \
+    --repo <you>/my-witwave-config \
+    --auth-from-gh
+
+# Later, when you're done:
+ww agent delete consensus \
+    --namespace witwave \
+    --purge \
+    --yes
+```
+
 ## [0.7.7] — 2026-04-23
 
 ### Added
