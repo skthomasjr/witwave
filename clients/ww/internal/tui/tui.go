@@ -37,6 +37,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -654,28 +655,64 @@ type createAgentForm struct {
 	err   *tview.TextView
 }
 
-// reset wipes the form's state back to sensible defaults. Called
-// every time the modal opens so a cancelled or failed previous
-// submission doesn't leave stale values or error text behind.
-func (f *createAgentForm) reset(ns string) {
-	f.state = createAgentState{
-		namespace:       ns,
-		backend:         agent.DefaultBackend, // echo
-		createNamespace: true,
-		authMode:        "none", // first dropdown option
+// reset wipes the form's state back to defaults — the layered
+// resolution (env > saved > fallback) handled by loadTUIDefaults.
+// Called every time the modal opens so a cancelled or failed
+// previous submission doesn't leave stale values or error text
+// behind, but successful prior submissions DO carry through via
+// the saved file.
+func (f *createAgentForm) reset(ctxNamespace string) {
+	d := loadTUIDefaults()
+
+	// Namespace: env-pinned > saved > the controller's notion of the
+	// "current" namespace (kubeconfig context or witwave fallback).
+	// loadTUIDefaults already returns the layered value, but if no
+	// env / saved layer fired we want the kubeconfig-context's ns
+	// rather than the hard-coded fallback. Treat the fallback as a
+	// signal to defer to ctxNamespace.
+	if d.Namespace == agent.DefaultAgentNamespace && os.Getenv("WW_TUI_DEFAULT_NAMESPACE") == "" {
+		if _, savedOK := readSavedDefaults(); !savedOK {
+			d.Namespace = ctxNamespace
+		}
 	}
-	// Field ordering mirrors the form construction — keep these two
-	// in sync if newCreateAgentModal's field order changes.
-	f.form.GetFormItem(0).(*tview.InputField).SetText("")       // name
-	f.form.GetFormItem(1).(*tview.InputField).SetText(ns)       // namespace
-	f.form.GetFormItem(2).(*tview.DropDown).SetCurrentOption(0) // backend
-	f.form.GetFormItem(3).(*tview.InputField).SetText("")       // team
-	f.form.GetFormItem(4).(*tview.Checkbox).SetChecked(true)    // create-namespace
-	f.form.GetFormItem(5).(*tview.DropDown).SetCurrentOption(0) // auth mode
-	f.form.GetFormItem(6).(*tview.InputField).SetText("")       // auth value
-	f.form.GetFormItem(7).(*tview.InputField).SetText("")       // gitops repo
+
+	f.state = createAgentState{
+		namespace:       d.Namespace,
+		backend:         d.Backend,
+		team:            d.Team,
+		createNamespace: d.CreateNamespace,
+		authMode:        d.AuthMode,
+		authValue:       d.AuthValue,
+		gitopsRepo:      d.GitOpsRepo,
+	}
+
+	// Push the resolved values into the form widgets. Field indices
+	// match the AddInputField / AddDropDown / AddCheckbox order in
+	// newCreateAgentModal; keep them in sync on field reorders.
+	f.form.GetFormItem(0).(*tview.InputField).SetText("")          // name (always blank)
+	f.form.GetFormItem(1).(*tview.InputField).SetText(d.Namespace) // namespace
+	f.form.GetFormItem(2).(*tview.DropDown).SetCurrentOption(dropdownIndexOrZero(agent.KnownBackends(), d.Backend))
+	f.form.GetFormItem(3).(*tview.InputField).SetText(d.Team) // team
+	f.form.GetFormItem(4).(*tview.Checkbox).SetChecked(d.CreateNamespace)
+	f.form.GetFormItem(5).(*tview.DropDown).SetCurrentOption(dropdownIndexOrZero([]string{"none", "profile", "from-env", "existing-secret"}, d.AuthMode))
+	f.form.GetFormItem(6).(*tview.InputField).SetText(d.AuthValue)  // auth value
+	f.form.GetFormItem(7).(*tview.InputField).SetText(d.GitOpsRepo) // gitops repo
 	f.err.SetText("")
 	f.form.SetFocus(0)
+}
+
+// dropdownIndexOrZero finds the position of `value` in `options`,
+// returning 0 (the first option) when not found. Defensive against
+// a saved value drifting out of the catalog (e.g. a backend type
+// got renamed between releases) — better to land on a valid first
+// option than to leave the dropdown empty / desync'd.
+func dropdownIndexOrZero(options []string, value string) int {
+	for i, o := range options {
+		if o == value {
+			return i
+		}
+	}
+	return 0
 }
 
 // newCreateAgentModal builds the tview primitive that represents the
@@ -867,6 +904,21 @@ func submitCreateAgent(c *agentListController, cf *createAgentForm) {
 			})
 			return
 		}
+
+		// Phase 1 succeeded — persist the values just used as the
+		// new last-used defaults. Skips the agent name (always
+		// different per create); everything else is sticky muscle
+		// memory for the next launch. Best-effort write — failures
+		// are silent because the CR has already landed.
+		saveTUIDefaults(tuiDefaults{
+			Namespace:       state.namespace,
+			Backend:         state.backend,
+			Team:            state.team,
+			CreateNamespace: state.createNamespace,
+			AuthMode:        state.authMode,
+			AuthValue:       state.authValue,
+			GitOpsRepo:      state.gitopsRepo,
+		})
 
 		// Phase 2 + 3 are GitOps-side, only when the user set --repo.
 		// Empty repo = pure cluster-side create; we're done.
