@@ -58,7 +58,7 @@ func renderStatus(out io.Writer, cr *unstructured.Unstructured) {
 	fmt.Fprintf(out, "Namespace:    %s\n", ns)
 	fmt.Fprintf(out, "Phase:        %s\n", phase)
 	if ts := cr.GetCreationTimestamp(); !ts.IsZero() {
-		fmt.Fprintf(out, "Age:          %s\n", formatAge(ts.Time))
+		fmt.Fprintf(out, "Age:          %s\n", FormatAge(ts.Time))
 	}
 
 	if ready, found, err := unstructured.NestedInt64(cr.Object, "status", "readyReplicas"); err == nil && found {

@@ -104,7 +104,7 @@ func Events(ctx context.Context, cfg *rest.Config, opts EventsOptions) error {
 	for _, e := range merged {
 		obj := fmt.Sprintf("%s/%s", e.InvolvedObject.Kind, e.InvolvedObject.Name)
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-			formatAge(eventTime(e)), e.Type, obj, e.Reason, e.Message,
+			FormatAge(eventTime(e)), e.Type, obj, e.Reason, e.Message,
 		)
 	}
 	return tw.Flush()

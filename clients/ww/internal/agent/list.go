@@ -27,20 +27,39 @@ type ListOptions struct {
 	Out           io.Writer
 }
 
-// List renders a table of WitwaveAgent CRs to opts.Out. Columns match
-// the CRD's additionalPrinterColumns so operators see the same fields
-// they'd see from `kubectl get wwa`. The NAMESPACE column is always
-// shown — kept uniform regardless of scope so users can grep/sort by
-// namespace without worrying about which mode they ran in.
-func List(ctx context.Context, cfg *rest.Config, opts ListOptions) error {
-	if opts.Out == nil {
-		return fmt.Errorf("ListOptions.Out is required")
-	}
+// AgentSummary is a render-ready view of one WitwaveAgent. Flat enough
+// for a tview.Table cell or a tabwriter row; retains a pointer to the
+// raw unstructured object so callers that need more fields (TUI drill-
+// down, JSON emitters) don't have to re-fetch.
+type AgentSummary struct {
+	Namespace string
+	Name      string
+	// Team is the value of the witwave.ai/team label, or empty string
+	// when the agent is ungrouped (lands in the namespace-wide manifest).
+	Team string
+	// Phase is .status.phase or "Pending" when the CR hasn't been
+	// reconciled yet.
+	Phase string
+	// Ready is .status.readyReplicas (0 when unset).
+	Ready int64
+	// Backends is the ordered list of spec.backends[*].name.
+	Backends []string
+	// Created is the CR's creation timestamp, raw. Callers format it.
+	Created time.Time
+	// Raw is the underlying CR so drill-down views can render extra
+	// fields without a second round-trip. Callers MUST NOT mutate.
+	Raw *unstructured.Unstructured
+}
+
+// ListAgents returns summaries for the agents in scope. Shared data
+// path between `ww agent list` (CLI) and the TUI — both format the
+// same shape, neither re-derives status fields. Namespace/AllNamespaces
+// resolution matches the List wrapper below.
+func ListAgents(ctx context.Context, cfg *rest.Config, opts ListOptions) ([]AgentSummary, error) {
 	dyn, err := dynamic.NewForConfig(cfg)
 	if err != nil {
-		return fmt.Errorf("build dynamic client: %w", err)
+		return nil, fmt.Errorf("build dynamic client: %w", err)
 	}
-
 	var items *unstructured.UnstructuredList
 	if opts.AllNamespaces {
 		items, err = dyn.Resource(GVR()).List(ctx, metav1.ListOptions{})
@@ -48,10 +67,60 @@ func List(ctx context.Context, cfg *rest.Config, opts ListOptions) error {
 		items, err = dyn.Resource(GVR()).Namespace(opts.Namespace).List(ctx, metav1.ListOptions{})
 	}
 	if err != nil {
-		return fmt.Errorf("list agents: %w", err)
+		return nil, fmt.Errorf("list agents: %w", err)
 	}
+	out := make([]AgentSummary, 0, len(items.Items))
+	for i := range items.Items {
+		cr := &items.Items[i]
+		out = append(out, agentSummary(cr))
+	}
+	return out, nil
+}
 
-	if len(items.Items) == 0 {
+func agentSummary(cr *unstructured.Unstructured) AgentSummary {
+	s := AgentSummary{
+		Namespace: cr.GetNamespace(),
+		Name:      cr.GetName(),
+		Team:      cr.GetLabels()[TeamLabel],
+		Phase:     readPhase(cr),
+		Created:   cr.GetCreationTimestamp().Time,
+		Raw:       cr,
+	}
+	if s.Phase == "" {
+		s.Phase = "Pending"
+	}
+	if v, found, err := unstructured.NestedInt64(cr.Object, "status", "readyReplicas"); err == nil && found {
+		s.Ready = v
+	}
+	if backends, found, err := unstructured.NestedSlice(cr.Object, "spec", "backends"); err == nil && found {
+		for _, b := range backends {
+			m, ok := b.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if n, ok := m["name"].(string); ok {
+				s.Backends = append(s.Backends, n)
+			}
+		}
+	}
+	return s
+}
+
+// List renders a table of WitwaveAgent CRs to opts.Out. Columns match
+// the CRD's additionalPrinterColumns so operators see the same fields
+// they'd see from `kubectl get wwa`. The NAMESPACE column is always
+// shown — kept uniform regardless of scope so users can grep/sort by
+// namespace without worrying about which mode they ran in. Thin
+// formatter over ListAgents so the TUI shares the same data path.
+func List(ctx context.Context, cfg *rest.Config, opts ListOptions) error {
+	if opts.Out == nil {
+		return fmt.Errorf("ListOptions.Out is required")
+	}
+	summaries, err := ListAgents(ctx, cfg, opts)
+	if err != nil {
+		return err
+	}
+	if len(summaries) == 0 {
 		if opts.AllNamespaces {
 			fmt.Fprintln(opts.Out, "No WitwaveAgents found in any namespace.")
 		} else {
@@ -59,65 +128,24 @@ func List(ctx context.Context, cfg *rest.Config, opts ListOptions) error {
 		}
 		return nil
 	}
-
 	tw := tabwriter.NewWriter(opts.Out, 0, 2, 2, ' ', 0)
 	fmt.Fprintln(tw, "NAMESPACE\tNAME\tPHASE\tREADY\tBACKENDS\tAGE")
-	for i := range items.Items {
-		row := agentRow(&items.Items[i])
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
-			row.namespace, row.name, row.phase, row.ready, row.backends, row.age,
+	for _, s := range summaries {
+		backends := strings.Join(s.Backends, ",")
+		if backends == "" {
+			backends = "-"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\t%s\n",
+			s.Namespace, s.Name, s.Phase, s.Ready, backends, FormatAge(s.Created),
 		)
 	}
 	return tw.Flush()
 }
 
-type row struct {
-	namespace, name, phase, ready, backends, age string
-}
-
-func agentRow(cr *unstructured.Unstructured) row {
-	r := row{
-		namespace: cr.GetNamespace(),
-		name:      cr.GetName(),
-		phase:     readPhase(cr),
-		age:       formatAge(cr.GetCreationTimestamp().Time),
-	}
-	if r.phase == "" {
-		r.phase = "Pending"
-	}
-
-	// status.readyReplicas is int in the CRD; render as a string for table
-	// symmetry with other columns. Missing → "0".
-	if v, found, err := unstructured.NestedInt64(cr.Object, "status", "readyReplicas"); err == nil && found {
-		r.ready = fmt.Sprintf("%d", v)
-	} else {
-		r.ready = "0"
-	}
-
-	// spec.backends[*].name joined with commas — matches the CRD's
-	// `.spec.backends[*].name` additionalPrinterColumn.
-	if backends, found, err := unstructured.NestedSlice(cr.Object, "spec", "backends"); err == nil && found {
-		var names []string
-		for _, b := range backends {
-			m, ok := b.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			if n, ok := m["name"].(string); ok {
-				names = append(names, n)
-			}
-		}
-		r.backends = strings.Join(names, ",")
-	}
-	if r.backends == "" {
-		r.backends = "-"
-	}
-	return r
-}
-
-// formatAge mirrors kubectl's age column: 10s, 5m, 2h, 3d. Intentionally
+// FormatAge mirrors kubectl's age column: 10s, 5m, 2h, 3d. Intentionally
 // lossy — the precise timestamp is available via `ww agent status`.
-func formatAge(t time.Time) string {
+// Exported so the TUI can render ages the same way as the CLI table.
+func FormatAge(t time.Time) string {
 	if t.IsZero() {
 		return "-"
 	}

@@ -10,6 +10,23 @@ section of each entry.
 
 ### Added
 
+- **`ww tui` — live agent list** (replaces the welcome stub). Polls
+  the apiserver every 2 seconds and renders WitwaveAgents across
+  every namespace the caller can read, in a `k9s`-style table with
+  `NAMESPACE`, `TEAM`, `NAME`, `PHASE`, `READY`, `BACKENDS`, `AGE`
+  columns. Agents created / deleted / transitioning out-of-band (via
+  another CLI session, kubectl, Helm) update in place without a
+  keystroke. Header strip shows cluster + context + a rollup
+  (`Ready N · Degraded N · Pending N`); footer shows keybindings.
+  `r` forces an immediate refresh; selection survives each snapshot
+  swap by `(namespace, name)` identity so the highlighted row
+  doesn't jump when rows shift above it. Empty / no-cluster /
+  fetch-error states all render inline — never a black screen.
+  Drill-down (Enter on a row) is still a stub pointing at #1450 —
+  per-agent logs/events/send panels land in a follow-up.
+  `agent.ListAgents()` shipped alongside as the render-ready
+  data path shared by CLI and TUI.
+
 - **`ww agent create --auth / --auth-from-env / --auth-secret`** —
   three repeatable, per-backend credential flags that close the last
   "CLI-only" gap. Previously users had to `kubectl create secret` and

@@ -6,6 +6,7 @@ import (
 	"github.com/skthomasjr/witwave/clients/ww/internal/k8s"
 	"github.com/skthomasjr/witwave/clients/ww/internal/tui"
 	"github.com/spf13/cobra"
+	"k8s.io/client-go/rest"
 )
 
 // newTuiCmd wires `ww tui` — the interactive terminal surface
@@ -26,7 +27,7 @@ func newTuiCmd() *cobra.Command {
 			"tracked in #1450.\n\n" +
 			"Exit with q, esc, or ctrl-c.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runTui(kubeconfig, contextName, namespace)
+			return runTui(kubeconfig, contextName, namespace, Version)
 		},
 	}
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "",
@@ -40,9 +41,10 @@ func newTuiCmd() *cobra.Command {
 
 // runTui resolves the requested kubeconfig context (best-effort —
 // a failure does NOT block launch) and hands the resulting Target
-// (or the diagnostic string) to the tview application.
-func runTui(kubeconfig, contextName, namespace string) error {
+// + REST config (or the diagnostic string) to the tview application.
+func runTui(kubeconfig, contextName, namespace, version string) error {
 	var target *k8s.Target
+	var cfg *rest.Config
 	var contextErr string
 
 	r, err := k8s.NewResolver(k8s.Options{
@@ -57,7 +59,11 @@ func runTui(kubeconfig, contextName, namespace string) error {
 		contextErr = fmt.Sprintf("No cluster configured: %s", err)
 	} else {
 		target = r.Target()
+		cfg, err = r.REST()
+		if err != nil {
+			contextErr = fmt.Sprintf("Could not build REST client: %s", err)
+		}
 	}
 
-	return tui.Run(Version, target, contextErr)
+	return tui.Run(version, target, cfg, contextErr)
 }
