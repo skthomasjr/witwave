@@ -292,15 +292,137 @@ func runAgentTeamShow(ctx context.Context, f *agentFlags, name string) error {
 func newAgentBackendCmd(f *agentFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "backend",
-		Short: "Add, remove, or inspect backends on an existing WitwaveAgent",
+		Short: "Add, remove, or rename backends on an existing WitwaveAgent",
 		Long: "Manipulates the `spec.backends[]` array on a running agent's CR.\n" +
-			"Today covers `remove` only — `add` and `list` are Phase 3 follow-ups.\n" +
-			"For multi-backend agents declared at create time, use the repeatable\n" +
-			"`--backend` flag on `ww agent create` / `ww agent scaffold`.",
+			"Covers the full lifecycle:\n\n" +
+			"  ww agent backend add    <agent> <name>[:<type>]   append a backend\n" +
+			"  ww agent backend remove <agent> <name>            drop a backend\n" +
+			"  ww agent backend rename <agent> <old> <new>       rename a backend\n\n" +
+			"Each verb updates the CR, regenerates the inline backend.yaml when\n" +
+			"ww owns it, and — for agents with a single gitSync wired — optionally\n" +
+			"mirrors the change into the repo's `.agents/<…>/.<name>/` folder.",
 	}
+	cmd.AddCommand(newAgentBackendAddCmd(f))
 	cmd.AddCommand(newAgentBackendRemoveCmd(f))
 	cmd.AddCommand(newAgentBackendRenameCmd(f))
 	return cmd
+}
+
+func newAgentBackendAddCmd(f *agentFlags) *cobra.Command {
+	var (
+		authProfile   string
+		authFromEnv   string
+		authSecret    string
+		noRepoFolder  bool
+		commitMessage string
+	)
+	cmd := &cobra.Command{
+		Use:   "add <agent> <name>[:<type>]",
+		Short: "Add a backend to an existing WitwaveAgent",
+		Long: "Appends a backend to an existing agent's `spec.backends[]`. Port\n" +
+			"is auto-assigned to the first free slot in the 8001..8050 range.\n" +
+			"When the agent has a single gitSync wired, also scaffolds\n" +
+			"`.agents/<…>/.<name>/agent-card.md` (and the behavioural-\n" +
+			"instructions stub for LLM backends) to the repo — same layout\n" +
+			"`ww agent scaffold` produces. Pass --no-repo-folder to skip the\n" +
+			"repo side and leave the CR change in-cluster only.\n\n" +
+			"Backend spec follows the same shape as `ww agent create --backend`:\n" +
+			"  <type>         — name = type (single-backend shortcut)\n" +
+			"  <name>:<type>  — explicit name + type pair (for multiple of a type)\n\n" +
+			"Credentials: pick one of --auth / --auth-from-env / --auth-secret.\n" +
+			"Omit all three when the backend type needs no credentials (echo).\n" +
+			"LLM backends added without credentials will start the pod but error\n" +
+			"on first request — a yellow warning appears in the preflight banner.",
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			specs, err := agent.ParseBackendSpecs([]string{args[1]})
+			if err != nil {
+				return err
+			}
+			// ParseBackendSpecs stamps port 8001 for index 0 (right
+			// for `create` where ports come from scratch, wrong for
+			// `backend add` where the agent already owns backends).
+			// Clear it so BackendAdd's nextFreeBackendPort picks the
+			// first slot the existing CR isn't using.
+			specs[0].Port = 0
+			// Build the auth resolver — flags here drop the <backend>=
+			// prefix because the backend is already named positionally.
+			auth, err := resolveSingleBackendAuth(specs[0].Name, authProfile, authFromEnv, authSecret)
+			if err != nil {
+				return err
+			}
+			return runAgentBackendAdd(cmd.Context(), f, args[0], specs[0], auth, !noRepoFolder, commitMessage)
+		},
+	}
+	bindAgentMutatingFlags(cmd, f)
+	cmd.Flags().StringVar(&authProfile, "auth", "",
+		fmt.Sprintf("Named auth profile (e.g. `oauth`, `api-key`). Known: %s", agent.KnownCredentialProfiles()))
+	cmd.Flags().StringVar(&authFromEnv, "auth-from-env", "",
+		"Mint a K8s Secret from arbitrary env vars. Form: <VAR1>[,VAR2,...]. Secret keys match names verbatim.")
+	cmd.Flags().StringVar(&authSecret, "auth-secret", "",
+		"Reference an existing K8s Secret (verified, not modified)")
+	cmd.Flags().BoolVar(&noRepoFolder, "no-repo-folder", false,
+		"Skip the repo-side `.agents/<…>/.<name>/` scaffold (CR-only change)")
+	cmd.Flags().StringVar(&commitMessage, "commit-message", "",
+		"Custom commit message for the repo-side scaffold (default: \"Add backend <name> for agent <agent>\")")
+	return cmd
+}
+
+// resolveSingleBackendAuth converts the three flat auth flags on
+// `backend add` into a single BackendAuthResolver. At most one flag
+// may be set — the three are mutually exclusive. All-empty is the
+// legitimate "no credentials needed" case for echo backends.
+func resolveSingleBackendAuth(backend, profile, fromEnv, secret string) (agent.BackendAuthResolver, error) {
+	set := 0
+	if profile != "" {
+		set++
+	}
+	if fromEnv != "" {
+		set++
+	}
+	if secret != "" {
+		set++
+	}
+	if set > 1 {
+		return agent.BackendAuthResolver{}, fmt.Errorf(
+			"pick at most one of --auth / --auth-from-env / --auth-secret")
+	}
+	switch {
+	case profile != "":
+		return agent.BackendAuthResolver{Backend: backend, Mode: agent.BackendAuthProfile, Profile: profile}, nil
+	case fromEnv != "":
+		return agent.BackendAuthResolver{Backend: backend, Mode: agent.BackendAuthFromEnv, EnvVars: strings.Split(fromEnv, ",")}, nil
+	case secret != "":
+		return agent.BackendAuthResolver{Backend: backend, Mode: agent.BackendAuthExistingSecret, ExistingSecret: secret}, nil
+	}
+	return agent.BackendAuthResolver{Backend: backend, Mode: agent.BackendAuthNone}, nil
+}
+
+func runAgentBackendAdd(ctx context.Context, f *agentFlags, name string, spec agent.BackendSpec, auth agent.BackendAuthResolver, repoFolder bool, commitMessage string) error {
+	target, resolver, err := f.resolveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	cfg, err := resolver.REST()
+	if err != nil {
+		return err
+	}
+	_ = target
+	ns := logAndResolveNamespace(f.namespace, target.Namespace)
+	assumeYes := f.assumeYes || os.Getenv("WW_ASSUME_YES") == "true"
+	return agent.BackendAdd(ctx, cfg, agent.BackendAddOptions{
+		Agent:         name,
+		Namespace:     ns,
+		Backend:       spec,
+		Auth:          auth,
+		RepoFolder:    repoFolder,
+		CommitMessage: commitMessage,
+		CLIVersion:    Version,
+		AssumeYes:     assumeYes,
+		DryRun:        f.dryRun,
+		Out:           os.Stdout,
+		In:            os.Stdin,
+	})
 }
 
 func newAgentBackendRenameCmd(f *agentFlags) *cobra.Command {
