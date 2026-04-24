@@ -113,7 +113,176 @@ func newAgentCmd() *cobra.Command {
 	cmd.AddCommand(newAgentScaffoldCmd())
 	cmd.AddCommand(newAgentGitCmd(f))
 	cmd.AddCommand(newAgentBackendCmd(f))
+	cmd.AddCommand(newAgentTeamCmd(f))
 	return cmd
+}
+
+// ---------------------------------------------------------------------------
+// team (team membership via the witwave.ai/team label)
+// ---------------------------------------------------------------------------
+
+func newAgentTeamCmd(f *agentFlags) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "team",
+		Short: "Join, leave, list, or show agent team membership",
+		Long: "Manages the `witwave.ai/team` label on WitwaveAgent CRs. The\n" +
+			"operator reconciles one `witwave-manifest-<team>` ConfigMap per\n" +
+			"team and mounts it into every member's pod at\n" +
+			"`/home/agent/manifest.json`, so harnesses discover their teammates'\n" +
+			"URLs at runtime. Agents without the team label share one\n" +
+			"namespace-wide manifest.\n\n" +
+			"Team membership is a pure label patch — no CRD schema change, no\n" +
+			"pod restart. Members see a new peer within one operator reconcile\n" +
+			"cycle (seconds).",
+	}
+	cmd.AddCommand(newAgentTeamJoinCmd(f))
+	cmd.AddCommand(newAgentTeamLeaveCmd(f))
+	cmd.AddCommand(newAgentTeamListCmd(f))
+	cmd.AddCommand(newAgentTeamShowCmd(f))
+	return cmd
+}
+
+func newAgentTeamJoinCmd(f *agentFlags) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "join <agent> <team>",
+		Short: "Add an agent to a team (sets witwave.ai/team=<team>)",
+		Long: "Sets the `witwave.ai/team` label on the named WitwaveAgent. The\n" +
+			"operator re-reconciles the per-team manifest ConfigMap on the next\n" +
+			"cycle; every member (including the newcomer) picks up the updated\n" +
+			"peer list within seconds.\n\n" +
+			"Idempotent when the agent is already in the target team.\n" +
+			"Allowed when the agent is already in a *different* team — the\n" +
+			"banner shows the transition explicitly (was → now) so the user\n" +
+			"can see they're moving, not joining.",
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runAgentTeamJoin(cmd.Context(), f, args[0], args[1])
+		},
+	}
+	bindAgentMutatingFlags(cmd, f)
+	return cmd
+}
+
+func runAgentTeamJoin(ctx context.Context, f *agentFlags, name, team string) error {
+	target, resolver, err := f.resolveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	cfg, err := resolver.REST()
+	if err != nil {
+		return err
+	}
+	_ = target
+	ns := logAndResolveNamespace(f.namespace, target.Namespace)
+	assumeYes := f.assumeYes || os.Getenv("WW_ASSUME_YES") == "true"
+	return agent.TeamJoin(ctx, cfg, agent.TeamJoinOptions{
+		Agent:     name,
+		Namespace: ns,
+		Team:      team,
+		AssumeYes: assumeYes,
+		DryRun:    f.dryRun,
+		Out:       os.Stdout,
+		In:        os.Stdin,
+	})
+}
+
+func newAgentTeamLeaveCmd(f *agentFlags) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "leave <agent>",
+		Short: "Remove an agent from its team (drops witwave.ai/team label)",
+		Long: "Removes the `witwave.ai/team` label from the agent. The operator\n" +
+			"reconciles the agent back into the namespace-wide manifest (the\n" +
+			"bucket every label-less agent shares). No-ops cleanly when the\n" +
+			"agent wasn't in a team to begin with.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runAgentTeamLeave(cmd.Context(), f, args[0])
+		},
+	}
+	bindAgentMutatingFlags(cmd, f)
+	return cmd
+}
+
+func runAgentTeamLeave(ctx context.Context, f *agentFlags, name string) error {
+	target, resolver, err := f.resolveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	cfg, err := resolver.REST()
+	if err != nil {
+		return err
+	}
+	ns := logAndResolveNamespace(f.namespace, target.Namespace)
+	assumeYes := f.assumeYes || os.Getenv("WW_ASSUME_YES") == "true"
+	return agent.TeamLeave(ctx, cfg, agent.TeamLeaveOptions{
+		Agent:     name,
+		Namespace: ns,
+		AssumeYes: assumeYes,
+		DryRun:    f.dryRun,
+		Out:       os.Stdout,
+		In:        os.Stdin,
+	})
+}
+
+func newAgentTeamListCmd(f *agentFlags) *cobra.Command {
+	var team string
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List teams in a namespace (all teams by default, one team with --team)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runAgentTeamList(cmd.Context(), f, team)
+		},
+	}
+	cmd.Flags().StringVar(&team, "team", "",
+		"Only list members of this team (default: list every team in the namespace)")
+	return cmd
+}
+
+func runAgentTeamList(ctx context.Context, f *agentFlags, team string) error {
+	target, resolver, err := f.resolveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	cfg, err := resolver.REST()
+	if err != nil {
+		return err
+	}
+	ns := logAndResolveNamespace(f.namespace, target.Namespace)
+	return agent.TeamList(ctx, cfg, agent.TeamListOptions{
+		Namespace: ns,
+		Team:      team,
+		Out:       os.Stdout,
+	})
+}
+
+func newAgentTeamShowCmd(f *agentFlags) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "show <agent>",
+		Short: "Show which team an agent is in + its teammates",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runAgentTeamShow(cmd.Context(), f, args[0])
+		},
+	}
+	return cmd
+}
+
+func runAgentTeamShow(ctx context.Context, f *agentFlags, name string) error {
+	target, resolver, err := f.resolveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	cfg, err := resolver.REST()
+	if err != nil {
+		return err
+	}
+	ns := logAndResolveNamespace(f.namespace, target.Namespace)
+	return agent.TeamShow(ctx, cfg, agent.TeamShowOptions{
+		Agent:     name,
+		Namespace: ns,
+		Out:       os.Stdout,
+	})
 }
 
 // ---------------------------------------------------------------------------
