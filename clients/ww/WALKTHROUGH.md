@@ -527,9 +527,13 @@ agent entirely, use `ww agent delete`.
 
 ## 6. Cleanup — order matters
 
-Removing gitOps wiring before deleting the agent avoids a race where
-the operator's owner-ref cascade catches the gitSync sidecar
-mid-pull:
+Two shapes — pick the one matching how far you want the erase to go.
+
+### 6a. Keep the repo, just shut the agent down
+
+This is the "I may rebuild this agent tomorrow" shape. Drop the gitSync
+wiring first so the operator's owner-ref cascade can't catch the git-
+sync sidecar mid-pull, then delete the CR:
 
 ```bash
 ww agent git remove consensus \
@@ -548,18 +552,52 @@ preserved regardless — ww gates deletion on the
 `app.kubernetes.io/managed-by: ww` label, so hand-rolled Secrets
 sharing the default name never get clobbered.
 
-If you want to clean up the repo folder too:
+### 6b. Wipe every trace — repo folder included
+
+When you're decommissioning the agent permanently and don't want the
+config history hanging around in the repo, pass `--purge` to
+`ww agent delete`. That's the convenience flag equivalent to
+`--remove-repo-folder --delete-git-secret`:
 
 ```bash
-# Local clone of the repo:
-git rm --recursive .agents/consensus
-git commit --message "chore: remove consensus config"
-git push
+ww agent delete consensus \
+    --namespace witwave \
+    --purge \
+    --yes
 ```
 
-There's no `ww agent delete --purge-repo` today — we deliberately
-kept repo deletion manual so a `delete` typo can't destroy config
-history.
+What `--purge` does, in order:
+
+1. Clones the single wired gitSync repo to a temp dir, `git rm -r`s
+   the agent's `.agents/consensus/` subtree, commits, and pushes.
+   Runs **before** the CR delete — if the push fails (auth, network,
+   branch protection), the CR is preserved so you can retry.
+2. Deletes the `WitwaveAgent` CR. The operator cascades pod + Service
+   cleanup via owner references.
+3. Deletes every ww-managed credential Secret referenced by the CR's
+   gitSyncs. User-created Secrets are preserved as in 6a.
+
+Preconditions + guard rails:
+
+- **Exactly one gitSync** must be wired. Multiple gitSyncs = refuse
+  with an "ambiguous" error; detach the unused ones with
+  `ww agent git remove` first.
+- **Dry-run it first.** `--purge --dry-run` prints the plan (including
+  which repo folder will be wiped + which Secrets will be deleted)
+  without touching anything.
+- The repo wipe's commit message defaults to `Remove agent <name>`
+  with a `Removed-by: ww agent delete` trailer. Override via
+  `--commit-message "..."`.
+
+If you only want a subset of the nuke — say, the repo folder but not
+the Secret — pass the granular flags instead of `--purge`:
+
+```bash
+ww agent delete consensus \
+    --namespace witwave \
+    --remove-repo-folder \
+    --yes
+```
 
 ---
 

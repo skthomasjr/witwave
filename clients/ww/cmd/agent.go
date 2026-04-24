@@ -763,19 +763,58 @@ func runAgentStatus(ctx context.Context, f *agentFlags, name string) error {
 // ---------------------------------------------------------------------------
 
 func newAgentDeleteCmd(f *agentFlags) *cobra.Command {
+	var (
+		removeRepoFolder bool
+		deleteGitSecret  bool
+		purge            bool
+		commitMessage    string
+	)
 	cmd := &cobra.Command{
 		Use:   "delete <name>",
 		Short: "Delete a WitwaveAgent CR (operator cascades pod cleanup)",
-		Args:  cobra.ExactArgs(1),
+		Long: "Deletes the WitwaveAgent CR. The operator cascades pod + Service\n" +
+			"teardown via owner references — no manual cleanup needed on the\n" +
+			"cluster side.\n\n" +
+			"Optional repo-side + credential cleanup:\n\n" +
+			"  --remove-repo-folder   Also wipe the agent's `.agents/<…>/`\n" +
+			"                         directory from the wired gitSync repo\n" +
+			"                         (clone → git rm -r → commit → push).\n" +
+			"                         Requires exactly one gitSync configured;\n" +
+			"                         multiple syncs refuse as ambiguous.\n" +
+			"                         Runs BEFORE the CR delete so a repo-\n" +
+			"                         side failure leaves cluster state intact\n" +
+			"                         and the user can retry.\n\n" +
+			"  --delete-git-secret    Also delete every ww-managed credential\n" +
+			"                         Secret referenced by the CR's\n" +
+			"                         gitSyncs[]. Secrets without the\n" +
+			"                         `app.kubernetes.io/managed-by: ww` label\n" +
+			"                         are preserved regardless.\n\n" +
+			"  --purge                Convenience: --remove-repo-folder +\n" +
+			"                         --delete-git-secret. For when you want\n" +
+			"                         every ww trace of this agent gone.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runAgentDelete(cmd.Context(), f, args[0])
+			if purge {
+				removeRepoFolder = true
+				deleteGitSecret = true
+			}
+			return runAgentDelete(cmd.Context(), f, args[0], removeRepoFolder, deleteGitSecret, commitMessage)
 		},
 	}
 	bindAgentMutatingFlags(cmd, f)
+	cmd.Flags().BoolVar(&removeRepoFolder, "remove-repo-folder", false,
+		"Also wipe the agent's `.agents/<…>/` directory from the wired gitSync repo "+
+			"(refuses when multiple gitSyncs are configured)")
+	cmd.Flags().BoolVar(&deleteGitSecret, "delete-git-secret", false,
+		"Also delete every ww-managed credential Secret referenced by the CR's gitSyncs[]")
+	cmd.Flags().BoolVar(&purge, "purge", false,
+		"Convenience flag: enables --remove-repo-folder AND --delete-git-secret")
+	cmd.Flags().StringVar(&commitMessage, "commit-message", "",
+		"Custom commit message for the repo wipe (default: \"Remove agent <name>\")")
 	return cmd
 }
 
-func runAgentDelete(ctx context.Context, f *agentFlags, name string) error {
+func runAgentDelete(ctx context.Context, f *agentFlags, name string, removeRepoFolder, deleteGitSecret bool, commitMessage string) error {
 	target, resolver, err := f.resolveTarget(ctx)
 	if err != nil {
 		return err
@@ -787,12 +826,15 @@ func runAgentDelete(ctx context.Context, f *agentFlags, name string) error {
 	ns := logAndResolveNamespace(f.namespace, target.Namespace)
 	assumeYes := f.assumeYes || os.Getenv("WW_ASSUME_YES") == "true"
 	return agent.Delete(ctx, target, cfg, agent.DeleteOptions{
-		Name:      name,
-		Namespace: ns,
-		AssumeYes: assumeYes,
-		DryRun:    f.dryRun,
-		Out:       os.Stdout,
-		In:        os.Stdin,
+		Name:             name,
+		Namespace:        ns,
+		RemoveRepoFolder: removeRepoFolder,
+		DeleteGitSecret:  deleteGitSecret,
+		CommitMessage:    commitMessage,
+		AssumeYes:        assumeYes,
+		DryRun:           f.dryRun,
+		Out:              os.Stdout,
+		In:               os.Stdin,
 	})
 }
 

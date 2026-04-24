@@ -493,17 +493,23 @@ if [[ -n "${WW_SMOKE_GITHUB_REPO:-}" ]]; then
         fail "backend remove" "expected 'Removed backend' confirmation"
     fi
 
-    # 5.8 — git remove with --delete-secret. No ww-minted Secret exists
-    # for this public-repo sync, so the flag is a no-op here — but the
-    # verb itself should still succeed and the ww-labelled gate should
-    # log that nothing needs deleting.
+    # 5.8 — atomic cleanup via `ww agent delete --purge`. Exercises the
+    # three-phase repo-wipe + CR-delete + Secret-reap in one call, which
+    # is the shape users are meant to reach for when decommissioning an
+    # agent. On success, the trap's cleanup_scaffold_dir fallback is
+    # a no-op (the dir's already gone), which confirms purge did its
+    # job end-to-end.
     # shellcheck disable=SC2086
-    run_captured "git remove" \
-        "$WW_BIN" agent git remove "$WW_SMOKE_GIT_AGENT" $ns_flag --delete-secret
-    if [[ $LAST_STATUS -eq 0 ]] && expect_grep "Detached gitSync"; then
-        pass "git remove detached the sync"
+    run_captured "agent delete --purge" \
+        "$WW_BIN" agent delete "$WW_SMOKE_GIT_AGENT" $ns_flag --purge --yes
+    if [[ $LAST_STATUS -eq 0 ]] && expect_grep "Deleted WitwaveAgent"; then
+        pass "agent delete --purge wiped CR + repo folder"
+        # Tell the trap's fallback not to re-try the repo cleanup — the
+        # CLI already did it. (Leave WW_SMOKE_GIT_AGENT set so KEEP mode
+        # can still refer to it by name.)
+        WW_SMOKE_GIT_REPO=""
     else
-        fail "git remove" "expected 'Detached gitSync' confirmation"
+        fail "agent delete --purge" "expected 'Deleted WitwaveAgent' confirmation"
     fi
 else
     printf '\n%s(Phase 5 skipped — set WW_SMOKE_GITHUB_REPO=owner/repo to enable)%s\n' \
