@@ -8,6 +8,30 @@ section of each entry.
 
 ## [Unreleased]
 
+## [0.7.10] — 2026-04-24
+
+### Added
+
+- **`ww tui` · `a` to add an agent** — keybinding opens a centered
+  modal form (Name / Namespace / Backend / Team / Create namespace if
+  missing). Submit invokes `agent.Create()` asynchronously (Wait=false)
+  so the TUI doesn't freeze; the list's poll loop shows the new row
+  appearing and its Pending → Ready transition live. DNS-1123
+  validation on name + team surfaces inline; apiserver errors
+  (AlreadyExists, RBAC denied, etc.) populate an error strip above
+  the form so the user can fix and resubmit without retyping.
+  ESC/Cancel closes cleanly; form state is reset on every open so a
+  cancelled submission doesn't leak values into the next one.
+  Footer updated: `↑/↓ move · a add · r refresh · ↵ drill down (soon) · q/esc quit`.
+
+  Design notes: `AssumeYes=true` because `k8s.Confirm` can't prompt
+  over a tview canvas; banner chatter discarded via a local writer
+  so `agent.Create` stdout doesn't leak under the surface. Auth
+  (`--auth / --auth-from-env / --auth-secret`) deliberately NOT on
+  the form — typing tokens into a TUI form is the wrong UX; users
+  who need credentials stay on the CLI until a richer credential
+  picker lands alongside the drill-down view.
+
 ## [0.7.9] — 2026-04-24
 
 ### Added
