@@ -87,14 +87,12 @@ cluster-wide.
 ## 2. Your first agent (hello world)
 
 ```bash
-ww agent create hello --create-namespace
+ww agent create hello -n witwave --create-namespace
 ```
 
 Expected output:
 
 ```
-Using namespace: witwave (ww default)
-
 Target cluster:  docker-desktop  (context: docker-desktop)
 Namespace:       witwave
 Action:          create WitwaveAgent "hello"
@@ -112,19 +110,35 @@ Agent hello is ready.
 
 **What just happened:**
 
-- `ww` resolved the target namespace to `witwave` — the ww-wide default
-  when neither `-n` nor your kubeconfig context pins one. (ww always
-  echoes which namespace it landed in; the parenthetical tells you the
-  source: `(from kubeconfig context)` vs `(ww default)`.)
+- `-n witwave` pinned the target namespace explicitly. `witwave` is
+  also ww's own fallback when neither `-n` nor your kubeconfig context
+  pins one — so `ww agent create hello --create-namespace` would land
+  in the same place. The explicit `-n` is the habit we recommend:
+  production changes belong in a namespace you named on purpose, not
+  one that quietly defaulted. When `-n` is omitted, ww prints a
+  `Using namespace: <ns> (from kubeconfig context)` or
+  `Using namespace: <ns> (ww default)` line at the top of every
+  command so you can tell an inherited namespace from a quiet fallback.
 - `--create-namespace` provisioned the `witwave` namespace on first
   use, carrying the `app.kubernetes.io/managed-by: ww` label so teardown
   tooling can tell ww-created namespaces from hand-authored ones.
-  Subsequent runs skip the creation.
+  Subsequent runs skip the creation (idempotent).
 - The CR declared one backend — the `echo` stub, which needs no API
   keys — on port 8001.
 - The operator reconciled the CR into a pod with two containers
   (`harness` on port 8000 + `echo` on port 8001) and flipped the
   agent to Ready within ~15 seconds.
+
+> **Convention for the rest of this doc.** Every `ww agent *` example
+> below assumes the target namespace is `witwave`. To keep snippets
+> focused on the verb being demonstrated, we elide `-n witwave` from
+> them. Two ways to make that work in your shell:
+>
+> - Keep passing `-n witwave` explicitly (recommended for production
+>   flows — matches what you'd put in CI / scripts).
+> - Run `kubectl config set-context --current --namespace witwave`
+>   once; every `ww agent *` then inherits it from the kubeconfig
+>   context (the "(from kubeconfig context)" source text confirms it).
 
 Poke at it:
 
