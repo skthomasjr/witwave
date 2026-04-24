@@ -48,7 +48,9 @@ The operator reconciles `WitwaveAgent` custom resources into running
 pods. Nothing else you do in `ww` works without it.
 
 ```bash
-ww operator install --if-missing --yes
+ww operator install \
+    --if-missing \
+    --yes
 ```
 
 `--if-missing` makes the install idempotent: if the operator is already
@@ -87,7 +89,9 @@ cluster-wide.
 ## 2. Your first agent (hello world)
 
 ```bash
-ww agent create hello -n witwave --create-namespace
+ww agent create hello \
+    --namespace witwave \
+    --create-namespace
 ```
 
 Expected output:
@@ -110,17 +114,17 @@ Agent hello is ready.
 
 **What just happened:**
 
-- `-n witwave` pinned the target namespace explicitly. `witwave` is
-  also ww's own fallback when neither `-n` nor your kubeconfig context
-  pins one — so `ww agent create hello --create-namespace` would land
-  in the same place. The explicit `-n` is the habit we recommend:
-  production changes belong in a namespace you named on purpose, not
-  one that quietly defaulted. When `-n` is omitted, ww prints a
+- `--namespace witwave` pinned the target namespace explicitly. `witwave`
+  is also ww's own fallback when neither `--namespace` nor your kubeconfig
+  context pins one — so dropping the flag would land in the same place.
+  The explicit form is the habit we recommend: production changes belong
+  in a namespace you named on purpose, not one that quietly defaulted.
+  When `--namespace` is omitted, ww prints a
   `Using namespace: <ns> (from kubeconfig context)` or
-  `Using namespace: <ns> (ww default)` line at the top of every
-  command so you can tell an inherited namespace from a quiet fallback.
-- `--create-namespace` provisioned the `witwave` namespace on first
-  use, carrying the `app.kubernetes.io/managed-by: ww` label so teardown
+  `Using namespace: <ns> (ww default)` line at the top of every command
+  so you can tell an inherited namespace from a quiet fallback.
+- `--create-namespace` provisioned the `witwave` namespace on first use,
+  carrying the `app.kubernetes.io/managed-by: ww` label so teardown
   tooling can tell ww-created namespaces from hand-authored ones.
   Subsequent runs skip the creation (idempotent).
 - The CR declared one backend — the `echo` stub, which needs no API
@@ -129,31 +133,41 @@ Agent hello is ready.
   (`harness` on port 8000 + `echo` on port 8001) and flipped the
   agent to Ready within ~15 seconds.
 
-> **Convention for the rest of this doc.** Every `ww agent *` example
-> below assumes the target namespace is `witwave`. To keep snippets
-> focused on the verb being demonstrated, we elide `-n witwave` from
-> them. Two ways to make that work in your shell:
->
-> - Keep passing `-n witwave` explicitly (recommended for production
->   flows — matches what you'd put in CI / scripts).
-> - Run `kubectl config set-context --current --namespace witwave`
->   once; every `ww agent *` then inherits it from the kubeconfig
->   context (the "(from kubeconfig context)" source text confirms it).
-
-Poke at it:
+Poke at it — every `ww agent *` verb takes `--namespace`, and every
+example in this walkthrough passes it explicitly:
 
 ```bash
-ww agent list                  # table view with phase + ready count
-ww agent status hello          # curated describe: phase, reconcile history
-ww agent logs hello --no-follow --tail 20    # harness container logs
-ww agent logs hello -c echo --no-follow --tail 5   # echo sidecar logs
-ww agent events hello          # CR + pod events
+# Table view with phase + ready count.
+ww agent list \
+    --namespace witwave
+
+# Curated describe: phase, reconcile history.
+ww agent status hello \
+    --namespace witwave
+
+# Harness container logs.
+ww agent logs hello \
+    --namespace witwave \
+    --no-follow \
+    --tail 20
+
+# Echo sidecar logs.
+ww agent logs hello \
+    --namespace witwave \
+    --container echo \
+    --no-follow \
+    --tail 5
+
+# CR + pod events.
+ww agent events hello \
+    --namespace witwave
 ```
 
 And the headline move — talk to it:
 
 ```bash
-ww agent send hello "ping from the walkthrough"
+ww agent send hello "ping from the walkthrough" \
+    --namespace witwave
 ```
 
 Expected response:
@@ -188,10 +202,16 @@ Two shapes for the repeatable `--backend` flag:
   same type appears twice)
 
 ```bash
-ww agent delete hello --yes                 # cleanup from section 2
+# Cleanup from section 2.
+ww agent delete hello \
+    --namespace witwave \
+    --yes
+
+# Create a two-backend agent in the same namespace.
 ww agent create consensus \
-  --backend echo-1:echo \
-  --backend echo-2:echo
+    --namespace witwave \
+    --backend echo-1:echo \
+    --backend echo-2:echo
 ```
 
 Expected:
@@ -205,12 +225,17 @@ Created WitwaveAgent consensus ...
 Inspect the pod:
 
 ```bash
-kubectl get pods -l app.kubernetes.io/name=consensus -o wide
+kubectl get pods \
+    --namespace witwave \
+    --selector app.kubernetes.io/name=consensus \
+    --output wide
 # NAME                       READY   STATUS
 # consensus-xxxxxxxxxx-yyyy  3/3     Running
 
-kubectl get pods -l app.kubernetes.io/name=consensus \
-  -o jsonpath='{.items[0].spec.containers[*].name}{"\n"}'
+kubectl get pods \
+    --namespace witwave \
+    --selector app.kubernetes.io/name=consensus \
+    --output jsonpath='{.items[0].spec.containers[*].name}{"\n"}'
 # harness echo-1 echo-2
 ```
 
@@ -226,7 +251,9 @@ A2A round-trip still works — every concern (a2a, heartbeat, job, etc.)
 routes to the **first** backend by default:
 
 ```bash
-ww agent send consensus "who am I talking to"    # lands on echo-1
+# Lands on echo-1 (first backend = default for every concern).
+ww agent send consensus "who am I talking to" \
+    --namespace witwave
 ```
 
 You'll see echo-1's canned response. To redistribute routing across
@@ -238,7 +265,10 @@ wired.
 When you have API keys, the shape is the same:
 
 ```bash
-ww agent create research --backend claude --backend codex
+ww agent create research \
+    --namespace witwave \
+    --backend claude \
+    --backend codex
 # (requires ANTHROPIC_API_KEY + OPENAI_API_KEY Secrets per-backend;
 #  future `ww agent backend set --api-key-secret ...` verb will make
 #  this one command.)
@@ -261,8 +291,10 @@ Using your own private or public repo (example assumes you have
 in). Empty repos are handled — ww bootstraps the initial commit.
 
 ```bash
-ww agent scaffold consensus --repo <you>/my-witwave-config \
-  --backend echo-1:echo --backend echo-2:echo
+ww agent scaffold consensus \
+    --repo <you>/my-witwave-config \
+    --backend echo-1:echo \
+    --backend echo-2:echo
 ```
 
 Expected:
@@ -310,8 +342,10 @@ Pushed main.
 If you re-run the scaffold on an existing directory:
 
 ```bash
-ww agent scaffold consensus --repo <you>/my-witwave-config \
-  --backend echo-1:echo --backend echo-2:echo
+ww agent scaffold consensus \
+    --repo <you>/my-witwave-config \
+    --backend echo-1:echo \
+    --backend echo-2:echo
 ```
 
 You'll see it **merge** rather than overwrite — missing files land,
@@ -328,15 +362,23 @@ Three ways to supply auth — pick **one** based on how you sign into
 GitHub:
 
 ```bash
-# Option A: local `gh` already authenticated
-ww agent git add consensus --repo <you>/my-witwave-config --auth-from-gh
+# Option A: local `gh` already authenticated.
+ww agent git add consensus \
+    --namespace witwave \
+    --repo <you>/my-witwave-config \
+    --auth-from-gh
 
-# Option B: named env var holds a token (CI / .env workflows)
-GITHUB_TOKEN=ghp_... ww agent git add consensus --repo ... \
-  --auth-from-env GITHUB_TOKEN
+# Option B: named env var holds a token (CI / .env workflows).
+GITHUB_TOKEN=ghp_... ww agent git add consensus \
+    --namespace witwave \
+    --repo <you>/my-witwave-config \
+    --auth-from-env GITHUB_TOKEN
 
-# Option C: a K8s Secret you already created
-ww agent git add consensus --repo ... --auth-secret my-github-pat
+# Option C: a K8s Secret you already created.
+ww agent git add consensus \
+    --namespace witwave \
+    --repo <you>/my-witwave-config \
+    --auth-secret my-github-pat
 ```
 
 Expected output (Option A):
@@ -357,22 +399,34 @@ The operator adds a `git-sync-<sync-name>` sidecar to the pod. After
 ~60 seconds:
 
 ```bash
-kubectl get pods -l app.kubernetes.io/name=consensus
+kubectl get pods \
+    --namespace witwave \
+    --selector app.kubernetes.io/name=consensus
 # consensus-xxxxxxxxxx-zzzz  4/4  Running  (harness + echo-1 + echo-2 + git-sync)
 
-ww agent git list consensus
+ww agent git list consensus \
+    --namespace witwave
 ```
 
 Confirm the content reached the pod:
 
 ```bash
-POD=$(kubectl get pods -l app.kubernetes.io/name=consensus \
-  -o jsonpath='{.items[0].metadata.name}')
-kubectl exec $POD -c harness -- ls -la /home/agent/.witwave/
+POD=$(kubectl get pods \
+    --namespace witwave \
+    --selector app.kubernetes.io/name=consensus \
+    --output jsonpath='{.items[0].metadata.name}')
+
+kubectl exec "$POD" \
+    --namespace witwave \
+    --container harness \
+    -- ls -la /home/agent/.witwave/
 # HEARTBEAT.md
 # backend.yaml
 
-kubectl exec $POD -c echo-1 -- ls -la /home/agent/.echo-1/
+kubectl exec "$POD" \
+    --namespace witwave \
+    --container echo-1 \
+    -- ls -la /home/agent/.echo-1/
 # agent-card.md
 ```
 
@@ -385,11 +439,14 @@ file on the repo, wait ≤60 seconds, confirm the pod sees the edit:
 # On your local clone of the repo:
 echo "Custom prose added on $(date)" >> .agents/consensus/README.md
 git add .agents/consensus/README.md
-git commit -m "docs: add timestamp to consensus README"
+git commit --message "docs: add timestamp to consensus README"
 git push
 
 # Wait ~60s, then:
-kubectl exec $POD -c harness -- cat /home/agent/.witwave/../README.md | tail
+kubectl exec "$POD" \
+    --namespace witwave \
+    --container harness \
+    -- cat /home/agent/.witwave/../README.md | tail
 ```
 
 The git-sync sidecar's exechook detected the new commit, rsync'd the
@@ -407,7 +464,8 @@ backend). Two verbs, both atomic across CR + repo:
 ### 5a. Rename
 
 ```bash
-ww agent backend rename consensus echo-2 echo-backup
+ww agent backend rename consensus echo-2 echo-backup \
+    --namespace witwave
 ```
 
 Expected:
@@ -438,7 +496,9 @@ If you want to rename only the CR and handle the repo yourself, pass
 Remove a backend from both the CR and the repo:
 
 ```bash
-ww agent backend remove consensus echo-backup --remove-repo-folder
+ww agent backend remove consensus echo-backup \
+    --namespace witwave \
+    --remove-repo-folder
 ```
 
 Expected:
@@ -472,8 +532,14 @@ the operator's owner-ref cascade catches the gitSync sidecar
 mid-pull:
 
 ```bash
-ww agent git remove consensus --delete-secret --yes
-ww agent delete consensus --yes
+ww agent git remove consensus \
+    --namespace witwave \
+    --delete-secret \
+    --yes
+
+ww agent delete consensus \
+    --namespace witwave \
+    --yes
 ```
 
 `--delete-secret` removes the K8s Secret ww minted for the gitSync
@@ -486,8 +552,8 @@ If you want to clean up the repo folder too:
 
 ```bash
 # Local clone of the repo:
-git rm -r .agents/consensus
-git commit -m "chore: remove consensus config"
+git rm --recursive .agents/consensus
+git commit --message "chore: remove consensus config"
 git push
 ```
 
@@ -505,7 +571,7 @@ muscle memory carries across them:
 | Flag | What it does |
 |---|---|
 | `--dry-run` | Print the plan and exit. Touches nothing — no API call, no disk write, no git push. |
-| `--yes` / `-y` | Skip confirmation prompts on production-looking clusters. Also via `WW_ASSUME_YES=true`. |
+| `--yes` | Skip confirmation prompts on production-looking clusters. Also via `WW_ASSUME_YES=true`. |
 | `--no-wait` | (create, some operator verbs) Return as soon as the CR is accepted. Useful in CI. |
 | `--timeout 2m` | Bound how long we wait for Ready (create) or git push (scaffold). |
 
@@ -528,23 +594,33 @@ The three debugging verbs, in increasing "I've been at this a while"
 order:
 
 ```bash
-ww agent status <name>         # CR phase + reconcile history + backend summary
-ww agent events <name>         # recent Kubernetes events on the CR + pods
-ww agent logs <name>           # harness container (-c <name> for sidecars)
+# CR phase + reconcile history + backend summary.
+ww agent status <name> \
+    --namespace witwave
+
+# Recent Kubernetes events on the CR + pods.
+ww agent events <name> \
+    --namespace witwave
+
+# Harness container logs (pass --container <name> for sidecars).
+ww agent logs <name> \
+    --namespace witwave
 ```
 
 Common situations:
 
 - **Phase stuck at `Degraded`** — check `ww agent status`'s
   reconcile-history column; operator errors land there. Check
-  `ww agent logs --no-follow --tail 50` for harness-level failures
-  (missing `backend.yaml` routes, unreachable backends).
+  `ww agent logs <name> --namespace witwave --no-follow --tail 50`
+  for harness-level failures (missing `backend.yaml` routes,
+  unreachable backends).
 
 - **Pod stuck at `Init:Error` / `CrashLoopBackOff`** — usually a
-  sidecar issue. `kubectl describe pod` shows which init container
-  failed; `kubectl logs <pod> -c <init-container-name>` has the
-  error. For git-sync issues, the most common fault is auth: rerun
-  `ww agent git add` with a different `--auth-*` path.
+  sidecar issue. `kubectl describe pod --namespace witwave <pod>`
+  shows which init container failed;
+  `kubectl logs --namespace witwave <pod> --container <init-container-name>`
+  has the error. For git-sync issues, the most common fault is auth:
+  rerun `ww agent git add` with a different `--auth-*` path.
 
 - **gitSync attached but content isn't in the pod** — wait ~60s
   (default sync period) then check again. If still empty, the
