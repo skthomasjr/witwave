@@ -8,6 +8,42 @@ section of each entry.
 
 ## [Unreleased]
 
+## [0.7.6] — 2026-04-23
+
+### Added
+
+- **Multi-backend agents** — `ww agent create` and `ww agent scaffold`
+  both gain a repeatable `--backend` flag. Two shapes accepted per
+  entry:
+  - `<type>` — name = type (e.g. `--backend claude`), the single-
+    backend shortcut
+  - `<name>:<type>` — explicit name + type pair (e.g.
+    `--backend echo-1:echo --backend echo-2:echo`), required when two
+    backends of the same type must coexist on one agent
+  Each declared backend gets a distinct container name, distinct port
+  (8001, 8002, …), and a distinct folder under `.agents/<agent>/.<name>/`
+  in the gitOps repo. The generated `backend.yaml` enumerates every
+  backend under `agents:` and routes every concern (a2a, heartbeat,
+  jobs, tasks, triggers, continuations) to the **first** backend by
+  default — operators redistribute routing by editing the file
+  post-scaffold. This unlocks the multi-model consensus pattern the
+  framework has always supported at the CRD level but that the CLI
+  couldn't express until now:
+  ```
+  ww agent create consensus --backend claude --backend codex
+  ```
+
+### Backward compat
+
+- `ww agent create hello` (no flags) and `ww agent scaffold hello
+  --repo owner/repo` continue to produce a single default-echo
+  backend — identical CR + repo output to 0.7.5.
+- `--backend echo` (single bare type) still works for users who don't
+  need multi-backend naming.
+- `ww agent git add` needed no changes — its mapping generator already
+  walked `spec.backends[]` by name, so multi-backend agents auto-derive
+  per-backend gitMappings on attach.
+
 ## [0.7.5] — 2026-04-23
 
 ### Changed
