@@ -36,6 +36,14 @@ type BuildOptions struct {
 	// as an annotation so operators can trace surprise CRs back to the
 	// invocation that created them.
 	CreatedBy string
+
+	// Team, when non-empty, stamps the `witwave.ai/team=<team>` label on
+	// the CR so the operator lists it in the per-team manifest ConfigMap
+	// at first reconcile. Equivalent to running `ww agent team join`
+	// after `ww agent create`, but avoids the two-call race where the
+	// agent flashes into the namespace-wide manifest for a moment
+	// before the label lands.
+	Team string
 }
 
 // Build constructs the unstructured.Unstructured representation of a
@@ -50,6 +58,11 @@ func Build(opts BuildOptions) (*unstructured.Unstructured, error) {
 	}
 	if opts.Namespace == "" {
 		return nil, fmt.Errorf("namespace is required")
+	}
+	if opts.Team != "" {
+		if err := ValidateName(opts.Team); err != nil {
+			return nil, fmt.Errorf("team name %q: %w", opts.Team, err)
+		}
 	}
 
 	backends := opts.Backends
@@ -96,7 +109,11 @@ func Build(opts BuildOptions) (*unstructured.Unstructured, error) {
 	obj.SetKind(Kind)
 	obj.SetName(opts.Name)
 	obj.SetNamespace(opts.Namespace)
-	obj.SetLabels(map[string]string{LabelManagedBy: LabelManagedByWW})
+	labels := map[string]string{LabelManagedBy: LabelManagedByWW}
+	if opts.Team != "" {
+		labels[TeamLabel] = opts.Team
+	}
+	obj.SetLabels(labels)
 	if len(annotations) > 0 {
 		obj.SetAnnotations(annotations)
 	}

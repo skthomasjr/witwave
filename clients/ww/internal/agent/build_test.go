@@ -157,6 +157,57 @@ func TestBuild_InvalidName(t *testing.T) {
 	}
 }
 
+func TestBuild_WithTeam_StampsLabel(t *testing.T) {
+	t.Parallel()
+	obj, err := Build(BuildOptions{
+		Name:       "hello",
+		Namespace:  "witwave",
+		CLIVersion: "0.7.8",
+		Team:       "alpha",
+	})
+	if err != nil {
+		t.Fatalf("Build returned unexpected error: %v", err)
+	}
+	if got, want := obj.GetLabels()[TeamLabel], "alpha"; got != want {
+		t.Errorf("team label = %q; want %q", got, want)
+	}
+	// Managed-by label still present — team stamp shouldn't clobber existing labels.
+	if got, want := obj.GetLabels()[LabelManagedBy], LabelManagedByWW; got != want {
+		t.Errorf("managed-by label = %q; want %q (Team shouldn't overwrite)", got, want)
+	}
+}
+
+func TestBuild_NoTeam_OmitsLabel(t *testing.T) {
+	t.Parallel()
+	obj, err := Build(BuildOptions{
+		Name:       "hello",
+		Namespace:  "witwave",
+		CLIVersion: "0.7.8",
+	})
+	if err != nil {
+		t.Fatalf("Build returned unexpected error: %v", err)
+	}
+	if _, labelled := obj.GetLabels()[TeamLabel]; labelled {
+		t.Error("no Team set → team label should be absent so the agent falls back to the namespace-wide manifest")
+	}
+}
+
+func TestBuild_InvalidTeamName(t *testing.T) {
+	t.Parallel()
+	_, err := Build(BuildOptions{
+		Name:       "hello",
+		Namespace:  "witwave",
+		CLIVersion: "0.7.8",
+		Team:       "Invalid-UPPER",
+	})
+	if err == nil {
+		t.Fatal("expected an error for non-DNS-1123 team name")
+	}
+	if !strings.Contains(err.Error(), "team name") {
+		t.Errorf("error = %q; want 'team name' substring", err)
+	}
+}
+
 func TestBuild_NamespaceRequired(t *testing.T) {
 	t.Parallel()
 	_, err := Build(BuildOptions{Name: "hello"})

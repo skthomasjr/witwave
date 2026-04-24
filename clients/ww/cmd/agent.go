@@ -779,6 +779,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 		noWait          bool
 		timeout         time.Duration
 		createNamespace bool
+		team            string
 	)
 	cmd := &cobra.Command{
 		Use:   "create <name>",
@@ -801,7 +802,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runAgentCreate(cmd.Context(), f, args[0], specs, !noWait, timeout, createNamespace)
+			return runAgentCreate(cmd.Context(), f, args[0], specs, !noWait, timeout, createNamespace, team)
 		},
 	}
 	bindAgentMutatingFlags(cmd, f)
@@ -819,10 +820,13 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 		"Maximum time to wait for the agent to report Ready (ignored with --no-wait)")
 	cmd.Flags().BoolVar(&createNamespace, "create-namespace", false,
 		"Create the target namespace if it doesn't already exist (no-op otherwise)")
+	cmd.Flags().StringVar(&team, "team", "",
+		"Stamp witwave.ai/team=<team> at creation (avoids a follow-up `ww agent team join`). "+
+			"Omit to leave the agent in the namespace-wide manifest.")
 	return cmd
 }
 
-func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []agent.BackendSpec, wait bool, timeout time.Duration, createNamespace bool) error {
+func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []agent.BackendSpec, wait bool, timeout time.Duration, createNamespace bool, team string) error {
 	target, resolver, err := f.resolveTarget(ctx)
 	if err != nil {
 		return err
@@ -845,6 +849,7 @@ func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []
 		Wait:            wait,
 		Timeout:         timeout,
 		CreateNamespace: createNamespace,
+		Team:            team,
 		Out:             os.Stdout,
 		In:              os.Stdin,
 	})

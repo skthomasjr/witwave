@@ -47,6 +47,12 @@ type CreateOptions struct {
 	// exists). Mirrors `helm install --create-namespace` semantics.
 	CreateNamespace bool
 
+	// Team, when non-empty, stamps the `witwave.ai/team=<team>` label on
+	// the CR at creation time. Equivalent to running `ww agent team
+	// join` post-create but avoids the race where the agent briefly
+	// joins the namespace-wide manifest before the label lands.
+	Team string
+
 	// Wait controls whether we block after Create until the CR's
 	// status.phase flips to Ready. Timeout bounds the wait.
 	Wait    bool
@@ -89,6 +95,7 @@ func Create(
 		Backends:   backends,
 		CLIVersion: opts.CLIVersion,
 		CreatedBy:  opts.CreatedBy,
+		Team:       opts.Team,
 	})
 	if err != nil {
 		return fmt.Errorf("build agent CR: %w", err)
@@ -98,6 +105,12 @@ func Create(
 		{Key: "Action", Value: fmt.Sprintf("create WitwaveAgent %q", opts.Name)},
 		{Key: "Backends", Value: summariseBackends(backends)},
 		{Key: "Harness image", Value: HarnessImage(opts.CLIVersion)},
+	}
+	if opts.Team != "" {
+		plan = append(plan, k8s.PlanLine{
+			Key:   "Team",
+			Value: fmt.Sprintf("%q (joins witwave-manifest-%s)", opts.Team, opts.Team),
+		})
 	}
 	if IsDevVersion(opts.CLIVersion) {
 		plan = append(plan, k8s.PlanLine{
