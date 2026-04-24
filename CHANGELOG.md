@@ -8,6 +8,8 @@ section of each entry.
 
 ## [Unreleased]
 
+## [0.7.9] — 2026-04-24
+
 ### Added
 
 - **`ww tui` — live agent list** (replaces the welcome stub). Polls
