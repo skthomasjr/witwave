@@ -175,9 +175,9 @@ func GitRemove(
 		syncName, opts.Namespace, opts.Agent)
 
 	if opts.DeleteSecret && secretToDelete != "" {
-		k8sClient, err := kubernetes.NewForConfig(cfg)
+		k8sClient, err := newKubernetesClient(cfg)
 		if err != nil {
-			return fmt.Errorf("build kubernetes client: %w", err)
+			return err
 		}
 		if err := deleteIfWWManaged(ctx, k8sClient, opts.Namespace, secretToDelete, opts.Out); err != nil {
 			return err

@@ -10,8 +10,26 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
+
+// clientFactory holds the constructor functions the verb
+// implementations use to build Kubernetes clients from a *rest.Config.
+// Production callers use the real client-go constructors; tests swap
+// these out for functions returning fakes, so they can drive the
+// verbs without an apiserver.
+var clientFactory = struct {
+	dyn  func(*rest.Config) (dynamic.Interface, error)
+	kube func(*rest.Config) (kubernetes.Interface, error)
+}{
+	dyn: func(cfg *rest.Config) (dynamic.Interface, error) {
+		return dynamic.NewForConfig(cfg)
+	},
+	kube: func(cfg *rest.Config) (kubernetes.Interface, error) {
+		return kubernetes.NewForConfig(cfg)
+	},
+}
 
 // FallbackGitSyncName is used only when a gitSync name can't be derived
 // from the supplied repo (e.g. a URL whose path segment sanitises to
@@ -293,11 +311,24 @@ func filterMappingsByGitSync(mappings []map[string]interface{}, syncName string)
 }
 
 // newDynamicClient is the shared constructor so verb implementations
-// don't each carry the build-client boilerplate.
+// don't each carry the build-client boilerplate. Delegates through
+// clientFactory.dyn so tests can substitute a fake implementation.
 func newDynamicClient(cfg *rest.Config) (dynamic.Interface, error) {
-	dyn, err := dynamic.NewForConfig(cfg)
+	dyn, err := clientFactory.dyn(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("build dynamic client: %w", err)
 	}
 	return dyn, nil
+}
+
+// newKubernetesClient mirrors newDynamicClient for the typed
+// kubernetes.Interface — used by verbs that manipulate Secrets or
+// other core resources (ww agent git add, ww agent git remove).
+// Delegates through clientFactory.kube so tests can substitute a fake.
+func newKubernetesClient(cfg *rest.Config) (kubernetes.Interface, error) {
+	k8s, err := clientFactory.kube(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("build kubernetes client: %w", err)
+	}
+	return k8s, nil
 }

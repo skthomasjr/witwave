@@ -8,6 +8,10 @@ the shared REST + SSE event surface: tail the live event stream, send A2A prompt
 > Versioned releases ship regularly — see `ww version` for the running binary and [CHANGELOG.md](../../CHANGELOG.md) for
 > release history.
 
+**New to ww?** Start with [WALKTHROUGH.md](WALKTHROUGH.md) — a narrative tour from `ww operator install` to a running
+multi-backend agent wired to a git repo. Every command copy-pasteable, every section builds on the last. This README is
+the reference (every flag, every default); the walkthrough is the story.
+
 ## Install
 
 ```bash

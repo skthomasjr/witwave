@@ -6,7 +6,6 @@ import (
 	"io"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
 
@@ -154,9 +153,9 @@ func GitAdd(
 	if err != nil {
 		return err
 	}
-	k8sClient, err := kubernetes.NewForConfig(cfg)
+	k8sClient, err := newKubernetesClient(cfg)
 	if err != nil {
-		return fmt.Errorf("build kubernetes client: %w", err)
+		return err
 	}
 
 	// Fetch current CR early so any schema mismatch surfaces before
