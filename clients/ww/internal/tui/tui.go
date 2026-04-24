@@ -187,7 +187,7 @@ func newAgentListPage(app *tview.Application, version string, target *k8s.Target
 	ctrl.table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
 		case tcell.KeyEnter:
-			ctrl.showDrillDownStub()
+			ctrl.openAgentLogs()
 			return nil
 		case tcell.KeyRune:
 			switch event.Rune() {
@@ -454,34 +454,8 @@ func (c *agentListController) renderEmpty(msg string) {
 // the same keys work regardless of snapshot state.
 func (c *agentListController) renderFooter() {
 	c.footer.SetText(
-		"[#808080]↑/↓ move · a add · r refresh · ↵ drill down (soon) · q/esc quit[-:-:-]",
+		"[#808080]↑/↓ move · a add · r refresh · ↵ logs · q/esc quit[-:-:-]",
 	)
-}
-
-// showDrillDownStub is what Enter does until the per-agent view
-// lands. Shows a transient toast naming the selected agent + the
-// tracking issue so users who hit Enter don't wonder if their
-// keystroke did anything.
-func (c *agentListController) showDrillDownStub() {
-	c.mu.Lock()
-	snap := c.snapshot
-	c.mu.Unlock()
-
-	row, _ := c.table.GetSelection()
-	if row <= 0 || row-1 >= len(snap) {
-		return
-	}
-	s := snap[row-1]
-	c.footer.SetText(fmt.Sprintf(
-		"[#d7af00]drill-down for %s/%s lands in #1450 — for now use `ww agent status %s -n %s`[-:-:-]",
-		s.Namespace, s.Name, s.Name, s.Namespace,
-	))
-	// Restore the key-hint footer after 3s so the toast doesn't stay
-	// up forever. AfterFunc is fine — main goroutine reads the text
-	// only on repaint, and SetText is thread-safe on tview.TextView.
-	time.AfterFunc(3*time.Second, func() {
-		c.app.QueueUpdateDraw(c.renderFooter)
-	})
 }
 
 // ---------------------------------------------------------------------------
