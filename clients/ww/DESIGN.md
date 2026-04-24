@@ -192,6 +192,48 @@ fixed per-subtree defaults per KC-6 and are exempt from NS-1..3.
 
 ---
 
+## TEAM — team membership rules
+
+Rules governing how `ww agent team *` verbs and the `--team` flag on
+`create` manage runtime peer-discovery groupings. Team membership is an
+operator-level capability: the controller reconciles one
+`witwave-manifest-<team>` ConfigMap per distinct label value and mounts
+it into every member's pod.
+
+- **TEAM-1.** Team membership is carried by the label `witwave.ai/team`
+  on the WitwaveAgent CR. This is the single source of truth; there is
+  no separate CRD field for teams and no team object. Rationale: one
+  label patch is the smallest possible unit of team membership change,
+  works with any K8s-native tooling (kubectl, Argo, Flux), and the
+  operator already watches labels.
+- **TEAM-2.** There is no default team. Agents without the label share
+  the namespace-wide manifest, which is already a sensible grouping for
+  the common case. A ww-managed default team label would either leak
+  across namespaces (when unscoped) or duplicate the namespace axis
+  (when scoped per-namespace). Adding a default removes signal: once the
+  label is omnipresent, `witwave.ai/team=<x>` stops meaning "this agent
+  chose to be in team x" and becomes noise.
+- **TEAM-3.** Team scope is per-namespace. Because `ConfigMap` is a
+  namespaced resource, a team's manifest and its members both live in
+  one namespace. A cross-namespace team is not expressible today and
+  should not be worked around by reconciler changes — the correct
+  split is "same namespace, multiple teams" or "multiple namespaces."
+- **TEAM-4.** `ww agent create --team <name>` is the preferred path
+  when the team is known at creation. It stamps the label in the
+  same API call that creates the CR, avoiding the brief window where
+  the agent joins the namespace-wide manifest before a follow-up
+  `team join` lands. `--team` is deliberately NOT a prominent flag —
+  low-key `--help` copy, no default, not featured in onboarding docs.
+- **TEAM-5.** Team cleanup is operator-owned. When the last member of
+  a team is deleted (via `ww agent delete` or raw `kubectl delete`) or
+  leaves (via `ww agent team leave` or a raw label removal), the
+  operator explicitly deletes the orphaned
+  `witwave-manifest-<team>` ConfigMap. The CLI never manages these
+  ConfigMaps directly; any `kubectl delete configmap witwave-manifest-*`
+  invocation in user-facing docs is a bug.
+
+---
+
 ## Flags
 
 *To be populated as flag conventions are established. Reserve:*

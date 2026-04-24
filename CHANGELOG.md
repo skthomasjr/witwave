@@ -8,6 +8,37 @@ section of each entry.
 
 ## [Unreleased]
 
+### Added
+
+- **`ww agent team {join, leave, list, show}`** — first-class CLI
+  surface for the operator's existing team-membership plumbing. Team
+  membership is the label `witwave.ai/team` on the WitwaveAgent CR;
+  the operator reconciles one `witwave-manifest-<team>` ConfigMap per
+  distinct value and mounts it at `/home/agent/manifest.json`. Verbs
+  are a pure label patch — no CRD schema change, no pod restart.
+  `join` is idempotent for same-team joins and explicit about
+  cross-team moves (was → now); `leave` drops the label so the agent
+  falls back to the namespace-wide manifest; `list` renders a tree of
+  teams → members (with an `(ungrouped)` bucket); `show` prints an
+  agent's team + sorted teammates.
+- **`ww agent create --team <team>`** — stamp `witwave.ai/team=<team>`
+  at creation time. Avoids the race where a follow-up `team join`
+  briefly drops the agent into the namespace-wide manifest before
+  landing the label. Low-key flag: no default, not promoted in
+  onboarding docs.
+
+### Changed
+
+- DESIGN.md gains a **TEAM-1..5 rules block** codifying the
+  team-membership contract: label-based (not a CRD field), no default
+  team, per-namespace scope, operator-owned cleanup, `--team`
+  deliberately not a prominent flag.
+- README.md agent-cheatsheet backfilled to cover the full verb surface
+  (git, backend, team, delete with `--purge`), plus the
+  `default` → `witwave` namespace fallback correction (was stale
+  since 0.7.8) and a `--create-namespace` mention that was missing
+  from the prose.
+
 ## [0.7.8] — 2026-04-24
 
 ### Added

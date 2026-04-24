@@ -679,11 +679,15 @@ Common situations:
 Verbs already shipped — fully documented above:
 
 - **Operator:** `install` (with `--if-missing`), `upgrade`, `uninstall`, `status`, `logs`, `events`
-- **Agent lifecycle:** `create`, `list`, `status`, `delete`
+- **Agent lifecycle:** `create` (with `--create-namespace`, `--team`), `list`, `status`, `delete` (with `--remove-repo-folder`, `--delete-git-secret`, `--purge`)
 - **Interaction:** `send`, `logs`, `events`
 - **Scaffold:** `scaffold` (single + multi-backend, `--no-heartbeat`, merge-on-existing)
 - **GitOps:** `git add / list / remove` (three auth modes, `--delete-secret` on remove)
 - **Backend lifecycle:** `backend remove / rename` (with optional `--remove-repo-folder` / `--no-repo-rename`)
+- **Team membership (advanced, optional):** `team join / leave / list / show` — subset peer discovery
+  within a namespace via the `witwave.ai/team` label. Most users don't need this; the namespace-wide
+  manifest already groups agents sensibly. If you want to split one namespace into unrelated cohorts,
+  start with `ww agent team --help` and see [DESIGN.md](DESIGN.md) TEAM-1..5.
 
 Verbs on the roadmap (shapes sketched in DESIGN.md, not yet
 implemented):

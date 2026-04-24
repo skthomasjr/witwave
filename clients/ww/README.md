@@ -253,14 +253,35 @@ cluster-wide (the sensible default for CRs). The operator-namespace listing alwa
 `ww operator install`) reconciles each CR into a running agent pod with harness + backend sidecars.
 
 ```bash
-ww agent create hello          # deploy an agent running the echo backend (no API keys)
-ww agent send hello "ping"     # round-trip A2A call via the apiserver Service proxy
-ww agent logs hello            # tail the harness container (-c <backend> for a sidecar)
-ww agent events hello          # CR + pod events scoped to this agent
-ww agent list                  # list agents in the context's namespace
-ww agent list -A               # list across every namespace you can read
-ww agent status hello          # phase, backends, last reconcile history
-ww agent delete hello          # operator cascades pod cleanup via owner refs
+# Lifecycle
+ww agent create hello --create-namespace        # deploy an agent running the echo backend (no API keys)
+ww agent create hello --team research           # stamp witwave.ai/team=research at creation
+ww agent list                                   # list agents in the context's namespace
+ww agent list -A                                # list across every namespace you can read
+ww agent status hello                           # phase, backends, last reconcile history
+ww agent delete hello                           # operator cascades pod cleanup via owner refs
+ww agent delete hello --purge                   # also wipe repo folder + ww-managed credential Secret
+
+# Interaction
+ww agent send hello "ping"                      # round-trip A2A call via the apiserver Service proxy
+ww agent logs hello                             # tail the harness container (--container <name> for a sidecar)
+ww agent events hello                           # CR + pod events scoped to this agent
+
+# GitOps wiring (repo content → agent pod)
+ww agent scaffold hello --repo owner/repo       # materialise ww-conformant agent layout on a remote repo
+ww agent git add hello --repo owner/repo        # attach a gitSync; syncs .agents/<name>/ into the pod
+ww agent git list hello                         # show the gitSyncs + mappings on an agent
+ww agent git remove hello                       # detach gitSync (keeps ww-minted Secret unless --delete-secret)
+
+# Backend lifecycle on a running agent
+ww agent backend rename hello echo-2 echo-primary            # rename across CR + gitMappings + repo folder
+ww agent backend remove hello echo-2 --remove-repo-folder    # drop a backend + wipe its repo folder
+
+# Team membership (runtime peer discovery via witwave-manifest-<team>)
+ww agent team join hello research               # set witwave.ai/team=research
+ww agent team leave hello                       # drop the label; agent falls into namespace-wide manifest
+ww agent team list                              # tree of teams → members in the namespace
+ww agent team show hello                        # which team an agent is in + sorted teammates
 ```
 
 ### GitOps scaffolding (repo-first workflow)
@@ -325,11 +346,14 @@ With no flags, `ww agent create <name>` deploys the **echo backend** — a zero-
 response quoting the caller's prompt (see [`backends/echo/`](../../backends/echo/README.md)). Pick a real LLM backend
 with `--backend claude|codex|gemini`; the chosen backend's image is published at the same version as the `ww` binary.
 
-Namespace handling follows DESIGN.md NS-1..4:
+Namespace handling follows DESIGN.md NS-1..5:
 
-- No `-n` → the kubeconfig context's namespace (falls back to `default`). The command always prints the resolved
-  namespace at the top of its output.
-- `-A` is only valid on `list` — never on `create`, `status`, or `delete`.
+- No `--namespace` → the kubeconfig context's namespace (falls back to `witwave`, the ww-wide default).
+  The command always prints the resolved namespace at the top of its output, and the parenthetical source
+  (`(from kubeconfig context)` vs `(ww default)`) tells you whether the fallback kicked in.
+- `ww agent create --create-namespace` provisions the target namespace if it doesn't already exist
+  (labelled `app.kubernetes.io/managed-by: ww`) — mirrors `helm install --create-namespace`.
+- `-A` is only valid on `list` — never on `create`, `status`, `delete`, or any mutating verb.
 
 Create waits up to `--timeout` (default `2m`) for the operator to report the agent Ready. Pass `--no-wait` to return as
 soon as the CR is accepted (scripts + CI). All mutating commands (`create`, `delete`) honour `--yes` /
@@ -340,6 +364,48 @@ local port-forwarding or an external LoadBalancer. This makes round-trip A2A cal
 agent Just Work. Caveats: the apiserver proxy has payload size caps and isn't suited for streaming — use `ww agent
 logs -f` for live observation, or the dedicated `ww send --base-url ...` path for long-running streams against an
 externally-reachable harness URL.
+
+### Deleting agents — repo + Secret cleanup
+
+`ww agent delete <name>` removes the CR; the operator cascades pod + Service teardown via owner references.
+Three opt-in flags extend the blast radius:
+
+- `--remove-repo-folder` — clones the single wired gitSync repo, `git rm -r`s `.agents/<…>/` for the agent,
+  commits, and pushes. Runs **before** the CR delete so a push failure (auth, branch protection, network)
+  leaves cluster state intact and you can retry. Refuses with an ambiguity error when the agent has
+  multiple gitSyncs; soft-skips when no gitSync is wired (nothing to wipe).
+- `--delete-git-secret` — after the CR is gone, reaps every ww-managed credential Secret referenced by the
+  CR's gitSyncs. Secrets without the `app.kubernetes.io/managed-by: ww` label are preserved regardless.
+- `--purge` — convenience: `--remove-repo-folder` + `--delete-git-secret`. For decommissioning an agent
+  permanently in one call.
+
+The preflight banner lists every destructive action (repo URL, branch, `git rm` target, each Secret name)
+before confirmation, so the non-local-cluster prompt has enough detail to review.
+
+### Team membership — runtime peer discovery
+
+A WitwaveAgent's team membership is a single label — `witwave.ai/team=<team>`. The operator reconciles
+one `witwave-manifest-<team>` ConfigMap per distinct value and mounts it into every member's pod at
+`/home/agent/manifest.json`, so harnesses discover their teammates' URLs at runtime. Agents without the
+label share a namespace-wide manifest.
+
+```bash
+ww agent create iris --team research              # stamp the label at creation
+ww agent team join iris research                  # or patch the label later
+ww agent team list                                # tree of teams in the namespace
+ww agent team list --team research                # filter to one team's members
+ww agent team show iris                           # which team + sorted teammates
+ww agent team leave iris                          # drop the label; falls into namespace-wide manifest
+```
+
+Teams are purely additive: no CRD schema change, no pod restart. A label patch takes effect within one
+operator reconcile (seconds). Cleanup is automatic — deleting the last member of a team deletes the
+per-team manifest ConfigMap with it; no orphan management needed.
+
+There is **no default team** by design. Agents without the label already share the namespace-wide
+manifest, which is the right grouping for the common case. Use `--team` when you explicitly want to
+subset peer discovery within a namespace — e.g., two unrelated cohorts of agents in the same namespace
+that shouldn't see each other.
 
 `ww agent events` is a one-shot scoped variant of `ww operator events`: events on the WitwaveAgent CR plus events on
 pods matching `app.kubernetes.io/name=<agent-name>`. No `--watch` mode — when you need live signal, `ww agent logs -f`
