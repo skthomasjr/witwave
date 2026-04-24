@@ -90,7 +90,13 @@ func Run(version string, target *k8s.Target, cfg *rest.Config, contextErr string
 	// Live-list mode. Compose the three-band layout (header / table /
 	// footer), wire polling + key handlers, start the goroutine.
 	page, ctrl := newAgentListPage(app, version, target, cfg)
+	ctrl.pages = pages
 	pages.AddPage("agents", page, true, true)
+
+	// Create-agent modal lives as a second page, added hidden. The
+	// 'a' keybinding on the list toggles it visible (ShowPage) and
+	// focused; submit/cancel call HidePage to return to the list.
+	pages.AddPage("create-agent", newCreateAgentModal(ctrl), true, false)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -112,6 +118,11 @@ type agentListController struct {
 	target  *k8s.Target
 	cfg     *rest.Config
 
+	// pages is the root Pages container — used by the list to show
+	// modal overlays (create-agent form, future per-agent drill-down)
+	// and by those modals to return focus to the list.
+	pages *tview.Pages
+
 	// mu guards snapshot + lastErr + lastFetch + fetching. Accessed
 	// from the poll goroutine and from UI callbacks (refresh on 'r').
 	mu         sync.Mutex
@@ -126,6 +137,10 @@ type agentListController struct {
 	header *tview.TextView
 	table  *tview.Table
 	footer *tview.TextView
+
+	// createAgentForm is the modal bundled form + state + error
+	// view. Built once in Run(); reset()ed on each open via 'a'.
+	createAgentForm *createAgentForm
 }
 
 // newAgentListPage builds the Flex-composed live-list view + the
@@ -166,8 +181,9 @@ func newAgentListPage(app *tview.Application, version string, target *k8s.Target
 	ctrl.renderFooter()
 	ctrl.renderEmpty("[#d0d0d0]Loading agents…[-:-:-]")
 
-	// Key handlers on the table — 'r' to force a refresh; Enter is a
-	// stub until the per-agent drill-down view lands.
+	// Key handlers on the table — 'r' to force a refresh, 'a' to open
+	// the create-agent modal, Enter is a stub until the per-agent
+	// drill-down view lands.
 	ctrl.table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
 		case tcell.KeyEnter:
@@ -184,16 +200,25 @@ func newAgentListPage(app *tview.Application, version string, target *k8s.Target
 				default:
 				}
 				return nil
+			case 'a':
+				ctrl.openCreateAgent()
+				return nil
 			}
 		}
 		return event
 	})
 
-	// Flex composition: header (2 rows) | table (fill) | footer (1 row).
+	// Flex composition: header (2 rows) | 1-row gap | table (fill) |
+	// 1-row gap | footer (1 row). The gaps are empty Box primitives —
+	// tview treats them as unclaimed vertical space so the table gets
+	// clear visual breathing room from both the status strip above
+	// and the keybinding hints below.
 	root := tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(ctrl.header, 2, 0, false).
+		AddItem(tview.NewBox(), 1, 0, false).
 		AddItem(ctrl.table, 0, 1, true).
+		AddItem(tview.NewBox(), 1, 0, false).
 		AddItem(ctrl.footer, 1, 0, false)
 
 	frame := tview.NewFrame(root).SetBorders(0, 0, 0, 0, 1, 1)
@@ -429,7 +454,7 @@ func (c *agentListController) renderEmpty(msg string) {
 // the same keys work regardless of snapshot state.
 func (c *agentListController) renderFooter() {
 	c.footer.SetText(
-		"[#808080]↑/↓ move · r refresh · ↵ drill down (soon) · q/esc quit[-:-:-]",
+		"[#808080]↑/↓ move · a add · r refresh · ↵ drill down (soon) · q/esc quit[-:-:-]",
 	)
 }
 
@@ -536,3 +561,203 @@ func formatShortDuration(d time.Duration) string {
 	}
 	return fmt.Sprintf("%dh", int(d.Hours()))
 }
+
+// ---------------------------------------------------------------------------
+// Create-agent modal
+// ---------------------------------------------------------------------------
+
+// createAgentState is the mutable buffer the modal form writes into as
+// the user types. Read by the Submit callback, cleared by openCreateAgent
+// so re-opening the modal starts fresh.
+type createAgentState struct {
+	name            string
+	namespace       string
+	backend         string
+	team            string
+	createNamespace bool
+}
+
+// openCreateAgent surfaces the create-agent modal and hands focus to
+// its first input. Called from the list's 'a' keybinding. Clears
+// prior state so re-opening the modal doesn't show stale values or
+// errors from a previous submission.
+func (c *agentListController) openCreateAgent() {
+	c.createAgentForm.reset(c.defaultCreateNamespace())
+	c.pages.ShowPage("create-agent")
+	c.app.SetFocus(c.createAgentForm.form)
+}
+
+// closeCreateAgent hides the modal and returns focus to the list.
+// Called from Submit (on success) and Cancel.
+func (c *agentListController) closeCreateAgent() {
+	c.pages.HidePage("create-agent")
+	c.app.SetFocus(c.table)
+}
+
+// defaultCreateNamespace picks the pre-filled namespace value for the
+// modal. Uses the current target's namespace when non-empty, falling
+// back to ww's default. Matches the namespace-resolution story the
+// CLI's logAndResolveNamespace tells.
+func (c *agentListController) defaultCreateNamespace() string {
+	if c.target != nil && c.target.Namespace != "" {
+		return c.target.Namespace
+	}
+	return agent.DefaultAgentNamespace
+}
+
+// createAgentForm bundles the form primitive + mutable state + error
+// display. Built once at startup (newCreateAgentModal) and reused
+// across each open — reset() wipes the state for the next submission.
+type createAgentForm struct {
+	form  *tview.Form
+	state createAgentState
+	err   *tview.TextView
+}
+
+// reset wipes the form's state back to sensible defaults. Called
+// every time the modal opens so a cancelled or failed previous
+// submission doesn't leave stale values or error text behind.
+func (f *createAgentForm) reset(ns string) {
+	f.state = createAgentState{
+		namespace:       ns,
+		backend:         agent.DefaultBackend, // echo
+		createNamespace: true,
+	}
+	// Field ordering mirrors the form construction — keep these two
+	// in sync if newCreateAgentModal's field order changes.
+	f.form.GetFormItem(0).(*tview.InputField).SetText("")       // name
+	f.form.GetFormItem(1).(*tview.InputField).SetText(ns)       // namespace
+	f.form.GetFormItem(2).(*tview.DropDown).SetCurrentOption(0) // backend
+	f.form.GetFormItem(3).(*tview.InputField).SetText("")       // team
+	f.form.GetFormItem(4).(*tview.Checkbox).SetChecked(true)    // create-namespace
+	f.err.SetText("")
+	f.form.SetFocus(0)
+}
+
+// newCreateAgentModal builds the tview primitive that represents the
+// create-agent modal. Stashes the form on the controller so
+// openCreateAgent can wipe state + set focus.
+func newCreateAgentModal(ctrl *agentListController) tview.Primitive {
+	cf := &createAgentForm{}
+
+	errView := tview.NewTextView().
+		SetDynamicColors(true).
+		SetTextAlign(tview.AlignLeft).
+		SetWrap(true)
+	cf.err = errView
+
+	backendTypes := agent.KnownBackends()
+
+	form := tview.NewForm().
+		AddInputField("Name", "", 32, nil, func(v string) { cf.state.name = v }).
+		AddInputField("Namespace", ctrl.defaultCreateNamespace(), 32, nil, func(v string) { cf.state.namespace = v }).
+		AddDropDown("Backend", backendTypes, 0, func(v string, _ int) { cf.state.backend = v }).
+		AddInputField("Team (optional)", "", 32, nil, func(v string) { cf.state.team = v }).
+		AddCheckbox("Create namespace if missing", true, func(v bool) { cf.state.createNamespace = v }).
+		AddButton("Create", func() { submitCreateAgent(ctrl, cf) }).
+		AddButton("Cancel", func() { ctrl.closeCreateAgent() })
+	form.SetBorder(true).
+		SetTitle(" Create agent ").
+		SetTitleColor(tcell.ColorSilver).
+		SetBorderColor(tcell.ColorDimGray)
+	form.SetCancelFunc(func() { ctrl.closeCreateAgent() }) // ESC → cancel
+	cf.form = form
+
+	ctrl.createAgentForm = cf
+
+	// Modal composition: center the form + error view vertically
+	// (fixed height) and horizontally (fixed width). Surrounding
+	// spacer Boxes use flex=1 so the center cell pins while the
+	// terminal resizes.
+	body := tview.NewFlex().
+		SetDirection(tview.FlexRow).
+		AddItem(errView, 1, 0, false).
+		AddItem(form, 0, 1, true)
+	return tview.NewFlex().
+		AddItem(tview.NewBox(), 0, 1, false).
+		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
+			AddItem(tview.NewBox(), 0, 1, false).
+			AddItem(body, 15, 1, true).
+			AddItem(tview.NewBox(), 0, 1, false),
+			56, 1, true).
+		AddItem(tview.NewBox(), 0, 1, false)
+}
+
+// submitCreateAgent runs the Create API call in a goroutine so the
+// UI doesn't freeze during the Ready wait. The form stays open on
+// error (populates the error strip); closes on success and nudges
+// the poll loop so the new agent appears in the list within
+// milliseconds of the API call returning, not 2s later.
+func submitCreateAgent(c *agentListController, cf *createAgentForm) {
+	// Validate up front so DNS-1123 errors don't bounce off the
+	// apiserver. Same helper the CLI uses.
+	state := cf.state
+	if err := agent.ValidateName(state.name); err != nil {
+		cf.err.SetText("[#ff5f00]" + err.Error() + "[-:-:-]")
+		return
+	}
+	if state.namespace == "" {
+		cf.err.SetText("[#ff5f00]namespace is required[-:-:-]")
+		return
+	}
+	if state.team != "" {
+		if err := agent.ValidateName(state.team); err != nil {
+			cf.err.SetText("[#ff5f00]team: " + err.Error() + "[-:-:-]")
+			return
+		}
+	}
+
+	cf.err.SetText("[#d7af00]creating…[-:-:-]")
+
+	go func() {
+		// Wait=false: we let the poll loop show the Pending → Ready
+		// transition instead of freezing the modal for up to 2
+		// minutes. The moment the CR is accepted, we close the
+		// modal and force a refresh tick so the row appears.
+		err := agent.Create(
+			context.Background(),
+			c.target,
+			c.cfg,
+			nil,
+			agent.CreateOptions{
+				Name:      state.name,
+				Namespace: state.namespace,
+				Backends: []agent.BackendSpec{{
+					Name: state.backend,
+					Type: state.backend,
+					Port: agent.BackendPort(0),
+				}},
+				CLIVersion:      c.version,
+				CreatedBy:       "ww tui · agent add",
+				Team:            state.team,
+				CreateNamespace: state.createNamespace,
+				AssumeYes:       true,   // skip k8s.Confirm (TUI can't prompt over tview)
+				Wait:            false,  // poll loop shows the phase flip
+				Out:             discardWriter{}, // swallow Create's stdout chatter
+				In:              nil,
+			},
+		)
+		c.app.QueueUpdateDraw(func() {
+			if err != nil {
+				cf.err.SetText("[#ff5f00]" + err.Error() + "[-:-:-]")
+				return
+			}
+			c.closeCreateAgent()
+			// Nudge the poll goroutine so the new row appears now,
+			// not on the next scheduled tick.
+			select {
+			case c.refreshNow <- struct{}{}:
+			default:
+			}
+		})
+	}()
+}
+
+// discardWriter is an io.Writer that throws everything away. Used
+// as opts.Out when invoking agent.Create from the TUI — we don't
+// want the CLI-style banner chatter leaking into the terminal
+// underneath the tview canvas. io.Discard would work too but
+// importing `io` here just for that is overkill.
+type discardWriter struct{}
+
+func (discardWriter) Write(p []byte) (int, error) { return len(p), nil }
