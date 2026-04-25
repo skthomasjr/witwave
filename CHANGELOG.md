@@ -8,6 +8,34 @@ section of each entry.
 
 ## [Unreleased]
 
+## [0.7.15] — 2026-04-25
+
+### Added
+
+- **`ww agent send --backend <name>`** — bypasses the harness's
+  default routing and dispatches the prompt directly to the named
+  backend sidecar via the A2A `metadata.backend_id` hint. Empty
+  flag preserves the existing no-metadata-no-routing-hint behaviour
+  so calls without it are bit-for-bit identical to before.
+  `agent.SendOptions.BackendID` carries the field for programmatic
+  callers.
+
+- **`ww tui` send modal (`s` on the list)** — keybinding opens a
+  scoped send-message modal for the selected agent. Form has a
+  Target dropdown (`(agent — harness routes)` first, then each
+  declared backend), a prompt input with placeholder hint, and a
+  scrollable response view that fills the lower half of the modal.
+  Long replies open at the top so the lede is visible without
+  scrolling. In-flight Send is guarded by a mutex + sending flag —
+  impatient Enter-mashing can't stack parallel goroutines against a
+  hung apiserver proxy. Errors stay inline with an ERROR: marker
+  so the user can adjust + retry without re-typing the prompt.
+  Same arrow-key translation the create/delete modals use; ESC and
+  Cancel both close cleanly.
+
+  Footer on the list updated to include the new key:
+  `↑/↓ · a add · d delete · s send · l logs · r refresh · ↵ details (soon) · q/esc quit`.
+
 ## [0.7.14] — 2026-04-25
 
 ### Added
