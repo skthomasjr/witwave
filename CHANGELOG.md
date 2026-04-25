@@ -8,6 +8,8 @@ section of each entry.
 
 ## [Unreleased]
 
+## [0.7.14] — 2026-04-25
+
 ### Added
 
 - **`--auth-set` — fourth backend-credential mode** alongside the
