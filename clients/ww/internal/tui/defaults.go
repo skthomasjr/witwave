@@ -33,19 +33,18 @@ type tuiDefaults struct {
 	Team            string
 	CreateNamespace bool
 
-	// Phase 1 secrets redesign: replaced the (AuthMode, AuthValue)
-	// pair with two more focused fields.
+	// Two secrets fields that round-trip across launches:
 	//
-	//   ExistingSecret — when non-empty, the form pre-fills the
-	//                    "Existing Secret name (optional)" InputField
-	//                    so a pre-built K8s Secret reference round-
-	//                    trips across launches.
-	//   SecretsBlock   — when non-empty, the form pre-fills the
-	//                    multi-line "Backend secrets" TextArea.
-	//                    One KEY=VALUE per line; `$`-prefixed values
-	//                    are env-lifts.
+	//   ExistingSecret — pre-fills the "Existing Secret name
+	//                    (optional)" InputField. References a pre-
+	//                    built K8s Secret as-is.
+	//   Secrets        — pre-fills the dynamic per-pair section.
+	//                    Serialized as a list of "KEY=VALUE" strings
+	//                    in TOML so the on-disk shape stays human-
+	//                    editable. `$`-prefixed VALUEs are env-lifts
+	//                    at submit time.
 	ExistingSecret string
-	SecretsBlock   string
+	Secrets        []secretPair
 
 	GitOpsRepo string
 }
@@ -86,8 +85,19 @@ func loadTUIDefaults() tuiDefaults {
 		if saved.ExistingSecret != "" {
 			d.ExistingSecret = saved.ExistingSecret
 		}
-		if saved.SecretsBlock != "" {
-			d.SecretsBlock = saved.SecretsBlock
+		// Saved secrets are []string of "KEY=VALUE" lines (TOML-
+		// friendly shape). Parse back into typed pairs for the
+		// form. Lines that don't parse are dropped — defensive
+		// against a hand-edit that forgot the `=`.
+		for _, raw := range saved.Secrets {
+			eq := strings.Index(raw, "=")
+			if eq < 0 {
+				continue
+			}
+			d.Secrets = append(d.Secrets, secretPair{
+				Key:   strings.TrimSpace(raw[:eq]),
+				Value: raw[eq+1:],
+			})
 		}
 		if saved.GitOpsRepo != "" {
 			d.GitOpsRepo = saved.GitOpsRepo
@@ -141,13 +151,26 @@ func saveTUIDefaults(d tuiDefaults) {
 	if err != nil {
 		return
 	}
+	// Serialise the typed pairs back to "KEY=VALUE" strings — the
+	// on-disk shape the config schema stores. Empty KEYs are
+	// already filtered by submit (a row with no KEY is "dropped"),
+	// but defensive-skip here too in case a partial state is
+	// passed in.
+	pairs := make([]string, 0, len(d.Secrets))
+	for _, p := range d.Secrets {
+		k := strings.TrimSpace(p.Key)
+		if k == "" {
+			continue
+		}
+		pairs = append(pairs, k+"="+p.Value)
+	}
 	w.SetTUICreateDefaults(config.TUICreateDefaults{
 		Namespace:       d.Namespace,
 		Backend:         d.Backend,
 		Team:            d.Team,
 		CreateNamespace: d.CreateNamespace,
 		ExistingSecret:  d.ExistingSecret,
-		SecretsBlock:    d.SecretsBlock,
+		Secrets:         pairs,
 		GitOpsRepo:      d.GitOpsRepo,
 	})
 	_ = w.Save() // best-effort

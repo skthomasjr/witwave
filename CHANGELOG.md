@@ -8,6 +8,42 @@ section of each entry.
 
 ## [Unreleased]
 
+### Changed
+
+- **`ww tui` create modal — secrets section is now dynamic per-pair**
+  (Phase 2). Replaces the multi-line "Backend secrets" TextArea with
+  a list of editable `KEY` / `VALUE` InputField pairs that grows
+  and shrinks at runtime. Two new buttons in the form's button row:
+
+  - `[+ Secret]` appends a fresh empty pair and lands focus on the
+    new pair's KEY field so the user can type immediately.
+  - `[− Secret]` pops the trailing pair (no-op when empty) and
+    lands focus on the previous pair's VALUE — or on the
+    Existing-Secret field when no pairs remain.
+
+  Per-pair removal beyond the tail: clear the row's KEY field;
+  empty-KEY pairs are silently skipped at submit so the row
+  effectively disappears from the resulting Secret without needing
+  a tear-down.
+
+  Values prefixed with `$` still mean "lift from shell env" — same
+  convention Phase 1 introduced. Empty value on a non-empty KEY is
+  refused with a hint pointing at "clear the KEY to drop the pair."
+
+  On-disk shape changes:
+  `[tui.create_defaults]` now stores secrets as a TOML list of
+  `"KEY=VALUE"` strings (`secrets = ["KEY1=value1", "KEY2=$VAR"]`)
+  instead of the previous `secrets_block` multi-line string.
+  Hand-editable, round-trips cleanly. Existing config files with
+  the old `secrets_block` key are silently ignored on read; users
+  get fresh state on next successful create. Pre-1.0; the migration
+  surface is small.
+
+  resolveTUISecrets walks the typed pairs slice instead of parsing
+  a string block. Submit-time validation: empty KEY = drop, empty
+  value on non-empty KEY = error, duplicate KEY across pairs =
+  error, `$VAR` = env-lift with actionable error on unset.
+
 ## [0.7.17] — 2026-04-25
 
 ### Changed

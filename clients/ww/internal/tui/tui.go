@@ -594,6 +594,15 @@ func formatShortDuration(d time.Duration) string {
 // Create-agent modal
 // ---------------------------------------------------------------------------
 
+// secretPair is one (KEY, VALUE) entry the user has typed into the
+// dynamic secrets section of the create modal. Both fields are
+// editable; the form rebuilds when the user adds or removes pairs.
+// Values starting with `$` are env-lifts at submit time.
+type secretPair struct {
+	Key   string
+	Value string
+}
+
 // createAgentState is the mutable buffer the modal form writes into as
 // the user types. Read by the Submit callback, cleared by openCreateAgent
 // so re-opening the modal starts fresh.
@@ -608,23 +617,25 @@ type createAgentState struct {
 	team            string
 	createNamespace bool
 
-	// Backend credentials. The Phase 1 redesign collapses the four
-	// CLI auth modes (--auth profile / --auth-from-env / --auth-
-	// secret / --auth-set) into two TUI fields:
+	// Backend credentials. Two fields:
 	//
 	//   existingSecret — when non-empty, references a pre-built K8s
 	//                    Secret (verified, never modified). Maps to
 	//                    BackendAuthExistingSecret. Wins over
-	//                    secretsBlock when both are set.
-	//   secretsBlock   — multi-line text, one KEY=VALUE per line.
-	//                    Values prefixed with `$` are lifted from
-	//                    the shell environment at submit time;
-	//                    everything else is literal. Maps to
-	//                    BackendAuthInline with resolved values.
+	//                    secrets when both are set.
+	//   secrets        — dynamic list of (KEY, VALUE) pairs, one
+	//                    rendered row per pair. Values prefixed
+	//                    with `$` are lifted from the shell
+	//                    environment at submit time; everything
+	//                    else is literal. Empty KEYs are skipped
+	//                    on submit so users can clear a row to
+	//                    "remove" a pair without rebuilding the
+	//                    form. Maps to BackendAuthInline.
 	//
-	// Empty in both fields = BackendAuthNone (legitimate for echo).
+	// Empty existingSecret + zero non-empty pairs = BackendAuthNone
+	// (legitimate for echo).
 	existingSecret string
-	secretsBlock   string
+	secrets        []secretPair
 
 	// GitOps repo. Empty = pure cluster-side create. Non-empty =
 	// after the CR lands, run scaffold (idempotent, merges with any
@@ -668,6 +679,116 @@ type createAgentForm struct {
 	form  *tview.Form
 	state createAgentState
 	err   *tview.TextView
+	// ctrl is captured once at modal-build time so rebuild() can
+	// access it for Submit / Cancel callbacks without threading it
+	// through every helper. Rebuild Clear()s the form's items +
+	// buttons, so we re-add buttons (which need the controller for
+	// their callbacks) on every rebuild.
+	ctrl *agentListController
+}
+
+// rebuild wipes the form's items + buttons and re-adds them based
+// on cf.state. Called on first construction, on reset() (modal
+// open), and after the dynamic + Secret / − Secret buttons mutate
+// state.secrets so the layout reflects the new pair count.
+//
+// Field index layout (must stay in sync with everything that uses
+// SetFocus on this form):
+//
+//	0: Name
+//	1: Namespace
+//	2: Backend (DropDown)
+//	3: Team (optional)
+//	4: Create namespace (Checkbox)
+//	5: Existing Secret name (optional)
+//	6 + 2i + 0: Secret #i+1 KEY  (for i in 0..len(secrets)-1)
+//	6 + 2i + 1: Secret #i+1 VALUE
+//	6 + 2*len(secrets): GitOps repo
+//
+// Buttons (Form's button row):
+//
+//	0: + Secret
+//	1: − Secret
+//	2: Create
+//	3: Cancel
+func (cf *createAgentForm) rebuild() {
+	form := cf.form
+	form.Clear(true) // also drops buttons; chrome (border, title, padding) persists.
+
+	backendTypes := agent.KnownBackends()
+
+	// Static fields up to the secrets section.
+	form.AddInputField("Name", cf.state.name, 36, nil, func(v string) { cf.state.name = v })
+	form.AddInputField("Namespace", cf.state.namespace, 36, nil, func(v string) { cf.state.namespace = v })
+	form.AddDropDown("Backend", backendTypes, dropdownIndexOrZero(backendTypes, cf.state.backend), func(v string, _ int) { cf.state.backend = v })
+	form.AddInputField("Team (optional)", cf.state.team, 36, nil, func(v string) { cf.state.team = v })
+	form.AddCheckbox("Create namespace (if missing)", cf.state.createNamespace, func(v bool) { cf.state.createNamespace = v })
+	form.AddInputField("Existing Secret name (optional)", cf.state.existingSecret, 36, nil, func(v string) { cf.state.existingSecret = v })
+
+	// Dynamic secrets section. Each pair = 2 form items (KEY, VALUE).
+	// Closure captures `i` by value so each callback writes to the
+	// right state slot even after the slice grows / shrinks.
+	for i := range cf.state.secrets {
+		i := i
+		form.AddInputField(
+			fmt.Sprintf("Secret #%d KEY", i+1),
+			cf.state.secrets[i].Key, 36, nil,
+			func(v string) { cf.state.secrets[i].Key = v },
+		)
+		form.AddInputField(
+			fmt.Sprintf("Secret #%d VALUE", i+1),
+			cf.state.secrets[i].Value, 36, nil,
+			func(v string) { cf.state.secrets[i].Value = v },
+		)
+	}
+
+	form.AddInputField("GitOps repo (optional)", cf.state.gitopsRepo, 36, nil, func(v string) { cf.state.gitopsRepo = v })
+
+	// Buttons. Order matters because SetFocus on a button uses
+	// items_count + button_index — see addPair / removePair below.
+	form.AddButton("+ Secret", cf.addPair)
+	form.AddButton("− Secret", cf.removeLastPair)
+	form.AddButton("Create", func() { submitCreateAgent(cf.ctrl, cf) })
+	form.AddButton("Cancel", func() { cf.ctrl.closeCreateAgent() })
+
+	// Placeholders. Indices follow the layout above; the GitOps
+	// repo's index is computed from the current pair count.
+	setInputPlaceholder(form, 0, "iris")
+	setInputPlaceholder(form, 3, "research")
+	setInputPlaceholder(form, 5, "my-existing-pat-secret  (overrides any pairs below)")
+	for i := range cf.state.secrets {
+		setInputPlaceholder(form, 6+2*i+0, "ANTHROPIC_API_KEY")
+		setInputPlaceholder(form, 6+2*i+1, "sk-ant-...   or $ANTHROPIC_API_KEY")
+	}
+	gitopsIdx := 6 + 2*len(cf.state.secrets)
+	setInputPlaceholder(form, gitopsIdx, "owner/repo  (e.g. skthomasjr/witwave-test)")
+}
+
+// addPair appends a fresh empty pair, rebuilds the form, and lands
+// focus on the new pair's KEY field so the user can type
+// immediately without tabbing.
+func (cf *createAgentForm) addPair() {
+	cf.state.secrets = append(cf.state.secrets, secretPair{})
+	cf.rebuild()
+	// Focus the new pair's KEY = items index 6 + 2*(len-1) + 0
+	cf.form.SetFocus(6 + 2*(len(cf.state.secrets)-1))
+}
+
+// removeLastPair pops the trailing pair (no-op when empty),
+// rebuilds, and lands focus on whatever the user is most likely to
+// want next: the new last-pair's VALUE if any pairs remain, or the
+// Existing Secret InputField when none do.
+func (cf *createAgentForm) removeLastPair() {
+	if len(cf.state.secrets) == 0 {
+		return
+	}
+	cf.state.secrets = cf.state.secrets[:len(cf.state.secrets)-1]
+	cf.rebuild()
+	if n := len(cf.state.secrets); n > 0 {
+		cf.form.SetFocus(6 + 2*n - 1) // last pair's VALUE
+	} else {
+		cf.form.SetFocus(5) // existing-secret field
+	}
 }
 
 // reset wipes the form's state back to defaults — the layered
@@ -699,21 +820,16 @@ func (f *createAgentForm) reset(ctxNamespace string) {
 		team:            d.Team,
 		createNamespace: d.CreateNamespace,
 		existingSecret:  d.ExistingSecret,
-		secretsBlock:    d.SecretsBlock,
+		secrets:         d.Secrets,
 		gitopsRepo:      d.GitOpsRepo,
 	}
+	// Always blank for the name — every create is for a different agent.
+	f.state.name = ""
 
-	// Push the resolved values into the form widgets. Field indices
-	// match the AddInputField / AddDropDown / AddCheckbox order in
-	// newCreateAgentModal; keep them in sync on field reorders.
-	f.form.GetFormItem(0).(*tview.InputField).SetText("")          // name (always blank)
-	f.form.GetFormItem(1).(*tview.InputField).SetText(d.Namespace) // namespace
-	f.form.GetFormItem(2).(*tview.DropDown).SetCurrentOption(dropdownIndexOrZero(agent.KnownBackends(), d.Backend))
-	f.form.GetFormItem(3).(*tview.InputField).SetText(d.Team) // team
-	f.form.GetFormItem(4).(*tview.Checkbox).SetChecked(d.CreateNamespace)
-	f.form.GetFormItem(5).(*tview.InputField).SetText(d.ExistingSecret)   // existing Secret name
-	f.form.GetFormItem(6).(*tview.TextArea).SetText(d.SecretsBlock, true) // backend secrets (KEY=VALUE pairs)
-	f.form.GetFormItem(7).(*tview.InputField).SetText(d.GitOpsRepo)       // gitops repo
+	// Rebuild the form from state. The dynamic secrets section means
+	// the form's item count varies with len(state.secrets); GetFormItem-
+	// at-index would drift. Single source of truth = rebuild() below.
+	f.rebuild()
 	f.err.SetText("")
 	f.form.SetFocus(0)
 }
@@ -744,45 +860,10 @@ func newCreateAgentModal(ctrl *agentListController) tview.Primitive {
 		SetWrap(true)
 	cf.err = errView
 
-	backendTypes := agent.KnownBackends()
-
-	// Field width 36 + 36-char label column = ~72 cols of content,
-	// fits inside the modal's 90 + 2 border. Placeholders show
-	// example values inline so users don't have to guess at the
-	// expected shape.
-	//
-	// Phase 1 redesign: dropped the Auth mode dropdown. Backend
-	// secrets are expressed via two fields:
-	//
-	//   - "Existing Secret name (optional)" wins when set:
-	//     references a pre-built K8s Secret as-is.
-	//   - "Backend secrets" is a multi-line KEY=VALUE block. Values
-	//     prefixed with `$` are lifted from the shell environment
-	//     at submit time; everything else is literal.
-	form := tview.NewForm().
-		AddInputField("Name", "", 36, nil, func(v string) { cf.state.name = v }).
-		AddInputField("Namespace", ctrl.defaultCreateNamespace(), 36, nil, func(v string) { cf.state.namespace = v }).
-		AddDropDown("Backend", backendTypes, 0, func(v string, _ int) { cf.state.backend = v }).
-		AddInputField("Team (optional)", "", 36, nil, func(v string) { cf.state.team = v }).
-		AddCheckbox("Create namespace (if missing)", true, func(v bool) { cf.state.createNamespace = v }).
-		AddInputField("Existing Secret name (optional)", "", 36, nil, func(v string) { cf.state.existingSecret = v }).
-		AddTextArea("Backend secrets (KEY=value, prefix value with $ to read from env)", "", 36, 4, 0, func(v string) { cf.state.secretsBlock = v }).
-		AddInputField("GitOps repo (optional)", "", 36, nil, func(v string) { cf.state.gitopsRepo = v }).
-		AddButton("Create", func() { submitCreateAgent(ctrl, cf) }).
-		AddButton("Cancel", func() { ctrl.closeCreateAgent() })
-
-	// Placeholders — grayed-out example text that disappears when
-	// the user starts typing. Picks the most common case for each
-	// field so newcomers see the expected shape at a glance.
-	setInputPlaceholder(form, 0, "iris")
-	setInputPlaceholder(form, 3, "research")
-	setInputPlaceholder(form, 5, "my-existing-pat-secret  (overrides the secrets block below)")
-	setInputPlaceholder(form, 6,
-		"ANTHROPIC_API_KEY=sk-ant-literal-value\n"+
-			"GITHUB_TOKEN=$GITHUB_PAT     (leading $ → read from shell env)\n"+
-			"CUSTOM_HEADER=hello-world")
-	setInputPlaceholder(form, 7, "owner/repo  (e.g. skthomasjr/witwave-test)")
-
+	// Empty form shell — chrome (border, title, padding, buttons-
+	// align, input-capture, cancel-func) is configured once here
+	// and persists across rebuild()'s Clear()+re-add cycles.
+	form := tview.NewForm()
 	form.SetBorder(true).
 		SetTitle(" Create agent ").
 		SetTitleColor(tcell.ColorSilver).
@@ -809,8 +890,14 @@ func newCreateAgentModal(ctrl *agentListController) tview.Primitive {
 	})
 
 	cf.form = form
+	cf.ctrl = ctrl
 
 	ctrl.createAgentForm = cf
+
+	// Initial render — populates the form with whatever defaults
+	// load reaches for. reset() will re-render when the modal
+	// re-opens.
+	cf.rebuild()
 
 	// Always-visible hint strip below the form so the user sees how
 	// to submit before they have to tab-hunt for the buttons.
@@ -891,10 +978,10 @@ func submitCreateAgent(c *agentListController, cf *createAgentForm) {
 			return
 		}
 	}
-	// Resolve secrets fields. existingSecret wins over secretsBlock
-	// when both are set — the InputField is meant as an "I already
-	// have a Secret named X" override of the inline pairs.
-	auth, authErr := resolveTUISecrets(state.backend, state.existingSecret, state.secretsBlock)
+	// Resolve secrets fields. existingSecret wins over the dynamic
+	// pair list — the InputField is meant as an "I already have a
+	// Secret named X" override of the inline pairs.
+	auth, authErr := resolveTUISecrets(state.backend, state.existingSecret, state.secrets)
 	if authErr != nil {
 		cf.err.SetText("[#ff5f00]secrets: " + authErr.Error() + "[-:-:-]")
 		return
@@ -950,7 +1037,7 @@ func submitCreateAgent(c *agentListController, cf *createAgentForm) {
 			Team:            state.team,
 			CreateNamespace: state.createNamespace,
 			ExistingSecret:  state.existingSecret,
-			SecretsBlock:    state.secretsBlock,
+			Secrets:         state.secrets,
 			GitOpsRepo:      state.gitopsRepo,
 		})
 
@@ -1036,7 +1123,7 @@ func submitCreateAgent(c *agentListController, cf *createAgentForm) {
 //     `\$` escapes for an edge case.
 //   - Env-var lift fails fast when the variable is unset; users see
 //     the missing name in the error so they can fix .env + retry.
-func resolveTUISecrets(backendName, existingSecret, secretsBlock string) (agent.BackendAuthResolver, error) {
+func resolveTUISecrets(backendName, existingSecret string, pairs []secretPair) (agent.BackendAuthResolver, error) {
 	existingSecret = strings.TrimSpace(existingSecret)
 	if existingSecret != "" {
 		return agent.BackendAuthResolver{
@@ -1045,34 +1132,26 @@ func resolveTUISecrets(backendName, existingSecret, secretsBlock string) (agent.
 			ExistingSecret: existingSecret,
 		}, nil
 	}
-	block := strings.TrimSpace(secretsBlock)
-	if block == "" {
-		return agent.BackendAuthResolver{Mode: agent.BackendAuthNone}, nil
-	}
-	// Newline OR comma as separator. Newline is the primary shape
-	// for the TextArea; comma stays accepted for users pasting a
-	// dotenv-style snippet on a single line.
-	sep := func(r rune) bool { return r == '\n' || r == ',' }
-	pairs := strings.FieldsFunc(block, sep)
-
 	inline := make(map[string]string, len(pairs))
-	for _, raw := range pairs {
-		raw = strings.TrimSpace(raw)
-		if raw == "" {
+	for _, p := range pairs {
+		key := strings.TrimSpace(p.Key)
+		// Empty KEY = "this row was added but cleared by the user
+		// = treat as removed." Skip silently so users can clear a
+		// pair to drop it without rebuilding the form.
+		if key == "" {
 			continue
 		}
-		k, v, err := agent.SplitInlineKV(raw, "secrets")
-		if err != nil {
-			return agent.BackendAuthResolver{}, err
-		}
-		// `$VAR` → lift from shell env at submit time. The leading
-		// `$` is the only special prefix; everything else is a
-		// literal value.
-		if strings.HasPrefix(v, "$") {
-			envName := v[1:]
+		value := p.Value
+		// `$VAR` → lift from shell env at submit time. Leading `$`
+		// is the only special prefix; everything else is literal.
+		// Empty VALUE on a non-empty KEY is a likely typo (the
+		// minted Secret would carry an empty key, which most
+		// backends reject as 401); refuse with a clear hint.
+		if strings.HasPrefix(value, "$") {
+			envName := value[1:]
 			if envName == "" {
 				return agent.BackendAuthResolver{}, fmt.Errorf(
-					"secrets: %q has a bare `$` value (use $VARNAME to lift from shell env, or use a literal value)", k,
+					"secrets: pair %q has a bare `$` value (use $VARNAME to lift from shell env, or type a literal value)", key,
 				)
 			}
 			envValue := strings.TrimSpace(os.Getenv(envName))
@@ -1081,15 +1160,19 @@ func resolveTUISecrets(backendName, existingSecret, secretsBlock string) (agent.
 					"secrets: $%s is unset or empty in the shell environment (set it in your .env, source it, retry)", envName,
 				)
 			}
-			v = envValue
-		}
-		if existing, dup := inline[k]; dup {
+			value = envValue
+		} else if strings.TrimSpace(value) == "" {
 			return agent.BackendAuthResolver{}, fmt.Errorf(
-				"secrets: key %q appears twice (first=%q, second=%q) — pick one",
-				k, existing, v,
+				"secrets: pair %q has an empty value (clear the KEY to drop the pair, or type a value)", key,
 			)
 		}
-		inline[k] = v
+		if existing, dup := inline[key]; dup {
+			return agent.BackendAuthResolver{}, fmt.Errorf(
+				"secrets: key %q appears twice (first=%q, second=%q) — pick one",
+				key, existing, value,
+			)
+		}
+		inline[key] = value
 	}
 	if len(inline) == 0 {
 		return agent.BackendAuthResolver{Mode: agent.BackendAuthNone}, nil

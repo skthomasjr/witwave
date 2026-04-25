@@ -83,15 +83,21 @@ type TUICreateDefaults struct {
 
 	// ExistingSecret pre-fills the modal's "Existing Secret name
 	// (optional)" InputField. When set, the form treats it as the
-	// authoritative auth path and ignores SecretsBlock.
+	// authoritative auth path and ignores Secrets.
 	ExistingSecret string `mapstructure:"existing_secret"`
 
-	// SecretsBlock pre-fills the multi-line "Backend secrets"
-	// TextArea. One KEY=VALUE per line; values prefixed with `$`
-	// are env-lifts at submit time. TOML multi-line strings
-	// (`""" … """`) round-trip cleanly here for users hand-editing
-	// the file.
-	SecretsBlock string `mapstructure:"secrets_block"`
+	// Secrets pre-fills the dynamic per-pair section. Each entry
+	// is "KEY=VALUE" — values prefixed with `$` are env-lifts at
+	// submit time. List shape (rather than a multi-line string)
+	// keeps the on-disk TOML hand-editable as
+	//
+	//   secrets = [
+	//     "ANTHROPIC_API_KEY=sk-ant-...",
+	//     "GITHUB_TOKEN=$GITHUB_PAT",
+	//   ]
+	//
+	// without quoting / line-continuation gymnastics.
+	Secrets []string `mapstructure:"secrets"`
 
 	GitOpsRepo string `mapstructure:"gitops_repo"`
 }
@@ -357,12 +363,15 @@ func LoadTUICreateDefaults(getenv func(string) string) (TUICreateDefaults, bool)
 		return TUICreateDefaults{}, false
 	}
 	d := f.TUI.CreateDefaults
-	// "Empty" detection — if every string is "" and CreateNamespace
-	// is false, the user likely doesn't have the block at all (vs.
-	// having explicitly set every value to its zero value). Treat
-	// that as "no saved state" so the TUI's own fallback layer
-	// engages instead of pre-filling the form with all blanks.
-	if d == (TUICreateDefaults{}) {
+	// "Empty" detection — if every field is at its zero value, the
+	// user likely doesn't have the block at all (vs. having
+	// explicitly set every value to its zero value). Treat that as
+	// "no saved state" so the TUI's fallback layer engages instead
+	// of pre-filling the form with all blanks. Slice field forces a
+	// manual check (Go can't compare structs containing slices).
+	if d.Namespace == "" && d.Backend == "" && d.Team == "" &&
+		!d.CreateNamespace && d.ExistingSecret == "" &&
+		len(d.Secrets) == 0 && d.GitOpsRepo == "" {
 		return d, false
 	}
 	return d, true
