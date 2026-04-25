@@ -701,8 +701,8 @@ func (f *createAgentForm) reset(ctxNamespace string) {
 	f.form.GetFormItem(3).(*tview.InputField).SetText(d.Team) // team
 	f.form.GetFormItem(4).(*tview.Checkbox).SetChecked(d.CreateNamespace)
 	f.form.GetFormItem(5).(*tview.DropDown).SetCurrentOption(dropdownIndexOrZero([]string{"none", "profile", "from-env", "existing-secret", "set-inline"}, d.AuthMode))
-	f.form.GetFormItem(6).(*tview.InputField).SetText(d.AuthValue)  // auth value
-	f.form.GetFormItem(7).(*tview.InputField).SetText(d.GitOpsRepo) // gitops repo
+	f.form.GetFormItem(6).(*tview.TextArea).SetText(d.AuthValue, true) // auth value (multi-line for set-inline mode)
+	f.form.GetFormItem(7).(*tview.InputField).SetText(d.GitOpsRepo)    // gitops repo
 	f.err.SetText("")
 	f.form.SetFocus(0)
 }
@@ -748,7 +748,7 @@ func newCreateAgentModal(ctrl *agentListController) tview.Primitive {
 		AddInputField("Team (optional)", "", 36, nil, func(v string) { cf.state.team = v }).
 		AddCheckbox("Create namespace (if missing)", true, func(v bool) { cf.state.createNamespace = v }).
 		AddDropDown("Auth mode (LLM backends)", authModes, 0, func(v string, _ int) { cf.state.authMode = v }).
-		AddInputField("Auth value (profile / VAR / Secret)", "", 36, nil, func(v string) { cf.state.authValue = v }).
+		AddTextArea("Auth value (profile / VAR / Secret / KEY=VALUE…)", "", 36, 4, 0, func(v string) { cf.state.authValue = v }).
 		AddInputField("GitOps repo (optional)", "", 36, nil, func(v string) { cf.state.gitopsRepo = v }).
 		AddButton("Create", func() { submitCreateAgent(ctrl, cf) }).
 		AddButton("Cancel", func() { ctrl.closeCreateAgent() })
@@ -758,7 +758,11 @@ func newCreateAgentModal(ctrl *agentListController) tview.Primitive {
 	// field so newcomers see the expected shape at a glance.
 	setInputPlaceholder(form, 0, "iris")
 	setInputPlaceholder(form, 3, "research")
-	setInputPlaceholder(form, 6, "oauth · ANTHROPIC_API_KEY · my-secret · KEY1=v1,KEY2=v2")
+	setInputPlaceholder(form, 6,
+		"profile name (oauth) · env var (ANTHROPIC_API_KEY) · Secret name\n"+
+			"or, for set-inline mode, one KEY=VALUE per line:\n"+
+			"  ANTHROPIC_API_KEY=sk-ant-...\n"+
+			"  ALT_TOKEN=ghp_...")
 	setInputPlaceholder(form, 7, "owner/repo  (e.g. skthomasjr/witwave-test)")
 
 	form.SetBorder(true).
@@ -812,7 +816,7 @@ func newCreateAgentModal(ctrl *agentListController) tview.Primitive {
 		AddItem(tview.NewBox(), 0, 1, false).
 		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
 			AddItem(tview.NewBox(), 0, 1, false).
-			AddItem(body, 30, 1, true).
+			AddItem(body, 34, 1, true).
 			AddItem(tview.NewBox(), 0, 1, false),
 			90, 1, true).
 		AddItem(tview.NewBox(), 0, 1, false)
@@ -821,13 +825,18 @@ func newCreateAgentModal(ctrl *agentListController) tview.Primitive {
 // setInputPlaceholder is a tiny helper that pulls a form item by
 // index and applies a placeholder string. Centralised so the create
 // modal's "show example data" config reads as a single block of
-// SetInputField → setInputPlaceholder calls. No-op if the item at
-// that index isn't an InputField (defensive against future field
-// reorder).
+// SetInputField → setInputPlaceholder calls. Handles both
+// *tview.InputField and *tview.TextArea — the auth-value field
+// switched from a single-line InputField to a multi-line TextArea
+// so the set-inline mode can take N KEY=VALUE pairs without
+// cramming them into one comma-separated row.
 func setInputPlaceholder(form *tview.Form, idx int, text string) {
-	if input, ok := form.GetFormItem(idx).(*tview.InputField); ok {
-		input.SetPlaceholder(text)
-		input.SetPlaceholderTextColor(tcell.ColorGray)
+	switch item := form.GetFormItem(idx).(type) {
+	case *tview.InputField:
+		item.SetPlaceholder(text)
+		item.SetPlaceholderTextColor(tcell.ColorGray)
+	case *tview.TextArea:
+		item.SetPlaceholder(text)
 	}
 }
 
@@ -1036,15 +1045,16 @@ func resolveTUIAuth(backendName, mode, value string) (agent.BackendAuthResolver,
 			ExistingSecret: value,
 		}, nil
 	case "set-inline":
-		if value == "" {
-			return agent.BackendAuthResolver{}, fmt.Errorf("set-inline mode needs an Auth value (e.g. KEY1=val1,KEY2=val2)")
+		if strings.TrimSpace(value) == "" {
+			return agent.BackendAuthResolver{}, fmt.Errorf("set-inline mode needs at least one KEY=VALUE pair (one per line, or comma-separated on a single line)")
 		}
-		// Comma-separated KEY=VALUE pairs — same shape the CLI's
-		// --auth-set accepts on `backend add` (without the
-		// <backend>: prefix; backend's already named on the form).
-		// Whitespace tolerated around each pair so users can paste
-		// "KEY1=v1, KEY2=v2" without having to scrub spaces.
-		pairs := strings.Split(value, ",")
+		// Accept BOTH newlines (the natural shape now that the field
+		// is a multi-line TextArea) and commas (back-compat with the
+		// earlier single-line shape, and convenient when pasting a
+		// dotenv-style snippet from another doc). FieldsFunc trims
+		// empty entries from blank lines + trailing separators.
+		sep := func(r rune) bool { return r == '\n' || r == ',' }
+		pairs := strings.FieldsFunc(value, sep)
 		inline := make(map[string]string, len(pairs))
 		for _, raw := range pairs {
 			raw = strings.TrimSpace(raw)
