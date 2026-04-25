@@ -294,21 +294,40 @@ ww agent create consensus \
     --auth codex=openai
 ```
 
-Three credential flags, all repeatable, all scoped per backend — pick
-ONE per backend:
+Four credential flags, all scoped per backend. The first three are
+repeatable across DIFFERENT backends; `--auth-set` is the only one
+repeatable for the SAME backend (each entry adds another KEY=VALUE
+pair to the same Secret). Pick ONE mode per backend:
 
 | Flag | Shape | When to use |
 |---|---|---|
 | `--auth` | `<backend>=<profile>` | Named profile reads conventional env var(s). Known profiles: `claude: api-key \| oauth`. |
-| `--auth-from-env` | `<backend>=<VAR>[,VAR2,...]` | Escape hatch: mint a Secret from arbitrary env vars. Secret keys match the var names verbatim. |
+| `--auth-from-env` | `<backend>=<VAR>[,VAR2,...]` | Mint a Secret from named env vars. Secret keys match the var names verbatim. |
 | `--auth-secret` | `<backend>=<secret-name>` | Reference a Secret you already created (verified, never modified). Production default for ops with their own rotation story. |
+| `--auth-set` | `<backend>:<KEY>=<VALUE>` | Mint a Secret with literal `KEY=VALUE` pairs. Repeatable per `(backend, KEY)`. **Values land in shell history + ps output — for production tokens prefer `--auth-secret` or `--auth-from-env`.** |
+
+```bash
+# Inline KEY=VALUE pairs — useful for ad-hoc credentials or shapes
+# the named profile catalog doesn't cover (custom headers, multi-key
+# bundles for non-LLM backends, etc.)
+ww agent create iris \
+    --namespace witwave \
+    --backend claude \
+    --auth-set claude:ANTHROPIC_API_KEY=sk-ant-xxxx \
+    --auth-set claude:CUSTOM_HEADER=hello
+```
 
 `--auth-secret` is the production path — pre-create a Secret with
 `kubectl create secret generic ... --from-literal=<KEY>=<value>` and
-rotate it on your own schedule; ww just references it. The mint
-variants (`--auth`, `--auth-from-env`) are dev-loop ergonomics — the
-minted Secret lives on the cluster forever until someone rotates or
-deletes it.
+rotate it on your own schedule; ww just references it. The three
+mint variants (`--auth`, `--auth-from-env`, `--auth-set`) are
+dev-loop ergonomics — the minted Secret lives on the cluster
+forever until someone rotates or deletes it.
+
+To edit or unset one key in an existing credential Secret without
+recreating the agent, use `kubectl edit secret <agent>-<backend>-credentials -n <ns>`
+for now. A `ww agent backend auth {set, unset, list, show}` subtree
+is on the roadmap.
 
 ---
 
@@ -556,6 +575,23 @@ Pushed main.
   CR-only change (e.g., you're staging the backend entry now and
   will add the repo content later through a different flow).
 
+**Inline KEY=VALUE credentials.** The same four credential flags
+from § 3 (Multi-model consensus for real) work here too, with one
+syntactic shortcut: because the backend's already named positionally
+on `backend add`, `--auth-set` drops the `<backend>:` prefix.
+
+```bash
+# Mint a Secret with two literal KEY=VALUE pairs in one call
+ww agent backend add hello claude \
+    --namespace witwave \
+    --auth-set GITHUB_TOKEN=ghp_xxxx \
+    --auth-set ALT_GITHUB_TOKEN=ghp_yyyy
+```
+
+Same security caveats apply — values land in shell history. For
+production tokens use `--auth-secret` (pre-create the Secret with
+`kubectl create secret generic ... --from-env-file`) instead.
+
 ### 5b. Rename
 
 ```bash
@@ -778,15 +814,25 @@ Verbs already shipped — fully documented above:
 - **Interaction:** `send`, `logs`, `events`
 - **Scaffold:** `scaffold` (single + multi-backend, `--no-heartbeat`, merge-on-existing)
 - **GitOps:** `git add / list / remove` (three auth modes, `--delete-secret` on remove)
-- **Backend lifecycle:** `backend add / remove / rename` (auth-aware add with `--auth`, optional repo-folder scaffold on add, `--remove-repo-folder` / `--no-repo-rename` on the others)
+- **Backend lifecycle:** `backend add / remove / rename` (four auth modes — `--auth` profile / `--auth-from-env` / `--auth-secret` / `--auth-set` literal KEY=VALUE pairs — optional repo-folder scaffold on add, `--remove-repo-folder` / `--no-repo-rename` on the others)
 - **Team membership (advanced, optional):** `team join / leave / list / show` — subset peer discovery
   within a namespace via the `witwave.ai/team` label. Most users don't need this; the namespace-wide
   manifest already groups agents sensibly. If you want to split one namespace into unrelated cohorts,
   start with `ww agent team --help` and see [DESIGN.md](DESIGN.md) TEAM-1..5.
+- **Interactive TUI:** `ww tui` — `k9s`-style live agent list. `a` opens the long-form create modal
+  (auth picker, gitOps repo, namespace pre-fill from kubeconfig context); `d` opens the delete
+  modal with the same three cleanup checkboxes the CLI exposes; `l` drills into aggregate logs
+  across all containers (`c` cycles individual ones); `r` forces a refresh. Defaults persist
+  to `[tui.create_defaults]` in `~/.witwave/config.toml` and reload on next launch.
 
 Verbs on the roadmap (shapes sketched in DESIGN.md, not yet
 implemented):
 
+- **`ww agent backend auth set / unset / list / show`** — long-lived
+  edits to a backend's credential Secret (add a new key, drop an
+  old one, list keys, show values masked or with `--reveal`)
+  without recreating the agent. Today's workaround is
+  `kubectl edit secret <agent>-<backend>-credentials -n <ns>`.
 - **`ww agent add-job <file>`** / `add-task` / `add-trigger` etc. —
   materialise dormant-subsystem content into the repo with the
   right frontmatter shape, eliminating the need to hand-author

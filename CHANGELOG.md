@@ -8,6 +8,46 @@ section of each entry.
 
 ## [Unreleased]
 
+### Added
+
+- **`--auth-set` — fourth backend-credential mode** alongside the
+  existing `--auth` (named profile), `--auth-from-env` (lift from
+  shell), and `--auth-secret` (reference existing Secret). Stamps
+  literal `KEY=VALUE` pairs onto the backend's credential Secret
+  at command time. Wired on both `ww agent create` (form
+  `<backend>:<KEY>=<VALUE>` since multi-backend per command) and
+  `ww agent backend add` (form `<KEY>=<VALUE>` since the backend
+  is already positional). Repeatable per `(backend, KEY)`;
+  duplicate-KEY-within-same-backend is a hard error rather than
+  silent last-write-wins. Mutually exclusive with the other three
+  auth modes per backend. SECURITY: command-line values land in
+  shell history + ps output; for production tokens prefer
+  `--auth-secret` (pre-create with `kubectl create secret
+  --from-env-file`) or `--auth-from-env` (lift from a sourced env
+  file). The minted Secret's `created-by` annotation records key
+  NAMES only — values never leak into metadata that
+  `kubectl get secret -o yaml` would surface.
+- **`ww tui` create-modal `set-inline` mode** — TUI parity for
+  `--auth-set`. The Auth-mode dropdown grows a fifth option
+  (`set-inline`); the Auth-value field accepts a comma-separated
+  list of `KEY=VALUE` pairs, equivalent to one `--auth-set
+  <backend>:KEY=VALUE` per pair on the CLI side. Same dup-key
+  rejection + empty-value rejection as the CLI parser.
+
+### Documentation
+
+- README backend-credentials section grows from three paths to
+  four; cheatsheet line gains a `--auth-set` example.
+- WALKTHROUGH § 3 (Multi-model consensus for real) credentials
+  table updated to four modes; § 5a (Backend Add) gains a
+  `--auth-set` snippet showing the no-prefix form. § 9 (What's
+  next) lists the `ww tui` surface for the first time and adds
+  the planned `ww agent backend auth set/unset/list/show` subtree
+  to the roadmap.
+- README adds a new **Interactive TUI** section covering keymap +
+  the layered defaults (env > saved > fallback) the create modal
+  uses.
+
 ## [0.7.13] — 2026-04-24
 
 ### Added

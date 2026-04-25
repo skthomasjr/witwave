@@ -275,6 +275,7 @@ ww agent git remove hello                       # detach gitSync (keeps ww-minte
 
 # Backend lifecycle on a running agent
 ww agent backend add    hello claude --auth oauth            # append; auto-assigns next free port + scaffolds .claude/ in the repo
+ww agent backend add    hello claude --auth-set ANTHROPIC_API_KEY=sk-...    # ditto; literal KEY=VALUE Secret instead of named profile
 ww agent backend rename hello echo-2 echo-primary            # rename across CR + gitMappings + repo folder
 ww agent backend remove hello echo-2 --remove-repo-folder    # drop a backend + wipe its repo folder
 
@@ -347,16 +348,18 @@ With no flags, `ww agent create <name>` deploys the **echo backend** — a zero-
 response quoting the caller's prompt (see [`backends/echo/`](../../backends/echo/README.md)). Pick a real LLM backend
 with `--backend claude|codex|gemini`; the chosen backend's image is published at the same version as the `ww` binary.
 
-### Backend credentials — three paths
+### Backend credentials — four paths
 
 LLM backends need an API key or OAuth token. `ww agent create` resolves per-backend credentials via
-three repeatable flags (pick ONE per backend):
+four repeatable flags (pick ONE per backend; `--auth-set` is the only one that's repeatable for the
+same backend, accumulating into one Secret):
 
 | Flag | Shape | Behavior |
 |---|---|---|
 | `--auth` | `<backend>=<profile>` | Named profile reads conventional env var(s) from the shell + mints a `<agent>-<backend>-credentials` Secret. MVP profiles: `claude: api-key \| oauth`. |
-| `--auth-from-env` | `<backend>=<VAR>[,VAR2,...]` | Escape hatch: mint a Secret from arbitrary env vars. Secret keys match var names verbatim. |
+| `--auth-from-env` | `<backend>=<VAR>[,VAR2,...]` | Mint a Secret from named env vars. Secret keys match var names verbatim. |
 | `--auth-secret` | `<backend>=<secret-name>` | Reference an existing Secret (verified, never modified). Production default. |
+| `--auth-set` | `<backend>:<KEY>=<VALUE>` | Mint a Secret with literal `KEY=VALUE` pairs. Repeatable per `(backend, KEY)`. **Values land in shell history + ps output — for production tokens prefer `--auth-secret` or `--auth-from-env`.** |
 
 ```bash
 # OAuth path — reads $CLAUDE_CODE_OAUTH_TOKEN from the shell
@@ -368,14 +371,34 @@ ww agent create iris --backend claude --auth claude=api-key
 # Pre-existing Secret — production path with out-of-band rotation
 ww agent create iris --backend claude --auth-secret claude=my-anthropic-pat
 
+# Inline KEY=VALUE — for ad-hoc / custom-shape credentials
+ww agent create iris --backend claude \
+  --auth-set claude:ANTHROPIC_API_KEY=sk-ant-xxxx \
+  --auth-set claude:ALT_TOKEN=ghp_yyyy
+
 # Multi-backend: one --auth per backend
 ww agent create consensus --backend claude --backend codex \
   --auth claude=oauth --auth codex=openai
 ```
 
+On `ww agent backend add` the `<backend>:` prefix drops since the backend's already positional —
+each `--auth-set` entry is just `<KEY>=<VALUE>`:
+
+```bash
+ww agent backend add hello claude \
+  --auth-set GITHUB_TOKEN=ghp_xxxx \
+  --auth-set ALT_GITHUB_TOKEN=ghp_yyyy
+```
+
 Minted Secrets carry `app.kubernetes.io/managed-by: ww` so `ww agent delete --purge` reaps them
 label-gated. Hand-rolled Secrets at the same name are refused — use `--auth-secret` to reference
-them instead, or `--auth-from-env` with a non-colliding name.
+them instead, or `--auth-from-env` with a non-colliding name. The `created-by` annotation on
+`--auth-set`-minted Secrets records key NAMES only (never values) so values don't leak into
+`kubectl get secret -o yaml` metadata.
+
+Editing or removing one key in an existing credential Secret without recreating the agent isn't
+covered by ww yet — use `kubectl edit secret <agent>-<backend>-credentials -n <ns>` for now. A
+follow-up `ww agent backend auth set/unset/list/show` subtree is on the roadmap.
 
 Namespace handling follows DESIGN.md NS-1..5:
 
@@ -447,6 +470,34 @@ that shouldn't see each other.
 `ww agent events` is a one-shot scoped variant of `ww operator events`: events on the WitwaveAgent CR plus events on
 pods matching `app.kubernetes.io/name=<agent-name>`. No `--watch` mode — when you need live signal, `ww agent logs -f`
 usually tells you more.
+
+## Interactive TUI
+
+`ww tui` opens a `k9s`-style live agent list. The list polls every 2 seconds; agents created /
+deleted / transitioning out-of-band (another CLI session, kubectl, Helm, another operator) update
+in place without a keystroke.
+
+Keybindings on the list:
+
+| Key | Action |
+|---|---|
+| `↑` / `↓` | Move selection |
+| `a` | Open the create-agent modal — long-form: name, namespace, backend, team, auth, gitOps repo |
+| `d` | Open the delete-confirm modal — three checkboxes for `--remove-repo-folder`, `--delete-git-secret`, `--purge` |
+| `l` | Drill into the selected agent's logs — aggregate-across-containers by default; `c` cycles individual containers |
+| `r` | Force-refresh the snapshot |
+| `↵` | Reserved for the per-agent details view (status / events / send / config); flashes a stub hint until that lands |
+| `q` / `Ctrl-C` | Quit |
+| `ESC` | Page-aware: in logs / modal → back; on the list → quit |
+
+The create modal's auth picker mirrors the CLI's four modes (`none` / `profile` / `from-env` /
+`existing-secret` / `set-inline`); the `set-inline` mode takes a comma-separated list of
+`KEY=VALUE` pairs in the value field, equivalent to the CLI's `--auth-set <backend>:KEY=VALUE`.
+
+Defaults pre-fill the create modal from a layered resolution (env vars > saved last-used >
+fallback). `WW_TUI_DEFAULT_*` env vars in your `.env` pin values; otherwise the form remembers
+your last successful create. Saved values live in the `[tui.create_defaults]` block of
+`~/.witwave/config.toml`.
 
 ## Config
 

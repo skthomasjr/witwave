@@ -697,7 +697,7 @@ func (f *createAgentForm) reset(ctxNamespace string) {
 	f.form.GetFormItem(2).(*tview.DropDown).SetCurrentOption(dropdownIndexOrZero(agent.KnownBackends(), d.Backend))
 	f.form.GetFormItem(3).(*tview.InputField).SetText(d.Team) // team
 	f.form.GetFormItem(4).(*tview.Checkbox).SetChecked(d.CreateNamespace)
-	f.form.GetFormItem(5).(*tview.DropDown).SetCurrentOption(dropdownIndexOrZero([]string{"none", "profile", "from-env", "existing-secret"}, d.AuthMode))
+	f.form.GetFormItem(5).(*tview.DropDown).SetCurrentOption(dropdownIndexOrZero([]string{"none", "profile", "from-env", "existing-secret", "set-inline"}, d.AuthMode))
 	f.form.GetFormItem(6).(*tview.InputField).SetText(d.AuthValue)  // auth value
 	f.form.GetFormItem(7).(*tview.InputField).SetText(d.GitOpsRepo) // gitops repo
 	f.err.SetText("")
@@ -732,7 +732,7 @@ func newCreateAgentModal(ctrl *agentListController) tview.Primitive {
 
 	backendTypes := agent.KnownBackends()
 
-	authModes := []string{"none", "profile", "from-env", "existing-secret"}
+	authModes := []string{"none", "profile", "from-env", "existing-secret", "set-inline"}
 
 	// Field width 36 + 36-char label column = ~72 cols of content,
 	// fits inside the modal's 90 + 2 border. Placeholders show
@@ -755,7 +755,7 @@ func newCreateAgentModal(ctrl *agentListController) tview.Primitive {
 	// field so newcomers see the expected shape at a glance.
 	setInputPlaceholder(form, 0, "iris")
 	setInputPlaceholder(form, 3, "research")
-	setInputPlaceholder(form, 6, "oauth · api-key · ANTHROPIC_API_KEY · my-secret")
+	setInputPlaceholder(form, 6, "oauth · ANTHROPIC_API_KEY · my-secret · KEY1=v1,KEY2=v2")
 	setInputPlaceholder(form, 7, "owner/repo  (e.g. skthomasjr/witwave-test)")
 
 	form.SetBorder(true).
@@ -1031,6 +1031,42 @@ func resolveTUIAuth(backendName, mode, value string) (agent.BackendAuthResolver,
 			Backend:        backendName,
 			Mode:           agent.BackendAuthExistingSecret,
 			ExistingSecret: value,
+		}, nil
+	case "set-inline":
+		if value == "" {
+			return agent.BackendAuthResolver{}, fmt.Errorf("set-inline mode needs an Auth value (e.g. KEY1=val1,KEY2=val2)")
+		}
+		// Comma-separated KEY=VALUE pairs — same shape the CLI's
+		// --auth-set accepts on `backend add` (without the
+		// <backend>: prefix; backend's already named on the form).
+		// Whitespace tolerated around each pair so users can paste
+		// "KEY1=v1, KEY2=v2" without having to scrub spaces.
+		pairs := strings.Split(value, ",")
+		inline := make(map[string]string, len(pairs))
+		for _, raw := range pairs {
+			raw = strings.TrimSpace(raw)
+			if raw == "" {
+				continue
+			}
+			k, v, err := agent.SplitInlineKV(raw, "set-inline")
+			if err != nil {
+				return agent.BackendAuthResolver{}, err
+			}
+			if existing, dup := inline[k]; dup {
+				return agent.BackendAuthResolver{}, fmt.Errorf(
+					"set-inline: key %q given twice (first=%q, second=%q) — pick one",
+					k, existing, v,
+				)
+			}
+			inline[k] = v
+		}
+		if len(inline) == 0 {
+			return agent.BackendAuthResolver{}, fmt.Errorf("set-inline mode needs at least one KEY=VALUE pair")
+		}
+		return agent.BackendAuthResolver{
+			Backend: backendName,
+			Mode:    agent.BackendAuthInline,
+			Inline:  inline,
 		}, nil
 	}
 	return agent.BackendAuthResolver{}, fmt.Errorf("unknown auth mode %q", mode)
