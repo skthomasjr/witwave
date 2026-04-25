@@ -8,6 +8,23 @@ section of each entry.
 
 ## [Unreleased]
 
+## [0.7.16] — 2026-04-25
+
+### Changed
+
+- **`ww tui` create modal — Auth value field is now a multi-line
+  TextArea** (4 rows tall) instead of a single-line InputField.
+  Set-inline mode naturally takes one `KEY=VALUE` per line — no
+  more cramming five pairs into a comma-separated single line that
+  scrolls horizontally. Parser accepts BOTH newlines (the natural
+  shape with the multi-line field) and commas (back-compat with
+  the earlier single-line shape, and convenient when pasting a
+  dotenv-style snippet from another doc); blank lines and trailing
+  separators are trimmed. Placeholder text refreshed to a multi-
+  line example so the expected shape is visible on first open.
+  Modal height bumped 30 → 34 to fit the taller field without
+  form-internal scroll.
+
 ## [0.7.15] — 2026-04-25
 
 ### Added
