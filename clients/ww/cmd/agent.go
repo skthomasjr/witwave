@@ -313,6 +313,7 @@ func newAgentBackendAddCmd(f *agentFlags) *cobra.Command {
 		authProfile   string
 		authFromEnv   string
 		authSecret    string
+		authSet       []string
 		noRepoFolder  bool
 		commitMessage string
 	)
@@ -346,8 +347,9 @@ func newAgentBackendAddCmd(f *agentFlags) *cobra.Command {
 			// first slot the existing CR isn't using.
 			specs[0].Port = 0
 			// Build the auth resolver — flags here drop the <backend>=
-			// prefix because the backend is already named positionally.
-			auth, err := resolveSingleBackendAuth(specs[0].Name, authProfile, authFromEnv, authSecret)
+			// prefix (and --auth-set drops the <backend>: prefix)
+			// because the backend is already named positionally.
+			auth, err := resolveSingleBackendAuth(specs[0].Name, authProfile, authFromEnv, authSecret, authSet)
 			if err != nil {
 				return err
 			}
@@ -361,6 +363,10 @@ func newAgentBackendAddCmd(f *agentFlags) *cobra.Command {
 		"Mint a K8s Secret from arbitrary env vars. Form: <VAR1>[,VAR2,...]. Secret keys match names verbatim.")
 	cmd.Flags().StringVar(&authSecret, "auth-secret", "",
 		"Reference an existing K8s Secret (verified, not modified)")
+	cmd.Flags().StringArrayVar(&authSet, "auth-set", nil,
+		"Mint a Secret with literal KEY=VALUE pairs. Repeatable. Form: <KEY>=<VALUE>. "+
+			"SECURITY: values land in shell history + ps output — for production tokens "+
+			"prefer --auth-secret or --auth-from-env.")
 	cmd.Flags().BoolVar(&noRepoFolder, "no-repo-folder", false,
 		"Skip the repo-side `.agents/<…>/.<name>/` scaffold (CR-only change)")
 	cmd.Flags().StringVar(&commitMessage, "commit-message", "",
@@ -368,24 +374,29 @@ func newAgentBackendAddCmd(f *agentFlags) *cobra.Command {
 	return cmd
 }
 
-// resolveSingleBackendAuth converts the three flat auth flags on
-// `backend add` into a single BackendAuthResolver. At most one flag
-// may be set — the three are mutually exclusive. All-empty is the
+// resolveSingleBackendAuth converts the four flat auth flags on
+// `backend add` into a single BackendAuthResolver. At most one mode
+// may be set — they're mutually exclusive (with the exception of
+// --auth-set, which is repeatable but counts as one mode regardless
+// of how many KEY=VALUE pairs were passed). All-empty is the
 // legitimate "no credentials needed" case for echo backends.
-func resolveSingleBackendAuth(backend, profile, fromEnv, secret string) (agent.BackendAuthResolver, error) {
-	set := 0
+func resolveSingleBackendAuth(backend, profile, fromEnv, secret string, set []string) (agent.BackendAuthResolver, error) {
+	modes := 0
 	if profile != "" {
-		set++
+		modes++
 	}
 	if fromEnv != "" {
-		set++
+		modes++
 	}
 	if secret != "" {
-		set++
+		modes++
 	}
-	if set > 1 {
+	if len(set) > 0 {
+		modes++
+	}
+	if modes > 1 {
 		return agent.BackendAuthResolver{}, fmt.Errorf(
-			"pick at most one of --auth / --auth-from-env / --auth-secret")
+			"pick at most one of --auth / --auth-from-env / --auth-secret / --auth-set")
 	}
 	switch {
 	case profile != "":
@@ -394,6 +405,26 @@ func resolveSingleBackendAuth(backend, profile, fromEnv, secret string) (agent.B
 		return agent.BackendAuthResolver{Backend: backend, Mode: agent.BackendAuthFromEnv, EnvVars: strings.Split(fromEnv, ",")}, nil
 	case secret != "":
 		return agent.BackendAuthResolver{Backend: backend, Mode: agent.BackendAuthExistingSecret, ExistingSecret: secret}, nil
+	case len(set) > 0:
+		// --auth-set on `backend add` drops the <backend>: prefix —
+		// the backend's already named positionally — so each entry
+		// is just KEY=VALUE. Reuse the inner-half of the create
+		// parser so the error messages stay uniform across verbs.
+		inline := make(map[string]string, len(set))
+		for _, raw := range set {
+			key, value, err := agent.SplitInlineKV(raw, "--auth-set")
+			if err != nil {
+				return agent.BackendAuthResolver{}, err
+			}
+			if existing, dup := inline[key]; dup {
+				return agent.BackendAuthResolver{}, fmt.Errorf(
+					"--auth-set: key %q given twice (first=%q, second=%q) — pick one",
+					key, existing, value,
+				)
+			}
+			inline[key] = value
+		}
+		return agent.BackendAuthResolver{Backend: backend, Mode: agent.BackendAuthInline, Inline: inline}, nil
 	}
 	return agent.BackendAuthResolver{Backend: backend, Mode: agent.BackendAuthNone}, nil
 }
@@ -905,6 +936,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 		authProfiles    []string
 		authFromEnv     []string
 		authSecrets     []string
+		authSet         []string
 	)
 	cmd := &cobra.Command{
 		Use:   "create <name>",
@@ -927,7 +959,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			auth, err := agent.ParseBackendAuth(authProfiles, authFromEnv, authSecrets)
+			auth, err := agent.ParseBackendAuth(authProfiles, authFromEnv, authSecrets, authSet)
 			if err != nil {
 				return err
 			}
@@ -965,6 +997,10 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 	cmd.Flags().StringArrayVar(&authSecrets, "auth-secret", nil,
 		"Reference an existing K8s Secret (verified, not modified). Repeatable. "+
 			"Form: <backend>=<secret-name>.")
+	cmd.Flags().StringArrayVar(&authSet, "auth-set", nil,
+		"Mint a Secret with literal KEY=VALUE pairs. Repeatable per (backend, KEY). "+
+			"Form: <backend>:<KEY>=<VALUE>. SECURITY: values land in shell history + ps "+
+			"output — for production tokens prefer --auth-secret or --auth-from-env.")
 	return cmd
 }
 

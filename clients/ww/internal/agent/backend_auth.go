@@ -51,6 +51,20 @@ const (
 	// just verifies it exists and points the CR at it. Production
 	// default for ops who manage credential rotation out of band.
 	BackendAuthExistingSecret
+
+	// BackendAuthInline — user supplies one or more KEY=VALUE pairs
+	// on the command line (`--auth-set BACKEND:KEY=VALUE` or, on
+	// `backend add` where the backend is positional, `--auth-set
+	// KEY=VALUE`). The CLI mints a Secret with each KEY as a data
+	// key and VALUE as the corresponding bytes.
+	//
+	// Caveats: command-line values land in shell history + ps output
+	// + journal scrapers. For production tokens use --auth-secret
+	// (pre-create with `kubectl create secret --from-env-file`) or
+	// --auth-from-env (lift from a sourced env file). --auth-set is
+	// for dev-loop ergonomics + custom KEY=VALUE shapes the named
+	// profile catalog doesn't cover.
+	BackendAuthInline
 )
 
 // BackendAuthResolver captures the user's credential choice for a single
@@ -74,6 +88,14 @@ type BackendAuthResolver struct {
 	// ExistingSecret (BackendAuthExistingSecret) — name of a Secret
 	// that MUST already exist in the agent's namespace.
 	ExistingSecret string
+
+	// Inline (BackendAuthInline) — KEY=VALUE pairs the user supplied
+	// on the command line. Each pair becomes a key in the minted
+	// Secret with the corresponding value. Map shape (vs. parallel
+	// slices) gives us free dup-detection: ParseBackendAuth refuses
+	// when the same KEY shows up twice for the same backend rather
+	// than letting the second silently overwrite the first.
+	Inline map[string]string
 }
 
 // credentialProfile describes one named way to authenticate a backend.
@@ -187,6 +209,36 @@ func (r BackendAuthResolver) resolve(ctx context.Context, k8s kubernetes.Interfa
 			fmt.Sprintf("ww agent create --auth-from-env %s=%s",
 				r.Backend, strings.Join(r.EnvVars, ",")),
 		)
+
+	case BackendAuthInline:
+		if len(r.Inline) == 0 {
+			return "", fmt.Errorf("--auth-set %s: at least one KEY=VALUE pair is required", r.Backend)
+		}
+		// Validate: keys non-empty (parser already rejects empty),
+		// values non-empty (we don't mint empty-string credentials —
+		// almost certainly a user typo, and an empty value tends to
+		// surface as a confusing 401 from the backend later).
+		for k, v := range r.Inline {
+			if v == "" {
+				return "", fmt.Errorf("--auth-set %s: %q has an empty value (use --auth-from-env if you want to lift from the shell instead)", r.Backend, k)
+			}
+			_ = k // shape symmetry; v is the validated piece
+		}
+		secretName := backendCredentialSecretName(agentName, r.Backend)
+		// `created-by` deliberately doesn't echo the values — they'd
+		// land in the Secret's metadata and any operator running
+		// `kubectl get secret -o yaml` would see them. Just record
+		// the keys; the values live in the data block where they
+		// belong.
+		keys := make([]string, 0, len(r.Inline))
+		for k := range r.Inline {
+			keys = append(keys, k)
+		}
+		return secretName, upsertBackendCredentialSecret(
+			ctx, k8s, namespace, secretName, agentName, r.Backend, r.Inline,
+			fmt.Sprintf("ww agent create --auth-set %s [keys=%s]",
+				r.Backend, strings.Join(keys, ",")),
+		)
 	}
 	return "", fmt.Errorf("unknown BackendAuthMode %d", r.Mode)
 }
@@ -275,18 +327,29 @@ func upsertBackendCredentialSecret(
 	}
 }
 
-// ParseBackendAuth turns the three repeatable cobra flags
-// (--auth / --auth-from-env / --auth-secret) into a resolver list
-// keyed by backend name. Each raw flag value is `<backend>=<rest>`.
-// Validates that a backend isn't double-specified across the three
-// flags — the user has to pick one auth shape per backend.
-func ParseBackendAuth(profiles, fromEnv, fromSecret []string) ([]BackendAuthResolver, error) {
-	seen := make(map[string]string) // backend -> flag that claimed it
+// ParseBackendAuth turns the four repeatable cobra flags
+// (--auth / --auth-from-env / --auth-secret / --auth-set) into a
+// resolver list keyed by backend name. Each raw flag value is
+// `<backend>=<rest>` (or `<backend>:<KEY>=<VALUE>` for --auth-set's
+// shape — see splitBackendInline). Validates that a backend isn't
+// double-specified across mutually-exclusive auth flags; --auth-set
+// is allowed to repeat for the same backend (multiple KEY=VALUE
+// pairs accumulate into one Secret).
+func ParseBackendAuth(profiles, fromEnv, fromSecret, fromSet []string) ([]BackendAuthResolver, error) {
+	// seen[backend] = flag-name that claimed it. --auth-set is
+	// special: it accumulates into one resolver but conflicts with
+	// the other three.
+	seen := make(map[string]string)
+	// inlineByBackend collects KEY=VALUE pairs across multiple
+	// --auth-set flags for the same backend before we materialise
+	// a single BackendAuthInline resolver per backend. Order is
+	// per-flag-arrival; dup-key detection happens at insert time.
+	inlineByBackend := make(map[string]map[string]string)
 	out := make([]BackendAuthResolver, 0,
-		len(profiles)+len(fromEnv)+len(fromSecret))
+		len(profiles)+len(fromEnv)+len(fromSecret)+len(fromSet))
 
 	claim := func(backend, flag string) error {
-		if prev, ok := seen[backend]; ok {
+		if prev, ok := seen[backend]; ok && prev != flag {
 			return fmt.Errorf(
 				"backend %q already has credentials from %s; can't also set via %s",
 				backend, prev, flag,
@@ -340,7 +403,94 @@ func ParseBackendAuth(profiles, fromEnv, fromSecret []string) ([]BackendAuthReso
 			ExistingSecret: secretName,
 		})
 	}
+
+	// --auth-set BACKEND:KEY=VALUE — repeatable, accumulates per
+	// backend. Dup-keys within one backend are a hard error rather
+	// than last-write-wins (silent overwrites are a future debug-
+	// session waiting to happen).
+	for _, raw := range fromSet {
+		backend, key, value, err := splitBackendInline(raw, "--auth-set")
+		if err != nil {
+			return nil, err
+		}
+		if err := claim(backend, "--auth-set"); err != nil {
+			return nil, err
+		}
+		bucket, ok := inlineByBackend[backend]
+		if !ok {
+			bucket = make(map[string]string)
+			inlineByBackend[backend] = bucket
+		}
+		if existing, dup := bucket[key]; dup {
+			return nil, fmt.Errorf(
+				"--auth-set %s: key %q given twice (first=%q, second=%q) — pick one",
+				backend, key, existing, value,
+			)
+		}
+		bucket[key] = value
+	}
+	for backend, pairs := range inlineByBackend {
+		out = append(out, BackendAuthResolver{
+			Backend: backend,
+			Mode:    BackendAuthInline,
+			Inline:  pairs,
+		})
+	}
+
 	return out, nil
+}
+
+// splitBackendInline parses the `<backend>:<KEY>=<VALUE>` shape used
+// by --auth-set on the create command. The colon-then-equals split
+// avoids the visual ambiguity of `<backend>=<KEY>=<VALUE>` (two
+// equals signs would be confusing to read, and the parser would
+// have to guess at which one's the backend separator).
+//
+// Empty backend / KEY / VALUE all rejected with named diagnostics
+// so typos surface fast. The single-backend variant of the parser
+// (no `<backend>:` prefix, used by `ww agent backend add` where the
+// backend's already positional) is SplitInlineKV below.
+func splitBackendInline(raw, flag string) (backend, key, value string, err error) {
+	colonIdx := strings.Index(raw, ":")
+	if colonIdx < 0 {
+		return "", "", "", fmt.Errorf(
+			"%s %q: expected <backend>:<KEY>=<VALUE> form (e.g. claude:ANTHROPIC_API_KEY=sk-...)", flag, raw,
+		)
+	}
+	backend = strings.TrimSpace(raw[:colonIdx])
+	if backend == "" {
+		return "", "", "", fmt.Errorf("%s %q: backend name is empty", flag, raw)
+	}
+	key, value, err = SplitInlineKV(raw[colonIdx+1:], flag)
+	if err != nil {
+		return "", "", "", err
+	}
+	return backend, key, value, nil
+}
+
+// SplitInlineKV parses a `<KEY>=<VALUE>` shape. Used by
+// --auth-set on `ww agent backend add` where the backend's already
+// the positional arg, and as the inner half of splitBackendInline
+// for `ww agent create`'s --auth-set. Trims whitespace around the
+// KEY but PRESERVES it inside the VALUE (tokens often have leading
+// or trailing chars that are syntactically meaningful — better to
+// take the raw bytes than to second-guess).
+func SplitInlineKV(raw, flag string) (key, value string, err error) {
+	eqIdx := strings.Index(raw, "=")
+	if eqIdx < 0 {
+		return "", "", fmt.Errorf(
+			"%s %q: expected KEY=VALUE form", flag, raw,
+		)
+	}
+	key = strings.TrimSpace(raw[:eqIdx])
+	value = raw[eqIdx+1:]
+	if key == "" {
+		return "", "", fmt.Errorf("%s %q: KEY is empty", flag, raw)
+	}
+	if value == "" {
+		return "", "", fmt.Errorf("%s %q: VALUE is empty (use --auth-from-env if you want a placeholder lifted at runtime)", flag, raw)
+	}
+	return key, value, nil
 }
 
 // splitBackendKV parses the `<backend>=<value>` shape used by all three

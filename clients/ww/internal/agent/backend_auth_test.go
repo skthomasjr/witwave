@@ -19,6 +19,7 @@ func TestParseBackendAuth_ThreeFlagsComposed(t *testing.T) {
 		[]string{"claude=oauth"},
 		[]string{"codex=OPENAI_API_KEY"},
 		[]string{"gemini=my-gemini-secret"},
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -43,6 +44,7 @@ func TestParseBackendAuth_RejectsDoubleClaim(t *testing.T) {
 		[]string{"claude=oauth"},
 		[]string{"claude=ANTHROPIC_API_KEY"},
 		nil,
+		nil,
 	)
 	if err == nil {
 		t.Fatal("expected an error when the same backend appears across flags")
@@ -56,16 +58,16 @@ func TestParseBackendAuth_RejectsBadShape(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name string
-		args [3][]string
+		args [4][]string
 		want string
 	}{
-		{"missing equals", [3][]string{{"claude-oauth"}, nil, nil}, "<backend>=<value>"},
-		{"empty backend", [3][]string{{"=oauth"}, nil, nil}, "backend name is empty"},
-		{"empty value", [3][]string{{"claude="}, nil, nil}, "value is empty"},
+		{"missing equals", [4][]string{{"claude-oauth"}, nil, nil, nil}, "<backend>=<value>"},
+		{"empty backend", [4][]string{{"=oauth"}, nil, nil, nil}, "backend name is empty"},
+		{"empty value", [4][]string{{"claude="}, nil, nil, nil}, "value is empty"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := ParseBackendAuth(tc.args[0], tc.args[1], tc.args[2])
+			_, err := ParseBackendAuth(tc.args[0], tc.args[1], tc.args[2], tc.args[3])
 			if err == nil {
 				t.Fatalf("expected an error, got nil")
 			}
@@ -73,6 +75,152 @@ func TestParseBackendAuth_RejectsBadShape(t *testing.T) {
 				t.Errorf("error = %q; want substring %q", err, tc.want)
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// --auth-set parser + resolver coverage
+// ---------------------------------------------------------------------------
+
+func TestParseBackendAuth_AuthSet_AccumulatesPerBackend(t *testing.T) {
+	t.Parallel()
+	got, err := ParseBackendAuth(
+		nil, nil, nil,
+		[]string{
+			"claude:ANTHROPIC_API_KEY=sk-ant-xxx",
+			"claude:ALT_TOKEN=ghp_yyy",
+			"codex:OPENAI_API_KEY=sk-xxx",
+		},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Two resolvers — one per backend — each carrying the inline map.
+	if len(got) != 2 {
+		t.Fatalf("expected 2 resolvers, got %d", len(got))
+	}
+	byBackend := make(map[string]BackendAuthResolver)
+	for _, r := range got {
+		byBackend[r.Backend] = r
+	}
+	if r, ok := byBackend["claude"]; !ok ||
+		r.Mode != BackendAuthInline ||
+		r.Inline["ANTHROPIC_API_KEY"] != "sk-ant-xxx" ||
+		r.Inline["ALT_TOKEN"] != "ghp_yyy" {
+		t.Errorf("claude resolver = %+v; want inline with both keys", r)
+	}
+	if r, ok := byBackend["codex"]; !ok ||
+		r.Mode != BackendAuthInline ||
+		r.Inline["OPENAI_API_KEY"] != "sk-xxx" {
+		t.Errorf("codex resolver = %+v; want inline OPENAI_API_KEY", r)
+	}
+}
+
+func TestParseBackendAuth_AuthSet_RejectsDupKey(t *testing.T) {
+	t.Parallel()
+	_, err := ParseBackendAuth(nil, nil, nil, []string{
+		"claude:KEY=first",
+		"claude:KEY=second",
+	})
+	if err == nil {
+		t.Fatal("expected an error for duplicate KEY in same backend")
+	}
+	if !strings.Contains(err.Error(), "given twice") {
+		t.Errorf("error = %q; want 'given twice' substring", err)
+	}
+}
+
+func TestParseBackendAuth_AuthSet_ConflictsWithOtherFlags(t *testing.T) {
+	t.Parallel()
+	_, err := ParseBackendAuth(
+		[]string{"claude=oauth"},
+		nil, nil,
+		[]string{"claude:KEY=value"},
+	)
+	if err == nil {
+		t.Fatal("expected an error when --auth and --auth-set both target the same backend")
+	}
+	if !strings.Contains(err.Error(), "already has credentials") {
+		t.Errorf("error = %q; want double-claim message", err)
+	}
+}
+
+func TestParseBackendAuth_AuthSet_BadShape(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{"missing colon", "claudeKEY=value", "<backend>:<KEY>=<VALUE>"},
+		{"empty backend", ":KEY=value", "backend name is empty"},
+		{"missing equals", "claude:KEYvalue", "KEY=VALUE form"},
+		{"empty key", "claude:=value", "KEY is empty"},
+		{"empty value", "claude:KEY=", "VALUE is empty"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ParseBackendAuth(nil, nil, nil, []string{tc.raw})
+			if err == nil {
+				t.Fatalf("expected an error, got nil")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("error = %q; want substring %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestResolve_Inline_MintsSecretWithKVPairs(t *testing.T) {
+	k8sClient := makeFakeK8s()
+	resolver := BackendAuthResolver{
+		Backend: "claude",
+		Mode:    BackendAuthInline,
+		Inline: map[string]string{
+			"ANTHROPIC_API_KEY": "sk-ant-abc123",
+			"ALT_TOKEN":         "ghp_xyz",
+		},
+	}
+	secretName, err := resolver.resolve(context.Background(), k8sClient, "witwave", "iris", "claude")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if secretName != "iris-claude-credentials" {
+		t.Errorf("secretName = %q; want iris-claude-credentials", secretName)
+	}
+	sec, err := k8sClient.CoreV1().Secrets("witwave").Get(
+		context.Background(), "iris-claude-credentials", metav1.GetOptions{},
+	)
+	if err != nil {
+		t.Fatalf("Secret not minted: %v", err)
+	}
+	if sec.StringData["ANTHROPIC_API_KEY"] != "sk-ant-abc123" {
+		t.Error("ANTHROPIC_API_KEY value didn't land")
+	}
+	if sec.StringData["ALT_TOKEN"] != "ghp_xyz" {
+		t.Error("ALT_TOKEN value didn't land")
+	}
+	// Annotation must NOT echo values (only key names) — values
+	// would leak into `kubectl get secret -o yaml` metadata.
+	createdBy, _ := sec.Annotations["witwave.ai/created-by"]
+	if strings.Contains(createdBy, "sk-ant-abc123") || strings.Contains(createdBy, "ghp_xyz") {
+		t.Errorf("created-by annotation leaks values: %q", createdBy)
+	}
+}
+
+func TestResolve_Inline_RejectsEmptyValue(t *testing.T) {
+	k8sClient := makeFakeK8s()
+	resolver := BackendAuthResolver{
+		Backend: "claude",
+		Mode:    BackendAuthInline,
+		Inline:  map[string]string{"KEY": ""},
+	}
+	_, err := resolver.resolve(context.Background(), k8sClient, "witwave", "iris", "claude")
+	if err == nil {
+		t.Fatal("expected error for empty value")
+	}
+	if !strings.Contains(err.Error(), "empty value") {
+		t.Errorf("error = %q; want 'empty value' substring", err)
 	}
 }
 
