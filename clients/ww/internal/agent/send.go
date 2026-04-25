@@ -25,6 +25,13 @@ type SendOptions struct {
 	// calls don't collide on the harness's dedup key.
 	MessageID string
 
+	// BackendID, when non-empty, is stamped onto the A2A message's
+	// `metadata.backend_id` field. The harness honours this to route
+	// the prompt to a specific backend container instead of the
+	// default-routed one (per the agent's backend.yaml). Empty value
+	// = harness picks per its routing config (the common case).
+	BackendID string
+
 	// Timeout bounds the round-trip through the apiserver proxy. The
 	// default (30s) leaves room for cold-start delays on freshly
 	// reconciled agents; scripts can tighten this.
@@ -53,10 +60,11 @@ type a2aRequest2params struct {
 }
 
 type a2aMessage struct {
-	Role      string        `json:"role"`
-	Parts     []a2aTextPart `json:"parts"`
-	MessageID string        `json:"messageId"`
-	Kind      string        `json:"kind"`
+	Role      string         `json:"role"`
+	Parts     []a2aTextPart  `json:"parts"`
+	MessageID string         `json:"messageId"`
+	Kind      string         `json:"kind"`
+	Metadata  map[string]any `json:"metadata,omitempty"`
 }
 
 type a2aTextPart struct {
@@ -138,18 +146,24 @@ func Send(ctx context.Context, cfg *rest.Config, opts SendOptions) error {
 		messageID = fmt.Sprintf("ww-send-%d", time.Now().UnixNano())
 	}
 
+	msg := a2aMessage{
+		Role:      "user",
+		Parts:     []a2aTextPart{{Kind: "text", Text: opts.Prompt}},
+		MessageID: messageID,
+		Kind:      "message",
+	}
+	// Stamp metadata.backend_id when the caller wants a specific
+	// backend. Harness routes per spec.config backend.yaml when this
+	// is unset; setting it bypasses the default-routing primary and
+	// hits the named sidecar directly.
+	if opts.BackendID != "" {
+		msg.Metadata = map[string]any{"backend_id": opts.BackendID}
+	}
 	reqBody := a2aRequest{
 		JSONRPC: "2.0",
 		ID:      "1",
 		Method:  "message/send",
-		Params: a2aRequest2params{
-			Message: a2aMessage{
-				Role:      "user",
-				Parts:     []a2aTextPart{{Kind: "text", Text: opts.Prompt}},
-				MessageID: messageID,
-				Kind:      "message",
-			},
-		},
+		Params:  a2aRequest2params{Message: msg},
 	}
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {

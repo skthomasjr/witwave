@@ -227,6 +227,9 @@ func newAgentListPage(app *tview.Application, version string, target *k8s.Target
 			case 'l':
 				ctrl.openAgentLogs()
 				return nil
+			case 's':
+				ctrl.openAgentSend()
+				return nil
 			}
 		}
 		return event
@@ -478,7 +481,7 @@ func (c *agentListController) renderEmpty(msg string) {
 // the same keys work regardless of snapshot state.
 func (c *agentListController) renderFooter() {
 	c.footer.SetText(
-		"[#808080]↑/↓ move · a add · d delete · l logs · r refresh · ↵ details (soon) · q/esc quit[-:-:-]",
+		"[#808080]↑/↓ move · a add · d delete · s send · l logs · r refresh · ↵ details (soon) · q/esc quit[-:-:-]",
 	)
 }
 

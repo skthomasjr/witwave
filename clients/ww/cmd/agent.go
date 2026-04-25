@@ -1210,6 +1210,7 @@ func newAgentSendCmd(f *agentFlags) *cobra.Command {
 		messageID string
 		timeout   time.Duration
 		rawJSON   bool
+		backend   string
 	)
 	cmd := &cobra.Command{
 		Use:   "send <name> <prompt>",
@@ -1217,12 +1218,16 @@ func newAgentSendCmd(f *agentFlags) *cobra.Command {
 		Long: "Makes a single A2A message/send round-trip against the agent's harness\n" +
 			"Service. Uses the apiserver's built-in Service proxy so no local port-forward\n" +
 			"or external LoadBalancer is required — any ClusterIP Service works.\n\n" +
+			"By default the harness routes the prompt to whichever backend backend.yaml\n" +
+			"names as the primary for the `a2a` concern. Pass --backend <name> to bypass\n" +
+			"that routing and target a specific backend container directly — the harness\n" +
+			"honours the metadata.backend_id hint and dispatches to the named sidecar.\n\n" +
 			"Not suited for streaming or very large payloads (apiserver proxy has size\n" +
 			"caps); ww agent logs -f is the right tool for live observation. Use --raw\n" +
 			"to print the full JSON-RPC envelope for debugging.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runAgentSend(cmd.Context(), f, args[0], args[1], messageID, timeout, rawJSON)
+			return runAgentSend(cmd.Context(), f, args[0], args[1], messageID, timeout, rawJSON, backend)
 		},
 	}
 	cmd.Flags().StringVar(&messageID, "message-id", "",
@@ -1231,10 +1236,13 @@ func newAgentSendCmd(f *agentFlags) *cobra.Command {
 		"Round-trip timeout through the apiserver Service proxy")
 	cmd.Flags().BoolVar(&rawJSON, "raw", false,
 		"Print the raw JSON-RPC response envelope instead of extracting the agent text")
+	cmd.Flags().StringVar(&backend, "backend", "",
+		"Target a specific backend by name (stamps metadata.backend_id; harness "+
+			"dispatches directly to the named sidecar instead of routing per backend.yaml)")
 	return cmd
 }
 
-func runAgentSend(ctx context.Context, f *agentFlags, name, prompt, messageID string, timeout time.Duration, rawJSON bool) error {
+func runAgentSend(ctx context.Context, f *agentFlags, name, prompt, messageID string, timeout time.Duration, rawJSON bool, backend string) error {
 	target, resolver, err := f.resolveTarget(ctx)
 	if err != nil {
 		return err
@@ -1249,6 +1257,7 @@ func runAgentSend(ctx context.Context, f *agentFlags, name, prompt, messageID st
 		Namespace: ns,
 		Prompt:    prompt,
 		MessageID: messageID,
+		BackendID: backend,
 		Timeout:   timeout,
 		RawJSON:   rawJSON,
 		Out:       os.Stdout,
