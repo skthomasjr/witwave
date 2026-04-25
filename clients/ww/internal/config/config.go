@@ -68,14 +68,32 @@ type TUIConfig struct {
 // values pre-populated into the create-agent modal. Auto-saved by
 // the TUI after each successful Create; hand-editable. WW_TUI_DEFAULT_*
 // env vars override these at modal-open time (see internal/tui).
+//
+// Phase 1 secrets redesign: replaced the (auth_mode, auth_value)
+// pair with two more focused fields. The old keys are no longer
+// read by the loader — users with a saved config from earlier
+// versions get fresh defaults (fallback layer) on next launch and
+// new state on next successful create. Pre-1.0; the migration
+// surface is small.
 type TUICreateDefaults struct {
 	Namespace       string `mapstructure:"namespace"`
 	Backend         string `mapstructure:"backend"`
 	Team            string `mapstructure:"team"`
 	CreateNamespace bool   `mapstructure:"create_namespace"`
-	AuthMode        string `mapstructure:"auth_mode"`
-	AuthValue       string `mapstructure:"auth_value"`
-	GitOpsRepo      string `mapstructure:"gitops_repo"`
+
+	// ExistingSecret pre-fills the modal's "Existing Secret name
+	// (optional)" InputField. When set, the form treats it as the
+	// authoritative auth path and ignores SecretsBlock.
+	ExistingSecret string `mapstructure:"existing_secret"`
+
+	// SecretsBlock pre-fills the multi-line "Backend secrets"
+	// TextArea. One KEY=VALUE per line; values prefixed with `$`
+	// are env-lifts at submit time. TOML multi-line strings
+	// (`""" … """`) round-trip cleanly here for users hand-editing
+	// the file.
+	SecretsBlock string `mapstructure:"secrets_block"`
+
+	GitOpsRepo string `mapstructure:"gitops_repo"`
 }
 
 // Resolved carries the final effective settings for a single CLI

@@ -142,8 +142,8 @@ func (w *Writer) SetTUICreateDefaults(d TUICreateDefaults) {
 	w.v.Set("tui.create_defaults.backend", d.Backend)
 	w.v.Set("tui.create_defaults.team", d.Team)
 	w.v.Set("tui.create_defaults.create_namespace", d.CreateNamespace)
-	w.v.Set("tui.create_defaults.auth_mode", d.AuthMode)
-	w.v.Set("tui.create_defaults.auth_value", d.AuthValue)
+	w.v.Set("tui.create_defaults.existing_secret", d.ExistingSecret)
+	w.v.Set("tui.create_defaults.secrets_block", d.SecretsBlock)
 	w.v.Set("tui.create_defaults.gitops_repo", d.GitOpsRepo)
 	w.dirty = true
 }

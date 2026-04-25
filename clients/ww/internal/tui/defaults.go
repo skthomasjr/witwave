@@ -32,9 +32,22 @@ type tuiDefaults struct {
 	Backend         string
 	Team            string
 	CreateNamespace bool
-	AuthMode        string
-	AuthValue       string
-	GitOpsRepo      string
+
+	// Phase 1 secrets redesign: replaced the (AuthMode, AuthValue)
+	// pair with two more focused fields.
+	//
+	//   ExistingSecret — when non-empty, the form pre-fills the
+	//                    "Existing Secret name (optional)" InputField
+	//                    so a pre-built K8s Secret reference round-
+	//                    trips across launches.
+	//   SecretsBlock   — when non-empty, the form pre-fills the
+	//                    multi-line "Backend secrets" TextArea.
+	//                    One KEY=VALUE per line; `$`-prefixed values
+	//                    are env-lifts.
+	ExistingSecret string
+	SecretsBlock   string
+
+	GitOpsRepo string
 }
 
 // loadTUIDefaults resolves the layered defaults. Never errors — a
@@ -47,7 +60,6 @@ func loadTUIDefaults() tuiDefaults {
 		Namespace:       agent.DefaultAgentNamespace,
 		Backend:         agent.DefaultBackend,
 		CreateNamespace: true,
-		AuthMode:        "none",
 	}
 
 	// Layer 2 — saved file (overrides fallbacks where set). Single
@@ -71,11 +83,11 @@ func loadTUIDefaults() tuiDefaults {
 		// writes a concrete value, so trusting `saved.CreateNamespace`
 		// is correct here.
 		d.CreateNamespace = saved.CreateNamespace
-		if saved.AuthMode != "" {
-			d.AuthMode = saved.AuthMode
+		if saved.ExistingSecret != "" {
+			d.ExistingSecret = saved.ExistingSecret
 		}
-		if saved.AuthValue != "" {
-			d.AuthValue = saved.AuthValue
+		if saved.SecretsBlock != "" {
+			d.SecretsBlock = saved.SecretsBlock
 		}
 		if saved.GitOpsRepo != "" {
 			d.GitOpsRepo = saved.GitOpsRepo
@@ -96,12 +108,13 @@ func loadTUIDefaults() tuiDefaults {
 	if v := strings.TrimSpace(os.Getenv("WW_TUI_DEFAULT_CREATE_NAMESPACE")); v != "" {
 		d.CreateNamespace = parseBoolOrDefault(v, d.CreateNamespace)
 	}
-	if v := strings.TrimSpace(os.Getenv("WW_TUI_DEFAULT_AUTH_MODE")); v != "" {
-		d.AuthMode = v
+	if v := strings.TrimSpace(os.Getenv("WW_TUI_DEFAULT_EXISTING_SECRET")); v != "" {
+		d.ExistingSecret = v
 	}
-	if v := strings.TrimSpace(os.Getenv("WW_TUI_DEFAULT_AUTH_VALUE")); v != "" {
-		d.AuthValue = v
-	}
+	// SecretsBlock isn't env-pinnable — multi-line values don't
+	// pair well with shell env vars. Users wanting a pinned set
+	// of secrets edit ~/.witwave/config.toml directly under
+	// `[tui.create_defaults] secrets_block = """…"""`.
 	if v := strings.TrimSpace(os.Getenv("WW_TUI_DEFAULT_GITOPS_REPO")); v != "" {
 		d.GitOpsRepo = v
 	}
@@ -133,8 +146,8 @@ func saveTUIDefaults(d tuiDefaults) {
 		Backend:         d.Backend,
 		Team:            d.Team,
 		CreateNamespace: d.CreateNamespace,
-		AuthMode:        d.AuthMode,
-		AuthValue:       d.AuthValue,
+		ExistingSecret:  d.ExistingSecret,
+		SecretsBlock:    d.SecretsBlock,
 		GitOpsRepo:      d.GitOpsRepo,
 	})
 	_ = w.Save() // best-effort

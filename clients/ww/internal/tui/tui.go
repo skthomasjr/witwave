@@ -608,12 +608,23 @@ type createAgentState struct {
 	team            string
 	createNamespace bool
 
-	// Backend credentials (LLM backends only). authMode names which
-	// of the three CLI flags this maps to: "" / "none" → no Secret;
-	// "profile" → --auth claude=oauth; "from-env" → --auth-from-env;
-	// "existing" → --auth-secret. authValue is the per-mode payload.
-	authMode  string
-	authValue string
+	// Backend credentials. The Phase 1 redesign collapses the four
+	// CLI auth modes (--auth profile / --auth-from-env / --auth-
+	// secret / --auth-set) into two TUI fields:
+	//
+	//   existingSecret — when non-empty, references a pre-built K8s
+	//                    Secret (verified, never modified). Maps to
+	//                    BackendAuthExistingSecret. Wins over
+	//                    secretsBlock when both are set.
+	//   secretsBlock   — multi-line text, one KEY=VALUE per line.
+	//                    Values prefixed with `$` are lifted from
+	//                    the shell environment at submit time;
+	//                    everything else is literal. Maps to
+	//                    BackendAuthInline with resolved values.
+	//
+	// Empty in both fields = BackendAuthNone (legitimate for echo).
+	existingSecret string
+	secretsBlock   string
 
 	// GitOps repo. Empty = pure cluster-side create. Non-empty =
 	// after the CR lands, run scaffold (idempotent, merges with any
@@ -687,8 +698,8 @@ func (f *createAgentForm) reset(ctxNamespace string) {
 		backend:         d.Backend,
 		team:            d.Team,
 		createNamespace: d.CreateNamespace,
-		authMode:        d.AuthMode,
-		authValue:       d.AuthValue,
+		existingSecret:  d.ExistingSecret,
+		secretsBlock:    d.SecretsBlock,
 		gitopsRepo:      d.GitOpsRepo,
 	}
 
@@ -700,9 +711,9 @@ func (f *createAgentForm) reset(ctxNamespace string) {
 	f.form.GetFormItem(2).(*tview.DropDown).SetCurrentOption(dropdownIndexOrZero(agent.KnownBackends(), d.Backend))
 	f.form.GetFormItem(3).(*tview.InputField).SetText(d.Team) // team
 	f.form.GetFormItem(4).(*tview.Checkbox).SetChecked(d.CreateNamespace)
-	f.form.GetFormItem(5).(*tview.DropDown).SetCurrentOption(dropdownIndexOrZero([]string{"none", "profile", "from-env", "existing-secret", "set-inline"}, d.AuthMode))
-	f.form.GetFormItem(6).(*tview.TextArea).SetText(d.AuthValue, true) // auth value (multi-line for set-inline mode)
-	f.form.GetFormItem(7).(*tview.InputField).SetText(d.GitOpsRepo)    // gitops repo
+	f.form.GetFormItem(5).(*tview.InputField).SetText(d.ExistingSecret)   // existing Secret name
+	f.form.GetFormItem(6).(*tview.TextArea).SetText(d.SecretsBlock, true) // backend secrets (KEY=VALUE pairs)
+	f.form.GetFormItem(7).(*tview.InputField).SetText(d.GitOpsRepo)       // gitops repo
 	f.err.SetText("")
 	f.form.SetFocus(0)
 }
@@ -735,20 +746,27 @@ func newCreateAgentModal(ctrl *agentListController) tview.Primitive {
 
 	backendTypes := agent.KnownBackends()
 
-	authModes := []string{"none", "profile", "from-env", "existing-secret", "set-inline"}
-
 	// Field width 36 + 36-char label column = ~72 cols of content,
 	// fits inside the modal's 90 + 2 border. Placeholders show
 	// example values inline so users don't have to guess at the
-	// expected shape (especially for repo URLs).
+	// expected shape.
+	//
+	// Phase 1 redesign: dropped the Auth mode dropdown. Backend
+	// secrets are expressed via two fields:
+	//
+	//   - "Existing Secret name (optional)" wins when set:
+	//     references a pre-built K8s Secret as-is.
+	//   - "Backend secrets" is a multi-line KEY=VALUE block. Values
+	//     prefixed with `$` are lifted from the shell environment
+	//     at submit time; everything else is literal.
 	form := tview.NewForm().
 		AddInputField("Name", "", 36, nil, func(v string) { cf.state.name = v }).
 		AddInputField("Namespace", ctrl.defaultCreateNamespace(), 36, nil, func(v string) { cf.state.namespace = v }).
 		AddDropDown("Backend", backendTypes, 0, func(v string, _ int) { cf.state.backend = v }).
 		AddInputField("Team (optional)", "", 36, nil, func(v string) { cf.state.team = v }).
 		AddCheckbox("Create namespace (if missing)", true, func(v bool) { cf.state.createNamespace = v }).
-		AddDropDown("Auth mode (LLM backends)", authModes, 0, func(v string, _ int) { cf.state.authMode = v }).
-		AddTextArea("Auth value (profile / VAR / Secret / KEY=VALUE…)", "", 36, 4, 0, func(v string) { cf.state.authValue = v }).
+		AddInputField("Existing Secret name (optional)", "", 36, nil, func(v string) { cf.state.existingSecret = v }).
+		AddTextArea("Backend secrets (KEY=value, prefix value with $ to read from env)", "", 36, 4, 0, func(v string) { cf.state.secretsBlock = v }).
 		AddInputField("GitOps repo (optional)", "", 36, nil, func(v string) { cf.state.gitopsRepo = v }).
 		AddButton("Create", func() { submitCreateAgent(ctrl, cf) }).
 		AddButton("Cancel", func() { ctrl.closeCreateAgent() })
@@ -758,11 +776,11 @@ func newCreateAgentModal(ctrl *agentListController) tview.Primitive {
 	// field so newcomers see the expected shape at a glance.
 	setInputPlaceholder(form, 0, "iris")
 	setInputPlaceholder(form, 3, "research")
+	setInputPlaceholder(form, 5, "my-existing-pat-secret  (overrides the secrets block below)")
 	setInputPlaceholder(form, 6,
-		"profile name (oauth) · env var (ANTHROPIC_API_KEY) · Secret name\n"+
-			"or, for set-inline mode, one KEY=VALUE per line:\n"+
-			"  ANTHROPIC_API_KEY=sk-ant-...\n"+
-			"  ALT_TOKEN=ghp_...")
+		"ANTHROPIC_API_KEY=sk-ant-literal-value\n"+
+			"GITHUB_TOKEN=$GITHUB_PAT     (leading $ → read from shell env)\n"+
+			"CUSTOM_HEADER=hello-world")
 	setInputPlaceholder(form, 7, "owner/repo  (e.g. skthomasjr/witwave-test)")
 
 	form.SetBorder(true).
@@ -873,11 +891,12 @@ func submitCreateAgent(c *agentListController, cf *createAgentForm) {
 			return
 		}
 	}
-	// Resolve auth flags from the dropdown + value field. "none"
-	// short-circuits to BackendAuthNone (legitimate for echo).
-	auth, authErr := resolveTUIAuth(state.backend, state.authMode, state.authValue)
+	// Resolve secrets fields. existingSecret wins over secretsBlock
+	// when both are set — the InputField is meant as an "I already
+	// have a Secret named X" override of the inline pairs.
+	auth, authErr := resolveTUISecrets(state.backend, state.existingSecret, state.secretsBlock)
 	if authErr != nil {
-		cf.err.SetText("[#ff5f00]auth: " + authErr.Error() + "[-:-:-]")
+		cf.err.SetText("[#ff5f00]secrets: " + authErr.Error() + "[-:-:-]")
 		return
 	}
 
@@ -930,8 +949,8 @@ func submitCreateAgent(c *agentListController, cf *createAgentForm) {
 			Backend:         state.backend,
 			Team:            state.team,
 			CreateNamespace: state.createNamespace,
-			AuthMode:        state.authMode,
-			AuthValue:       state.authValue,
+			ExistingSecret:  state.existingSecret,
+			SecretsBlock:    state.secretsBlock,
 			GitOpsRepo:      state.gitopsRepo,
 		})
 
@@ -999,90 +1018,87 @@ func submitCreateAgent(c *agentListController, cf *createAgentForm) {
 	}()
 }
 
-// resolveTUIAuth maps the modal's authMode dropdown + authValue input
-// into a BackendAuthResolver the CLI's create path understands. The
-// dropdown's display strings (none / profile / from-env / existing-
-// secret) name the variant; the value field's contents fill in the
-// per-mode payload (profile name / env var(s) / Secret name).
-func resolveTUIAuth(backendName, mode, value string) (agent.BackendAuthResolver, error) {
-	switch mode {
-	case "", "none":
-		return agent.BackendAuthResolver{Mode: agent.BackendAuthNone}, nil
-	case "profile":
-		if value == "" {
-			return agent.BackendAuthResolver{}, fmt.Errorf("profile mode needs an Auth value (e.g. oauth, api-key)")
-		}
-		return agent.BackendAuthResolver{
-			Backend: backendName,
-			Mode:    agent.BackendAuthProfile,
-			Profile: value,
-		}, nil
-	case "from-env":
-		if value == "" {
-			return agent.BackendAuthResolver{}, fmt.Errorf("from-env mode needs an Auth value (e.g. CLAUDE_CODE_OAUTH_TOKEN)")
-		}
-		// Same comma-split convention as the CLI's --auth-from-env.
-		vars := strings.Split(value, ",")
-		out := make([]string, 0, len(vars))
-		for _, v := range vars {
-			v = strings.TrimSpace(v)
-			if v != "" {
-				out = append(out, v)
-			}
-		}
-		return agent.BackendAuthResolver{
-			Backend: backendName,
-			Mode:    agent.BackendAuthFromEnv,
-			EnvVars: out,
-		}, nil
-	case "existing-secret":
-		if value == "" {
-			return agent.BackendAuthResolver{}, fmt.Errorf("existing-secret mode needs an Auth value (the K8s Secret name)")
-		}
+// resolveTUISecrets collapses the modal's two secrets fields into a
+// single BackendAuthResolver. existingSecret wins when set —
+// referencing a pre-built Secret as-is is "I have my own thing,
+// don't touch it" semantics that should override any stray content
+// in the secrets block. Otherwise the secrets block is parsed line
+// by line: each line is `KEY=VALUE` for literal, or `KEY=$VAR` for
+// shell env-var lift at submit time.
+//
+// Empty in both fields → BackendAuthNone (echo, or any backend the
+// user wants to start without credentials).
+//
+// Caveats:
+//   - The leading `$` is special in any position. If a literal value
+//     legitimately needs to start with `$` (rare), use the CLI's
+//     `--auth-set` instead. Keeping the parser simple beats handling
+//     `\$` escapes for an edge case.
+//   - Env-var lift fails fast when the variable is unset; users see
+//     the missing name in the error so they can fix .env + retry.
+func resolveTUISecrets(backendName, existingSecret, secretsBlock string) (agent.BackendAuthResolver, error) {
+	existingSecret = strings.TrimSpace(existingSecret)
+	if existingSecret != "" {
 		return agent.BackendAuthResolver{
 			Backend:        backendName,
 			Mode:           agent.BackendAuthExistingSecret,
-			ExistingSecret: value,
-		}, nil
-	case "set-inline":
-		if strings.TrimSpace(value) == "" {
-			return agent.BackendAuthResolver{}, fmt.Errorf("set-inline mode needs at least one KEY=VALUE pair (one per line, or comma-separated on a single line)")
-		}
-		// Accept BOTH newlines (the natural shape now that the field
-		// is a multi-line TextArea) and commas (back-compat with the
-		// earlier single-line shape, and convenient when pasting a
-		// dotenv-style snippet from another doc). FieldsFunc trims
-		// empty entries from blank lines + trailing separators.
-		sep := func(r rune) bool { return r == '\n' || r == ',' }
-		pairs := strings.FieldsFunc(value, sep)
-		inline := make(map[string]string, len(pairs))
-		for _, raw := range pairs {
-			raw = strings.TrimSpace(raw)
-			if raw == "" {
-				continue
-			}
-			k, v, err := agent.SplitInlineKV(raw, "set-inline")
-			if err != nil {
-				return agent.BackendAuthResolver{}, err
-			}
-			if existing, dup := inline[k]; dup {
-				return agent.BackendAuthResolver{}, fmt.Errorf(
-					"set-inline: key %q given twice (first=%q, second=%q) — pick one",
-					k, existing, v,
-				)
-			}
-			inline[k] = v
-		}
-		if len(inline) == 0 {
-			return agent.BackendAuthResolver{}, fmt.Errorf("set-inline mode needs at least one KEY=VALUE pair")
-		}
-		return agent.BackendAuthResolver{
-			Backend: backendName,
-			Mode:    agent.BackendAuthInline,
-			Inline:  inline,
+			ExistingSecret: existingSecret,
 		}, nil
 	}
-	return agent.BackendAuthResolver{}, fmt.Errorf("unknown auth mode %q", mode)
+	block := strings.TrimSpace(secretsBlock)
+	if block == "" {
+		return agent.BackendAuthResolver{Mode: agent.BackendAuthNone}, nil
+	}
+	// Newline OR comma as separator. Newline is the primary shape
+	// for the TextArea; comma stays accepted for users pasting a
+	// dotenv-style snippet on a single line.
+	sep := func(r rune) bool { return r == '\n' || r == ',' }
+	pairs := strings.FieldsFunc(block, sep)
+
+	inline := make(map[string]string, len(pairs))
+	for _, raw := range pairs {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		k, v, err := agent.SplitInlineKV(raw, "secrets")
+		if err != nil {
+			return agent.BackendAuthResolver{}, err
+		}
+		// `$VAR` → lift from shell env at submit time. The leading
+		// `$` is the only special prefix; everything else is a
+		// literal value.
+		if strings.HasPrefix(v, "$") {
+			envName := v[1:]
+			if envName == "" {
+				return agent.BackendAuthResolver{}, fmt.Errorf(
+					"secrets: %q has a bare `$` value (use $VARNAME to lift from shell env, or use a literal value)", k,
+				)
+			}
+			envValue := strings.TrimSpace(os.Getenv(envName))
+			if envValue == "" {
+				return agent.BackendAuthResolver{}, fmt.Errorf(
+					"secrets: $%s is unset or empty in the shell environment (set it in your .env, source it, retry)", envName,
+				)
+			}
+			v = envValue
+		}
+		if existing, dup := inline[k]; dup {
+			return agent.BackendAuthResolver{}, fmt.Errorf(
+				"secrets: key %q appears twice (first=%q, second=%q) — pick one",
+				k, existing, v,
+			)
+		}
+		inline[k] = v
+	}
+	if len(inline) == 0 {
+		return agent.BackendAuthResolver{Mode: agent.BackendAuthNone}, nil
+	}
+	return agent.BackendAuthResolver{
+		Backend: backendName,
+		Mode:    agent.BackendAuthInline,
+		Inline:  inline,
+	}, nil
 }
 
 // discardWriter is an io.Writer that throws everything away. Used

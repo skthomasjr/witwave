@@ -8,6 +8,41 @@ section of each entry.
 
 ## [Unreleased]
 
+### Changed
+
+- **`ww tui` create modal — secrets redesign (Phase 1)**. Dropped
+  the Auth mode dropdown entirely. The four old modes (none /
+  profile / from-env / existing-secret / set-inline) collapse into
+  two more focused fields:
+
+  - **Existing Secret name (optional)** — single-line. When set,
+    references a pre-built K8s Secret as-is (verified, never
+    modified). Wins over the secrets block.
+  - **Backend secrets** — multi-line. One `KEY=VALUE` per line.
+    Values prefixed with `$` are lifted from the shell environment
+    at submit time; everything else is literal. Empty in both
+    fields = no Secret minted (legitimate for echo).
+
+  Examples in the placeholder cover both shapes:
+
+      ANTHROPIC_API_KEY=sk-ant-literal-value
+      GITHUB_TOKEN=$GITHUB_PAT     (leading $ → read from shell env)
+      CUSTOM_HEADER=hello-world
+
+  Old `[tui.create_defaults]` schema keys (`auth_mode`,
+  `auth_value`) are no longer read. Users with a saved file from
+  earlier versions get fresh fallback defaults on next launch and
+  new state on next successful create. Pre-1.0; the migration
+  surface is small. The `WW_TUI_DEFAULT_AUTH_MODE` and
+  `WW_TUI_DEFAULT_AUTH_VALUE` env vars are removed; new
+  `WW_TUI_DEFAULT_EXISTING_SECRET` env var pins the new field.
+  `WW_TUI_DEFAULT_SECRETS_BLOCK` deliberately not added — multi-
+  line values don't pair well with shell env vars; users wanting
+  a pinned set of secrets edit `~/.witwave/config.toml` directly.
+
+  Phase 2 — per-row UI with checkbox + env-var dropdown — remains
+  on the roadmap as its own follow-up.
+
 ## [0.7.16] — 2026-04-25
 
 ### Changed
