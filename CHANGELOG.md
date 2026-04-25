@@ -8,6 +8,8 @@ section of each entry.
 
 ## [Unreleased]
 
+## [0.7.17] — 2026-04-25
+
 ### Changed
 
 - **`ww tui` create modal — secrets redesign (Phase 1)**. Dropped
