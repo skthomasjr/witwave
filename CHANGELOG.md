@@ -8,6 +8,47 @@ section of each entry.
 
 ## [Unreleased]
 
+### Added
+
+- **`ww tui` create modal — Secret KEY fields are now combo boxes**
+  with autocomplete suggesting the conventional env-var names for
+  the selected backend type. Type "AUTH" → AWS_*, AZURE_*,
+  GITHUB_AUTH_TOKEN-style entries surface; pick one with
+  ↑↓+Enter or keep typing for a custom name (the suggestions are
+  hints, never constraints). Powered by tview's
+  `InputField.SetAutocompleteFunc`; substring match (case-
+  insensitive) so credential names sharing common stems are easy
+  to discover.
+
+  Built-in catalog ships per backend type:
+
+  - claude: `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`,
+    `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
+    `AWS_SESSION_TOKEN`, `AWS_REGION`
+  - codex: `OPENAI_API_KEY`, `OPENAI_ORG`, `OPENAI_PROJECT`,
+    `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`,
+    `AZURE_OPENAI_API_VERSION`
+  - gemini: `GEMINI_API_KEY`, `GOOGLE_API_KEY`,
+    `GOOGLE_APPLICATION_CREDENTIALS`, `GOOGLE_CLOUD_PROJECT`
+  - echo: nothing — popup stays hidden for the no-credentials
+    hello-world case
+
+  User-extensible via a new `[tui.expected_env_vars]` block in
+  `~/.witwave/config.toml`:
+
+      [tui.expected_env_vars]
+      claude = ["MY_CUSTOM_VAR"]
+      codex  = ["MY_OPENAI_PROXY_KEY"]
+
+  Custom entries MERGE with the built-ins (dedup + sort) — adding
+  your own can never accidentally drop the canonical suggestions.
+  Removing built-ins isn't supported yet (block-list semantics
+  would land if anyone asks).
+
+  The autocomplete closure reads `cf.state.backend` on every
+  keystroke, so changing the Backend dropdown updates suggestions
+  live for any unfocused KEY field — no rebuild required.
+
 ## [0.7.18] — 2026-04-25
 
 ### Changed

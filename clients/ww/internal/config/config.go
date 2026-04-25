@@ -57,11 +57,25 @@ type File struct {
 	TUI     TUIConfig          `mapstructure:"tui"`
 }
 
-// TUIConfig is the on-disk [tui] block. Today carries only one
-// sub-block (`[tui.create_defaults]`); future TUI knobs (theme,
-// poll interval overrides, key remap) extend the same struct.
+// TUIConfig is the on-disk [tui] block. Carries:
+//
+//   - [tui.create_defaults]    — pre-populates the create modal
+//   - [tui.expected_env_vars]  — per-backend env-var suggestions
+//     surfaced as autocomplete entries
+//     on each Secret #N KEY field
+//
+// Future TUI knobs (theme, poll interval overrides, key remap)
+// extend the same struct.
 type TUIConfig struct {
 	CreateDefaults TUICreateDefaults `mapstructure:"create_defaults"`
+
+	// ExpectedEnvVars is keyed by backend type ("claude", "codex",
+	// "gemini", echo would be empty). Each value is a list of env-
+	// var names the user expects to see suggested when typing a
+	// Secret KEY for that backend. Merged with the built-in
+	// catalog at modal-open time (dedup + sort); a user's custom
+	// entries can never accidentally hide the built-ins.
+	ExpectedEnvVars map[string][]string `mapstructure:"expected_env_vars"`
 }
 
 // TUICreateDefaults is the schema for `[tui.create_defaults]` —
@@ -375,6 +389,36 @@ func LoadTUICreateDefaults(getenv func(string) string) (TUICreateDefaults, bool)
 		return d, false
 	}
 	return d, true
+}
+
+// LoadTUIExpectedEnvVars returns the user-supplied env-var override
+// map from `[tui.expected_env_vars]`. Returns nil (and ok=false)
+// when the block is absent or unreadable so callers can short-
+// circuit the merge step. Same focused-read shape as
+// LoadTUICreateDefaults — no flag/env layering, just the on-disk
+// values.
+func LoadTUIExpectedEnvVars(getenv func(string) string) (map[string][]string, bool) {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	path := findExistingConfig(getenv)
+	if path == "" {
+		return nil, false
+	}
+	v := viper.New()
+	v.SetConfigType("toml")
+	v.SetConfigFile(path)
+	if err := v.ReadInConfig(); err != nil {
+		return nil, false
+	}
+	var f File
+	if err := v.Unmarshal(&f); err != nil {
+		return nil, false
+	}
+	if len(f.TUI.ExpectedEnvVars) == 0 {
+		return nil, false
+	}
+	return f.TUI.ExpectedEnvVars, true
 }
 
 // knownProfiles returns a comma-separated list of profiles defined in

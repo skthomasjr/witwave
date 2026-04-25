@@ -725,16 +725,37 @@ func (cf *createAgentForm) rebuild() {
 	form.AddCheckbox("Create namespace (if missing)", cf.state.createNamespace, func(v bool) { cf.state.createNamespace = v })
 	form.AddInputField("Existing Secret name (optional)", cf.state.existingSecret, 36, nil, func(v string) { cf.state.existingSecret = v })
 
+	// User-supplied env-var override (config.toml's
+	// [tui.expected_env_vars]). Loaded once per rebuild — the
+	// merge with the built-in catalog happens inside
+	// resolvedExpectedEnvVars per backend.
+	envOverride, _ := config.LoadTUIExpectedEnvVars(os.Getenv)
+
 	// Dynamic secrets section. Each pair = 2 form items (KEY, VALUE).
 	// Closure captures `i` by value so each callback writes to the
 	// right state slot even after the slice grows / shrinks.
+	//
+	// The KEY field is built explicitly (not via AddInputField) so
+	// we can attach SetAutocompleteFunc — turning each KEY into a
+	// combo box that suggests the conventional env-var names for
+	// the currently-selected backend type. The closure reads
+	// cf.state.backend on every keystroke so changing the Backend
+	// dropdown updates suggestions live (no rebuild needed for
+	// autocomplete to track the current backend).
 	for i := range cf.state.secrets {
 		i := i
-		form.AddInputField(
-			fmt.Sprintf("Secret #%d KEY", i+1),
-			cf.state.secrets[i].Key, 36, nil,
-			func(v string) { cf.state.secrets[i].Key = v },
-		)
+		keyInput := tview.NewInputField().
+			SetLabel(fmt.Sprintf("Secret #%d KEY", i+1)).
+			SetText(cf.state.secrets[i].Key).
+			SetFieldWidth(36).
+			SetChangedFunc(func(v string) { cf.state.secrets[i].Key = v }).
+			SetAutocompleteFunc(func(currentText string) []string {
+				return filterMatchingEnvVars(
+					resolvedExpectedEnvVars(cf.state.backend, envOverride),
+					currentText,
+				)
+			})
+		form.AddFormItem(keyInput)
 		form.AddInputField(
 			fmt.Sprintf("Secret #%d VALUE", i+1),
 			cf.state.secrets[i].Value, 36, nil,
