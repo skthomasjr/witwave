@@ -2,12 +2,10 @@ package tui
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 
-	"github.com/BurntSushi/toml"
-
 	"github.com/skthomasjr/witwave/clients/ww/internal/agent"
+	"github.com/skthomasjr/witwave/clients/ww/internal/config"
 )
 
 // tuiDefaults captures the values the create-agent modal pre-fills.
@@ -16,41 +14,33 @@ import (
 //
 //  1. WW_TUI_DEFAULT_* environment variables — explicit operator
 //     pinning. Sourced from .env or set ad-hoc; always wins.
-//  2. ~/.witwave/tui-defaults.toml (or the next candidate in the
-//     same precedence chain ww's own config.toml uses) — auto-saved
-//     by saveTUIDefaults after each successful create.
+//  2. The `[tui.create_defaults]` block in ww's config.toml (typically
+//     ~/.witwave/config.toml). Auto-saved by saveTUIDefaults after
+//     each successful create. Lives in the SAME file as profiles +
+//     update settings — one place for everything ww-managed.
 //  3. Hard-coded fallbacks — sensible starting values for a fresh
 //     install with no saved state and no env overrides.
 //
-// File format is TOML to match the rest of ww's user-level config
-// (config.toml lives in the same directory). Schema is flat — no
-// [section] header — so the file reads cleanly when a user opens it
-// to hand-edit.
-//
 // Auto-save runs only when phase 1 (CR Create) succeeds. Failed
-// creates can't poison the next launch with bad values, but a
-// successful create that later fails to scaffold the gitOps repo
-// still updates last-used (the CR exists; the scaffold's a
-// retryable bonus).
+// creates can't poison the next launch. A successful create whose
+// later scaffold/git-add phases failed STILL writes last-used —
+// the CR exists, the gitOps phases are retryable bonus, and the
+// user shouldn't have to retype the repo URL when retrying via
+// the CLI.
 type tuiDefaults struct {
-	Namespace       string `toml:"namespace,omitempty"`
-	Backend         string `toml:"backend,omitempty"`
-	Team            string `toml:"team,omitempty"`
-	CreateNamespace bool   `toml:"create_namespace"`
-	AuthMode        string `toml:"auth_mode,omitempty"`
-	AuthValue       string `toml:"auth_value,omitempty"`
-	GitOpsRepo      string `toml:"gitops_repo,omitempty"`
+	Namespace       string
+	Backend         string
+	Team            string
+	CreateNamespace bool
+	AuthMode        string
+	AuthValue       string
+	GitOpsRepo      string
 }
 
-// defaultsFileName is the basename for the auto-managed TUI defaults
-// file. Sibling to config.toml in whichever ww config dir the user
-// happens to use (~/.witwave/, $XDG_CONFIG_HOME/ww/, …).
-const defaultsFileName = "tui-defaults.toml"
-
 // loadTUIDefaults resolves the layered defaults. Never errors — a
-// missing or corrupt saved file is treated as "no saved state" and
-// the hard-coded fallbacks (+ any env overrides) take effect. The
-// TUI must launch even when ~/.witwave/ is missing or unreadable.
+// missing or unreadable config file is treated as "no saved state"
+// and the hard-coded fallbacks (+ any env overrides) take effect.
+// The TUI must launch even when ~/.witwave/ is missing or unreadable.
 func loadTUIDefaults() tuiDefaults {
 	// Layer 3 — hard-coded fallbacks (lowest priority).
 	d := tuiDefaults{
@@ -60,8 +50,12 @@ func loadTUIDefaults() tuiDefaults {
 		AuthMode:        "none",
 	}
 
-	// Layer 2 — saved file (overrides fallbacks where set).
-	if saved, ok := readSavedDefaults(); ok {
+	// Layer 2 — saved file (overrides fallbacks where set). Single
+	// source of truth: the same config.toml that holds profiles +
+	// update settings. The internal/config package walks the
+	// canonical search chain ($HOME/.witwave/, $XDG_CONFIG_HOME/ww/,
+	// platform default).
+	if saved, ok := config.LoadTUICreateDefaults(os.Getenv); ok {
 		if saved.Namespace != "" {
 			d.Namespace = saved.Namespace
 		}
@@ -71,9 +65,11 @@ func loadTUIDefaults() tuiDefaults {
 		if saved.Team != "" {
 			d.Team = saved.Team
 		}
-		// CreateNamespace is bool — the saved file always carries a
-		// concrete value (no omitempty on the toml tag), so a saved
-		// `false` correctly suppresses the fallback `true`.
+		// CreateNamespace is bool — Viper / mapstructure deserialise a
+		// missing key as the zero value (false). When the saved file
+		// IS present (ok=true) the explicit save loop below always
+		// writes a concrete value, so trusting `saved.CreateNamespace`
+		// is correct here.
 		d.CreateNamespace = saved.CreateNamespace
 		if saved.AuthMode != "" {
 			d.AuthMode = saved.AuthMode
@@ -114,97 +110,34 @@ func loadTUIDefaults() tuiDefaults {
 }
 
 // saveTUIDefaults writes the values from the most recent successful
-// create back to the ww config dir. Best-effort — write failures
-// are silent because the CR has already landed and there's nothing
-// actionable for the user about a failed config write at that
-// moment. Worst case: next launch starts from the previous saved
-// state (or fallbacks).
+// create back to the `[tui.create_defaults]` block in config.toml.
+// Best-effort — write failures are silent because the CR has already
+// landed and there's nothing actionable for the user about a failed
+// config write at that moment.
 //
 // Notably skips the agent name — every create is for a different
 // agent, so persisting the previous name would be more confusing
 // than helpful on next launch.
+//
+// Uses the internal/config Writer so the save is a merge-update:
+// other blocks ([profile.*], [update]) in the same file are
+// preserved untouched. Only the seven [tui.create_defaults] keys
+// move.
 func saveTUIDefaults(d tuiDefaults) {
-	path, err := defaultsFileWritePath()
+	w, err := config.OpenWriter("", os.Getenv)
 	if err != nil {
 		return
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return
-	}
-	f, err := os.Create(path)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-	_ = toml.NewEncoder(f).Encode(d) // best-effort
-}
-
-// readSavedDefaults walks the same path-precedence chain ww's own
-// config.toml uses and returns the first parseable file's contents.
-// Returns (zero, false) for any combination that doesn't yield a
-// usable result — missing dirs, unreadable file, malformed TOML —
-// so callers can treat "no saved state" as one uniform branch.
-func readSavedDefaults() (tuiDefaults, bool) {
-	for _, dir := range defaultsConfigDirs(os.Getenv) {
-		path := filepath.Join(dir, defaultsFileName)
-		b, err := os.ReadFile(path)
-		if err != nil {
-			continue
-		}
-		var d tuiDefaults
-		if err := toml.Unmarshal(b, &d); err != nil {
-			continue
-		}
-		return d, true
-	}
-	return tuiDefaults{}, false
-}
-
-// defaultsFileWritePath picks where saveTUIDefaults will write. We
-// prefer to write next to an EXISTING user-managed config.toml so
-// both files live together — that's what the user expects when
-// they hand-edit. Falls back to the first writable candidate
-// (typically $HOME/.witwave/) when no config.toml has been
-// established yet.
-func defaultsFileWritePath() (string, error) {
-	dirs := defaultsConfigDirs(os.Getenv)
-	if len(dirs) == 0 {
-		return "", os.ErrNotExist
-	}
-	// Prefer the dir that already holds a config.toml.
-	for _, dir := range dirs {
-		if _, err := os.Stat(filepath.Join(dir, "config.toml")); err == nil {
-			return filepath.Join(dir, defaultsFileName), nil
-		}
-	}
-	// No existing config.toml — write to the first candidate, which
-	// matches ww's own preferred-write location.
-	return filepath.Join(dirs[0], defaultsFileName), nil
-}
-
-// defaultsConfigDirs mirrors the path-precedence chain in
-// internal/config.defaultConfigPaths so the TUI defaults file
-// shares the discovery semantics as ww's user-level config.toml.
-//
-// Order:
-//
-//  1. $HOME/.witwave/ — brand-aligned dotfile dir, preferred.
-//  2. $XDG_CONFIG_HOME/ww/ — XDG Base Directory Spec.
-//  3. Platform-default user config dir (os.UserConfigDir()/ww/).
-//
-// getenv is parameterised so tests can drive every branch.
-func defaultsConfigDirs(getenv func(string) string) []string {
-	var dirs []string
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		dirs = append(dirs, filepath.Join(home, ".witwave"))
-	}
-	if xdg := getenv("XDG_CONFIG_HOME"); xdg != "" {
-		dirs = append(dirs, filepath.Join(xdg, "ww"))
-	}
-	if ucd, err := os.UserConfigDir(); err == nil && ucd != "" {
-		dirs = append(dirs, filepath.Join(ucd, "ww"))
-	}
-	return dirs
+	w.SetTUICreateDefaults(config.TUICreateDefaults{
+		Namespace:       d.Namespace,
+		Backend:         d.Backend,
+		Team:            d.Team,
+		CreateNamespace: d.CreateNamespace,
+		AuthMode:        d.AuthMode,
+		AuthValue:       d.AuthValue,
+		GitOpsRepo:      d.GitOpsRepo,
+	})
+	_ = w.Save() // best-effort
 }
 
 // parseBoolOrDefault accepts the usual truthy/falsy strings (true /

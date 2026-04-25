@@ -43,6 +43,7 @@ import (
 	"time"
 
 	"github.com/skthomasjr/witwave/clients/ww/internal/agent"
+	"github.com/skthomasjr/witwave/clients/ww/internal/config"
 	"github.com/skthomasjr/witwave/clients/ww/internal/k8s"
 
 	"github.com/gdamore/tcell/v2"
@@ -668,10 +669,12 @@ func (f *createAgentForm) reset(ctxNamespace string) {
 	// "current" namespace (kubeconfig context or witwave fallback).
 	// loadTUIDefaults already returns the layered value, but if no
 	// env / saved layer fired we want the kubeconfig-context's ns
-	// rather than the hard-coded fallback. Treat the fallback as a
-	// signal to defer to ctxNamespace.
+	// rather than the hard-coded fallback. The saved-file probe via
+	// config.LoadTUICreateDefaults answers "did anything actually
+	// save a value?" — when no, defer to whatever the kubeconfig
+	// context is pointing at.
 	if d.Namespace == agent.DefaultAgentNamespace && os.Getenv("WW_TUI_DEFAULT_NAMESPACE") == "" {
-		if _, savedOK := readSavedDefaults(); !savedOK {
+		if _, savedOK := config.LoadTUICreateDefaults(os.Getenv); !savedOK {
 			d.Namespace = ctxNamespace
 		}
 	}

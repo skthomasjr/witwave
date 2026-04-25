@@ -54,6 +54,28 @@ type UpdateConfig struct {
 type File struct {
 	Profile map[string]Profile `mapstructure:"profile"`
 	Update  UpdateConfig       `mapstructure:"update"`
+	TUI     TUIConfig          `mapstructure:"tui"`
+}
+
+// TUIConfig is the on-disk [tui] block. Today carries only one
+// sub-block (`[tui.create_defaults]`); future TUI knobs (theme,
+// poll interval overrides, key remap) extend the same struct.
+type TUIConfig struct {
+	CreateDefaults TUICreateDefaults `mapstructure:"create_defaults"`
+}
+
+// TUICreateDefaults is the schema for `[tui.create_defaults]` —
+// values pre-populated into the create-agent modal. Auto-saved by
+// the TUI after each successful Create; hand-editable. WW_TUI_DEFAULT_*
+// env vars override these at modal-open time (see internal/tui).
+type TUICreateDefaults struct {
+	Namespace       string `mapstructure:"namespace"`
+	Backend         string `mapstructure:"backend"`
+	Team            string `mapstructure:"team"`
+	CreateNamespace bool   `mapstructure:"create_namespace"`
+	AuthMode        string `mapstructure:"auth_mode"`
+	AuthValue       string `mapstructure:"auth_value"`
+	GitOpsRepo      string `mapstructure:"gitops_repo"`
 }
 
 // Resolved carries the final effective settings for a single CLI
@@ -285,6 +307,47 @@ func defaultConfigPaths(getenv func(string) string) []string {
 		paths = append(paths, filepath.Join(ucd, "ww"))
 	}
 	return paths
+}
+
+// LoadTUICreateDefaults reads only the `[tui.create_defaults]` block
+// from whichever config.toml the standard discovery chain finds first.
+// Returns the zero TUICreateDefaults (and ok=false) when no file
+// exists or the block isn't present — callers layer their own
+// fallbacks on top.
+//
+// Separate from Load() because the TUI doesn't need the
+// flag/env/profile resolution Load runs; it only needs a focused
+// read of one TOML sub-tree. This function is deliberately
+// side-effect free — no chmod, no mkdir — so opening it from a
+// freshly-launched TUI never touches disk except for the read.
+func LoadTUICreateDefaults(getenv func(string) string) (TUICreateDefaults, bool) {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	path := findExistingConfig(getenv)
+	if path == "" {
+		return TUICreateDefaults{}, false
+	}
+	v := viper.New()
+	v.SetConfigType("toml")
+	v.SetConfigFile(path)
+	if err := v.ReadInConfig(); err != nil {
+		return TUICreateDefaults{}, false
+	}
+	var f File
+	if err := v.Unmarshal(&f); err != nil {
+		return TUICreateDefaults{}, false
+	}
+	d := f.TUI.CreateDefaults
+	// "Empty" detection — if every string is "" and CreateNamespace
+	// is false, the user likely doesn't have the block at all (vs.
+	// having explicitly set every value to its zero value). Treat
+	// that as "no saved state" so the TUI's own fallback layer
+	// engages instead of pre-filling the form with all blanks.
+	if d == (TUICreateDefaults{}) {
+		return d, false
+	}
+	return d, true
 }
 
 // knownProfiles returns a comma-separated list of profiles defined in

@@ -130,6 +130,24 @@ func (w *Writer) Set(key, value string) error {
 	return nil
 }
 
+// SetTUICreateDefaults writes the `[tui.create_defaults]` block in
+// one shot. Bypasses validateSet (which is for user-typed
+// `ww config set` input); the TUI is in-process and the values
+// were already validated by the form's submit path.
+//
+// Stages all seven keys atomically — partial-write isn't a useful
+// state for these. Save() persists the staged change.
+func (w *Writer) SetTUICreateDefaults(d TUICreateDefaults) {
+	w.v.Set("tui.create_defaults.namespace", d.Namespace)
+	w.v.Set("tui.create_defaults.backend", d.Backend)
+	w.v.Set("tui.create_defaults.team", d.Team)
+	w.v.Set("tui.create_defaults.create_namespace", d.CreateNamespace)
+	w.v.Set("tui.create_defaults.auth_mode", d.AuthMode)
+	w.v.Set("tui.create_defaults.auth_value", d.AuthValue)
+	w.v.Set("tui.create_defaults.gitops_repo", d.GitOpsRepo)
+	w.dirty = true
+}
+
 // Unset removes a key from the config. Calling Unset on a key that
 // isn't present is a no-op (no error). Save persists the removal.
 func (w *Writer) Unset(key string) error {
