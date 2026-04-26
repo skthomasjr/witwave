@@ -196,5 +196,46 @@ class SessionStreamRoundtripTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(env.payload["session_id_hash"], h)
 
 
+class SessionStreamCapClampTests(unittest.TestCase):
+    """#1645: SESSION_STREAM_MAX_PER_CALLER must clamp at zero.
+
+    A negative value would otherwise make the gate at
+    ``if _per_caller_max > 0`` skip entirely, letting one authed caller
+    open unlimited concurrent SSE streams (FD exhaustion vector).
+    """
+
+    def _captured_per_caller_max(self) -> int:
+        import session_stream as ss
+
+        handler = ss.make_session_stream_handler(auth_token="t")
+        # The factory captures _per_caller_max in the inner handler's
+        # closure; pull it back out by name to assert clamp behaviour
+        # without standing up a full Starlette request.
+        names = handler.__code__.co_freevars
+        cells = handler.__closure__
+        assert cells is not None, "handler must capture closure cells"
+        idx = names.index("_per_caller_max")
+        return cells[idx].cell_contents
+
+    def test_stream_cap_negative_env_clamps_to_zero(self) -> None:
+        prev = os.environ.get("SESSION_STREAM_MAX_PER_CALLER")
+        os.environ["SESSION_STREAM_MAX_PER_CALLER"] = "-1"
+        try:
+            self.assertEqual(self._captured_per_caller_max(), 0)
+        finally:
+            if prev is None:
+                os.environ.pop("SESSION_STREAM_MAX_PER_CALLER", None)
+            else:
+                os.environ["SESSION_STREAM_MAX_PER_CALLER"] = prev
+
+    def test_stream_cap_default_value_unaffected(self) -> None:
+        prev = os.environ.pop("SESSION_STREAM_MAX_PER_CALLER", None)
+        try:
+            self.assertEqual(self._captured_per_caller_max(), 8)
+        finally:
+            if prev is not None:
+                os.environ["SESSION_STREAM_MAX_PER_CALLER"] = prev
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -537,7 +537,10 @@ def make_session_stream_handler(
     # opening many SSE streams can't exhaust FDs. Key on the
     # fingerprint of the presented bearer (SHA-256 prefix) so the cap
     # is per-credential. Defaults to 8 streams per caller.
-    _per_caller_max = int(_os.environ.get("SESSION_STREAM_MAX_PER_CALLER", "8"))
+    # #1645: clamp at zero so a negative value disables the cap deliberately
+    # rather than skipping the whole gate at line 562 (`if _per_caller_max > 0:`),
+    # which would let one caller open unlimited concurrent SSE streams.
+    _per_caller_max = max(0, int(_os.environ.get("SESSION_STREAM_MAX_PER_CALLER", "8")))
     _per_caller_counts: dict[str, int] = {}
 
     async def handler(request: "Request"):
