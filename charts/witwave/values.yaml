@@ -199,8 +199,13 @@ ingress:
       # existingSecret is empty. Generate with e.g.:
       #   htpasswd -nbB admin 'choose-a-strong-password'
       # Multiple users: supply a multiline string with one htpasswd entry per line.
-      # Leaving this empty while enabled=true and existingSecret="" fails
-      # template render — the chart refuses to render an empty auth Secret.
+      # Leaving this empty while ingress.enabled=true, ingress.auth.enabled=true
+      # and existingSecret="" fails template render unconditionally — the chart
+      # refuses to render an empty auth Secret regardless of dashboard.enabled
+      # (#1626). Previously the guard was gated on dashboard.enabled and a
+      # misconfigured htpasswd was silently tolerated when the dashboard was
+      # off; #1626 lifts the guard so operators see the error the instant they
+      # flip ingress.auth.enabled=true with no credentials.
       htpasswd: ""
       # Realm shown in the browser auth prompt.
       realm: "witwave dashboard"
@@ -245,16 +250,19 @@ autoscaling:
   # # Optional: memory target (requires container resources to be set).
   # targetMemoryUtilizationPercentage: 80
 
-# PodDisruptionBudget for agent Deployments. Disabled by default — enable to
-# limit voluntary disruption during node drain and cluster upgrades (#435).
-# STRONGLY RECOMMENDED for production: with replicas=1 and PDB disabled, every
-# node drain drops the pod immediately, suspending heartbeats/jobs/triggers
-# until the new pod is Ready (typically ~30s). Setting `enabled: true` with
-# `minAvailable: 1` blocks the drain until a replacement pod is Ready on
-# another node — safe even at replicas=1, and the recommended production
-# default. Leaving it disabled is fine for dev/test (#559).
+# PodDisruptionBudget for agent Deployments. Enabled by default since #1625
+# (previously off by default per #435/#559). Rationale: with replicas=1 and
+# PDB disabled, every `kubectl drain` / node upgrade / cluster-autoscaler
+# scale-down dropped the pod immediately, suspending heartbeats/jobs/triggers
+# until the replacement was Ready (~30s outage on every voluntary disruption).
+# `minAvailable: 1` is safe at replicas=1: it does NOT prevent the pod from
+# being rescheduled — it blocks the *drain* until a replacement is Ready on
+# another node, then evicts the old one. The cluster still makes progress;
+# operators just can't yank the only replica out from under itself.
+# Opt out for dev/test or unmanaged single-node clusters with:
+#   --set podDisruptionBudget.enabled=false
 podDisruptionBudget:
-  enabled: false
+  enabled: true
   minAvailable: 1
   # # Alternative: cap unavailable pods instead of guaranteeing available.
   # maxUnavailable: 1
