@@ -8,6 +8,41 @@ section of each entry.
 
 ## [Unreleased]
 
+## [0.8.1] — 2026-04-26
+
+Patch release re-shipping the artifacts that v0.8.0 missed.
+
+v0.8.0's ww binaries + helm charts published cleanly, but the
+container-image matrix (harness, claude, codex, gemini, echo,
+dashboard, operator, mcp-*, git-sync) was cancelled when the
+dashboard's Docker build failed on a vue-tsc type error. The fake
+stream fixture in `clients/dashboard/tests/unit/timelineStore.spec.ts`
+was missing the `droppedEventCount` and `parseFailureCount` fields
+added in cycle-1 #1606 and cycle-2 #1634; local vitest runs would
+have caught it, but vitest was sandbox-blocked on the cycle commits
+and the production code still type-checked.
+
+This release re-runs the full matrix with the fixture fixed.
+
+### Fixed
+
+- **dashboard test fixture**: FakeStream now satisfies
+  `UseEventStreamReturn` (#1606 + #1634 follow-on); unblocks Docker
+  build → unblocks container image publication.
+
+### Changed
+
+- **CI**: removed `gitleaks-action` workflow. `gitleaks-action@v2`
+  requires a paid license for organization repos; relying on
+  GitHub-native secret scanning + Push Protection instead. See
+  commit message for re-enablement options.
+
+### Chore
+
+- **ww**: gofmt re-sort imports after the v0.8.0 module-path
+  rewrite (alphabetical: `spf13/cobra` now sorts before
+  `witwave-ai/witwave/...`).
+
 ## [0.8.0] — 2026-04-26
 
 First release under the `witwave-ai/witwave` org (transferred from
