@@ -21,4 +21,9 @@ spec:
   selector:
     matchLabels:
       {{- include "witwave-operator.selectorLabels" . | nindent 6 }}
+      # #1666 (mirrors #1643): include `control-plane: controller-manager`
+      # so the PDB selector matches the operator pod's full label set —
+      # the deployment stamps this label on the pod template, and the
+      # metrics + webhook Service selectors already filter on it.
+      control-plane: controller-manager
 {{- end }}

@@ -316,6 +316,34 @@ jobs:
           print(f"#1643 selector check OK for: {sorted(checked)}")
           PY
 
+      - name: Render + verify PodDisruptionBudget selector (#1666)
+        run: |
+          # #1666 mirrors #1643: the PDB selector must include
+          # `control-plane: controller-manager` so it matches the
+          # operator pod's full label set. Without it, the PDB silently
+          # selects the wrong (or zero) pods and never honours
+          # disruption budget on voluntary evictions.
+          helm template op charts/witwave-operator \
+            --set podDisruptionBudget.enabled=true \
+            > /tmp/op-pdb.yaml
+          python3 - <<'PY'
+          import yaml
+          docs = [d for d in yaml.safe_load_all(open("/tmp/op-pdb.yaml")) if d]
+          pdbs = [d for d in docs if d.get("kind") == "PodDisruptionBudget"]
+          assert pdbs, "no PodDisruptionBudget rendered with podDisruptionBudget.enabled=true"
+          for d in pdbs:
+              name = (d.get("metadata") or {}).get("name") or ""
+              selector = ((d.get("spec") or {}).get("selector") or {}).get("matchLabels") or {}
+              cp = selector.get("control-plane")
+              assert cp == "controller-manager", (
+                  f"#1666: PDB {name!r} spec.selector.matchLabels must include "
+                  f"`control-plane: controller-manager` to match the pod label "
+                  f"(mirrors the #1643 fix on metrics + webhook Service selectors). "
+                  f"Got matchLabels={selector!r}"
+              )
+          print(f"#1666 PDB selector check OK for: {sorted((d.get('metadata') or {}).get('name') for d in pdbs)}")
+          PY
+
       - name: Render + grep metrics Service selector (#1643, fast-path)
         run: |
           # Cheap secondary check that doesn't require PyYAML — extracts
