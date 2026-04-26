@@ -165,7 +165,7 @@ CODEX_CONFIG_TOML = os.environ.get("CODEX_CONFIG_TOML", "/home/agent/.codex/conf
 # default, so the path differs (#432).
 MCP_CONFIG_PATH = os.environ.get("MCP_CONFIG_PATH", "/home/agent/.codex/mcp.json")
 
-MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "10000"))
+MAX_SESSIONS = max(1, int(os.environ.get("MAX_SESSIONS", "10000")))
 TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
 # Per-chunk timeout for the streaming on_chunk callback. Bounds the SDK event
 # loop's wait on a slow A2A consumer so token-budget enforcement and SDK
@@ -1478,7 +1478,7 @@ async def _track_session(sessions: OrderedDict[str, float], session_id: str) -> 
             sessions[session_id] = time.monotonic()
         if backend_active_sessions is not None:
             backend_active_sessions.labels(**_LABELS).set(len(sessions))
-        if backend_lru_cache_utilization_percent is not None:
+        if backend_lru_cache_utilization_percent is not None and MAX_SESSIONS > 0:
             backend_lru_cache_utilization_percent.labels(**_LABELS).set(len(sessions) / MAX_SESSIONS * 100)
 
 
