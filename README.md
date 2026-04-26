@@ -390,8 +390,12 @@ dashboard pod fans out directly to each agent and owns cross-agent routing (#470
 
 Each backend container additionally exposes:
 
-- `GET /health` — health check: 200/`{"status": "ok", "agent": ..., "uptime_seconds": ...}` or
-  503/`{"status": "starting"}` while initializing
+- `GET /health` — liveness check: 200/`{"status": "ok", "agent": ..., "uptime_seconds": ...}` once the process is
+  up. Returns 200 even while initializing — does NOT flip to 503. Liveness-only by design (cycle-1 #1608, #1672); use
+  the readiness endpoint below for gating LB rotation.
+- `GET /health/ready` — readiness probe: 200 when fully ready, 503/`{"status": "starting"}` while initializing or in a
+  boot-degraded state (claude #1608, codex+gemini #1672). Operators using K8s `readinessProbe` should point at
+  `/health/ready`, not `/health`.
 - `GET /metrics` — Prometheus metrics (when `METRICS_ENABLED` is set)
 - `POST /mcp` — MCP JSON-RPC server (`initialize`, `tools/list`, `tools/call` with a single `ask_agent` tool); allows
   MCP hosts (Claude Desktop, Cursor, VS Code extensions) to invoke the agent as a tool without going through harness.
