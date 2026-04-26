@@ -51,7 +51,12 @@ spec:
       {{- end }}
       containers:
         - name: dashboard
-          image: {{ .Values.dashboard.image.repository }}:{{ .Values.dashboard.image.tag | default $.Chart.AppVersion }}
+          {{- /* Digest pinning (#855, #1612, #1665): when image.digest is set,
+                 render repository@sha256:... and ignore tag. Mirrors the
+                 harness/backends (deployment.yaml) and mcp-tools.yaml pattern
+                 so production deployments can pin every container image
+                 immutably. */}}
+          image: {{ if .Values.dashboard.image.digest }}{{ printf "%s@%s" .Values.dashboard.image.repository .Values.dashboard.image.digest }}{{ else }}{{ printf "%s:%s" .Values.dashboard.image.repository (.Values.dashboard.image.tag | default $.Chart.AppVersion) }}{{ end }}
           imagePullPolicy: {{ .Values.dashboard.image.pullPolicy | default "IfNotPresent" }}
           ports:
             - name: http

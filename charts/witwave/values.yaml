@@ -6,6 +6,11 @@ dashboard:
     repository: ghcr.io/skthomasjr/images/dashboard
     # # Image tag. Defaults to .Chart.AppVersion when omitted.
     # tag: ""
+    # # Immutable digest pin (#855, #1612, #1665). When set (e.g.
+    # # "sha256:abc123..."), the chart renders
+    # # `repository@<digest>` and ignores `tag`. Set this in
+    # # production to prevent silent pulls of re-tagged images.
+    digest: ""
     # # Image pull policy.
     # pullPolicy: IfNotPresent
   # Service port (the container always listens on 3000; this is the Service port).
