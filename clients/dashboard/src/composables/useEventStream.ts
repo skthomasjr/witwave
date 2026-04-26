@@ -451,9 +451,13 @@ export function useEventStream(
     consecutiveFailures += 1;
     if (consecutiveFailures > MAX_CONSECUTIVE_FAILURES) {
       reconnecting.value = false;
-      if (!error.value) {
-        error.value = `stream-failed: gave up after ${MAX_CONSECUTIVE_FAILURES} consecutive reconnect failures`;
-      }
+      // Always overwrite — the catch path sets `error.value` to the
+      // last network error (e.g. "connection refused"), which doesn't
+      // tell operators we've stopped trying. Preserve the cause as a
+      // suffix so the UI can still see why we gave up. (#1615 — fix
+      // surfaced by failing dashboard test in the v0.8.0 release.)
+      const cause = error.value ? `: last error: ${error.value}` : "";
+      error.value = `stream-failed: gave up after ${MAX_CONSECUTIVE_FAILURES} consecutive reconnect failures${cause}`;
       return;
     }
 
