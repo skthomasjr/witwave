@@ -154,7 +154,7 @@ spec:
             initialDelaySeconds: {{ .Values.probes.startup.initialDelaySeconds | default 0 }}
             periodSeconds: {{ .Values.probes.startup.periodSeconds | default 10 }}
             timeoutSeconds: {{ .Values.probes.startup.timeoutSeconds | default 5 }}
-            failureThreshold: {{ .Values.probes.startup.failureThreshold | default 30 }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold | default 60 }}
           livenessProbe:
             httpGet:
               path: /healthz
