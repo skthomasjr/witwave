@@ -836,15 +836,21 @@ async def main():
                     "MCP watcher %r exited unexpectedly with exception: %r", _wn, exc,
                 )
             else:
-                # Non-exception, non-cancelled exit: the watcher's
-                # while-True loop returned normally (e.g. early return
-                # on an unset env var). Log at WARNING so operators
-                # know the background task is no longer running.
+                # #1630: non-exception, non-cancelled exit means the
+                # watcher's while-True loop returned normally (e.g. early
+                # return on an unset env var). Log at WARNING and drop
+                # readiness so the pod is removed from Service endpoints
+                # via /health/ready, mirroring the cycle-1 claude #1608
+                # fix. _guarded() does not restart on a normal return, so
+                # without this the pod would silently serve traffic with
+                # a missing background task.
                 logger.warning(
                     "MCP watcher %r exited normally (no exception, not cancelled) — "
-                    "background task will not restart on its own.",
+                    "background task will not restart on its own; dropping readiness (#1630).",
                     _wn,
                 )
+                global _ready
+                _ready = False
         return _cb
 
     for _w in executor._mcp_watchers():
