@@ -114,15 +114,19 @@ type WitwaveAgentReconciler struct {
 // +kubebuilder:rbac:groups=witwave.ai,resources=witwaveagents/finalizers,verbs=update
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=services;configmaps;persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
-// Secret verbs (#749, #761): controller-gen union-merges multi-line
-// markers back to one rule, so the split of read vs write verbs lives
-// in the chart (see charts/witwave-operator/templates/clusterrole.yaml and
-// role.yaml, gated by rbac.secretsWrite). The marker below documents
-// the *full* set the operator needs when write is enabled; operators
-// running with inline-credentials disabled can drop the write half via
-// the chart value and the controller-runtime client will only use
-// get/list/watch on the reconcile path.
-// +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
+// Secret verbs (#749, #761, #1613): split into read-only and write
+// markers so the canonical config/rbac/role.yaml mirrors the chart's
+// two-rule shape (charts/witwave-operator/templates/clusterrole.yaml +
+// role.yaml). Controller-gen union-merges markers with identical
+// (apiGroup, resource) tuples — the read-only rule will absorb the
+// write verbs at generation time, so a post-generation hand edit (or
+// the drift-check script under scripts/check-rbac-drift.sh) keeps the
+// two rules separate. The chart conditionally renders only the
+// read-only rule when rbac.secretsWrite=false; operators who do not
+// use inline backend credentials should set that value to drop the
+// write primitives from the operator's trust boundary.
+// +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch
+// +kubebuilder:rbac:groups=core,resources=secrets,verbs=create;update;patch;delete
 // +kubebuilder:rbac:groups=autoscaling,resources=horizontalpodautoscalers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch

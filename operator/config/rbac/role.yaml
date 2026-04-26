@@ -9,7 +9,6 @@ rules:
   resources:
   - configmaps
   - persistentvolumeclaims
-  - secrets
   - services
   verbs:
   - create
@@ -19,6 +18,29 @@ rules:
   - patch
   - update
   - watch
+# Secrets are split into read-only and write rules (#1613) so the
+# chart can conditionally render only the read rule when
+# rbac.secretsWrite=false. Keep these two rules adjacent and distinct;
+# do not merge them back into the core/v1 catch-all above. See the
+# kubebuilder markers in internal/controller/witwaveagent_controller.go
+# and scripts/check-rbac-drift.sh for the drift contract.
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+  - delete
+  - patch
+  - update
 - apiGroups:
   - ""
   resources:
@@ -88,10 +110,40 @@ rules:
   - patch
   - update
   - watch
+# witwave.ai CR rules are kept split per-CRD (witwaveagents vs
+# witwaveprompts) to mirror the chart ClusterRole shape (#1613).
+# controller-gen merges per (apiGroup, resource) tuple, so each
+# subresource lives in its own marker — keep these blocks adjacent
+# and do not collapse them back into a single multi-resource rule.
 - apiGroups:
   - witwave.ai
   resources:
   - witwaveagents
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - witwave.ai
+  resources:
+  - witwaveagents/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - witwave.ai
+  resources:
+  - witwaveagents/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - witwave.ai
+  resources:
   - witwaveprompts
   verbs:
   - create
@@ -104,16 +156,14 @@ rules:
 - apiGroups:
   - witwave.ai
   resources:
-  - witwaveagents/finalizers
-  - witwaveprompts/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - witwave.ai
-  resources:
-  - witwaveagents/status
   - witwaveprompts/status
   verbs:
   - get
   - patch
+  - update
+- apiGroups:
+  - witwave.ai
+  resources:
+  - witwaveprompts/finalizers
+  verbs:
   - update
