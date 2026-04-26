@@ -69,6 +69,12 @@ export interface UseEventStreamReturn {
   // without needing a separate metrics channel. Sibling to #1605's
   // seenIds-cap work in the same merge path.
   droppedEventCount: Ref<number>;
+  // Count of SSE messages whose data payload failed JSON.parse (#1634).
+  // Surfaced reactively so the debug panel / UI can observe malformed
+  // payloads instead of dropping them silently. Sibling counter to
+  // `droppedEventCount` (rate-limit drops); both flow through the same
+  // merge path in `handleMessage`.
+  parseFailureCount: Ref<number>;
   open: () => void;
   close: () => void;
 }
@@ -226,6 +232,10 @@ export function useEventStream(
   const error = ref("");
   const lastEventId = ref("");
   const droppedEventCount = ref(0);
+  // Count of malformed JSON payloads observed by handleMessage (#1634).
+  // We keep dropping the event (one bad payload should not tear down
+  // the stream) but expose the count so the UI can surface it.
+  const parseFailureCount = ref(0);
 
   let aborter: AbortController | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -303,9 +313,10 @@ export function useEventStream(
     try {
       parsed = JSON.parse(msg.data) as EventEnvelope;
     } catch {
-      // Malformed JSON — drop the event but keep the stream alive. A
-      // phase-2 counter could surface this on the UI; for now we stay
-      // silent so one bad payload doesn't tear the connection down.
+      // Malformed JSON — drop the event but keep the stream alive. We
+      // bump `parseFailureCount` so operators can observe the rate of
+      // bad payloads without us tearing the connection down. (#1634)
+      parseFailureCount.value += 1;
       return;
     }
     if (!parsed || typeof parsed !== "object") return;
@@ -574,6 +585,7 @@ export function useEventStream(
     error,
     lastEventId,
     droppedEventCount,
+    parseFailureCount,
     open,
     close,
   };

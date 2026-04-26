@@ -397,4 +397,47 @@ describe("useEventStream", () => {
     value.close();
     scope.stop();
   });
+
+  it("increments parseFailureCount when a data payload is malformed JSON", async () => {
+    // #1634 — malformed-payload observability. Previously the catch in
+    // handleMessage silently dropped the event with no signal; the new
+    // counter lets the UI / debug panel surface the rate of bad
+    // payloads while keeping the stream alive.
+    const goodPayload = JSON.stringify({
+      type: "ok",
+      version: 1,
+      id: "2",
+      ts: "2026-04-18T00:00:00Z",
+      agent_id: null,
+      payload: {},
+    });
+    const body = [
+      // First message has invalid JSON in `data:` — should be dropped
+      // and counted, not crash the stream.
+      `event: bad\nid: 1\ndata: {not valid json\n\n`,
+      // A second valid message proves the stream stayed alive.
+      `event: ok\nid: 2\ndata: ${goodPayload}\n\n`,
+    ];
+    const fetchImpl = vi.fn().mockResolvedValue(okStreamResponse(body));
+
+    const { value, scope } = run(() =>
+      useEventStream("/api/events/stream", {
+        fetchImpl,
+        autoConnect: false,
+        initialDelayMs: 5_000,
+      }),
+    );
+    value.open();
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(value.parseFailureCount.value).toBe(1);
+    // The malformed event was dropped; only the valid one landed.
+    expect(value.events.value.map((e) => e.id)).toEqual(["2"]);
+    // lastEventId still tracks the malformed message's id — the harness
+    // ring cares about the id, not the payload.
+    expect(value.lastEventId.value).toBe("2");
+
+    value.close();
+    scope.stop();
+  });
 });
