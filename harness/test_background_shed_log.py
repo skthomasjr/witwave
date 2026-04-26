@@ -158,3 +158,48 @@ def test_shed_warn_rate_limited_per_source(
     assert len(per_shed_msgs) == 1, (
         f"expected 1 per-shed WARN within the window; got {per_shed_msgs!r}"
     )
+
+
+def test_shed_coro_close_failure_logs_warn(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """#1670: when coro.close() raises in the shed path, surface a WARN
+    instead of silently swallowing the exception so operators can see
+    close-failure events.
+    """
+    from unittest.mock import MagicMock
+
+    obj, ex_mod = _make_executor_stub()
+    monkeypatch.setattr(ex_mod, "BACKGROUND_TASKS_MAX", 1)
+    ex_mod._background_shed_log_state.clear()
+    obj._background_tasks.add(_FakeTask("bg-existing"))
+
+    # MagicMock coro that explodes on close(). The shed path calls coro.close()
+    # exactly once after deciding to drop the task.
+    fake_coro = MagicMock(name="fake_coro")
+    fake_coro.close.side_effect = RuntimeError("boom-on-close")
+
+    caplog.set_level(logging.WARNING)
+
+    result = obj.track_background(
+        fake_coro,
+        source="a2a",
+        session_id="sess-close-fail",
+        caller_identity="caller-y",
+    )
+
+    assert result is None, "track_background must return None on shed"
+    fake_coro.close.assert_called_once()
+
+    matching = [
+        rec for rec in caplog.records
+        if "background-task close after shed failed" in rec.getMessage()
+        and "source=a2a" in rec.getMessage()
+        and "boom-on-close" in rec.getMessage()
+    ]
+    assert matching, (
+        "expected a WARN log naming the source and the close exception; "
+        f"got messages={[r.getMessage() for r in caplog.records]!r}"
+    )
+    assert matching[0].levelno == logging.WARNING

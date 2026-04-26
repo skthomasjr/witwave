@@ -744,10 +744,15 @@ class AgentExecutor(A2AAgentExecutor):
                 harness_background_tasks_shed_total.labels(source=source).inc()
             # Close the coroutine so we don't leak a 'coroutine was never awaited'
             # warning and any resources it holds are released immediately.
+            # #1670: surface close failures via WARN so operators can see them
+            # instead of silently swallowing the exception.
             try:
                 coro.close()
-            except Exception:
-                pass
+            except Exception as _close_err:
+                logger.warning(
+                    "background-task close after shed failed: source=%s err=%r",
+                    source, _close_err,
+                )
             return None
 
         _effective_timeout = timeout if timeout is not None else ON_PROMPT_COMPLETED_TIMEOUT
