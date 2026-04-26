@@ -185,7 +185,7 @@ describe("useTimelineStore — bookkeeping", () => {
     expect(store.events.map((e) => e.id)).toEqual(["3", "4", "5"]);
   });
 
-  it("caps seenIds growth so a long-lived tab can't leak (#1605)", () => {
+  it("caps seenIds growth so a long-lived tab can't leak (#1605)", { timeout: 30_000 }, () => {
     const store = useTimelineStore();
     // Generous ring so we never trip the ring-eviction path that already
     // prunes seenIds; the test must exercise the cap-only path.

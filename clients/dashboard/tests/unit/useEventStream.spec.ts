@@ -193,7 +193,10 @@ describe("useEventStream", () => {
     value.open();
 
     // Wait for the first two streams to drain and reconnect to fire.
-    await new Promise((r) => setTimeout(r, 60));
+    // Note: cycle-1 #1615 raised MIN_BACKOFF_MS from 50ms → 500ms, so
+    // the reconnect after the first stream ends is floored at 500ms.
+    // 700ms keeps a comfortable margin without making the suite slow.
+    await new Promise((r) => setTimeout(r, 700));
 
     expect(fetchImpl).toHaveBeenCalledWith(
       "/api/events/stream",
