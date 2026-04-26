@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/skthomasjr/witwave/clients/ww/internal/agent"
 
@@ -204,9 +205,21 @@ func submitDeleteAgent(c *agentListController, b *deleteAgentFormBundle) {
 	state := *b.state
 	b.err.SetText("[#d7af00]deleting…[-:-:-]")
 
+	// Derive a timed child of the app's lifecycle ctx so quitting
+	// the TUI cancels the delete in flight rather than letting the
+	// API call dangle until its own deadline (#1631). 30s matches
+	// the kubectl default delete timeout posture; the modal closes
+	// on success so any longer wait would just stare at a hung UI.
+	appCtx := c.appCtx
+	if appCtx == nil {
+		appCtx = context.Background()
+	}
+
 	go func() {
+		ctx, cancel := context.WithTimeout(appCtx, 30*time.Second)
+		defer cancel()
 		err := agent.Delete(
-			context.Background(),
+			ctx,
 			c.target,
 			c.cfg,
 			agent.DeleteOptions{

@@ -106,6 +106,12 @@ func Run(version string, target *k8s.Target, cfg *rest.Config, contextErr string
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	// Stash the app lifecycle ctx on the controller so modal submit
+	// goroutines (create / delete / send) can derive timed children
+	// from it — quitting the TUI cancels in-flight work instead of
+	// leaving orphaned API calls running until their own deadlines
+	// (see #1631).
+	ctrl.appCtx = ctx
 	go ctrl.poll(ctx)
 
 	return app.SetRoot(pages, true).EnableMouse(false).Run()
@@ -123,6 +129,14 @@ type agentListController struct {
 	version string
 	target  *k8s.Target
 	cfg     *rest.Config
+
+	// appCtx is the TUI's lifecycle context (set by Run before
+	// starting the poll loop). Modal submit goroutines derive
+	// per-call timeouts from it via context.WithTimeout so quitting
+	// the app (Ctrl-C / 'q' / ESC at the list) cancels in-flight
+	// API calls instead of letting them dangle until their own
+	// deadlines fire (#1631).
+	appCtx context.Context
 
 	// pages is the root Pages container — used by the list to show
 	// modal overlays (create-agent form, future per-agent drill-down)
@@ -1041,14 +1055,30 @@ func submitCreateAgent(c *agentListController, cf *createAgentForm) {
 
 	cf.err.SetText("[#d7af00]creating CR…[-:-:-]")
 
+	// Capture the lifecycle ctx once; each phase derives its own
+	// timed child below so quitting the TUI cancels in-flight
+	// work without leaving orphan goroutines (#1631).
+	appCtx := c.appCtx
+	if appCtx == nil {
+		// Defensive — Run() always sets this before any modal can
+		// open, but tests / future callers may not. Falling back to
+		// Background preserves the legacy behaviour rather than
+		// panicking on a nil ctx.
+		appCtx = context.Background()
+	}
+
 	go func() {
-		// Phase 1 — Create the CR.
+		// Phase 1 — Create the CR. Wait=false on Create itself so
+		// 90s is generous for an apply-and-return; the poll loop
+		// renders the Pending → Ready transition naturally.
+		createCtx, cancelCreate := context.WithTimeout(appCtx, 90*time.Second)
+		defer cancelCreate()
 		var backendAuth []agent.BackendAuthResolver
 		if auth.Mode != agent.BackendAuthNone {
 			backendAuth = []agent.BackendAuthResolver{auth}
 		}
 		err := agent.Create(
-			context.Background(),
+			createCtx,
 			c.target,
 			c.cfg,
 			nil,
@@ -1110,7 +1140,11 @@ func submitCreateAgent(c *agentListController, cf *createAgentForm) {
 		c.app.QueueUpdateDraw(func() {
 			cf.err.SetText("[#d7af00]scaffolding repo…[-:-:-]")
 		})
-		if err := agent.Scaffold(context.Background(), agent.ScaffoldOptions{
+		// Phase 2 — local repo scaffold. 120s covers slow disks /
+		// large templates; ctx still cancels on app quit (#1631).
+		scaffoldCtx, cancelScaffold := context.WithTimeout(appCtx, 120*time.Second)
+		defer cancelScaffold()
+		if err := agent.Scaffold(scaffoldCtx, agent.ScaffoldOptions{
 			Name: state.name,
 			Repo: state.gitopsRepo,
 			Backends: []agent.BackendSpec{{
@@ -1132,7 +1166,11 @@ func submitCreateAgent(c *agentListController, cf *createAgentForm) {
 		c.app.QueueUpdateDraw(func() {
 			cf.err.SetText("[#d7af00]attaching gitSync…[-:-:-]")
 		})
-		if err := agent.GitAdd(context.Background(), c.cfg, agent.GitAddOptions{
+		// Phase 3 — gitSync attach (touches the cluster + git). 120s
+		// covers slow remotes; cancels with the app (#1631).
+		gitAddCtx, cancelGitAdd := context.WithTimeout(appCtx, 120*time.Second)
+		defer cancelGitAdd()
+		if err := agent.GitAdd(gitAddCtx, c.cfg, agent.GitAddOptions{
 			Agent:     state.name,
 			Namespace: state.namespace,
 			Repo:      state.gitopsRepo,

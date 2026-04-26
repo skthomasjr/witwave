@@ -244,9 +244,19 @@ func submitSendAgent(c *agentListController, f *sendAgentForm) {
 
 	f.response.SetText(fmt.Sprintf("(sending to %s …)", target))
 
+	// Derive from the app's lifecycle ctx so quitting the TUI
+	// (Ctrl-C / 'q' / ESC at the list) cancels the in-flight send
+	// instead of letting it run out the full sendDefaultTimeout
+	// while the goroutine paints into a detached response view
+	// (#1631).
+	appCtx := c.appCtx
+	if appCtx == nil {
+		appCtx = context.Background()
+	}
+
 	go func() {
 		var buf bytes.Buffer
-		ctx, cancel := context.WithTimeout(context.Background(), sendDefaultTimeout)
+		ctx, cancel := context.WithTimeout(appCtx, sendDefaultTimeout)
 		defer cancel()
 		err := agent.Send(ctx, c.cfg, agent.SendOptions{
 			Agent:     f.agent,
