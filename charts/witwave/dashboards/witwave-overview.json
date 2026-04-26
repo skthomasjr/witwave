@@ -306,7 +306,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (subscription) (rate(harness_webhooks_delivery_total{result=\"timeout_total\"}[5m]))",
+          "expr": "sum by (subscription) (rate(harness_webhooks_delivery_total{result=~\"timeout.*\"}[5m]))",
           "legendFormat": "{{subscription}}",
           "range": true,
           "refId": "A"
