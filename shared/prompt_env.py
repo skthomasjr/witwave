@@ -46,9 +46,12 @@ _warned_vars: dict[str, int] = {}
 _warned_no_allowlist_count = 0
 _PROMPT_ENV_REARM_EVERY = max(1, int(os.environ.get("PROMPT_ENV_WARN_REARM_EVERY", "500")))  # #1573: clamp to ≥1 (used as modulus)
 
-# Optional Prometheus counter surface (#1089). Callers set this to a
-# CounterVec with labels (var, result); leaving None keeps the module
-# dependency-free.
+# Optional Prometheus counter surface (#1089, #1668). Callers set this
+# to a CounterVec with labels (result,) — the `var` label was removed in
+# #1668 because scheduler prompts may be attacker-influenced and
+# `{{env.A0}}…{{env.AN}}` would explode label cardinality. Per-var
+# detail still appears in the WARN logs at miss/deny time. Leaving
+# None keeps the module dependency-free.
 substitutions_total = None  # type: ignore[assignment]
 
 
@@ -120,24 +123,30 @@ def resolve_prompt_env(text: str) -> str:
                     name, count + 1,
                 )
             _warned_vars[name] = count + 1
-            _bump(name, "denied")
+            _bump("denied")
             return ""
         value = os.environ.get(name, "")
-        _bump(name, "hit" if value else "missing")
+        _bump("hit" if value else "missing")
         return value
 
     return _ENV_VAR_RE.sub(_sub, text)
 
 
-def _bump(var: str, result: str) -> None:
-    """Increment the optional Prometheus counter surface (#1089).
+def _bump(result: str) -> None:
+    """Increment the optional Prometheus counter surface (#1089, #1668).
 
     No-op when ``substitutions_total`` hasn't been wired so this module
     stays dependency-free outside the harness process.
+
+    The `var` label was removed in #1668 to bound metric cardinality —
+    scheduler prompts can carry attacker-influenced text and an
+    adversary emitting many distinct `{{env.A_n}}` references would
+    explode the time-series count. Per-var detail is still available
+    in the WARN logs at miss/deny time.
     """
     if substitutions_total is None:
         return
     try:
-        substitutions_total.labels(var=var, result=result).inc()
+        substitutions_total.labels(result=result).inc()
     except Exception:
         pass

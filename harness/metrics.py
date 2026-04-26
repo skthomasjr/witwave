@@ -707,9 +707,14 @@ if _enabled:
         "Outcomes of {{env.VAR}} expansions in scheduler prompts (#1089). "
         "result: hit=non-empty expansion; missing=allow-listed but unset; "
         "denied=var outside PROMPT_ENV_ALLOWLIST. A non-zero rate on "
-        "missing for a previously-hit var is the signal for a rotated "
-        "token silently expanding empty.",
-        ["var", "result"],
+        "missing is the signal for a rotated/missing token silently "
+        "expanding empty. The `var` label was dropped in #1668 because "
+        "scheduler prompts can be attacker-influenced (an adversary or "
+        "buggy template emitting {{env.A0}}…{{env.AN}} would explode "
+        "metric label cardinality and threaten the Prometheus scrape "
+        "pipeline). Per-var detail is available in WARN logs at miss/"
+        "deny time.",
+        ["result"],
     )
     harness_webhooks_items_registered = prometheus_client.Gauge(
         "harness_webhooks_items_registered",
