@@ -143,7 +143,18 @@ def require_bearer_token(
         for raw in non_empty:
             if not raw.lower().startswith(b"bearer "):
                 continue
-            presented = raw[7:].decode("utf-8", errors="replace").strip()
+            # #1617: decode strictly. The previous errors="replace" path
+            # silently substituted U+FFFD for invalid UTF-8 bytes, which
+            # let two distinct token byte sequences (one with invalid
+            # UTF-8, one with literal U+FFFD chars) collide on the
+            # caller-identity hash downstream. Reject the request with a
+            # clear 400 so the caller knows to fix the encoding instead
+            # of papering over it.
+            try:
+                presented = raw[7:].decode("utf-8", errors="strict").strip()
+            except UnicodeDecodeError:
+                await _send_400_invalid_bearer_encoding(send)
+                return
             if hmac_mod.compare_digest(presented, token):
                 matched = True
                 break
@@ -208,6 +219,32 @@ async def _send_info(
     await send({
         "type": "http.response.start",
         "status": status,
+        "headers": [
+            (b"content-type", b"application/json"),
+            (b"content-length", str(len(body)).encode("ascii")),
+            (b"cache-control", b"no-store"),
+        ],
+    })
+    await send({"type": "http.response.body", "body": body, "more_body": False})
+
+
+async def _send_400_invalid_bearer_encoding(
+    send: Callable[[dict], Awaitable[None]],
+) -> None:
+    """Reject a request whose Authorization bearer is not valid UTF-8 (#1617).
+
+    Using a JSON-RPC-style envelope (code -32600 / "Invalid Request")
+    keeps the response shape consistent with the MCP wire format the
+    rest of the tool surface speaks, so MCP clients surface a parseable
+    error rather than a free-form string.
+    """
+    body = (
+        b'{"jsonrpc":"2.0","error":{"code":-32600,'
+        b'"message":"invalid bearer token encoding (must be UTF-8)"}}'
+    )
+    await send({
+        "type": "http.response.start",
+        "status": 400,
         "headers": [
             (b"content-type", b"application/json"),
             (b"content-length", str(len(body)).encode("ascii")),

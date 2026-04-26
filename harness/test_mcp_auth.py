@@ -214,3 +214,39 @@ def test_non_http_scope_passthrough(monkeypatch):
     scope = {"type": "lifespan"}
     _run(m.require_bearer_token(inner)(scope, _empty_receive, sink))
     assert inner.invoked
+
+
+# ----- 11. UTF-8 encoding strictness on bearer (#1617) -----------
+
+
+def test_valid_utf8_bearer_succeeds(monkeypatch):
+    """Bearer bytes that decode cleanly as UTF-8 must reach the inner app.
+
+    Uses an ASCII token (real bearers are ASCII per RFC 6750: hmac.compare_digest
+    refuses non-ASCII str inputs). The point of the test is the strict-decode
+    path: valid UTF-8 must NOT raise and must NOT be rejected with 400.
+    """
+    token = "secret-ascii-token"
+    m = _reload(monkeypatch, token=token)
+    inner = _FakeInner()
+    sink = _ResponseSink()
+    scope = _http_scope(headers=[(b"authorization", b"Bearer " + token.encode("utf-8"))])
+    _run(m.require_bearer_token(inner)(scope, _empty_receive, sink))
+    assert inner.invoked, "valid UTF-8 bearer should reach the inner app"
+    assert sink.status == 200
+
+
+def test_invalid_utf8_bearer_rejected_with_400(monkeypatch):
+    """Bearer bytes that aren't valid UTF-8 must be rejected with 400 (#1617)."""
+    m = _reload(monkeypatch, token="secret")
+    inner = _FakeInner()
+    sink = _ResponseSink()
+    # Lone 0xFF byte is invalid UTF-8 (cannot start any multi-byte sequence).
+    scope = _http_scope(headers=[(b"authorization", b"Bearer \xff\xfe")])
+    _run(m.require_bearer_token(inner)(scope, _empty_receive, sink))
+    assert not inner.invoked, "invalid UTF-8 bearer must NOT reach the inner app"
+    assert sink.status == 400
+    body = sink.body()
+    assert b'"jsonrpc":"2.0"' in body
+    assert b'-32600' in body
+    assert b"invalid bearer token encoding" in body
