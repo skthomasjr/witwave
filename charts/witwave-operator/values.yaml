@@ -126,13 +126,24 @@ serviceMonitor:
 # gives the manager a long grace window on cold-start (CRD conversion,
 # webhook TLS wait, leader-lease acquisition) before readiness /
 # liveness begin enforcing.
+#
+# failureThreshold: 60 (=> 600s grace at periodSeconds: 10) covers the
+# worst-case cold-start path where leader election + multi-replica is
+# enabled against a slow / contended control-plane: a fresh pod has to
+# wait out the standing lease (`leaderElection.leaseDuration`, default
+# 15s but commonly widened to 30-60s) plus webhook TLS bring-up plus
+# any CRD conversion before /healthz can report ready (#1627). The
+# trade-off is up to 5 extra minutes of CrashLoopBackOff delay if the
+# pod is genuinely broken - acceptable in exchange for not flapping a
+# legitimately-slow leader handoff. Override downward in environments
+# with a fast control-plane and replicaCount: 1.
 probes:
   port: 8081
   startup:
     initialDelaySeconds: 0
     periodSeconds: 10
     timeoutSeconds: 5
-    failureThreshold: 30
+    failureThreshold: 60
   liveness:
     initialDelaySeconds: 15
     periodSeconds: 20
@@ -144,12 +155,15 @@ probes:
     timeoutSeconds: 5
     failureThreshold: 3
 
-# Optional PodDisruptionBudget for the manager pod (#464). Default off; set
-# enabled: true to protect the operator from voluntary disruption (node drain,
-# cluster upgrade). minAvailable: 1 is sensible for replicaCount: 1 with
-# leader election; supply maxUnavailable instead for replicaCount > 1.
+# PodDisruptionBudget for the manager pod (#464, default flipped on in #1628).
+# The operator is a control-plane component, so we ship the PDB on by default
+# to protect it from voluntary disruption (node drain, cluster upgrade).
+# minAvailable: 1 is safe at the default replicaCount: 1 with leader election:
+# the PDB just delays voluntary eviction until the rescheduled pod is Ready,
+# it does not block the eviction indefinitely. Supply maxUnavailable instead
+# for replicaCount > 1, or set enabled: false to opt out entirely.
 podDisruptionBudget:
-  enabled: false
+  enabled: true
   minAvailable: 1
   # maxUnavailable: 1   # mutually exclusive with minAvailable
 
@@ -340,9 +354,21 @@ webhooks:
   # Path the webhook cert pair is mounted at inside the container. The
   # --webhook-cert-path flag on the manager reads from this directory.
   certDir: /tmp/k8s-webhook-server/serving-certs
-  # Webhook failure policy: "Fail" rejects admission on webhook error,
-  # "Ignore" allows it. Fail is the safer default for invariant checks.
+  # Webhook failure policy for the MUTATING webhook: "Fail" rejects
+  # admission on webhook error, "Ignore" allows it. Mutating defaults to
+  # Fail because it sets critical defaults on WitwaveAgent CRs — admitting
+  # an under-defaulted CR causes downstream reconciler NPEs and partial
+  # rollouts. Most operators should leave this on Fail.
   failurePolicy: Fail
+  # #1624: failure policy for the VALIDATING webhooks (vwitwaveagent +
+  # vwitwaveprompt). Defaults to "Ignore" so a webhook outage (pod down,
+  # cert-manager rotation race, network partition) does NOT deadlock all
+  # WitwaveAgent / WitwavePrompt admission cluster-wide. Spec drift that
+  # slips through is caught by the reconciler and surfaced via status
+  # conditions. Flip to "Fail" only if your webhook deployment is highly
+  # available (replicaCount > 1, PDB, anti-affinity) and you accept that
+  # a webhook outage will block all CR writes.
+  validatingFailurePolicy: Ignore
 
   # ── TLS mode 2: BYO Secret ─────────────────────────────────────────────
   # Reference a pre-created Secret containing `tls.crt` and `tls.key`. When
