@@ -47,6 +47,7 @@ from metrics import (
     backend_context_warnings_total,
     backend_empty_prompts_total,
     backend_empty_responses_total,
+    backend_prompt_too_large_total,
     backend_log_bytes_total,
     backend_log_entries_total,
     backend_log_write_errors_by_logger_total,
@@ -114,7 +115,7 @@ from tool_audit import (  # type: ignore
     ToolAuditMetrics as _ToolAuditMetrics,
     log_tool_audit as _shared_log_tool_audit,
 )
-from exceptions import BudgetExceededError
+from exceptions import BudgetExceededError, PromptTooLargeError
 from validation import parse_max_tokens, sanitize_model_label
 from otel import start_span, set_span_error
 from redact import redact_text, should_redact
@@ -178,6 +179,12 @@ CONTEXT_USAGE_WARN_THRESHOLD = float(os.environ.get("CONTEXT_USAGE_WARN_THRESHOL
 # Maximum number of bytes of prompt text included in INFO-level log messages.
 # Set to 0 to suppress prompt text from logs entirely; set higher for more context.
 LOG_PROMPT_MAX_BYTES = int(os.environ.get("LOG_PROMPT_MAX_BYTES", "200"))
+# Hard cap on inbound prompt UTF-8 byte length (#1620). A pathological
+# caller could otherwise ship a multi-GB prompt and OOM the pod before
+# the Agents SDK ever sees it. Default 10 MiB is comfortably above any
+# legitimate conversational use; bump via MAX_PROMPT_BYTES env when an
+# operator deliberately wants larger inputs (e.g. document ingest jobs).
+_MAX_PROMPT_BYTES = int(os.environ.get("MAX_PROMPT_BYTES", str(10 * 1024 * 1024)))
 # Cap tool_result "content" payload written to TRACE_LOG (#939). Large
 # shell stdout, kubectl --all-namespaces, or MCP payloads would otherwise
 # blow the rotation budget and memory on /trace / the dashboard Tool
@@ -2775,6 +2782,59 @@ class AgentExecutor(A2AAgentExecutor):
                 new_agent_text_message(
                     "Error: prompt is empty or whitespace-only; request rejected without dispatching to the model."
                 )
+            )
+            return
+        # Hard prompt-size cap (#1620). Reject before the prompt reaches the
+        # SDK so a pathological caller cannot OOM the pod by shipping a
+        # multi-GB payload. Mirrors the empty-prompt rejection idiom: bump a
+        # Prometheus counter, log the rejection at WARN, and return a clean
+        # A2A error message rather than crashing the worker. The
+        # PromptTooLargeError type is exported from shared/exceptions for
+        # programmatic detection by callers/tests; the executor itself
+        # converts it into a user-visible A2A text message so the harness
+        # surface stays consistent with the empty-prompt path.
+        _prompt_bytes = len(prompt.encode("utf-8"))
+        if _prompt_bytes > _MAX_PROMPT_BYTES:
+            _too_large_sid_raw = str(
+                context.context_id
+                or (context.message.metadata or {}).get("session_id")
+                or ""
+            ).strip()[:256]
+            _too_large_sid_sanitized = (
+                "".join(c for c in _too_large_sid_raw if c >= " ")
+            )
+            from session_binding import derive_session_id as _derive_session_id_tl
+            _too_large_caller_id = (
+                metadata.get("caller_id")
+                if isinstance(metadata.get("caller_id"), str)
+                else None
+            )
+            _too_large_sid = _derive_session_id_tl(
+                _too_large_sid_sanitized, caller_identity=_too_large_caller_id,
+            )
+            _too_large_err = PromptTooLargeError(_prompt_bytes, _MAX_PROMPT_BYTES)
+            logger.warning(
+                f"Session {_too_large_sid!r}: rejected execute() — prompt size "
+                f"{_prompt_bytes} bytes exceeds MAX_PROMPT_BYTES={_MAX_PROMPT_BYTES} (#1620)."
+            )
+            if backend_prompt_too_large_total is not None:
+                backend_prompt_too_large_total.labels(**_LABELS).inc()
+            if backend_a2a_requests_total is not None:
+                backend_a2a_requests_total.labels(**_LABELS, status="error").inc()
+            if backend_a2a_request_duration_seconds is not None:
+                backend_a2a_request_duration_seconds.labels(**_LABELS).observe(
+                    time.monotonic() - _exec_start
+                )
+            if backend_a2a_last_request_timestamp_seconds is not None:
+                backend_a2a_last_request_timestamp_seconds.labels(**_LABELS).set(time.time())
+            await log_entry(
+                "system",
+                f"execute() rejected: prompt {_prompt_bytes} bytes exceeds "
+                f"MAX_PROMPT_BYTES={_MAX_PROMPT_BYTES} (#1620).",
+                _too_large_sid,
+            )
+            await event_queue.enqueue_event(
+                new_agent_text_message(f"Error: {_too_large_err}")
             )
             return
         # OTel server span continuation (#469).

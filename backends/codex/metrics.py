@@ -57,6 +57,10 @@ backend_prompt_length_bytes: prometheus_client.Histogram | None = None
 backend_response_length_bytes: prometheus_client.Histogram | None = None
 backend_empty_responses_total: prometheus_client.Counter | None = None
 backend_empty_prompts_total: prometheus_client.Counter | None = None
+# #1620: prompt-size cap rejections. Bumps each time execute() rejects a
+# prompt whose UTF-8 byte length exceeds MAX_PROMPT_BYTES. Operators alert
+# on a non-zero rate to detect runaway clients before they OOM the pod.
+backend_prompt_too_large_total: prometheus_client.Counter | None = None
 # #1497: counts turns where result.final_output differed from the streamed
 # deltas. When non-zero, the executor now returns final_output (the SDK's
 # authoritative answer) rather than the streamed intermediate content.
@@ -364,6 +368,14 @@ if _enabled:
     backend_empty_prompts_total = prometheus_client.Counter(
         "backend_empty_prompts_total",
         "Total execute() invocations rejected because the resolved prompt was empty or whitespace-only (#544 / #801).",
+        ["agent", "agent_id", "backend"],
+    )
+    # #1620: oversized-prompt rejections. Cap is configured via
+    # MAX_PROMPT_BYTES env (default 10 MiB). A 1 GB prompt would otherwise
+    # OOM the pod before the SDK could produce a response.
+    backend_prompt_too_large_total = prometheus_client.Counter(
+        "backend_prompt_too_large_total",
+        "Total execute() invocations rejected because the prompt exceeded MAX_PROMPT_BYTES (#1620).",
         ["agent", "agent_id", "backend"],
     )
     backend_final_output_divergence_total = prometheus_client.Counter(
