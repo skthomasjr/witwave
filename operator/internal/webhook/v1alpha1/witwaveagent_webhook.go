@@ -121,6 +121,56 @@ func validateWitwaveAgent(agent *witwavev1alpha1.WitwaveAgent) error {
 	if err := validateSharedStorageHostPath(agent); err != nil {
 		return err
 	}
+	if err := validateAppPorts(agent); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateAppPorts enforces upper bounds on every app-listener port in the
+// spec so the implicit metrics port (app_port + 1000, see #687 / #836) can
+// never overflow Kubernetes's 1..65535 port range. The CRD already pins
+// each Port field to Maximum=64535, but when MetricsSpec.Enabled=true the
+// effective ceiling drops to 64535 - 1000 = 63535 because anything above
+// that produces a metrics port >= 65536 which the kernel rejects at
+// bind(2) — by which point the pod is already in CrashLoopBackOff with
+// no kubectl-visible signal pointing at the port choice.
+//
+// We refuse the CR at admission time with a message that names the
+// reservation explicitly so the operator can fix the port without
+// having to read pod logs.
+func validateAppPorts(agent *witwavev1alpha1.WitwaveAgent) error {
+	const portMax = int32(64535)
+	const metricsReservation = int32(1000)
+	metricsEnabled := agent.Spec.Metrics.Enabled
+
+	check := func(field string, port int32) error {
+		if port == 0 {
+			return nil
+		}
+		if port > portMax {
+			return apierrors.NewForbidden(witwaveagentGR, agent.Name, fmt.Errorf(
+				"%s=%d exceeds maximum allowed port %d (Kubernetes 1..65535 minus the %d-port metrics reservation, app_port+1000, see #687/#836)",
+				field, port, portMax, metricsReservation,
+			))
+		}
+		if metricsEnabled && port > portMax-metricsReservation {
+			return apierrors.NewForbidden(witwaveagentGR, agent.Name, fmt.Errorf(
+				"%s=%d incompatible with spec.metrics.enabled=true: the implicit metrics port is app_port+%d=%d which would overflow the 1..65535 range; pick an app port <= %d or disable metrics",
+				field, port, metricsReservation, port+metricsReservation, portMax-metricsReservation,
+			))
+		}
+		return nil
+	}
+
+	if err := check("spec.port", agent.Spec.Port); err != nil {
+		return err
+	}
+	for i, b := range agent.Spec.Backends {
+		if err := check(fmt.Sprintf("spec.backends[%d].port (backend=%q)", i, b.Name), b.Port); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

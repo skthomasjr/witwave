@@ -220,3 +220,62 @@ func TestValidateSharedStorageHostPath(t *testing.T) {
 		assertRejectedWith(t, validateSharedStorageHostPath(a), "must not contain '..'")
 	})
 }
+
+// TestValidatePorts covers the metrics-port reservation enforced on top
+// of the CRD-level Maximum=64535 ceiling. The implicit metrics port is
+// app_port+1000 (#687/#836) — anything above 64535 risks an out-of-range
+// metrics listener, anything above 63535 with metrics enabled is the
+// same problem one step earlier.
+func TestValidatePorts(t *testing.T) {
+	t.Run("port 8000 with metrics enabled accepted", func(t *testing.T) {
+		a := newBaseAgent()
+		a.Spec.Port = 8000
+		a.Spec.Metrics = witwavev1alpha1.MetricsSpec{Enabled: true}
+		if err := validateAppPorts(a); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+	t.Run("port 64535 with metrics disabled accepted", func(t *testing.T) {
+		a := newBaseAgent()
+		a.Spec.Port = 64535
+		a.Spec.Metrics = witwavev1alpha1.MetricsSpec{Enabled: false}
+		if err := validateAppPorts(a); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+	t.Run("port 64535 with metrics enabled rejected", func(t *testing.T) {
+		a := newBaseAgent()
+		a.Spec.Port = 64535
+		a.Spec.Metrics = witwavev1alpha1.MetricsSpec{Enabled: true}
+		assertRejectedWith(t, validateAppPorts(a), "metrics port is app_port+1000")
+	})
+	t.Run("port 65000 rejected regardless of metrics", func(t *testing.T) {
+		a := newBaseAgent()
+		a.Spec.Port = 65000
+		a.Spec.Metrics = witwavev1alpha1.MetricsSpec{Enabled: false}
+		assertRejectedWith(t, validateAppPorts(a), "exceeds maximum allowed port")
+
+		a2 := newBaseAgent()
+		a2.Spec.Port = 65000
+		a2.Spec.Metrics = witwavev1alpha1.MetricsSpec{Enabled: true}
+		assertRejectedWith(t, validateAppPorts(a2), "exceeds maximum allowed port")
+	})
+	t.Run("backend port over-ceiling rejected", func(t *testing.T) {
+		a := newBaseAgent()
+		a.Spec.Port = 8000
+		a.Spec.Metrics = witwavev1alpha1.MetricsSpec{Enabled: true}
+		a.Spec.Backends = []witwavev1alpha1.BackendSpec{{
+			Name: "claude",
+			Port: 64535,
+		}}
+		assertRejectedWith(t, validateAppPorts(a), "spec.backends[0].port")
+	})
+	t.Run("zero port skipped", func(t *testing.T) {
+		a := newBaseAgent()
+		a.Spec.Port = 0
+		a.Spec.Metrics = witwavev1alpha1.MetricsSpec{Enabled: true}
+		if err := validateAppPorts(a); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
