@@ -68,6 +68,16 @@ _BACKEND_ID = "claude"
 metrics_enabled = bool(os.environ.get("METRICS_ENABLED"))
 WORKER_MAX_RESTARTS = int(os.environ.get("WORKER_MAX_RESTARTS", "5"))
 CONVERSATIONS_AUTH_TOKEN = os.environ.get("CONVERSATIONS_AUTH_TOKEN", "")
+# #1609: cap on MCP request body size, env-var-overridable. Default 4 MiB.
+# Enforced both as a fast-path Content-Length check and as a streaming
+# byte-counter so a hostile/buggy caller can't lie about Content-Length
+# and force the backend to buffer arbitrary bytes into json().
+try:
+    _MCP_MAX_BODY_BYTES = int(os.environ.get("MCP_MAX_BODY_BYTES", str(4 * 1024 * 1024)))
+except ValueError:
+    _MCP_MAX_BODY_BYTES = 4 * 1024 * 1024
+if _MCP_MAX_BODY_BYTES <= 0:
+    _MCP_MAX_BODY_BYTES = 4 * 1024 * 1024
 
 _ready: bool = False
 # #1368: surface boot-degraded state on /health so operators can alert
@@ -96,6 +106,35 @@ def _get_mcp_caller_identities_lock() -> asyncio.Lock:
     if _mcp_caller_identities_lock is None:
         _mcp_caller_identities_lock = asyncio.Lock()
     return _mcp_caller_identities_lock
+
+
+async def _read_capped_body(request: "Request", cap: int) -> "tuple[bytes | None, str | None]":
+    """Stream-read ``request`` body into a bounded buffer (#1609).
+
+    Returns ``(body_bytes, None)`` on success or ``(None, reason)`` on
+    failure where ``reason`` is one of:
+
+    - ``"body_too_large"`` — actual bytes received exceeded ``cap``.
+      The caller should respond with HTTP 413.
+    - ``"parse_error"`` — the underlying ASGI receive raised. The caller
+      should respond with HTTP 400 and a JSON-RPC parse-error envelope.
+
+    The streaming check is the actual enforcement: a hostile or buggy
+    caller may declare a small (or absent) Content-Length and then send
+    arbitrarily many bytes, so we MUST count actual bytes received and
+    abort BEFORE buffering them into json().
+    """
+    buf = bytearray()
+    try:
+        async for chunk in request.stream():
+            if not chunk:
+                continue
+            if len(buf) + len(chunk) > cap:
+                return None, "body_too_large"
+            buf.extend(chunk)
+    except Exception:
+        return None, "parse_error"
+    return bytes(buf), None
 
 
 def load_agent_description() -> str:
@@ -127,6 +166,12 @@ def build_agent_card() -> AgentCard:
 
 
 async def health(request: Request) -> JSONResponse:
+    # #1608: /health is the LIVENESS probe — it returns 200 as soon as the
+    # process is up so kubelet does not CrashLoopBackOff a pod that is
+    # merely degraded. Boot-degraded state is surfaced informationally in
+    # the body but does NOT flip the status code. For readiness gating
+    # (i.e. removing a degraded pod from Service endpoints) point K8s
+    # readinessProbe at /health/ready instead.
     if backend_health_checks_total is not None:
         backend_health_checks_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="health").inc()
     if _ready:
@@ -148,6 +193,43 @@ async def health(request: Request) -> JSONResponse:
             _resp["boot_degraded"] = _boot_degraded_reason
         return JSONResponse(_resp)
     return JSONResponse({"status": "starting"}, status_code=503)
+
+
+async def health_ready(request: Request) -> JSONResponse:
+    # #1608: /health/ready is the READINESS probe — it returns 503 when
+    # the process is still starting (_ready is False) OR when boot
+    # finished in a degraded state (_boot_degraded_reason is set, e.g.
+    # perform_initial_loads timed out and the executor came up with
+    # empty MCP/agent_md/hooks). 503 here removes the pod from Service
+    # endpoints without restarting it; the watchers continue trying to
+    # fill in config asynchronously and the pod will become ready once
+    # the degraded reason clears (currently never automatically — manual
+    # restart or operator intervention required to reset the flag).
+    if backend_health_checks_total is not None:
+        backend_health_checks_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="ready").inc()
+    if not _ready:
+        return JSONResponse({"status": "starting"}, status_code=503)
+    if _boot_degraded_reason is not None:
+        return JSONResponse(
+            {
+                "status": "degraded",
+                "agent": AGENT_NAME,
+                "agent_owner": AGENT_OWNER,
+                "agent_id": AGENT_ID,
+                "boot_degraded": _boot_degraded_reason,
+            },
+            status_code=503,
+        )
+    elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+    return JSONResponse(
+        {
+            "status": "ready",
+            "agent": AGENT_NAME,
+            "agent_owner": AGENT_OWNER,
+            "agent_id": AGENT_ID,
+            "uptime_seconds": elapsed,
+        }
+    )
 
 
 @asynccontextmanager
@@ -448,21 +530,38 @@ async def main():
             if not hmac_mod.compare_digest(f"Bearer {CONVERSATIONS_AUTH_TOKEN}", header):
                 _status_box[0] = "unauthorized"
                 return JSONResponse({"error": "unauthorized"}, status_code=401)
-        # #1315: reject oversize Content-Length early so an authed caller
-        # can't force the backend to buffer a multi-MiB MCP body.
-        _MCP_BODY_CAP = 4 * 1024 * 1024  # 4 MiB
+        # #1315 / #1609: reject oversize MCP bodies. The Content-Length
+        # check is a cheap fast-path: an honest caller declaring a too-
+        # large payload is rejected before we read a byte. The streaming
+        # check below is the actual enforcement — a hostile or buggy
+        # caller can declare a small (or absent) Content-Length and then
+        # send arbitrarily many bytes, so we MUST count actual bytes
+        # received and abort BEFORE buffering them into json().
         try:
             declared_len = int(request.headers.get("Content-Length", "") or "-1")
         except ValueError:
             declared_len = -1
-        if declared_len > _MCP_BODY_CAP:
+        if declared_len > _MCP_MAX_BODY_BYTES:
             _status_box[0] = "body_too_large"
             return JSONResponse(
                 {"jsonrpc": "2.0", "id": None, "error": {"code": -32600, "message": "body too large"}},
                 status_code=413,
             )
+        # Stream-read into a bounded buffer so the cap is enforced on
+        # actual bytes-on-the-wire, not on the caller's declared length.
+        _raw, _reason = await _read_capped_body(request, _MCP_MAX_BODY_BYTES)
+        if _reason == "body_too_large":
+            _status_box[0] = "body_too_large"
+            return JSONResponse(
+                {"jsonrpc": "2.0", "id": None, "error": {"code": -32600, "message": "body too large"}},
+                status_code=413,
+            )
+        if _reason == "parse_error" or _raw is None:
+            _status_box[0] = "parse_error"
+            return JSONResponse({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}, status_code=400)
         try:
-            body = await request.json()
+            import json as _json_for_mcp
+            body = _json_for_mcp.loads(_raw.decode("utf-8"))
         except Exception:
             _status_box[0] = "parse_error"
             return JSONResponse({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}, status_code=400)
@@ -786,7 +885,15 @@ async def main():
         return JSONResponse({"data": [match], "total": 1})
 
     _routes = [
+        # #1608: split liveness vs readiness. /health (liveness) returns 200
+        # once the process is up, even when boot finished degraded — kubelet
+        # must not CrashLoopBackOff a pod that just has empty MCP/agent_md.
+        # /health/ready (readiness) returns 503 while starting OR while
+        # _boot_degraded_reason is set, removing the pod from Service
+        # endpoints. Operators upgrading from <=v0.5.0 must point their K8s
+        # readinessProbe at /health/ready (BREAKING change for probe paths).
         Route("/health", health),
+        Route("/health/ready", health_ready),
         Route("/conversations", conversations_handler, methods=["GET"]),
         Route("/trace", trace_handler, methods=["GET"]),
         Route("/mcp", mcp_handler, methods=["GET", "POST"]),
