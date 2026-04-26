@@ -185,6 +185,76 @@ var _ = Describe("manifest ConfigMap reconcile (#972)", func() {
 			"manifest CM ResourceVersion advanced across idempotent reconciles — hash short-circuit regressed")
 	})
 
+	It("does not delete an empty-membership manifest CM owned by a foreign controller (#1599)", func() {
+		// Set up two agents on the same team, reconcile to materialise the
+		// CM, then disable the surviving member so memberAgents goes empty
+		// on the next reconcile of that agent (the empty-membership delete
+		// branch). Before triggering it, replace the CM's OwnerReferences
+		// with a controllerRef pointing at a foreign owner — the guard
+		// must short-circuit the Delete so unrelated state is preserved.
+		live := makeTeamMember("guard-live-" + rand5())
+		foreign := makeTeamMember("guard-foreign-" + rand5())
+		Expect(k8sClient.Create(ctx, live)).To(Succeed())
+		Expect(k8sClient.Create(ctx, foreign)).To(Succeed())
+
+		kLive := types.NamespacedName{Name: live.Name, Namespace: live.Namespace}
+		kForeign := types.NamespacedName{Name: foreign.Name, Namespace: foreign.Namespace}
+		defer teardown([]types.NamespacedName{kLive, kForeign})
+		Expect(reconcileUntilStable(r, kLive, 5)).To(Succeed())
+		Expect(reconcileUntilStable(r, kForeign, 5)).To(Succeed())
+
+		// Re-fetch both so server-assigned UIDs are available.
+		Expect(k8sClient.Get(ctx, kLive, live)).To(Succeed())
+		Expect(k8sClient.Get(ctx, kForeign, foreign)).To(Succeed())
+
+		// Overwrite the CM's OwnerReferences with a single controllerRef
+		// pointing at the foreign agent. The reconciler must treat this
+		// as not-owned-by-`live` and refuse to delete it.
+		cmKey := types.NamespacedName{Name: manifestConfigMapName(live), Namespace: live.Namespace}
+		cm := &corev1.ConfigMap{}
+		Expect(k8sClient.Get(ctx, cmKey, cm)).To(Succeed())
+		ctrl := true
+		cm.OwnerReferences = []metav1.OwnerReference{{
+			APIVersion: witwavev1alpha1.GroupVersion.String(),
+			Kind:       "WitwaveAgent",
+			Name:       foreign.Name,
+			UID:        foreign.UID,
+			Controller: &ctrl,
+		}}
+		Expect(k8sClient.Update(ctx, cm)).To(Succeed())
+
+		// Drive the empty-membership branch: disable BOTH agents in-cluster
+		// so the team-scoped list inside reconcileManifestConfigMap finds
+		// zero enabled members. The CM Get then succeeds but the guard
+		// must short-circuit the Delete because the CM's controllerRef
+		// no longer points at `live`.
+		off := false
+		Expect(k8sClient.Get(ctx, kLive, live)).To(Succeed())
+		live.Spec.Enabled = &off
+		Expect(k8sClient.Update(ctx, live)).To(Succeed())
+		Expect(k8sClient.Get(ctx, kForeign, foreign)).To(Succeed())
+		foreign.Spec.Enabled = &off
+		Expect(k8sClient.Update(ctx, foreign)).To(Succeed())
+
+		// Re-fetch live (now with Enabled=false) and call the manifest
+		// reconcile directly to exercise the empty-membership branch.
+		Expect(k8sClient.Get(ctx, kLive, live)).To(Succeed())
+		// Re-fetch foreign so the assertion below compares against the
+		// post-update UID (Update preserves UID, but be explicit).
+		Expect(k8sClient.Get(ctx, kForeign, foreign)).To(Succeed())
+		Expect(r.reconcileManifestConfigMap(ctx, live)).To(Succeed())
+
+		// CM must still exist with its foreign owner intact.
+		afterCM := &corev1.ConfigMap{}
+		err := k8sClient.Get(ctx, cmKey, afterCM)
+		Expect(apierrors.IsNotFound(err)).To(BeFalse(),
+			"manifest CM owned by a foreign controller must NOT be deleted on the empty-membership path; got err=%v", err)
+		Expect(afterCM.OwnerReferences).To(HaveLen(1),
+			"foreign OwnerReferences must be preserved when the guard short-circuits the delete")
+		Expect(afterCM.OwnerReferences[0].UID).To(Equal(foreign.UID),
+			"foreign controllerRef must remain intact")
+	})
+
 	It("materialises a manifest CM even when the agent omits the team label", func() {
 		// Empty-team-key grouping — agents without the team label share
 		// the empty-string manifest. Ensures an agent with no label still

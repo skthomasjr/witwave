@@ -1032,6 +1032,15 @@ func (r *WitwaveAgentReconciler) reconcileManifestConfigMap(ctx context.Context,
 		if getErr != nil {
 			return getErr
 		}
+		// #1599: never clobber a manifest CM we don't own. A bystander
+		// (ArgoCD, a sibling controller, or a user-authored CM that
+		// happened to collide on the generated manifest name) may carry
+		// a foreign owner reference; deleting it on the empty-membership
+		// path would silently destroy unrelated state. Mirrors the
+		// dual-check used by other cleanup paths in this file.
+		if !metav1.IsControlledBy(existing, agent) {
+			return nil
+		}
 		if delErr := r.Delete(ctx, existing); delErr != nil && !apierrors.IsNotFound(delErr) {
 			return delErr
 		}
