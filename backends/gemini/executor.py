@@ -286,6 +286,16 @@ GEMINI_API_KEY: str | None = os.environ.get("GEMINI_API_KEY") or os.environ.get(
 
 MCP_CONFIG_PATH = os.environ.get("MCP_CONFIG_PATH", "/home/agent/.gemini/mcp.json")
 
+# #1610: Validate the resolved MCP_CONFIG_PATH lives under a documented prefix
+# so a hostile env override (e.g. ``MCP_CONFIG_PATH=/etc/passwd``) cannot be
+# fed to ``json.load`` -- the parse error path would then leak file shape /
+# perms via metric label cardinality and log noise. The default mirrors the
+# in-container home for backend pods; tests / non-default deployments can
+# override via ``MCP_CONFIG_PATH_ALLOWED_PREFIX``.
+_MCP_CONFIG_PATH_ALLOWED_PREFIX = os.environ.get(
+    "MCP_CONFIG_PATH_ALLOWED_PREFIX", "/home/agent/",
+)
+
 # #1100: scaffold for the eventual gemini allow-list enforcement. The
 # AFC tool loop inside send_message_stream today runs every bound tool
 # without consulting a deny/allow surface; once #640 hand-rolls the
@@ -375,8 +385,23 @@ def _load_mcp_config() -> dict:
     Parse / I/O errors return ``{}`` AND increment
     ``backend_mcp_config_errors_total``. Mirrors codex._load_mcp_config for
     parity across backends.
+
+    Path posture (#1610): the resolved (``os.path.realpath``) MCP_CONFIG_PATH
+    must live under ``MCP_CONFIG_PATH_ALLOWED_PREFIX`` (default
+    ``/home/agent/``). This blocks a hostile env override that would point
+    the loader at arbitrary files such as ``/etc/passwd``. Test / non-
+    default deployments override the prefix via the
+    ``MCP_CONFIG_PATH_ALLOWED_PREFIX`` env var. Out-of-prefix paths are
+    skipped with a WARN log; missing-file semantics are unchanged.
     """
     if not os.path.exists(MCP_CONFIG_PATH):
+        return {}
+    resolved = os.path.realpath(MCP_CONFIG_PATH)
+    if not resolved.startswith(_MCP_CONFIG_PATH_ALLOWED_PREFIX):
+        logger.warning(
+            "MCP config path %s (resolved %s) is outside allowed prefix %s; skipping load.",
+            MCP_CONFIG_PATH, resolved, _MCP_CONFIG_PATH_ALLOWED_PREFIX,
+        )
         return {}
     try:
         with open(MCP_CONFIG_PATH) as f:

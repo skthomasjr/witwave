@@ -411,5 +411,34 @@ class ContextTokensRemainingGuardTests(unittest.TestCase):
         self.assertFalse(entered)
 
 
+class McpConfigPathPrefixTests(unittest.TestCase):
+    """#1610: ``_load_mcp_config`` must reject MCP_CONFIG_PATH values that
+    resolve outside the documented allow-list prefix.
+    """
+
+    def test_mcp_config_path_outside_prefix_is_rejected(self):
+        # /etc/passwd exists on every POSIX host, so os.path.exists short-
+        # circuit doesn't hide the prefix check we're trying to assert.
+        with patch.object(executor, "MCP_CONFIG_PATH", "/etc/passwd"), \
+             patch.object(executor, "_MCP_CONFIG_PATH_ALLOWED_PREFIX", "/home/agent/"):
+            result = executor._load_mcp_config()
+        self.assertEqual(result, {})
+
+    def test_mcp_config_path_inside_prefix_is_accepted(self):
+        with tempfile.TemporaryDirectory(prefix="mcp-cfg-") as tmp:
+            cfg_path = os.path.join(tmp, "mcp.json")
+            with open(cfg_path, "w") as f:
+                json.dump({"mcpServers": {"k8s": {"url": "http://example/"}}}, f)
+            # Allow-list the realpath-resolved temp dir so macOS's
+            # /var -> /private/var symlink doesn't trip the prefix check;
+            # the production default of /home/agent/ is exercised by the
+            # rejection test above.
+            allowed = os.path.realpath(tmp) + os.sep
+            with patch.object(executor, "MCP_CONFIG_PATH", cfg_path), \
+                 patch.object(executor, "_MCP_CONFIG_PATH_ALLOWED_PREFIX", allowed):
+                result = executor._load_mcp_config()
+        self.assertEqual(result, {"k8s": {"url": "http://example/"}})
+
+
 if __name__ == "__main__":
     unittest.main()
