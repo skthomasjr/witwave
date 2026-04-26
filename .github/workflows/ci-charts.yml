@@ -260,6 +260,81 @@ jobs:
           fi
           echo "fail-fast guards: OK"
 
+  operator-service-selectors:
+    # Coverage for #1643: the metrics Service's selector must include
+    # `control-plane: controller-manager` so it matches the
+    # ServiceMonitor's matchLabels (and the deployment's pod-template
+    # label). Same invariant applies to the webhook Service whose
+    # rendered comment claims it already filters on that label. Without
+    # the selector match, Prometheus's ServiceMonitor would not pick up
+    # any endpoints and operator scraping would silently be empty.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.0
+
+      - name: Install PyYAML
+        run: python3 -m pip install --user pyyaml
+
+      - name: Render + verify metrics + webhook Service selectors (#1643)
+        run: |
+          helm template op charts/witwave-operator \
+            --set metrics.enabled=true \
+            --set webhooks.enabled=true \
+            --set webhooks.certManager.enabled=true \
+            --set webhooks.certManager.createIssuer=true \
+            > /tmp/op-selectors.yaml
+          python3 - <<'PY'
+          import sys, yaml
+          docs = [d for d in yaml.safe_load_all(open("/tmp/op-selectors.yaml")) if d]
+          checked = set()
+          for d in docs:
+              if d.get("kind") != "Service":
+                  continue
+              name = (d.get("metadata") or {}).get("name") or ""
+              if not (name.endswith("-metrics") or name.endswith("-webhook")):
+                  continue
+              selector = (d.get("spec") or {}).get("selector") or {}
+              cp = selector.get("control-plane")
+              assert cp == "controller-manager", (
+                  f"#1643: Service {name!r} spec.selector must include "
+                  f"`control-plane: controller-manager` to match the pod label and "
+                  f"the ServiceMonitor matchLabels. Got selector={selector!r}"
+              )
+              checked.add(name)
+          assert any(n.endswith("-metrics") for n in checked), (
+              f"metrics Service not rendered; only saw {checked}"
+          )
+          assert any(n.endswith("-webhook") for n in checked), (
+              f"webhook Service not rendered; only saw {checked}"
+          )
+          print(f"#1643 selector check OK for: {sorted(checked)}")
+          PY
+
+      - name: Render + grep metrics Service selector (#1643, fast-path)
+        run: |
+          # Cheap secondary check that doesn't require PyYAML — extracts
+          # the metrics Service block by line range and greps for the
+          # required selector label. Mirrors the verify command in the
+          # PR body so anyone can repro locally.
+          helm template op charts/witwave-operator \
+            --set metrics.enabled=true \
+            > /tmp/op-metrics-only.yaml
+          # Slice from the metrics Service's `kind: Service` to the next
+          # document separator and grep within it. awk handles the slice
+          # so newlines don't trip up grep -B context.
+          awk '/^kind: Service$/{flag=1} flag{print} /^---$/ && flag{exit}' \
+            /tmp/op-metrics-only.yaml \
+            | grep -A 20 '^spec:' \
+            | grep -A 5 '^  selector:' \
+            | grep -q '    control-plane: controller-manager'
+          echo "#1643 grep fast-path: OK"
+
   mcp-tools-pytest:
     # Unit-test coverage for tools/* pure helpers (#852). Runs against
     # the real production source (no mocking the helpers) so argv

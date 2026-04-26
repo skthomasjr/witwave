@@ -78,8 +78,14 @@ spec:
       port: 443
       targetPort: webhook
       protocol: TCP
+  # #1643: include `control-plane: controller-manager` so the selector
+  # matches the comment above (and the deployment's pod-template label).
+  # Without it the webhook Service's selector was strictly broader than
+  # the comment claimed, and could match any pod sharing the chart's
+  # selectorLabels.
   selector:
     {{- include "witwave-operator.selectorLabels" . | nindent 4 }}
+    control-plane: controller-manager
 {{- if $cm }}
 {{- if and .Values.webhooks.certManager.createIssuer (not $extRef) }}
 ---
