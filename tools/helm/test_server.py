@@ -668,5 +668,29 @@ def test_repo_add_mixed_allowlist_picks_matching_entry(_stub_helm, monkeypatch):
         server.repo_add("d", "https://internal.example.com/")
 
 
+# ----- _validate_repo_url for install/upgrade --repo (#1638) -----
+
+
+def test_validate_repo_url_accepts_http():
+    # Does not raise.
+    server._validate_repo_url("http://charts.example.com/x")
+
+
+def test_validate_repo_url_accepts_https():
+    # Does not raise.
+    server._validate_repo_url("https://charts.example.com/")
+
+
+def test_validate_repo_url_rejects_file_scheme():
+    with pytest.raises(server.HelmError, match="scheme must be http or https"):
+        server._validate_repo_url("file:///etc/passwd")
+
+
+def test_validate_repo_url_rejects_non_url_string():
+    # "not a url" parses as scheme='' which fails the scheme check first.
+    with pytest.raises(server.HelmError):
+        server._validate_repo_url("not a url")
+
+
 if __name__ == "__main__":  # pragma: no cover
     sys.exit(pytest.main([__file__, "-q"]))

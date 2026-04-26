@@ -755,6 +755,40 @@ def _reject_flag_like(**named: str | None) -> None:
             )
 
 
+def _validate_repo_url(url: str) -> None:
+    """Validate a ``--repo`` URL passed to ``helm install`` / ``helm upgrade``
+    (#1638).
+
+    ``_reject_flag_like`` only blocks argv-style flag injection; it still
+    accepts strings like ``file:///etc/passwd``, ``javascript:...``, or
+    ``not a url`` because none of them start with ``-``. Helm's ``--repo``
+    plumbing will dutifully attempt to fetch from whatever scheme it gets,
+    so we tighten the gate here:
+
+    - URL must parse with ``urlparse``.
+    - Scheme must be ``http`` or ``https``.
+    - Hostname must be non-empty.
+
+    OCI registries are intentionally out of scope: ``helm install`` /
+    ``upgrade`` accept ``oci://`` charts via the ``chart`` argument, not
+    via ``--repo``. ``repo_add`` has its own (broader) validator that
+    permits ``oci`` for chart-registry registration.
+    """
+    from urllib.parse import urlparse as _urlparse
+
+    parsed = _urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise HelmError(
+            f"helm: 'repo' URL scheme must be http or https (got "
+            f"{parsed.scheme!r}). See #1638."
+        )
+    if not parsed.hostname:
+        raise HelmError(
+            f"helm: 'repo' URL must have a hostname (got {url!r}). "
+            "See #1638."
+        )
+
+
 # Key substrings that mark a values-tree leaf as likely secret material
 # (#774). Case-insensitive substring match — conservative and covers the
 # common names that flow through Helm values: password, token, secret,
@@ -1230,6 +1264,10 @@ def install(
         repo=repo,
         timeout=timeout,
     )
+    # #1638: tighten 'repo' beyond _reject_flag_like — reject file://,
+    # javascript:, and other non-http(s) schemes.
+    if repo:
+        _validate_repo_url(repo)
     _audit(
         "mcp-helm", "install",
         args={"name": name, "chart": chart, "namespace": namespace,
@@ -1299,6 +1337,10 @@ def upgrade(
         repo=repo,
         timeout=timeout,
     )
+    # #1638: tighten 'repo' beyond _reject_flag_like — reject file://,
+    # javascript:, and other non-http(s) schemes.
+    if repo:
+        _validate_repo_url(repo)
     _audit(
         "mcp-helm", "upgrade",
         args={"name": name, "chart": chart, "namespace": namespace,
