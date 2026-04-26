@@ -101,19 +101,49 @@ def build_agent_card() -> AgentCard:
 
 
 async def health(request: Request) -> JSONResponse:
+    # #1672: /health is the LIVENESS probe — it returns 200 as soon as the
+    # process is up so kubelet does not CrashLoopBackOff a pod that is
+    # merely degraded (e.g. an MCP watcher exited normally per #1630). For
+    # readiness gating (i.e. removing a degraded pod from Service
+    # endpoints) point K8s readinessProbe at /health/ready instead. Mirror
+    # of the cycle-1 claude #1608 fix — README docs /health/ready as a
+    # universal route but only claude implemented it; codex had the
+    # readiness flag flip path in #1630 but no route to surface it.
     if backend_health_checks_total is not None:
         backend_health_checks_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="health").inc()
-    if _ready:
-        elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
-        # #1341: surface agent_owner + agent_id for metric-label parity.
-        return JSONResponse({
-            "status": "ok",
-            "agent": AGENT_NAME,
-            "agent_owner": AGENT_OWNER,
-            "agent_id": AGENT_ID,
-            "uptime_seconds": elapsed,
-        })
-    return JSONResponse({"status": "starting"}, status_code=503)
+    elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+    # #1341: surface agent_owner + agent_id for metric-label parity.
+    # #1672: /health is liveness-only and stays 200 once the process is
+    # up; the previous "503 while starting" semantic moved to /health/ready.
+    return JSONResponse({
+        "status": "ok" if _ready else "starting",
+        "agent": AGENT_NAME,
+        "agent_owner": AGENT_OWNER,
+        "agent_id": AGENT_ID,
+        "uptime_seconds": elapsed,
+    })
+
+
+async def health_ready(request: Request) -> JSONResponse:
+    # #1608 + #1630 + #1672: /health/ready is the READINESS probe — it
+    # returns 503 when ``_ready`` is False (process still starting OR an
+    # MCP watcher exited normally per #1630, dropping readiness so the
+    # pod is removed from Service endpoints without restarting). 200 only
+    # when fully ready. Mirror of the cycle-1 claude #1608 fix; codex had
+    # the readiness-drop branch (#1630) but no route to surface it, so
+    # K8s readinessProbe could never observe the degraded state.
+    if backend_health_checks_total is not None:
+        backend_health_checks_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="ready").inc()
+    if not _ready:
+        return JSONResponse({"status": "starting"}, status_code=503)
+    elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+    return JSONResponse({
+        "status": "ready",
+        "agent": AGENT_NAME,
+        "agent_owner": AGENT_OWNER,
+        "agent_id": AGENT_ID,
+        "uptime_seconds": elapsed,
+    })
 
 
 @asynccontextmanager
@@ -758,7 +788,15 @@ async def main():
         return JSONResponse({"data": [match], "total": 1})
 
     _routes = [
+        # #1608 + #1630 + #1672: split liveness vs readiness. /health
+        # (liveness) returns 200 once the process is up so kubelet does
+        # not CrashLoopBackOff a degraded pod. /health/ready (readiness)
+        # returns 503 while starting OR while _ready was dropped by the
+        # #1630 normal-exit watcher branch, removing the pod from
+        # Service endpoints. Operators upgrading from <=v0.5.0 must
+        # repoint their K8s readinessProbe at /health/ready.
         Route("/health", health),
+        Route("/health/ready", health_ready),
         Route("/conversations", conversations_handler, methods=["GET"]),
         Route("/trace", trace_handler, methods=["GET"]),
         Route("/mcp", mcp_handler, methods=["GET", "POST"]),

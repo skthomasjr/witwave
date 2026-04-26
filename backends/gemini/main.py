@@ -164,21 +164,45 @@ async def health(request: Request) -> JSONResponse:
         "session_cache_utilization_percent": session_cache_utilization_percent,
         "history_save_failed": history_save_failed_count,
     }
-    if _ready:
-        elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
-        # #1341: surface agent_owner + agent_id for metric-label parity.
-        return JSONResponse({
-            "status": "ok",
-            "agent": AGENT_NAME,
-            "agent_owner": AGENT_OWNER,
-            "agent_id": AGENT_ID,
-            "uptime_seconds": elapsed,
-            **subsystem,
-        })
-    return JSONResponse(
-        {"status": "starting", **subsystem},
-        status_code=503,
-    )
+    # #1608 + #1672: /health is the LIVENESS probe — it returns 200 as
+    # soon as the process is up so kubelet does not CrashLoopBackOff a
+    # pod that is merely degraded. For readiness gating (i.e. removing a
+    # degraded pod from Service endpoints) point K8s readinessProbe at
+    # /health/ready instead. README documents /health/ready as universal
+    # but gemini didn't implement it pre-#1672 — operators relied on
+    # /health which conflated liveness with readiness.
+    elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+    # #1341: surface agent_owner + agent_id for metric-label parity.
+    return JSONResponse({
+        "status": "ok" if _ready else "starting",
+        "agent": AGENT_NAME,
+        "agent_owner": AGENT_OWNER,
+        "agent_id": AGENT_ID,
+        "uptime_seconds": elapsed,
+        **subsystem,
+    })
+
+
+async def health_ready(request: Request) -> JSONResponse:
+    # #1608 + #1672: /health/ready is the READINESS probe — it returns
+    # 503 when ``_ready`` is False (still starting or readiness dropped
+    # by a critical-task crash via _guarded()) and 200 once fully ready.
+    # Mirror of the cycle-1 claude #1608 fix and the codex #1672 follow-
+    # up; gemini's /health previously conflated liveness with readiness
+    # so kubelet could CrashLoopBackOff a pod that should only have been
+    # removed from Service endpoints.
+    if backend_health_checks_total is not None:
+        backend_health_checks_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="ready").inc()
+    if not _ready:
+        return JSONResponse({"status": "starting"}, status_code=503)
+    elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+    return JSONResponse({
+        "status": "ready",
+        "agent": AGENT_NAME,
+        "agent_owner": AGENT_OWNER,
+        "agent_id": AGENT_ID,
+        "uptime_seconds": elapsed,
+    })
 
 
 @asynccontextmanager
@@ -760,7 +784,15 @@ async def main():
         return JSONResponse({"data": [match], "total": 1})
 
     _routes = [
+        # #1608 + #1672: split liveness vs readiness. /health (liveness)
+        # returns 200 once the process is up so kubelet does not
+        # CrashLoopBackOff a degraded pod. /health/ready (readiness)
+        # returns 503 while starting or while _ready was dropped by
+        # _guarded()'s critical-task circuit-breaker. Operators upgrading
+        # from <=v0.5.0 must repoint their K8s readinessProbe at
+        # /health/ready.
         Route("/health", health),
+        Route("/health/ready", health_ready),
         Route("/conversations", conversations_handler, methods=["GET"]),
         Route("/trace", trace_handler, methods=["GET"]),
         Route("/mcp", mcp_handler, methods=["GET", "POST"]),
