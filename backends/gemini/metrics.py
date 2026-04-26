@@ -62,6 +62,10 @@ backend_log_write_errors_total: prometheus_client.Counter | None = None
 # Session persistence metrics
 backend_session_history_save_errors_total: prometheus_client.Counter | None = None
 backend_session_history_reset_total: prometheus_client.Counter | None = None
+# #1622: byte-cap trim corruption recovery — fires when no safe AFC
+# boundary exists in the trim window and the saver force-splits at the
+# earliest user-role boundary instead of preserving an oversized payload.
+backend_history_force_split_total: prometheus_client.Counter | None = None
 
 # SDK metrics
 backend_sdk_subprocess_spawn_duration_seconds: prometheus_client.Histogram | None = None
@@ -370,6 +374,16 @@ if _enabled:
         "backend_session_history_reset_total",
         "Total sessions reset to empty history because a prior save permanently "
         "failed and the stale on-disk file was discarded. See #1000.",
+        ["agent", "agent_id", "backend"],
+    )
+    # #1622: byte-cap trim corruption recovery counter. See module-level
+    # declaration for the corruption recovery semantics.
+    backend_history_force_split_total = prometheus_client.Counter(
+        "backend_history_force_split_total",
+        "Total byte-cap trims that force-split a mid-AFC pair because no safe "
+        "boundary existed within the target window. Corruption recovery path; "
+        "non-zero values indicate runaway AFC chains that exceed the byte cap. "
+        "See #1622.",
         ["agent", "agent_id", "backend"],
     )
 

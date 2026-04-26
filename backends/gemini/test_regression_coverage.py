@@ -243,6 +243,48 @@ class SaveHistoryCutPointTests(unittest.TestCase):
         # And the file must round-trip: the last entry is still a2.
         self.assertEqual(raw[-1]["role"], "model")
 
+    def test_byte_cap_force_splits_when_no_safe_boundary(self):
+        """#1622: when the entire byte-cap trim window is one giant AFC pair
+        (no safe boundary exists), the force-split fallback must fire and
+        bring the persisted file to or under _SAVE_HISTORY_MAX_BYTES rather
+        than oscillating with an oversized payload.
+        """
+        os.makedirs(os.environ["SESSION_STORE_DIR"], exist_ok=True)
+        sid = "byte-cap-force-split"
+        # Build a history dominated by mid-AFC pairs:
+        #   user(t1) / model(a1) / model(fc) / user(fr) / model(fc) /
+        #   user(fr) / model(fc) / user(fr) / ...
+        # Every user-role entry past index 0 carries a function_response,
+        # so the safe-boundary search at indices >= 1 returns nxt >= n.
+        # The function_response payloads are inflated so the byte cap is
+        # exceeded comfortably and the force-split fallback is forced
+        # to produce a smaller-than-cap slice.
+        big_blob = "x" * 4096  # 4 KiB per response part
+        history = [_user_text("t1"), _model_text("a1")]
+        for i in range(40):
+            history.append(_fc(f"tool_{i}"))
+            history.append(_fr(f"tool_{i}", {"out": big_blob}))
+
+        # Cap small enough that the force-split must drop entries and
+        # large enough that a single AFC pair (~4 KiB serialised) fits.
+        cap = 16 * 1024
+        with patch.object(executor, "_SAVE_HISTORY_MAX_TURNS", 0), \
+             patch.object(executor, "_SAVE_HISTORY_MAX_BYTES", cap):
+            asyncio.run(executor._save_history(sid, history))
+
+        path = self._session_path(sid)
+        size = os.path.getsize(path)
+        # Force-split brought us at or under the byte cap.
+        self.assertLessEqual(
+            size,
+            cap,
+            f"force-split fallback failed to bring file under cap: {size} > {cap}",
+        )
+        # Sanity-check the file is still valid JSON.
+        with open(path) as fh:
+            raw = json.load(fh)
+        self.assertGreater(len(raw), 0)
+
     def test_cut_preserves_full_history_when_no_safe_boundary(self):
         """#731: if truncating would require splitting an AFC pair, keep the
         full history rather than silently wiping the session.
