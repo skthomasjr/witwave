@@ -901,6 +901,39 @@ defaults:
         limits:
           cpu: 100m
           memory: 128Mi
+    # Per-MCP-tool resource defaults (#1658). Used by templates/mcp-tools.yaml
+    # when an mcpTools.<name>.resources block is unset. Pre-#1658 the chart
+    # rendered MCP tool pods without resources at all, so cluster admission
+    # had nothing to schedule against and a runaway tool could starve
+    # neighbouring agent pods on the same node. Override per-tool via
+    # mcpTools.<name>.resources to keep the surface explicit.
+    mcpTools:
+      # mcp-kubernetes wraps the Kubernetes Python client and holds long-lived
+      # informer caches; mcp-helm shells out to the helm CLI which spikes
+      # briefly on chart render. Same envelope covers both comfortably.
+      kubernetes:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 250m
+          memory: 512Mi
+      helm:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 250m
+          memory: 512Mi
+      # mcp-prometheus is a thin PromQL HTTP proxy with no client-side caches;
+      # its steady state is much smaller than the Kubernetes/Helm tools.
+      prometheus:
+        requests:
+          cpu: 25m
+          memory: 64Mi
+        limits:
+          cpu: 100m
+          memory: 256Mi
 
 # Default credentials for every agents[].backends[] entry unless overridden
 # per-backend via agents[].backends[].credentials. Three mutually exclusive

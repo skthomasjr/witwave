@@ -305,7 +305,19 @@ spec:
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with $tool.resources }}
+          {{- /* Resource resolution (#1658). Per-tool $tool.resources wins;
+                 otherwise fall back to defaults.resources.mcpTools.<name> so
+                 every MCP tool pod renders with a baseline requests/limits
+                 envelope. Pre-#1658 a tool with no explicit resources block
+                 rendered with no resources at all, leaving the kube scheduler
+                 to bin-pack them as best-effort and risking neighbour
+                 starvation under load. */}}
+          {{- $defaultMcpResources := dict }}
+          {{- if and $.Values.defaults $.Values.defaults.resources $.Values.defaults.resources.mcpTools }}
+          {{- $defaultMcpResources = default dict (index $.Values.defaults.resources.mcpTools $name) }}
+          {{- end }}
+          {{- $resources := default $defaultMcpResources $tool.resources }}
+          {{- with $resources }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
