@@ -165,6 +165,26 @@ func (c *HelmClient) Uninstall(ctx context.Context) (*release.UninstallReleaseRe
 		// Release control back to the caller immediately; the in-flight
 		// Run will finish (or fail) asynchronously. Wrap ctx.Err so
 		// callers can detect cancellation via errors.Is.
+		//
+		// #1655: the Helm SDK doesn't accept a context, so we can't
+		// propagate cancellation into act.Run — the goroutine keeps
+		// executing after we return. Spawn a bounded background waiter
+		// that surfaces a WARN log if the in-flight call hasn't settled
+		// within a generous window, so operators know dangling Helm work
+		// continues past the command exit. This is observability only;
+		// it does NOT block the function return.
+		go func() {
+			const danglingWarnAfter = 60 * time.Second
+			t := time.NewTimer(danglingWarnAfter)
+			defer t.Stop()
+			select {
+			case <-done:
+				// Background Run completed; nothing to flag.
+			case <-t.C:
+				log.Printf("WARNING: helm uninstall for release %q in namespace %q is still running %s after caller cancellation; release state may be inconsistent until it settles (#1655)",
+					c.releaseName, c.namespace, danglingWarnAfter)
+			}
+		}()
 		return nil, fmt.Errorf("helm uninstall: %w", ctx.Err())
 	case r := <-done:
 		if r.err != nil {
