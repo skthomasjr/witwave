@@ -147,6 +147,12 @@ type agentListController struct {
 	// createAgentForm is the modal bundled form + state + error
 	// view. Built once in Run(); reset()ed on each open via 'a'.
 	createAgentForm *createAgentForm
+
+	// sendForm is the most-recently-opened send modal. Stored so
+	// close paths can clear its `active` flag, signalling any
+	// in-flight Send goroutine to skip its paint. Nil whenever
+	// no send modal is mounted.
+	sendForm *sendAgentForm
 }
 
 // newAgentListPage builds the Flex-composed live-list view + the

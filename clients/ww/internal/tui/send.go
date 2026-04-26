@@ -45,8 +45,15 @@ type sendAgentForm struct {
 
 	mu      sync.Mutex
 	sending bool
-	target  string // currently-selected dropdown value
-	prompt  string
+	// active tracks whether the modal is still mounted. In-flight
+	// Send goroutines check this under mu before drawing so a
+	// response that lands after the user has ESC'd / Cancelled /
+	// navigated away doesn't paint into a detached (or recycled)
+	// form. Set true when the page is added; cleared on every
+	// close path.
+	active bool
+	target string // currently-selected dropdown value
+	prompt string
 }
 
 // openAgentSend pops the send-message modal scoped to whichever row
@@ -66,9 +73,22 @@ func (c *agentListController) openAgentSend() {
 
 	form := buildSendAgentForm(c, s.Name, s.Namespace, s.Backends)
 
+	// If a previous send modal is still tracked (rare — close paths
+	// normally clear it), mark it inactive so any in-flight goroutine
+	// from that prior open doesn't paint into the freshly-built form.
+	if c.sendForm != nil {
+		c.sendForm.mu.Lock()
+		c.sendForm.active = false
+		c.sendForm.mu.Unlock()
+	}
+
 	if c.pages.HasPage(sendPageName) {
 		c.pages.RemovePage(sendPageName)
 	}
+	form.mu.Lock()
+	form.active = true
+	form.mu.Unlock()
+	c.sendForm = form
 	c.pages.AddPage(sendPageName, form.modal, true, true)
 	c.app.SetFocus(form.form)
 }
@@ -77,6 +97,16 @@ func (c *agentListController) openAgentSend() {
 // Called from Cancel + ESC + on successful round-trip via the
 // "[Close]" button that replaces "[Send]" once a response lands.
 func (c *agentListController) closeAgentSend() {
+	// Mark the form inactive before tearing it down so any pending
+	// Send goroutine (still mid-flight against the backend) skips
+	// its QueueUpdateDraw paint instead of writing into a detached
+	// — or already-recycled — response view.
+	if c.sendForm != nil {
+		c.sendForm.mu.Lock()
+		c.sendForm.active = false
+		c.sendForm.mu.Unlock()
+		c.sendForm = nil
+	}
 	c.pages.RemovePage(sendPageName)
 	c.app.SetFocus(c.table)
 }
@@ -232,6 +262,18 @@ func submitSendAgent(c *agentListController, f *sendAgentForm) {
 		f.mu.Unlock()
 
 		c.app.QueueUpdateDraw(func() {
+			// Bail if the modal was closed (ESC / Cancel / page
+			// navigation) while the request was in flight. Painting
+			// into a detached response view causes the next opened
+			// send modal to flash the prior call's text, even though
+			// the form was rebuilt fresh. Checked under mu to pair
+			// with the close-path writers.
+			f.mu.Lock()
+			active := f.active
+			f.mu.Unlock()
+			if !active {
+				return
+			}
 			if err != nil {
 				f.response.SetText(fmt.Sprintf("ERROR: %s\n\n(prompt left in form — adjust + retry, or ESC to back out)", err.Error()))
 				return
