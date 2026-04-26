@@ -94,6 +94,18 @@ ON_PROMPT_COMPLETED_TIMEOUT = float(
 # harness_background_tasks_shed_total rather than growing the set without bound (#549).
 BACKGROUND_TASKS_MAX = int(os.environ.get("BACKGROUND_TASKS_MAX", "1000"))
 
+# Rate-limit window (seconds) for shed-event WARN logs (#1644). The first shed
+# in each window is logged immediately; subsequent sheds within the window are
+# counted and emitted as a summary WARN when the window flushes. Per-source so
+# a noisy critical-class caller can't suppress visibility into a different
+# starving source.
+_BACKGROUND_SHED_LOG_WINDOW_SEC = float(
+    os.environ.get("BACKGROUND_SHED_LOG_WINDOW_SEC", "10")
+)
+# Module-level state: source -> {"window_start": float, "suppressed": int}.
+# Plain dict (no lock) — track_background runs on the asyncio thread.
+_background_shed_log_state: dict[str, dict[str, float]] = {}
+
 
 async def log_entry(
     role: str,
@@ -646,6 +658,8 @@ class AgentExecutor(A2AAgentExecutor):
         source: str = "unknown",
         timeout: float | None = None,
         name: str | None = None,
+        session_id: str | None = None,
+        caller_identity: str | None = None,
     ) -> asyncio.Task | None:
         """Schedule ``coro`` as a tracked background task with a bounded lifetime.
 
@@ -696,6 +710,36 @@ class AgentExecutor(A2AAgentExecutor):
                 source, len(self._background_tasks), effective_cap, is_critical,
                 _occupants,
             )
+            # Per-shed WARN with session_id + caller identity so operators can
+            # see real-time drops without scraping metrics (#1644). Rate-limited
+            # per-source on a configurable window: first shed in the window is
+            # logged immediately, subsequent sheds are counted and emitted as a
+            # summary WARN when the window flushes. Avoids log spam under
+            # sustained drops while preserving "first sign of trouble" signal.
+            _now = time.monotonic()
+            _state = _background_shed_log_state.get(source)
+            if _state is None or (_now - _state["window_start"]) >= _BACKGROUND_SHED_LOG_WINDOW_SEC:
+                # Flush prior window's suppressed count (if any) before opening
+                # a new window. This emits a summary on the *next* shed; for a
+                # cleaner exit a periodic flusher could be wired in, but per
+                # #1644 the requirement is real-time visibility on drops.
+                if _state is not None and _state["suppressed"] > 0:
+                    logger.warning(
+                        "background task shed: source=%s suppressed=%d in last %.1fs window",
+                        source, int(_state["suppressed"]), _BACKGROUND_SHED_LOG_WINDOW_SEC,
+                        extra={"shed": True},
+                    )
+                logger.warning(
+                    "background task shed: source=%s session=%s caller=%s",
+                    source, session_id, caller_identity,
+                    extra={"shed": True},
+                )
+                _background_shed_log_state[source] = {
+                    "window_start": _now,
+                    "suppressed": 0,
+                }
+            else:
+                _state["suppressed"] = _state.get("suppressed", 0) + 1
             if harness_background_tasks_shed_total is not None:
                 harness_background_tasks_shed_total.labels(source=source).inc()
             # Close the coroutine so we don't leak a 'coroutine was never awaited'
