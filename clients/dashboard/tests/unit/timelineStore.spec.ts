@@ -41,6 +41,10 @@ function makeFakeStream(url: string): FakeStream {
     reconnecting: ref(false),
     error: ref(""),
     lastEventId: ref(""),
+    // #1606 + #1634 added these counters to UseEventStreamReturn;
+    // the fake must satisfy the interface so vue-tsc passes in CI.
+    droppedEventCount: ref(0),
+    parseFailureCount: ref(0),
     open: () => {},
     close: () => {
       fake.closed = true;
