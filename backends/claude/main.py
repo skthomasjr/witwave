@@ -79,6 +79,19 @@ except ValueError:
 if _MCP_MAX_BODY_BYTES <= 0:
     _MCP_MAX_BODY_BYTES = 4 * 1024 * 1024
 
+# #1618: bound the wait for a sub-app's lifespan.shutdown.complete so a
+# faulty / hung sub-app cannot stall pod termination indefinitely.
+# Default 10s — env-overridable via SUB_APP_SHUTDOWN_TIMEOUT_SEC. On
+# timeout we log a WARN (operators expect this on bad rollouts) and
+# proceed with the rest of the lifespan teardown so the pod still drains
+# in bounded time.
+try:
+    _SUB_APP_SHUTDOWN_TIMEOUT_SEC = float(os.environ.get("SUB_APP_SHUTDOWN_TIMEOUT_SEC", "10.0"))
+except ValueError:
+    _SUB_APP_SHUTDOWN_TIMEOUT_SEC = 10.0
+if _SUB_APP_SHUTDOWN_TIMEOUT_SEC <= 0:
+    _SUB_APP_SHUTDOWN_TIMEOUT_SEC = 10.0
+
 _ready: bool = False
 # #1368: surface boot-degraded state on /health so operators can alert
 # on backends that came up with empty MCP/agent_md/hooks after the
@@ -296,13 +309,36 @@ async def _sub_app_lifespan(app):
         # shutdown fails on multiple legs. Previously only the first
         # exception propagated and the underlying cause was masked.
         _errs: list[BaseException] = []
+        # #1618: bound the wait for shutdown.complete. A faulty sub-app
+        # that never emits the message must not be able to stall pod
+        # termination — log a WARN and continue with the rest of the
+        # teardown so the pod still drains in bounded time.
         try:
-            await shutdown
+            await asyncio.wait_for(shutdown, timeout=_SUB_APP_SHUTDOWN_TIMEOUT_SEC)
+        except asyncio.TimeoutError:
+            _sub_name = getattr(app, "__name__", None) or getattr(app, "name", None) or repr(app)
+            logger.warning(
+                "Sub-app lifespan shutdown timed out after %.1fs; proceeding with teardown (sub_app=%s)",
+                _SUB_APP_SHUTDOWN_TIMEOUT_SEC,
+                _sub_name,
+            )
         except Exception as exc:
             logger.warning("Sub-app lifespan shutdown error: %s", exc)
             _errs.append(exc)
         try:
-            await task
+            await asyncio.wait_for(task, timeout=_SUB_APP_SHUTDOWN_TIMEOUT_SEC)
+        except asyncio.TimeoutError:
+            _sub_name = getattr(app, "__name__", None) or getattr(app, "name", None) or repr(app)
+            logger.warning(
+                "Sub-app lifespan task did not exit within %.1fs after shutdown; cancelling (sub_app=%s)",
+                _SUB_APP_SHUTDOWN_TIMEOUT_SEC,
+                _sub_name,
+            )
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
         except Exception as exc:
             _errs.append(exc)
         _task_exc: BaseException | None = None
