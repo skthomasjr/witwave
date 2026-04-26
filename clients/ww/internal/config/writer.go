@@ -174,6 +174,11 @@ func (w *Writer) Unset(key string) error {
 // when the Writer was opened, Save creates parent directories as
 // needed and chmod 0600s the new file (bearer tokens live inside).
 //
+// #1607: enforces mode 0600 on every Save (not only first-write) and
+// chmods the parent directory to 0700. Older installs created by a
+// pre-fix ww may have landed at 0o644 / 0o755; rather than scolding
+// the user, every write tightens the perms to the intended posture.
+//
 // Returns a no-op error when nothing was staged — the caller is
 // probably confused about which key they were trying to write, and
 // should surface that rather than silently writing an unchanged file.
@@ -182,11 +187,24 @@ func (w *Writer) Save() error {
 		return errors.New("nothing to save — no keys were changed")
 	}
 
-	// Ensure the parent directory exists before Viper tries to write.
+	// Ensure the parent directory exists before Viper tries to write,
+	// and tighten its perms to 0700 on every save (#1607). MkdirAll is
+	// a no-op when the dir already exists at any mode, so we follow
+	// with an explicit Chmod to handle pre-existing 0o755 directories
+	// from older ww versions. Skip on Windows (ACL-based model).
 	parent := filepath.Dir(w.path)
 	if parent != "." && parent != "/" {
 		if err := os.MkdirAll(parent, 0o700); err != nil {
 			return fmt.Errorf("mkdir %s: %w", parent, err)
+		}
+		if runtime.GOOS != "windows" {
+			if err := os.Chmod(parent, 0o700); err != nil {
+				// Non-fatal — the file chmod below is the load-bearing
+				// guarantee. Surface as a warning so an admin-owned
+				// parent dir doesn't break `ww config set`.
+				fmt.Fprintf(os.Stderr,
+					"ww: warning: chmod 0700 %s failed: %v\n", parent, err)
+			}
 		}
 	}
 
@@ -218,13 +236,11 @@ func (w *Writer) Save() error {
 		return fmt.Errorf("write %s: %w", w.path, err)
 	}
 
-	// Post-write chmod is now idempotent on the happy path (file
-	// already 0o600 from pre-create), but remains important for:
-	//   1. The fallback case where pre-create failed (Windows, or
-	//      a concurrent creator).
-	//   2. Older files created by a pre-fix ww that landed at 0o644
-	//      and haven't been re-chmod'd yet.
-	if firstWrite && runtime.GOOS != "windows" {
+	// #1607: post-write chmod runs unconditionally (not just on
+	// first-write) so an existing config that drifted to 0o644 from
+	// a pre-fix ww gets tightened on the next Save. Idempotent when
+	// the file is already 0o600.
+	if runtime.GOOS != "windows" {
 		if err := os.Chmod(w.path, 0o600); err != nil {
 			return fmt.Errorf("chmod %s: %w", w.path, err)
 		}

@@ -1,8 +1,11 @@
 package config
 
 import (
+	"bytes"
+	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -267,6 +270,116 @@ base_url = "http://flag"
 	}
 	if r.BaseURL != "http://flag" {
 		t.Errorf("--config should win over WW_CONFIG, got %q", r.BaseURL)
+	}
+}
+
+// TestWriter_SaveTightensExistingPerms covers #1607: a config.toml that
+// exists with loose perms (e.g. 0o644 from an older ww) gets tightened
+// to 0o600 on the next Save, and the parent dir to 0o700.
+func TestWriter_SaveTightensExistingPerms(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("perm enforcement is unix-only")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	cfgDir := filepath.Join(home, ".witwave")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(cfgDir, "config.toml")
+	if err := os.WriteFile(p, []byte(`[update]
+mode = "notify"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Re-chmod to be sure (umask could have stripped bits on some
+	// systems).
+	if err := os.Chmod(cfgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(p, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	w, err := OpenWriter("", os.Getenv)
+	if err != nil {
+		t.Fatalf("OpenWriter: %v", err)
+	}
+	if !w.Existed() {
+		t.Fatal("Existed should be true for pre-seeded file")
+	}
+	if err := w.Set("update.mode", "auto"); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	if err := w.Save(); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	st, err := os.Stat(p)
+	if err != nil {
+		t.Fatalf("stat after save: %v", err)
+	}
+	if perm := st.Mode().Perm(); perm != 0o600 {
+		t.Errorf("file perm = %o after Save on existing 0644 file, want 0600", perm)
+	}
+	dst, err := os.Stat(cfgDir)
+	if err != nil {
+		t.Fatalf("stat parent: %v", err)
+	}
+	if perm := dst.Mode().Perm(); perm != 0o700 {
+		t.Errorf("parent perm = %o after Save on existing 0755 dir, want 0700", perm)
+	}
+}
+
+// TestLoad_WarnsOnLoosePerms covers #1607's load-side rationale: the
+// loader keeps loading (does not refuse) when config.toml has perms
+// readable by others, but emits a loud WARN to stderr.
+func TestLoad_WarnsOnLoosePerms(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("perm enforcement is unix-only")
+	}
+	dir := t.TempDir()
+	p := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(p, []byte(`[profile.default]
+base_url = "http://loose"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(p, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Capture stderr around the Load call. Restore in a deferred
+	// step so a test failure can't strand the global handle.
+	origStderr := os.Stderr
+	r, wPipe, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = wPipe
+	t.Cleanup(func() { os.Stderr = origStderr })
+
+	res, err := Load(p, FlagOverrides{}, fakeEnv(nil))
+	_ = wPipe.Close()
+	os.Stderr = origStderr
+
+	if err != nil {
+		t.Fatalf("Load should not refuse loose-perm file: %v", err)
+	}
+	if res.BaseURL != "http://loose" {
+		t.Errorf("Load should have parsed file values; BaseURL=%q", res.BaseURL)
+	}
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	stderr := buf.String()
+	if !strings.Contains(stderr, "permissive mode") {
+		t.Errorf("expected loose-perm warning on stderr, got: %q", stderr)
+	}
+	if !strings.Contains(stderr, p) {
+		t.Errorf("expected warning to mention path %q, got: %q", p, stderr)
 	}
 }
 

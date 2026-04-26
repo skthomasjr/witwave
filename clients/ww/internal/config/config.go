@@ -287,6 +287,14 @@ func Load(cfgPath string, overrides FlagOverrides, getenv func(string) string) (
 // validateConfigFile applies the safety checks we previously ran inline
 // before parsing: refuse non-regular paths, warn on world-readable mode
 // because bearer tokens live plaintext in the file.
+//
+// #1607: the perm check warns to stderr (never stdout — must not corrupt
+// JSON-emitting code paths like `ww config get -o json`) and continues
+// loading. We deliberately do NOT refuse to start: existing installs
+// from pre-fix ww may have landed at 0o644, and a hard failure would
+// strand users mid-shell-pipeline. The next `ww config set` Save will
+// tighten the perms (see writer.Save). The check is Unix-only;
+// Windows uses ACLs and the permission bits are not meaningful.
 func validateConfigFile(path string) error {
 	st, err := os.Stat(path)
 	if err != nil {
@@ -298,9 +306,11 @@ func validateConfigFile(path string) error {
 	if !st.Mode().IsRegular() {
 		return fmt.Errorf("config path %s is not a regular file (mode=%s)", path, st.Mode())
 	}
-	// #1358: warn (but proceed) when config.toml is readable by others —
-	// bearer tokens live plaintext inside. Unix-only check; Windows
-	// permission model differs and this block is a no-op there.
+	// #1358 / #1607: warn (but proceed) when config.toml is readable
+	// by others — bearer tokens live plaintext inside. Equivalent to
+	// "any mode bit > 0600" since the check matches any group/other
+	// permission. Unix-only check; Windows permission model differs
+	// and this block is a no-op there.
 	if runtime.GOOS != "windows" && st.Mode().Perm()&0o077 != 0 {
 		fmt.Fprintf(os.Stderr,
 			"ww: warning: config %s has permissive mode %04o; "+
