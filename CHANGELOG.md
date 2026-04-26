@@ -8,6 +8,16 @@ section of each entry.
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-04-26
+
+First release under the `witwave-ai/witwave` org (transferred from
+`skthomasjr/witwave` on 2026-04-26). New container images and helm
+charts are published to `ghcr.io/witwave-ai/...`; the old GHCR
+namespace becomes a frozen archive going forward. The `ww` CLI's
+update-check now points at the new Releases endpoint. Existing
+clones can follow GitHub's HTTP redirect or run
+`git remote set-url origin git@github.com:witwave-ai/witwave.git`.
+
 Autonomous bug + risk cycle output (74 commits, 73 closed issues
 across 10 cycles). The work was driven by the develop skill's
 discover/refine/approve/implement loop applied to bugs and risks
