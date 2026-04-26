@@ -315,6 +315,60 @@ describe("useEventStream", () => {
     scope.stop();
   });
 
+  it("drops events above the per-stream rate cap and increments droppedEventCount", async () => {
+    // #1606 — runaway-backend safeguard. Cap is 200 events/sec per
+    // stream; emit 250 inside the same second and assert the overflow
+    // is dropped (not buffered, not slow-polled) and surfaced via
+    // droppedEventCount on the reactive return.
+    const TOTAL = 250;
+    const CAP = 200;
+    const chunks: string[] = [];
+    for (let i = 1; i <= TOTAL; i += 1) {
+      chunks.push(
+        `id: ${i}\ndata: ${JSON.stringify({
+          type: "t",
+          version: 1,
+          id: String(i),
+          ts: "2026-04-18T00:00:00Z",
+          agent_id: null,
+          payload: {},
+        })}\n\n`,
+      );
+    }
+    const fetchImpl = vi.fn().mockResolvedValue(okStreamResponse(chunks));
+    // Silence the throttled warn so test output stays clean. The warn
+    // path itself is exercised — we just don't need it on stderr.
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const { value, scope } = run(() =>
+      useEventStream("/api/events/stream", {
+        fetchImpl,
+        autoConnect: false,
+        // Big maxEvents so the rate cap is what bounds the list, not
+        // the eviction floor.
+        maxEvents: 10_000,
+      }),
+    );
+    value.open();
+    await new Promise((r) => setTimeout(r, 30));
+
+    // All emits land inside one wall-clock second on a normal CI box.
+    // Allow either exactly CAP or — if the bucket happens to roll
+    // mid-pump — a slightly-over count, but assert at least some
+    // events were dropped and the counter reflects it.
+    expect(value.events.value.length).toBeLessThanOrEqual(TOTAL);
+    expect(value.events.value.length).toBeGreaterThanOrEqual(CAP);
+    expect(value.droppedEventCount.value).toBeGreaterThan(0);
+    expect(
+      value.events.value.length + value.droppedEventCount.value,
+    ).toBe(TOTAL);
+    expect(warnSpy).toHaveBeenCalled();
+
+    warnSpy.mockRestore();
+    value.close();
+    scope.stop();
+  });
+
   it("evicts the oldest events when maxEvents is exceeded", async () => {
     const chunks: string[] = [];
     for (let i = 1; i <= 5; i += 1) {

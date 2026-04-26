@@ -64,6 +64,11 @@ export interface UseEventStreamReturn {
   reconnecting: Ref<boolean>;
   error: Ref<string>;
   lastEventId: Ref<string>;
+  // Count of events dropped by the per-stream rate limiter (#1606).
+  // Surfaced reactively so the debug panel / UI can show backpressure
+  // without needing a separate metrics channel. Sibling to #1605's
+  // seenIds-cap work in the same merge path.
+  droppedEventCount: Ref<number>;
   open: () => void;
   close: () => void;
 }
@@ -76,6 +81,15 @@ const DEFAULT_MAX_DELAY_MS = 10_000;
 // loop against an unhealthy upstream. Floor every computed delay at
 // MIN_BACKOFF_MS so the reconnect pacer can't degenerate. (#1236)
 const MIN_BACKOFF_MS = 50;
+// Per-stream event rate cap (#1606). A runaway backend that floods us
+// with thousands of events/sec can saturate the merge path (Vue
+// reactivity + downstream watchers in TimelineView/useAlerts). We
+// drop above the cap rather than slow-poll or block — pure drop with
+// telemetry. Sibling to #1605's seenIds cap in the same merge path.
+const MAX_EVENTS_PER_SECOND_PER_STREAM = 200;
+// Throttle for the rate-limit console.warn so a sustained flood
+// doesn't itself fill the console.
+const RATE_LIMIT_WARN_INTERVAL_MS = 5_000;
 
 interface ParsedMessage {
   type: string;
@@ -196,6 +210,7 @@ export function useEventStream(
   const reconnecting = ref(false);
   const error = ref("");
   const lastEventId = ref("");
+  const droppedEventCount = ref(0);
 
   let aborter: AbortController | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -209,7 +224,41 @@ export function useEventStream(
   // refs or scheduling work after close()/reopen. (#1153)
   let currentGen = 0;
 
+  // Per-stream rate limiter state (#1606). Sliding 1-second bucket
+  // keyed off Date.now() / 1000. When a runaway backend exceeds the
+  // cap we drop the event and bump `droppedEventCount` for the UI.
+  // Sibling fix to #1605 (seenIds cap) — both touch this merge path
+  // and intentionally land together; do NOT duplicate #1605's scope
+  // here.
+  let eventsThisSecond = 0;
+  let currentBucket = 0;
+  let lastWarnAt = 0;
+
   function pushEvent(envelope: EventEnvelope): void {
+    // Rate limit BEFORE doing any reactive work so a flood can't
+    // trigger O(N) slice/splice churn on Vue's reactivity. (#1606)
+    const now = Date.now();
+    const bucket = Math.floor(now / 1000);
+    if (bucket !== currentBucket) {
+      currentBucket = bucket;
+      eventsThisSecond = 0;
+    }
+    if (eventsThisSecond >= MAX_EVENTS_PER_SECOND_PER_STREAM) {
+      droppedEventCount.value += 1;
+      if (now - lastWarnAt >= RATE_LIMIT_WARN_INTERVAL_MS) {
+        lastWarnAt = now;
+        // Single throttled warn — we don't want a sustained flood to
+        // also flood the console. Operators can read the precise
+        // dropped count from `droppedEventCount` on the returned ref.
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[useEventStream] event rate cap hit (${MAX_EVENTS_PER_SECOND_PER_STREAM}/s); dropping events. total dropped=${droppedEventCount.value}`,
+        );
+      }
+      return;
+    }
+    eventsThisSecond += 1;
+
     const next = events.value.slice();
     next.push(envelope);
     if (next.length > maxEvents) {
@@ -473,6 +522,7 @@ export function useEventStream(
     reconnecting,
     error,
     lastEventId,
+    droppedEventCount,
     open,
     close,
   };
