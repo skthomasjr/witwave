@@ -117,6 +117,11 @@ const backlogError = ref<string>("");
 const backlogLoading = ref<boolean>(false);
 let backlogAborter: AbortController | null = null;
 let convStream: UseConversationStreamReturn | null = null;
+// Stop handles for the watchers wired up in openStream(). Without these,
+// the watchers stay live after teardownStream() and continue mutating
+// component refs from the closed stream's still-reactive sources after a
+// filter switch (#1661).
+let streamWatchers: Array<() => void> = [];
 const streamConnected = ref<boolean>(false);
 const streamReconnecting = ref<boolean>(false);
 const streamError = ref<string>("");
@@ -145,6 +150,18 @@ function clearDisconnectTimer(): void {
 
 function teardownStream(): void {
   clearDisconnectTimer();
+  // Stop the bridged watchers BEFORE closing the stream so a final
+  // synchronous flush from the composable can't sneak through and mutate
+  // component refs that we're about to reset (#1661). Iterate defensively
+  // — a thrown stop handle from one watcher must not strand the others.
+  for (const stop of streamWatchers) {
+    try {
+      stop();
+    } catch {
+      // ignore
+    }
+  }
+  streamWatchers = [];
   if (convStream) {
     try {
       convStream.close();
@@ -195,47 +212,58 @@ function openStream(agent: string, session: string): void {
   convStream = stream;
   // Bridge the composable's refs onto component-owned refs so watchers in
   // the view react to both the stream lifecycle and to mode toggles.
-  watch(
-    stream.connected,
-    (v) => {
-      streamConnected.value = v;
-      if (v) {
-        pollingFallback.value = false;
-        clearDisconnectTimer();
-      } else if (disconnectTimer === null) {
-        disconnectTimer = setTimeout(() => {
-          pollingFallback.value = true;
-          disconnectTimer = null;
-          // While in fallback, re-fetch the backlog on each grace window
-          // so the list still advances even if the stream remains down.
-          // The fanout itself keeps polling on its own cadence, so we
-          // only need to nudge the backlog view.
-          if (streamMode.value && convStream === stream) {
-            void loadBacklog(agent, session);
-          }
-        }, DISCONNECT_GRACE_MS);
-      }
-    },
-    { immediate: true },
-  );
-  watch(stream.reconnecting, (v) => (streamReconnecting.value = v), {
-    immediate: true,
-  });
-  watch(stream.error, (v) => (streamError.value = v), { immediate: true });
-  watch(
-    stream.turns,
-    (v) => {
-      // Tag every incoming turn with the gen under which it was
-      // observed; stale flushes from the prior session land with an
-      // older gen and get filtered out at render time. (#1165)
-      for (const turn of v) {
-        if (!streamTurnGens.has(turn.turnId)) {
-          streamTurnGens.set(turn.turnId, gen);
+  // Capture each watcher's stop handle so teardownStream() can detach
+  // them before nulling convStream — otherwise stale callbacks fire on
+  // the closed stream after a filter switch (#1661).
+  streamWatchers.push(
+    watch(
+      stream.connected,
+      (v) => {
+        streamConnected.value = v;
+        if (v) {
+          pollingFallback.value = false;
+          clearDisconnectTimer();
+        } else if (disconnectTimer === null) {
+          disconnectTimer = setTimeout(() => {
+            pollingFallback.value = true;
+            disconnectTimer = null;
+            // While in fallback, re-fetch the backlog on each grace window
+            // so the list still advances even if the stream remains down.
+            // The fanout itself keeps polling on its own cadence, so we
+            // only need to nudge the backlog view.
+            if (streamMode.value && convStream === stream) {
+              void loadBacklog(agent, session);
+            }
+          }, DISCONNECT_GRACE_MS);
         }
-      }
-      streamTurns.value = v.slice();
-    },
-    { immediate: true, deep: true },
+      },
+      { immediate: true },
+    ),
+  );
+  streamWatchers.push(
+    watch(stream.reconnecting, (v) => (streamReconnecting.value = v), {
+      immediate: true,
+    }),
+  );
+  streamWatchers.push(
+    watch(stream.error, (v) => (streamError.value = v), { immediate: true }),
+  );
+  streamWatchers.push(
+    watch(
+      stream.turns,
+      (v) => {
+        // Tag every incoming turn with the gen under which it was
+        // observed; stale flushes from the prior session land with an
+        // older gen and get filtered out at render time. (#1165)
+        for (const turn of v) {
+          if (!streamTurnGens.has(turn.turnId)) {
+            streamTurnGens.set(turn.turnId, gen);
+          }
+        }
+        streamTurns.value = v.slice();
+      },
+      { immediate: true, deep: true },
+    ),
   );
 }
 
