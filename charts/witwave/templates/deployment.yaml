@@ -413,7 +413,11 @@ spec:
         {{- end }}
         {{- end }}
         - name: harness
-          image: {{ .image.repository }}:{{ .image.tag | default $.Chart.AppVersion }}
+          {{- /* Digest pinning (#855, #1612): when image.digest is set,
+                 render repository@sha256:... and ignore tag. Mirrors the
+                 mcp-tools.yaml pattern so production deployments can pin
+                 every container image immutably. */}}
+          image: {{ if .image.digest }}{{ printf "%s@%s" .image.repository .image.digest }}{{ else }}{{ printf "%s:%s" .image.repository (.image.tag | default $.Chart.AppVersion) }}{{ end }}
           imagePullPolicy: {{ .image.pullPolicy | default "IfNotPresent" }}
           securityContext:
             {{- include "witwave.hardenedContainerSecurityContext" (dict "root" $) | nindent 12 }}
@@ -541,7 +545,11 @@ spec:
 {{- if eq (include "witwave.enabled" .) "true" }}
 {{- $storageEnabled := ((.storage).enabled) }}
         - name: {{ .name }}
-          image: {{ .image.repository }}:{{ .image.tag | default $.Chart.AppVersion }}
+          {{- /* Digest pinning (#855, #1612): when image.digest is set,
+                 render repository@sha256:... and ignore tag. Mirrors the
+                 mcp-tools.yaml pattern so production deployments can pin
+                 every container image immutably. */}}
+          image: {{ if .image.digest }}{{ printf "%s@%s" .image.repository .image.digest }}{{ else }}{{ printf "%s:%s" .image.repository (.image.tag | default $.Chart.AppVersion) }}{{ end }}
           imagePullPolicy: {{ .image.pullPolicy | default "IfNotPresent" }}
           securityContext:
             {{- include "witwave.hardenedContainerSecurityContext" (dict "root" $) | nindent 12 }}
