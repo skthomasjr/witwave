@@ -65,6 +65,11 @@ backend_a2a_last_request_timestamp_seconds: prometheus_client.Gauge | None = Non
 backend_prompt_length_bytes: prometheus_client.Histogram | None = None
 backend_response_length_bytes: prometheus_client.Histogram | None = None
 backend_empty_prompts_total: prometheus_client.Counter | None = None
+# #1650 (cross-ref #1620): prompt-size cap rejections. Bumps each time
+# execute() rejects a prompt whose UTF-8 byte length exceeds
+# MAX_PROMPT_BYTES. Mirrors the codex counter so cross-backend dashboards
+# can union on the same series name.
+backend_prompt_too_large_total: prometheus_client.Counter | None = None
 
 
 def init_metrics() -> None:
@@ -79,7 +84,7 @@ def init_metrics() -> None:
     global backend_a2a_requests_total, backend_a2a_request_duration_seconds
     global backend_a2a_last_request_timestamp_seconds
     global backend_prompt_length_bytes, backend_response_length_bytes
-    global backend_empty_prompts_total
+    global backend_empty_prompts_total, backend_prompt_too_large_total
 
     if not _metrics_enabled() or backend_up is not None:
         return
@@ -135,5 +140,13 @@ def init_metrics() -> None:
     backend_empty_prompts_total = prometheus_client.Counter(
         "backend_empty_prompts_total",
         "Prompts rejected as empty or whitespace-only.",
+        _LABELS,
+    )
+    # #1650 (cross-ref #1620): oversized-prompt rejections. Cap is configured
+    # via MAX_PROMPT_BYTES env (default 1 MiB on echo — echo is a hello-world
+    # backend so the cap is tighter than codex's 10 MiB).
+    backend_prompt_too_large_total = prometheus_client.Counter(
+        "backend_prompt_too_large_total",
+        "Total execute() invocations rejected because the prompt exceeded MAX_PROMPT_BYTES (#1650).",
         _LABELS,
     )
