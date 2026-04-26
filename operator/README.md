@@ -57,7 +57,7 @@ For users who prefer Helm (GitOps pipelines, custom values, chart
 forks), the chart is published to GHCR:
 
 ```bash
-helm install witwave-operator oci://ghcr.io/skthomasjr/charts/witwave-operator \
+helm install witwave-operator oci://ghcr.io/witwave-ai/charts/witwave-operator \
   --version <tag> --namespace witwave-system --create-namespace
 ```
 

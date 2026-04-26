@@ -163,7 +163,7 @@ For changes to the operator's chart values (replicas, image overrides, HPA, affi
 non-default values should pull the chart directly:
 
 ```bash
-helm pull oci://ghcr.io/skthomasjr/charts/witwave-operator --version <tag>
+helm pull oci://ghcr.io/witwave-ai/charts/witwave-operator --version <tag>
 helm upgrade --install witwave-operator ./witwave-operator \
   -n witwave-system --create-namespace \
   -f my-operator-values.yaml

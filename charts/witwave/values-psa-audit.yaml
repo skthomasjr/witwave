@@ -21,13 +21,13 @@ agents:
   - name: psa-audit-agent
     port: 8000
     image:
-      repository: ghcr.io/skthomasjr/images/harness
+      repository: ghcr.io/witwave-ai/images/harness
       tag: "0.0.1-ci-audit"
     backends:
       - name: claude
         port: 8010
         image:
-          repository: ghcr.io/skthomasjr/images/claude
+          repository: ghcr.io/witwave-ai/images/claude
           tag: "0.0.1-ci-audit"
     dashboard:
       enabled: true
@@ -41,17 +41,17 @@ mcpTools:
   kubernetes:
     enabled: true
     image:
-      repository: ghcr.io/skthomasjr/images/mcp-kubernetes
+      repository: ghcr.io/witwave-ai/images/mcp-kubernetes
       tag: "0.0.1-ci-audit"
   helm:
     enabled: true
     image:
-      repository: ghcr.io/skthomasjr/images/mcp-helm
+      repository: ghcr.io/witwave-ai/images/mcp-helm
       tag: "0.0.1-ci-audit"
   prometheus:
     enabled: true
     image:
-      repository: ghcr.io/skthomasjr/images/mcp-prometheus
+      repository: ghcr.io/witwave-ai/images/mcp-prometheus
       tag: "0.0.1-ci-audit"
 
 # -- every NetworkPolicy surface enabled ------------------------------

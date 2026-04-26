@@ -376,7 +376,7 @@ Per-agent port assignments live in [`AGENTS.md` → Interacting with Agents](../
 
 ### git-sync Image
 
-The Helm chart uses an internal git-sync image (`ghcr.io/skthomasjr/images/git-sync`) built from `helpers/git-sync/Dockerfile`.
+The Helm chart uses an internal git-sync image (`ghcr.io/witwave-ai/images/git-sync`) built from `helpers/git-sync/Dockerfile`.
 This image adds `rsync` to the upstream git-sync base image, enabling `rsync --delete` for correct incremental directory
 sync. Without rsync, upstream git-sync copies only changed files — deletions and deep directory removes are not
 propagated. With rsync, the sync is fully correct: files and directories are added, modified, and deleted at all depths

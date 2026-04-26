@@ -30,7 +30,7 @@ func TestMCPToolName(t *testing.T) {
 
 func TestResolveMCPToolImage_DefaultsWhenSpecNil(t *testing.T) {
 	img := resolveMCPToolImage("kubernetes", nil, "v1.2.3")
-	if img.Repository != "ghcr.io/skthomasjr/images/mcp-kubernetes" {
+	if img.Repository != "ghcr.io/witwave-ai/images/mcp-kubernetes" {
 		t.Fatalf("expected default repository, got %q", img.Repository)
 	}
 	if img.Tag != "" {
@@ -43,7 +43,7 @@ func TestResolveMCPToolImage_FillsMissingRepository(t *testing.T) {
 		Image: &witwavev1alpha1.ImageSpec{Tag: "pinned"},
 	}
 	img := resolveMCPToolImage("helm", spec, "v1.2.3")
-	if img.Repository != "ghcr.io/skthomasjr/images/mcp-helm" {
+	if img.Repository != "ghcr.io/witwave-ai/images/mcp-helm" {
 		t.Fatalf("expected default repository, got %q", img.Repository)
 	}
 	if img.Tag != "pinned" {

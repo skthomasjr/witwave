@@ -72,7 +72,7 @@ const (
 	// gitSyncImageRepository is the default git-sync image repository
 	// used when a GitSyncSpec omits Image. Matches the chart's
 	// gitSync.image.repository default.
-	gitSyncImageRepository = "ghcr.io/skthomasjr/images/git-sync"
+	gitSyncImageRepository = "ghcr.io/witwave-ai/images/git-sync"
 
 	// gitSyncScriptCMSuffix is the ConfigMap name suffix holding the
 	// rsync helper script. One CM per WitwaveAgent keeps the owner

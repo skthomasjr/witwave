@@ -41,13 +41,13 @@ imagePullSecrets:
 Install:
 
 ```bash
-helm install witwave-operator oci://ghcr.io/skthomasjr/charts/witwave-operator --namespace witwave
+helm install witwave-operator oci://ghcr.io/witwave-ai/charts/witwave-operator --namespace witwave
 ```
 
 Install a specific version:
 
 ```bash
-helm install witwave-operator oci://ghcr.io/skthomasjr/charts/witwave-operator --version 0.1.0 --namespace witwave
+helm install witwave-operator oci://ghcr.io/witwave-ai/charts/witwave-operator --version 0.1.0 --namespace witwave
 ```
 
 ## Uninstall
@@ -69,7 +69,7 @@ kubectl delete crd witwaveagents.witwave.ai
 
 | Parameter                    | Description                                                                                  | Default                                     |
 | ---------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| `image.repository`           | Controller manager image repository                                                          | `ghcr.io/skthomasjr/images/operator`        |
+| `image.repository`           | Controller manager image repository                                                          | `ghcr.io/witwave-ai/images/operator`        |
 | `image.tag`                  | Image tag (defaults to `.Chart.AppVersion`)                                                  | `""`                                        |
 | `image.pullPolicy`           | Image pull policy                                                                            | `IfNotPresent`                              |
 | `imagePullSecrets`           | Image pull secrets for the controller pod                                                    | `[]`                                        |
@@ -222,12 +222,12 @@ spec:
           keys:
             ANTHROPIC_API_KEY: api_key
     # The echo backend needs no credentials at all — it ships with the
-    # chart (ghcr.io/skthomasjr/images/echo) and returns a canned response
+    # chart (ghcr.io/witwave-ai/images/echo) and returns a canned response
     # quoting the caller's prompt. Useful alongside a real backend as a
     # credential-free smoke-test surface. See backends/echo/README.md.
     - name: echo
       image:
-        repository: ghcr.io/skthomasjr/images/echo
+        repository: ghcr.io/witwave-ai/images/echo
       port: 8001
 ```
 

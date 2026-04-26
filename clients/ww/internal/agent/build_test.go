@@ -54,7 +54,7 @@ func TestBuild_Defaults(t *testing.T) {
 
 	// spec.image resolves to a harness image at the given version.
 	repo, found, err := unstructured.NestedString(obj.Object, "spec", "image", "repository")
-	if err != nil || !found || repo != "ghcr.io/skthomasjr/images/harness" {
+	if err != nil || !found || repo != "ghcr.io/witwave-ai/images/harness" {
 		t.Errorf("spec.image.repository = %q (found=%v err=%v); want harness repo", repo, found, err)
 	}
 	tag, _, _ := unstructured.NestedString(obj.Object, "spec", "image", "tag")

@@ -101,7 +101,7 @@ Target cluster:  docker-desktop  (context: docker-desktop)
 Namespace:       witwave
 Action:          create WitwaveAgent "hello"
 Backends:        echo/8001
-Harness image:   ghcr.io/skthomasjr/images/harness:0.7.7
+Harness image:   ghcr.io/witwave-ai/images/harness:0.7.7
 
 Created namespace witwave (labelled app.kubernetes.io/managed-by=ww).
 Created WitwaveAgent hello in namespace witwave (uid=...)

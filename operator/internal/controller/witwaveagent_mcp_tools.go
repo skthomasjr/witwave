@@ -44,9 +44,9 @@ const mcpToolPort int32 = 8000
 // omits just image.repository, we supply the same repo the chart defaults
 // to so operator-only installs and chart installs render identical pods.
 var defaultMCPToolImages = map[string]string{
-	"kubernetes": "ghcr.io/skthomasjr/images/mcp-kubernetes",
-	"helm":       "ghcr.io/skthomasjr/images/mcp-helm",
-	"prometheus": "ghcr.io/skthomasjr/images/mcp-prometheus", // #1354, #1556
+	"kubernetes": "ghcr.io/witwave-ai/images/mcp-kubernetes",
+	"helm":       "ghcr.io/witwave-ai/images/mcp-helm",
+	"prometheus": "ghcr.io/witwave-ai/images/mcp-prometheus", // #1354, #1556
 }
 
 // reconcileMCPTools walks every tool the spec asks for and reconciles a

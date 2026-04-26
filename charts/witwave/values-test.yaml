@@ -1,7 +1,7 @@
 dashboard:
   enabled: true
   image:
-    repository: ghcr.io/skthomasjr/images/dashboard
+    repository: ghcr.io/witwave-ai/images/dashboard
     tag: "0.4.0"
   imagePullSecrets:
     - name: ghcr-credentials
@@ -20,14 +20,14 @@ metrics:
 
 gitSync:
   image:
-    repository: ghcr.io/skthomasjr/images/git-sync
+    repository: ghcr.io/witwave-ai/images/git-sync
     tag: 0.4.0
 
 agents:
   - name: bob
     port: 8099
     image:
-      repository: ghcr.io/skthomasjr/images/harness
+      repository: ghcr.io/witwave-ai/images/harness
       tag: "0.4.0"
     imagePullSecrets:
       - name: ghcr-credentials
@@ -81,7 +81,7 @@ agents:
     backends:
       - name: claude
         image:
-          repository: ghcr.io/skthomasjr/images/claude
+          repository: ghcr.io/witwave-ai/images/claude
           tag: "0.4.0"
         port: 8090
         model: claude-opus-4-7
@@ -110,7 +110,7 @@ agents:
         # the OpenAI account to restore the codex backend.
         enabled: false
         image:
-          repository: ghcr.io/skthomasjr/images/codex
+          repository: ghcr.io/witwave-ai/images/codex
           tag: "0.4.0"
         port: 8091
         model: gpt-5.1-codex-max
@@ -134,7 +134,7 @@ agents:
         # git-mappings ConfigMap, and Service port (#beta.32).
         enabled: false
         image:
-          repository: ghcr.io/skthomasjr/images/gemini
+          repository: ghcr.io/witwave-ai/images/gemini
           tag: "0.4.0"
         port: 8092
         env:
@@ -156,7 +156,7 @@ agents:
   - name: fred
     port: 8098
     image:
-      repository: ghcr.io/skthomasjr/images/harness
+      repository: ghcr.io/witwave-ai/images/harness
       tag: "0.4.0"
     imagePullSecrets:
       - name: ghcr-credentials
@@ -182,7 +182,7 @@ agents:
     backends:
       - name: claude
         image:
-          repository: ghcr.io/skthomasjr/images/claude
+          repository: ghcr.io/witwave-ai/images/claude
           tag: "0.4.0"
         port: 8089
         model: claude-opus-4-7

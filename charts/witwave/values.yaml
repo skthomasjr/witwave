@@ -3,7 +3,7 @@
 dashboard:
   enabled: false
   image:
-    repository: ghcr.io/skthomasjr/images/dashboard
+    repository: ghcr.io/witwave-ai/images/dashboard
     # # Image tag. Defaults to .Chart.AppVersion when omitted.
     # tag: ""
     # # Immutable digest pin (#855, #1612, #1665). When set (e.g.
@@ -379,7 +379,7 @@ gitSync:
   # image in this chart does, so beta installs get pinned bits instead of
   # silently following ":latest" (#457). Override per-entry for sticky pins.
   image:
-    repository: ghcr.io/skthomasjr/images/git-sync
+    repository: ghcr.io/witwave-ai/images/git-sync
     # tag defaults to .Chart.AppVersion when empty
     tag: ""
 
@@ -995,7 +995,7 @@ mcpTools:
     # # projected SA token is suppressed).
     # automountServiceAccountToken: true
     image:
-      repository: ghcr.io/skthomasjr/images/mcp-kubernetes
+      repository: ghcr.io/witwave-ai/images/mcp-kubernetes
       # # Image tag. Defaults to .Chart.AppVersion when omitted.
       # tag: ""
       # # Immutable digest pin (#855). When set (e.g.
@@ -1065,7 +1065,7 @@ mcpTools:
     # # Three-state override (#856). See kubernetes.automountServiceAccountToken.
     # automountServiceAccountToken: true
     image:
-      repository: ghcr.io/skthomasjr/images/mcp-helm
+      repository: ghcr.io/witwave-ai/images/mcp-helm
       # tag: ""
       # # Immutable digest pin (#855). When set, renders
       # # `repository@<digest>` and ignores `tag`. See kubernetes.image.digest
@@ -1129,7 +1129,7 @@ mcpTools:
     # Three-state semantics documented at kubernetes.automountServiceAccountToken.
     automountServiceAccountToken: false
     image:
-      repository: ghcr.io/skthomasjr/images/mcp-prometheus
+      repository: ghcr.io/witwave-ai/images/mcp-prometheus
       # tag: ""
       # # Immutable digest pin (#855).
       # digest: ""
@@ -1174,7 +1174,7 @@ agents:
     # harness orchestrator image.
     image:
       # Image repository.
-      repository: ghcr.io/skthomasjr/images/harness
+      repository: ghcr.io/witwave-ai/images/harness
       # # Image tag. Defaults to .Chart.AppVersion when omitted.
       # tag: ""
       # # Immutable digest pin (#855, #1612). When set (e.g.
@@ -1252,7 +1252,7 @@ agents:
     #     # Clone depth. 1 is sufficient for config-only repos.
     #     # depth: 1
     #     # git-sync image. Defaults to the internal image (upstream git-sync + rsync).
-    #     # image: ghcr.io/skthomasjr/images/git-sync:latest
+    #     # image: ghcr.io/witwave-ai/images/git-sync:latest
     #     # Credentials for the sidecar. Three mutually exclusive paths — the
     #     # `credentials:` block takes precedence over the legacy `envFrom:` shape
     #     # when both are set. Leave empty to inherit top-level gitSync.credentials.
@@ -1311,7 +1311,7 @@ agents:
         # Backend container image.
         image:
           # Image repository.
-          repository: ghcr.io/skthomasjr/images/claude
+          repository: ghcr.io/witwave-ai/images/claude
           # # Image tag. Defaults to .Chart.AppVersion when omitted.
           # tag: ""
           # # Immutable digest pin (#855, #1612). When set (e.g.
@@ -1444,6 +1444,6 @@ agents:
       # # See backends/echo/README.md for the contract + intentional-non-scope list.
       # - name: echo
       #   image:
-      #     repository: ghcr.io/skthomasjr/images/echo
+      #     repository: ghcr.io/witwave-ai/images/echo
       #     # tag defaults to .Chart.AppVersion
       #   port: 8001  # must be unique across an agent's backends

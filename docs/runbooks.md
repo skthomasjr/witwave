@@ -31,7 +31,7 @@ ww operator logs --pod <pod>
 **Remediation.**
 
 - **CrashLoopBackOff:** check recent config changes; roll back the last `helm upgrade` if it correlates.
-- **ErrImagePull / ImagePullBackOff:** verify `ghcr.io/skthomasjr/images/*` is reachable and that the image tag is real.
+- **ErrImagePull / ImagePullBackOff:** verify `ghcr.io/witwave-ai/images/*` is reachable and that the image tag is real.
 - **Node eviction:** check `kubectl describe node <node>` for resource pressure; may indicate PVC fill or memory
   pressure unrelated to witwave.
 

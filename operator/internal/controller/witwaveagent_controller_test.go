@@ -46,13 +46,13 @@ func newTestAgent(name string) *witwavev1alpha1.WitwaveAgent {
 		},
 		Spec: witwavev1alpha1.WitwaveAgentSpec{
 			Image: witwavev1alpha1.ImageSpec{
-				Repository: "ghcr.io/skthomasjr/images/harness",
+				Repository: "ghcr.io/witwave-ai/images/harness",
 				Tag:        "test",
 			},
 			Backends: []witwavev1alpha1.BackendSpec{{
 				Name: "claude",
 				Image: witwavev1alpha1.ImageSpec{
-					Repository: "ghcr.io/skthomasjr/images/claude",
+					Repository: "ghcr.io/witwave-ai/images/claude",
 					Tag:        "test",
 				},
 			}},

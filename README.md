@@ -100,17 +100,17 @@ on every release tag.
 
 | Image            | Registry path                                     |
 | ---------------- | ------------------------------------------------- |
-| `harness`        | `ghcr.io/skthomasjr/images/harness:latest`        |
-| `claude`         | `ghcr.io/skthomasjr/images/claude:latest`         |
-| `codex`          | `ghcr.io/skthomasjr/images/codex:latest`          |
-| `gemini`         | `ghcr.io/skthomasjr/images/gemini:latest`         |
-| `echo`           | `ghcr.io/skthomasjr/images/echo:latest`           |
-| `dashboard`      | `ghcr.io/skthomasjr/images/dashboard:latest`      |
-| `operator`       | `ghcr.io/skthomasjr/images/operator:latest`       |
-| `git-sync`       | `ghcr.io/skthomasjr/images/git-sync:latest`       |
-| `mcp-kubernetes` | `ghcr.io/skthomasjr/images/mcp-kubernetes:latest` |
-| `mcp-helm`       | `ghcr.io/skthomasjr/images/mcp-helm:latest`       |
-| `mcp-prometheus` | `ghcr.io/skthomasjr/images/mcp-prometheus:latest` |
+| `harness`        | `ghcr.io/witwave-ai/images/harness:latest`        |
+| `claude`         | `ghcr.io/witwave-ai/images/claude:latest`         |
+| `codex`          | `ghcr.io/witwave-ai/images/codex:latest`          |
+| `gemini`         | `ghcr.io/witwave-ai/images/gemini:latest`         |
+| `echo`           | `ghcr.io/witwave-ai/images/echo:latest`           |
+| `dashboard`      | `ghcr.io/witwave-ai/images/dashboard:latest`      |
+| `operator`       | `ghcr.io/witwave-ai/images/operator:latest`       |
+| `git-sync`       | `ghcr.io/witwave-ai/images/git-sync:latest`       |
+| `mcp-kubernetes` | `ghcr.io/witwave-ai/images/mcp-kubernetes:latest` |
+| `mcp-helm`       | `ghcr.io/witwave-ai/images/mcp-helm:latest`       |
+| `mcp-prometheus` | `ghcr.io/witwave-ai/images/mcp-prometheus:latest` |
 
 The `ww` CLI ships via Homebrew (the [witwave-ai/homebrew-ww](https://github.com/witwave-ai/homebrew-ww) tap) and as
 standalone binaries on [GitHub Releases](https://github.com/skthomasjr/witwave/releases):
@@ -128,7 +128,7 @@ ww update --check      # check only
 ww update --force      # run the upgrade unconditionally
 ```
 
-Pull a specific image version with a semver tag, e.g. `ghcr.io/skthomasjr/images/harness:0.4.0`. The latest released tag
+Pull a specific image version with a semver tag, e.g. `ghcr.io/witwave-ai/images/harness:0.4.0`. The latest released tag
 is visible on the [GitHub Releases](https://github.com/skthomasjr/witwave/releases) page; substitute it for the version
 below.
 
@@ -151,10 +151,10 @@ CLI-managed):
 
 ```bash
 # Agent chart — deploys witwave agents directly via templated manifests.
-helm install witwave oci://ghcr.io/skthomasjr/charts/witwave --version 0.5.6 --namespace witwave --create-namespace
+helm install witwave oci://ghcr.io/witwave-ai/charts/witwave --version 0.5.6 --namespace witwave --create-namespace
 
 # Operator chart — installs the witwave-operator controller and the WitwaveAgent CRD.
-helm install witwave-operator oci://ghcr.io/skthomasjr/charts/witwave-operator --version 0.5.6 --namespace witwave-system --create-namespace
+helm install witwave-operator oci://ghcr.io/witwave-ai/charts/witwave-operator --version 0.5.6 --namespace witwave-system --create-namespace
 ```
 
 See [charts/witwave/README.md](charts/witwave/README.md) and
@@ -167,11 +167,11 @@ See [charts/witwave/README.md](charts/witwave/README.md) and
 Pull published images:
 
 ```bash
-docker pull ghcr.io/skthomasjr/images/harness:latest
-docker pull ghcr.io/skthomasjr/images/claude:latest
-docker pull ghcr.io/skthomasjr/images/codex:latest
-docker pull ghcr.io/skthomasjr/images/gemini:latest
-docker pull ghcr.io/skthomasjr/images/echo:latest
+docker pull ghcr.io/witwave-ai/images/harness:latest
+docker pull ghcr.io/witwave-ai/images/claude:latest
+docker pull ghcr.io/witwave-ai/images/codex:latest
+docker pull ghcr.io/witwave-ai/images/gemini:latest
+docker pull ghcr.io/witwave-ai/images/echo:latest
 ```
 
 Or build locally:

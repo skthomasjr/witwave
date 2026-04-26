@@ -119,7 +119,7 @@ running the platform. That's what we've got.
 
 ### Container images
 
-Every image published under `ghcr.io/skthomasjr/images/*` on a tag release is cosign-signed via Sigstore's keyless
+Every image published under `ghcr.io/witwave-ai/images/*` on a tag release is cosign-signed via Sigstore's keyless
 (OIDC) flow (#1460). No long-lived signing key lives in this repo — the certificate identity is the release workflow
 itself, bound to the tag the image was built from.
 
@@ -130,7 +130,7 @@ To verify an image before running it:
 # images tagged 0.5.5 (docker/metadata-action@v5 default semver
 # normalisation). Helm chart tags also strip the v. `latest` and
 # `<major>.<minor>` aliases exist as well.
-IMAGE=ghcr.io/skthomasjr/images/operator:0.5.5
+IMAGE=ghcr.io/witwave-ai/images/operator:0.5.5
 
 cosign verify \
   --certificate-identity-regexp="^https://github.com/skthomasjr/witwave/\.github/workflows/release\.yaml@refs/tags/v.*$" \
@@ -170,13 +170,13 @@ The `.cosign.bundle` file is published alongside each release asset.
 
 ### Helm charts
 
-Charts published to `oci://ghcr.io/skthomasjr/charts/*` are signed at push time. Verify via:
+Charts published to `oci://ghcr.io/witwave-ai/charts/*` are signed at push time. Verify via:
 
 ```bash
 cosign verify \
   --certificate-identity-regexp="^https://github.com/skthomasjr/witwave/\.github/workflows/release-helm\.yml@refs/tags/v.*$" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-  oci://ghcr.io/skthomasjr/charts/witwave-operator:0.5.5
+  oci://ghcr.io/witwave-ai/charts/witwave-operator:0.5.5
 ```
 
 ### What signing does NOT prove

@@ -8,7 +8,7 @@ import (
 
 // Default image registry + repo prefix. Mirrors every other image this
 // project publishes.
-const imageRepoPrefix = "ghcr.io/skthomasjr/images/"
+const imageRepoPrefix = "ghcr.io/witwave-ai/images/"
 
 // Port convention for ww-minted WitwaveAgent CRs. Documented so
 // NetworkPolicy rules, Service definitions, and operators adding a
@@ -104,7 +104,7 @@ func BackendImage(backend, cliVersion string) string {
 	return imageRef(backend, cliVersion)
 }
 
-// imageRef assembles `ghcr.io/skthomasjr/images/<name>:<tag>`. A blank,
+// imageRef assembles `ghcr.io/witwave-ai/images/<name>:<tag>`. A blank,
 // "dev", or "unknown" cliVersion falls back to :latest — this happens
 // only on unreleased builds and is loud by virtue of the tag itself.
 func imageRef(name, cliVersion string) string {

@@ -216,7 +216,7 @@ func TestBackendAdd_PortPicksFirstFreeSlot_Sparse(t *testing.T) {
 				"name": "echo-1",
 				"port": int64(8001),
 				"image": map[string]interface{}{
-					"repository": "ghcr.io/skthomasjr/images/echo",
+					"repository": "ghcr.io/witwave-ai/images/echo",
 					"tag":        "test",
 				},
 			},
@@ -224,7 +224,7 @@ func TestBackendAdd_PortPicksFirstFreeSlot_Sparse(t *testing.T) {
 				"name": "echo-3",
 				"port": int64(8003),
 				"image": map[string]interface{}{
-					"repository": "ghcr.io/skthomasjr/images/echo",
+					"repository": "ghcr.io/witwave-ai/images/echo",
 					"tag":        "test",
 				},
 			},
@@ -307,7 +307,7 @@ func TestBackendAdd_RefusesPast50(t *testing.T) {
 				"name": "b" + string(rune('a'+i%26)) + string(rune('a'+(i/26)%26)),
 				"port": int64(8001 + i),
 				"image": map[string]interface{}{
-					"repository": "ghcr.io/skthomasjr/images/echo",
+					"repository": "ghcr.io/witwave-ai/images/echo",
 					"tag":        "test",
 				},
 			}

@@ -8,14 +8,14 @@ metadata:
 spec:
   port: 8000
   image:
-    repository: ghcr.io/skthomasjr/images/harness
+    repository: ghcr.io/witwave-ai/images/harness
     # tag defaults to the operator's DefaultImageTag when unset
   metrics:
     enabled: false
   backends:
     - name: claude
       image:
-        repository: ghcr.io/skthomasjr/images/claude
+        repository: ghcr.io/witwave-ai/images/claude
       port: 8000
       model: claude-opus-4-6
       # envFrom references a Secret the user creates separately, e.g.
@@ -31,5 +31,5 @@ spec:
     # once you no longer need the sanity-check surface. See backends/echo/README.md.
     - name: echo
       image:
-        repository: ghcr.io/skthomasjr/images/echo
+        repository: ghcr.io/witwave-ai/images/echo
       port: 8001

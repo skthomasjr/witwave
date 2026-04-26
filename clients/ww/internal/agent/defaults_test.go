@@ -7,11 +7,11 @@ func TestHarnessImage(t *testing.T) {
 	cases := []struct {
 		version, want string
 	}{
-		{"0.6.0", "ghcr.io/skthomasjr/images/harness:0.6.0"},
-		{"v0.6.0", "ghcr.io/skthomasjr/images/harness:0.6.0"},
-		{"", "ghcr.io/skthomasjr/images/harness:latest"},
-		{"dev", "ghcr.io/skthomasjr/images/harness:latest"},
-		{"unknown", "ghcr.io/skthomasjr/images/harness:latest"},
+		{"0.6.0", "ghcr.io/witwave-ai/images/harness:0.6.0"},
+		{"v0.6.0", "ghcr.io/witwave-ai/images/harness:0.6.0"},
+		{"", "ghcr.io/witwave-ai/images/harness:latest"},
+		{"dev", "ghcr.io/witwave-ai/images/harness:latest"},
+		{"unknown", "ghcr.io/witwave-ai/images/harness:latest"},
 	}
 	for _, tc := range cases {
 		if got := HarnessImage(tc.version); got != tc.want {
@@ -22,10 +22,10 @@ func TestHarnessImage(t *testing.T) {
 
 func TestBackendImage(t *testing.T) {
 	t.Parallel()
-	if got, want := BackendImage("echo", "0.6.0"), "ghcr.io/skthomasjr/images/echo:0.6.0"; got != want {
+	if got, want := BackendImage("echo", "0.6.0"), "ghcr.io/witwave-ai/images/echo:0.6.0"; got != want {
 		t.Errorf("BackendImage(echo, 0.6.0) = %q; want %q", got, want)
 	}
-	if got, want := BackendImage("claude", "dev"), "ghcr.io/skthomasjr/images/claude:latest"; got != want {
+	if got, want := BackendImage("claude", "dev"), "ghcr.io/witwave-ai/images/claude:latest"; got != want {
 		t.Errorf("BackendImage(claude, dev) = %q; want %q", got, want)
 	}
 }

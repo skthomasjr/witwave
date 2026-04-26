@@ -71,7 +71,7 @@ func seedAgent(name, namespace string, mutateSpec func(spec map[string]interface
 	spec := map[string]interface{}{
 		"port": int64(DefaultHarnessPort),
 		"image": map[string]interface{}{
-			"repository": "ghcr.io/skthomasjr/images/harness",
+			"repository": "ghcr.io/witwave-ai/images/harness",
 			"tag":        "test",
 		},
 		"backends": []interface{}{
@@ -79,7 +79,7 @@ func seedAgent(name, namespace string, mutateSpec func(spec map[string]interface
 				"name": "echo",
 				"port": int64(BackendPort(0)),
 				"image": map[string]interface{}{
-					"repository": "ghcr.io/skthomasjr/images/echo",
+					"repository": "ghcr.io/witwave-ai/images/echo",
 					"tag":        "test",
 				},
 			},

@@ -67,13 +67,13 @@ agents:
 Install the chart:
 
 ```bash
-helm install witwave oci://ghcr.io/skthomasjr/charts/witwave --namespace witwave
+helm install witwave oci://ghcr.io/witwave-ai/charts/witwave --namespace witwave
 ```
 
 Install a specific version:
 
 ```bash
-helm install witwave oci://ghcr.io/skthomasjr/charts/witwave --version 0.1.0 --namespace witwave
+helm install witwave oci://ghcr.io/witwave-ai/charts/witwave --version 0.1.0 --namespace witwave
 ```
 
 ## Uninstall

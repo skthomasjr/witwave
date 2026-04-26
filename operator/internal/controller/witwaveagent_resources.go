@@ -1727,7 +1727,7 @@ func buildDashboardDeployment(agent *witwavev1alpha1.WitwaveAgent, appVersion st
 	// didn't specify one, so the simplest WitwaveAgent with
 	// `dashboard.enabled: true` still produces a deployable pod.
 	img := witwavev1alpha1.ImageSpec{
-		Repository: "ghcr.io/skthomasjr/images/dashboard",
+		Repository: "ghcr.io/witwave-ai/images/dashboard",
 	}
 	if d.Image != nil {
 		img = *d.Image

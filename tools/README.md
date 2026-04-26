@@ -64,6 +64,6 @@ mcpTools:
   kubernetes:
     enabled: true
     image:
-      repository: ghcr.io/skthomasjr/images/mcp-kubernetes
+      repository: ghcr.io/witwave-ai/images/mcp-kubernetes
       digest: sha256:abc123...
 ```

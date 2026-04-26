@@ -428,7 +428,7 @@ func echoBackend(name string, port int32) map[string]interface{} {
 		"name": name,
 		"port": int64(port),
 		"image": map[string]interface{}{
-			"repository": "ghcr.io/skthomasjr/images/echo",
+			"repository": "ghcr.io/witwave-ai/images/echo",
 			"tag":        "test",
 		},
 	}

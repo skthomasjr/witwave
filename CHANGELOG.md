@@ -1042,7 +1042,7 @@ on generated CRs.
   contract-conformance pytest template for future backend types. See
   `backends/echo/README.md` for the in-scope vs intentional-non-scope list.
 - **Release matrix** (`.github/workflows/release.yaml`) now publishes
-  `ghcr.io/skthomasjr/images/echo` on every tag.
+  `ghcr.io/witwave-ai/images/echo` on every tag.
 - **Chart integration** — `charts/witwave/values.yaml` defines
   proportionally small resource defaults for echo (~1/10th the envelope
   of an LLM-backed sidecar) and includes a commented `backends[]`
@@ -1210,7 +1210,7 @@ silent hardening.
 ### Added
 
 - **Cosign keyless signing on every container image** (#1460). All
-  ten images published under `ghcr.io/skthomasjr/images/*` on a tag
+  ten images published under `ghcr.io/witwave-ai/images/*` on a tag
   release are now signed via Sigstore's OIDC flow — no long-lived
   signing key in the repo. Verification is opt-in; `docker pull` /
   `helm install` / `ww operator install` continue to work identically.

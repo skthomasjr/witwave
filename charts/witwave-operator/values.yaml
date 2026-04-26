@@ -1,6 +1,6 @@
 # witwave-operator controller manager image.
 image:
-  repository: ghcr.io/skthomasjr/images/operator
+  repository: ghcr.io/witwave-ai/images/operator
   # Image tag. Defaults to .Chart.AppVersion when empty.
   tag: ""
   pullPolicy: IfNotPresent

@@ -274,8 +274,8 @@ var _ = Describe("Manager", Ordered, func() {
 		const (
 			witwaveAgentName      = "e2e-witwaveagent"
 			witwaveAgentNamespace = "operator-system"
-			harnessImage          = "ghcr.io/skthomasjr/images/harness:latest"
-			backendImage          = "ghcr.io/skthomasjr/images/claude:latest"
+			harnessImage          = "ghcr.io/witwave-ai/images/harness:latest"
+			backendImage          = "ghcr.io/witwave-ai/images/claude:latest"
 		)
 
 		BeforeEach(func() {
@@ -332,7 +332,7 @@ var _ = Describe("Manager", Ordered, func() {
 			// We only assert that the Deployment's rollout progresses far enough
 			// for status.availableReplicas to become >= 1 — we don't require a
 			// real in-cluster image, because the e2e harness doesn't preload
-			// ghcr.io/skthomasjr/images/* into kind. If the image can't be
+			// ghcr.io/witwave-ai/images/* into kind. If the image can't be
 			// pulled, this will time out and the AfterEach dump will surface
 			// the ImagePullBackOff event for the debugger.
 			Eventually(func(g Gomega) {

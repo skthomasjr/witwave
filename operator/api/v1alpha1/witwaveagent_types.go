@@ -377,7 +377,7 @@ type GitSyncSpec struct {
 
 	// Image optionally overrides the default git-sync image for this
 	// entry. When unset, the operator's default git-sync image is used
-	// (ghcr.io/skthomasjr/images/git-sync:<appVersion>).
+	// (ghcr.io/witwave-ai/images/git-sync:<appVersion>).
 	// +optional
 	Image *ImageSpec `json:"image,omitempty"`
 
