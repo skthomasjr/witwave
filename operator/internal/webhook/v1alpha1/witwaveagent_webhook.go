@@ -80,7 +80,7 @@ func (v *WitwaveAgentCustomValidator) ValidateCreate(ctx context.Context, obj ru
 	if !ok {
 		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected *WitwaveAgent, got %T", obj))
 	}
-	return nil, validateWitwaveAgent(agent)
+	return inlineCredentialsRBACWarnings(agent), validateWitwaveAgent(agent)
 }
 
 func (v *WitwaveAgentCustomValidator) ValidateUpdate(ctx context.Context, _ runtime.Object, newObj runtime.Object) (admission.Warnings, error) {
@@ -88,7 +88,7 @@ func (v *WitwaveAgentCustomValidator) ValidateUpdate(ctx context.Context, _ runt
 	if !ok {
 		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected *WitwaveAgent, got %T", newObj))
 	}
-	return nil, validateWitwaveAgent(agent)
+	return inlineCredentialsRBACWarnings(agent), validateWitwaveAgent(agent)
 }
 
 // validateWitwaveAgent runs every WitwaveAgent admission check. Any single failure
@@ -334,6 +334,52 @@ func validateInlineCredentialsAck(agent *witwavev1alpha1.WitwaveAgent) error {
 
 func (v *WitwaveAgentCustomValidator) ValidateDelete(ctx context.Context, _ runtime.Object) (admission.Warnings, error) {
 	return nil, nil
+}
+
+// inlineCredentialsRBACWarnings returns admission warnings (NOT errors —
+// must not block admission) when any credentials block on the CR opts in
+// to inline secrets via AcknowledgeInsecureInline=true. Inline mode
+// requires the operator to reconcile a Secret on the user's behalf,
+// which means the operator ServiceAccount needs Secret write verbs
+// (`create`, `update`, `patch`, `delete`). The chart gates that surface
+// behind `rbac.secretsWrite=true` (split RBAC posture, see AGENTS.md
+// "Operator RBAC"); when an operator is deployed with
+// `rbac.secretsWrite=false` and a CR ships inline credentials, the
+// reconciler will fail to materialise the Secret and the backend will
+// stay unhealthy.
+//
+// The webhook can't directly introspect its own RBAC binding, so we emit
+// the warning unconditionally whenever the inline-acknowledgement is
+// present — telling the operator (the human) what to verify rather than
+// trying to detect it ourselves. See #1623 (warning surface) and #1613
+// (split RBAC posture motivation).
+func inlineCredentialsRBACWarnings(agent *witwavev1alpha1.WitwaveAgent) admission.Warnings {
+	var warnings admission.Warnings
+	for i, gs := range agent.Spec.GitSyncs {
+		c := gs.Credentials
+		if c == nil || c.ExistingSecret != "" {
+			continue
+		}
+		if c.AcknowledgeInsecureInline && (c.Username != "" || c.Token != "") {
+			warnings = append(warnings, fmt.Sprintf(
+				"spec.gitSyncs[%d].credentials (name=%q): inline credentials with acknowledgeInsecureInline=true require the operator to reconcile a Secret on your behalf — ensure the operator chart was installed with rbac.secretsWrite=true (see #1623, #1613); for production, prefer credentials.existingSecret to reference a pre-created Secret",
+				i, gs.Name,
+			))
+		}
+	}
+	for i, b := range agent.Spec.Backends {
+		c := b.Credentials
+		if c == nil || c.ExistingSecret != "" {
+			continue
+		}
+		if c.AcknowledgeInsecureInline && len(c.Secrets) > 0 {
+			warnings = append(warnings, fmt.Sprintf(
+				"spec.backends[%d].credentials (name=%q): inline secrets with acknowledgeInsecureInline=true require the operator to reconcile a Secret on your behalf — ensure the operator chart was installed with rbac.secretsWrite=true (see #1623, #1613); for production, prefer credentials.existingSecret to reference a pre-created Secret",
+				i, b.Name,
+			))
+		}
+	}
+	return warnings
 }
 
 // validateBackendNamesUnique returns an error when two or more entries in
