@@ -80,7 +80,22 @@ const DEFAULT_MAX_DELAY_MS = 10_000;
 // can produce 0ms, which turns a server bounce into a tight reconnect
 // loop against an unhealthy upstream. Floor every computed delay at
 // MIN_BACKOFF_MS so the reconnect pacer can't degenerate. (#1236)
-const MIN_BACKOFF_MS = 50;
+//
+// Raised from 50ms to 500ms in #1615: the prior 50ms floor was still
+// aggressive enough that under fleet scale (N dashboard tabs all
+// honouring `retry: 0` from a buggy/malicious backend), the harness
+// saw ~N reconnects per 50ms — a tight DDoS amplification window
+// exactly when the harness was already unhealthy.
+const MIN_BACKOFF_MS = 500;
+// Server `retry:` hints below this threshold are treated as suspect
+// (likely a buggy backend) and clamped up to MIN_BACKOFF_MS rather
+// than being honoured at face value. (#1615)
+const MIN_TRUSTED_SERVER_RETRY_MS = 100;
+// Stop reconnecting after this many consecutive failures. Without a
+// terminal state, a permanently-broken stream loops forever, burning
+// battery + amplifying load against a known-bad upstream. The UI sees
+// the terminal state via the existing `error` ref. (#1615)
+const MAX_CONSECUTIVE_FAILURES = 30;
 // Per-stream event rate cap (#1606). A runaway backend that floods us
 // with thousands of events/sec can saturate the merge path (Vue
 // reactivity + downstream watchers in TimelineView/useAlerts). We
@@ -217,6 +232,12 @@ export function useEventStream(
   let attempt = 0;
   let serverRetryHintMs: number | null = null;
   let closed = false;
+  // Consecutive-failure counter — incremented on each scheduleReconnect
+  // entry, reset to 0 on a successful connect. When >= MAX_CONSECUTIVE_FAILURES
+  // we stop scheduling further reconnects and surface the terminal state
+  // via the `error` ref. (#1615)
+  let consecutiveFailures = 0;
+  let lastRetryClampWarnAt = 0;
   // generation counter — every open() bumps this. runOnce/loop/
   // scheduleReconnect/fetch-then callbacks capture the generation at
   // entry and early-return if it no longer matches currentGen. This
@@ -368,6 +389,10 @@ export function useEventStream(
     reconnecting.value = false;
     error.value = "";
     attempt = 0;
+    // Successful connect — reset the consecutive-failure terminal-state
+    // counter so a transient outage doesn't permanently kill the
+    // stream after a long uptime accrues failures. (#1615)
+    consecutiveFailures = 0;
 
     const reader = body.getReader();
     const decoder = new TextDecoder("utf-8");
@@ -409,9 +434,36 @@ export function useEventStream(
     // do exponential backoff with full jitter bounded by maxDelayMs.
     // Full jitter: ceiling = min(maxDelayMs, initialDelayMs * 2**attempt);
     // delay = random * ceiling. No additive floor. (#1152)
+    // Terminal-failure gate (#1615): after MAX_CONSECUTIVE_FAILURES
+    // consecutive failed reconnects, stop scheduling. The UI sees the
+    // terminal state via the `error` ref already set in the catch path.
+    consecutiveFailures += 1;
+    if (consecutiveFailures > MAX_CONSECUTIVE_FAILURES) {
+      reconnecting.value = false;
+      if (!error.value) {
+        error.value = `stream-failed: gave up after ${MAX_CONSECUTIVE_FAILURES} consecutive reconnect failures`;
+      }
+      return;
+    }
+
     let delay: number;
     if (serverRetryHintMs !== null) {
-      delay = serverRetryHintMs;
+      // Validate server `retry:` hint against MIN_TRUSTED_SERVER_RETRY_MS
+      // (#1615). Below that threshold we treat the hint as suspect and
+      // clamp it up to MIN_BACKOFF_MS — a buggy or malicious backend
+      // sending `retry: 0` should not amplify into a reconnect storm.
+      if (serverRetryHintMs < MIN_TRUSTED_SERVER_RETRY_MS) {
+        const now = Date.now();
+        if (now - lastRetryClampWarnAt > RATE_LIMIT_WARN_INTERVAL_MS) {
+          lastRetryClampWarnAt = now;
+          console.warn(
+            `[useEventStream] server retry hint ${serverRetryHintMs}ms below trusted floor ${MIN_TRUSTED_SERVER_RETRY_MS}ms; clamping to ${MIN_BACKOFF_MS}ms`,
+          );
+        }
+        delay = MIN_BACKOFF_MS;
+      } else {
+        delay = serverRetryHintMs;
+      }
       serverRetryHintMs = null;
     } else {
       const ceiling = Math.min(
@@ -420,10 +472,9 @@ export function useEventStream(
       );
       delay = Math.floor(Math.random() * ceiling);
     }
-    // Apply MIN_BACKOFF_MS floor across BOTH branches (#1531). Previously
-    // only the jitter branch enforced the floor, so a server-issued
-    // ``retry: 0`` hint triggered a tight reconnect loop against an
-    // unhealthy harness.
+    // Apply MIN_BACKOFF_MS floor across BOTH branches (#1531, #1615).
+    // Server-issued `retry:` hints below MIN_TRUSTED_SERVER_RETRY_MS are
+    // already clamped above; this floor catches the jitter-branch case.
     delay = Math.max(MIN_BACKOFF_MS, delay);
     attempt += 1;
 
