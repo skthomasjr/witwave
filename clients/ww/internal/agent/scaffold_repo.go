@@ -1,17 +1,78 @@
 package agent
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"os/exec"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/go-git/go-git/v5/plumbing/transport/ssh"
 )
+
+// Per-shell-out timeouts. git operations here are pure metadata reads
+// (config get, ls-remote, credential fill) and should be sub-second on
+// the happy path; gh auth token is a local keychain read. Caps prevent
+// a misbehaving credential helper or a network black hole from wedging
+// the CLI indefinitely. #1616.
+const (
+	_gitCmdTimeout = 15 * time.Second
+	_ghCmdTimeout  = 10 * time.Second
+
+	// _credentialFillMaxBytes bounds the bytes we'll read from a
+	// `git credential fill` helper. A well-behaved helper returns a
+	// few hundred bytes; a malfunctioning or hostile one could stream
+	// indefinitely. 64 KiB is comfortably above any legitimate output.
+	_credentialFillMaxBytes = 64 * 1024
+)
+
+// _credentialEnvKeys lists env var names that we strip from any child
+// process environment before exec. Mirrors the set in update/notify.go.
+// Keep alphabetised. None of these are needed for the read-only git /
+// gh probes this file performs.
+var _credentialEnvKeys = map[string]struct{}{
+	"ANTHROPIC_API_KEY": {},
+	"GH_TOKEN":          {},
+	"GITHUB_TOKEN":      {},
+	"GIT_TOKEN":         {},
+	"OPENAI_API_KEY":    {},
+}
+
+// sanitizeShellEnv returns a copy of env with credential-bearing
+// entries removed. Operates on `KEY=VALUE` strings as produced by
+// os.Environ() and consumed by exec.Cmd.Env.
+func sanitizeShellEnv(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		eq := strings.IndexByte(kv, '=')
+		if eq < 0 {
+			out = append(out, kv)
+			continue
+		}
+		if _, drop := _credentialEnvKeys[kv[:eq]]; drop {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
+}
+
+// commandWithTimeout wraps exec.CommandContext with a derived timeout
+// context. The returned cancel function MUST be called by the caller
+// (typically via defer) to release timer resources. The child's env
+// is pre-sanitised to drop credential-bearing variables.
+func commandWithTimeout(timeout time.Duration, name string, args ...string) (*exec.Cmd, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Env = sanitizeShellEnv(os.Environ())
+	return cmd, cancel
+}
 
 // osGetenv is os.Getenv, captured through a package-level indirection
 // so tests can stub environment resolution without touching the real
@@ -228,7 +289,8 @@ func isGitHubTokenShape(s string) bool {
 // maintaining a standalone git credential helper entry, so this is
 // often the only auth path that actually works on a dev laptop.
 func ghAuthToken() (string, bool) {
-	cmd := exec.Command("gh", "auth", "token")
+	cmd, cancel := commandWithTimeout(_ghCmdTimeout, "gh", "auth", "token")
+	defer cancel()
 	out, err := cmd.Output()
 	if err != nil {
 		return "", false
@@ -253,7 +315,8 @@ func ghAuthToken() (string, bool) {
 // The fallback is deliberate: empty repos have no meaningful default
 // yet, and "main" matches what GitHub creates on first push since 2020.
 func detectRemoteDefaultBranch(cloneURL string) string {
-	cmd := exec.Command("git", "ls-remote", "--symref", cloneURL, "HEAD")
+	cmd, cancel := commandWithTimeout(_gitCmdTimeout, "git", "ls-remote", "--symref", cloneURL, "HEAD")
+	defer cancel()
 	out, err := cmd.Output()
 	if err != nil {
 		return ""
@@ -281,7 +344,8 @@ func detectRemoteDefaultBranch(cloneURL string) string {
 // trimmed. Empty string when git isn't installed, the key isn't set,
 // or any other failure — callers fall through to their defaults.
 func gitConfigGet(key string) string {
-	cmd := exec.Command("git", "config", "--get", key)
+	cmd, cancel := commandWithTimeout(_gitCmdTimeout, "git", "config", "--get", key)
+	defer cancel()
 	out, err := cmd.Output()
 	if err != nil {
 		return ""
@@ -308,13 +372,26 @@ func gitCredentialFill(cloneURL string) (string, string, bool) {
 	// perfectly-good credential entry.
 	path := strings.TrimPrefix(u.Path, "/")
 	path = strings.TrimSuffix(path, ".git")
-	cmd := exec.Command("git", "credential", "fill")
+	cmd, cancel := commandWithTimeout(_gitCmdTimeout, "git", "credential", "fill")
+	defer cancel()
 	cmd.Stdin = strings.NewReader(fmt.Sprintf(
 		"protocol=%s\nhost=%s\npath=%s\n\n",
 		u.Scheme, u.Host, path,
 	))
-	out, err := cmd.Output()
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		return "", "", false
+	}
+	if err := cmd.Start(); err != nil {
+		return "", "", false
+	}
+	// Cap output so a malfunctioning credential helper can't OOM us.
+	// The helper protocol's expected output is a handful of `key=value`
+	// lines; 64 KiB is two orders of magnitude over realistic.
+	out, readErr := io.ReadAll(io.LimitReader(stdout, _credentialFillMaxBytes))
+	// Always Wait so we don't leak the child even on a read error.
+	waitErr := cmd.Wait()
+	if readErr != nil || waitErr != nil {
 		return "", "", false
 	}
 	var username, password string

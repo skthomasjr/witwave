@@ -8,7 +8,64 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
+
+// Per-shell-out timeouts. Tied to the kind of work each tool does:
+// brew can chew on tap refresh / formula download for tens of seconds
+// in the worst case but should never hang forever; go install is bounded
+// by the brew slot since they're in the same upgrade flow. #1616.
+const (
+	_brewCmdTimeout = 30 * time.Second
+	_goCmdTimeout   = 60 * time.Second
+)
+
+// _credentialEnvKeys lists env var names that we strip from any child
+// process environment before exec. None of these are required by brew /
+// git / gh for the read-only operations this package performs, and any
+// of them leaking into a subprocess that logs its env (or one that
+// happens to be replaced by a malicious shim on PATH) is a credential-
+// disclosure footgun. Keep alphabetised; matches scaffold_repo.go.
+var _credentialEnvKeys = map[string]struct{}{
+	"ANTHROPIC_API_KEY": {},
+	"GH_TOKEN":          {},
+	"GITHUB_TOKEN":      {},
+	"GIT_TOKEN":         {},
+	"OPENAI_API_KEY":    {},
+}
+
+// sanitizeShellEnv returns a copy of env with credential-bearing
+// entries removed. Operates on `KEY=VALUE` strings as produced by
+// os.Environ() and consumed by exec.Cmd.Env.
+func sanitizeShellEnv(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		eq := strings.IndexByte(kv, '=')
+		if eq < 0 {
+			out = append(out, kv)
+			continue
+		}
+		if _, drop := _credentialEnvKeys[kv[:eq]]; drop {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
+}
+
+// commandWithTimeout wraps exec.CommandContext with a derived timeout
+// context. The returned cancel function MUST be called by the caller
+// (typically via defer) to release timer resources promptly even when
+// the child exits before the deadline.
+func commandWithTimeout(parent context.Context, timeout time.Duration, name string, args ...string) (*exec.Cmd, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parent, timeout)
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Env = sanitizeShellEnv(os.Environ())
+	return cmd, cancel
+}
 
 // Notify renders the user-facing output for an available upgrade,
 // following the configured Mode. It is called from cobra's post-run
@@ -145,7 +202,8 @@ func RunUpgrade(ctx context.Context, method InstallMethod, currentVersion string
 		// On failure we don't bail — log it and try the upgrade
 		// anyway; if the user really is already current the upgrade
 		// is a no-op, and we'll detect that below regardless.
-		updateCmd := exec.CommandContext(ctx, "brew", "update")
+		updateCmd, cancelUpdate := commandWithTimeout(ctx, _brewCmdTimeout, "brew", "update")
+		defer cancelUpdate()
 		updateCmd.Stdout, updateCmd.Stderr = stdout, stderr
 		// #1554: refuse to inherit stdin on any brew call. Both
 		// `brew update` and `brew upgrade` can trigger interactive
@@ -160,7 +218,8 @@ func RunUpgrade(ctx context.Context, method InstallMethod, currentVersion string
 			fmt.Fprintf(stderr, "warning: `brew update` failed: %v — continuing with upgrade anyway\n", err)
 		}
 
-		upgradeCmd := exec.CommandContext(ctx, "brew", "upgrade", "ww")
+		upgradeCmd, cancelUpgrade := commandWithTimeout(ctx, _brewCmdTimeout, "brew", "upgrade", "ww")
+		defer cancelUpgrade()
 		upgradeCmd.Stdout, upgradeCmd.Stderr = stdout, stderr
 		upgradeCmd.Stdin = nil // #1554 — see update call above.
 		if err := upgradeCmd.Run(); err != nil {
@@ -202,9 +261,10 @@ func RunUpgrade(ctx context.Context, method InstallMethod, currentVersion string
 		return nil
 
 	case InstallMethodGoInstall:
-		goCmd := exec.CommandContext(ctx, "go", "install",
+		goCmd, cancelGo := commandWithTimeout(ctx, _goCmdTimeout, "go", "install",
 			"github.com/skthomasjr/witwave/clients/ww@latest",
 		)
+		defer cancelGo()
 		goCmd.Stdout, goCmd.Stderr = stdout, stderr
 		if err := goCmd.Run(); err != nil {
 			return fmt.Errorf("go install: %w", err)
@@ -227,7 +287,8 @@ func RunUpgrade(ctx context.Context, method InstallMethod, currentVersion string
 // and take the last token. Best-effort: any parse failure returns
 // ("", err) so callers can degrade gracefully instead of crashing.
 func brewInstalledVersion(ctx context.Context) (string, error) {
-	cmd := exec.CommandContext(ctx, "brew", "list", "--versions", "ww")
+	cmd, cancel := commandWithTimeout(ctx, _brewCmdTimeout, "brew", "list", "--versions", "ww")
+	defer cancel()
 	out, err := cmd.Output()
 	if err != nil {
 		// `brew list --versions` exits non-zero when the formula isn't
