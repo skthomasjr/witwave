@@ -1,3 +1,28 @@
+{{- /*
+Early fail-fast for empty basic-auth credentials (#1626).
+
+Fires whenever ingress.enabled=true AND ingress.auth.enabled=true AND
+type=basic AND BOTH ingress.auth.basic.htpasswd and
+ingress.auth.basic.existingSecret are empty — independent of
+dashboard.enabled. The previous guard sat inside the outer
+`if and .Values.ingress.enabled .Values.dashboard.enabled` gate
+in this same file, so misconfigured htpasswd was silently tolerated
+when dashboard.enabled stayed at its default of false. Inverting the
+order means operators see the validation error the moment they flip
+ingress.auth.enabled=true with no credentials, instead of discovering
+it later when they enable the dashboard.
+*/ -}}
+{{- if and .Values.ingress.enabled (((.Values.ingress).auth).enabled) -}}
+  {{- $earlyAuthType := (((.Values.ingress).auth).type) | default "basic" -}}
+  {{- if eq $earlyAuthType "basic" -}}
+    {{- $earlyBasic := (((.Values.ingress).auth).basic) | default dict -}}
+    {{- $earlyHtpasswd := $earlyBasic.htpasswd | default "" -}}
+    {{- $earlyExistingSecret := $earlyBasic.existingSecret | default "" -}}
+    {{- if and (not $earlyHtpasswd) (not $earlyExistingSecret) -}}
+      {{- fail "witwave chart: ingress.auth.enabled=true requires either ingress.auth.basic.htpasswd to be set OR ingress.auth.basic.existingSecret to reference a Secret containing the htpasswd. Generate htpasswd content with `htpasswd -nbB <user> <password>`. (#1626)" -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
 {{- if and .Values.ingress.enabled .Values.dashboard.enabled }}
 {{- /*
 Dashboard ingress auth guard (#528).

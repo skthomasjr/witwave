@@ -80,6 +80,49 @@ jobs:
             echo "no values-test.yaml for ${{ matrix.chart }}, skipping"
           fi
 
+      # #1626: ingress.auth.enabled=true with empty htpasswd AND empty
+      # existingSecret must fail render unconditionally — even when
+      # dashboard.enabled=false (the default). Previously the guard sat
+      # inside the dashboard.enabled gate in templates/ingress.yaml, so
+      # the misconfiguration was silently tolerated until someone flipped
+      # dashboard.enabled on. The matrix entry only matters for the
+      # witwave chart; skip for witwave-operator.
+      - name: helm template (#1626 empty-htpasswd guard)
+        if: matrix.chart == 'charts/witwave'
+        run: |
+          # Negative case: empty htpasswd, empty existingSecret, dashboard
+          # off. Must fail with the #1626 message.
+          if helm template ci-1626-bad charts/witwave \
+              --set ingress.enabled=true \
+              --set ingress.auth.enabled=true \
+              --set ingress.auth.type=basic \
+              --set ingress.auth.basic.htpasswd="" \
+              --set ingress.auth.basic.existingSecret="" \
+              > /dev/null 2> /tmp/helm-1626-err; then
+            echo "ERROR: empty htpasswd + empty existingSecret should fail render but did not" >&2
+            exit 1
+          fi
+          if ! grep -q '#1626' /tmp/helm-1626-err; then
+            echo "ERROR: render failed but #1626 marker missing from error message:" >&2
+            cat /tmp/helm-1626-err >&2
+            exit 1
+          fi
+          # Positive case: htpasswd populated → must render cleanly.
+          helm template ci-1626-ok charts/witwave \
+              --set ingress.enabled=true \
+              --set ingress.auth.enabled=true \
+              --set ingress.auth.type=basic \
+              --set 'ingress.auth.basic.htpasswd=admin:$2y$05$abcdefghijklmnopqrstuv' \
+              > /dev/null
+          # Positive case: existingSecret populated → must render cleanly.
+          helm template ci-1626-ok-existing charts/witwave \
+              --set ingress.enabled=true \
+              --set ingress.auth.enabled=true \
+              --set ingress.auth.type=basic \
+              --set ingress.auth.basic.existingSecret=my-htpasswd-secret \
+              > /dev/null
+          echo "#1626 empty-htpasswd guard: OK"
+
   schema-validate:
     runs-on: ubuntu-latest
     steps:

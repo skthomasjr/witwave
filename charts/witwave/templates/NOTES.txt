@@ -132,6 +132,16 @@ If pulling images from a private registry:
 
 RELIABILITY
 -----------
+{{- /* #1625: PodDisruptionBudget default flipped to enabled=true with
+      minAvailable=1. Safe at replicas=1 — see values.yaml comment block. */}}
+NOTE: Since chart #1625, `podDisruptionBudget.enabled` defaults to **true**
+(`minAvailable: 1`). This blocks `kubectl drain` on the agent's node until a
+replacement pod is Ready elsewhere, eliminating the ~30s outage that previously
+hit heartbeats/jobs/triggers on every node drain. Existing installs keep their
+own `values.yaml` setting; only fresh installs (and `helm upgrade` runs that
+don't pin the value) pick up the new default. Opt out with:
+  helm upgrade {{ .Release.Name }} ... --set podDisruptionBudget.enabled=false
+
 {{- $warnAgents := list }}
 {{- range $agent := .Values.agents }}
 {{- if eq (include "witwave.enabled" $agent) "true" }}
