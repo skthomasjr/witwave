@@ -362,17 +362,15 @@ def _prom_get(endpoint: str, params: dict[str, Any]) -> Any:
             raise err from exc
 
         if status != 200:
-            # Log the upstream body snippet for operator debugging but
-            # never return it to the caller (#1212) — upstream bodies
-            # can leak Prometheus internals / tenancy data / stack
-            # traces into agent memory. Return only the status code.
-            try:
-                snippet = bytes(buf[:512]).decode("utf-8", errors="replace")
-            except Exception:
-                snippet = "<undecodable>"
+            # #1212 refuses to return upstream bodies to the caller because
+            # they can leak Prometheus internals / tenancy data / stack
+            # traces. #1639: don't leak that same body into operator logs
+            # either — log only diagnostic-safe fields (endpoint, status
+            # code, byte count). Operators with cluster access can pull
+            # full bodies from Prometheus directly.
             log.warning(
-                "prometheus %s upstream HTTP %d body snippet: %s",
-                endpoint, status, snippet,
+                "prometheus %s upstream HTTP %d (%d bytes)",
+                endpoint, status, len(buf),
             )
             err = PrometheusError(f"prometheus returned HTTP {status}")
             set_span_error(_exec_span, err)
