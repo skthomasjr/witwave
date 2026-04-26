@@ -1339,6 +1339,14 @@ type MCPToolSpec struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName=wwa
+// The helm.sh/resource-policy=keep annotation below MUST NOT be removed by
+// automated regeneration (e.g. `make manifests`). It instructs Helm to retain
+// this CRD on `helm uninstall`, preventing accidental deletion of every
+// WitwaveAgent CR in the cluster. See #1647 (the bug that prompted adding it)
+// and #1614 (the operator install/uninstall lifecycle work it complements).
+// controller-gen preserves existing metadata.annotations on regeneration, and
+// this marker re-injects the annotation if the CRD file is rebuilt from scratch.
+// +kubebuilder:metadata:annotations="helm.sh/resource-policy=keep"
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Ready",type=integer,JSONPath=`.status.readyReplicas`
 // +kubebuilder:printcolumn:name="Backends",type=string,JSONPath=`.spec.backends[*].name`,priority=1
