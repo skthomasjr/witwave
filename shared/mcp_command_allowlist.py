@@ -44,7 +44,7 @@ import os
 # MCP_ALLOWED_COMMANDS. Also documented under
 # INTERPRETER_COMMANDS below so the args-level sanitizer can reject
 # inline-code arg forms when an interpreter IS explicitly allow-listed.
-DEFAULT_MCP_ALLOWED_COMMANDS = "mcp-kubernetes,mcp-helm"
+DEFAULT_MCP_ALLOWED_COMMANDS = "mcp-kubernetes,mcp-helm,mcp-prometheus"
 DEFAULT_MCP_ALLOWED_COMMAND_PREFIXES = "/home/agent/mcp-bin/,/usr/local/bin/"
 
 # Commands that, when allow-listed, must have their args sanitised so
