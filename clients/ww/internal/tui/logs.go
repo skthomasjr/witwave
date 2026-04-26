@@ -58,6 +58,16 @@ type agentLogsController struct {
 	cancel    context.CancelFunc
 	lineCount int // consumed for autoscroll heuristics
 
+	// wg tracks in-flight tailOne goroutines so cycleContainer/close
+	// can wait for them to drain after cancelling ctx before starting
+	// the next stream (or tearing the page down). Without this, a fast
+	// 'c' press could leave the previous tail's goroutines running
+	// against a stale ctx while the next streamCurrent has already
+	// installed a new one — leaking goroutines and (more visibly)
+	// kubectl/portforward connections that lsof would still see.
+	// See witwave#1663.
+	wg sync.WaitGroup
+
 	// UI primitives — the three-band layout mirrors the list page
 	// so the eye doesn't have to re-learn the chrome on navigation.
 	root   tview.Primitive
@@ -187,7 +197,18 @@ func (l *agentLogsController) start() {
 func (l *agentLogsController) cycleContainer() {
 	l.mu.Lock()
 	l.cycleIdx = (l.cycleIdx + 1) % len(l.containers)
+	if l.cancel != nil {
+		l.cancel()
+		l.cancel = nil
+	}
 	l.mu.Unlock()
+
+	// Wait for prior tailOne goroutines to drain before starting the
+	// next stream — otherwise aggregate-mode fan-out can leak kubectl
+	// log connections across rapid cycles. agent.Logs returns promptly
+	// once ctx is cancelled, so this is bounded in practice.
+	// See witwave#1663.
+	l.wg.Wait()
 
 	// Clear the body so the user isn't confusingly shown interleaved
 	// lines from two containers during the swap. Context cancel +
@@ -236,12 +257,18 @@ func (l *agentLogsController) streamCurrent() {
 				inner:  bridge,
 				prefix: []byte("[" + container + "] "),
 			}
+			// Add before spawning so cycleContainer/close can Wait()
+			// reliably even if the goroutine hasn't started yet.
+			// See witwave#1663.
+			l.wg.Add(1)
 			go l.tailOne(ctx, container, prefixed)
 		}
 		return
 	}
 
 	l.renderHeader(fmt.Sprintf("container=%s · tailing…", entry))
+	// See witwave#1663.
+	l.wg.Add(1)
 	go l.tailOne(ctx, entry, bridge)
 }
 
@@ -251,6 +278,9 @@ func (l *agentLogsController) streamCurrent() {
 // (container cycle / ESC) so a rotation doesn't spam "stream ended"
 // on every swap.
 func (l *agentLogsController) tailOne(ctx context.Context, container string, out io.Writer) {
+	// Pair with the wg.Add(1) in streamCurrent so cycleContainer/close
+	// can Wait() for the goroutine pool to drain. See witwave#1663.
+	defer l.wg.Done()
 	err := agent.Logs(ctx, l.parent.cfg, agent.LogsOptions{
 		Agent:     l.agent,
 		Namespace: l.namespace,
@@ -298,6 +328,12 @@ func (l *agentLogsController) close() {
 		l.cancel = nil
 	}
 	l.mu.Unlock()
+
+	// Drain in-flight tailOne goroutines so the page tear-down doesn't
+	// race with their final QueueUpdateDraw on the about-to-be-removed
+	// body, and so kubectl log connections close before the user sees
+	// the list page again. See witwave#1663.
+	l.wg.Wait()
 
 	l.parent.pages.RemovePage(logsPageName)
 	l.app.SetFocus(l.parent.table)
