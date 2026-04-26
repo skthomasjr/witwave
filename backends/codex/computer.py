@@ -27,6 +27,39 @@ BROWSER_CONTEXT_SWEEP_INTERVAL_SECONDS = float(
     os.environ.get("BROWSER_CONTEXT_SWEEP_INTERVAL_SECONDS", "60")
 )
 
+# #1619: Chromium sandbox posture is opt-out-of-sandbox, not the historical
+# always-disabled. The previous unconditional ``--no-sandbox`` +
+# ``--disable-setuid-sandbox`` made Chromium's renderer/zygote escapes a
+# single bug away from full pod compromise, even on hosts whose kernels
+# (user namespaces, seccomp) are perfectly capable of enforcing the
+# sandbox. Set ``CHROMIUM_SANDBOX_DISABLED=true`` only when the runtime
+# genuinely cannot host the sandbox (e.g. some unprivileged-container
+# combos, kernels without unprivileged user namespaces). Default off so
+# production benefits from defense-in-depth automatically.
+# ``--disable-dev-shm-usage`` stays on unconditionally — it is a memory
+# workaround for tiny ``/dev/shm`` mounts in containers, not a security
+# toggle.
+_CHROMIUM_SANDBOX_DISABLED = os.environ.get(
+    "CHROMIUM_SANDBOX_DISABLED", "false"
+).lower() in ("true", "1", "yes")
+
+
+def _chromium_launch_args() -> list[str]:
+    """Return the Chromium launch flag list honouring the sandbox opt-out."""
+    args = ["--disable-dev-shm-usage"]
+    if _CHROMIUM_SANDBOX_DISABLED:
+        # Insert sandbox-disabling flags ahead of the memory flag so the
+        # ordering matches the historical args list and is easy to grep.
+        args = ["--no-sandbox", "--disable-setuid-sandbox", *args]
+    return args
+
+
+logger.info(
+    "Chromium sandbox posture: %s (CHROMIUM_SANDBOX_DISABLED=%s)",
+    "DISABLED (--no-sandbox active)" if _CHROMIUM_SANDBOX_DISABLED else "ENABLED (host kernel sandbox)",
+    "true" if _CHROMIUM_SANDBOX_DISABLED else "false",
+)
+
 _BUTTON_MAP: dict[str, str] = {
     "left": "left",
     "right": "right",
@@ -109,7 +142,7 @@ class PlaywrightComputer(AsyncComputer):
                 self._playwright = await async_playwright().start()
                 self._browser = await self._playwright.chromium.launch(
                     headless=True,
-                    args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+                    args=_chromium_launch_args(),
                 )
                 self._context = await self._browser.new_context(
                     viewport={"width": self._width, "height": self._height},
@@ -255,7 +288,7 @@ class BrowserPool:
                 self._playwright = await async_playwright().start()
                 self._browser = await self._playwright.chromium.launch(
                     headless=True,
-                    args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+                    args=_chromium_launch_args(),
                 )
                 logger.info(
                     "Playwright shared browser started (%dx%d) for per-session contexts",
