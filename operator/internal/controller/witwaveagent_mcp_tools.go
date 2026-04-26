@@ -58,8 +58,16 @@ func (r *WitwaveAgentReconciler) reconcileMCPTools(ctx context.Context, agent *w
 	// Compute the desired (enabled) set first. When spec.mcpTools is
 	// nil we still run the cleanup pass so a tool that was deleted
 	// from the CR gets torn down.
+	//
+	// Agent-disabled short-circuit (#1635): when the parent CR has
+	// spec.enabled=false, the teardown path invokes this reconciler so
+	// every owned mcp-<tool> Deployment + Service gets cleaned up. We
+	// keep `desired` empty in that case so the cleanup pass below
+	// reaps every IsControlledBy match — even tools whose nested
+	// Enabled flag is still true.
 	desired := map[string]*witwavev1alpha1.MCPToolSpec{}
-	if agent.Spec.MCPTools != nil {
+	agentDisabled := agent.Spec.Enabled != nil && !*agent.Spec.Enabled
+	if !agentDisabled && agent.Spec.MCPTools != nil {
 		candidates := map[string]*witwavev1alpha1.MCPToolSpec{
 			"kubernetes": agent.Spec.MCPTools.Kubernetes,
 			"helm":       agent.Spec.MCPTools.Helm,

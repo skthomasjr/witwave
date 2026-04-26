@@ -36,12 +36,19 @@ import (
 // NetworkPolicies (the chart's `allowWitwaveAgents` knob) are follow-up.
 func (r *WitwaveAgentReconciler) reconcileNetworkPolicy(ctx context.Context, agent *witwavev1alpha1.WitwaveAgent) error {
 	np := agent.Spec.NetworkPolicy
+	// Agent-disabled short-circuit (#1635): when the parent CR has
+	// spec.enabled=false the teardown path invokes this reconciler so a
+	// previously-applied NetworkPolicy gets cleaned up. Force the
+	// delete-if-present branch regardless of np.Enabled — the apply path
+	// would otherwise re-stamp a NetworkPolicy on a CR whose Deployment
+	// has just been removed.
+	agentDisabled := agent.Spec.Enabled != nil && !*agent.Spec.Enabled
 	// Delete-if-present path (#1175): flipping spec.networkPolicy.enabled
 	// from true to false (or removing the block entirely) used to leave
 	// the previously-applied NetworkPolicy behind, so the agent stayed
 	// effectively isolated until someone deleted the object by hand.
 	// Mirror reconcileHPA: Get by name, IsControlledBy-check, Delete.
-	if np == nil || !np.Enabled {
+	if agentDisabled || np == nil || !np.Enabled {
 		existing := &networkingv1.NetworkPolicy{}
 		key := client.ObjectKey{Namespace: agent.Namespace, Name: agent.Name}
 		if err := r.Get(ctx, key, existing); err != nil {

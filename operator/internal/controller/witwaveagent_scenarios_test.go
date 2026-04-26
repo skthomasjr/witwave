@@ -23,6 +23,8 @@ import (
 	. "github.com/onsi/gomega"
 
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -156,5 +158,50 @@ var _ = Describe("WitwaveAgent scenarios (#835)", func() {
 		dep := &appsv1.Deployment{}
 		Expect(k8sClient.Get(ctx, key, dep)).To(Succeed())
 		Expect(dep.Spec.Template.Spec.Containers).ToNot(BeEmpty())
+	})
+
+	// Scenario 5: disable-flip tears down NetworkPolicy + MCP tools (#1635).
+	// teardownDisabledAgent previously skipped reconcileNetworkPolicy and
+	// reconcileMCPTools, leaving stale NetworkPolicies and mcp-<tool>
+	// Deployment/Service pairs after spec.enabled flipped to false. Assert
+	// that the additions to the teardown path actually drop them.
+	It("tears down NetworkPolicy and MCP tools when spec.enabled flips to false (#1635)", func() {
+		agent := newTestAgent(resourceName)
+		agent.Spec.NetworkPolicy = &witwavev1alpha1.NetworkPolicySpec{Enabled: true}
+		agent.Spec.MCPTools = &witwavev1alpha1.MCPToolsSpec{
+			Kubernetes: &witwavev1alpha1.MCPToolSpec{Enabled: true},
+		}
+		Expect(k8sClient.Create(ctx, agent)).To(Succeed())
+		Expect(reconcileUntilStable(r, key, 5)).To(Succeed())
+
+		// Sanity: NetworkPolicy + mcp-kubernetes Deployment/Service exist.
+		Expect(k8sClient.Get(ctx, key, &networkingv1.NetworkPolicy{})).To(Succeed())
+		mcpKey := types.NamespacedName{
+			Namespace: agent.Namespace,
+			Name:      fmt.Sprintf("%s-mcp-kubernetes", agent.Name),
+		}
+		Expect(k8sClient.Get(ctx, mcpKey, &appsv1.Deployment{})).To(Succeed())
+		Expect(k8sClient.Get(ctx, mcpKey, &corev1.Service{})).To(Succeed())
+
+		// Flip enabled -> false and reconcile to convergence.
+		live := &witwavev1alpha1.WitwaveAgent{}
+		Expect(k8sClient.Get(ctx, key, live)).To(Succeed())
+		disabled := false
+		live.Spec.Enabled = &disabled
+		Expect(k8sClient.Update(ctx, live)).To(Succeed())
+		Expect(reconcileUntilStable(r, key, 5)).To(Succeed())
+
+		// NetworkPolicy must be gone.
+		err := k8sClient.Get(ctx, key, &networkingv1.NetworkPolicy{})
+		Expect(apierrors.IsNotFound(err)).To(BeTrue(),
+			"expected NetworkPolicy to be torn down after disable, got err=%v", err)
+
+		// mcp-kubernetes Deployment + Service must be gone.
+		err = k8sClient.Get(ctx, mcpKey, &appsv1.Deployment{})
+		Expect(apierrors.IsNotFound(err)).To(BeTrue(),
+			"expected mcp-kubernetes Deployment to be torn down after disable, got err=%v", err)
+		err = k8sClient.Get(ctx, mcpKey, &corev1.Service{})
+		Expect(apierrors.IsNotFound(err)).To(BeTrue(),
+			"expected mcp-kubernetes Service to be torn down after disable, got err=%v", err)
 	})
 })

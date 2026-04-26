@@ -1605,6 +1605,19 @@ func (r *WitwaveAgentReconciler) teardownDisabledAgent(ctx context.Context, agen
 			}
 		}
 	}
+	// reconcileMCPTools (#1635): delete when disabled. The reconciler's
+	// agent-disabled short-circuit forces an empty desired set so the
+	// cleanup pass reaps every owned mcp-<tool> Deployment + Service.
+	if err := r.reconcileMCPTools(ctx, agent); err != nil {
+		recordErr("MCPTools", "delete", err)
+	}
+	// reconcileNetworkPolicy (#1635): delete when disabled. The
+	// reconciler's agent-disabled short-circuit forces the
+	// delete-if-present branch even when spec.networkPolicy.enabled
+	// is still true on the CR.
+	if err := r.reconcileNetworkPolicy(ctx, agent); err != nil {
+		recordErr("NetworkPolicy", "delete", err)
+	}
 	// Force the dashboard teardown regardless of spec.dashboard.enabled
 	// (#682). Without the forceDelete flag, reconcileDashboard's apply
 	// path would keep (or even create) the dashboard stack pointing at
