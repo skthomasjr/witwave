@@ -1153,11 +1153,34 @@ _EVICT_REMOVE_TASKS: set[asyncio.Task] = set()
 # #1513: bound concurrent deferred-eviction tasks under churn. Each task
 # awaits the pending history-save with a 5s timeout, so a bursty eviction
 # pattern (many sessions touched then LRU-evicted in quick succession)
-# could balloon the set. Cap via env; when the cap is reached, callers
-# fall back to the synchronous os.remove path so backpressure is visible
-# and memory growth is bounded independent of eviction rate.
+# could balloon the set. Cap via env; when the cap is reached the
+# backpressure branch in _track_session keeps awaiting any in-flight
+# history save (synchronous os.remove is only used when no save is
+# pending) so we never wipe the on-disk file from underneath a writer.
+#
+# Tuning (#1611): the default of 256 was chosen for typical eviction
+# bursts of ~10s of sessions/sec with ~100ms saves. Raise it
+# (e.g. ``GEMINI_EVICT_REMOVE_TASKS_MAX=1024``) on hosts where:
+#   * sustained eviction churn exceeds ~256 concurrent saves, or
+#   * disk fsync latency frequently approaches the 30s wait budget
+#     used by the backpressure branch (so few tasks complete in time
+#     to make headroom for new evictions).
+# Lower it (e.g. ``=64``) on memory-constrained pods where the per-task
+# overhead is more important than wait fidelity. Setting it ``=0``
+# disables deferred eviction entirely and degrades to the
+# backpressure branch on every eviction (still safe — never removes
+# while a save is in flight).
 _EVICT_REMOVE_TASKS_MAX = int(
     os.environ.get("GEMINI_EVICT_REMOVE_TASKS_MAX") or "256"
+)
+
+# #1611: how long the backpressure branch waits for an in-flight history
+# save before re-queueing the eviction. Longer than the per-task 5s
+# wait used by the deferred-eviction task because the backpressure path
+# is the last line of defence — we'd rather block briefly than risk
+# unlinking the file from under a writer that's about to publish.
+_EVICT_BACKPRESSURE_SAVE_WAIT_SEC = float(
+    os.environ.get("GEMINI_EVICT_BACKPRESSURE_SAVE_WAIT_SEC") or "30.0"
 )
 
 
@@ -1557,22 +1580,72 @@ def _track_session(
                 # sustained churn the 5s wait-for on each task could let
                 # the set grow proportionally to eviction backlog.
                 if len(_EVICT_REMOVE_TASKS) >= _EVICT_REMOVE_TASKS_MAX:
-                    # Backpressure: fall back to the synchronous remove
-                    # path (foregoing the pending history-save wait) so
-                    # eviction stays bounded and the history-save epoch
-                    # guard (#732) still blocks any racing late os.replace.
-                    try:
-                        os.remove(_evicted_path)
-                    except FileNotFoundError:
-                        pass
-                    except OSError as e:
-                        logger.warning(
-                            "Could not remove evicted session file %s "
-                            "(deferred cap reached): %s",
-                            _evicted_path, e,
-                        )
-                    _bump_cleanup_epoch(_evicted_id)
-                    _session_cleanup_epoch.pop(_evicted_id, None)
+                    # Backpressure (#1611): the deferred-eviction set is
+                    # full, but we MUST NOT synchronously os.remove() while
+                    # a history save is in flight — doing so races the
+                    # writer's os.replace (the epoch guard at #732 helps,
+                    # but the file has still been observed to flap on
+                    # disk in CI). Instead:
+                    #   * If a save is pending, schedule an async waiter
+                    #     that blocks up to _EVICT_BACKPRESSURE_SAVE_WAIT_SEC
+                    #     and then performs the remove. The waiter joins
+                    #     the same _EVICT_REMOVE_TASKS set so close()
+                    #     drains it on shutdown.
+                    #   * If no save is pending, the synchronous remove
+                    #     is safe — take the fast path so backpressure
+                    #     still relieves quickly.
+                    _pending_save_bp = _history_write_done.get(_evicted_id)
+                    if _pending_save_bp is not None:
+                        async def _backpressure_evict_remove(
+                            _ev_id: str = _evicted_id,
+                            _ev_path: str = _evicted_path,
+                            _save_event: asyncio.Event = _pending_save_bp,
+                        ) -> None:
+                            try:
+                                await asyncio.wait_for(
+                                    _save_event.wait(),
+                                    timeout=_EVICT_BACKPRESSURE_SAVE_WAIT_SEC,
+                                )
+                            except asyncio.TimeoutError:
+                                logger.warning(
+                                    "History save for LRU-evicted session %r "
+                                    "did not complete within %.1fs under "
+                                    "backpressure — removing file anyway; "
+                                    "epoch guard (#732) blocks any late "
+                                    "os.replace. (#1611)",
+                                    _ev_id,
+                                    _EVICT_BACKPRESSURE_SAVE_WAIT_SEC,
+                                )
+                            try:
+                                await asyncio.to_thread(os.remove, _ev_path)
+                            except FileNotFoundError:
+                                pass
+                            except OSError as _bp_err:
+                                logger.warning(
+                                    "Could not remove evicted session file "
+                                    "%s (backpressure path): %s",
+                                    _ev_path, _bp_err,
+                                )
+                            _bump_cleanup_epoch(_ev_id)
+                            _session_cleanup_epoch.pop(_ev_id, None)
+                        _bp_task = _loop.create_task(_backpressure_evict_remove())
+                        _EVICT_REMOVE_TASKS.add(_bp_task)
+                        _bp_task.add_done_callback(_EVICT_REMOVE_TASKS.discard)
+                    else:
+                        # No writer in flight — synchronous remove is safe
+                        # and avoids growing the deferred set further.
+                        try:
+                            os.remove(_evicted_path)
+                        except FileNotFoundError:
+                            pass
+                        except OSError as e:
+                            logger.warning(
+                                "Could not remove evicted session file %s "
+                                "(deferred cap reached, no pending save): %s",
+                                _evicted_path, e,
+                            )
+                        _bump_cleanup_epoch(_evicted_id)
+                        _session_cleanup_epoch.pop(_evicted_id, None)
                 else:
                     _evict_task = _loop.create_task(_deferred_evict_remove())
                     # Hold a strong reference so loop shutdown doesn't

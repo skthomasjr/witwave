@@ -440,5 +440,189 @@ class McpConfigPathPrefixTests(unittest.TestCase):
         self.assertEqual(result, {"k8s": {"url": "http://example/"}})
 
 
+# ---------------------------------------------------------------------------
+# Eviction backpressure must wait on pending save (#1611)
+# ---------------------------------------------------------------------------
+class EvictionBackpressureWaitsOnSaveTests(unittest.TestCase):
+    """Under simulated backpressure (deferred-eviction set is at the cap),
+    ``_track_session`` must NOT synchronously os.remove a session file
+    while a history save is in flight. The fix queues an async waiter
+    that joins the per-session ``_history_write_done`` Event before
+    removing — preserving the writer/unlinker invariant the deferred
+    path already upholds (#1611).
+    """
+
+    def test_no_sync_remove_while_save_in_flight(self):
+        async def scenario():
+            evicted_id = "evict-bp-pending"
+            evicted_path = os.path.join(
+                executor.SESSION_STORE_DIR, f"{evicted_id}.json"
+            )
+            os.makedirs(executor.SESSION_STORE_DIR, exist_ok=True)
+            # Materialise the file so a buggy synchronous remove would
+            # actually unlink something observable.
+            with open(evicted_path, "w") as fh:
+                fh.write("[]")
+
+            # Simulate a writer in flight: register a not-yet-set Event
+            # in the per-session done map.
+            done_event = asyncio.Event()
+            executor._history_write_done[evicted_id] = done_event
+
+            # Build a sessions OrderedDict that's already at MAX_SESSIONS,
+            # with our target as the LRU. Adding a brand-new id will evict it.
+            from collections import OrderedDict
+            sessions: OrderedDict[str, float] = OrderedDict()
+            # Force the eviction by setting MAX_SESSIONS = 1 for the call.
+            sessions[evicted_id] = 0.0
+            session_locks: dict = {}
+
+            # Saturate the deferred-eviction set so we land in the
+            # backpressure branch. Use a real Task that just awaits a
+            # never-set Event so it stays pending for the duration.
+            never = asyncio.Event()
+
+            async def _idle():
+                try:
+                    await never.wait()
+                except asyncio.CancelledError:
+                    raise
+
+            saturating: list[asyncio.Task] = []
+            try:
+                # Snapshot + clear so we control the cap exactly.
+                preexisting = set(executor._EVICT_REMOVE_TASKS)
+                executor._EVICT_REMOVE_TASKS.clear()
+                for _ in range(executor._EVICT_REMOVE_TASKS_MAX):
+                    t = asyncio.get_running_loop().create_task(_idle())
+                    saturating.append(t)
+                    executor._EVICT_REMOVE_TASKS.add(t)
+
+                removed_calls: list[str] = []
+                real_remove = os.remove
+
+                def _spy_remove(path, *a, **kw):
+                    removed_calls.append(path)
+                    return real_remove(path, *a, **kw)
+
+                with patch.object(executor, "MAX_SESSIONS", 1), \
+                     patch.object(executor.os, "remove", _spy_remove):
+                    executor._track_session(
+                        sessions, "fresh-session-id", session_locks,
+                    )
+
+                    # The backpressure branch must NOT have synchronously
+                    # removed our file: a save is in flight.
+                    self.assertNotIn(evicted_path, removed_calls)
+                    self.assertTrue(
+                        os.path.exists(evicted_path),
+                        "file was unlinked while save was in flight (regression)",
+                    )
+
+                    # A backpressure waiter task should have been queued.
+                    # It joined our cap-saturating set — total count grew
+                    # by exactly one.
+                    self.assertEqual(
+                        len(executor._EVICT_REMOVE_TASKS),
+                        executor._EVICT_REMOVE_TASKS_MAX + 1,
+                    )
+
+                    # Now release the writer; the waiter should run and
+                    # remove the file.
+                    done_event.set()
+                    # Drain: cycle the loop a few times until the waiter
+                    # completes (use wait_for on a copy so we don't hang
+                    # on the saturating idlers).
+                    new_tasks = [
+                        t for t in executor._EVICT_REMOVE_TASKS
+                        if t not in saturating
+                    ]
+                    self.assertEqual(len(new_tasks), 1)
+                    await asyncio.wait_for(new_tasks[0], timeout=5.0)
+
+                    self.assertFalse(
+                        os.path.exists(evicted_path),
+                        "waiter should have removed file after save completed",
+                    )
+            finally:
+                # Cleanup: cancel saturating tasks and restore set state.
+                for t in saturating:
+                    t.cancel()
+                # Let cancellations settle.
+                for t in saturating:
+                    try:
+                        await t
+                    except (asyncio.CancelledError, BaseException):
+                        pass
+                executor._EVICT_REMOVE_TASKS.clear()
+                executor._EVICT_REMOVE_TASKS.update(preexisting)
+                executor._history_write_done.pop(evicted_id, None)
+
+        asyncio.run(scenario())
+
+    def test_sync_remove_path_when_no_save_in_flight(self):
+        """When the deferred-eviction set is full AND no save is pending
+        for the evicted session, the backpressure branch is allowed to
+        take the synchronous remove fast path — no waiter overhead.
+        """
+        async def scenario():
+            evicted_id = "evict-bp-no-pending"
+            evicted_path = os.path.join(
+                executor.SESSION_STORE_DIR, f"{evicted_id}.json"
+            )
+            os.makedirs(executor.SESSION_STORE_DIR, exist_ok=True)
+            with open(evicted_path, "w") as fh:
+                fh.write("[]")
+
+            # Critically: do NOT register a done-event for this session.
+            executor._history_write_done.pop(evicted_id, None)
+
+            from collections import OrderedDict
+            sessions: OrderedDict[str, float] = OrderedDict()
+            sessions[evicted_id] = 0.0
+            session_locks: dict = {}
+
+            never = asyncio.Event()
+
+            async def _idle():
+                try:
+                    await never.wait()
+                except asyncio.CancelledError:
+                    raise
+
+            saturating: list[asyncio.Task] = []
+            preexisting = set(executor._EVICT_REMOVE_TASKS)
+            executor._EVICT_REMOVE_TASKS.clear()
+            try:
+                for _ in range(executor._EVICT_REMOVE_TASKS_MAX):
+                    t = asyncio.get_running_loop().create_task(_idle())
+                    saturating.append(t)
+                    executor._EVICT_REMOVE_TASKS.add(t)
+
+                with patch.object(executor, "MAX_SESSIONS", 1):
+                    executor._track_session(
+                        sessions, "fresh-session-id-2", session_locks,
+                    )
+
+                # The fast path ran: file is gone, no new task queued.
+                self.assertFalse(os.path.exists(evicted_path))
+                self.assertEqual(
+                    len(executor._EVICT_REMOVE_TASKS),
+                    executor._EVICT_REMOVE_TASKS_MAX,
+                )
+            finally:
+                for t in saturating:
+                    t.cancel()
+                for t in saturating:
+                    try:
+                        await t
+                    except (asyncio.CancelledError, BaseException):
+                        pass
+                executor._EVICT_REMOVE_TASKS.clear()
+                executor._EVICT_REMOVE_TASKS.update(preexisting)
+
+        asyncio.run(scenario())
+
+
 if __name__ == "__main__":
     unittest.main()
