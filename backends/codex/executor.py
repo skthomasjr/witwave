@@ -1645,7 +1645,11 @@ async def run_query(
                 try:
                     _usage = getattr(data, "usage", None) or getattr(getattr(data, "response", None), "usage", None)
                     if _usage is not None:
-                        _candidate = getattr(_usage, "total_tokens", None) or getattr(_usage, "output_tokens", None)
+                        # Only enforce the budget when total_tokens is reported.
+                        # output_tokens alone undercounts (excludes prompt/cached
+                        # tokens) and previously caused premature budget trips
+                        # for callers whose SDK surfaces only the output side.
+                        _candidate = getattr(_usage, "total_tokens", None)
                         if _candidate is not None:
                             _total_tokens = max(_total_tokens, int(_candidate))
                             if max_tokens is not None and _total_tokens >= max_tokens:
