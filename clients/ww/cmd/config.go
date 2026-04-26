@@ -107,7 +107,14 @@ func newConfigGetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Println(w.Get(args[0]))
+			// Redact credential values so shell history, scrollback, and
+			// CI logs never see the raw token. Mirrors `ww config set`.
+			if isSecretKey(args[0]) {
+				fmt.Fprintln(cc.OutOrStdout(), "<redacted>")
+				fmt.Fprintln(cc.ErrOrStderr(), "Secret value redacted; retrieve from kubeconfig/Secret directly if needed.")
+				return nil
+			}
+			fmt.Fprintln(cc.OutOrStdout(), w.Get(args[0]))
 			return nil
 		},
 	}
