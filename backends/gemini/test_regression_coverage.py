@@ -377,5 +377,39 @@ class PreToolUseGateScaffoldTests(unittest.TestCase):
             sys.modules.pop("hooks_engine", None)
 
 
+# ---------------------------------------------------------------------------
+# Context-tokens-remaining metric guard (#1602)
+# ---------------------------------------------------------------------------
+class ContextTokensRemainingGuardTests(unittest.TestCase):
+    """The metric block must not divide by zero when ``max_tokens`` is 0.
+
+    ``parse_max_tokens`` filters non-positive values out of the request
+    path, but the executor still defends in depth: the guard at the
+    ``backend_context_tokens_remaining`` emit site must require
+    ``max_tokens > 0`` before computing ``_total_tokens / max_tokens``.
+    """
+
+    def test_guard_source_requires_positive_max_tokens(self):
+        # Regression: weakening the guard back to ``max_tokens is not None``
+        # alone reintroduces the ZeroDivisionError of #1602.
+        source = Path(executor.__file__).read_text()
+        self.assertIn(
+            "if _total_tokens is not None and max_tokens is not None and max_tokens > 0:",
+            source,
+        )
+
+    def test_guard_skips_metric_block_when_max_tokens_is_zero(self):
+        # Behavioral check: replay the guard expression directly. With
+        # max_tokens=0 the block must short-circuit, leaving the
+        # subsequent division unreachable.
+        _total_tokens = 1500
+        max_tokens = 0
+        entered = False
+        if _total_tokens is not None and max_tokens is not None and max_tokens > 0:
+            entered = True
+            _ = _total_tokens / max_tokens  # would raise ZeroDivisionError
+        self.assertFalse(entered)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -2088,7 +2088,7 @@ async def run_query(
                 ).observe(int(_total_tokens or 0))
             except Exception:
                 pass
-        if _total_tokens is not None and max_tokens is not None:
+        if _total_tokens is not None and max_tokens is not None and max_tokens > 0:
             if backend_context_tokens is not None:
                 backend_context_tokens.labels(**_LABELS).observe(_total_tokens)
             if backend_context_tokens_remaining is not None:
