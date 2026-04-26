@@ -1823,24 +1823,26 @@ func (r *WitwaveAgentReconciler) reconcileDashboardInternal(ctx context.Context,
 	}
 
 	// Apply Deployment.
-	if err := controllerutil.SetControllerReference(agent, desiredDep, r.Scheme); err != nil {
-		return fmt.Errorf("set owner on dashboard Deployment: %w", err)
-	}
-	existingDep := &appsv1.Deployment{}
-	if err := r.Get(ctx, key, existingDep); err != nil {
-		if apierrors.IsNotFound(err) {
-			if err := r.Create(ctx, desiredDep); err != nil {
-				return fmt.Errorf("create dashboard Deployment: %w", err)
+	if desiredDep != nil {
+		if err := controllerutil.SetControllerReference(agent, desiredDep, r.Scheme); err != nil {
+			return fmt.Errorf("set owner on dashboard Deployment: %w", err)
+		}
+		existingDep := &appsv1.Deployment{}
+		if err := r.Get(ctx, key, existingDep); err != nil {
+			if apierrors.IsNotFound(err) {
+				if err := r.Create(ctx, desiredDep); err != nil {
+					return fmt.Errorf("create dashboard Deployment: %w", err)
+				}
+			} else {
+				return err
 			}
 		} else {
-			return err
-		}
-	} else {
-		existingDep.Spec = desiredDep.Spec
-		// #1567: merge foreign labels on update.
-		existingDep.Labels = mergeOwnedStringMap(existingDep.Labels, desiredDep.Labels, witwaveAgentOwnedLabelKeys)
-		if err := r.Update(ctx, existingDep); err != nil {
-			return fmt.Errorf("update dashboard Deployment: %w", err)
+			existingDep.Spec = desiredDep.Spec
+			// #1567: merge foreign labels on update.
+			existingDep.Labels = mergeOwnedStringMap(existingDep.Labels, desiredDep.Labels, witwaveAgentOwnedLabelKeys)
+			if err := r.Update(ctx, existingDep); err != nil {
+				return fmt.Errorf("update dashboard Deployment: %w", err)
+			}
 		}
 	}
 
