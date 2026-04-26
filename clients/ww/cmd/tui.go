@@ -3,9 +3,9 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/spf13/cobra"
 	"github.com/witwave-ai/witwave/clients/ww/internal/k8s"
 	"github.com/witwave-ai/witwave/clients/ww/internal/tui"
-	"github.com/spf13/cobra"
 	"k8s.io/client-go/rest"
 )
 

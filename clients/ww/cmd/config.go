@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/witwave-ai/witwave/clients/ww/internal/config"
 	"github.com/spf13/cobra"
+	"github.com/witwave-ai/witwave/clients/ww/internal/config"
 )
 
 // isSecretKey reports whether a config key names a credential that must not

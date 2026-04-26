@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/witwave-ai/witwave/clients/ww/internal/client"
 	"github.com/spf13/cobra"
+	"github.com/witwave-ai/witwave/clients/ww/internal/client"
 )
 
 type sendFlags struct {

@@ -6,9 +6,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/witwave-ai/witwave/clients/ww/internal/k8s"
 	"github.com/witwave-ai/witwave/clients/ww/internal/operator"
-	"github.com/spf13/cobra"
 )
 
 // operatorFlags are inherited by every `ww operator *` subcommand so

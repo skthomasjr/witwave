@@ -14,9 +14,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/witwave-ai/witwave/clients/ww/internal/client"
 	"github.com/witwave-ai/witwave/clients/ww/internal/output"
-	"github.com/spf13/cobra"
 )
 
 type tailFlags struct {

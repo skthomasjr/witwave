@@ -9,11 +9,11 @@ import (
 	"os"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/witwave-ai/witwave/clients/ww/internal/client"
 	"github.com/witwave-ai/witwave/clients/ww/internal/config"
 	"github.com/witwave-ai/witwave/clients/ww/internal/output"
 	"github.com/witwave-ai/witwave/clients/ww/internal/update"
-	"github.com/spf13/cobra"
 )
 
 // Version info — overwritten at build time via -ldflags.

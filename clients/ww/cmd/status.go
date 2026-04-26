@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/witwave-ai/witwave/clients/ww/internal/client"
 	"github.com/witwave-ai/witwave/clients/ww/internal/output"
-	"github.com/spf13/cobra"
 )
 
 // agentEntry mirrors the subset of /agents we care about.
