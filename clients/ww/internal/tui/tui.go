@@ -241,14 +241,18 @@ func newAgentListPage(app *tview.Application, version string, target *k8s.Target
 		return event
 	})
 
-	// Flex composition: header (2 rows) | 1-row gap | table (fill) |
-	// 1-row gap | footer (1 row). The gaps are empty Box primitives —
-	// tview treats them as unclaimed vertical space so the table gets
-	// clear visual breathing room from both the status strip above
-	// and the keybinding hints below.
+	// Flex composition: header (3 rows: preflight target + status +
+	// rollup) | 1-row gap | table (fill) | 1-row gap | footer (1 row).
+	// The gaps are empty Box primitives — tview treats them as
+	// unclaimed vertical space so the table gets clear visual
+	// breathing room from both the status strip above and the
+	// keybinding hints below. The header was widened from 2 to 3 rows
+	// for the preflight banner per DESIGN.md KC-4 (#1632) — every
+	// cluster-touching surface must show Target before mutating /
+	// reading.
 	root := tview.NewFlex().
 		SetDirection(tview.FlexRow).
-		AddItem(ctrl.header, 2, 0, false).
+		AddItem(ctrl.header, 3, 0, false).
 		AddItem(tview.NewBox(), 1, 0, false).
 		AddItem(ctrl.table, 0, 1, true).
 		AddItem(tview.NewBox(), 1, 0, false).
@@ -314,9 +318,13 @@ func (c *agentListController) fetchAndRender(ctx context.Context) {
 	})
 }
 
-// renderHeader writes the two-line status strip. Line 1 is cluster /
-// context / last-update; line 2 is the phase rollup. Kept tight so
-// it stays readable on narrow terminals.
+// renderHeader writes the three-line status strip. Line 0 is the
+// preflight Target banner (cluster / context / server / user) — the
+// `ww tui` parity with `k8s.Confirm`'s preflight per DESIGN.md KC-4
+// (#1632) so users see exactly which apiserver + identity they're
+// pointed at before the agent list paints. Line 1 is freshness +
+// version; line 2 is the phase rollup. Kept tight so it stays
+// readable on narrow terminals.
 func (c *agentListController) renderHeader() {
 	c.mu.Lock()
 	snap := c.snapshot
@@ -325,9 +333,13 @@ func (c *agentListController) renderHeader() {
 	fetching := c.fetching
 	c.mu.Unlock()
 
-	// Line 1: cluster + context + freshness.
+	// Line 0: preflight Target banner (#1632). Mirrors the
+	// "Target cluster: … (context: …)" line printed by
+	// k8s.printBanner so muscle memory carries between CLI + TUI.
 	cluster := "(no cluster)"
 	ctx := "-"
+	server := "-"
+	user := "-"
 	if c.target != nil {
 		if c.target.Cluster != "" {
 			cluster = c.target.Cluster
@@ -337,7 +349,17 @@ func (c *agentListController) renderHeader() {
 		if c.target.Context != "" {
 			ctx = c.target.Context
 		}
+		if c.target.Server != "" {
+			server = c.target.Server
+		}
+		if c.target.User != "" {
+			user = c.target.User
+		}
 	}
+	line0 := fmt.Sprintf(
+		"[#a0a0a0]Target:[-:-:-] [::b]cluster[-:-:-]=%s [::b]context[-:-:-]=%s [::b]server[-:-:-]=%s [::b]user[-:-:-]=%s",
+		cluster, ctx, server, user,
+	)
 
 	freshness := "—"
 	if !last.IsZero() {
@@ -352,9 +374,12 @@ func (c *agentListController) renderHeader() {
 		freshnessColor = "[#ffaf00]"
 	}
 
+	// Line 1: freshness + ww version. Cluster/ctx moved to the
+	// preflight Target banner (line 0) per #1632 so this row can
+	// focus on liveness state without duplicating identity.
 	line1 := fmt.Sprintf(
-		"[::b]ww[-:-:-]  [#a0a0a0]cluster[-:-:-] %s  [#a0a0a0]ctx[-:-:-] %s  %s%s[-:-:-]  [#808080]· ww %s[-:-:-]",
-		cluster, ctx, freshnessColor, freshness, c.version,
+		"[::b]ww[-:-:-]  %s%s[-:-:-]  [#808080]· ww %s[-:-:-]",
+		freshnessColor, freshness, c.version,
 	)
 
 	// Line 2: agent count rollup. Zero agents shows "0 total" — the
@@ -386,7 +411,7 @@ func (c *agentListController) renderHeader() {
 		)
 	}
 
-	c.header.SetText(line1 + "\n" + line2)
+	c.header.SetText(line0 + "\n" + line1 + "\n" + line2)
 }
 
 // renderTable writes the snapshot into the tview.Table. Selection is
