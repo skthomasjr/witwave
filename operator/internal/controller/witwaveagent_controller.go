@@ -885,8 +885,27 @@ func (r *WitwaveAgentReconciler) reconcileConfigMaps(ctx context.Context, agent 
 	// then delete any owned by THIS WitwaveAgent that are not in the desired set.
 	// Dual-check both labels and IsControlledBy before deleting to never touch
 	// foreign or shared ConfigMaps.
+	//
+	// #1656: paginate the List so a namespace holding thousands of matching
+	// ConfigMaps doesn't pin the apiserver watchcache or time out reconcile.
 	existing := &corev1.ConfigMapList{}
-	if err := r.List(ctx, existing,
+	if err := paginatedList(ctx, r.Client, existing, func() error {
+		for i := range existing.Items {
+			cm := &existing.Items[i]
+			if _, wanted := desired[cm.Name]; wanted {
+				continue
+			}
+			if !metav1.IsControlledBy(cm, agent) {
+				// Defensive: another controller owns this ConfigMap despite the
+				// labels matching. Leave it alone.
+				continue
+			}
+			if err := r.Delete(ctx, cm); err != nil && !apierrors.IsNotFound(err) {
+				return fmt.Errorf("delete stale ConfigMap %s: %w", cm.Name, err)
+			}
+		}
+		return nil
+	},
 		client.InNamespace(agent.Namespace),
 		client.MatchingLabels{
 			labelName:      agent.Name,
@@ -894,20 +913,6 @@ func (r *WitwaveAgentReconciler) reconcileConfigMaps(ctx context.Context, agent 
 		},
 	); err != nil {
 		return fmt.Errorf("list owned ConfigMaps for cleanup: %w", err)
-	}
-	for i := range existing.Items {
-		cm := &existing.Items[i]
-		if _, wanted := desired[cm.Name]; wanted {
-			continue
-		}
-		if !metav1.IsControlledBy(cm, agent) {
-			// Defensive: another controller owns this ConfigMap despite the
-			// labels matching. Leave it alone.
-			continue
-		}
-		if err := r.Delete(ctx, cm); err != nil && !apierrors.IsNotFound(err) {
-			return fmt.Errorf("delete stale ConfigMap %s: %w", cm.Name, err)
-		}
 	}
 	return nil
 }
@@ -1551,10 +1556,10 @@ func (r *WitwaveAgentReconciler) teardownDisabledAgent(ctx context.Context, agen
 		labelName:      agent.Name,
 		labelManagedBy: managedBy,
 	}
+	// #1656: paginate teardown List calls so an agent with thousands of
+	// owned ConfigMaps/PVCs doesn't blow past apiserver chunk limits.
 	cms := &corev1.ConfigMapList{}
-	if err := r.List(ctx, cms, client.InNamespace(agent.Namespace), labelSel); err != nil {
-		recordErr("ConfigMap", "list", err)
-	} else {
+	if err := paginatedList(ctx, r.Client, cms, func() error {
 		for i := range cms.Items {
 			cm := &cms.Items[i]
 			if !metav1.IsControlledBy(cm, agent) {
@@ -1564,11 +1569,12 @@ func (r *WitwaveAgentReconciler) teardownDisabledAgent(ctx context.Context, agen
 				recordErr("ConfigMap", "delete", fmt.Errorf("%s: %w", cm.Name, err))
 			}
 		}
+		return nil
+	}, client.InNamespace(agent.Namespace), labelSel); err != nil {
+		recordErr("ConfigMap", "list", err)
 	}
 	pvcs := &corev1.PersistentVolumeClaimList{}
-	if err := r.List(ctx, pvcs, client.InNamespace(agent.Namespace), labelSel); err != nil {
-		recordErr("PersistentVolumeClaim", "list", err)
-	} else {
+	if err := paginatedList(ctx, r.Client, pvcs, func() error {
 		for i := range pvcs.Items {
 			pvc := &pvcs.Items[i]
 			if !metav1.IsControlledBy(pvc, agent) {
@@ -1578,6 +1584,9 @@ func (r *WitwaveAgentReconciler) teardownDisabledAgent(ctx context.Context, agen
 				recordErr("PersistentVolumeClaim", "delete", fmt.Errorf("%s: %w", pvc.Name, err))
 			}
 		}
+		return nil
+	}, client.InNamespace(agent.Namespace), labelSel); err != nil {
+		recordErr("PersistentVolumeClaim", "list", err)
 	}
 	// #1558: credential Secrets (gitSync + backend) live outside the
 	// ConfigMap/PVC cleanup pass because they carry an additional
@@ -1591,10 +1600,10 @@ func (r *WitwaveAgentReconciler) teardownDisabledAgent(ctx context.Context, agen
 		labelComponent: componentCredentials,
 		labelManagedBy: managedBy,
 	}
+	// #1656: paginate the credential-Secret cleanup List for the same
+	// reason as the ConfigMap/PVC blocks above.
 	credSecrets := &corev1.SecretList{}
-	if err := r.List(ctx, credSecrets, client.InNamespace(agent.Namespace), credSel); err != nil {
-		recordErr("Secret", "list", err)
-	} else {
+	if err := paginatedList(ctx, r.Client, credSecrets, func() error {
 		for i := range credSecrets.Items {
 			sec := &credSecrets.Items[i]
 			if !metav1.IsControlledBy(sec, agent) {
@@ -1604,6 +1613,9 @@ func (r *WitwaveAgentReconciler) teardownDisabledAgent(ctx context.Context, agen
 				recordErr("Secret", "delete", fmt.Errorf("%s: %w", sec.Name, err))
 			}
 		}
+		return nil
+	}, client.InNamespace(agent.Namespace), credSel); err != nil {
+		recordErr("Secret", "list", err)
 	}
 	// reconcileMCPTools (#1635): delete when disabled. The reconciler's
 	// agent-disabled short-circuit forces an empty desired set so the

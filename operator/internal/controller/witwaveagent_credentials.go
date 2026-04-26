@@ -311,8 +311,26 @@ func (r *WitwaveAgentReconciler) reconcileCredentialsSecrets(ctx context.Context
 	// Cleanup: list Secrets in this namespace carrying our credentials
 	// component label and owned by THIS WitwaveAgent; delete any not in the
 	// desired set. Mirrors reconcileConfigMaps / applyBackendPVCs.
+	//
+	// #1656: paginate the List so a namespace with thousands of label-matched
+	// credential Secrets doesn't pin the apiserver watchcache or stall the
+	// reconcile loop.
 	existing := &corev1.SecretList{}
-	if err := r.List(ctx, existing,
+	if err := paginatedList(ctx, r.Client, existing, func() error {
+		for i := range existing.Items {
+			sec := &existing.Items[i]
+			if _, wanted := desired[sec.Name]; wanted {
+				continue
+			}
+			if !metav1.IsControlledBy(sec, agent) {
+				continue
+			}
+			if err := r.Delete(ctx, sec); err != nil && !apierrors.IsNotFound(err) {
+				return fmt.Errorf("delete stale Secret %s: %w", sec.Name, err)
+			}
+		}
+		return nil
+	},
 		client.InNamespace(agent.Namespace),
 		client.MatchingLabels{
 			labelName:      agent.Name,
@@ -321,18 +339,6 @@ func (r *WitwaveAgentReconciler) reconcileCredentialsSecrets(ctx context.Context
 		},
 	); err != nil {
 		return fmt.Errorf("list credential Secrets for cleanup: %w", err)
-	}
-	for i := range existing.Items {
-		sec := &existing.Items[i]
-		if _, wanted := desired[sec.Name]; wanted {
-			continue
-		}
-		if !metav1.IsControlledBy(sec, agent) {
-			continue
-		}
-		if err := r.Delete(ctx, sec); err != nil && !apierrors.IsNotFound(err) {
-			return fmt.Errorf("delete stale Secret %s: %w", sec.Name, err)
-		}
 	}
 	return nil
 }
