@@ -32,6 +32,11 @@ marked.setOptions({
 // then, any new DOMPurify consumer in this codebase must audit
 // their interaction with this hook — `installLinkHook` must not be
 // undone by `DOMPurify.removeAllHooks()`.
+// #1604 GLOBAL-STATE REGRESSION GUARD: tests/unit/markdown.spec.ts asserts
+// that renderMarkdown() emits target/rel attributes on external links. If
+// any future module calls `DOMPurify.removeAllHooks()` (or registers a
+// conflicting hook that strips these attributes), that test fails loudly
+// rather than silently regressing the phishing mitigation above.
 let hookInstalled = false;
 function installLinkHook(): void {
   if (hookInstalled) return;
