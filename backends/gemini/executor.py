@@ -121,6 +121,7 @@ from metrics import (
     backend_session_evictions_total,
     backend_session_history_save_errors_total,
     backend_session_history_reset_total,
+    backend_history_force_split_total,
     backend_session_idle_seconds,
     backend_session_starts_total,
     backend_task_cancellations_total,
@@ -1320,12 +1321,72 @@ async def _save_history(session_id: str, history: list[types.Content]) -> None:
                     continue
                 break
             if nxt >= n:
+                # #1622: corruption recovery path — NOT the happy path.
+                #
+                # The safe-boundary search above failed: every user-role
+                # entry in the trim window carries a function_response,
+                # so cutting on any of them would orphan an AFC pair.
+                # The original #817 fix preserved the current oversized
+                # slice and relied on "the next save will find a
+                # boundary". When the AFC chain is the *entire* history
+                # (e.g. a runaway tool loop or an MCP server that keeps
+                # round-tripping function_response/function_call), that
+                # next boundary never arrives — every save after this
+                # one re-enters the same branch, file stays oversized,
+                # and the session oscillates between "too big to save
+                # cleanly" and "too big to load efficiently".
+                #
+                # Force-split fallback: cut at the EARLIEST user-role
+                # boundary in the window even though it splits a
+                # mid-AFC function_call/function_response pair. Yes,
+                # this leaves the persisted history with a dangling
+                # function_call at the head — Gemini will reject the
+                # reload and the session will fall back to a fresh
+                # start. That's a deliberate trade: a recoverable
+                # session reset beats an unbounded oversized file that
+                # the byte cap was put in place to prevent. The next
+                # successful save resumes normal #817 behaviour.
+                fallback_cut = -1
+                for idx in range(1, n):
+                    if raw[idx].get("role") == "user":
+                        fallback_cut = idx
+                        break
+                if fallback_cut < 0:
+                    # No user-role entry at all in the trim window
+                    # (pathological: model-only tail). Nothing safe or
+                    # unsafe we can do — preserve the slice and let the
+                    # next save retry, matching the original #817
+                    # stance.
+                    logger.warning(
+                        "Session %r: byte-cap trim found no safe boundary "
+                        "and no user-role fallback boundary "
+                        "(payload=%dB cap=%dB); preserving current slice (#817).",
+                        session_id, current_bytes, _SAVE_HISTORY_MAX_BYTES,
+                    )
+                    break
                 logger.warning(
-                    "Session %r: byte-cap trim found no safe boundary "
-                    "(payload=%dB cap=%dB); preserving current slice (#817).",
-                    session_id, current_bytes, _SAVE_HISTORY_MAX_BYTES,
+                    "Session %r: no safe AFC boundary; force-split at user "
+                    "boundary idx=%d (payload=%dB cap=%dB) — corruption "
+                    "recovery path, NOT the happy path. Reload may reset "
+                    "the session if the head function_call is orphaned (#1622).",
+                    session_id, fallback_cut, current_bytes, _SAVE_HISTORY_MAX_BYTES,
                 )
-                break
+                try:
+                    if backend_history_force_split_total is not None:
+                        backend_history_force_split_total.labels(**_LABELS).inc()
+                except Exception:
+                    # Metrics surface must never fail the save path.
+                    pass
+                raw = raw[fallback_cut:]
+                try:
+                    current_bytes = len(json.dumps(raw, default=str).encode("utf-8"))
+                except Exception:
+                    break
+                # Continue the outer while-loop: the force-split may
+                # still leave us above the cap if the remaining slice
+                # is itself a giant entry. Subsequent iterations will
+                # either find a safe boundary or fall back again.
+                continue
             raw = raw[nxt:]
             try:
                 current_bytes = len(json.dumps(raw, default=str).encode("utf-8"))
@@ -1684,6 +1745,17 @@ _genai_client: genai.Client | None = None
 import threading as _threading
 _genai_client_lock = _threading.Lock()
 
+# #1621: rotation flag + pending-teardown queue. The api-key-file watcher
+# now requests rotation by setting ``_rotation_pending`` instead of nulling
+# the singleton; ``_get_client`` performs build-then-swap atomically so a
+# construction failure (e.g., env var transiently empty during rotation)
+# leaves the previously-cached client in place rather than blanking the
+# singleton and breaking every subsequent request. Old clients are queued
+# in ``_clients_pending_close`` and torn down opportunistically by
+# ``_close_client``.
+_rotation_pending: bool = False
+_clients_pending_close: "list[genai.Client]" = []
+
 # #1505: serialise the api-key-file watcher's env mutation + _close_client
 # sequence. Without this, two rapid rotations could interleave env writes
 # and client closes so an in-flight rotation's _close_client races with
@@ -1721,28 +1793,101 @@ def _get_client(model_label: str | None = None) -> genai.Client:
     the new client while request B's in-flight ``_get_client`` is still
     using a stale reference.  The double-checked first read before the
     lock keeps the steady-state fast path allocation-free.
+
+    Rotation safety (#1621): when ``_rotation_pending`` is set the function
+    constructs the candidate client first (under the lock) and only swaps
+    on success.  If construction raises (e.g., the rotated key file is
+    momentarily empty or the env var has been cleared) the previous
+    ``_genai_client`` is preserved verbatim and the error is logged so
+    in-flight traffic keeps serving under the old key instead of seeing
+    a None singleton on every subsequent call.
     """
-    global _genai_client
+    global _genai_client, _rotation_pending
     client = _genai_client
-    if client is not None:
+    if client is not None and not _rotation_pending:
         return client
     with _genai_client_lock:
-        if _genai_client is None:
-            key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or None
-            if not key:
-                raise RuntimeError("No Gemini API key configured. Set GEMINI_API_KEY or GOOGLE_API_KEY.")
-            # Cold-start timing (#813). Observes subprocess/client init latency
-            # so operators can alert on slow first-request cold-starts.
-            _spawn_start = time.monotonic()
-            _genai_client = genai.Client(api_key=key)
-            try:
-                if backend_sdk_subprocess_spawn_duration_seconds is not None:
-                    backend_sdk_subprocess_spawn_duration_seconds.labels(
-                        **_LABELS, model=_sanitize_model_label(model_label or ""),
-                    ).observe(time.monotonic() - _spawn_start)
-            except Exception:
-                pass
+        # Re-check inside the lock — another caller may have completed
+        # cold-start or rotation while we were waiting.
+        if _genai_client is not None and not _rotation_pending:
+            return _genai_client
+        # Cold-start vs. rotation share the same build-then-swap sequence
+        # below; the only difference is that on rotation we have an
+        # existing client to fall back to if the build fails (#1621).
+        existing = _genai_client
+        key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or None
+        if not key:
+            if existing is not None:
+                # #1621: rotation requested but the new key is missing.
+                # Keep serving under the previous client; clear the
+                # rotation flag so we don't hammer this path on every
+                # request.  The watcher will re-arm it on the next file
+                # change.
+                logger.error(
+                    "_get_client: rotation requested but no API key "
+                    "available in env (GEMINI_API_KEY/GOOGLE_API_KEY); "
+                    "keeping previously-cached client to preserve "
+                    "request-serving capacity. (#1621)"
+                )
+                _rotation_pending = False
+                return existing
+            raise RuntimeError("No Gemini API key configured. Set GEMINI_API_KEY or GOOGLE_API_KEY.")
+        # Build candidate FIRST (#1621). Only swap on success.
+        _spawn_start = time.monotonic()
+        try:
+            new_client = genai.Client(api_key=key)
+        except Exception as _build_exc:
+            if existing is not None:
+                # #1621: keep the previously-cached client so callers
+                # continue to receive a usable client. Clear the
+                # rotation flag — the watcher will re-arm on the next
+                # file change.
+                logger.error(
+                    "_get_client: failed to construct new genai.Client "
+                    "during rotation (%r); keeping previously-cached "
+                    "client to preserve request-serving capacity. (#1621)",
+                    _build_exc,
+                )
+                _rotation_pending = False
+                return existing
+            # Cold-start failure with no prior client — propagate so the
+            # caller sees the underlying error rather than a confusing
+            # None singleton on the next call.
+            raise
+        # Success: swap atomically and queue the prior client (if any)
+        # for opportunistic teardown by the next ``_close_client`` call.
+        if existing is not None:
+            _clients_pending_close.append(existing)
+        _genai_client = new_client
+        _rotation_pending = False
+        try:
+            # Cold-start / rotation timing (#813). Observes subprocess/
+            # client init latency so operators can alert on slow first-
+            # request cold-starts (and slow rotations).
+            if backend_sdk_subprocess_spawn_duration_seconds is not None:
+                backend_sdk_subprocess_spawn_duration_seconds.labels(
+                    **_LABELS, model=_sanitize_model_label(model_label or ""),
+                ).observe(time.monotonic() - _spawn_start)
+        except Exception:
+            pass
         return _genai_client
+
+
+def _request_client_rotation() -> None:
+    """Mark the cached genai.Client for rotation on the next ``_get_client`` call.
+
+    #1621: the previous flow nulled ``_genai_client`` eagerly via
+    ``_close_client`` and let ``_get_client`` rebuild on demand. If the new
+    key was unavailable at rebuild time the caller saw an exception AND the
+    singleton was left as None, so every subsequent request also raised
+    until the env was repaired. By flipping a flag instead, ``_get_client``
+    can build the new client first and fall back to the previously-cached
+    one when construction fails — keeping the backend serving under the
+    old key until rotation succeeds.
+    """
+    global _rotation_pending
+    with _genai_client_lock:
+        _rotation_pending = True
 
 
 async def _close_client() -> None:
@@ -1762,33 +1907,44 @@ async def _close_client() -> None:
     # the lock to avoid blocking the event loop; any subsequent
     # _get_client call past the lock boundary constructs a fresh
     # instance against the current env.
-    global _genai_client
+    #
+    # #1621: also drain ``_clients_pending_close`` here. Successful
+    # rotations queue the prior client there (instead of tearing it down
+    # eagerly under ``_get_client``'s sync lock) so connection pool
+    # teardown happens on this async path.
+    global _genai_client, _rotation_pending
     with _genai_client_lock:
         client = _genai_client
         _genai_client = None
-    if client is None:
-        return
-    try:
-        api_client = getattr(client, "_api_client", None)
-        if api_client is not None:
-            async_httpx = getattr(api_client, "_async_httpx_client", None)
-            if async_httpx is not None:
-                aclose = getattr(async_httpx, "aclose", None)
-                if aclose is not None:
-                    try:
-                        await aclose()
-                    except Exception as e:  # pragma: no cover - defensive
-                        logger.debug("genai async httpx client aclose failed: %s", e)
-            sync_httpx = getattr(api_client, "_httpx_client", None)
-            if sync_httpx is not None:
-                close = getattr(sync_httpx, "close", None)
-                if close is not None:
-                    try:
-                        close()
-                    except Exception as e:  # pragma: no cover - defensive
-                        logger.debug("genai sync httpx client close failed: %s", e)
-    except Exception:  # pragma: no cover — defensive wrapper
-        pass
+        _rotation_pending = False
+        pending = list(_clients_pending_close)
+        _clients_pending_close.clear()
+    to_close: "list[genai.Client]" = []
+    if client is not None:
+        to_close.append(client)
+    to_close.extend(pending)
+    for _c in to_close:
+        try:
+            api_client = getattr(_c, "_api_client", None)
+            if api_client is not None:
+                async_httpx = getattr(api_client, "_async_httpx_client", None)
+                if async_httpx is not None:
+                    aclose = getattr(async_httpx, "aclose", None)
+                    if aclose is not None:
+                        try:
+                            await aclose()
+                        except Exception as e:  # pragma: no cover - defensive
+                            logger.debug("genai async httpx client aclose failed: %s", e)
+                sync_httpx = getattr(api_client, "_httpx_client", None)
+                if sync_httpx is not None:
+                    close = getattr(sync_httpx, "close", None)
+                    if close is not None:
+                        try:
+                            close()
+                        except Exception as e:  # pragma: no cover - defensive
+                            logger.debug("genai sync httpx client close failed: %s", e)
+        except Exception:  # pragma: no cover — defensive wrapper
+            pass
 
 
 async def run_query(
@@ -2719,12 +2875,19 @@ class AgentExecutor(A2AAgentExecutor):
                                         "api_key_file_watcher: failed to read %r: %r",
                                         key_file, _read_exc,
                                     )
+                                # #1621: flag rotation instead of nulling
+                                # the cached client. The next _get_client
+                                # call builds the new instance and only
+                                # swaps on success — a failed build keeps
+                                # the previous client live so traffic
+                                # doesn't stall on a None singleton.
                                 try:
-                                    await _close_client()
-                                except Exception as _close_exc:
+                                    _request_client_rotation()
+                                except Exception as _rot_exc:
                                     logger.warning(
-                                        "api_key_file_watcher: _close_client raised %r",
-                                        _close_exc,
+                                        "api_key_file_watcher: "
+                                        "_request_client_rotation raised %r",
+                                        _rot_exc,
                                     )
                             break
             except Exception as _w_exc:
