@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"net/url"
@@ -179,6 +180,16 @@ func (w *Writer) Unset(key string) error {
 // pre-fix ww may have landed at 0o644 / 0o755; rather than scolding
 // the user, every write tightens the perms to the intended posture.
 //
+// #1654: writes via the atomic create-temp + chmod + rename pattern
+// (mirroring update.writeCache). The previous approach pre-created
+// the target inode at 0o600 with O_EXCL and then asked Viper to
+// rewrite it in place — but the O_EXCL pre-create lost the race on
+// any second-or-later Save (file already exists, fall through to
+// Viper's umask-honouring os.Create, file briefly visible at 0o644
+// before the post-Chmod tightened it). Render the rendered TOML to
+// a temp file with mode 0o600, then atomically Rename onto the final
+// path. The final inode is never observed at any mode but 0o600.
+//
 // Returns a no-op error when nothing was staged — the caller is
 // probably confused about which key they were trying to write, and
 // should surface that rather than silently writing an unchanged file.
@@ -208,44 +219,83 @@ func (w *Writer) Save() error {
 		}
 	}
 
-	// Pre-create the file with 0o600 for first-write paths BEFORE
-	// Viper opens it. Viper's WriteConfig internally uses os.Create,
-	// which honors the process umask (typically 022) and lands at
-	// 0o644 — then we chmod afterward. That leaves a microsecond
-	// window where a bearer token is world-readable.
-	//
-	// Pre-creating the empty file at 0o600 closes the window: Viper's
-	// subsequent open with O_TRUNC|O_WRONLY reuses the existing inode
-	// and preserves its mode. Unix-only; on Windows the permission
-	// model is ACL-based and this path is a no-op (WriteConfig handles
-	// it either way).
-	firstWrite := !w.existed
-	if firstWrite && runtime.GOOS != "windows" {
-		f, err := os.OpenFile(w.path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-		if err != nil {
-			// O_EXCL means "fail if exists" — a concurrent creator
-			// racing us would trip this. Either way, fall back to the
-			// standard write + chmod flow below; this pre-create is
-			// an optimization, not a correctness requirement.
-		} else {
-			_ = f.Close()
-		}
+	// Render TOML to a buffer first so the temp-file write is a
+	// single Write call we can attribute cleanly on failure.
+	var buf bytes.Buffer
+	if err := w.v.WriteConfigTo(&buf); err != nil {
+		return fmt.Errorf("render %s: %w", w.path, err)
 	}
 
+	// Atomic write: CreateTemp lands at 0o600 on POSIX (documented
+	// implementation choice; we pin with an explicit Chmod below to
+	// stay safe across future stdlib changes). Rename swaps the temp
+	// over the target without ever flashing the final path through a
+	// 0o644 mode.
+	tmp, err := os.CreateTemp(parent, ".ww-config-*.toml")
+	if err != nil {
+		// Fall back to the older write-then-chmod flow so a misbehaving
+		// parent directory (e.g. nosuid filesystems that refuse temp
+		// creation) doesn't break `ww config set` outright. Loud WARN
+		// so the operator knows their write went through the legacy
+		// path with a brief 0o644 window.
+		fmt.Fprintf(os.Stderr,
+			"ww: warning: atomic temp-file create in %s failed (%v); "+
+				"falling back to direct write at %s — there will be a "+
+				"brief window before chmod 0600 lands\n",
+			parent, err, w.path)
+		return w.saveLegacy()
+	}
+	tmpPath := tmp.Name()
+	// Defensive cleanup: if Rename succeeds, this Remove targets a path
+	// that no longer exists and is a harmless no-op.
+	defer func() { _ = os.Remove(tmpPath) }()
+
+	if _, err := tmp.Write(buf.Bytes()); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write %s: %w", tmpPath, err)
+	}
+	// Pin 0o600 explicitly before Rename so the final inode is never
+	// exposed at any looser mode. CreateTemp's current 0o600 default
+	// is implementation, not contract — see update.writeCache for the
+	// same reasoning.
+	if runtime.GOOS != "windows" {
+		if err := tmp.Chmod(0o600); err != nil {
+			_ = tmp.Close()
+			return fmt.Errorf("chmod %s: %w", tmpPath, err)
+		}
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close %s: %w", tmpPath, err)
+	}
+	if err := os.Rename(tmpPath, w.path); err != nil {
+		// Loud WARN so the operator can find the orphan temp under
+		// the same parent dir if they need to recover the rendered
+		// content; the deferred Remove will then clean it up.
+		fmt.Fprintf(os.Stderr,
+			"ww: warning: atomic rename %s -> %s failed: %v\n",
+			tmpPath, w.path, err)
+		return fmt.Errorf("rename %s -> %s: %w", tmpPath, w.path, err)
+	}
+	w.existed = true
+	return nil
+}
+
+// saveLegacy is the pre-#1654 write-then-chmod path, retained as a
+// fallback for filesystems where os.CreateTemp in the parent dir is
+// rejected (rare — typically nosuid/noexec mounts or read-only parents
+// that briefly accept a write to a known filename via Viper's path).
+// Carries the documented brief 0o644 window; the caller has already
+// emitted a WARN before invoking this.
+func (w *Writer) saveLegacy() error {
 	if err := w.v.WriteConfig(); err != nil {
 		return fmt.Errorf("write %s: %w", w.path, err)
 	}
-
-	// #1607: post-write chmod runs unconditionally (not just on
-	// first-write) so an existing config that drifted to 0o644 from
-	// a pre-fix ww gets tightened on the next Save. Idempotent when
-	// the file is already 0o600.
 	if runtime.GOOS != "windows" {
 		if err := os.Chmod(w.path, 0o600); err != nil {
 			return fmt.Errorf("chmod %s: %w", w.path, err)
 		}
-		w.existed = true
 	}
+	w.existed = true
 	return nil
 }
 

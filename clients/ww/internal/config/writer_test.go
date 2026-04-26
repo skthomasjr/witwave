@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -407,5 +408,96 @@ func TestSettableKeys_AllValidatorsFunctional(t *testing.T) {
 				t.Errorf("validator accepted bad value %q", tc.bad)
 			}
 		})
+	}
+}
+
+// TestSave_AtomicMode0600UnderUmask covers #1654: under the typical
+// default umask of 0022 — which would normally cause a fresh os.Create
+// to land at 0o644 — Save must produce a file at mode exactly 0o600.
+//
+// The previous implementation had a race window where Viper's
+// WriteConfig (via os.Create) briefly exposed the inode at 0o644 before
+// the post-write Chmod tightened it. After #1654 the rendered TOML is
+// streamed into a CreateTemp+Chmod-managed temp file at 0o600 and then
+// Renamed atomically over the target — there is no point in time where
+// the final inode is observable at any mode but 0o600.
+//
+// The test asserts the structural property (final mode is 0o600 even
+// with umask 0022). A direct race-window observation isn't reliably
+// triggerable from Go user code; the structural guarantee is what the
+// atomic-write pattern actually provides.
+func TestSave_AtomicMode0600UnderUmask(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("umask + perm assertions are unix-only")
+	}
+
+	// Force the standard "0022" umask for the duration of this test so
+	// we don't depend on whatever the test runner inherited. Restore on
+	// exit so neighbouring tests aren't affected.
+	prev := syscall.Umask(0o022)
+	t.Cleanup(func() { syscall.Umask(prev) })
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	w, err := OpenWriter("", os.Getenv)
+	if err != nil {
+		t.Fatalf("OpenWriter: %v", err)
+	}
+	if err := w.Set("profile.default.token", "secret-bearer-token"); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	if err := w.Save(); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	wantPath := filepath.Join(home, ".witwave", "config.toml")
+	st, err := os.Stat(wantPath)
+	if err != nil {
+		t.Fatalf("stat saved file: %v", err)
+	}
+	if perm := st.Mode().Perm(); perm != 0o600 {
+		t.Errorf("first-write file perm = %o under umask 0022, want 0600", perm)
+	}
+
+	// Second Save (file now exists) must hold the same guarantee — the
+	// pre-#1654 path's race window was on every Save, not only the
+	// first, so this case is the more interesting regression check.
+	w2, err := OpenWriter("", os.Getenv)
+	if err != nil {
+		t.Fatalf("OpenWriter (reopen): %v", err)
+	}
+	if !w2.Existed() {
+		t.Fatal("second open should see the file as existing")
+	}
+	if err := w2.Set("profile.default.token", "rotated-bearer-token"); err != nil {
+		t.Fatalf("Set (reopen): %v", err)
+	}
+	if err := w2.Save(); err != nil {
+		t.Fatalf("Save (reopen): %v", err)
+	}
+	st2, err := os.Stat(wantPath)
+	if err != nil {
+		t.Fatalf("stat saved file (reopen): %v", err)
+	}
+	if perm := st2.Mode().Perm(); perm != 0o600 {
+		t.Errorf("subsequent-write file perm = %o under umask 0022, want 0600", perm)
+	}
+
+	// And: any temp files left behind by a botched Rename would sit
+	// alongside the final file in the parent dir. Verify there are
+	// none — the deferred Remove inside Save handles success cases too
+	// (no-op when Rename consumed the temp), and a stray file would
+	// signal a regression in the cleanup path.
+	entries, err := os.ReadDir(filepath.Dir(wantPath))
+	if err != nil {
+		t.Fatalf("readdir parent: %v", err)
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasPrefix(name, ".ww-config-") {
+			t.Errorf("stray atomic-write temp file left behind: %s", name)
+		}
 	}
 }
