@@ -78,8 +78,14 @@ spec:
       port: 443
       targetPort: webhook
       protocol: TCP
+  # #1643: include `control-plane: controller-manager` so the selector
+  # matches the comment above (and the deployment's pod-template label).
+  # Without it the webhook Service's selector was strictly broader than
+  # the comment claimed, and could match any pod sharing the chart's
+  # selectorLabels.
   selector:
     {{- include "witwave-operator.selectorLabels" . | nindent 4 }}
+    control-plane: controller-manager
 {{- if $cm }}
 {{- if and .Values.webhooks.certManager.createIssuer (not $extRef) }}
 ---
@@ -147,6 +153,11 @@ webhooks:
   - name: mwitwaveagent.kb.io
     admissionReviewVersions: ["v1"]
     sideEffects: None
+    # #1624: mutating webhook stays on Fail because it sets defaults the
+    # rest of the reconciler relies on (e.g. unset MetricsPort would cause
+    # downstream NPEs). A webhook outage that drops mutation is preferable
+    # to silently admitting under-defaulted CRs. The validating webhook
+    # below uses Ignore by default — see comment there for the asymmetry.
     failurePolicy: {{ .Values.webhooks.failurePolicy | default "Fail" | quote }}
     clientConfig:
       service:
@@ -179,7 +190,13 @@ webhooks:
   - name: vwitwaveagent.kb.io
     admissionReviewVersions: ["v1"]
     sideEffects: None
-    failurePolicy: {{ .Values.webhooks.failurePolicy | default "Fail" | quote }}
+    # #1624: validating webhook defaults to Ignore so a webhook outage
+    # (pod down, cert rotation race, network partition) does not
+    # deadlock all WitwaveAgent admission cluster-wide. Spec drift that
+    # slips past Ignore is detected by the reconciler and surfaced via
+    # status conditions. Operators with HA webhooks can flip
+    # webhooks.validatingFailurePolicy=Fail for strict admission.
+    failurePolicy: {{ .Values.webhooks.validatingFailurePolicy | default "Ignore" | quote }}
     clientConfig:
       service:
         name: {{ $svcName }}
@@ -196,7 +213,10 @@ webhooks:
   - name: vwitwaveprompt.kb.io
     admissionReviewVersions: ["v1"]
     sideEffects: None
-    failurePolicy: {{ .Values.webhooks.failurePolicy | default "Fail" | quote }}
+    # #1624: same Ignore default as vwitwaveagent above — see that
+    # webhook for the full rationale. Both validating webhooks share the
+    # webhooks.validatingFailurePolicy knob.
+    failurePolicy: {{ .Values.webhooks.validatingFailurePolicy | default "Ignore" | quote }}
     clientConfig:
       service:
         name: {{ $svcName }}

@@ -60,9 +60,18 @@ rules:
   - apiGroups: [policy]
     resources: [poddisruptionbudgets]
     verbs: [create, delete, get, list, patch, update, watch]
+  {{- /* monitoring.coreos.com verbs are only needed when the operator
+         actually reconciles ServiceMonitor / PodMonitor objects, which
+         only happens when metrics.enabled is true (#1659). Gating the
+         rule prevents the chart from demanding Prometheus Operator CRDs
+         on clusters that have no Prometheus Operator installed and no
+         intent to scrape — installing those verbs against missing CRDs
+         is a no-op at runtime but a noisy red herring during RBAC audits. */}}
+  {{- if .Values.metrics.enabled }}
   - apiGroups: [monitoring.coreos.com]
     resources: [servicemonitors, podmonitors]
     verbs: [create, delete, get, list, patch, update, watch]
+  {{- end }}
   # networking.k8s.io — the operator reconciles a per-agent
   # NetworkPolicy (#971) and the dashboard Ingress (#831). Both verbs
   # are required; restricting them silently wedged reconciles (#1224).

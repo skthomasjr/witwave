@@ -9,8 +9,14 @@ metadata:
     control-plane: controller-manager
 spec:
   type: ClusterIP
+  # #1643: include `control-plane: controller-manager` so this Service's
+  # selector matches the ServiceMonitor's matchLabels (servicemonitor.yaml).
+  # The deployment template stamps the same label on the pod template, so
+  # adding it here narrows the selector to the operator pod and keeps
+  # Prometheus scraping wired end-to-end.
   selector:
     {{- include "witwave-operator.selectorLabels" . | nindent 4 }}
+    control-plane: controller-manager
   ports:
     - name: {{ ternary "https" "http" .Values.metrics.secure }}
       port: {{ .Values.metrics.port }}
