@@ -548,8 +548,15 @@ async def health_ready(request: Request) -> JSONResponse:
 
         import httpx
         async def _probe(backend, client) -> bool:
+            # Probe /health/ready (readiness) not /health (liveness). The
+            # cycle-1 #1608 + #1672 split made /health liveness-only — it
+            # returns 200 even while a backend is still initialising.
+            # Querying /health here would pretend the harness is ready
+            # before its backends actually are, defeating the readiness
+            # contract documented in README. Use /health/ready instead so
+            # the harness's own readiness reflects backend readiness.
             try:
-                resp = await client.get(backend.url.rstrip("/") + "/health")
+                resp = await client.get(backend.url.rstrip("/") + "/health/ready")
                 return resp.status_code == 200
             except Exception:
                 return False
