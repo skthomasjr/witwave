@@ -8,6 +8,8 @@ section of each entry.
 
 ## [Unreleased]
 
+## [0.7.19] — 2026-04-25
+
 ### Added
 
 - **`ww tui` create modal — Secret KEY fields are now combo boxes**
