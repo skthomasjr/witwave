@@ -398,6 +398,72 @@ describe("useEventStream", () => {
     scope.stop();
   });
 
+  it("recovers from terminal-failed state when close() + open() is called (#1653)", async () => {
+    // #1615 added a terminal-failure gate: after MAX_CONSECUTIVE_FAILURES
+    // (30) consecutive failed reconnects the loop stops scheduling and
+    // surfaces a "stream-failed" error. #1653 fixes the regression where
+    // an explicit reopen via close() + open() left consecutiveFailures
+    // pinned at the terminal value, so the very next failure tripped the
+    // gate again immediately. open() must reset the counter.
+    vi.useFakeTimers();
+    try {
+      // fetch always rejects so every loop iteration drains into
+      // scheduleReconnect.
+      const fetchImpl = vi
+        .fn()
+        .mockRejectedValue(new Error("connection refused"));
+
+      const { value, scope } = run(() =>
+        useEventStream("/api/events/stream", {
+          fetchImpl: fetchImpl as unknown as typeof fetch,
+          autoConnect: false,
+          // Tiny delays so 31 reconnect cycles advance quickly under
+          // fake timers. MIN_BACKOFF_MS=500 still floors each delay, but
+          // we just advanceTimersByTime past it.
+          initialDelayMs: 1,
+          maxDelayMs: 1,
+        }),
+      );
+      value.open();
+
+      // Drive enough cycles to exceed MAX_CONSECUTIVE_FAILURES (30). Each
+      // cycle = one fetch rejection + one MIN_BACKOFF_MS-floored timeout.
+      // We pump in chunks so the awaited promise rejections settle before
+      // the next timer fires.
+      for (let i = 0; i < 35; i += 1) {
+        await vi.advanceTimersByTimeAsync(600);
+      }
+
+      // We should now be in the terminal state: error ref set, no more
+      // reconnect timers being scheduled. Capture the call count so we
+      // can assert further fetches only happen after open() recovery.
+      expect(value.error.value).toMatch(/stream-failed/);
+      const callsAtTerminal = fetchImpl.mock.calls.length;
+
+      // Confirm terminal: more time advances must NOT add fetches.
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(fetchImpl.mock.calls.length).toBe(callsAtTerminal);
+
+      // Recovery path — close() then open(). Without #1653 the reset of
+      // consecutiveFailures is missing, so the very next scheduleReconnect
+      // sees count > MAX and re-enters terminal state without ever
+      // issuing a real fetch loop iteration. With #1653 the counter is
+      // back at 0 and the loop runs again.
+      value.close();
+      value.open();
+
+      // One more cycle of fetch + reconnect. Under #1653 this lands a
+      // fresh fetch; without #1653 the loop short-circuits.
+      await vi.advanceTimersByTimeAsync(600);
+      expect(fetchImpl.mock.calls.length).toBeGreaterThan(callsAtTerminal);
+
+      value.close();
+      scope.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("increments parseFailureCount when a data payload is malformed JSON", async () => {
     // #1634 — malformed-payload observability. Previously the catch in
     // handleMessage silently dropped the event with no signal; the new

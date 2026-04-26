@@ -522,6 +522,11 @@ export function useEventStream(
       // Reopen from a closed composable — reset the sentinel.
       closed = false;
     }
+    // Reset the consecutive-failure counter so a stream that hit the
+    // MAX_CONSECUTIVE_FAILURES terminal state (#1615) can recover when
+    // the parent view reopens it via route change / tab switch / manual
+    // reopen. (#1653)
+    consecutiveFailures = 0;
     if (aborter || reconnectTimer) return; // already running
     // Bump generation so any stale in-flight callback from a prior
     // open() session short-circuits. (#1153)
