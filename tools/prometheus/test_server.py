@@ -131,5 +131,46 @@ def test_non_200_log_keeps_diagnostic_fields(monkeypatch, caplog):
     assert str(len(body)) in rendered, "byte count must be retained"
 
 
+def test_bearer_to_cloud_metadata_endpoint_refuses_to_start_even_with_plaintext_optin(
+    monkeypatch,
+):
+    """#1652: bearer + cloud-metadata host must fail closed.
+
+    PROMETHEUS_ALLOW_PLAINTEXT_BEARER=true is the documented escape hatch
+    for trusted in-cluster mTLS / loopback transports — it must NOT
+    authorise sending a bearer token to a cloud-provider instance-
+    metadata IP. That endpoint is privileged regardless of transport.
+    """
+    import importlib
+
+    monkeypatch.setenv("PROMETHEUS_URL", "http://169.254.169.254:9090")
+    monkeypatch.setenv("PROMETHEUS_BEARER_TOKEN", "s3cret-token")
+    monkeypatch.setenv("PROMETHEUS_ALLOW_PLAINTEXT_BEARER", "true")
+    # Ensure no allow-list short-circuits the test before the metadata
+    # check (the allow-list raises a different error first if set).
+    monkeypatch.delenv("MCP_PROM_URL_ALLOWLIST", raising=False)
+
+    # Drop cached server module so import-time guards re-run with the
+    # patched environment.
+    sys.modules.pop("server", None)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        importlib.import_module("server")
+
+    msg = str(excinfo.value)
+    assert "1652" in msg, f"error message must cite #1652: {msg!r}"
+    assert "metadata" in msg.lower() or "169.254.169.254" in msg, (
+        f"error message must identify the metadata endpoint: {msg!r}"
+    )
+
+    # Restore a healthy server module for any subsequent tests in the
+    # session, so test isolation is preserved.
+    monkeypatch.setenv("PROMETHEUS_URL", "http://prom.example.test:9090")
+    monkeypatch.delenv("PROMETHEUS_BEARER_TOKEN", raising=False)
+    monkeypatch.delenv("PROMETHEUS_ALLOW_PLAINTEXT_BEARER", raising=False)
+    sys.modules.pop("server", None)
+    importlib.import_module("server")
+
+
 if __name__ == "__main__":  # pragma: no cover
     sys.exit(pytest.main([__file__, "-q"]))

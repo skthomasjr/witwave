@@ -152,6 +152,21 @@ _MCP_PROM_MAX_RESPONSE_BYTES = int(
 # requires auth.
 _PROMETHEUS_BEARER_TOKEN = os.environ.get("PROMETHEUS_BEARER_TOKEN") or ""
 
+# #1652: cloud-provider instance-metadata endpoints. These IPs/hostnames
+# are privileged regardless of transport — sending a bearer token to them
+# leaks the credential into IMDS-adjacent surfaces (and an attacker who
+# can spoof DNS/route on the pod network can capture it). We fail closed
+# even when PROMETHEUS_ALLOW_PLAINTEXT_BEARER=true: the plaintext escape
+# hatch is for trusted in-cluster mTLS / loopback links, not for the
+# metadata IP. There is no opt-out for this case by design.
+_METADATA_HOSTS = {
+    "169.254.169.254",
+    "fd00:ec2::254",
+    "metadata.google.internal",
+    "metadata.azure.com",
+    "metadata",
+}
+
 # #1527: refuse to attach a bearer token on a plain-http URL — the token
 # would cross the wire in cleartext and could be sniffed on any shared
 # network hop between this pod and Prometheus. Operators running a
@@ -181,6 +196,33 @@ if (
         "mcp-prometheus: bearer token will be sent over plaintext http "
         "because PROMETHEUS_ALLOW_PLAINTEXT_BEARER=true. Token is "
         "exposed to any on-path observer. See #1527."
+    )
+
+# #1652: even with PROMETHEUS_ALLOW_PLAINTEXT_BEARER=true, refuse to send
+# a bearer token to a cloud-provider instance-metadata endpoint. The
+# plaintext escape hatch is scoped to trusted in-cluster transports
+# (mesh mTLS / loopback); the metadata IP is a separate, privileged
+# surface that we fail closed on regardless of the operator's plaintext
+# acknowledgement. No opt-out by design.
+if (
+    _PROMETHEUS_BEARER_TOKEN
+    and _PROMETHEUS_URL
+    and (urlparse(_PROMETHEUS_URL).hostname or "").lower().rstrip(".")
+    in _METADATA_HOSTS
+):
+    log.critical(
+        "mcp-prometheus: PROMETHEUS_BEARER_TOKEN is set but "
+        "PROMETHEUS_URL host (%s) is a cloud-provider instance-metadata "
+        "endpoint. Refusing to start. PROMETHEUS_ALLOW_PLAINTEXT_BEARER "
+        "does NOT cover this case: the metadata IP is privileged "
+        "regardless of transport. See #1652.",
+        (urlparse(_PROMETHEUS_URL).hostname or ""),
+    )
+    raise RuntimeError(
+        "mcp-prometheus: refusing to send PROMETHEUS_BEARER_TOKEN to a "
+        f"cloud-metadata endpoint ({_PROMETHEUS_URL!r}). "
+        "PROMETHEUS_ALLOW_PLAINTEXT_BEARER does not authorise this path. "
+        "See #1652."
     )
 
 # Request timeout on Prometheus HTTP calls (#778 parity). Prometheus's
