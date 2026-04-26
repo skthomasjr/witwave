@@ -582,9 +582,16 @@ spec:
           # before readiness/liveness begin enforcing (#580). Backends pay
           # SDK import cost + MCP server handshakes on first boot; without
           # this, readiness can flap during warm-up.
+          #
+          # Probe paths use the cycle-1 #1608 + #1672 health split:
+          # - /health: liveness — 200 once process is up, even mid-init
+          # - /health/ready: startup + readiness — 503 while init or degraded
+          # All three backends (claude, codex, gemini) expose /health/ready
+          # post-#1672. Pointing readiness at /health (the old config) caused
+          # k8s to flip pods to Ready before backends had completed init.
           startupProbe:
             httpGet:
-              path: /health
+              path: /health/ready
               port: {{ .port }}
             initialDelaySeconds: {{ $.Values.probes.startup.initialDelaySeconds }}
             periodSeconds: {{ $.Values.probes.startup.periodSeconds }}
@@ -600,7 +607,7 @@ spec:
             failureThreshold: {{ $.Values.probes.liveness.failureThreshold }}
           readinessProbe:
             httpGet:
-              path: /health
+              path: /health/ready
               port: {{ .port }}
             initialDelaySeconds: {{ $.Values.probes.readiness.initialDelaySeconds }}
             periodSeconds: {{ $.Values.probes.readiness.periodSeconds }}
