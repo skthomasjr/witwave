@@ -128,6 +128,30 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
+	// #1657: surface the leader-election timing knobs at startup so
+	// misconfigs are visible in operator logs, then validate the
+	// strict ordering required by client-go's leaderelection package
+	// (lease > renew > retry). An invalid relationship here would
+	// otherwise surface as opaque "context deadline exceeded" errors
+	// from controller-runtime well after manager start.
+	setupLog.Info("leader-election timing",
+		"leaseDuration", leaderElectionLeaseDuration,
+		"renewDeadline", leaderElectionRenewDeadline,
+		"retryPeriod", leaderElectionRetryPeriod,
+	)
+	if err := validateLeaderElectionFlags(
+		leaderElectionLeaseDuration,
+		leaderElectionRenewDeadline,
+		leaderElectionRetryPeriod,
+	); err != nil {
+		setupLog.Error(err, "invalid leader-election flag values; require leaseDuration > renewDeadline > retryPeriod (#1657)",
+			"leaseDuration", leaderElectionLeaseDuration,
+			"renewDeadline", leaderElectionRenewDeadline,
+			"retryPeriod", leaderElectionRetryPeriod,
+		)
+		os.Exit(1)
+	}
+
 	// Initialise OpenTelemetry tracing (#471 part B). No-op when
 	// OTEL_ENABLED is unset/false. Shutdown is deferred so a clean exit
 	// flushes the in-flight batch span exporter; the timeout matches
@@ -496,4 +520,38 @@ func firstNonEmpty(candidates ...string) string {
 		}
 	}
 	return ""
+}
+
+// validateLeaderElectionFlags enforces the strict timing relationship
+// required by client-go's leaderelection package: leaseDuration must be
+// strictly greater than renewDeadline, and renewDeadline must be strictly
+// greater than retryPeriod. Each must also be a positive duration (#1657).
+//
+// Mis-ordered values cause the leader to give up its lease before another
+// candidate can acquire it, producing reconcile gaps and opaque
+// "context deadline exceeded" errors that are hard to diagnose at runtime.
+// Validating up front turns a runtime symptom into a startup-time error.
+func validateLeaderElectionFlags(leaseDuration, renewDeadline, retryPeriod time.Duration) error {
+	if leaseDuration <= 0 {
+		return fmt.Errorf("leader-election-lease-duration must be > 0, got %s", leaseDuration)
+	}
+	if renewDeadline <= 0 {
+		return fmt.Errorf("leader-election-renew-deadline must be > 0, got %s", renewDeadline)
+	}
+	if retryPeriod <= 0 {
+		return fmt.Errorf("leader-election-retry-period must be > 0, got %s", retryPeriod)
+	}
+	if leaseDuration <= renewDeadline {
+		return fmt.Errorf(
+			"leader-election-lease-duration (%s) must be > leader-election-renew-deadline (%s)",
+			leaseDuration, renewDeadline,
+		)
+	}
+	if renewDeadline <= retryPeriod {
+		return fmt.Errorf(
+			"leader-election-renew-deadline (%s) must be > leader-election-retry-period (%s)",
+			renewDeadline, retryPeriod,
+		)
+	}
+	return nil
 }
