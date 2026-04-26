@@ -1420,6 +1420,12 @@ def diff(
     _reject_flag_like(
         name=name, chart=chart, namespace=namespace, version=version, repo=repo
     )
+    # #1664: tighten 'repo' beyond _reject_flag_like — reject file://,
+    # javascript:, and other non-http(s) schemes. Mirrors install/upgrade
+    # (#1638) so diff() can't be used as a back-door to fetch a chart over
+    # a scheme the mutating helpers already refuse.
+    if repo:
+        _validate_repo_url(repo)
     if not isinstance(context, int) or context < 0:
         raise ValueError("helm: 'context' must be a non-negative int")
     with _handler_span(

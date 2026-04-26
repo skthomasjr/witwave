@@ -692,5 +692,36 @@ def test_validate_repo_url_rejects_non_url_string():
         server._validate_repo_url("not a url")
 
 
+# ----- diff() repo URL validation (#1664) -----
+
+
+def test_diff_repo_rejects_file_scheme(_stub_helm):
+    """#1664: diff() must reject file:// repo URLs like install/upgrade do."""
+    with pytest.raises(server.HelmError, match="scheme must be http or https"):
+        server.diff(
+            name="r",
+            chart="c",
+            namespace="ns",
+            repo="file:///etc/passwd",
+        )
+    # Validation must fire before any helm CLI invocation.
+    assert _stub_helm == []
+
+
+def test_diff_repo_accepts_https(_stub_helm):
+    """#1664: diff() permits https:// repo URLs (mirrors install/upgrade)."""
+    out = server.diff(
+        name="r",
+        chart="c",
+        namespace="ns",
+        repo="https://charts.example.com/",
+    )
+    assert out == "ok"
+    # _helm was invoked exactly once and the --repo flag carried through.
+    assert len(_stub_helm) == 1
+    assert "--repo" in _stub_helm[0]
+    assert "https://charts.example.com/" in _stub_helm[0]
+
+
 if __name__ == "__main__":  # pragma: no cover
     sys.exit(pytest.main([__file__, "-q"]))
