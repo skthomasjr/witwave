@@ -5,16 +5,16 @@
 //
 // Version info is injected at build time via -ldflags:
 //
-//	go build -ldflags "-X 'github.com/skthomasjr/witwave/clients/ww/cmd.Version=0.1.0' \
-//	                   -X 'github.com/skthomasjr/witwave/clients/ww/cmd.Commit=<sha>' \
-//	                   -X 'github.com/skthomasjr/witwave/clients/ww/cmd.BuildDate=<iso>'" \
+//	go build -ldflags "-X 'github.com/witwave-ai/witwave/clients/ww/cmd.Version=0.1.0' \
+//	                   -X 'github.com/witwave-ai/witwave/clients/ww/cmd.Commit=<sha>' \
+//	                   -X 'github.com/witwave-ai/witwave/clients/ww/cmd.BuildDate=<iso>'" \
 //	  .
 package main
 
 import (
 	"os"
 
-	"github.com/skthomasjr/witwave/clients/ww/cmd"
+	"github.com/witwave-ai/witwave/clients/ww/cmd"
 )
 
 func main() {

@@ -4,8 +4,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/skthomasjr/witwave/clients/ww/internal/agent"
-	"github.com/skthomasjr/witwave/clients/ww/internal/config"
+	"github.com/witwave-ai/witwave/clients/ww/internal/agent"
+	"github.com/witwave-ai/witwave/clients/ww/internal/config"
 )
 
 // tuiDefaults captures the values the create-agent modal pre-fills.

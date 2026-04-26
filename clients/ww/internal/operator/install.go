@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/skthomasjr/witwave/clients/ww/internal/k8s"
+	"github.com/witwave-ai/witwave/clients/ww/internal/k8s"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"

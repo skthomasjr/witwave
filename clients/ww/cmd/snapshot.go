@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/skthomasjr/witwave/clients/ww/internal/client"
-	"github.com/skthomasjr/witwave/clients/ww/internal/output"
+	"github.com/witwave-ai/witwave/clients/ww/internal/client"
+	"github.com/witwave-ai/witwave/clients/ww/internal/output"
 )
 
 // snapshotEntry is the normalised view of a single job/task/trigger/

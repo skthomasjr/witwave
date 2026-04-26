@@ -88,7 +88,7 @@ func TestInstallMethod_UpgradeCommand(t *testing.T) {
 		want string
 	}{
 		{InstallMethodBrew, "brew upgrade ww"},
-		{InstallMethodGoInstall, "go install github.com/skthomasjr/witwave/clients/ww@latest"},
+		{InstallMethodGoInstall, "go install github.com/witwave-ai/witwave/clients/ww@latest"},
 		{InstallMethodBinary, ""},
 	}
 	for _, tc := range cases {

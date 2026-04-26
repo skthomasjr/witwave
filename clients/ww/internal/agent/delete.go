@@ -15,7 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/rest"
 
-	"github.com/skthomasjr/witwave/clients/ww/internal/k8s"
+	"github.com/witwave-ai/witwave/clients/ww/internal/k8s"
 )
 
 // DeleteOptions controls the `ww agent delete` flow.

@@ -9,10 +9,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/skthomasjr/witwave/clients/ww/internal/client"
-	"github.com/skthomasjr/witwave/clients/ww/internal/config"
-	"github.com/skthomasjr/witwave/clients/ww/internal/output"
-	"github.com/skthomasjr/witwave/clients/ww/internal/update"
+	"github.com/witwave-ai/witwave/clients/ww/internal/client"
+	"github.com/witwave-ai/witwave/clients/ww/internal/config"
+	"github.com/witwave-ai/witwave/clients/ww/internal/output"
+	"github.com/witwave-ai/witwave/clients/ww/internal/update"
 	"github.com/spf13/cobra"
 )
 

@@ -55,7 +55,7 @@ func (m InstallMethod) UpgradeCommand() string {
 	case InstallMethodBrew:
 		return "brew upgrade ww"
 	case InstallMethodGoInstall:
-		return "go install github.com/skthomasjr/witwave/clients/ww@latest"
+		return "go install github.com/witwave-ai/witwave/clients/ww@latest"
 	default:
 		return ""
 	}

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/skthomasjr/witwave/clients/ww/internal/client"
+	"github.com/witwave-ai/witwave/clients/ww/internal/client"
 	"github.com/spf13/cobra"
 )
 

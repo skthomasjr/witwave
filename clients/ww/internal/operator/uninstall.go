@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/skthomasjr/witwave/clients/ww/internal/k8s"
+	"github.com/witwave-ai/witwave/clients/ww/internal/k8s"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"

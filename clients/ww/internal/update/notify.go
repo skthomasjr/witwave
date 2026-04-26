@@ -262,7 +262,7 @@ func RunUpgrade(ctx context.Context, method InstallMethod, currentVersion string
 
 	case InstallMethodGoInstall:
 		goCmd, cancelGo := commandWithTimeout(ctx, _goCmdTimeout, "go", "install",
-			"github.com/skthomasjr/witwave/clients/ww@latest",
+			"github.com/witwave-ai/witwave/clients/ww@latest",
 		)
 		defer cancelGo()
 		goCmd.Stdout, goCmd.Stderr = stdout, stderr

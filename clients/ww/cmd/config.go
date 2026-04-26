@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/skthomasjr/witwave/clients/ww/internal/config"
+	"github.com/witwave-ai/witwave/clients/ww/internal/config"
 	"github.com/spf13/cobra"
 )
 

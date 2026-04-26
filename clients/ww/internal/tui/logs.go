@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/skthomasjr/witwave/clients/ww/internal/agent"
+	"github.com/witwave-ai/witwave/clients/ww/internal/agent"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
