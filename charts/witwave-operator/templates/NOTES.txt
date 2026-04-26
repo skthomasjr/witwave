@@ -7,3 +7,48 @@ The witwave-operator controller manager is now running and watching for witwave.
 
 Check operator status:
   kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "witwave-operator.name" . }}
+
+Startup grace window (#1627):
+  startupProbe.failureThreshold = {{ .Values.probes.startup.failureThreshold }} (=> {{ mul .Values.probes.startup.failureThreshold (int .Values.probes.startup.periodSeconds) }}s grace at
+  periodSeconds: {{ .Values.probes.startup.periodSeconds }}). This covers cold-start under leader election +
+  multi-replica against a slow control-plane: a fresh pod waits out the
+  standing lease (leaderElection.leaseDuration{{ if .Values.leaderElection.leaseDuration }} = {{ .Values.leaderElection.leaseDuration }}{{ else }}, controller-runtime
+  default 15s{{ end }}) plus webhook TLS bring-up before /healthz reports ready. If
+  you widen leaderElection.leaseDuration, keep
+  probes.startup.failureThreshold * periodSeconds >= leaseDuration + 60s
+  of headroom.
+
+{{- if .Values.podDisruptionBudget.enabled }}
+
+A PodDisruptionBudget is enabled by default for the operator (#1628) to protect
+this control-plane component from voluntary disruption (node drain, cluster
+upgrade). With replicaCount=1 + leader election the PDB delays voluntary
+eviction until the rescheduled pod is Ready; it does not block eviction
+indefinitely. To opt out, set:
+
+  podDisruptionBudget:
+    enabled: false
+{{- end }}
+{{- if .Values.webhooks.enabled }}
+
+NOTICE (#1624): admission webhook failure policy
+------------------------------------------------
+  Mutating webhook  (mwitwaveagent.kb.io):  failurePolicy={{ .Values.webhooks.failurePolicy | default "Fail" }}
+  Validating webhooks (v*.kb.io):           failurePolicy={{ .Values.webhooks.validatingFailurePolicy | default "Ignore" }}
+
+The validating webhooks default to "Ignore" so a webhook outage (pod
+down, cert rotation race, network partition) does NOT deadlock all
+WitwaveAgent / WitwavePrompt admission cluster-wide. The reconciler
+surfaces any spec drift that slips through via status conditions.
+
+If your webhook deployment is highly available (replicaCount > 1, PDB,
+anti-affinity) and you require strict admission, flip to "Fail":
+
+  helm upgrade {{ .Release.Name }} . \
+    --set webhooks.validatingFailurePolicy=Fail \
+    -n {{ .Release.Namespace }}
+
+The mutating webhook stays on "Fail" by design — it sets critical
+defaults the reconciler relies on, so admitting under-defaulted CRs
+would cause downstream errors.
+{{- end }}
