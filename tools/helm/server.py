@@ -1681,10 +1681,52 @@ def uninstall(
             raise
 
 
-def _repo_url_allowlist() -> set[str]:
-    """Parse MCP_HELM_REPO_URL_ALLOWLIST into a hostname set (#1202)."""
+_DEFAULT_PORTS = {"http": 80, "https": 443}
+
+
+def _repo_url_allowlist() -> list[tuple[str, int | None]]:
+    """Parse MCP_HELM_REPO_URL_ALLOWLIST into (host, port|None) tuples (#1202, #1601).
+
+    Each comma-separated entry is either:
+      - bare ``hostname`` — matches that hostname when the URL has no
+        explicit port or uses the scheme's default port (80/http, 443/https).
+      - ``hostname:port`` — matches that hostname AND that exact port.
+    """
     raw = os.environ.get("MCP_HELM_REPO_URL_ALLOWLIST", "")
-    return {h.strip().lower() for h in raw.split(",") if h.strip()}
+    entries: list[tuple[str, int | None]] = []
+    for chunk in raw.split(","):
+        item = chunk.strip().lower()
+        if not item:
+            continue
+        # Split off port if present. IPv6 literals would arrive bracketed
+        # (e.g. "[::1]:8443"); strip the brackets and split on the final
+        # ":" to keep the address intact.
+        host: str
+        port: int | None = None
+        if item.startswith("["):
+            close = item.find("]")
+            if close == -1:
+                # malformed IPv6 entry — keep as-is so the lookup fails closed
+                entries.append((item, None))
+                continue
+            host = item[1:close]
+            rest = item[close + 1 :]
+            if rest.startswith(":"):
+                try:
+                    port = int(rest[1:])
+                except ValueError:
+                    port = None
+        elif item.count(":") == 1:
+            host, _, port_s = item.partition(":")
+            try:
+                port = int(port_s)
+            except ValueError:
+                # malformed — fall back to treating the whole thing as a host
+                host, port = item, None
+        else:
+            host = item
+        entries.append((host, port))
+    return entries
 
 
 def _repo_allow_any() -> bool:
@@ -1698,12 +1740,15 @@ def repo_add(name: str, url: str) -> str:
     """Add a chart repository.
 
     URL is gated by ``MCP_HELM_REPO_URL_ALLOWLIST`` (comma-separated
-    hostnames) + ``MCP_HELM_ALLOW_ANY_REPO`` (bool, default false) to
-    stop an LLM-supplied registry from shipping chart code the operator
-    never vetted (#1202). When the allow-list is empty and
+    entries; each is either a bare ``hostname`` or ``hostname:port``)
+    + ``MCP_HELM_ALLOW_ANY_REPO`` (bool, default false) to stop an
+    LLM-supplied registry from shipping chart code the operator never
+    vetted (#1202). When the allow-list is empty and
     ``MCP_HELM_ALLOW_ANY_REPO`` is not truthy, ``repo_add`` fails
-    closed. When the allow-list is populated, only URLs whose hostname
-    is in the list are accepted.
+    closed. When the allow-list is populated, both hostname AND port
+    must match (#1601): bare-hostname entries match URLs with no port
+    or the scheme's default port (80/http, 443/https); ``hostname:port``
+    entries require an exact port match.
     """
     _reject_flag_like(name=name, url=url)
     # #1202: validate the URL against the operator allow-list before
@@ -1766,16 +1811,45 @@ def repo_add(name: str, url: str) -> str:
             "helm repo_add: refused because MCP_HELM_REPO_URL_ALLOWLIST "
             "is empty and MCP_HELM_ALLOW_ANY_REPO is not set. Operators "
             "must opt into each chart registry by listing its hostname "
-            "in MCP_HELM_REPO_URL_ALLOWLIST (comma-separated), or set "
+            "in MCP_HELM_REPO_URL_ALLOWLIST (comma-separated; entries "
+            "may be 'hostname' or 'hostname:port'), or set "
             "MCP_HELM_ALLOW_ANY_REPO=true to accept any host (not "
             "recommended). See #1202."
         )
-    if allowlist and hostname not in allowlist:
-        raise HelmError(
-            f"helm repo_add: host {hostname!r} is not in "
-            f"MCP_HELM_REPO_URL_ALLOWLIST. Allowed hosts: "
-            f"{sorted(allowlist)}. See #1202."
-        )
+    if allowlist:
+        # #1601: validate port too. Bare-hostname entries match URLs with
+        # no explicit port or the scheme's default port; hostname:port
+        # entries require an exact port match.
+        url_port = parsed.port  # None when URL has no explicit port
+        scheme_default = _DEFAULT_PORTS.get(parsed.scheme)
+        matched = False
+        for entry_host, entry_port in allowlist:
+            if entry_host != hostname:
+                continue
+            if entry_port is None:
+                # bare hostname: URL must use no explicit port or the
+                # scheme's default port
+                if url_port is None or url_port == scheme_default:
+                    matched = True
+                    break
+            else:
+                # hostname:port: exact port match required. If URL has
+                # no explicit port, fall back to the scheme default for
+                # comparison so "hostname:443" matches "https://hostname/".
+                effective = url_port if url_port is not None else scheme_default
+                if effective == entry_port:
+                    matched = True
+                    break
+        if not matched:
+            allowed_repr = sorted(
+                f"{h}:{p}" if p is not None else h for h, p in allowlist
+            )
+            url_port_repr = url_port if url_port is not None else scheme_default
+            raise HelmError(
+                f"helm repo_add: host {hostname!r} (port {url_port_repr!r}) "
+                f"is not in MCP_HELM_REPO_URL_ALLOWLIST. Allowed entries: "
+                f"{allowed_repr}. See #1202, #1601."
+            )
     with _handler_span("repo_add", {"helm.repo": name}) as _h:
         try:
             return _helm(["repo", "add", name, url])

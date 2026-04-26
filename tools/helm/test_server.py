@@ -539,5 +539,134 @@ def test_sweep_orphan_values_files_removes_old(tmp_path, monkeypatch):
     assert fresh.exists()
 
 
+# ----- _repo_url_allowlist + repo_add port validation (#1601) -----
+
+
+def test_repo_url_allowlist_parses_bare_hostname(monkeypatch):
+    monkeypatch.setenv("MCP_HELM_REPO_URL_ALLOWLIST", "charts.example.com")
+    assert server._repo_url_allowlist() == [("charts.example.com", None)]
+
+
+def test_repo_url_allowlist_parses_host_port(monkeypatch):
+    monkeypatch.setenv(
+        "MCP_HELM_REPO_URL_ALLOWLIST",
+        "charts.example.com:8443, other.example.com",
+    )
+    assert server._repo_url_allowlist() == [
+        ("charts.example.com", 8443),
+        ("other.example.com", None),
+    ]
+
+
+def test_repo_url_allowlist_lowercases(monkeypatch):
+    monkeypatch.setenv("MCP_HELM_REPO_URL_ALLOWLIST", "Charts.Example.COM:8443")
+    assert server._repo_url_allowlist() == [("charts.example.com", 8443)]
+
+
+def test_repo_url_allowlist_empty(monkeypatch):
+    monkeypatch.setenv("MCP_HELM_REPO_URL_ALLOWLIST", "")
+    assert server._repo_url_allowlist() == []
+
+
+@pytest.fixture
+def _stub_helm(monkeypatch):
+    """Replace ``_helm`` so tests never spawn the helm CLI."""
+    calls: list[list[str]] = []
+
+    def _fake(args, **kwargs):
+        calls.append(list(args))
+        return "ok"
+
+    monkeypatch.setattr(server, "_helm", _fake)
+    return calls
+
+
+def test_repo_add_bare_hostname_default_http_port_accepted(_stub_helm, monkeypatch):
+    """#1601: bare entry matches URL with no explicit port (http default 80)."""
+    monkeypatch.setenv("MCP_HELM_REPO_URL_ALLOWLIST", "charts.example.com")
+    monkeypatch.delenv("MCP_HELM_ALLOW_ANY_REPO", raising=False)
+    out = server.repo_add("ex", "http://charts.example.com/")
+    assert out == "ok"
+    assert _stub_helm == [["repo", "add", "ex", "http://charts.example.com/"]]
+
+
+def test_repo_add_bare_hostname_default_https_port_accepted(_stub_helm, monkeypatch):
+    """#1601: bare entry matches https URL with no explicit port (default 443)."""
+    monkeypatch.setenv("MCP_HELM_REPO_URL_ALLOWLIST", "charts.example.com")
+    monkeypatch.delenv("MCP_HELM_ALLOW_ANY_REPO", raising=False)
+    out = server.repo_add("ex", "https://charts.example.com/")
+    assert out == "ok"
+
+
+def test_repo_add_bare_hostname_explicit_default_port_accepted(_stub_helm, monkeypatch):
+    """#1601: bare entry matches URL that explicitly states the scheme default."""
+    monkeypatch.setenv("MCP_HELM_REPO_URL_ALLOWLIST", "charts.example.com")
+    monkeypatch.delenv("MCP_HELM_ALLOW_ANY_REPO", raising=False)
+    out = server.repo_add("ex", "https://charts.example.com:443/")
+    assert out == "ok"
+
+
+def test_repo_add_bare_hostname_non_default_port_rejected(_stub_helm, monkeypatch):
+    """#1601: bare entry must NOT match URLs with arbitrary non-default ports."""
+    monkeypatch.setenv("MCP_HELM_REPO_URL_ALLOWLIST", "charts.example.com")
+    monkeypatch.delenv("MCP_HELM_ALLOW_ANY_REPO", raising=False)
+    with pytest.raises(server.HelmError, match="not in MCP_HELM_REPO_URL_ALLOWLIST"):
+        server.repo_add("ex", "https://charts.example.com:8443/")
+    assert _stub_helm == []
+
+
+def test_repo_add_host_port_exact_match_accepted(_stub_helm, monkeypatch):
+    """#1601: hostname:port entry matches URL with the same explicit port."""
+    monkeypatch.setenv("MCP_HELM_REPO_URL_ALLOWLIST", "charts.example.com:8443")
+    monkeypatch.delenv("MCP_HELM_ALLOW_ANY_REPO", raising=False)
+    out = server.repo_add("ex", "https://charts.example.com:8443/")
+    assert out == "ok"
+
+
+def test_repo_add_host_port_mismatch_rejected(_stub_helm, monkeypatch):
+    """#1601: hostname:port entry rejects URLs with a different port."""
+    monkeypatch.setenv("MCP_HELM_REPO_URL_ALLOWLIST", "charts.example.com:8443")
+    monkeypatch.delenv("MCP_HELM_ALLOW_ANY_REPO", raising=False)
+    with pytest.raises(server.HelmError, match="not in MCP_HELM_REPO_URL_ALLOWLIST"):
+        server.repo_add("ex", "https://charts.example.com:9443/")
+    assert _stub_helm == []
+
+
+def test_repo_add_host_port_default_match_accepted(_stub_helm, monkeypatch):
+    """#1601: 'host:443' entry matches https URL with no explicit port."""
+    monkeypatch.setenv("MCP_HELM_REPO_URL_ALLOWLIST", "charts.example.com:443")
+    monkeypatch.delenv("MCP_HELM_ALLOW_ANY_REPO", raising=False)
+    out = server.repo_add("ex", "https://charts.example.com/")
+    assert out == "ok"
+
+
+def test_repo_add_host_port_rejects_when_only_bare_hostname_in_url(_stub_helm, monkeypatch):
+    """#1601: 'host:8443' entry rejects bare https URL (resolves to 443)."""
+    monkeypatch.setenv("MCP_HELM_REPO_URL_ALLOWLIST", "charts.example.com:8443")
+    monkeypatch.delenv("MCP_HELM_ALLOW_ANY_REPO", raising=False)
+    with pytest.raises(server.HelmError, match="not in MCP_HELM_REPO_URL_ALLOWLIST"):
+        server.repo_add("ex", "https://charts.example.com/")
+    assert _stub_helm == []
+
+
+def test_repo_add_mixed_allowlist_picks_matching_entry(_stub_helm, monkeypatch):
+    """#1601: an allowlist with both bare and host:port entries applies each rule independently."""
+    monkeypatch.setenv(
+        "MCP_HELM_REPO_URL_ALLOWLIST",
+        "charts.example.com,internal.example.com:8443",
+    )
+    monkeypatch.delenv("MCP_HELM_ALLOW_ANY_REPO", raising=False)
+    # bare entry → default-port URL accepted
+    assert server.repo_add("a", "https://charts.example.com/") == "ok"
+    # host:port entry → exact-port URL accepted
+    assert server.repo_add("b", "https://internal.example.com:8443/") == "ok"
+    # bare entry must reject non-default port
+    with pytest.raises(server.HelmError):
+        server.repo_add("c", "https://charts.example.com:9000/")
+    # host:port entry must reject default-port URL
+    with pytest.raises(server.HelmError):
+        server.repo_add("d", "https://internal.example.com/")
+
+
 if __name__ == "__main__":  # pragma: no cover
     sys.exit(pytest.main([__file__, "-q"]))
