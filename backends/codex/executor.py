@@ -2218,7 +2218,7 @@ async def _run_inner(
         await _track_session(sessions, session_id)
     if backend_tasks_total is not None:
         backend_tasks_total.labels(**_LABELS, status="budget_exceeded" if _budget_exceeded else "success").inc()
-    if backend_task_last_success_timestamp_seconds is not None:
+    if not _budget_exceeded and backend_task_last_success_timestamp_seconds is not None:
         backend_task_last_success_timestamp_seconds.labels(**_LABELS).set(time.time())
     if backend_task_duration_seconds is not None:
         backend_task_duration_seconds.labels(**_LABELS).observe(time.monotonic() - _start)
