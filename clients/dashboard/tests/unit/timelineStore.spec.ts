@@ -180,6 +180,44 @@ describe("useTimelineStore — bookkeeping", () => {
     }
     expect(store.events.map((e) => e.id)).toEqual(["3", "4", "5"]);
   });
+
+  it("caps seenIds growth so a long-lived tab can't leak (#1605)", () => {
+    const store = useTimelineStore();
+    // Generous ring so we never trip the ring-eviction path that already
+    // prunes seenIds; the test must exercise the cap-only path.
+    store.ringSize = 10_000;
+
+    const SEEN_IDS_CAP = 5000;
+    // Push slightly above the cap. The dedup set must stay bounded; the
+    // observable consequence is that an "old" id pushed again after the
+    // cap is exceeded is re-admitted (because it was evicted from the
+    // dedup set), whereas without the cap it would be deduped forever.
+    const oldId = "old-1";
+    store.__pushForTest(
+      make(oldId, "t", "iris", "2026-04-18T00:00:00.000Z"),
+    );
+    for (let i = 0; i < SEEN_IDS_CAP + 100; i += 1) {
+      // Unique ids and monotonic ts so we exercise the fast-append path.
+      const ms = String(i).padStart(6, "0");
+      store.__pushForTest(
+        make(`fill-${i}`, "t", "iris", `2026-04-18T01:00:00.${ms.slice(-3)}Z`),
+      );
+    }
+
+    const beforeReadmit = store.events.length;
+    // Re-push the original "old" envelope. If the cap is enforced, its
+    // id was evicted from seenIds and the re-push lands as a fresh event.
+    // Without the cap the re-push would be silently deduped, so the
+    // length would not change.
+    store.__pushForTest(
+      make(oldId, "t", "iris", "2026-04-18T02:00:00.000Z"),
+    );
+    expect(store.events.length).toBe(beforeReadmit + 1);
+
+    // Sanity: ring stayed under its (very generous) limit, proving the
+    // bound is on the dedup set, not the ring.
+    expect(store.events.length).toBeLessThanOrEqual(10_000);
+  });
 });
 
 describe("useTimelineStore — override single-stream path (regression guard)", () => {

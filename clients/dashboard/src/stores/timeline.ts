@@ -62,6 +62,30 @@ import { __resetUseAlerts } from "../composables/useAlerts";
 // -----------------------------------------------------------------------
 
 const DEFAULT_RING_SIZE = 1000;
+// Hard cap on the seenIds dedup set. The ring is bounded by `ringSize`,
+// but `seenIds` only loses entries when an envelope is evicted from the
+// ring via `trimRing`. A long-lived dashboard tab that processes more
+// events than the ring ever holds (the common case for any non-trivial
+// uptime) would otherwise let `seenIds` grow without bound. When the set
+// crosses `SEEN_IDS_CAP`, evict the oldest entries (Set iteration order
+// is insertion order in JS) down to 90% of the cap so we don't thrash on
+// the boundary. This trades a small re-merge risk for a stable upper
+// bound on memory; the ring itself is still the source of truth for
+// "what's visible", so re-admitting an old id is harmless.
+const SEEN_IDS_CAP = 5000;
+
+function evictOldestIds(set: Set<string>, capacity: number): void {
+  if (set.size <= capacity) return;
+  const target = Math.floor(capacity * 0.9);
+  const drop = set.size - target;
+  let i = 0;
+  for (const id of set) {
+    if (i >= drop) break;
+    set.delete(id);
+    i += 1;
+  }
+}
+
 // Relative URL — nginx / dev proxy forwards to the harness at /events/stream.
 // Used only when the override `opts.url` path is taken; the fanout path
 // derives per-agent URLs from `useTeam().members`.
@@ -265,6 +289,11 @@ export const useTimelineStore = defineStore("timeline", () => {
       events.value = next;
     }
     trimRing();
+    // `trimRing` only drops seenIds tied to envelopes still in the ring.
+    // For a long-lived tab the dedup set can drift far past the ring
+    // size; cap it here so the dedup memory is bounded regardless of
+    // uptime. (#1605)
+    evictOldestIds(seenIds, SEEN_IDS_CAP);
   }
 
   function recomputeAggregateState(): void {
