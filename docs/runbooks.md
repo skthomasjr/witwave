@@ -249,7 +249,7 @@ When you add an alert to `charts/witwave/templates/prometheusrule.yaml`:
 
 1. Add a section here with a matching all-lowercase anchor.
 2. Set the alert's `runbook_url` annotation to
-   `https://github.com/skthomasjr/witwave/blob/main/docs/runbooks.md#<anchor>`.
+   `https://github.com/witwave-ai/witwave/blob/main/docs/runbooks.md#<anchor>`.
 3. Follow the existing template: **What fires it**, **First checks**, **Remediation**, optional **Escalation**.
 4. Add a values.yaml block under `prometheusRule.alerts.<name>` so thresholds are overrideable.
 

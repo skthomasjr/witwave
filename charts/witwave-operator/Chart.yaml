@@ -10,12 +10,12 @@ keywords:
   - ai
   - llm
   - operator
-home: https://github.com/skthomasjr/witwave
+home: https://github.com/witwave-ai/witwave
 sources:
-  - https://github.com/skthomasjr/witwave
+  - https://github.com/witwave-ai/witwave
 maintainers:
   - name: Scott Thomas
-    url: https://github.com/skthomasjr
+    url: https://github.com/witwave-ai
 annotations:
   artifacthub.io/category: AI
   artifacthub.io/licenses: Apache-2.0
@@ -24,7 +24,7 @@ annotations:
   artifacthub.io/operatorCapabilities: Basic Install
   artifacthub.io/links: |
     - name: source
-      url: https://github.com/skthomasjr/witwave
+      url: https://github.com/witwave-ai/witwave
   artifacthub.io/crds: |
     - kind: WitwaveAgent
       version: v1alpha1

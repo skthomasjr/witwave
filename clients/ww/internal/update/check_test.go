@@ -52,7 +52,7 @@ func TestChecker_Check_StableChannel_NewerAvailable(t *testing.T) {
 		}
 		_ = json.NewEncoder(w).Encode(Release{
 			TagName: "v0.5.0",
-			HTMLURL: "https://github.com/skthomasjr/witwave/releases/tag/v0.5.0",
+			HTMLURL: "https://github.com/witwave-ai/witwave/releases/tag/v0.5.0",
 		})
 	}))
 	defer srv.Close()
@@ -62,7 +62,7 @@ func TestChecker_Check_StableChannel_NewerAvailable(t *testing.T) {
 		CurrentVersion: "v0.4.0",
 		Channel:        ChannelStable,
 		Interval:       DefaultInterval,
-		Owner:          "skthomasjr",
+		Owner:          "witwave-ai",
 		Repo:           "witwave",
 		APIBase:        srv.URL,
 		HTTPClient:     srv.Client(),

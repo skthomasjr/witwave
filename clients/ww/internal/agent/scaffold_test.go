@@ -14,41 +14,41 @@ func TestParseRepoRef(t *testing.T) {
 		wantErr                              string
 	}{
 		{
-			in:          "skthomasjr/witwave-test",
-			wantURL:     "https://github.com/skthomasjr/witwave-test.git",
-			wantDisplay: "skthomasjr/witwave-test",
+			in:          "witwave-ai/witwave-test",
+			wantURL:     "https://github.com/witwave-ai/witwave-test.git",
+			wantDisplay: "witwave-ai/witwave-test",
 			wantScheme:  "https",
 		},
 		{
-			in:          "github.com/skthomasjr/witwave-test",
-			wantURL:     "https://github.com/skthomasjr/witwave-test.git",
-			wantDisplay: "skthomasjr/witwave-test",
+			in:          "github.com/witwave-ai/witwave-test",
+			wantURL:     "https://github.com/witwave-ai/witwave-test.git",
+			wantDisplay: "witwave-ai/witwave-test",
 			wantScheme:  "https",
 		},
 		{
-			in:          "https://github.com/skthomasjr/witwave-test",
-			wantURL:     "https://github.com/skthomasjr/witwave-test.git",
-			wantDisplay: "skthomasjr/witwave-test",
+			in:          "https://github.com/witwave-ai/witwave-test",
+			wantURL:     "https://github.com/witwave-ai/witwave-test.git",
+			wantDisplay: "witwave-ai/witwave-test",
 			wantScheme:  "https",
 		},
 		{
-			in:          "https://github.com/skthomasjr/witwave-test.git",
-			wantURL:     "https://github.com/skthomasjr/witwave-test.git",
-			wantDisplay: "skthomasjr/witwave-test",
+			in:          "https://github.com/witwave-ai/witwave-test.git",
+			wantURL:     "https://github.com/witwave-ai/witwave-test.git",
+			wantDisplay: "witwave-ai/witwave-test",
 			wantScheme:  "https",
 		},
 		{
 			// Credentials in URL are stripped — we never keep them
 			// anywhere that could leak to logs or config.
-			in:          "https://ignored:secret@github.com/skthomasjr/witwave-test",
-			wantURL:     "https://github.com/skthomasjr/witwave-test.git",
-			wantDisplay: "skthomasjr/witwave-test",
+			in:          "https://ignored:secret@github.com/witwave-ai/witwave-test",
+			wantURL:     "https://github.com/witwave-ai/witwave-test.git",
+			wantDisplay: "witwave-ai/witwave-test",
 			wantScheme:  "https",
 		},
 		{
-			in:          "git@github.com:skthomasjr/witwave-test.git",
-			wantURL:     "git@github.com:skthomasjr/witwave-test.git",
-			wantDisplay: "skthomasjr/witwave-test",
+			in:          "git@github.com:witwave-ai/witwave-test.git",
+			wantURL:     "git@github.com:witwave-ai/witwave-test.git",
+			wantDisplay: "witwave-ai/witwave-test",
 			wantScheme:  "ssh",
 		},
 		{

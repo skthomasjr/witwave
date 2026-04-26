@@ -113,7 +113,7 @@ on every release tag.
 | `mcp-prometheus` | `ghcr.io/witwave-ai/images/mcp-prometheus:latest` |
 
 The `ww` CLI ships via Homebrew (the [witwave-ai/homebrew-ww](https://github.com/witwave-ai/homebrew-ww) tap) and as
-standalone binaries on [GitHub Releases](https://github.com/skthomasjr/witwave/releases):
+standalone binaries on [GitHub Releases](https://github.com/witwave-ai/witwave/releases):
 
 ```bash
 brew install witwave-ai/homebrew-ww/ww
@@ -129,7 +129,7 @@ ww update --force      # run the upgrade unconditionally
 ```
 
 Pull a specific image version with a semver tag, e.g. `ghcr.io/witwave-ai/images/harness:0.4.0`. The latest released tag
-is visible on the [GitHub Releases](https://github.com/skthomasjr/witwave/releases) page; substitute it for the version
+is visible on the [GitHub Releases](https://github.com/witwave-ai/witwave/releases) page; substitute it for the version
 below.
 
 ## Helm Charts

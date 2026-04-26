@@ -111,7 +111,7 @@ func runUpdate(cc *cobra.Command, force, check bool) error {
 			Version, channelLabel(channel))
 		if method == update.InstallMethodBinary {
 			fmt.Println("Install method: standalone binary.")
-			fmt.Println("Downloads: https://github.com/skthomasjr/witwave/releases")
+			fmt.Println("Downloads: https://github.com/witwave-ai/witwave/releases")
 		} else if cmdHint := method.UpgradeCommand(); cmdHint != "" {
 			fmt.Printf("Install method: %s. Manual re-check: %s\n", method, cmdHint)
 		}

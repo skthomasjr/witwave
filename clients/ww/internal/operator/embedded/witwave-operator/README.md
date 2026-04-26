@@ -207,7 +207,7 @@ When `rbac.secretsWrite: false` is set AND a `WitwaveAgent` CR carries inline cr
 `spec.backends[*].credentials.secrets`, the reconciler tries to `Secrets.Create`, hits a 403, and retries per
 controller-runtime's normal backoff — **silently**. The CR stays at `status.phase != Ready` indefinitely; no
 Kubernetes Event surfaces the cause at apply-time today. Surfacing this at apply-time is tracked in
-[#1461](https://github.com/skthomasjr/witwave/issues/1461).
+[#1461](https://github.com/witwave-ai/witwave/issues/1461).
 
 To avoid the footgun, always pair `secretsWrite: false` with `existingSecret` references:
 

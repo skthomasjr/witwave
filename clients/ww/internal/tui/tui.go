@@ -827,7 +827,7 @@ func (cf *createAgentForm) rebuild() {
 		setInputPlaceholder(form, 6+2*i+1, "sk-ant-...   or $ANTHROPIC_API_KEY")
 	}
 	gitopsIdx := 6 + 2*len(cf.state.secrets)
-	setInputPlaceholder(form, gitopsIdx, "owner/repo  (e.g. skthomasjr/witwave-test)")
+	setInputPlaceholder(form, gitopsIdx, "owner/repo  (e.g. witwave-ai/witwave-test)")
 }
 
 // addPair appends a fresh empty pair, rebuilds the form, and lands

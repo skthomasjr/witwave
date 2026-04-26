@@ -10,16 +10,16 @@ keywords:
   - ai
   - llm
   - a2a
-home: https://github.com/skthomasjr/witwave
+home: https://github.com/witwave-ai/witwave
 sources:
-  - https://github.com/skthomasjr/witwave
+  - https://github.com/witwave-ai/witwave
 maintainers:
   - name: Scott Thomas
-    url: https://github.com/skthomasjr
+    url: https://github.com/witwave-ai
 annotations:
   artifacthub.io/category: AI
   artifacthub.io/licenses: Apache-2.0
   artifacthub.io/prerelease: "true"
   artifacthub.io/links: |
     - name: source
-      url: https://github.com/skthomasjr/witwave
+      url: https://github.com/witwave-ai/witwave

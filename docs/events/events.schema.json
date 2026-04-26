@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/skthomasjr/witwave/docs/events/events.schema.json",
+  "$id": "https://github.com/witwave-ai/witwave/docs/events/events.schema.json",
   "title": "Witwave event stream envelope and per-type payloads",
   "description": "Phase-1 event types for GET /events/stream on the harness. See ./README.md for wire format and rationale.",
   "type": "object",

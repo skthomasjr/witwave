@@ -87,7 +87,7 @@ spec:
           annotations:
             summary: "witwave backend {{`{{ $labels.backend }}`}} on agent {{`{{ $labels.agent }}`}} is not being scraped"
             description: "Backend pod has not reported metrics for {{ .forMinutes }}m. Check pod health (crash-loop, image pull, metrics listener wedge)."
-            runbook_url: "https://github.com/skthomasjr/witwave/blob/main/docs/runbooks.md#witwavebackenddown"
+            runbook_url: "https://github.com/witwave-ai/witwave/blob/main/docs/runbooks.md#witwavebackenddown"
         {{- end }}
         {{- end }}
         {{- with $alerts.hookDenialSpike }}
@@ -102,7 +102,7 @@ spec:
           annotations:
             summary: "witwave hook-denial spike on {{`{{ $labels.agent }}`}} / {{`{{ $labels.backend }}`}}"
             description: "backend_hooks_denials_total 5m rate exceeds {{ .rateThreshold }}/s. Indicates hook policy tripping on repeated disallowed-tool attempts — investigate whether the agent is misconfigured or under jailbreak pressure."
-            runbook_url: "https://github.com/skthomasjr/witwave/blob/main/docs/runbooks.md#witwavehookdenialspike"
+            runbook_url: "https://github.com/witwave-ai/witwave/blob/main/docs/runbooks.md#witwavehookdenialspike"
         {{- end }}
         {{- end }}
     - name: witwave.mcp
@@ -119,7 +119,7 @@ spec:
           annotations:
             summary: "MCP command rejected rate elevated on {{`{{ $labels.agent }}`}} / {{`{{ $labels.backend }}`}} (reason={{`{{ $labels.reason }}`}})"
             description: "backend_mcp_command_rejected_total 5m rate > {{ .rateThreshold }}/s. Typically means the backend is attempting stdio MCP commands that fall outside MCP_ALLOWED_COMMANDS / MCP_ALLOWED_COMMAND_PREFIXES / MCP_ALLOWED_CWD_PREFIXES, or the MCP tool bearer-token auth is rejecting calls."
-            runbook_url: "https://github.com/skthomasjr/witwave/blob/main/docs/runbooks.md#witwavemcpauthfailure"
+            runbook_url: "https://github.com/witwave-ai/witwave/blob/main/docs/runbooks.md#witwavemcpauthfailure"
         {{- end }}
         {{- end }}
     - name: witwave.webhooks
@@ -136,7 +136,7 @@ spec:
           annotations:
             summary: "witwave webhook deliveries timing out on {{`{{ $labels.subscription }}`}}"
             description: "harness_webhooks_delivery_total{result=~\"timeout.*\"} 5m rate > {{ .rateThreshold }}/s. Webhook sink is slow or unreachable; downstream automation is missing events. (#1423: metric was `backend_webhook_timeout_total` in older docs but only ever existed on the harness side. #1589: matcher widened to `timeout.*` so future canonical timeout result values still fire the alert without requiring a chart bump.)"
-            runbook_url: "https://github.com/skthomasjr/witwave/blob/main/docs/runbooks.md#witwavewebhooktimeout"
+            runbook_url: "https://github.com/witwave-ai/witwave/blob/main/docs/runbooks.md#witwavewebhooktimeout"
         {{- end }}
         {{- end }}
     - name: witwave.storage
@@ -155,7 +155,7 @@ spec:
           annotations:
             summary: "witwave task-store lock-wait p99 elevated on {{`{{ $labels.agent }}`}} / {{`{{ $labels.backend }}`}}"
             description: "backend_sqlite_task_store_lock_wait_seconds p99 > {{ .p99Seconds }}s. SQLite task store is contending on locks; inflight tasks are queuing behind each other."
-            runbook_url: "https://github.com/skthomasjr/witwave/blob/main/docs/runbooks.md#witwavelockwaitsaturation"
+            runbook_url: "https://github.com/witwave-ai/witwave/blob/main/docs/runbooks.md#witwavelockwaitsaturation"
         {{- end }}
         {{- end }}
         {{- with $alerts.pvcFillWarning }}
@@ -178,7 +178,7 @@ spec:
           annotations:
             summary: "witwave PVC {{`{{ $labels.persistentvolumeclaim }}`}} is {{ printf "%.0f" (mulf .fillRatio 100.0) }}%+ full"
             description: "Persistent volume {{`{{ $labels.persistentvolumeclaim }}`}} is above {{ printf "%.0f" (mulf .fillRatio 100.0) }}% capacity. Conversation JSONL typically dominates; check log rotation settings or resize the PVC."
-            runbook_url: "https://github.com/skthomasjr/witwave/blob/main/docs/runbooks.md#witwavepvcfillwarning--witwavepvcfillcritical"
+            runbook_url: "https://github.com/witwave-ai/witwave/blob/main/docs/runbooks.md#witwavepvcfillwarning--witwavepvcfillcritical"
         {{- end }}
         {{- end }}
         {{- with $alerts.pvcFillCritical }}
@@ -195,7 +195,7 @@ spec:
           annotations:
             summary: "witwave PVC {{`{{ $labels.persistentvolumeclaim }}`}} nearly full ({{ printf "%.0f" (mulf .fillRatio 100.0) }}%+)"
             description: "Persistent volume {{`{{ $labels.persistentvolumeclaim }}`}} is above {{ printf "%.0f" (mulf .fillRatio 100.0) }}% capacity. Pod eviction risk; act immediately to free space or resize."
-            runbook_url: "https://github.com/skthomasjr/witwave/blob/main/docs/runbooks.md#witwavepvcfillwarning--witwavepvcfillcritical"
+            runbook_url: "https://github.com/witwave-ai/witwave/blob/main/docs/runbooks.md#witwavepvcfillwarning--witwavepvcfillcritical"
         {{- end }}
         {{- end }}
     - name: witwave.retry_bytes
@@ -224,7 +224,7 @@ spec:
           annotations:
             summary: "witwave webhook retry-byte budget above {{ printf "%.0f" (mulf .ratio 100.0) }}% utilisation"
             description: "harness_webhooks_retry_bytes_in_flight_total is above {{ printf "%.0f" (mulf .ratio 100.0) }}% of WEBHOOK_RETRY_BYTES_BUDGET. Sink is slow; next step is drops via result=\"shed_retry_bytes\". Identify the offending subscription via per-sub gauge."
-            runbook_url: "https://github.com/skthomasjr/witwave/blob/main/docs/runbooks.md#witwavewebhookretrybyteshalffull"
+            runbook_url: "https://github.com/witwave-ai/witwave/blob/main/docs/runbooks.md#witwavewebhookretrybyteshalffull"
         {{- end }}
         {{- end }}
     - name: witwave.a2a
@@ -245,7 +245,7 @@ spec:
           annotations:
             summary: "witwave A2A relay p99 latency elevated to backend {{`{{ $labels.backend }}`}}"
             description: "harness_a2a_backend_request_duration_seconds p99 > {{ .p99Seconds }}s. Likely pool exhaustion, wedged backend, or expected tool-heavy workload — check backend logs before tuning."
-            runbook_url: "https://github.com/skthomasjr/witwave/blob/main/docs/runbooks.md#witwavea2alatencyhigh"
+            runbook_url: "https://github.com/witwave-ai/witwave/blob/main/docs/runbooks.md#witwavea2alatencyhigh"
         {{- end }}
         {{- end }}
     - name: witwave.events
@@ -266,7 +266,7 @@ spec:
           annotations:
             summary: "witwave event schema validation failures for type={{`{{ $labels.type }}`}}"
             description: "harness_event_stream_validation_errors_total 5m rate > {{ .rateThreshold }}/s. Emitter and schema have drifted; downstream subscribers never see the affected events."
-            runbook_url: "https://github.com/skthomasjr/witwave/blob/main/docs/runbooks.md#witwaveeventvalidationerrors"
+            runbook_url: "https://github.com/witwave-ai/witwave/blob/main/docs/runbooks.md#witwaveeventvalidationerrors"
         {{- end }}
         {{- end }}
 {{- end }}

@@ -1456,18 +1456,18 @@ silent hardening.
   (`.witwave/`), and environment variables (`WITWAVE_*`) migrated in
   one sweep on 2026-04-19 (commit b966b40).
 
-[Unreleased]: https://github.com/skthomasjr/witwave/compare/v0.5.8...HEAD
-[0.5.8]: https://github.com/skthomasjr/witwave/releases/tag/v0.5.8
-[0.5.7]: https://github.com/skthomasjr/witwave/releases/tag/v0.5.7
-[0.5.6]: https://github.com/skthomasjr/witwave/releases/tag/v0.5.6
-[0.5.5]: https://github.com/skthomasjr/witwave/releases/tag/v0.5.5
-[0.5.4]: https://github.com/skthomasjr/witwave/releases/tag/v0.5.4
-[0.5.3]: https://github.com/skthomasjr/witwave/releases/tag/v0.5.3
-[0.5.2]: https://github.com/skthomasjr/witwave/releases/tag/v0.5.2
-[0.5.1]: https://github.com/skthomasjr/witwave/releases/tag/v0.5.1
-[0.5.0]: https://github.com/skthomasjr/witwave/releases/tag/v0.5.0
-[0.4.4]: https://github.com/skthomasjr/witwave/releases/tag/v0.4.4
-[0.4.3]: https://github.com/skthomasjr/witwave/releases/tag/v0.4.3
-[0.4.2]: https://github.com/skthomasjr/witwave/releases/tag/v0.4.2
-[0.4.1]: https://github.com/skthomasjr/witwave/releases/tag/v0.4.1
-[0.4.0]: https://github.com/skthomasjr/witwave/releases/tag/v0.4.0
+[Unreleased]: https://github.com/witwave-ai/witwave/compare/v0.5.8...HEAD
+[0.5.8]: https://github.com/witwave-ai/witwave/releases/tag/v0.5.8
+[0.5.7]: https://github.com/witwave-ai/witwave/releases/tag/v0.5.7
+[0.5.6]: https://github.com/witwave-ai/witwave/releases/tag/v0.5.6
+[0.5.5]: https://github.com/witwave-ai/witwave/releases/tag/v0.5.5
+[0.5.4]: https://github.com/witwave-ai/witwave/releases/tag/v0.5.4
+[0.5.3]: https://github.com/witwave-ai/witwave/releases/tag/v0.5.3
+[0.5.2]: https://github.com/witwave-ai/witwave/releases/tag/v0.5.2
+[0.5.1]: https://github.com/witwave-ai/witwave/releases/tag/v0.5.1
+[0.5.0]: https://github.com/witwave-ai/witwave/releases/tag/v0.5.0
+[0.4.4]: https://github.com/witwave-ai/witwave/releases/tag/v0.4.4
+[0.4.3]: https://github.com/witwave-ai/witwave/releases/tag/v0.4.3
+[0.4.2]: https://github.com/witwave-ai/witwave/releases/tag/v0.4.2
+[0.4.1]: https://github.com/witwave-ai/witwave/releases/tag/v0.4.1
+[0.4.0]: https://github.com/witwave-ai/witwave/releases/tag/v0.4.0

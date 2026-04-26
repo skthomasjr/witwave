@@ -25,7 +25,7 @@ story; the README lists the flags.
    ```bash
    brew install witwave-ai/homebrew-ww/ww
    # or:
-   go install github.com/skthomasjr/witwave/clients/ww@latest
+   go install github.com/witwave-ai/witwave/clients/ww@latest
    ```
 
 3. **(Optional) a git repo you can push to.** You'll use this in
@@ -856,7 +856,7 @@ contributor-facing doc; this walkthrough is the user-facing one.
   an automated version of sections 2 and 7 of this walkthrough, for
   verifying a fresh release.
 - **Issue tracker / feature requests**:
-  [github.com/skthomasjr/witwave/issues](https://github.com/skthomasjr/witwave/issues).
+  [github.com/witwave-ai/witwave/issues](https://github.com/witwave-ai/witwave/issues).
 
 If you worked through this whole doc, you've exercised every
 user-facing surface `ww` ships today. Future walkthrough sections

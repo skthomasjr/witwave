@@ -124,7 +124,7 @@ func NewChecker(currentVersion string, channel Channel, interval time.Duration) 
 		CurrentVersion: currentVersion,
 		Channel:        channel,
 		Interval:       interval,
-		Owner:          "skthomasjr",
+		Owner:          "witwave-ai",
 		Repo:           "witwave",
 		HTTPClient: &http.Client{
 			// Short — better to report "check timed out" silently than

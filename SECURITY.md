@@ -133,7 +133,7 @@ To verify an image before running it:
 IMAGE=ghcr.io/witwave-ai/images/operator:0.5.5
 
 cosign verify \
-  --certificate-identity-regexp="^https://github.com/skthomasjr/witwave/\.github/workflows/release\.yaml@refs/tags/v.*$" \
+  --certificate-identity-regexp="^https://github.com/witwave-ai/witwave/\.github/workflows/release\.yaml@refs/tags/v.*$" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
   "$IMAGE"
 ```
@@ -160,7 +160,7 @@ Homebrew installs already verify via the tap's signature chain. For direct-binar
 
 ```bash
 cosign verify-blob \
-  --certificate-identity-regexp="^https://github.com/skthomasjr/witwave/\.github/workflows/release-ww\.yml@refs/tags/v.*$" \
+  --certificate-identity-regexp="^https://github.com/witwave-ai/witwave/\.github/workflows/release-ww\.yml@refs/tags/v.*$" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
   --bundle ww_v0.5.6_darwin_arm64.tar.gz.cosign.bundle \
   ww_v0.5.6_darwin_arm64.tar.gz
@@ -174,7 +174,7 @@ Charts published to `oci://ghcr.io/witwave-ai/charts/*` are signed at push time.
 
 ```bash
 cosign verify \
-  --certificate-identity-regexp="^https://github.com/skthomasjr/witwave/\.github/workflows/release-helm\.yml@refs/tags/v.*$" \
+  --certificate-identity-regexp="^https://github.com/witwave-ai/witwave/\.github/workflows/release-helm\.yml@refs/tags/v.*$" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
   oci://ghcr.io/witwave-ai/charts/witwave-operator:0.5.5
 ```
@@ -194,7 +194,7 @@ scanning + code review answer.
 Minimum permissions: **Contents: Read and Write**. No other scopes — do NOT grant Administration, Pull Requests,
 Secrets, or any other verbs.
 
-**Where it lives.** Organization-level secret on `skthomasjr` (the release-source org) referenced as
+**Where it lives.** Organization-level secret on `witwave-ai` (the release-source org) referenced as
 `secrets.HOMEBREW_TAP_GITHUB_TOKEN` by `.github/workflows/release-ww.yml`. The workflow is hard-gated on
 `github.ref_type == 'tag'` (see #1378) so the token is unreachable from `pull_request` / `workflow_dispatch` / forked
 contributor runs.
@@ -209,7 +209,7 @@ contributor runs.
 
 1. Generate a new fine-grained PAT at <https://github.com/settings/personal-access-tokens> with scope **Contents: Read
    and Write on `witwave-ai/homebrew-ww`** and a 90-day expiry. Set the resource owner to `witwave-ai`.
-2. Update `HOMEBREW_TAP_GITHUB_TOKEN` on the `skthomasjr` org secrets (GitHub Settings → Organizations → skthomasjr →
+2. Update `HOMEBREW_TAP_GITHUB_TOKEN` on the `witwave-ai` org secrets (GitHub Settings → Organizations → witwave-ai →
    Secrets and variables → Actions). Paste the new token value.
 3. Trigger a dry-run of the release path — easiest is to cut a throwaway `v*.*.*-rc.*` tag (matches the release-ww
    workflow trigger), verify the tap push succeeds, then delete the tag + release.

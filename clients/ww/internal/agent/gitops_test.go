@@ -9,7 +9,7 @@ func TestDeriveGitSyncName(t *testing.T) {
 		want string
 	}{
 		// Common shapes — the headline UX.
-		{"skthomasjr/witwave-test", "witwave-test"},
+		{"witwave-ai/witwave-test", "witwave-test"},
 		{"github.com/org/repo", "repo"},
 		{"https://github.com/org/my-repo", "my-repo"},
 		{"https://github.com/org/my-repo.git", "my-repo"},
@@ -47,7 +47,7 @@ func TestDeriveGitSyncName(t *testing.T) {
 func TestDeriveGitSyncName_DNS1123Compliance(t *testing.T) {
 	t.Parallel()
 	for _, repo := range []string{
-		"skthomasjr/witwave-test",
+		"witwave-ai/witwave-test",
 		"org/My.Repo",
 		"org/snake_case",
 		"org/UPPERCASE",

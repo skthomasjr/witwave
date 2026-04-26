@@ -22,7 +22,7 @@ The [witwave-ai/homebrew-ww](https://github.com/witwave-ai/homebrew-ww) tap is t
 non-Homebrew install from source:
 
 ```bash
-go install github.com/skthomasjr/witwave/clients/ww@latest
+go install github.com/witwave-ai/witwave/clients/ww@latest
 ```
 
 ## Quick start
@@ -295,7 +295,7 @@ works too.
 
 ```bash
 # Scaffold into an empty repo (gets bootstrapped with an initial commit)
-ww agent scaffold hello --repo skthomasjr/witwave-test
+ww agent scaffold hello --repo witwave-ai/witwave-test
 
 # With an optional group segment — lands in .agents/prod/hello/ instead of .agents/hello/
 ww agent scaffold iris --repo github.com/org/agents --group prod
@@ -561,7 +561,7 @@ both when you have a harness that distinguishes them.
 command runs:
 
 ```text
-↑ ww v0.5.0 is available (you're on v0.4.0). https://github.com/skthomasjr/witwave/releases/tag/v0.5.0
+↑ ww v0.5.0 is available (you're on v0.4.0). https://github.com/witwave-ai/witwave/releases/tag/v0.5.0
   To upgrade: brew upgrade ww
 ```
 
@@ -653,9 +653,9 @@ touches one.
 
 ```bash
 go build -ldflags "\
-  -X 'github.com/skthomasjr/witwave/clients/ww/cmd.Version=0.1.0' \
-  -X 'github.com/skthomasjr/witwave/clients/ww/cmd.Commit=$(git rev-parse --short HEAD)' \
-  -X 'github.com/skthomasjr/witwave/clients/ww/cmd.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)' \
+  -X 'github.com/witwave-ai/witwave/clients/ww/cmd.Version=0.1.0' \
+  -X 'github.com/witwave-ai/witwave/clients/ww/cmd.Commit=$(git rev-parse --short HEAD)' \
+  -X 'github.com/witwave-ai/witwave/clients/ww/cmd.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)' \
 " -o bin/ww .
 ```
 

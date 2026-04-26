@@ -117,7 +117,7 @@ Pick one.
 
 Tracked caveat: this is a known footgun on deliberate migration,
 not a defect in either path. Tracked for polish as
-[#1478](https://github.com/skthomasjr/witwave/issues/1478). The
+[#1478](https://github.com/witwave-ai/witwave/issues/1478). The
 procedure below is the supported migration path today.
 
 ### Chart → operator
@@ -303,7 +303,7 @@ The reconciler tracks materialization (did the ConfigMap apply?) — NOT
 runtime execution (did the prompt actually fire?). Execution telemetry
 lives in Prometheus / conversation.jsonl / tool-activity.jsonl / the dashboard
 views. See request
-[#642](https://github.com/skthomasjr/witwave/issues/642) for
+[#642](https://github.com/witwave-ai/witwave/issues/642) for
 the runtime-status proposal.
 
 ## Credentials
@@ -408,13 +408,13 @@ workloads for the same inputs. Remaining by-design asymmetries:
 | -------------------------------- | ----- | -------- | ----- |
 | `WitwavePrompt` CRD                  | —     | ✓        | Operator-only; chart path uses gitSync mappings to materialise prompts. |
 | Dashboard `Ingress` + basic auth | ✓     | —        | Operator delegates: BYO `Ingress` / `HTTPRoute` / `Route` pointing at the `<agent>-dashboard` Service. Matches Strimzi / cert-manager / Argo / ECK convention. |
-| Trigger Ingress (external webhooks reaching `/triggers/*`) | — | — | Neither path emits it. Users hand-roll or use service mesh routing. Design discussion is [request #trigger-ingress](https://github.com/skthomasjr/witwave/issues) (pending filing). |
+| Trigger Ingress (external webhooks reaching `/triggers/*`) | — | — | Neither path emits it. Users hand-roll or use service mesh routing. Design discussion is [request #trigger-ingress](https://github.com/witwave-ai/witwave/issues) (pending filing). |
 
 Tracked open requests (not gaps):
 
 | Topic                                            | Issue | State |
 | ------------------------------------------------ | ----- | ----- |
-| WitwavePrompt runtime execution status on CR         | [#642](https://github.com/skthomasjr/witwave/issues/642) | request, Ready: false |
+| WitwavePrompt runtime execution status on CR         | [#642](https://github.com/witwave-ai/witwave/issues/642) | request, Ready: false |
 
 ## Metrics
 

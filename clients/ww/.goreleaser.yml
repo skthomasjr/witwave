@@ -49,9 +49,9 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X 'github.com/skthomasjr/witwave/clients/ww/cmd.Version={{.Version}}'
-      - -X 'github.com/skthomasjr/witwave/clients/ww/cmd.Commit={{.ShortCommit}}'
-      - -X 'github.com/skthomasjr/witwave/clients/ww/cmd.BuildDate={{.Date}}'
+      - -X 'github.com/witwave-ai/witwave/clients/ww/cmd.Version={{.Version}}'
+      - -X 'github.com/witwave-ai/witwave/clients/ww/cmd.Commit={{.ShortCommit}}'
+      - -X 'github.com/witwave-ai/witwave/clients/ww/cmd.BuildDate={{.Date}}'
 
 archives:
   - id: ww
@@ -76,7 +76,7 @@ checksum:
 # GitHub OIDC. Consumers verify with:
 #   cosign verify-blob --certificate ww_<tag>_checksums.txt.pem \
 #     --signature ww_<tag>_checksums.txt.sig \
-#     --certificate-identity-regexp 'https://github.com/skthomasjr/witwave/' \
+#     --certificate-identity-regexp 'https://github.com/witwave-ai/witwave/' \
 #     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
 #     checksums.txt
 # Requires cosign binary on the runner; ubuntu-latest has it pre-installed
@@ -115,7 +115,7 @@ changelog:
 
 release:
   github:
-    owner: skthomasjr
+    owner: witwave-ai
     name: witwave
   draft: false
   prerelease: auto
@@ -138,7 +138,7 @@ brews:
       branch: main
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     directory: Formula
-    homepage: https://github.com/skthomasjr/witwave
+    homepage: https://github.com/witwave-ai/witwave
     description: witwave CLI for the Witwave multi-container agent platform
     license: Apache-2.0
     test: |

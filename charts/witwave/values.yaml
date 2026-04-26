@@ -1260,7 +1260,7 @@ agents:
     #     #   # Path 1: reference a pre-created Secret (production default).
     #     #   existingSecret: bob-github-pat
     #     #   # Path 2: inline dev credentials. MUST also set acknowledgeInsecureInline=true.
-    #     #   username: skthomasjr
+    #     #   username: your-github-username
     #     #   token: ghp_xxxxxxxxxxxxxxxxxxxx
     #     #   acknowledgeInsecureInline: true
     #     #
