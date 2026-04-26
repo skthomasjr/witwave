@@ -94,7 +94,13 @@ Each backend:
 
 - Exposes `/.well-known/agent.json` for A2A discovery
 - Exposes `/` as the A2A JSON-RPC task endpoint
-- Exposes `/health` for health checks
+- Exposes `/health` (liveness — 200 once the process is up, even
+  while initialising) and `/health/ready` (readiness — 503 while
+  initialising or boot-degraded) per the cycle-1 #1608 + cycle-7
+  #1672 split. K8s `livenessProbe` should target `/health`;
+  `readinessProbe` should target `/health/ready`. (`echo` is the
+  exception — it ships only `/health` per its intentional-non-scope
+  list.)
 - Exposes `/metrics` for Prometheus scraping (when `METRICS_ENABLED` is set)
 - Exposes `/conversations`, `/trace`, `/mcp`, and `/api/traces[/<id>]` guarded by the same bearer token
   (`CONVERSATIONS_AUTH_TOKEN`) — parity across all three backends (#510, #516, #518). An empty token logs a

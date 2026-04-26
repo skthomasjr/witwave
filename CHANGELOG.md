@@ -8,6 +8,236 @@ section of each entry.
 
 ## [Unreleased]
 
+Autonomous bug + risk cycle output (74 commits, 73 closed issues
+across 10 cycles). The work was driven by the develop skill's
+discover/refine/approve/implement loop applied to bugs and risks
+only — gaps, features, and docs phases were skipped per the
+session scope. Issues are grouped by component below; full
+provenance lives in the GitHub issue history (#1599–#1672) and
+linked commits.
+
+### Security
+
+- **mcp-prometheus: refuse to start on cloud-metadata bearer**
+  (#1652). When `PROMETHEUS_BEARER_TOKEN` is set and
+  `PROMETHEUS_URL` host resolves to a cloud-provider instance-
+  metadata endpoint (169.254.169.254, fd00:ec2::254,
+  metadata.google.internal, metadata.azure.com), startup raises —
+  regardless of `PROMETHEUS_ALLOW_PLAINTEXT_BEARER`. The metadata
+  IP is privileged regardless of transport.
+- **mcp-prometheus: response body redacted from non-200 logs**
+  (#1639). The WARN log emitted on upstream errors no longer
+  includes the body snippet (kept the status code + byte count).
+- **mcp-helm: validate `--repo` URL scheme on install / upgrade /
+  diff** (#1638, #1664). Rejects file://, javascript://, and other
+  non-http(s) schemes that previously slipped past
+  `_reject_flag_like()`.
+- **mcp-helm: port-aware allowlist matching for `repo_add`**
+  (#1601). `MCP_HELM_REPO_URL_ALLOWLIST` entries now match
+  hostname AND port; bare-host entries match URLs with no explicit
+  port or the scheme's default; `host:port` entries require exact
+  match. Backwards compatible for default-port URLs.
+- **mcp tool Dockerfiles: HEALTHCHECK switched to exec-form**
+  (#1651). Removes shell-form interpolation of `MCP_PORT` so a
+  malformed env value can't escape into a shell context.
+- **mcp shared: `mcp-prometheus` added to
+  `DEFAULT_MCP_ALLOWED_COMMANDS`** (#1640). All three shipped MCP
+  tool binaries are now accepted by default.
+- **claude / shared: bearer-token decode hardened to
+  `errors='strict'`** (#1617). Invalid UTF-8 returns a JSON-RPC
+  400 instead of silently coalescing distinct token byte
+  sequences onto the same caller-identity hash.
+- **codex: Chromium `--no-sandbox` is now opt-in** via
+  `CHROMIUM_SANDBOX_DISABLED` (#1619). Default-off so the host
+  kernel sandbox runs where supported.
+- **codex: prompt-size cap (`MAX_PROMPT_BYTES`, default 10 MiB)**
+  rejecting oversized requests at the executor entry (#1620).
+  Mirrored in echo at 1 MiB (#1650).
+- **claude: `/mcp` body cap streams instead of trusting
+  `Content-Length`** (#1609). New `MCP_MAX_BODY_BYTES` env
+  (default 4 MiB); HTTP 413 on overflow with a clean JSON-RPC
+  error body.
+- **gemini: `MCP_CONFIG_PATH` realpath-prefix validation** (#1610).
+  Refuses to load files outside `MCP_CONFIG_PATH_ALLOWED_PREFIX`
+  (default `/home/agent/`).
+- **shared: `prompt_env.substitutions_total` cardinality bounded**
+  (#1668). Dropped the attacker-influenced `var` label; per-var
+  detail still surfaces in WARN logs at miss/deny time.
+- **ww: `ww config get` redacts secret-key values** (#1646).
+  Mirrors the existing `ww config set` posture; secret keys print
+  `<redacted>` to stdout.
+- **ww: config Save uses atomic CreateTemp + Chmod + Rename**
+  (#1607, #1654). Bearer tokens never observable at any mode but
+  0o600.
+- **ww: brew/git/gh shell-outs wrapped in
+  `context.WithTimeout`** (#1616) and credential env vars stripped
+  before exec via `sanitizeShellEnv`.
+- **operator: ClusterRole RBAC split for Secrets read/write**
+  resolved at the canonical source (#1613). Scripts/ added a
+  drift-check helper.
+- **operator: validating webhook emits warning on inline-credential
+  use under restrictive RBAC posture** (#1623).
+- **operator chart: monitoring CRDs RBAC gated on
+  `metrics.enabled`** (#1659). No verbs requested when metrics are
+  off.
+- **operator chart: CRDs carry `helm.sh/resource-policy: keep`
+  at the canonical source** (#1614, #1647). `helm uninstall` no
+  longer cascades into deletion of WitwaveAgent / WitwavePrompt
+  CRs.
+- **agent chart: image digest pinning supported across harness,
+  backends, and dashboard** (#1612, #1665). Mirrors the existing
+  mcpTools digest support.
+- **agent chart: ingress basic-auth empty-htpasswd validation**
+  (#1626). Render fails fast when auth is enabled but no htpasswd
+  / existingSecret is provided.
+
+### Reliability
+
+- **claude / codex / gemini: split `/health` (liveness, always 200
+  once up) from `/health/ready` (readiness, 503 while
+  initialising or boot-degraded)** (#1608 claude, #1672 codex +
+  gemini). Operators using K8s readinessProbe should point at
+  `/health/ready`; `/health` remains for livenessProbe. The
+  agent chart's backend probes were updated to match (cycle-10
+  follow-on); the harness's own readiness gate now probes backend
+  `/health/ready` (cycle-9 follow-on).
+- **claude: bounded sub-app lifespan shutdown wait** via
+  `SUB_APP_SHUTDOWN_TIMEOUT_SEC` (default 10s) (#1618). Faulty
+  sub-apps no longer stall pod termination.
+- **claude: `SqliteTaskStore.close()` race fix** (#1649). New
+  `_closing` sentinel prevents `_get_conn()` from spawning a fresh
+  connection during teardown.
+- **codex: `MAX_SESSIONS=0` no longer crashes the LRU eviction
+  path** (#1629). Clamped at parse to `max(1, ...)`.
+- **codex: MCP watcher normal-exit drops readiness** (#1630).
+  Mirrors the claude readiness-gate pattern.
+- **codex: `backend_task_last_success_timestamp_seconds` gated on
+  `_budget_exceeded`** (#1662). Budget-exceeded responses no
+  longer mask as success in the gauge.
+- **codex: token-budget check uses `total_tokens` only** (#1600).
+  Dropped the `output_tokens` fallback that under-counted prompt
+  + cached-input tokens against the cap.
+- **gemini: `max_tokens=0` no longer raises ZeroDivisionError**
+  (#1602). Tightened guard to also require `> 0`.
+- **gemini: API-key rotation atomicity** (#1621). Build-then-swap
+  the new client; on failure preserve the previously-cached one
+  so transient credential blips don't take down the backend.
+- **gemini: session-history file unlink races eviction** (#1611).
+  Backpressure branch waits up to
+  `_EVICT_BACKPRESSURE_SAVE_WAIT_SEC` (default 30s) on the per-
+  session done-event before attempting removal.
+- **gemini: history-save force-split fallback** (#1622). When no
+  safe AFC boundary exists in the trim window, cut at the
+  earliest user-role entry so long mid-AFC tails can't keep the
+  on-disk file oversized indefinitely.
+- **harness: `A2A_SESSION_CONTEXT_CACHE_MAX` validated at module
+  import** (#1648). Non-int or `< 1` fails fast with a CRITICAL
+  log.
+- **harness: rate-limited WARN on background-task shed path**
+  (#1644). New `BACKGROUND_SHED_LOG_WINDOW_SEC` (default 10s).
+  Sustained drops surface to operator logs without spam.
+- **harness: shed-path `coro.close()` exception logged** (#1670).
+  Replaces the silent `except Exception: pass` with a WARN that
+  carries the source label and exception repr.
+- **operator: `teardownDisabledAgent` cleans up NetworkPolicy
+  and MCP tool resources** (#1635). Disabling a CR no longer
+  leaves stale per-agent NetworkPolicy + mcp-`<tool>` Deployments
+  to await OwnerRef GC.
+- **operator: dashboard reconcile no longer panics when dashboard
+  is disabled** (#1660). Nil-guard mirrors the ConfigMap and
+  Service paths.
+- **operator: WitwavePrompt status retry refreshes
+  `reconciledGeneration` after re-Get** (#1636). Fixes a one-cycle
+  observedGeneration lag under concurrent spec writes + 409
+  conflicts.
+- **operator: List operations on cleanup paths now paginate** via
+  a shared `paginatedList` helper (`Limit=500` + `Continue`)
+  (#1656). Bounds memory + apiserver load on namespaces with many
+  agents.
+- **operator: leader-election timing flags validated at startup**
+  (#1657). `leaseDuration > renewDeadline > retryPeriod` is now
+  enforced; misconfigs fail fast instead of silently deadlocking
+  election.
+- **operator: validating webhook enforces port upper bounds**
+  (#1669). Rejects configs whose metrics-port reservation
+  (port + 1000) would overflow 1..65535.
+- **operator: webhook validating `failurePolicy=Ignore` by
+  default** (#1624). Mutating webhook stays on Fail (sets
+  reconciler-critical defaults). New
+  `webhooks.validatingFailurePolicy` knob.
+- **operator: WitwaveAgent CR teardown adds IsControlledBy guard
+  on shared manifest CM** (#1599). Foreign-owned CMs are no
+  longer deleted on the empty-membership branch.
+- **agent chart: `podDisruptionBudget.enabled=true` by default**
+  (#1625). Safe at `replicaCount=1` (PDB delays drain until
+  reschedule); behaviour change for new installs only.
+- **operator chart: same default flip on
+  `podDisruptionBudget.enabled`** (#1628). Operator is a control-
+  plane component; PDBs ship on by default.
+- **operator chart: `probes.startup.failureThreshold` raised
+  30 → 60** (#1627, #1642). 600s grace covers cold-start under
+  leader-election + multi-replica.
+- **agent chart: MCP tool pods get default resource
+  requests/limits** (#1658). Removes the QoS=BestEffort eviction
+  vulnerability.
+- **dashboard: SSE reconnect floor raised 50ms → 500ms** (#1615);
+  added `MIN_TRUSTED_SERVER_RETRY_MS=100` for clamping suspect
+  server `retry:` hints; added `MAX_CONSECUTIVE_FAILURES=30`
+  terminal-failed state with reset on `open()` (#1653).
+- **dashboard: SSE per-stream rate cap (200 evts/sec)** with
+  reactive `droppedEventCount` for observability (#1606); new
+  `parseFailureCount` for malformed payload visibility (#1634).
+- **dashboard: `useChat.loadHistory` clears `loadingHistory` on
+  every error path** (#1633). No more stuck spinner.
+- **dashboard: `ConversationsView` watchers stopped in
+  `teardownStream`** (#1661). Fixes stale callbacks firing on
+  closed streams during filter switches.
+- **dashboard: `seenIds` Set bounded at 5000 entries with LRU-ish
+  eviction** (#1605). Long-lived tabs no longer accumulate
+  unbounded dedup state.
+- **dashboard: DOMPurify link-rel hook regression test** (#1604).
+  Pins `target=_blank rel="noopener noreferrer"` injection so a
+  future `removeAllHooks()` call breaks CI rather than silently
+  regressing the phishing mitigation.
+- **ww: TUI modal lifecycle context plumbed end-to-end** (#1631).
+  Quitting the app cancels in-flight create/delete/scaffold/send
+  operations instead of letting them dangle.
+- **ww: TUI log-tail goroutines drained on cycle/close** (#1663).
+  No more apiserver-connection leak on rapid 'c' presses in
+  aggregate mode.
+- **ww: TUI send-modal stale-frame draw fix** (#1603). Active
+  flag gates the QueueUpdateDraw.
+- **ww: TUI preflight banner rendered before agent list per
+  DESIGN.md KC-4** (#1632).
+- **ww: helm-uninstall ctx-cancel observability** (#1655). 60s
+  background waiter logs WARN if the in-flight goroutine doesn't
+  settle.
+
+### Changed (operator-visible behaviour)
+
+- **K8s probes: agent + operator chart defaults updated** (see
+  Reliability above). Operators with custom values that override
+  `readinessProbe.path` to `/health` should review — the chart now
+  ships `/health/ready` for backends post-#1672.
+- **`acknowledgeInsecureInline=true` triggers an admission warning
+  in the operator validating webhook** (#1623). Guides operators
+  toward `existingSecret` references when the operator's
+  `secretsWrite` permissions are restricted.
+- **`MCP_HELM_REPO_URL_ALLOWLIST` entry format extended**
+  (#1601). `host:port` syntax now supported; bare-host entries
+  unchanged but only match default-port URLs.
+
+### Operator chart RBAC drift checker
+
+`scripts/check-rbac-drift.sh` added (#1613). Renders the chart
+ClusterRole and diffs against `operator/config/rbac/role.yaml` to
+catch future regressions of the `secretsWrite` split. Manual + CI
+ready (`chmod +x` once after pulling).
+
+### Removed
+
+(none)
+
 ## [0.7.19] — 2026-04-25
 
 ### Added
