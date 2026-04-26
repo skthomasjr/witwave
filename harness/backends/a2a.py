@@ -60,6 +60,41 @@ def _resolve_max_retries() -> int:
 _MAX_RETRIES = _resolve_max_retries()
 _RETRY_BACKOFF_BASE = float(os.environ.get("A2A_BACKEND_RETRY_BACKOFF", "1.0"))
 
+
+def _resolve_session_context_cache_max() -> int:
+    """Parse A2A_SESSION_CONTEXT_CACHE_MAX with strict validation (#1648).
+
+    Mirrors the wrapping pattern of :func:`_resolve_max_retries` but is
+    fail-fast: a bad value (non-int or < 1) is fatal. The cache cap
+    bounds memory, and silently falling back on a typo would mask a
+    misconfig that operators meant to act on (e.g. raising the cap to
+    100k for a high-fan-out deployment but typo'ing "10000O").
+    """
+    _log = logging.getLogger(__name__)
+    _raw = os.environ.get("A2A_SESSION_CONTEXT_CACHE_MAX", "10000")
+    try:
+        val = int(_raw)
+    except (TypeError, ValueError):
+        _log.critical(
+            "A2A_SESSION_CONTEXT_CACHE_MAX=%r is not an int — refusing to start",
+            _raw,
+        )
+        raise ValueError(
+            f"A2A_SESSION_CONTEXT_CACHE_MAX must be a positive int, got {_raw!r}"
+        )
+    if val < 1:
+        _log.critical(
+            "A2A_SESSION_CONTEXT_CACHE_MAX=%d < 1 — refusing to start", val
+        )
+        raise ValueError(
+            f"A2A_SESSION_CONTEXT_CACHE_MAX must be >= 1, got {val}"
+        )
+    _log.info("A2A_SESSION_CONTEXT_CACHE_MAX=%d", val)
+    return val
+
+
+_SESSION_CONTEXT_CACHE_MAX = _resolve_session_context_cache_max()
+
 # Cap on the total bytes read from a single A2A response body. A misbehaving
 # or compromised backend that streams a multi-GB response would otherwise
 # be fully buffered into memory by `resp.text`, OOMing the harness pod.
@@ -228,9 +263,7 @@ class A2ABackend:
         # order; we move_to_end on hit, popitem(last=False) on cap.
         from collections import OrderedDict
         self._session_has_context: "OrderedDict[str, None]" = OrderedDict()
-        self._session_has_context_max: int = int(
-            os.environ.get("A2A_SESSION_CONTEXT_CACHE_MAX", "10000")
-        )
+        self._session_has_context_max: int = _SESSION_CONTEXT_CACHE_MAX
         # Initialize gauge labels so scrapes see this backend even before its
         # first request — absent series are harder to alert on than 0-valued
         # ones.
