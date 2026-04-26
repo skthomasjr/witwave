@@ -403,12 +403,10 @@ def _reload_kube_clients() -> None:
         _load_kube_config()
 
 
-# TODO(#1208): describe() resource.get, describe() list_namespaced_event /
-# list_event_for_all_namespaces, apply() resource.patch, and delete()
-# resource.delete are not yet wrapped in with_kube_retry. The top-5
-# highest-volume read paths are covered (list_namespace, list_resources,
-# get_resource, read_namespaced_secret, read_namespaced_pod_log); the
-# write and multi-call paths will follow in a separate pass.
+# TODO(#1208): apply() resource.patch and delete() resource.delete are
+# not yet wrapped in with_kube_retry. describe()'s resource.get and the
+# event-list calls are now wrapped (#1641). The remaining write paths
+# will follow in a separate pass.
 def with_kube_retry(fn, *args, **kwargs):
     """Run ``fn`` and retry once on 401 after reloading kube config (#1082).
 
@@ -751,10 +749,15 @@ def describe(
             kwargs: dict[str, Any] = {"name": name}
             if namespace:
                 kwargs["namespace"] = namespace
-            # Per-call network timeout (#778).
+            # Per-call network timeout (#778). #1641: route through
+            # with_kube_retry so the documented timeout is honoured and
+            # a stale 401 triggers a single config reload + retry on
+            # parity with the other read paths.
             kwargs["_request_timeout"] = _MCP_REQUEST_TIMEOUT_SECONDS
             with _api_span("get", kind, {"k8s.name": name, "k8s.namespace": namespace}):
-                obj = _redact_secret_payload(_to_dict(resource.get(**kwargs)))
+                obj = _redact_secret_payload(
+                    _to_dict(with_kube_retry(lambda: resource.get(**kwargs)))
+                )
 
             events: list[dict] = []
             try:
@@ -762,14 +765,22 @@ def describe(
                 selector = f"involvedObject.name={name},involvedObject.kind={kind}"
                 with _api_span("list", "Event", {"k8s.namespace": namespace}):
                     if namespace:
-                        ev_resp = core.list_namespaced_event(
-                            namespace=namespace, field_selector=selector,
-                            _request_timeout=_MCP_REQUEST_TIMEOUT_SECONDS,
+                        # #1641: wrap in with_kube_retry for timeout +
+                        # 401 reload parity with describe()'s primary
+                        # resource.get above.
+                        ev_resp = with_kube_retry(
+                            lambda: core.list_namespaced_event(
+                                namespace=namespace, field_selector=selector,
+                                _request_timeout=_MCP_REQUEST_TIMEOUT_SECONDS,
+                            )
                         )
                     else:
-                        ev_resp = core.list_event_for_all_namespaces(
-                            field_selector=selector,
-                            _request_timeout=_MCP_REQUEST_TIMEOUT_SECONDS,
+                        # #1641: same wrapping as the namespaced branch.
+                        ev_resp = with_kube_retry(
+                            lambda: core.list_event_for_all_namespaces(
+                                field_selector=selector,
+                                _request_timeout=_MCP_REQUEST_TIMEOUT_SECONDS,
+                            )
                         )
                 events = [ev.to_dict() for ev in ev_resp.items]
             except ApiException as e:

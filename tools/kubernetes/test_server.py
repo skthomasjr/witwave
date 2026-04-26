@@ -184,6 +184,136 @@ def test_describe_preserves_resource_on_non_api_exception_events_error():
         )
 
 
+# ----- describe() routes through with_kube_retry + honours timeout (#1641) ---
+
+
+def test_describe_routes_through_with_kube_retry_and_timeout(monkeypatch):
+    """#1641: describe()'s resource.get and the event-list calls must be
+    wrapped in with_kube_retry so the documented _MCP_REQUEST_TIMEOUT_SECONDS
+    is honoured. This test stubs a "slow" API client whose calls raise a
+    timeout-shaped exception when invoked with the configured per-call
+    _request_timeout kwarg, and asserts:
+      1. with_kube_retry is on the call path for both resource.get and
+         the events-list call (regression guard for the original TODO).
+      2. The _request_timeout kwarg is forwarded with the documented
+         value (default 120s, overridden to 0.05 here for speed).
+    """
+    # Force a tiny timeout so the test is fast and unambiguous.
+    monkeypatch.setattr(server, "_MCP_REQUEST_TIMEOUT_SECONDS", 0.05)
+
+    seen_kwargs: dict[str, dict] = {"get": {}, "events": {}}
+
+    class _Timeout(Exception):
+        pass
+
+    fake_resource = mock.MagicMock()
+
+    def _slow_get(**kwargs):
+        seen_kwargs["get"] = kwargs
+        # Simulate a urllib3 read-timeout firing once the per-call
+        # _request_timeout elapses on the wire. The events-fetch path
+        # in describe() catches non-ApiException to preserve the resource
+        # view; the resource.get path lets it bubble — exactly what we
+        # want to assert: the timeout kwarg reached the client.
+        raise _Timeout(f"read timed out after {kwargs.get('_request_timeout')}s")
+
+    fake_resource.get.side_effect = _slow_get
+
+    fake_core = mock.MagicMock()
+
+    def _slow_events(**kwargs):
+        seen_kwargs["events"] = kwargs
+        raise _Timeout("events read timed out")
+
+    fake_core.list_namespaced_event.side_effect = _slow_events
+
+    # Spy on with_kube_retry to confirm the wrapping is in the call path.
+    real_retry = server.with_kube_retry
+    retry_calls = {"n": 0}
+
+    def _spy_retry(fn, *a, **kw):
+        retry_calls["n"] += 1
+        return real_retry(fn, *a, **kw)
+
+    with mock.patch.object(server, "_resolve", return_value=fake_resource), \
+            mock.patch.object(server, "_api"), \
+            mock.patch.object(server, "client") as mock_client, \
+            mock.patch.object(server, "with_kube_retry", side_effect=_spy_retry):
+        mock_client.CoreV1Api.return_value = fake_core
+
+        fn = server.describe.fn if hasattr(server.describe, "fn") else server.describe
+        with pytest.raises(_Timeout):
+            fn(kind="Pod", name="p", namespace="default")
+
+    # The primary resource.get must be wrapped (#1641).
+    assert retry_calls["n"] >= 1, (
+        "describe() must route resource.get through with_kube_retry (#1641)"
+    )
+    # The configured per-call timeout must be forwarded verbatim.
+    assert seen_kwargs["get"].get("_request_timeout") == 0.05, (
+        "describe() must forward _MCP_REQUEST_TIMEOUT_SECONDS as "
+        f"_request_timeout (got {seen_kwargs['get'].get('_request_timeout')!r})"
+    )
+
+
+def test_describe_events_call_routes_through_with_kube_retry(monkeypatch):
+    """#1641 companion: when the primary resource.get succeeds, the
+    events-list call must also route through with_kube_retry and forward
+    the per-call timeout kwarg. The events branch swallows non-ApiException
+    failures (#1029) so we assert via spy + captured kwargs rather than
+    a propagated exception."""
+    monkeypatch.setattr(server, "_MCP_REQUEST_TIMEOUT_SECONDS", 0.05)
+
+    seen_events_kwargs: dict = {}
+
+    fake_resource = mock.MagicMock()
+    fake_resource.get.return_value = {
+        "kind": "Pod",
+        "metadata": {"name": "p"},
+        "spec": {},
+    }
+
+    fake_core = mock.MagicMock()
+
+    def _capture_events(**kwargs):
+        seen_events_kwargs.update(kwargs)
+        # Raise a timeout-shaped non-ApiException so the events branch
+        # demotes to []; we only care that the kwargs were forwarded.
+        raise RuntimeError("simulated read timeout")
+
+    fake_core.list_namespaced_event.side_effect = _capture_events
+
+    real_retry = server.with_kube_retry
+    retry_call_targets = []
+
+    def _spy_retry(fn, *a, **kw):
+        retry_call_targets.append(fn)
+        return real_retry(fn, *a, **kw)
+
+    with mock.patch.object(server, "_resolve", return_value=fake_resource), \
+            mock.patch.object(server, "_api"), \
+            mock.patch.object(server, "client") as mock_client, \
+            mock.patch.object(server, "with_kube_retry", side_effect=_spy_retry):
+        mock_client.CoreV1Api.return_value = fake_core
+
+        fn = server.describe.fn if hasattr(server.describe, "fn") else server.describe
+        result = fn(kind="Pod", name="p", namespace="default")
+
+    # describe() returns the resource with events=[] when the events
+    # fetch fails with a non-ApiException (#1029 contract).
+    assert result["events"] == []
+    # Both resource.get and list_namespaced_event must have been routed
+    # through with_kube_retry — at least 2 wrapped calls.
+    assert len(retry_call_targets) >= 2, (
+        "describe() must wrap both resource.get and the events-list "
+        f"call in with_kube_retry (#1641); saw {len(retry_call_targets)}"
+    )
+    assert seen_events_kwargs.get("_request_timeout") == 0.05, (
+        "describe()'s list_namespaced_event must forward "
+        "_MCP_REQUEST_TIMEOUT_SECONDS as _request_timeout (#1641)"
+    )
+
+
 # ----- logs() DNS-1123 guard (#1032) -------------------------------
 
 
