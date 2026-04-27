@@ -99,6 +99,7 @@ from metrics import (
     backend_mcp_servers_active,
     backend_model_requests_total,
     backend_prompt_length_bytes,
+    backend_prompt_too_large_total,
     backend_response_length_bytes,
     backend_running_tasks,
     backend_sdk_messages_per_query,
@@ -159,7 +160,7 @@ from tool_audit import (  # type: ignore
     ToolAuditMetrics as _ToolAuditMetrics,
     log_tool_audit as _shared_log_tool_audit,
 )
-from exceptions import BudgetExceededError
+from exceptions import BudgetExceededError, PromptTooLargeError
 from validation import parse_max_tokens, sanitize_model_label
 from otel import start_span, set_span_error
 from redact import redact_text, should_redact
@@ -288,6 +289,15 @@ TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
 # Maximum number of bytes of prompt text included in INFO-level log messages.
 # Set to 0 to suppress prompt text from logs entirely; set higher for more context.
 LOG_PROMPT_MAX_BYTES = int(os.environ.get("LOG_PROMPT_MAX_BYTES", "200"))
+# Hard cap on inbound prompt UTF-8 byte length (#1620 / #1730). A
+# pathological caller could otherwise ship a multi-GB prompt and OOM
+# the pod before the google-genai SDK ever sees it. Default 10 MiB is
+# comfortably above any legitimate conversational use; bump via
+# MAX_PROMPT_BYTES env when an operator deliberately wants larger
+# inputs (e.g. document ingest jobs). Mirrors codex's _MAX_PROMPT_BYTES
+# so the cross-backend backend_prompt_too_large_total dashboard
+# series is meaningful for every backend.
+_MAX_PROMPT_BYTES = int(os.environ.get("MAX_PROMPT_BYTES", str(10 * 1024 * 1024)))
 
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL") or "gemini-2.5-pro"
 GEMINI_API_KEY: str | None = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or None
@@ -3551,6 +3561,61 @@ class AgentExecutor(A2AAgentExecutor):
                 new_agent_text_message(
                     "Error: prompt is empty or whitespace-only; request rejected without dispatching to the model."
                 )
+            )
+            return
+        # Hard prompt-size cap (#1620 / #1730 — gemini parity port of
+        # codex). Reject before the prompt reaches the google-genai SDK
+        # so a pathological caller cannot OOM the pod by shipping a
+        # multi-GB payload. Mirrors the empty-prompt rejection idiom:
+        # bump a Prometheus counter, log the rejection at WARN, and
+        # return a clean A2A error message rather than crashing the
+        # worker. The PromptTooLargeError type is exported from
+        # shared/exceptions for programmatic detection by callers/tests;
+        # the executor itself converts it into a user-visible A2A text
+        # message so the harness surface stays consistent with the
+        # empty-prompt path.
+        _prompt_bytes = len(prompt.encode("utf-8"))
+        if _prompt_bytes > _MAX_PROMPT_BYTES:
+            _too_large_sid_raw = str(
+                context.context_id
+                or (context.message.metadata or {}).get("session_id")
+                or ""
+            ).strip()[:256]
+            _too_large_sid_sanitized = (
+                "".join(c for c in _too_large_sid_raw if c >= " ")
+            )
+            from session_binding import derive_session_id as _derive_session_id_tl
+            _too_large_caller_id = (
+                metadata.get("caller_id")
+                if isinstance(metadata.get("caller_id"), str)
+                else None
+            )
+            _too_large_sid = _derive_session_id_tl(
+                _too_large_sid_sanitized, caller_identity=_too_large_caller_id,
+            )
+            _too_large_err = PromptTooLargeError(_prompt_bytes, _MAX_PROMPT_BYTES)
+            logger.warning(
+                f"Session {_too_large_sid!r}: rejected execute() — prompt size "
+                f"{_prompt_bytes} bytes exceeds MAX_PROMPT_BYTES={_MAX_PROMPT_BYTES} (#1620)."
+            )
+            if backend_prompt_too_large_total is not None:
+                backend_prompt_too_large_total.labels(**_LABELS).inc()
+            if backend_a2a_requests_total is not None:
+                backend_a2a_requests_total.labels(**_LABELS, status="error").inc()
+            if backend_a2a_request_duration_seconds is not None:
+                backend_a2a_request_duration_seconds.labels(**_LABELS).observe(
+                    time.monotonic() - _exec_start
+                )
+            if backend_a2a_last_request_timestamp_seconds is not None:
+                backend_a2a_last_request_timestamp_seconds.labels(**_LABELS).set(time.time())
+            await log_entry(
+                "system",
+                f"execute() rejected: prompt {_prompt_bytes} bytes exceeds "
+                f"MAX_PROMPT_BYTES={_MAX_PROMPT_BYTES} (#1620).",
+                _too_large_sid,
+            )
+            await event_queue.enqueue_event(
+                new_agent_text_message(f"Error: {_too_large_err}")
             )
             return
         # OTel server span continuation (#469).

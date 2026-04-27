@@ -1,0 +1,151 @@
+"""Regression coverage for the gemini executor's prompt-size cap (#1620 / #1730).
+
+Risk: a pathological caller could ship a multi-GB prompt body. Without
+a hard cap, the prompt would be UTF-8 decoded, reflected through every
+log/redaction path, and forwarded to the google-genai SDK before any
+backpressure took effect — OOM-killing the pod long before the model
+saw the request.
+
+Fix: reject in ``execute()`` when ``len(prompt.encode("utf-8")) >
+MAX_PROMPT_BYTES`` (default 10 MiB), bump ``backend_prompt_too_large_total``,
+and surface a clean A2A error. The ``PromptTooLargeError`` type lives in
+``shared/exceptions`` so callers/tests can detect the rejection
+programmatically. Mirrors codex's #1620 fix.
+
+We follow the codex test_prompt_size_cap.py style: pin the source shape
+with regexes (so the cap can't silently regress) and unit-test the
+small isolatable pieces (the exception type + the metric registration)
+without importing the full ``executor`` module — its SDK chain
+(``google-genai``, ``mcp``, …) is far too heavy for a focused unit
+test.
+"""
+from __future__ import annotations
+
+import importlib
+import os
+import re
+import sys
+import unittest
+from pathlib import Path
+
+
+_HERE = Path(__file__).resolve().parent
+_REPO_ROOT = _HERE.parents[1]
+_EXECUTOR_PATH = _HERE / "executor.py"
+_METRICS_PATH = _HERE / "metrics.py"
+
+
+class PromptTooLargeErrorTests(unittest.TestCase):
+    """Verify the shared exception carries the right diagnostic payload."""
+
+    def setUp(self):
+        sys.path.insert(0, str(_REPO_ROOT / "shared"))
+        self.addCleanup(lambda: sys.path.remove(str(_REPO_ROOT / "shared")))
+        if "exceptions" in sys.modules:
+            del sys.modules["exceptions"]
+        self.exceptions = importlib.import_module("exceptions")
+
+    def test_error_type_exists(self):
+        self.assertTrue(hasattr(self.exceptions, "PromptTooLargeError"))
+
+    def test_error_attributes(self):
+        err = self.exceptions.PromptTooLargeError(2_000_000_000, 10 * 1024 * 1024)
+        self.assertEqual(err.size_bytes, 2_000_000_000)
+        self.assertEqual(err.limit_bytes, 10 * 1024 * 1024)
+        self.assertIn("2000000000", str(err))
+        self.assertIn(str(10 * 1024 * 1024), str(err))
+
+
+class PromptSizeCapMetricRegistrationTests(unittest.TestCase):
+    """``backend_prompt_too_large_total`` must register when METRICS_ENABLED."""
+
+    def setUp(self):
+        sys.path.insert(0, str(_HERE))
+        self.addCleanup(lambda: sys.path.remove(str(_HERE)))
+        self._prev = os.environ.get("METRICS_ENABLED")
+        os.environ["METRICS_ENABLED"] = "1"
+        if "metrics" in sys.modules:
+            del sys.modules["metrics"]
+        try:
+            import prometheus_client
+            for name in list(prometheus_client.REGISTRY._names_to_collectors.keys()):
+                try:
+                    prometheus_client.REGISTRY.unregister(
+                        prometheus_client.REGISTRY._names_to_collectors[name]
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        self.metrics = importlib.import_module("metrics")
+
+    def tearDown(self):
+        if self._prev is None:
+            os.environ.pop("METRICS_ENABLED", None)
+        else:
+            os.environ["METRICS_ENABLED"] = self._prev
+
+    def test_counter_registered(self):
+        self.assertIsNotNone(self.metrics.backend_prompt_too_large_total)
+
+    def test_counter_increments(self):
+        labels = {"agent": "test", "agent_id": "test", "backend": "gemini"}
+        before = self.metrics.backend_prompt_too_large_total.labels(**labels)._value.get()
+        self.metrics.backend_prompt_too_large_total.labels(**labels).inc()
+        after = self.metrics.backend_prompt_too_large_total.labels(**labels)._value.get()
+        self.assertEqual(after - before, 1.0)
+
+
+class PromptSizeCapSourceShapeTests(unittest.TestCase):
+    """Pin the executor's cap shape so a future edit can't silently regress."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.executor_source = _EXECUTOR_PATH.read_text(encoding="utf-8")
+        cls.metrics_source = _METRICS_PATH.read_text(encoding="utf-8")
+
+    def test_module_constant_present(self):
+        # Default must be 10 MiB exactly. Bigger defaults defeat the point.
+        pattern = re.compile(
+            r'_MAX_PROMPT_BYTES\s*=\s*int\(\s*os\.environ\.get\(\s*"MAX_PROMPT_BYTES"\s*,'
+            r'\s*str\(\s*10\s*\*\s*1024\s*\*\s*1024\s*\)\s*\)\s*\)'
+        )
+        self.assertRegex(self.executor_source, pattern)
+
+    def test_size_check_present(self):
+        # The check must compute UTF-8 byte length, not str length.
+        pattern = re.compile(
+            r'_prompt_bytes\s*=\s*len\(\s*prompt\.encode\(\s*"utf-8"\s*\)\s*\)'
+        )
+        self.assertRegex(self.executor_source, pattern)
+        guard = re.compile(r'if\s+_prompt_bytes\s*>\s*_MAX_PROMPT_BYTES\s*:')
+        self.assertRegex(self.executor_source, guard)
+
+    def test_counter_bumped_on_overflow(self):
+        bump = re.compile(
+            r'backend_prompt_too_large_total\.labels\(\*\*_LABELS\)\.inc\(\)'
+        )
+        self.assertRegex(self.executor_source, bump)
+
+    def test_a2a_error_returned(self):
+        ctor = re.compile(
+            r'PromptTooLargeError\(\s*_prompt_bytes\s*,\s*_MAX_PROMPT_BYTES\s*\)'
+        )
+        self.assertRegex(self.executor_source, ctor)
+        msg = re.compile(r'new_agent_text_message\(\s*f"Error:\s*\{_too_large_err\}"\s*\)')
+        self.assertRegex(self.executor_source, msg)
+
+    def test_issue_cited(self):
+        # Issue tag must appear at both the cap declaration and the
+        # rejection path so future readers can find the rationale.
+        self.assertGreaterEqual(self.executor_source.count("#1620"), 2)
+
+    def test_metric_registered_in_metrics_py(self):
+        decl = re.compile(
+            r'backend_prompt_too_large_total\s*=\s*prometheus_client\.Counter\('
+        )
+        self.assertRegex(self.metrics_source, decl)
+
+
+if __name__ == "__main__":
+    unittest.main()
