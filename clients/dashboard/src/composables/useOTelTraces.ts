@@ -155,6 +155,15 @@ function validateTraceBaseUrl(
   return trimmed;
 }
 
+// #1704: test-only handles. Exposes the URL validators so unit tests
+// can drive the protocol allow-list / cross-origin gates directly
+// without spinning up a fake __WITWAVE_CONFIG__ runtime + fetch
+// chain. Kept as named re-exports so a future TS API change still
+// breaks the test loudly rather than masking the validator
+// surface change.
+export const __validateTraceBaseUrl = validateTraceBaseUrl;
+export const __isSameOrigin = isSameOrigin;
+
 function resolveBaseUrl(): string | null {
   // Runtime override wins so operators can change the backend without a
   // rebuild. Kept optional: when nginx hasn't injected anything we fall
