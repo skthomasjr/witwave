@@ -209,24 +209,31 @@ def _pre_tool_use_gate(
             "fail-open for %s.", _imp_exc, tool_name,
         )
         return None
+    # #1724: align with the shared-engine contract documented in
+    # shared/hooks_engine.py — evaluate_pre_tool_use takes the rule list
+    # positionally and returns ``(decision: str, matched_rule: Rule | None)``.
+    # Mirrors the codex #1194 fix. Flatten HookState into its active rules
+    # via the canonical helper so the baseline_enabled flag is honoured.
+    if state is not None:
+        try:
+            _rules = state.active_rules()
+        except Exception:
+            _rules = []
+    else:
+        _rules = []
     try:
-        decision = evaluate_pre_tool_use(tool_name, tool_input, state=state)
+        decision, matched = evaluate_pre_tool_use(tool_name, tool_input, _rules)
     except Exception as _eval_exc:
         logger.warning(
             "_pre_tool_use_gate: evaluate raised for %s: %r — fail-open.",
             tool_name, _eval_exc,
         )
         return None
-    if decision is None:
-        return None
-    try:
-        verdict = getattr(decision, "decision", None) or decision[0]
-        rule = getattr(decision, "rule", None) or decision[1]
-        reason = getattr(decision, "reason", None) or decision[2]
-    except Exception:
-        return None
-    if str(verdict).lower() == "deny":
-        return str(rule), str(reason)
+    if str(decision).lower() == "deny" and matched is not None:
+        return (
+            str(getattr(matched, "name", "?")),
+            str(getattr(matched, "reason", "denied")),
+        )
     return None
 
 logger = logging.getLogger(__name__)

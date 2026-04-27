@@ -430,9 +430,10 @@ class PreToolUseGateScaffoldTests(unittest.TestCase):
     """
 
     def test_returns_none_when_decision_is_allow(self):
-        # Patch the import so evaluate_pre_tool_use returns None (= allow).
+        # Patch the import so evaluate_pre_tool_use returns the
+        # shared-engine "allow" shape: (decision_str, matched_rule=None).
         fake_mod = types.ModuleType("hooks_engine")
-        fake_mod.evaluate_pre_tool_use = lambda *a, **kw: None  # allow
+        fake_mod.evaluate_pre_tool_use = lambda *a, **kw: ("allow", None)
         sys.modules["hooks_engine"] = fake_mod
         try:
             got = executor._pre_tool_use_gate("mcp__k8s__list_pods", {"namespace": "x"})
@@ -441,8 +442,13 @@ class PreToolUseGateScaffoldTests(unittest.TestCase):
             sys.modules.pop("hooks_engine", None)
 
     def test_decodes_deny_tuple_decision(self):
+        # #1724: shared-engine contract is (decision: str, matched_rule).
+        # matched_rule exposes .name and .reason.
+        class _Rule:
+            name = "rm-rf-root"
+            reason = "destructive"
         fake_mod = types.ModuleType("hooks_engine")
-        fake_mod.evaluate_pre_tool_use = lambda *a, **kw: ("deny", "rm-rf-root", "destructive")
+        fake_mod.evaluate_pre_tool_use = lambda *a, **kw: ("deny", _Rule())
         sys.modules["hooks_engine"] = fake_mod
         try:
             got = executor._pre_tool_use_gate("Bash", {"command": "rm -rf /"})
@@ -460,6 +466,31 @@ class PreToolUseGateScaffoldTests(unittest.TestCase):
             # Must not raise; must allow.
             got = executor._pre_tool_use_gate("whatever", {})
             self.assertIsNone(got)
+        finally:
+            sys.modules.pop("hooks_engine", None)
+
+    def test_state_active_rules_passed_positionally(self):
+        # #1724: confirm rules list is forwarded as a positional arg
+        # (the engine's signature has no `state=` kwarg).
+        captured = {}
+
+        def _capture(tool_name, tool_input, rules):
+            captured["tool"] = tool_name
+            captured["rules"] = rules
+            return ("allow", None)
+
+        fake_mod = types.ModuleType("hooks_engine")
+        fake_mod.evaluate_pre_tool_use = _capture
+        sys.modules["hooks_engine"] = fake_mod
+
+        class _State:
+            def active_rules(self):
+                return ["r1", "r2"]
+
+        try:
+            got = executor._pre_tool_use_gate("Bash", {"command": "ls"}, state=_State())
+            self.assertIsNone(got)
+            self.assertEqual(captured["rules"], ["r1", "r2"])
         finally:
             sys.modules.pop("hooks_engine", None)
 
