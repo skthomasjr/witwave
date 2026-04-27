@@ -59,9 +59,20 @@ rules:
   - apiGroups: [policy]
     resources: [poddisruptionbudgets]
     verbs: [create, delete, get, list, patch, update, watch]
+  {{- /* monitoring.coreos.com verbs are only needed when the operator
+         actually reconciles ServiceMonitor / PodMonitor objects, which
+         only happens when metrics.enabled is true (#1659, #1678).
+         Gating the rule prevents the namespace-scoped Role from
+         demanding Prometheus Operator CRDs on clusters that have no
+         Prometheus Operator installed and no intent to scrape —
+         installing those verbs against missing CRDs is a no-op at
+         runtime but a noisy red herring during RBAC audits. Mirrors
+         the gate already present in clusterrole.yaml. */}}
+  {{- if $.Values.metrics.enabled }}
   - apiGroups: [monitoring.coreos.com]
     resources: [servicemonitors, podmonitors]
     verbs: [create, delete, get, list, patch, update, watch]
+  {{- end }}
   # networking.k8s.io — per-agent NetworkPolicy (#971) + dashboard
   # Ingress (#831). Same scope as the ClusterRole variant (#1224);
   # missing these verbs silently wedged both features in namespace mode.
