@@ -191,8 +191,8 @@ shipped by any agent product.
 **Schedule Devins (March 2026) — self-scheduling and parallel delegation:** Devin can now set up its own recurring
 schedules from natural language descriptions, carrying state between runs via persistent notes. A coordinator Devin
 delegates to managed Devins — each a full isolated VM — that work in parallel. Architecturally close to this project's
-agenda + A2A delegation model, except Devin infers the schedule from natural language rather than requiring explicit
-cron expressions.
+scheduled-prompt + A2A delegation model, except Devin infers the schedule from natural language rather than requiring
+explicit cron expressions.
 
 **Devin-in-Windsurf (2026-04-15):** Cognition integrated cloud Devin with Windsurf local dev, letting developers hand
 off tasks between a local IDE session and a remote Devin instance on the same repo. Plus progressive web app
@@ -204,9 +204,9 @@ IDE-adjacent integration + enterprise identity / review-governance posture is Co
 **Relative standing:** Devin is a vertical product; this project is infrastructure. Transferable lessons: show the plan
 before acting, structure work for parallel execution, make agent actions observable mid-run, and carry state across
 scheduled runs. The self-verification loop (plan → code → review → fix) and self-scheduling are the strongest new
-patterns. This project's agenda system already provides scheduled execution with session continuity; Devin's "Schedule
-Devins" validates the model while highlighting the value of event-driven triggers (F-013) and planning mode (F-012) as
-complements to cron.
+patterns. This project's scheduled-prompt system already provides scheduled execution with session continuity; Devin's
+"Schedule Devins" validates the model while highlighting the value of event-driven triggers (F-013) and planning mode
+(F-012) as complements to cron.
 
 ### Hermes Agent (NousResearch)
 
@@ -375,7 +375,7 @@ _Differentiators in this project's favor:_
 3. **Stronger safety posture.** Declarative `hooks.yaml` policy + MCP allow-list + session-id HMAC binding address the
    skill-RCE class OpenClaw publicly acknowledges.
 4. **Scheduler-primitives breadth.** Jobs / tasks / heartbeats / triggers / continuations / webhooks as first-class
-   `.witwave/` frontmatter files. OpenClaw has none of these; agenda is implicit in the conversation.
+   `.witwave/` frontmatter files. OpenClaw has none of these; scheduling is implicit in the conversation.
 5. **Published event-stream wire contract.** `/events/stream` with 14 typed shapes, consumed by multiple independent
    clients; OpenClaw's observability is coupled to its proprietary surfaces.
 
@@ -600,8 +600,8 @@ _Last updated: 2026-04-07 by local-agent_
 
 - **Scheduling and event-driven triggers:** Inbound HTTP triggers and outbound webhooks are implemented — triggers serve
   `POST /triggers/{endpoint}` endpoints with HMAC auth; webhooks deliver filtered outbound HTTP notifications with LLM
-  extraction, retry, and HMAC signing. Devin's self-scheduling validates the agenda model. The remaining gap is dynamic
-  tooling and deeper external system integrations.
+  extraction, retry, and HMAC signing. Devin's self-scheduling validates the scheduled-prompt model. The remaining gap
+  is dynamic tooling and deeper external system integrations.
 
 - **Observability and debuggability:** Metrics + distributed tracing are now baseline across the space — Bedrock
   AgentCore ships observability by default, kagent includes Prometheus as a pre-built tool, Cloudflare Agent Cloud and
@@ -649,8 +649,8 @@ _Last updated: 2026-04-07 by local-agent_
 
 - **Cost and resource management:** `task_budget` env var is proposed (#69, open) but not implemented. Industry finding:
   90% of production agents are over-resourced in 2026; cost control is treated as a first-class architectural concern.
-  The per-message-kind budget split (separate caps for heartbeat, agenda, A2A-triggered runs) is an open question in #69
-  that would unlock fine-grained cost control.
+  The per-message-kind budget split (separate caps for heartbeat, scheduled prompts, A2A-triggered runs) is an open
+  question in #69 that would unlock fine-grained cost control.
 
 - **Self-improvement and lifelong learning:** Hermes Agent's auto-generated skills (writing a new skill document after
   completing a complex task) and Google's Always-On Memory Agent (continuous ingestion + background consolidation)

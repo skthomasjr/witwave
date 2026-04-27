@@ -8,7 +8,7 @@ An autonomous agent platform built for infrastructure — not for developers sit
 containerized services, operate on their own schedules, collaborate via standard protocols, and do meaningful work
 without a human present to start each task.
 
-The unit of deployment is a container. The unit of identity is an agent. The unit of work is an agenda item.
+The unit of deployment is a container. The unit of identity is an agent. The unit of work is a prompt.
 
 ---
 
@@ -92,7 +92,7 @@ The core platform is the agent runtime. The following support workloads surround
 **Shipped**
 
 - **UI** — Vue 3 + PrimeVue web dashboard (`clients/dashboard/`) for monitoring agent activity, reviewing logs,
-  triggering agenda items, and managing GitHub Issues — aimed at the individual and small-team audience. Enabled via
+  triggering ad-hoc prompts, and managing GitHub Issues — aimed at the individual and small-team audience. Enabled via
   the Helm chart's `dashboard:` block.
 - **Metrics aggregation** — per-service `/metrics` Prometheus endpoints, PodMonitor/ServiceMonitor templates, bundled
   Grafana dashboards (`charts/witwave/dashboards/`), and opinionated default alerts via `PrometheusRule`
