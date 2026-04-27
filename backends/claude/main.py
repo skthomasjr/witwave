@@ -157,6 +157,22 @@ def build_agent_card() -> AgentCard:
     )
 
 
+async def health_start(request: Request) -> JSONResponse:
+    # #1686: /health/start is the STARTUP probe — it returns 200 once
+    # the process has finished initial loads (_ready=True) and 503 with
+    # `{"status": "starting"}` while still warming up. K8s startupProbe
+    # should target this endpoint; once it succeeds, kubelet starts
+    # gating on liveness/readiness independently. Mirrors the harness's
+    # health_start at harness/main.py:490 so the documented
+    # three-probe contract (docs/product-vision.md:74) holds across
+    # the whole platform — not just the harness.
+    if backend_health_checks_total is not None:
+        backend_health_checks_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="start").inc()
+    if _ready:
+        return JSONResponse({"status": "ok"})
+    return JSONResponse({"status": "starting"}, status_code=503)
+
+
 async def health(request: Request) -> JSONResponse:
     # #1608: /health is the LIVENESS probe — it returns 200 as soon as the
     # process is up so kubelet does not CrashLoopBackOff a pod that is
@@ -907,6 +923,7 @@ async def main():
         # _boot_degraded_reason is set, removing the pod from Service
         # endpoints. Operators upgrading from <=v0.5.0 must point their K8s
         # readinessProbe at /health/ready (BREAKING change for probe paths).
+        Route("/health/start", health_start),  # #1686
         Route("/health", health),
         Route("/health/ready", health_ready),
         Route("/conversations", conversations_handler, methods=["GET"]),

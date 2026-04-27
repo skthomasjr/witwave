@@ -583,15 +583,20 @@ spec:
           # SDK import cost + MCP server handshakes on first boot; without
           # this, readiness can flap during warm-up.
           #
-          # Probe paths use the cycle-1 #1608 + #1672 health split:
+          # Probe paths use the cycle-1 #1608 + #1672 health split,
+          # plus the #1686 three-probe parity addition:
+          # - /health/start: startup — 503 while initializing, 200 once _ready
           # - /health: liveness — 200 once process is up, even mid-init
-          # - /health/ready: startup + readiness — 503 while init or degraded
-          # All three backends (claude, codex, gemini) expose /health/ready
-          # post-#1672. Pointing readiness at /health (the old config) caused
-          # k8s to flip pods to Ready before backends had completed init.
+          # - /health/ready: readiness — 503 while init or degraded
+          # All three backends (claude, codex, gemini) expose /health/start
+          # post-#1686, /health/ready post-#1672. Targeting startupProbe at
+          # /health/start (rather than /health/ready) keeps the liveness
+          # vs readiness vs startup distinctions documented in
+          # docs/product-vision.md:74 cleanly separable in the kubelet
+          # event log when probes fail.
           startupProbe:
             httpGet:
-              path: /health/ready
+              path: /health/start
               port: {{ .port }}
             initialDelaySeconds: {{ $.Values.probes.startup.initialDelaySeconds }}
             periodSeconds: {{ $.Values.probes.startup.periodSeconds }}

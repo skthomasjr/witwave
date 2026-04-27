@@ -115,6 +115,17 @@ def _set_health_executor(executor: "AgentExecutor") -> None:
     _health_executor_ref = executor
 
 
+async def health_start(request: Request) -> JSONResponse:
+    # #1686: /health/start is the STARTUP probe — 200 once _ready, 503
+    # with {"status": "starting"} while warming up. Closes the
+    # three-probe parity gap with the harness (docs/product-vision.md:74).
+    if backend_health_checks_total is not None:
+        backend_health_checks_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="start").inc()
+    if _ready:
+        return JSONResponse({"status": "ok"})
+    return JSONResponse({"status": "starting"}, status_code=503)
+
+
 async def health(request: Request) -> JSONResponse:
     if backend_health_checks_total is not None:
         backend_health_checks_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="health").inc()
@@ -814,6 +825,7 @@ async def main():
         # _guarded()'s critical-task circuit-breaker. Operators upgrading
         # from <=v0.5.0 must repoint their K8s readinessProbe at
         # /health/ready.
+        Route("/health/start", health_start),  # #1686
         Route("/health", health),
         Route("/health/ready", health_ready),
         Route("/conversations", conversations_handler, methods=["GET"]),

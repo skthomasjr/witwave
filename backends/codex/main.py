@@ -101,6 +101,17 @@ def build_agent_card() -> AgentCard:
     )
 
 
+async def health_start(request: Request) -> JSONResponse:
+    # #1686: /health/start is the STARTUP probe — 200 once _ready, 503
+    # with {"status": "starting"} while warming up. Closes the
+    # three-probe parity gap with the harness (docs/product-vision.md:74).
+    if backend_health_checks_total is not None:
+        backend_health_checks_total.labels(agent=AGENT_OWNER, agent_id=AGENT_ID, backend=_BACKEND_ID, probe="start").inc()
+    if _ready:
+        return JSONResponse({"status": "ok"})
+    return JSONResponse({"status": "starting"}, status_code=503)
+
+
 async def health(request: Request) -> JSONResponse:
     # #1672: /health is the LIVENESS probe — it returns 200 as soon as the
     # process is up so kubelet does not CrashLoopBackOff a pod that is
@@ -816,6 +827,7 @@ async def main():
         # #1630 normal-exit watcher branch, removing the pod from
         # Service endpoints. Operators upgrading from <=v0.5.0 must
         # repoint their K8s readinessProbe at /health/ready.
+        Route("/health/start", health_start),  # #1686
         Route("/health", health),
         Route("/health/ready", health_ready),
         Route("/conversations", conversations_handler, methods=["GET"]),

@@ -390,6 +390,10 @@ dashboard pod fans out directly to each agent and owns cross-agent routing (#470
 
 Each backend container additionally exposes:
 
+- `GET /health/start` — startup probe: 200/`{"status": "ok"}` once the process has finished initial loads (`_ready`
+  is True) and 503/`{"status": "starting"}` while still warming up. Mirrors the harness's `/health/start` so the
+  three-probe model documented in `docs/product-vision.md` holds across the platform (#1686). K8s `startupProbe`
+  should target this endpoint.
 - `GET /health` — liveness check: 200/`{"status": "ok", "agent": ..., "uptime_seconds": ...}` once the process is
   up. Returns 200 even while initializing — does NOT flip to 503. Liveness-only by design (cycle-1 #1608, #1672); use
   the readiness endpoint below for gating LB rotation.
