@@ -531,6 +531,13 @@ export function useEventStream(
     // the parent view reopens it via route change / tab switch / manual
     // reopen. (#1653)
     consecutiveFailures = 0;
+    // #1702: also clear the stale terminal-failed `error.value` so the
+    // UI reflects the recovery attempt instead of the prior
+    // "stream-failed: gave up after N consecutive reconnect failures"
+    // text. The success path at the start of the loop body already
+    // clears error.value on first chunk, but until then a parent view
+    // rendering an error banner sees the stale terminal state.
+    error.value = "";
     if (aborter || reconnectTimer) return; // already running
     // Bump generation so any stale in-flight callback from a prior
     // open() session short-circuits. (#1153)
