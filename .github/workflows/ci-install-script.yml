@@ -440,6 +440,15 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          # goreleaser's before-hook bump-embedded-chart-version.sh
+          # falls back to `git describe --tags --abbrev=0` when no
+          # version arg / GORELEASER_CURRENT_TAG is set (which is the
+          # case in --snapshot mode). The default shallow checkout
+          # has no tags, so describe returns empty and the hook bails
+          # — fetch the full history so the script finds a fallback
+          # tag to label the snapshot's embedded chart with.
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
