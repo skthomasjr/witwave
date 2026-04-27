@@ -31,6 +31,12 @@ on:
       - "scripts/install.sh"
       - ".github/workflows/ci-install-script.yml"
       - "clients/ww/.goreleaser.yml"
+  # Manual trigger so we can validate the matrix without pushing a
+  # no-op change to one of the path-filter files. Useful when the
+  # team commits straight to main rather than via PRs (which would
+  # otherwise need touching install.sh / .goreleaser.yml to fire CI).
+  # Run from the Actions UI or `gh workflow run ci-install-script.yml`.
+  workflow_dispatch:
 
 concurrency:
   group: ci-install-script-${{ github.ref }}
