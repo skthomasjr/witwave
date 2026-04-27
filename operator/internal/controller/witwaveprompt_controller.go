@@ -235,16 +235,14 @@ func (r *WitwavePromptReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	// longer in the spec. Controller-runtime's OwnerReferences GC covers
 	// the delete-whole-prompt case; this pass handles the remove-agent-
 	// from-spec case.
+	//
+	// #1726: paginate the List so a WitwavePrompt with hundreds of bound
+	// agents (or a namespace holding many WitwavePrompts with large
+	// agentRefs lists) cannot trip apiserver chunk-fetch limits. Mirrors
+	// the #1656 sweep applied to the WitwaveAgent reconciler's cleanup
+	// paths.
 	existing := &corev1.ConfigMapList{}
-	if err := r.List(ctx, existing,
-		client.InNamespace(prompt.Namespace),
-		client.MatchingLabels{
-			labelManagedBy:         managedBy,
-			labelWitwavePromptName: prompt.Name,
-		},
-	); err != nil {
-		reconcileErrs = append(reconcileErrs, fmt.Errorf("list owned ConfigMaps: %w", err))
-	} else {
+	if err := paginatedList(ctx, r.Client, existing, func() error {
 		for i := range existing.Items {
 			cm := &existing.Items[i]
 			if _, ok := desired[cm.Name]; ok {
@@ -257,6 +255,15 @@ func (r *WitwavePromptReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 				reconcileErrs = append(reconcileErrs, fmt.Errorf("delete stale ConfigMap %s: %w", cm.Name, err))
 			}
 		}
+		return nil
+	},
+		client.InNamespace(prompt.Namespace),
+		client.MatchingLabels{
+			labelManagedBy:         managedBy,
+			labelWitwavePromptName: prompt.Name,
+		},
+	); err != nil {
+		reconcileErrs = append(reconcileErrs, fmt.Errorf("list owned ConfigMaps: %w", err))
 	}
 
 	// Update status.
