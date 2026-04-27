@@ -1,6 +1,4 @@
-<h1>
-  <img src="assets/witwave-logo-terminal-64.png" alt="" height="40" align="absmiddle"> witwave
-</h1>
+# witwave
 
 A platform for building persistent, self-directed AI agents that can work autonomously on software projects — including
 improving themselves.
