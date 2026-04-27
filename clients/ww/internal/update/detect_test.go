@@ -8,11 +8,11 @@ import (
 
 func TestDetectInstallMethod(t *testing.T) {
 	cases := []struct {
-		name    string
-		exe     string
-		env     map[string]string
-		marker  string // contents of <bindir>/.ww.install-info, "" = file absent
-		want    InstallMethod
+		name   string
+		exe    string
+		env    map[string]string
+		marker string // contents of <bindir>/.ww.install-info, "" = file absent
+		want   InstallMethod
 	}{
 		{
 			name: "homebrew apple silicon cellar",

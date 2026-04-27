@@ -313,10 +313,9 @@ resolve_install_dir() {
             ww_use_sudo_cmd="sudo"
         else
             ww_bindir="${HOME}/.local/bin"
-            if [ ! -d "$ww_bindir" ]; then
-                # Mark this so we can warn about PATH later.
-                ww_local_bin_was_missing=1
-            fi
+            # We don't need to mark "didn't exist" — the PATH check at
+            # the end of do_install fires whenever ww_bindir isn't on
+            # PATH, regardless of whether we created it just now.
         fi
     fi
 
