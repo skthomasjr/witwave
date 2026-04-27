@@ -1022,9 +1022,15 @@ async def main():
         )
         executor._mcp_watcher_tasks.append(_mcp_task)
 
+    # #1735: periodic session_stream registry sweeper. Without this,
+    # _registry in shared/session_stream.py grows unbounded — multi-day
+    # uptime with caller churn ends in OOMKill.
+    from session_stream import run_idle_sweeper as _run_session_stream_sweeper
+
     await asyncio.gather(
         server.serve(),
         _guarded(_event_loop_monitor),
+        _guarded(_run_session_stream_sweeper),
         _set_ready_when_started(server),
     )
 

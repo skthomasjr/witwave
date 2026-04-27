@@ -237,5 +237,58 @@ class SessionStreamCapClampTests(unittest.TestCase):
                 os.environ["SESSION_STREAM_MAX_PER_CALLER"] = prev
 
 
+class RegistryCapTests(unittest.IsolatedAsyncioTestCase):
+    """#1735: belt-and-braces LRU eviction at insertion time.
+
+    Without this cap the periodic sweeper is the only thing keeping
+    ``_registry`` bounded — if the sweeper task ever wedges, the
+    registry grows unbounded until OOMKill. The LRU cap fires
+    synchronously at insertion so growth is hard-bounded regardless
+    of sweeper health.
+    """
+
+    async def test_lru_eviction_when_cap_reached(self) -> None:
+        ss = _fresh()
+        # Pin a tiny cap on the module constant for this test only.
+        prev_cap = ss.CONVERSATION_STREAM_REGISTRY_MAX
+        ss.CONVERSATION_STREAM_REGISTRY_MAX = 3
+        try:
+            for sid in ("a", "b", "c"):
+                ss.get_session_stream(sid)
+            self.assertEqual(ss.registry_size(), 3)
+            # Inserting a 4th evicts the oldest ("a").
+            ss.get_session_stream("d")
+            self.assertEqual(ss.registry_size(), 3)
+            self.assertIsNone(ss.get_session_stream("a", create=False))
+            for sid in ("b", "c", "d"):
+                self.assertIsNotNone(ss.get_session_stream(sid, create=False))
+        finally:
+            ss.CONVERSATION_STREAM_REGISTRY_MAX = prev_cap
+
+
+class IdleSweeperTaskTests(unittest.IsolatedAsyncioTestCase):
+    """#1735: ``run_idle_sweeper`` cancels cleanly and calls
+    ``sweep_idle_streams`` on each iteration."""
+
+    async def test_sweeper_runs_and_cancels(self) -> None:
+        ss = _fresh()
+        ss.get_session_stream("doomed")
+        self.assertEqual(ss.registry_size(), 1)
+        # Tight interval + zero grace so the first tick reaps the
+        # idle broadcaster.
+        task = asyncio.create_task(ss.run_idle_sweeper(interval_sec=0.01, grace_sec=0.0))
+        try:
+            # Give the sweeper a couple of ticks.
+            for _ in range(50):
+                await asyncio.sleep(0.01)
+                if ss.registry_size() == 0:
+                    break
+            self.assertEqual(ss.registry_size(), 0)
+        finally:
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+
+
 if __name__ == "__main__":
     unittest.main()

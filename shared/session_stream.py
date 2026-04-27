@@ -57,6 +57,24 @@ CONVERSATION_STREAM_KEEPALIVE_SEC = float(
 CONVERSATION_STREAM_GRACE_SEC = float(
     os.environ.get("CONVERSATION_STREAM_GRACE_SEC", "60")
 )
+# Periodic sweeper cadence (#1735). Defaults to half the grace window
+# so an idle broadcaster gets evicted within a single grace period.
+CONVERSATION_STREAM_SWEEP_INTERVAL_SEC = float(
+    os.environ.get(
+        "CONVERSATION_STREAM_SWEEP_INTERVAL_SEC",
+        str(max(15.0, CONVERSATION_STREAM_GRACE_SEC / 2)),
+    )
+)
+# Hard ceiling on the registry size (#1735). When an insertion would
+# push the registry past this cap, the oldest broadcaster (insertion
+# order) is dropped first as a belt-and-braces guard against the slow
+# leak the periodic sweeper closes from the other side. Defaults to
+# 50 000 — comfortably above any single-pod legitimate load while
+# still bounding worst-case memory.
+CONVERSATION_STREAM_REGISTRY_MAX = max(
+    1,
+    int(os.environ.get("CONVERSATION_STREAM_REGISTRY_MAX", "50000")),
+)
 
 
 @dataclass
@@ -384,15 +402,71 @@ def get_session_stream(
     When ``create=False`` returns ``None`` for unknown sessions — useful
     for the SSE handler to distinguish "unknown session" from "known
     but idle".
+
+    #1735: when an insertion would push ``len(_registry)`` past
+    :data:`CONVERSATION_STREAM_REGISTRY_MAX`, the oldest entry (insertion
+    order) is evicted first as a belt-and-braces guard against the
+    slow-leak risk the periodic sweeper closes from the other side. Any
+    in-flight subscribers on the evicted broadcaster receive a
+    ``stream.overrun`` envelope + sentinel via the same teardown path
+    used by :func:`sweep_idle_streams` so their HTTP connections don't
+    leak.
     """
     stream = _registry.get(session_id)
     if stream is not None:
         return stream
     if not create:
         return None
+    if len(_registry) >= CONVERSATION_STREAM_REGISTRY_MAX:
+        _evict_oldest_broadcaster()
     stream = SessionStream(session_id, agent_id=agent_id)
     _registry[session_id] = stream
     return stream
+
+
+def _evict_oldest_broadcaster() -> None:
+    """Drop the oldest registry entry, terminating any subscribers on it.
+
+    Mirrors the subscriber-teardown path in :func:`sweep_idle_streams`
+    so the LRU eviction route doesn't strand long-running SSE callers
+    on a queue that no broadcaster can ever publish to again.
+    """
+    if not _registry:
+        return
+    oldest_sid = next(iter(_registry))
+    stream = _registry.get(oldest_sid)
+    if stream is None:
+        _registry.pop(oldest_sid, None)
+        return
+    for sub in list(stream._subscribers):  # noqa: SLF001
+        sub.closed = True
+        stream._next_id += 1  # noqa: SLF001
+        overrun = SessionStreamEnvelope(
+            type="stream.overrun",
+            version=1,
+            id=str(stream._next_id),  # noqa: SLF001
+            ts=_now_iso_ms(),
+            agent_id=stream._agent_id,  # noqa: SLF001
+            payload={
+                "queue_depth": sub.queue.qsize(),
+                "queue_max": stream._queue_max,  # noqa: SLF001
+                "reason": "broadcaster evicted by registry-cap LRU",
+            },
+        )
+        try:
+            sub.queue.put_nowait(overrun)
+        except asyncio.QueueFull:
+            pass
+        try:
+            sub.queue.put_nowait(_OVERRUN_SENTINEL)
+        except asyncio.QueueFull:
+            pass
+        stream._subscribers.discard(sub)  # noqa: SLF001
+    _registry.pop(oldest_sid, None)
+    logger.warning(
+        "session_stream: registry hit cap %d — evicted oldest broadcaster",
+        CONVERSATION_STREAM_REGISTRY_MAX,
+    )
 
 
 def drop_session_stream(session_id: str) -> None:
@@ -491,6 +565,33 @@ def reset_session_streams_for_tests() -> None:
 
 def registry_size() -> int:
     return len(_registry)
+
+
+async def run_idle_sweeper(
+    interval_sec: float = CONVERSATION_STREAM_SWEEP_INTERVAL_SEC,
+    grace_sec: float = CONVERSATION_STREAM_GRACE_SEC,
+) -> None:
+    """Periodic sweeper coroutine for backend lifespans (#1735).
+
+    Calls :func:`sweep_idle_streams` every ``interval_sec`` seconds.
+    Designed to be wrapped in each backend's ``_guarded`` restart-loop
+    so a transient failure in the sweep path doesn't take readiness
+    down. Cancellation propagates so graceful shutdown drains cleanly.
+
+    Without this sweeper, ``_registry`` grows unbounded — every fresh
+    ``session_id`` (including HMAC-bound IDs that scale with
+    caller×session, not just session) inserts and never evicts. The
+    LRU cap on insertion provides a belt-and-braces backstop, but the
+    periodic sweeper is what keeps memory steady-state.
+    """
+    while True:
+        try:
+            await asyncio.sleep(interval_sec)
+            sweep_idle_streams(grace_sec=grace_sec)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # pragma: no cover — defensive
+            logger.warning("session_stream sweeper iteration failed: %r", exc)
 
 
 # ---------------------------------------------------------------------------
