@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="assets/witwave-logo-terminal-256.png" alt="witwave" width="180" height="180">
-</p>
+<img src="assets/witwave-logo-terminal-128.png" alt="witwave" width="96" height="96">
 
 # witwave
 
