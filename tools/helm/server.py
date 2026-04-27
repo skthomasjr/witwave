@@ -136,8 +136,12 @@ _AWS_AKID_RE = re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")
 _BASIC_AUTH_URL_RE = re.compile(r"([a-zA-Z][a-zA-Z0-9+.\-]*://)[^\s:/@]+:[^\s@]+@")
 
 
-def _redact_helm_error_text(text: str, argv: list[str] | None = None) -> str:
-    """Mask credentials likely to appear in helm stderr/stdout (#1271).
+def _redact_helm_error_text(
+    text: str,
+    argv: list[str] | None = None,
+    stdin_payload: str | None = None,
+) -> str:
+    """Mask credentials likely to appear in helm stderr/stdout (#1271, #1681).
 
     Covers the `--set*=KEY=VALUE` argv echo path (the primary leak
     vector — helm often reprints the offending flag on error) plus a
@@ -146,6 +150,15 @@ def _redact_helm_error_text(text: str, argv: list[str] | None = None) -> str:
     original subprocess argv; when provided, any literal value that
     appeared in a `--set*` flag is masked wherever it reappears in the
     output (defensive against helm rewriting the flag before printing).
+
+    ``stdin_payload`` (#1681) is the YAML-serialised values payload
+    delivered to helm via ``--values -``. Operators pass secret material
+    through ``values=`` rather than ``--set`` to avoid disk-leakage via
+    temp files (#1081), but that means the argv-only redaction path
+    above doesn't see those secrets. When ``stdin_payload`` is provided,
+    every string leaf in the parsed YAML is added to the substitution
+    set with the same defensive guards (length floor, non-alpha mix,
+    word-boundary anchors) used for ``--set`` values.
     """
     if not text:
         return text
@@ -195,6 +208,45 @@ def _redact_helm_error_text(text: str, argv: list[str] | None = None) -> str:
                     _pat = _re.compile(r"\b" + _re.escape(value) + r"\b")
                     out = _pat.sub(_REDACTED, out)
             i += 1
+
+    if stdin_payload:
+        # #1681: walk the YAML-rendered values payload and treat every
+        # string scalar as a candidate secret. Same guards as the argv
+        # path: length floor + non-alpha mix + word-boundary anchors.
+        # Cap the leaf count so an adversarial values dict (or one with
+        # a very large list) can't push the regex pass into super-linear
+        # time on the error body.
+        try:
+            parsed = yaml.safe_load(stdin_payload)
+        except Exception:
+            parsed = None
+        if parsed is not None:
+            _MAX_STDIN_LEAVES = 1024
+            seen: set[str] = set()
+
+            def _walk(node) -> None:
+                if len(seen) >= _MAX_STDIN_LEAVES:
+                    return
+                if isinstance(node, dict):
+                    for v in node.values():
+                        _walk(v)
+                elif isinstance(node, list):
+                    for v in node:
+                        _walk(v)
+                elif isinstance(node, str):
+                    if len(node) >= 8 and not node.isalpha():
+                        seen.add(node)
+
+            _walk(parsed)
+            if seen:
+                import re as _re_stdin
+                # Sort longest-first so a redacted long value isn't
+                # truncated by a shorter substring redaction landing
+                # first; the longest match wins.
+                for value in sorted(seen, key=len, reverse=True):
+                    _pat = _re_stdin.compile(r"\b" + _re_stdin.escape(value) + r"\b")
+                    out = _pat.sub(_REDACTED, out)
+
     return out
 
 
@@ -506,14 +558,14 @@ def _helm(
             returncode = proc.returncode if proc.returncode is not None else -1
 
             if returncode != 0:
-                # #1271: redact credentials from helm stderr/stdout before
-                # formatting them into the HelmError message. helm echoes
-                # `--set key=value` flags in many error paths; without
-                # redaction those values land in caller-visible errors and
-                # downstream logs.
-                safe_args = _redact_helm_error_text(" ".join(args), args)
+                # #1271 / #1681: redact credentials from helm stderr/stdout
+                # before formatting them into the HelmError message. helm
+                # echoes `--set key=value` flags in many error paths and
+                # rendered values from --values -; without redaction those
+                # values land in caller-visible errors and downstream logs.
+                safe_args = _redact_helm_error_text(" ".join(args), args, stdin)
                 safe_body = _redact_helm_error_text(
-                    (stderr_text or stdout_text).strip(), args
+                    (stderr_text or stdout_text).strip(), args, stdin
                 )
                 err = HelmError(
                     f"helm {safe_args} exited {returncode}: "

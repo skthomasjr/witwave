@@ -723,5 +723,74 @@ def test_diff_repo_accepts_https(_stub_helm):
     assert "https://charts.example.com/" in _stub_helm[0]
 
 
+# ----- _redact_helm_error_text stdin payload (#1681) -----
+
+
+def test_redact_error_text_masks_stdin_string_leaves():
+    """Stdin-delivered values should be masked in stderr/stdout text."""
+    stdin_payload = (
+        "postgres:\n"
+        "  password: hunter2-special\n"
+        "  user: app\n"
+    )
+    body = "Error: invalid value 'hunter2-special' rendered in template"
+    out = server._redact_helm_error_text(body, [], stdin_payload)
+    assert "hunter2-special" not in out
+    assert server._REDACTED in out
+
+
+def test_redact_error_text_skips_short_or_pure_alpha_stdin_leaves():
+    """Short or pure-alpha values must not be masked — same guard as
+    --set values (avoids mangling 'true', 'chart', etc.)."""
+    stdin_payload = (
+        "postgres:\n"
+        "  user: alice\n"  # pure alpha — skip
+        "  port: 5432\n"   # YAML int — skip
+        "  enabled: true\n"  # bool — skip
+    )
+    body = "alice connected to chart on port 5432 with enabled=true"
+    out = server._redact_helm_error_text(body, [], stdin_payload)
+    assert "alice" in out
+    assert "chart" in out
+    assert "true" in out
+
+
+def test_redact_error_text_handles_nested_dicts_and_lists():
+    """Walk recurses into nested dicts and lists."""
+    stdin_payload = (
+        "secrets:\n"
+        "  - name: s1\n"
+        "    value: my-secret-token-1\n"
+        "  - name: s2\n"
+        "    value: my-secret-token-2\n"
+        "deeply:\n"
+        "  nested:\n"
+        "    api_key: deadbeef-cafe-1234-5678\n"
+    )
+    body = (
+        "echoed: my-secret-token-1 and my-secret-token-2 plus "
+        "deadbeef-cafe-1234-5678 in error"
+    )
+    out = server._redact_helm_error_text(body, [], stdin_payload)
+    assert "my-secret-token-1" not in out
+    assert "my-secret-token-2" not in out
+    assert "deadbeef-cafe-1234-5678" not in out
+
+
+def test_redact_error_text_tolerates_invalid_yaml_stdin():
+    """Malformed stdin payload must not raise — fall through gracefully."""
+    body = "Error: invalid value 'something' rendered"
+    out = server._redact_helm_error_text(body, [], ":\n  - not valid\n - yaml")
+    assert isinstance(out, str)
+
+
+def test_redact_error_text_no_stdin_payload_is_noop_for_stdin_path():
+    """Without stdin_payload, the new path must not affect existing argv-only
+    behavior."""
+    body = "no secrets here"
+    out = server._redact_helm_error_text(body, [], None)
+    assert out == body
+
+
 if __name__ == "__main__":  # pragma: no cover
     sys.exit(pytest.main([__file__, "-q"]))
