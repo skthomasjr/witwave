@@ -146,6 +146,98 @@ func TestPaginatedListWalksEveryPage(t *testing.T) {
 	}
 }
 
+// TestPaginatedListVisitErrorShortCircuits covers #1708: when the visit
+// callback returns an error mid-stream, paginatedList must propagate
+// that error immediately and NOT make further List calls. Cleanup
+// paths (label-selector deletes across thousands of resources) rely
+// on this short-circuit so a transient visit error doesn't silently
+// half-complete the sweep.
+func TestPaginatedListVisitErrorShortCircuits(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("add corev1: %v", err)
+	}
+
+	var listCalls, visitCalls int
+	visitErr := errStr("visit-failed")
+
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithInterceptorFuncs(interceptor.Funcs{
+			List: func(ctx context.Context, cli client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+				listCalls++
+				cml := list.(*corev1.ConfigMapList)
+				cml.Items = []corev1.ConfigMap{
+					{ObjectMeta: metav1.ObjectMeta{Name: "page-1-item", Namespace: "default"}},
+				}
+				// Continue token is non-empty so a non-short-circuiting
+				// implementation would loop and call List again.
+				cml.Continue = "more-data-token"
+				return nil
+			},
+		}).
+		Build()
+
+	list := &corev1.ConfigMapList{}
+	err := paginatedList(context.Background(), c, list, func() error {
+		visitCalls++
+		return visitErr
+	})
+
+	if err != visitErr {
+		t.Fatalf("expected visitErr to propagate verbatim; got %v", err)
+	}
+	if listCalls != 1 {
+		t.Fatalf("visit error must short-circuit before the next List call; got %d List calls (expected 1)", listCalls)
+	}
+	if visitCalls != 1 {
+		t.Fatalf("visit must be called exactly once before erroring out; got %d", visitCalls)
+	}
+}
+
+// TestPaginatedListListErrorPropagates: a List error on any page should
+// propagate immediately, NOT swallow + continue. This is the failure
+// mode where the apiserver becomes briefly unavailable mid-sweep — we
+// want the caller (a reconcile loop with its own retry policy) to see
+// the error so it can back off, not silently stop with partial state.
+func TestPaginatedListListErrorPropagates(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("add corev1: %v", err)
+	}
+
+	var listCalls int
+	listErr := errStr("apiserver-unreachable")
+
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithInterceptorFuncs(interceptor.Funcs{
+			List: func(ctx context.Context, cli client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+				listCalls++
+				if listCalls == 2 {
+					// First page succeeded, second page fails.
+					return listErr
+				}
+				cml := list.(*corev1.ConfigMapList)
+				cml.Items = []corev1.ConfigMap{
+					{ObjectMeta: metav1.ObjectMeta{Name: "p1", Namespace: "default"}},
+				}
+				cml.Continue = "tok-1"
+				return nil
+			},
+		}).
+		Build()
+
+	list := &corev1.ConfigMapList{}
+	err := paginatedList(context.Background(), c, list, func() error { return nil })
+	if err != listErr {
+		t.Fatalf("expected List error to propagate; got %v", err)
+	}
+	if listCalls != 2 {
+		t.Fatalf("List should have been called twice (success then failure); got %d", listCalls)
+	}
+}
+
 // TestPaginatedListSinglePage covers the common case: when the apiserver
 // returns everything in one response (Continue == ""), paginatedList must
 // invoke visit exactly once and stop, not loop forever.
