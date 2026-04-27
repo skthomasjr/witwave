@@ -422,8 +422,13 @@ async def run_task(item: TaskItem, bus: MessageBus, semaphore: asyncio.Semaphore
         try:
             from prompt_env import resolve_prompt_env  # noqa: E402 — scoped import keeps startup simple
 
+            # #1675: do NOT reassign _task_start here. The pre-try
+            # initialisation at the top of this branch is the correct
+            # baseline — the duration metric must cover resolve_prompt_env
+            # + bus.send symmetrically on both success and error paths
+            # (matches the post-#1322 jobs.py pattern; tasks.py was
+            # missed at that time).
             prompt = resolve_prompt_env(f"Task: {item.name}\n\n{item.content}")
-            _task_start = time.monotonic()
             _fire_ts = time.time()
             item.last_fire = _fire_ts  # #1087
             if harness_sched_task_item_last_run_timestamp_seconds is not None:
