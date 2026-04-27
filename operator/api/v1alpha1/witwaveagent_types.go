@@ -84,13 +84,20 @@ type ProbeSpec struct {
 	FailureThreshold int32 `json:"failureThreshold,omitempty"`
 }
 
-// ProbesSpec bundles liveness and readiness probe timings.
+// ProbesSpec bundles startup, liveness, and readiness probe timings.
 type ProbesSpec struct {
 	// +optional
 	Liveness *ProbeSpec `json:"liveness,omitempty"`
 
 	// +optional
 	Readiness *ProbeSpec `json:"readiness,omitempty"`
+
+	// Startup configures the kubelet's startupProbe. The probe targets
+	// /health/start on backend containers that implement the three-probe
+	// model (claude/codex/gemini, post-#1686). The echo backend retains
+	// /health-only behaviour and does not get a startupProbe.
+	// +optional
+	Startup *ProbeSpec `json:"startup,omitempty"`
 }
 
 // PreStopSpec configures a `lifecycle.preStop` sleep hook on every container

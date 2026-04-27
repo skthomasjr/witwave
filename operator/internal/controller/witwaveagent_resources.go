@@ -188,6 +188,71 @@ func probeDefaults(override *witwavev1alpha1.ProbeSpec, liveness bool) witwavev1
 	return def
 }
 
+// startupProbeDefaults returns the effective startupProbe ProbeSpec. Defaults
+// match charts/witwave/values.yaml probes.startup.* (initialDelaySeconds=0,
+// periodSeconds=10, timeoutSeconds=5, failureThreshold=30 → ~5min cold-start
+// budget before liveness/readiness take over).
+func startupProbeDefaults(override *witwavev1alpha1.ProbeSpec) witwavev1alpha1.ProbeSpec {
+	def := witwavev1alpha1.ProbeSpec{
+		InitialDelaySeconds: 0,
+		PeriodSeconds:       10,
+		TimeoutSeconds:      5,
+		FailureThreshold:    30,
+	}
+	if override == nil {
+		return def
+	}
+	if override.InitialDelaySeconds > 0 {
+		def.InitialDelaySeconds = override.InitialDelaySeconds
+	}
+	if override.PeriodSeconds > 0 {
+		def.PeriodSeconds = override.PeriodSeconds
+	}
+	if override.TimeoutSeconds > 0 {
+		def.TimeoutSeconds = override.TimeoutSeconds
+	}
+	if override.FailureThreshold > 0 {
+		def.FailureThreshold = override.FailureThreshold
+	}
+	return def
+}
+
+// backendUsesThreeProbes reports whether a backend implements the three-probe
+// health model (/health/start, /health, /health/ready). All current backends
+// except echo do — echo is the deliberately minimal hello-world default and
+// only exposes /health (see backends/echo/README.md intentional-non-scope
+// list). Match by container name, which is the canonical backend identifier
+// in BackendSpec.Name.
+func backendUsesThreeProbes(b witwavev1alpha1.BackendSpec) bool {
+	return b.Name != "echo"
+}
+
+// backendProbePaths bundles the readiness probe path for a backend; liveness
+// always points at /health regardless of three-probe support.
+type backendProbePaths struct {
+	ready string
+}
+
+// livenessReadinessPaths returns the readiness path for a backend. Three-probe
+// backends use /health/ready so the kubelet can distinguish "process up" from
+// "ready to serve" (#1608, #1672, #1686). Echo retains /health since it does
+// not implement the readiness split.
+func livenessReadinessPaths(b witwavev1alpha1.BackendSpec) backendProbePaths {
+	if backendUsesThreeProbes(b) {
+		return backendProbePaths{ready: "/health/ready"}
+	}
+	return backendProbePaths{ready: "/health"}
+}
+
+// maybeStartupProbe returns a startupProbe targeting /health/start for
+// three-probe backends, and nil for echo.
+func maybeStartupProbe(b witwavev1alpha1.BackendSpec, port int32, spec witwavev1alpha1.ProbeSpec) *corev1.Probe {
+	if !backendUsesThreeProbes(b) {
+		return nil
+	}
+	return httpProbe(port, "/health/start", spec)
+}
+
 // httpProbe builds an HTTP GET probe against the given port and path using
 // the timing from spec.
 func httpProbe(port int32, path string, spec witwavev1alpha1.ProbeSpec) *corev1.Probe {
@@ -565,9 +630,11 @@ func buildDeployment(agent *witwavev1alpha1.WitwaveAgent, appVersion string, pro
 	}
 	livenessProbe := probeDefaults(nil, true)
 	readinessProbe := probeDefaults(nil, false)
+	startupProbe := startupProbeDefaults(nil)
 	if agent.Spec.Probes != nil {
 		livenessProbe = probeDefaults(agent.Spec.Probes.Liveness, true)
 		readinessProbe = probeDefaults(agent.Spec.Probes.Readiness, false)
+		startupProbe = startupProbeDefaults(agent.Spec.Probes.Startup)
 	}
 
 	// Per-container metrics port (#836 / chart #687): each container's
@@ -718,8 +785,15 @@ func buildDeployment(agent *witwavev1alpha1.WitwaveAgent, appVersion string, pro
 				AllowPrivilegeEscalation: boolPtr(false),
 				Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
 			},
+			// Probe paths use the cycle-1 #1608 + #1672 health split, plus
+			// the #1686 three-probe parity (#1719). Backends that implement
+			// the three-probe model split startup/liveness/readiness across
+			// /health/start, /health, /health/ready. Echo only exposes
+			// /health (intentional-non-scope) — keep both probes there and
+			// skip startupProbe for it.
 			LivenessProbe:  httpProbe(bPort, "/health", livenessProbe),
-			ReadinessProbe: httpProbe(bPort, "/health", readinessProbe),
+			ReadinessProbe: httpProbe(bPort, livenessReadinessPaths(b).ready, readinessProbe),
+			StartupProbe:   maybeStartupProbe(b, bPort, startupProbe),
 			VolumeMounts:   bMounts,
 			Lifecycle:      preStopLifecycle(agent),
 		}

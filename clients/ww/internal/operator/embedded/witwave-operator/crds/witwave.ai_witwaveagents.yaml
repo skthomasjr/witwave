@@ -4105,6 +4105,30 @@ spec:
                         format: int32
                         type: integer
                     type: object
+                  startup:
+                    description: |-
+                      Startup configures the kubelet's startupProbe. The probe targets
+                      /health/start on backend containers that implement the three-probe
+                      model (claude/codex/gemini, post-#1686). The echo backend retains
+                      /health-only behaviour and does not get a startupProbe.
+                    properties:
+                      failureThreshold:
+                        default: 3
+                        format: int32
+                        type: integer
+                      initialDelaySeconds:
+                        default: 10
+                        format: int32
+                        type: integer
+                      periodSeconds:
+                        default: 30
+                        format: int32
+                        type: integer
+                      timeoutSeconds:
+                        default: 5
+                        format: int32
+                        type: integer
+                    type: object
                 type: object
               resources:
                 description: Resources are CPU/memory requests and limits for the
