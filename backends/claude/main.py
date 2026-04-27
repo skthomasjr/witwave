@@ -121,33 +121,12 @@ def _get_mcp_caller_identities_lock() -> asyncio.Lock:
     return _mcp_caller_identities_lock
 
 
-async def _read_capped_body(request: "Request", cap: int) -> "tuple[bytes | None, str | None]":
-    """Stream-read ``request`` body into a bounded buffer (#1609).
-
-    Returns ``(body_bytes, None)`` on success or ``(None, reason)`` on
-    failure where ``reason`` is one of:
-
-    - ``"body_too_large"`` — actual bytes received exceeded ``cap``.
-      The caller should respond with HTTP 413.
-    - ``"parse_error"`` — the underlying ASGI receive raised. The caller
-      should respond with HTTP 400 and a JSON-RPC parse-error envelope.
-
-    The streaming check is the actual enforcement: a hostile or buggy
-    caller may declare a small (or absent) Content-Length and then send
-    arbitrarily many bytes, so we MUST count actual bytes received and
-    abort BEFORE buffering them into json().
-    """
-    buf = bytearray()
-    try:
-        async for chunk in request.stream():
-            if not chunk:
-                continue
-            if len(buf) + len(chunk) > cap:
-                return None, "body_too_large"
-            buf.extend(chunk)
-    except Exception:
-        return None, "parse_error"
-    return bytes(buf), None
+# #1609 / #1673 / #1674: streaming body-cap helper now lives in
+# shared/mcp_body_cap.py so codex and gemini can consume the exact same
+# defense — a hostile/buggy caller can lie about (or omit)
+# Content-Length under chunked transfer, and only the streaming check
+# bounds actual bytes received before json() buffers them.
+from mcp_body_cap import read_capped_body as _read_capped_body
 
 
 def load_agent_description() -> str:
