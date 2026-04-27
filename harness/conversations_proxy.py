@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import time
+from datetime import datetime, timezone
 
 import httpx
 
@@ -94,6 +95,24 @@ def _count_fetch_error(backend_id: str, endpoint: str) -> None:
         ).inc()
 
 
+def _ts_sort_key(entry: dict) -> str:
+    """Normalize a backend entry ``ts`` to a comparable ISO-8601 string.
+
+    Different backends emit ``ts`` in different shapes (claude=ISO 8601 string,
+    codex=numeric epoch seconds — see ``shared/conversations.py``). Sorting a
+    merged list of mixed types raises ``TypeError`` in Python 3, so coerce
+    numeric timestamps to ISO before comparison. Falls back to ``str()`` for
+    anything else so the sort never raises.
+    """
+    ts = entry.get("ts", "")
+    if isinstance(ts, (int, float)):
+        try:
+            return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+        except (OverflowError, OSError, ValueError):
+            return str(ts)
+    return str(ts) if ts is not None else ""
+
+
 async def fetch_backend_conversations(
     backends: list[BackendConfig],
     since: str | None = None,
@@ -166,7 +185,7 @@ async def fetch_backend_conversations(
                 seen.add(key)
                 all_entries.append(entry)
 
-    all_entries.sort(key=lambda e: e.get("ts", ""))
+    all_entries.sort(key=_ts_sort_key)
     if limit is not None:
         all_entries = all_entries[-limit:]
     return all_entries
@@ -337,7 +356,7 @@ async def fetch_backend_trace(
                 seen.add(key)
                 all_entries.append(entry)
 
-    all_entries.sort(key=lambda e: e.get("ts", ""))
+    all_entries.sort(key=_ts_sort_key)
     if limit is not None:
         all_entries = all_entries[-limit:]
     return all_entries
