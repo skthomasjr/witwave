@@ -704,9 +704,16 @@ async def _emit_afc_history(
                     _pre_fc_id = getattr(_pre_fc, "id", None)
                     _pre_call_id = _pre_fc_id or f"fc-{session_id[:8]}-pre-{_pre_call_counter}"
                     _pre_ts = datetime.now(timezone.utc).isoformat()
+                    # #1727: mark prefix-sourced entries so the response side
+                    # can skip the duration histogram observe — the original
+                    # fc start time was lost across the persistence boundary,
+                    # and computing a delta against the seed-loop "now"
+                    # produces a near-zero sample that misrepresents real
+                    # tool runtime.
                     _pre_entry = {
                         "id": _pre_call_id, "ts": _pre_ts,
                         "name": _pre_name, "fc_id": _pre_fc_id,
+                        "from_prefix": True,
                     }
                     if _pre_fc_id:
                         pending_by_id[_pre_fc_id] = _pre_entry
@@ -928,7 +935,16 @@ async def _emit_afc_history(
                         _start = datetime.fromisoformat(matched["ts"])
                         _end = datetime.fromisoformat(ts)
                         _dur_seconds = max(0.0, (_end - _start).total_seconds())
-                        if backend_sdk_tool_duration_seconds is not None:
+                        # #1727: skip duration histogram observe when matched
+                        # was seeded from prefix_history. The real fc start
+                        # time was lost across the persistence boundary, so
+                        # the computed delta is a near-zero false sample.
+                        # Tool-call counters and result-size metric still
+                        # fire so audit / counts stay correct.
+                        if (
+                            backend_sdk_tool_duration_seconds is not None
+                            and not matched.get("from_prefix")
+                        ):
                             backend_sdk_tool_duration_seconds.labels(**_LABELS, tool=name).observe(_dur_seconds)
                     except Exception:
                         pass

@@ -346,6 +346,51 @@ class EmitAfcHistoryTests(unittest.TestCase):
             [], session_id="sid-prefix", model="gemini-1.5", prefix_history=prefix,
         ))
 
+    def test_prefix_paired_fr_skips_duration_histogram(self):
+        """#1727: when a current-slice function_response pairs with a
+        function_call seeded from prefix_history, the duration histogram
+        must NOT be observed — the original fc start time was lost across
+        the persistence boundary, so the computed delta would be a bogus
+        ~0s sample.
+
+        Tool-call counter still fires so audit / counts stay correct.
+        """
+        prefix = [_fc("echo", id="fc-1")]
+        current = [_fr("echo", response={"ok": True}, id="fc-1")]
+
+        observed_durations = []
+        observed_calls = []
+
+        class _DurFake:
+            def labels(self, **_kw):
+                return self
+            def observe(self, v):
+                observed_durations.append(v)
+
+        class _CallsFake:
+            def labels(self, **_kw):
+                return self
+            def inc(self):
+                observed_calls.append(1)
+
+        with patch.object(executor, "backend_sdk_tool_duration_seconds", _DurFake()), \
+             patch.object(executor, "backend_sdk_tool_calls_total", _CallsFake()):
+            asyncio.run(executor._emit_afc_history(
+                current,
+                session_id="sid-prefix-pair",
+                model="gemini-1.5",
+                prefix_history=prefix,
+            ))
+
+        self.assertEqual(
+            observed_durations, [],
+            "duration histogram must not observe samples for prefix-paired AFC fr (#1727)",
+        )
+        self.assertEqual(
+            len(observed_calls), 1,
+            "tool-call counter should still fire so audit/counts stay correct",
+        )
+
 
 # ---------------------------------------------------------------------------
 # _history_write_done Event race test (#674)
