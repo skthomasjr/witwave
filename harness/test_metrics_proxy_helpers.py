@@ -34,6 +34,16 @@ sys.path.insert(0, str(_REPO_ROOT / "shared"))
 
 
 def _get_metrics_url():
+    # #1701/#1693 lesson: harness/test_hook_decision_event.py installs
+    # _AutoMock placeholders in sys.modules for many module names —
+    # including `metrics_proxy` and `sqlite_task_store`. If pytest runs
+    # that test before this one, plain `import metrics_proxy` returns the
+    # mock and our test gets a MagicMock back from _metrics_url(...).
+    # Force a real import by evicting any cached mock first.
+    import sys
+    import importlib
+    sys.modules.pop("metrics_proxy", None)
+    importlib.invalidate_caches()
     from metrics_proxy import _metrics_url
     return _metrics_url
 
@@ -82,7 +92,38 @@ def test_metrics_url_strips_trailing_slash_before_rewrite():
 # ----- sqlite_task_store._retry_on_operational --------------------
 
 
+def _ensure_a2a_stubs():
+    """sqlite_task_store imports `from a2a.server.context import
+    ServerCallContext` etc. test_hook_decision_event installs `a2a` as
+    a single _AutoMock (not a real package), which breaks dotted
+    submodule imports. Install proper stubs as separate ModuleType
+    entries so dotted imports resolve."""
+    import sys
+    import types as _t
+    needed = {
+        "a2a": [],
+        "a2a.server": [],
+        "a2a.server.context": [("ServerCallContext", type("ServerCallContext", (), {}))],
+        "a2a.server.tasks": [],
+        "a2a.server.tasks.task_store": [("TaskStore", type("TaskStore", (), {}))],
+        "a2a.types": [("Task", type("Task", (), {}))],
+    }
+    for name, attrs in needed.items():
+        existing = sys.modules.get(name)
+        # Replace any module that isn't a real ModuleType (e.g.
+        # _AutoMock from test_hook_decision_event) with a real one.
+        if existing is None or not isinstance(existing, _t.ModuleType):
+            sys.modules[name] = _t.ModuleType(name)
+        for attr_name, attr_val in attrs:
+            setattr(sys.modules[name], attr_name, attr_val)
+
+
 def _get_retry_fn():
+    import sys
+    import importlib
+    _ensure_a2a_stubs()
+    sys.modules.pop("sqlite_task_store", None)
+    importlib.invalidate_caches()
     import sqlite_task_store
     return sqlite_task_store, sqlite_task_store._retry_on_operational
 
