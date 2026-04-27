@@ -1,0 +1,217 @@
+name: CI — install.sh
+
+# Validates the universal curl installer (scripts/install.sh) on every
+# change. Two layers:
+#
+#   1. shellcheck — POSIX sh lint, plus syntax probes under sh / dash /
+#      bash so we catch portability slips before merge.
+#   2. matrix smoke install — exercise the real download + verify + atomic
+#      install path inside the gnarliest target distros (Alpine for
+#      busybox+musl, Debian/Ubuntu for the GNU coreutils baseline,
+#      Fedora for rpm-land), plus a macOS runner for the BSD userland.
+#
+# The matrix uses --version pinned to the newest existing release tag so
+# the test is deterministic — install.sh's own --version flag sidesteps
+# the GitHub API entirely. This keeps CI passing even when a brand-new
+# branch hasn't shipped a release of its own yet.
+
+on:
+  pull_request:
+    paths:
+      - "scripts/install.sh"
+      - ".github/workflows/ci-install-script.yml"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/install.sh"
+      - ".github/workflows/ci-install-script.yml"
+
+concurrency:
+  group: ci-install-script-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: shellcheck + parse
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: shellcheck (POSIX sh mode)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          shellcheck -s sh scripts/install.sh
+
+      - name: Parse under multiple shells
+        run: |
+          set -e
+          for sh_bin in sh dash bash; do
+            if command -v "$sh_bin" >/dev/null 2>&1; then
+              echo "::group::$sh_bin -n"
+              "$sh_bin" -n scripts/install.sh
+              echo "::endgroup::"
+            fi
+          done
+
+      - name: --help exits 0
+        run: sh scripts/install.sh --help >/dev/null
+
+      - name: Unknown flag exits 1
+        run: |
+          set +e
+          sh scripts/install.sh --bogus-flag >/dev/null 2>&1
+          rc=$?
+          set -e
+          if [ "$rc" -ne 1 ]; then
+            echo "expected exit 1 on unknown flag, got $rc" >&2
+            exit 1
+          fi
+
+  smoke-linux:
+    name: smoke install — ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    needs: lint
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - alpine:3.19
+          - debian:12-slim
+          - ubuntu:22.04
+          - fedora:40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # need tag history for the latest-tag probe
+
+      - name: Resolve latest existing release tag
+        id: tag
+        run: |
+          # Pin the smoke install to the newest tag the repo has actually
+          # cut. Avoids depending on GitHub Releases API rate limits and
+          # avoids the chicken-and-egg of testing a script against a
+          # release that hasn't shipped yet.
+          tag="$(git tag --list 'v*.*.*' --sort=-version:refname | grep -Ev -- '-(beta|rc)\.' | head -n 1)"
+          if [ -z "$tag" ]; then
+            echo "no tagged release found — skipping real-install smoke" >&2
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Using tag: $tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Skip if no tag
+        if: steps.tag.outputs.tag == ''
+        run: echo "no tag available; smoke is a no-op for this run."
+
+      - name: Real install inside ${{ matrix.image }}
+        if: steps.tag.outputs.tag != ''
+        run: |
+          # Bind-mount the checkout so the container has the in-repo
+          # script under test. Each image gets its package-manager kick
+          # for curl + ca-certs (busybox alpine ships wget but no curl
+          # by default; debian-slim trims curl to keep the image small).
+          docker run --rm -v "$PWD":/src -w /src ${{ matrix.image }} sh -eux -c '
+            case "$(. /etc/os-release && echo "$ID")" in
+              alpine) apk add --no-cache curl ca-certificates tar ;;
+              debian|ubuntu) apt-get update -qq && apt-get install -y -qq curl ca-certificates tar ;;
+              fedora) dnf install -y -q curl ca-certificates tar ;;
+            esac
+            sh scripts/install.sh --version ${{ steps.tag.outputs.tag }} --prefix /tmp/wwroot
+            test -x /tmp/wwroot/bin/ww
+            test -f /tmp/wwroot/bin/.ww.install-info
+            grep -q "installer=curl" /tmp/wwroot/bin/.ww.install-info
+            grep -q "version=${{ steps.tag.outputs.tag }}" /tmp/wwroot/bin/.ww.install-info
+            /tmp/wwroot/bin/ww version
+          '
+
+      - name: Verify wget fallback in ${{ matrix.image }}
+        if: steps.tag.outputs.tag != ''
+        run: |
+          # Smoke the no-curl path: install wget, deliberately omit curl,
+          # confirm the script picks up wget. Only run on debian/ubuntu/
+          # alpine where the package layout is predictable; fedora has
+          # curl as a hard dep of too many things to cleanly strip.
+          case "${{ matrix.image }}" in
+            fedora:*) echo "skipping wget-only path on fedora"; exit 0 ;;
+          esac
+          docker run --rm -v "$PWD":/src -w /src ${{ matrix.image }} sh -eux -c '
+            case "$(. /etc/os-release && echo "$ID")" in
+              alpine) apk add --no-cache wget ca-certificates tar ;;
+              debian|ubuntu) apt-get update -qq && apt-get install -y -qq wget ca-certificates tar && (apt-get remove -y -qq curl >/dev/null 2>&1 || true) ;;
+            esac
+            ! command -v curl >/dev/null 2>&1 || { echo "curl still present — wget-only path not exercised" >&2; exit 1; }
+            sh scripts/install.sh --version ${{ steps.tag.outputs.tag }} --prefix /tmp/wwroot
+            test -x /tmp/wwroot/bin/ww
+          '
+
+  smoke-macos:
+    name: smoke install — macOS
+    runs-on: macos-14
+    needs: lint
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve latest existing release tag
+        id: tag
+        run: |
+          tag="$(git tag --list 'v*.*.*' --sort=-version:refname | grep -Ev -- '-(beta|rc)\.' | head -n 1)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Skip if no tag
+        if: steps.tag.outputs.tag == ''
+        run: echo "no tag available; macOS smoke is a no-op."
+
+      - name: Real install (macOS arm64)
+        if: steps.tag.outputs.tag != ''
+        run: |
+          sh scripts/install.sh --version ${{ steps.tag.outputs.tag }} --prefix /tmp/wwroot
+          test -x /tmp/wwroot/bin/ww
+          test -f /tmp/wwroot/bin/.ww.install-info
+          grep -q "installer=curl" /tmp/wwroot/bin/.ww.install-info
+          /tmp/wwroot/bin/ww version
+
+      - name: Dry-run with --use-sudo path
+        if: steps.tag.outputs.tag != ''
+        run: |
+          # Confirm the default-prefix policy resolves cleanly even
+          # without sudo; should fall through to ~/.local/bin.
+          sh scripts/install.sh --version ${{ steps.tag.outputs.tag }} --dry-run
+
+  uninstall:
+    name: --uninstall round-trip
+    runs-on: ubuntu-latest
+    needs: lint
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install then uninstall
+        run: |
+          tag="$(git tag --list 'v*.*.*' --sort=-version:refname | grep -Ev -- '-(beta|rc)\.' | head -n 1)"
+          if [ -z "$tag" ]; then
+            echo "no tag available; skipping uninstall round-trip"
+            exit 0
+          fi
+          sh scripts/install.sh --version "$tag" --prefix /tmp/wwroot
+          test -x /tmp/wwroot/bin/ww
+          # The uninstaller searches /usr/local/bin and ~/.local/bin by
+          # default, so point it at our prefix via PATH manipulation +
+          # `command -v` lookup (the marker-discovery branch).
+          PATH="/tmp/wwroot/bin:$PATH" sh scripts/install.sh --uninstall
+          if [ -f /tmp/wwroot/bin/ww ]; then
+            echo "binary still present after --uninstall" >&2
+            exit 1
+          fi

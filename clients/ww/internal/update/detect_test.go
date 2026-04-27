@@ -1,13 +1,18 @@
 package update
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestDetectInstallMethod(t *testing.T) {
 	cases := []struct {
-		name string
-		exe  string
-		env  map[string]string
-		want InstallMethod
+		name    string
+		exe     string
+		env     map[string]string
+		marker  string // contents of <bindir>/.ww.install-info, "" = file absent
+		want    InstallMethod
 	}{
 		{
 			name: "homebrew apple silicon cellar",
@@ -58,15 +63,50 @@ func TestDetectInstallMethod(t *testing.T) {
 			env:  map[string]string{"HOME": "/home/alice"},
 			want: InstallMethodBinary, // not /home/alice/go/bin/
 		},
+		{
+			name:   "curl installer marker in /usr/local/bin",
+			exe:    "/usr/local/bin/ww",
+			marker: "installer=curl\nversion=v0.5.0\nchannel=stable\n",
+			want:   InstallMethodCurl,
+		},
+		{
+			name:   "curl installer marker in $HOME/.local/bin",
+			exe:    "/home/alice/.local/bin/ww",
+			env:    map[string]string{"HOME": "/home/alice"},
+			marker: "installer=curl\nversion=v0.5.0-beta.3\nchannel=beta\n",
+			want:   InstallMethodCurl,
+		},
+		{
+			name:   "marker without installer=curl falls through to dir heuristics",
+			exe:    "/usr/local/bin/ww",
+			marker: "installer=tarball\nversion=v0.5.0\n",
+			want:   InstallMethodBrew, // /usr/local/bin matches the brew prefix
+		},
+		{
+			name:   "marker beats brew prefix when installer=curl",
+			exe:    "/usr/local/bin/ww",
+			marker: "# installed by curl|sh\ninstaller=curl\n",
+			want:   InstallMethodCurl,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			getexec := func() (string, error) { return tc.exe, nil }
 			getenv := func(k string) string { return tc.env[k] }
-			got := DetectInstallMethod(getexec, getenv)
+			expectedMarkerPath := ""
+			if tc.exe != "" {
+				expectedMarkerPath = filepath.Join(filepath.Dir(tc.exe), ".ww.install-info")
+			}
+			readfile := func(p string) ([]byte, error) {
+				if p == expectedMarkerPath && tc.marker != "" {
+					return []byte(tc.marker), nil
+				}
+				return nil, os.ErrNotExist
+			}
+			got := DetectInstallMethod(getexec, getenv, readfile)
 			if got != tc.want {
-				t.Errorf("DetectInstallMethod(exe=%q, env=%v) = %v, want %v",
-					tc.exe, tc.env, got, tc.want)
+				t.Errorf("DetectInstallMethod(exe=%q, env=%v, marker=%q) = %v, want %v",
+					tc.exe, tc.env, tc.marker, got, tc.want)
 			}
 		})
 	}
@@ -76,7 +116,7 @@ func TestDetectInstallMethod_GetexecError(t *testing.T) {
 	// When os.Executable() fails, we should fall back to Binary rather
 	// than panicking or suggesting a wrong upgrade command.
 	getexec := func() (string, error) { return "", errDummy }
-	got := DetectInstallMethod(getexec, func(string) string { return "" })
+	got := DetectInstallMethod(getexec, func(string) string { return "" }, nil)
 	if got != InstallMethodBinary {
 		t.Errorf("getexec err: got %v, want %v", got, InstallMethodBinary)
 	}
@@ -89,6 +129,7 @@ func TestInstallMethod_UpgradeCommand(t *testing.T) {
 	}{
 		{InstallMethodBrew, "brew upgrade ww"},
 		{InstallMethodGoInstall, "go install github.com/witwave-ai/witwave/clients/ww@latest"},
+		{InstallMethodCurl, "curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh | sh"},
 		{InstallMethodBinary, ""},
 	}
 	for _, tc := range cases {

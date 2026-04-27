@@ -156,17 +156,24 @@ it's a follow-up when demand materialises. For now, verification is a consumer-o
 
 ### `ww` CLI binaries
 
-Homebrew installs already verify via the tap's signature chain. For direct-binary users (GitHub Releases download):
+Three install paths, three verification postures:
 
-```bash
-cosign verify-blob \
-  --certificate-identity-regexp="^https://github.com/witwave-ai/witwave/\.github/workflows/release-ww\.yml@refs/tags/v.*$" \
-  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-  --bundle ww_v0.5.6_darwin_arm64.tar.gz.cosign.bundle \
-  ww_v0.5.6_darwin_arm64.tar.gz
-```
+- **Homebrew** — verified via the tap's signature chain; nothing for the user to do.
+- **curl installer** (`scripts/install.sh`, shipped as a release asset) — verifies the SHA256 of the downloaded
+  tarball against `checksums.txt` from the same release, by default. Pass `--verify-signature` (or set
+  `WW_VERIFY_SIGNATURE=1`) to additionally verify the cosign keyless signature on `checksums.txt`; requires `cosign`
+  on PATH.
+- **Direct binary download** (manual GitHub Releases pull) — no verification happens unless you do it. Run:
 
-The `.cosign.bundle` file is published alongside each release asset.
+  ```bash
+  cosign verify-blob \
+    --certificate-identity-regexp="^https://github.com/witwave-ai/witwave/\.github/workflows/release-ww\.yml@refs/tags/v.*$" \
+    --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+    --bundle ww_v0.5.6_darwin_arm64.tar.gz.cosign.bundle \
+    ww_v0.5.6_darwin_arm64.tar.gz
+  ```
+
+  The `.cosign.bundle` file is published alongside each release asset.
 
 ### Helm charts
 

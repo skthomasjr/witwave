@@ -83,7 +83,7 @@ func runUpdate(cc *cobra.Command, force, check bool) error {
 		fmt.Fprintf(os.Stderr, "ww: warning: %v\n", err)
 	}
 
-	method := update.DetectInstallMethod(nil, nil)
+	method := update.DetectInstallMethod(nil, nil, nil)
 
 	// --force bypasses the check entirely. The installer itself
 	// decides whether anything needs doing (e.g. `brew upgrade`

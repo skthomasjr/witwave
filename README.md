@@ -65,7 +65,7 @@ agents and you have a scheduler with nothing to dispatch to — no intelligence.
 | **Echo backend**   | `backends/echo/`           | Backend agent       | Zero-dependency stub. Returns a canned response quoting the prompt. Hello-world default + reference. |
 | **MCP tools**      | `tools/`                   | Tool infrastructure | `mcp-kubernetes`, `mcp-helm`, `mcp-prometheus` — shared MCP servers backends opt into.               |
 | **Dashboard**      | `clients/dashboard/`       | Web client          | Vue 3 + PrimeVue web UI.                                                                             |
-| **ww CLI**         | `clients/ww/`              | Client              | Go + cobra command-line interface (`brew install witwave-ai/homebrew-ww/ww`).                        |
+| **ww CLI**         | `clients/ww/`              | Client              | Go + cobra command-line interface (`curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh \| sh`, or Homebrew). |
 | **Operator**       | `operator/`                | Kubernetes operator | Go controller that reconciles `WitwaveAgent` CRDs.                                                   |
 | **Agent chart**    | `charts/witwave/`          | Deployment          | Helm chart that deploys witwave agents via templated manifests.                                      |
 | **Operator chart** | `charts/witwave-operator/` | Deployment          | Helm chart that installs the operator + CRD.                                                         |
@@ -112,12 +112,22 @@ on every release tag.
 | `mcp-helm`       | `ghcr.io/witwave-ai/images/mcp-helm:latest`       |
 | `mcp-prometheus` | `ghcr.io/witwave-ai/images/mcp-prometheus:latest` |
 
-The `ww` CLI ships via Homebrew (the [witwave-ai/homebrew-ww](https://github.com/witwave-ai/homebrew-ww) tap) and as
-standalone binaries on [GitHub Releases](https://github.com/witwave-ai/witwave/releases):
+The `ww` CLI ships through three install paths — pick whichever fits your environment:
 
 ```bash
+# Universal (Linux + macOS) — POSIX-sh installer with SHA256 verification.
+curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh | sh
+
+# macOS / Linuxbrew via the witwave-ai/homebrew-ww tap.
 brew install witwave-ai/homebrew-ww/ww
+
+# From source (developers).
+go install github.com/witwave-ai/witwave/clients/ww@latest
 ```
+
+Standalone binaries are also published on [GitHub Releases](https://github.com/witwave-ai/witwave/releases). See
+[clients/ww/README.md](clients/ww/README.md#install) for the full flag and env-var reference for the curl installer
+(version pinning, beta channel, custom prefix, cosign verification, uninstall).
 
 `ww` checks for newer releases on startup and surfaces a one-line banner (configurable via
 `ww config set update.mode ...`). To upgrade explicitly at any time:
@@ -139,7 +149,7 @@ Two Helm charts are published to GHCR alongside the images on every release tag.
 
 ```bash
 # Install `ww` then use it to install the operator.
-brew install witwave-ai/homebrew-ww/ww
+curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh | sh   # or: brew install witwave-ai/homebrew-ww/ww
 ww operator install                 # into witwave-system namespace
 ww operator status                  # verify
 ```

@@ -23,8 +23,11 @@ story; the README lists the flags.
 2. **`ww` on your `PATH`.** If you don't have it yet:
 
    ```bash
+   # Universal one-liner (Linux + macOS):
+   curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh | sh
+   # macOS / Linuxbrew:
    brew install witwave-ai/homebrew-ww/ww
-   # or:
+   # From source:
    go install github.com/witwave-ai/witwave/clients/ww@latest
    ```
 

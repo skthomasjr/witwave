@@ -272,6 +272,44 @@ func RunUpgrade(ctx context.Context, method InstallMethod, currentVersion string
 		fmt.Fprintln(stderr, "Upgraded. Run your ww command again to use the new version.")
 		return nil
 
+	case InstallMethodCurl:
+		// Re-run the canonical install pipeline. The script is
+		// idempotent and self-contained — it'll pick up the latest
+		// stable, verify the SHA256, and atomically replace the
+		// running binary at the same install location. We invoke
+		// `sh` with the script piped in over stdin to mirror what a
+		// user would type, rather than trying to fetch + exec a
+		// local copy of install.sh (which the binary doesn't ship).
+		//
+		// Bounded by a generous timeout — the script itself does
+		// retried HTTP downloads and may have to traverse a corporate
+		// proxy. Re-uses _goCmdTimeout because the work shape (one
+		// HTTP fetch + a local file write) is comparable.
+		shCmd, cancelSh := commandWithTimeout(ctx, _goCmdTimeout, "sh", "-c",
+			"set -e; "+
+				"if command -v curl >/dev/null 2>&1; then "+
+				"  curl -fsSL "+curlInstallURL+" | sh; "+
+				"elif command -v wget >/dev/null 2>&1; then "+
+				"  wget -qO- "+curlInstallURL+" | sh; "+
+				"else "+
+				"  echo 'ww update: neither curl nor wget on PATH' >&2; exit 1; "+
+				"fi",
+		)
+		defer cancelSh()
+		shCmd.Stdout, shCmd.Stderr = stdout, stderr
+		// Same posture as the brew shell-out (#1554): refuse to
+		// inherit stdin so a script that decides to prompt
+		// (`sudo` password, etc.) fails fast rather than wedging.
+		shCmd.Stdin = nil
+		// Sanitise creds out of the child env — install.sh has no
+		// reason to see ANTHROPIC_API_KEY etc.
+		shCmd.Env = sanitizeShellEnv(os.Environ())
+		if err := shCmd.Run(); err != nil {
+			return fmt.Errorf("curl-installer upgrade: %w", err)
+		}
+		fmt.Fprintln(stderr, "Upgraded. Run your ww command again to use the new version.")
+		return nil
+
 	default:
 		fmt.Fprintln(stderr,
 			"No automatic upgrade path for this binary — download the "+

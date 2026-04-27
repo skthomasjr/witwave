@@ -30,7 +30,7 @@ ships with the operator chart embedded. No Helm repo, no `helm`
 binary, no clone of this repo required:
 
 ```bash
-brew install witwave-ai/homebrew-ww/ww
+curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh | sh   # or: brew install witwave-ai/homebrew-ww/ww
 ww operator install              # installs into witwave-system
 ww operator status               # verify
 ```

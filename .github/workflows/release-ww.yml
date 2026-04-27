@@ -86,3 +86,104 @@ jobs:
           # secret, goreleaser fails loudly at the formula-publish
           # step but the binaries + GitHub Release still ship.
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+
+  # Post-release validation: re-run the install.sh smoke matrix against
+  # the *just-cut* tag rather than the previous one. ci-install-script.yml
+  # exercises the script against pre-existing releases (catches script
+  # bugs); this job exercises the just-shipped release (catches asset-
+  # naming drift, missing platforms, install.sh upload failures, and
+  # checksums.txt format changes — the "we shipped a broken release"
+  # class of bug).
+  #
+  # Failure here does NOT roll back the release — by the time goreleaser
+  # finished above the artifacts are already public. But a red check on
+  # this job is the loudest possible signal that the next user to run the
+  # curl one-liner is going to have a bad time, so we surface it
+  # immediately and rely on operator triage to cut a follow-up release.
+  install-smoke:
+    name: install.sh smoke — ${{ matrix.image }}
+    needs: goreleaser
+    runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - alpine:3.19
+          - debian:12-slim
+          - ubuntu:22.04
+          - fedora:40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait for the release asset to be reachable
+        # The release was created in the previous job; GitHub's CDN
+        # usually catches up within a few seconds, but we poll up to
+        # ~90s to absorb any propagation lag. Hits the canonical URL
+        # the user would (releases/latest/download/install.sh) so we
+        # also verify the "latest" alias updated.
+        run: |
+          set -e
+          URL="https://github.com/witwave-ai/witwave/releases/download/${{ github.ref_name }}/install.sh"
+          for i in $(seq 1 30); do
+            if curl -fsSL --max-time 5 -o /dev/null "$URL"; then
+              echo "asset reachable after $((i*3))s: $URL"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::install.sh asset not reachable at $URL after 90s" >&2
+          exit 1
+
+      - name: Install just-cut release inside ${{ matrix.image }}
+        run: |
+          docker run --rm -v "$PWD":/src -w /src ${{ matrix.image }} sh -eux -c '
+            case "$(. /etc/os-release && echo "$ID")" in
+              alpine) apk add --no-cache curl ca-certificates tar ;;
+              debian|ubuntu) apt-get update -qq && apt-get install -y -qq curl ca-certificates tar ;;
+              fedora) dnf install -y -q curl ca-certificates tar ;;
+            esac
+            # Fetch the install.sh from the just-cut release (NOT the
+            # in-repo copy) — the public-facing artifact is what we
+            # actually need to validate.
+            curl -fsSL "https://github.com/witwave-ai/witwave/releases/download/${{ github.ref_name }}/install.sh" -o /tmp/install.sh
+            sh /tmp/install.sh --version ${{ github.ref_name }} --prefix /tmp/wwroot
+            test -x /tmp/wwroot/bin/ww
+            test -f /tmp/wwroot/bin/.ww.install-info
+            grep -q "installer=curl" /tmp/wwroot/bin/.ww.install-info
+            grep -q "version=${{ github.ref_name }}" /tmp/wwroot/bin/.ww.install-info
+            /tmp/wwroot/bin/ww version
+          '
+
+  install-smoke-macos:
+    name: install.sh smoke — macOS
+    needs: goreleaser
+    runs-on: macos-14
+    if: github.ref_type == 'tag'
+    permissions:
+      contents: read
+    steps:
+      - name: Wait for the release asset to be reachable
+        run: |
+          set -e
+          URL="https://github.com/witwave-ai/witwave/releases/download/${{ github.ref_name }}/install.sh"
+          for i in $(seq 1 30); do
+            if curl -fsSL --max-time 5 -o /dev/null "$URL"; then
+              echo "asset reachable after $((i*3))s"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::install.sh asset not reachable at $URL after 90s" >&2
+          exit 1
+
+      - name: Install just-cut release on macOS arm64
+        run: |
+          curl -fsSL "https://github.com/witwave-ai/witwave/releases/download/${{ github.ref_name }}/install.sh" -o /tmp/install.sh
+          sh /tmp/install.sh --version ${{ github.ref_name }} --prefix /tmp/wwroot
+          test -x /tmp/wwroot/bin/ww
+          test -f /tmp/wwroot/bin/.ww.install-info
+          grep -q "installer=curl" /tmp/wwroot/bin/.ww.install-info
+          /tmp/wwroot/bin/ww version

@@ -120,6 +120,13 @@ release:
   draft: false
   prerelease: auto
   mode: replace
+  # Ship the universal curl installer alongside the binaries so
+  # `https://github.com/<owner>/<repo>/releases/latest/download/install.sh`
+  # always resolves to the script that matches the latest release.
+  # Path is relative to the goreleaser workdir (clients/ww/), same
+  # convention used by the before-hooks above.
+  extra_files:
+    - glob: ../../scripts/install.sh
 
 brews:
   - name: ww

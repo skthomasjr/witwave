@@ -1,10 +1,33 @@
 package update
 
 import (
+	"bufio"
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 )
+
+// markerFilename is the sibling file the curl installer
+// (scripts/install.sh) drops next to the ww binary so we can
+// distinguish a curl-installed binary from a hand-extracted tarball.
+// Schema is simple key=value lines, currently:
+//
+//	installer=curl
+//	version=v0.5.0
+//	channel=stable|beta
+//	install_url=<canonical install.sh URL>
+//	installed_at=<RFC3339>
+//
+// Only `installer=curl` is currently consumed by detection — the rest
+// is forward-compatibility metadata.
+const markerFilename = ".ww.install-info"
+
+// curlInstallURL is the canonical install-script URL surfaced as the
+// upgrade hint for InstallMethodCurl. Mirrors the value
+// scripts/install.sh writes into the marker file's `install_url=` line;
+// kept in sync with that script by inspection (small surface, no churn).
+const curlInstallURL = "https://github.com/witwave-ai/witwave/releases/latest/download/install.sh"
 
 // InstallMethod is how ww was dropped on the user's PATH. Detected by
 // resolving os.Executable() to its absolute path and matching the path
@@ -33,6 +56,13 @@ const (
 	// this matters because the upgrade command is different —
 	// `go install @latest` rather than `brew upgrade`.
 	InstallMethodGoInstall
+
+	// InstallMethodCurl means the binary was placed by the curl
+	// installer at scripts/install.sh, identified by a sibling
+	// `.ww.install-info` file with `installer=curl`. The matching
+	// upgrade path re-runs the same install pipeline; the script is
+	// idempotent so this is safe.
+	InstallMethodCurl
 )
 
 // String satisfies fmt.Stringer so we can log the detection result.
@@ -42,6 +72,8 @@ func (m InstallMethod) String() string {
 		return "homebrew"
 	case InstallMethodGoInstall:
 		return "go-install"
+	case InstallMethodCurl:
+		return "curl-installer"
 	default:
 		return "binary"
 	}
@@ -56,22 +88,39 @@ func (m InstallMethod) UpgradeCommand() string {
 		return "brew upgrade ww"
 	case InstallMethodGoInstall:
 		return "go install github.com/witwave-ai/witwave/clients/ww@latest"
+	case InstallMethodCurl:
+		return "curl -fsSL " + curlInstallURL + " | sh"
 	default:
 		return ""
 	}
 }
 
 // DetectInstallMethod inspects os.Executable() and classifies the
-// binary's provenance. The getexec + getenv seams let tests exercise
-// every branch without relocating real binaries. Any error resolving
-// the executable path produces InstallMethodBinary — the fallback path
-// is always "tell the user to download from the releases page."
-func DetectInstallMethod(getexec func() (string, error), getenv func(string) string) InstallMethod {
+// binary's provenance. The getexec + getenv + readfile seams let tests
+// exercise every branch without relocating real binaries. Any error
+// resolving the executable path produces InstallMethodBinary — the
+// fallback path is always "tell the user to download from the releases
+// page."
+//
+// Detection order: curl-installer marker (most specific — explicit
+// per-binary metadata) → Homebrew prefix → Go install location → Binary
+// fallback. The curl marker wins over directory heuristics because a
+// user might `--prefix=/usr/local` via the script, which would
+// otherwise look indistinguishable from a hand-extracted tarball
+// dropped into /usr/local/bin.
+func DetectInstallMethod(
+	getexec func() (string, error),
+	getenv func(string) string,
+	readfile func(string) ([]byte, error),
+) InstallMethod {
 	if getexec == nil {
 		getexec = os.Executable
 	}
 	if getenv == nil {
 		getenv = os.Getenv
+	}
+	if readfile == nil {
+		readfile = os.ReadFile
 	}
 	exe, err := getexec()
 	if err != nil {
@@ -85,6 +134,15 @@ func DetectInstallMethod(getexec func() (string, error), getenv func(string) str
 		exe = real
 	}
 	exe = filepath.Clean(exe)
+
+	// Curl-installer marker: a sibling .ww.install-info file with
+	// `installer=curl`. Checked before any directory heuristic — the
+	// marker is explicit metadata, every other branch is inference.
+	if data, err := readfile(filepath.Join(filepath.Dir(exe), markerFilename)); err == nil {
+		if markerInstaller(data) == "curl" {
+			return InstallMethodCurl
+		}
+	}
 
 	// Brew prefixes — ordered most-specific-first so /opt/homebrew/bin
 	// doesn't match before /opt/homebrew/Cellar. Both pre- and
@@ -133,4 +191,23 @@ func DetectInstallMethod(getexec func() (string, error), getenv func(string) str
 	}
 
 	return InstallMethodBinary
+}
+
+// markerInstaller pulls the `installer=` value out of a marker file's
+// raw bytes. The format is intentionally trivial — POSIX shell-friendly
+// key=value lines, comments allowed via leading `#`. Returns "" when
+// the key isn't present so callers can treat absence and an unknown
+// value identically.
+func markerInstaller(data []byte) string {
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if v, ok := strings.CutPrefix(line, "installer="); ok {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
 }

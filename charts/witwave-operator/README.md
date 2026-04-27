@@ -4,8 +4,10 @@ Helm chart for the witwave operator — deploys the witwave-operator controller 
 and the `WitwaveAgent` CRD.
 
 > **Looking for the fastest install?** The [`ww`](../../clients/ww/) CLI
-> embeds this chart (v0.5.0+). Run `brew install witwave-ai/homebrew-ww/ww`
-> then `ww operator install` — no Helm repo configuration required.
+> embeds this chart (v0.5.0+). Install `ww`
+> (`curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh | sh`
+> or `brew install witwave-ai/homebrew-ww/ww`) then `ww operator install` — no
+> Helm repo configuration required.
 > The chart instructions below are for users who prefer raw Helm
 > (GitOps pipelines, custom values, forks).
 

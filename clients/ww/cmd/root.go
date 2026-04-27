@@ -376,7 +376,7 @@ func finishUpdateCheck(pending *pendingUpdateCheck) {
 	if notice == nil {
 		return
 	}
-	method := update.DetectInstallMethod(nil, nil)
+	method := update.DetectInstallMethod(nil, nil, nil)
 	// Notify errors are deliberately swallowed: the version-check
 	// system must not turn a successful command into a failed one.
 	// Independent context so a cancelled command context doesn't

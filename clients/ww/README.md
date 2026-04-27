@@ -14,16 +14,101 @@ the reference (every flag, every default); the walkthrough is the story.
 
 ## Install
 
+Pick whichever is most natural for your environment — all three install the same binary.
+
+### curl (Linux, macOS — universal)
+
+```bash
+curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh | sh
+```
+
+The script auto-detects OS + arch (linux/darwin × amd64/arm64), downloads the matching tarball from the GitHub release,
+verifies the SHA256 against `checksums.txt`, and atomically installs the binary. By default it lands in `/usr/local/bin`
+when writable, otherwise `~/.local/bin` (no `sudo` required). Pass `--use-sudo` to escalate for `/usr/local/bin`, or
+`--prefix=$HOME/.local` to pick the install root explicitly.
+
+Pin a specific version, install a beta, or skip verification:
+
+```bash
+curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh | sh -s -- --version v0.5.0
+curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh | sh -s -- --channel beta
+curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh | sh -s -- --verify-signature   # also verify cosign signature; needs `cosign` on PATH
+```
+
+| Flag                  | Env var                | Effect                                                                |
+| --------------------- | ---------------------- | --------------------------------------------------------------------- |
+| `--version <tag>`     | `WW_VERSION`           | Pin to a release tag (e.g. `v0.5.0`). Default: latest stable.         |
+| `--channel <c>`       | `WW_CHANNEL`           | `stable` (default) or `beta` (includes `-beta.N` / `-rc.N` releases). |
+| `--prefix <dir>`      | —                      | Install root. Binary lands in `<prefix>/bin`.                         |
+| `--install-dir <dir>` | `WW_INSTALL_DIR`       | Bin dir directly. Overrides `--prefix`.                               |
+| `--use-sudo`          | `WW_USE_SUDO=1`        | Allow `sudo` for `/usr/local` writes. Default: skip silently.         |
+| `--no-verify`         | `WW_NO_VERIFY=1`       | Skip SHA256 verification. Not recommended.                            |
+| `--verify-signature`  | `WW_VERIFY_SIGNATURE=1`| Also verify the cosign signature on `checksums.txt`.                  |
+| `--dry-run`           | `WW_DRY_RUN=1`         | Print what would happen, change nothing.                              |
+| `--quiet` / `-q`      | `WW_QUIET=1`           | Suppress progress output.                                             |
+| `--uninstall`         | —                      | Remove the binary + the `.ww.install-info` marker.                    |
+
+Prefer to read the script before running it:
+
+```bash
+curl -fsSL -o install.sh https://github.com/witwave-ai/witwave/releases/latest/download/install.sh
+less install.sh
+sh install.sh
+```
+
+The script writes a sibling `.ww.install-info` marker file alongside the binary so `ww update` knows it was installed
+this way and can re-run the same pipeline to upgrade in place.
+
+### Homebrew (macOS, Linuxbrew)
+
 ```bash
 brew install witwave-ai/homebrew-ww/ww
 ```
 
-The [witwave-ai/homebrew-ww](https://github.com/witwave-ai/homebrew-ww) tap is the primary distribution path. For a
-non-Homebrew install from source:
+The [witwave-ai/homebrew-ww](https://github.com/witwave-ai/homebrew-ww) tap is updated automatically as part of every
+release.
+
+### `go install` (developers)
 
 ```bash
 go install github.com/witwave-ai/witwave/clients/ww@latest
 ```
+
+### Testing the installer locally (developers)
+
+When changing `scripts/install.sh` or `clients/ww/.goreleaser.yml`, you can validate the full
+download → verify → install pipeline against a local goreleaser snapshot — no tag, no GitHub
+push, no waiting on CI:
+
+```bash
+# 1. Build unsigned snapshot artifacts into clients/ww/dist/
+cd clients/ww
+goreleaser release --snapshot --clean
+
+# 2. Serve dist/ on a local HTTP port
+python3 -m http.server --directory dist 8765 &
+
+# 3. Point install.sh at the local server. WW_BASE_URL skips the
+#    canonical /releases/download/<tag>/ path; --no-verify is needed
+#    only because snapshot tarballs aren't cosign-signed (SHA256
+#    verification still runs against the snapshot's checksums.txt).
+WW_BASE_URL=http://localhost:8765 \
+  sh ../../scripts/install.sh --version v0.0.0-snapshot --prefix /tmp/ww-snapshot
+
+/tmp/ww-snapshot/bin/ww version   # confirm the snapshot binary works
+
+# 4. Tear down
+kill %1
+rm -rf /tmp/ww-snapshot
+```
+
+`WW_BASE_URL` is a developer-only escape hatch — it isn't documented in the public install
+flow and isn't honored by `ww update`'s self-upgrade path (which always re-runs the canonical
+`releases/latest/download/install.sh`).
+
+CI also exercises the installer in two layers — pre-merge linting + smoke install in
+`ci-install-script.yml`, and a post-release re-install of the just-cut tag in `release-ww.yml`
+(matrix: alpine 3.19, debian 12, ubuntu 22.04, fedora 40, macOS 14).
 
 ## Quick start
 
@@ -566,7 +651,8 @@ command runs:
 ```
 
 The upgrade instruction is tailored to how `ww` was installed — Homebrew taps get `brew upgrade ww`, `go install` users
-get the matching `go install` command, standalone binaries get a download URL.
+get the matching `go install` command, curl-installer users get a `curl … | sh` re-run of the same install script
+(detected via the sibling `.ww.install-info` marker file), and any other standalone binary gets a download URL.
 
 ### Configuration
 
@@ -605,8 +691,9 @@ ww update --force     # skip the check; always run the upgrade
 ```
 
 `ww update` delegates to the installer matching the current binary's provenance (`brew upgrade ww` for Homebrew,
-`go install ...@latest` for `go install` users, a download hint for standalone binaries). Works even when `mode = off` —
-the subcommand is an explicit request, not a passive check.
+`go install ...@latest` for `go install` users, a re-run of the curl install pipeline for curl-installer users, a
+download hint for any other standalone binary). Works even when `mode = off` — the subcommand is an explicit request,
+not a passive check.
 
 ### Environment overrides
 
