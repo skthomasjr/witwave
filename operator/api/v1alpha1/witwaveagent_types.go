@@ -1341,6 +1341,47 @@ type MCPToolSpec struct {
 	// LivenessProbe overrides the default. Absent by default. (#1353)
 	// +optional
 	LivenessProbe *corev1.Probe `json:"livenessProbe,omitempty"`
+
+	// ServiceAccountName names a pre-provisioned ServiceAccount to mount
+	// into the tool pod. When unset the operator falls back to the
+	// namespace's default ServiceAccount (matches Kubernetes default
+	// behaviour). Mirrors the chart's mcpTools.<name>.serviceAccountName
+	// (#762, #1074, #1737). Use this when the tool needs cluster
+	// permissions (e.g. mcp-kubernetes / mcp-helm) — pre-create the SA
+	// + Role/ClusterRole + (Role|ClusterRole)Binding out of band, then
+	// reference it here.
+	// +optional
+	ServiceAccountName string `json:"serviceAccountName,omitempty"`
+
+	// AutomountServiceAccountToken is the three-state pod-level flag
+	// (mirror chart #856). When nil the operator stamps `true` so the
+	// SA token mounts (Kubernetes default). Set false to coexist with
+	// IRSA / workload-identity setups that attach the SA for IAM role
+	// metadata while wanting the in-pod token mount suppressed.
+	// +optional
+	AutomountServiceAccountToken *bool `json:"automountServiceAccountToken,omitempty"`
+
+	// ImagePullSecrets attaches one or more Secret references for
+	// pulling private registry images. Mirrors the chart's per-tool
+	// imagePullSecrets (#1737).
+	// +optional
+	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
+
+	// PodSecurityContext sets the pod-level securityContext. When unset
+	// the operator stamps a hardened default (RunAsNonRoot=true,
+	// RunAsUser/Group=1000, FSGroup=1000, SeccompProfile=RuntimeDefault)
+	// matching the chart and PSS-restricted policy (#1737).
+	// +optional
+	PodSecurityContext *corev1.PodSecurityContext `json:"podSecurityContext,omitempty"`
+
+	// SecurityContext sets the container-level securityContext. When
+	// unset the operator stamps a hardened default
+	// (AllowPrivilegeEscalation=false, Capabilities.Drop=[ALL],
+	// RunAsNonRoot=true, ReadOnlyRootFilesystem=true,
+	// SeccompProfile=RuntimeDefault) matching the chart's
+	// `witwave.hardenedContainerSecurityContext` helper (#1737).
+	// +optional
+	SecurityContext *corev1.SecurityContext `json:"securityContext,omitempty"`
 }
 
 // +kubebuilder:object:root=true
