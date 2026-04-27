@@ -80,6 +80,21 @@ jobs:
             echo "no values-test.yaml for ${{ matrix.chart }}, skipping"
           fi
 
+      # #1682: every witwave-prefixed metric named in the rendered
+      # PrometheusRule must be declared in source. PromQL with a missing
+      # series silently returns no data — alerts then never fire and
+      # operators mistake the absence for system-healthy. The script
+      # renders the chart with prometheusRule.enabled=true, extracts
+      # metric tokens from each alert's expr block (structurally — never
+      # from description text), strips Prometheus auto-suffixes, and
+      # greps the source for each. Witwave chart only — operator chart
+      # ships no PrometheusRule.
+      - name: PrometheusRule metrics referenced but not declared (#1682)
+        if: matrix.chart == 'charts/witwave'
+        run: |
+          python3 -m pip install --quiet pyyaml
+          scripts/check-prom-rule-metrics.sh
+
       # #1626: ingress.auth.enabled=true with empty htpasswd AND empty
       # existingSecret must fail render unconditionally — even when
       # dashboard.enabled=false (the default). Previously the guard sat
