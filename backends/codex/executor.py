@@ -767,7 +767,10 @@ def _load_mcp_config() -> dict:
 # shared helper is the source of truth; codex keeps only its cwd
 # allow-list (cwd wasn't covered by the shared module at the time of
 # consolidation).
-from mcp_command_allowlist import mcp_command_allowed as _codex_mcp_command_allowed  # noqa: E402
+from mcp_command_allowlist import (  # noqa: E402
+    mcp_command_allowed as _codex_mcp_command_allowed,
+    mcp_command_args_safe as _codex_mcp_command_args_safe,
+)
 
 _DEFAULT_CODEX_MCP_ALLOWED_CWD_PREFIXES = "/home/agent/,/tmp/"
 _CODEX_MCP_ALLOWED_CWD_PREFIXES: tuple[str, ...] = tuple(
@@ -869,6 +872,34 @@ def _build_mcp_servers(mcp_config: dict) -> list:
                             except Exception:
                                 pass
                         continue
+                # Args sanitiser (#1734 / #930). When ``command`` is an
+                # interpreter (uv, uvx, python, node, …), its ``args``
+                # array can still deliver arbitrary code via -c / -e /
+                # positional script paths. Drop the entry so a widened
+                # MCP_ALLOWED_COMMANDS doesn't silently re-open the
+                # arbitrary-code-execution path the README promises is
+                # closed.
+                args_ok, args_reason = _codex_mcp_command_args_safe(
+                    cfg["command"], cfg.get("args"),
+                )
+                if not args_ok:
+                    logger.warning(
+                        "MCP server %r: args for command %r rejected "
+                        "by args sanitiser (%s) — dropping entry. "
+                        "Adjust the config or set "
+                        "MCP_ALLOWED_CWD_PREFIXES if a positional "
+                        "script lives in an operator-vetted tree. "
+                        "(#1734)",
+                        name, cfg["command"], args_reason,
+                    )
+                    if backend_mcp_command_rejected_total is not None:
+                        try:
+                            backend_mcp_command_rejected_total.labels(
+                                **_LABELS, reason=args_reason,
+                            ).inc()
+                        except Exception:
+                            pass
+                    continue
                 params = {"command": cfg["command"]}
                 if "args" in cfg:
                     params["args"] = list(cfg["args"])
