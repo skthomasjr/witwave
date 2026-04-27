@@ -180,6 +180,20 @@ backend_session_binding_fallback_total: prometheus_client.Counter | None = None
 backend_mcp_outbound_requests_total: prometheus_client.Counter | None = None
 backend_mcp_outbound_duration_seconds: prometheus_client.Histogram | None = None
 
+# #1687: cross-backend parity placeholders. claude is the documented
+# superset (AGENTS.md "Metrics landscape"); peers track placeholders
+# for every claude metric so dashboards that union over
+# (agent, agent_id, backend) don't lose label sets when a metric only
+# emits on one backend. The placeholders below are declared but never
+# .inc()/.observe()'d by codex's executor — the underlying mechanism
+# (e.g. PreToolUse hook engine, MCP caller cardinality tracker, SQLite
+# task-store lock instrumentation, settings.json reload watcher) lives
+# only on claude.
+backend_allowed_tools_reload_total: prometheus_client.Counter | None = None
+backend_hooks_blocked_total: prometheus_client.Counter | None = None
+backend_session_caller_cardinality: prometheus_client.Gauge | None = None
+backend_sqlite_task_store_lock_wait_seconds: prometheus_client.Histogram | None = None
+
 if _enabled:
     backend_up = prometheus_client.Gauge("backend_up", "Backend agent is running", ["agent", "agent_id", "backend"])
     backend_info = prometheus_client.Info("backend", "Static backend agent metadata.")
@@ -791,4 +805,34 @@ if _enabled:
         "backend_hooks_evaluations_total",
         "Total PreToolUse hook evaluations, grouped by final decision.",
         ["agent", "agent_id", "backend", "tool", "decision"],
+    )
+
+    # #1687: cross-backend parity placeholders. Declared so cross-backend
+    # PromQL joins don't drop label sets where claude emits and codex
+    # doesn't. None of these mechanisms exist on codex today; the
+    # placeholders sit at zero unless/until parity work fills them in.
+    backend_allowed_tools_reload_total = prometheus_client.Counter(
+        "backend_allowed_tools_reload_total",
+        "Total settings.json ALLOWED_TOOLS reloads observed (claude-only "
+        "mechanism — placeholder on codex for cross-backend join parity).",
+        ["agent", "agent_id", "backend", "direction"],
+    )
+    backend_hooks_blocked_total = prometheus_client.Counter(
+        "backend_hooks_blocked_total",
+        "DEPRECATED alias for backend_hooks_denials_total (#789). Placeholder "
+        "on codex so dashboards pinned to the claude-specific name still join.",
+        ["agent", "agent_id", "backend", "tool", "source", "rule"],
+    )
+    backend_session_caller_cardinality = prometheus_client.Gauge(
+        "backend_session_caller_cardinality",
+        "Distinct caller_identity values observed on /mcp since process start "
+        "(claude-only tracker — placeholder on codex for parity, see #1049).",
+        ["agent", "agent_id", "backend"],
+    )
+    backend_sqlite_task_store_lock_wait_seconds = prometheus_client.Histogram(
+        "backend_sqlite_task_store_lock_wait_seconds",
+        "Seconds waited to acquire the SqliteTaskStore asyncio.Lock, by op "
+        "(claude-only instrumentation — placeholder on codex for parity).",
+        ["agent", "agent_id", "backend", "op"],
+        buckets=(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0),
     )

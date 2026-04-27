@@ -165,6 +165,26 @@ backend_sdk_tool_duration_seconds: prometheus_client.Histogram | None = None
 backend_sdk_tool_call_input_size_bytes: prometheus_client.Histogram | None = None
 backend_sdk_tool_result_size_bytes: prometheus_client.Histogram | None = None
 
+# #1687: cross-backend parity placeholders. claude is the documented
+# superset (AGENTS.md "Metrics landscape"); peers track placeholders
+# for every claude metric so dashboards that union over
+# (agent, agent_id, backend) don't lose label sets when a metric only
+# emits on one backend. The placeholders below are declared but never
+# .inc()/.observe()'d by gemini's executor — the underlying mechanism
+# (PreToolUse hooks, hook-shed accounting, per-logger error tally,
+# context-fetch errors, MCP caller cardinality, stderr capture, stream
+# chunk drops, task retry on session conflict) lives on claude (and
+# in some cases codex) only.
+backend_hooks_blocked_total: prometheus_client.Counter | None = None
+backend_hooks_shed_total: prometheus_client.Counter | None = None
+backend_log_write_errors_by_logger_total: prometheus_client.Counter | None = None
+backend_sdk_context_fetch_errors_total: prometheus_client.Counter | None = None
+backend_session_caller_cardinality: prometheus_client.Gauge | None = None
+backend_stderr_lines_per_task: prometheus_client.Histogram | None = None
+backend_streaming_chunks_dropped_total: prometheus_client.Counter | None = None
+backend_task_retries_total: prometheus_client.Counter | None = None
+backend_tasks_with_stderr_total: prometheus_client.Counter | None = None
+
 if _enabled:
     backend_up = prometheus_client.Gauge("backend_up", "Backend agent is running", ["agent", "agent_id", "backend"])
     backend_info = prometheus_client.Info("backend", "Static backend agent metadata.")
@@ -720,4 +740,66 @@ if _enabled:
         "Byte length of each tool result by tool name.",
         ["agent", "agent_id", "backend", "tool"],
         buckets=(100, 500, 1_000, 5_000, 10_000, 50_000, 100_000, 500_000, 1_000_000, 5_000_000),
+    )
+
+    # #1687: cross-backend parity placeholders. Declared so cross-backend
+    # PromQL joins don't drop label sets where claude (or codex) emits
+    # and gemini doesn't. The underlying mechanisms (PreToolUse hooks,
+    # hook-shed accounting, per-logger error tally, etc.) live on
+    # claude only; placeholders sit at zero on gemini.
+    backend_hooks_blocked_total = prometheus_client.Counter(
+        "backend_hooks_blocked_total",
+        "DEPRECATED alias for backend_hooks_denials_total (#789). Placeholder "
+        "on gemini so dashboards pinned to the claude-specific name still join.",
+        ["agent", "agent_id", "backend", "tool", "source", "rule"],
+    )
+    backend_hooks_shed_total = prometheus_client.Counter(
+        "backend_hooks_shed_total",
+        "Total hook.decision POSTs shed because the bounded in-flight cap "
+        "was reached (claude-only mechanism — placeholder on gemini for parity).",
+        ["agent", "agent_id", "backend"],
+    )
+    backend_log_write_errors_by_logger_total = prometheus_client.Counter(
+        "backend_log_write_errors_by_logger_total",
+        "Total log write errors attributed to a specific logger (claude-only "
+        "instrumentation — placeholder on gemini for parity).",
+        ["agent", "agent_id", "backend", "logger"],
+    )
+    backend_sdk_context_fetch_errors_total = prometheus_client.Counter(
+        "backend_sdk_context_fetch_errors_total",
+        "Total context usage fetch failures (claude-only mechanism — "
+        "placeholder on gemini for parity).",
+        ["agent", "agent_id", "backend", "model"],
+    )
+    backend_session_caller_cardinality = prometheus_client.Gauge(
+        "backend_session_caller_cardinality",
+        "Distinct caller_identity values observed on /mcp since process start "
+        "(claude-only tracker — placeholder on gemini for parity, see #1049).",
+        ["agent", "agent_id", "backend"],
+    )
+    backend_stderr_lines_per_task = prometheus_client.Histogram(
+        "backend_stderr_lines_per_task",
+        "Number of SDK stderr lines captured per run() invocation (claude-only "
+        "instrumentation — placeholder on gemini for parity).",
+        ["agent", "agent_id", "backend"],
+        buckets=(0, 1, 2, 5, 10, 20, 50, 100),
+    )
+    backend_streaming_chunks_dropped_total = prometheus_client.Counter(
+        "backend_streaming_chunks_dropped_total",
+        "Total streaming chunks dropped because the A2A consumer's on_chunk "
+        "callback exceeded its timeout (claude/codex mechanism — placeholder "
+        "on gemini for parity, see #724/#1091).",
+        ["agent", "agent_id", "backend", "model"],
+    )
+    backend_task_retries_total = prometheus_client.Counter(
+        "backend_task_retries_total",
+        "Total task retries due to session already in use (claude-only path — "
+        "placeholder on gemini for parity).",
+        ["agent", "agent_id", "backend"],
+    )
+    backend_tasks_with_stderr_total = prometheus_client.Counter(
+        "backend_tasks_with_stderr_total",
+        "Total task executions that produced any SDK stderr output (claude-only "
+        "instrumentation — placeholder on gemini for parity).",
+        ["agent", "agent_id", "backend"],
     )
