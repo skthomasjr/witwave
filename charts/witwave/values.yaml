@@ -733,6 +733,62 @@ cors:
   # across /triggers and /conversations.
   allowOrigins: []
 
+# Harness env-var overrides (#1416, #1691). First-class chart surface for
+# the production tunables AGENTS.md "Reference pointers" calls out as
+# "documented but needs values plumbing." Each entry is rendered as a
+# `name/value` env entry on every agent's harness container. Empty
+# strings (and missing keys) are skipped — operators only see what they
+# explicitly set in `kubectl describe pod`. Per-agent `agents[].env`
+# still wins (later-merged), matching the cors.allowOrigins precedence
+# pattern.
+#
+# All values are strings — Helm doesn't distinguish int from string in
+# YAML scalars by default; the harness coerces via `int(...)` /
+# `float(...)` at startup. Defaults shown below match what each module
+# applies when the env var is unset; uncomment + edit to deviate.
+harnessEnv:
+  # ---- streaming caps ----------------------------------------------
+  # Per-caller concurrent /api/sessions/<id>/stream cap (#867).
+  # SESSION_STREAM_MAX_PER_CALLER: "16"
+  # Conversation-stream queue caps for the dashboard's per-session view.
+  # CONVERSATION_STREAM_QUEUE_MAX: "1024"
+  # CONVERSATION_STREAM_RING_MAX: "512"
+  # CONVERSATION_STREAM_GRACE_SEC: "30"
+  # CONVERSATION_STREAM_KEEPALIVE_SEC: "15"
+  #
+  # ---- webhook delivery accounting ---------------------------------
+  # Per-subscription retry-bytes budget (#1462). Defaults to global/4.
+  # WEBHOOK_RETRY_BYTES_PER_SUB: ""
+  # Comma-separated host[:port] entries that bypass the loopback/
+  # private-IP SSRF guard (#699 / #1234). Default empty (closed).
+  # WEBHOOK_ALLOW_LOOPBACK_HOSTS: ""
+  #
+  # ---- A2A relay tunables ------------------------------------------
+  # Cache cap for per-session context lookups in the A2A relay.
+  # A2A_SESSION_CONTEXT_CACHE_MAX: "1024"
+  # Hard cap on inbound A2A response body size in bytes.
+  # A2A_MAX_RESPONSE_BYTES: "16777216"  # 16 MiB
+  # Retry policy: fast-only | always | never. Default fast-only — only
+  # retries 5xx faster than A2A_RETRY_FAST_ONLY_MS, so a slow upstream
+  # doesn't get hammered (#1349).
+  # A2A_RETRY_POLICY: "fast-only"
+  # Threshold below which a 5xx is "fast" enough to retry under the
+  # default fast-only policy (milliseconds). Default 5000.
+  # A2A_RETRY_FAST_ONLY_MS: "5000"
+  #
+  # ---- harness proxy --------------------------------------------------
+  # Hard cap on response body proxied through harness routes. Pairs
+  # with A2A_MAX_RESPONSE_BYTES; harness layer adds its own ceiling so
+  # backends with mis-configured caps cannot blow past harness memory.
+  # HARNESS_PROXY_MAX_RESPONSE_BYTES: "16777216"
+  #
+  # ---- shutdown drain timeouts -------------------------------------
+  # Seconds the scheduler waits for in-flight bus.send to drain on
+  # SIGTERM before cancelling. Default 5s.
+  # TASKS_SHUTDOWN_DRAIN_TIMEOUT: "5"
+  # JOBS_SHUTDOWN_DRAIN_TIMEOUT: "5"
+  # CONTINUATIONS_SHUTDOWN_DRAIN_TIMEOUT: "5"
+
 # Optional NetworkPolicy (#759). Default off, shipped off, documented.
 # Turn on in clusters that need pod-level isolation; the policies target
 # only chart-rendered Deployments (agents, dashboard, MCP tools), so an

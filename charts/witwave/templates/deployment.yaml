@@ -501,6 +501,16 @@ spec:
             - name: CORS_ALLOW_ORIGINS
               value: {{ join "," $.Values.cors.allowOrigins | quote }}
             {{- end }}
+            {{- /* #1416, #1691: surface harnessEnv map entries as
+                   first-class env vars on the harness container. Skip
+                   empty values so operators see only the keys they
+                   explicitly set. Per-agent .env below still wins. */}}
+            {{- range $k, $v := ($.Values.harnessEnv | default dict) }}
+            {{- if $v }}
+            - name: {{ $k | quote }}
+              value: {{ $v | quote }}
+            {{- end }}
+            {{- end }}
             {{- if .env }}
             {{- toYaml .env | nindent 12 }}
             {{- end }}
