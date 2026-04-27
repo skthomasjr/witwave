@@ -1,0 +1,154 @@
+# CI — docs (#1481)
+#
+# Two jobs split on event type:
+#
+#   lint-changed (PR gate, hard-fail)
+#     Runs prettier --check + markdownlint against the *.md files
+#     touched in the PR diff only. Historical drift on untouched
+#     files does NOT block unrelated PRs — the new floor is "no NEW
+#     drift introduced." Convergence is incremental: as files are
+#     edited their formatting is brought up to spec.
+#
+#   lint-full (push to main, warn-only)
+#     Runs the same tools across the whole repo and reports
+#     violations as workflow warnings without failing. Gives us
+#     telemetry on the residual drift pile without blocking.
+#
+# Tooling pinned via npx --yes <pkg>@<version> — no package.json at
+# repo root, no committed lockfile to maintain. Bump these versions
+# the same way any other dep is bumped: edit + commit + push.
+#
+# Reflow IS enforced — .prettierrc.yaml carries proseWrap=always +
+# printWidth=120, so unwrapped or over-long prose lines fail the
+# PR gate.
+#
+# Excludes live in .prettierignore + .markdownlintignore (the two
+# files mirror each other so both jobs agree on the file set).
+name: CI — docs
+
+on:
+  pull_request:
+    paths:
+      - "**/*.md"
+      - ".github/workflows/ci-docs.yml"
+      - ".markdownlint.yaml"
+      - ".prettierrc.yaml"
+      - ".prettierignore"
+      - ".markdownlintignore"
+  push:
+    branches: [main]
+    paths:
+      - "**/*.md"
+      - ".github/workflows/ci-docs.yml"
+      - ".markdownlint.yaml"
+      - ".prettierrc.yaml"
+      - ".prettierignore"
+      - ".markdownlintignore"
+
+# Cancel in-flight runs of this workflow on the same ref when a new
+# commit lands — we only care about the latest state.
+concurrency:
+  group: ci-docs-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------
+  # PR gate — hard-fail on any drift in the *.md files this PR
+  # adds, modifies, copies, or renames. Deletions are skipped.
+  # ---------------------------------------------------------------
+  lint-changed:
+    name: Lint changed *.md (PR gate)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need full history so we can diff base against head.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Compute changed *.md files
+        id: changed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # --diff-filter=ACMR: Added, Copied, Modified, Renamed.
+          # Skips Deleted (D) — we don't lint files that no longer
+          # exist on HEAD.
+          git diff --name-only --diff-filter=ACMR \
+            "$BASE_SHA" "$HEAD_SHA" -- '*.md' \
+            > .ci-changed-md.txt
+          if [ -s .ci-changed-md.txt ]; then
+            echo "has_files=true" >> "$GITHUB_OUTPUT"
+            echo "Changed *.md files:"
+            cat .ci-changed-md.txt
+          else
+            echo "has_files=false" >> "$GITHUB_OUTPUT"
+            echo "No *.md files changed in this PR — nothing to check."
+          fi
+
+      - name: prettier --check (changed files)
+        if: steps.changed.outputs.has_files == 'true'
+        run: |
+          set -euo pipefail
+          # xargs piping the file list keeps shell-injection-safe
+          # even though the repo currently has no spaces in paths.
+          xargs -a .ci-changed-md.txt npx --yes prettier@3.4.2 --check
+
+      - name: markdownlint (changed files)
+        if: steps.changed.outputs.has_files == 'true'
+        run: |
+          set -euo pipefail
+          xargs -a .ci-changed-md.txt \
+            npx --yes markdownlint-cli@0.43.0 \
+              --config .markdownlint.yaml \
+              --ignore-path .markdownlintignore
+
+  # ---------------------------------------------------------------
+  # Repo-wide lint on main — warn-only. Runs the same tools across
+  # **/*.md and reports violations as ::warning lines, but does NOT
+  # fail the workflow. Gives us a measurable drift signal on the
+  # default branch without blocking unrelated work.
+  # ---------------------------------------------------------------
+  lint-full:
+    name: Lint all *.md (warn-only on main)
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: prettier --check (full repo, warn-only)
+        run: |
+          set +e
+          npx --yes prettier@3.4.2 --check '**/*.md'
+          rc=$?
+          if [ "$rc" -ne 0 ]; then
+            echo "::warning title=Markdown drift::prettier reported drift on main; see job log for the file list. PRs touching these files will be required to fix the drift."
+          fi
+          # Always exit 0 — this job is observational, not a gate.
+          exit 0
+
+      - name: markdownlint (full repo, warn-only)
+        run: |
+          set +e
+          npx --yes markdownlint-cli@0.43.0 \
+            --config .markdownlint.yaml \
+            --ignore-path .markdownlintignore \
+            '**/*.md'
+          rc=$?
+          if [ "$rc" -ne 0 ]; then
+            echo "::warning title=Markdown drift::markdownlint reported violations on main; see job log for details. PRs touching these files will be required to fix the violations."
+          fi
+          exit 0

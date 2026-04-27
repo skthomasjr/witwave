@@ -1,0 +1,39 @@
+# Vendored / generated trees that ship third-party markdown we do not
+# control. Listed here (rather than relying on prettier's default
+# ignore set) so the explicit-file path used by the PR-gate job
+# matches the same ignore semantics as the full-repo lint-on-main job.
+
+# Build outputs
+**/dist/
+**/build/
+
+# JS/TS deps
+**/node_modules/
+
+# Embedded operator chart is a mirror from charts/witwave-operator/
+# (sync'd by scripts/sync-embedded-chart.sh). Lint the canonical
+# source, not the embedded copy — drift between them is enforced
+# separately by the existing chart-sync CI guard.
+clients/ww/internal/operator/embedded/
+
+# Python tooling caches
+**/__pycache__/
+**/.pytest_cache/
+**/.venv/
+**/.tox/
+
+# Agent runtime artifacts (gitignored at runtime, but be defensive)
+.agents/active/*/logs/
+.agents/test/*/logs/
+.claude/memory/
+.claude/projects/
+.claude/sessions/
+.claude/backups/
+
+# License files often have intentional formatting that prettier
+# would reflow against the original wording. We don't write LICENSE
+# files; don't lint them.
+LICENSE
+LICENSE.md
+**/LICENSE
+**/LICENSE.md

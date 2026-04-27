@@ -1,0 +1,26 @@
+# Mirrors .prettierignore — markdownlint-cli reads this file by
+# default and applies the same exclusions so PR-gate and lint-full
+# jobs agree on the file set.
+
+**/dist/
+**/build/
+**/node_modules/
+
+clients/ww/internal/operator/embedded/
+
+**/__pycache__/
+**/.pytest_cache/
+**/.venv/
+**/.tox/
+
+.agents/active/*/logs/
+.agents/test/*/logs/
+.claude/memory/
+.claude/projects/
+.claude/sessions/
+.claude/backups/
+
+LICENSE
+LICENSE.md
+**/LICENSE
+**/LICENSE.md
