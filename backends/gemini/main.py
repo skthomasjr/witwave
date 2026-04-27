@@ -25,6 +25,7 @@ from conversations import (
     make_trace_handler,
 )
 from executor import AgentExecutor
+from mcp_body_cap import read_capped_body  # #1674
 from session_binding import derive_session_id, set_fallback_counter as _set_session_binding_fallback_counter
 from validation import parse_max_tokens
 from metrics import (
@@ -466,7 +467,15 @@ async def main():
                 if not hmac_mod.compare_digest(f"Bearer {CONVERSATIONS_AUTH_TOKEN}", header):
                     _mcp_status = "unauthorized"
                     return JSONResponse({"error": "unauthorized"}, status_code=401)
-            # #1315: reject oversize Content-Length early.
+            # #1315 / #1674: reject oversize MCP bodies. The
+            # Content-Length check is a cheap fast-path that rejects an
+            # honest caller declaring a too-large payload before any
+            # body is read. The streaming check below is the actual
+            # enforcement — a hostile or buggy caller can declare a
+            # small (or absent) Content-Length and then send arbitrarily
+            # many bytes (e.g. under chunked transfer), so we MUST count
+            # actual bytes received and abort BEFORE buffering them into
+            # json().
             _MCP_BODY_CAP = 4 * 1024 * 1024
             try:
                 declared_len = int(request.headers.get("Content-Length", "") or "-1")
@@ -478,8 +487,22 @@ async def main():
                     {"jsonrpc": "2.0", "id": None, "error": {"code": -32600, "message": "body too large"}},
                     status_code=413,
                 )
+            # Stream-read into a bounded buffer so the cap is enforced
+            # on actual bytes-on-the-wire, not on the caller's declared
+            # length.
+            _raw, _reason = await read_capped_body(request, _MCP_BODY_CAP)
+            if _reason == "body_too_large":
+                _mcp_status = "body_too_large"
+                return JSONResponse(
+                    {"jsonrpc": "2.0", "id": None, "error": {"code": -32600, "message": "body too large"}},
+                    status_code=413,
+                )
+            if _reason == "parse_error" or _raw is None:
+                _mcp_status = "parse_error"
+                return JSONResponse({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}, status_code=400)
             try:
-                body = await request.json()
+                import json as _json_for_mcp
+                body = _json_for_mcp.loads(_raw.decode("utf-8"))
             except Exception:
                 _mcp_status = "parse_error"
                 return JSONResponse({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}, status_code=400)
