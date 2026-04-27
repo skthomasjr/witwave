@@ -18,6 +18,14 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # #1598: OIDC token for cosign keyless signing of pushed Helm
+      # charts. Same posture as the image-signing job in release.yaml
+      # (#1460) — token is scoped per-job, expires in minutes, and is
+      # exchanged at Sigstore Fulcio for a short-lived certificate
+      # bound to the workflow identity. No long-lived signing key in
+      # this repo. Matches the chart-signing pattern used by FluxCD,
+      # ArgoCD, Cilium, Crossplane.
+      id-token: write
 
     strategy:
       # Keep charts independent so a failure packaging one doesn't block
@@ -35,6 +43,10 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@v4
 
+      # #1598: cosign installer for chart signing post-push.
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
       - name: Log in to GitHub Container Registry
         run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io --username ${{ github.actor }} --password-stdin
 
@@ -50,5 +62,38 @@ jobs:
       - name: Package chart
         run: helm package charts/${{ matrix.chart }} --destination /tmp/charts
 
+      # #1598: capture the OCI digest helm push prints to stderr so we
+      # can sign the immutable digest, not the mutable tag. helm push
+      # output looks like:
+      #   Pushed: ghcr.io/<owner>/charts/<chart>:<version>
+      #   Digest: sha256:abc...
+      # Tee'd to GITHUB_STEP_SUMMARY so the digest is visible in the
+      # Actions UI; captured into the step output for the sign step.
       - name: Push chart to GHCR
-        run: helm push /tmp/charts/${{ matrix.chart }}-${{ steps.version.outputs.version }}.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
+        id: push
+        run: |
+          set -euo pipefail
+          output=$(helm push /tmp/charts/${{ matrix.chart }}-${{ steps.version.outputs.version }}.tgz oci://ghcr.io/${{ github.repository_owner }}/charts 2>&1)
+          echo "$output"
+          digest=$(echo "$output" | awk '/^Digest: / {print $2}')
+          if [ -z "$digest" ]; then
+            echo "::error::Could not parse digest from helm push output"
+            exit 1
+          fi
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "Pushed ${{ matrix.chart }}@${digest}" >> "$GITHUB_STEP_SUMMARY"
+
+      # #1598: cosign keyless signing of the chart's OCI digest. Uses
+      # Sigstore's public-good Fulcio CA + Rekor transparency log —
+      # same flow as image signing (release.yaml). Signature lands in
+      # GHCR as a sibling OCI artifact.
+      #
+      # Signed BY DIGEST, not tag — tags are mutable, digests are
+      # immutable content hashes. Verification recipe will land in
+      # SECURITY.md as part of #1598's docs item.
+      - name: Sign ${{ matrix.chart }} chart
+        env:
+          CHART_REF: ghcr.io/${{ github.repository_owner }}/charts/${{ matrix.chart }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          cosign sign --yes "${CHART_REF}@${DIGEST}"
