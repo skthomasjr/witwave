@@ -273,7 +273,13 @@ spec:
         runAsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
-      {{- $metricsOn := $.Values.metrics.enabled }}
+      {{- /* #1723: unify the Pod-side metrics gate with the Service-side
+             $svcMetricsOn (computed above near line 67) so a per-tool
+             metrics override flips both halves consistently. Previously
+             the Pod gate was the global $.Values.metrics.enabled only,
+             which let `metrics.enabled=false` + per-tool override=true
+             render a Service metrics port without a backing container
+             port (and the reverse for global=true + override=false). */}}
       {{- /* mcpTools.metricsPort is the canonical key (#687).
              Fall back to the deprecated metrics.port so existing installs
              that still set the old key keep rendering the same port for
@@ -288,14 +294,14 @@ spec:
           ports:
             - name: http
               containerPort: 8000
-            {{- if $metricsOn }}
+            {{- if $svcMetricsOn }}
             # Dedicated Prometheus metrics listener (#643, #649/#650).
             - name: metrics
               containerPort: {{ $metricsPort }}
             {{- end }}
           env:
             - name: METRICS_ENABLED
-              value: {{ $metricsOn | toString | quote }}
+              value: {{ $svcMetricsOn | toString | quote }}
             - name: METRICS_PORT
               value: {{ $metricsPort | quote }}
             {{- with $tool.env }}
