@@ -13,6 +13,7 @@ package controller
 import (
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	witwavev1alpha1 "github.com/witwave-ai/witwave-operator/api/v1alpha1"
@@ -111,6 +112,104 @@ func TestBuildMCPToolServiceIncludesMetricsPort(t *testing.T) {
 			if p.TargetPort.StrVal != "metrics" {
 				t.Errorf("metrics targetPort = %v, want named target 'metrics'", p.TargetPort)
 			}
+		}
+	}
+}
+
+// #1737: hardened pod + container securityContext defaults must be
+// stamped when the spec leaves them unset, mirroring the chart's
+// mcp-tools.yaml posture so PSS-restricted admission accepts the pod.
+func TestMCPToolPodSecurityContextDefaults(t *testing.T) {
+	got := mcpToolPodSecurityContext(nil)
+	if got == nil || got.RunAsNonRoot == nil || !*got.RunAsNonRoot {
+		t.Fatalf("default pod securityContext must set RunAsNonRoot=true; got %+v", got)
+	}
+	if got.SeccompProfile == nil || got.SeccompProfile.Type != corev1.SeccompProfileTypeRuntimeDefault {
+		t.Fatalf("default pod securityContext must set SeccompProfile=RuntimeDefault; got %+v", got.SeccompProfile)
+	}
+	if got.RunAsUser == nil || *got.RunAsUser != 1000 {
+		t.Fatalf("default pod securityContext must set RunAsUser=1000; got %v", got.RunAsUser)
+	}
+}
+
+func TestMCPToolPodSecurityContextOverride(t *testing.T) {
+	custom := &corev1.PodSecurityContext{RunAsUser: int64Ptr(2000)}
+	spec := &witwavev1alpha1.MCPToolSpec{PodSecurityContext: custom}
+	got := mcpToolPodSecurityContext(spec)
+	if got != custom {
+		t.Fatalf("user-supplied pod securityContext must pass through verbatim; got %+v", got)
+	}
+}
+
+func TestMCPToolContainerSecurityContextDefaults(t *testing.T) {
+	got := mcpToolContainerSecurityContext(nil)
+	if got == nil {
+		t.Fatal("default container securityContext must not be nil")
+	}
+	if got.AllowPrivilegeEscalation == nil || *got.AllowPrivilegeEscalation {
+		t.Fatalf("default container securityContext must set AllowPrivilegeEscalation=false; got %+v", got.AllowPrivilegeEscalation)
+	}
+	if got.ReadOnlyRootFilesystem == nil || !*got.ReadOnlyRootFilesystem {
+		t.Fatalf("default container securityContext must set ReadOnlyRootFilesystem=true; got %+v", got.ReadOnlyRootFilesystem)
+	}
+	if got.RunAsNonRoot == nil || !*got.RunAsNonRoot {
+		t.Fatalf("default container securityContext must set RunAsNonRoot=true; got %+v", got.RunAsNonRoot)
+	}
+	if got.Capabilities == nil || len(got.Capabilities.Drop) == 0 || got.Capabilities.Drop[0] != "ALL" {
+		t.Fatalf("default container securityContext must Drop=[ALL]; got %+v", got.Capabilities)
+	}
+	if got.SeccompProfile == nil || got.SeccompProfile.Type != corev1.SeccompProfileTypeRuntimeDefault {
+		t.Fatalf("default container securityContext must set SeccompProfile=RuntimeDefault; got %+v", got.SeccompProfile)
+	}
+}
+
+func TestMCPToolContainerSecurityContextOverride(t *testing.T) {
+	custom := &corev1.SecurityContext{AllowPrivilegeEscalation: boolPtr(true)}
+	spec := &witwavev1alpha1.MCPToolSpec{SecurityContext: custom}
+	if mcpToolContainerSecurityContext(spec) != custom {
+		t.Fatal("user-supplied container securityContext must pass through verbatim")
+	}
+}
+
+// #1737: AutomountServiceAccountToken is three-state. Nil means "default
+// to true" (chart parity); explicit false suppresses the in-pod token.
+func TestMCPToolAutomountSAToken(t *testing.T) {
+	if got := mcpToolAutomountSAToken(nil); got == nil || !*got {
+		t.Fatalf("nil spec → default true; got %+v", got)
+	}
+	if got := mcpToolAutomountSAToken(&witwavev1alpha1.MCPToolSpec{}); got == nil || !*got {
+		t.Fatalf("empty spec → default true; got %+v", got)
+	}
+	f := false
+	spec := &witwavev1alpha1.MCPToolSpec{AutomountServiceAccountToken: &f}
+	if got := mcpToolAutomountSAToken(spec); got == nil || *got {
+		t.Fatalf("explicit false must pass through verbatim; got %+v", got)
+	}
+}
+
+// #1737: emptyDir carve-outs for /tmp + /home/agent/.cache so
+// readOnlyRootFilesystem=true coexists with helm-CLI cache + Python
+// tempfile writes.
+func TestMCPToolVolumeMountsAndVolumes(t *testing.T) {
+	mounts := mcpToolVolumeMounts()
+	if len(mounts) != 2 {
+		t.Fatalf("expected 2 volume mounts (/tmp + ~/.cache), got %d", len(mounts))
+	}
+	mountPaths := map[string]bool{}
+	for _, m := range mounts {
+		mountPaths[m.MountPath] = true
+	}
+	if !mountPaths["/tmp"] || !mountPaths["/home/agent/.cache"] {
+		t.Fatalf("expected /tmp + /home/agent/.cache mounts; got %+v", mounts)
+	}
+
+	vols := mcpToolVolumes()
+	if len(vols) != 2 {
+		t.Fatalf("expected 2 emptyDir volumes paired with mounts, got %d", len(vols))
+	}
+	for _, v := range vols {
+		if v.EmptyDir == nil {
+			t.Fatalf("volume %q must be EmptyDir-backed; got %+v", v.Name, v.VolumeSource)
 		}
 	}
 }

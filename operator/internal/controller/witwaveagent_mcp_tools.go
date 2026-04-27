@@ -237,6 +237,19 @@ func (r *WitwaveAgentReconciler) applyMCPToolDeployment(ctx context.Context, age
 					Labels: labels,
 				},
 				Spec: corev1.PodSpec{
+					// #1737: SA + token + image-pull-secrets parity with
+					// the chart. ServiceAccountName / ImagePullSecrets are
+					// passthrough; AutomountServiceAccountToken defaults
+					// to true (Kubernetes default) when nil so a
+					// chart-equivalent posture is preserved.
+					ServiceAccountName:           spec.ServiceAccountName,
+					AutomountServiceAccountToken: mcpToolAutomountSAToken(spec),
+					ImagePullSecrets:             spec.ImagePullSecrets,
+					// #1737: pod-level hardened default. PSS-restricted
+					// admission rejects pods missing runAsNonRoot /
+					// seccompProfile; matches the chart's pod
+					// securityContext block in mcp-tools.yaml.
+					SecurityContext: mcpToolPodSecurityContext(spec),
 					Containers: []corev1.Container{{
 						Name:            fmt.Sprintf("mcp-%s", tool),
 						Image:           imageRef(img, DefaultImageTag),
@@ -278,7 +291,21 @@ func (r *WitwaveAgentReconciler) applyMCPToolDeployment(ctx context.Context, age
 						ReadinessProbe: mcpToolReadinessProbe(spec),
 						LivenessProbe:  mcpToolLivenessProbe(spec),
 						Resources:      mcpToolResources(spec),
+						// #1737: container-level hardened default —
+						// AllowPrivilegeEscalation=false +
+						// Capabilities.Drop=ALL + RunAsNonRoot=true +
+						// ReadOnlyRootFilesystem=true +
+						// SeccompProfile=RuntimeDefault. Mirrors the
+						// chart's witwave.hardenedContainerSecurityContext
+						// helper. The /tmp + /home/agent/.cache emptyDir
+						// volumes below are the carve-out that lets
+						// readOnlyRootFilesystem=true coexist with
+						// helm-CLI cache and Python tempfile writes
+						// (chart parity #1073).
+						SecurityContext: mcpToolContainerSecurityContext(spec),
+						VolumeMounts:    mcpToolVolumeMounts(),
 					}},
+					Volumes: mcpToolVolumes(),
 				},
 			},
 		},
@@ -407,6 +434,78 @@ func buildMCPToolService(agent *witwavev1alpha1.WitwaveAgent, tool string) *core
 				},
 			},
 		},
+	}
+}
+
+// mcpToolAutomountSAToken returns the three-state pod-level
+// AutomountServiceAccountToken value (#1737). When unset on the spec
+// the operator defaults to true so the SA token mounts (Kubernetes
+// default; chart parity). Operators using IRSA / workload-identity
+// can set false to suppress the in-pod token mount while keeping the
+// SA attached for IAM role metadata.
+func mcpToolAutomountSAToken(spec *witwavev1alpha1.MCPToolSpec) *bool {
+	if spec != nil && spec.AutomountServiceAccountToken != nil {
+		return spec.AutomountServiceAccountToken
+	}
+	return boolPtr(true)
+}
+
+// mcpToolPodSecurityContext returns the user-supplied pod
+// SecurityContext or a hardened default (RunAsNonRoot=true,
+// RunAsUser/Group=1000, FSGroup=1000, SeccompProfile=RuntimeDefault).
+// Mirrors the chart's pod securityContext block in
+// charts/witwave/templates/mcp-tools.yaml (#1737).
+func mcpToolPodSecurityContext(spec *witwavev1alpha1.MCPToolSpec) *corev1.PodSecurityContext {
+	if spec != nil && spec.PodSecurityContext != nil {
+		return spec.PodSecurityContext
+	}
+	return &corev1.PodSecurityContext{
+		RunAsNonRoot: boolPtr(true),
+		RunAsUser:    int64Ptr(1000),
+		RunAsGroup:   int64Ptr(1000),
+		FSGroup:      int64Ptr(1000),
+		SeccompProfile: &corev1.SeccompProfile{
+			Type: corev1.SeccompProfileTypeRuntimeDefault,
+		},
+	}
+}
+
+// mcpToolContainerSecurityContext returns the user-supplied container
+// SecurityContext or a hardened default mirroring the chart's
+// witwave.hardenedContainerSecurityContext helper: drop ALL caps,
+// disable privilege escalation, run as non-root, mount root FS read-only,
+// seccompProfile=RuntimeDefault (#1737).
+func mcpToolContainerSecurityContext(spec *witwavev1alpha1.MCPToolSpec) *corev1.SecurityContext {
+	if spec != nil && spec.SecurityContext != nil {
+		return spec.SecurityContext
+	}
+	return &corev1.SecurityContext{
+		AllowPrivilegeEscalation: boolPtr(false),
+		Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
+		ReadOnlyRootFilesystem:   boolPtr(true),
+		RunAsNonRoot:             boolPtr(true),
+		SeccompProfile: &corev1.SeccompProfile{
+			Type: corev1.SeccompProfileTypeRuntimeDefault,
+		},
+	}
+}
+
+// mcpToolVolumeMounts returns the emptyDir mounts that let
+// readOnlyRootFilesystem=true coexist with helm-CLI cache and Python
+// tempfile writes (chart parity #1073, #1737).
+func mcpToolVolumeMounts() []corev1.VolumeMount {
+	return []corev1.VolumeMount{
+		{Name: "witwave-tmp", MountPath: "/tmp"},
+		{Name: "witwave-home-cache", MountPath: "/home/agent/.cache"},
+	}
+}
+
+// mcpToolVolumes returns the pod-level emptyDir volumes paired with
+// mcpToolVolumeMounts (#1737).
+func mcpToolVolumes() []corev1.Volume {
+	return []corev1.Volume{
+		{Name: "witwave-tmp", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+		{Name: "witwave-home-cache", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
 	}
 }
 
