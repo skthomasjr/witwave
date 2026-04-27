@@ -33,6 +33,12 @@
 #                       (env: WW_DRY_RUN=1)
 #   --quiet             Suppress progress output (errors still go to stderr).
 #                       (env: WW_QUIET=1)
+#   --force             Reinstall even when the same version is already
+#                       present at the destination. Default: detect an
+#                       existing same-version install and exit 0 with a
+#                       no-op message. Different-version installs always
+#                       proceed (no --force needed for upgrades).
+#                       (env: WW_FORCE=1)
 #   --uninstall         Remove the installed binary + the .ww.install-info marker.
 #   --help              Print this help and exit 0.
 #
@@ -87,6 +93,7 @@ ww_no_verify="${WW_NO_VERIFY:-}"
 ww_verify_sig="${WW_VERIFY_SIGNATURE:-}"
 ww_dry_run="${WW_DRY_RUN:-}"
 ww_quiet="${WW_QUIET:-}"
+ww_force="${WW_FORCE:-}"
 ww_uninstall=""
 
 # WW_BASE_URL is the dev-only escape hatch for pointing the script at a
@@ -154,6 +161,7 @@ while [ $# -gt 0 ]; do
         --verify-signature) ww_verify_sig=1; shift ;;
         --dry-run)         ww_dry_run=1; shift ;;
         --quiet|-q)        ww_quiet=1; shift ;;
+        --force)           ww_force=1; shift ;;
         --uninstall)       ww_uninstall=1; shift ;;
         -h|--help)         usage; exit 0 ;;
         --) shift; break ;;
@@ -400,6 +408,53 @@ download_and_verify() {
     fi
 }
 
+# ---- existing-install detection --------------------------------------------
+
+# read_marker_version <bindir>  — prints the `version=` line value from
+# the marker file in <bindir>, or empty if no marker / no version line.
+# Pure POSIX, no jq/awk juggling. Used by check_existing_install to
+# decide whether the requested install would be a no-op.
+read_marker_version() {
+    _marker="$1/${MARKER_NAME}"
+    [ -f "$_marker" ] || { printf ''; return; }
+    # Strip 'version=' prefix from the matching line. Whitespace around
+    # the value is allowed by the marker spec.
+    grep -E '^[[:space:]]*version[[:space:]]*=' "$_marker" 2>/dev/null \
+        | head -n 1 \
+        | sed -E 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*//' \
+        | sed -E 's/[[:space:]]*$//'
+}
+
+# check_existing_install  — if <ww_bindir>/<BIN_NAME> exists AND its
+# marker reports the same version we're about to install AND --force
+# wasn't passed, print a "no-op" message and exit 0. Different-version
+# installs print an "upgrading from X to Y" line and proceed (no
+# --force needed for upgrades — that's the common, expected flow).
+check_existing_install() {
+    [ -n "$ww_force" ] && return 0
+    [ -e "${ww_bindir}/${BIN_NAME}" ] || return 0
+
+    _existing="$(read_marker_version "$ww_bindir")"
+    if [ -z "$_existing" ]; then
+        # Binary present but no marker — could be a hand-installed
+        # tarball or a previous install from before the marker existed.
+        # Don't surprise the user by silently overwriting; warn and
+        # proceed (they got what they asked for either way).
+        warn "${ww_bindir}/${BIN_NAME} exists but has no install marker — replacing it."
+        return 0
+    fi
+
+    if [ "$_existing" = "$ww_version" ]; then
+        log "${BIN_NAME} ${ww_version} is already installed at ${ww_bindir}/${BIN_NAME}."
+        log "Pass --force (or set WW_FORCE=1) to reinstall."
+        # Exit cleanly so curl|sh callers don't see a non-zero status.
+        # Trap will clean up the workdir on its way out.
+        exit 0
+    fi
+
+    log "Upgrading ${BIN_NAME}: ${_existing} → ${ww_version}"
+}
+
 # ---- install ----------------------------------------------------------------
 
 do_install() {
@@ -444,17 +499,50 @@ do_install() {
 
     log "Installed ${BIN_NAME} ${ww_version} → ${_dest}"
 
-    # PATH advisory if we landed in ~/.local/bin and it's not on PATH.
+    # Run the binary so the user gets the same `ww version` line they'd
+    # see otherwise — confirms the install actually works (right arch,
+    # not corrupted) and shows the commit + build date inline.
+    # Don't fail the overall install on a `ww version` non-zero exit
+    # (defensive — this should never happen for a real release binary).
+    if [ -x "$_dest" ]; then
+        log ""
+        "$_dest" version 2>&1 || true
+    fi
+
+    # PATH advisory when the install dir isn't on PATH. SHELL-aware:
+    # show only the line that matches the user's current shell, with
+    # an unconditional "add for the current process" hint that works
+    # everywhere. Falls through to listing all options when SHELL is
+    # unset/unknown (e.g. running under cron, a CI runner, etc.).
     case ":$PATH:" in
         *":${ww_bindir}:"*) : ;;
         *)
+            log ""
             warn "${ww_bindir} is not on your PATH."
             warn "Add it for the current shell:"
             warn "  export PATH=\"${ww_bindir}:\$PATH\""
-            warn "And persist it (pick the file matching your shell):"
-            warn "  echo 'export PATH=\"${ww_bindir}:\$PATH\"' >> ~/.bashrc"
-            warn "  echo 'export PATH=\"${ww_bindir}:\$PATH\"' >> ~/.zshrc"
-            warn "  fish_add_path ${ww_bindir}    # fish"
+            _shell_name=""
+            [ -n "${SHELL:-}" ] && _shell_name="$(basename "$SHELL")"
+            case "$_shell_name" in
+                bash)
+                    warn "Persist it (bash):"
+                    warn "  echo 'export PATH=\"${ww_bindir}:\$PATH\"' >> ~/.bashrc"
+                    ;;
+                zsh)
+                    warn "Persist it (zsh):"
+                    warn "  echo 'export PATH=\"${ww_bindir}:\$PATH\"' >> ~/.zshrc"
+                    ;;
+                fish)
+                    warn "Persist it (fish):"
+                    warn "  fish_add_path ${ww_bindir}"
+                    ;;
+                *)
+                    warn "Persist it (pick the file matching your shell):"
+                    warn "  echo 'export PATH=\"${ww_bindir}:\$PATH\"' >> ~/.bashrc"
+                    warn "  echo 'export PATH=\"${ww_bindir}:\$PATH\"' >> ~/.zshrc"
+                    warn "  fish_add_path ${ww_bindir}    # fish"
+                    ;;
+            esac
             ;;
     esac
 }
@@ -508,6 +596,10 @@ main() {
     detect_platform
     resolve_version
     resolve_install_dir
+    # Existing-install short-circuit: only after we know what version
+    # the user is asking for AND where it would land. May exit 0
+    # without doing anything if the same version is already there.
+    check_existing_install
 
     log "Installing ${BIN_NAME} ${ww_version} (${ww_os}/${ww_arch}) → ${ww_bindir}"
     if [ -n "$ww_use_sudo_cmd" ]; then
@@ -527,15 +619,8 @@ main() {
 
     download_and_verify
     do_install
-
-    # Final smoke probe — only meaningful when the install dir is on PATH.
-    case ":$PATH:" in
-        *":${ww_bindir}:"*)
-            if [ -x "${ww_bindir}/${BIN_NAME}" ]; then
-                log "Run '${BIN_NAME} version' to confirm."
-            fi
-            ;;
-    esac
+    # do_install execs the binary itself now, so no separate
+    # "Run 'ww version' to confirm" tail is needed here.
 }
 
 main

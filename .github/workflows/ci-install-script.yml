@@ -147,19 +147,30 @@ jobs:
             grep -q "version=${{ steps.tag.outputs.tag }}" /tmp/wwroot/bin/.ww.install-info
             /tmp/wwroot/bin/ww version
 
-            # ---- item 2: re-install in place (idempotency) ----
-            # Run install.sh again at the SAME version. Atomic mv should
-            # replace the binary cleanly; no `.ww.new.<pid>` leftovers
-            # should be visible after the run.
-            sh scripts/install.sh --version ${{ steps.tag.outputs.tag }} --prefix /tmp/wwroot
+            # ---- item 2a: same-version re-install is a no-op ----
+            # Without --force, install.sh detects the existing same-
+            # version install via the marker and exits 0 without doing
+            # anything. Capture stdout to assert the user-visible
+            # message, and confirm no staging file was created.
+            sh scripts/install.sh --version ${{ steps.tag.outputs.tag }} \
+              --prefix /tmp/wwroot > /tmp/noop-out 2>&1
+            cat /tmp/noop-out
+            grep -q "already installed" /tmp/noop-out \
+              || { echo "expected already-installed no-op message" >&2; exit 1; }
+            grep -q -- "--force" /tmp/noop-out \
+              || { echo "expected --force hint in no-op message" >&2; exit 1; }
+
+            # ---- item 2b: --force re-install actually re-installs ----
+            # Atomic mv should replace the binary cleanly; no
+            # .ww.new.<pid> staging leftovers visible after the run.
+            sh scripts/install.sh --version ${{ steps.tag.outputs.tag }} \
+              --prefix /tmp/wwroot --force
             test -x /tmp/wwroot/bin/ww
             grep -q "version=${{ steps.tag.outputs.tag }}" /tmp/wwroot/bin/.ww.install-info
             /tmp/wwroot/bin/ww version
-            # No half-written staging files should remain. find with
-            # -name + -print -quit is POSIX (busybox supports it).
             stale=$(find /tmp/wwroot/bin -maxdepth 1 -name ".ww.new.*" -print -quit || true)
             if [ -n "$stale" ]; then
-              echo "stale staging file after re-install: $stale" >&2
+              echo "stale staging file after --force re-install: $stale" >&2
               exit 1
             fi
             # ww-update round-trip (item 3) lives in release-ww.yml,
@@ -221,12 +232,20 @@ jobs:
           grep -q "installer=curl" /tmp/wwroot/bin/.ww.install-info
           /tmp/wwroot/bin/ww version
 
-          # Item 2: re-install at same version is idempotent.
-          sh scripts/install.sh --version ${{ steps.tag.outputs.tag }} --prefix /tmp/wwroot
+          # Item 2a: same-version re-install is a no-op (existing-install detection).
+          sh scripts/install.sh --version ${{ steps.tag.outputs.tag }} \
+            --prefix /tmp/wwroot > /tmp/noop-out 2>&1
+          cat /tmp/noop-out
+          grep -q "already installed" /tmp/noop-out \
+            || { echo "expected already-installed no-op message" >&2; exit 1; }
+
+          # Item 2b: --force re-install actually re-installs.
+          sh scripts/install.sh --version ${{ steps.tag.outputs.tag }} \
+            --prefix /tmp/wwroot --force
           test -x /tmp/wwroot/bin/ww
           stale=$(find /tmp/wwroot/bin -maxdepth 1 -name ".ww.new.*" -print -quit || true)
           if [ -n "$stale" ]; then
-            echo "stale staging file after re-install: $stale" >&2
+            echo "stale staging file after --force re-install: $stale" >&2
             exit 1
           fi
           # Item 3 (ww update --check round-trip) lives in release-ww.yml

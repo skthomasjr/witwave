@@ -46,6 +46,7 @@ curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/instal
 | `--verify-signature`  | `WW_VERIFY_SIGNATURE=1`| Also verify the cosign signature on `checksums.txt`.                  |
 | `--dry-run`           | `WW_DRY_RUN=1`         | Print what would happen, change nothing.                              |
 | `--quiet` / `-q`      | `WW_QUIET=1`           | Suppress progress output.                                             |
+| `--force`             | `WW_FORCE=1`           | Reinstall even when the same version is already present (default: no-op with a hint). Upgrades to a different version proceed without `--force`. |
 | `--uninstall`         | —                      | Remove the binary + the `.ww.install-info` marker.                    |
 
 Prefer to read the script before running it:
