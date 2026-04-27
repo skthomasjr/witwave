@@ -104,6 +104,19 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # #1598: SLSA 2 attestations attached as OCI referrers next to
+          # the image manifest. Buildx generates both at build time:
+          #   - provenance — SLSA build provenance predicate (what was
+          #     built, when, by whom, with what inputs). mode=max
+          #     includes the full build graph; default for public repos.
+          #   - sbom — Software Bill of Materials via the BuildKit
+          #     scanner (syft underneath). Lists every package and
+          #     version baked into the image.
+          # Verifiable post-release with `cosign verify-attestation
+          # --type slsaprovenance|spdxjson <image>@<digest>`. SECURITY.md
+          # carries the consumer-side recipe.
+          provenance: true
+          sbom: true
           # VERSION is consumed by Dockerfiles that need to embed the release
           # version into the binary at build time — currently the operator
           # uses it for ldflags injection of DefaultImageTag (#440). Other
