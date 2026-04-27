@@ -23,8 +23,20 @@ class _CountCounter:
 
 def _reload(monkeypatch, url: str = "", token: str = "", cap: str = "32"):
     """Reload shared.hook_events with specific env so module-level
-    constants are re-evaluated."""
+    constants are re-evaluated.
+
+    #1693: clear the canonical ``HOOK_EVENTS_AUTH_TOKEN`` name too. The
+    module's precedence chain (shared/hook_events.py:69-74) reads
+    ``HOOK_EVENTS_AUTH_TOKEN`` FIRST, so a value leaked from the
+    developer's shell or a CI env (e.g. an operator's
+    ``HOOK_EVENTS_AUTH_TOKEN=...`` export) used to silently bypass
+    ``token=""`` and broke test_missing_token_logs_once with stray
+    connect-error WARNINGS instead of the expected single missing-token
+    warning. Set all three names explicitly so the test arg is
+    authoritative regardless of shell state.
+    """
     monkeypatch.setenv("HARNESS_EVENTS_URL", url)
+    monkeypatch.setenv("HOOK_EVENTS_AUTH_TOKEN", token)
     monkeypatch.setenv("HARNESS_EVENTS_AUTH_TOKEN", token)
     monkeypatch.setenv("TRIGGERS_AUTH_TOKEN", "")
     monkeypatch.setenv("HOOK_POST_MAX_INFLIGHT", cap)
