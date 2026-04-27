@@ -48,6 +48,12 @@ jobs:
       packages: write
       id-token: write
 
+    # #1598 item 2: expose subject hashes so the slsa-github-generator
+    # callable workflow (provenance job below) can sign a SLSA predicate
+    # over the just-built artifacts.
+    outputs:
+      subjects: ${{ steps.subjects.outputs.subjects }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -86,6 +92,85 @@ jobs:
           # secret, goreleaser fails loudly at the formula-publish
           # step but the binaries + GitHub Release still ship.
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+
+      # #1598 items 2 + 4: compute SLSA subjects.
+      #
+      # Subject set:
+      #   - Every release archive in dist/ (.tar.gz) — provenance covers
+      #     the binaries users actually consume via brew / curl install /
+      #     direct download (item 2).
+      #   - The embedded witwave-operator chart's content-hash —
+      #     SHA256 of the chart's file contents (sorted-find ->
+      #     per-file SHA256 -> SHA256 of the concatenated list). This
+      #     is the cryptographic bridge for "ww-embedded chart bytes ==
+      #     published OCI chart bytes" (item 4 of #1598). Consumers
+      #     reproduce the same hash by helm-pulling the published chart,
+      #     extracting it, and running the same find+sort+sha256sum
+      #     recipe documented in docs/supply-chain.md.
+      #
+      # The content-hash approach (rather than a tarball SHA256) avoids
+      # cross-workflow SOURCE_DATE_EPOCH coordination — content equality
+      # is byte-for-byte deterministic regardless of helm package
+      # timestamps or tarball compression flags.
+      - name: Compute SLSA subjects
+        id: subjects
+        run: |
+          set -euo pipefail
+
+          # Archive subjects (one per release artifact)
+          archive_subjects=$(cd clients/ww/dist && sha256sum *.tar.gz)
+
+          # Embedded chart content-hash (single subject)
+          chart_dir=clients/ww/internal/operator/embedded/witwave-operator
+          chart_hash=$(cd "$chart_dir" && \
+            find . -type f -not -path './charts/*' | LC_ALL=C sort | \
+            xargs sha256sum | sha256sum | awk '{print $1}')
+          chart_subject="${chart_hash}  embedded-witwave-operator-${GITHUB_REF_NAME#v}-content"
+
+          all_subjects=$(printf '%s\n%s' "$archive_subjects" "$chart_subject")
+
+          echo "::group::SLSA subjects"
+          echo "$all_subjects"
+          echo "::endgroup::"
+
+          # Base64 encode for slsa-github-generator (newlines preserved)
+          encoded=$(echo "$all_subjects" | base64 -w0)
+          echo "subjects=${encoded}" >> "$GITHUB_OUTPUT"
+
+  # #1598 item 2 + 4: SLSA build provenance for ww binaries + the
+  # embedded witwave-operator chart's content-hash.
+  #
+  # Uses the slsa-framework/slsa-github-generator generic generator
+  # (workflow_call) — the same path FluxCD, kubectl, helm, and other
+  # CNCF projects use. The reusable workflow runs in an isolated
+  # context (separate runner, scoped permissions) and emits a SLSA L3
+  # in-toto predicate signed via Sigstore keyless. The signed bundle
+  # uploads to the GitHub Release as a `.intoto.jsonl` asset.
+  #
+  # Verification (consumer side, post-release):
+  #
+  #   slsa-verifier verify-artifact \
+  #     --provenance-path multiple.intoto.jsonl \
+  #     --source-uri github.com/witwave-ai/witwave \
+  #     --source-tag <tag> \
+  #     ww_<version>_<os>_<arch>.tar.gz
+  #
+  # See docs/supply-chain.md for the full recipe including the
+  # embedded-chart bridge verification.
+  provenance:
+    name: SLSA provenance
+    needs: [goreleaser]
+    if: github.ref_type == 'tag'
+    permissions:
+      # slsa-github-generator needs these specific scopes per its docs.
+      actions: read       # read the workflow run that built the artifacts
+      id-token: write     # OIDC for keyless signing via Sigstore
+      contents: write     # upload the predicate to the GitHub Release
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    with:
+      base64-subjects: "${{ needs.goreleaser.outputs.subjects }}"
+      upload-assets: true
+      provenance-name: "ww-${{ github.ref_name }}.intoto.jsonl"
 
   # Post-release validation: re-run the install.sh smoke matrix against
   # the *just-cut* tag rather than the previous one. ci-install-script.yml
