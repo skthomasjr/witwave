@@ -49,7 +49,7 @@ helm install witwave-operator oci://ghcr.io/witwave-ai/charts/witwave-operator -
 Install a specific version:
 
 ```bash
-helm install witwave-operator oci://ghcr.io/witwave-ai/charts/witwave-operator --version 0.1.0 --namespace witwave
+helm install witwave-operator oci://ghcr.io/witwave-ai/charts/witwave-operator --version <X.Y.Z> --namespace witwave
 ```
 
 ## Uninstall
