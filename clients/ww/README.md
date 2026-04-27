@@ -30,14 +30,14 @@ when writable, otherwise `~/.local/bin` (no `sudo` required). Pass `--use-sudo` 
 Pin a specific version, install a beta, or skip verification:
 
 ```bash
-curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh | sh -s -- --version v0.5.0
+curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh | sh -s -- --version v0.9.6
 curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh | sh -s -- --channel beta
 curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh | sh -s -- --verify-signature   # also verify cosign signature; needs `cosign` on PATH
 ```
 
 | Flag                  | Env var                | Effect                                                                |
 | --------------------- | ---------------------- | --------------------------------------------------------------------- |
-| `--version <tag>`     | `WW_VERSION`           | Pin to a release tag (e.g. `v0.5.0`). Default: latest stable.         |
+| `--version <tag>`     | `WW_VERSION`           | Pin to a release tag (e.g. `v0.9.6`). Default: latest stable.         |
 | `--channel <c>`       | `WW_CHANNEL`           | `stable` (default) or `beta` (includes `-beta.N` / `-rc.N` releases). |
 | `--prefix <dir>`      | —                      | Install root. Binary lands in `<prefix>/bin`.                         |
 | `--install-dir <dir>` | `WW_INSTALL_DIR`       | Bin dir directly. Overrides `--prefix`.                               |

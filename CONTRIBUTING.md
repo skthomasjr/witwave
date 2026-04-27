@@ -79,7 +79,7 @@ Concretely, today, the agents in this repo handle:
 - **Documentation.** This file included. Agents write, audit, and
   refactor docs on the same cadence as code.
 - **Release engineering.** Tags, releases, container images, chart
-  publishing, CLI binaries, Homebrew formulas — all automated via
+  publishing, CLI binaries, Homebrew cask — all automated via
   agent-written CI pipelines.
 - **Issue triage and refinement.** Agents read new issues, classify
   them, ask clarifying questions, and either resolve or queue for

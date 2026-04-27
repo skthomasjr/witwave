@@ -73,7 +73,7 @@ helm install witwave oci://ghcr.io/witwave-ai/charts/witwave --namespace witwave
 Install a specific version:
 
 ```bash
-helm install witwave oci://ghcr.io/witwave-ai/charts/witwave --version 0.1.0 --namespace witwave
+helm install witwave oci://ghcr.io/witwave-ai/charts/witwave --version <X.Y.Z> --namespace witwave
 ```
 
 ## Uninstall

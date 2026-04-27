@@ -118,7 +118,7 @@ The `ww` CLI ships through three install paths — pick whichever fits your envi
 # Universal (Linux + macOS) — POSIX-sh installer with SHA256 verification.
 curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh | sh
 
-# macOS / Linuxbrew via the witwave-ai/homebrew-ww tap.
+# macOS via the witwave-ai/homebrew-ww tap (Homebrew cask).
 brew install witwave-ai/homebrew-ww/ww
 
 # From source (developers).
@@ -138,7 +138,7 @@ ww update --check      # check only
 ww update --force      # run the upgrade unconditionally
 ```
 
-Pull a specific image version with a semver tag, e.g. `ghcr.io/witwave-ai/images/harness:0.4.0`. The latest released tag
+Pull a specific image version with a semver tag, e.g. `ghcr.io/witwave-ai/images/harness:0.9.6`. The latest released tag
 is visible on the [GitHub Releases](https://github.com/witwave-ai/witwave/releases) page; substitute it for the version
 below.
 
@@ -161,10 +161,10 @@ CLI-managed):
 
 ```bash
 # Agent chart — deploys witwave agents directly via templated manifests.
-helm install witwave oci://ghcr.io/witwave-ai/charts/witwave --version 0.5.6 --namespace witwave --create-namespace
+helm install witwave oci://ghcr.io/witwave-ai/charts/witwave --version 0.9.6 --namespace witwave --create-namespace
 
 # Operator chart — installs the witwave-operator controller and the WitwaveAgent CRD.
-helm install witwave-operator oci://ghcr.io/witwave-ai/charts/witwave-operator --version 0.5.6 --namespace witwave-system --create-namespace
+helm install witwave-operator oci://ghcr.io/witwave-ai/charts/witwave-operator --version 0.9.6 --namespace witwave-system --create-namespace
 ```
 
 See [charts/witwave/README.md](charts/witwave/README.md) and

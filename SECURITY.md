@@ -126,11 +126,11 @@ itself, bound to the tag the image was built from.
 To verify an image before running it:
 
 ```bash
-# Note: image tags strip the leading "v" — the git tag v0.5.5 pushes
-# images tagged 0.5.5 (docker/metadata-action@v5 default semver
+# Note: image tags strip the leading "v" — the git tag v0.9.6 pushes
+# images tagged 0.9.6 (docker/metadata-action@v5 default semver
 # normalisation). Helm chart tags also strip the v. `latest` and
 # `<major>.<minor>` aliases exist as well.
-IMAGE=ghcr.io/witwave-ai/images/operator:0.5.5
+IMAGE=ghcr.io/witwave-ai/images/operator:0.9.6
 
 cosign verify \
   --certificate-identity-regexp="^https://github.com/witwave-ai/witwave/\.github/workflows/release\.yaml@refs/tags/v.*$" \
@@ -190,8 +190,8 @@ Three install paths, three verification postures:
   cosign verify-blob \
     --certificate-identity-regexp="^https://github.com/witwave-ai/witwave/\.github/workflows/release-ww\.yml@refs/tags/v.*$" \
     --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-    --bundle ww_v0.5.6_darwin_arm64.tar.gz.cosign.bundle \
-    ww_v0.5.6_darwin_arm64.tar.gz
+    --bundle ww_v0.9.6_darwin_arm64.tar.gz.cosign.bundle \
+    ww_v0.9.6_darwin_arm64.tar.gz
   ```
 
   The `.cosign.bundle` file is published alongside each release asset.
@@ -228,7 +228,7 @@ Charts published to `oci://ghcr.io/witwave-ai/charts/*` are signed at push time.
 cosign verify \
   --certificate-identity-regexp="^https://github.com/witwave-ai/witwave/\.github/workflows/release-helm\.yml@refs/tags/v.*$" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-  oci://ghcr.io/witwave-ai/charts/witwave-operator:0.5.5
+  oci://ghcr.io/witwave-ai/charts/witwave-operator:0.9.6
 ```
 
 ### Embedded chart bridge

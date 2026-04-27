@@ -25,7 +25,7 @@ story; the README lists the flags.
    ```bash
    # Universal one-liner (Linux + macOS):
    curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh | sh
-   # macOS / Linuxbrew:
+   # macOS (Homebrew cask):
    brew install witwave-ai/homebrew-ww/ww
    # From source:
    go install github.com/witwave-ai/witwave/clients/ww@latest
