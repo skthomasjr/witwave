@@ -165,6 +165,17 @@ CODEX_CONFIG_TOML = os.environ.get("CODEX_CONFIG_TOML", "/home/agent/.codex/conf
 # default, so the path differs (#432).
 MCP_CONFIG_PATH = os.environ.get("MCP_CONFIG_PATH", "/home/agent/.codex/mcp.json")
 
+# #1731: Validate the resolved MCP_CONFIG_PATH lives under a documented
+# prefix so a hostile env override (e.g. ``MCP_CONFIG_PATH=/etc/passwd``)
+# cannot be fed to ``json.load`` -- the parse error path would then leak
+# file shape / perms via metric label cardinality and log noise. The
+# default mirrors the in-container home for backend pods; tests /
+# non-default deployments can override via ``MCP_CONFIG_PATH_ALLOWED_PREFIX``.
+# Mirrors backends/gemini/executor.py:303-304 (#1610).
+_MCP_CONFIG_PATH_ALLOWED_PREFIX = os.environ.get(
+    "MCP_CONFIG_PATH_ALLOWED_PREFIX", "/home/agent/",
+)
+
 MAX_SESSIONS = max(1, int(os.environ.get("MAX_SESSIONS", "10000")))
 TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
 # Per-chunk timeout for the streaming on_chunk callback. Bounds the SDK event
@@ -738,8 +749,25 @@ def _load_mcp_config() -> dict:
     `{server_name: {...}}` dict, returning the inner dict in both cases.
     Missing file is treated as "no MCP servers" (returns {}). Parse / I/O
     errors return {} AND increment backend_mcp_config_errors_total.
+
+    Path posture (#1731 — gemini parity port of #1610): the resolved
+    (``os.path.realpath``) MCP_CONFIG_PATH must live under
+    ``MCP_CONFIG_PATH_ALLOWED_PREFIX`` (default ``/home/agent/``). This
+    blocks a hostile env override that would point the loader at
+    arbitrary files such as ``/etc/passwd`` or
+    ``/var/run/secrets/kubernetes.io/serviceaccount/token``. The parse
+    error path would otherwise leak file shape / perms via metric label
+    cardinality and log noise. Out-of-prefix paths are skipped with a
+    WARN log; missing-file semantics are unchanged.
     """
     if not os.path.exists(MCP_CONFIG_PATH):
+        return {}
+    resolved = os.path.realpath(MCP_CONFIG_PATH)
+    if not resolved.startswith(_MCP_CONFIG_PATH_ALLOWED_PREFIX):
+        logger.warning(
+            "MCP config path %s (resolved %s) is outside allowed prefix %s; skipping load.",
+            MCP_CONFIG_PATH, resolved, _MCP_CONFIG_PATH_ALLOWED_PREFIX,
+        )
         return {}
     try:
         with open(MCP_CONFIG_PATH) as f:
