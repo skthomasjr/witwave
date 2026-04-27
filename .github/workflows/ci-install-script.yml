@@ -462,18 +462,19 @@ jobs:
         # and Homebrew tap push — pure local build of the same shape
         # release goreleaser produces. Output lands in clients/ww/dist/.
         #
-        # --skip=sbom because the canonical config wires SBOM generation
-        # via syft, which the release workflow installs separately
-        # (anchore/sbom-action/download-syft). For this job we don't
-        # care about SBOMs — we're validating the install pipeline,
-        # not the supply-chain attestations — so skipping is cleaner
-        # than mirroring the syft install dance here.
+        # --skip=sbom,sign because the canonical config wires SBOM
+        # generation via syft and signature generation via cosign, both
+        # of which the release workflow installs separately. For this
+        # job we don't care about supply-chain attestations — we're
+        # validating the install pipeline shape — so skipping is
+        # cleaner than dragging in syft + cosign just to throw away
+        # their output.
         uses: goreleaser/goreleaser-action@v6
         with:
           workdir: clients/ww
           distribution: goreleaser
           version: "~> v2"
-          args: release --snapshot --clean --skip=sbom
+          args: release --snapshot --clean --skip=sbom,sign
 
       - name: Discover snapshot version
         id: snapver
