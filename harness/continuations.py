@@ -104,11 +104,21 @@ def parse_continuation_file(path: str) -> "ContinuationItem | object | None":
         if "enabled" in fields:
             enabled = str(fields["enabled"]).lower() not in ("false", "no", "off", "n", "0", "")
 
-        continues_after_raw = fields.get("continues-after") or ""
+        # #1689: read from raw_fields so YAML lists pass through as
+        # actual Python lists. The legacy `fields` dict at line 100
+        # stringifies every value via `str(v)` so a YAML-list input
+        # would arrive as `"['job:a', 'job:b']"` and the comma-split
+        # branch below would produce bracket-tainted nonsense
+        # (`["[\\'job:a\\'", "\\'job:b\\']"]`) that never matches a
+        # real upstream kind. Reading the raw value preserves the list
+        # shape; comma-separated strings still work via the else branch.
+        continues_after_raw = raw_fields.get("continues-after")
+        if continues_after_raw is None:
+            continues_after_raw = ""
         # Accepts a single string or a YAML list.  A comma-separated string is
         # also accepted as a convenience shorthand (e.g. "job:a, job:b").
         if isinstance(continues_after_raw, list):
-            continues_after = [p.strip() for p in continues_after_raw if str(p).strip()]
+            continues_after = [str(p).strip() for p in continues_after_raw if str(p).strip()]
         else:
             text = str(continues_after_raw).strip()
             if not text:

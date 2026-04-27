@@ -54,16 +54,12 @@ def test_continues_after_as_scalar_string(tmp_path):
     assert item.continues_after == ["job:daily-report"]
 
 
-def test_continues_after_as_yaml_list_currently_lossy(tmp_path):
-    """YAML list syntax for continues-after is currently mangled because
-    `parse_frontmatter` stringifies all values via `str(v)`, so the list
-    arrives as `"['job:a', 'job:b']"` and the comma-split path produces
-    bracket-tainted entries (`['job:a'`, `'job:b'`, `'job:c']`). The
-    list-form `isinstance(..., list)` branch in continuations.py is dead
-    code as long as continues-after is read from the stringified
-    `fields` dict rather than `raw_fields`. This test documents the
-    observed behavior; if continuations.py is fixed to read the raw
-    field, update this test to assert the expected list form. Filed as follow-up bug #1689."""
+def test_continues_after_as_yaml_list(tmp_path):
+    """YAML list syntax for continues-after passes through as a real
+    Python list (#1689). The list-form branch in continuations.py
+    reads from `raw_fields` (the un-stringified parse) so the list
+    shape is preserved; comma-separated strings still work via the
+    else branch."""
     p = _write_continuation(
         str(tmp_path),
         "c.md",
@@ -71,8 +67,7 @@ def test_continues_after_as_yaml_list_currently_lossy(tmp_path):
     )
     item = continuations.parse_continuation_file(p)
     assert item is not None
-    # Current observable behavior: bracket-tainted strings.
-    assert any("[" in entry or "]" in entry for entry in item.continues_after)
+    assert item.continues_after == ["job:a", "job:b", "job:c"]
 
 
 def test_continues_after_csv_inline(tmp_path):
