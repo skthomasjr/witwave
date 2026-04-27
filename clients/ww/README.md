@@ -109,7 +109,34 @@ flow and isn't honored by `ww update`'s self-upgrade path (which always re-runs 
 
 CI also exercises the installer in two layers — pre-merge linting + smoke install in
 `ci-install-script.yml`, and a post-release re-install of the just-cut tag in `release-ww.yml`
-(matrix: alpine 3.19, debian 12, ubuntu 22.04, fedora 40, macOS 14).
+(matrix: alpine 3.19, debian 12, ubuntu 22.04, fedora 40, macOS 14, on both linux/amd64 and
+linux/arm64 runners).
+
+#### Manual smoke before promoting a release
+
+One installer flow CI can't fully exercise is **`ww update --force` upgrading across two
+consecutive real releases** — automating it would require cutting a throwaway tag pair on
+every CI run. Worth doing once by hand on a test box before each `v*.*.*` release that
+includes installer changes:
+
+```bash
+# 1. Install the previous stable.
+curl -fsSL https://github.com/witwave-ai/witwave/releases/download/<previous>/install.sh \
+  | sh -s -- --version <previous> --prefix /tmp/ww-upgrade
+/tmp/ww-upgrade/bin/ww version   # should report <previous>
+
+# 2. Run ww update --force; should re-run the install pipeline and replace the binary in place.
+/tmp/ww-upgrade/bin/ww update --force
+/tmp/ww-upgrade/bin/ww version   # should now report the new version
+
+# 3. Cleanup
+rm -rf /tmp/ww-upgrade
+```
+
+Asserting `ww update --check` reports `Install method: curl-installer` *is* automated in
+`release-ww.yml`'s post-release smoke; the gap above is specifically the
+`--force` upgrade-execution path (RunUpgrade re-running the install pipeline), which has
+no end-to-end coverage today.
 
 ## Quick start
 

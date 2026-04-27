@@ -83,14 +83,23 @@ jobs:
           fi
 
   smoke-linux:
-    name: smoke install — ${{ matrix.image }}
-    runs-on: ubuntu-latest
+    name: smoke install — ${{ matrix.runner }} / ${{ matrix.image }}
+    runs-on: ${{ matrix.runner }}
     needs: lint
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
+        # Both archs to catch goreleaser cross-build regressions —
+        # ubuntu-latest is amd64; ubuntu-24.04-arm is GitHub's free
+        # public-repo arm64 runner. Without the arm row a busted
+        # linux/arm64 release ships unnoticed (Raspberry Pi, AWS
+        # Graviton, Apple Silicon Linux). Image tags are multi-arch
+        # so the same image: list applies to both runners.
+        runner:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
         image:
           - alpine:3.19
           - debian:12-slim
@@ -257,6 +266,89 @@ jobs:
           # Confirm the default-prefix policy resolves cleanly even
           # without sudo; should fall through to ~/.local/bin.
           sh scripts/install.sh --version ${{ steps.tag.outputs.tag }} --dry-run
+
+  # Coverage for the smaller install.sh flags that the matrix doesn't
+  # exercise. Each step is tiny — combined into one job to keep the
+  # CI graph readable. Runs on the latest existing stable tag, same
+  # contract as the matrix.
+  flag-coverage:
+    name: minor flag coverage
+    runs-on: ubuntu-latest
+    needs: lint
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve latest existing stable tag
+        id: tag
+        run: |
+          tag="$(git tag --list 'v*.*.*' --sort=-version:refname | grep -Ev -- '-(beta|rc)\.' | head -n 1)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          [ -n "$tag" ] || echo "::warning::no stable tag — flag coverage will be a no-op"
+
+      - name: --install-dir overrides --prefix
+        if: steps.tag.outputs.tag != ''
+        run: |
+          # When both flags are set, --install-dir wins (it points at
+          # the bin dir directly; --prefix expects a parent root).
+          rm -rf /tmp/wwbin /tmp/wwprefix
+          sh scripts/install.sh --version ${{ steps.tag.outputs.tag }} \
+            --install-dir /tmp/wwbin --prefix /tmp/wwprefix
+          test -x /tmp/wwbin/ww
+          test ! -e /tmp/wwprefix/bin/ww
+          /tmp/wwbin/ww version
+
+      - name: WW_INSTALL_DIR env equivalent
+        if: steps.tag.outputs.tag != ''
+        run: |
+          rm -rf /tmp/wwenv
+          WW_INSTALL_DIR=/tmp/wwenv sh scripts/install.sh \
+            --version ${{ steps.tag.outputs.tag }}
+          test -x /tmp/wwenv/ww
+
+      - name: --dry-run leaves no artifacts
+        if: steps.tag.outputs.tag != ''
+        run: |
+          rm -rf /tmp/wwdry
+          sh scripts/install.sh --version ${{ steps.tag.outputs.tag }} \
+            --prefix /tmp/wwdry --dry-run > /tmp/dry-out 2>&1
+          cat /tmp/dry-out
+          grep -q "\[dry-run\]" /tmp/dry-out \
+            || { echo "expected [dry-run] markers in output" >&2; exit 1; }
+          if [ -e /tmp/wwdry/bin/ww ]; then
+            echo "dry-run created a binary!" >&2; exit 1
+          fi
+
+      - name: --quiet suppresses progress
+        if: steps.tag.outputs.tag != ''
+        run: |
+          rm -rf /tmp/wwquiet
+          sh scripts/install.sh --version ${{ steps.tag.outputs.tag }} \
+            --prefix /tmp/wwquiet --quiet > /tmp/quiet-out 2>&1
+          # Warnings + errors still allowed on stderr (PATH advisory etc).
+          # The "Installing ww X..." progress lines should NOT appear.
+          if grep -q "^Installing ${BIN_NAME:-ww}" /tmp/quiet-out; then
+            echo "--quiet did not suppress 'Installing' progress line" >&2
+            cat /tmp/quiet-out
+            exit 1
+          fi
+          test -x /tmp/wwquiet/bin/ww
+
+      - name: WW_VERSION accepts version without 'v' prefix
+        if: steps.tag.outputs.tag != ''
+        run: |
+          rm -rf /tmp/wwnov
+          # Strip the leading v so we exercise the auto-prepend branch.
+          ver="${{ steps.tag.outputs.tag }}"
+          ver="${ver#v}"
+          sh scripts/install.sh --version "$ver" --prefix /tmp/wwnov
+          test -x /tmp/wwnov/bin/ww
+          # Marker should record the canonical (with-v) form.
+          grep -q "version=v$ver" /tmp/wwnov/bin/.ww.install-info \
+            || { echo "marker did not record canonical v-prefixed version" >&2; exit 1; }
 
   uninstall:
     name: --uninstall round-trip

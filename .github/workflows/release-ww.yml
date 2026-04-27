@@ -210,3 +210,45 @@ jobs:
           cat /tmp/update-out
           grep -q "Install method: curl-installer" /tmp/update-out \
             || { echo "ww update --check did not detect curl-installer method" >&2; exit 1; }
+
+  # Cosign-verify path coverage. install.sh's --verify-signature flag
+  # downloads checksums.txt.sig + checksums.txt.pem and runs
+  # `cosign verify-blob` against the keyless cert chain — a code path
+  # ci-install-script.yml never exercises (no cosign on the runner).
+  # The release workflow already installs cosign for goreleaser's own
+  # signing step, so adding a smoke install with the flag costs almost
+  # nothing here. Single host runner is enough — we're testing the
+  # cosign branch, not whether the installed binary works (the matrix
+  # above already proved that).
+  install-smoke-cosign:
+    name: install.sh smoke — --verify-signature
+    needs: goreleaser
+    runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
+    permissions:
+      contents: read
+    steps:
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Wait for the release asset to be reachable
+        run: |
+          set -e
+          URL="https://github.com/witwave-ai/witwave/releases/download/${{ github.ref_name }}/install.sh"
+          for i in $(seq 1 30); do
+            if curl -fsSL --max-time 5 -o /dev/null "$URL"; then
+              echo "asset reachable after $((i*3))s"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::install.sh asset not reachable at $URL after 90s" >&2
+          exit 1
+
+      - name: Install with --verify-signature
+        run: |
+          curl -fsSL "https://github.com/witwave-ai/witwave/releases/download/${{ github.ref_name }}/install.sh" -o /tmp/install.sh
+          sh /tmp/install.sh --version ${{ github.ref_name }} \
+            --prefix /tmp/wwroot --verify-signature
+          test -x /tmp/wwroot/bin/ww
+          /tmp/wwroot/bin/ww version
