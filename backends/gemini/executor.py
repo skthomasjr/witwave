@@ -276,7 +276,7 @@ try:
 except OSError:
     pass  # read-only or not yet mounted — will fail naturally on first write
 
-MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "10000"))
+MAX_SESSIONS = max(1, int(os.environ.get("MAX_SESSIONS", "10000")))  # #1718, mirrors codex #1629
 TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
 # Maximum number of bytes of prompt text included in INFO-level log messages.
 # Set to 0 to suppress prompt text from logs entirely; set higher for more context.
@@ -1730,7 +1730,7 @@ def _track_session(
         sessions[session_id] = time.monotonic()
     if backend_active_sessions is not None:
         backend_active_sessions.labels(**_LABELS).set(len(sessions))
-    if backend_lru_cache_utilization_percent is not None:
+    if backend_lru_cache_utilization_percent is not None and MAX_SESSIONS > 0:
         backend_lru_cache_utilization_percent.labels(**_LABELS).set(len(sessions) / MAX_SESSIONS * 100)
 
 
