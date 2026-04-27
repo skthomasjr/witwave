@@ -82,3 +82,35 @@ func TestMCPToolLabelsIncludeComponent(t *testing.T) {
 		t.Fatalf("selector should not include managed-by label")
 	}
 }
+
+// TestBuildMCPToolServiceIncludesMetricsPort covers #1722: operator-rendered
+// MCP-tool Services must expose both http (8000) and metrics (9000) ports
+// so a ServiceMonitor can scrape via Service endpoints — chart parity with
+// charts/witwave/templates/mcp-tools.yaml.
+func TestBuildMCPToolServiceIncludesMetricsPort(t *testing.T) {
+	agent := &witwavev1alpha1.WitwaveAgent{ObjectMeta: metav1.ObjectMeta{Name: "iris", Namespace: "default"}}
+	svc := buildMCPToolService(agent, "kubernetes")
+	if svc == nil {
+		t.Fatalf("buildMCPToolService returned nil")
+	}
+	byName := map[string]bool{}
+	for _, p := range svc.Spec.Ports {
+		byName[p.Name] = true
+	}
+	if !byName["http"] {
+		t.Errorf("expected http ServicePort, got ports = %+v", svc.Spec.Ports)
+	}
+	if !byName["metrics"] {
+		t.Errorf("expected metrics ServicePort (#1722 chart parity), got ports = %+v", svc.Spec.Ports)
+	}
+	for _, p := range svc.Spec.Ports {
+		if p.Name == "metrics" {
+			if p.Port != 9000 {
+				t.Errorf("metrics ServicePort port = %d, want 9000", p.Port)
+			}
+			if p.TargetPort.StrVal != "metrics" {
+				t.Errorf("metrics targetPort = %v, want named target 'metrics'", p.TargetPort)
+			}
+		}
+	}
+}

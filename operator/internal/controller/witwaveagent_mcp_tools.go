@@ -373,8 +373,11 @@ func mcpToolEnv(spec *witwavev1alpha1.MCPToolSpec) []corev1.EnvVar {
 	return env
 }
 
-func (r *WitwaveAgentReconciler) applyMCPToolService(ctx context.Context, agent *witwavev1alpha1.WitwaveAgent, tool string) error {
-	desired := &corev1.Service{
+// buildMCPToolService renders the desired Service for an agent's MCP tool.
+// Extracted so unit tests can pin the port set without spinning the
+// reconciler.
+func buildMCPToolService(agent *witwavev1alpha1.WitwaveAgent, tool string) *corev1.Service {
+	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      mcpToolName(agent, tool),
 			Namespace: agent.Namespace,
@@ -383,14 +386,32 @@ func (r *WitwaveAgentReconciler) applyMCPToolService(ctx context.Context, agent 
 		Spec: corev1.ServiceSpec{
 			Type:     corev1.ServiceTypeClusterIP,
 			Selector: mcpToolSelector(agent, tool),
-			Ports: []corev1.ServicePort{{
-				Name:       "http",
-				Port:       mcpToolPort,
-				TargetPort: intstr.FromInt(int(mcpToolPort)),
-				Protocol:   corev1.ProtocolTCP,
-			}},
+			Ports: []corev1.ServicePort{
+				{
+					Name:       "http",
+					Port:       mcpToolPort,
+					TargetPort: intstr.FromInt(int(mcpToolPort)),
+					Protocol:   corev1.ProtocolTCP,
+				},
+				// #1722: metrics ServicePort matches chart parity
+				// (charts/witwave/templates/mcp-tools.yaml). The
+				// applyMCPToolDeployment path already declares the
+				// container "metrics" port and METRICS_ENABLED=true env
+				// (#1336/#1339), so a ServiceMonitor can resolve the
+				// scrape target by name.
+				{
+					Name:       "metrics",
+					Port:       9000,
+					TargetPort: intstr.FromString("metrics"),
+					Protocol:   corev1.ProtocolTCP,
+				},
+			},
 		},
 	}
+}
+
+func (r *WitwaveAgentReconciler) applyMCPToolService(ctx context.Context, agent *witwavev1alpha1.WitwaveAgent, tool string) error {
+	desired := buildMCPToolService(agent, tool)
 	if err := controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
 		return fmt.Errorf("set owner on mcp-%s Service: %w", tool, err)
 	}
