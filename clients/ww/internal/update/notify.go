@@ -12,7 +12,7 @@ import (
 )
 
 // Per-shell-out timeouts. Tied to the kind of work each tool does:
-// brew can chew on tap refresh / formula download for tens of seconds
+// brew can chew on tap refresh / cask download for tens of seconds
 // in the worst case but should never hang forever; go install is bounded
 // by the brew slot since they're in the same upgrade flow. #1616.
 const (
@@ -172,10 +172,16 @@ func askYesNo(stdin io.Reader, stderr io.Writer, prompt string) bool {
 
 // RunUpgrade dispatches to the installer command matching the detected
 // install method. For brew installs it first refreshes the witwave-ai
-// tap so a newly-pushed Formula/ww.rb is visible; then runs
-// `brew upgrade ww`. For go-install it runs `go install @latest`.
-// For binary installs there's no automatic path — we print a message
-// and return nil.
+// tap so a newly-pushed Casks/ww.rb is visible; then runs
+// `brew upgrade ww`. (Pre-#1446 the tap shipped Formula/ww.rb; the
+// migration retired the formula path. brew 4.x+ handles `brew upgrade
+// <name>` agnostically across formula and cask, so this command stays
+// the same — but a user with a pre-migration formula install will need
+// to `brew uninstall ww && brew install witwave-ai/homebrew-ww/ww`
+// once to switch to the cask, since brew does not auto-migrate same-name
+// formula → cask within a tap. See Homebrew/brew#20585.) For go-install
+// it runs `go install @latest`. For binary installs there's no automatic
+// path — we print a message and return nil.
 //
 // stdout/stderr are plumbed through to the child process so the user
 // sees the installer's output in real time. This is important for brew
@@ -329,7 +335,7 @@ func brewInstalledVersion(ctx context.Context) (string, error) {
 	defer cancel()
 	out, err := cmd.Output()
 	if err != nil {
-		// `brew list --versions` exits non-zero when the formula isn't
+		// `brew list --versions` exits non-zero when the cask isn't
 		// installed. Don't treat that as a hard failure — just return
 		// empty + nil so the caller prints a neutral message.
 		return "", nil

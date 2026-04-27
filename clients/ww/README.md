@@ -60,14 +60,15 @@ sh install.sh
 The script writes a sibling `.ww.install-info` marker file alongside the binary so `ww update` knows it was installed
 this way and can re-run the same pipeline to upgrade in place.
 
-### Homebrew (macOS, Linuxbrew)
+### Homebrew (macOS)
 
 ```bash
 brew install witwave-ai/homebrew-ww/ww
 ```
 
 The [witwave-ai/homebrew-ww](https://github.com/witwave-ai/homebrew-ww) tap is updated automatically as part of every
-release.
+release. The tap ships a Homebrew **cask**; Linuxbrew is not supported (casks are macOS-only). Linux users have
+`go install`, the curl installer, or the GitHub Release tarball as install paths.
 
 ### `go install` (developers)
 
@@ -781,7 +782,7 @@ go build -ldflags "\
   grows a dashboard-proxy mode.
 - The SSE parser is intentionally minimal — it implements the subset the harness emits plus the `:` keepalive comment
   used to keep HTTP/2 proxies awake. Field-name-only lines per the broader SSE spec are tolerated but not exercised.
-- Goreleaser config ships darwin/linux amd64+arm64 builds and a Homebrew formula targeting `witwave-ai/homebrew-ww`. The
-  tap repo exists; `goreleaser release` additionally requires the `HOMEBREW_TAP_GITHUB_TOKEN` repo secret (a
-  fine-grained PAT scoped to the tap with Contents: Read-and-Write) — without it, the formula push step fails but the
-  binaries + GitHub Release still ship.
+- Goreleaser config ships darwin/linux amd64+arm64 builds and a Homebrew **cask** targeting `witwave-ai/homebrew-ww`
+  (migrated from the deprecated `brews:` block via #1446 — casks are macOS-only). The tap repo exists; `goreleaser
+  release` additionally requires the `HOMEBREW_TAP_GITHUB_TOKEN` repo secret (a fine-grained PAT scoped to the tap with
+  Contents: Read-and-Write) — without it, the cask push step fails but the binaries + GitHub Release still ship.

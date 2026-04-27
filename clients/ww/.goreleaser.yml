@@ -3,9 +3,10 @@
 # and HOMEBREW_TAP_GITHUB_TOKEN env vars at release time.
 #
 # Tap repo: witwave-ai/homebrew-ww (created as part of the witwave-era
-# beta; formula push requires HOMEBREW_TAP_GITHUB_TOKEN — a
-# fine-grained PAT scoped to the tap repo with Contents:Read-and-Write.
-# The source repo's default GITHUB_TOKEN cannot push across owners.
+# beta; cask push requires HOMEBREW_TAP_GITHUB_TOKEN — a fine-grained
+# PAT scoped to the tap repo with Contents:Read-and-Write. The source
+# repo's default GITHUB_TOKEN cannot push across owners. Migrated from
+# the deprecated `brews:` block to `homebrew_casks:` per #1446.
 version: 2
 
 project_name: ww
@@ -153,11 +154,19 @@ release:
   extra_files:
     - glob: install.sh
 
-brews:
+# Homebrew distribution lives in homebrew_casks because goreleaser
+# deprecated the brews: section (see goreleaser.com/deprecations#brews
+# and #1446). Casks are macOS-only — Linuxbrew users were always a
+# theoretical population (no real users on either platform at the time
+# of migration), and they retain go install / curl-installer / GitHub
+# release tarball install paths.
+homebrew_casks:
   - name: ww
     ids:
       - ww
-    # Tap repo under the witwave-ai org. Formula push requires
+    binaries:
+      - ww
+    # Tap repo under the witwave-ai org. Cask push requires
     # HOMEBREW_TAP_GITHUB_TOKEN (fine-grained PAT with Contents:
     # Read-and-Write on witwave-ai/homebrew-ww); default GITHUB_TOKEN
     # can't push across owners. goreleaser v2 dropped the v1
@@ -169,11 +178,25 @@ brews:
       name: homebrew-ww
       branch: main
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    directory: Formula
+    # directory defaults to "Casks" — do NOT override with "Formula"
+    # (legacy path used by the old brews: block, retired in #1446).
     homepage: https://github.com/witwave-ai/witwave
     description: witwave CLI for the Witwave multi-container agent platform
-    license: Apache-2.0
-    test: |
-      system "#{bin}/ww", "version"
-    install: |
-      bin.install "ww"
+    # license/test/install blocks aren't supported in the cask schema.
+    # Apache-2.0 license remains in the source tarball + GitHub release
+    # metadata; brew users can confirm via `brew info --cask ww` URL +
+    # the project's own LICENSE in the install staged_path.
+    hooks:
+      post:
+        # Strip the macOS quarantine xattr that gatekeeper applies to
+        # downloaded binaries — without this, first run of `ww` triggers
+        # the "cannot be opened because the developer cannot be verified"
+        # gatekeeper dialog. Cosign-signed binaries are already trustable
+        # via the GitHub Actions OIDC chain (see SECURITY.md); the
+        # quarantine bit is a Finder-level annotation, not an Apple
+        # notarization gate.
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr",
+                           args: ["-dr", "com.apple.quarantine", "#{staged_path}/ww"]
+          end
