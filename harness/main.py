@@ -1611,7 +1611,12 @@ async def main():
         # world-readable parsing surface by default.
         if not _check_adhoc_auth(request):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
-        # #1316: reject oversize Content-Length BEFORE buffering the body.
+        # #1316 + #1736: reject oversize bodies BEFORE buffering. The
+        # Content-Length fast-path catches honest declarations; the
+        # streaming read_capped_body call (shared with /mcp on every
+        # backend, see closed #1609/#1673/#1674) is the actual
+        # enforcement against chunked-transfer requests that omit
+        # Content-Length entirely or lie about it.
         try:
             from utils import PARSE_FRONTMATTER_MAX_FILE_BYTES as _MAX
         except Exception:
@@ -1625,8 +1630,23 @@ async def main():
                 {"ok": False, "errors": [f"body exceeds {_MAX} bytes"]},
                 status_code=413,
             )
+        # Stream-read into a bounded buffer so the cap is enforced on
+        # actual bytes-on-the-wire, not on the caller's declared length.
         try:
-            body = await request.json()
+            from mcp_body_cap import read_capped_body as _read_capped_body
+        except Exception:  # pragma: no cover — defensive
+            from shared.mcp_body_cap import read_capped_body as _read_capped_body  # type: ignore[no-redef]
+        _raw, _reason = await _read_capped_body(request, _MAX)
+        if _reason == "body_too_large":
+            return JSONResponse(
+                {"ok": False, "errors": [f"body exceeds {_MAX} bytes"]},
+                status_code=413,
+            )
+        if _reason == "parse_error" or _raw is None:
+            return JSONResponse({"ok": False, "errors": ["request body could not be read"]}, status_code=400)
+        try:
+            import json as _json_for_validate
+            body = _json_for_validate.loads(_raw.decode("utf-8"))
         except Exception:
             return JSONResponse({"ok": False, "errors": ["request body must be JSON"]}, status_code=400)
         if not isinstance(body, dict):
