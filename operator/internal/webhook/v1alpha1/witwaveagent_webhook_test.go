@@ -12,6 +12,14 @@ import (
 	"strings"
 	"testing"
 
+	authv1 "k8s.io/api/authorization/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
+
 	witwavev1alpha1 "github.com/witwave-ai/witwave-operator/api/v1alpha1"
 )
 
@@ -160,5 +168,156 @@ func TestValidatorNoWarningWhenExistingSecret(t *testing.T) {
 	}
 	if len(warnings) != 0 {
 		t.Fatalf("expected 0 warnings for existingSecret path, got %d: %v", len(warnings), warnings)
+	}
+}
+
+// ----- validateLiveCredentials (#1683, #1685) -----
+
+// fakeClientHelper builds a controller-runtime fake client with the
+// witwave + corev1 + authv1 schemes wired up so the validator's Get +
+// SSAR Create calls land on a real-looking client.
+func fakeClientHelper(t *testing.T, ssarAllowed bool, objs ...client.Object) client.Client {
+	t.Helper()
+	scheme := runtime.NewScheme()
+	if err := witwavev1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("add witwave scheme: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("add corev1 scheme: %v", err)
+	}
+	if err := authv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("add authv1 scheme: %v", err)
+	}
+	return fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(objs...).
+		WithInterceptorFuncs(interceptor.Funcs{
+			// Fake client doesn't run SubjectAccessReview through the
+			// authorizer — intercept Create calls on SSARs and stamp
+			// Status.Allowed per the test parameter.
+			Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+				if ssar, ok := obj.(*authv1.SelfSubjectAccessReview); ok {
+					ssar.Status = authv1.SubjectAccessReviewStatus{Allowed: ssarAllowed}
+					return nil
+				}
+				return c.Create(ctx, obj, opts...)
+			},
+		}).
+		Build()
+}
+
+func TestValidatorAllowsExistingSecretPresent(t *testing.T) {
+	c := fakeClientHelper(t, true,
+		&corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "git-creds"},
+		},
+	)
+	v := &WitwaveAgentCustomValidator{Client: c}
+	agent := &witwavev1alpha1.WitwaveAgent{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "iris"},
+		Spec: witwavev1alpha1.WitwaveAgentSpec{
+			Backends: []witwavev1alpha1.BackendSpec{{Name: "claude"}},
+			GitSyncs: []witwavev1alpha1.GitSyncSpec{
+				{
+					Name:        "config",
+					Repo:        "https://example.com/x.git",
+					Credentials: &witwavev1alpha1.GitSyncCredentialsSpec{ExistingSecret: "git-creds"},
+				},
+			},
+		},
+	}
+	if _, err := v.ValidateCreate(context.Background(), agent); err != nil {
+		t.Fatalf("ValidateCreate returned err: %v", err)
+	}
+}
+
+func TestValidatorRejectsMissingExistingSecret(t *testing.T) {
+	c := fakeClientHelper(t, true) // no Secrets in store
+	v := &WitwaveAgentCustomValidator{Client: c}
+	agent := &witwavev1alpha1.WitwaveAgent{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "iris"},
+		Spec: witwavev1alpha1.WitwaveAgentSpec{
+			Backends: []witwavev1alpha1.BackendSpec{{
+				Name:        "claude",
+				Credentials: &witwavev1alpha1.BackendCredentialsSpec{ExistingSecret: "missing-secret"},
+			}},
+		},
+	}
+	_, err := v.ValidateCreate(context.Background(), agent)
+	if err == nil {
+		t.Fatal("expected error for missing existingSecret, got nil")
+	}
+	if !strings.Contains(err.Error(), "missing-secret") {
+		t.Fatalf("expected error to name the missing secret, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "#1683") {
+		t.Fatalf("expected error to reference #1683, got: %v", err)
+	}
+}
+
+func TestValidatorRejectsInlineCredentialsWhenSSARDenied(t *testing.T) {
+	c := fakeClientHelper(t, false) // SSAR denied
+	v := &WitwaveAgentCustomValidator{Client: c}
+	agent := &witwavev1alpha1.WitwaveAgent{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "iris"},
+		Spec: witwavev1alpha1.WitwaveAgentSpec{
+			Backends: []witwavev1alpha1.BackendSpec{{
+				Name: "claude",
+				Credentials: &witwavev1alpha1.BackendCredentialsSpec{
+					Secrets:                   map[string]string{"CLAUDE_CODE_OAUTH_TOKEN": "sk-x"},
+					AcknowledgeInsecureInline: true,
+				},
+			}},
+		},
+	}
+	_, err := v.ValidateCreate(context.Background(), agent)
+	if err == nil {
+		t.Fatal("expected error when SSAR denies secret create, got nil")
+	}
+	if !strings.Contains(err.Error(), "#1685") {
+		t.Fatalf("expected error to reference #1685, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "rbac.secretsWrite") {
+		t.Fatalf("expected error to mention rbac.secretsWrite, got: %v", err)
+	}
+}
+
+func TestValidatorAllowsInlineCredentialsWhenSSARAllowed(t *testing.T) {
+	c := fakeClientHelper(t, true) // SSAR allowed
+	v := &WitwaveAgentCustomValidator{Client: c}
+	agent := &witwavev1alpha1.WitwaveAgent{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "iris"},
+		Spec: witwavev1alpha1.WitwaveAgentSpec{
+			Backends: []witwavev1alpha1.BackendSpec{{
+				Name: "claude",
+				Credentials: &witwavev1alpha1.BackendCredentialsSpec{
+					Secrets:                   map[string]string{"CLAUDE_CODE_OAUTH_TOKEN": "sk-x"},
+					AcknowledgeInsecureInline: true,
+				},
+			}},
+		},
+	}
+	warnings, err := v.ValidateCreate(context.Background(), agent)
+	if err != nil {
+		t.Fatalf("ValidateCreate returned err: %v", err)
+	}
+	if len(warnings) == 0 {
+		t.Fatal("expected at least one inline-credentials warning, got none")
+	}
+}
+
+func TestValidatorNilClientIsBackwardsCompatible(t *testing.T) {
+	v := &WitwaveAgentCustomValidator{} // nil Client
+	agent := &witwavev1alpha1.WitwaveAgent{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "iris"},
+		Spec: witwavev1alpha1.WitwaveAgentSpec{
+			Backends: []witwavev1alpha1.BackendSpec{{
+				Name:        "claude",
+				Credentials: &witwavev1alpha1.BackendCredentialsSpec{ExistingSecret: "would-be-checked"},
+			}},
+		},
+	}
+	if _, err := v.ValidateCreate(context.Background(), agent); err != nil {
+		t.Fatalf("nil-client validator must short-circuit; got: %v", err)
 	}
 }
