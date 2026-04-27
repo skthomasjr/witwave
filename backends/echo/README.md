@@ -49,6 +49,12 @@ These concerns are coupled to LLM semantics and don't belong in a reference:
 - **LLM-specific metrics** — SDK errors, context-window, session LRU, tool
   audit, context exhaustion. Declaring them as always-zero placeholders would
   muddy dashboards.
+- **Three-probe health model (`/health/start`, `/health/ready`)** — the
+  LLM-wrapping backends split startup, liveness, and readiness across
+  three endpoints (cycle-1 #1608 + cycle-7 #1672). Echo's `/health` does
+  503→200 lifecycle on a single endpoint, sufficient for the K8s probe
+  story when the same endpoint serves both `livenessProbe` and
+  `readinessProbe`. CLAUDE.md calls this out: "echo is the exception".
 
 A checklist for backend authors copying from echo: start with everything echo
 does, then add the categories from this list that apply to your backend. Don't
