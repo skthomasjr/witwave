@@ -1070,8 +1070,20 @@ mcpTools:
     # serviceAccountName: ""
     # # imagePullSecrets: []
     # # resources: {}
-    # # env: []
     # # envFrom: []
+    #
+    # # Tool-specific env vars (#1416, #1692). Pass through the
+    # # mcp-kubernetes server constants documented in AGENTS.md
+    # # "Reference pointers." Uncomment + edit to deviate from the
+    # # in-code defaults.
+    # env:
+    #   # Refuse `read_secret_value` calls regardless of caller. Default
+    #   # is "false" — the kubernetes MCP can read Secrets when its SA
+    #   # has the verb. Flip to "true" during compromise triage so a
+    #   # rogue / jailbroken caller cannot exfiltrate cluster secrets
+    #   # through the tool surface even if the SA is permissive.
+    #   - name: MCP_K8S_READ_SECRETS_DISABLED
+    #     value: "true"
     #
     # # Scheduling overrides (#1116). Each field defaults to the chart-
     # # global value of the same name (nodeSelector / tolerations /
@@ -1132,8 +1144,23 @@ mcpTools:
     # serviceAccountName: ""
     # imagePullSecrets: []
     # resources: {}
-    # env: []
     # envFrom: []
+    #
+    # # Tool-specific env vars (#1416, #1692). Pass through the
+    # # mcp-helm server's repo gates documented in AGENTS.md
+    # # "Reference pointers." Uncomment + edit to deviate from the
+    # # in-code defaults.
+    # env:
+    #   # Comma-separated list of host[:port] entries that `repo_add`
+    #   # accepts (#1202). Empty list + ALLOW_ANY_REPO unset → fail
+    #   # closed; tools refuse to add any repo. Set in production.
+    #   - name: MCP_HELM_REPO_URL_ALLOWLIST
+    #     value: "charts.example.com,oci.internal:443"
+    #   # Explicit acknowledgement to bypass the allowlist when empty
+    #   # (#1202). Required for clusters that genuinely need to fetch
+    #   # from arbitrary OCI / Helm repos. Loud startup log when set.
+    #   - name: MCP_HELM_ALLOW_ANY_REPO
+    #     value: "true"
     #
     # Helm's storage backend is cluster Secrets, so the tool needs
     # Secret CRUD on the namespaces it manages, plus read on rendered
@@ -1197,9 +1224,19 @@ mcpTools:
     #
     # Point at the cluster Prometheus HTTP endpoint. Required — the tool
     # refuses every call with a clear error until this is set.
+    #
+    # Additional tool-specific env vars (#1416, #1692):
+    #   MCP_PROM_MAX_RESPONSE_BYTES — caps the body size returned by a
+    #     PromQL response so a pathological query (cardinality explosion,
+    #     long history) cannot OOM the MCP pod. Default in code; set
+    #     here to tune for your Prometheus's expected response sizes.
     env:
       - name: PROMETHEUS_URL
         value: ""
+      # # Hard cap on Prometheus response bodies. Default in code is
+      # # tuned for typical /api/v1/query payloads.
+      # - name: MCP_PROM_MAX_RESPONSE_BYTES
+      #   value: "16777216"  # 16 MiB
       # # Optional bearer token when Prometheus is fronted by a gateway.
       # - name: PROMETHEUS_BEARER_TOKEN
       #   valueFrom:
