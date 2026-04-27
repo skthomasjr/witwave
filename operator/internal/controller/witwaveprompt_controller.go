@@ -486,14 +486,19 @@ func (r *WitwavePromptReconciler) patchStatusWithConflictRetry(
 		if gErr := r.Get(ctx, client.ObjectKeyFromObject(prompt), fresh); gErr != nil {
 			return fmt.Errorf("refetch after conflict: %w", gErr)
 		}
-		// #1636: refresh reconciledGeneration on each retry's re-Get so
-		// the patch reflects the latest observed spec generation rather
-		// than the stale value captured at the top of the function. The
-		// branch in apply() that compares target.Generation against
-		// reconciledGeneration is now driven by the freshest spec we've
-		// seen, keeping ObservedGeneration aligned with the object we
-		// actually patched.
-		reconciledGeneration = fresh.Generation
+		// #1677: do NOT refresh reconciledGeneration here. The
+		// bindings/readyCount values we're about to patch were computed
+		// against the spec captured at the top of Reconcile (line 416).
+		// If a 409 retry observes a newer fresh.Generation, advancing
+		// reconciledGeneration to it would falsely claim
+		// "ObservedGeneration=N reconciled" while Bindings still reflect
+		// generation N-1. The apply() mismatch branch (target.Generation
+		// != reconciledGeneration) preserves the prior ObservedGeneration
+		// in that case so status remains internally consistent; the next
+		// watch-fired reconcile will recompute bindings against the
+		// current spec and stamp the new ObservedGeneration honestly.
+		// The earlier #1636 attempt to "track the freshest spec" inverted
+		// this invariant and is reverted here.
 		freshBefore := fresh.DeepCopy()
 		apply(fresh)
 		err = r.Status().Patch(ctx, fresh, client.MergeFrom(freshBefore))
