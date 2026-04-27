@@ -11,6 +11,7 @@ import (
 
 	"github.com/fatih/color"
 	"golang.org/x/term"
+	"sigs.k8s.io/yaml"
 )
 
 // Mode is the output format for a single invocation.
@@ -25,6 +26,10 @@ const (
 	// ModeJSONCompact renders single-line JSON (still line-delimited
 	// for streams).
 	ModeJSONCompact
+	// ModeYAML renders YAML for snapshot commands (#1707). Stream
+	// commands keep emitting NDJSON regardless — there is no
+	// "streaming YAML" parity equivalent worth implementing.
+	ModeYAML
 )
 
 // Writer bundles stdout / stderr with the chosen mode.
@@ -35,11 +40,15 @@ type Writer struct {
 	Color bool
 }
 
-// New configures output based on --json/--compact, NO_COLOR, and TTY
-// detection on stdout.
-func New(stdout, stderr io.Writer, jsonMode, compact bool) *Writer {
+// New configures output based on --json/--compact/--yaml, NO_COLOR, and TTY
+// detection on stdout. yamlMode wins when both --json and --yaml are set —
+// the caller is expected to validate flag-mutex upstream and we choose YAML
+// here as a safe default rather than refusing to render.
+func New(stdout, stderr io.Writer, jsonMode, compact, yamlMode bool) *Writer {
 	mode := ModeHuman
-	if jsonMode {
+	if yamlMode {
+		mode = ModeYAML
+	} else if jsonMode {
 		mode = ModeJSON
 		if compact {
 			mode = ModeJSONCompact
@@ -66,6 +75,23 @@ func colorEnabled(w io.Writer) bool {
 // IsJSON reports whether the writer emits JSON output.
 func (w *Writer) IsJSON() bool {
 	return w.Mode == ModeJSON || w.Mode == ModeJSONCompact
+}
+
+// IsYAML reports whether the writer emits YAML output (#1707).
+func (w *Writer) IsYAML() bool {
+	return w.Mode == ModeYAML
+}
+
+// EmitYAML writes v as YAML using sigs.k8s.io/yaml (the same JSON-
+// compatible serializer kubectl + helm use, so field names + types
+// match -o json output exactly except for the surrounding shape).
+func (w *Writer) EmitYAML(v any) error {
+	buf, err := yaml.Marshal(v)
+	if err != nil {
+		return err
+	}
+	_, err = w.Out.Write(buf)
+	return err
 }
 
 // EmitJSON writes v as JSON. In ModeJSON it pretty-prints; in

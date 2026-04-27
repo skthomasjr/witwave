@@ -102,6 +102,7 @@ type rootFlags struct {
 	verbose    int
 	jsonOut    bool
 	compact    bool
+	yamlOut    bool
 
 	// Cluster-identity flags — see DESIGN.md KC-5. Populated on every
 	// invocation regardless of subcommand; consumed only by cluster-touching
@@ -197,7 +198,7 @@ func newRoot() (*cobra.Command, *rootFlags) {
 				Verbose:  rf.verbose,
 				Logger:   logger,
 			})
-			out := output.New(os.Stdout, os.Stderr, rf.jsonOut, rf.compact)
+			out := output.New(os.Stdout, os.Stderr, rf.jsonOut, rf.compact, rf.yamlOut)
 			if rf.verbose > 0 {
 				resolved.Dump(os.Stderr)
 			}
@@ -239,6 +240,7 @@ func newRoot() (*cobra.Command, *rootFlags) {
 	p.CountVarP(&rf.verbose, "verbose", "v", "increase verbosity (-v: requests, -vv: bodies)")
 	p.BoolVar(&rf.jsonOut, "json", false, "emit JSON (pretty for snapshots, line-delimited for streams)")
 	p.BoolVar(&rf.compact, "compact", false, "with --json, emit compact single-line JSON for snapshots")
+	p.BoolVar(&rf.yamlOut, "yaml", false, "emit YAML for snapshot commands (#1707)")
 	// Cluster-identity flags (DESIGN.md KC-5). Harmless on harness-only
 	// subcommands; consumed by cluster-touching subtrees such as `ww operator`.
 	p.StringVar(&rf.kubeconfig, "kubeconfig", "",

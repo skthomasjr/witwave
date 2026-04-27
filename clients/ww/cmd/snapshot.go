@@ -118,10 +118,13 @@ func (e snapshotEntry) pickField(keys ...string) string {
 	return ""
 }
 
-// printList renders a snapshot as either JSON or a text table.
+// printList renders a snapshot as JSON, YAML (#1707), or a text table.
 func printList(out *output.Writer, entries []snapshotEntry, columns [][2]string) error {
 	if out.IsJSON() {
 		return out.EmitJSON(entries)
+	}
+	if out.IsYAML() {
+		return out.EmitYAML(entries)
 	}
 	headers := make([]string, 0, len(columns))
 	for _, c := range columns {
@@ -140,10 +143,13 @@ func printList(out *output.Writer, entries []snapshotEntry, columns [][2]string)
 	return nil
 }
 
-// printView renders a single entry as KV pairs (human) or JSON.
+// printView renders a single entry as KV pairs (human), JSON, or YAML (#1707).
 func printView(out *output.Writer, entry snapshotEntry) error {
 	if out.IsJSON() {
 		return out.EmitJSON(entry)
+	}
+	if out.IsYAML() {
+		return out.EmitYAML(entry)
 	}
 	// Sort keys for deterministic output, with 'name' first if present.
 	keys := make([]string, 0, len(entry))
