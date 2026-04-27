@@ -122,10 +122,16 @@ func Send(ctx context.Context, cfg *rest.Config, opts SendOptions) error {
 		return fmt.Errorf("build kubernetes client: %w", err)
 	}
 
+	// #1720: bound the entire round-trip with --timeout, including the
+	// prerequisite Service Get. Previously the Get used the outer ctx and
+	// a hanging apiserver could block past the user-supplied timeout.
+	sendCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
 	// Sanity-check the Service exists before we build a proxy URL —
 	// otherwise the apiserver returns a generic 503/404 that isn't
 	// always obvious.
-	svc, err := k8s.CoreV1().Services(opts.Namespace).Get(ctx, opts.Agent, metav1.GetOptions{})
+	svc, err := k8s.CoreV1().Services(opts.Namespace).Get(sendCtx, opts.Agent, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return fmt.Errorf(
@@ -170,9 +176,8 @@ func Send(ctx context.Context, cfg *rest.Config, opts SendOptions) error {
 		return fmt.Errorf("marshal A2A request: %w", err)
 	}
 
-	// Bounded context so a hung harness doesn't block forever.
-	sendCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+	// sendCtx is bounded above so the proxy POST shares the same
+	// timeout budget as the Service Get (#1720).
 
 	// Apiserver service-proxy path:
 	//   /api/v1/namespaces/<ns>/services/<scheme>:<svc>:<port>/proxy/
