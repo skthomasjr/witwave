@@ -28,9 +28,59 @@ import (
 // a full apiserver.
 
 func TestWitwavePromptConfigMapName(t *testing.T) {
+	// Sanity: prefix + prompt name + hyphen + 12 hex chars (#1676).
 	got := witwavePromptConfigMapName("daily-summary", "iris")
-	if got != "witwaveprompt-daily-summary-iris" {
-		t.Fatalf("unexpected cm name: %q", got)
+	const wantPrefix = "witwaveprompt-daily-summary-"
+	if !strings.HasPrefix(got, wantPrefix) {
+		t.Fatalf("expected prefix %q, got %q", wantPrefix, got)
+	}
+	suffix := strings.TrimPrefix(got, wantPrefix)
+	if len(suffix) != 12 {
+		t.Fatalf("expected 12-hex-char suffix; got %q (len=%d)", suffix, len(suffix))
+	}
+	for _, r := range suffix {
+		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f')) {
+			t.Fatalf("suffix must be lowercase hex; got %q", suffix)
+		}
+	}
+}
+
+// TestWitwavePromptConfigMapNameInjectivityAcrossHyphenSplit covers #1676.
+//
+// Under the prior naming scheme `witwaveprompt-{prompt}-{agent}`, DNS-1123
+// names with internal hyphens collapsed distinct (prompt, agent) pairs
+// to the same CM name — e.g. (foo-bar, baz) and (foo, bar-baz) both
+// rendered `witwaveprompt-foo-bar-baz`. The hash-suffixed scheme must
+// produce distinct names for these and other hyphen-straddling pairs.
+func TestWitwavePromptConfigMapNameInjectivityAcrossHyphenSplit(t *testing.T) {
+	pairs := [][2]string{
+		{"foo-bar", "baz"},
+		{"foo", "bar-baz"},
+		{"foo-bar-baz", "qux"},
+		{"foo", "bar-baz-qux"},
+		{"a-b", "c-d"},
+		{"a", "b-c-d"},
+		{"a-b-c", "d"},
+	}
+
+	seen := make(map[string][2]string, len(pairs))
+	for _, p := range pairs {
+		got := witwavePromptConfigMapName(p[0], p[1])
+		if other, dup := seen[got]; dup {
+			t.Fatalf("ConfigMap name collision: pairs %v and %v both produced %q", other, p, got)
+		}
+		seen[got] = p
+	}
+}
+
+// TestWitwavePromptConfigMapNameDeterministic asserts the helper is a
+// pure function of its inputs — required because the GC pass depends
+// on `desired[cm.Name]` lookups matching what the reconcile loop wrote.
+func TestWitwavePromptConfigMapNameDeterministic(t *testing.T) {
+	a := witwavePromptConfigMapName("daily-summary", "iris")
+	b := witwavePromptConfigMapName("daily-summary", "iris")
+	if a != b {
+		t.Fatalf("non-deterministic name: %q vs %q", a, b)
 	}
 }
 
@@ -159,8 +209,10 @@ func TestBuildWitwavePromptConfigMap_LabelsAndOwnershipMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cm.Name != "witwaveprompt-daily-iris" {
-		t.Errorf("unexpected cm name %q", cm.Name)
+	// #1676: CM name uses prompt-name + 12-hex-char hash suffix.
+	wantName := witwavePromptConfigMapName("daily", "iris")
+	if cm.Name != wantName {
+		t.Errorf("unexpected cm name: got %q, want %q", cm.Name, wantName)
 	}
 	if cm.Namespace != "witwave" {
 		t.Errorf("cm namespace should match prompt namespace; got %q", cm.Namespace)

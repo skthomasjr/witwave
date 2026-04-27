@@ -18,6 +18,8 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -517,11 +519,29 @@ func (r *WitwavePromptReconciler) patchStatusWithConflictRetry(
 	return err
 }
 
-// witwavePromptConfigMapName is the per-(prompt, agent) ConfigMap name. Keeping
-// the prompt name first makes the CMs sort together under
-// `kubectl get cm -l witwave.ai/witwaveprompt=<name>`.
+// witwavePromptConfigMapName is the per-(prompt, agent) ConfigMap name.
+//
+// #1676: the previous scheme `witwaveprompt-{prompt}-{agent}` was non-
+// injective. DNS-1123 names allow internal hyphens, so distinct pairs
+// could collapse to the same CM name (e.g. (foo-bar, baz) and (foo,
+// bar-baz) both rendered `witwaveprompt-foo-bar-baz`). Two coexisting
+// WitwavePrompts could then write to the same ConfigMap, silently
+// shadowing one binding.
+//
+// The fix appends a 12-hex-char SHA-256-based suffix derived from
+// (promptName + 0x00 + agentName). The 0x00 separator cannot appear in
+// either input (DNS-1123 only allows alphanumerics and hyphens), so the
+// hash is collision-resistant on input pairs in addition to the
+// general 48-bit collision resistance of the truncated digest. The
+// prompt name remains in the CM name for `kubectl get cm` readability;
+// the suffix is what guarantees uniqueness.
+//
+// GC is label-driven (controller_witwaveprompt.go reconcile loop) so old
+// CMs created under the prior scheme are auto-cleaned on first reconcile
+// after upgrade — no migration step required.
 func witwavePromptConfigMapName(promptName, agentName string) string {
-	return fmt.Sprintf("witwaveprompt-%s-%s", promptName, agentName)
+	sum := sha256.Sum256([]byte(promptName + "\x00" + agentName))
+	return fmt.Sprintf("witwaveprompt-%s-%s", promptName, hex.EncodeToString(sum[:6]))
 }
 
 // witwavePromptFilename is the filename materialised inside the pod under the
