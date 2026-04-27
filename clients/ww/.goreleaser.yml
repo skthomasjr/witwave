@@ -32,6 +32,12 @@ before:
     # before archiving; it's gitignored here so local dev doesn't end
     # up with a stray duplicate.
     - cp ../../LICENSE LICENSE
+    # Same parent-dir issue applies to release.extra_files for the
+    # universal curl installer (#v0.9.0 release attempt: glob
+    # `../../scripts/install.sh` produced a mangled `.//home/runner/...`
+    # static prefix and stat failed). Mirror the LICENSE pattern: copy
+    # the script into the build dir, then reference it locally below.
+    - cp ../../scripts/install.sh install.sh
 
 builds:
   - id: ww
@@ -123,10 +129,12 @@ release:
   # Ship the universal curl installer alongside the binaries so
   # `https://github.com/<owner>/<repo>/releases/latest/download/install.sh`
   # always resolves to the script that matches the latest release.
-  # Path is relative to the goreleaser workdir (clients/ww/), same
-  # convention used by the before-hooks above.
+  # The before-hook above copies scripts/install.sh into clients/ww/
+  # (gitignored locally), so the glob is local — parent-dir globs
+  # don't work in release.extra_files (see v0.9.0 release attempt
+  # for the failure log).
   extra_files:
-    - glob: ../../scripts/install.sh
+    - glob: install.sh
 
 brews:
   - name: ww

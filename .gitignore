@@ -50,6 +50,9 @@ node_modules/
 .claude/plans/
 .claude/backups/
 
-# ww CLI release pipeline: transient LICENSE copy + goreleaser dist/
+# ww CLI release pipeline: transient LICENSE + install.sh copies +
+# goreleaser dist/. Both files are copied into clients/ww/ by the
+# goreleaser before-hooks so the workdir-local globs resolve cleanly.
 clients/ww/LICENSE
+clients/ww/install.sh
 clients/ww/dist/
