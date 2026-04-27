@@ -136,8 +136,8 @@ twice with different models — each `(backend, model)` pair is a distinct call.
 **`backends/a2a.py`** — Implements `AgentBackend.run_query` by constructing an A2A `message/send` JSON-RPC payload and
 forwarding it to the backend URL. Retries transient errors (HTTP 429/502/503/504 and connection failures) up to
 `A2A_BACKEND_MAX_RETRIES` times (default 3, must be >= 1) with exponential backoff. The backend URL can be overridden
-per-backend via an environment variable (`A2A_URL_<ID_UPPERCASED>`), enabling Kubernetes sidecar, separate pod, or
-Docker Compose deployments without config file changes.
+per-backend via an environment variable (`A2A_URL_<ID_UPPERCASED>`), enabling Kubernetes sidecar or separate-pod
+deployments without config file changes.
 
 **`metrics_proxy.py`** — Fetches `/metrics` from each configured backend on the dedicated metrics port
 (`METRICS_PORT`, default 9000 — the backend's app URL is rewritten to swap the port). Injects a `backend="<id>"`
@@ -402,7 +402,7 @@ image build. The same image serves any number of identities.
 continuation) to a named backend id. Routing is deterministic and explicit — no load-balancing or dynamic selection.
 
 **Per-backend URL override.** The `A2A_URL_<ID>` env var allows the same `backend.yaml` config file to work across
-Docker Compose, Kubernetes sidecars, and separate pod deployments.
+Kubernetes sidecar and separate-pod deployment shapes.
 
 **Message bus serialization.** All work flows through a single async queue per harness process. Prevents concurrent
 outbound backend calls, enforces deduplication, and provides a single instrumentation point for latency and throughput.
@@ -512,7 +512,7 @@ fields. Model resolution order: per-message override → routing entry model →
 
 The `url` for any backend can be overridden at deploy time via an environment variable named
 `A2A_URL_<ID_UPPERCASED_WITH_UNDERSCORES>` — for example, `A2A_URL_IRIS_CLAUDE`. This lets the same `backend.yaml`
-work across Docker Compose, Kubernetes, and local sidecar deployments without modification.
+work across Kubernetes service DNS and localhost-sidecar deployment shapes without modification.
 
 ---
 

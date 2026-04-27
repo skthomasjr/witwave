@@ -89,8 +89,9 @@ EXPOSE 9000
 CMD ["python", "/home/tool/server.py"]
 
 # #1413: Docker HEALTHCHECK parity with harness + backends. Kubernetes
-# uses its own probes; this helps docker-compose / swarm operators see
-# tool health in `docker ps`.
+# uses its own probes via the chart; this surfaces tool health in
+# `docker ps` for anyone running the image with `docker run` directly
+# (debugging, ad-hoc inspection — not a supported deployment mode).
 # #1651: exec-form (JSON array) so Docker invokes python3 directly
 # without /bin/sh -c. MCP_PORT is read from os.environ inside the
 # Python process and can never be substituted into a shell line, so a

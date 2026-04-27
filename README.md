@@ -87,7 +87,6 @@ Operational details that complement the Agent Model above:
 ## Requirements
 
 - Docker
-- Docker Compose
 - A Claude Code OAuth token (`claude setup-token`) or Anthropic API key (for `claude`)
 - An OpenAI API key (for `codex`)
 - A Gemini API key (for `gemini`)

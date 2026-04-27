@@ -41,7 +41,7 @@ If the user specifies a document or component (e.g. "refine docs for the Codex b
 
 For each document:
 - Read the document in full
-- Read the source files it describes — component source directories, config files, docker-compose files, and any other files the document references or summarizes
+- Read the source files it describes — component source directories, config files, Helm chart values, Kubernetes manifests, and any other files the document references or summarizes
 - Read any related in-scope documents that share content with this one (e.g. if reviewing a component README, also note what the root README says about that component)
 
 Do not update a document based on memory or inference alone — verify every claim against the current state of the code.

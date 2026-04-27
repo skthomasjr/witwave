@@ -212,7 +212,7 @@ Model resolution order: per-message override → routing entry model → per-bac
 
 The `url` field can be overridden at deploy time via the environment variable
 `A2A_URL_<ID_UPPERCASED_WITH_UNDERSCORES>` (e.g. `A2A_URL_IRIS_CLAUDE`). This enables the same config file to
-work with Docker Compose service DNS, Kubernetes service DNS, or localhost sidecars without modification.
+work across Kubernetes service DNS and localhost-sidecar deployment shapes without modification.
 
 ### Agent configuration layout
 

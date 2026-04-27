@@ -163,8 +163,8 @@ deployments can adjust behaviour without a code change.
 | `OTEL_TRACES_SAMPLER`         | `parentbased_always_on`      | OTel trace sampler configuration.                                                                                                                                                                                                                                                                                                                     |
 
 Backend-targeted URL overrides follow the `A2A_URL_<ID_UPPERCASED_WITH_UNDERSCORES>` convention (e.g.
-`A2A_URL_IRIS_CLAUDE`) and let a single `backend.yaml` work across Docker Compose, Kubernetes Service DNS, and localhost
-sidecars. See the repo root `AGENTS.md` under "Routing configuration" for the full list.
+`A2A_URL_IRIS_CLAUDE`) and let a single `backend.yaml` work across Kubernetes Service DNS and localhost-sidecar
+deployment shapes. See the repo root `AGENTS.md` under "Routing configuration" for the full list.
 
 ## Runtime
 
