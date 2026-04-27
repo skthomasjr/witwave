@@ -4,6 +4,7 @@ MD013:
   tables: false
   code_blocks: false
   lists: true
+MD018: false  # `#NNN` issue refs at line start are a project convention; not ATX headings
 MD029: false  # Allow intentional numbering across code-block-interrupted lists
 MD033: false  # Allow inline HTML
 MD041: false  # First line need not be a top-level heading (e.g. frontmatter files)
