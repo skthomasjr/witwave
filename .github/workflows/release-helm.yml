@@ -47,7 +47,22 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
 
-      - name: Log in to GitHub Container Registry
+      # #1598: docker-style login populates ~/.docker/config.json so
+      # cosign sign can push the signature OCI artifact back to GHCR.
+      # The helm registry login below writes to helm's own auth store
+      # (~/.config/helm/registry/config.json), which is what helm push
+      # reads — different file. Both are needed: helm for the chart
+      # push, docker for the cosign signature push. Symptom of missing
+      # this is "UNAUTHORIZED: unauthenticated" on the signature push
+      # step (cosign succeeds at signing locally, fails at upload).
+      - name: Log in to GitHub Container Registry (docker auth, for cosign)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to GitHub Container Registry (helm auth, for helm push)
         run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io --username ${{ github.actor }} --password-stdin
 
       - name: Set chart version from tag
