@@ -95,6 +95,15 @@ jobs:
           python3 -m pip install --quiet pyyaml
           scripts/check-prom-rule-metrics.sh
 
+      # #1698: every alert in the rendered PrometheusRule must have a
+      # matching `## <lowercased>` H2 anchor in docs/runbooks.md. The
+      # convention is documented at docs/runbooks.md:6-8 — on-call gets
+      # a runbook link in the alert body, so a missing runbook entry
+      # blanks that link. CI fails when an alert lacks coverage.
+      - name: PrometheusRule alerts have runbook coverage (#1698)
+        if: matrix.chart == 'charts/witwave'
+        run: scripts/check-runbook-coverage.sh
+
       # #1626: ingress.auth.enabled=true with empty htpasswd AND empty
       # existingSecret must fail render unconditionally — even when
       # dashboard.enabled=false (the default). Previously the guard sat
