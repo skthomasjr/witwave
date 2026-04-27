@@ -760,6 +760,17 @@ def describe(
                 )
 
             events: list[dict] = []
+            # #1680: surface event-fetch failures to the caller via an
+            # explicit envelope field. Without this, an empty `events`
+            # list is ambiguous — the resource may genuinely have no
+            # events, or the fetch may have failed (RBAC, timeout,
+            # apiserver degradation). LLMs reasoning over describe
+            # output cannot tell these apart and miss diagnostic
+            # context (CrashLoopBackOff / ImagePullBackOff etc. that
+            # show up in events but not on the Pod object). The field
+            # is None on success and a short human-readable string on
+            # failure.
+            events_fetch_error: str | None = None
             try:
                 core = client.CoreV1Api(_api())
                 selector = f"involvedObject.name={name},involvedObject.kind={kind}"
@@ -785,6 +796,13 @@ def describe(
                 events = [ev.to_dict() for ev in ev_resp.items]
             except ApiException as e:
                 log.warning("failed to fetch events for %s/%s: %s", kind, name, e)
+                # Surface status+reason so RBAC misconfigs (403 Forbidden)
+                # are immediately visible without grep'ing pod logs.
+                _status = getattr(e, "status", None)
+                _reason = getattr(e, "reason", None) or "ApiException"
+                events_fetch_error = (
+                    f"{_status} {_reason}" if _status else str(_reason)
+                )
             except Exception as e:
                 # Degraded-apiserver or urllib3/HTTP errors must not nuke
                 # the primary resource view — demote to a warning and
@@ -798,8 +816,16 @@ def describe(
                     e,
                 )
                 events = []
+                events_fetch_error = f"{type(e).__name__}: {e}"
 
-            return _truncate_json({"object": obj, "events": events}, tool="describe")
+            return _truncate_json(
+                {
+                    "object": obj,
+                    "events": events,
+                    "events_fetch_error": events_fetch_error,
+                },
+                tool="describe",
+            )
         except Exception as exc:
             set_span_error(_h, exc)
             raise
