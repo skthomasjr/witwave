@@ -1265,7 +1265,10 @@ async def _log_tool_event(event_type: str, block, session_id: str, model: str | 
 # so codex + gemini can import the same rule (#711 / #797). Keep the
 # private alias so intra-file callers (``_sanitize_mcp_servers`` below)
 # don't need to touch their import paths.
-from mcp_command_allowlist import mcp_command_allowed as _mcp_command_allowed  # noqa: E402
+from mcp_command_allowlist import (  # noqa: E402
+    mcp_command_allowed as _mcp_command_allowed,
+    mcp_command_args_safe as _mcp_command_args_safe,
+)
 
 
 def _sanitize_mcp_servers(servers: dict) -> dict:
@@ -1330,6 +1333,32 @@ def _sanitize_mcp_servers(servers: dict) -> dict:
                     try:
                         backend_mcp_command_rejected_total.labels(
                             **_LABELS, reason=reason,
+                        ).inc()
+                    except Exception:
+                        pass
+                continue
+            # Args sanitiser (#1734 / #930). When ``command`` is an
+            # interpreter (uv, uvx, python, node, …), its ``args`` array
+            # can still deliver arbitrary code via -c / -e / positional
+            # script paths. Drop the entry if args fail the check so a
+            # widened MCP_ALLOWED_COMMANDS doesn't silently re-open the
+            # arbitrary-code-execution path the README promises is
+            # closed.
+            args_val = new_cfg.get("args")
+            args_ok, args_reason = _mcp_command_args_safe(cmd, args_val)
+            if not args_ok:
+                logger.warning(
+                    "MCP server %r: args for command %r rejected by "
+                    "args sanitiser (%s) — dropping entry. Adjust the "
+                    "config or set MCP_ALLOWED_CWD_PREFIXES if a "
+                    "positional script lives in an operator-vetted "
+                    "tree. (#1734)",
+                    name, cmd, args_reason,
+                )
+                if backend_mcp_command_rejected_total is not None:
+                    try:
+                        backend_mcp_command_rejected_total.labels(
+                            **_LABELS, reason=args_reason,
                         ).inc()
                     except Exception:
                         pass
