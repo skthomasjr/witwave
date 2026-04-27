@@ -126,13 +126,30 @@ release:
   draft: false
   prerelease: auto
   mode: replace
+  # ====================================================================
+  # extra_files DO NOT use parent-dir globs (..) — see warning below.
+  # ====================================================================
   # Ship the universal curl installer alongside the binaries so
   # `https://github.com/<owner>/<repo>/releases/latest/download/install.sh`
   # always resolves to the script that matches the latest release.
+  #
+  # WARNING: release.extra_files globs MUST be relative to the workdir
+  # (clients/ww/) and MUST NOT start with `..`. The publish phase
+  # extracts a "static prefix" from each glob, prepends `./`, then
+  # tries to stat the result. With `../../scripts/install.sh` the
+  # stat path becomes `.//home/runner/.../scripts/install.sh` and
+  # fails with "invalid argument", taking the entire release with it.
+  # Reproduced live during the v0.9.0 release attempt.
+  #
+  # The snapshot-install CI job CANNOT catch this — `goreleaser
+  # release --snapshot` skips the publish phase by design. The lint
+  # job in .github/workflows/ci-install-script.yml has a guard that
+  # refuses any release.extra_files glob containing `..` so we can't
+  # regress this. If you find that guard in your way, fix the glob
+  # (mirror the LICENSE before-hook pattern), don't bypass the check.
+  #
   # The before-hook above copies scripts/install.sh into clients/ww/
-  # (gitignored locally), so the glob is local — parent-dir globs
-  # don't work in release.extra_files (see v0.9.0 release attempt
-  # for the failure log).
+  # (gitignored locally), so this glob can stay workdir-local.
   extra_files:
     - glob: install.sh
 

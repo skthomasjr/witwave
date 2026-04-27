@@ -82,6 +82,33 @@ jobs:
             exit 1
           fi
 
+      - name: "Guard: release.extra_files has no parent-dir globs"
+        # Goreleaser's publish phase mangles globs starting with `..`
+        # in release.extra_files (see clients/ww/.goreleaser.yml for
+        # the full breakdown — this took down the v0.9.0 release).
+        # The snapshot-install job can't catch this because --snapshot
+        # skips the publish phase. So we lint the config directly:
+        # walk release.extra_files and refuse any glob containing
+        # `..`. Mirrors what would have caught v0.9.0 pre-release.
+        run: |
+          python3 - <<'PY'
+          import sys, yaml
+          with open('clients/ww/.goreleaser.yml') as f:
+              cfg = yaml.safe_load(f)
+          ef = (cfg.get('release') or {}).get('extra_files') or []
+          bad = [e.get('glob','') for e in ef if '..' in e.get('glob','')]
+          if bad:
+              for g in bad:
+                  print(f"::error file=clients/ww/.goreleaser.yml::"
+                        f"release.extra_files glob {g!r} contains '..'. "
+                        "Goreleaser's publish phase rejects parent-dir globs here "
+                        "(stat-prefix mangling — see v0.9.0 release attempt). "
+                        "Mirror the LICENSE before-hook pattern: cp the file into "
+                        "clients/ww/, then use a workdir-local glob.", file=sys.stderr)
+              sys.exit(1)
+          print(f"OK: release.extra_files has {len(ef)} entries, none with parent-dir globs")
+          PY
+
   smoke-linux:
     name: smoke install — ${{ matrix.runner }} / ${{ matrix.image }}
     runs-on: ${{ matrix.runner }}
