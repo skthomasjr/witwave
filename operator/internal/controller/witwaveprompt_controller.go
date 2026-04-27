@@ -35,10 +35,13 @@ import (
 	yaml "sigs.k8s.io/yaml"
 
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	witwavev1alpha1 "github.com/witwave-ai/witwave-operator/api/v1alpha1"
@@ -737,10 +740,51 @@ func (r *WitwavePromptReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return reqs
 	})
 
+	// #1684: only fan out to prompts on Create/Delete events (where the
+	// agent's existence changes) and on Updates where binding-relevant
+	// fields change. spec.Body / annotation / label churn on a
+	// WitwaveAgent does not affect any prompt binding — the binding
+	// resolves on `ref.Name == agent.Name`, plus the
+	// not-found-status-message clear path. Forwarding every Update
+	// produced an O(N×M) reconcile storm under GitOps churn (Argo/Flux
+	// re-applying agent specs on every sync). The Update gate below
+	// catches: name change (impossible for a single object), deletion-
+	// timestamp set (not-found-equivalent), and Generation bump (the
+	// "spec or labels changed in a way that may matter" signal). We use
+	// a permissive Update gate to stay safe on edge cases — the win is
+	// shedding the high-volume status-only updates that controller-
+	// runtime emits as part of its own reconcile loop.
+	agentBindingPredicate := predicate.Funcs{
+		CreateFunc:  func(e event.CreateEvent) bool { return true },
+		DeleteFunc:  func(e event.DeleteEvent) bool { return true },
+		GenericFunc: func(e event.GenericEvent) bool { return false },
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			if e.ObjectOld == nil || e.ObjectNew == nil {
+				return true
+			}
+			// Status-only updates bump ResourceVersion but not
+			// Generation. The prompt binding is structurally
+			// independent of agent.Status, so suppress those.
+			if e.ObjectOld.GetGeneration() == e.ObjectNew.GetGeneration() {
+				// One exception: deletionTimestamp transitioning to
+				// non-zero is a status-shape change but matters for
+				// binding (the prompt status should clear references
+				// to a deleting agent). Keep that path live.
+				oldDel := !e.ObjectOld.GetDeletionTimestamp().IsZero()
+				newDel := !e.ObjectNew.GetDeletionTimestamp().IsZero()
+				if oldDel != newDel {
+					return true
+				}
+				return false
+			}
+			return true
+		},
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&witwavev1alpha1.WitwavePrompt{}).
 		Owns(&corev1.ConfigMap{}).
-		Watches(&witwavev1alpha1.WitwaveAgent{}, enqueueAllPrompts).
+		Watches(&witwavev1alpha1.WitwaveAgent{}, enqueueAllPrompts, builder.WithPredicates(agentBindingPredicate)).
 		Named("witwaveprompt").
 		Complete(r)
 }

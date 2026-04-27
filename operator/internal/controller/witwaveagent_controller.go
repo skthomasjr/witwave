@@ -2845,7 +2845,31 @@ func (r *WitwaveAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&autoscalingv2.HorizontalPodAutoscaler{}).
 		Owns(&policyv1.PodDisruptionBudget{}).
 		Watches(&witwavev1alpha1.WitwaveAgent{}, enqueueTeammates, builder.WithPredicates(teamPredicate)).
-		Watches(&witwavev1alpha1.WitwavePrompt{}, enqueueAgentsBoundByPrompt).
+		// #1684: gate the WitwavePrompt watch so spec.body / annotation
+		// / label / status churn on prompts doesn't fan out to every
+		// bound agent. The handler.Funcs UpdateFunc above (lines
+		// 2798-2819) already enqueues the union of old+new agentRefs
+		// on a true Update, but it runs unconditionally without this
+		// predicate — Argo/Flux re-applying prompt specs every minute
+		// then storms agents that don't need it. Forward only on
+		// Create/Delete and on Updates where Generation changed
+		// (spec/labels actually mutated) or deletionTimestamp flipped.
+		Watches(&witwavev1alpha1.WitwavePrompt{}, enqueueAgentsBoundByPrompt, builder.WithPredicates(predicate.Funcs{
+			CreateFunc:  func(e event.CreateEvent) bool { return true },
+			DeleteFunc:  func(e event.DeleteEvent) bool { return true },
+			GenericFunc: func(e event.GenericEvent) bool { return false },
+			UpdateFunc: func(e event.UpdateEvent) bool {
+				if e.ObjectOld == nil || e.ObjectNew == nil {
+					return true
+				}
+				if e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration() {
+					return true
+				}
+				oldDel := !e.ObjectOld.GetDeletionTimestamp().IsZero()
+				newDel := !e.ObjectNew.GetDeletionTimestamp().IsZero()
+				return oldDel != newDel
+			},
+		})).
 		Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(r.enqueueAgentsReferencingSecret)).
 		Named("witwaveagent").
 		Complete(r)
