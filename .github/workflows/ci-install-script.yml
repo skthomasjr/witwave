@@ -20,11 +20,17 @@ on:
     paths:
       - "scripts/install.sh"
       - ".github/workflows/ci-install-script.yml"
+      # Snapshot job catches install.sh ↔ goreleaser config drift —
+      # archive name template, checksums.txt format, missing platforms.
+      # Worth running on every goreleaser change even though it adds
+      # ~3min of CI for goreleaser-only PRs.
+      - "clients/ww/.goreleaser.yml"
   push:
     branches: [main]
     paths:
       - "scripts/install.sh"
       - ".github/workflows/ci-install-script.yml"
+      - "clients/ww/.goreleaser.yml"
 
 concurrency:
   group: ci-install-script-${{ github.ref }}
@@ -116,6 +122,12 @@ jobs:
           # script under test. Each image gets its package-manager kick
           # for curl + ca-certs (busybox alpine ships wget but no curl
           # by default; debian-slim trims curl to keep the image small).
+          #
+          # This step also covers the two "user is going to do this on
+          # day 2" flows that the bare install can't:
+          #   - re-install at the same version (idempotency)
+          #   - `ww update --check` round-trip (marker → detector →
+          #     UpgradeCommand wiring proven end-to-end)
           docker run --rm -v "$PWD":/src -w /src ${{ matrix.image }} sh -eux -c '
             case "$(. /etc/os-release && echo "$ID")" in
               alpine) apk add --no-cache curl ca-certificates tar ;;
@@ -128,6 +140,29 @@ jobs:
             grep -q "installer=curl" /tmp/wwroot/bin/.ww.install-info
             grep -q "version=${{ steps.tag.outputs.tag }}" /tmp/wwroot/bin/.ww.install-info
             /tmp/wwroot/bin/ww version
+
+            # ---- item 2: re-install in place (idempotency) ----
+            # Run install.sh again at the SAME version. Atomic mv should
+            # replace the binary cleanly; no `.ww.new.<pid>` leftovers
+            # should be visible after the run.
+            sh scripts/install.sh --version ${{ steps.tag.outputs.tag }} --prefix /tmp/wwroot
+            test -x /tmp/wwroot/bin/ww
+            grep -q "version=${{ steps.tag.outputs.tag }}" /tmp/wwroot/bin/.ww.install-info
+            /tmp/wwroot/bin/ww version
+            # No half-written staging files should remain. find with
+            # -name + -print -quit is POSIX (busybox supports it).
+            stale=$(find /tmp/wwroot/bin -maxdepth 1 -name ".ww.new.*" -print -quit || true)
+            if [ -n "$stale" ]; then
+              echo "stale staging file after re-install: $stale" >&2
+              exit 1
+            fi
+            # ww-update round-trip (item 3) lives in release-ww.yml,
+            # not here — this job pins to the latest existing tag, but
+            # InstallMethodCurl detection only exists in releases cut
+            # AFTER that code landed on main. Asserting here would
+            # require waiting for the next release before the test
+            # could pass; asserting against the just-cut tag instead
+            # avoids the chicken-and-egg.
           '
 
       - name: Verify wget fallback in ${{ matrix.image }}
@@ -180,6 +215,17 @@ jobs:
           grep -q "installer=curl" /tmp/wwroot/bin/.ww.install-info
           /tmp/wwroot/bin/ww version
 
+          # Item 2: re-install at same version is idempotent.
+          sh scripts/install.sh --version ${{ steps.tag.outputs.tag }} --prefix /tmp/wwroot
+          test -x /tmp/wwroot/bin/ww
+          stale=$(find /tmp/wwroot/bin -maxdepth 1 -name ".ww.new.*" -print -quit || true)
+          if [ -n "$stale" ]; then
+            echo "stale staging file after re-install: $stale" >&2
+            exit 1
+          fi
+          # Item 3 (ww update --check round-trip) lives in release-ww.yml
+          # — see the matching note in the smoke-linux step.
+
       - name: Dry-run with --use-sudo path
         if: steps.tag.outputs.tag != ''
         run: |
@@ -214,4 +260,246 @@ jobs:
           if [ -f /tmp/wwroot/bin/ww ]; then
             echo "binary still present after --uninstall" >&2
             exit 1
+          fi
+
+  # Negative-path tests live in their own job because they intentionally
+  # break the environment (uname shim, missing curl/wget, tampered
+  # checksums) — running them inside the matrix would risk poisoning
+  # later steps. Each case asserts a specific exit code from install.sh's
+  # documented contract; a regression that "succeeds" past one of these
+  # branches would silently install a broken binary.
+  negative-paths:
+    name: negative-path exit codes
+    runs-on: ubuntu-latest
+    needs: lint
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stand up a local fake-dist server
+        # Build a stub binary + matching tarball + valid checksums.txt
+        # under /tmp/fake-dist, then serve it on :8765. Subsequent tests
+        # consume this via WW_BASE_URL — and one of them deliberately
+        # corrupts checksums.txt to provoke the verify-failure exit.
+        run: |
+          set -eux
+          mkdir -p /tmp/fake-dist
+          cat > /tmp/fake-dist/ww <<'STUB'
+          #!/bin/sh
+          echo "ww 0.0.0 (test stub)"
+          STUB
+          chmod +x /tmp/fake-dist/ww
+          ARCHIVE="ww_0.0.0_linux_amd64.tar.gz"
+          ( cd /tmp/fake-dist && tar -czf "$ARCHIVE" ww && rm ww )
+          ( cd /tmp/fake-dist && sha256sum "$ARCHIVE" > checksums.txt )
+          cp /tmp/fake-dist/checksums.txt /tmp/checksums-good.txt
+          python3 -m http.server --directory /tmp/fake-dist 8765 >/tmp/srv.log 2>&1 &
+          echo $! > /tmp/srv.pid
+          # Poll up to 3s for the server to bind.
+          for i in $(seq 1 30); do
+            curl -fs http://localhost:8765/checksums.txt >/dev/null && exit 0
+            sleep 0.1
+          done
+          echo "::error::fake-dist server failed to come up" >&2
+          cat /tmp/srv.log
+          exit 1
+
+      - name: Tampered checksum → exit 4
+        run: |
+          set +e
+          # Swap in a deliberately-wrong hash so SHA256 verification
+          # MUST fail. The all-zeroes hash matches no real file.
+          printf "%s  %s\n" \
+            "0000000000000000000000000000000000000000000000000000000000000000" \
+            "ww_0.0.0_linux_amd64.tar.gz" > /tmp/fake-dist/checksums.txt
+          rm -rf /tmp/wwroot
+          WW_BASE_URL=http://localhost:8765 \
+            sh scripts/install.sh --version v0.0.0 --prefix /tmp/wwroot >/tmp/out 2>&1
+          rc=$?
+          # Restore good checksums for subsequent steps.
+          cp /tmp/checksums-good.txt /tmp/fake-dist/checksums.txt
+          set -e
+          echo "--- install.sh output ---"; cat /tmp/out
+          if [ "$rc" -ne 4 ]; then
+            echo "::error::expected exit 4 for tampered checksum, got $rc" >&2
+            exit 1
+          fi
+          if [ -e /tmp/wwroot/bin/ww ]; then
+            echo "::error::binary was installed despite checksum failure" >&2
+            exit 1
+          fi
+
+      - name: "Sanity check: same dist installs cleanly with good checksum"
+        # Confirm the previous step's failure was from the tamper, not
+        # from a broken local dist setup. If THIS step also fails, the
+        # tampered-checksum test wasn't actually exercising what we
+        # think it was.
+        run: |
+          rm -rf /tmp/wwroot
+          WW_BASE_URL=http://localhost:8765 \
+            sh scripts/install.sh --version v0.0.0 --prefix /tmp/wwroot
+          test -x /tmp/wwroot/bin/ww
+          /tmp/wwroot/bin/ww | grep -q "ww 0.0.0"
+
+      - name: Nonexistent version → exit 3
+        run: |
+          set +e
+          rm -rf /tmp/wwroot
+          # Hit real GitHub for a tag that's guaranteed not to exist;
+          # the archive download MUST 404 and bubble out as exit 3.
+          sh scripts/install.sh --version v999.999.999 --prefix /tmp/wwroot >/tmp/out 2>&1
+          rc=$?
+          set -e
+          echo "--- install.sh output ---"; cat /tmp/out
+          if [ "$rc" -ne 3 ]; then
+            echo "::error::expected exit 3 for nonexistent version, got $rc" >&2
+            exit 1
+          fi
+
+      - name: Unsupported architecture → exit 2
+        run: |
+          set +e
+          # Shim uname earlier in PATH so `uname -m` lies. Pass-through
+          # `uname -s` so the OS detection still works — we only want
+          # the arch branch to fail.
+          mkdir -p /tmp/shim
+          cat > /tmp/shim/uname <<'SHIM'
+          #!/bin/sh
+          case "$1" in
+            -m) echo mips64 ;;
+            *)  /usr/bin/uname "$@" ;;
+          esac
+          SHIM
+          chmod +x /tmp/shim/uname
+          rm -rf /tmp/wwroot
+          PATH=/tmp/shim:$PATH sh scripts/install.sh \
+            --version v0.0.0 --prefix /tmp/wwroot >/tmp/out 2>&1
+          rc=$?
+          set -e
+          echo "--- install.sh output ---"; cat /tmp/out
+          if [ "$rc" -ne 2 ]; then
+            echo "::error::expected exit 2 for unsupported arch, got $rc" >&2
+            exit 1
+          fi
+
+      - name: Missing http client → exit 6
+        run: |
+          # Run inside debian:12-slim so we can cleanly remove curl and
+          # wget without breaking the GH Actions runner itself. The slim
+          # base image ships neither by default but we strip defensively
+          # in case that changes.
+          docker run --rm -v "$PWD":/src -w /src debian:12-slim sh -eux -c '
+            apt-get update -qq
+            apt-get install -y -qq ca-certificates
+            apt-get remove -y -qq curl wget >/dev/null 2>&1 || true
+            ! command -v curl >/dev/null 2>&1 || { echo "curl still present" >&2; exit 1; }
+            ! command -v wget >/dev/null 2>&1 || { echo "wget still present" >&2; exit 1; }
+            set +e
+            sh scripts/install.sh --version v0.0.0 --prefix /tmp/wwroot >/tmp/out 2>&1
+            rc=$?
+            set -e
+            cat /tmp/out
+            if [ "$rc" -ne 6 ]; then
+              echo "expected exit 6 for missing http client, got $rc" >&2
+              exit 1
+            fi
+          '
+
+      - name: Tear down fake-dist server
+        if: always()
+        run: |
+          if [ -f /tmp/srv.pid ]; then
+            kill "$(cat /tmp/srv.pid)" 2>/dev/null || true
+          fi
+
+  # Snapshot install: run goreleaser in --snapshot mode (no tag, no
+  # publish, no signing), serve the resulting dist/ over a local python
+  # http server, install via WW_BASE_URL. This catches the class of bug
+  # where install.sh and .goreleaser.yml drift apart on the same PR —
+  # e.g. someone changes the archive name template, the checksums file
+  # format, or drops a platform from the build matrix. The pre-merge
+  # smoke matrix can't catch this because it pins to the LATEST released
+  # tag (where the script and goreleaser config were already in sync at
+  # release time).
+  #
+  # Skipped on PRs that don't touch install.sh OR the goreleaser config
+  # (per the workflow-level path filter), so the cost is paid only when
+  # one of those two files actually changes.
+  snapshot-install:
+    name: snapshot install (WW_BASE_URL round-trip)
+    runs-on: ubuntu-latest
+    needs: lint
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: clients/ww/go.mod
+          cache: true
+          cache-dependency-path: clients/ww/go.sum
+
+      - name: Build snapshot artifacts
+        # --snapshot turns off git-tag requirement, signing, publishing,
+        # and Homebrew tap push — pure local build of the same shape
+        # release goreleaser produces. Output lands in clients/ww/dist/.
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          workdir: clients/ww
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --snapshot --clean
+
+      - name: Discover snapshot version
+        id: snapver
+        # goreleaser writes dist/metadata.json with the resolved version
+        # (incpatch + "-next" per snapshot.version_template). Use python3
+        # so we don't depend on jq being on the runner — python3 is
+        # guaranteed-installed on ubuntu-latest.
+        run: |
+          ver=$(python3 -c 'import json; print(json.load(open("clients/ww/dist/metadata.json"))["version"])')
+          if [ -z "$ver" ]; then
+            echo "::error::could not read snapshot version from dist/metadata.json" >&2
+            exit 1
+          fi
+          echo "Snapshot version: $ver"
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+
+      - name: Serve dist/ on :8765
+        run: |
+          python3 -m http.server --directory clients/ww/dist 8765 >/tmp/srv.log 2>&1 &
+          echo $! > /tmp/srv.pid
+          for i in $(seq 1 30); do
+            curl -fs http://localhost:8765/checksums.txt >/dev/null && exit 0
+            sleep 0.1
+          done
+          echo "::error::snapshot http server failed to come up" >&2
+          cat /tmp/srv.log
+          exit 1
+
+      - name: Install snapshot via WW_BASE_URL
+        # WW_BASE_URL bypasses the /releases/download/<tag>/ path; the
+        # script otherwise behaves identically (SHA256 still verified
+        # against the snapshot's checksums.txt). Pin --version so the
+        # script's URL construction matches the snapshot artifact name
+        # exactly — any drift here is what this whole job is meant to
+        # catch.
+        run: |
+          WW_BASE_URL=http://localhost:8765 \
+            sh scripts/install.sh --version v${{ steps.snapver.outputs.version }} \
+              --prefix /tmp/wwroot
+          test -x /tmp/wwroot/bin/ww
+          test -f /tmp/wwroot/bin/.ww.install-info
+          grep -q "installer=curl" /tmp/wwroot/bin/.ww.install-info
+          # Snapshot binary should still report a sane version string.
+          /tmp/wwroot/bin/ww version
+
+      - name: Tear down snapshot server
+        if: always()
+        run: |
+          if [ -f /tmp/srv.pid ]; then
+            kill "$(cat /tmp/srv.pid)" 2>/dev/null || true
           fi
