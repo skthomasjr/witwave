@@ -1280,7 +1280,9 @@ func containerMetricsPort(overrideMetricsPort int32, appPort int32) int32 {
 		// collision detection in validateContainerMetricsPorts refuses
 		// to render a pod that would produce duplicates. The CRD
 		// validating webhook should reject appPort >= 64536 upstream;
-		// TODO(#1222): tighten the appPort upper bound in the webhook.
+		// #1222 / #1669 / #1699: webhook now rejects this; kept as
+		// defence-in-depth for direct apiserver writes that bypass
+		// admission.
 		return 65535
 	}
 	if p <= 0 {
@@ -1301,8 +1303,9 @@ func containerMetricsPort(overrideMetricsPort int32, appPort int32) int32 {
 // pod's single metrics endpoint by convention and backends that need
 // their own scrape target set spec.metricsPort on the backend. Moving
 // this validation stricter would be a behaviour change, not a bug fix.
-// TODO(#1222): tighten spec.port / backend.port upper bounds in the
-// validating webhook so the clamp code path is unreachable.
+// #1222 / #1669 / #1699: the validating webhook now tightens the upper
+// bounds; this validator is the runtime defence-in-depth for direct
+// apiserver writes that bypass admission.
 func validateContainerMetricsPorts(agent *witwavev1alpha1.WitwaveAgent) error {
 	_, err := metricsPortClampStatus(agent)
 	return err

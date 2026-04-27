@@ -495,8 +495,11 @@ func (r *WitwaveAgentReconciler) applyDeployment(ctx context.Context, agent *wit
 	// #1222: refuse to render a pod whose harness + backend containers
 	// would collide on a computed metrics port. Failing fast here is
 	// safer than letting the Deployment land and crash-loop on bind.
-	// TODO(#1222): tighten appPort range in the validating webhook so
-	// this guard becomes a defence-in-depth rather than a front-line check.
+	// #1222 / #1669 / #1699: the validating webhook's validateAppPorts
+	// rejects spec.port / backend.port ≥ 64536 (and ≥ 63536 when metrics
+	// is enabled), so this clamp code is now defence-in-depth — kept
+	// for direct apiserver writes that bypass admission (e.g.
+	// `kubectl apply --validate=false`).
 	clampedContainers, clampErr := metricsPortClampStatus(agent)
 	if clampErr != nil {
 		return fmt.Errorf("metrics port validation: %w", clampErr)
