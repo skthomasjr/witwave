@@ -3579,10 +3579,13 @@ class AgentExecutor(A2AAgentExecutor):
 
         async def _emit_chunk(text: str) -> None:
             nonlocal _chunks_emitted
-            _chunks_emitted += 1
-            if backend_streaming_events_emitted_total is not None:
-                backend_streaming_events_emitted_total.labels(**_LABELS, model=_streaming_label_model).inc()
-            # Per-session SSE drill-down (#1110 phase 4).
+            # Per-session SSE drill-down (#1110 phase 4). Mirrors the codex
+            # shape: session_stream publish stays before A2A enqueue (it's
+            # allowed to fire ahead of delivery), but the chunks_emitted
+            # counter and streaming-events metric only advance after the
+            # enqueue succeeds (#1721, mirrors codex #1199). Counting
+            # before enqueue overstated traffic on enqueue failure and
+            # caused _chunks_emitted to skip the aggregated final-flush.
             if _sess_stream is not None:
                 try:
                     _sess_stream.publish_chunk(
@@ -3598,6 +3601,9 @@ class AgentExecutor(A2AAgentExecutor):
             # Await directly — see backends/claude/executor.py _emit_chunk for the
             # rationale (event ordering + exception surfacing).
             await event_queue.enqueue_event(new_agent_text_message(text))
+            _chunks_emitted += 1
+            if backend_streaming_events_emitted_total is not None:
+                backend_streaming_events_emitted_total.labels(**_LABELS, model=_streaming_label_model).inc()
 
         from otel import start_span as _start_span, set_span_error as _set_span_error
         _otel_span = None
