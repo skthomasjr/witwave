@@ -42,7 +42,9 @@ See `metrics.py` for the live catalog.
 | ----------------------------- | ------------------------------------------------------------------------------------------------- |
 | `POST /`                      | A2A JSON-RPC task endpoint                                                                        |
 | `GET /.well-known/agent.json` | A2A agent discovery                                                                               |
-| `GET /health`                 | Health check                                                                                      |
+| `GET /health/start`           | Startup probe — 200 once initial loads complete; 503 `{"status":"starting"}` while warming up (#1686). K8s `startupProbe` should target this. |
+| `GET /health`                 | Liveness probe — 200 once the process is up, even mid-init                                                                                   |
+| `GET /health/ready`           | Readiness probe — 200 when fully ready; 503 while initializing or in a boot-degraded state (#1672)                                           |
 | `GET /metrics`                | Prometheus metrics                                                                                |
 | `GET /conversations`          | Conversation log (JSONL, filterable by `since`/`limit`)                                           |
 | `GET /trace`                  | Trace log (JSONL, filterable by `since`/`limit`)                                                  |

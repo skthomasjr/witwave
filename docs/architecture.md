@@ -289,7 +289,9 @@ the dashboard pod fans out directly to each agent's endpoints and owns cross-age
 
 Each backend exposes the same A2A surface plus:
 
-- `/health` — health check endpoint
+- `/health/start` — startup probe (#1686): 200 once initial loads complete, 503 `{"status":"starting"}` while warming up
+- `/health` — liveness probe: 200 once the process is up
+- `/health/ready` — readiness probe: 200 when fully ready, 503 while initializing or boot-degraded
 - `/metrics` — Prometheus metrics endpoint
 - `/mcp` — MCP JSON-RPC server (`initialize`, `tools/list`, `tools/call`) for MCP hosts (Claude Desktop, Cursor, VS Code
   extensions, etc.)
@@ -364,8 +366,9 @@ Installation commands live with the artifacts they deploy:
 
 All infrastructure decisions are evaluated against Kubernetes compatibility:
 
-- Health probes follow the three-probe model (`/health/start`, `/health/live`, `/health/ready`) for harness;
-  `/health` for backend containers.
+- Health probes follow the three-probe model (`/health/start`, `/health/live`, `/health/ready`) on harness, and
+  (`/health/start`, `/health`, `/health/ready`) on backend containers — backends use `/health` (not `/health/live`) for
+  the liveness route, but the three-probe shape is consistent across the platform (#1686).
 - Configuration injected via env vars and mounted `ConfigMap`/`Secret` volumes.
 - Backend URL configurable via `A2A_URL_<ID>` env var — supports same-pod sidecar (`http://localhost:8010`)
   or out-of-pod via Service DNS (`http://claude-svc:8000`) without config file changes.
