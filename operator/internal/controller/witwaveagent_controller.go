@@ -1220,8 +1220,37 @@ func (r *WitwaveAgentReconciler) applyBackendPVCs(ctx context.Context, agent *wi
 	// IsControlledBy before deleting to never touch foreign or shared PVCs.
 	// Distinct from #490's teardown path, which runs only when the whole
 	// agent is disabled.
+	//
+	// #1725: paginate the List (mirrors the #1656 sweep applied to
+	// reconcileConfigMaps + teardownDisabledAgent + reconcileCredentialsSecrets)
+	// so a namespace holding thousands of label-matched PVCs doesn't pin the
+	// apiserver watchcache or trip apiserver chunk limits.
 	existing := &corev1.PersistentVolumeClaimList{}
-	if err := r.List(ctx, existing,
+	if err := paginatedList(ctx, r.Client, existing, func() error {
+		for i := range existing.Items {
+			pvc := &existing.Items[i]
+			if _, wanted := desired[pvc.Name]; wanted {
+				continue
+			}
+			// Skip the operator-managed shared-storage PVC — it is
+			// reconciled by reconcileSharedStoragePVC (#481) and carries a
+			// distinct `component=shared-storage` label. Without this guard
+			// the two reconcilers would reciprocally delete each other's
+			// PVCs since both match name+managed-by.
+			if pvc.Labels[labelComponent] == componentSharedStorage {
+				continue
+			}
+			if !metav1.IsControlledBy(pvc, agent) {
+				// Defensive: another controller owns this PVC despite the
+				// labels matching. Leave it alone.
+				continue
+			}
+			if err := r.Delete(ctx, pvc); err != nil && !apierrors.IsNotFound(err) {
+				return fmt.Errorf("delete stale PVC %s: %w", pvc.Name, err)
+			}
+		}
+		return nil
+	},
 		client.InNamespace(agent.Namespace),
 		client.MatchingLabels{
 			labelName:      agent.Name,
@@ -1229,28 +1258,6 @@ func (r *WitwaveAgentReconciler) applyBackendPVCs(ctx context.Context, agent *wi
 		},
 	); err != nil {
 		return fmt.Errorf("list owned PVCs for cleanup: %w", err)
-	}
-	for i := range existing.Items {
-		pvc := &existing.Items[i]
-		if _, wanted := desired[pvc.Name]; wanted {
-			continue
-		}
-		// Skip the operator-managed shared-storage PVC — it is
-		// reconciled by reconcileSharedStoragePVC (#481) and carries a
-		// distinct `component=shared-storage` label. Without this guard
-		// the two reconcilers would reciprocally delete each other's
-		// PVCs since both match name+managed-by.
-		if pvc.Labels[labelComponent] == componentSharedStorage {
-			continue
-		}
-		if !metav1.IsControlledBy(pvc, agent) {
-			// Defensive: another controller owns this PVC despite the
-			// labels matching. Leave it alone.
-			continue
-		}
-		if err := r.Delete(ctx, pvc); err != nil && !apierrors.IsNotFound(err) {
-			return fmt.Errorf("delete stale PVC %s: %w", pvc.Name, err)
-		}
 	}
 	return nil
 }
