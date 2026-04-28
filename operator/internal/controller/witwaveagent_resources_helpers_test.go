@@ -191,3 +191,58 @@ func TestAgentConfigMapNameBackendScope(t *testing.T) {
 		t.Errorf("backend-scope: want iris-claude-config, got %q", got)
 	}
 }
+
+// ----- corsEnv (#1748) ----------------------------------------------
+
+func TestCorsEnv_NilReturnsNil(t *testing.T) {
+	a := &witwavev1alpha1.WitwaveAgent{}
+	if got := corsEnv(a); got != nil {
+		t.Errorf("expected nil, got %+v", got)
+	}
+}
+
+func TestCorsEnv_EmptyAllowOriginsReturnsNil(t *testing.T) {
+	a := &witwavev1alpha1.WitwaveAgent{}
+	a.Spec.Cors = &witwavev1alpha1.CorsSpec{}
+	if got := corsEnv(a); got != nil {
+		t.Errorf("expected nil for empty origins, got %+v", got)
+	}
+}
+
+func TestCorsEnv_RendersAllowOriginsCommaJoined(t *testing.T) {
+	a := &witwavev1alpha1.WitwaveAgent{}
+	a.Spec.Cors = &witwavev1alpha1.CorsSpec{
+		AllowOrigins: []string{"https://a.example", "https://b.example"},
+	}
+	got := corsEnv(a)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 env var, got %d", len(got))
+	}
+	if got[0].Name != "CORS_ALLOW_ORIGINS" {
+		t.Errorf("name: got %q want CORS_ALLOW_ORIGINS", got[0].Name)
+	}
+	if got[0].Value != "https://a.example,https://b.example" {
+		t.Errorf("value: got %q want https://a.example,https://b.example", got[0].Value)
+	}
+}
+
+func TestCorsEnv_AllowWildcardEmitsAcknowledgement(t *testing.T) {
+	a := &witwavev1alpha1.WitwaveAgent{}
+	a.Spec.Cors = &witwavev1alpha1.CorsSpec{
+		AllowOrigins:  []string{"*"},
+		AllowWildcard: true,
+	}
+	got := corsEnv(a)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 env vars, got %d", len(got))
+	}
+	wildcard := false
+	for _, e := range got {
+		if e.Name == "CORS_ALLOW_WILDCARD" && e.Value == "true" {
+			wildcard = true
+		}
+	}
+	if !wildcard {
+		t.Errorf("expected CORS_ALLOW_WILDCARD=true, got %+v", got)
+	}
+}

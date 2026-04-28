@@ -1492,6 +1492,30 @@ spec:
                   - name
                   type: object
                 type: array
+              cors:
+                description: |-
+                  Cors mirrors the chart's `cors.*` block (#763, #1748). When set,
+                  the operator stamps CORS_ALLOW_ORIGINS (and CORS_ALLOW_WILDCARD
+                  when explicitly opted in) onto the harness container. Per-container
+                  spec.env still wins on key collision since it's later-merged.
+                properties:
+                  allowOrigins:
+                    description: |-
+                      AllowOrigins is the comma-joined list rendered as
+                      CORS_ALLOW_ORIGINS on harness. Each entry must be either a
+                      concrete origin (`https://example.com`) or the literal `*`.
+                      `*` is permitted only when AllowWildcard is true.
+                    items:
+                      type: string
+                    type: array
+                  allowWildcard:
+                    description: |-
+                      AllowWildcard is the explicit acknowledgement that wildcard
+                      origins (`*`) are intentional. Mirrors chart's
+                      CORS_ALLOW_WILDCARD env var (#701). Without this, a `*` entry
+                      in AllowOrigins is refused.
+                    type: boolean
+                type: object
               dashboard:
                 description: |-
                   Dashboard optionally deploys the Vue 3 dashboard (#470) alongside the

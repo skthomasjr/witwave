@@ -321,3 +321,55 @@ func TestValidatorNilClientIsBackwardsCompatible(t *testing.T) {
 		t.Fatalf("nil-client validator must short-circuit; got: %v", err)
 	}
 }
+
+// ----- CORS validation (#1748) ----------------------------------------
+
+func TestValidatorRejectsWildcardCorsWithoutAck(t *testing.T) {
+	v := &WitwaveAgentCustomValidator{}
+	agent := &witwavev1alpha1.WitwaveAgent{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "iris"},
+		Spec: witwavev1alpha1.WitwaveAgentSpec{
+			Cors: &witwavev1alpha1.CorsSpec{
+				AllowOrigins: []string{"*"},
+			},
+		},
+	}
+	_, err := v.ValidateCreate(context.Background(), agent)
+	if err == nil {
+		t.Fatal("expected error for wildcard origin without allowWildcard ack")
+	}
+	if !strings.Contains(err.Error(), "allowWildcard") {
+		t.Errorf("expected error to mention allowWildcard, got: %v", err)
+	}
+}
+
+func TestValidatorAllowsWildcardCorsWithAck(t *testing.T) {
+	v := &WitwaveAgentCustomValidator{}
+	agent := &witwavev1alpha1.WitwaveAgent{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "iris"},
+		Spec: witwavev1alpha1.WitwaveAgentSpec{
+			Cors: &witwavev1alpha1.CorsSpec{
+				AllowOrigins:  []string{"*"},
+				AllowWildcard: true,
+			},
+		},
+	}
+	if _, err := v.ValidateCreate(context.Background(), agent); err != nil {
+		t.Errorf("expected no error with allowWildcard=true, got: %v", err)
+	}
+}
+
+func TestValidatorAllowsConcreteCorsOrigins(t *testing.T) {
+	v := &WitwaveAgentCustomValidator{}
+	agent := &witwavev1alpha1.WitwaveAgent{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "iris"},
+		Spec: witwavev1alpha1.WitwaveAgentSpec{
+			Cors: &witwavev1alpha1.CorsSpec{
+				AllowOrigins: []string{"https://a.example", "https://b.example"},
+			},
+		},
+	}
+	if _, err := v.ValidateCreate(context.Background(), agent); err != nil {
+		t.Errorf("expected no error for concrete origins, got: %v", err)
+	}
+}

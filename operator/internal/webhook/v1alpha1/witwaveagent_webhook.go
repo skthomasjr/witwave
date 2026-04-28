@@ -278,6 +278,36 @@ func validateWitwaveAgent(agent *witwavev1alpha1.WitwaveAgent) error {
 	if err := validateAppPorts(agent); err != nil {
 		return err
 	}
+	if err := validateCors(agent); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateCors mirrors the chart's CORS guard (#763, #1748). When the
+// spec lists `*` in cors.allowOrigins, the operator requires the
+// explicit cors.allowWildcard=true acknowledgement — a wildcard in
+// CORS_ALLOW_ORIGINS combined with credentialed routes (`/triggers`,
+// `/conversations`) is a documented disclosure-hole the chart's #763
+// fail-render guard exists to prevent.
+func validateCors(agent *witwavev1alpha1.WitwaveAgent) error {
+	if agent.Spec.Cors == nil || len(agent.Spec.Cors.AllowOrigins) == 0 {
+		return nil
+	}
+	hasWildcard := false
+	for _, o := range agent.Spec.Cors.AllowOrigins {
+		if o == "*" {
+			hasWildcard = true
+			break
+		}
+	}
+	if hasWildcard && !agent.Spec.Cors.AllowWildcard {
+		return apierrors.NewForbidden(witwaveagentGR, agent.Name, fmt.Errorf(
+			"spec.cors.allowOrigins contains \"*\" without spec.cors.allowWildcard=true; " +
+				"a wildcard origin combined with credentialed routes (/triggers, /conversations) " +
+				"is a disclosure-hole — set allowWildcard=true to acknowledge the risk explicitly (#763, #1748)",
+		))
+	}
 	return nil
 }
 

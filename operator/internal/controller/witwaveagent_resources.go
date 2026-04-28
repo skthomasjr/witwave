@@ -668,12 +668,16 @@ func buildDeployment(agent *witwavev1alpha1.WitwaveAgent, appVersion string, pro
 		// operator-managed agents don't require hand-crafted spec.env per
 		// container. serviceName mirrors the chart helper
 		// ("harness-<agent>" / "<agent>-<backend>").
-		Env: append(append([]corev1.EnvVar{
+		// #1748: CORS env mirrors the chart's cors.* block — stamped
+		// before agent.Spec.Env so explicit per-container overrides
+		// still win on key collision (chart parity, late-merge wins).
+		Env: append(append(append([]corev1.EnvVar{
 			{Name: "AGENT_NAME", Value: agent.Name},
 			{Name: "HARNESS_PORT", Value: fmt.Sprintf("%d", harnessPort)},
 			{Name: "METRICS_ENABLED", Value: metricsEnabledValue(agent)},
 			{Name: "METRICS_PORT", Value: fmt.Sprintf("%d", harnessMetricsPort)},
 		}, otelEnv(agent, fmt.Sprintf("harness-%s", agent.Name))...),
+			corsEnv(agent)...),
 			agent.Spec.Env...),
 		EnvFrom:   agent.Spec.EnvFrom,
 		Resources: agent.Spec.Resources,
@@ -1324,6 +1328,31 @@ func otelEnv(agent *witwavev1alpha1.WitwaveAgent, serviceName string) []corev1.E
 	}
 	if serviceName != "" {
 		env = append(env, corev1.EnvVar{Name: "OTEL_SERVICE_NAME", Value: serviceName})
+	}
+	return env
+}
+
+// corsEnv mirrors charts/witwave/templates/deployment.yaml's CORS env
+// stamping (#763, #1748). When spec.cors.allowOrigins is non-empty,
+// CORS_ALLOW_ORIGINS is rendered as the comma-joined list. When
+// spec.cors.allowWildcard is true, CORS_ALLOW_WILDCARD=true is also
+// rendered — matching the chart's #701 explicit-acknowledgement knob
+// for wildcard origins. Returns nil when the spec doesn't request
+// CORS so callers can unconditionally append.
+//
+// The wildcard-with-Ingress fail-render guard the chart enforces
+// (deployment.yaml:191) is enforced at admission via the validating
+// webhook so misconfigurations are caught before they hit the env.
+func corsEnv(agent *witwavev1alpha1.WitwaveAgent) []corev1.EnvVar {
+	c := agent.Spec.Cors
+	if c == nil || len(c.AllowOrigins) == 0 {
+		return nil
+	}
+	env := []corev1.EnvVar{
+		{Name: "CORS_ALLOW_ORIGINS", Value: strings.Join(c.AllowOrigins, ",")},
+	}
+	if c.AllowWildcard {
+		env = append(env, corev1.EnvVar{Name: "CORS_ALLOW_WILDCARD", Value: "true"})
 	}
 	return env
 }

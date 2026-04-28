@@ -703,6 +703,13 @@ type WitwaveAgentSpec struct {
 	// +optional
 	PrometheusRule *PrometheusRuleSpec `json:"prometheusRule,omitempty"`
 
+	// Cors mirrors the chart's `cors.*` block (#763, #1748). When set,
+	// the operator stamps CORS_ALLOW_ORIGINS (and CORS_ALLOW_WILDCARD
+	// when explicitly opted in) onto the harness container. Per-container
+	// spec.env still wins on key collision since it's later-merged.
+	// +optional
+	Cors *CorsSpec `json:"cors,omitempty"`
+
 	// MetricsPort is DEPRECATED (#836). Chart #687 moved harness and backend
 	// containers to a per-container metrics port = app_port + 1000 so two
 	// containers in the same pod no longer collide on :9000. The operator
@@ -1136,6 +1143,28 @@ type PrometheusRuleSpec struct {
 	// to select PrometheusRules (e.g. `release: kube-prometheus-stack`).
 	// +optional
 	AdditionalLabels map[string]string `json:"additionalLabels,omitempty"`
+}
+
+// CorsSpec mirrors the chart's `cors.*` block (#763, #1748). The
+// operator stamps CORS_ALLOW_ORIGINS on the harness container when
+// AllowOrigins is non-empty. AllowWildcard is the chart's explicit
+// acknowledgement knob for `*` origins; without it, a `*` entry is
+// rejected at admission so an operator-only install does not silently
+// reproduce the disclosure-hole the chart's #763 guard prevents.
+type CorsSpec struct {
+	// AllowOrigins is the comma-joined list rendered as
+	// CORS_ALLOW_ORIGINS on harness. Each entry must be either a
+	// concrete origin (`https://example.com`) or the literal `*`.
+	// `*` is permitted only when AllowWildcard is true.
+	// +optional
+	AllowOrigins []string `json:"allowOrigins,omitempty"`
+
+	// AllowWildcard is the explicit acknowledgement that wildcard
+	// origins (`*`) are intentional. Mirrors chart's
+	// CORS_ALLOW_WILDCARD env var (#701). Without this, a `*` entry
+	// in AllowOrigins is refused.
+	// +optional
+	AllowWildcard bool `json:"allowWildcard,omitempty"`
 }
 
 // MetricsSpec toggles Prometheus scrape behaviour for the agent.
