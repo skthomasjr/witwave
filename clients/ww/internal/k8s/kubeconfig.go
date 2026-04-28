@@ -116,6 +116,15 @@ func NewResolver(opts Options) (*Resolver, error) {
 // Target returns a display-oriented snapshot of where ww is about to act.
 func (r *Resolver) Target() *Target {
 	ctx := r.raw.Contexts[r.resolvedCtx]
+	// NewResolver verifies the context key exists in raw.Contexts but not
+	// that the value itself is non-nil. A kubeconfig with a nil context
+	// entry is malformed but should not panic Target().
+	if ctx == nil {
+		return &Target{
+			Context:   r.resolvedCtx,
+			Namespace: "default",
+		}
+	}
 	cluster := r.raw.Clusters[ctx.Cluster]
 
 	ns := r.opts.Namespace
