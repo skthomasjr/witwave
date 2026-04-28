@@ -9,7 +9,7 @@ import (
 )
 
 func TestDelete_HappyPath_NoFlags(t *testing.T) {
-	cr := seedWorkspace("witwave", "default", nil)
+	cr := seedWitwaveWorkspace("witwave", "default", nil)
 	dyn := makeFakeDynamic(cr)
 	t.Cleanup(withFakeClients(t, dyn, makeFakeK8s()))
 	out := captureOut()
@@ -35,7 +35,7 @@ func TestDelete_HappyPath_NoFlags(t *testing.T) {
 }
 
 func TestDelete_BannerSurfacesBoundAgents(t *testing.T) {
-	cr := seedWorkspaceWithStatus("witwave", "default", nil, func(status map[string]interface{}) {
+	cr := seedWitwaveWorkspaceWithStatus("witwave", "default", nil, func(status map[string]interface{}) {
 		status["boundAgents"] = []interface{}{
 			map[string]interface{}{"name": "iris", "namespace": "default"},
 		}
@@ -73,7 +73,7 @@ func TestDelete_NotFound(t *testing.T) {
 }
 
 func TestDelete_DryRun_DoesNotCallAPI(t *testing.T) {
-	cr := seedWorkspace("witwave", "default", nil)
+	cr := seedWitwaveWorkspace("witwave", "default", nil)
 	dyn := makeFakeDynamic(cr)
 	t.Cleanup(withFakeClients(t, dyn, makeFakeK8s()))
 	out := captureOut()

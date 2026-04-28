@@ -230,41 +230,41 @@ var (
 		[]string{"namespace"},
 	)
 
-	// workspaceReconcileTotal counts every Workspace reconcile pass by
+	// witwaveWorkspaceReconcileTotal counts every WitwaveWorkspace reconcile pass by
 	// outcome. ``outcome`` is one of:
 	//   - "success"        — the reconcile completed cleanly
 	//   - "error"          — at least one sub-step returned an error
 	//   - "delete_blocked" — the deletion path refused to clear the
 	//     finalizer because Status.BoundAgents is non-empty
-	//   - "deleted"        — the Workspace was successfully deleted
-	workspaceReconcileTotal = prometheus.NewCounterVec(
+	//   - "deleted"        — the WitwaveWorkspace was successfully deleted
+	witwaveWorkspaceReconcileTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "witwaveworkspace_reconcile_total",
-			Help: "Total Workspace reconcile passes, labelled by outcome.",
+			Help: "Total WitwaveWorkspace reconcile passes, labelled by outcome.",
 		},
 		[]string{"outcome"},
 	)
 
-	// workspaceVolumesProvisioned reports the count of Spec.Volumes
-	// entries the operator has provisioned per Workspace. Mirrors
+	// witwaveWorkspaceVolumesProvisioned reports the count of Spec.Volumes
+	// entries the operator has provisioned per WitwaveWorkspace. Mirrors
 	// kube_state_metrics' gauge-per-CR convention so dashboards can
 	// sum across instances for cluster-wide totals.
-	workspaceVolumesProvisioned = prometheus.NewGaugeVec(
+	witwaveWorkspaceVolumesProvisioned = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "witwaveworkspace_volumes_provisioned",
-			Help: "Number of PVCs provisioned for this Workspace's Spec.Volumes entries.",
+			Help: "Number of PVCs provisioned for this WitwaveWorkspace's Spec.Volumes entries.",
 		},
 		[]string{"namespace", "name"},
 	)
 
-	// workspaceBoundAgents reports the cardinality of
-	// Status.BoundAgents per Workspace. Operators can alert on
-	// "Workspace has been bound for > N minutes without an agent" or
+	// witwaveWorkspaceBoundAgents reports the cardinality of
+	// Status.BoundAgents per WitwaveWorkspace. Operators can alert on
+	// "WitwaveWorkspace has been bound for > N minutes without an agent" or
 	// "agent count regressed" without scraping the CR subresource.
-	workspaceBoundAgents = prometheus.NewGaugeVec(
+	witwaveWorkspaceBoundAgents = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "witwaveworkspace_bound_agents",
-			Help: "Number of WitwaveAgents currently referencing this Workspace via Spec.WorkspaceRefs.",
+			Help: "Number of WitwaveAgents currently referencing this WitwaveWorkspace via Spec.WorkspaceRefs.",
 		},
 		[]string{"namespace", "name"},
 	)
@@ -302,8 +302,8 @@ func init() {
 		WitwaveAgentCredentialWatchListErrorsTotal,
 		witwaveagentManifestOwnerRefSkippedNoUIDTotal,
 		WitwaveAgentLeaderElectionRenewFailuresTotal,
-		workspaceReconcileTotal,
-		workspaceVolumesProvisioned,
-		workspaceBoundAgents,
+		witwaveWorkspaceReconcileTotal,
+		witwaveWorkspaceVolumesProvisioned,
+		witwaveWorkspaceBoundAgents,
 	)
 }

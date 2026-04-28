@@ -42,7 +42,7 @@ func withFakeClients(t *testing.T, dyn dynamic.Interface, k8sClient kubernetes.I
 	return func() { clientFactory = original }
 }
 
-// makeFakeDynamic builds a dynamic.Interface that serves both Workspace
+// makeFakeDynamic builds a dynamic.Interface that serves both WitwaveWorkspace
 // and WitwaveAgent CRs. The unified scheme means a single dyn fake can
 // drive bind/unbind tests (which touch agents) alongside the workspace
 // verb tests (which touch workspaces).
@@ -61,10 +61,10 @@ func makeFakeK8s(objs ...runtime.Object) kubernetes.Interface {
 	return k8sfake.NewSimpleClientset(objs...)
 }
 
-// seedWorkspace returns an unstructured Workspace CR the fake dynamic
+// seedWitwaveWorkspace returns an unstructured WitwaveWorkspace CR the fake dynamic
 // client can round-trip. The mutateSpec closure lets a test add volumes,
 // secrets, configFiles, or status without nesting a giant literal.
-func seedWorkspace(name, namespace string, mutateSpec func(spec map[string]interface{})) *unstructured.Unstructured {
+func seedWitwaveWorkspace(name, namespace string, mutateSpec func(spec map[string]interface{})) *unstructured.Unstructured {
 	spec := map[string]interface{}{}
 	if mutateSpec != nil {
 		mutateSpec(spec)
@@ -82,11 +82,11 @@ func seedWorkspace(name, namespace string, mutateSpec func(spec map[string]inter
 	}
 }
 
-// seedWorkspaceWithStatus mirrors seedWorkspace but also sets a status
+// seedWitwaveWorkspaceWithStatus mirrors seedWitwaveWorkspace but also sets a status
 // stanza — handy for delete/status tests that assert on bound-agent
 // rendering or condition reporting.
-func seedWorkspaceWithStatus(name, namespace string, mutateSpec, mutateStatus func(map[string]interface{})) *unstructured.Unstructured {
-	cr := seedWorkspace(name, namespace, mutateSpec)
+func seedWitwaveWorkspaceWithStatus(name, namespace string, mutateSpec, mutateStatus func(map[string]interface{})) *unstructured.Unstructured {
+	cr := seedWitwaveWorkspace(name, namespace, mutateSpec)
 	status := map[string]interface{}{}
 	if mutateStatus != nil {
 		mutateStatus(status)
@@ -132,14 +132,14 @@ func seedAgentRef(name, namespace string, mutateSpec func(spec map[string]interf
 	}
 }
 
-// readWorkspace fetches a seeded CR from the fake client.
-func readWorkspace(t *testing.T, dyn dynamic.Interface, namespace, name string) *unstructured.Unstructured {
+// readWitwaveWorkspace fetches a seeded CR from the fake client.
+func readWitwaveWorkspace(t *testing.T, dyn dynamic.Interface, namespace, name string) *unstructured.Unstructured {
 	t.Helper()
 	cr, err := dyn.Resource(GVR()).Namespace(namespace).Get(
 		context.Background(), name, metav1.GetOptions{},
 	)
 	if err != nil {
-		t.Fatalf("readWorkspace(%s/%s): %v", namespace, name, err)
+		t.Fatalf("readWitwaveWorkspace(%s/%s): %v", namespace, name, err)
 	}
 	return cr
 }

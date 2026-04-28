@@ -21,11 +21,11 @@ func TestList_Empty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	mustContain(t, out.String(), "No Workspaces found in namespace")
+	mustContain(t, out.String(), "No WitwaveWorkspaces found in namespace")
 }
 
 func TestList_Table_HappyPath(t *testing.T) {
-	a := seedWorkspaceWithStatus("alpha", "default", func(spec map[string]interface{}) {
+	a := seedWitwaveWorkspaceWithStatus("alpha", "default", func(spec map[string]interface{}) {
 		spec["volumes"] = []interface{}{
 			map[string]interface{}{"name": "source", "size": "10Gi"},
 		}
@@ -37,7 +37,7 @@ func TestList_Table_HappyPath(t *testing.T) {
 			map[string]interface{}{"name": "iris", "namespace": "default"},
 		}
 	})
-	b := seedWorkspace("beta", "default", nil)
+	b := seedWitwaveWorkspace("beta", "default", nil)
 	dyn := makeFakeDynamic(a, b)
 	t.Cleanup(withFakeClients(t, dyn, makeFakeK8s()))
 
@@ -60,8 +60,8 @@ func TestList_Table_HappyPath(t *testing.T) {
 }
 
 func TestList_AllNamespaces(t *testing.T) {
-	a := seedWorkspace("alpha", "ns-a", nil)
-	b := seedWorkspace("beta", "ns-b", nil)
+	a := seedWitwaveWorkspace("alpha", "ns-a", nil)
+	b := seedWitwaveWorkspace("beta", "ns-b", nil)
 	dyn := makeFakeDynamic(a, b)
 	t.Cleanup(withFakeClients(t, dyn, makeFakeK8s()))
 	out := captureOut()
@@ -79,7 +79,7 @@ func TestList_AllNamespaces(t *testing.T) {
 }
 
 func TestList_YAML_RoundTrips(t *testing.T) {
-	a := seedWorkspace("alpha", "default", func(spec map[string]interface{}) {
+	a := seedWitwaveWorkspace("alpha", "default", func(spec map[string]interface{}) {
 		spec["volumes"] = []interface{}{
 			map[string]interface{}{"name": "source", "size": "10Gi"},
 		}
@@ -96,13 +96,13 @@ func TestList_YAML_RoundTrips(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	body := out.String()
-	mustContain(t, body, "kind: WorkspaceList")
+	mustContain(t, body, "kind: WitwaveWorkspaceList")
 	mustContain(t, body, "name: alpha")
 	mustContain(t, body, "size: 10Gi")
 }
 
 func TestList_JSON_RoundTrips(t *testing.T) {
-	a := seedWorkspace("alpha", "default", nil)
+	a := seedWitwaveWorkspace("alpha", "default", nil)
 	dyn := makeFakeDynamic(a)
 	t.Cleanup(withFakeClients(t, dyn, makeFakeK8s()))
 	out := captureOut()
@@ -115,13 +115,13 @@ func TestList_JSON_RoundTrips(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	body := out.String()
-	if !strings.Contains(body, `"kind": "WorkspaceList"`) {
+	if !strings.Contains(body, `"kind": "WitwaveWorkspaceList"`) {
 		t.Errorf("expected JSON envelope; got\n%s", body)
 	}
 }
 
 func TestReadPhase_DerivesFromConditions(t *testing.T) {
-	cr := seedWorkspaceWithStatus("a", "default", nil, func(status map[string]interface{}) {
+	cr := seedWitwaveWorkspaceWithStatus("a", "default", nil, func(status map[string]interface{}) {
 		status["conditions"] = []interface{}{
 			map[string]interface{}{"type": "Ready", "status": "False", "reason": "ProvisioningFailed"},
 		}
@@ -131,8 +131,8 @@ func TestReadPhase_DerivesFromConditions(t *testing.T) {
 	}
 }
 
-func TestWorkspaceSummary_CountsBoundAgents(t *testing.T) {
-	cr := seedWorkspaceWithStatus("a", "default", nil, func(status map[string]interface{}) {
+func TestWitwaveWorkspaceSummary_CountsBoundAgents(t *testing.T) {
+	cr := seedWitwaveWorkspaceWithStatus("a", "default", nil, func(status map[string]interface{}) {
 		status["boundAgents"] = []interface{}{
 			map[string]interface{}{"name": "iris", "namespace": "default"},
 			map[string]interface{}{"name": "nova", "namespace": "default"},

@@ -9,7 +9,7 @@ intended as an alternative install path once the CRD is stable. The Helm chart r
 while the operator is in `v1alpha1`.
 
 > **Status:** v1alpha1, published to GHCR, installable via the `ww` CLI or raw Helm. `WitwaveAgent`, `WitwavePrompt`,
-> and `Workspace` resources are all in-tree. Git-sync sidecars, dashboard `Deployment`/`Service`/ `Ingress` (#1741),
+> and `WitwaveWorkspace` resources are all in-tree. Git-sync sidecars, dashboard `Deployment`/`Service`/ `Ingress` (#1741),
 > per-MCP-tool and per-dashboard NetworkPolicies (#1743), and an optional per-agent `PrometheusRule` (#1746) all render
 > as part of the operator's reconcile surface today.
 
@@ -294,21 +294,21 @@ The reconciler tracks materialization (did the ConfigMap apply?) — NOT runtime
 fire?). Execution telemetry lives in Prometheus / conversation.jsonl / tool-activity.jsonl / the dashboard views. See
 request [#642](https://github.com/witwave-ai/witwave/issues/642) for the runtime-status proposal.
 
-## The `Workspace` resource
+## The `WitwaveWorkspace` resource
 
-A `Workspace` provisions shared volumes, projects pre-created Secrets, and renders ConfigMap-backed files that the
+A `WitwaveWorkspace` provisions shared volumes, projects pre-created Secrets, and renders ConfigMap-backed files that the
 operator stamps onto every `WitwaveAgent` whose `spec.workspaceRefs[]` references it. Unlike `WitwaveAgentSpec.GitSyncs`
-(per-agent _config_ delivery) and `WitwaveAgentSpec.SharedStorage` (per-agent storage), `Workspace` is the primitive for
+(per-agent _config_ delivery) and `WitwaveAgentSpec.SharedStorage` (per-agent storage), `WitwaveWorkspace` is the primitive for
 **shared resources that multiple agents collaborate over** — source trees, datasets, accumulated memory pools, anything
 where agents need the same files visible at the same paths.
 
-See `api/v1alpha1/workspace_types.go` for the full schema and the design context in `tmp/workspace-crd.md`.
+See `api/v1alpha1/witwaveworkspace_types.go` for the full schema and the design context in `tmp/workspace-crd.md`.
 
 ### Spec
 
 ```yaml
 apiVersion: witwave.ai/v1alpha1
-kind: Workspace
+kind: WitwaveWorkspace
 metadata:
   name: shared
   namespace: witwave
@@ -368,7 +368,7 @@ trust boundary. The same `rbac.secretsWrite=false` lever the witwave-operator ch
 
 ### Admission webhook
 
-A `vworkspace.kb.io` validating webhook lands in the existing `ValidatingWebhookConfiguration` alongside
+A `vwitwaveworkspace.kb.io` validating webhook lands in the existing `ValidatingWebhookConfiguration` alongside
 `vwitwaveagent.kb.io` and `vwitwaveprompt.kb.io`, and shares the same `webhooks.validatingFailurePolicy` knob (default
 `Ignore`). The webhook rejects:
 
@@ -376,9 +376,9 @@ A `vworkspace.kb.io` validating webhook lands in the existing `ValidatingWebhook
 - `volumes[].accessMode` other than `ReadWriteMany`.
 - `secrets[]` entries that set both `mountPath` and `envFrom`.
 - `configFiles[]` entries that set neither `configMap` nor `inline`, or both.
-- Mount path collisions across `volumes`, `secrets`, and `configFiles` within the same Workspace.
+- Mount path collisions across `volumes`, `secrets`, and `configFiles` within the same WitwaveWorkspace.
 
-### Workspace status
+### WitwaveWorkspace status
 
 The reconciler writes the following `.status` fields:
 
@@ -387,7 +387,7 @@ The reconciler writes the following `.status` fields:
 - `conditions[]` — `Ready`, `VolumesProvisioned`, `BoundAgentsTracked`, `ConfigMapsRendered`, and `DeletionBlocked` (set
   when a delete is in flight but agents still reference the workspace).
 
-A refuse-delete finalizer keeps a Workspace from being removed while any agent still references it. Use
+A refuse-delete finalizer keeps a WitwaveWorkspace from being removed while any agent still references it. Use
 `ww workspace unbind <agent> <workspace>` (or drop the entry from `spec.workspaceRefs[]` directly) to clear the block.
 
 ### Out of scope for v1alpha1
@@ -517,9 +517,9 @@ WitwaveAgent-specific domain metrics added on top (#471):
 | `witwaveagent_dashboard_enabled`             | gauge   | `namespace`, `name` | 1 when `spec.dashboard.enabled=true`, 0 otherwise. `sum()` for cluster total.                                                                                                                                   |
 | `witwaveagent_teardown_step_errors_total`    | counter | `kind`, `reason`    | Per-kind teardown failures when `spec.enabled=false` or the CR is deleted; useful for alerting when cascade cleanup is partial                                                                                  |
 | `witwaveprompt_status_patch_conflicts_total` | counter | `namespace`, `name` | `WitwavePrompt` status subresource patch 409 conflicts retried with fresh `resourceVersion` (#950). Sustained non-zero rate points at a noisy reconciler (too many concurrent writers) or cache lag under load. |
-| `witwaveworkspace_reconcile_total`           | counter | `outcome`           | `Workspace` reconcile passes labelled by outcome (`success`, `error`, `delete_blocked`, `deleted`).                                                                                                             |
-| `witwaveworkspace_volumes_provisioned`       | gauge   | `namespace`, `name` | Number of PVCs provisioned for the Workspace's `spec.volumes[]`. Sum across instances for cluster-wide totals.                                                                                                  |
-| `witwaveworkspace_bound_agents`              | gauge   | `namespace`, `name` | Cardinality of `Status.BoundAgents` per Workspace — the inverted index over `WitwaveAgent.spec.workspaceRefs[]`.                                                                                                |
+| `witwaveworkspace_reconcile_total`           | counter | `outcome`           | `WitwaveWorkspace` reconcile passes labelled by outcome (`success`, `error`, `delete_blocked`, `deleted`).                                                                                                             |
+| `witwaveworkspace_volumes_provisioned`       | gauge   | `namespace`, `name` | Number of PVCs provisioned for the WitwaveWorkspace's `spec.volumes[]`. Sum across instances for cluster-wide totals.                                                                                                  |
+| `witwaveworkspace_bound_agents`              | gauge   | `namespace`, `name` | Cardinality of `Status.BoundAgents` per WitwaveWorkspace — the inverted index over `WitwaveAgent.spec.workspaceRefs[]`.                                                                                                |
 
 WitwavePrompt binding-outcome metrics (label schema `namespace`, `name`) track per-binding ConfigMap apply results so
 operators can alert on chronically unready bindings.

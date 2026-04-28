@@ -521,18 +521,18 @@ func (r *WitwaveAgentReconciler) applyDeployment(ctx context.Context, agent *wit
 			clampedContainers,
 		)
 	}
-	// Workspace stamping (#1760): fetch every Workspace this agent
+	// WitwaveWorkspace stamping (#1760): fetch every WitwaveWorkspace this agent
 	// references via Spec.WorkspaceRefs and add their volumes/secrets/
 	// configFiles to the rendered Deployment as additional pod-level
-	// Volumes + per-backend volumeMounts/envFrom. Missing workspaces are
-	// silently skipped — the watch on Workspace CRs re-enqueues the
+	// Volumes + per-backend volumeMounts/envFrom. Missing witwaveworkspaces are
+	// silently skipped — the watch on WitwaveWorkspace CRs re-enqueues the
 	// agent once the referenced resource appears.
-	workspaces, err := fetchWorkspacesForAgent(ctx, r.Client, agent)
+	workspaces, err := fetchWitwaveWorkspacesForAgent(ctx, r.Client, agent)
 	if err != nil {
-		return fmt.Errorf("fetch workspaces: %w", err)
+		return fmt.Errorf("fetch witwaveworkspaces: %w", err)
 	}
 	desired := buildDeployment(agent, DefaultImageTag, prompts)
-	stampWorkspacesOnDeployment(desired, workspaces)
+	stampWitwaveWorkspacesOnDeployment(desired, workspaces)
 	if err = controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
 		return fmt.Errorf("set owner on Deployment: %w", err)
 	}
@@ -2899,23 +2899,23 @@ func (r *WitwaveAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			},
 		})).
 		Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(r.enqueueAgentsReferencingSecret)).
-		// Workspace watch (#1760). When a Workspace's spec changes,
+		// WitwaveWorkspace watch (#1760). When a WitwaveWorkspace's spec changes,
 		// re-enqueue every WitwaveAgent in the same namespace whose
 		// Spec.WorkspaceRefs references it so the rendered pod's
 		// volume/mount graph picks up the change on next reconcile.
-		Watches(&witwavev1alpha1.Workspace{}, handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
-			ws, ok := obj.(*witwavev1alpha1.Workspace)
+		Watches(&witwavev1alpha1.WitwaveWorkspace{}, handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+			ws, ok := obj.(*witwavev1alpha1.WitwaveWorkspace)
 			if !ok {
 				return nil
 			}
 			agents := &witwavev1alpha1.WitwaveAgentList{}
 			if err := mgr.GetClient().List(ctx, agents, client.InNamespace(ws.Namespace)); err != nil {
 				// Log so an operator investigating a missed agent
-				// re-reconcile after a Workspace spec change has a
+				// re-reconcile after a WitwaveWorkspace spec change has a
 				// signal instead of a silent drop.
 				logf.FromContext(ctx).Info(
-					"workspace-watch agent list failed; agents may not pick up workspace change until next periodic reconcile",
-					"err", err.Error(), "namespace", ws.Namespace, "workspace", ws.Name,
+					"witwaveworkspace-watch agent list failed; agents may not pick up witwaveworkspace change until next periodic reconcile",
+					"err", err.Error(), "namespace", ws.Namespace, "witwaveworkspace", ws.Name,
 				)
 				return nil
 			}

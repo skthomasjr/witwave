@@ -76,9 +76,9 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-witwave-ai-v1alpha1-workspace
+      path: /validate-witwave-ai-v1alpha1-witwaveworkspace
   failurePolicy: Fail
-  name: vworkspace.kb.io
+  name: vwitwaveworkspace.kb.io
   rules:
   - apiGroups:
     - witwave.ai
@@ -88,5 +88,5 @@ webhooks:
     - CREATE
     - UPDATE
     resources:
-    - workspaces
+    - witwaveworkspaces
   sideEffects: None

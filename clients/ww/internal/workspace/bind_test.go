@@ -9,7 +9,7 @@ import (
 )
 
 func TestBind_HappyPath_FromEmpty(t *testing.T) {
-	ws := seedWorkspace("witwave", "default", nil)
+	ws := seedWitwaveWorkspace("witwave", "default", nil)
 	a := seedAgentRef("iris", "default", nil)
 	dyn := makeFakeDynamic(ws, a)
 	t.Cleanup(withFakeClients(t, dyn, makeFakeK8s()))
@@ -18,14 +18,14 @@ func TestBind_HappyPath_FromEmpty(t *testing.T) {
 	err := Bind(context.Background(), nil, BindOptions{
 		Agent:          "iris",
 		AgentNamespace: "default",
-		Workspace:      "witwave",
+		WitwaveWorkspace:      "witwave",
 		AssumeYes:      true,
 		Out:            out,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	mustContain(t, out.String(), `now bound to Workspace "witwave"`)
+	mustContain(t, out.String(), `now bound to WitwaveWorkspace "witwave"`)
 
 	updated := readAgentRef(t, dyn, "default", "iris")
 	refs, found, err := unstructured.NestedSlice(updated.Object, "spec", "workspaceRefs")
@@ -38,7 +38,7 @@ func TestBind_HappyPath_FromEmpty(t *testing.T) {
 }
 
 func TestBind_Idempotent(t *testing.T) {
-	ws := seedWorkspace("witwave", "default", nil)
+	ws := seedWitwaveWorkspace("witwave", "default", nil)
 	a := seedAgentRef("iris", "default", func(spec map[string]interface{}) {
 		spec["workspaceRefs"] = []interface{}{
 			map[string]interface{}{"name": "witwave"},
@@ -51,7 +51,7 @@ func TestBind_Idempotent(t *testing.T) {
 	err := Bind(context.Background(), nil, BindOptions{
 		Agent:          "iris",
 		AgentNamespace: "default",
-		Workspace:      "witwave",
+		WitwaveWorkspace:      "witwave",
 		AssumeYes:      true,
 		Out:            out,
 	})
@@ -62,7 +62,7 @@ func TestBind_Idempotent(t *testing.T) {
 }
 
 func TestBind_AppendsToExisting(t *testing.T) {
-	ws := seedWorkspace("witwave", "default", nil)
+	ws := seedWitwaveWorkspace("witwave", "default", nil)
 	a := seedAgentRef("iris", "default", func(spec map[string]interface{}) {
 		spec["workspaceRefs"] = []interface{}{
 			map[string]interface{}{"name": "other"},
@@ -74,7 +74,7 @@ func TestBind_AppendsToExisting(t *testing.T) {
 	err := Bind(context.Background(), nil, BindOptions{
 		Agent:          "iris",
 		AgentNamespace: "default",
-		Workspace:      "witwave",
+		WitwaveWorkspace:      "witwave",
 		AssumeYes:      true,
 		Out:            captureOut(),
 	})
@@ -88,30 +88,30 @@ func TestBind_AppendsToExisting(t *testing.T) {
 	}
 }
 
-func TestBind_WorkspaceMissing(t *testing.T) {
+func TestBind_WitwaveWorkspaceMissing(t *testing.T) {
 	a := seedAgentRef("iris", "default", nil)
 	dyn := makeFakeDynamic(a)
 	t.Cleanup(withFakeClients(t, dyn, makeFakeK8s()))
 	err := Bind(context.Background(), nil, BindOptions{
 		Agent:          "iris",
 		AgentNamespace: "default",
-		Workspace:      "nope",
+		WitwaveWorkspace:      "nope",
 		AssumeYes:      true,
 		Out:            captureOut(),
 	})
-	if err == nil || !strings.Contains(err.Error(), `Workspace "nope" not found`) {
+	if err == nil || !strings.Contains(err.Error(), `WitwaveWorkspace "nope" not found`) {
 		t.Errorf("expected workspace-not-found error; got %v", err)
 	}
 }
 
 func TestBind_AgentMissing(t *testing.T) {
-	ws := seedWorkspace("witwave", "default", nil)
+	ws := seedWitwaveWorkspace("witwave", "default", nil)
 	dyn := makeFakeDynamic(ws)
 	t.Cleanup(withFakeClients(t, dyn, makeFakeK8s()))
 	err := Bind(context.Background(), nil, BindOptions{
 		Agent:          "nope",
 		AgentNamespace: "default",
-		Workspace:      "witwave",
+		WitwaveWorkspace:      "witwave",
 		AssumeYes:      true,
 		Out:            captureOut(),
 	})
@@ -121,15 +121,15 @@ func TestBind_AgentMissing(t *testing.T) {
 }
 
 func TestBind_RejectsCrossNamespace(t *testing.T) {
-	ws := seedWorkspace("witwave", "ws-ns", nil)
+	ws := seedWitwaveWorkspace("witwave", "ws-ns", nil)
 	a := seedAgentRef("iris", "agent-ns", nil)
 	dyn := makeFakeDynamic(ws, a)
 	t.Cleanup(withFakeClients(t, dyn, makeFakeK8s()))
 	err := Bind(context.Background(), nil, BindOptions{
 		Agent:              "iris",
 		AgentNamespace:     "agent-ns",
-		Workspace:          "witwave",
-		WorkspaceNamespace: "ws-ns",
+		WitwaveWorkspace:          "witwave",
+		WitwaveWorkspaceNamespace: "ws-ns",
 		AssumeYes:          true,
 		Out:                captureOut(),
 	})
@@ -139,7 +139,7 @@ func TestBind_RejectsCrossNamespace(t *testing.T) {
 }
 
 func TestBind_DryRun_DoesNotMutate(t *testing.T) {
-	ws := seedWorkspace("witwave", "default", nil)
+	ws := seedWitwaveWorkspace("witwave", "default", nil)
 	a := seedAgentRef("iris", "default", nil)
 	dyn := makeFakeDynamic(ws, a)
 	t.Cleanup(withFakeClients(t, dyn, makeFakeK8s()))
@@ -147,7 +147,7 @@ func TestBind_DryRun_DoesNotMutate(t *testing.T) {
 	err := Bind(context.Background(), nil, BindOptions{
 		Agent:          "iris",
 		AgentNamespace: "default",
-		Workspace:      "witwave",
+		WitwaveWorkspace:      "witwave",
 		DryRun:         true,
 		Out:            out,
 	})

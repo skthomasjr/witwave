@@ -1,0 +1,36 @@
+apiVersion: witwave.ai/v1alpha1
+kind: WitwaveWorkspace
+metadata:
+  labels:
+    app.kubernetes.io/name: operator
+    app.kubernetes.io/managed-by: kustomize
+  name: shared
+spec:
+  # Shared volumes provisioned for this workspace. Each entry produces one
+  # PVC the operator stamps onto every WitwaveAgent whose
+  # spec.workspaceRefs[] references this CR. v1alpha1 honours storageType=pvc
+  # only; hostPath is rejected at admission and reserved for v1.x.
+  volumes:
+    - name: source
+      size: 50Gi
+      accessMode: ReadWriteMany
+      reclaimPolicy: Delete
+
+  # Pre-created Secret references projected onto every participating agent.
+  # The operator never writes to these Secrets — secrets-write RBAC stays
+  # outside the workspace controller's trust boundary.
+  secrets:
+    - name: github-token
+      envFrom: true
+
+  # ConfigMap-backed files mounted onto every participating agent. Each entry
+  # references either a pre-created ConfigMap or carries inline content the
+  # operator renders into an owned ConfigMap.
+  configFiles:
+    - inline:
+        name: repo-info
+        path: workspace.yaml
+        content: |
+          repos:
+            - name: witwave
+      mountPath: /workspaces/shared/workspace.yaml

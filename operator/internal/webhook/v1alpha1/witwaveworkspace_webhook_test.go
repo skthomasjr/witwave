@@ -22,8 +22,8 @@ import (
 	witwavev1alpha1 "github.com/witwave-ai/witwave-operator/api/v1alpha1"
 )
 
-func validatorAndCtx() (*WorkspaceCustomValidator, context.Context) {
-	return &WorkspaceCustomValidator{}, context.Background()
+func validatorAndCtx() (*WitwaveWorkspaceCustomValidator, context.Context) {
+	return &WitwaveWorkspaceCustomValidator{}, context.Background()
 }
 
 func mustReject(t *testing.T, err error, mustContain string) {
@@ -36,13 +36,13 @@ func mustReject(t *testing.T, err error, mustContain string) {
 	}
 }
 
-func TestWorkspaceValidate_VolumeNameDuplicate(t *testing.T) {
+func TestWitwaveWorkspaceValidate_VolumeNameDuplicate(t *testing.T) {
 	v, ctx := validatorAndCtx()
 	size := resource.MustParse("1Gi")
-	ws := &witwavev1alpha1.Workspace{
+	ws := &witwavev1alpha1.WitwaveWorkspace{
 		ObjectMeta: metav1.ObjectMeta{Name: "witwave"},
-		Spec: witwavev1alpha1.WorkspaceSpec{
-			Volumes: []witwavev1alpha1.WorkspaceVolume{
+		Spec: witwavev1alpha1.WitwaveWorkspaceSpec{
+			Volumes: []witwavev1alpha1.WitwaveWorkspaceVolume{
 				{Name: "source", Size: &size, AccessMode: corev1.ReadWriteMany},
 				{Name: "source", Size: &size, AccessMode: corev1.ReadWriteMany},
 			},
@@ -52,16 +52,16 @@ func TestWorkspaceValidate_VolumeNameDuplicate(t *testing.T) {
 	mustReject(t, err, "duplicates")
 }
 
-func TestWorkspaceValidate_HostPathRejected(t *testing.T) {
+func TestWitwaveWorkspaceValidate_HostPathRejected(t *testing.T) {
 	v, ctx := validatorAndCtx()
 	size := resource.MustParse("1Gi")
-	ws := &witwavev1alpha1.Workspace{
+	ws := &witwavev1alpha1.WitwaveWorkspace{
 		ObjectMeta: metav1.ObjectMeta{Name: "witwave"},
-		Spec: witwavev1alpha1.WorkspaceSpec{
-			Volumes: []witwavev1alpha1.WorkspaceVolume{
+		Spec: witwavev1alpha1.WitwaveWorkspaceSpec{
+			Volumes: []witwavev1alpha1.WitwaveWorkspaceVolume{
 				{
 					Name:        "source",
-					StorageType: witwavev1alpha1.WorkspaceStorageTypeHostPath,
+					StorageType: witwavev1alpha1.WitwaveWorkspaceStorageTypeHostPath,
 					Size:        &size,
 					AccessMode:  corev1.ReadWriteMany,
 				},
@@ -72,13 +72,13 @@ func TestWorkspaceValidate_HostPathRejected(t *testing.T) {
 	mustReject(t, err, "hostPath is reserved")
 }
 
-func TestWorkspaceValidate_RWORejected(t *testing.T) {
+func TestWitwaveWorkspaceValidate_RWORejected(t *testing.T) {
 	v, ctx := validatorAndCtx()
 	size := resource.MustParse("1Gi")
-	ws := &witwavev1alpha1.Workspace{
+	ws := &witwavev1alpha1.WitwaveWorkspace{
 		ObjectMeta: metav1.ObjectMeta{Name: "witwave"},
-		Spec: witwavev1alpha1.WorkspaceSpec{
-			Volumes: []witwavev1alpha1.WorkspaceVolume{
+		Spec: witwavev1alpha1.WitwaveWorkspaceSpec{
+			Volumes: []witwavev1alpha1.WitwaveWorkspaceVolume{
 				{Name: "source", Size: &size, AccessMode: corev1.ReadWriteOnce},
 			},
 		},
@@ -87,13 +87,13 @@ func TestWorkspaceValidate_RWORejected(t *testing.T) {
 	mustReject(t, err, "ReadWriteMany")
 }
 
-func TestWorkspaceValidate_RWMAccepted(t *testing.T) {
+func TestWitwaveWorkspaceValidate_RWMAccepted(t *testing.T) {
 	v, ctx := validatorAndCtx()
 	size := resource.MustParse("1Gi")
-	ws := &witwavev1alpha1.Workspace{
+	ws := &witwavev1alpha1.WitwaveWorkspace{
 		ObjectMeta: metav1.ObjectMeta{Name: "witwave"},
-		Spec: witwavev1alpha1.WorkspaceSpec{
-			Volumes: []witwavev1alpha1.WorkspaceVolume{
+		Spec: witwavev1alpha1.WitwaveWorkspaceSpec{
+			Volumes: []witwavev1alpha1.WitwaveWorkspaceVolume{
 				{Name: "source", Size: &size, AccessMode: corev1.ReadWriteMany},
 			},
 		},
@@ -103,13 +103,13 @@ func TestWorkspaceValidate_RWMAccepted(t *testing.T) {
 	}
 }
 
-func TestWorkspaceValidate_AccessModeDefaultedAcceptsEmpty(t *testing.T) {
+func TestWitwaveWorkspaceValidate_AccessModeDefaultedAcceptsEmpty(t *testing.T) {
 	v, ctx := validatorAndCtx()
 	size := resource.MustParse("1Gi")
-	ws := &witwavev1alpha1.Workspace{
+	ws := &witwavev1alpha1.WitwaveWorkspace{
 		ObjectMeta: metav1.ObjectMeta{Name: "witwave"},
-		Spec: witwavev1alpha1.WorkspaceSpec{
-			Volumes: []witwavev1alpha1.WorkspaceVolume{
+		Spec: witwavev1alpha1.WitwaveWorkspaceSpec{
+			Volumes: []witwavev1alpha1.WitwaveWorkspaceVolume{
 				// AccessMode unset → defaulted to RWM
 				{Name: "source", Size: &size},
 			},
@@ -120,13 +120,13 @@ func TestWorkspaceValidate_AccessModeDefaultedAcceptsEmpty(t *testing.T) {
 	}
 }
 
-func TestWorkspaceValidate_VolumeMountPathDuplicate(t *testing.T) {
+func TestWitwaveWorkspaceValidate_VolumeMountPathDuplicate(t *testing.T) {
 	v, ctx := validatorAndCtx()
 	size := resource.MustParse("1Gi")
-	ws := &witwavev1alpha1.Workspace{
+	ws := &witwavev1alpha1.WitwaveWorkspace{
 		ObjectMeta: metav1.ObjectMeta{Name: "witwave"},
-		Spec: witwavev1alpha1.WorkspaceSpec{
-			Volumes: []witwavev1alpha1.WorkspaceVolume{
+		Spec: witwavev1alpha1.WitwaveWorkspaceSpec{
+			Volumes: []witwavev1alpha1.WitwaveWorkspaceVolume{
 				{Name: "a", Size: &size, AccessMode: corev1.ReadWriteMany, MountPath: "/data"},
 				{Name: "b", Size: &size, AccessMode: corev1.ReadWriteMany, MountPath: "/data"},
 			},
@@ -136,12 +136,12 @@ func TestWorkspaceValidate_VolumeMountPathDuplicate(t *testing.T) {
 	mustReject(t, err, "mountPath")
 }
 
-func TestWorkspaceValidate_SecretMutualExclusion(t *testing.T) {
+func TestWitwaveWorkspaceValidate_SecretMutualExclusion(t *testing.T) {
 	v, ctx := validatorAndCtx()
-	ws := &witwavev1alpha1.Workspace{
+	ws := &witwavev1alpha1.WitwaveWorkspace{
 		ObjectMeta: metav1.ObjectMeta{Name: "witwave"},
-		Spec: witwavev1alpha1.WorkspaceSpec{
-			Secrets: []witwavev1alpha1.WorkspaceSecret{
+		Spec: witwavev1alpha1.WitwaveWorkspaceSpec{
+			Secrets: []witwavev1alpha1.WitwaveWorkspaceSecret{
 				{Name: "tokens", MountPath: "/etc/secret", EnvFrom: true},
 			},
 		},
@@ -150,12 +150,12 @@ func TestWorkspaceValidate_SecretMutualExclusion(t *testing.T) {
 	mustReject(t, err, "mutually exclusive")
 }
 
-func TestWorkspaceValidate_SecretRequiresEither(t *testing.T) {
+func TestWitwaveWorkspaceValidate_SecretRequiresEither(t *testing.T) {
 	v, ctx := validatorAndCtx()
-	ws := &witwavev1alpha1.Workspace{
+	ws := &witwavev1alpha1.WitwaveWorkspace{
 		ObjectMeta: metav1.ObjectMeta{Name: "witwave"},
-		Spec: witwavev1alpha1.WorkspaceSpec{
-			Secrets: []witwavev1alpha1.WorkspaceSecret{
+		Spec: witwavev1alpha1.WitwaveWorkspaceSpec{
+			Secrets: []witwavev1alpha1.WitwaveWorkspaceSecret{
 				{Name: "tokens"},
 			},
 		},
@@ -164,12 +164,12 @@ func TestWorkspaceValidate_SecretRequiresEither(t *testing.T) {
 	mustReject(t, err, "must set either")
 }
 
-func TestWorkspaceValidate_SecretEnvDuplicate(t *testing.T) {
+func TestWitwaveWorkspaceValidate_SecretEnvDuplicate(t *testing.T) {
 	v, ctx := validatorAndCtx()
-	ws := &witwavev1alpha1.Workspace{
+	ws := &witwavev1alpha1.WitwaveWorkspace{
 		ObjectMeta: metav1.ObjectMeta{Name: "witwave"},
-		Spec: witwavev1alpha1.WorkspaceSpec{
-			Secrets: []witwavev1alpha1.WorkspaceSecret{
+		Spec: witwavev1alpha1.WitwaveWorkspaceSpec{
+			Secrets: []witwavev1alpha1.WitwaveWorkspaceSecret{
 				{Name: "tokens", EnvFrom: true},
 				{Name: "tokens", EnvFrom: true},
 			},
@@ -179,13 +179,13 @@ func TestWorkspaceValidate_SecretEnvDuplicate(t *testing.T) {
 	mustReject(t, err, "duplicates")
 }
 
-func TestWorkspaceValidate_ConfigFileExactlyOne(t *testing.T) {
+func TestWitwaveWorkspaceValidate_ConfigFileExactlyOne(t *testing.T) {
 	v, ctx := validatorAndCtx()
 	// neither configMap nor inline set
-	ws := &witwavev1alpha1.Workspace{
+	ws := &witwavev1alpha1.WitwaveWorkspace{
 		ObjectMeta: metav1.ObjectMeta{Name: "witwave"},
-		Spec: witwavev1alpha1.WorkspaceSpec{
-			ConfigFiles: []witwavev1alpha1.WorkspaceConfigFile{
+		Spec: witwavev1alpha1.WitwaveWorkspaceSpec{
+			ConfigFiles: []witwavev1alpha1.WitwaveWorkspaceConfigFile{
 				{MountPath: "/x"},
 			},
 		},
@@ -194,13 +194,13 @@ func TestWorkspaceValidate_ConfigFileExactlyOne(t *testing.T) {
 	mustReject(t, err, "exactly one")
 
 	// both set
-	ws2 := &witwavev1alpha1.Workspace{
+	ws2 := &witwavev1alpha1.WitwaveWorkspace{
 		ObjectMeta: metav1.ObjectMeta{Name: "witwave"},
-		Spec: witwavev1alpha1.WorkspaceSpec{
-			ConfigFiles: []witwavev1alpha1.WorkspaceConfigFile{
+		Spec: witwavev1alpha1.WitwaveWorkspaceSpec{
+			ConfigFiles: []witwavev1alpha1.WitwaveWorkspaceConfigFile{
 				{
 					ConfigMap: "cm",
-					Inline:    &witwavev1alpha1.WorkspaceInlineFile{Name: "n", Path: "p", Content: "c"},
+					Inline:    &witwavev1alpha1.WitwaveWorkspaceInlineFile{Name: "n", Path: "p", Content: "c"},
 					MountPath: "/x",
 				},
 			},
@@ -210,12 +210,12 @@ func TestWorkspaceValidate_ConfigFileExactlyOne(t *testing.T) {
 	mustReject(t, err, "exactly one")
 }
 
-func TestWorkspaceValidate_ConfigFileMountPathDuplicate(t *testing.T) {
+func TestWitwaveWorkspaceValidate_ConfigFileMountPathDuplicate(t *testing.T) {
 	v, ctx := validatorAndCtx()
-	ws := &witwavev1alpha1.Workspace{
+	ws := &witwavev1alpha1.WitwaveWorkspace{
 		ObjectMeta: metav1.ObjectMeta{Name: "witwave"},
-		Spec: witwavev1alpha1.WorkspaceSpec{
-			ConfigFiles: []witwavev1alpha1.WorkspaceConfigFile{
+		Spec: witwavev1alpha1.WitwaveWorkspaceSpec{
+			ConfigFiles: []witwavev1alpha1.WitwaveWorkspaceConfigFile{
 				{ConfigMap: "a", MountPath: "/a"},
 				{ConfigMap: "b", MountPath: "/a"},
 			},
@@ -226,7 +226,7 @@ func TestWorkspaceValidate_ConfigFileMountPathDuplicate(t *testing.T) {
 }
 
 // TestWitwaveAgentValidate_WorkspaceRefsDuplicate covers the agent-side
-// admission gate added alongside the Workspace webhook.
+// admission gate added alongside the WitwaveWorkspace webhook.
 func TestWitwaveAgentValidate_WorkspaceRefsDuplicate(t *testing.T) {
 	agent := &witwavev1alpha1.WitwaveAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: "iris"},

@@ -28,7 +28,7 @@ type workspaceFlags struct {
 
 func bindWorkspaceFlags(cmd *cobra.Command, f *workspaceFlags) {
 	cmd.PersistentFlags().StringVarP(&f.namespace, "namespace", "n", "",
-		fmt.Sprintf("Namespace for the workspace (defaults to the kubeconfig context's namespace, then %q)", workspace.DefaultWorkspaceNamespace))
+		fmt.Sprintf("Namespace for the workspace (defaults to the kubeconfig context's namespace, then %q)", workspace.DefaultWitwaveWorkspaceNamespace))
 }
 
 func bindWorkspaceMutatingFlags(cmd *cobra.Command, f *workspaceFlags) {
@@ -76,9 +76,9 @@ func newWorkspaceCmd() *cobra.Command {
 	f := &workspaceFlags{}
 	cmd := &cobra.Command{
 		Use:   "workspace",
-		Short: "Manage Workspace custom resources on a Kubernetes cluster",
-		Long: "Create, list, inspect, delete, and bind Workspace CRs. The witwave-operator\n" +
-			"reconciles each Workspace into a set of shared volumes, projected Secrets,\n" +
+		Short: "Manage WitwaveWorkspace custom resources on a Kubernetes cluster",
+		Long: "Create, list, inspect, delete, and bind WitwaveWorkspace CRs. The witwave-operator\n" +
+			"reconciles each WitwaveWorkspace into a set of shared volumes, projected Secrets,\n" +
 			"and rendered ConfigMaps that participating WitwaveAgents see at runtime.\n\n" +
 			"Membership is agent-owned: a WitwaveAgent declares which workspaces it\n" +
 			"participates in via spec.workspaceRefs[]. Use `ww workspace bind <agent>\n" +
@@ -89,17 +89,17 @@ func newWorkspaceCmd() *cobra.Command {
 			"ambient kubeconfig and current-context (override via the root --kubeconfig\n" +
 			"/ --context flags). Use --namespace / -n to target a specific namespace;\n" +
 			"omit to use the kubeconfig context's namespace (falling back to \"" +
-			workspace.DefaultWorkspaceNamespace + "\").",
+			workspace.DefaultWitwaveWorkspaceNamespace + "\").",
 	}
 	bindWorkspaceFlags(cmd, f)
 
-	cmd.AddCommand(newWorkspaceCreateCmd(f))
-	cmd.AddCommand(newWorkspaceListCmd(f))
-	cmd.AddCommand(newWorkspaceGetCmd(f))
-	cmd.AddCommand(newWorkspaceStatusCmd(f))
-	cmd.AddCommand(newWorkspaceDeleteCmd(f))
-	cmd.AddCommand(newWorkspaceBindCmd(f))
-	cmd.AddCommand(newWorkspaceUnbindCmd(f))
+	cmd.AddCommand(newWitwaveWorkspaceCreateCmd(f))
+	cmd.AddCommand(newWitwaveWorkspaceListCmd(f))
+	cmd.AddCommand(newWitwaveWorkspaceGetCmd(f))
+	cmd.AddCommand(newWitwaveWorkspaceStatusCmd(f))
+	cmd.AddCommand(newWitwaveWorkspaceDeleteCmd(f))
+	cmd.AddCommand(newWitwaveWorkspaceBindCmd(f))
+	cmd.AddCommand(newWitwaveWorkspaceUnbindCmd(f))
 	return cmd
 }
 
@@ -107,7 +107,7 @@ func newWorkspaceCmd() *cobra.Command {
 // create
 // ---------------------------------------------------------------------------
 
-func newWorkspaceCreateCmd(f *workspaceFlags) *cobra.Command {
+func newWitwaveWorkspaceCreateCmd(f *workspaceFlags) *cobra.Command {
 	var (
 		fromFile        string
 		volumes         []string
@@ -116,8 +116,8 @@ func newWorkspaceCreateCmd(f *workspaceFlags) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "create [name]",
-		Short: "Create a Workspace CR (from a YAML file or convenience flags)",
-		Long: "Creates a Workspace CR. Two construction modes:\n\n" +
+		Short: "Create a WitwaveWorkspace CR (from a YAML file or convenience flags)",
+		Long: "Creates a WitwaveWorkspace CR. Two construction modes:\n\n" +
 			"  ww workspace create -f workspace.yaml\n" +
 			"  ww workspace create my-ws --volume source=50Gi@efs-sc --secret github-token=env\n\n" +
 			"--volume <name>=<size>[@<storageClass>]   declare a shared PVC. Repeatable.\n" +
@@ -152,7 +152,7 @@ func newWorkspaceCreateCmd(f *workspaceFlags) *cobra.Command {
 	}
 	bindWorkspaceMutatingFlags(cmd, f)
 	cmd.Flags().StringVarP(&fromFile, "from-file", "f", "",
-		"Path to a YAML/JSON Workspace manifest. Mutually exclusive with --volume / --secret.")
+		"Path to a YAML/JSON WitwaveWorkspace manifest. Mutually exclusive with --volume / --secret.")
 	cmd.Flags().StringArrayVar(&volumes, "volume", nil,
 		"Shared volume to declare. Repeatable. Form: <name>=<size>[@<storageClass>]. "+
 			"Defaults to ReadWriteMany access mode.")
@@ -202,12 +202,12 @@ func runWorkspaceCreate(ctx context.Context, f *workspaceFlags, name, fromFile s
 // list
 // ---------------------------------------------------------------------------
 
-func newWorkspaceListCmd(f *workspaceFlags) *cobra.Command {
+func newWitwaveWorkspaceListCmd(f *workspaceFlags) *cobra.Command {
 	var output string
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List Workspace CRs across every namespace (narrow with --namespace)",
-		Long: "Lists Workspace CRs. The default scope is EVERY namespace the caller\n" +
+		Short: "List WitwaveWorkspace CRs across every namespace (narrow with --namespace)",
+		Long: "Lists WitwaveWorkspace CRs. The default scope is EVERY namespace the caller\n" +
 			"can read — matches the `kubectl get ws -A` muscle memory that most\n" +
 			"operators reach for. Narrow to a single namespace with --namespace.\n\n" +
 			"Columns: NAMESPACE, NAME, VOLUMES, AGENTS, AGE, STATUS. The NAMESPACE\n" +
@@ -258,12 +258,12 @@ func runWorkspaceList(ctx context.Context, f *workspaceFlags, format workspace.O
 // get
 // ---------------------------------------------------------------------------
 
-func newWorkspaceGetCmd(f *workspaceFlags) *cobra.Command {
+func newWitwaveWorkspaceGetCmd(f *workspaceFlags) *cobra.Command {
 	var output string
 	cmd := &cobra.Command{
 		Use:   "get <name>",
-		Short: "Fetch a single Workspace and emit YAML/JSON or a one-row table",
-		Long: "Fetches a Workspace by name and emits it. Default output is a single-row\n" +
+		Short: "Fetch a single WitwaveWorkspace and emit YAML/JSON or a one-row table",
+		Long: "Fetches a WitwaveWorkspace by name and emits it. Default output is a single-row\n" +
 			"table identical to `ww workspace list -n <ns>` scoped to one entry; pass\n" +
 			"`-o yaml` or `-o json` to print the underlying object verbatim, suitable\n" +
 			"for piping into `kubectl apply -f -` or `jq`.",
@@ -306,11 +306,11 @@ func runWorkspaceGet(ctx context.Context, f *workspaceFlags, name string, format
 // status
 // ---------------------------------------------------------------------------
 
-func newWorkspaceStatusCmd(f *workspaceFlags) *cobra.Command {
+func newWitwaveWorkspaceStatusCmd(f *workspaceFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status <name>",
-		Short: "Show volumes, conditions, and bound agents for a Workspace",
-		Long: "Renders a curated, human-readable view of a Workspace: identity,\n" +
+		Short: "Show volumes, conditions, and bound agents for a WitwaveWorkspace",
+		Long: "Renders a curated, human-readable view of a WitwaveWorkspace: identity,\n" +
 			"declared volumes (size + storage class + reclaim policy + mount path),\n" +
 			"declared secrets and configFiles, the controller's reconcile conditions,\n" +
 			"and the inverted-index list of currently bound agents.\n\n" +
@@ -347,16 +347,16 @@ func runWorkspaceStatus(ctx context.Context, f *workspaceFlags, name string) err
 // delete
 // ---------------------------------------------------------------------------
 
-func newWorkspaceDeleteCmd(f *workspaceFlags) *cobra.Command {
+func newWitwaveWorkspaceDeleteCmd(f *workspaceFlags) *cobra.Command {
 	var (
 		wait    bool
 		timeout time.Duration
 	)
 	cmd := &cobra.Command{
 		Use:   "delete <name>",
-		Short: "Delete a Workspace CR (refuse-delete finalizer blocks while bound)",
-		Long: "Deletes the Workspace CR. The operator stamps a refuse-delete\n" +
-			"finalizer on every Workspace, so the apiserver will mark the CR\n" +
+		Short: "Delete a WitwaveWorkspace CR (refuse-delete finalizer blocks while bound)",
+		Long: "Deletes the WitwaveWorkspace CR. The operator stamps a refuse-delete\n" +
+			"finalizer on every WitwaveWorkspace, so the apiserver will mark the CR\n" +
 			"Terminating but block actual removal until every agent that\n" +
 			"references it via spec.workspaceRefs[] unbinds.\n\n" +
 			"The plan banner enumerates the currently-bound agents up-front so\n" +
@@ -405,7 +405,7 @@ func runWorkspaceDelete(ctx context.Context, f *workspaceFlags, name string, wai
 // bind
 // ---------------------------------------------------------------------------
 
-func newWorkspaceBindCmd(f *workspaceFlags) *cobra.Command {
+func newWitwaveWorkspaceBindCmd(f *workspaceFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "bind <agent> <workspace>",
 		Short: "Add a workspace to a WitwaveAgent's spec.workspaceRefs[]",
@@ -440,8 +440,8 @@ func runWorkspaceBind(ctx context.Context, f *workspaceFlags, agentName, workspa
 	return workspace.Bind(ctx, cfg, workspace.BindOptions{
 		Agent:              agentName,
 		AgentNamespace:     ns,
-		Workspace:          workspaceName,
-		WorkspaceNamespace: ns,
+		WitwaveWorkspace:          workspaceName,
+		WitwaveWorkspaceNamespace: ns,
 		AssumeYes:          f.assumeYes,
 		DryRun:             f.dryRun,
 		Out:                os.Stdout,
@@ -453,7 +453,7 @@ func runWorkspaceBind(ctx context.Context, f *workspaceFlags, agentName, workspa
 // unbind
 // ---------------------------------------------------------------------------
 
-func newWorkspaceUnbindCmd(f *workspaceFlags) *cobra.Command {
+func newWitwaveWorkspaceUnbindCmd(f *workspaceFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "unbind <agent> <workspace>",
 		Short: "Remove a workspace from a WitwaveAgent's spec.workspaceRefs[]",
@@ -461,7 +461,7 @@ func newWorkspaceUnbindCmd(f *workspaceFlags) *cobra.Command {
 			"The operator drops the workspace mounts from the agent's backend\n" +
 			"containers on next reconcile.\n\n" +
 			"Idempotent: unbinding an agent that wasn't bound is a no-op.\n\n" +
-			"Does NOT delete the Workspace itself — use `ww workspace delete\n" +
+			"Does NOT delete the WitwaveWorkspace itself — use `ww workspace delete\n" +
 			"<workspace>` once every agent that references it has unbound.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -485,7 +485,7 @@ func runWorkspaceUnbind(ctx context.Context, f *workspaceFlags, agentName, works
 	return workspace.Unbind(ctx, cfg, workspace.UnbindOptions{
 		Agent:          agentName,
 		AgentNamespace: ns,
-		Workspace:      workspaceName,
+		WitwaveWorkspace:      workspaceName,
 		AssumeYes:      f.assumeYes,
 		DryRun:         f.dryRun,
 		Out:            os.Stdout,

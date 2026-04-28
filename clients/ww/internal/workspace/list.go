@@ -42,7 +42,7 @@ func ParseOutputFormat(raw string) (OutputFormat, error) {
 	return "", fmt.Errorf("unsupported output format %q (valid: table, yaml, json)", raw)
 }
 
-// ListOptions controls which Workspace CRs are returned.
+// ListOptions controls which WitwaveWorkspace CRs are returned.
 type ListOptions struct {
 	Namespace     string
 	AllNamespaces bool
@@ -50,10 +50,10 @@ type ListOptions struct {
 	Out           io.Writer
 }
 
-// WorkspaceSummary is a render-ready view of one Workspace. Flat enough
+// WitwaveWorkspaceSummary is a render-ready view of one WitwaveWorkspace. Flat enough
 // for a tabwriter row; retains a pointer to the raw unstructured object
 // so YAML / JSON emission doesn't need a second round-trip.
-type WorkspaceSummary struct {
+type WitwaveWorkspaceSummary struct {
 	Namespace string
 	Name      string
 	// Volumes counts spec.volumes[].
@@ -70,9 +70,9 @@ type WorkspaceSummary struct {
 	Raw *unstructured.Unstructured
 }
 
-// ListWorkspaces returns summaries for the workspaces in scope. Shared
+// ListWitwaveWorkspaces returns summaries for the workspaces in scope. Shared
 // data path between `ww workspace list` and any future TUI surface.
-func ListWorkspaces(ctx context.Context, cfg *rest.Config, opts ListOptions) ([]WorkspaceSummary, error) {
+func ListWitwaveWorkspaces(ctx context.Context, cfg *rest.Config, opts ListOptions) ([]WitwaveWorkspaceSummary, error) {
 	dyn, err := newDynamicClient(cfg)
 	if err != nil {
 		return nil, err
@@ -88,15 +88,15 @@ func ListWorkspaces(ctx context.Context, cfg *rest.Config, opts ListOptions) ([]
 	if err != nil {
 		return nil, fmt.Errorf("list workspaces: %w", err)
 	}
-	out := make([]WorkspaceSummary, 0, len(items.Items))
+	out := make([]WitwaveWorkspaceSummary, 0, len(items.Items))
 	for i := range items.Items {
 		out = append(out, workspaceSummary(&items.Items[i]))
 	}
 	return out, nil
 }
 
-func workspaceSummary(cr *unstructured.Unstructured) WorkspaceSummary {
-	s := WorkspaceSummary{
+func workspaceSummary(cr *unstructured.Unstructured) WitwaveWorkspaceSummary {
+	s := WitwaveWorkspaceSummary{
 		Namespace: cr.GetNamespace(),
 		Name:      cr.GetName(),
 		Created:   cr.GetCreationTimestamp().Time,
@@ -117,7 +117,7 @@ func workspaceSummary(cr *unstructured.Unstructured) WorkspaceSummary {
 
 // readPhase derives a phase label from the CR's status.conditions[].
 // Looks for the canonical Ready condition (mirrors the controller's
-// WorkspaceConditionReady constant). Returns "" when no conditions are
+// WitwaveWorkspaceConditionReady constant). Returns "" when no conditions are
 // recorded yet — caller substitutes "Pending".
 func readPhase(cr *unstructured.Unstructured) string {
 	conds, found, err := unstructured.NestedSlice(cr.Object, "status", "conditions")
@@ -145,14 +145,14 @@ func readPhase(cr *unstructured.Unstructured) string {
 	return ""
 }
 
-// List renders Workspace CRs to opts.Out in the requested OutputFormat.
+// List renders WitwaveWorkspace CRs to opts.Out in the requested OutputFormat.
 // table is default; yaml / json emit the raw underlying objects so users
 // can pipe to kubectl / jq.
 func List(ctx context.Context, cfg *rest.Config, opts ListOptions) error {
 	if opts.Out == nil {
 		return fmt.Errorf("ListOptions.Out is required")
 	}
-	summaries, err := ListWorkspaces(ctx, cfg, opts)
+	summaries, err := ListWitwaveWorkspaces(ctx, cfg, opts)
 	if err != nil {
 		return err
 	}
@@ -164,9 +164,9 @@ func List(ctx context.Context, cfg *rest.Config, opts ListOptions) error {
 
 	if len(summaries) == 0 {
 		if opts.AllNamespaces {
-			fmt.Fprintln(opts.Out, "No Workspaces found in any namespace.")
+			fmt.Fprintln(opts.Out, "No WitwaveWorkspaces found in any namespace.")
 		} else {
-			fmt.Fprintf(opts.Out, "No Workspaces found in namespace %q.\n", opts.Namespace)
+			fmt.Fprintf(opts.Out, "No WitwaveWorkspaces found in namespace %q.\n", opts.Namespace)
 		}
 		return nil
 	}
@@ -181,9 +181,9 @@ func List(ctx context.Context, cfg *rest.Config, opts ListOptions) error {
 }
 
 // emitListMachine emits the list as a single Kubernetes-style List
-// envelope ({apiVersion, kind: WorkspaceList, items: [...]}) so a `ww
+// envelope ({apiVersion, kind: WitwaveWorkspaceList, items: [...]}) so a `ww
 // workspace list -o yaml | kubectl apply -f -` round-trip holds.
-func emitListMachine(out io.Writer, summaries []WorkspaceSummary, format OutputFormat) error {
+func emitListMachine(out io.Writer, summaries []WitwaveWorkspaceSummary, format OutputFormat) error {
 	items := make([]interface{}, 0, len(summaries))
 	for _, s := range summaries {
 		items = append(items, s.Raw.Object)

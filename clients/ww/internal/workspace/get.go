@@ -24,7 +24,7 @@ type GetOptions struct {
 	Out       io.Writer
 }
 
-// Get fetches a single Workspace and emits it in the requested
+// Get fetches a single WitwaveWorkspace and emits it in the requested
 // OutputFormat. Default (table) is identical to the list-of-one
 // rendering — consistent with how `kubectl get ws <name>` behaves.
 func Get(ctx context.Context, cfg *rest.Config, opts GetOptions) error {
@@ -38,7 +38,7 @@ func Get(ctx context.Context, cfg *rest.Config, opts GetOptions) error {
 	if err != nil {
 		return err
 	}
-	cr, err := fetchWorkspaceCR(ctx, dyn, opts.Namespace, opts.Name)
+	cr, err := fetchWitwaveWorkspaceCR(ctx, dyn, opts.Namespace, opts.Name)
 	if err != nil {
 		return err
 	}

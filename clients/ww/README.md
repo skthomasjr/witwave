@@ -183,7 +183,7 @@ Every command supports `--help`. Summary:
 | `ww validate <file>`       | POST a file to `/validate`. Kind inferred from path or passed via `--kind`.                                                                                         |
 | `ww version`               | Print the version, commit, and build date. `--short` prints just the semver.                                                                                        |
 | `ww operator [cmd]`        | Install / upgrade / inspect / uninstall the witwave-operator Helm release on a Kubernetes cluster; plus `logs` and `events` for diagnostics. See below.             |
-| `ww workspace [cmd]`       | Manage `Workspace` CRs: `create`, `list`, `get`, `status`, `delete`, `bind`, `unbind`. See [Workspace management](#workspace-management).                           |
+| `ww workspace [cmd]`       | Manage `WitwaveWorkspace` CRs: `create`, `list`, `get`, `status`, `delete`, `bind`, `unbind`. See [WitwaveWorkspace management](#workspace-management).                           |
 | `ww config [cmd]`          | Read, write, and inspect `ww` configuration values — `get`, `set`, `unset`, `list-keys`, `path`. See [Managing config from the CLI](#managing-config-from-the-cli). |
 | `ww update`                | Check for and install a newer `ww` release. See [Staying up to date](#staying-up-to-date).                                                                          |
 
@@ -575,10 +575,10 @@ e.g., two unrelated cohorts of agents in the same namespace that shouldn't see e
 pods matching `app.kubernetes.io/name=<agent-name>`. No `--watch` mode — when you need live signal, `ww agent logs -f`
 usually tells you more.
 
-## Workspace management
+## WitwaveWorkspace management
 
-`ww workspace` creates, lists, inspects, deletes, and binds `Workspace` custom resources. The witwave-operator
-reconciles each `Workspace` into shared volumes, projected Secrets, and rendered ConfigMaps that participating
+`ww workspace` creates, lists, inspects, deletes, and binds `WitwaveWorkspace` custom resources. The witwave-operator
+reconciles each `WitwaveWorkspace` into shared volumes, projected Secrets, and rendered ConfigMaps that participating
 WitwaveAgents see at runtime. Membership is agent-owned: a `WitwaveAgent` declares which workspaces it participates in
 via `spec.workspaceRefs[]`, and the workspace controller maintains `Status.BoundAgents` as the inverted index.
 
@@ -594,18 +594,18 @@ ww workspace delete shared --wait --timeout 2m                # refuse-delete fi
 
 # Membership (agent-owned via spec.workspaceRefs[])
 ww workspace bind iris shared                                 # idempotent — re-binding is a no-op
-ww workspace unbind iris shared                               # drops the entry; does NOT delete the Workspace
+ww workspace unbind iris shared                               # drops the entry; does NOT delete the WitwaveWorkspace
 ```
 
 | Subcommand                     | Purpose                                                                                           |
 | ------------------------------ | ------------------------------------------------------------------------------------------------- |
-| `ww workspace create [name]`   | Create a Workspace from a YAML file (`-f`) or convenience flags (`--volume`, `--secret`).         |
+| `ww workspace create [name]`   | Create a WitwaveWorkspace from a YAML file (`-f`) or convenience flags (`--volume`, `--secret`).         |
 | `ww workspace list`            | Cluster-wide by default (NS-3 / kubectl parity); narrow with `-n`. Output `-o table\|yaml\|json`. |
-| `ww workspace get <name>`      | Fetch a single Workspace; default output is a one-row table; `-o yaml\|json` for the raw object.  |
+| `ww workspace get <name>`      | Fetch a single WitwaveWorkspace; default output is a one-row table; `-o yaml\|json` for the raw object.  |
 | `ww workspace status <name>`   | Curated human view: volumes, conditions, bound agents.                                            |
 | `ww workspace delete <name>`   | Delete the CR; `--wait` blocks on the refuse-delete finalizer.                                    |
 | `ww workspace bind <a> <ws>`   | Add `<ws>` to `<a>.spec.workspaceRefs[]`. Idempotent. Same-namespace only in v1alpha1.            |
-| `ww workspace unbind <a> <ws>` | Remove `<ws>` from `<a>.spec.workspaceRefs[]`. Does NOT delete the Workspace.                     |
+| `ww workspace unbind <a> <ws>` | Remove `<ws>` from `<a>.spec.workspaceRefs[]`. Does NOT delete the WitwaveWorkspace.                     |
 
 ### Flags
 
@@ -619,7 +619,7 @@ NS-3).
 
 | Flag                 | Shape                                        | Behaviour                                                                                                                                |
 | -------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `-f, --from-file`    | path                                         | YAML/JSON `Workspace` manifest. Mutually exclusive with `--volume` / `--secret`.                                                         |
+| `-f, --from-file`    | path                                         | YAML/JSON `WitwaveWorkspace` manifest. Mutually exclusive with `--volume` / `--secret`.                                                         |
 | `--volume`           | `<name>=<size>[@<storageClass>]`             | Repeatable. Defaults the access mode to `ReadWriteMany` (v1alpha1 contract — RWO is v1.x).                                               |
 | `--secret`           | `<name>` / `<name>@/abs/path` / `<name>=env` | Repeatable. Bare name = reference only; `@/abs/path` = mount; `=env` = project as `envFrom`. Anything else after `=` is rejected loudly. |
 | `--create-namespace` | bool                                         | Provision the namespace (labelled `app.kubernetes.io/managed-by: ww`) when missing. No-op otherwise.                                     |
@@ -630,8 +630,8 @@ before confirmation.
 
 For full control over reclaim policies, multiple `configFiles[]` entries, and other fields the convenience flags don't
 surface, author a YAML manifest and pass it via `-f`. The schema lives at
-[`operator/api/v1alpha1/workspace_types.go`](../../operator/api/v1alpha1/workspace_types.go) and a richer walk-through
-sits in [`operator/README.md`](../../operator/README.md#the-workspace-resource).
+[`operator/api/v1alpha1/witwaveworkspace_types.go`](../../operator/api/v1alpha1/witwaveworkspace_types.go) and a richer walk-through
+sits in [`operator/README.md`](../../operator/README.md#the-witwaveworkspace-resource).
 
 ## Interactive TUI
 

@@ -27,7 +27,7 @@ type DeleteOptions struct {
 	// DryRun prints the plan and exits without calling the API server.
 	DryRun bool
 	// Wait blocks until the apiserver actually removes the CR. The
-	// Workspace's refuse-delete finalizer means a delete blocks while any
+	// WitwaveWorkspace's refuse-delete finalizer means a delete blocks while any
 	// agent still references it; --wait surfaces that visibly with a
 	// progress dot per poll. Bounded by WaitTimeout.
 	Wait        bool
@@ -37,7 +37,7 @@ type DeleteOptions struct {
 	In  io.Reader
 }
 
-// Delete removes the Workspace CR. The operator's refuse-delete-from-
+// Delete removes the WitwaveWorkspace CR. The operator's refuse-delete-from-
 // finalizer means a delete request blocks (kubectl-style "Terminating")
 // while any WitwaveAgent still references it via spec.workspaceRefs[].
 //
@@ -66,7 +66,7 @@ func Delete(
 	// Fetch the CR up-front so the banner can describe the bound-agents
 	// blast radius (the operator refuses-delete while any are bound) and
 	// a clean "not found" beats the one from the Delete call.
-	cr, err := fetchWorkspaceCR(ctx, dyn, opts.Namespace, opts.Name)
+	cr, err := fetchWitwaveWorkspaceCR(ctx, dyn, opts.Namespace, opts.Name)
 	if err != nil {
 		return err
 	}
@@ -74,7 +74,7 @@ func Delete(
 	bound := boundAgentsFromStatus(cr)
 
 	plan := []k8s.PlanLine{
-		{Key: "Action", Value: fmt.Sprintf("delete Workspace %q", opts.Name)},
+		{Key: "Action", Value: fmt.Sprintf("delete WitwaveWorkspace %q", opts.Name)},
 	}
 	if len(bound) == 0 {
 		plan = append(plan, k8s.PlanLine{
@@ -109,14 +109,14 @@ func Delete(
 
 	if err := dyn.Resource(GVR()).Namespace(opts.Namespace).Delete(ctx, opts.Name, metav1.DeleteOptions{}); err != nil {
 		if apierrors.IsNotFound(err) {
-			return fmt.Errorf("Workspace %q not found in namespace %q", opts.Name, opts.Namespace)
+			return fmt.Errorf("WitwaveWorkspace %q not found in namespace %q", opts.Name, opts.Namespace)
 		}
 		return fmt.Errorf("delete workspace: %w", err)
 	}
-	fmt.Fprintf(opts.Out, "Delete request accepted for Workspace %s/%s.\n", opts.Namespace, opts.Name)
+	fmt.Fprintf(opts.Out, "Delete request accepted for WitwaveWorkspace %s/%s.\n", opts.Namespace, opts.Name)
 
 	if len(bound) > 0 {
-		fmt.Fprintf(opts.Out, "Workspace will remain in Terminating until %d bound agent(s) unbind.\n", len(bound))
+		fmt.Fprintf(opts.Out, "WitwaveWorkspace will remain in Terminating until %d bound agent(s) unbind.\n", len(bound))
 	}
 
 	if !opts.Wait {
@@ -128,11 +128,11 @@ func Delete(
 	if timeout <= 0 {
 		timeout = 2 * time.Minute
 	}
-	fmt.Fprintf(opts.Out, "Waiting up to %s for the Workspace to be removed...\n", timeout)
+	fmt.Fprintf(opts.Out, "Waiting up to %s for the WitwaveWorkspace to be removed...\n", timeout)
 	if err := waitForGone(ctx, dyn, opts.Namespace, opts.Name, timeout, opts.Out); err != nil {
 		return err
 	}
-	fmt.Fprintf(opts.Out, "Workspace %s/%s deleted.\n", opts.Namespace, opts.Name)
+	fmt.Fprintf(opts.Out, "WitwaveWorkspace %s/%s deleted.\n", opts.Namespace, opts.Name)
 	return nil
 }
 
@@ -143,7 +143,7 @@ func waitForGone(ctx context.Context, dyn dynamic.Interface, ns, name string, ti
 	deadline := time.Now().Add(timeout)
 	for {
 		if time.Now().After(deadline) {
-			return fmt.Errorf("timed out after %s waiting for Workspace %q to be removed (still bound to one or more agents?)", timeout, name)
+			return fmt.Errorf("timed out after %s waiting for WitwaveWorkspace %q to be removed (still bound to one or more agents?)", timeout, name)
 		}
 		_, err := dyn.Resource(GVR()).Namespace(ns).Get(ctx, name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {

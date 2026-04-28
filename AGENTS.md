@@ -70,11 +70,11 @@ Prompts can land in `.witwave/{jobs,tasks,triggers,continuations,webhooks}/` (or
    See `operator/README.md#the-witwaveprompt-resource` and
    `operator/config/samples/witwave_v1alpha1_witwaveprompt.yaml`.
 
-A third operator CRD, `Workspace`, is parallel to `WitwaveAgent` and `WitwavePrompt`: it provisions shared volumes,
+A third operator CRD, `WitwaveWorkspace`, is parallel to `WitwaveAgent` and `WitwavePrompt`: it provisions shared volumes,
 projects pre-created Secrets, and renders ConfigMap-backed files that get stamped onto every agent whose
 `Spec.WorkspaceRefs` references it. Membership is agent-owned (the agent declares `Spec.WorkspaceRefs[]`; the workspace
-controller maintains `Status.BoundAgents` as an inverted index). See `operator/README.md#the-workspace-resource` and
-`operator/api/v1alpha1/workspace_types.go`.
+controller maintains `Status.BoundAgents` as an inverted index). See `operator/README.md#the-witwaveworkspace-resource` and
+`operator/api/v1alpha1/witwaveworkspace_types.go`.
 
 harness retains no LLM of its own. All conversation state, session continuity, memory, and conversation logging live in
 the backend container.
@@ -525,7 +525,7 @@ AGENTS.md is deliberately high-level. For specifics, go to the source of truth:
   tracker (component labels match this file's taxonomy:
   `harness, claude, codex, gemini, dashboard, operator, charts, mcp, cli` + cross-cutting).
 - **Operator CRD reference** — `operator/api/v1alpha1/*_types.go` Go types (`witwaveagent_types.go`,
-  `witwaveprompt_types.go`, `workspace_types.go`) + generated CRD schemas under `operator/config/crd/bases/`; sample
+  `witwaveprompt_types.go`, `witwaveworkspace_types.go`) + generated CRD schemas under `operator/config/crd/bases/`; sample
   manifests in `operator/config/samples/`.
 - **`ww` CLI design rules** — `clients/ww/DESIGN.md` codifies the CLI's design invariants (kubeconfig handling, command
   taxonomy, flag conventions, exit codes). Rules are numbered (`KC-*`, `TAX-*`, …) and should be cited in PRs that touch

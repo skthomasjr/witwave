@@ -31,13 +31,13 @@ func TestCreate_FromFlags_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	mustContain(t, out.String(), `Created Workspace witwave`)
+	mustContain(t, out.String(), `Created WitwaveWorkspace witwave`)
 
 	cr, err := dyn.Resource(GVR()).Namespace("default").Get(
 		context.Background(), "witwave", metav1.GetOptions{},
 	)
 	if err != nil {
-		t.Fatalf("Workspace should have been created: %v", err)
+		t.Fatalf("WitwaveWorkspace should have been created: %v", err)
 	}
 	vols, found, err := unstructured.NestedSlice(cr.Object, "spec", "volumes")
 	if err != nil || !found || len(vols) != 1 {
@@ -49,7 +49,7 @@ func TestCreate_FromFlags_HappyPath(t *testing.T) {
 }
 
 func TestCreate_AlreadyExists(t *testing.T) {
-	existing := seedWorkspace("witwave", "default", nil)
+	existing := seedWitwaveWorkspace("witwave", "default", nil)
 	dyn := makeFakeDynamic(existing)
 	t.Cleanup(withFakeClients(t, dyn, makeFakeK8s()))
 
@@ -97,7 +97,7 @@ func TestCreate_FromFile_HappyPath(t *testing.T) {
 	manifest := filepath.Join(tmp, "ws.yaml")
 	if err := os.WriteFile(manifest, []byte(`
 apiVersion: witwave.ai/v1alpha1
-kind: Workspace
+kind: WitwaveWorkspace
 metadata:
   name: witwave
 spec:
@@ -123,7 +123,7 @@ spec:
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	mustContain(t, out.String(), "Created Workspace witwave")
+	mustContain(t, out.String(), "Created WitwaveWorkspace witwave")
 }
 
 func TestCreate_FromFile_KindMismatch(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 )
 
 func TestStatus_Pending_NoConditions(t *testing.T) {
-	cr := seedWorkspace("witwave", "default", func(spec map[string]interface{}) {
+	cr := seedWitwaveWorkspace("witwave", "default", func(spec map[string]interface{}) {
 		spec["volumes"] = []interface{}{
 			map[string]interface{}{
 				"name":             "source",
@@ -30,7 +30,7 @@ func TestStatus_Pending_NoConditions(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	body := out.String()
-	mustContain(t, body, "Workspace: witwave")
+	mustContain(t, body, "WitwaveWorkspace: witwave")
 	mustContain(t, body, "Phase:     Pending")
 	mustContain(t, body, "Volumes:")
 	mustContain(t, body, "source")
@@ -40,7 +40,7 @@ func TestStatus_Pending_NoConditions(t *testing.T) {
 }
 
 func TestStatus_Ready_WithBoundAgents(t *testing.T) {
-	cr := seedWorkspaceWithStatus("witwave", "default", nil, func(status map[string]interface{}) {
+	cr := seedWitwaveWorkspaceWithStatus("witwave", "default", nil, func(status map[string]interface{}) {
 		status["conditions"] = []interface{}{
 			map[string]interface{}{
 				"type":    "Ready",

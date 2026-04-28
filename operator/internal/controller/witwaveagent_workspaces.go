@@ -32,7 +32,7 @@ import (
 )
 
 // workspaceVolumePodName returns the pod-level Volume name used when
-// stamping a Workspace volume onto an agent pod. Stable across reconciles
+// stamping a WitwaveWorkspace volume onto an agent pod. Stable across reconciles
 // so the rendered Deployment converges on the same volume graph.
 func workspaceVolumePodName(workspaceName, volumeName string) string {
 	return fmt.Sprintf("workspace-%s-%s", workspaceName, volumeName)
@@ -54,37 +54,37 @@ func workspaceConfigFilePodName(workspaceName, cmRef string, idx int) string {
 // workspaceVolumeMountPath returns the effective MountPath for a workspace
 // volume entry, defaulting to /workspaces/<workspace>/<volume> when the CR
 // leaves MountPath empty.
-func workspaceVolumeMountPath(ws *witwavev1alpha1.Workspace, vol *witwavev1alpha1.WorkspaceVolume) string {
+func workspaceVolumeMountPath(ws *witwavev1alpha1.WitwaveWorkspace, vol *witwavev1alpha1.WitwaveWorkspaceVolume) string {
 	if vol.MountPath != "" {
 		return vol.MountPath
 	}
 	return fmt.Sprintf("/workspaces/%s/%s", ws.Name, vol.Name)
 }
 
-// fetchWorkspacesForAgent loads every Workspace referenced by the agent's
+// fetchWitwaveWorkspacesForAgent loads every WitwaveWorkspace referenced by the agent's
 // Spec.WorkspaceRefs. Missing workspaces are skipped silently — the watch
-// on Workspace CRs will re-enqueue the agent once the referenced resource
+// on WitwaveWorkspace CRs will re-enqueue the agent once the referenced resource
 // appears. The returned slice is sorted by workspace name so the rendered
 // Deployment is byte-stable across reconciles.
-func fetchWorkspacesForAgent(ctx context.Context, c client.Reader, agent *witwavev1alpha1.WitwaveAgent) ([]witwavev1alpha1.Workspace, error) {
+func fetchWitwaveWorkspacesForAgent(ctx context.Context, c client.Reader, agent *witwavev1alpha1.WitwaveAgent) ([]witwavev1alpha1.WitwaveWorkspace, error) {
 	if len(agent.Spec.WorkspaceRefs) == 0 {
 		return nil, nil
 	}
 	seen := map[string]struct{}{}
-	out := make([]witwavev1alpha1.Workspace, 0, len(agent.Spec.WorkspaceRefs))
+	out := make([]witwavev1alpha1.WitwaveWorkspace, 0, len(agent.Spec.WorkspaceRefs))
 	for _, ref := range agent.Spec.WorkspaceRefs {
 		if _, dup := seen[ref.Name]; dup {
 			continue
 		}
 		seen[ref.Name] = struct{}{}
-		ws := &witwavev1alpha1.Workspace{}
+		ws := &witwavev1alpha1.WitwaveWorkspace{}
 		err := c.Get(ctx, types.NamespacedName{Namespace: agent.Namespace, Name: ref.Name}, ws)
 		if apierrors.IsNotFound(err) {
 			// Log the missing reference so an operator investigating
 			// "why isn't my workspace mounted" sees which refs the
-			// reconcile is waiting on. The Workspace watch
+			// reconcile is waiting on. The WitwaveWorkspace watch
 			// (witwaveagent_controller.go) re-enqueues the agent on
-			// Workspace creation, so this is recoverable without
+			// WitwaveWorkspace creation, so this is recoverable without
 			// additional intervention.
 			logf.FromContext(ctx).Info(
 				"workspace ref not found; will re-reconcile when it appears",
@@ -93,7 +93,7 @@ func fetchWorkspacesForAgent(ctx context.Context, c client.Reader, agent *witwav
 			continue
 		}
 		if err != nil {
-			return nil, fmt.Errorf("get Workspace %q: %w", ref.Name, err)
+			return nil, fmt.Errorf("get WitwaveWorkspace %q: %w", ref.Name, err)
 		}
 		out = append(out, *ws)
 	}
@@ -101,7 +101,7 @@ func fetchWorkspacesForAgent(ctx context.Context, c client.Reader, agent *witwav
 	return out, nil
 }
 
-// stampWorkspacesOnDeployment mutates the rendered Deployment to add every
+// stampWitwaveWorkspacesOnDeployment mutates the rendered Deployment to add every
 // participating workspace's Volumes, Secrets, and ConfigFiles onto the
 // pod's volume graph and onto every backend container's mounts.
 //
@@ -113,14 +113,14 @@ func fetchWorkspacesForAgent(ctx context.Context, c client.Reader, agent *witwav
 //     workspace mount is skipped silently. The admission webhook handles
 //     cross-workspace collisions on the agent side, so cases that reach
 //     this function should already be conflict-free.
-//   - Workspace pod-level Volumes use a name prefixed with
+//   - WitwaveWorkspace pod-level Volumes use a name prefixed with
 //     "workspace-<workspace>-" so they cannot collide with per-agent
 //     volumes regardless of how the operator chose them.
 //
 // The harness container is left alone — workspace mounts only land on
 // backend containers per the design doc (workspaces are for backend
 // collaboration, not harness-side state).
-func stampWorkspacesOnDeployment(dep *appsv1.Deployment, workspaces []witwavev1alpha1.Workspace) {
+func stampWitwaveWorkspacesOnDeployment(dep *appsv1.Deployment, workspaces []witwavev1alpha1.WitwaveWorkspace) {
 	if dep == nil || len(workspaces) == 0 {
 		return
 	}
@@ -153,7 +153,7 @@ func stampWorkspacesOnDeployment(dep *appsv1.Deployment, workspaces []witwavev1a
 			// already rejects it but defence in depth keeps an old
 			// CR (saved before the webhook went live) from silently
 			// growing a hostPath mount.
-			if vol.StorageType == witwavev1alpha1.WorkspaceStorageTypeHostPath {
+			if vol.StorageType == witwavev1alpha1.WitwaveWorkspaceStorageTypeHostPath {
 				continue
 			}
 			podVolName := workspaceVolumePodName(ws.Name, vol.Name)
@@ -165,7 +165,7 @@ func stampWorkspacesOnDeployment(dep *appsv1.Deployment, workspaces []witwavev1a
 				Name: podVolName,
 				VolumeSource: corev1.VolumeSource{
 					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-						ClaimName: WorkspaceVolumePVCName(ws.Name, vol.Name),
+						ClaimName: WitwaveWorkspaceVolumePVCName(ws.Name, vol.Name),
 					},
 				},
 			})
@@ -210,7 +210,7 @@ func stampWorkspacesOnDeployment(dep *appsv1.Deployment, workspaces []witwavev1a
 		for cfIdx, cf := range ws.Spec.ConfigFiles {
 			cmRef := cf.ConfigMap
 			if cf.Inline != nil {
-				cmRef = WorkspaceInlineConfigMapName(ws.Name, cf.Inline.Name)
+				cmRef = WitwaveWorkspaceInlineConfigMapName(ws.Name, cf.Inline.Name)
 			}
 			if cmRef == "" {
 				continue
@@ -246,7 +246,7 @@ func stampWorkspacesOnDeployment(dep *appsv1.Deployment, workspaces []witwavev1a
 
 	for ci := range pod.Containers {
 		c := &pod.Containers[ci]
-		// Workspaces project onto backend containers only — the
+		// WitwaveWorkspaces project onto backend containers only — the
 		// harness container is left untouched. The harness container
 		// is always named "harness" by buildDeployment.
 		if c.Name == "harness" {

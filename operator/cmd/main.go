@@ -386,13 +386,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := (&controller.WorkspaceReconciler{
+	if err := (&controller.WitwaveWorkspaceReconciler{
 		Client:    mgr.GetClient(),
 		APIReader: mgr.GetAPIReader(),
 		Scheme:    mgr.GetScheme(),
-		Recorder:  mgr.GetEventRecorderFor("workspace-controller"),
+		Recorder:  mgr.GetEventRecorderFor("witwaveworkspace-controller"),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Workspace")
+		setupLog.Error(err, "unable to create controller", "controller", "WitwaveWorkspace")
 		os.Exit(1)
 	}
 
@@ -413,8 +413,8 @@ func main() {
 			setupLog.Error(err, "unable to create webhook", "webhook", "WitwavePrompt")
 			os.Exit(1)
 		}
-		if err := webhookv1alpha1.SetupWorkspaceWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "Workspace")
+		if err := webhookv1alpha1.SetupWitwaveWorkspaceWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "WitwaveWorkspace")
 			os.Exit(1)
 		}
 	} else {

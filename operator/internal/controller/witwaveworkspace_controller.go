@@ -41,75 +41,75 @@ import (
 	witwavev1alpha1 "github.com/witwave-ai/witwave-operator/api/v1alpha1"
 )
 
-// workspaceFinalizer guarantees the operator observes Workspace deletion so
+// witwaveWorkspaceFinalizer guarantees the operator observes WitwaveWorkspace deletion so
 // PVCs scheduled for reclaim, owned ConfigMaps, and the per-CR metric series
 // can be drained before the apiserver removes the object. The same finalizer
 // also implements the refuse-delete invariant for workspaces with bound
-// agents (see tmp/workspace-crd.md "Workspace deletion: refuse-delete
+// agents (see tmp/workspace-crd.md "WitwaveWorkspace deletion: refuse-delete
 // finalizer while any agent references the workspace").
-const workspaceFinalizer = "workspace.witwave.ai/finalizer"
+const witwaveWorkspaceFinalizer = "witwaveworkspace.witwave.ai/finalizer"
 
-// Labels stamped on Workspace-owned resources so the dual-check
+// Labels stamped on WitwaveWorkspace-owned resources so the dual-check
 // IsControlledBy + label pattern can find them without re-querying the CRs.
 const (
-	// componentWorkspaceVolume identifies operator-owned PVCs reconciled
-	// for a Workspace.Spec.Volumes entry.
-	componentWorkspaceVolume = "workspace-volume"
+	// componentWitwaveWorkspaceVolume identifies operator-owned PVCs reconciled
+	// for a WitwaveWorkspace.Spec.Volumes entry.
+	componentWitwaveWorkspaceVolume = "witwaveworkspace-volume"
 
-	// componentWorkspaceConfigFile identifies operator-owned ConfigMaps
-	// rendered for a Workspace.Spec.ConfigFiles[].Inline entry.
-	componentWorkspaceConfigFile = "workspace-configfile"
+	// componentWitwaveWorkspaceConfigFile identifies operator-owned ConfigMaps
+	// rendered for a WitwaveWorkspace.Spec.ConfigFiles[].Inline entry.
+	componentWitwaveWorkspaceConfigFile = "witwaveworkspace-configfile"
 
-	// labelWorkspaceName identifies the parent Workspace on every owned
+	// labelWitwaveWorkspaceName identifies the parent WitwaveWorkspace on every owned
 	// PVC / ConfigMap. Used by cleanup paths to scope List calls to the
 	// CR's resources without scanning the namespace.
-	labelWorkspaceName = "witwave.ai/workspace"
+	labelWitwaveWorkspaceName = "witwave.ai/witwaveworkspace"
 
-	// labelWorkspaceVolumeName identifies which Spec.Volumes entry an
+	// labelWitwaveWorkspaceVolumeName identifies which Spec.Volumes entry an
 	// owned PVC was reconciled for.
-	labelWorkspaceVolumeName = "witwave.ai/workspace-volume"
+	labelWitwaveWorkspaceVolumeName = "witwave.ai/witwaveworkspace-volume"
 
-	// labelWorkspaceConfigFileName identifies which inline ConfigFile
+	// labelWitwaveWorkspaceConfigFileName identifies which inline ConfigFile
 	// entry an owned ConfigMap was reconciled for.
-	labelWorkspaceConfigFileName = "witwave.ai/workspace-configfile"
+	labelWitwaveWorkspaceConfigFileName = "witwave.ai/witwaveworkspace-configfile"
 )
 
-// WorkspaceReconciler reconciles a Workspace object.
+// WitwaveWorkspaceReconciler reconciles a WitwaveWorkspace object.
 //
 // Three concerns per reconcile:
 //
 //  1. Provision one PVC per Spec.Volumes[] (IsControlledBy guarded). PVCs
-//     whose ReclaimPolicy is Retain are kept on Workspace deletion;
+//     whose ReclaimPolicy is Retain are kept on WitwaveWorkspace deletion;
 //     Delete-mode PVCs are removed alongside the parent.
 //  2. Render one ConfigMap per Spec.ConfigFiles[].Inline (IsControlledBy
-//     guarded with the labelWorkspaceConfigFileName dual-check pattern).
+//     guarded with the labelWitwaveWorkspaceConfigFileName dual-check pattern).
 //  3. Maintain Status.BoundAgents as the inverted index over WitwaveAgents
-//     whose Spec.WorkspaceRefs reference this Workspace.
+//     whose Spec.WorkspaceRefs reference this WitwaveWorkspace.
 //
 // On deletion the controller refuses to clear its finalizer while
-// Status.BoundAgents is non-empty so a Workspace cannot disappear out from
+// Status.BoundAgents is non-empty so a WitwaveWorkspace cannot disappear out from
 // under a still-attached WitwaveAgent. Operators clear the block by
-// dropping the WorkspaceRefs entry on each affected agent.
-type WorkspaceReconciler struct {
+// dropping the WitwaveWorkspaceRefs entry on each affected agent.
+type WitwaveWorkspaceReconciler struct {
 	client.Client
 	APIReader client.Reader
 	Scheme    *runtime.Scheme
 	Recorder  record.EventRecorder
 }
 
-// +kubebuilder:rbac:groups=witwave.ai,resources=workspaces,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=witwave.ai,resources=workspaces/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=witwave.ai,resources=workspaces/finalizers,verbs=update
+// +kubebuilder:rbac:groups=witwave.ai,resources=witwaveworkspaces,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=witwave.ai,resources=witwaveworkspaces/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=witwave.ai,resources=witwaveworkspaces/finalizers,verbs=update
 
 // Reconcile is the control loop entry point.
-func (r *WorkspaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *WitwaveWorkspaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
-	ws := &witwavev1alpha1.Workspace{}
+	ws := &witwavev1alpha1.WitwaveWorkspace{}
 	if err := r.Get(ctx, req.NamespacedName, ws); err != nil {
 		if apierrors.IsNotFound(err) {
-			workspaceBoundAgents.DeleteLabelValues(req.Namespace, req.Name)
-			workspaceVolumesProvisioned.DeleteLabelValues(req.Namespace, req.Name)
+			witwaveWorkspaceBoundAgents.DeleteLabelValues(req.Namespace, req.Name)
+			witwaveWorkspaceVolumesProvisioned.DeleteLabelValues(req.Namespace, req.Name)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
@@ -119,7 +119,7 @@ func (r *WorkspaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// happy path and the refuse-delete check below).
 	bound, err := r.indexBoundAgents(ctx, ws)
 	if err != nil {
-		workspaceReconcileTotal.WithLabelValues("error").Inc()
+		witwaveWorkspaceReconcileTotal.WithLabelValues("error").Inc()
 		return ctrl.Result{}, fmt.Errorf("index bound agents: %w", err)
 	}
 
@@ -127,41 +127,41 @@ func (r *WorkspaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// then refuse to remove the finalizer while any agent still references
 	// the workspace.
 	if !ws.DeletionTimestamp.IsZero() {
-		if controllerutil.ContainsFinalizer(ws, workspaceFinalizer) {
+		if controllerutil.ContainsFinalizer(ws, witwaveWorkspaceFinalizer) {
 			if len(bound) > 0 {
 				_ = r.patchStatus(ctx, ws, bound, []metav1.Condition{
 					{
-						Type:    witwavev1alpha1.WorkspaceConditionDeletionBlocked,
+						Type:    witwavev1alpha1.WitwaveWorkspaceConditionDeletionBlocked,
 						Status:  metav1.ConditionTrue,
 						Reason:  "BoundAgents",
-						Message: fmt.Sprintf("%d agent(s) still reference this Workspace; remove the workspaceRefs entry on each before deletion completes", len(bound)),
+						Message: fmt.Sprintf("%d agent(s) still reference this WitwaveWorkspace; remove the workspaceRefs entry on each before deletion completes", len(bound)),
 					},
 				})
-				workspaceReconcileTotal.WithLabelValues("delete_blocked").Inc()
+				witwaveWorkspaceReconcileTotal.WithLabelValues("delete_blocked").Inc()
 				// Don't requeue with an error — the watch on
 				// WitwaveAgent will re-enqueue once the last ref drops.
 				return ctrl.Result{}, nil
 			}
 			if err := r.deleteRetainEligibleResources(ctx, ws); err != nil {
-				workspaceReconcileTotal.WithLabelValues("error").Inc()
+				witwaveWorkspaceReconcileTotal.WithLabelValues("error").Inc()
 				return ctrl.Result{}, fmt.Errorf("delete owned resources: %w", err)
 			}
 			before := ws.DeepCopy()
-			controllerutil.RemoveFinalizer(ws, workspaceFinalizer)
+			controllerutil.RemoveFinalizer(ws, witwaveWorkspaceFinalizer)
 			if err := r.Patch(ctx, ws, client.MergeFrom(before)); err != nil {
 				return ctrl.Result{}, fmt.Errorf("remove workspace finalizer: %w", err)
 			}
-			workspaceBoundAgents.DeleteLabelValues(ws.Namespace, ws.Name)
-			workspaceVolumesProvisioned.DeleteLabelValues(ws.Namespace, ws.Name)
+			witwaveWorkspaceBoundAgents.DeleteLabelValues(ws.Namespace, ws.Name)
+			witwaveWorkspaceVolumesProvisioned.DeleteLabelValues(ws.Namespace, ws.Name)
 		}
-		workspaceReconcileTotal.WithLabelValues("deleted").Inc()
+		witwaveWorkspaceReconcileTotal.WithLabelValues("deleted").Inc()
 		return ctrl.Result{}, nil
 	}
 
 	// Add the finalizer on first observation.
-	if !controllerutil.ContainsFinalizer(ws, workspaceFinalizer) {
+	if !controllerutil.ContainsFinalizer(ws, witwaveWorkspaceFinalizer) {
 		before := ws.DeepCopy()
-		if controllerutil.AddFinalizer(ws, workspaceFinalizer) {
+		if controllerutil.AddFinalizer(ws, witwaveWorkspaceFinalizer) {
 			if err := r.Patch(ctx, ws, client.MergeFrom(before)); err != nil {
 				return ctrl.Result{}, fmt.Errorf("add workspace finalizer: %w", err)
 			}
@@ -176,14 +176,14 @@ func (r *WorkspaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if err := r.reconcileVolumes(ctx, ws); err != nil {
 		reconcileErrs = append(reconcileErrs, fmt.Errorf("reconcile volumes: %w", err))
 		conds = append(conds, metav1.Condition{
-			Type:    witwavev1alpha1.WorkspaceConditionVolumesProvisioned,
+			Type:    witwavev1alpha1.WitwaveWorkspaceConditionVolumesProvisioned,
 			Status:  metav1.ConditionFalse,
 			Reason:  "VolumeReconcileFailed",
 			Message: truncateMessage(err.Error(), 256),
 		})
 	} else {
 		conds = append(conds, metav1.Condition{
-			Type:    witwavev1alpha1.WorkspaceConditionVolumesProvisioned,
+			Type:    witwavev1alpha1.WitwaveWorkspaceConditionVolumesProvisioned,
 			Status:  metav1.ConditionTrue,
 			Reason:  "AllProvisioned",
 			Message: fmt.Sprintf("%d volume(s) provisioned", len(ws.Spec.Volumes)),
@@ -194,7 +194,7 @@ func (r *WorkspaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if err := r.reconcileConfigFiles(ctx, ws); err != nil {
 		reconcileErrs = append(reconcileErrs, fmt.Errorf("reconcile configFiles: %w", err))
 		conds = append(conds, metav1.Condition{
-			Type:    witwavev1alpha1.WorkspaceConditionConfigMapsRendered,
+			Type:    witwavev1alpha1.WitwaveWorkspaceConditionConfigMapsRendered,
 			Status:  metav1.ConditionFalse,
 			Reason:  "ConfigMapReconcileFailed",
 			Message: truncateMessage(err.Error(), 256),
@@ -207,7 +207,7 @@ func (r *WorkspaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			}
 		}
 		conds = append(conds, metav1.Condition{
-			Type:    witwavev1alpha1.WorkspaceConditionConfigMapsRendered,
+			Type:    witwavev1alpha1.WitwaveWorkspaceConditionConfigMapsRendered,
 			Status:  metav1.ConditionTrue,
 			Reason:  "AllRendered",
 			Message: fmt.Sprintf("%d inline ConfigMap(s) rendered", inlineCount),
@@ -215,7 +215,7 @@ func (r *WorkspaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	conds = append(conds, metav1.Condition{
-		Type:    witwavev1alpha1.WorkspaceConditionBoundAgentsTracked,
+		Type:    witwavev1alpha1.WitwaveWorkspaceConditionBoundAgentsTracked,
 		Status:  metav1.ConditionTrue,
 		Reason:  "Indexed",
 		Message: fmt.Sprintf("%d bound agent(s)", len(bound)),
@@ -223,14 +223,14 @@ func (r *WorkspaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	readyStatus := metav1.ConditionTrue
 	readyReason := "Ready"
-	readyMessage := "Workspace reconciled successfully"
+	readyMessage := "WitwaveWorkspace reconciled successfully"
 	if len(reconcileErrs) > 0 {
 		readyStatus = metav1.ConditionFalse
 		readyReason = "ReconcileFailed"
 		readyMessage = errors.Join(reconcileErrs...).Error()
 	}
 	conds = append(conds, metav1.Condition{
-		Type:    witwavev1alpha1.WorkspaceConditionReady,
+		Type:    witwavev1alpha1.WitwaveWorkspaceConditionReady,
 		Status:  readyStatus,
 		Reason:  readyReason,
 		Message: truncateMessage(readyMessage, 256),
@@ -240,16 +240,16 @@ func (r *WorkspaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		reconcileErrs = append(reconcileErrs, fmt.Errorf("patch status: %w", err))
 	}
 
-	workspaceBoundAgents.WithLabelValues(ws.Namespace, ws.Name).Set(float64(len(bound)))
-	workspaceVolumesProvisioned.WithLabelValues(ws.Namespace, ws.Name).Set(float64(len(ws.Spec.Volumes)))
+	witwaveWorkspaceBoundAgents.WithLabelValues(ws.Namespace, ws.Name).Set(float64(len(bound)))
+	witwaveWorkspaceVolumesProvisioned.WithLabelValues(ws.Namespace, ws.Name).Set(float64(len(ws.Spec.Volumes)))
 
 	if len(reconcileErrs) > 0 {
-		workspaceReconcileTotal.WithLabelValues("error").Inc()
+		witwaveWorkspaceReconcileTotal.WithLabelValues("error").Inc()
 		joined := errors.Join(reconcileErrs...)
-		log.Error(joined, "Workspace reconcile encountered errors")
+		log.Error(joined, "WitwaveWorkspace reconcile encountered errors")
 		return ctrl.Result{}, joined
 	}
-	workspaceReconcileTotal.WithLabelValues("success").Inc()
+	witwaveWorkspaceReconcileTotal.WithLabelValues("success").Inc()
 	return ctrl.Result{}, nil
 }
 
@@ -257,17 +257,17 @@ func (r *WorkspaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 // and returns the subset whose Spec.WorkspaceRefs references this CR. The
 // list is sorted by name so the rendered Status.BoundAgents is byte-stable
 // across reconciles (avoiding spurious status patches).
-func (r *WorkspaceReconciler) indexBoundAgents(ctx context.Context, ws *witwavev1alpha1.Workspace) ([]witwavev1alpha1.WorkspaceBoundAgent, error) {
+func (r *WitwaveWorkspaceReconciler) indexBoundAgents(ctx context.Context, ws *witwavev1alpha1.WitwaveWorkspace) ([]witwavev1alpha1.WitwaveWorkspaceBoundAgent, error) {
 	agents := &witwavev1alpha1.WitwaveAgentList{}
 	if err := r.List(ctx, agents, client.InNamespace(ws.Namespace)); err != nil {
 		return nil, err
 	}
-	var bound []witwavev1alpha1.WorkspaceBoundAgent
+	var bound []witwavev1alpha1.WitwaveWorkspaceBoundAgent
 	for i := range agents.Items {
 		a := &agents.Items[i]
 		for _, ref := range a.Spec.WorkspaceRefs {
 			if ref.Name == ws.Name {
-				bound = append(bound, witwavev1alpha1.WorkspaceBoundAgent{
+				bound = append(bound, witwavev1alpha1.WitwaveWorkspaceBoundAgent{
 					Name:      a.Name,
 					Namespace: a.Namespace,
 				})
@@ -281,9 +281,9 @@ func (r *WorkspaceReconciler) indexBoundAgents(ctx context.Context, ws *witwavev
 
 // reconcileVolumes creates/updates one PVC per Spec.Volumes entry. Owned
 // PVCs that no longer correspond to a spec entry are deleted unconditionally
-// (their ReclaimPolicy is consulted only at Workspace-deletion time, since
+// (their ReclaimPolicy is consulted only at WitwaveWorkspace-deletion time, since
 // dropping a volume from the spec is a deliberate operator action).
-func (r *WorkspaceReconciler) reconcileVolumes(ctx context.Context, ws *witwavev1alpha1.Workspace) error {
+func (r *WitwaveWorkspaceReconciler) reconcileVolumes(ctx context.Context, ws *witwavev1alpha1.WitwaveWorkspace) error {
 	desired := map[string]*corev1.PersistentVolumeClaim{}
 	for i := range ws.Spec.Volumes {
 		vol := ws.Spec.Volumes[i]
@@ -306,8 +306,8 @@ func (r *WorkspaceReconciler) reconcileVolumes(ctx context.Context, ws *witwavev
 		client.InNamespace(ws.Namespace),
 		client.MatchingLabels{
 			labelManagedBy:     managedBy,
-			labelWorkspaceName: ws.Name,
-			labelComponent:     componentWorkspaceVolume,
+			labelWitwaveWorkspaceName: ws.Name,
+			labelComponent:     componentWitwaveWorkspaceVolume,
 		},
 	); err != nil {
 		return fmt.Errorf("list owned PVCs: %w", err)
@@ -329,7 +329,7 @@ func (r *WorkspaceReconciler) reconcileVolumes(ctx context.Context, ws *witwavev
 
 // buildVolumePVC renders the PVC for one Spec.Volumes entry. Volume name +
 // PVC name are stable so re-reconciles converge on the same object.
-func (r *WorkspaceReconciler) buildVolumePVC(ws *witwavev1alpha1.Workspace, vol *witwavev1alpha1.WorkspaceVolume) (*corev1.PersistentVolumeClaim, error) {
+func (r *WitwaveWorkspaceReconciler) buildVolumePVC(ws *witwavev1alpha1.WitwaveWorkspace, vol *witwavev1alpha1.WitwaveWorkspaceVolume) (*corev1.PersistentVolumeClaim, error) {
 	accessMode := vol.AccessMode
 	if accessMode == "" {
 		accessMode = corev1.ReadWriteMany
@@ -350,15 +350,15 @@ func (r *WorkspaceReconciler) buildVolumePVC(ws *witwavev1alpha1.Workspace, vol 
 	}
 	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      WorkspaceVolumePVCName(ws.Name, vol.Name),
+			Name:      WitwaveWorkspaceVolumePVCName(ws.Name, vol.Name),
 			Namespace: ws.Namespace,
 			Labels: map[string]string{
 				labelName:                ws.Name,
-				labelComponent:           componentWorkspaceVolume,
+				labelComponent:           componentWitwaveWorkspaceVolume,
 				labelPartOf:              partOf,
 				labelManagedBy:           managedBy,
-				labelWorkspaceName:       ws.Name,
-				labelWorkspaceVolumeName: vol.Name,
+				labelWitwaveWorkspaceName:       ws.Name,
+				labelWitwaveWorkspaceVolumeName: vol.Name,
 			},
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
@@ -378,7 +378,7 @@ func (r *WorkspaceReconciler) buildVolumePVC(ws *witwavev1alpha1.Workspace, vol 
 // reconciler must not try to overwrite Resources/StorageClassName on
 // Update. Labels are merged (operator-owned keys overwritten, foreign keys
 // preserved) so adopting actors like ArgoCD don't see flap.
-func (r *WorkspaceReconciler) applyOwnedPVC(ctx context.Context, ws *witwavev1alpha1.Workspace, desired *corev1.PersistentVolumeClaim) error {
+func (r *WitwaveWorkspaceReconciler) applyOwnedPVC(ctx context.Context, ws *witwavev1alpha1.WitwaveWorkspace, desired *corev1.PersistentVolumeClaim) error {
 	existing := &corev1.PersistentVolumeClaim{}
 	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
 	if apierrors.IsNotFound(err) {
@@ -391,25 +391,25 @@ func (r *WorkspaceReconciler) applyOwnedPVC(ctx context.Context, ws *witwavev1al
 	// dual-check prevents the operator from touching a user-created PVC
 	// that happens to share the rendered name.
 	if !metav1.IsControlledBy(existing, ws) {
-		return fmt.Errorf("PVC %s/%s exists but is not controlled by Workspace %s; refusing to adopt", existing.Namespace, existing.Name, ws.Name)
+		return fmt.Errorf("PVC %s/%s exists but is not controlled by WitwaveWorkspace %s; refusing to adopt", existing.Namespace, existing.Name, ws.Name)
 	}
-	existing.Labels = mergeOwnedStringMap(existing.Labels, desired.Labels, workspaceOwnedLabelKeys)
+	existing.Labels = mergeOwnedStringMap(existing.Labels, desired.Labels, witwaveWorkspaceOwnedLabelKeys)
 	return r.Update(ctx, existing)
 }
 
-var workspaceOwnedLabelKeys = []string{
+var witwaveWorkspaceOwnedLabelKeys = []string{
 	labelName,
 	labelComponent,
 	labelPartOf,
 	labelManagedBy,
-	labelWorkspaceName,
-	labelWorkspaceVolumeName,
-	labelWorkspaceConfigFileName,
+	labelWitwaveWorkspaceName,
+	labelWitwaveWorkspaceVolumeName,
+	labelWitwaveWorkspaceConfigFileName,
 }
 
 // reconcileConfigFiles renders one operator-owned ConfigMap per Inline entry
 // and GCs any owned ConfigMaps no longer in the desired set.
-func (r *WorkspaceReconciler) reconcileConfigFiles(ctx context.Context, ws *witwavev1alpha1.Workspace) error {
+func (r *WitwaveWorkspaceReconciler) reconcileConfigFiles(ctx context.Context, ws *witwavev1alpha1.WitwaveWorkspace) error {
 	desired := map[string]*corev1.ConfigMap{}
 	for i := range ws.Spec.ConfigFiles {
 		cf := ws.Spec.ConfigFiles[i]
@@ -434,8 +434,8 @@ func (r *WorkspaceReconciler) reconcileConfigFiles(ctx context.Context, ws *witw
 		client.InNamespace(ws.Namespace),
 		client.MatchingLabels{
 			labelManagedBy:     managedBy,
-			labelWorkspaceName: ws.Name,
-			labelComponent:     componentWorkspaceConfigFile,
+			labelWitwaveWorkspaceName: ws.Name,
+			labelComponent:     componentWitwaveWorkspaceConfigFile,
 		},
 	); err != nil {
 		return fmt.Errorf("list owned ConfigMaps: %w", err)
@@ -455,21 +455,21 @@ func (r *WorkspaceReconciler) reconcileConfigFiles(ctx context.Context, ws *witw
 	return nil
 }
 
-func (r *WorkspaceReconciler) buildInlineConfigMap(ws *witwavev1alpha1.Workspace, cf *witwavev1alpha1.WorkspaceConfigFile) (*corev1.ConfigMap, error) {
+func (r *WitwaveWorkspaceReconciler) buildInlineConfigMap(ws *witwavev1alpha1.WitwaveWorkspace, cf *witwavev1alpha1.WitwaveWorkspaceConfigFile) (*corev1.ConfigMap, error) {
 	if cf.Inline == nil {
 		return nil, fmt.Errorf("buildInlineConfigMap called on non-inline configFile")
 	}
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      WorkspaceInlineConfigMapName(ws.Name, cf.Inline.Name),
+			Name:      WitwaveWorkspaceInlineConfigMapName(ws.Name, cf.Inline.Name),
 			Namespace: ws.Namespace,
 			Labels: map[string]string{
 				labelName:                    ws.Name,
-				labelComponent:               componentWorkspaceConfigFile,
+				labelComponent:               componentWitwaveWorkspaceConfigFile,
 				labelPartOf:                  partOf,
 				labelManagedBy:               managedBy,
-				labelWorkspaceName:           ws.Name,
-				labelWorkspaceConfigFileName: cf.Inline.Name,
+				labelWitwaveWorkspaceName:           ws.Name,
+				labelWitwaveWorkspaceConfigFileName: cf.Inline.Name,
 			},
 		},
 		Data: map[string]string{
@@ -482,7 +482,7 @@ func (r *WorkspaceReconciler) buildInlineConfigMap(ws *witwavev1alpha1.Workspace
 	return cm, nil
 }
 
-func (r *WorkspaceReconciler) applyOwnedConfigMap(ctx context.Context, ws *witwavev1alpha1.Workspace, desired *corev1.ConfigMap) error {
+func (r *WitwaveWorkspaceReconciler) applyOwnedConfigMap(ctx context.Context, ws *witwavev1alpha1.WitwaveWorkspace, desired *corev1.ConfigMap) error {
 	existing := &corev1.ConfigMap{}
 	err := r.Get(ctx, client.ObjectKeyFromObject(desired), existing)
 	if apierrors.IsNotFound(err) {
@@ -492,10 +492,10 @@ func (r *WorkspaceReconciler) applyOwnedConfigMap(ctx context.Context, ws *witwa
 		return err
 	}
 	if !metav1.IsControlledBy(existing, ws) {
-		return fmt.Errorf("ConfigMap %s/%s is not controlled by Workspace %s; refusing to adopt", existing.Namespace, existing.Name, ws.Name)
+		return fmt.Errorf("ConfigMap %s/%s is not controlled by WitwaveWorkspace %s; refusing to adopt", existing.Namespace, existing.Name, ws.Name)
 	}
 	existing.Data = desired.Data
-	existing.Labels = mergeOwnedStringMap(existing.Labels, desired.Labels, workspaceOwnedLabelKeys)
+	existing.Labels = mergeOwnedStringMap(existing.Labels, desired.Labels, witwaveWorkspaceOwnedLabelKeys)
 	existing.OwnerReferences = desired.OwnerReferences
 	return r.Update(ctx, existing)
 }
@@ -506,11 +506,11 @@ func (r *WorkspaceReconciler) applyOwnedConfigMap(ctx context.Context, ws *witwa
 // behind, decoupled from the workspace's lifecycle); ConfigMaps are GC'd
 // via owner references automatically once the finalizer clears, so this
 // path only handles PVCs.
-func (r *WorkspaceReconciler) deleteRetainEligibleResources(ctx context.Context, ws *witwavev1alpha1.Workspace) error {
+func (r *WitwaveWorkspaceReconciler) deleteRetainEligibleResources(ctx context.Context, ws *witwavev1alpha1.WitwaveWorkspace) error {
 	retain := map[string]bool{}
 	for _, vol := range ws.Spec.Volumes {
-		if vol.ReclaimPolicy == witwavev1alpha1.WorkspaceVolumeReclaimPolicyRetain {
-			retain[WorkspaceVolumePVCName(ws.Name, vol.Name)] = true
+		if vol.ReclaimPolicy == witwavev1alpha1.WitwaveWorkspaceVolumeReclaimPolicyRetain {
+			retain[WitwaveWorkspaceVolumePVCName(ws.Name, vol.Name)] = true
 		}
 	}
 	pvcs := &corev1.PersistentVolumeClaimList{}
@@ -518,8 +518,8 @@ func (r *WorkspaceReconciler) deleteRetainEligibleResources(ctx context.Context,
 		client.InNamespace(ws.Namespace),
 		client.MatchingLabels{
 			labelManagedBy:     managedBy,
-			labelWorkspaceName: ws.Name,
-			labelComponent:     componentWorkspaceVolume,
+			labelWitwaveWorkspaceName: ws.Name,
+			labelComponent:     componentWitwaveWorkspaceVolume,
 		},
 	); err != nil {
 		return fmt.Errorf("list owned PVCs: %w", err)
@@ -528,9 +528,9 @@ func (r *WorkspaceReconciler) deleteRetainEligibleResources(ctx context.Context,
 		pvc := &pvcs.Items[i]
 		if retain[pvc.Name] {
 			// Strip the owner reference so the apiserver's GC does
-			// not delete the Retain'd PVC alongside the Workspace.
+			// not delete the Retain'd PVC alongside the WitwaveWorkspace.
 			before := pvc.DeepCopy()
-			pvc.OwnerReferences = removeWorkspaceOwnerRef(pvc.OwnerReferences, ws)
+			pvc.OwnerReferences = removeWitwaveWorkspaceOwnerRef(pvc.OwnerReferences, ws)
 			if len(before.OwnerReferences) != len(pvc.OwnerReferences) {
 				if err := r.Patch(ctx, pvc, client.MergeFrom(before)); err != nil {
 					return fmt.Errorf("strip owner ref from retained PVC %s: %w", pvc.Name, err)
@@ -548,7 +548,7 @@ func (r *WorkspaceReconciler) deleteRetainEligibleResources(ctx context.Context,
 	return nil
 }
 
-func removeWorkspaceOwnerRef(refs []metav1.OwnerReference, ws *witwavev1alpha1.Workspace) []metav1.OwnerReference {
+func removeWitwaveWorkspaceOwnerRef(refs []metav1.OwnerReference, ws *witwavev1alpha1.WitwaveWorkspace) []metav1.OwnerReference {
 	out := refs[:0]
 	for _, ref := range refs {
 		if ref.UID == ws.UID {
@@ -562,7 +562,7 @@ func removeWorkspaceOwnerRef(refs []metav1.OwnerReference, ws *witwavev1alpha1.W
 // patchStatus updates Status.BoundAgents + Conditions via Status().Patch
 // with MergeFrom so concurrent writers on the spec don't trip 409s on
 // every reconcile.
-func (r *WorkspaceReconciler) patchStatus(ctx context.Context, ws *witwavev1alpha1.Workspace, bound []witwavev1alpha1.WorkspaceBoundAgent, conds []metav1.Condition) error {
+func (r *WitwaveWorkspaceReconciler) patchStatus(ctx context.Context, ws *witwavev1alpha1.WitwaveWorkspace, bound []witwavev1alpha1.WitwaveWorkspaceBoundAgent, conds []metav1.Condition) error {
 	before := ws.DeepCopy()
 	ws.Status.ObservedGeneration = ws.Generation
 	ws.Status.BoundAgents = bound
@@ -574,16 +574,16 @@ func (r *WorkspaceReconciler) patchStatus(ctx context.Context, ws *witwavev1alph
 	return r.Status().Patch(ctx, ws, client.MergeFrom(before))
 }
 
-// WorkspaceVolumePVCName returns the PVC name stamped by the operator for
+// WitwaveWorkspaceVolumePVCName returns the PVC name stamped by the operator for
 // a Spec.Volumes entry. Exposed so the WitwaveAgent reconciler can build
 // pod volume references without re-deriving the convention.
-func WorkspaceVolumePVCName(workspaceName, volumeName string) string {
+func WitwaveWorkspaceVolumePVCName(workspaceName, volumeName string) string {
 	return fmt.Sprintf("%s-vol-%s", workspaceName, volumeName)
 }
 
-// WorkspaceInlineConfigMapName returns the ConfigMap name reconciled for an
+// WitwaveWorkspaceInlineConfigMapName returns the ConfigMap name reconciled for an
 // inline ConfigFile entry.
-func WorkspaceInlineConfigMapName(workspaceName, fileName string) string {
+func WitwaveWorkspaceInlineConfigMapName(workspaceName, fileName string) string {
 	// Lowercase + dash-replace any '_' or '.' the user might have typed
 	// in cf.Inline.Name so the result is DNS-1123-safe. ConfigMap names
 	// inherit the same constraint and admission already rejects bad
@@ -597,12 +597,12 @@ func sanitizeForDNS(s string) string {
 }
 
 // SetupWithManager wires the workspace reconciler. The reconciler watches:
-//   - Workspace CRs (primary)
-//   - PVCs and ConfigMaps owned by Workspace (Owns())
+//   - WitwaveWorkspace CRs (primary)
+//   - PVCs and ConfigMaps owned by WitwaveWorkspace (Owns())
 //   - WitwaveAgent CRs (any Spec.WorkspaceRefs change re-enqueues the
 //     referenced workspaces so the inverted index stays current)
-func (r *WorkspaceReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	enqueueReferencedWorkspaces := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+func (r *WitwaveWorkspaceReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	enqueueReferencedWitwaveWorkspaces := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
 		agent, ok := obj.(*witwavev1alpha1.WitwaveAgent)
 		if !ok {
 			return nil
@@ -621,18 +621,18 @@ func (r *WorkspaceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				},
 			})
 		}
-		// Also enqueue every Workspace in the namespace so a transition
+		// Also enqueue every WitwaveWorkspace in the namespace so a transition
 		// from "agent-bound" → "agent-no-longer-bound" clears
 		// Status.BoundAgents promptly. Bounded by namespace so the
 		// list cost stays cheap.
-		all := &witwavev1alpha1.WorkspaceList{}
+		all := &witwavev1alpha1.WitwaveWorkspaceList{}
 		if err := mgr.GetClient().List(ctx, all, client.InNamespace(agent.Namespace)); err != nil {
 			// Defensive widening — primary enqueue above already fired.
 			// Log so an operator investigating a missed
 			// "no-longer-bound" Status.BoundAgents update has a signal
 			// instead of silently dropping the List error.
 			logf.FromContext(ctx).Info(
-				"workspace agent-watch defensive list failed; primary enqueue still fired",
+				"witwaveworkspace agent-watch defensive list failed; primary enqueue still fired",
 				"err", err.Error(), "namespace", agent.Namespace,
 			)
 		} else {
@@ -654,10 +654,10 @@ func (r *WorkspaceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	})
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&witwavev1alpha1.Workspace{}).
+		For(&witwavev1alpha1.WitwaveWorkspace{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
 		Owns(&corev1.ConfigMap{}).
-		Watches(&witwavev1alpha1.WitwaveAgent{}, enqueueReferencedWorkspaces).
-		Named("workspace").
+		Watches(&witwavev1alpha1.WitwaveAgent{}, enqueueReferencedWitwaveWorkspaces).
+		Named("witwaveworkspace").
 		Complete(r)
 }

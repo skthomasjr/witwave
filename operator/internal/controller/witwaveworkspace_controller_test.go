@@ -28,9 +28,9 @@ import (
 	witwavev1alpha1 "github.com/witwave-ai/witwave-operator/api/v1alpha1"
 )
 
-// fakeWorkspaceScheme returns a runtime scheme registered with the witwave
+// fakeWitwaveWorkspaceScheme returns a runtime scheme registered with the witwave
 // CRDs and the corev1 / apps types the workspace reconciler touches.
-func fakeWorkspaceScheme(t *testing.T) *runtime.Scheme {
+func fakeWitwaveWorkspaceScheme(t *testing.T) *runtime.Scheme {
 	t.Helper()
 	s := runtime.NewScheme()
 	if err := scheme.AddToScheme(s); err != nil {
@@ -42,9 +42,9 @@ func fakeWorkspaceScheme(t *testing.T) *runtime.Scheme {
 	return s
 }
 
-func TestWorkspaceVolumePVCNameDeterministic(t *testing.T) {
-	a := WorkspaceVolumePVCName("witwave", "source")
-	b := WorkspaceVolumePVCName("witwave", "source")
+func TestWitwaveWorkspaceVolumePVCNameDeterministic(t *testing.T) {
+	a := WitwaveWorkspaceVolumePVCName("witwave", "source")
+	b := WitwaveWorkspaceVolumePVCName("witwave", "source")
 	if a != b {
 		t.Fatalf("non-deterministic: %q vs %q", a, b)
 	}
@@ -54,19 +54,19 @@ func TestWorkspaceVolumePVCNameDeterministic(t *testing.T) {
 	}
 }
 
-func TestWorkspaceInlineConfigMapNameSanitises(t *testing.T) {
-	got := WorkspaceInlineConfigMapName("witwave", "Repo.Info")
+func TestWitwaveWorkspaceInlineConfigMapNameSanitises(t *testing.T) {
+	got := WitwaveWorkspaceInlineConfigMapName("witwave", "Repo.Info")
 	const want = "witwave-cf-repo-info"
 	if got != want {
 		t.Fatalf("got %q want %q", got, want)
 	}
 }
 
-func TestWorkspaceVolumeMountPathDefault(t *testing.T) {
-	ws := &witwavev1alpha1.Workspace{
+func TestWitwaveWorkspaceVolumeMountPathDefault(t *testing.T) {
+	ws := &witwavev1alpha1.WitwaveWorkspace{
 		ObjectMeta: metav1.ObjectMeta{Name: "witwave"},
 	}
-	vol := &witwavev1alpha1.WorkspaceVolume{Name: "source"}
+	vol := &witwavev1alpha1.WitwaveWorkspaceVolume{Name: "source"}
 	got := workspaceVolumeMountPath(ws, vol)
 	const want = "/workspaces/witwave/source"
 	if got != want {
@@ -74,11 +74,11 @@ func TestWorkspaceVolumeMountPathDefault(t *testing.T) {
 	}
 }
 
-func TestWorkspaceVolumeMountPathExplicit(t *testing.T) {
-	ws := &witwavev1alpha1.Workspace{
+func TestWitwaveWorkspaceVolumeMountPathExplicit(t *testing.T) {
+	ws := &witwavev1alpha1.WitwaveWorkspace{
 		ObjectMeta: metav1.ObjectMeta{Name: "witwave"},
 	}
-	vol := &witwavev1alpha1.WorkspaceVolume{
+	vol := &witwavev1alpha1.WitwaveWorkspaceVolume{
 		Name:      "source",
 		MountPath: "/srv/source",
 	}
@@ -87,24 +87,24 @@ func TestWorkspaceVolumeMountPathExplicit(t *testing.T) {
 	}
 }
 
-// TestWorkspaceReconcileVolumesProvisioning is a happy-path envtest-free
+// TestWitwaveWorkspaceReconcileVolumesProvisioning is a happy-path envtest-free
 // reconcile using the controller-runtime fake client. It pins the
 // invariant that one PVC per Spec.Volumes entry is created with the
 // expected name + access mode + IsControlledBy chain.
-func TestWorkspaceReconcileVolumesProvisioning(t *testing.T) {
-	s := fakeWorkspaceScheme(t)
+func TestWitwaveWorkspaceReconcileVolumesProvisioning(t *testing.T) {
+	s := fakeWitwaveWorkspaceScheme(t)
 	size := resource.MustParse("10Gi")
-	ws := &witwavev1alpha1.Workspace{
+	ws := &witwavev1alpha1.WitwaveWorkspace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "witwave",
 			Namespace: "team",
 			UID:       types.UID("u-1"),
 		},
-		Spec: witwavev1alpha1.WorkspaceSpec{
-			Volumes: []witwavev1alpha1.WorkspaceVolume{
+		Spec: witwavev1alpha1.WitwaveWorkspaceSpec{
+			Volumes: []witwavev1alpha1.WitwaveWorkspaceVolume{
 				{
 					Name:        "source",
-					StorageType: witwavev1alpha1.WorkspaceStorageTypePVC,
+					StorageType: witwavev1alpha1.WitwaveWorkspaceStorageTypePVC,
 					Size:        &size,
 					AccessMode:  corev1.ReadWriteMany,
 				},
@@ -113,10 +113,10 @@ func TestWorkspaceReconcileVolumesProvisioning(t *testing.T) {
 	}
 	c := fake.NewClientBuilder().
 		WithScheme(s).
-		WithStatusSubresource(&witwavev1alpha1.Workspace{}).
+		WithStatusSubresource(&witwavev1alpha1.WitwaveWorkspace{}).
 		WithObjects(ws).
 		Build()
-	r := &WorkspaceReconciler{Client: c, Scheme: s}
+	r := &WitwaveWorkspaceReconciler{Client: c, Scheme: s}
 	_, err := r.Reconcile(context.Background(), reconcile.Request{
 		NamespacedName: types.NamespacedName{Namespace: "team", Name: "witwave"},
 	})
@@ -134,7 +134,7 @@ func TestWorkspaceReconcileVolumesProvisioning(t *testing.T) {
 		t.Fatalf("PVC not provisioned: %v", err)
 	}
 	if !metav1.IsControlledBy(pvc, ws) {
-		t.Fatalf("PVC missing controller ownerRef to Workspace")
+		t.Fatalf("PVC missing controller ownerRef to WitwaveWorkspace")
 	}
 	if pvc.Spec.AccessModes[0] != corev1.ReadWriteMany {
 		t.Fatalf("expected RWM access mode, got %v", pvc.Spec.AccessModes)
@@ -144,20 +144,20 @@ func TestWorkspaceReconcileVolumesProvisioning(t *testing.T) {
 	}
 }
 
-// TestWorkspaceReconcileInlineConfigMapRenders covers the IsControlledBy +
+// TestWitwaveWorkspaceReconcileInlineConfigMapRenders covers the IsControlledBy +
 // label dual-check pattern the design doc commits to.
-func TestWorkspaceReconcileInlineConfigMapRenders(t *testing.T) {
-	s := fakeWorkspaceScheme(t)
-	ws := &witwavev1alpha1.Workspace{
+func TestWitwaveWorkspaceReconcileInlineConfigMapRenders(t *testing.T) {
+	s := fakeWitwaveWorkspaceScheme(t)
+	ws := &witwavev1alpha1.WitwaveWorkspace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "witwave",
 			Namespace: "team",
 			UID:       types.UID("u-2"),
 		},
-		Spec: witwavev1alpha1.WorkspaceSpec{
-			ConfigFiles: []witwavev1alpha1.WorkspaceConfigFile{
+		Spec: witwavev1alpha1.WitwaveWorkspaceSpec{
+			ConfigFiles: []witwavev1alpha1.WitwaveWorkspaceConfigFile{
 				{
-					Inline: &witwavev1alpha1.WorkspaceInlineFile{
+					Inline: &witwavev1alpha1.WitwaveWorkspaceInlineFile{
 						Name:    "repo-info",
 						Path:    "workspace.yaml",
 						Content: "repos:\n  - name: witwave\n",
@@ -169,10 +169,10 @@ func TestWorkspaceReconcileInlineConfigMapRenders(t *testing.T) {
 	}
 	c := fake.NewClientBuilder().
 		WithScheme(s).
-		WithStatusSubresource(&witwavev1alpha1.Workspace{}).
+		WithStatusSubresource(&witwavev1alpha1.WitwaveWorkspace{}).
 		WithObjects(ws).
 		Build()
-	r := &WorkspaceReconciler{Client: c, Scheme: s}
+	r := &WitwaveWorkspaceReconciler{Client: c, Scheme: s}
 	if _, err := r.Reconcile(context.Background(), reconcile.Request{
 		NamespacedName: types.NamespacedName{Namespace: "team", Name: "witwave"},
 	}); err != nil {
@@ -190,23 +190,23 @@ func TestWorkspaceReconcileInlineConfigMapRenders(t *testing.T) {
 	if !metav1.IsControlledBy(cm, ws) {
 		t.Fatalf("ConfigMap missing controller ownerRef")
 	}
-	if cm.Labels[labelComponent] != componentWorkspaceConfigFile {
-		t.Fatalf("expected component=%q, got %q", componentWorkspaceConfigFile, cm.Labels[labelComponent])
+	if cm.Labels[labelComponent] != componentWitwaveWorkspaceConfigFile {
+		t.Fatalf("expected component=%q, got %q", componentWitwaveWorkspaceConfigFile, cm.Labels[labelComponent])
 	}
-	if cm.Labels[labelWorkspaceName] != ws.Name {
-		t.Fatalf("expected workspace label %q, got %q", ws.Name, cm.Labels[labelWorkspaceName])
+	if cm.Labels[labelWitwaveWorkspaceName] != ws.Name {
+		t.Fatalf("expected workspace label %q, got %q", ws.Name, cm.Labels[labelWitwaveWorkspaceName])
 	}
 	if got := cm.Data["workspace.yaml"]; got == "" {
 		t.Fatalf("ConfigMap data missing workspace.yaml key")
 	}
 }
 
-// TestWorkspaceBoundAgentsIndex pins the inverted index update — when a
+// TestWitwaveWorkspaceBoundAgentsIndex pins the inverted index update — when a
 // WitwaveAgent gains/loses Spec.WorkspaceRefs entries, the workspace
 // controller mirrors that into Status.BoundAgents.
-func TestWorkspaceBoundAgentsIndex(t *testing.T) {
-	s := fakeWorkspaceScheme(t)
-	ws := &witwavev1alpha1.Workspace{
+func TestWitwaveWorkspaceBoundAgentsIndex(t *testing.T) {
+	s := fakeWitwaveWorkspaceScheme(t)
+	ws := &witwavev1alpha1.WitwaveWorkspace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "witwave",
 			Namespace: "team",
@@ -225,10 +225,10 @@ func TestWorkspaceBoundAgentsIndex(t *testing.T) {
 	}
 	c := fake.NewClientBuilder().
 		WithScheme(s).
-		WithStatusSubresource(&witwavev1alpha1.Workspace{}).
+		WithStatusSubresource(&witwavev1alpha1.WitwaveWorkspace{}).
 		WithObjects(ws, agent).
 		Build()
-	r := &WorkspaceReconciler{Client: c, Scheme: s}
+	r := &WitwaveWorkspaceReconciler{Client: c, Scheme: s}
 	for i := 0; i < 2; i++ {
 		if _, err := r.Reconcile(context.Background(), reconcile.Request{
 			NamespacedName: types.NamespacedName{Namespace: "team", Name: "witwave"},
@@ -236,7 +236,7 @@ func TestWorkspaceBoundAgentsIndex(t *testing.T) {
 			t.Fatalf("reconcile %d: %v", i, err)
 		}
 	}
-	got := &witwavev1alpha1.Workspace{}
+	got := &witwavev1alpha1.WitwaveWorkspace{}
 	if err := c.Get(context.Background(), types.NamespacedName{Namespace: "team", Name: "witwave"}, got); err != nil {
 		t.Fatalf("get workspace: %v", err)
 	}
@@ -245,19 +245,19 @@ func TestWorkspaceBoundAgentsIndex(t *testing.T) {
 	}
 }
 
-// TestWorkspaceRefuseDeleteWithBoundAgents pins the refuse-delete invariant:
+// TestWitwaveWorkspaceRefuseDeleteWithBoundAgents pins the refuse-delete invariant:
 // the finalizer is not cleared while at least one agent still references
 // the workspace.
-func TestWorkspaceRefuseDeleteWithBoundAgents(t *testing.T) {
-	s := fakeWorkspaceScheme(t)
+func TestWitwaveWorkspaceRefuseDeleteWithBoundAgents(t *testing.T) {
+	s := fakeWitwaveWorkspaceScheme(t)
 	now := metav1.Now()
-	ws := &witwavev1alpha1.Workspace{
+	ws := &witwavev1alpha1.WitwaveWorkspace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              "witwave",
 			Namespace:         "team",
 			UID:               types.UID("u-4"),
 			DeletionTimestamp: &now,
-			Finalizers:        []string{workspaceFinalizer},
+			Finalizers:        []string{witwaveWorkspaceFinalizer},
 		},
 	}
 	agent := &witwavev1alpha1.WitwaveAgent{
@@ -272,22 +272,22 @@ func TestWorkspaceRefuseDeleteWithBoundAgents(t *testing.T) {
 	}
 	c := fake.NewClientBuilder().
 		WithScheme(s).
-		WithStatusSubresource(&witwavev1alpha1.Workspace{}).
+		WithStatusSubresource(&witwavev1alpha1.WitwaveWorkspace{}).
 		WithObjects(ws, agent).
 		Build()
-	r := &WorkspaceReconciler{Client: c, Scheme: s}
+	r := &WitwaveWorkspaceReconciler{Client: c, Scheme: s}
 	if _, err := r.Reconcile(context.Background(), reconcile.Request{
 		NamespacedName: types.NamespacedName{Namespace: "team", Name: "witwave"},
 	}); err != nil {
 		t.Fatalf("reconcile: %v", err)
 	}
-	got := &witwavev1alpha1.Workspace{}
+	got := &witwavev1alpha1.WitwaveWorkspace{}
 	if err := c.Get(context.Background(), types.NamespacedName{Namespace: "team", Name: "witwave"}, got); err != nil {
 		t.Fatalf("expected workspace to still exist (finalizer should block deletion): %v", err)
 	}
 	hasFinalizer := false
 	for _, f := range got.Finalizers {
-		if f == workspaceFinalizer {
+		if f == witwaveWorkspaceFinalizer {
 			hasFinalizer = true
 			break
 		}
@@ -297,28 +297,28 @@ func TestWorkspaceRefuseDeleteWithBoundAgents(t *testing.T) {
 	}
 }
 
-// TestWorkspaceReclaimRetainKeepsPVC covers the per-volume ReclaimPolicy:
-// Retain'd PVCs survive Workspace deletion (the operator strips its owner
+// TestWitwaveWorkspaceReclaimRetainKeepsPVC covers the per-volume ReclaimPolicy:
+// Retain'd PVCs survive WitwaveWorkspace deletion (the operator strips its owner
 // ref so the apiserver's GC doesn't sweep the PVC).
-func TestWorkspaceReclaimRetainKeepsPVC(t *testing.T) {
-	s := fakeWorkspaceScheme(t)
+func TestWitwaveWorkspaceReclaimRetainKeepsPVC(t *testing.T) {
+	s := fakeWitwaveWorkspaceScheme(t)
 	now := metav1.Now()
 	size := resource.MustParse("1Gi")
-	ws := &witwavev1alpha1.Workspace{
+	ws := &witwavev1alpha1.WitwaveWorkspace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              "witwave",
 			Namespace:         "team",
 			UID:               types.UID("u-5"),
 			DeletionTimestamp: &now,
-			Finalizers:        []string{workspaceFinalizer},
+			Finalizers:        []string{witwaveWorkspaceFinalizer},
 		},
-		Spec: witwavev1alpha1.WorkspaceSpec{
-			Volumes: []witwavev1alpha1.WorkspaceVolume{
+		Spec: witwavev1alpha1.WitwaveWorkspaceSpec{
+			Volumes: []witwavev1alpha1.WitwaveWorkspaceVolume{
 				{
 					Name:          "memory",
 					Size:          &size,
 					AccessMode:    corev1.ReadWriteMany,
-					ReclaimPolicy: witwavev1alpha1.WorkspaceVolumeReclaimPolicyRetain,
+					ReclaimPolicy: witwavev1alpha1.WitwaveWorkspaceVolumeReclaimPolicyRetain,
 				},
 			},
 		},
@@ -326,18 +326,18 @@ func TestWorkspaceReclaimRetainKeepsPVC(t *testing.T) {
 	tr := true
 	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      WorkspaceVolumePVCName(ws.Name, "memory"),
+			Name:      WitwaveWorkspaceVolumePVCName(ws.Name, "memory"),
 			Namespace: ws.Namespace,
 			Labels: map[string]string{
 				labelManagedBy:           managedBy,
-				labelWorkspaceName:       ws.Name,
-				labelComponent:           componentWorkspaceVolume,
-				labelWorkspaceVolumeName: "memory",
+				labelWitwaveWorkspaceName:       ws.Name,
+				labelComponent:           componentWitwaveWorkspaceVolume,
+				labelWitwaveWorkspaceVolumeName: "memory",
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					APIVersion: witwavev1alpha1.GroupVersion.String(),
-					Kind:       "Workspace",
+					Kind:       "WitwaveWorkspace",
 					Name:       ws.Name,
 					UID:        ws.UID,
 					Controller: &tr,
@@ -353,10 +353,10 @@ func TestWorkspaceReclaimRetainKeepsPVC(t *testing.T) {
 	}
 	c := fake.NewClientBuilder().
 		WithScheme(s).
-		WithStatusSubresource(&witwavev1alpha1.Workspace{}).
+		WithStatusSubresource(&witwavev1alpha1.WitwaveWorkspace{}).
 		WithObjects(ws, pvc).
 		Build()
-	r := &WorkspaceReconciler{Client: c, Scheme: s}
+	r := &WitwaveWorkspaceReconciler{Client: c, Scheme: s}
 	if _, err := r.Reconcile(context.Background(), reconcile.Request{
 		NamespacedName: types.NamespacedName{Namespace: "team", Name: "witwave"},
 	}); err != nil {
@@ -373,9 +373,9 @@ func TestWorkspaceReclaimRetainKeepsPVC(t *testing.T) {
 	}
 }
 
-// TestStampWorkspacesOnDeploymentVolumes pins the agent-side stamping:
+// TestStampWitwaveWorkspacesOnDeploymentVolumes pins the agent-side stamping:
 // Spec.WorkspaceRefs adds workspace volumes onto every backend container.
-func TestStampWorkspacesOnDeploymentVolumes(t *testing.T) {
+func TestStampWitwaveWorkspacesOnDeploymentVolumes(t *testing.T) {
 	dep := &appsv1.Deployment{
 		Spec: appsv1.DeploymentSpec{
 			Template: corev1.PodTemplateSpec{
@@ -389,20 +389,20 @@ func TestStampWorkspacesOnDeploymentVolumes(t *testing.T) {
 		},
 	}
 	size := resource.MustParse("1Gi")
-	workspaces := []witwavev1alpha1.Workspace{{
+	workspaces := []witwavev1alpha1.WitwaveWorkspace{{
 		ObjectMeta: metav1.ObjectMeta{Name: "witwave", Namespace: "team"},
-		Spec: witwavev1alpha1.WorkspaceSpec{
-			Volumes: []witwavev1alpha1.WorkspaceVolume{
+		Spec: witwavev1alpha1.WitwaveWorkspaceSpec{
+			Volumes: []witwavev1alpha1.WitwaveWorkspaceVolume{
 				{
 					Name:        "source",
-					StorageType: witwavev1alpha1.WorkspaceStorageTypePVC,
+					StorageType: witwavev1alpha1.WitwaveWorkspaceStorageTypePVC,
 					Size:        &size,
 					AccessMode:  corev1.ReadWriteMany,
 				},
 			},
 		},
 	}}
-	stampWorkspacesOnDeployment(dep, workspaces)
+	stampWitwaveWorkspacesOnDeployment(dep, workspaces)
 	if len(dep.Spec.Template.Spec.Volumes) != 1 {
 		t.Fatalf("expected 1 stamped volume, got %d", len(dep.Spec.Template.Spec.Volumes))
 	}
@@ -422,7 +422,7 @@ func TestStampWorkspacesOnDeploymentVolumes(t *testing.T) {
 	}
 }
 
-func TestStampWorkspacesEnvFromSecret(t *testing.T) {
+func TestStampWitwaveWorkspacesEnvFromSecret(t *testing.T) {
 	dep := &appsv1.Deployment{
 		Spec: appsv1.DeploymentSpec{
 			Template: corev1.PodTemplateSpec{
@@ -435,15 +435,15 @@ func TestStampWorkspacesEnvFromSecret(t *testing.T) {
 			},
 		},
 	}
-	workspaces := []witwavev1alpha1.Workspace{{
+	workspaces := []witwavev1alpha1.WitwaveWorkspace{{
 		ObjectMeta: metav1.ObjectMeta{Name: "witwave", Namespace: "team"},
-		Spec: witwavev1alpha1.WorkspaceSpec{
-			Secrets: []witwavev1alpha1.WorkspaceSecret{
+		Spec: witwavev1alpha1.WitwaveWorkspaceSpec{
+			Secrets: []witwavev1alpha1.WitwaveWorkspaceSecret{
 				{Name: "team-tokens", EnvFrom: true},
 			},
 		},
 	}}
-	stampWorkspacesOnDeployment(dep, workspaces)
+	stampWitwaveWorkspacesOnDeployment(dep, workspaces)
 	if got := len(dep.Spec.Template.Spec.Containers[1].EnvFrom); got != 1 {
 		t.Fatalf("expected 1 envFrom on backend, got %d", got)
 	}
@@ -456,11 +456,11 @@ func TestStampWorkspacesEnvFromSecret(t *testing.T) {
 	}
 }
 
-// TestFetchWorkspacesForAgentSilentlySkipsMissing covers the design's
+// TestFetchWitwaveWorkspacesForAgentSilentlySkipsMissing covers the design's
 // "missing workspaces are silently skipped" semantic: a not-yet-created
-// Workspace reference doesn't error the reconcile.
-func TestFetchWorkspacesForAgentSilentlySkipsMissing(t *testing.T) {
-	s := fakeWorkspaceScheme(t)
+// WitwaveWorkspace reference doesn't error the reconcile.
+func TestFetchWitwaveWorkspacesForAgentSilentlySkipsMissing(t *testing.T) {
+	s := fakeWitwaveWorkspaceScheme(t)
 	c := fake.NewClientBuilder().WithScheme(s).Build()
 	agent := &witwavev1alpha1.WitwaveAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: "iris", Namespace: "team"},
@@ -470,7 +470,7 @@ func TestFetchWorkspacesForAgentSilentlySkipsMissing(t *testing.T) {
 			},
 		},
 	}
-	got, err := fetchWorkspacesForAgent(context.Background(), c, agent)
+	got, err := fetchWitwaveWorkspacesForAgent(context.Background(), c, agent)
 	if err != nil {
 		t.Fatalf("missing workspace must not error: %v", err)
 	}

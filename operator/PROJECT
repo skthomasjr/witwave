@@ -24,7 +24,7 @@ resources:
     namespaced: true
   controller: true
   domain: witwave.ai
-  kind: Workspace
+  kind: WitwaveWorkspace
   path: github.com/witwave-ai/witwave-operator/api/v1alpha1
   version: v1alpha1
   webhooks:

@@ -18,7 +18,7 @@ type StatusOptions struct {
 	Out       io.Writer
 }
 
-// Status fetches the Workspace CR and prints a curated, human-readable
+// Status fetches the WitwaveWorkspace CR and prints a curated, human-readable
 // view: identity, volumes (with reclaim policy), conditions, and bound
 // agents. Mirrors the shape of `ww operator status` so operators see the
 // same structure across the two CR families.
@@ -33,7 +33,7 @@ func Status(ctx context.Context, cfg *rest.Config, opts StatusOptions) error {
 	if err != nil {
 		return err
 	}
-	cr, err := fetchWorkspaceCR(ctx, dyn, opts.Namespace, opts.Name)
+	cr, err := fetchWitwaveWorkspaceCR(ctx, dyn, opts.Namespace, opts.Name)
 	if err != nil {
 		return err
 	}
@@ -49,7 +49,7 @@ func renderStatus(out io.Writer, cr *unstructured.Unstructured) {
 		phase = "Pending"
 	}
 
-	fmt.Fprintf(out, "Workspace: %s\n", name)
+	fmt.Fprintf(out, "WitwaveWorkspace: %s\n", name)
 	fmt.Fprintf(out, "Namespace: %s\n", ns)
 	fmt.Fprintf(out, "Phase:     %s\n", phase)
 	if ts := cr.GetCreationTimestamp(); !ts.IsZero() {

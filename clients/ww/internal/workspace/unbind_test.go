@@ -20,7 +20,7 @@ func TestUnbind_HappyPath(t *testing.T) {
 	err := Unbind(context.Background(), nil, UnbindOptions{
 		Agent:          "iris",
 		AgentNamespace: "default",
-		Workspace:      "witwave",
+		WitwaveWorkspace:      "witwave",
 		AssumeYes:      true,
 		Out:            out,
 	})
@@ -49,7 +49,7 @@ func TestUnbind_LastEntry_RemovesField(t *testing.T) {
 	err := Unbind(context.Background(), nil, UnbindOptions{
 		Agent:          "iris",
 		AgentNamespace: "default",
-		Workspace:      "witwave",
+		WitwaveWorkspace:      "witwave",
 		AssumeYes:      true,
 		Out:            captureOut(),
 	})
@@ -70,7 +70,7 @@ func TestUnbind_NotBound_NoOp(t *testing.T) {
 	err := Unbind(context.Background(), nil, UnbindOptions{
 		Agent:          "iris",
 		AgentNamespace: "default",
-		Workspace:      "witwave",
+		WitwaveWorkspace:      "witwave",
 		AssumeYes:      true,
 		Out:            out,
 	})
@@ -92,7 +92,7 @@ func TestUnbind_DryRun_DoesNotMutate(t *testing.T) {
 	err := Unbind(context.Background(), nil, UnbindOptions{
 		Agent:          "iris",
 		AgentNamespace: "default",
-		Workspace:      "witwave",
+		WitwaveWorkspace:      "witwave",
 		DryRun:         true,
 		Out:            out,
 	})

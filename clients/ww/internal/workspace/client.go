@@ -44,14 +44,14 @@ func newDynamicClient(cfg *rest.Config) (dynamic.Interface, error) {
 	return dyn, nil
 }
 
-// fetchWorkspaceCR returns the current state of the named Workspace CR,
+// fetchWitwaveWorkspaceCR returns the current state of the named WitwaveWorkspace CR,
 // or a diagnosable error.
-func fetchWorkspaceCR(ctx context.Context, dyn dynamic.Interface, namespace, name string) (*unstructured.Unstructured, error) {
+func fetchWitwaveWorkspaceCR(ctx context.Context, dyn dynamic.Interface, namespace, name string) (*unstructured.Unstructured, error) {
 	cr, err := dyn.Resource(GVR()).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, fmt.Errorf(
-				"Workspace %q not found in namespace %q",
+				"WitwaveWorkspace %q not found in namespace %q",
 				name, namespace,
 			)
 		}

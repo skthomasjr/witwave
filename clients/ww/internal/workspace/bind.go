@@ -10,7 +10,7 @@ import (
 
 // BindOptions controls `ww workspace bind <agent> <workspace>`.
 //
-// AgentNamespace and WorkspaceNamespace are tracked separately because
+// AgentNamespace and WitwaveWorkspaceNamespace are tracked separately because
 // future v1.x cross-namespace binding is plausible — the operator's
 // status.boundAgents schema already records namespace explicitly so the
 // CLI can flag mismatches without a CRD change later. v1alpha1 only
@@ -20,8 +20,8 @@ import (
 type BindOptions struct {
 	Agent              string
 	AgentNamespace     string
-	Workspace          string
-	WorkspaceNamespace string
+	WitwaveWorkspace          string
+	WitwaveWorkspaceNamespace string
 
 	AssumeYes bool
 	DryRun    bool
@@ -37,8 +37,8 @@ func Bind(ctx context.Context, cfg *rest.Config, opts BindOptions) error {
 	if opts.Out == nil {
 		return fmt.Errorf("BindOptions.Out is required")
 	}
-	if err := ValidateName(opts.Workspace); err != nil {
-		return fmt.Errorf("workspace name %q: %w", opts.Workspace, err)
+	if err := ValidateName(opts.WitwaveWorkspace); err != nil {
+		return fmt.Errorf("workspace name %q: %w", opts.WitwaveWorkspace, err)
 	}
 	if opts.Agent == "" {
 		return fmt.Errorf("agent name is required")
@@ -46,7 +46,7 @@ func Bind(ctx context.Context, cfg *rest.Config, opts BindOptions) error {
 	if opts.AgentNamespace == "" {
 		return fmt.Errorf("agent namespace is required")
 	}
-	wsNS := opts.WorkspaceNamespace
+	wsNS := opts.WitwaveWorkspaceNamespace
 	if wsNS == "" {
 		wsNS = opts.AgentNamespace
 	}
@@ -65,7 +65,7 @@ func Bind(ctx context.Context, cfg *rest.Config, opts BindOptions) error {
 	// Verify the workspace exists in the same namespace before touching
 	// the agent — otherwise a typo would happily write a dangling ref the
 	// operator silently ignores.
-	if _, err := fetchWorkspaceCR(ctx, dyn, wsNS, opts.Workspace); err != nil {
+	if _, err := fetchWitwaveWorkspaceCR(ctx, dyn, wsNS, opts.WitwaveWorkspace); err != nil {
 		return err
 	}
 
@@ -79,21 +79,21 @@ func Bind(ctx context.Context, cfg *rest.Config, opts BindOptions) error {
 		return err
 	}
 	for _, r := range refs {
-		if name, _ := r["name"].(string); name == opts.Workspace {
-			fmt.Fprintf(opts.Out, "WitwaveAgent %s/%s is already bound to Workspace %q — no change.\n",
-				opts.AgentNamespace, opts.Agent, opts.Workspace)
+		if name, _ := r["name"].(string); name == opts.WitwaveWorkspace {
+			fmt.Fprintf(opts.Out, "WitwaveAgent %s/%s is already bound to WitwaveWorkspace %q — no change.\n",
+				opts.AgentNamespace, opts.Agent, opts.WitwaveWorkspace)
 			return nil
 		}
 	}
 
-	fmt.Fprintf(opts.Out, "\nAction:    bind WitwaveAgent %q to Workspace %q in %s\n",
-		opts.Agent, opts.Workspace, opts.AgentNamespace)
+	fmt.Fprintf(opts.Out, "\nAction:    bind WitwaveAgent %q to WitwaveWorkspace %q in %s\n",
+		opts.Agent, opts.WitwaveWorkspace, opts.AgentNamespace)
 	if len(refs) == 0 {
 		fmt.Fprintln(opts.Out, "  was:  (no workspaceRefs)")
 	} else {
 		fmt.Fprintf(opts.Out, "  was:  %d existing ref(s)\n", len(refs))
 	}
-	fmt.Fprintf(opts.Out, "  now:  + workspaceRefs[name=%q]\n", opts.Workspace)
+	fmt.Fprintf(opts.Out, "  now:  + workspaceRefs[name=%q]\n", opts.WitwaveWorkspace)
 	fmt.Fprintln(opts.Out, "  Operator will reconcile workspace mounts onto the agent's pods.")
 
 	if opts.DryRun {
@@ -101,14 +101,14 @@ func Bind(ctx context.Context, cfg *rest.Config, opts BindOptions) error {
 		return nil
 	}
 
-	refs = append(refs, map[string]interface{}{"name": opts.Workspace})
+	refs = append(refs, map[string]interface{}{"name": opts.WitwaveWorkspace})
 	if err := writeWorkspaceRefs(cr, refs); err != nil {
 		return fmt.Errorf("set workspaceRefs: %w", err)
 	}
 	if _, err := updateAgentCR(ctx, dyn, cr); err != nil {
 		return err
 	}
-	fmt.Fprintf(opts.Out, "WitwaveAgent %s/%s now bound to Workspace %q.\n",
-		opts.AgentNamespace, opts.Agent, opts.Workspace)
+	fmt.Fprintf(opts.Out, "WitwaveAgent %s/%s now bound to WitwaveWorkspace %q.\n",
+		opts.AgentNamespace, opts.Agent, opts.WitwaveWorkspace)
 	return nil
 }

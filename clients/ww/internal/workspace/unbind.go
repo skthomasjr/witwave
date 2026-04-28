@@ -12,7 +12,7 @@ import (
 type UnbindOptions struct {
 	Agent          string
 	AgentNamespace string
-	Workspace      string
+	WitwaveWorkspace      string
 
 	AssumeYes bool
 	DryRun    bool
@@ -22,15 +22,15 @@ type UnbindOptions struct {
 
 // Unbind removes the named workspace from a WitwaveAgent.Spec.WorkspaceRefs[].
 // Idempotent: unbinding an agent that wasn't bound is a no-op with a
-// clear log line. Does NOT delete the Workspace itself — the operator's
+// clear log line. Does NOT delete the WitwaveWorkspace itself — the operator's
 // refuse-delete finalizer keeps the workspace alive until every agent
 // that references it unbinds, after which `ww workspace delete` cleans up.
 func Unbind(ctx context.Context, cfg *rest.Config, opts UnbindOptions) error {
 	if opts.Out == nil {
 		return fmt.Errorf("UnbindOptions.Out is required")
 	}
-	if err := ValidateName(opts.Workspace); err != nil {
-		return fmt.Errorf("workspace name %q: %w", opts.Workspace, err)
+	if err := ValidateName(opts.WitwaveWorkspace); err != nil {
+		return fmt.Errorf("workspace name %q: %w", opts.WitwaveWorkspace, err)
 	}
 	if opts.Agent == "" {
 		return fmt.Errorf("agent name is required")
@@ -55,7 +55,7 @@ func Unbind(ctx context.Context, cfg *rest.Config, opts UnbindOptions) error {
 	filtered := make([]map[string]interface{}, 0, len(refs))
 	removed := false
 	for _, r := range refs {
-		if name, _ := r["name"].(string); name == opts.Workspace {
+		if name, _ := r["name"].(string); name == opts.WitwaveWorkspace {
 			removed = true
 			continue
 		}
@@ -63,14 +63,14 @@ func Unbind(ctx context.Context, cfg *rest.Config, opts UnbindOptions) error {
 	}
 
 	if !removed {
-		fmt.Fprintf(opts.Out, "WitwaveAgent %s/%s is not bound to Workspace %q — no change.\n",
-			opts.AgentNamespace, opts.Agent, opts.Workspace)
+		fmt.Fprintf(opts.Out, "WitwaveAgent %s/%s is not bound to WitwaveWorkspace %q — no change.\n",
+			opts.AgentNamespace, opts.Agent, opts.WitwaveWorkspace)
 		return nil
 	}
 
-	fmt.Fprintf(opts.Out, "\nAction:    unbind WitwaveAgent %q from Workspace %q in %s\n",
-		opts.Agent, opts.Workspace, opts.AgentNamespace)
-	fmt.Fprintf(opts.Out, "  was:  %d ref(s) including %q\n", len(refs), opts.Workspace)
+	fmt.Fprintf(opts.Out, "\nAction:    unbind WitwaveAgent %q from WitwaveWorkspace %q in %s\n",
+		opts.Agent, opts.WitwaveWorkspace, opts.AgentNamespace)
+	fmt.Fprintf(opts.Out, "  was:  %d ref(s) including %q\n", len(refs), opts.WitwaveWorkspace)
 	fmt.Fprintf(opts.Out, "  now:  %d ref(s)\n", len(filtered))
 	fmt.Fprintln(opts.Out, "  Operator will drop the workspace mounts from the agent's pods on next reconcile.")
 
@@ -85,7 +85,7 @@ func Unbind(ctx context.Context, cfg *rest.Config, opts UnbindOptions) error {
 	if _, err := updateAgentCR(ctx, dyn, cr); err != nil {
 		return err
 	}
-	fmt.Fprintf(opts.Out, "WitwaveAgent %s/%s no longer bound to Workspace %q.\n",
-		opts.AgentNamespace, opts.Agent, opts.Workspace)
+	fmt.Fprintf(opts.Out, "WitwaveAgent %s/%s no longer bound to WitwaveWorkspace %q.\n",
+		opts.AgentNamespace, opts.Agent, opts.WitwaveWorkspace)
 	return nil
 }

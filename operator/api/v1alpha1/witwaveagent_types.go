@@ -832,13 +832,13 @@ type WitwaveAgentSpec struct {
 	// +optional
 	NetworkPolicy *NetworkPolicySpec `json:"networkPolicy,omitempty"`
 
-	// WorkspaceRefs lists the Workspaces this agent participates in.
-	// Each referenced Workspace contributes its volumes, secrets, and
+	// WorkspaceRefs lists the WitwaveWorkspaces this agent participates in.
+	// Each referenced WitwaveWorkspace contributes its volumes, secrets, and
 	// configFiles to every backend container of this agent. Membership is
 	// agent-owned by design (see tmp/workspace-crd.md "Membership — agent-
-	// owned") — the operator maintains Workspace.Status.BoundAgents as an
+	// owned") — the operator maintains WitwaveWorkspace.Status.BoundAgents as an
 	// inverted index so the workspace-centric view stays available without
-	// duplicating source-of-truth on the Workspace itself.
+	// duplicating source-of-truth on the WitwaveWorkspace itself.
 	// +optional
 	// +kubebuilder:validation:MaxItems=20
 	// +listType=map
@@ -846,12 +846,12 @@ type WitwaveAgentSpec struct {
 	WorkspaceRefs []WitwaveAgentWorkspaceRef `json:"workspaceRefs,omitempty"`
 }
 
-// WitwaveAgentWorkspaceRef references one Workspace by name. The referenced
-// Workspace must live in the same namespace as the WitwaveAgent in v1alpha1;
+// WitwaveAgentWorkspaceRef references one WitwaveWorkspace by name. The referenced
+// WitwaveWorkspace must live in the same namespace as the WitwaveAgent in v1alpha1;
 // cross-namespace references are not yet supported (the design doc tracks
 // `Spec.AgentSelector` membership policy and other knobs as v1.x followups).
 type WitwaveAgentWorkspaceRef struct {
-	// Name of the Workspace to bind. Must match an existing Workspace's
+	// Name of the WitwaveWorkspace to bind. Must match an existing WitwaveWorkspace's
 	// metadata.name in the same namespace as this WitwaveAgent.
 	// +kubebuilder:validation:Pattern=^[a-z0-9][a-z0-9-]*$
 	// +kubebuilder:validation:MinLength=1

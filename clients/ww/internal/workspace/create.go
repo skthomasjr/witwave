@@ -56,7 +56,7 @@ type CreateOptions struct {
 	Name      string
 	Namespace string
 
-	// FromFile is the path to a YAML/JSON Workspace manifest. When set,
+	// FromFile is the path to a YAML/JSON WitwaveWorkspace manifest. When set,
 	// Volumes / Secrets MUST be empty.
 	FromFile string
 
@@ -93,7 +93,7 @@ type CreateOptions struct {
 	In  io.Reader
 }
 
-// Create applies a Workspace CR to the target cluster. Flow:
+// Create applies a WitwaveWorkspace CR to the target cluster. Flow:
 //
 //  1. Build the unstructured CR from opts (or read it from FromFile).
 //  2. Render preflight banner via k8s.Confirm (honours --yes / --dry-run /
@@ -127,7 +127,7 @@ func Create(
 	}
 
 	plan := []k8s.PlanLine{
-		{Key: "Action", Value: fmt.Sprintf("create Workspace %q", obj.GetName())},
+		{Key: "Action", Value: fmt.Sprintf("create WitwaveWorkspace %q", obj.GetName())},
 	}
 	if vols := volumesSummary(obj); vols != "" {
 		plan = append(plan, k8s.PlanLine{Key: "Volumes", Value: vols})
@@ -164,13 +164,13 @@ func Create(
 	if err != nil {
 		if apierrors.IsAlreadyExists(err) {
 			return fmt.Errorf(
-				"Workspace %q already exists in namespace %q; delete it with `ww workspace delete %s -n %s` or choose a different name",
+				"WitwaveWorkspace %q already exists in namespace %q; delete it with `ww workspace delete %s -n %s` or choose a different name",
 				obj.GetName(), obj.GetNamespace(), obj.GetName(), obj.GetNamespace(),
 			)
 		}
 		return fmt.Errorf("create workspace: %w", err)
 	}
-	fmt.Fprintf(opts.Out, "Created Workspace %s in namespace %s (uid=%s).\n",
+	fmt.Fprintf(opts.Out, "Created WitwaveWorkspace %s in namespace %s (uid=%s).\n",
 		created.GetName(), created.GetNamespace(), created.GetUID(),
 	)
 	fmt.Fprintln(opts.Out, "Next steps:")
@@ -179,7 +179,7 @@ func Create(
 	return nil
 }
 
-// buildFromFlags constructs the Workspace CR from the CLI's
+// buildFromFlags constructs the WitwaveWorkspace CR from the CLI's
 // --volume / --secret flags. Names + sizes go through the same
 // validation the CRD enforces so the user sees a usable error before
 // the apiserver round-trip.
@@ -258,7 +258,7 @@ func buildFromFlags(opts CreateOptions) (*unstructured.Unstructured, error) {
 }
 
 // buildFromFile reads opts.FromFile and parses it into an unstructured
-// Workspace CR. Falls through to opts.Name / opts.Namespace defaults
+// WitwaveWorkspace CR. Falls through to opts.Name / opts.Namespace defaults
 // when the file leaves either field unset, so users can `-f workspace.yaml`
 // without duplicating identity in two places.
 func buildFromFile(opts CreateOptions) (*unstructured.Unstructured, error) {

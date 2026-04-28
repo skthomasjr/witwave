@@ -1,5 +1,5 @@
 // Package workspace implements the `ww workspace *` subtree: create, list,
-// get, status, delete, bind, and unbind Workspace custom resources on a
+// get, status, delete, bind, and unbind WitwaveWorkspace custom resources on a
 // target cluster.
 //
 // Like internal/agent, this package uses a dynamic client with
@@ -15,13 +15,13 @@ import (
 	"github.com/witwave-ai/witwave/clients/ww/internal/agent"
 )
 
-// Kubernetes identity of the Workspace resource. Mirrors the GVR declared
-// in operator/api/v1alpha1/workspace_types.go.
+// Kubernetes identity of the WitwaveWorkspace resource. Mirrors the GVR declared
+// in operator/api/v1alpha1/witwaveworkspace_types.go.
 const (
 	APIGroup   = agent.APIGroup
 	APIVersion = agent.APIVersion
-	Kind       = "Workspace"
-	Resource   = "workspaces"
+	Kind       = "WitwaveWorkspace"
+	Resource   = "witwaveworkspaces"
 )
 
 // GVR returns the GroupVersionResource used by every dynamic client call
@@ -36,7 +36,7 @@ func APIVersionString() string {
 }
 
 // Managed-by marker stamped on every CR this package creates so operators
-// can tell `ww`-created Workspaces from hand-authored manifests.
+// can tell `ww`-created WitwaveWorkspaces from hand-authored manifests.
 const (
 	LabelManagedBy   = agent.LabelManagedBy
 	LabelManagedByWW = agent.LabelManagedByWW
@@ -45,9 +45,9 @@ const (
 	AnnotationCreatedBy = agent.AnnotationCreatedBy
 )
 
-// DefaultWorkspaceNamespace is the ww-specific fallback namespace for
+// DefaultWitwaveWorkspaceNamespace is the ww-specific fallback namespace for
 // every `ww workspace *` operation when neither --namespace nor the
 // kubeconfig context pin one. Same value as the agent subtree
 // (DefaultAgentNamespace) so workspaces and the agents that bind them
 // land in the same default namespace.
-const DefaultWorkspaceNamespace = agent.DefaultAgentNamespace
+const DefaultWitwaveWorkspaceNamespace = agent.DefaultAgentNamespace

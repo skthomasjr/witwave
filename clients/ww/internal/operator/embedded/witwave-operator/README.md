@@ -1,7 +1,7 @@
 # witwave-operator
 
 Helm chart for the witwave operator — deploys the witwave-operator controller manager and the `WitwaveAgent`,
-`WitwavePrompt`, and `Workspace` CRDs.
+`WitwavePrompt`, and `WitwaveWorkspace` CRDs.
 
 > **Looking for the fastest install?** The [`ww`](../../clients/ww/) CLI embeds this chart (v0.5.0+). Install `ww`
 > (`curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh | sh` or
@@ -54,14 +54,14 @@ helm install witwave-operator oci://ghcr.io/witwave-ai/charts/witwave-operator -
 helm uninstall witwave-operator --namespace witwave
 ```
 
-All three CRDs (`WitwaveAgent`, `WitwavePrompt`, `Workspace`) ship under `charts/witwave-operator/crds/` and carry the
-`helm.sh/resource-policy: keep` annotation, so they are **not** deleted on uninstall. Existing CRs remain in the cluster
-and can be reconciled by a re-installed operator. Delete the CRDs manually if you want to fully tear down:
+All three CRDs (`WitwaveAgent`, `WitwavePrompt`, `WitwaveWorkspace`) ship under `charts/witwave-operator/crds/` and carry
+the `helm.sh/resource-policy: keep` annotation, so they are **not** deleted on uninstall. Existing CRs remain in the
+cluster and can be reconciled by a re-installed operator. Delete the CRDs manually if you want to fully tear down:
 
 ```bash
 kubectl delete crd witwaveagents.witwave.ai
 kubectl delete crd witwaveprompts.witwave.ai
-kubectl delete crd workspaces.witwave.ai
+kubectl delete crd witwaveworkspaces.witwave.ai
 ```
 
 ## Values
@@ -175,10 +175,10 @@ The DNS SANs on `tls.crt` must include `<release>-webhook.<namespace>.svc` and
 
 The mutating webhook (`mwitwaveagent.kb.io`) carries one defaulting rule (populate `spec.port=8000` when unset). The
 `ValidatingWebhookConfiguration` carries one entry per CRD: `vwitwaveagent.kb.io`, `vwitwaveprompt.kb.io`, and
-`vworkspace.kb.io` (#1760). All three validating entries share the `webhooks.validatingFailurePolicy` knob (default
-`Ignore`); flip to `Fail` for strict admission once your webhook is HA.
+`vwitwaveworkspace.kb.io` (#1760). All three validating entries share the `webhooks.validatingFailurePolicy` knob
+(default `Ignore`); flip to `Fail` for strict admission once your webhook is HA.
 
-The `vworkspace.kb.io` entry rejects: `volumes[].storageType: hostPath` (reserved for v1.x), `volumes[].accessMode`
+The `vwitwaveworkspace.kb.io` entry rejects: `volumes[].storageType: hostPath` (reserved for v1.x), `volumes[].accessMode`
 other than `ReadWriteMany`, `secrets[]` entries that set both `mountPath` and `envFrom`, `configFiles[]` entries that
 set neither `configMap` nor `inline` (or both), and mount-path collisions across the three lists. Further invariants
 land as follow-up gaps on top of this skeleton.
@@ -196,8 +196,8 @@ identical knobs for `certManager.enabled`, `createIssuer`, `issuerKind`, and `is
 ## Least-privilege Secret writes (#761)
 
 The operator's default RBAC includes Secret write verbs because the inline `BackendSpec.credentials.secrets` path asks
-the reconciler to create/update a chart-owned Secret per backend. The `Workspace` CRD's `secrets[]` field, by contrast,
-accepts only existing-Secret references — the workspace controller stays out of the secrets-write trust boundary by
+the reconciler to create/update a chart-owned Secret per backend. The `WitwaveWorkspace` CRD's `secrets[]` field, by
+contrast, accepts only existing-Secret references — the witwaveworkspace controller stays out of the secrets-write trust boundary by
 design (#1760). If every agent in your cluster also uses pre-provisioned Secrets referenced via `existingSecret`, drop
 the write verbs:
 

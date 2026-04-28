@@ -22,52 +22,52 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// WorkspaceStorageType selects the VolumeSource for a workspace volume.
+// WitwaveWorkspaceStorageType selects the VolumeSource for a workspace volume.
 // In v1alpha1 only `pvc` is honoured by the controller; `hostPath` is a
 // reserved name accepted by the structural schema but rejected at admission
 // to keep the field's enum stable for a future v1.x without a CRD bump
 // (see tmp/workspace-crd.md "Out of scope for v1").
 // +kubebuilder:validation:Enum=pvc;hostPath
-type WorkspaceStorageType string
+type WitwaveWorkspaceStorageType string
 
 const (
-	// WorkspaceStorageTypePVC selects a PersistentVolumeClaim volume source.
+	// WitwaveWorkspaceStorageTypePVC selects a PersistentVolumeClaim volume source.
 	// The controller reconciles a PVC named `<workspace>-vol-<volume.name>`
 	// in the workspace's namespace.
-	WorkspaceStorageTypePVC WorkspaceStorageType = "pvc"
+	WitwaveWorkspaceStorageTypePVC WitwaveWorkspaceStorageType = "pvc"
 
-	// WorkspaceStorageTypeHostPath is reserved for a future v1.x and is
+	// WitwaveWorkspaceStorageTypeHostPath is reserved for a future v1.x and is
 	// rejected by the admission webhook today. Operators that need a
 	// single-node hostPath fallback should use the per-agent SharedStorage
 	// surface in the meantime.
-	WorkspaceStorageTypeHostPath WorkspaceStorageType = "hostPath"
+	WitwaveWorkspaceStorageTypeHostPath WitwaveWorkspaceStorageType = "hostPath"
 )
 
-// WorkspaceVolumeReclaimPolicy controls what happens to the operator-created
-// PVC when its parent Workspace is deleted (and the refuse-delete finalizer
+// WitwaveWorkspaceVolumeReclaimPolicy controls what happens to the operator-created
+// PVC when its parent WitwaveWorkspace is deleted (and the refuse-delete finalizer
 // is finally cleared because no agent references the workspace any more).
 // +kubebuilder:validation:Enum=Delete;Retain
-type WorkspaceVolumeReclaimPolicy string
+type WitwaveWorkspaceVolumeReclaimPolicy string
 
 const (
-	// WorkspaceVolumeReclaimPolicyDelete removes the PVC alongside the
-	// Workspace. The default — matches the structural-schema default and
+	// WitwaveWorkspaceVolumeReclaimPolicyDelete removes the PVC alongside the
+	// WitwaveWorkspace. The default — matches the structural-schema default and
 	// keeps cluster state tidy when a workspace is genuinely retired.
-	WorkspaceVolumeReclaimPolicyDelete WorkspaceVolumeReclaimPolicy = "Delete"
+	WitwaveWorkspaceVolumeReclaimPolicyDelete WitwaveWorkspaceVolumeReclaimPolicy = "Delete"
 
-	// WorkspaceVolumeReclaimPolicyRetain leaves the PVC behind so the
-	// underlying volume's data survives a Workspace recreate. Recommended
+	// WitwaveWorkspaceVolumeReclaimPolicyRetain leaves the PVC behind so the
+	// underlying volume's data survives a WitwaveWorkspace recreate. Recommended
 	// for stateful volumes (memory, datasets) where the design doc
-	// explicitly calls out "don't lose accumulated state on Workspace
+	// explicitly calls out "don't lose accumulated state on WitwaveWorkspace
 	// recreate".
-	WorkspaceVolumeReclaimPolicyRetain WorkspaceVolumeReclaimPolicy = "Retain"
+	WitwaveWorkspaceVolumeReclaimPolicyRetain WitwaveWorkspaceVolumeReclaimPolicy = "Retain"
 )
 
-// WorkspaceVolume describes one shared volume stamped onto every agent that
-// references the parent Workspace. Mirrors the shape of `SharedStorageSpec`
+// WitwaveWorkspaceVolume describes one shared volume stamped onto every agent that
+// references the parent WitwaveWorkspace. Mirrors the shape of `SharedStorageSpec`
 // (per-agent) but lives at workspace scope so multiple agents can converge
 // on the same PVC.
-type WorkspaceVolume struct {
+type WitwaveWorkspaceVolume struct {
 	// Name is the workspace-local volume identifier. Used to derive the PVC
 	// name (`<workspace>-vol-<name>`) and the per-agent volumeMount name
 	// (`workspace-<workspace>-<name>`). DNS-1123 label-safe so the rendered
@@ -81,7 +81,7 @@ type WorkspaceVolume struct {
 	// v1alpha1; the webhook rejects `hostPath`.
 	// +kubebuilder:default=pvc
 	// +optional
-	StorageType WorkspaceStorageType `json:"storageType,omitempty"`
+	StorageType WitwaveWorkspaceStorageType `json:"storageType,omitempty"`
 
 	// Size is the PVC storage request (e.g. `50Gi`). Required for
 	// StorageType=pvc when the operator creates the PVC. Stored as a
@@ -111,20 +111,20 @@ type WorkspaceVolume struct {
 	// +optional
 	MountPath string `json:"mountPath,omitempty"`
 
-	// ReclaimPolicy controls PVC cleanup on Workspace deletion. Defaults
+	// ReclaimPolicy controls PVC cleanup on WitwaveWorkspace deletion. Defaults
 	// to Delete; flip to Retain for stateful volumes whose data must
-	// survive a Workspace recreate.
+	// survive a WitwaveWorkspace recreate.
 	// +kubebuilder:default=Delete
 	// +optional
-	ReclaimPolicy WorkspaceVolumeReclaimPolicy `json:"reclaimPolicy,omitempty"`
+	ReclaimPolicy WitwaveWorkspaceVolumeReclaimPolicy `json:"reclaimPolicy,omitempty"`
 }
 
-// WorkspaceSecret declares a workspace-scoped Secret reference. The operator
+// WitwaveWorkspaceSecret declares a workspace-scoped Secret reference. The operator
 // stays out of the secrets-write trust boundary by accepting only references
 // to pre-created Secrets — no inline data field exists by design (see
 // tmp/workspace-crd.md "Soft-leaning decisions baked in").
-type WorkspaceSecret struct {
-	// Name references an existing Secret in the Workspace's namespace.
+type WitwaveWorkspaceSecret struct {
+	// Name references an existing Secret in the WitwaveWorkspace's namespace.
 	// +kubebuilder:validation:Pattern=^[a-z0-9][a-z0-9.-]*$
 	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
@@ -143,11 +143,11 @@ type WorkspaceSecret struct {
 	EnvFrom bool `json:"envFrom,omitempty"`
 }
 
-// WorkspaceInlineFile carries inline content the operator renders into a
+// WitwaveWorkspaceInlineFile carries inline content the operator renders into a
 // project-owned ConfigMap. The dual-check IsControlledBy + label pattern
 // keeps the operator from ever touching a ConfigMap a user authored by
 // hand under the same name.
-type WorkspaceInlineFile struct {
+type WitwaveWorkspaceInlineFile struct {
 	// Name is the ConfigMap data key (and conventional filename).
 	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
@@ -162,10 +162,10 @@ type WorkspaceInlineFile struct {
 	Content string `json:"content"`
 }
 
-// WorkspaceConfigFile describes one configuration file mount stamped onto
+// WitwaveWorkspaceConfigFile describes one configuration file mount stamped onto
 // every participating agent. Exactly one of ConfigMap or Inline must be
 // set; the webhook rejects entries that violate the invariant.
-type WorkspaceConfigFile struct {
+type WitwaveWorkspaceConfigFile struct {
 	// ConfigMap references a pre-created ConfigMap by name. When set, the
 	// operator does not own the ConfigMap and never reconciles its data —
 	// it is only mounted into the participating agents.
@@ -174,10 +174,10 @@ type WorkspaceConfigFile struct {
 	ConfigMap string `json:"configMap,omitempty"`
 
 	// Inline carries operator-rendered content. When set the operator
-	// reconciles a ConfigMap owned by the Workspace via IsControlledBy +
+	// reconciles a ConfigMap owned by the WitwaveWorkspace via IsControlledBy +
 	// label dual-check.
 	// +optional
-	Inline *WorkspaceInlineFile `json:"inline,omitempty"`
+	Inline *WitwaveWorkspaceInlineFile `json:"inline,omitempty"`
 
 	// MountPath is the absolute path inside each participating agent's
 	// containers where this file is mounted.
@@ -193,14 +193,14 @@ type WorkspaceConfigFile struct {
 	SubPath string `json:"subPath,omitempty"`
 }
 
-// WorkspaceSpec is the desired state of a Workspace.
-type WorkspaceSpec struct {
+// WitwaveWorkspaceSpec is the desired state of a WitwaveWorkspace.
+type WitwaveWorkspaceSpec struct {
 	// Volumes lists the shared volumes provisioned for this workspace. Each
 	// entry produces one PVC the operator stamps onto every participating
 	// agent's pods.
 	// +optional
 	// +kubebuilder:validation:MaxItems=20
-	Volumes []WorkspaceVolume `json:"volumes,omitempty"`
+	Volumes []WitwaveWorkspaceVolume `json:"volumes,omitempty"`
 
 	// Secrets lists pre-created Secret references projected onto every
 	// participating agent. The operator never writes to these Secrets —
@@ -208,7 +208,7 @@ type WorkspaceSpec struct {
 	// trust boundary.
 	// +optional
 	// +kubebuilder:validation:MaxItems=50
-	Secrets []WorkspaceSecret `json:"secrets,omitempty"`
+	Secrets []WitwaveWorkspaceSecret `json:"secrets,omitempty"`
 
 	// ConfigFiles lists ConfigMap-backed files mounted onto every
 	// participating agent. Each entry references either a pre-created
@@ -216,13 +216,13 @@ type WorkspaceSpec struct {
 	// owned ConfigMap.
 	// +optional
 	// +kubebuilder:validation:MaxItems=50
-	ConfigFiles []WorkspaceConfigFile `json:"configFiles,omitempty"`
+	ConfigFiles []WitwaveWorkspaceConfigFile `json:"configFiles,omitempty"`
 }
 
-// WorkspaceBoundAgent records one WitwaveAgent that currently references this
-// Workspace via Spec.WorkspaceRefs. The list is maintained by the workspace
+// WitwaveWorkspaceBoundAgent records one WitwaveAgent that currently references this
+// WitwaveWorkspace via Spec.WorkspaceRefs. The list is maintained by the workspace
 // controller as an inverted index — agents are the source of truth.
-type WorkspaceBoundAgent struct {
+type WitwaveWorkspaceBoundAgent struct {
 	// Name of the bound WitwaveAgent.
 	Name string `json:"name"`
 
@@ -233,8 +233,8 @@ type WorkspaceBoundAgent struct {
 	Namespace string `json:"namespace"`
 }
 
-// WorkspaceStatus is the observed state of a Workspace.
-type WorkspaceStatus struct {
+// WitwaveWorkspaceStatus is the observed state of a WitwaveWorkspace.
+type WitwaveWorkspaceStatus struct {
 	// ObservedGeneration is the spec generation most recently reconciled.
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
@@ -244,7 +244,7 @@ type WorkspaceStatus struct {
 	// +optional
 	// +listType=map
 	// +listMapKey=name
-	BoundAgents []WorkspaceBoundAgent `json:"boundAgents,omitempty"`
+	BoundAgents []WitwaveWorkspaceBoundAgent `json:"boundAgents,omitempty"`
 
 	// Conditions follow the standard Kubernetes condition convention.
 	// +optional
@@ -253,64 +253,64 @@ type WorkspaceStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
-// Standard condition types for Workspace.
+// Standard condition types for WitwaveWorkspace.
 const (
-	// WorkspaceConditionReady flips True when every desired side-effect of
+	// WitwaveWorkspaceConditionReady flips True when every desired side-effect of
 	// the spec has been reconciled (volumes, configFiles) and the bound-
 	// agents index is up to date.
-	WorkspaceConditionReady = "Ready"
+	WitwaveWorkspaceConditionReady = "Ready"
 
-	// WorkspaceConditionVolumesProvisioned reports the state of PVC
+	// WitwaveWorkspaceConditionVolumesProvisioned reports the state of PVC
 	// provisioning. Decoupled from Ready so dashboards can attribute a
-	// not-ready Workspace to a specific reconcile concern.
-	WorkspaceConditionVolumesProvisioned = "VolumesProvisioned"
+	// not-ready WitwaveWorkspace to a specific reconcile concern.
+	WitwaveWorkspaceConditionVolumesProvisioned = "VolumesProvisioned"
 
-	// WorkspaceConditionBoundAgentsTracked reports the state of the
+	// WitwaveWorkspaceConditionBoundAgentsTracked reports the state of the
 	// inverted-index update.
-	WorkspaceConditionBoundAgentsTracked = "BoundAgentsTracked"
+	WitwaveWorkspaceConditionBoundAgentsTracked = "BoundAgentsTracked"
 
-	// WorkspaceConditionConfigMapsRendered reports the state of inline
+	// WitwaveWorkspaceConditionConfigMapsRendered reports the state of inline
 	// ConfigMap reconciliation.
-	WorkspaceConditionConfigMapsRendered = "ConfigMapsRendered"
+	WitwaveWorkspaceConditionConfigMapsRendered = "ConfigMapsRendered"
 
-	// WorkspaceConditionDeletionBlocked is set on a workspace whose
+	// WitwaveWorkspaceConditionDeletionBlocked is set on a workspace whose
 	// deletion is being blocked by the refuse-delete finalizer because
 	// at least one agent still references it.
-	WorkspaceConditionDeletionBlocked = "DeletionBlocked"
+	WitwaveWorkspaceConditionDeletionBlocked = "DeletionBlocked"
 )
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:shortName=ws
+// +kubebuilder:resource:shortName=wws
 // The helm.sh/resource-policy=keep annotation prevents accidental deletion
-// of every Workspace CR in the cluster on `helm uninstall`. Mirrors the
+// of every WitwaveWorkspace CR in the cluster on `helm uninstall`. Mirrors the
 // WitwaveAgent and WitwavePrompt CRDs (#1647).
 // +kubebuilder:metadata:annotations="helm.sh/resource-policy=keep"
 // +kubebuilder:printcolumn:name="Volumes",type=integer,JSONPath=`.spec.volumes[*]`,priority=1
 // +kubebuilder:printcolumn:name="Bound",type=integer,JSONPath=`.status.boundAgents[*]`,priority=1
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// Workspace is the Schema for the workspaces API. A Workspace provisions
+// WitwaveWorkspace is the Schema for the witwaveworkspaces API. A WitwaveWorkspace provisions
 // shared volumes, projects pre-created Secrets, and renders ConfigMap-backed
 // files that the operator stamps onto every WitwaveAgent whose
 // Spec.WorkspaceRefs references it.
-type Workspace struct {
+type WitwaveWorkspace struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   WorkspaceSpec   `json:"spec,omitempty"`
-	Status WorkspaceStatus `json:"status,omitempty"`
+	Spec   WitwaveWorkspaceSpec   `json:"spec,omitempty"`
+	Status WitwaveWorkspaceStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// WorkspaceList contains a list of Workspace.
-type WorkspaceList struct {
+// WitwaveWorkspaceList contains a list of WitwaveWorkspace.
+type WitwaveWorkspaceList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Workspace `json:"items"`
+	Items           []WitwaveWorkspace `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&Workspace{}, &WorkspaceList{})
+	SchemeBuilder.Register(&WitwaveWorkspace{}, &WitwaveWorkspaceList{})
 }

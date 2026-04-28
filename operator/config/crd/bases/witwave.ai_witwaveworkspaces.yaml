@@ -5,16 +5,16 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.18.0
     helm.sh/resource-policy: keep
-  name: workspaces.witwave.ai
+  name: witwaveworkspaces.witwave.ai
 spec:
   group: witwave.ai
   names:
-    kind: Workspace
-    listKind: WorkspaceList
-    plural: workspaces
+    kind: WitwaveWorkspace
+    listKind: WitwaveWorkspaceList
+    plural: witwaveworkspaces
     shortNames:
-    - ws
-    singular: workspace
+    - wws
+    singular: witwaveworkspace
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -33,7 +33,7 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          Workspace is the Schema for the workspaces API. A Workspace provisions
+          WitwaveWorkspace is the Schema for the witwaveworkspaces API. A WitwaveWorkspace provisions
           shared volumes, projects pre-created Secrets, and renders ConfigMap-backed
           files that the operator stamps onto every WitwaveAgent whose
           Spec.WorkspaceRefs references it.
@@ -56,7 +56,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: WorkspaceSpec is the desired state of a Workspace.
+            description: WitwaveWorkspaceSpec is the desired state of a WitwaveWorkspace.
             properties:
               configFiles:
                 description: |-
@@ -66,7 +66,7 @@ spec:
                   owned ConfigMap.
                 items:
                   description: |-
-                    WorkspaceConfigFile describes one configuration file mount stamped onto
+                    WitwaveWorkspaceConfigFile describes one configuration file mount stamped onto
                     every participating agent. Exactly one of ConfigMap or Inline must be
                     set; the webhook rejects entries that violate the invariant.
                   properties:
@@ -80,7 +80,7 @@ spec:
                     inline:
                       description: |-
                         Inline carries operator-rendered content. When set the operator
-                        reconciles a ConfigMap owned by the Workspace via IsControlledBy +
+                        reconciles a ConfigMap owned by the WitwaveWorkspace via IsControlledBy +
                         label dual-check.
                       properties:
                         content:
@@ -131,7 +131,7 @@ spec:
                   trust boundary.
                 items:
                   description: |-
-                    WorkspaceSecret declares a workspace-scoped Secret reference. The operator
+                    WitwaveWorkspaceSecret declares a workspace-scoped Secret reference. The operator
                     stays out of the secrets-write trust boundary by accepting only references
                     to pre-created Secrets — no inline data field exists by design (see
                     tmp/workspace-crd.md "Soft-leaning decisions baked in").
@@ -150,7 +150,7 @@ spec:
                       pattern: ^(|/.*)$
                       type: string
                     name:
-                      description: Name references an existing Secret in the Workspace's
+                      description: Name references an existing Secret in the WitwaveWorkspace's
                         namespace.
                       minLength: 1
                       pattern: ^[a-z0-9][a-z0-9.-]*$
@@ -167,8 +167,8 @@ spec:
                   agent's pods.
                 items:
                   description: |-
-                    WorkspaceVolume describes one shared volume stamped onto every agent that
-                    references the parent Workspace. Mirrors the shape of `SharedStorageSpec`
+                    WitwaveWorkspaceVolume describes one shared volume stamped onto every agent that
+                    references the parent WitwaveWorkspace. Mirrors the shape of `SharedStorageSpec`
                     (per-agent) but lives at workspace scope so multiple agents can converge
                     on the same PVC.
                   properties:
@@ -201,9 +201,9 @@ spec:
                     reclaimPolicy:
                       default: Delete
                       description: |-
-                        ReclaimPolicy controls PVC cleanup on Workspace deletion. Defaults
+                        ReclaimPolicy controls PVC cleanup on WitwaveWorkspace deletion. Defaults
                         to Delete; flip to Retain for stateful volumes whose data must
-                        survive a Workspace recreate.
+                        survive a WitwaveWorkspace recreate.
                       enum:
                       - Delete
                       - Retain
@@ -240,7 +240,7 @@ spec:
                 type: array
             type: object
           status:
-            description: WorkspaceStatus is the observed state of a Workspace.
+            description: WitwaveWorkspaceStatus is the observed state of a WitwaveWorkspace.
             properties:
               boundAgents:
                 description: |-
@@ -248,8 +248,8 @@ spec:
                   that currently reference this workspace via Spec.WorkspaceRefs.
                 items:
                   description: |-
-                    WorkspaceBoundAgent records one WitwaveAgent that currently references this
-                    Workspace via Spec.WorkspaceRefs. The list is maintained by the workspace
+                    WitwaveWorkspaceBoundAgent records one WitwaveAgent that currently references this
+                    WitwaveWorkspace via Spec.WorkspaceRefs. The list is maintained by the workspace
                     controller as an inverted index — agents are the source of truth.
                   properties:
                     name:

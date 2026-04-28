@@ -7,7 +7,7 @@ import (
 )
 
 func TestGet_Table(t *testing.T) {
-	cr := seedWorkspace("witwave", "default", func(spec map[string]interface{}) {
+	cr := seedWitwaveWorkspace("witwave", "default", func(spec map[string]interface{}) {
 		spec["volumes"] = []interface{}{
 			map[string]interface{}{"name": "source", "size": "50Gi"},
 		}
@@ -31,7 +31,7 @@ func TestGet_Table(t *testing.T) {
 }
 
 func TestGet_YAML(t *testing.T) {
-	cr := seedWorkspace("witwave", "default", nil)
+	cr := seedWitwaveWorkspace("witwave", "default", nil)
 	dyn := makeFakeDynamic(cr)
 	t.Cleanup(withFakeClients(t, dyn, makeFakeK8s()))
 	out := captureOut()
@@ -45,7 +45,7 @@ func TestGet_YAML(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	body := out.String()
-	mustContain(t, body, "kind: Workspace")
+	mustContain(t, body, "kind: WitwaveWorkspace")
 	mustContain(t, body, "name: witwave")
 }
 

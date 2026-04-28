@@ -20,13 +20,13 @@ const (
 	// NamespaceFromContext means the kubeconfig context pinned a namespace.
 	NamespaceFromContext = agent.NamespaceFromContext
 	// NamespaceFromDefault means nothing was pinned; ww fell back to
-	// DefaultWorkspaceNamespace.
+	// DefaultWitwaveWorkspaceNamespace.
 	NamespaceFromDefault = agent.NamespaceFromDefault
 )
 
 // ResolveNamespace picks the namespace for a `ww workspace` operation.
 // Precedence: explicit flag → context's configured namespace →
-// DefaultWorkspaceNamespace. Callers MUST log the resolved value so the
+// DefaultWitwaveWorkspaceNamespace. Callers MUST log the resolved value so the
 // user sees where an unnamed invocation landed (DESIGN.md NS-2).
 func ResolveNamespace(flagValue, contextNS string) string {
 	ns, _ := ResolveNamespaceWithSource(flagValue, contextNS)
@@ -43,5 +43,5 @@ func ResolveNamespaceWithSource(flagValue, contextNS string) (string, NamespaceS
 	if contextNS != "" {
 		return contextNS, NamespaceFromContext
 	}
-	return DefaultWorkspaceNamespace, NamespaceFromDefault
+	return DefaultWitwaveWorkspaceNamespace, NamespaceFromDefault
 }
