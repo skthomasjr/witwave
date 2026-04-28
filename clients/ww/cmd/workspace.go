@@ -98,6 +98,8 @@ func newWorkspaceCmd() *cobra.Command {
 	cmd.AddCommand(newWorkspaceGetCmd(f))
 	cmd.AddCommand(newWorkspaceStatusCmd(f))
 	cmd.AddCommand(newWorkspaceDeleteCmd(f))
+	cmd.AddCommand(newWorkspaceBindCmd(f))
+	cmd.AddCommand(newWorkspaceUnbindCmd(f))
 	return cmd
 }
 
@@ -396,5 +398,97 @@ func runWorkspaceDelete(ctx context.Context, f *workspaceFlags, name string, wai
 		WaitTimeout: timeout,
 		Out:         os.Stdout,
 		In:          os.Stdin,
+	})
+}
+
+// ---------------------------------------------------------------------------
+// bind
+// ---------------------------------------------------------------------------
+
+func newWorkspaceBindCmd(f *workspaceFlags) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "bind <agent> <workspace>",
+		Short: "Add a workspace to a WitwaveAgent's spec.workspaceRefs[]",
+		Long: "Adds an entry to the named WitwaveAgent's spec.workspaceRefs[]. The\n" +
+			"operator picks up the change on next reconcile and stamps the\n" +
+			"workspace's volumes, secrets, and configFiles onto the agent's\n" +
+			"backend containers.\n\n" +
+			"Idempotent: re-binding the same (agent, workspace) is a no-op with\n" +
+			"a clear log line.\n\n" +
+			"v1alpha1 only supports same-namespace binding (the operator ignores\n" +
+			"cross-namespace refs). The CLI rejects cross-namespace asks loudly\n" +
+			"so users see the limitation up-front.",
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runWorkspaceBind(cmd.Context(), f, args[0], args[1])
+		},
+	}
+	bindWorkspaceMutatingFlags(cmd, f)
+	return cmd
+}
+
+func runWorkspaceBind(ctx context.Context, f *workspaceFlags, agentName, workspaceName string) error {
+	target, resolver, err := f.resolveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	cfg, err := resolver.REST()
+	if err != nil {
+		return err
+	}
+	ns := logAndResolveWorkspaceNamespace(f.namespace, target.Namespace)
+	return workspace.Bind(ctx, cfg, workspace.BindOptions{
+		Agent:              agentName,
+		AgentNamespace:     ns,
+		Workspace:          workspaceName,
+		WorkspaceNamespace: ns,
+		AssumeYes:          f.assumeYes,
+		DryRun:             f.dryRun,
+		Out:                os.Stdout,
+		In:                 os.Stdin,
+	})
+}
+
+// ---------------------------------------------------------------------------
+// unbind
+// ---------------------------------------------------------------------------
+
+func newWorkspaceUnbindCmd(f *workspaceFlags) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "unbind <agent> <workspace>",
+		Short: "Remove a workspace from a WitwaveAgent's spec.workspaceRefs[]",
+		Long: "Removes the named workspace from a WitwaveAgent's spec.workspaceRefs[].\n" +
+			"The operator drops the workspace mounts from the agent's backend\n" +
+			"containers on next reconcile.\n\n" +
+			"Idempotent: unbinding an agent that wasn't bound is a no-op.\n\n" +
+			"Does NOT delete the Workspace itself — use `ww workspace delete\n" +
+			"<workspace>` once every agent that references it has unbound.",
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runWorkspaceUnbind(cmd.Context(), f, args[0], args[1])
+		},
+	}
+	bindWorkspaceMutatingFlags(cmd, f)
+	return cmd
+}
+
+func runWorkspaceUnbind(ctx context.Context, f *workspaceFlags, agentName, workspaceName string) error {
+	target, resolver, err := f.resolveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	cfg, err := resolver.REST()
+	if err != nil {
+		return err
+	}
+	ns := logAndResolveWorkspaceNamespace(f.namespace, target.Namespace)
+	return workspace.Unbind(ctx, cfg, workspace.UnbindOptions{
+		Agent:          agentName,
+		AgentNamespace: ns,
+		Workspace:      workspaceName,
+		AssumeYes:      f.assumeYes,
+		DryRun:         f.dryRun,
+		Out:            os.Stdout,
+		In:             os.Stdin,
 	})
 }
