@@ -767,6 +767,11 @@ class AgentExecutor(A2AAgentExecutor):
                 )
                 if harness_background_tasks_timeout_total is not None:
                     harness_background_tasks_timeout_total.labels(source=source).inc()
+                # Re-raise so _on_done sees t.exception() and any awaiter
+                # of the returned task observes the timeout. Without this,
+                # a timed-out task looks indistinguishable from a clean
+                # completion to any consumer of the task object.
+                raise
 
         task = asyncio.create_task(_bounded(), name=name or f"bg-{source}")
         self._background_tasks.add(task)
