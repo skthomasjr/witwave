@@ -96,4 +96,16 @@ rules:
   - apiGroups: [witwave.ai]
     resources: [witwaveprompts/finalizers]
     verbs: [update]
+  # Workspace CR (#1760). The reconciler reconciles owned PVCs +
+  # ConfigMaps and maintains Status.BoundAgents as the inverted index
+  # over WitwaveAgent.Spec.WorkspaceRefs.
+  - apiGroups: [witwave.ai]
+    resources: [workspaces]
+    verbs: [create, delete, get, list, patch, update, watch]
+  - apiGroups: [witwave.ai]
+    resources: [workspaces/status]
+    verbs: [get, patch, update]
+  - apiGroups: [witwave.ai]
+    resources: [workspaces/finalizers]
+    verbs: [update]
 {{- end }}

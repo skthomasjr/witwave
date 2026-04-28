@@ -230,4 +230,24 @@ webhooks:
         apiVersions: ["v1alpha1"]
         resources: ["witwaveprompts"]
         operations: ["CREATE", "UPDATE"]
+  - name: vworkspace.kb.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    # #1760: workspace validation shares the failurePolicy knob with the
+    # other validating webhooks — defaulting to Ignore so a webhook
+    # outage doesn't deadlock Workspace admission cluster-wide.
+    failurePolicy: {{ .Values.webhooks.validatingFailurePolicy | default "Ignore" | quote }}
+    clientConfig:
+      service:
+        name: {{ $svcName }}
+        namespace: {{ $ns }}
+        path: /validate-witwave-ai-v1alpha1-workspace
+      {{- if $byo }}
+      caBundle: {{ .Values.webhooks.caBundle | quote }}
+      {{- end }}
+    rules:
+      - apiGroups: ["witwave.ai"]
+        apiVersions: ["v1alpha1"]
+        resources: ["workspaces"]
+        operations: ["CREATE", "UPDATE"]
 {{- end -}}

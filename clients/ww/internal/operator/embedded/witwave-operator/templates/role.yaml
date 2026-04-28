@@ -97,6 +97,16 @@ rules:
   - apiGroups: [witwave.ai]
     resources: [witwaveprompts/finalizers]
     verbs: [update]
+  # Workspace CR (#1760) — same shape as the ClusterRole variant.
+  - apiGroups: [witwave.ai]
+    resources: [workspaces]
+    verbs: [create, delete, get, list, patch, update, watch]
+  - apiGroups: [witwave.ai]
+    resources: [workspaces/status]
+    verbs: [get, patch, update]
+  - apiGroups: [witwave.ai]
+    resources: [workspaces/finalizers]
+    verbs: [update]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
