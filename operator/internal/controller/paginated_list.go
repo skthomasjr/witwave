@@ -45,9 +45,24 @@ const paginatedListPageSize int64 = 500
 // watchcache and time out the reconcile. With Limit set, controller-runtime
 // returns a Continue token whenever the result is truncated; we keep going
 // until the token is empty.
+//
+// IMPORTANT (#1738): pass ``r.APIReader``, NOT ``r.Client``. The cached
+// client backed by the informer cache returns ALL matching items in a
+// single call regardless of ``client.Limit`` — pagination flags are
+// silently ignored and the response's Continue token is empty, so the
+// loop exits after one (potentially huge) page. APIReader bypasses the
+// cache and goes straight to the apiserver, which honours Limit / Continue
+// as documented. Use ``r.Client`` only for primary-resource reads where
+// the cached snapshot is desirable; use ``r.APIReader`` for cleanup
+// sweeps where pagination MUST actually fire.
+//
+// The helper accepts the narrower ``client.Reader`` interface so callers
+// can pass either ``r.APIReader`` (preferred for cleanup) or, in tests,
+// any fake.Client built via the controller-runtime fake builder (which
+// honours Limit / Continue against its in-memory tracker).
 func paginatedList(
 	ctx context.Context,
-	c client.Client,
+	c client.Reader,
 	list client.ObjectList,
 	visit func() error,
 	opts ...client.ListOption,

@@ -95,8 +95,14 @@ const witwavePromptFinalizer = "witwaveprompt.witwave.ai/finalizer"
 // materialised ones.
 type WitwavePromptReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	// APIReader is a cache-bypassing reader wired from mgr.GetAPIReader()
+	// (#1738). Cleanup paths use ``paginatedList(r.APIReader, …)`` so the
+	// apiserver actually paginates; the cached client.Client silently
+	// ignores client.Limit / client.Continue and would return all
+	// matching items in one allocation.
+	APIReader client.Reader
+	Scheme    *runtime.Scheme
+	Recorder  record.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=witwave.ai,resources=witwaveprompts,verbs=get;list;watch;create;update;patch;delete
@@ -242,7 +248,7 @@ func (r *WitwavePromptReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	// the #1656 sweep applied to the WitwaveAgent reconciler's cleanup
 	// paths.
 	existing := &corev1.ConfigMapList{}
-	if err := paginatedList(ctx, r.Client, existing, func() error {
+	if err := paginatedList(ctx, r.APIReader, existing, func() error {
 		for i := range existing.Items {
 			cm := &existing.Items[i]
 			if _, ok := desired[cm.Name]; ok {

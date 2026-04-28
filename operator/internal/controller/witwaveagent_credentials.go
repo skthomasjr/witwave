@@ -316,7 +316,7 @@ func (r *WitwaveAgentReconciler) reconcileCredentialsSecrets(ctx context.Context
 	// credential Secrets doesn't pin the apiserver watchcache or stall the
 	// reconcile loop.
 	existing := &corev1.SecretList{}
-	if err := paginatedList(ctx, r.Client, existing, func() error {
+	if err := paginatedList(ctx, r.APIReader, existing, func() error {
 		for i := range existing.Items {
 			sec := &existing.Items[i]
 			if _, wanted := desired[sec.Name]; wanted {

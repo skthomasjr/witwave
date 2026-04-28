@@ -279,3 +279,27 @@ func TestPaginatedListSinglePage(t *testing.T) {
 		t.Fatalf("visit calls: got %d, want 1", visitCalls)
 	}
 }
+
+// TestPaginatedListAcceptsClientReader pins #1738: paginatedList must
+// accept the narrower client.Reader interface so callers can pass
+// r.APIReader (the cache-bypassing apiserver reader) directly. The
+// pre-#1738 signature took client.Client, which forced callers to use
+// the cached client — which silently ignores client.Limit/Continue and
+// returned all items in a single page, defeating the bounded-pagination
+// promise.
+//
+// The compile-time check below would fail to build if the parameter type
+// regressed back to client.Client.
+func TestPaginatedListAcceptsClientReader(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("add corev1: %v", err)
+	}
+	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	// Convert to the narrower interface to assert the helper accepts it.
+	var reader client.Reader = c
+	list := &corev1.ConfigMapList{}
+	if err := paginatedList(context.Background(), reader, list, func() error { return nil }); err != nil {
+		t.Fatalf("paginatedList: %v", err)
+	}
+}

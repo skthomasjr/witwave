@@ -892,7 +892,7 @@ func (r *WitwaveAgentReconciler) reconcileConfigMaps(ctx context.Context, agent 
 	// #1656: paginate the List so a namespace holding thousands of matching
 	// ConfigMaps doesn't pin the apiserver watchcache or time out reconcile.
 	existing := &corev1.ConfigMapList{}
-	if err := paginatedList(ctx, r.Client, existing, func() error {
+	if err := paginatedList(ctx, r.APIReader, existing, func() error {
 		for i := range existing.Items {
 			cm := &existing.Items[i]
 			if _, wanted := desired[cm.Name]; wanted {
@@ -1226,7 +1226,7 @@ func (r *WitwaveAgentReconciler) applyBackendPVCs(ctx context.Context, agent *wi
 	// so a namespace holding thousands of label-matched PVCs doesn't pin the
 	// apiserver watchcache or trip apiserver chunk limits.
 	existing := &corev1.PersistentVolumeClaimList{}
-	if err := paginatedList(ctx, r.Client, existing, func() error {
+	if err := paginatedList(ctx, r.APIReader, existing, func() error {
 		for i := range existing.Items {
 			pvc := &existing.Items[i]
 			if _, wanted := desired[pvc.Name]; wanted {
@@ -1569,7 +1569,7 @@ func (r *WitwaveAgentReconciler) teardownDisabledAgent(ctx context.Context, agen
 	// #1656: paginate teardown List calls so an agent with thousands of
 	// owned ConfigMaps/PVCs doesn't blow past apiserver chunk limits.
 	cms := &corev1.ConfigMapList{}
-	if err := paginatedList(ctx, r.Client, cms, func() error {
+	if err := paginatedList(ctx, r.APIReader, cms, func() error {
 		for i := range cms.Items {
 			cm := &cms.Items[i]
 			if !metav1.IsControlledBy(cm, agent) {
@@ -1584,7 +1584,7 @@ func (r *WitwaveAgentReconciler) teardownDisabledAgent(ctx context.Context, agen
 		recordErr("ConfigMap", "list", err)
 	}
 	pvcs := &corev1.PersistentVolumeClaimList{}
-	if err := paginatedList(ctx, r.Client, pvcs, func() error {
+	if err := paginatedList(ctx, r.APIReader, pvcs, func() error {
 		for i := range pvcs.Items {
 			pvc := &pvcs.Items[i]
 			if !metav1.IsControlledBy(pvc, agent) {
@@ -1613,7 +1613,7 @@ func (r *WitwaveAgentReconciler) teardownDisabledAgent(ctx context.Context, agen
 	// #1656: paginate the credential-Secret cleanup List for the same
 	// reason as the ConfigMap/PVC blocks above.
 	credSecrets := &corev1.SecretList{}
-	if err := paginatedList(ctx, r.Client, credSecrets, func() error {
+	if err := paginatedList(ctx, r.APIReader, credSecrets, func() error {
 		for i := range credSecrets.Items {
 			sec := &credSecrets.Items[i]
 			if !metav1.IsControlledBy(sec, agent) {
