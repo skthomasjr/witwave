@@ -178,10 +178,12 @@ The mutating webhook (`mwitwaveagent.kb.io`) carries one defaulting rule (popula
 `vwitwaveworkspace.kb.io` (#1760). All three validating entries share the `webhooks.validatingFailurePolicy` knob
 (default `Ignore`); flip to `Fail` for strict admission once your webhook is HA.
 
-The `vwitwaveworkspace.kb.io` entry rejects: `volumes[].storageType: hostPath` (reserved for v1.x), `volumes[].accessMode`
-other than `ReadWriteMany`, `secrets[]` entries that set both `mountPath` and `envFrom`, `configFiles[]` entries that
-set neither `configMap` nor `inline` (or both), and mount-path collisions across the three lists. Further invariants
-land as follow-up gaps on top of this skeleton.
+The `vwitwaveworkspace.kb.io` entry rejects: `volumes[].storageType: hostPath` (reserved for v1.x),
+`volumes[].accessMode` outside `{ReadWriteMany, ReadWriteOnce, ReadWriteOncePod}` (RWM is the cross-node default; RWO
+is the single-node fallback for clusters whose default storage class is RWO-only, e.g. Docker Desktop), `secrets[]`
+entries that set both `mountPath` and `envFrom`, `configFiles[]` entries that set neither `configMap` nor `inline`
+(or both), and mount-path collisions across the three lists. Further invariants land as follow-up gaps on top of this
+skeleton.
 
 ### Values shape
 

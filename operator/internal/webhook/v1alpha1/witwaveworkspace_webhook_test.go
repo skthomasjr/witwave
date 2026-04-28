@@ -72,7 +72,10 @@ func TestWitwaveWorkspaceValidate_HostPathRejected(t *testing.T) {
 	mustReject(t, err, "hostPath is reserved")
 }
 
-func TestWitwaveWorkspaceValidate_RWORejected(t *testing.T) {
+func TestWitwaveWorkspaceValidate_RWOAccepted(t *testing.T) {
+	// RWO is the documented single-node fallback (Docker Desktop, single-
+	// node k3s, etc.). Accepted by admission as of the v1alpha1 update
+	// that relaxed the RWM-only constraint.
 	v, ctx := validatorAndCtx()
 	size := resource.MustParse("1Gi")
 	ws := &witwavev1alpha1.WitwaveWorkspace{
@@ -80,6 +83,40 @@ func TestWitwaveWorkspaceValidate_RWORejected(t *testing.T) {
 		Spec: witwavev1alpha1.WitwaveWorkspaceSpec{
 			Volumes: []witwavev1alpha1.WitwaveWorkspaceVolume{
 				{Name: "source", Size: &size, AccessMode: corev1.ReadWriteOnce},
+			},
+		},
+	}
+	if _, err := v.ValidateCreate(ctx, ws); err != nil {
+		t.Fatalf("expected RWO to be accepted; got %v", err)
+	}
+}
+
+func TestWitwaveWorkspaceValidate_RWOPAccepted(t *testing.T) {
+	// RWOP is single-pod single-node — accepted but precludes more than
+	// one agent binding the workspace.
+	v, ctx := validatorAndCtx()
+	size := resource.MustParse("1Gi")
+	ws := &witwavev1alpha1.WitwaveWorkspace{
+		ObjectMeta: metav1.ObjectMeta{Name: "witwave"},
+		Spec: witwavev1alpha1.WitwaveWorkspaceSpec{
+			Volumes: []witwavev1alpha1.WitwaveWorkspaceVolume{
+				{Name: "source", Size: &size, AccessMode: corev1.ReadWriteOncePod},
+			},
+		},
+	}
+	if _, err := v.ValidateCreate(ctx, ws); err != nil {
+		t.Fatalf("expected RWOP to be accepted; got %v", err)
+	}
+}
+
+func TestWitwaveWorkspaceValidate_UnknownAccessModeRejected(t *testing.T) {
+	v, ctx := validatorAndCtx()
+	size := resource.MustParse("1Gi")
+	ws := &witwavev1alpha1.WitwaveWorkspace{
+		ObjectMeta: metav1.ObjectMeta{Name: "witwave"},
+		Spec: witwavev1alpha1.WitwaveWorkspaceSpec{
+			Volumes: []witwavev1alpha1.WitwaveWorkspaceVolume{
+				{Name: "source", Size: &size, AccessMode: "ReadWriteSometimes"},
 			},
 		},
 	}

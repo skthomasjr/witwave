@@ -26,6 +26,10 @@ type VolumeSpec struct {
 	Size string
 	// StorageClassName is the PVC storage class. Empty → cluster default.
 	StorageClassName string
+	// AccessMode is the PVC access mode. Empty → ReadWriteMany (the
+	// cross-node-safe default). Valid values: ReadWriteMany,
+	// ReadWriteOnce, ReadWriteOncePod.
+	AccessMode string
 }
 
 // SecretSpec is the parsed shape of a single --secret flag entry.
@@ -217,10 +221,14 @@ func buildFromFlags(opts CreateOptions) (*unstructured.Unstructured, error) {
 			if v.Size == "" {
 				return nil, fmt.Errorf("volume[%d] %q: size is required", i, v.Name)
 			}
+			accessMode := v.AccessMode
+			if accessMode == "" {
+				accessMode = "ReadWriteMany"
+			}
 			entry := map[string]interface{}{
 				"name":       v.Name,
 				"size":       v.Size,
-				"accessMode": "ReadWriteMany",
+				"accessMode": accessMode,
 			}
 			if v.StorageClassName != "" {
 				entry["storageClassName"] = v.StorageClassName

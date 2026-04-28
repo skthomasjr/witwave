@@ -120,9 +120,12 @@ func newWitwaveWorkspaceCreateCmd(f *workspaceFlags) *cobra.Command {
 		Long: "Creates a WitwaveWorkspace CR. Two construction modes:\n\n" +
 			"  ww workspace create -f workspace.yaml\n" +
 			"  ww workspace create my-ws --volume source=50Gi@efs-sc --secret github-token=env\n\n" +
-			"--volume <name>=<size>[@<storageClass>]   declare a shared PVC. Repeatable.\n" +
-			"                                          Defaults to RWM access mode (the\n" +
-			"                                          v1alpha1 contract — RWO is v1.x).\n" +
+			"--volume <name>=<size>[@<storageClass>][:<mode>]\n" +
+			"                                          Declare a shared PVC. Repeatable.\n" +
+			"                                          <mode> is rwm / rwo / rwop (defaults\n" +
+			"                                          to rwm). Use rwo on single-node\n" +
+			"                                          clusters whose storage class only\n" +
+			"                                          supports ReadWriteOnce (Docker Desktop).\n" +
 			"--secret <name>[@/abs/path | =env]        reference an existing Secret.\n" +
 			"                                          - bare name              → reference only\n" +
 			"                                          - name@/abs/path         → mount at path\n" +
@@ -154,8 +157,8 @@ func newWitwaveWorkspaceCreateCmd(f *workspaceFlags) *cobra.Command {
 	cmd.Flags().StringVarP(&fromFile, "from-file", "f", "",
 		"Path to a YAML/JSON WitwaveWorkspace manifest. Mutually exclusive with --volume / --secret.")
 	cmd.Flags().StringArrayVar(&volumes, "volume", nil,
-		"Shared volume to declare. Repeatable. Form: <name>=<size>[@<storageClass>]. "+
-			"Defaults to ReadWriteMany access mode.")
+		"Shared volume to declare. Repeatable. Form: <name>=<size>[@<storageClass>][:<mode>]. "+
+			"<mode> is rwm/rwo/rwop (defaults to rwm; use rwo on single-node clusters whose storage class is RWO-only, e.g. Docker Desktop).")
 	cmd.Flags().StringArrayVar(&secrets, "secret", nil,
 		"Existing-Secret reference. Repeatable. Form: <name>, <name>@/abs/path, or <name>=env.")
 	cmd.Flags().BoolVar(&createNamespace, "create-namespace", false,

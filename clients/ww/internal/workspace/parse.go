@@ -15,8 +15,14 @@ import (
 // ParseVolumeSpecs converts the repeatable --volume flag values into
 // VolumeSpec entries. Supported shapes:
 //
-//	name=size                    e.g. source=50Gi
-//	name=size@class              e.g. source=50Gi@efs-sc
+//	name=size                       e.g. source=50Gi
+//	name=size@class                 e.g. source=50Gi@efs-sc
+//	name=size:mode                  e.g. source=20Gi:rwo
+//	name=size@class:mode            e.g. source=20Gi@hostpath:rwo
+//
+// `mode` is one of `rwm` / `rwo` / `rwop` (case-insensitive) or the
+// canonical `ReadWriteMany` / `ReadWriteOnce` / `ReadWriteOncePod`.
+// Default when omitted: `rwm` (cross-node-safe).
 //
 // Names go through ValidateVolumeName before return so the user sees a
 // clear error before the apiserver round-trip. Duplicates are rejected.
@@ -41,8 +47,24 @@ func ParseVolumeSpecs(raw []string) ([]VolumeSpec, error) {
 }
 
 func parseVolumeSpec(raw string) (VolumeSpec, error) {
-	// First split off optional @class suffix.
+	// Split trailing :<accessMode> first so it can't be confused with
+	// any colon that might appear inside a size or class name (none in
+	// practice, but the order keeps the grammar unambiguous).
 	body := raw
+	var mode string
+	if i := strings.LastIndexByte(body, ':'); i >= 0 {
+		mode = strings.TrimSpace(body[i+1:])
+		body = body[:i]
+		if mode == "" {
+			return VolumeSpec{}, fmt.Errorf("--volume %q: access mode after ':' is empty", raw)
+		}
+		canon, err := canonicaliseAccessMode(mode)
+		if err != nil {
+			return VolumeSpec{}, fmt.Errorf("--volume %q: %w", raw, err)
+		}
+		mode = canon
+	}
+	// Then split off optional @class suffix.
 	var class string
 	if i := strings.IndexByte(body, '@'); i >= 0 {
 		class = strings.TrimSpace(body[i+1:])
@@ -54,7 +76,7 @@ func parseVolumeSpec(raw string) (VolumeSpec, error) {
 	// Then split name=size.
 	eq := strings.IndexByte(body, '=')
 	if eq < 0 {
-		return VolumeSpec{}, fmt.Errorf("--volume %q: expected `name=size[@class]`", raw)
+		return VolumeSpec{}, fmt.Errorf("--volume %q: expected `name=size[@class][:mode]`", raw)
 	}
 	name := strings.TrimSpace(body[:eq])
 	size := strings.TrimSpace(body[eq+1:])
@@ -67,7 +89,24 @@ func parseVolumeSpec(raw string) (VolumeSpec, error) {
 	if err := ValidateVolumeName(name); err != nil {
 		return VolumeSpec{}, fmt.Errorf("--volume %q: %w", raw, err)
 	}
-	return VolumeSpec{Name: name, Size: size, StorageClassName: class}, nil
+	return VolumeSpec{Name: name, Size: size, StorageClassName: class, AccessMode: mode}, nil
+}
+
+// canonicaliseAccessMode maps the user-friendly short forms (rwm/rwo/rwop,
+// case-insensitive) to the canonical Kubernetes access-mode strings the
+// CRD expects. Canonical inputs pass through unchanged. Unknown values
+// produce a clear error listing the valid options.
+func canonicaliseAccessMode(s string) (string, error) {
+	switch strings.ToLower(s) {
+	case "rwm", "readwritemany":
+		return "ReadWriteMany", nil
+	case "rwo", "readwriteonce":
+		return "ReadWriteOnce", nil
+	case "rwop", "readwriteoncepod":
+		return "ReadWriteOncePod", nil
+	default:
+		return "", fmt.Errorf("access mode %q: must be rwm/ReadWriteMany, rwo/ReadWriteOnce, or rwop/ReadWriteOncePod", s)
+	}
 }
 
 // ParseSecretSpecs converts the repeatable --secret flag values into

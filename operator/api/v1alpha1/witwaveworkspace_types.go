@@ -90,11 +90,16 @@ type WitwaveWorkspaceVolume struct {
 	// +optional
 	Size *resource.Quantity `json:"size,omitempty"`
 
-	// AccessMode is the PVC access mode. Defaults to ReadWriteMany and
-	// rejected at admission for any other value in v1alpha1 — the design
-	// doc commits to RWM on the v1 cut. RWO single-node fallback is tracked
-	// for v1.x.
+	// AccessMode is the PVC access mode. Defaults to ReadWriteMany — the
+	// cross-node-safe choice that lets any number of agent pods, scheduled
+	// to any nodes, mount the same volume concurrently. Operators on
+	// single-node clusters (Docker Desktop, single-node k3s, etc.) whose
+	// default storage class has no RWM option can set this to ReadWriteOnce
+	// instead; all binding agent pods must then land on the same node.
+	// ReadWriteOncePod is also accepted (single-pod single-node), though
+	// it precludes more than one agent binding the workspace.
 	// +kubebuilder:default=ReadWriteMany
+	// +kubebuilder:validation:Enum=ReadWriteMany;ReadWriteOnce;ReadWriteOncePod
 	// +optional
 	AccessMode corev1.PersistentVolumeAccessMode `json:"accessMode,omitempty"`
 

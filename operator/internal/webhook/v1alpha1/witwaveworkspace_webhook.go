@@ -38,8 +38,12 @@ import (
 //
 //   - Volume names unique within Spec.Volumes
 //   - In v1alpha1, StorageType must be `pvc` (hostPath is reserved)
-//   - In v1alpha1, AccessMode must be ReadWriteMany (RWO + RWOP rejected
-//     with a clear pointer at the v1.x roadmap item)
+//   - AccessMode must be one of ReadWriteMany, ReadWriteOnce, or
+//     ReadWriteOncePod. RWM is the cross-node default; RWO + RWOP are
+//     accepted as the single-node fallback (Docker Desktop / single-node
+//     k3s / etc.) where the cluster's default storage class has no RWM
+//     option. Operators picking RWO accept that all binding agent pods
+//     must land on the same node.
 //   - ConfigFile entries must set exactly one of `configMap` or `inline`
 //   - ConfigFile mount-path uniqueness within Spec.ConfigFiles
 //   - Secret env / mount-path uniqueness, mutual exclusion of
@@ -113,14 +117,19 @@ func validateWitwaveWorkspaceVolumes(ws *witwavev1alpha1.WitwaveWorkspace) error
 			))
 		}
 
-		// Access mode: only RWM in v1.
+		// Access mode: RWM (cross-node default), RWO (single-node
+		// fallback), and RWOP (single-pod) are all accepted. Anything
+		// else is a typo or an unsupported PV mode.
 		mode := vol.AccessMode
 		if mode == "" {
 			mode = corev1.ReadWriteMany
 		}
-		if mode != corev1.ReadWriteMany {
+		switch mode {
+		case corev1.ReadWriteMany, corev1.ReadWriteOnce, corev1.ReadWriteOncePod:
+			// accepted
+		default:
 			return apierrors.NewForbidden(witwaveWorkspaceGR, ws.Name, fmt.Errorf(
-				"spec.volumes[%d].accessMode=%q rejected: v1 hard-requires ReadWriteMany; RWO single-node fallback is tracked for v1.x",
+				"spec.volumes[%d].accessMode=%q rejected: must be one of ReadWriteMany, ReadWriteOnce, ReadWriteOncePod",
 				i, mode,
 			))
 		}
