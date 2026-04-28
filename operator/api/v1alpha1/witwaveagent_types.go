@@ -696,6 +696,13 @@ type WitwaveAgentSpec struct {
 	// +optional
 	PodMonitor *PodMonitorSpec `json:"podMonitor,omitempty"`
 
+	// PrometheusRule optionally creates a monitoring.coreos.com/v1
+	// PrometheusRule per WitwaveAgent that ships the chart's default
+	// alert set (#1746). Gated by a CRD presence probe at reconcile
+	// time; no-ops on clusters without prometheus-operator.
+	// +optional
+	PrometheusRule *PrometheusRuleSpec `json:"prometheusRule,omitempty"`
+
 	// MetricsPort is DEPRECATED (#836). Chart #687 moved harness and backend
 	// containers to a per-container metrics port = app_port + 1000 so two
 	// containers in the same pod no longer collide on :9000. The operator
@@ -1103,6 +1110,32 @@ type ServiceMonitorSpec struct {
 	// tenancy label (e.g. `release: kube-prometheus-stack`).
 	// +optional
 	Labels map[string]string `json:"labels,omitempty"`
+}
+
+// PrometheusRuleSpec configures an optional monitoring.coreos.com/v1
+// PrometheusRule reconciled per WitwaveAgent (#1746). Mirrors the chart's
+// `prometheusRule.*` block — but ships only a single Enabled toggle to
+// keep the CRD surface narrow. The chart's per-alert thresholds are
+// rendered verbatim from the chart defaults so an operator-only install
+// gets the same alert posture as a chart install. Operators who want a
+// different alert posture should hand-author their own PrometheusRule and
+// leave this toggle off.
+//
+// Gated on a monitoring.coreos.com/v1 PrometheusRule CRD-presence probe
+// at reconcile time so clusters without prometheus-operator are
+// unaffected.
+type PrometheusRuleSpec struct {
+	// Enabled toggles reconciliation of the PrometheusRule. Off by
+	// default — opt in explicitly so an operator install does not
+	// suddenly inherit a chart-shaped paging surface.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// AdditionalLabels are merged into the PrometheusRule's
+	// metadata.labels. Set this to the label your Prometheus CR uses
+	// to select PrometheusRules (e.g. `release: kube-prometheus-stack`).
+	// +optional
+	AdditionalLabels map[string]string `json:"additionalLabels,omitempty"`
 }
 
 // MetricsSpec toggles Prometheus scrape behaviour for the agent.

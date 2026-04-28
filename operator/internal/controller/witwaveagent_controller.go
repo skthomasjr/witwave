@@ -132,6 +132,7 @@ type WitwaveAgentReconciler struct {
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=podmonitors,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=monitoring.coreos.com,resources=prometheusrules,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies;ingresses,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is the control loop's entry point. It brings owned resources into
@@ -404,6 +405,12 @@ func (r *WitwaveAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// PodMonitor is opt-in per agent (#582). Same gating as ServiceMonitor:
 	// spec.podMonitor.enabled + spec.metrics.enabled + CRD present.
 	if err := r.reconcilePodMonitor(ctx, agent); err != nil {
+		reconcileErrs = append(reconcileErrs, err)
+	}
+	// PrometheusRule (#1746). Opt-in per agent; CRD-presence gated.
+	// Renders the chart's default alert set verbatim so operator-only
+	// installs get the same pageable surface chart installs do.
+	if err := r.reconcilePrometheusRule(ctx, agent); err != nil {
 		reconcileErrs = append(reconcileErrs, err)
 	}
 	// MCP tools (#830). Scaffold: render enabled tool Deployment + Service

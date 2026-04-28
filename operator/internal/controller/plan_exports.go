@@ -30,6 +30,7 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	witwavev1alpha1 "github.com/witwave-ai/witwave-operator/api/v1alpha1"
 )
@@ -109,6 +110,14 @@ func BuildDashboardDeploymentForPlan(agent *witwavev1alpha1.WitwaveAgent) *appsv
 // BuildDashboardServiceForPlan renders the dashboard Service.
 func BuildDashboardServiceForPlan(agent *witwavev1alpha1.WitwaveAgent) *corev1.Service {
 	return buildDashboardService(agent)
+}
+
+// BuildPrometheusRuleForParity is exposed so the chart-vs-operator
+// PrometheusRule diff check (operator/scripts/check-prometheusrule-parity.sh)
+// can render the operator's alert set without standing up a fake
+// reconciler. Returns nil when spec.prometheusRule.enabled is false.
+func BuildPrometheusRuleForParity(agent *witwavev1alpha1.WitwaveAgent) *unstructured.Unstructured {
+	return buildPrometheusRule(agent)
 }
 
 // BuildManifestConfigMapForPlan renders the manifest ConfigMap as if

@@ -5483,6 +5483,28 @@ spec:
                   PriorityClassName sets the pod's scheduling priority. Mirrors the
                   chart-side `priorityClassName` value (#603).
                 type: string
+              prometheusRule:
+                description: |-
+                  PrometheusRule optionally creates a monitoring.coreos.com/v1
+                  PrometheusRule per WitwaveAgent that ships the chart's default
+                  alert set (#1746). Gated by a CRD presence probe at reconcile
+                  time; no-ops on clusters without prometheus-operator.
+                properties:
+                  additionalLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      AdditionalLabels are merged into the PrometheusRule's
+                      metadata.labels. Set this to the label your Prometheus CR uses
+                      to select PrometheusRules (e.g. `release: kube-prometheus-stack`).
+                    type: object
+                  enabled:
+                    description: |-
+                      Enabled toggles reconciliation of the PrometheusRule. Off by
+                      default — opt in explicitly so an operator install does not
+                      suddenly inherit a chart-shaped paging surface.
+                    type: boolean
+                type: object
               probes:
                 description: Probes overrides liveness/readiness probe timing.
                 properties:

@@ -5,12 +5,14 @@ on:
     paths:
       - "charts/**"
       - "tools/**"
+      - "operator/**"
       - ".github/workflows/ci-charts.yml"
   push:
     branches: ["main"]
     paths:
       - "charts/**"
       - "tools/**"
+      - "operator/**"
       - ".github/workflows/ci-charts.yml"
 
 # Explicit workflow-level permissions (matches ci-ww.yml + ci-dashboard.yml).
@@ -386,6 +388,36 @@ jobs:
             | grep -A 5 '^  selector:' \
             | grep -q '    control-plane: controller-manager'
           echo "#1643 grep fast-path: OK"
+
+  prometheusrule-parity:
+    # #1746: the operator's PrometheusRule reconciler emits the same
+    # alert set as charts/witwave/templates/prometheusrule.yaml. CI
+    # diffs the two surfaces so chart-side threshold tweaks or alert
+    # additions never silently drift away from operator-rendered agents.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.0
+
+      - name: Install yq
+        run: |
+          sudo wget -qO /usr/local/bin/yq \
+            https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache-dependency-path: operator/go.sum
+
+      - name: Run PrometheusRule parity check
+        run: operator/scripts/check-prometheusrule-parity.sh
 
   mcp-tools-pytest:
     # Unit-test coverage for tools/* pure helpers (#852). Runs against
