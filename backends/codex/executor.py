@@ -2592,6 +2592,14 @@ class AgentExecutor(A2AAgentExecutor):
                     else:
                         self._mcp_old_stacks[i] = (old_stack, new_ref)
                     return
+            # Stack matched neither current nor any parked old stack.
+            # Log so an operator can see the leak — the unmatched stack's
+            # subprocesses + HTTP connections will not be reclaimed.
+            logger.warning(
+                "MCP stack release matched no tracked stack — "
+                "subprocess/connection leak suspected. This indicates "
+                "a stack reference outliving its tracking entry."
+            )
 
     async def mcp_config_watcher(self) -> None:
         """Watch MCP_CONFIG_PATH for changes and hot-reload the MCP server config (#432, #526).
