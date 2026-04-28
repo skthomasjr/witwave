@@ -2910,6 +2910,13 @@ func (r *WitwaveAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			}
 			agents := &witwavev1alpha1.WitwaveAgentList{}
 			if err := mgr.GetClient().List(ctx, agents, client.InNamespace(ws.Namespace)); err != nil {
+				// Log so an operator investigating a missed agent
+				// re-reconcile after a Workspace spec change has a
+				// signal instead of a silent drop.
+				logf.FromContext(ctx).Info(
+					"workspace-watch agent list failed; agents may not pick up workspace change until next periodic reconcile",
+					"err", err.Error(), "namespace", ws.Namespace, "workspace", ws.Name,
+				)
 				return nil
 			}
 			var reqs []reconcile.Request
