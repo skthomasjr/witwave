@@ -20,10 +20,29 @@ The acting agent is referred to as `<agent-name>`. For containerized workers, `<
 `AGENT_NAME` environment variable (e.g. `iris`, `nova`, `kira`). When running as a local session (Claude Code, Codex, or
 otherwise), `AGENT_NAME` is not set — in that case, `<agent-name>` is `local-agent`.
 
-## Working with Claude Code and Codex
+## Development style
+
+This repo uses **trunk-based development**: changes land directly on `main`, not via feature branches and PRs. The
+working assumption is "main is always shippable" — small atomic commits, fast feedback, and immediate revert when
+something breaks. Background: paulhammant.com/what-is-trunk-based-development.html; corroborated by DORA / *Accelerate*
+as a high-performance practice.
+
+- **Commit directly to `main`.** No feature branch, no PR, no review queue. Push when the work is ready.
+- **Keep commits small and atomic.** Each commit should stand alone — bisectable, revertable, with a focused message.
+  If a change naturally splits (e.g. a refactor and a follow-up doc), make it two commits.
+- **Branches are an exception, not the default.** Reach for one only when the change is genuinely too large or risky
+  to land in a single atomic commit (e.g. a cross-cutting rename touching dozens of files). When a branch is
+  justified, keep it short-lived (hours, not days), merge fast-forward into `main`, and delete it. Long-lived branches
+  and review-gated PR queues are deliberately not part of the workflow here.
+- **If you break `main`, fix or revert immediately.** That's the contract that lets the no-PR style work — the next
+  commit must not inherit a broken tree. Tests are the primary gate; run them locally before pushing.
+
+For AI coding assistants (Claude Code, Codex):
 
 - Do not run `git commit` unless explicitly asked.
 - Do not run `git push` unless explicitly asked.
+- When asked to land work, default to a direct commit on `main`. Only suggest a branch when the change is genuinely
+  too large to land atomically — and even then, propose it before creating it.
 
 ## Project Overview
 
