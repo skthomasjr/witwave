@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -95,6 +96,8 @@ func newWorkspaceCmd() *cobra.Command {
 	cmd.AddCommand(newWorkspaceCreateCmd(f))
 	cmd.AddCommand(newWorkspaceListCmd(f))
 	cmd.AddCommand(newWorkspaceGetCmd(f))
+	cmd.AddCommand(newWorkspaceStatusCmd(f))
+	cmd.AddCommand(newWorkspaceDeleteCmd(f))
 	return cmd
 }
 
@@ -294,5 +297,104 @@ func runWorkspaceGet(ctx context.Context, f *workspaceFlags, name string, format
 		Namespace: ns,
 		Output:    format,
 		Out:       os.Stdout,
+	})
+}
+
+// ---------------------------------------------------------------------------
+// status
+// ---------------------------------------------------------------------------
+
+func newWorkspaceStatusCmd(f *workspaceFlags) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "status <name>",
+		Short: "Show volumes, conditions, and bound agents for a Workspace",
+		Long: "Renders a curated, human-readable view of a Workspace: identity,\n" +
+			"declared volumes (size + storage class + reclaim policy + mount path),\n" +
+			"declared secrets and configFiles, the controller's reconcile conditions,\n" +
+			"and the inverted-index list of currently bound agents.\n\n" +
+			"For full YAML output use `ww workspace get <name> -o yaml`.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runWorkspaceStatus(cmd.Context(), f, args[0])
+		},
+	}
+	return cmd
+}
+
+func runWorkspaceStatus(ctx context.Context, f *workspaceFlags, name string) error {
+	target, resolver, err := f.resolveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	cfg, err := resolver.REST()
+	if err != nil {
+		return err
+	}
+	ns := logAndResolveWorkspaceNamespace(f.namespace, target.Namespace)
+	if f.namespace == "" {
+		fmt.Fprintln(os.Stdout)
+	}
+	return workspace.Status(ctx, cfg, workspace.StatusOptions{
+		Name:      name,
+		Namespace: ns,
+		Out:       os.Stdout,
+	})
+}
+
+// ---------------------------------------------------------------------------
+// delete
+// ---------------------------------------------------------------------------
+
+func newWorkspaceDeleteCmd(f *workspaceFlags) *cobra.Command {
+	var (
+		wait    bool
+		timeout time.Duration
+	)
+	cmd := &cobra.Command{
+		Use:   "delete <name>",
+		Short: "Delete a Workspace CR (refuse-delete finalizer blocks while bound)",
+		Long: "Deletes the Workspace CR. The operator stamps a refuse-delete\n" +
+			"finalizer on every Workspace, so the apiserver will mark the CR\n" +
+			"Terminating but block actual removal until every agent that\n" +
+			"references it via spec.workspaceRefs[] unbinds.\n\n" +
+			"The plan banner enumerates the currently-bound agents up-front so\n" +
+			"there are no surprises. Pass --wait to block until the apiserver\n" +
+			"removes the CR (bounded by --timeout, default 2m).\n\n" +
+			"To unblock a stuck delete, unbind the offending agents:\n\n" +
+			"  ww workspace unbind <agent> <workspace>",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runWorkspaceDelete(cmd.Context(), f, args[0], wait, timeout)
+		},
+	}
+	bindWorkspaceMutatingFlags(cmd, f)
+	cmd.Flags().BoolVar(&wait, "wait", false,
+		"Block until the apiserver removes the CR (bounded by --timeout)")
+	cmd.Flags().DurationVar(&timeout, "timeout", 2*time.Minute,
+		"Maximum time to wait when --wait is set")
+	return cmd
+}
+
+func runWorkspaceDelete(ctx context.Context, f *workspaceFlags, name string, wait bool, timeout time.Duration) error {
+	target, resolver, err := f.resolveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	cfg, err := resolver.REST()
+	if err != nil {
+		return err
+	}
+	ns := logAndResolveWorkspaceNamespace(f.namespace, target.Namespace)
+	assumeYes := f.assumeYes || os.Getenv("WW_ASSUME_YES") == "true"
+	target.Namespace = ns
+	return workspace.Delete(ctx, target, cfg, workspace.DeleteOptions{
+		Name:        name,
+		Namespace:   ns,
+		AssumeYes:   assumeYes,
+		DryRun:      f.dryRun,
+		Wait:        wait,
+		WaitTimeout: timeout,
+		Out:         os.Stdout,
+		In:          os.Stdin,
 	})
 }
