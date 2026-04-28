@@ -383,6 +383,10 @@ func gitCredentialFill(cloneURL string) (string, string, bool) {
 		return "", "", false
 	}
 	if err := cmd.Start(); err != nil {
+		// On the Start failure path, Wait won't run and won't close
+		// the read end of the pipe; close it explicitly to avoid an
+		// FD leak per failed git invocation.
+		_ = stdout.Close()
 		return "", "", false
 	}
 	// Cap output so a malfunctioning credential helper can't OOM us.
