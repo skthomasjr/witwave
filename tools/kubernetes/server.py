@@ -1102,7 +1102,7 @@ def apply(
                      "k8s.apply_phase": "commit"},
                 ):
                     try:
-                        applied = resource.patch(**live_kwargs)
+                        applied = with_kube_retry(lambda: resource.patch(**live_kwargs))
                     except Exception as _commit_exc:
                         # Attach count of already-committed docs to the
                         # error for operator triage; re-raise to preserve
