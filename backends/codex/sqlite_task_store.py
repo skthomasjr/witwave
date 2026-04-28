@@ -31,6 +31,7 @@ import logging
 import os
 import sqlite3
 import threading
+import time
 
 from a2a.server.context import ServerCallContext
 from a2a.server.tasks.task_store import TaskStore
@@ -38,7 +39,42 @@ from a2a.types import Task
 
 import asyncio
 
+import metrics as _metrics
+
 logger = logging.getLogger(__name__)
+
+
+def _metric_labels() -> dict:
+    """Match the {agent, agent_id, backend} label set the other backends use."""
+    agent_name = os.environ.get("AGENT_NAME", "local-agent")
+    return {
+        "agent": os.environ.get("AGENT_OWNER", agent_name),
+        "agent_id": os.environ.get("AGENT_ID", "codex"),
+        "backend": "codex",
+    }
+
+
+def _observe_lock_wait(op: str, wait_seconds: float) -> None:
+    """Record lock-acquisition wait time for a store op (#1753).
+
+    Mirrors the helpers in backends/claude/sqlite_task_store.py and
+    backends/gemini/sqlite_task_store.py so cross-backend dashboards
+    that union backend_sqlite_task_store_lock_wait_seconds on
+    (agent, agent_id, backend) are no longer flatlined for codex.
+
+    Codex uses per-thread connections (#726) without a user-space
+    asyncio.Lock, so the recorded wait is the time between asking the
+    threadpool to run the op and the worker actually starting the SQL —
+    which captures both threadpool queuing and any SQLite busy_timeout
+    contention before the connection acquires its file lock.
+    """
+    hist = _metrics.backend_sqlite_task_store_lock_wait_seconds
+    if hist is None:
+        return
+    try:
+        hist.labels(**_metric_labels(), op=op).observe(wait_seconds)
+    except Exception:  # pragma: no cover — never let metrics break persistence
+        logger.debug("backend_sqlite_task_store_lock_wait_seconds observe failed", exc_info=True)
 
 # Default SQLite busy_timeout. Tunable per-deployment via env so a slow NFS
 # volume or a pathological batch of writes can be given more headroom
@@ -148,13 +184,27 @@ class SqliteTaskStore(TaskStore):
         self, task: Task, context: ServerCallContext | None = None
     ) -> None:
         data = task.model_dump_json()
-        await asyncio.to_thread(self._save_sync, task.id, data)
+        # #1753: record threadpool-queue + SQLite busy_timeout wait by
+        # measuring from before to_thread dispatch until the worker
+        # acquires the connection and is about to execute. We use a
+        # callable wrapper that captures the wait at the start of the
+        # synchronous function rather than total round-trip so the
+        # histogram represents waiting (not the SQL op's own duration).
+        _wait_start = time.perf_counter()
+        def _save_with_wait(task_id: str, payload: str) -> None:
+            _observe_lock_wait("save", time.perf_counter() - _wait_start)
+            self._save_sync(task_id, payload)
+        await asyncio.to_thread(_save_with_wait, task.id, data)
         logger.debug("Task %s saved to SQLite store.", task.id)
 
     async def get(
         self, task_id: str, context: ServerCallContext | None = None
     ) -> Task | None:
-        raw = await asyncio.to_thread(self._get_sync, task_id)
+        _wait_start = time.perf_counter()
+        def _get_with_wait(tid: str) -> str | None:
+            _observe_lock_wait("get", time.perf_counter() - _wait_start)
+            return self._get_sync(tid)
+        raw = await asyncio.to_thread(_get_with_wait, task_id)
         if raw is None:
             logger.debug("Task %s not found in SQLite store.", task_id)
             return None
@@ -165,5 +215,9 @@ class SqliteTaskStore(TaskStore):
     async def delete(
         self, task_id: str, context: ServerCallContext | None = None
     ) -> None:
-        await asyncio.to_thread(self._delete_sync, task_id)
+        _wait_start = time.perf_counter()
+        def _delete_with_wait(tid: str) -> None:
+            _observe_lock_wait("delete", time.perf_counter() - _wait_start)
+            self._delete_sync(tid)
+        await asyncio.to_thread(_delete_with_wait, task_id)
         logger.debug("Task %s deleted from SQLite store.", task_id)
