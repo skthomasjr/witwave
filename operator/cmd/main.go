@@ -487,10 +487,16 @@ func main() {
 	if podName == "unknown" {
 		setupLog.Info("WARN: POD_NAME and HOSTNAME both empty; leader-election metric labelled with pod=\"unknown\" — set POD_NAME via downward API to disambiguate")
 	}
+	// becameLeader signals that this pod won the lease; observed by the
+	// renew-failure detector below so a manager exit AFTER Elected() AND
+	// BEFORE the parent context is cancelled is bookkept as a renewal
+	// failure (#1739).
+	becameLeader := make(chan struct{})
 	if err := mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
 		select {
 		case <-mgr.Elected():
 			controller.WitwaveAgentLeader.WithLabelValues(podName).Set(1)
+			close(becameLeader)
 		case <-ctx.Done():
 			return nil
 		}
@@ -505,8 +511,30 @@ func main() {
 	}
 
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		setupLog.Error(err, "problem running manager")
+	signalCtx := ctrl.SetupSignalHandler()
+	startErr := mgr.Start(signalCtx)
+	// #1739: detect leader-election renewal failure vs orderly
+	// shutdown. Aligns with the metric's existing help text:
+	// "Total leader-election renew-deadline misses; each miss demotes
+	// the active leader." If this pod became leader and the manager
+	// returns BEFORE the parent signal handler cancels (orderly
+	// SIGTERM / SIGINT), the manager stopped because the lease was
+	// lost — a renewal-deadline miss. ReleaseOnCancel=true means
+	// orderly shutdowns don't go through this branch (the parent
+	// context cancels first, so signalCtx.Err() != nil).
+	wasLeader := false
+	select {
+	case <-becameLeader:
+		wasLeader = true
+	default:
+	}
+	if wasLeader && signalCtx.Err() == nil {
+		controller.WitwaveAgentLeaderElectionRenewFailuresTotal.Inc()
+		setupLog.Info("leader-election renewal-deadline miss — incremented witwaveagent_leader_election_renew_failures_total (#1475)",
+			"pod", podName)
+	}
+	if startErr != nil {
+		setupLog.Error(startErr, "problem running manager")
 		os.Exit(1)
 	}
 }

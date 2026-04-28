@@ -17,6 +17,9 @@ limitations under the License.
 package main
 
 import (
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -133,5 +136,39 @@ func TestValidateLeaderElectionFlags(t *testing.T) {
 					tc.lease, tc.renew, tc.retry, err)
 			}
 		})
+	}
+}
+
+
+// TestRenewFailureCounterWired (#1739) pins the wiring of
+// WitwaveAgentLeaderElectionRenewFailuresTotal at the cmd-main level.
+// The counter was declared and registered for over a release cycle
+// without ever being incremented, so an alert configured against it
+// would never fire. This source-shape test guards against a future
+// refactor silently dropping the .Inc() call.
+func TestRenewFailureCounterWired(t *testing.T) {
+	main, err := os.ReadFile(filepath.Join("main.go"))
+	if err != nil {
+		t.Fatalf("read main.go: %v", err)
+	}
+	source := string(main)
+
+	// Counter must be incremented somewhere in the renewal-failure
+	// detection branch.
+	if !regexp.MustCompile(`controller\.WitwaveAgentLeaderElectionRenewFailuresTotal\.Inc\(\)`).MatchString(source) {
+		t.Fatal("WitwaveAgentLeaderElectionRenewFailuresTotal.Inc() not found in cmd/main.go (#1739 regression)")
+	}
+
+	// Increment must be guarded by a check that this pod was leader AND
+	// the parent context is still live (so orderly SIGTERM teardowns
+	// don't false-positive as renewal failures). Anchor on the
+	// signalCtx.Err() == nil shape.
+	if !regexp.MustCompile(`signalCtx\.Err\(\)\s*==\s*nil`).MatchString(source) {
+		t.Fatal("renewal-failure increment must be guarded by signalCtx.Err() == nil (#1739)")
+	}
+
+	// Issue tag must appear in cmd/main.go so future readers can grep.
+	if !strings.Contains(source, "#1739") {
+		t.Fatal("expected #1739 tag near the renewal-failure wiring")
 	}
 }
