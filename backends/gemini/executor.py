@@ -136,6 +136,7 @@ from metrics import (
     backend_text_blocks_per_query,
     backend_watcher_events_total,
     backend_file_watcher_restarts_total,
+    backend_agent_md_revision,
 )
 
 # Hooks engine facade (#631). Imported even though the gemini tool-call path
@@ -392,6 +393,16 @@ def _load_agent_md() -> str:
             return f.read()
     except OSError:
         return ""
+
+
+def _compute_agent_md_revision(content: str) -> str:
+    """Return the SHA-256 hex prefix (first 12 chars) of GEMINI.md content (#1751).
+
+    Used as the ``revision`` label on ``backend_agent_md_revision`` so
+    operators can verify a hot-reload has propagated to running queries.
+    Mirrors backends/codex/executor.py::_compute_agent_md_revision (#1097).
+    """
+    return hashlib.sha256(content.encode("utf-8", errors="replace")).hexdigest()[:12]
 
 
 def _load_mcp_config() -> dict:
@@ -2677,6 +2688,12 @@ class AgentExecutor(A2AAgentExecutor):
         self._session_locks: dict[str, _RefCountedLock] = {}
         self._running_tasks: dict[str, asyncio.Task] = {}
         self._agent_md_content: str = _load_agent_md()
+        # SHA-256 hex prefix of the currently-active GEMINI.md (#1751).
+        # Mirrors codex #1097: stamped on backend_agent_md_revision and
+        # refreshed by agent_md_watcher on each successful reload so
+        # operators can verify the rollout from /metrics.
+        self._agent_md_revision: str = _compute_agent_md_revision(self._agent_md_content)
+        self._stamp_agent_md_revision(self._agent_md_revision, previous=None)
         self._mcp_watcher_tasks: list[asyncio.Task] = []
         # Session IDs whose history could not be persisted. On next request,
         # these sessions are treated as new rather than resuming potentially
@@ -2867,6 +2884,32 @@ class AgentExecutor(A2AAgentExecutor):
             self.mcp_parked_stacks_watchdog,
             self.api_key_file_watcher,
         ]
+
+    def _stamp_agent_md_revision(self, current: str, previous: str | None) -> None:
+        """Update backend_agent_md_revision for a (possibly) new revision (#1751).
+
+        Mirrors backends/codex/executor.py::AgentExecutor._stamp_agent_md_revision
+        added in #1097: clear the prior revision's label set via .remove(...)
+        so only the live revision reports value 1, then .set(1) on the new
+        label set. All calls are best-effort — prometheus registry churn must
+        never break a hot-reload.
+        """
+        if backend_agent_md_revision is None:
+            return
+        if previous is not None and previous != current:
+            try:
+                backend_agent_md_revision.remove(
+                    _LABELS["agent"], _LABELS["agent_id"], _LABELS["backend"], previous,
+                )
+            except (KeyError, ValueError):
+                # Label set never registered / already removed — benign.
+                pass
+            except Exception as exc:  # pragma: no cover — defensive
+                logger.debug("agent_md_revision remove failed for %r: %r", previous, exc)
+        try:
+            backend_agent_md_revision.labels(**_LABELS, revision=current).set(1)
+        except Exception as exc:  # pragma: no cover — defensive
+            logger.debug("agent_md_revision set failed for %r: %r", current, exc)
 
     async def api_key_file_watcher(self) -> None:
         """Watch the API key file and refresh the genai.Client on change (#1057).
@@ -3438,6 +3481,13 @@ class AgentExecutor(A2AAgentExecutor):
 
         # Perform an initial load so the watcher starts with current content.
         self._agent_md_content = _load_agent_md()
+        # #1751: refresh revision gauge on initial load so a watcher
+        # restart re-stamps value 1 even if the in-memory revision was
+        # already in place from __init__.
+        new_rev = _compute_agent_md_revision(self._agent_md_content)
+        if new_rev != self._agent_md_revision:
+            self._stamp_agent_md_revision(new_rev, previous=self._agent_md_revision)
+            self._agent_md_revision = new_rev
         logger.info("GEMINI.md loaded from %s", AGENT_MD)
 
         watch_dir = os.path.dirname(os.path.abspath(AGENT_MD))
@@ -3452,6 +3502,11 @@ class AgentExecutor(A2AAgentExecutor):
                 for _, path in changes:
                     if os.path.abspath(path) == os.path.abspath(AGENT_MD):
                         self._agent_md_content = _load_agent_md()
+                        # #1751: stamp the new revision and clear the old.
+                        new_rev = _compute_agent_md_revision(self._agent_md_content)
+                        if new_rev != self._agent_md_revision:
+                            self._stamp_agent_md_revision(new_rev, previous=self._agent_md_revision)
+                            self._agent_md_revision = new_rev
                         logger.info("GEMINI.md reloaded from %s", AGENT_MD)
                         break
             logger.warning("GEMINI.md directory watcher exited — retrying in 10s.")

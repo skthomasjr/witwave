@@ -91,6 +91,15 @@ backend_streaming_events_emitted_total: prometheus_client.Counter | None = None
 backend_watcher_events_total: prometheus_client.Counter | None = None
 backend_file_watcher_restarts_total: prometheus_client.Counter | None = None
 
+# GEMINI.md hot-reload revision gauge (#1751). Mirrors codex #1097.
+# `revision` label is the SHA-256 hex prefix (first 12 chars) of the
+# currently-active GEMINI.md content; the gauge value is always 1 when
+# set. On hot-reload the previous revision's label set is removed so
+# only the live revision reports 1. Operators correlate this with the
+# per-query span attribute `gemini.agent_md_revision` to verify a
+# behavioral rollout has propagated.
+backend_agent_md_revision: prometheus_client.Gauge | None = None
+
 # Context window metrics
 backend_context_tokens: prometheus_client.Histogram | None = None
 backend_context_tokens_remaining: prometheus_client.Histogram | None = None
@@ -501,6 +510,20 @@ if _enabled:
         "backend_file_watcher_restarts_total",
         "Total file watcher restarts after watcher exits unexpectedly.",
         ["agent", "agent_id", "backend", "watcher"],
+    )
+
+    # GEMINI.md revision rollout gauge (#1751, mirrors codex #1097). The
+    # `revision` label is the SHA-256 hex prefix (first 12 chars) of the
+    # currently-active GEMINI.md content; value is always 1 when set. On
+    # hot-reload the old revision's label set is cleared via .remove(...)
+    # before the new one is stamped so only the live revision reports 1.
+    backend_agent_md_revision = prometheus_client.Gauge(
+        "backend_agent_md_revision",
+        "Currently-active GEMINI.md revision (SHA-256 hex prefix, first 12 chars). "
+        "Gauge value is 1 when set; previous revision is cleared on hot-reload. "
+        "Pair with the `gemini.agent_md_revision` per-query span attribute to "
+        "verify a behavioral rollout has propagated. See #1751 / #1097.",
+        ["agent", "agent_id", "backend", "revision"],
     )
 
     # Context window
