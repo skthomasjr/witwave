@@ -167,3 +167,29 @@ rules:
   - witwaveprompts/finalizers
   verbs:
   - update
+- apiGroups:
+  - witwave.ai
+  resources:
+  - workspaces
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - witwave.ai
+  resources:
+  - workspaces/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - witwave.ai
+  resources:
+  - workspaces/finalizers
+  verbs:
+  - update

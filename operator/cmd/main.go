@@ -413,6 +413,10 @@ func main() {
 			setupLog.Error(err, "unable to create webhook", "webhook", "WitwavePrompt")
 			os.Exit(1)
 		}
+		if err := webhookv1alpha1.SetupWorkspaceWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "Workspace")
+			os.Exit(1)
+		}
 	} else {
 		setupLog.Info("webhook disabled: --webhook-cert-path is empty (install cert-manager and enable webhooks.certManager in the chart to turn on admission validation)")
 	}

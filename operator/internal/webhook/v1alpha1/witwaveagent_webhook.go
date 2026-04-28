@@ -281,6 +281,33 @@ func validateWitwaveAgent(agent *witwavev1alpha1.WitwaveAgent) error {
 	if err := validateCors(agent); err != nil {
 		return err
 	}
+	if err := validateWorkspaceRefs(agent); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateWorkspaceRefs rejects WitwaveAgents whose Spec.WorkspaceRefs list
+// contains duplicate workspace names. The Workspace controller resolves
+// each ref independently and de-dupes, but admission-time rejection
+// surfaces the misconfig immediately to the human applying the manifest.
+func validateWorkspaceRefs(agent *witwavev1alpha1.WitwaveAgent) error {
+	seen := make(map[string]int, len(agent.Spec.WorkspaceRefs))
+	for i, ref := range agent.Spec.WorkspaceRefs {
+		if ref.Name == "" {
+			return apierrors.NewForbidden(witwaveagentGR, agent.Name, fmt.Errorf(
+				"spec.workspaceRefs[%d].name must be non-empty",
+				i,
+			))
+		}
+		if prev, dup := seen[ref.Name]; dup {
+			return apierrors.NewForbidden(witwaveagentGR, agent.Name, fmt.Errorf(
+				"spec.workspaceRefs[%d].name %q duplicates spec.workspaceRefs[%d].name; reference each Workspace at most once",
+				i, ref.Name, prev,
+			))
+		}
+		seen[ref.Name] = i
+	}
 	return nil
 }
 
