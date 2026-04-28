@@ -26,6 +26,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	witwavev1alpha1 "github.com/witwave-ai/witwave-operator/api/v1alpha1"
 )
@@ -79,6 +80,16 @@ func fetchWorkspacesForAgent(ctx context.Context, c client.Reader, agent *witwav
 		ws := &witwavev1alpha1.Workspace{}
 		err := c.Get(ctx, types.NamespacedName{Namespace: agent.Namespace, Name: ref.Name}, ws)
 		if apierrors.IsNotFound(err) {
+			// Log the missing reference so an operator investigating
+			// "why isn't my workspace mounted" sees which refs the
+			// reconcile is waiting on. The Workspace watch
+			// (witwaveagent_controller.go) re-enqueues the agent on
+			// Workspace creation, so this is recoverable without
+			// additional intervention.
+			logf.FromContext(ctx).Info(
+				"workspace ref not found; will re-reconcile when it appears",
+				"workspace", ref.Name, "namespace", agent.Namespace, "agent", agent.Name,
+			)
 			continue
 		}
 		if err != nil {
