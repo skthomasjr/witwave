@@ -84,6 +84,7 @@ from metrics import (
     backend_hooks_evaluations_total,
     backend_log_bytes_total,
     backend_log_entries_total,
+    backend_log_write_errors_by_logger_total,
     backend_log_write_errors_total,
     backend_mcp_outbound_duration_seconds,
     backend_mcp_outbound_requests_total,
@@ -1070,7 +1071,17 @@ async def _append_tool_audit(entry: dict) -> None:
                 log_entries_total=backend_log_entries_total,
                 log_bytes_total=backend_log_bytes_total,
                 log_write_errors_total=backend_log_write_errors_total,
-                log_write_errors_by_logger_total=None,
+                # #1755: wire per-logger error counter so write failures on
+                # tool-activity.jsonl bump the {logger="tool_audit"} bucket
+                # instead of getting collapsed into the global total.
+                log_write_errors_by_logger_total=backend_log_write_errors_by_logger_total,
+                # #1756: wire bytes-per-entry histogram + rotation pressure
+                # counter so the shared tool_audit helper observes both. The
+                # constructor previously omitted them, leaving the series
+                # registered-but-empty on gemini while claude / codex emit
+                # normally.
+                tool_audit_bytes_per_entry=backend_tool_audit_bytes_per_entry,
+                tool_audit_rotation_pressure_total=backend_tool_audit_rotation_pressure_total,
             ),
         ),
         entry,
