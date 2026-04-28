@@ -116,6 +116,19 @@ def start_metrics_server_in_thread(
 
     thread = threading.Thread(target=_run, name="metrics-server", daemon=True)
     thread.start()
+    # Best-effort graceful shutdown on Python interpreter exit (#1818).
+    # Daemon threads are killed abruptly on hard exits, but a normal
+    # exit (FastMCP's signal-handled SIGTERM path, atexit-driven module
+    # teardown) will fire this hook and give uvicorn a chance to close
+    # listening sockets and drain in-flight scrapes.
+    import atexit
+    def _shutdown_metrics() -> None:
+        try:
+            server.should_exit = True
+            thread.join(timeout=5.0)
+        except Exception as _exc:  # pragma: no cover
+            logger.warning("metrics-server shutdown error: %r", _exc)
+    atexit.register(_shutdown_metrics)
     logger.info(
         "Prometheus metrics enabled on dedicated listener :%d%s (thread mode)",
         bind_port,
