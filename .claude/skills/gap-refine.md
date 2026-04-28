@@ -1,7 +1,7 @@
 ---
 name: gap-refine
 description: Analyze pending gaps holistically, identify dependencies and conflicts, update stale information, and produce an execution order for implementation. Optionally scoped to a specific component; if no component is specified, processes all components including cross-cutting gaps with no component assigned. Trigger when the user says "refine gaps", "run gap refine", "analyze gaps", "clean up gaps", "prioritize gaps", or "order gaps for implementation".
-version: 1.1.0
+version: 1.2.0
 ---
 
 # gap-refine
@@ -20,13 +20,26 @@ Note: some gaps are cross-cutting and have no component assigned. When processin
 
 **Step 2: Verify each gap against the current code.**
 
-For each gap, read the affected file (or the relevant area of the codebase if no file exists yet) and confirm:
+Read the **full source file** (or the relevant area of the codebase if no file exists yet), not just the cited line range, AND grep widely for the supposedly-missing capability under any reasonable name. False-positive gaps survive into refine when both discover and refine assume the capability is missing because they didn't search broadly enough.
+
+For each gap, confirm:
 - The gap still exists — the missing capability has not been added since the gap was filed
 - If the code has shifted (refactor, lines moved), update the file and line reference to reflect the current location
 - If the surrounding code has changed, re-evaluate whether the expected behavior and implementation approach still apply correctly to the current code
 - If a partial implementation was already applied, note what remains and update the description accordingly
 
-If a gap is no longer present, close it with a note explaining what changed.
+Then run the same intentional-design checklist that gap-discover Step 5 runs, in case it was missed at filing time. Specifically verify:
+
+- **The capability really doesn't exist anywhere.** Grep the component's `metrics.py`, `main.py` route declarations, sibling files, shared modules, and `clients/ww/cmd/`. The capability may already be implemented under a slightly different name than the gap description assumes.
+- **The capability isn't in the component's documented non-scope list.** Components like `echo` enumerate intentional exclusions in their READMEs; flagging an excluded capability as a gap is a misread.
+- **The capability isn't documented as future / aspirational.** AGENTS.md and CRD types files mark some fields as "reserved for v1.x"; gaps against documented future scope are roadmap entries, not gaps.
+- **No equivalent test exists in `<repo-root>/tests/`.** Coverage gaps are common false positives because the smoke-test suite is separate from per-component test directories.
+- **No metric/log already covers the supposed observability gap.** Grep `metrics.py` for `_total{reason=...}` patterns and the source for `logger.warning`/`logger.error` lines that already cover the supposed silent path.
+- **The "consistency" gap isn't a documented contract divergence.** AGENTS.md's metrics-landscape section explicitly says "claude is the superset; peers track placeholders" — peers missing a metric claude has is the documented design, not a gap.
+
+If any of these resolve the concern, **close the gap as `wont-fix`** with a note explaining where the capability actually lives (or why it's intentionally excluded). Do not let an invalid gap propagate to approve and implement.
+
+If a gap is no longer present (the capability was actually added since filing), close it with a note explaining what changed.
 
 **Step 3: Validate uncertain findings.**
 

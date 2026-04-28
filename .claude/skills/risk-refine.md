@@ -1,7 +1,7 @@
 ---
 name: risk-refine
 description: Analyze pending risks holistically, identify dependencies and conflicts, update stale information, and produce an execution order for mitigating. Optionally scoped to a specific component; if no component is specified, processes all components including cross-cutting risks with no component assigned. Trigger when the user says "refine risks", "run risk refine", "analyze risks", "clean up risks", "prioritize risks", or "order risks for mitigation".
-version: 1.2.0
+version: 1.3.0
 ---
 
 # risk-refine
@@ -20,13 +20,26 @@ Note: some risks are cross-cutting and have no component assigned. When processi
 
 **Step 2: Verify each risk against the current code.**
 
-For each risk, read the affected file and confirm:
+Read the **full source file**, not just the cited line range. False-positive risks survive into refine when both discover and refine focus only on the cited lines and miss surrounding context — or mitigation at a different layer — that already addresses the concern.
+
+For each risk, confirm:
 - The risk still exists at the referenced location
 - If the code has shifted (refactor, lines moved), update the file and line reference to reflect the current location
 - If the surrounding code has changed, re-evaluate whether the condition and mitigation still apply correctly to the current code — not just whether the risk is still present
 - If a partial mitigation was already applied, note what remains and update the description accordingly
 
-If a risk is no longer present, close it with a note explaining what changed.
+Then run the same intentional-design checklist that risk-discover Step 5 runs, in case it was missed at filing time. Specifically verify:
+
+- **No inline `#NNNN` comment within ~10 lines** documents the choice as intentional or references a prior issue that already accepted/closed this risk
+- **No mitigation already in place at a different layer** (caller-side timeout, controller-runtime backoff, `with_kube_retry` wrapper, HTTP-client retry policy, asyncio `wait_for` higher up the call stack)
+- **No cap / sweeper / bound exists elsewhere** (`MAX_*` constant, periodic sweeper task, LRU eviction, chart resource limits, caller-side rate limit)
+- **No metric counter or structured log** at the failure site that would surface the silent-failure concern
+- **The "insecure default" isn't a documented escape hatch** (loud-warn `*_DISABLED=true` env vars are intentional dev affordances, not security risks)
+- **The "maintainability" concern isn't a documented design choice** (claude-as-superset metric pattern, single-source-of-truth shared modules)
+
+If any of these resolve the concern, **close the risk as `wont-fix`** with a note explaining what the discovery framing missed and where the mitigation actually lives. Do not let an invalid risk propagate to approve and implement — that wastes effort across both downstream phases.
+
+If a risk is no longer present (the code was actually mitigated since filing), close it with a note explaining what changed.
 
 **Step 3: Validate uncertain findings.**
 
