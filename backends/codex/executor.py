@@ -2565,6 +2565,17 @@ class AgentExecutor(A2AAgentExecutor):
             if self._mcp_stack is stack:
                 if self._mcp_stack_refcount > 0:
                     self._mcp_stack_refcount -= 1
+                else:
+                    # Refcount underflow: more releases than acquires.
+                    # Log loudly so the caller's logic error doesn't hide
+                    # behind a silent no-op (which previously masked
+                    # double-release patterns and left old stacks
+                    # potentially never closed).
+                    logger.warning(
+                        "MCP stack release underflow on current stack — "
+                        "refcount already 0; release ignored. This indicates "
+                        "an unmatched _release_mcp_stack call."
+                    )
                 return
             # Otherwise it's a parked old stack.
             for i, (old_stack, old_ref) in enumerate(self._mcp_old_stacks):
