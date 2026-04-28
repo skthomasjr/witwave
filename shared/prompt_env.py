@@ -54,6 +54,42 @@ _PROMPT_ENV_REARM_EVERY = max(1, int(os.environ.get("PROMPT_ENV_WARN_REARM_EVERY
 # None keeps the module dependency-free.
 substitutions_total = None  # type: ignore[assignment]
 
+# Optional oversize counter (#1744). Bumped when the post-interpolation
+# body exceeds PROMPT_ENV_MAX_BYTES and is truncated. Caller-wired so
+# this module stays dependency-free outside the harness process.
+oversize_total = None  # type: ignore[assignment]
+
+# Default cap mirrors the harness/README.md row that documents this
+# knob (65536 bytes). Resolved once at module import; tests that set
+# PROMPT_ENV_MAX_BYTES afterwards reload the module to pick the new
+# value up — the same pattern test_prompt_env.py already uses for
+# PROMPT_ENV_ENABLED / PROMPT_ENV_ALLOWLIST.
+_DEFAULT_PROMPT_ENV_MAX_BYTES = 65536
+
+
+def _max_bytes() -> int:
+    """Resolve PROMPT_ENV_MAX_BYTES at call time.
+
+    Read on every call so hot-reload (and per-test overrides) work
+    without forcing callers to reload this module. A non-positive value
+    disables the cap entirely; a non-integer falls back to the default
+    so a typo doesn't accidentally drop the safeguard.
+    """
+    raw = os.environ.get("PROMPT_ENV_MAX_BYTES", "")
+    if not raw:
+        return _DEFAULT_PROMPT_ENV_MAX_BYTES
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        logger.warning(
+            "PROMPT_ENV_MAX_BYTES=%r is not an integer; falling back to default %d",
+            raw, _DEFAULT_PROMPT_ENV_MAX_BYTES,
+        )
+        return _DEFAULT_PROMPT_ENV_MAX_BYTES
+
+
+_warned_oversize_count = 0
+
 
 def _config() -> tuple[bool, list[str]]:
     """Read current env-var config. Done on every call so hot-reload is free."""
@@ -129,7 +165,34 @@ def resolve_prompt_env(text: str) -> str:
         _bump("hit" if value else "missing")
         return value
 
-    return _ENV_VAR_RE.sub(_sub, text)
+    resolved = _ENV_VAR_RE.sub(_sub, text)
+
+    # Post-substitution byte cap (#1744). The cap is applied to the
+    # UTF-8 byte length so it lines up with the size the backend
+    # actually receives over the wire (A2A bodies are UTF-8). Truncation
+    # is byte-safe — we cut on a UTF-8 boundary by decoding with
+    # `errors="ignore"`. Per-process WARN re-arms every
+    # PROMPT_ENV_WARN_REARM_EVERY occurrences so sustained oversize
+    # keeps emitting signal.
+    cap = _max_bytes()
+    if cap > 0:
+        encoded = resolved.encode("utf-8")
+        if len(encoded) > cap:
+            global _warned_oversize_count
+            if _warned_oversize_count % _PROMPT_ENV_REARM_EVERY == 0:
+                logger.warning(
+                    "prompt env interpolation produced %d bytes which exceeds "
+                    "PROMPT_ENV_MAX_BYTES=%d; truncating (oversize count=%d)",
+                    len(encoded), cap, _warned_oversize_count + 1,
+                )
+            _warned_oversize_count += 1
+            if oversize_total is not None:
+                try:
+                    oversize_total.inc()
+                except Exception:
+                    pass
+            resolved = encoded[:cap].decode("utf-8", errors="ignore")
+    return resolved
 
 
 def _bump(result: str) -> None:

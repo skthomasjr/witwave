@@ -17,8 +17,10 @@ class PromptEnvTests(unittest.TestCase):
         for k in [
             "PROMPT_ENV_ENABLED",
             "PROMPT_ENV_ALLOWLIST",
+            "PROMPT_ENV_MAX_BYTES",
             "WITWAVE_ENV",
             "WITWAVE_DASHBOARD",
+            "WITWAVE_BIG",
             "SECRET_TOKEN",
         ]:
             os.environ.pop(k, None)
@@ -71,6 +73,36 @@ class PromptEnvTests(unittest.TestCase):
         os.environ["WITWAVE_ENV"] = "prod"
         out = self.prompt_env.resolve_prompt_env("{{env.WITWAVE_ENV}}")
         self.assertEqual(out, "")
+
+    def test_oversize_truncates_to_cap(self):
+        # #1744: PROMPT_ENV_MAX_BYTES caps the post-interpolation body.
+        os.environ["PROMPT_ENV_ENABLED"] = "true"
+        os.environ["PROMPT_ENV_ALLOWLIST"] = "WITWAVE_"
+        os.environ["PROMPT_ENV_MAX_BYTES"] = "32"
+        os.environ["WITWAVE_BIG"] = "A" * 200
+        out = self.prompt_env.resolve_prompt_env("body={{env.WITWAVE_BIG}}")
+        self.assertEqual(len(out.encode("utf-8")), 32)
+        # The first 5 bytes should be "body=" — substitution happened
+        # before truncation, the cap merely cut the tail.
+        self.assertTrue(out.startswith("body="))
+
+    def test_disabled_cap_passes_through(self):
+        # PROMPT_ENV_MAX_BYTES=0 disables the cap.
+        os.environ["PROMPT_ENV_ENABLED"] = "true"
+        os.environ["PROMPT_ENV_ALLOWLIST"] = "WITWAVE_"
+        os.environ["PROMPT_ENV_MAX_BYTES"] = "0"
+        os.environ["WITWAVE_BIG"] = "X" * 1000
+        out = self.prompt_env.resolve_prompt_env("body={{env.WITWAVE_BIG}}")
+        self.assertEqual(len(out), len("body=") + 1000)
+
+    def test_oversize_default_cap_pre_resolve_text_is_unchanged(self):
+        # When no env-var substitution occurs, the cap is still applied
+        # to the resolved (== input) text. A short body must pass through
+        # the default 65536 cap unchanged.
+        os.environ["PROMPT_ENV_ENABLED"] = "true"
+        os.environ["PROMPT_ENV_ALLOWLIST"] = "WITWAVE_"
+        out = self.prompt_env.resolve_prompt_env("hello world")
+        self.assertEqual(out, "hello world")
 
 
 if __name__ == "__main__":
