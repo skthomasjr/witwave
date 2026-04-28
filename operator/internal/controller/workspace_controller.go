@@ -626,7 +626,16 @@ func (r *WorkspaceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		// Status.BoundAgents promptly. Bounded by namespace so the
 		// list cost stays cheap.
 		all := &witwavev1alpha1.WorkspaceList{}
-		if err := mgr.GetClient().List(ctx, all, client.InNamespace(agent.Namespace)); err == nil {
+		if err := mgr.GetClient().List(ctx, all, client.InNamespace(agent.Namespace)); err != nil {
+			// Defensive widening — primary enqueue above already fired.
+			// Log so an operator investigating a missed
+			// "no-longer-bound" Status.BoundAgents update has a signal
+			// instead of silently dropping the List error.
+			logf.FromContext(ctx).Info(
+				"workspace agent-watch defensive list failed; primary enqueue still fired",
+				"err", err.Error(), "namespace", agent.Namespace,
+			)
+		} else {
 			for i := range all.Items {
 				ws := &all.Items[i]
 				if _, dup := seen[ws.Name]; dup {
