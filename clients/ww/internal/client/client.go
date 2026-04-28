@@ -41,10 +41,10 @@ type Config struct {
 // Client is a thin HTTP helper with bearer-token auth, retries on 5xx /
 // transport errors, and streaming helpers for SSE endpoints.
 //
-// #1733: stream callers use a sibling client (``streamHC``) whose
+// #1733: stream callers use a sibling client (`streamHC`) whose
 // Timeout is zero so a long-lived SSE connection isn't severed every
 // cfg.Timeout window. Cancellation comes from the caller's
-// context.Context exclusively. Snapshot callers stay on ``hc`` with
+// context.Context exclusively. Snapshot callers stay on `hc` with
 // the configured Timeout so a wedged DoJSON / GetBytes still bounds
 // at the per-request budget.
 type Client struct {
