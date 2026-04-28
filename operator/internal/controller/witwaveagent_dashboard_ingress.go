@@ -17,40 +17,43 @@ limitations under the License.
 package controller
 
 // dashboard_ingress.go implements the operator counterpart to the chart's
-// `dashboard.ingress` block (#831). The fail-closed posture is modelled
-// end-to-end:
+// `dashboard.ingress` block (#831, #1741). The fail-closed posture is
+// modelled end-to-end:
 //
 //   1. Schema layer (DashboardAuthSpec.Mode enum): "basic" | "none". Any
 //      other value is rejected by the apiserver before it reaches the
 //      controller.
 //
-//   2. authReconcile flag wiring (scaffold; documented below):
-//        - Ingress == nil OR Ingress.Enabled == false  -> no-op
+//   2. authReconcile flag wiring:
+//        - Ingress == nil OR Ingress.Enabled == false  -> no-op (delete
+//          previously-owned Ingress)
 //        - Ingress.Auth == nil OR Ingress.Auth.Mode == "" -> SKIP render,
 //          emit a Warning event "DashboardIngressAuthRequired" so the
 //          user sees why the Ingress didn't materialise. This is the
 //          direct analogue of the chart's fail-render (#528).
 //        - Ingress.Auth.Mode == "none" -> render unauthenticated Ingress,
 //          emit a Warning event "DashboardIngressUnauthenticated" on
-//          every reconcile so the opt-out stays visible in kubectl
+//          every transition so the opt-out stays visible in kubectl
 //          describe / dashboards.
-//        - Ingress.Auth.Mode == "basic" -> (scaffold) look up the
-//          basic-auth Secret named by BasicAuthSecretName; render the
-//          Ingress with the nginx.ingress.kubernetes.io/auth-type +
-//          auth-secret annotations. Full cross-controller wiring (Contour,
-//          Traefik, HAProxy) is follow-up work.
-//
-// Only the schema + fail-closed gating are shipped in this scaffold. The
-// full Ingress + Secret renderer is a follow-up so the CRD surface can
-// settle before the controller grows a per-ingress-class adapter matrix.
+//        - Ingress.Auth.Mode == "basic" -> require BasicAuthSecretName to
+//          reference an existing basic-auth Secret in the same namespace
+//          and stamp the nginx.ingress.kubernetes.io/auth-* annotations.
+//          When BasicAuthSecretName is empty we fail-closed (no Secret is
+//          synthesised — the chart's htpasswd defaulting requires a
+//          plaintext value the operator does not own; users carry that
+//          responsibility via existingSecret-style reference).
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 
+	networkingv1 "k8s.io/api/networking/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	witwavev1alpha1 "github.com/witwave-ai/witwave-operator/api/v1alpha1"
@@ -100,18 +103,21 @@ func EvaluateDashboardIngressAuth(agent *witwavev1alpha1.WitwaveAgent) Dashboard
 	return DashboardIngressAuthStatusMissingAuth
 }
 
-// reconcileDashboardIngress is the scaffold entrypoint wired into
-// WitwaveAgentReconciler.Reconcile. The actual Ingress + Secret render is a
-// follow-up; this implementation emits the fail-closed signal so the
-// feature is observable from day one.
+// reconcileDashboardIngress is the entrypoint wired into
+// WitwaveAgentReconciler.Reconcile. It walks the fail-closed gate, deletes
+// any previously-owned Ingress when the gate denies render, and
+// applies a chart-equivalent networking.k8s.io/v1 Ingress when the gate
+// allows.
 func (r *WitwaveAgentReconciler) reconcileDashboardIngress(ctx context.Context, agent *witwavev1alpha1.WitwaveAgent) error {
 	log := logf.FromContext(ctx).WithValues("agent", agent.Name, "namespace", agent.Namespace)
 	state := EvaluateDashboardIngressAuth(agent)
 	switch state {
 	case DashboardIngressAuthStatusDisabled:
-		// No-op. Dashboard ingress was not requested or the Enabled
-		// toggle is off. Clear any prior annotation so a future
-		// Enabled=true → auth.mode=none flip emits an Event again.
+		// No-op render path. Clean up any previously-owned Ingress so a
+		// disable flip converges (mirrors HPA/NetworkPolicy patterns).
+		if err := r.deleteOwnedDashboardIngress(ctx, agent); err != nil {
+			return err
+		}
 		return r.updateDashboardIngressLastEventState(ctx, agent, string(state))
 	case DashboardIngressAuthStatusMissingAuth:
 		// Fail-closed mirror of chart #528. Log on every reconcile,
@@ -124,6 +130,11 @@ func (r *WitwaveAgentReconciler) reconcileDashboardIngress(ctx context.Context, 
 			r.Recorder.Event(agent, "Warning", "DashboardIngressAuthRequired",
 				"Dashboard ingress skipped: set spec.dashboard.ingress.auth.mode to 'basic' or 'none' to proceed (fail-closed, see #528/#831)")
 		}
+		// Clean up any previously-owned Ingress so flipping auth.mode
+		// from "none"/"basic" back to empty converges to "no Ingress".
+		if err := r.deleteOwnedDashboardIngress(ctx, agent); err != nil {
+			return err
+		}
 		return r.updateDashboardIngressLastEventState(ctx, agent, string(state))
 	case DashboardIngressAuthStatusUnauthenticated:
 		log.Info("rendering dashboard Ingress WITHOUT auth (spec.dashboard.ingress.auth.mode=none)",
@@ -132,14 +143,153 @@ func (r *WitwaveAgentReconciler) reconcileDashboardIngress(ctx context.Context, 
 			r.Recorder.Event(agent, "Warning", "DashboardIngressUnauthenticated",
 				"Dashboard ingress rendered without auth (auth.mode=none) — conversation history is reachable via the Ingress host")
 		}
-		// Full Ingress render is follow-up scaffolding.
+		if err := r.applyDashboardIngress(ctx, agent); err != nil {
+			return err
+		}
 		return r.updateDashboardIngressLastEventState(ctx, agent, string(state))
 	case DashboardIngressAuthStatusBasic:
-		log.Info("rendering dashboard Ingress with basic-auth (scaffold: full render is follow-up)",
-			"component", "dashboard-ingress")
+		// Basic-auth requires the user to reference an existing Secret;
+		// the operator does not synthesise htpasswd content because
+		// that would force it to own a plaintext password it has no
+		// authority over. Fail-closed when BasicAuthSecretName is empty.
+		ingSpec := agent.Spec.Dashboard.Ingress
+		if ingSpec.Auth == nil || ingSpec.Auth.BasicAuthSecretName == "" {
+			log.Info("skipping dashboard Ingress render: spec.dashboard.ingress.auth.basicAuthSecretName must be set (fail-closed)",
+				"component", "dashboard-ingress")
+			if r.shouldEmitDashboardIngressEvent(agent, state) && r.Recorder != nil {
+				r.Recorder.Event(agent, "Warning", "DashboardIngressBasicAuthSecretRequired",
+					"Dashboard ingress skipped: set spec.dashboard.ingress.auth.basicAuthSecretName to reference an existing basic-auth Secret containing an htpasswd-style 'auth' key (fail-closed, see #528/#1741)")
+			}
+			if err := r.deleteOwnedDashboardIngress(ctx, agent); err != nil {
+				return err
+			}
+			return r.updateDashboardIngressLastEventState(ctx, agent, string(state))
+		}
+		log.Info("rendering dashboard Ingress with basic-auth",
+			"component", "dashboard-ingress",
+			"basicAuthSecretName", ingSpec.Auth.BasicAuthSecretName)
+		if err := r.applyDashboardIngress(ctx, agent); err != nil {
+			return err
+		}
 		return r.updateDashboardIngressLastEventState(ctx, agent, string(state))
 	}
 	return nil
+}
+
+// applyDashboardIngress renders and applies the per-agent Ingress.
+// Caller must have already validated state via EvaluateDashboardIngressAuth.
+func (r *WitwaveAgentReconciler) applyDashboardIngress(ctx context.Context, agent *witwavev1alpha1.WitwaveAgent) error {
+	desired := buildDashboardIngress(agent)
+	if desired == nil {
+		// Defensive — shouldn't happen given the caller-side gate.
+		return nil
+	}
+	if err := controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
+		return fmt.Errorf("set owner on dashboard Ingress: %w", err)
+	}
+	return applySSA(ctx, r.Client, desired)
+}
+
+// deleteOwnedDashboardIngress removes a previously-applied dashboard
+// Ingress when the spec no longer permits render. IsControlledBy gates
+// the Delete so we never touch an Ingress hand-authored under our name.
+func (r *WitwaveAgentReconciler) deleteOwnedDashboardIngress(ctx context.Context, agent *witwavev1alpha1.WitwaveAgent) error {
+	existing := &networkingv1.Ingress{}
+	key := client.ObjectKey{Namespace: agent.Namespace, Name: agent.Name + "-dashboard"}
+	if err := r.Get(ctx, key, existing); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return fmt.Errorf("get dashboard Ingress for cleanup: %w", err)
+	}
+	if !metav1.IsControlledBy(existing, agent) {
+		return nil
+	}
+	if err := r.Delete(ctx, existing); err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("delete dashboard Ingress: %w", err)
+	}
+	return nil
+}
+
+// buildDashboardIngress renders the networking.k8s.io/v1 Ingress for the
+// per-agent dashboard, mirroring charts/witwave/templates/ingress.yaml.
+// Returns nil when the spec doesn't request render. Extracted so unit
+// tests can assert annotation/path/host shape without a fake client.
+func buildDashboardIngress(agent *witwavev1alpha1.WitwaveAgent) *networkingv1.Ingress {
+	if agent == nil || agent.Spec.Dashboard == nil || !agent.Spec.Dashboard.Enabled {
+		return nil
+	}
+	ing := agent.Spec.Dashboard.Ingress
+	if ing == nil || !ing.Enabled {
+		return nil
+	}
+	if ing.Auth == nil || ing.Auth.Mode == "" {
+		return nil
+	}
+	if ing.Auth.Mode == "basic" && ing.Auth.BasicAuthSecretName == "" {
+		return nil
+	}
+
+	port := agent.Spec.Dashboard.Port
+	if port == 0 {
+		port = 80
+	}
+
+	annotations := map[string]string{}
+	if ing.Auth.Mode == "basic" {
+		annotations["nginx.ingress.kubernetes.io/auth-type"] = "basic"
+		annotations["nginx.ingress.kubernetes.io/auth-secret"] = ing.Auth.BasicAuthSecretName
+		annotations["nginx.ingress.kubernetes.io/auth-realm"] = "witwave dashboard"
+	}
+
+	pathType := networkingv1.PathTypePrefix
+	rules := []networkingv1.IngressRule{{
+		Host: ing.Host,
+		IngressRuleValue: networkingv1.IngressRuleValue{
+			HTTP: &networkingv1.HTTPIngressRuleValue{
+				Paths: []networkingv1.HTTPIngressPath{{
+					Path:     "/",
+					PathType: &pathType,
+					Backend: networkingv1.IngressBackend{
+						Service: &networkingv1.IngressServiceBackend{
+							Name: agent.Name + "-dashboard",
+							Port: networkingv1.ServiceBackendPort{Number: port},
+						},
+					},
+				}},
+			},
+		},
+	}}
+
+	spec := networkingv1.IngressSpec{
+		IngressClassName: ing.ClassName,
+		Rules:            rules,
+	}
+	if ing.TLS != nil && ing.TLS.SecretName != "" {
+		spec.TLS = []networkingv1.IngressTLS{{
+			SecretName: ing.TLS.SecretName,
+			Hosts:      []string{ing.Host},
+		}}
+	}
+
+	out := &networkingv1.Ingress{
+		// #1565: stamp TypeMeta explicitly so applySSA does not depend
+		// on scheme lookup to infer the GVK.
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "networking.k8s.io/v1",
+			Kind:       "Ingress",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      agent.Name + "-dashboard",
+			Namespace: agent.Namespace,
+			Labels:    dashboardLabels(agent),
+		},
+		Spec: spec,
+	}
+	if len(annotations) > 0 {
+		out.Annotations = annotations
+	}
+	return out
 }
 
 // shouldEmitDashboardIngressEvent reports whether the current
@@ -185,3 +335,4 @@ func (r *WitwaveAgentReconciler) updateDashboardIngressLastEventState(ctx contex
 	agent.Annotations[dashboardIngressLastEventStateAnnotation] = value
 	return nil
 }
+
