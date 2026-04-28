@@ -181,3 +181,106 @@ func TestClient_Timeout(t *testing.T) {
 		t.Errorf("err: %v", err)
 	}
 }
+
+// TestClient_OpenStream_SurvivesPastSnapshotTimeout pins #1733: snapshot
+// callers (DoJSON / GetBytes) must keep their per-request Timeout, but
+// stream callers (OpenStream) must not be severed when that same
+// timeout elapses. The handler below emits an event, then sleeps
+// 4*Timeout, then emits another event; under the regression we'd get
+// the first event but the body Read after the timeout would return
+// "context deadline exceeded" / "stream error".
+func TestClient_OpenStream_SurvivesPastSnapshotTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(200)
+		fl, ok := w.(http.Flusher)
+		if !ok {
+			t.Errorf("want Flusher")
+			return
+		}
+		_, _ = io.WriteString(w, "event:first\ndata:1\nid:1\n\n")
+		fl.Flush()
+		// Sleep past the snapshot Timeout window. If OpenStream
+		// reuses the snapshot client (with Timeout set), this
+		// sleep tears the body down before the second event flushes.
+		time.Sleep(120 * time.Millisecond)
+		_, _ = io.WriteString(w, "event:second\ndata:2\nid:2\n\n")
+		fl.Flush()
+	}))
+	defer srv.Close()
+
+	// Snapshot Timeout deliberately tight so the regression would
+	// fire well within the test budget.
+	c := New(Config{BaseURL: srv.URL, Token: "t", Timeout: 30 * time.Millisecond})
+	// Caller's context provides the only stream-side cancellation.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	resp, err := c.OpenStream(ctx, http.MethodGet, "/events/stream", nil, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	p := NewSSEParser(resp.Body)
+	first, err := p.Next(ctx)
+	if err != nil {
+		t.Fatalf("first event: %v", err)
+	}
+	if first.Type != "first" {
+		t.Fatalf("first.Type = %q", first.Type)
+	}
+
+	// This is the regression-blocking read: it must succeed past the
+	// snapshot Timeout boundary.
+	second, err := p.Next(ctx)
+	if err != nil {
+		t.Fatalf("second event after past-Timeout sleep: %v", err)
+	}
+	if second.Type != "second" {
+		t.Fatalf("second.Type = %q", second.Type)
+	}
+}
+
+// TestClient_OpenStream_RespectsContextCancellation pins the inverse —
+// the caller's context.Context is the legitimate cancellation path
+// for OpenStream, so an explicit cancel() must still tear the stream
+// down promptly.
+func TestClient_OpenStream_RespectsContextCancellation(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(200)
+		fl, _ := w.(http.Flusher)
+		_, _ = io.WriteString(w, "event:hello\ndata:1\nid:1\n\n")
+		if fl != nil {
+			fl.Flush()
+		}
+		// Block until the connection drops (ctx-cancel).
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	c := New(Config{BaseURL: srv.URL, Token: "t", Timeout: 30 * time.Millisecond})
+	ctx, cancel := context.WithCancel(context.Background())
+	resp, err := c.OpenStream(ctx, http.MethodGet, "/events/stream", nil, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	p := NewSSEParser(resp.Body)
+	if _, err := p.Next(ctx); err != nil {
+		t.Fatalf("first read: %v", err)
+	}
+	cancel()
+	// Subsequent read must fail (context cancelled), not hang.
+	done := make(chan error, 1)
+	go func() { _, e := p.Next(ctx); done <- e }()
+	select {
+	case e := <-done:
+		if e == nil {
+			t.Fatal("expected error after cancel, got nil")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("read did not unblock after ctx cancel")
+	}
+}

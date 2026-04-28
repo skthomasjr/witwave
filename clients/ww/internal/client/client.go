@@ -40,9 +40,17 @@ type Config struct {
 
 // Client is a thin HTTP helper with bearer-token auth, retries on 5xx /
 // transport errors, and streaming helpers for SSE endpoints.
+//
+// #1733: stream callers use a sibling client (``streamHC``) whose
+// Timeout is zero so a long-lived SSE connection isn't severed every
+// cfg.Timeout window. Cancellation comes from the caller's
+// context.Context exclusively. Snapshot callers stay on ``hc`` with
+// the configured Timeout so a wedged DoJSON / GetBytes still bounds
+// at the per-request budget.
 type Client struct {
-	cfg Config
-	hc  *http.Client
+	cfg      Config
+	hc       *http.Client
+	streamHC *http.Client
 	// runTokenFallbackWarned gates the one-shot warning emitted when a
 	// caller asks for RunToken but the client only has Token configured.
 	// #1547 — the fallback is an accepted safety net, but silently
@@ -63,7 +71,18 @@ func New(cfg Config) *Client {
 	if hc == nil {
 		hc = &http.Client{Timeout: cfg.Timeout}
 	}
-	return &Client{cfg: cfg, hc: hc}
+	// Stream client (#1733). When the caller passes their own
+	// HTTPClient we honour it as-is for both paths; otherwise we
+	// build a sibling client with Timeout: 0 so streams aren't
+	// scythed on the cfg.Timeout boundary. Reuse the snapshot
+	// client's Transport so the connection pool / TLS config /
+	// proxy resolution stay shared — only the whole-request
+	// Timeout differs between the two surfaces.
+	streamHC := cfg.HTTPClient
+	if streamHC == nil {
+		streamHC = &http.Client{Transport: hc.Transport, Jar: hc.Jar}
+	}
+	return &Client{cfg: cfg, hc: hc, streamHC: streamHC}
 }
 
 // BaseURL returns the configured base URL.
@@ -246,11 +265,12 @@ func (c *Client) GetBytes(ctx context.Context, path string) ([]byte, error) {
 // io.ReadCloser. Used by SSE / streaming POST paths. Stream callers are
 // responsible for closing the body.
 //
-// Cancellation is driven entirely by the caller's context — pass a
-// long-lived context (no deadline) for long streams. The configured
-// http.Client Timeout still applies to establishing the connection and
-// receiving headers, but streams cancel through ctx, not the Client
-// timeout.
+// #1733: stream calls go through a dedicated http.Client whose Timeout
+// is zero (built in New). Cancellation comes from the caller's
+// context.Context — pass a long-lived context (no deadline) for long
+// streams. The flag help text on --timeout claims this; before #1733
+// it was wrong because the same hc.Timeout that bounded DoJSON /
+// GetBytes was tearing SSE bodies down at the same boundary.
 func (c *Client) OpenStream(ctx context.Context, method, path string, body any, extraHeaders http.Header, useRunToken bool) (*http.Response, error) {
 	u, err := c.Resolve(path)
 	if err != nil {
@@ -277,11 +297,10 @@ func (c *Client) OpenStream(ctx context.Context, method, path string, body any, 
 	if c.cfg.Verbose >= 1 {
 		c.logLine(fmt.Sprintf("--> %s %s [stream]", method, u))
 	}
-	// Use the shared client directly — cloning by value trips the
-	// copylocks check (http.Client contains a sync.Mutex in the cookie
-	// jar interface). The request context controls cancellation for
-	// long-lived streams.
-	resp, err := c.hc.Do(req)
+	// #1733: streamHC has Timeout:0 so a long-lived SSE connection
+	// isn't severed when cfg.Timeout elapses. Cancellation comes
+	// from req.Context() (the caller's context) exclusively.
+	resp, err := c.streamHC.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("transport: %w", err)
 	}
