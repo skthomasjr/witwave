@@ -1185,9 +1185,13 @@ def _get_info_doc() -> dict[str, Any]:
     except Exception:
         kube_client_version = "unavailable"
 
-    read_only = os.environ.get("MCP_READ_ONLY", "").strip().lower() in {
-        "1", "true", "yes", "on",
-    }
+    # #1759: consult both MCP_READ_ONLY and MCP_KUBERNETES_READ_ONLY through
+    # the shared _is_read_only() helper so /info matches what
+    # _refuse_if_read_only() actually enforces. Previously this branch only
+    # checked the global var, so MCP_KUBERNETES_READ_ONLY=true paths
+    # reported features.read_only=false in /info while still refusing
+    # mutations.
+    read_only = _is_read_only()
 
     try:
         # #1400: defensive lookup — try multiple known paths so a FastMCP minor

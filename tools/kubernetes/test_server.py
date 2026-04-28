@@ -385,6 +385,18 @@ def test_get_info_doc_shape():
         assert isinstance(v, bool), f"feature flag {k} must be bool, got {type(v).__name__}"
 
 
+def test_get_info_doc_read_only_honours_per_tool_env(monkeypatch):
+    # #1759: /info.features.read_only must reflect MCP_KUBERNETES_READ_ONLY,
+    # not only the global MCP_READ_ONLY.
+    monkeypatch.delenv("MCP_READ_ONLY", raising=False)
+    monkeypatch.delenv("MCP_KUBERNETES_READ_ONLY", raising=False)
+    doc = server._get_info_doc()
+    assert doc["features"]["read_only"] is False
+    monkeypatch.setenv("MCP_KUBERNETES_READ_ONLY", "true")
+    doc = server._get_info_doc()
+    assert doc["features"]["read_only"] is True
+
+
 # ----- with_kube_retry 401 auto-reload (#1082) --------------------
 
 

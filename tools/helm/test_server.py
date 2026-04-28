@@ -502,6 +502,19 @@ def test_get_info_doc_shape():
         assert isinstance(v, bool), f"feature flag {k} must be bool, got {type(v).__name__}"
 
 
+def test_get_info_doc_read_only_honours_per_tool_env(monkeypatch):
+    # #1759: /info.features.read_only must reflect MCP_HELM_READ_ONLY, not
+    # only the global MCP_READ_ONLY. Otherwise mutating tools refuse with
+    # #1123 while /info reports read_only=false.
+    monkeypatch.delenv("MCP_READ_ONLY", raising=False)
+    monkeypatch.delenv("MCP_HELM_READ_ONLY", raising=False)
+    doc = server._get_info_doc()
+    assert doc["features"]["read_only"] is False
+    monkeypatch.setenv("MCP_HELM_READ_ONLY", "true")
+    doc = server._get_info_doc()
+    assert doc["features"]["read_only"] is True
+
+
 # ----- stdin-based values delivery + janitor (#1081) -----
 
 
