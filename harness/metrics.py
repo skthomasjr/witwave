@@ -62,6 +62,11 @@ harness_prompt_length_bytes: prometheus_client.Histogram | None = None
 # execute() rejection so operators can alert on clients attempting
 # to forward oversize prompts.
 harness_a2a_prompt_oversize_total: prometheus_client.Counter | None = None
+# #1747: LRU eviction counter for the .md frontmatter cache
+# (PARSE_FRONTMATTER_CACHE_MAX). Bumped from harness/utils.py whenever
+# a watched-tree exceeds the cache cap and forces an eviction. Operators
+# can alert on cache thrash without inspecting the live process.
+harness_md_cache_evictions_total: prometheus_client.Counter | None = None
 harness_running_tasks: prometheus_client.Gauge | None = None
 harness_response_length_bytes: prometheus_client.Histogram | None = None
 harness_startup_duration_seconds: prometheus_client.Gauge | None = None
@@ -194,6 +199,13 @@ if _enabled:
         "harness_a2a_requests_total",
         "Total A2A HTTP requests by outcome.",
         ["status"],
+    )
+    harness_md_cache_evictions_total = prometheus_client.Counter(
+        "harness_md_cache_evictions_total",
+        "Total number of LRU evictions from the harness .md frontmatter "
+        "cache (PARSE_FRONTMATTER_CACHE_MAX). Sustained non-zero rate "
+        "indicates the cache cap is too small for the watched tree size; "
+        "either raise the cap or trim the tree.",
     )
     harness_a2a_prompt_oversize_total = prometheus_client.Counter(
         "harness_a2a_prompt_oversize_total",

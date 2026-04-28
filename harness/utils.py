@@ -211,11 +211,21 @@ def read_md_bounded(path: str) -> str | None:
 
     # #1388: LRU eviction of the least-recently-used entry; also bump
     # the module-level counter so metrics can alert on thrash.
+    # #1747: also bump the Prometheus counter when present so operators
+    # see thrash from /metrics rather than having to attach to the
+    # process. The local int counter is preserved for back-compat.
     if len(_MD_CACHE) >= _MD_CACHE_MAX:
         try:
             _MD_CACHE.popitem(last=False)
             global _MD_CACHE_EVICTIONS
             _MD_CACHE_EVICTIONS += 1
+            try:
+                from metrics import harness_md_cache_evictions_total as _hmce  # type: ignore
+                if _hmce is not None:
+                    _hmce.inc()
+            except Exception:
+                # Metrics import failure must never break cache eviction.
+                pass
         except KeyError:
             pass
     _MD_CACHE[path] = (st.st_mtime_ns, st.st_size, raw)
