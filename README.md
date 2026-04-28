@@ -21,8 +21,8 @@ why this is a first-class project goal rather than a convention.
 
 Built on the [A2A protocol](https://a2a-protocol.org). Each named agent is a set of containers: a **harness**
 infrastructure layer (A2A relay, heartbeat scheduler, job scheduler) and one or more **backend agent** containers that
-do the actual LLM work (Claude Agent SDK via `claude`, OpenAI Agents SDK via `codex`, Google Gemini SDK via `gemini`).
-A fourth backend, `echo`, ships as a zero-dependency stub — it returns a canned response quoting the caller's prompt and
+do the actual LLM work (Claude Agent SDK via `claude`, OpenAI Agents SDK via `codex`, Google Gemini SDK via `gemini`). A
+fourth backend, `echo`, ships as a zero-dependency stub — it returns a canned response quoting the caller's prompt and
 is the hello-world default for `ww agent create` when no API key is configured.
 
 Multiple agents can collaborate as a team, but the named agent (harness + its backend agents) is the deployable unit.
@@ -40,6 +40,11 @@ Three tiers to keep straight:
    the harness's endpoint. Inside, the harness orchestrates one or more backend agents using routing rules in
    `.witwave/backend.yaml`.
 
+Named agents may additionally bind to one or more **workspaces** — the operator-level primitive for shared resources
+multiple agents collaborate over (shared volumes, scoped Secrets, ConfigMap-backed files). See [Workspaces](#workspaces)
+below for the concept; workspaces are agent-owned via `WitwaveAgent.spec.workspaceRefs[]` and purely additive (an agent
+with zero workspace memberships runs perfectly).
+
 A named agent is both an agent **and** an orchestrator of sub-agents. Because the harness treats any A2A URL as a valid
 dispatch target, peer named agents are reachable the same way local backend agents are — teams of named agents are just
 agents all the way down.
@@ -56,23 +61,60 @@ agents and you have a scheduler with nothing to dispatch to — no intelligence.
 
 ## Components
 
-| Component          | Directory                  | Type                | Description                                                                                          |
-| ------------------ | -------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------- |
-| **Harness**        | `harness/`                 | Orchestrator agent  | Scheduling, triggering, chaining, A2A relay. No LLM of its own.                                      |
-| **Claude backend** | `backends/claude/`         | Backend agent       | Executes prompts via the Claude Agent SDK.                                                           |
-| **Codex backend**  | `backends/codex/`          | Backend agent       | Executes prompts via the OpenAI Agents SDK. Supports web search and headless browser via Playwright. |
-| **Gemini backend** | `backends/gemini/`         | Backend agent       | Executes prompts via the Google Gemini SDK.                                                          |
-| **Echo backend**   | `backends/echo/`           | Backend agent       | Zero-dependency stub. Returns a canned response quoting the prompt. Hello-world default + reference. |
-| **MCP tools**      | `tools/`                   | Tool infrastructure | `mcp-kubernetes`, `mcp-helm`, `mcp-prometheus` — shared MCP servers backends opt into.               |
-| **Dashboard**      | `clients/dashboard/`       | Web client          | Vue 3 + PrimeVue web UI.                                                                             |
-| **ww CLI**         | `clients/ww/`              | Client              | Go + cobra command-line interface (`curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh \| sh`, or Homebrew). |
-| **Operator**       | `operator/`                | Kubernetes operator | Go controller that reconciles `WitwaveAgent` CRDs.                                                   |
-| **Agent chart**    | `charts/witwave/`          | Deployment          | Helm chart that deploys witwave agents via templated manifests.                                      |
-| **Operator chart** | `charts/witwave-operator/` | Deployment          | Helm chart that installs the operator + CRD.                                                         |
+| Component          | Directory                  | Type                | Description                                                                                                                                          |
+| ------------------ | -------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Harness**        | `harness/`                 | Orchestrator agent  | Scheduling, triggering, chaining, A2A relay. No LLM of its own.                                                                                      |
+| **Claude backend** | `backends/claude/`         | Backend agent       | Executes prompts via the Claude Agent SDK.                                                                                                           |
+| **Codex backend**  | `backends/codex/`          | Backend agent       | Executes prompts via the OpenAI Agents SDK. Supports web search and headless browser via Playwright.                                                 |
+| **Gemini backend** | `backends/gemini/`         | Backend agent       | Executes prompts via the Google Gemini SDK.                                                                                                          |
+| **Echo backend**   | `backends/echo/`           | Backend agent       | Zero-dependency stub. Returns a canned response quoting the prompt. Hello-world default + reference.                                                 |
+| **MCP tools**      | `tools/`                   | Tool infrastructure | `mcp-kubernetes`, `mcp-helm`, `mcp-prometheus` — shared MCP servers backends opt into.                                                               |
+| **Dashboard**      | `clients/dashboard/`       | Web client          | Vue 3 + PrimeVue web UI.                                                                                                                             |
+| **ww CLI**         | `clients/ww/`              | Client              | Go + cobra command-line interface (`curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh \| sh`, or Homebrew).       |
+| **Operator**       | `operator/`                | Kubernetes operator | Go controller that reconciles `WitwaveAgent`, `WitwavePrompt`, and `Workspace` CRDs.                                                                 |
+| **Workspace**      | `operator/api/v1alpha1/`   | Shared-resource CRD | Operator-reconciled bundle of shared volumes, projected Secrets, and ConfigMap files that participating agents mount. See [Workspaces](#workspaces). |
+| **Agent chart**    | `charts/witwave/`          | Deployment          | Helm chart that deploys witwave agents via templated manifests.                                                                                      |
+| **Operator chart** | `charts/witwave-operator/` | Deployment          | Helm chart that installs the operator + CRD.                                                                                                         |
 
 The harness routes work to backend agents but does no LLM execution itself. Client surfaces (dashboard + ww) provide
 visibility and interaction; they don't participate in agent workflows. The operator and its chart are an alternative
 install path to the agent chart; both target the same per-agent deployment shape.
+
+## Workspaces
+
+A `Workspace` is the operator-level primitive for shared resources multiple agents collaborate over. Each Workspace
+declares a list of shared volumes (RWM-capable PVCs), a list of pre-created Secret references, and a list of
+ConfigMap-backed files; the operator provisions and projects them onto every `WitwaveAgent` whose `spec.workspaceRefs[]`
+references the Workspace. The CRD is intentionally generic — source trees, datasets, video pipelines, accumulated memory
+pools, anything where teams of agents need the same files visible at the same paths. Membership is agent-owned: an agent
+with zero `workspaceRefs[]` runs perfectly; participation is purely additive.
+
+```yaml
+apiVersion: witwave.ai/v1alpha1
+kind: Workspace
+metadata:
+  name: shared
+  namespace: witwave
+spec:
+  volumes:
+    - name: source
+      size: 50Gi
+      storageClassName: efs-sc
+---
+apiVersion: witwave.ai/v1alpha1
+kind: WitwaveAgent
+metadata:
+  name: iris
+  namespace: witwave
+spec:
+  workspaceRefs:
+    - name: shared
+```
+
+Mount paths default to `/workspaces/<workspace>/<volume.name>` so cross-agent paths line up without operator-supplied
+glue. Manage workspaces from the CLI with `ww workspace { create, list, get, status, delete, bind, unbind }` — see
+[`clients/ww/README.md`](clients/ww/README.md#workspace-management). Full CRD schema and reconciler details live in
+[`operator/README.md`](operator/README.md#the-workspace-resource).
 
 ## How It Works
 
@@ -399,13 +441,13 @@ dashboard pod fans out directly to each agent and owns cross-agent routing (#470
 
 Each backend container additionally exposes:
 
-- `GET /health/start` — startup probe: 200/`{"status": "ok"}` once the process has finished initial loads (`_ready`
-  is True) and 503/`{"status": "starting"}` while still warming up. Mirrors the harness's `/health/start` so the
-  three-probe model documented in `docs/product-vision.md` holds across the platform (#1686). K8s `startupProbe`
-  should target this endpoint.
-- `GET /health` — liveness check: 200/`{"status": "ok", "agent": ..., "uptime_seconds": ...}` once the process is
-  up. Returns 200 even while initializing — does NOT flip to 503. Liveness-only by design (cycle-1 #1608, #1672); use
-  the readiness endpoint below for gating LB rotation.
+- `GET /health/start` — startup probe: 200/`{"status": "ok"}` once the process has finished initial loads (`_ready` is
+  True) and 503/`{"status": "starting"}` while still warming up. Mirrors the harness's `/health/start` so the
+  three-probe model documented in `docs/product-vision.md` holds across the platform (#1686). K8s `startupProbe` should
+  target this endpoint.
+- `GET /health` — liveness check: 200/`{"status": "ok", "agent": ..., "uptime_seconds": ...}` once the process is up.
+  Returns 200 even while initializing — does NOT flip to 503. Liveness-only by design (cycle-1 #1608, #1672); use the
+  readiness endpoint below for gating LB rotation.
 - `GET /health/ready` — readiness probe: 200 when fully ready, 503/`{"status": "starting"}` while initializing or in a
   boot-degraded state (claude #1608, codex+gemini #1672). Operators using K8s `readinessProbe` should point at
   `/health/ready`, not `/health`.
@@ -441,8 +483,7 @@ Protected endpoints use `Authorization: Bearer <token>` throughout. Two distinct
 - **`CONVERSATIONS_AUTH_TOKEN`** — read / observe endpoints (`/conversations`, `/trace`, `/mcp`, `/api/traces`,
   `/events/stream`, `/api/sessions/<id>/stream`). Reused on the harness for inbound and on each backend for its own
   protected surface.
-- **`ADHOC_RUN_AUTH_TOKEN`** — trigger-actions endpoints (`POST /jobs/<name>/run`, `/tasks/<name>/run`,
-  `/validate`).
+- **`ADHOC_RUN_AUTH_TOKEN`** — trigger-actions endpoints (`POST /jobs/<name>/run`, `/tasks/<name>/run`, `/validate`).
 
 Both are default-closed — the server refuses requests when the token is unset. `CONVERSATIONS_AUTH_DISABLED=true` is a
 documented escape hatch for local dev; startup logs a loud warning when it's set.

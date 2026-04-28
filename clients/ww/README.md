@@ -35,19 +35,19 @@ curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/instal
 curl -fsSL https://github.com/witwave-ai/witwave/releases/latest/download/install.sh | sh -s -- --verify-signature   # also verify cosign signature; needs `cosign` on PATH
 ```
 
-| Flag                  | Env var                | Effect                                                                |
-| --------------------- | ---------------------- | --------------------------------------------------------------------- |
-| `--version <tag>`     | `WW_VERSION`           | Pin to a release tag (e.g. `v0.9.6`). Default: latest stable.         |
-| `--channel <c>`       | `WW_CHANNEL`           | `stable` (default) or `beta` (includes `-beta.N` / `-rc.N` releases). |
-| `--prefix <dir>`      | —                      | Install root. Binary lands in `<prefix>/bin`.                         |
-| `--install-dir <dir>` | `WW_INSTALL_DIR`       | Bin dir directly. Overrides `--prefix`.                               |
-| `--use-sudo`          | `WW_USE_SUDO=1`        | Allow `sudo` for `/usr/local` writes. Default: skip silently.         |
-| `--no-verify`         | `WW_NO_VERIFY=1`       | Skip SHA256 verification. Not recommended.                            |
-| `--verify-signature`  | `WW_VERIFY_SIGNATURE=1`| Also verify the cosign signature on `checksums.txt`.                  |
-| `--dry-run`           | `WW_DRY_RUN=1`         | Print what would happen, change nothing.                              |
-| `--quiet` / `-q`      | `WW_QUIET=1`           | Suppress progress output.                                             |
-| `--force`             | `WW_FORCE=1`           | Reinstall even when the same version is already present (default: no-op with a hint). Upgrades to a different version proceed without `--force`. |
-| `--uninstall`         | —                      | Remove the binary + the `.ww.install-info` marker.                    |
+| Flag                  | Env var                 | Effect                                                                                                                                           |
+| --------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--version <tag>`     | `WW_VERSION`            | Pin to a release tag (e.g. `v0.9.6`). Default: latest stable.                                                                                    |
+| `--channel <c>`       | `WW_CHANNEL`            | `stable` (default) or `beta` (includes `-beta.N` / `-rc.N` releases).                                                                            |
+| `--prefix <dir>`      | —                       | Install root. Binary lands in `<prefix>/bin`.                                                                                                    |
+| `--install-dir <dir>` | `WW_INSTALL_DIR`        | Bin dir directly. Overrides `--prefix`.                                                                                                          |
+| `--use-sudo`          | `WW_USE_SUDO=1`         | Allow `sudo` for `/usr/local` writes. Default: skip silently.                                                                                    |
+| `--no-verify`         | `WW_NO_VERIFY=1`        | Skip SHA256 verification. Not recommended.                                                                                                       |
+| `--verify-signature`  | `WW_VERIFY_SIGNATURE=1` | Also verify the cosign signature on `checksums.txt`.                                                                                             |
+| `--dry-run`           | `WW_DRY_RUN=1`          | Print what would happen, change nothing.                                                                                                         |
+| `--quiet` / `-q`      | `WW_QUIET=1`            | Suppress progress output.                                                                                                                        |
+| `--force`             | `WW_FORCE=1`            | Reinstall even when the same version is already present (default: no-op with a hint). Upgrades to a different version proceed without `--force`. |
+| `--uninstall`         | —                       | Remove the binary + the `.ww.install-info` marker.                                                                                               |
 
 Prefer to read the script before running it:
 
@@ -78,9 +78,8 @@ go install github.com/witwave-ai/witwave/clients/ww@latest
 
 ### Testing the installer locally (developers)
 
-When changing `scripts/install.sh` or `clients/ww/.goreleaser.yml`, you can validate the full
-download → verify → install pipeline against a local goreleaser snapshot — no tag, no GitHub
-push, no waiting on CI:
+When changing `scripts/install.sh` or `clients/ww/.goreleaser.yml`, you can validate the full download → verify →
+install pipeline against a local goreleaser snapshot — no tag, no GitHub push, no waiting on CI:
 
 ```bash
 # 1. Build unsigned snapshot artifacts into clients/ww/dist/
@@ -104,21 +103,18 @@ kill %1
 rm -rf /tmp/ww-snapshot
 ```
 
-`WW_BASE_URL` is a developer-only escape hatch — it isn't documented in the public install
-flow and isn't honored by `ww update`'s self-upgrade path (which always re-runs the canonical
-`releases/latest/download/install.sh`).
+`WW_BASE_URL` is a developer-only escape hatch — it isn't documented in the public install flow and isn't honored by
+`ww update`'s self-upgrade path (which always re-runs the canonical `releases/latest/download/install.sh`).
 
-CI also exercises the installer in two layers — pre-merge linting + smoke install in
-`ci-install-script.yml`, and a post-release re-install of the just-cut tag in `release-ww.yml`
-(matrix: alpine 3.19, debian 12, ubuntu 22.04, fedora 40, macOS 14, on both linux/amd64 and
-linux/arm64 runners).
+CI also exercises the installer in two layers — pre-merge linting + smoke install in `ci-install-script.yml`, and a
+post-release re-install of the just-cut tag in `release-ww.yml` (matrix: alpine 3.19, debian 12, ubuntu 22.04, fedora
+40, macOS 14, on both linux/amd64 and linux/arm64 runners).
 
 #### Manual smoke before promoting a release
 
-One installer flow CI can't fully exercise is **`ww update --force` upgrading across two
-consecutive real releases** — automating it would require cutting a throwaway tag pair on
-every CI run. Worth doing once by hand on a test box before each `v*.*.*` release that
-includes installer changes:
+One installer flow CI can't fully exercise is **`ww update --force` upgrading across two consecutive real releases** —
+automating it would require cutting a throwaway tag pair on every CI run. Worth doing once by hand on a test box before
+each `v*.*.*` release that includes installer changes:
 
 ```bash
 # 1. Install the previous stable.
@@ -134,10 +130,9 @@ curl -fsSL https://github.com/witwave-ai/witwave/releases/download/<previous>/in
 rm -rf /tmp/ww-upgrade
 ```
 
-Asserting `ww update --check` reports `Install method: curl-installer` *is* automated in
-`release-ww.yml`'s post-release smoke; the gap above is specifically the
-`--force` upgrade-execution path (RunUpgrade re-running the install pipeline), which has
-no end-to-end coverage today.
+Asserting `ww update --check` reports `Install method: curl-installer` _is_ automated in `release-ww.yml`'s post-release
+smoke; the gap above is specifically the `--force` upgrade-execution path (RunUpgrade re-running the install pipeline),
+which has no end-to-end coverage today.
 
 ## Quick start
 
@@ -188,6 +183,7 @@ Every command supports `--help`. Summary:
 | `ww validate <file>`       | POST a file to `/validate`. Kind inferred from path or passed via `--kind`.                                                                                         |
 | `ww version`               | Print the version, commit, and build date. `--short` prints just the semver.                                                                                        |
 | `ww operator [cmd]`        | Install / upgrade / inspect / uninstall the witwave-operator Helm release on a Kubernetes cluster; plus `logs` and `events` for diagnostics. See below.             |
+| `ww workspace [cmd]`       | Manage `Workspace` CRs: `create`, `list`, `get`, `status`, `delete`, `bind`, `unbind`. See [Workspace management](#workspace-management).                           |
 | `ww config [cmd]`          | Read, write, and inspect `ww` configuration values — `get`, `set`, `unset`, `list-keys`, `path`. See [Managing config from the CLI](#managing-config-from-the-cli). |
 | `ww update`                | Check for and install a newer `ww` release. See [Staying up to date](#staying-up-to-date).                                                                          |
 
@@ -402,10 +398,9 @@ ww agent team show hello                        # which team an agent is in + so
 
 ### GitOps scaffolding (repo-first workflow)
 
-`ww agent scaffold` materialises a ww-conformant agent directory structure on a remote git
-repo so a later `ww agent git add` can wire a deployed agent to pull from it. The scaffolder uses your
-machine's git credentials — whatever `git push` against that remote already works, `ww agent scaffold`
-works too.
+`ww agent scaffold` materialises a ww-conformant agent directory structure on a remote git repo so a later
+`ww agent git add` can wire a deployed agent to pull from it. The scaffolder uses your machine's git credentials —
+whatever `git push` against that remote already works, `ww agent scaffold` works too.
 
 ```bash
 # Scaffold into an empty repo (gets bootstrapped with an initial commit)
@@ -437,17 +432,15 @@ ww agent scaffold hello --repo owner/repo --force
     └── <CLAUDE|AGENTS|GEMINI>.md   # behavioural instructions (LLM backends only)
 ```
 
-`HEARTBEAT.md` ships on by default — an hourly `HEARTBEAT_OK` fires against the agent's A2A endpoint so
-you get an immediate, self-exercising proof-of-life signal without having to construct one yourself.
-Pass `--no-heartbeat` to scaffold a silent agent. Edit the file's `schedule:` frontmatter (cron) to
-customise, or delete the file to stop heartbeats cold — the harness picks up either change on the next
-gitSync tick. This is a documented exception to DESIGN.md SUB-4; every other dormant subsystem
-(`jobs/`, `tasks/`, `triggers/`, `continuations/`, `webhooks/`) stays absent until you explicitly drop
-content in.
+`HEARTBEAT.md` ships on by default — an hourly `HEARTBEAT_OK` fires against the agent's A2A endpoint so you get an
+immediate, self-exercising proof-of-life signal without having to construct one yourself. Pass `--no-heartbeat` to
+scaffold a silent agent. Edit the file's `schedule:` frontmatter (cron) to customise, or delete the file to stop
+heartbeats cold — the harness picks up either change on the next gitSync tick. This is a documented exception to
+DESIGN.md SUB-4; every other dormant subsystem (`jobs/`, `tasks/`, `triggers/`, `continuations/`, `webhooks/`) stays
+absent until you explicitly drop content in.
 
-**Branch detection** — `--branch` defaults to the remote's own default (via HEAD symref), falling back
-to `main` only on empty repos that have no default yet. Repos on `master`, `develop`, etc. work without
-passing the flag.
+**Branch detection** — `--branch` defaults to the remote's own default (via HEAD symref), falling back to `main` only on
+empty repos that have no default yet. Repos on `master`, `develop`, etc. work without passing the flag.
 
 **Auth** — three paths, tried in order:
 
@@ -455,8 +448,8 @@ passing the flag.
 2. `gh auth token` (for gh-authenticated users — default on dev laptops)
 3. `git credential fill` (for non-GitHub remotes or users without gh)
 
-SSH URLs (`git@host:owner/repo`) use your ssh-agent. Credentials are never stored by ww — same posture
-as `git push`, just through a ww-friendly CLI.
+SSH URLs (`git@host:owner/repo`) use your ssh-agent. Credentials are never stored by ww — same posture as `git push`,
+just through a ww-friendly CLI.
 
 With no flags, `ww agent create <name>` deploys the **echo backend** — a zero-dependency stub that returns a canned
 response quoting the caller's prompt (see [`backends/echo/`](../../backends/echo/README.md)). Pick a real LLM backend
@@ -464,16 +457,16 @@ with `--backend claude|codex|gemini`; the chosen backend's image is published at
 
 ### Backend credentials — four paths
 
-LLM backends need an API key or OAuth token. `ww agent create` resolves per-backend credentials via
-four repeatable flags (pick ONE per backend; `--auth-set` is the only one that's repeatable for the
-same backend, accumulating into one Secret):
+LLM backends need an API key or OAuth token. `ww agent create` resolves per-backend credentials via four repeatable
+flags (pick ONE per backend; `--auth-set` is the only one that's repeatable for the same backend, accumulating into one
+Secret):
 
-| Flag | Shape | Behavior |
-|---|---|---|
-| `--auth` | `<backend>=<profile>` | Named profile reads conventional env var(s) from the shell + mints a `<agent>-<backend>-credentials` Secret. MVP profiles: `claude: api-key \| oauth`. |
-| `--auth-from-env` | `<backend>=<VAR>[,VAR2,...]` | Mint a Secret from named env vars. Secret keys match var names verbatim. |
-| `--auth-secret` | `<backend>=<secret-name>` | Reference an existing Secret (verified, never modified). Production default. |
-| `--auth-set` | `<backend>:<KEY>=<VALUE>` | Mint a Secret with literal `KEY=VALUE` pairs. Repeatable per `(backend, KEY)`. **Values land in shell history + ps output — for production tokens prefer `--auth-secret` or `--auth-from-env`.** |
+| Flag              | Shape                        | Behavior                                                                                                                                                                                         |
+| ----------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--auth`          | `<backend>=<profile>`        | Named profile reads conventional env var(s) from the shell + mints a `<agent>-<backend>-credentials` Secret. MVP profiles: `claude: api-key \| oauth`.                                           |
+| `--auth-from-env` | `<backend>=<VAR>[,VAR2,...]` | Mint a Secret from named env vars. Secret keys match var names verbatim.                                                                                                                         |
+| `--auth-secret`   | `<backend>=<secret-name>`    | Reference an existing Secret (verified, never modified). Production default.                                                                                                                     |
+| `--auth-set`      | `<backend>:<KEY>=<VALUE>`    | Mint a Secret with literal `KEY=VALUE` pairs. Repeatable per `(backend, KEY)`. **Values land in shell history + ps output — for production tokens prefer `--auth-secret` or `--auth-from-env`.** |
 
 ```bash
 # OAuth path — reads $CLAUDE_CODE_OAUTH_TOKEN from the shell
@@ -495,8 +488,8 @@ ww agent create consensus --backend claude --backend codex \
   --auth claude=oauth --auth codex=openai
 ```
 
-On `ww agent backend add` the `<backend>:` prefix drops since the backend's already positional —
-each `--auth-set` entry is just `<KEY>=<VALUE>`:
+On `ww agent backend add` the `<backend>:` prefix drops since the backend's already positional — each `--auth-set` entry
+is just `<KEY>=<VALUE>`:
 
 ```bash
 ww agent backend add hello claude \
@@ -504,30 +497,28 @@ ww agent backend add hello claude \
   --auth-set ALT_GITHUB_TOKEN=ghp_yyyy
 ```
 
-Minted Secrets carry `app.kubernetes.io/managed-by: ww` so `ww agent delete --purge` reaps them
-label-gated. Hand-rolled Secrets at the same name are refused — use `--auth-secret` to reference
-them instead, or `--auth-from-env` with a non-colliding name. The `created-by` annotation on
-`--auth-set`-minted Secrets records key NAMES only (never values) so values don't leak into
-`kubectl get secret -o yaml` metadata.
+Minted Secrets carry `app.kubernetes.io/managed-by: ww` so `ww agent delete --purge` reaps them label-gated. Hand-rolled
+Secrets at the same name are refused — use `--auth-secret` to reference them instead, or `--auth-from-env` with a
+non-colliding name. The `created-by` annotation on `--auth-set`-minted Secrets records key NAMES only (never values) so
+values don't leak into `kubectl get secret -o yaml` metadata.
 
-Editing or removing one key in an existing credential Secret without recreating the agent isn't
-covered by ww yet — use `kubectl edit secret <agent>-<backend>-credentials -n <ns>` for now. A
-follow-up `ww agent backend auth set/unset/list/show` subtree is on the roadmap.
+Editing or removing one key in an existing credential Secret without recreating the agent isn't covered by ww yet — use
+`kubectl edit secret <agent>-<backend>-credentials -n <ns>` for now. A follow-up
+`ww agent backend auth set/unset/list/show` subtree is on the roadmap.
 
 Namespace handling follows DESIGN.md NS-1..5:
 
-- No `--namespace` → the kubeconfig context's namespace (falls back to `witwave`, the ww-wide default).
-  The command always prints the resolved namespace at the top of its output, and the parenthetical source
+- No `--namespace` → the kubeconfig context's namespace (falls back to `witwave`, the ww-wide default). The command
+  always prints the resolved namespace at the top of its output, and the parenthetical source
   (`(from kubeconfig context)` vs `(ww default)`) tells you whether the fallback kicked in.
-- `ww agent create --create-namespace` provisions the target namespace if it doesn't already exist
-  (labelled `app.kubernetes.io/managed-by: ww`) — mirrors `helm install --create-namespace`.
-- `ww agent list` defaults to cluster-wide scope — pass `--namespace` to narrow to one namespace.
-  NS-1's context-first resolution does not apply to list; the idiom is `kubectl get ... -A`, and
-  scoping a list silently to the kubeconfig context's namespace systematically hides half the
-  cluster. The `NAMESPACE` column is always shown so sort / grep pipelines work the same across
-  modes.
-- `-A` is only valid on `list` — never on `create`, `status`, `delete`, or any mutating verb.
-  On `list` it's redundant (the default is already all-namespaces) but accepted for kubectl parity.
+- `ww agent create --create-namespace` provisions the target namespace if it doesn't already exist (labelled
+  `app.kubernetes.io/managed-by: ww`) — mirrors `helm install --create-namespace`.
+- `ww agent list` defaults to cluster-wide scope — pass `--namespace` to narrow to one namespace. NS-1's context-first
+  resolution does not apply to list; the idiom is `kubectl get ... -A`, and scoping a list silently to the kubeconfig
+  context's namespace systematically hides half the cluster. The `NAMESPACE` column is always shown so sort / grep
+  pipelines work the same across modes.
+- `-A` is only valid on `list` — never on `create`, `status`, `delete`, or any mutating verb. On `list` it's redundant
+  (the default is already all-namespaces) but accepted for kubectl parity.
 
 Create waits up to `--timeout` (default `2m`) for the operator to report the agent Ready. Pass `--no-wait` to return as
 soon as the CR is accepted (scripts + CI). All mutating commands (`create`, `delete`) honour `--yes` /
@@ -535,33 +526,33 @@ soon as the CR is accepted (scripts + CI). All mutating commands (`create`, `del
 
 `ww agent send` uses the Kubernetes apiserver's built-in Service proxy so any `ClusterIP` Service is reachable without
 local port-forwarding or an external LoadBalancer. This makes round-trip A2A calls from a laptop against a cluster-only
-agent Just Work. Caveats: the apiserver proxy has payload size caps and isn't suited for streaming — use `ww agent
-logs -f` for live observation, or the dedicated `ww send --base-url ...` path for long-running streams against an
-externally-reachable harness URL.
+agent Just Work. Caveats: the apiserver proxy has payload size caps and isn't suited for streaming — use
+`ww agent logs -f` for live observation, or the dedicated `ww send --base-url ...` path for long-running streams against
+an externally-reachable harness URL.
 
 ### Deleting agents — repo + Secret cleanup
 
-`ww agent delete <name>` removes the CR; the operator cascades pod + Service teardown via owner references.
-Three opt-in flags extend the blast radius:
+`ww agent delete <name>` removes the CR; the operator cascades pod + Service teardown via owner references. Three opt-in
+flags extend the blast radius:
 
-- `--remove-repo-folder` — clones the single wired gitSync repo, `git rm -r`s `.agents/<…>/` for the agent,
-  commits, and pushes. Runs **before** the CR delete so a push failure (auth, branch protection, network)
-  leaves cluster state intact and you can retry. Refuses with an ambiguity error when the agent has
-  multiple gitSyncs; soft-skips when no gitSync is wired (nothing to wipe).
-- `--delete-git-secret` — after the CR is gone, reaps every ww-managed credential Secret referenced by the
-  CR's gitSyncs. Secrets without the `app.kubernetes.io/managed-by: ww` label are preserved regardless.
-- `--purge` — convenience: `--remove-repo-folder` + `--delete-git-secret`. For decommissioning an agent
-  permanently in one call.
+- `--remove-repo-folder` — clones the single wired gitSync repo, `git rm -r`s `.agents/<…>/` for the agent, commits, and
+  pushes. Runs **before** the CR delete so a push failure (auth, branch protection, network) leaves cluster state intact
+  and you can retry. Refuses with an ambiguity error when the agent has multiple gitSyncs; soft-skips when no gitSync is
+  wired (nothing to wipe).
+- `--delete-git-secret` — after the CR is gone, reaps every ww-managed credential Secret referenced by the CR's
+  gitSyncs. Secrets without the `app.kubernetes.io/managed-by: ww` label are preserved regardless.
+- `--purge` — convenience: `--remove-repo-folder` + `--delete-git-secret`. For decommissioning an agent permanently in
+  one call.
 
-The preflight banner lists every destructive action (repo URL, branch, `git rm` target, each Secret name)
-before confirmation, so the non-local-cluster prompt has enough detail to review.
+The preflight banner lists every destructive action (repo URL, branch, `git rm` target, each Secret name) before
+confirmation, so the non-local-cluster prompt has enough detail to review.
 
 ### Team membership — runtime peer discovery
 
-A WitwaveAgent's team membership is a single label — `witwave.ai/team=<team>`. The operator reconciles
-one `witwave-manifest-<team>` ConfigMap per distinct value and mounts it into every member's pod at
-`/home/agent/manifest.json`, so harnesses discover their teammates' URLs at runtime. Agents without the
-label share a namespace-wide manifest.
+A WitwaveAgent's team membership is a single label — `witwave.ai/team=<team>`. The operator reconciles one
+`witwave-manifest-<team>` ConfigMap per distinct value and mounts it into every member's pod at
+`/home/agent/manifest.json`, so harnesses discover their teammates' URLs at runtime. Agents without the label share a
+namespace-wide manifest.
 
 ```bash
 ww agent create iris --team research              # stamp the label at creation
@@ -572,46 +563,101 @@ ww agent team show iris                           # which team + sorted teammate
 ww agent team leave iris                          # drop the label; falls into namespace-wide manifest
 ```
 
-Teams are purely additive: no CRD schema change, no pod restart. A label patch takes effect within one
-operator reconcile (seconds). Cleanup is automatic — deleting the last member of a team deletes the
-per-team manifest ConfigMap with it; no orphan management needed.
+Teams are purely additive: no CRD schema change, no pod restart. A label patch takes effect within one operator
+reconcile (seconds). Cleanup is automatic — deleting the last member of a team deletes the per-team manifest ConfigMap
+with it; no orphan management needed.
 
-There is **no default team** by design. Agents without the label already share the namespace-wide
-manifest, which is the right grouping for the common case. Use `--team` when you explicitly want to
-subset peer discovery within a namespace — e.g., two unrelated cohorts of agents in the same namespace
-that shouldn't see each other.
+There is **no default team** by design. Agents without the label already share the namespace-wide manifest, which is the
+right grouping for the common case. Use `--team` when you explicitly want to subset peer discovery within a namespace —
+e.g., two unrelated cohorts of agents in the same namespace that shouldn't see each other.
 
 `ww agent events` is a one-shot scoped variant of `ww operator events`: events on the WitwaveAgent CR plus events on
 pods matching `app.kubernetes.io/name=<agent-name>`. No `--watch` mode — when you need live signal, `ww agent logs -f`
 usually tells you more.
 
+## Workspace management
+
+`ww workspace` creates, lists, inspects, deletes, and binds `Workspace` custom resources. The witwave-operator
+reconciles each `Workspace` into shared volumes, projected Secrets, and rendered ConfigMaps that participating
+WitwaveAgents see at runtime. Membership is agent-owned: a `WitwaveAgent` declares which workspaces it participates in
+via `spec.workspaceRefs[]`, and the workspace controller maintains `Status.BoundAgents` as the inverted index.
+
+```bash
+# Lifecycle
+ww workspace create shared --volume source=50Gi@efs-sc        # quick mode — convenience flags
+ww workspace create -f workspace.yaml --create-namespace      # full mode — YAML manifest
+ww workspace list                                             # default scope: every namespace you can read
+ww workspace list --namespace witwave                         # narrow to a single namespace
+ww workspace get shared                                       # one-row table; -o yaml / -o json for the raw object
+ww workspace status shared                                    # volumes + secrets + configFiles + conditions + bound agents
+ww workspace delete shared --wait --timeout 2m                # refuse-delete finalizer blocks while agents are bound
+
+# Membership (agent-owned via spec.workspaceRefs[])
+ww workspace bind iris shared                                 # idempotent — re-binding is a no-op
+ww workspace unbind iris shared                               # drops the entry; does NOT delete the Workspace
+```
+
+| Subcommand                     | Purpose                                                                                           |
+| ------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `ww workspace create [name]`   | Create a Workspace from a YAML file (`-f`) or convenience flags (`--volume`, `--secret`).         |
+| `ww workspace list`            | Cluster-wide by default (NS-3 / kubectl parity); narrow with `-n`. Output `-o table\|yaml\|json`. |
+| `ww workspace get <name>`      | Fetch a single Workspace; default output is a one-row table; `-o yaml\|json` for the raw object.  |
+| `ww workspace status <name>`   | Curated human view: volumes, conditions, bound agents.                                            |
+| `ww workspace delete <name>`   | Delete the CR; `--wait` blocks on the refuse-delete finalizer.                                    |
+| `ww workspace bind <a> <ws>`   | Add `<ws>` to `<a>.spec.workspaceRefs[]`. Idempotent. Same-namespace only in v1alpha1.            |
+| `ww workspace unbind <a> <ws>` | Remove `<ws>` from `<a>.spec.workspaceRefs[]`. Does NOT delete the Workspace.                     |
+
+### Flags
+
+`-n / --namespace` is local to the workspace subtree (per DESIGN.md KC-6). When omitted it defaults to the kubeconfig
+context's namespace, falling back to the ww-wide default (`witwave`); the resolved namespace is echoed at the top of the
+output (NS-2). Mutating subcommands (`create`, `delete`, `bind`, `unbind`) accept `--yes` / `WW_ASSUME_YES=true` and
+`--dry-run`. `list` accepts `-A / --all-namespaces` for kubectl parity (redundant — already the default — but accepted;
+NS-3).
+
+`ww workspace create` convenience flags:
+
+| Flag                 | Shape                                        | Behaviour                                                                                                                                |
+| -------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `-f, --from-file`    | path                                         | YAML/JSON `Workspace` manifest. Mutually exclusive with `--volume` / `--secret`.                                                         |
+| `--volume`           | `<name>=<size>[@<storageClass>]`             | Repeatable. Defaults the access mode to `ReadWriteMany` (v1alpha1 contract — RWO is v1.x).                                               |
+| `--secret`           | `<name>` / `<name>@/abs/path` / `<name>=env` | Repeatable. Bare name = reference only; `@/abs/path` = mount; `=env` = project as `envFrom`. Anything else after `=` is rejected loudly. |
+| `--create-namespace` | bool                                         | Provision the namespace (labelled `app.kubernetes.io/managed-by: ww`) when missing. No-op otherwise.                                     |
+
+`ww workspace delete` accepts `--wait` (block until the apiserver removes the CR) bounded by `--timeout` (default `2m`).
+The plan banner enumerates currently-bound agents up-front so the refuse-delete finalizer's blast radius is visible
+before confirmation.
+
+For full control over reclaim policies, multiple `configFiles[]` entries, and other fields the convenience flags don't
+surface, author a YAML manifest and pass it via `-f`. The schema lives at
+[`operator/api/v1alpha1/workspace_types.go`](../../operator/api/v1alpha1/workspace_types.go) and a richer walk-through
+sits in [`operator/README.md`](../../operator/README.md#the-workspace-resource).
+
 ## Interactive TUI
 
-`ww tui` opens a `k9s`-style live agent list. The list polls every 2 seconds; agents created /
-deleted / transitioning out-of-band (another CLI session, kubectl, Helm, another operator) update
-in place without a keystroke.
+`ww tui` opens a `k9s`-style live agent list. The list polls every 2 seconds; agents created / deleted / transitioning
+out-of-band (another CLI session, kubectl, Helm, another operator) update in place without a keystroke.
 
 Keybindings on the list:
 
-| Key | Action |
-|---|---|
-| `↑` / `↓` | Move selection |
-| `a` | Open the create-agent modal — long-form: name, namespace, backend, team, auth, gitOps repo |
-| `d` | Open the delete-confirm modal — three checkboxes for `--remove-repo-folder`, `--delete-git-secret`, `--purge` |
-| `l` | Drill into the selected agent's logs — aggregate-across-containers by default; `c` cycles individual containers |
-| `r` | Force-refresh the snapshot |
-| `↵` | Reserved for the per-agent details view (status / events / send / config); flashes a stub hint until that lands |
-| `q` / `Ctrl-C` | Quit |
-| `ESC` | Page-aware: in logs / modal → back; on the list → quit |
+| Key            | Action                                                                                                          |
+| -------------- | --------------------------------------------------------------------------------------------------------------- |
+| `↑` / `↓`      | Move selection                                                                                                  |
+| `a`            | Open the create-agent modal — long-form: name, namespace, backend, team, auth, gitOps repo                      |
+| `d`            | Open the delete-confirm modal — three checkboxes for `--remove-repo-folder`, `--delete-git-secret`, `--purge`   |
+| `l`            | Drill into the selected agent's logs — aggregate-across-containers by default; `c` cycles individual containers |
+| `r`            | Force-refresh the snapshot                                                                                      |
+| `↵`            | Reserved for the per-agent details view (status / events / send / config); flashes a stub hint until that lands |
+| `q` / `Ctrl-C` | Quit                                                                                                            |
+| `ESC`          | Page-aware: in logs / modal → back; on the list → quit                                                          |
 
-The create modal's auth picker mirrors the CLI's four modes (`none` / `profile` / `from-env` /
-`existing-secret` / `set-inline`); the `set-inline` mode takes a comma-separated list of
-`KEY=VALUE` pairs in the value field, equivalent to the CLI's `--auth-set <backend>:KEY=VALUE`.
+The create modal's auth picker mirrors the CLI's four modes (`none` / `profile` / `from-env` / `existing-secret` /
+`set-inline`); the `set-inline` mode takes a comma-separated list of `KEY=VALUE` pairs in the value field, equivalent to
+the CLI's `--auth-set <backend>:KEY=VALUE`.
 
-Defaults pre-fill the create modal from a layered resolution (env vars > saved last-used >
-fallback). `WW_TUI_DEFAULT_*` env vars in your `.env` pin values; otherwise the form remembers
-your last successful create. Saved values live in the `[tui.create_defaults]` block of
-`~/.witwave/config.toml`.
+Defaults pre-fill the create modal from a layered resolution (env vars > saved last-used > fallback). `WW_TUI_DEFAULT_*`
+env vars in your `.env` pin values; otherwise the form remembers your last successful create. Saved values live in the
+`[tui.create_defaults]` block of `~/.witwave/config.toml`.
 
 ## Config
 
@@ -760,9 +806,8 @@ per direction).
 
 ## Design rules
 
-Design invariants for the CLI (kubeconfig handling, command taxonomy, flag
-conventions, exit codes) live in [DESIGN.md](DESIGN.md). Read it before adding
-a new command; cite rule numbers (`KC-3`, `TAX-1`, …) in PRs when a change
+Design invariants for the CLI (kubeconfig handling, command taxonomy, flag conventions, exit codes) live in
+[DESIGN.md](DESIGN.md). Read it before adding a new command; cite rule numbers (`KC-3`, `TAX-1`, …) in PRs when a change
 touches one.
 
 ## Building from source
@@ -783,6 +828,7 @@ go build -ldflags "\
 - The SSE parser is intentionally minimal — it implements the subset the harness emits plus the `:` keepalive comment
   used to keep HTTP/2 proxies awake. Field-name-only lines per the broader SSE spec are tolerated but not exercised.
 - Goreleaser config ships darwin/linux amd64+arm64 builds and a Homebrew **cask** targeting `witwave-ai/homebrew-ww`
-  (migrated from the deprecated `brews:` block via #1446 — casks are macOS-only). The tap repo exists; `goreleaser
-  release` additionally requires the `HOMEBREW_TAP_GITHUB_TOKEN` repo secret (a fine-grained PAT scoped to the tap with
-  Contents: Read-and-Write) — without it, the cask push step fails but the binaries + GitHub Release still ship.
+  (migrated from the deprecated `brews:` block via #1446 — casks are macOS-only). The tap repo exists;
+  `goreleaser release` additionally requires the `HOMEBREW_TAP_GITHUB_TOKEN` repo secret (a fine-grained PAT scoped to
+  the tap with Contents: Read-and-Write) — without it, the cask push step fails but the binaries + GitHub Release still
+  ship.

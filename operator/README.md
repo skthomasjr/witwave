@@ -8,10 +8,10 @@ Built with Operator SDK v1.42 (Go). Mirrors the deployment shape of the [witwave
 intended as an alternative install path once the CRD is stable. The Helm chart remains the supported install method
 while the operator is in `v1alpha1`.
 
-> **Status:** v1alpha1, published to GHCR, installable via the `ww` CLI or raw Helm. `WitwaveAgent` and `WitwavePrompt`
-> resources are both in-tree. Git-sync sidecars, dashboard `Deployment`/`Service`/ `Ingress` (#1741), per-MCP-tool and
-> per-dashboard NetworkPolicies (#1743), and an optional per-agent `PrometheusRule` (#1746) all render as part of the
-> operator's reconcile surface today.
+> **Status:** v1alpha1, published to GHCR, installable via the `ww` CLI or raw Helm. `WitwaveAgent`, `WitwavePrompt`,
+> and `Workspace` resources are all in-tree. Git-sync sidecars, dashboard `Deployment`/`Service`/ `Ingress` (#1741),
+> per-MCP-tool and per-dashboard NetworkPolicies (#1743), and an optional per-agent `PrometheusRule` (#1746) all render
+> as part of the operator's reconcile surface today.
 
 ## Requirements
 
@@ -294,6 +294,115 @@ The reconciler tracks materialization (did the ConfigMap apply?) — NOT runtime
 fire?). Execution telemetry lives in Prometheus / conversation.jsonl / tool-activity.jsonl / the dashboard views. See
 request [#642](https://github.com/witwave-ai/witwave/issues/642) for the runtime-status proposal.
 
+## The `Workspace` resource
+
+A `Workspace` provisions shared volumes, projects pre-created Secrets, and renders ConfigMap-backed files that the
+operator stamps onto every `WitwaveAgent` whose `spec.workspaceRefs[]` references it. Unlike `WitwaveAgentSpec.GitSyncs`
+(per-agent _config_ delivery) and `WitwaveAgentSpec.SharedStorage` (per-agent storage), `Workspace` is the primitive for
+**shared resources that multiple agents collaborate over** — source trees, datasets, accumulated memory pools, anything
+where agents need the same files visible at the same paths.
+
+See `api/v1alpha1/workspace_types.go` for the full schema and the design context in `tmp/workspace-crd.md`.
+
+### Spec
+
+```yaml
+apiVersion: witwave.ai/v1alpha1
+kind: Workspace
+metadata:
+  name: shared
+  namespace: witwave
+spec:
+  volumes:
+    - name: source
+      size: 50Gi
+      storageClassName: efs-sc
+      # mountPath defaults to /workspaces/<workspace>/<volume.name>
+      # accessMode defaults to ReadWriteMany (only RWM is honoured in v1alpha1)
+      # reclaimPolicy defaults to Delete; flip to Retain for stateful volumes
+  secrets:
+    - name: shared-github-token
+      envFrom: true
+    - name: shared-registry-creds
+      mountPath: /home/agent/.docker
+  configFiles:
+    - configMap: shared-claude-md
+      mountPath: /home/agent/.claude/workspaces/shared/CLAUDE.md
+      subPath: CLAUDE.md
+    - inline:
+        name: workspace-info
+        path: workspace.yaml
+        content: |
+          repos:
+            - name: witwave
+              url: https://github.com/witwave-ai/witwave
+      mountPath: /workspaces/shared/workspace.yaml
+```
+
+Three list-shaped fields, all optional, all loose. The operator provisions; it does not interpret what the volumes,
+secrets, or files are for.
+
+| Field         | Shape                   | Notes                                                                                                                                                                                                                                                                                       |
+| ------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `volumes`     | `[]WorkspaceVolume`     | One PVC per entry (`<workspace>-vol-<name>`). `storageType` enum is `pvc` or `hostPath`; only `pvc` is honoured in v1alpha1 — the admission webhook rejects `hostPath` so the enum stays stable for a future v1.x. RWM is the only honoured access mode. `reclaimPolicy: Delete \| Retain`. |
+| `secrets`     | `[]WorkspaceSecret`     | Existing-Secret references only — no inline data, by design. Each entry is mutually-exclusive `mountPath` OR `envFrom: true`; the webhook rejects entries that set both.                                                                                                                    |
+| `configFiles` | `[]WorkspaceConfigFile` | Each entry references either a pre-created `configMap` (operator never writes to it) or an `inline` block the operator renders into a project-owned ConfigMap. Exactly one of the two must be set.                                                                                          |
+
+`MaxItems` caps: `volumes` 20, `secrets` 50, `configFiles` 50. Volume names must be DNS-1123 label-safe so the rendered
+PVC names stay valid.
+
+### Membership — agent-owned
+
+Membership flows from agent to workspace, not the other way around: a `WitwaveAgent` declares the workspaces it
+participates in via `spec.workspaceRefs[]`, and the workspace controller maintains `Status.BoundAgents` as an inverted
+index by watching agent CR changes. Eventually consistent, no source-of-truth duality. v1alpha1 only matches
+same-namespace agents; the recorded `Namespace` field in `Status.BoundAgents` documents the assumption and keeps the
+door open for a cross-namespace shape without status churn later.
+
+### RBAC
+
+The chart's manager ClusterRole grants the standard CRUD verbs on `workspaces`, plus `get/patch/update` on
+`workspaces/status` and `update` on `workspaces/finalizers`. The operator does **not** request Secret write verbs from
+this surface — workspace-scoped Secrets are existing-Secret refs only, so the operator stays out of the secrets-write
+trust boundary. The same `rbac.secretsWrite=false` lever the witwave-operator chart already exposes covers the rest.
+
+### Admission webhook
+
+A `vworkspace.kb.io` validating webhook lands in the existing `ValidatingWebhookConfiguration` alongside
+`vwitwaveagent.kb.io` and `vwitwaveprompt.kb.io`, and shares the same `webhooks.validatingFailurePolicy` knob (default
+`Ignore`). The webhook rejects:
+
+- `volumes[].storageType: hostPath` (reserved for v1.x).
+- `volumes[].accessMode` other than `ReadWriteMany`.
+- `secrets[]` entries that set both `mountPath` and `envFrom`.
+- `configFiles[]` entries that set neither `configMap` nor `inline`, or both.
+- Mount path collisions across `volumes`, `secrets`, and `configFiles` within the same Workspace.
+
+### Workspace status
+
+The reconciler writes the following `.status` fields:
+
+- `observedGeneration`
+- `boundAgents[]` — the inverted index over `WitwaveAgent.spec.workspaceRefs[]`.
+- `conditions[]` — `Ready`, `VolumesProvisioned`, `BoundAgentsTracked`, `ConfigMapsRendered`, and `DeletionBlocked` (set
+  when a delete is in flight but agents still reference the workspace).
+
+A refuse-delete finalizer keeps a Workspace from being removed while any agent still references it. Use
+`ww workspace unbind <agent> <workspace>` (or drop the entry from `spec.workspaceRefs[]` directly) to clear the block.
+
+### Out of scope for v1alpha1
+
+The CRD is deliberately thin. None of the following is on the v1 surface:
+
+- No `repos[]`, no clone bootstrapping, no operator-managed git plumbing — agents that need git use a credential from
+  `secrets[]` and a URL from `configFiles[]` (or their own knowledge).
+- No agent-side bootstrap. Volumes start empty; agents handle initial population.
+- No `hostPath` storage type — the enum value exists for a future v1.x but the webhook rejects it today.
+- No RWO single-node fallback — RWM is hard-required in v1alpha1.
+- No operator-enforced editing locks or per-agent worktree partitioning. Coordination is the agents' problem (A2A
+  messages, OS file locks, etc.).
+- No workspace-level scheduled jobs / heartbeats / tasks, no workspace-scoped MCP-tool gating.
+
 ## Credentials
 
 Both `GitSyncSpec.credentials` and `BackendSpec.credentials` accept the same three-mode resolver (parity with the Helm
@@ -408,6 +517,9 @@ WitwaveAgent-specific domain metrics added on top (#471):
 | `witwaveagent_dashboard_enabled`             | gauge   | `namespace`, `name` | 1 when `spec.dashboard.enabled=true`, 0 otherwise. `sum()` for cluster total.                                                                                                                                   |
 | `witwaveagent_teardown_step_errors_total`    | counter | `kind`, `reason`    | Per-kind teardown failures when `spec.enabled=false` or the CR is deleted; useful for alerting when cascade cleanup is partial                                                                                  |
 | `witwaveprompt_status_patch_conflicts_total` | counter | `namespace`, `name` | `WitwavePrompt` status subresource patch 409 conflicts retried with fresh `resourceVersion` (#950). Sustained non-zero rate points at a noisy reconciler (too many concurrent writers) or cache lag under load. |
+| `witwaveworkspace_reconcile_total`           | counter | `outcome`           | `Workspace` reconcile passes labelled by outcome (`success`, `error`, `delete_blocked`, `deleted`).                                                                                                             |
+| `witwaveworkspace_volumes_provisioned`       | gauge   | `namespace`, `name` | Number of PVCs provisioned for the Workspace's `spec.volumes[]`. Sum across instances for cluster-wide totals.                                                                                                  |
+| `witwaveworkspace_bound_agents`              | gauge   | `namespace`, `name` | Cardinality of `Status.BoundAgents` per Workspace — the inverted index over `WitwaveAgent.spec.workspaceRefs[]`.                                                                                                |
 
 WitwavePrompt binding-outcome metrics (label schema `namespace`, `name`) track per-binding ConfigMap apply results so
 operators can alert on chronically unready bindings.
