@@ -1,7 +1,7 @@
 ---
 name: bug-refine
 description: Analyze pending bugs holistically, identify dependencies and conflicts, update stale information, and produce an execution order for fixing. Optionally scoped to a specific component; if no component is specified, processes all components including cross-cutting bugs with no component assigned. Trigger when the user says "refine bugs", "run bug refine", "analyze bugs", "clean up bugs", "prioritize bugs", or "order bugs for fixing".
-version: 1.1.0
+version: 1.2.0
 ---
 
 # bug-refine
@@ -20,13 +20,26 @@ Note: some bugs are cross-cutting and have no component assigned. When processin
 
 **Step 2: Verify each bug against the current code.**
 
-For each bug, read the affected file and confirm:
+Read the **full source file**, not just the cited line range. Most false-positive bugs survive into refine because both discover and refine focused only on the cited lines and missed surrounding context that already addresses the concern.
+
+For each bug, confirm:
 - The bug still exists at the referenced location
 - If the code has shifted (refactor, lines moved), update the file and line reference to reflect the current location
 - If the surrounding code has changed, re-evaluate whether the suggested fix still applies correctly to the current code — not just whether the bug is still present
 - If a partial fix was already applied, note what remains and update the description accordingly
 
-If a bug is no longer present, close it with a note explaining what changed.
+Then run the same intentional-design checklist that bug-discover Step 5 runs, in case it was missed at filing time. Specifically verify:
+
+- **No inline comment within ~10 lines** of the cited code documents the choice as intentional or references a prior issue (`#NNNN`) that already resolved it
+- **No adjacent existing handler** (within 5-10 lines before/after) already covers the failure mode the bug describes
+- **No lock / synchronization / single-threaded constraint** already eliminates the race the bug describes
+- **No defensive check earlier on the call path** already validates the input the bug claims is unvalidated
+- **The "silent failure" the bug describes isn't intentional** per a comment or surrounding context
+- **The "double X" the bug describes isn't idempotent** in the underlying API
+
+If any of these resolve the concern, **close the bug as `wont-fix`** with a note explaining what the discovery framing missed. Do not let an invalid bug propagate to approve and implement — that wastes effort across both downstream phases.
+
+If a bug is no longer present (the code was actually fixed since filing), close it with a note explaining what changed.
 
 **Step 3: Identify relationships across bugs.**
 

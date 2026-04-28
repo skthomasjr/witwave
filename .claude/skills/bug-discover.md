@@ -1,7 +1,7 @@
 ---
 name: bug-discover
 description: Analyze one or all components of the witwave platform for bugs and record findings as tracked bugs. Trigger when the user says "find bugs", "discover bugs", "look for bugs", "scan for bugs", "search for bugs", or "run bug discover" — with or without a component name.
-version: 1.1.0
+version: 1.2.0
 ---
 
 # bug-discover
@@ -37,7 +37,22 @@ Focus exclusively on real bugs — not style, not improvements, not missing feat
 - Incorrect assumptions about external data (missing None checks, wrong field names, type mismatches)
 - Security issues (injection, unvalidated input, insecure defaults)
 
-**Step 5: Report findings.**
+**Step 5: Validate each candidate against intentional design before filing.**
+
+The most common failure mode in this skill is filing a candidate that the surrounding code has already addressed. Before filing each candidate, re-read the full surrounding context — not just the cited line range — and check for any of the following. If any apply, **drop the candidate and do not file**.
+
+- **Inline comments documenting the choice.** A comment near the cited code that says "this is intentional", references a prior issue (`#NNNN`), or explains a design tradeoff usually means the code is correct as written and the candidate is a misread. The witwave codebase relies heavily on inline `#NNNN` references — search a 20-line window above and below the cited line for them.
+- **Adjacent existing handlers.** A flag at line N is often resolved by code at line N±5. Read the 10 lines immediately before and after — an `else` branch, a `finally` block running cleanup, an early-return guard, an `except Exception:` two lines below the `except TimeoutError:` you flagged — these are the patterns most often missed.
+- **Synchronization already in place.** "Race condition" candidates are common false positives. Check whether the function is wrapped in a lock (`async with _lock`, `threading.Lock`, etc.), runs on a single-threaded asyncio loop, or relies on language-level atomicity (CPython GIL atomicity for reference rebinds and single-list-index assignments). If the candidate would require multiple writers to a shared variable but only one path writes, it isn't a race.
+- **Defensive checks earlier on the call path.** "Missing nil-check" / "missing validation" candidates are often resolved by a check in the caller. Read what calls the function before flagging an internal gap.
+- **Documented design tradeoffs.** Some "silent failures" are intentional — a CLI tool quietly falling back to anonymous when credentials aren't found, a config parser failing loud at startup rather than degrading silently, a watch handler returning empty on transient apiserver errors so controller-runtime's rate limiter handles backoff. If a comment or surrounding context explains the choice, the candidate is invalid.
+- **Idempotent operations.** "Double cancel" / "double delete" / "double cleanup" are usually safe in well-designed APIs (Go's `context.CancelFunc`, Python's `set.discard`, K8s `client.Delete`). Check whether the operation is idempotent before flagging duplication as a defect.
+
+A candidate is more likely to be **real** when: the cited code has no nearby `#NNNN` references, no surrounding guards, no locks, and the failure mode is reachable from a clear external trigger that no other code path validates. A candidate is more likely to be **false** when: the cited code has an inline comment with a prior issue number within 10 lines, or an existing handler/check in the same function that the candidate's description didn't reference.
+
+When in doubt, drop the candidate. The bug-implement skill exists as a final filter, but every false positive that reaches filing wastes effort across refine and approve as well — filtering at this step is the cheapest place to do it.
+
+**Step 6: Report findings.**
 
 For each bug found, report:
 - File and line number
