@@ -88,9 +88,6 @@ class MessageBus:
             try:
                 await asyncio.wait_for(self._queue.put(message), timeout=BUS_SEND_TIMEOUT)
             except asyncio.TimeoutError:
-                self._pending_kinds.discard(message.kind)
-                if harness_bus_pending_kinds is not None:
-                    harness_bus_pending_kinds.set(len(self._pending_kinds))
                 logger.error(f"Bus send timed out after {BUS_SEND_TIMEOUT}s — queue full (depth={self._queue.qsize()})")
                 raise asyncio.QueueFull()
             # Update queue depth unconditionally after put() succeeds. Placing
@@ -99,14 +96,10 @@ class MessageBus:
             # or raises — the message is physically in the queue from this point.
             if harness_bus_queue_depth is not None:
                 harness_bus_queue_depth.set(self._queue.qsize())
-            try:
-                return await message.result
-            except BaseException:
-                self._pending_kinds.discard(message.kind)
-                if harness_bus_pending_kinds is not None:
-                    harness_bus_pending_kinds.set(len(self._pending_kinds))
-                raise
-        except asyncio.CancelledError:
+            return await message.result
+        except BaseException:
+            # Single cleanup path covers TimeoutError → QueueFull, CancelledError
+            # during put or result, and any error raised by the bus worker.
             self._pending_kinds.discard(message.kind)
             if harness_bus_pending_kinds is not None:
                 harness_bus_pending_kinds.set(len(self._pending_kinds))
