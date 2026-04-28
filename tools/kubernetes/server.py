@@ -403,10 +403,10 @@ def _reload_kube_clients() -> None:
         _load_kube_config()
 
 
-# TODO(#1208): apply() resource.patch and delete() resource.delete are
-# not yet wrapped in with_kube_retry. describe()'s resource.get and the
-# event-list calls are now wrapped (#1641). The remaining write paths
-# will follow in a separate pass.
+# Read paths (#1641) and write paths (#1816, #1817) are wrapped in
+# with_kube_retry below; the only remaining unwrapped call is the
+# preflight server-side dry-run in apply(), which surfaces 401 directly
+# so an operator sees the auth break before any commit attempt.
 def with_kube_retry(fn, *args, **kwargs):
     """Run ``fn`` and retry once on 401 after reloading kube config (#1082).
 
@@ -1160,7 +1160,7 @@ def delete(
             # Per-call network timeout (#778).
             kwargs["_request_timeout"] = _MCP_REQUEST_TIMEOUT_SECONDS
             with _api_span("delete", kind, {"k8s.name": name, "k8s.namespace": namespace, "k8s.dry_run": dry_run}):
-                return _to_dict(resource.delete(**kwargs))
+                return _to_dict(with_kube_retry(lambda: resource.delete(**kwargs)))
         except Exception as exc:
             set_span_error(_h, exc)
             raise
