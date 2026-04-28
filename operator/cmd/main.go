@@ -386,6 +386,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := (&controller.WorkspaceReconciler{
+		Client:    mgr.GetClient(),
+		APIReader: mgr.GetAPIReader(),
+		Scheme:    mgr.GetScheme(),
+		Recorder:  mgr.GetEventRecorderFor("workspace-controller"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "Workspace")
+		os.Exit(1)
+	}
+
 	// Admission webhook (#624). Registered only when a cert path is supplied
 	// so non-webhook installs (local dev, clusters without cert-manager)
 	// still boot cleanly without failing Complete() on the missing TLS pair.

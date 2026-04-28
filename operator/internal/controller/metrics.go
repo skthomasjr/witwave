@@ -230,6 +230,45 @@ var (
 		[]string{"namespace"},
 	)
 
+	// workspaceReconcileTotal counts every Workspace reconcile pass by
+	// outcome. ``outcome`` is one of:
+	//   - "success"        — the reconcile completed cleanly
+	//   - "error"          — at least one sub-step returned an error
+	//   - "delete_blocked" — the deletion path refused to clear the
+	//     finalizer because Status.BoundAgents is non-empty
+	//   - "deleted"        — the Workspace was successfully deleted
+	workspaceReconcileTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "witwaveworkspace_reconcile_total",
+			Help: "Total Workspace reconcile passes, labelled by outcome.",
+		},
+		[]string{"outcome"},
+	)
+
+	// workspaceVolumesProvisioned reports the count of Spec.Volumes
+	// entries the operator has provisioned per Workspace. Mirrors
+	// kube_state_metrics' gauge-per-CR convention so dashboards can
+	// sum across instances for cluster-wide totals.
+	workspaceVolumesProvisioned = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "witwaveworkspace_volumes_provisioned",
+			Help: "Number of PVCs provisioned for this Workspace's Spec.Volumes entries.",
+		},
+		[]string{"namespace", "name"},
+	)
+
+	// workspaceBoundAgents reports the cardinality of
+	// Status.BoundAgents per Workspace. Operators can alert on
+	// "Workspace has been bound for > N minutes without an agent" or
+	// "agent count regressed" without scraping the CR subresource.
+	workspaceBoundAgents = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "witwaveworkspace_bound_agents",
+			Help: "Number of WitwaveAgents currently referencing this Workspace via Spec.WorkspaceRefs.",
+		},
+		[]string{"namespace", "name"},
+	)
+
 	// WitwaveAgentLeaderElectionRenewFailuresTotal counts renewal-deadline
 	// misses by the operator's leader-election machinery (#1475). A non-zero
 	// rate on a cluster with 3+ operator replicas indicates a slow
@@ -263,5 +302,8 @@ func init() {
 		WitwaveAgentCredentialWatchListErrorsTotal,
 		witwaveagentManifestOwnerRefSkippedNoUIDTotal,
 		WitwaveAgentLeaderElectionRenewFailuresTotal,
+		workspaceReconcileTotal,
+		workspaceVolumesProvisioned,
+		workspaceBoundAgents,
 	)
 }

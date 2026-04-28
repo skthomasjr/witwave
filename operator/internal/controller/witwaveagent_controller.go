@@ -521,7 +521,18 @@ func (r *WitwaveAgentReconciler) applyDeployment(ctx context.Context, agent *wit
 			clampedContainers,
 		)
 	}
+	// Workspace stamping (#1760): fetch every Workspace this agent
+	// references via Spec.WorkspaceRefs and add their volumes/secrets/
+	// configFiles to the rendered Deployment as additional pod-level
+	// Volumes + per-backend volumeMounts/envFrom. Missing workspaces are
+	// silently skipped — the watch on Workspace CRs re-enqueues the
+	// agent once the referenced resource appears.
+	workspaces, err := fetchWorkspacesForAgent(ctx, r.Client, agent)
+	if err != nil {
+		return fmt.Errorf("fetch workspaces: %w", err)
+	}
 	desired := buildDeployment(agent, DefaultImageTag, prompts)
+	stampWorkspacesOnDeployment(desired, workspaces)
 	if err = controllerutil.SetControllerReference(agent, desired, r.Scheme); err != nil {
 		return fmt.Errorf("set owner on Deployment: %w", err)
 	}
@@ -2888,6 +2899,33 @@ func (r *WitwaveAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			},
 		})).
 		Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(r.enqueueAgentsReferencingSecret)).
+		// Workspace watch (#1760). When a Workspace's spec changes,
+		// re-enqueue every WitwaveAgent in the same namespace whose
+		// Spec.WorkspaceRefs references it so the rendered pod's
+		// volume/mount graph picks up the change on next reconcile.
+		Watches(&witwavev1alpha1.Workspace{}, handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+			ws, ok := obj.(*witwavev1alpha1.Workspace)
+			if !ok {
+				return nil
+			}
+			agents := &witwavev1alpha1.WitwaveAgentList{}
+			if err := mgr.GetClient().List(ctx, agents, client.InNamespace(ws.Namespace)); err != nil {
+				return nil
+			}
+			var reqs []reconcile.Request
+			for i := range agents.Items {
+				a := &agents.Items[i]
+				for _, ref := range a.Spec.WorkspaceRefs {
+					if ref.Name == ws.Name {
+						reqs = append(reqs, reconcile.Request{
+							NamespacedName: types.NamespacedName{Namespace: a.Namespace, Name: a.Name},
+						})
+						break
+					}
+				}
+			}
+			return reqs
+		})).
 		Named("witwaveagent").
 		Complete(r)
 }
