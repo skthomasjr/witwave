@@ -35,10 +35,12 @@ const ReleaseName = "witwave-operator"
 const DefaultNamespace = "witwave-system"
 
 // crdNames enumerates the CRDs the operator owns. Used by status (presence
-// check) and uninstall (CR-existence safety gate).
+// check) and uninstall (CR-existence safety gate). Keep in sync with the
+// chart's crds/ directory and the operator's api/v1alpha1 types.
 var crdNames = []string{
 	"witwaveagents.witwave.ai",
 	"witwaveprompts.witwave.ai",
+	"witwaveworkspaces.witwave.ai",
 }
 
 // ReleaseInfo is the decoded subset of a Helm release Secret relevant to
@@ -271,6 +273,7 @@ func CountCRs(ctx context.Context, dyn dynamic.Interface) (map[string]int, error
 	}{
 		{"WitwaveAgent", schema.GroupVersionResource{Group: "witwave.ai", Version: "v1alpha1", Resource: "witwaveagents"}},
 		{"WitwavePrompt", schema.GroupVersionResource{Group: "witwave.ai", Version: "v1alpha1", Resource: "witwaveprompts"}},
+		{"WitwaveWorkspace", schema.GroupVersionResource{Group: "witwave.ai", Version: "v1alpha1", Resource: "witwaveworkspaces"}},
 	} {
 		l, err := dyn.Resource(spec.gvr).List(ctx, metav1.ListOptions{})
 		switch {

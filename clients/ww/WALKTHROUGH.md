@@ -77,9 +77,9 @@ Confirm it's healthy:
 ww operator status
 ```
 
-You should see one operator pod Running + the two CRDs
-(`witwaveagents.witwave.ai`, `witwaveprompts.witwave.ai`) reported as
-present.
+You should see one operator pod Running + the three CRDs
+(`witwaveagents.witwave.ai`, `witwaveprompts.witwave.ai`,
+`witwaveworkspaces.witwave.ai`) reported as present.
 
 **What just happened:** ww shipped with the operator's Helm chart
 embedded via `go:embed`, so no Helm or repo configuration is needed.

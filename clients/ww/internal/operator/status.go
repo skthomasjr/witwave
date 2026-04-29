@@ -121,12 +121,12 @@ func (s *Status) Render(out io.Writer) {
 
 	// Reconciles block
 	fmt.Fprintln(out, "Reconciles managed")
-	for _, kind := range []string{"WitwaveAgent", "WitwavePrompt"} {
+	for _, kind := range []string{"WitwaveAgent", "WitwavePrompt", "WitwaveWorkspace"} {
 		n, ok := s.CRCounts[kind]
 		if !ok {
 			continue
 		}
-		fmt.Fprintf(out, "  %-15s %d\n", kind+":", n)
+		fmt.Fprintf(out, "  %-18s %d\n", kind+":", n)
 	}
 }
 

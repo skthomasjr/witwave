@@ -309,12 +309,14 @@ Pods
   witwave-operator-abc123  Running
 
 CRDs
-  witwaveagents.witwave.ai           v1alpha1
-  witwaveprompts.witwave.ai           v1alpha1
+  witwaveagents.witwave.ai             v1alpha1
+  witwaveprompts.witwave.ai            v1alpha1
+  witwaveworkspaces.witwave.ai         v1alpha1
 
 Reconciles managed
-  WitwaveAgent:   3
-  WitwavePrompt:  1
+  WitwaveAgent:      3
+  WitwavePrompt:     1
+  WitwaveWorkspace:  1
 ```
 
 The `ww version` line renders `(match)` / `(patch skew)` / `(minor skew)` / `(major skew — upgrade blocked)` so operator
