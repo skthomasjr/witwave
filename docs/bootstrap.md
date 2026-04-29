@@ -162,3 +162,70 @@ ww workspace status witwave-self \
 The status output should show the workspace `Ready` with one provisioned
 volume. The PVC name follows the pattern `<workspace>-vol-<volume>`
 (`witwave-self-vol-source` here).
+
+## Step 3 — Deploy the three agents
+
+The three named operators-of-record (`iris`, `nova`, `kira`) are each a
+WitwaveAgent. They live in the same namespace as the WitwaveWorkspace they
+bind to — `v1alpha1` only supports same-namespace binding, and the `ww`
+CLI rejects cross-namespace asks loudly so users see the limitation
+up-front.
+
+For the initial bootstrap each agent runs a single **echo** backend — the
+zero-dependency stub backend that requires no API keys and returns a canned
+response. echo is enough to exercise the agent end-to-end (CR admitted →
+pod scheduled → readiness green) without any of `ANTHROPIC_API_KEY`,
+`OPENAI_API_KEY`, or `GOOGLE_API_KEY` being set. Real LLM backends get
+swapped in per agent in a later step.
+
+Two CLI calls per agent: `ww agent create` to admit the CR, then
+`ww workspace bind` to add the agent to the workspace's
+`Status.BoundAgents` list (which in turn stamps the workspace's volume
+onto the agent's backend pod). Spelled out per agent rather than looped —
+each agent is a deliberate, named decision and reads better one at a time
+than as a shell loop.
+
+```bash
+ww agent create iris \
+  --namespace witwave-self \
+  --backend echo
+
+ww workspace bind iris witwave-self \
+  --namespace witwave-self
+```
+
+```bash
+ww agent create nova \
+  --namespace witwave-self \
+  --backend echo
+
+ww workspace bind nova witwave-self \
+  --namespace witwave-self
+```
+
+```bash
+ww agent create kira \
+  --namespace witwave-self \
+  --backend echo
+
+ww workspace bind kira witwave-self \
+  --namespace witwave-self
+```
+
+Verify the three agents are `Ready` and bound to the workspace:
+
+```bash
+ww agent list \
+  --namespace witwave-self
+```
+
+```bash
+ww workspace status witwave-self \
+  --namespace witwave-self
+```
+
+`ww agent list` should show three rows (`iris`, `nova`, `kira`) all in
+state `Ready`. `ww workspace status` should now report three entries under
+the bound-agents section. Each agent's pod has the workspace's `source`
+volume mounted at `/workspaces/witwave-self/source` — ready for the
+gitSync sidecar to land in a later step.
