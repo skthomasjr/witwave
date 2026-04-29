@@ -268,8 +268,9 @@ func cmpDisplay(cluster, server string) string {
 
 func newOperatorInstallCmd(f *operatorFlags) *cobra.Command {
 	var (
-		adopt     bool
-		ifMissing bool
+		adopt           bool
+		ifMissing       bool
+		createNamespace bool
 	)
 	cmd := &cobra.Command{
 		Use:   "install",
@@ -278,15 +279,20 @@ func newOperatorInstallCmd(f *operatorFlags) *cobra.Command {
 			"Runs singleton detection (refuses when another release is already\n" +
 			"installed cluster-wide), preflight banner + confirmation on\n" +
 			"production-looking contexts, RBAC SelfSubjectAccessReview, namespace\n" +
-			"ensure, and the Helm install. Use --adopt to take over a\n" +
+			"check, and the Helm install. Use --adopt to take over a\n" +
 			"cluster whose CRDs were installed manually (via `kubectl apply`).\n\n" +
+			"Pass --create-namespace to provision the target namespace if it\n" +
+			"doesn't already exist. Without the flag, install refuses on a\n" +
+			"missing namespace so a typo in --namespace can't silently create\n" +
+			"a junk namespace (matches `ww workspace create` and\n" +
+			"`ww agent create`).\n\n" +
 			"--if-missing makes the install idempotent: when the operator is\n" +
 			"already installed, the command logs a no-op line and returns\n" +
 			"success instead of refusing. Useful for scripts that want to\n" +
 			"\"ensure the operator is present\" without caring whether this run\n" +
 			"is the one that installed it.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runOperatorInstall(cmd.Context(), f, adopt, ifMissing)
+			return runOperatorInstall(cmd.Context(), f, adopt, ifMissing, createNamespace)
 		},
 	}
 	bindMutatingFlags(cmd, f)
@@ -295,10 +301,12 @@ func newOperatorInstallCmd(f *operatorFlags) *cobra.Command {
 			"(ww will take over management via Helm)")
 	cmd.Flags().BoolVar(&ifMissing, "if-missing", false,
 		"Return success without acting when the operator is already installed (idempotent mode)")
+	cmd.Flags().BoolVar(&createNamespace, "create-namespace", false,
+		"Create the target namespace if it doesn't already exist (no-op otherwise)")
 	return cmd
 }
 
-func runOperatorInstall(ctx context.Context, f *operatorFlags, adopt, ifMissing bool) error {
+func runOperatorInstall(ctx context.Context, f *operatorFlags, adopt, ifMissing, createNamespace bool) error {
 	target, resolver, err := f.resolveTarget(ctx)
 	if err != nil {
 		return err
@@ -309,13 +317,14 @@ func runOperatorInstall(ctx context.Context, f *operatorFlags, adopt, ifMissing 
 	}
 	assumeYes := f.assumeYes || os.Getenv("WW_ASSUME_YES") == "true"
 	return operator.Install(ctx, target, cfg, resolver.ConfigFlags(), operator.InstallOptions{
-		Namespace: f.namespace,
-		Adopt:     adopt,
-		IfMissing: ifMissing,
-		AssumeYes: assumeYes,
-		DryRun:    f.dryRun,
-		Out:       os.Stdout,
-		In:        os.Stdin,
+		Namespace:       f.namespace,
+		Adopt:           adopt,
+		IfMissing:       ifMissing,
+		CreateNamespace: createNamespace,
+		AssumeYes:       assumeYes,
+		DryRun:          f.dryRun,
+		Out:             os.Stdout,
+		In:              os.Stdin,
 	})
 }
 

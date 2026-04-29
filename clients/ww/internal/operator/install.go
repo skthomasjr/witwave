@@ -6,6 +6,8 @@ import (
 	"io"
 
 	"github.com/witwave-ai/witwave/clients/ww/internal/k8s"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -28,6 +30,15 @@ type InstallOptions struct {
 	// here before I do agent work" flow wants. Corresponds to
 	// `ww operator install --if-missing`.
 	IfMissing bool
+	// CreateNamespace, when true, ensures the target namespace exists
+	// before the Helm install (creates it if missing, no-op if it
+	// already exists). Mirrors `helm install --create-namespace`,
+	// `ww workspace create --create-namespace`, and
+	// `ww agent create --create-namespace`. When false and the
+	// namespace does not exist, Install refuses with an actionable
+	// error so a typo in --namespace can't silently provision a junk
+	// namespace.
+	CreateNamespace bool
 	// AssumeYes + DryRun — forwarded to the k8s.Confirm banner.
 	AssumeYes bool
 	DryRun    bool
@@ -131,9 +142,26 @@ func Install(ctx context.Context, target *k8s.Target, cfg *rest.Config, flags *g
 		return fmt.Errorf("RBAC preflight failed — %s", FormatMissingRBAC(missing))
 	}
 
-	// Step 4 — namespace.
-	if err := EnsureNamespace(ctx, k8sClient, opts.Namespace); err != nil {
-		return fmt.Errorf("ensure namespace: %w", err)
+	// Step 4 — namespace. Mirrors the agent / workspace `--create-namespace`
+	// posture: refuse when the target namespace doesn't exist and the
+	// flag isn't set, so a typo in --namespace can't silently provision
+	// a junk namespace. A pre-existing namespace is always accepted.
+	_, err = k8sClient.CoreV1().Namespaces().Get(ctx, opts.Namespace, metav1.GetOptions{})
+	switch {
+	case err == nil:
+		// already exists — proceed
+	case apierrors.IsNotFound(err):
+		if !opts.CreateNamespace {
+			return fmt.Errorf(
+				"namespace %q not found — pass --create-namespace to create it",
+				opts.Namespace,
+			)
+		}
+		if err := EnsureNamespace(ctx, k8sClient, opts.Namespace); err != nil {
+			return fmt.Errorf("ensure namespace: %w", err)
+		}
+	default:
+		return fmt.Errorf("probe namespace %q: %w", opts.Namespace, err)
 	}
 
 	// Step 5 — Helm install.

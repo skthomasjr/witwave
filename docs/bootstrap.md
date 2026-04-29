@@ -112,6 +112,11 @@ ww operator install \
   --create-namespace
 ```
 
+`--create-namespace` provisions `witwave-system` if it doesn't already
+exist. Without the flag, `ww operator install` refuses on a missing
+namespace so a typo in `--namespace` can't silently create a junk
+namespace — same posture as `ww workspace create` and `ww agent create`.
+
 Verify the operator pod is `Running` and the CRDs are registered:
 
 ```bash
