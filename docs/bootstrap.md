@@ -178,38 +178,33 @@ pod scheduled → readiness green) without any of `ANTHROPIC_API_KEY`,
 `OPENAI_API_KEY`, or `GOOGLE_API_KEY` being set. Real LLM backends get
 swapped in per agent in a later step.
 
-Two CLI calls per agent: `ww agent create` to admit the CR, then
-`ww workspace bind` to add the agent to the workspace's
-`Status.BoundAgents` list (which in turn stamps the workspace's volume
-onto the agent's backend pod). Spelled out per agent rather than looped —
-each agent is a deliberate, named decision and reads better one at a time
-than as a shell loop.
+`ww agent create` admits the CR and `--workspace` binds the agent to the
+named WitwaveWorkspace in one shot — the operator stamps the workspace's
+volume onto the backend pod and the workspace's `Status.BoundAgents` list
+picks up the new entry on the next reconcile. `ww workspace bind` is still
+available as a follow-up for agents created without the flag. Spelled out
+per agent rather than looped — each one is a deliberate, named decision
+and reads better one at a time than as a shell loop.
 
 ```bash
 ww agent create iris \
   --namespace witwave-self \
-  --backend echo
-
-ww workspace bind iris witwave-self \
-  --namespace witwave-self
+  --backend echo \
+  --workspace witwave-self
 ```
 
 ```bash
 ww agent create nova \
   --namespace witwave-self \
-  --backend echo
-
-ww workspace bind nova witwave-self \
-  --namespace witwave-self
+  --backend echo \
+  --workspace witwave-self
 ```
 
 ```bash
 ww agent create kira \
   --namespace witwave-self \
-  --backend echo
-
-ww workspace bind kira witwave-self \
-  --namespace witwave-self
+  --backend echo \
+  --workspace witwave-self
 ```
 
 Verify the three agents are `Ready` and bound to the workspace:
