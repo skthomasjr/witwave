@@ -12,8 +12,10 @@ WitwaveAgents, all bound to it, that share a working copy of this repo and
 collaborate on maintaining it. Concretely, after this doc is fully implemented
 the cluster is running:
 
-- One **WitwaveWorkspace** (`witwave-self`) with a shared RWM volume that
-  every participating agent mounts at the same path.
+- One **WitwaveWorkspace** (`witwave-self`) with one or more shared
+  volumes (`source` for the working repo state, `memory` for long-term
+  per-agent memory, more as concerns accrete) that every participating
+  agent mounts at the same paths.
 - One **WitwaveAgent** per named operator-of-record (`iris`, `nova`, `kira`),
   each with `Spec.WorkspaceRefs` pointing at `witwave-self` so they all see
   the same source tree.
@@ -132,15 +134,18 @@ admission webhooks.
 ## Step 2 — Create the WitwaveWorkspace
 
 The WitwaveWorkspace is the shared envelope every agent that maintains this
-repo will bind to. It declares one shared RWM volume (`source`) that every
-agent mounts at `/workspaces/witwave-self/source`. Secret references and
-ConfigMap-backed files get added in later steps as agents need them.
+repo will bind to. It declares two shared volumes — `source` (the working
+repo state) and `memory` (long-term per-agent memory) — each projected
+onto every binding agent at `/workspaces/witwave-self/<volume-name>`.
+Secret references and ConfigMap-backed files get added in later steps as
+agents need them.
 
 ```bash
 ww workspace create witwave-self \
   --namespace witwave-self \
   --create-namespace \
-  --volume source=20Gi:rwo
+  --volume source=20Gi:rwo \
+  --volume memory=1Gi:rwo
 ```
 
 The `--volume` flag's form is `<name>=<size>[@<storageClass>][:<mode>]`.
@@ -159,9 +164,9 @@ ww workspace status witwave-self \
   --namespace witwave-self
 ```
 
-The status output should show the workspace `Ready` with one provisioned
-volume. The PVC name follows the pattern `<workspace>-vol-<volume>`
-(`witwave-self-vol-source` here).
+The status output should show the workspace `Ready` with both volumes
+provisioned. PVC names follow the pattern `<workspace>-vol-<volume>` —
+`witwave-self-vol-source` and `witwave-self-vol-memory` here.
 
 ## Step 3 — Deploy the three agents
 
@@ -181,10 +186,11 @@ swapped in per agent in a later step.
 Each agent gets two pieces of "git-backed" wiring at creation time, both
 from `ww agent create`, and they're deliberately separate concerns:
 
-- `--workspace witwave-self` binds the agent to the **source code** the
-  three of them collaborate on. The workspace's shared volume is mounted
-  at the same path on every bound agent's pods. This is the
-  `WitwaveWorkspace.Spec.WorkspaceRefs` channel covered in Step 2.
+- `--workspace witwave-self` binds the agent to the **shared workspace**
+  the three of them collaborate on. Every workspace volume (source,
+  memory, …) is mounted at the same path on every bound agent's pods.
+  This is the `WitwaveWorkspace.Spec.WorkspaceRefs` channel covered in
+  Step 2.
 - `--gitops <url>[@<branch>]:<repo-path>` wires the agent's **own
   identity** — its prompts, HEARTBEAT.md, hooks, Claude/Codex/Gemini
   config, MCP wiring, skills — from a path inside the same repo. Per
