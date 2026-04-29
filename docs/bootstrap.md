@@ -16,9 +16,10 @@ the cluster is running:
   volumes (`source` for the working repo state, `memory` for long-term
   per-agent memory, more as concerns accrete) that every participating
   agent mounts at the same paths.
-- One **WitwaveAgent** per named operator-of-record (`iris`, `nova`, `kira`),
-  each with `Spec.WorkspaceRefs` pointing at `witwave-self` so they all see
-  the same source tree.
+- One **WitwaveAgent** (`iris`) with `Spec.WorkspaceRefs` pointing at
+  `witwave-self` so it sees the shared workspace. Additional named
+  agents (e.g. `nova`, `kira`) can be added later in the same shape;
+  the bootstrap walks through `iris` end-to-end first.
 - A **gitSync** sidecar that keeps the shared volume in lockstep with this
   GitHub repo.
 
@@ -168,65 +169,55 @@ The status output should show the workspace `Ready` with both volumes
 provisioned. PVC names follow the pattern `<workspace>-vol-<volume>` —
 `witwave-self-vol-source` and `witwave-self-vol-memory` here.
 
-## Step 3 — Deploy the three agents
+## Step 3 — Deploy iris
 
-The three named operators-of-record (`iris`, `nova`, `kira`) are each a
-WitwaveAgent. They live in the same namespace as the WitwaveWorkspace they
-bind to — `v1alpha1` only supports same-namespace binding, and the `ww`
-CLI rejects cross-namespace asks loudly so users see the limitation
-up-front.
+Iris is a WitwaveAgent. It lives in the same namespace as the
+WitwaveWorkspace it binds to — `v1alpha1` only supports same-namespace
+binding, and the `ww` CLI rejects cross-namespace asks loudly so users
+see the limitation up-front. Additional agents (`nova`, `kira`, …) get
+added later in the same shape; this step walks through `iris`
+end-to-end first.
 
-For the initial bootstrap each agent runs a single **echo** backend — the
-zero-dependency stub backend that requires no API keys and returns a canned
-response. echo is enough to exercise the agent end-to-end (CR admitted →
-pod scheduled → readiness green) without any of `ANTHROPIC_API_KEY`,
-`OPENAI_API_KEY`, or `GOOGLE_API_KEY` being set. Real LLM backends get
-swapped in per agent in a later step.
+For the initial bootstrap iris runs **two echo backends** (`echo-1` and
+`echo-2`) — echo is the zero-dependency stub backend that requires no API
+keys and returns a canned response, and the two-backend shape is enough
+to exercise the multi-backend wiring (one harness routing to N
+backends, per-backend gitOps fan-out) without dragging in any of
+`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GOOGLE_API_KEY`. The
+`<name>:<type>` form on `--backend` lets two backends share the same
+type but stay independently addressable. Real LLM backends get
+swapped in in a later step.
 
-Each agent gets two pieces of "git-backed" wiring at creation time, both
+Iris gets two pieces of "git-backed" wiring at creation time, both
 from `ww agent create`, and they're deliberately separate concerns:
 
-- `--workspace witwave-self` binds the agent to the **shared workspace**
-  the three of them collaborate on. Every workspace volume (source,
-  memory, …) is mounted at the same path on every bound agent's pods.
-  This is the `WitwaveWorkspace.Spec.WorkspaceRefs` channel covered in
-  Step 2.
+- `--workspace witwave-self` binds iris to the **shared workspace** —
+  every workspace volume (source, memory, …) is mounted at the same
+  path on every bound agent's pods. This is the
+  `WitwaveWorkspace.Spec.WorkspaceRefs` channel covered in Step 2.
 - `--gitops <url>[@<branch>]:<repo-path>` wires the agent's **own
   identity** — its prompts, HEARTBEAT.md, hooks, Claude/Codex/Gemini
-  config, MCP wiring, skills — from a path inside the same repo. Per
-  agent (iris ≠ nova ≠ kira), private to that one agent's pod, never
-  shared. Auto-populates the CR's `Spec.GitSyncs[]` and per-container
+  config, MCP wiring, skills — from a path inside the same repo.
+  Per-agent, private to that one agent's pod, never shared with peer
+  agents. Auto-populates the CR's `Spec.GitSyncs[]` and per-container
   `GitMappings[]` using a convention: `<repo-path>/.witwave/` lands at
   the harness's `/home/agent/.witwave/`, and `<repo-path>/.<backend>/`
-  lands at each backend's `/home/agent/.<backend>/`.
+  lands at each backend's `/home/agent/.<backend>/` — once per declared
+  `--backend`. For iris with `echo-1` + `echo-2`, that fans out to
+  three mappings: one for the harness, one for echo-1
+  (`<repo-path>/.echo-1/`), and one for echo-2
+  (`<repo-path>/.echo-2/`).
 
 Together they make a single `ww agent create` the complete unit of
-deploy: CR admitted, workspace bound, identity wired. Spelled out per
-agent rather than looped — each one is a deliberate, named decision and
-reads better one at a time than as a shell loop.
+deploy: CR admitted, workspace bound, identity wired.
 
 ```bash
 ww agent create iris \
   --namespace witwave-self \
-  --backend echo \
+  --backend echo-1:echo \
+  --backend echo-2:echo \
   --workspace witwave-self \
   --gitops https://github.com/witwave-ai/witwave.git@main:.agents/self/iris
-```
-
-```bash
-ww agent create nova \
-  --namespace witwave-self \
-  --backend echo \
-  --workspace witwave-self \
-  --gitops https://github.com/witwave-ai/witwave.git@main:.agents/self/nova
-```
-
-```bash
-ww agent create kira \
-  --namespace witwave-self \
-  --backend echo \
-  --workspace witwave-self \
-  --gitops https://github.com/witwave-ai/witwave.git@main:.agents/self/kira
 ```
 
 ### Long-hand equivalent (the explicit form)
@@ -246,11 +237,13 @@ Iris's `--gitops` line above is exactly equivalent to:
 ```bash
 ww agent create iris \
   --namespace witwave-self \
-  --backend echo \
+  --backend echo-1:echo \
+  --backend echo-2:echo \
   --workspace witwave-self \
   --gitsync witwave=https://github.com/witwave-ai/witwave.git@main \
   --gitmap witwave:.agents/self/iris/.witwave/:/home/agent/.witwave/ \
-  --gitmap echo=witwave:.agents/self/iris/.echo/:/home/agent/.echo/
+  --gitmap echo-1=witwave:.agents/self/iris/.echo-1/:/home/agent/.echo-1/ \
+  --gitmap echo-2=witwave:.agents/self/iris/.echo-2/:/home/agent/.echo-2/
 ```
 
 The two shapes **compose** — they aren't either/or. Pass `--gitops` for
@@ -269,7 +262,7 @@ gitSync credentials (typical keys: `GITSYNC_USERNAME` /
 tokens. The bootstrap repo is public, so this isn't needed in
 this walkthrough.
 
-Verify the three agents are `Ready` and bound to the workspace:
+Verify iris is `Ready` and bound to the workspace:
 
 ```bash
 ww agent list \
@@ -281,8 +274,8 @@ ww workspace status witwave-self \
   --namespace witwave-self
 ```
 
-`ww agent list` should show three rows (`iris`, `nova`, `kira`) all in
-state `Ready`. `ww workspace status` should now report three entries under
-the bound-agents section. Each agent's pod has the workspace's `source`
-volume mounted at `/workspaces/witwave-self/source` — ready for the
-gitSync sidecar to land in a later step.
+`ww agent list` should show one row (`iris`) in state `Ready`.
+`ww workspace status` should report `iris` under the bound-agents
+section. The pod has the workspace's `source` and `memory` volumes
+mounted at `/workspaces/witwave-self/source` and
+`/workspaces/witwave-self/memory` on every backend container.
