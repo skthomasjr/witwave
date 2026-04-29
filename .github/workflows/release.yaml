@@ -75,6 +75,16 @@ jobs:
       # builder backed by docker-container, which BuildKit drives via
       # gRPC and which fully supports the OCI attestation referrer
       # graph. No extra config — the action handles install + register.
+      # QEMU emulators are required to cross-build linux/arm64 from the
+      # default linux/amd64 GitHub runners. Without this, the buildx
+      # platform fan-out below silently falls back to host-arch only —
+      # which is how every release through v0.11.1 shipped amd64-only
+      # manifests and broke Apple Silicon (linux/arm64) deployments.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/arm64
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -112,6 +122,13 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
+          # Multi-arch fan-out. Apple Silicon and AWS Graviton both need
+          # linux/arm64 — single-arch was a 11.x-and-earlier defect that
+          # broke `ww operator install` on any non-amd64 cluster with
+          # ImagePullBackOff: "no matching manifest for linux/arm64/v8".
+          # Buildx publishes a multi-arch manifest list at the tag; the
+          # registry serves the right per-arch image at pull time.
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
