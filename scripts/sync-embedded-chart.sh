@@ -26,7 +26,16 @@ fi
 
 if [[ "$MODE" == "check" ]]; then
   # Dry-run rsync with itemize-changes; any reported change is drift.
-  CHANGES="$(rsync -rptgoDn --delete --itemize-changes "$SRC" "$DST" | grep -v '^\.' || true)"
+  #
+  # `--checksum` makes rsync compare file contents directly rather than
+  # the default size+mtime heuristic. Without it, fresh git checkouts
+  # routinely produce sub-millisecond mtime differences between the
+  # canonical chart tree and the embedded copy — even though both came
+  # from the same commit and have byte-identical contents — which
+  # rsync's `-t` (preserve mtime) flags as a `>f..t......` change.
+  # Content equality is what we actually care about; checksum gives
+  # us that without false-positive rebuilds.
+  CHANGES="$(rsync -rptgoDnc --delete --itemize-changes "$SRC" "$DST" | grep -v '^\.' || true)"
   if [[ -n "$CHANGES" ]]; then
     echo "error: embedded chart is out of sync with charts/witwave-operator/" >&2
     echo "run: scripts/sync-embedded-chart.sh" >&2
