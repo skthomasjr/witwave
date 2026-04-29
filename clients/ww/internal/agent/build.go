@@ -44,6 +44,14 @@ type BuildOptions struct {
 	// agent flashes into the namespace-wide manifest for a moment
 	// before the label lands.
 	Team string
+
+	// WorkspaceRefs lists WitwaveWorkspace names this agent should bind
+	// to at creation time, populating spec.workspaceRefs[]. v1alpha1
+	// only supports same-namespace binding so each name resolves to a
+	// workspace in BuildOptions.Namespace. Empty → no refs (the user
+	// can attach later with `ww workspace bind`). Duplicate names are
+	// rejected — the CRD's listMapKey=name forbids them.
+	WorkspaceRefs []string
 }
 
 // Build constructs the unstructured.Unstructured representation of a
@@ -140,6 +148,26 @@ func Build(opts BuildOptions) (*unstructured.Unstructured, error) {
 		specBackends = append(specBackends, entry)
 	}
 
+	// spec.workspaceRefs[] — one {name: <ws>} entry per requested
+	// binding. Defense-in-depth: duplicates rejected here too so a
+	// caller bypassing the CLI flag layer (tests, programmatic) still
+	// gets the same shape the CRD's listMapKey=name expects.
+	var workspaceRefs []interface{}
+	if len(opts.WorkspaceRefs) > 0 {
+		seenWS := make(map[string]bool, len(opts.WorkspaceRefs))
+		workspaceRefs = make([]interface{}, 0, len(opts.WorkspaceRefs))
+		for i, name := range opts.WorkspaceRefs {
+			if err := ValidateName(name); err != nil {
+				return nil, fmt.Errorf("workspaceRefs[%d] %q: %w", i, name, err)
+			}
+			if seenWS[name] {
+				return nil, fmt.Errorf("workspaceRefs[%d]: duplicate name %q", i, name)
+			}
+			seenWS[name] = true
+			workspaceRefs = append(workspaceRefs, map[string]interface{}{"name": name})
+		}
+	}
+
 	spec := map[string]interface{}{
 		"port": int64(DefaultHarnessPort),
 		"image": map[string]interface{}{
@@ -162,6 +190,9 @@ func Build(opts BuildOptions) (*unstructured.Unstructured, error) {
 			},
 		},
 		"backends": specBackends,
+	}
+	if workspaceRefs != nil {
+		spec["workspaceRefs"] = workspaceRefs
 	}
 	if err := unstructured.SetNestedField(obj.Object, spec, "spec"); err != nil {
 		return nil, fmt.Errorf("set spec: %w", err)

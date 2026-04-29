@@ -933,6 +933,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 		timeout         time.Duration
 		createNamespace bool
 		team            string
+		workspaces      []string
 		authProfiles    []string
 		authFromEnv     []string
 		authSecrets     []string
@@ -951,6 +952,10 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			"Each backend's folder in the gitOps repo (and the /home/agent/.<name>/ mount\n" +
 			"in the pod) is named after the backend's NAME, not its type — so two backends\n" +
 			"of the same type must use the `<name>:<type>` shape to differentiate them.\n\n" +
+			"Pass --workspace repeatedly to bind the agent to one or more existing\n" +
+			"WitwaveWorkspaces at creation time, equivalent to a follow-up\n" +
+			"`ww workspace bind`. v1alpha1 only supports same-namespace binding;\n" +
+			"each workspace must already exist in the agent's namespace.\n\n" +
 			"After the CR is applied, waits up to --timeout for the operator to report the\n" +
 			"agent as Ready. Pass --no-wait to skip the readiness wait.",
 		Args: cobra.ExactArgs(1),
@@ -963,7 +968,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runAgentCreate(cmd.Context(), f, args[0], specs, !noWait, timeout, createNamespace, team, auth)
+			return runAgentCreate(cmd.Context(), f, args[0], specs, !noWait, timeout, createNamespace, team, workspaces, auth)
 		},
 	}
 	bindAgentMutatingFlags(cmd, f)
@@ -984,6 +989,11 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 	cmd.Flags().StringVar(&team, "team", "",
 		"Stamp witwave.ai/team=<team> at creation (avoids a follow-up `ww agent team join`). "+
 			"Omit to leave the agent in the namespace-wide manifest.")
+	cmd.Flags().StringArrayVar(&workspaces, "workspace", nil,
+		"Bind the agent to a WitwaveWorkspace at creation time (repeatable). "+
+			"Equivalent to a follow-up `ww workspace bind <agent> <workspace>`. "+
+			"Each named workspace must already exist in the agent's namespace; "+
+			"v1alpha1 only supports same-namespace binding.")
 	cmd.Flags().StringArrayVar(&authProfiles, "auth", nil,
 		fmt.Sprintf(
 			"Per-backend auth profile. Repeatable. Form: <backend>=<profile>.\n"+
@@ -1004,7 +1014,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 	return cmd
 }
 
-func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []agent.BackendSpec, wait bool, timeout time.Duration, createNamespace bool, team string, backendAuth []agent.BackendAuthResolver) error {
+func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []agent.BackendSpec, wait bool, timeout time.Duration, createNamespace bool, team string, workspaces []string, backendAuth []agent.BackendAuthResolver) error {
 	target, resolver, err := f.resolveTarget(ctx)
 	if err != nil {
 		return err
@@ -1028,6 +1038,7 @@ func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []
 		Timeout:         timeout,
 		CreateNamespace: createNamespace,
 		Team:            team,
+		WorkspaceRefs:   workspaces,
 		BackendAuth:     backendAuth,
 		Out:             os.Stdout,
 		In:              os.Stdin,

@@ -12,6 +12,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 
 	"github.com/witwave-ai/witwave/clients/ww/internal/k8s"
@@ -61,6 +62,14 @@ type CreateOptions struct {
 	// but the backend will error on first request with missing-key
 	// diagnostics).
 	BackendAuth []BackendAuthResolver
+
+	// WorkspaceRefs lists WitwaveWorkspace names to bind the agent to at
+	// creation time. Each name must resolve to a WitwaveWorkspace in the
+	// agent's namespace (v1alpha1 same-namespace binding only). Verified
+	// at preflight before the CR is admitted so a typo doesn't silently
+	// produce an admitted-but-unbound agent. Empty (the default) is
+	// fine — callers can attach with `ww workspace bind` later.
+	WorkspaceRefs []string
 
 	// Wait controls whether we block after Create until the CR's
 	// status.phase flips to Ready. Timeout bounds the wait.
@@ -116,6 +125,12 @@ func Create(
 			Value: fmt.Sprintf("%q (joins witwave-manifest-%s)", opts.Team, opts.Team),
 		})
 	}
+	if len(opts.WorkspaceRefs) > 0 {
+		plan = append(plan, k8s.PlanLine{
+			Key:   "Workspaces",
+			Value: strings.Join(opts.WorkspaceRefs, ", "),
+		})
+	}
 	// One line per backend that has credentials wired — lets the user
 	// see exactly what will be referenced (or minted) before they
 	// confirm, including which env var(s) the CLI is about to read.
@@ -154,6 +169,17 @@ func Create(
 		}
 	}
 
+	// Verify every requested WitwaveWorkspace exists in the agent's namespace
+	// before admitting the CR. v1alpha1 binds are same-namespace only —
+	// catching a typo (or a namespace mismatch) here saves a round-trip
+	// through admission/reconcile and a confusing "admitted but unbound"
+	// state. Mirrors the verify-then-mutate pattern in `ww workspace bind`.
+	if len(opts.WorkspaceRefs) > 0 {
+		if err := verifyWorkspaceRefs(ctx, dyn, opts.Namespace, opts.WorkspaceRefs); err != nil {
+			return err
+		}
+	}
+
 	// Resolve per-backend credentials AFTER the namespace exists (so
 	// ensureNamespace can precede us) but BEFORE Build(). The CR
 	// carries credentials.existingSecret, so we need the Secret names
@@ -179,12 +205,13 @@ func Create(
 	}
 
 	obj, err := Build(BuildOptions{
-		Name:       opts.Name,
-		Namespace:  opts.Namespace,
-		Backends:   backends,
-		CLIVersion: opts.CLIVersion,
-		CreatedBy:  opts.CreatedBy,
-		Team:       opts.Team,
+		Name:          opts.Name,
+		Namespace:     opts.Namespace,
+		Backends:      backends,
+		CLIVersion:    opts.CLIVersion,
+		CreatedBy:     opts.CreatedBy,
+		Team:          opts.Team,
+		WorkspaceRefs: opts.WorkspaceRefs,
 	})
 	if err != nil {
 		return fmt.Errorf("build agent CR: %w", err)
@@ -222,6 +249,37 @@ func Create(
 	fmt.Fprintln(opts.Out, "  ww agent status "+opts.Name+"  # see pod + reconcile state")
 	fmt.Fprintln(opts.Out, "  ww agent delete "+opts.Name+"  # clean up")
 	return nil
+}
+
+// verifyWorkspaceRefs probes each requested WitwaveWorkspace by name in
+// the agent's namespace. Returns a clean per-name error on the first
+// missing one rather than admitting a CR with dangling refs the
+// operator silently ignores. Same posture as the verify step in
+// `ww workspace bind`.
+func verifyWorkspaceRefs(ctx context.Context, dyn dynamic.Interface, namespace string, names []string) error {
+	gvr := workspaceGVR()
+	for _, name := range names {
+		_, err := dyn.Resource(gvr).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+		if err == nil {
+			continue
+		}
+		if apierrors.IsNotFound(err) {
+			return fmt.Errorf(
+				"WitwaveWorkspace %q not found in namespace %q — create it first with `ww workspace create %s -n %s` or fix the --workspace value",
+				name, namespace, name, namespace,
+			)
+		}
+		return fmt.Errorf("probe WitwaveWorkspace %q in %q: %w", name, namespace, err)
+	}
+	return nil
+}
+
+// workspaceGVR returns the GVR for WitwaveWorkspace. Inlined here (rather
+// than imported from internal/workspace) because internal/workspace
+// already imports this package — flipping the dependency would create a
+// cycle.
+func workspaceGVR() schema.GroupVersionResource {
+	return schema.GroupVersionResource{Group: "witwave.ai", Version: "v1alpha1", Resource: "witwaveworkspaces"}
 }
 
 // ensureNamespace creates the target namespace if it doesn't already
