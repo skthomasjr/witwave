@@ -178,33 +178,49 @@ pod scheduled → readiness green) without any of `ANTHROPIC_API_KEY`,
 `OPENAI_API_KEY`, or `GOOGLE_API_KEY` being set. Real LLM backends get
 swapped in per agent in a later step.
 
-`ww agent create` admits the CR and `--workspace` binds the agent to the
-named WitwaveWorkspace in one shot — the operator stamps the workspace's
-volume onto the backend pod and the workspace's `Status.BoundAgents` list
-picks up the new entry on the next reconcile. `ww workspace bind` is still
-available as a follow-up for agents created without the flag. Spelled out
-per agent rather than looped — each one is a deliberate, named decision
-and reads better one at a time than as a shell loop.
+Each agent gets two pieces of "git-backed" wiring at creation time, both
+from `ww agent create`, and they're deliberately separate concerns:
+
+- `--workspace witwave-self` binds the agent to the **source code** the
+  three of them collaborate on. The workspace's shared volume is mounted
+  at the same path on every bound agent's pods. This is the
+  `WitwaveWorkspace.Spec.WorkspaceRefs` channel covered in Step 2.
+- `--gitops <url>[@<branch>]:<repo-path>` wires the agent's **own
+  identity** — its prompts, HEARTBEAT.md, hooks, Claude/Codex/Gemini
+  config, MCP wiring, skills — from a path inside the same repo. Per
+  agent (iris ≠ nova ≠ kira), private to that one agent's pod, never
+  shared. Auto-populates the CR's `Spec.GitSyncs[]` and per-container
+  `GitMappings[]` using a convention: `<repo-path>/.witwave/` lands at
+  the harness's `/home/agent/.witwave/`, and `<repo-path>/.<backend>/`
+  lands at each backend's `/home/agent/.<backend>/`.
+
+Together they make a single `ww agent create` the complete unit of
+deploy: CR admitted, workspace bound, identity wired. Spelled out per
+agent rather than looped — each one is a deliberate, named decision and
+reads better one at a time than as a shell loop.
 
 ```bash
 ww agent create iris \
   --namespace witwave-self \
   --backend echo \
-  --workspace witwave-self
+  --workspace witwave-self \
+  --gitops https://github.com/witwave-ai/witwave.git@main:.agents/self/iris
 ```
 
 ```bash
 ww agent create nova \
   --namespace witwave-self \
   --backend echo \
-  --workspace witwave-self
+  --workspace witwave-self \
+  --gitops https://github.com/witwave-ai/witwave.git@main:.agents/self/nova
 ```
 
 ```bash
 ww agent create kira \
   --namespace witwave-self \
   --backend echo \
-  --workspace witwave-self
+  --workspace witwave-self \
+  --gitops https://github.com/witwave-ai/witwave.git@main:.agents/self/kira
 ```
 
 Verify the three agents are `Ready` and bound to the workspace:
