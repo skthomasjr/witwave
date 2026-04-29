@@ -71,6 +71,20 @@ type CreateOptions struct {
 	// fine — callers can attach with `ww workspace bind` later.
 	WorkspaceRefs []string
 
+	// GitSyncs declares git-sync entries the operator should reconcile
+	// onto the agent's pod (one cloned repo per entry into /git/<name>).
+	// GitMappings (below) reference these by name. Cross-flag
+	// validation (gitmap.GitSync exists, container exists, no duplicate
+	// (container, dest)) runs in Create before Build.
+	GitSyncs []GitSyncFlagSpec
+
+	// GitMappings declares per-(container, dest) copy operations the
+	// gitSync init script applies after each clone. Container is
+	// "harness" or one of the agent's declared backend names; the
+	// build path routes each entry into either Spec.GitMappings[] or
+	// the matching BackendSpec.GitMappings[].
+	GitMappings []GitMappingFlagSpec
+
 	// Wait controls whether we block after Create until the CR's
 	// status.phase flips to Ready. Timeout bounds the wait.
 	Wait    bool
@@ -114,6 +128,14 @@ func Create(
 		return err
 	}
 
+	// Cross-flag gitSync / gitMap validation. Catches dangling
+	// references (gitmap.GitSync that doesn't match any --gitsync)
+	// and bad container targets (typo in <container>= prefix) before
+	// we touch the cluster.
+	if err := ValidateGitFlags(opts.GitSyncs, opts.GitMappings, backends); err != nil {
+		return err
+	}
+
 	plan := []k8s.PlanLine{
 		{Key: "Action", Value: fmt.Sprintf("create WitwaveAgent %q", opts.Name)},
 		{Key: "Backends", Value: summariseBackends(backends)},
@@ -129,6 +151,23 @@ func Create(
 		plan = append(plan, k8s.PlanLine{
 			Key:   "Workspaces",
 			Value: strings.Join(opts.WorkspaceRefs, ", "),
+		})
+	}
+	if len(opts.GitSyncs) > 0 {
+		names := make([]string, 0, len(opts.GitSyncs))
+		for _, s := range opts.GitSyncs {
+			names = append(names, s.Name)
+		}
+		plan = append(plan, k8s.PlanLine{
+			Key:   "GitSyncs",
+			Value: strings.Join(names, ", "),
+		})
+	}
+	if len(opts.GitMappings) > 0 {
+		plan = append(plan, k8s.PlanLine{
+			Key: "GitMappings",
+			Value: fmt.Sprintf("%d (across %d container(s))",
+				len(opts.GitMappings), distinctContainers(opts.GitMappings)),
 		})
 	}
 	// One line per backend that has credentials wired — lets the user
@@ -212,6 +251,8 @@ func Create(
 		CreatedBy:     opts.CreatedBy,
 		Team:          opts.Team,
 		WorkspaceRefs: opts.WorkspaceRefs,
+		GitSyncs:      opts.GitSyncs,
+		GitMappings:   opts.GitMappings,
 	})
 	if err != nil {
 		return fmt.Errorf("build agent CR: %w", err)
@@ -280,6 +321,18 @@ func verifyWorkspaceRefs(ctx context.Context, dyn dynamic.Interface, namespace s
 // cycle.
 func workspaceGVR() schema.GroupVersionResource {
 	return schema.GroupVersionResource{Group: "witwave.ai", Version: "v1alpha1", Resource: "witwaveworkspaces"}
+}
+
+// distinctContainers counts the unique Container names referenced across
+// a set of gitMappings. Used by the preflight banner to surface the
+// fan-out shape ("3 (across 2 container(s))") without listing every
+// destination path.
+func distinctContainers(mappings []GitMappingFlagSpec) int {
+	seen := map[string]struct{}{}
+	for _, m := range mappings {
+		seen[m.Container] = struct{}{}
+	}
+	return len(seen)
 }
 
 // ensureNamespace creates the target namespace if it doesn't already

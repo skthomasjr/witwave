@@ -52,6 +52,22 @@ type BuildOptions struct {
 	// can attach later with `ww workspace bind`). Duplicate names are
 	// rejected — the CRD's listMapKey=name forbids them.
 	WorkspaceRefs []string
+
+	// GitSyncs declares the gitSync entries the operator should
+	// reconcile onto this agent's pod. Each entry produces one
+	// gitSyncs[] CR field plus init / sidecar containers that clone
+	// the named repo into /git/<name>. Cross-flag validation
+	// (referenced by GitMappings) is the caller's responsibility —
+	// see ValidateGitFlags.
+	GitSyncs []GitSyncFlagSpec
+
+	// GitMappings declares the per-(container, dest) copy operations
+	// the gitSync init script applies after each clone. Entries with
+	// Container == HarnessContainer land in spec.gitMappings[]; entries
+	// targeting a backend name land in that backend's
+	// spec.backends[].gitMappings[]. Cross-flag validation is the
+	// caller's responsibility — see ValidateGitFlags.
+	GitMappings []GitMappingFlagSpec
 }
 
 // Build constructs the unstructured.Unstructured representation of a
@@ -126,6 +142,22 @@ func Build(opts BuildOptions) (*unstructured.Unstructured, error) {
 		obj.SetAnnotations(annotations)
 	}
 
+	// Pre-bucket per-backend gitMappings so each backend entry below
+	// only stamps its own slice. Harness-targeted mappings emit at the
+	// agent level (see further down) and are excluded here.
+	perBackendMappings := map[string][]interface{}{}
+	for _, m := range opts.GitMappings {
+		if m.Container == HarnessContainer {
+			continue
+		}
+		perBackendMappings[m.Container] = append(perBackendMappings[m.Container],
+			map[string]interface{}{
+				"gitSync": m.GitSync,
+				"src":     m.Src,
+				"dest":    m.Dest,
+			})
+	}
+
 	// Build spec.backends[] — one entry per declared backend. Image is
 	// derived from the TYPE (not the name), so `echo-1` and `echo-2`
 	// both pull the echo image.
@@ -144,6 +176,9 @@ func Build(opts BuildOptions) (*unstructured.Unstructured, error) {
 			entry["credentials"] = map[string]interface{}{
 				"existingSecret": b.CredentialSecret,
 			}
+		}
+		if maps := perBackendMappings[b.Name]; len(maps) > 0 {
+			entry["gitMappings"] = maps
 		}
 		specBackends = append(specBackends, entry)
 	}
@@ -194,6 +229,36 @@ func Build(opts BuildOptions) (*unstructured.Unstructured, error) {
 	if workspaceRefs != nil {
 		spec["workspaceRefs"] = workspaceRefs
 	}
+
+	// spec.gitSyncs[] — one entry per declared --gitsync. The buildGitSyncEntry
+	// helper handles the public (no creds) and existing-Secret cases; inline
+	// credentials are intentionally not part of the CLI flag surface.
+	if len(opts.GitSyncs) > 0 {
+		gitSyncs := make([]interface{}, 0, len(opts.GitSyncs))
+		for _, gs := range opts.GitSyncs {
+			gitSyncs = append(gitSyncs,
+				buildGitSyncEntry(gs.Name, gs.URL, gs.Branch, DefaultGitPeriod, gs.ExistingSecret))
+		}
+		spec["gitSyncs"] = gitSyncs
+	}
+
+	// spec.gitMappings[] — harness-targeted mappings only. Per-backend
+	// mappings landed inside the backend entries above.
+	var harnessMappings []interface{}
+	for _, m := range opts.GitMappings {
+		if m.Container != HarnessContainer {
+			continue
+		}
+		harnessMappings = append(harnessMappings, map[string]interface{}{
+			"gitSync": m.GitSync,
+			"src":     m.Src,
+			"dest":    m.Dest,
+		})
+	}
+	if len(harnessMappings) > 0 {
+		spec["gitMappings"] = harnessMappings
+	}
+
 	if err := unstructured.SetNestedField(obj.Object, spec, "spec"); err != nil {
 		return nil, fmt.Errorf("set spec: %w", err)
 	}

@@ -934,6 +934,9 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 		createNamespace bool
 		team            string
 		workspaces      []string
+		gitSyncs        []string
+		gitMaps         []string
+		gitSyncSecrets  []string
 		authProfiles    []string
 		authFromEnv     []string
 		authSecrets     []string
@@ -968,7 +971,23 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runAgentCreate(cmd.Context(), f, args[0], specs, !noWait, timeout, createNamespace, team, workspaces, auth)
+			syncs, err := agent.ParseGitSyncs(gitSyncs)
+			if err != nil {
+				return err
+			}
+			secrets, err := agent.ParseGitSyncSecrets(gitSyncSecrets)
+			if err != nil {
+				return err
+			}
+			syncs, err = agent.ApplyGitSyncSecrets(syncs, secrets)
+			if err != nil {
+				return err
+			}
+			maps, err := agent.ParseGitMappings(gitMaps)
+			if err != nil {
+				return err
+			}
+			return runAgentCreate(cmd.Context(), f, args[0], specs, !noWait, timeout, createNamespace, team, workspaces, syncs, maps, auth)
 		},
 	}
 	bindAgentMutatingFlags(cmd, f)
@@ -994,6 +1013,21 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			"Equivalent to a follow-up `ww workspace bind <agent> <workspace>`. "+
 			"Each named workspace must already exist in the agent's namespace; "+
 			"v1alpha1 only supports same-namespace binding.")
+	cmd.Flags().StringArrayVar(&gitSyncs, "gitsync", nil,
+		"Declare a gitSync entry on the agent (repeatable). Form: <name>=<url>[@<branch>]. "+
+			"Populates spec.gitSyncs[] — the operator runs an init+sidecar pair that clones "+
+			"the named repo into /git/<name>. The CLI never accepts inline credentials; pair "+
+			"with --gitsync-secret to wire a pre-created Kubernetes Secret for private repos.")
+	cmd.Flags().StringArrayVar(&gitMaps, "gitmap", nil,
+		"Declare a gitMapping (repeatable). Form: [<container>=]<gitsync>:<src>:<dest>. "+
+			"<container> defaults to `harness`; pass a backend name from --backend to land "+
+			"the mapping on that backend container instead. <gitsync> must reference a "+
+			"--gitsync entry. Duplicate (container, dest) pairs are rejected at parse time.")
+	cmd.Flags().StringArrayVar(&gitSyncSecrets, "gitsync-secret", nil,
+		"Reference a pre-created Kubernetes Secret as gitSync credentials (repeatable). "+
+			"Form: <gitsync-name>=<k8s-secret>. The Secret should carry the gitSync env "+
+			"variables (typically GITSYNC_USERNAME/GITSYNC_PASSWORD or GITSYNC_SSH_KEY_FILE). "+
+			"<gitsync-name> must reference a --gitsync entry; CLI never accepts inline tokens.")
 	cmd.Flags().StringArrayVar(&authProfiles, "auth", nil,
 		fmt.Sprintf(
 			"Per-backend auth profile. Repeatable. Form: <backend>=<profile>.\n"+
@@ -1014,7 +1048,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 	return cmd
 }
 
-func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []agent.BackendSpec, wait bool, timeout time.Duration, createNamespace bool, team string, workspaces []string, backendAuth []agent.BackendAuthResolver) error {
+func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []agent.BackendSpec, wait bool, timeout time.Duration, createNamespace bool, team string, workspaces []string, gitSyncs []agent.GitSyncFlagSpec, gitMappings []agent.GitMappingFlagSpec, backendAuth []agent.BackendAuthResolver) error {
 	target, resolver, err := f.resolveTarget(ctx)
 	if err != nil {
 		return err
@@ -1039,6 +1073,8 @@ func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []
 		CreateNamespace: createNamespace,
 		Team:            team,
 		WorkspaceRefs:   workspaces,
+		GitSyncs:        gitSyncs,
+		GitMappings:     gitMappings,
 		BackendAuth:     backendAuth,
 		Out:             os.Stdout,
 		In:              os.Stdin,
