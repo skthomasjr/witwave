@@ -13,7 +13,7 @@ clients/ww/internal/operator/embedded/
 **/.venv/
 **/.tox/
 
-.agents/active/*/logs/
+.agents/self/*/logs/
 .agents/test/*/logs/
 .claude/memory/
 .claude/projects/

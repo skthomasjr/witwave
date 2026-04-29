@@ -268,12 +268,12 @@ curl http://localhost:8012/health
 
 ## Agent Structure
 
-Active agents are defined under `.agents/active/`. Each named agent has its own directory containing witwave config,
-backend instances, logs, and memory.
+Self-managing agents are defined under `.agents/self/` (the agents that maintain this repo). Each named agent has
+its own directory containing witwave config, backend instances, logs, and memory.
 
 ```text
 .agents/
-├── active/
+├── self/
 │   ├── iris/          # Iris (witwave: 8000 | claude: 8010 | codex: 8011 | gemini: 8012)
 │   ├── nova/          # Nova (witwave: 8001 | claude: 8010 | codex: 8011 | gemini: 8012)
 │   └── kira/          # Kira (witwave: 8002 | claude: 8010 | codex: 8011 | gemini: 8012)
@@ -389,7 +389,7 @@ sessions), so each job/task/trigger invocation gets a fresh budget. All three ba
 1. Copy an existing agent directory:
 
    ```bash
-   cp -r .agents/active/iris .agents/active/<name>
+   cp -r .agents/self/iris .agents/self/<name>
    ```
 
 2. Update the agent's `agent-card.md` in `.witwave/` (mounted at `/home/agent/.witwave/agent-card.md`) with the agent's
@@ -400,14 +400,12 @@ sessions), so each job/task/trigger invocation gets a fresh budget. All three ba
    `/home/agent/.codex/AGENTS.md`), and `GEMINI.md` (at `/home/agent/.gemini/GEMINI.md`) with backend-specific
    behavioral instructions
 
-4. Update `.agents/active/<name>/.witwave/backend.yaml` with the new agent's backend service names and URLs
+4. Update `.agents/self/<name>/.witwave/backend.yaml` with the new agent's backend service names and URLs
 
 5. Add the agent to `charts/witwave/values-test.yaml` (or your own overrides file) with its backends, config, and
    storage
 
-6. Register the agent in `.agents/active/manifest.json`
-
-7. Deploy:
+6. Deploy:
 
    ```bash
    helm upgrade --install witwave ./charts/witwave -f ./charts/witwave/values-test.yaml -n witwave

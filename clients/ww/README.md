@@ -163,7 +163,7 @@ ww heartbeat view
 ww continuations
 
 # Validate a trigger file before committing it.
-ww validate .agents/active/iris/.witwave/triggers/notify.md
+ww validate .agents/self/iris/.witwave/triggers/notify.md
 ```
 
 ## Commands

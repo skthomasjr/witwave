@@ -1371,7 +1371,7 @@ agents:
     #   - # Name of the gitSync entry to source from.
     #     gitSync: witwave
     #     # Source path within the repo (trailing / = directory copy).
-    #     src: .agents/active/iris/.witwave/
+    #     src: .agents/self/iris/.witwave/
     #     # Destination path inside the container.
     #     dest: /home/agent/.witwave/
 
@@ -1439,7 +1439,7 @@ agents:
         # # but scoped to this backend container.
         # gitMappings:
         #   - gitSync: witwave
-        #     src: .agents/active/iris/.claude/
+        #     src: .agents/self/iris/.claude/
         #     dest: /home/agent/.claude/
 
         # # Additional environment variables injected into the backend container.

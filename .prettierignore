@@ -23,7 +23,7 @@ clients/ww/internal/operator/embedded/
 **/.tox/
 
 # Agent runtime artifacts (gitignored at runtime, but be defensive)
-.agents/active/*/logs/
+.agents/self/*/logs/
 .agents/test/*/logs/
 .claude/memory/
 .claude/projects/

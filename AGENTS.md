@@ -244,7 +244,7 @@ localhost-sidecar deployment shapes without modification.
 Agent identity and behavior are file-based — nothing is baked into images.
 
 ```text
-.agents/active/<name>/
+.agents/self/<name>/
 ├── agent-card.md            # A2A identity description text (mounted into all containers at /home/agent/agent-card.md)
 ├── .witwave/                    # Runtime config (mounted into harness)
 │   ├── backend.yaml         # Backend selection and routing
@@ -284,11 +284,9 @@ Agent identity and behavior are file-based — nothing is baked into images.
 
 ```text
 .agents/
-├── active/                  # Active (production-like) agents: iris, nova, kira
-│   ├── manifest.json        # Registry of all agents in this deployment
+├── self/                    # Self-managing agents (maintain this repo): iris, nova, kira
 │   └── <name>/              # Per-agent directory (see layout above)
 └── test/                    # Test agents: bob, fred (deployed); jack, luke (scaffolds only, see port table below)
-    ├── manifest.json
     └── <name>/
 
 harness/                     # harness source (router/scheduler)
@@ -455,7 +453,7 @@ when you need to target a specific session.
 ## Memory
 
 Each backend manages its own memory under `.agents/<env>/<name>/<backend>/memory/` (e.g.
-`.agents/active/iris/claude/memory/`). For `claude` and `codex`, memory files are markdown documents. For `gemini`,
+`.agents/self/iris/claude/memory/`). For `claude` and `codex`, memory files are markdown documents. For `gemini`,
 conversation history is stored as JSON in `memory/sessions/`. Memory files are not committed to source control. harness
 has no memory layer of its own.
 
