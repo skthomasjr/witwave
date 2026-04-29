@@ -223,6 +223,46 @@ ww agent create kira \
   --gitops https://github.com/witwave-ai/witwave.git@main:.agents/self/kira
 ```
 
+### Long-hand equivalent (the explicit form)
+
+`--gitops` is convention-driven sugar over two more general repeatable
+flags that map 1:1 to the WitwaveAgent CRD's gitSync surface:
+
+- `--gitsync <name>=<url>[@<branch>]` declares one cloned repo, named
+  so mappings can reference it. Populates one `Spec.GitSyncs[]` entry.
+- `--gitmap [<container>=]<gitsync-name>:<src>:<dest>` adds one
+  GitMappings entry. `<container>` is `harness` (the default —
+  populates `Spec.GitMappings[]`) or any backend name from `--backend`
+  (populates that backend's `BackendSpec.GitMappings[]`).
+
+Iris's `--gitops` line above is exactly equivalent to:
+
+```bash
+ww agent create iris \
+  --namespace witwave-self \
+  --backend echo \
+  --workspace witwave-self \
+  --gitsync witwave=https://github.com/witwave-ai/witwave.git@main \
+  --gitmap witwave:.agents/self/iris/.witwave/:/home/agent/.witwave/ \
+  --gitmap echo=witwave:.agents/self/iris/.echo/:/home/agent/.echo/
+```
+
+The two shapes **compose** — they aren't either/or. Pass `--gitops` for
+the 95% case, then drop in extra `--gitmap` flags for paths that don't
+follow the convention (e.g. mounting an additional skills repo, or
+pointing a backend at a non-default subdirectory). The flag layer
+merges everything into one `Spec.GitSyncs[]` and one flat
+`Spec.GitMappings[]` set on the CR; duplicate gitSync names or
+duplicate (container, dest) pairs are rejected at parse time.
+
+Private-repo support uses `--gitsync-secret <name>=<k8s-secret>`,
+which references a pre-created Kubernetes Secret holding the
+gitSync credentials (typical keys: `GITSYNC_USERNAME` /
+`GITSYNC_PASSWORD`, or `GITSYNC_SSH_KEY_FILE`). Same posture as
+`--auth-secret` for backend auth — the CLI never accepts inline
+tokens. The bootstrap repo is public, so this isn't needed in
+this walkthrough.
+
 Verify the three agents are `Ready` and bound to the workspace:
 
 ```bash
