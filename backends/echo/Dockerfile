@@ -38,4 +38,14 @@ EXPOSE 8000
 # override with METRICS_PORT env var. Only active when METRICS_ENABLED is set.
 EXPOSE 9000
 
+# WORKDIR alignment — match harness, claude, codex, gemini. Echo had
+# previously stayed at /home/agent (the initial build-time WORKDIR);
+# every other container in a witwave agent pod runs at
+# /home/agent/workspace, so a `pwd` from any container's shell now
+# returns the same path. Workspace volume mounts (when present) live
+# at /workspaces/<workspace>/<volume> regardless — this WORKDIR change
+# only affects the container's default working directory.
+RUN mkdir -p /home/agent/workspace
+WORKDIR /home/agent/workspace
+
 CMD ["python3", "/home/agent/echo/main.py"]
