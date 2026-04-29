@@ -18,11 +18,11 @@ func TestUnbind_HappyPath(t *testing.T) {
 	t.Cleanup(withFakeClients(t, dyn, makeFakeK8s()))
 	out := captureOut()
 	err := Unbind(context.Background(), nil, UnbindOptions{
-		Agent:          "iris",
-		AgentNamespace: "default",
-		WitwaveWorkspace:      "witwave",
-		AssumeYes:      true,
-		Out:            out,
+		Agent:            "iris",
+		AgentNamespace:   "default",
+		WitwaveWorkspace: "witwave",
+		AssumeYes:        true,
+		Out:              out,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -47,11 +47,11 @@ func TestUnbind_LastEntry_RemovesField(t *testing.T) {
 	dyn := makeFakeDynamic(a)
 	t.Cleanup(withFakeClients(t, dyn, makeFakeK8s()))
 	err := Unbind(context.Background(), nil, UnbindOptions{
-		Agent:          "iris",
-		AgentNamespace: "default",
-		WitwaveWorkspace:      "witwave",
-		AssumeYes:      true,
-		Out:            captureOut(),
+		Agent:            "iris",
+		AgentNamespace:   "default",
+		WitwaveWorkspace: "witwave",
+		AssumeYes:        true,
+		Out:              captureOut(),
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -68,11 +68,11 @@ func TestUnbind_NotBound_NoOp(t *testing.T) {
 	t.Cleanup(withFakeClients(t, dyn, makeFakeK8s()))
 	out := captureOut()
 	err := Unbind(context.Background(), nil, UnbindOptions{
-		Agent:          "iris",
-		AgentNamespace: "default",
-		WitwaveWorkspace:      "witwave",
-		AssumeYes:      true,
-		Out:            out,
+		Agent:            "iris",
+		AgentNamespace:   "default",
+		WitwaveWorkspace: "witwave",
+		AssumeYes:        true,
+		Out:              out,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -90,11 +90,11 @@ func TestUnbind_DryRun_DoesNotMutate(t *testing.T) {
 	t.Cleanup(withFakeClients(t, dyn, makeFakeK8s()))
 	out := captureOut()
 	err := Unbind(context.Background(), nil, UnbindOptions{
-		Agent:          "iris",
-		AgentNamespace: "default",
-		WitwaveWorkspace:      "witwave",
-		DryRun:         true,
-		Out:            out,
+		Agent:            "iris",
+		AgentNamespace:   "default",
+		WitwaveWorkspace: "witwave",
+		DryRun:           true,
+		Out:              out,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

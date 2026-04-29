@@ -16,11 +16,11 @@ func TestBind_HappyPath_FromEmpty(t *testing.T) {
 
 	out := captureOut()
 	err := Bind(context.Background(), nil, BindOptions{
-		Agent:          "iris",
-		AgentNamespace: "default",
-		WitwaveWorkspace:      "witwave",
-		AssumeYes:      true,
-		Out:            out,
+		Agent:            "iris",
+		AgentNamespace:   "default",
+		WitwaveWorkspace: "witwave",
+		AssumeYes:        true,
+		Out:              out,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -49,11 +49,11 @@ func TestBind_Idempotent(t *testing.T) {
 
 	out := captureOut()
 	err := Bind(context.Background(), nil, BindOptions{
-		Agent:          "iris",
-		AgentNamespace: "default",
-		WitwaveWorkspace:      "witwave",
-		AssumeYes:      true,
-		Out:            out,
+		Agent:            "iris",
+		AgentNamespace:   "default",
+		WitwaveWorkspace: "witwave",
+		AssumeYes:        true,
+		Out:              out,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -72,11 +72,11 @@ func TestBind_AppendsToExisting(t *testing.T) {
 	t.Cleanup(withFakeClients(t, dyn, makeFakeK8s()))
 
 	err := Bind(context.Background(), nil, BindOptions{
-		Agent:          "iris",
-		AgentNamespace: "default",
-		WitwaveWorkspace:      "witwave",
-		AssumeYes:      true,
-		Out:            captureOut(),
+		Agent:            "iris",
+		AgentNamespace:   "default",
+		WitwaveWorkspace: "witwave",
+		AssumeYes:        true,
+		Out:              captureOut(),
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -93,11 +93,11 @@ func TestBind_WitwaveWorkspaceMissing(t *testing.T) {
 	dyn := makeFakeDynamic(a)
 	t.Cleanup(withFakeClients(t, dyn, makeFakeK8s()))
 	err := Bind(context.Background(), nil, BindOptions{
-		Agent:          "iris",
-		AgentNamespace: "default",
-		WitwaveWorkspace:      "nope",
-		AssumeYes:      true,
-		Out:            captureOut(),
+		Agent:            "iris",
+		AgentNamespace:   "default",
+		WitwaveWorkspace: "nope",
+		AssumeYes:        true,
+		Out:              captureOut(),
 	})
 	if err == nil || !strings.Contains(err.Error(), `WitwaveWorkspace "nope" not found`) {
 		t.Errorf("expected workspace-not-found error; got %v", err)
@@ -109,11 +109,11 @@ func TestBind_AgentMissing(t *testing.T) {
 	dyn := makeFakeDynamic(ws)
 	t.Cleanup(withFakeClients(t, dyn, makeFakeK8s()))
 	err := Bind(context.Background(), nil, BindOptions{
-		Agent:          "nope",
-		AgentNamespace: "default",
-		WitwaveWorkspace:      "witwave",
-		AssumeYes:      true,
-		Out:            captureOut(),
+		Agent:            "nope",
+		AgentNamespace:   "default",
+		WitwaveWorkspace: "witwave",
+		AssumeYes:        true,
+		Out:              captureOut(),
 	})
 	if err == nil || !strings.Contains(err.Error(), `WitwaveAgent "nope" not found`) {
 		t.Errorf("expected agent-not-found error; got %v", err)
@@ -126,12 +126,12 @@ func TestBind_RejectsCrossNamespace(t *testing.T) {
 	dyn := makeFakeDynamic(ws, a)
 	t.Cleanup(withFakeClients(t, dyn, makeFakeK8s()))
 	err := Bind(context.Background(), nil, BindOptions{
-		Agent:              "iris",
-		AgentNamespace:     "agent-ns",
+		Agent:                     "iris",
+		AgentNamespace:            "agent-ns",
 		WitwaveWorkspace:          "witwave",
 		WitwaveWorkspaceNamespace: "ws-ns",
-		AssumeYes:          true,
-		Out:                captureOut(),
+		AssumeYes:                 true,
+		Out:                       captureOut(),
 	})
 	if err == nil || !strings.Contains(err.Error(), "cross-namespace binding not supported") {
 		t.Errorf("expected cross-namespace rejection; got %v", err)
@@ -145,11 +145,11 @@ func TestBind_DryRun_DoesNotMutate(t *testing.T) {
 	t.Cleanup(withFakeClients(t, dyn, makeFakeK8s()))
 	out := captureOut()
 	err := Bind(context.Background(), nil, BindOptions{
-		Agent:          "iris",
-		AgentNamespace: "default",
-		WitwaveWorkspace:      "witwave",
-		DryRun:         true,
-		Out:            out,
+		Agent:            "iris",
+		AgentNamespace:   "default",
+		WitwaveWorkspace: "witwave",
+		DryRun:           true,
+		Out:              out,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

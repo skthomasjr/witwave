@@ -18,8 +18,8 @@ import (
 // == workspaceRef.namespace` only); we reject cross-namespace asks
 // loudly here so users see the limitation up-front.
 type BindOptions struct {
-	Agent              string
-	AgentNamespace     string
+	Agent                     string
+	AgentNamespace            string
 	WitwaveWorkspace          string
 	WitwaveWorkspaceNamespace string
 

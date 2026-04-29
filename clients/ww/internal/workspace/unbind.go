@@ -10,9 +10,9 @@ import (
 
 // UnbindOptions controls `ww workspace unbind <agent> <workspace>`.
 type UnbindOptions struct {
-	Agent          string
-	AgentNamespace string
-	WitwaveWorkspace      string
+	Agent            string
+	AgentNamespace   string
+	WitwaveWorkspace string
 
 	AssumeYes bool
 	DryRun    bool

@@ -441,14 +441,14 @@ func runWorkspaceBind(ctx context.Context, f *workspaceFlags, agentName, workspa
 	}
 	ns := logAndResolveWorkspaceNamespace(f.namespace, target.Namespace)
 	return workspace.Bind(ctx, cfg, workspace.BindOptions{
-		Agent:              agentName,
-		AgentNamespace:     ns,
+		Agent:                     agentName,
+		AgentNamespace:            ns,
 		WitwaveWorkspace:          workspaceName,
 		WitwaveWorkspaceNamespace: ns,
-		AssumeYes:          f.assumeYes,
-		DryRun:             f.dryRun,
-		Out:                os.Stdout,
-		In:                 os.Stdin,
+		AssumeYes:                 f.assumeYes,
+		DryRun:                    f.dryRun,
+		Out:                       os.Stdout,
+		In:                        os.Stdin,
 	})
 }
 
@@ -486,12 +486,12 @@ func runWorkspaceUnbind(ctx context.Context, f *workspaceFlags, agentName, works
 	}
 	ns := logAndResolveWorkspaceNamespace(f.namespace, target.Namespace)
 	return workspace.Unbind(ctx, cfg, workspace.UnbindOptions{
-		Agent:          agentName,
-		AgentNamespace: ns,
-		WitwaveWorkspace:      workspaceName,
-		AssumeYes:      f.assumeYes,
-		DryRun:         f.dryRun,
-		Out:            os.Stdout,
-		In:             os.Stdin,
+		Agent:            agentName,
+		AgentNamespace:   ns,
+		WitwaveWorkspace: workspaceName,
+		AssumeYes:        f.assumeYes,
+		DryRun:           f.dryRun,
+		Out:              os.Stdout,
+		In:               os.Stdin,
 	})
 }

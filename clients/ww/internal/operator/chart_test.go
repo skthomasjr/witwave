@@ -86,9 +86,9 @@ func TestEmbeddedCRDsCarryHelmKeepAnnotation(t *testing.T) {
 	}
 
 	wantNames := map[string]bool{
-		"witwave.ai_witwaveagents.yaml":      false,
-		"witwave.ai_witwaveprompts.yaml":     false,
-		"witwave.ai_witwaveworkspaces.yaml":  false,
+		"witwave.ai_witwaveagents.yaml":     false,
+		"witwave.ai_witwaveprompts.yaml":    false,
+		"witwave.ai_witwaveworkspaces.yaml": false,
 	}
 
 	type meta struct {
