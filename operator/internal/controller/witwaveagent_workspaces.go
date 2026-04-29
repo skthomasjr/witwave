@@ -103,28 +103,28 @@ func fetchWitwaveWorkspacesForAgent(ctx context.Context, c client.Reader, agent 
 
 // stampWitwaveWorkspacesOnDeployment mutates the rendered Deployment to add every
 // participating workspace's Volumes, Secrets, and ConfigFiles onto the
-// pod's volume graph and onto every container's mounts — both backends
-// and the harness.
+// pod's volume graph and onto every backend container's mounts.
 //
 // Collision rules (mirrors the design doc's "Resolution rules so adopting
 // a workspace never silently shadows a per-agent override" section):
 //
-//   - Per-container mount paths win on collision: when a workspace mount
-//     path is already claimed by an existing mount on the same container,
-//     the workspace mount is skipped silently. The admission webhook
-//     handles cross-workspace collisions on the agent side, so cases
-//     that reach this function should already be conflict-free.
+//   - Per-agent mount paths win on collision: when a workspace mount path
+//     is already claimed by a backend container's existing mount, the
+//     workspace mount is skipped silently. The admission webhook handles
+//     cross-workspace collisions on the agent side, so cases that reach
+//     this function should already be conflict-free.
 //   - WitwaveWorkspace pod-level Volumes use a name prefixed with
 //     "workspace-<workspace>-" so they cannot collide with per-agent
 //     volumes regardless of how the operator chose them.
 //
-// Harness symmetry (cycle 8 — bootstrap surfaced this): the harness used
-// to be skipped here on the rationale "workspaces are for backend
-// collaboration." That asymmetry breaks once the harness reads/writes
-// workspace state — heartbeat / job / trigger / continuation files
-// committed by an agent to the workspace must be picked up by the
-// harness's schedulers, which means the harness needs to see the same
-// volume graph as its peer backends. Stamp uniformly across containers.
+// The harness container is intentionally skipped — workspace mounts only
+// land on backend containers. The harness is the router/scheduler and
+// reads its own scheduler state (.witwave/jobs/, .witwave/tasks/, etc.)
+// from its agent-identity gitSync mount under /home/agent/.witwave/,
+// not from the shared workspace volume. Mounting the workspace on the
+// harness gives it a filesystem reach with no consumer today and a
+// larger blast radius for the privileged front-door process — keeping
+// the role separation explicit beats the symmetry argument.
 func stampWitwaveWorkspacesOnDeployment(dep *appsv1.Deployment, workspaces []witwavev1alpha1.WitwaveWorkspace) {
 	if dep == nil || len(workspaces) == 0 {
 		return
@@ -251,6 +251,12 @@ func stampWitwaveWorkspacesOnDeployment(dep *appsv1.Deployment, workspaces []wit
 
 	for ci := range pod.Containers {
 		c := &pod.Containers[ci]
+		// WitwaveWorkspaces project onto backend containers only — the
+		// harness container is left untouched. The harness container
+		// is always named "harness" by buildDeployment.
+		if c.Name == "harness" {
+			continue
+		}
 		for _, m := range backendMounts {
 			if mountPathClaimed(c.VolumeMounts, m.MountPath) {
 				continue

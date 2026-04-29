@@ -410,17 +410,15 @@ func TestStampWitwaveWorkspacesOnDeploymentVolumes(t *testing.T) {
 	if v.PersistentVolumeClaim == nil || v.PersistentVolumeClaim.ClaimName != "witwave-vol-source" {
 		t.Fatalf("expected PVC ref witwave-vol-source, got %#v", v)
 	}
-	// Both harness AND backend containers get the workspace mount —
-	// the harness participates in the workspace's volume graph too so
-	// scheduler reads (heartbeat / jobs / triggers / continuations
-	// committed in the workspace) work without a separate sync path.
-	for ci, c := range dep.Spec.Template.Spec.Containers {
-		if len(c.VolumeMounts) != 1 {
-			t.Fatalf("container[%d]=%s expected 1 workspace mount, got %d", ci, c.Name, len(c.VolumeMounts))
-		}
-		if got := c.VolumeMounts[0].MountPath; got != "/workspaces/witwave/source" {
-			t.Fatalf("container[%d]=%s mount path: got %q, want /workspaces/witwave/source", ci, c.Name, got)
-		}
+	// Harness container untouched, backend container gets the mount.
+	if len(dep.Spec.Template.Spec.Containers[0].VolumeMounts) != 0 {
+		t.Fatalf("harness container should not receive workspace mounts: %#v", dep.Spec.Template.Spec.Containers[0].VolumeMounts)
+	}
+	if len(dep.Spec.Template.Spec.Containers[1].VolumeMounts) != 1 {
+		t.Fatalf("expected backend mount stamped, got %d", len(dep.Spec.Template.Spec.Containers[1].VolumeMounts))
+	}
+	if got := dep.Spec.Template.Spec.Containers[1].VolumeMounts[0].MountPath; got != "/workspaces/witwave/source" {
+		t.Fatalf("default mount path: got %q", got)
 	}
 }
 
@@ -446,14 +444,15 @@ func TestStampWitwaveWorkspacesEnvFromSecret(t *testing.T) {
 		},
 	}}
 	stampWitwaveWorkspacesOnDeployment(dep, workspaces)
-	for ci, c := range dep.Spec.Template.Spec.Containers {
-		if got := len(c.EnvFrom); got != 1 {
-			t.Fatalf("container[%d]=%s expected 1 envFrom, got %d", ci, c.Name, got)
-		}
-		ef := c.EnvFrom[0]
-		if ef.SecretRef == nil || ef.SecretRef.Name != "team-tokens" {
-			t.Fatalf("container[%d]=%s SecretRef: got %#v, want team-tokens", ci, c.Name, ef)
-		}
+	if got := len(dep.Spec.Template.Spec.Containers[1].EnvFrom); got != 1 {
+		t.Fatalf("expected 1 envFrom on backend, got %d", got)
+	}
+	ef := dep.Spec.Template.Spec.Containers[1].EnvFrom[0]
+	if ef.SecretRef == nil || ef.SecretRef.Name != "team-tokens" {
+		t.Fatalf("expected SecretRef team-tokens, got %#v", ef)
+	}
+	if got := len(dep.Spec.Template.Spec.Containers[0].EnvFrom); got != 0 {
+		t.Fatalf("harness should not receive workspace envFrom: %d", got)
 	}
 }
 
