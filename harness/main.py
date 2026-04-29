@@ -555,11 +555,27 @@ async def health_ready(request: Request) -> JSONResponse:
             # before its backends actually are, defeating the readiness
             # contract documented in README. Use /health/ready instead so
             # the harness's own readiness reflects backend readiness.
+            #
+            # `echo` is the documented exception (backends/echo/README.md
+            # intentional-non-scope list — A2A + /health only, no
+            # /health/ready). A 404 here means the backend doesn't ship
+            # /health/ready but might still be alive — fall back to
+            # /health so an echo-only agent doesn't hang at 1/2 Running
+            # forever. Other transport errors still mean unreachable.
+            base = backend.url.rstrip("/")
             try:
-                resp = await client.get(backend.url.rstrip("/") + "/health/ready")
-                return resp.status_code == 200
+                resp = await client.get(base + "/health/ready")
             except Exception:
                 return False
+            if resp.status_code == 200:
+                return True
+            if resp.status_code == 404:
+                try:
+                    resp = await client.get(base + "/health")
+                    return resp.status_code == 200
+                except Exception:
+                    return False
+            return False
         async with httpx.AsyncClient(timeout=3.0) as client:
             results = await asyncio.gather(*[_probe(b, client) for b in backend_configs])
 
