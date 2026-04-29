@@ -13,6 +13,7 @@ package controller
 import (
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	witwavev1alpha1 "github.com/witwave-ai/witwave-operator/api/v1alpha1"
@@ -118,5 +119,69 @@ func TestBuildDeploymentBackendThreeProbeModel(t *testing.T) {
 	}
 	if c.ReadinessProbe == nil || c.ReadinessProbe.HTTPGet == nil || c.ReadinessProbe.HTTPGet.Path != "/health" {
 		t.Errorf("echo: readinessProbe = %+v, want path /health", c.ReadinessProbe)
+	}
+}
+
+// TestBuildDeploymentRenamedEchoBackends covers the case the witwave-self
+// bootstrap surfaced: multi-backend agents pass `--backend echo-1:echo
+// --backend echo-2:echo` to ww, producing CRs with Name=echo-1 / echo-2
+// and the echo image. A name-based check would mis-classify these as
+// three-probe backends and stamp /health/start + /health/ready, neither
+// of which echo ships — pods would never reach Ready.
+//
+// The fix keys on Image.Repository's basename instead of Name. This test
+// pins that contract: two echos under non-default names retain the
+// two-probe (/health-only, no startup) shape.
+func TestBuildDeploymentRenamedEchoBackends(t *testing.T) {
+	agent := &witwavev1alpha1.WitwaveAgent{
+		ObjectMeta: metav1.ObjectMeta{Name: "iris", Namespace: "default"},
+		Spec: witwavev1alpha1.WitwaveAgentSpec{
+			Image: witwavev1alpha1.ImageSpec{
+				Repository: "ghcr.io/witwave-ai/images/harness",
+				Tag:        "test",
+			},
+			Backends: []witwavev1alpha1.BackendSpec{
+				{
+					Name: "echo-1",
+					Image: witwavev1alpha1.ImageSpec{
+						Repository: "ghcr.io/witwave-ai/images/echo",
+						Tag:        "test",
+					},
+				},
+				{
+					Name: "echo-2",
+					Image: witwavev1alpha1.ImageSpec{
+						Repository: "ghcr.io/witwave-ai/images/echo",
+						Tag:        "test",
+					},
+				},
+			},
+		},
+	}
+
+	dep := buildDeployment(agent, "test", nil)
+	containers := dep.Spec.Template.Spec.Containers
+
+	for _, name := range []string{"echo-1", "echo-2"} {
+		var c *corev1.Container
+		for i := range containers {
+			if containers[i].Name == name {
+				c = &containers[i]
+				break
+			}
+		}
+		if c == nil {
+			t.Fatalf("%s container missing from deployment", name)
+		}
+		if c.StartupProbe != nil {
+			t.Errorf("%s: expected no startupProbe (echo image, regardless of container name), got %+v",
+				name, c.StartupProbe.HTTPGet)
+		}
+		if c.LivenessProbe == nil || c.LivenessProbe.HTTPGet == nil || c.LivenessProbe.HTTPGet.Path != "/health" {
+			t.Errorf("%s: livenessProbe = %+v, want path /health", name, c.LivenessProbe)
+		}
+		if c.ReadinessProbe == nil || c.ReadinessProbe.HTTPGet == nil || c.ReadinessProbe.HTTPGet.Path != "/health" {
+			t.Errorf("%s: readinessProbe = %+v, want path /health", name, c.ReadinessProbe)
+		}
 	}
 }

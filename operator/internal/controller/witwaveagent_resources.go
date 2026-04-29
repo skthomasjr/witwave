@@ -221,10 +221,37 @@ func startupProbeDefaults(override *witwavev1alpha1.ProbeSpec) witwavev1alpha1.P
 // health model (/health/start, /health, /health/ready). All current backends
 // except echo do — echo is the deliberately minimal hello-world default and
 // only exposes /health (see backends/echo/README.md intentional-non-scope
-// list). Match by container name, which is the canonical backend identifier
-// in BackendSpec.Name.
+// list).
+//
+// We key on the IMAGE repository basename, not BackendSpec.Name, because the
+// CLI's `<name>:<type>` shape decouples the two: `--backend echo-1:echo`
+// produces Name=echo-1 with the echo image. A name-based check breaks the
+// moment a user picks any non-default backend name (which is mandatory
+// for multi-backend agents — two echos can't both be named "echo"). The
+// image repo basename ("ghcr.io/witwave-ai/images/echo" → "echo") tracks
+// the actual implementation regardless of how the user named the
+// container.
 func backendUsesThreeProbes(b witwavev1alpha1.BackendSpec) bool {
-	return b.Name != "echo"
+	return imageBackendType(b.Image.Repository) != "echo"
+}
+
+// imageBackendType extracts the implementation type from a backend's image
+// repository — the path's last segment after the final "/". Examples:
+//
+//	ghcr.io/witwave-ai/images/echo       → echo
+//	ghcr.io/witwave-ai/images/claude     → claude
+//	ghcr.io/witwave-ai/images/codex      → codex
+//
+// Empty string when the repository is empty (which the CRD's required
+// validation prevents, but defense-in-depth).
+func imageBackendType(repository string) string {
+	if repository == "" {
+		return ""
+	}
+	if i := strings.LastIndexByte(repository, '/'); i >= 0 {
+		return repository[i+1:]
+	}
+	return repository
 }
 
 // backendProbePaths bundles the readiness probe path for a backend; liveness
