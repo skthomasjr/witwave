@@ -414,18 +414,34 @@ func ParseBackendAuth(profiles, fromEnv, fromSecret, fromSet []string) ([]Backen
 		})
 	}
 
+	// Multiple --secret-from-env / --auth-from-env entries for the same
+	// backend are additive — they accumulate into ONE resolver whose
+	// EnvVars list is the concatenation. Lets callers spread a long
+	// list across multiple flag invocations rather than packing
+	// everything into a single comma-delimited value:
+	//
+	//   --secret-from-env echo-1=A:X,B:Y          # combined
+	//   --secret-from-env echo-1=A:X --secret-from-env echo-1=B:Y
+	//                                              # equivalent, line per pair
+	fromEnvIdx := make(map[string]int) // backend → index in `out`
 	for _, raw := range fromEnv {
-		backend, vars, err := splitBackendKV(raw, "--auth-from-env")
+		backend, vars, err := splitBackendKV(raw, "--secret-from-env")
 		if err != nil {
 			return nil, err
 		}
-		if err := claim(backend, "--auth-from-env"); err != nil {
+		if err := claim(backend, "--secret-from-env"); err != nil {
 			return nil, err
 		}
+		newVars := splitCommaList(vars)
+		if i, ok := fromEnvIdx[backend]; ok {
+			out[i].EnvVars = append(out[i].EnvVars, newVars...)
+			continue
+		}
+		fromEnvIdx[backend] = len(out)
 		out = append(out, BackendAuthResolver{
 			Backend: backend,
 			Mode:    BackendAuthFromEnv,
-			EnvVars: splitCommaList(vars),
+			EnvVars: newVars,
 		})
 	}
 

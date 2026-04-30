@@ -940,7 +940,8 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 		persist         []string
 		persistMounts   []string
 		authProfiles    []string
-		authFromEnv     []string
+		authFromEnv     []string // deprecated alias for secretFromEnv
+		secretFromEnv   []string
 		authSecrets     []string
 		authSet         []string
 	)
@@ -969,7 +970,12 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			auth, err := agent.ParseBackendAuth(authProfiles, authFromEnv, authSecrets, authSet)
+			// --secret-from-env is the canonical name; --auth-from-env
+			// is kept as a deprecated alias for compat. Concatenate so
+			// both surfaces feed the same parser.
+			fromEnv := append([]string(nil), secretFromEnv...)
+			fromEnv = append(fromEnv, authFromEnv...)
+			auth, err := agent.ParseBackendAuth(authProfiles, fromEnv, authSecrets, authSet)
 			if err != nil {
 				return err
 			}
@@ -1062,15 +1068,23 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 				"Known profiles: %s",
 			agent.KnownCredentialProfiles(),
 		))
+	cmd.Flags().StringArrayVar(&secretFromEnv, "secret-from-env", nil,
+		"Mint a K8s Secret from arbitrary env vars and wire it as `envFrom` on a "+
+			"backend container. Repeatable. Form: <backend>=<VAR1>[,VAR2,...]. Each "+
+			"VAR is either bare `<NAME>` (read $NAME, store under Secret key NAME) "+
+			"or a rename `<SRC>:<DEST>` (read $SRC, store under Secret key DEST). "+
+			"Rename form lets agent-suffixed shell vars land as stable in-container "+
+			"names (e.g. GITHUB_TOKEN_IRIS:GITHUB_TOKEN reads $GITHUB_TOKEN_IRIS and "+
+			"injects it as $GITHUB_TOKEN inside the container).")
 	cmd.Flags().StringArrayVar(&authFromEnv, "auth-from-env", nil,
-		"Escape hatch: mint a K8s Secret from arbitrary env vars. Repeatable. "+
-			"Form: <backend>=<VAR1>[,VAR2,...]. Each VAR is either bare `<NAME>` "+
-			"(read $NAME, store under Secret key NAME) or a rename `<SRC>:<DEST>` "+
-			"(read $SRC, store under Secret key DEST). Rename form lets two "+
-			"backends inject the same in-container env-var name from "+
-			"differently-prefixed shell vars (e.g. ECHO1_GITHUB_TOKEN:GITHUB_TOKEN "+
-			"+ ECHO2_GITHUB_TOKEN:GITHUB_TOKEN against shell vars "+
-			"ECHO1_GITHUB_TOKEN and ECHO2_GITHUB_TOKEN).")
+		"Deprecated alias for --secret-from-env. Same shape, same behaviour. "+
+			"Kept for backward compat with scripts authored before the rename; "+
+			"prefer --secret-from-env for new work.")
+	if err := cmd.Flags().MarkDeprecated("auth-from-env", "use --secret-from-env"); err != nil {
+		// MarkDeprecated only errors if the flag doesn't exist (which we
+		// just registered) — surface anything else loudly.
+		panic(fmt.Errorf("mark --auth-from-env deprecated: %w", err))
+	}
 	cmd.Flags().StringArrayVar(&authSecrets, "auth-secret", nil,
 		"Reference an existing K8s Secret (verified, not modified). Repeatable. "+
 			"Form: <backend>=<secret-name>.")
