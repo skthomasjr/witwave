@@ -78,7 +78,7 @@ type CreateOptions struct {
 	// GitSyncs declares git-sync entries the operator should reconcile
 	// onto the agent's pod (one cloned repo per entry into /git/<name>).
 	// GitMappings (below) reference these by name. Cross-flag
-	// validation (gitmap.GitSync exists, container exists, no duplicate
+	// validation (gitsync-map.GitSync exists, container exists, no duplicate
 	// (container, dest)) runs in Create before Build.
 	GitSyncs []GitSyncFlagSpec
 
@@ -141,7 +141,7 @@ func Create(
 	}
 
 	// Cross-flag gitSync / gitMap validation. Catches dangling
-	// references (gitmap.GitSync that doesn't match any --gitsync)
+	// references (gitsync-map.GitSync that doesn't match any --gitsync)
 	// and bad container targets (typo in <container>= prefix) before
 	// we touch the cluster.
 	if err := ValidateGitFlags(opts.GitSyncs, opts.GitMappings, backends); err != nil {

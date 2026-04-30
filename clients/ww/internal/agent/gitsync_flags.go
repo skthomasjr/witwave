@@ -6,7 +6,7 @@ import (
 )
 
 // HarnessContainer is the magic container name for harness-targeted
-// gitMappings. Used as the default `<container>` for --gitmap entries
+// gitMappings. Used as the default `<container>` for --gitsync-map entries
 // and as the canonical comparator inside the build / validate paths.
 const HarnessContainer = "harness"
 
@@ -32,7 +32,7 @@ type GitSyncFlagSpec struct {
 	ExistingSecret string
 }
 
-// GitMappingFlagSpec is the CLI-side representation of one `--gitmap`
+// GitMappingFlagSpec is the CLI-side representation of one `--gitsync-map`
 // flag entry. Parsed from `[<container>=]<gitsync-name>:<src>:<dest>`.
 type GitMappingFlagSpec struct {
 	// Container is "harness" (the default) or one of the agent's
@@ -113,7 +113,7 @@ func splitURLBranch(rest string) (url, branch string) {
 	return rest[:at], candidate
 }
 
-// ParseGitMappings converts repeatable `--gitmap` flag values to
+// ParseGitMappings converts repeatable `--gitsync-map` flag values to
 // structured entries. Form:
 //
 //	[<container>=]<gitsync-name>:<src>:<dest>
@@ -133,7 +133,7 @@ func ParseGitMappings(raw []string) ([]GitMappingFlagSpec, error) {
 	for i, r := range raw {
 		entry := strings.TrimSpace(r)
 		if entry == "" {
-			return nil, fmt.Errorf("--gitmap[%d]: empty value", i)
+			return nil, fmt.Errorf("--gitsync-map[%d]: empty value", i)
 		}
 		container := HarnessContainer
 		body := entry
@@ -143,22 +143,22 @@ func ParseGitMappings(raw []string) ([]GitMappingFlagSpec, error) {
 				container = strings.TrimSpace(entry[:eq])
 				body = strings.TrimSpace(entry[eq+1:])
 				if container == "" {
-					return nil, fmt.Errorf("--gitmap[%d] %q: empty container before '='", i, entry)
+					return nil, fmt.Errorf("--gitsync-map[%d] %q: empty container before '='", i, entry)
 				}
 			}
 		}
 		parts := strings.SplitN(body, ":", 3)
 		if len(parts) != 3 {
-			return nil, fmt.Errorf("--gitmap[%d] %q: form is [<container>=]<gitsync>:<src>:<dest>", i, entry)
+			return nil, fmt.Errorf("--gitsync-map[%d] %q: form is [<container>=]<gitsync>:<src>:<dest>", i, entry)
 		}
 		sync := strings.TrimSpace(parts[0])
 		src := strings.TrimSpace(parts[1])
 		dest := strings.TrimSpace(parts[2])
 		if sync == "" || src == "" || dest == "" {
-			return nil, fmt.Errorf("--gitmap[%d] %q: gitsync, src, and dest are all required", i, entry)
+			return nil, fmt.Errorf("--gitsync-map[%d] %q: gitsync, src, and dest are all required", i, entry)
 		}
 		if !strings.HasPrefix(dest, "/") {
-			return nil, fmt.Errorf("--gitmap[%d] %q: dest %q must be absolute (start with '/')", i, entry, dest)
+			return nil, fmt.Errorf("--gitsync-map[%d] %q: dest %q must be absolute (start with '/')", i, entry, dest)
 		}
 		out = append(out, GitMappingFlagSpec{
 			Container: container,
@@ -225,10 +225,10 @@ func ApplyGitSyncSecrets(syncs []GitSyncFlagSpec, secrets map[string]string) ([]
 // ValidateGitFlags is the cross-flag validation gate — runs after
 // every parser succeeds and before the CR is built. Checks:
 //
-//   - every --gitmap.GitSync references an actual --gitsync entry.
-//   - every --gitmap.Container is "harness" or one of the declared
+//   - every --gitsync-map.GitSync references an actual --gitsync entry.
+//   - every --gitsync-map.Container is "harness" or one of the declared
 //     --backend names.
-//   - no two --gitmap entries share the same (container, dest) —
+//   - no two --gitsync-map entries share the same (container, dest) —
 //     duplicate destinations on the same container would render
 //     ambiguously.
 //
@@ -250,15 +250,15 @@ func ValidateGitFlags(syncs []GitSyncFlagSpec, mappings []GitMappingFlagSpec, ba
 	seen := map[destKey]int{}
 	for i, m := range mappings {
 		if !syncNames[m.GitSync] {
-			return fmt.Errorf("--gitmap[%d] gitsync %q: no matching --gitsync entry", i, m.GitSync)
+			return fmt.Errorf("--gitsync-map[%d] gitsync %q: no matching --gitsync entry", i, m.GitSync)
 		}
 		if !containerNames[m.Container] {
-			return fmt.Errorf("--gitmap[%d] container %q: must be %q or one of the declared --backend names",
+			return fmt.Errorf("--gitsync-map[%d] container %q: must be %q or one of the declared --backend names",
 				i, m.Container, HarnessContainer)
 		}
 		k := destKey{m.Container, m.Dest}
 		if prior, dup := seen[k]; dup {
-			return fmt.Errorf("--gitmap[%d]: duplicate (container=%q, dest=%q) — already set by --gitmap[%d]",
+			return fmt.Errorf("--gitsync-map[%d]: duplicate (container=%q, dest=%q) — already set by --gitsync-map[%d]",
 				i, m.Container, m.Dest, prior)
 		}
 		seen[k] = i

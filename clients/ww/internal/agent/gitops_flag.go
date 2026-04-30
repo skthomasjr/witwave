@@ -6,7 +6,7 @@ import (
 )
 
 // GitOpsFlagSpec is the parsed form of one `--gitops` value. The flag is
-// convention-driven sugar over `--gitsync` + N+1 `--gitmap` entries —
+// convention-driven sugar over `--gitsync` + N+1 `--gitsync-map` entries —
 // see ExpandGitOps for the fan-out rule.
 type GitOpsFlagSpec struct {
 	// URL is the git repository URL (HTTPS or SSH).

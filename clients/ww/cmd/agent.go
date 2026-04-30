@@ -994,11 +994,11 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 				return err
 			}
 			// --gitops is convention-driven sugar over --gitsync + N+1
-			// --gitmap. Expand it AFTER explicit flags are parsed and
+			// --gitsync-map. Expand it AFTER explicit flags are parsed and
 			// PREPEND its synthesised entries so the explicit ones
 			// appear later in ValidateGitFlags' duplicate-check pass —
 			// duplicate (container, dest) pairs are flagged as a clear
-			// "already set by --gitmap[N]" error against the explicit
+			// "already set by --gitsync-map[N]" error against the explicit
 			// override, not against the implicit convention default.
 			gitOpsSpec, err := agent.ParseGitOps(gitOps)
 			if err != nil {
@@ -1074,11 +1074,11 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 	cmd.Flags().StringVar(&gitOps, "gitops", "",
 		"Convention-driven shortcut for the agent's identity-from-git wiring. "+
 			"Form: <url>[@<branch>]:<repo-path>. Expands at parse time to one --gitsync "+
-			"entry (sync name derived from the URL's basename) plus one --gitmap per "+
+			"entry (sync name derived from the URL's basename) plus one --gitsync-map per "+
 			"declared --backend (mapping <repo-path>/.<backend-name>/ → "+
 			"/home/agent/.<backend-name>/) plus one harness mapping "+
 			"(<repo-path>/.witwave/ → /home/agent/.witwave/). Composes with --gitsync "+
-			"and --gitmap — additional explicit entries are merged in alongside the "+
+			"and --gitsync-map — additional explicit entries are merged in alongside the "+
 			"convention defaults; duplicate (container, dest) pairs reject at parse "+
 			"time so a typo can't silently shadow the convention.")
 	cmd.Flags().StringArrayVar(&gitSyncs, "gitsync", nil,
@@ -1086,7 +1086,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			"Populates spec.gitSyncs[] — the operator runs an init+sidecar pair that clones "+
 			"the named repo into /git/<name>. The CLI never accepts inline credentials; pair "+
 			"with --gitsync-secret to wire a pre-created Kubernetes Secret for private repos.")
-	cmd.Flags().StringArrayVar(&gitMaps, "gitmap", nil,
+	cmd.Flags().StringArrayVar(&gitMaps, "gitsync-map", nil,
 		"Declare a gitMapping (repeatable). Form: [<container>=]<gitsync>:<src>:<dest>. "+
 			"<container> defaults to `harness`; pass a backend name from --backend to land "+
 			"the mapping on that backend container instead. <gitsync> must reference a "+
