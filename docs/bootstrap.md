@@ -268,26 +268,9 @@ Each `--persist` line provisions one PVC per backend
 this is a symbolic convention — useful for verifying the
 per-backend persistence mechanic without dragging in
 `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_API_KEY`. When iris
-swaps to a real LLM backend later, the same flag has more to chew
-on. For a forward look, the same agent with one claude backend
-instead would be:
-
-```bash
-ww agent create iris \
-  --namespace witwave-self \
-  --backend claude \
-  --workspace witwave-self \
-  --gitops https://github.com/witwave-ai/witwave.git@main:.agents/self/iris \
-  --persist claude=10Gi
-```
-
-That `--persist claude=10Gi` provisions a 10Gi PVC named
-`iris-claude-data` and projects it via subPath into four mounts on
-the claude container: `projects/`, `sessions/`, `backups/`,
-`memory/` under `/home/agent/.claude/`. Conversation history and
-Claude Code session state survive pod restart. Storage class
-defaults to the cluster default — append `@<class>` to override
-(e.g. `--persist claude=10Gi@gp3`).
+swaps to a real LLM backend later, the same flag picks up that
+backend's type-derived preset (claude → 4 subPaths, codex → 2,
+gemini → 1).
 
 ### Long-hand equivalent (the explicit form)
 
