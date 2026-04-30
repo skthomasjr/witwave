@@ -268,8 +268,9 @@ defaults to the cluster default — append `@<class>` to override
 
 ### Long-hand equivalent (the explicit form)
 
-`--gitops` is convention-driven sugar over two more general repeatable
-flags that map 1:1 to the WitwaveAgent CRD's gitSync surface:
+Both the gitOps and persist flags have convention-driven shortcuts
+plus more general long-hand counterparts that map 1:1 to the
+WitwaveAgent CRD fields:
 
 - `--gitsync <name>=<url>[@<branch>]` declares one cloned repo, named
   so mappings can reference it. Populates one `Spec.GitSyncs[]` entry.
@@ -277,8 +278,14 @@ flags that map 1:1 to the WitwaveAgent CRD's gitSync surface:
   GitMappings entry. `<container>` is `harness` (the default —
   populates `Spec.GitMappings[]`) or any backend name from `--backend`
   (populates that backend's `BackendSpec.GitMappings[]`).
+- `--persist-mount <backend-name>=<subpath>:<mountpath>` overrides the
+  type-derived default mount list on a backend's PVC. Replace-on-
+  presence: any `--persist-mount` for a backend takes ownership of
+  the FULL mount list, so a custom layout can never accidentally
+  inherit a surprise preset entry.
 
-Iris's `--gitops` line above is exactly equivalent to:
+Iris's `--gitops` + default `--persist` lines above are exactly
+equivalent to:
 
 ```bash
 ww agent create iris \
@@ -289,7 +296,11 @@ ww agent create iris \
   --gitsync witwave=https://github.com/witwave-ai/witwave.git@main \
   --gitmap witwave:.agents/self/iris/.witwave/:/home/agent/.witwave/ \
   --gitmap echo-1=witwave:.agents/self/iris/.echo-1/:/home/agent/.echo-1/ \
-  --gitmap echo-2=witwave:.agents/self/iris/.echo-2/:/home/agent/.echo-2/
+  --gitmap echo-2=witwave:.agents/self/iris/.echo-2/:/home/agent/.echo-2/ \
+  --persist echo-1=1Gi \
+  --persist-mount echo-1=memory:/home/agent/.echo/memory \
+  --persist echo-2=1Gi \
+  --persist-mount echo-2=memory:/home/agent/.echo/memory
 ```
 
 The two shapes **compose** — they aren't either/or. Pass `--gitops` for
