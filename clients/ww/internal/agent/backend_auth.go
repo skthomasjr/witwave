@@ -153,7 +153,7 @@ func KnownCredentialProfiles() string {
 // <agent>-<backend> pair so a multi-backend agent's creds don't
 // collide.
 func backendCredentialSecretName(agentName, backendName string) string {
-	return agentName + "-" + backendName + "-credentials"
+	return agentName + "-" + backendName
 }
 
 // resolve is called once per --auth-* flag entry. Returns the resolved

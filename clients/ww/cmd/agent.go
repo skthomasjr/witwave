@@ -1306,7 +1306,7 @@ func newAgentDeleteCmd(f *agentFlags) *cobra.Command {
 		Long: "Deletes the WitwaveAgent CR. The operator cascades pod + Service\n" +
 			"teardown via owner references — no manual cleanup needed on the\n" +
 			"cluster side. By default ww-managed backend credential Secrets\n" +
-			"(named <agent>-<backend>-credentials, minted by --secret-from-env /\n" +
+			"(named <agent>-<backend>, minted by --secret-from-env /\n" +
 			"--auth / --auth-set on `ww agent create`) are also reaped — the\n" +
 			"per-agent naming makes them unambiguous orphans, and the\n" +
 			"per-backend PVCs already cascade-delete via owner refs. Pass\n" +
@@ -1352,7 +1352,7 @@ func newAgentDeleteCmd(f *agentFlags) *cobra.Command {
 			"gitSyncs[]. Opt-in because gitSync Secrets may be shared across agents.")
 	cmd.Flags().BoolVar(&keepBackendSecrets, "keep-backend-secrets", false,
 		"Preserve the ww-managed backend credential Secrets (per-agent, named "+
-			"<agent>-<backend>-credentials). Default: delete them alongside the "+
+			"<agent>-<backend>). Default: delete them alongside the "+
 			"agent. Secrets without app.kubernetes.io/managed-by=ww are never "+
 			"touched regardless.")
 	cmd.Flags().BoolVar(&purge, "purge", false,

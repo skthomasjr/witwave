@@ -267,7 +267,7 @@ wired.
 
 When you have API keys in your shell, credentials are a one-flag-per-
 backend add. `--auth <backend>=<profile>` reads the conventional env
-vars for that profile + mints one `<agent>-<backend>-credentials`
+vars for that profile + mints one `<agent>-<backend>`
 Secret per backend (labelled `managed-by: ww` so `delete --purge`
 reaps it):
 
@@ -328,7 +328,7 @@ dev-loop ergonomics — the minted Secret lives on the cluster
 forever until someone rotates or deletes it.
 
 To edit or unset one key in an existing credential Secret without
-recreating the agent, use `kubectl edit secret <agent>-<backend>-credentials -n <ns>`
+recreating the agent, use `kubectl edit secret <agent>-<backend> -n <ns>`
 for now. A `ww agent backend auth {set, unset, list, show}` subtree
 is on the roadmap.
 
@@ -540,7 +540,7 @@ Expected:
 
 ```
 Action:    add backend "claude" (type=claude, port=8002) on WitwaveAgent "consensus" in witwave
-  credentials: profile "oauth" → mint Secret "consensus-claude-credentials"
+  credentials: profile "oauth" → mint Secret "consensus-claude"
   backend.yaml (gitSync-managed) — edit the repo's file to list the new backend (routing still flows through the primary)
   repo scaffold: write .agents/consensus/.claude/agent-card.md to <you>/my-witwave-config (branch main)
 
@@ -552,10 +552,10 @@ Pushed main.
 **What happened, in order:**
 
 1. Auth resolved: `--auth oauth` read `$CLAUDE_CODE_OAUTH_TOKEN` and
-   minted `consensus-claude-credentials` in the namespace (labelled
+   minted `consensus-claude` in the namespace (labelled
    `managed-by: ww` so `delete --purge` reaps it).
 2. CR update: `spec.backends[]` appended with `claude` at port 8002
-   and `credentials.existingSecret = consensus-claude-credentials`.
+   and `credentials.existingSecret = consensus-claude`.
 3. Repo scaffold: `.agents/consensus/.claude/agent-card.md` +
    `CLAUDE.md` (behavioural stub) written, `backend.yaml`
    regenerated to list the new backend, one commit pushed.
@@ -835,7 +835,7 @@ implemented):
   edits to a backend's credential Secret (add a new key, drop an
   old one, list keys, show values masked or with `--reveal`)
   without recreating the agent. Today's workaround is
-  `kubectl edit secret <agent>-<backend>-credentials -n <ns>`.
+  `kubectl edit secret <agent>-<backend> -n <ns>`.
 - **`ww agent add-job <file>`** / `add-task` / `add-trigger` etc. —
   materialise dormant-subsystem content into the repo with the
   right frontmatter shape, eliminating the need to hand-author

@@ -166,7 +166,7 @@ func TestBackendAdd_WithAuthProfile_MintsSecret(t *testing.T) {
 
 	// Secret was minted with the predictable name and the conventional key.
 	sec, err := k8s.CoreV1().Secrets("default").Get(
-		context.Background(), "hello-claude-credentials", metav1.GetOptions{},
+		context.Background(), "hello-claude", metav1.GetOptions{},
 	)
 	if err != nil {
 		t.Fatalf("Secret not minted: %v", err)
@@ -180,8 +180,8 @@ func TestBackendAdd_WithAuthProfile_MintsSecret(t *testing.T) {
 	backends, _, _ := unstructured.NestedSlice(updated.Object, "spec", "backends")
 	added := backends[1].(map[string]interface{})
 	creds, _ := added["credentials"].(map[string]interface{})
-	if creds == nil || creds["existingSecret"] != "hello-claude-credentials" {
-		t.Errorf("backend credentials = %+v; want existingSecret=hello-claude-credentials", creds)
+	if creds == nil || creds["existingSecret"] != "hello-claude" {
+		t.Errorf("backend credentials = %+v; want existingSecret=hello-claude", creds)
 	}
 }
 

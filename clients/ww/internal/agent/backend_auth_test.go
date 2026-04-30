@@ -185,11 +185,11 @@ func TestResolve_Inline_MintsSecretWithKVPairs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if secretName != "iris-claude-credentials" {
-		t.Errorf("secretName = %q; want iris-claude-credentials", secretName)
+	if secretName != "iris-claude" {
+		t.Errorf("secretName = %q; want iris-claude", secretName)
 	}
 	sec, err := k8sClient.CoreV1().Secrets("witwave").Get(
-		context.Background(), "iris-claude-credentials", metav1.GetOptions{},
+		context.Background(), "iris-claude", metav1.GetOptions{},
 	)
 	if err != nil {
 		t.Fatalf("Secret not minted: %v", err)
@@ -242,11 +242,11 @@ func TestResolve_Profile_MintsSecretWithConventionalKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if secretName != "iris-claude-credentials" {
-		t.Errorf("secret name = %q; want iris-claude-credentials", secretName)
+	if secretName != "iris-claude" {
+		t.Errorf("secret name = %q; want iris-claude", secretName)
 	}
 
-	sec, err := k8sClient.CoreV1().Secrets("witwave").Get(context.Background(), "iris-claude-credentials", metav1.GetOptions{})
+	sec, err := k8sClient.CoreV1().Secrets("witwave").Get(context.Background(), "iris-claude", metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("Secret wasn't minted: %v", err)
 	}
@@ -274,7 +274,7 @@ func TestResolve_Profile_ApiKey_ReadsAnthropicVar(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	sec, _ := k8sClient.CoreV1().Secrets("witwave").Get(context.Background(), "iris-claude-credentials", metav1.GetOptions{})
+	sec, _ := k8sClient.CoreV1().Secrets("witwave").Get(context.Background(), "iris-claude", metav1.GetOptions{})
 	if sec.StringData["ANTHROPIC_API_KEY"] != "sk-api-key-fake-456" {
 		t.Error("Secret key ANTHROPIC_API_KEY not set to env value")
 	}
@@ -408,7 +408,7 @@ func TestUpsert_RefusesToClobberUserManagedSecret(t *testing.T) {
 	// Pre-create a user-managed Secret at the name ww would mint into.
 	preExisting := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "iris-claude-credentials",
+			Name:      "iris-claude",
 			Namespace: "witwave",
 			// No managed-by label → user-owned.
 		},
@@ -434,7 +434,7 @@ func TestUpsert_UpdatesWWManagedSecret(t *testing.T) {
 	// Pre-create a ww-managed Secret to simulate a re-run / rotation.
 	preExisting := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "iris-claude-credentials",
+			Name:      "iris-claude",
 			Namespace: "witwave",
 			Labels:    map[string]string{LabelManagedBy: LabelManagedByWW},
 		},
@@ -450,7 +450,7 @@ func TestUpsert_UpdatesWWManagedSecret(t *testing.T) {
 	if _, err := resolver.resolve(context.Background(), k8sClient, "witwave", "iris", "claude"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	got, _ := k8sClient.CoreV1().Secrets("witwave").Get(context.Background(), "iris-claude-credentials", metav1.GetOptions{})
+	got, _ := k8sClient.CoreV1().Secrets("witwave").Get(context.Background(), "iris-claude", metav1.GetOptions{})
 	if got.StringData["ANTHROPIC_API_KEY"] != "rotated-value" {
 		t.Error("ww-managed Secret update didn't rotate the value")
 	}

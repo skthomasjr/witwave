@@ -204,7 +204,7 @@ Reverse order: agent → workspace → operator → namespaces. Each
 command is destructive and cascade-deletes everything it owns.
 
 Delete iris (cascades the pod, Service, per-backend PVC
-`iris-claude-data`, and the ww-managed `iris-claude-credentials`
+`iris-claude-data`, and the ww-managed `iris-claude`
 Secret):
 
 ```bash

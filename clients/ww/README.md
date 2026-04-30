@@ -465,7 +465,7 @@ Secret):
 
 | Flag              | Shape                        | Behavior                                                                                                                                                                                         |
 | ----------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `--auth`          | `<backend>=<profile>`        | Named profile reads conventional env var(s) from the shell + mints a `<agent>-<backend>-credentials` Secret. MVP profiles: `claude: api-key \| oauth`.                                           |
+| `--auth`          | `<backend>=<profile>`        | Named profile reads conventional env var(s) from the shell + mints a `<agent>-<backend>` Secret. MVP profiles: `claude: api-key \| oauth`.                                                       |
 | `--secret-from-env` | `<backend>=<VAR>[,VAR2,...]` | Mint a Secret from named env vars. Each VAR is bare `<NAME>` (Secret key matches name) or a rename `<SRC>:<DEST>` (read `$SRC`, store under key `DEST`).                                       |
 | `--auth-secret`   | `<backend>=<secret-name>`    | Reference an existing Secret (verified, never modified). Production default.                                                                                                                     |
 | `--auth-set`      | `<backend>:<KEY>=<VALUE>`    | Mint a Secret with literal `KEY=VALUE` pairs. Repeatable per `(backend, KEY)`. **Values land in shell history + ps output — for production tokens prefer `--auth-secret` or `--secret-from-env`.** |
@@ -505,7 +505,7 @@ non-colliding name. The `created-by` annotation on `--auth-set`-minted Secrets r
 values don't leak into `kubectl get secret -o yaml` metadata.
 
 Editing or removing one key in an existing credential Secret without recreating the agent isn't covered by ww yet — use
-`kubectl edit secret <agent>-<backend>-credentials -n <ns>` for now. A follow-up
+`kubectl edit secret <agent>-<backend> -n <ns>` for now. A follow-up
 `ww agent backend auth set/unset/list/show` subtree is on the roadmap.
 
 Namespace handling follows DESIGN.md NS-1..5:
