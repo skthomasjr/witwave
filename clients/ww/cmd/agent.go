@@ -993,7 +993,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			// --gitops is convention-driven sugar over --gitsync + N+1
+			// --gitsync-bundle is convention-driven sugar over --gitsync + N+1
 			// --gitsync-map. Expand it AFTER explicit flags are parsed and
 			// PREPEND its synthesised entries so the explicit ones
 			// appear later in ValidateGitFlags' duplicate-check pass —
@@ -1071,7 +1071,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			"Equivalent to a follow-up `ww workspace bind <agent> <workspace>`. "+
 			"Each named workspace must already exist in the agent's namespace; "+
 			"v1alpha1 only supports same-namespace binding.")
-	cmd.Flags().StringVar(&gitOps, "gitops", "",
+	cmd.Flags().StringVar(&gitOps, "gitsync-bundle", "",
 		"Convention-driven shortcut for the agent's identity-from-git wiring. "+
 			"Form: <url>[@<branch>]:<repo-path>. Expands at parse time to one --gitsync "+
 			"entry (sync name derived from the URL's basename) plus one --gitsync-map per "+

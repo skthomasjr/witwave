@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// GitOpsFlagSpec is the parsed form of one `--gitops` value. The flag is
+// GitOpsFlagSpec is the parsed form of one `--gitsync-bundle` value. The flag is
 // convention-driven sugar over `--gitsync` + N+1 `--gitsync-map` entries —
 // see ExpandGitOps for the fan-out rule.
 type GitOpsFlagSpec struct {
@@ -23,7 +23,7 @@ type GitOpsFlagSpec struct {
 	RepoPath string
 }
 
-// ParseGitOps converts a single `--gitops` flag value to a structured
+// ParseGitOps converts a single `--gitsync-bundle` flag value to a structured
 // entry. Form:
 //
 //	<url>[@<branch>]:<repo-path>
@@ -50,21 +50,21 @@ func ParseGitOps(raw string) (GitOpsFlagSpec, error) {
 	}
 	colon := strings.LastIndexByte(raw, ':')
 	if colon < 0 {
-		return GitOpsFlagSpec{}, fmt.Errorf("--gitops %q: form is <url>[@<branch>]:<repo-path>", raw)
+		return GitOpsFlagSpec{}, fmt.Errorf("--gitsync-bundle %q: form is <url>[@<branch>]:<repo-path>", raw)
 	}
 	urlAndBranch := strings.TrimSpace(raw[:colon])
 	repoPath := strings.TrimSpace(raw[colon+1:])
 	if urlAndBranch == "" {
-		return GitOpsFlagSpec{}, fmt.Errorf("--gitops %q: empty URL", raw)
+		return GitOpsFlagSpec{}, fmt.Errorf("--gitsync-bundle %q: empty URL", raw)
 	}
 	if repoPath == "" {
-		return GitOpsFlagSpec{}, fmt.Errorf("--gitops %q: empty repo-path", raw)
+		return GitOpsFlagSpec{}, fmt.Errorf("--gitsync-bundle %q: empty repo-path", raw)
 	}
 	url, branch := splitURLBranch(urlAndBranch)
 	return GitOpsFlagSpec{URL: url, Branch: branch, RepoPath: repoPath}, nil
 }
 
-// ExpandGitOps fans the convention-driven `--gitops` short-form into
+// ExpandGitOps fans the convention-driven `--gitsync-bundle` short-form into
 // the long-form data structures the rest of the build path already
 // consumes — one GitSyncFlagSpec entry plus one harness-targeted
 // GitMappingFlagSpec plus one per-backend GitMappingFlagSpec for each
@@ -81,7 +81,7 @@ func ParseGitOps(raw string) (GitOpsFlagSpec, error) {
 // and `.agents/self/iris/` produce the same mappings.
 //
 // Returns (nil, nil) when spec is the zero value (caller didn't pass
-// `--gitops`).
+// `--gitsync-bundle`).
 func ExpandGitOps(spec GitOpsFlagSpec, backends []BackendSpec) ([]GitSyncFlagSpec, []GitMappingFlagSpec) {
 	if spec.URL == "" {
 		return nil, nil
