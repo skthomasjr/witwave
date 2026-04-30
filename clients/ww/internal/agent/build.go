@@ -177,6 +177,26 @@ func Build(opts BuildOptions) (*unstructured.Unstructured, error) {
 				"existingSecret": b.CredentialSecret,
 			}
 		}
+		if b.Storage != nil {
+			storage := map[string]interface{}{
+				"enabled": true,
+				"size":    b.Storage.Size,
+			}
+			if b.Storage.StorageClassName != "" {
+				storage["storageClassName"] = b.Storage.StorageClassName
+			}
+			if len(b.Storage.Mounts) > 0 {
+				mounts := make([]interface{}, 0, len(b.Storage.Mounts))
+				for _, m := range b.Storage.Mounts {
+					mounts = append(mounts, map[string]interface{}{
+						"subPath":   m.SubPath,
+						"mountPath": m.MountPath,
+					})
+				}
+				storage["mounts"] = mounts
+			}
+			entry["storage"] = storage
+		}
 		if maps := perBackendMappings[b.Name]; len(maps) > 0 {
 			entry["gitMappings"] = maps
 		}

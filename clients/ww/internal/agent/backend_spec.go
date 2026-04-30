@@ -44,6 +44,13 @@ type BackendSpec struct {
 	// become env vars visible to the backend. Populated by Create's
 	// auth-resolution phase (see BackendAuthResolver.resolve).
 	CredentialSecret string
+
+	// Storage, when non-nil, stamps `spec.backends[].storage` on the
+	// generated CR. The operator reconciles a per-backend PVC named
+	// `<agent>-<backend>-data` and projects it via subPath into the
+	// container at each Mount.MountPath. Populated by Create's
+	// `--persist` flag-resolution phase (see ApplyBackendPersist).
+	Storage *BackendStorageSpec
 }
 
 // ParseBackendSpecs converts the repeatable `--backend` flag values

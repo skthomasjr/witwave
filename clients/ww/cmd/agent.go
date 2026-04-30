@@ -937,6 +937,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 		gitSyncs        []string
 		gitMaps         []string
 		gitSyncSecrets  []string
+		persist         []string
 		authProfiles    []string
 		authFromEnv     []string
 		authSecrets     []string
@@ -987,6 +988,14 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			persistMap, err := agent.ParseBackendPersist(persist)
+			if err != nil {
+				return err
+			}
+			specs, err = agent.ApplyBackendPersist(specs, persistMap)
+			if err != nil {
+				return err
+			}
 			return runAgentCreate(cmd.Context(), f, args[0], specs, !noWait, timeout, createNamespace, team, workspaces, syncs, maps, auth)
 		},
 	}
@@ -1028,6 +1037,13 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			"Form: <gitsync-name>=<k8s-secret>. The Secret should carry the gitSync env "+
 			"variables (typically GITSYNC_USERNAME/GITSYNC_PASSWORD or GITSYNC_SSH_KEY_FILE). "+
 			"<gitsync-name> must reference a --gitsync entry; CLI never accepts inline tokens.")
+	cmd.Flags().StringArrayVar(&persist, "persist", nil,
+		"Provision a per-backend PVC for session/memory persistence (repeatable). "+
+			"Form: <backend-name>=<size>[@<storage-class>]. Operator creates a PVC named "+
+			"<agent>-<backend>-data and projects it into the container at default mount "+
+			"paths derived from the backend's TYPE: claude → projects/sessions/backups/memory, "+
+			"codex → memory/sessions, gemini → memory. echo is intentionally stateless and "+
+			"the flag is rejected for it.")
 	cmd.Flags().StringArrayVar(&authProfiles, "auth", nil,
 		fmt.Sprintf(
 			"Per-backend auth profile. Repeatable. Form: <backend>=<profile>.\n"+
