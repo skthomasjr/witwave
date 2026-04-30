@@ -58,7 +58,7 @@ type CreateOptions struct {
 	// joins the namespace-wide manifest before the label lands.
 	Team string
 
-	// BackendAuth carries the resolved --auth / --secret-from-env /
+	// BackendAuth carries the resolved --auth / --backend-secret-from-env /
 	// --auth-secret flag values, one per backend the user wants to
 	// wire credentials for. Backends not referenced here create
 	// without a credentials field (fine for echo, a footgun for
@@ -92,7 +92,7 @@ type CreateOptions struct {
 	// GitSyncFromEnv, when non-nil, resolves a single per-agent gitSync
 	// credential Secret from the named shell vars and stamps it onto
 	// every GitSyncs[] entry that doesn't already carry an explicit
-	// --gitsync-secret reference. Mirrors --secret-from-env's
+	// --gitsync-secret reference. Mirrors --backend-secret-from-env's
 	// "lift from .env, mint a Secret" posture but targets the gitSync
 	// sidecar instead of a backend container.
 	GitSyncFromEnv *GitSyncFromEnvSpec

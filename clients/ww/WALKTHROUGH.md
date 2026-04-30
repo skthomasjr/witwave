@@ -305,9 +305,9 @@ pair to the same Secret). Pick ONE mode per backend:
 | Flag | Shape | When to use |
 |---|---|---|
 | `--auth` | `<backend>=<profile>` | Named profile reads conventional env var(s). Known profiles: `claude: api-key \| oauth`. |
-| `--secret-from-env` | `<backend>=<VAR>[,VAR2,...]` | Mint a Secret from named env vars. Secret keys match the var names verbatim. |
+| `--backend-secret-from-env` | `<backend>=<VAR>[,VAR2,...]` | Mint a Secret from named env vars. Secret keys match the var names verbatim. |
 | `--auth-secret` | `<backend>=<secret-name>` | Reference a Secret you already created (verified, never modified). Production default for ops with their own rotation story. |
-| `--auth-set` | `<backend>:<KEY>=<VALUE>` | Mint a Secret with literal `KEY=VALUE` pairs. Repeatable per `(backend, KEY)`. **Values land in shell history + ps output — for production tokens prefer `--auth-secret` or `--secret-from-env`.** |
+| `--auth-set` | `<backend>:<KEY>=<VALUE>` | Mint a Secret with literal `KEY=VALUE` pairs. Repeatable per `(backend, KEY)`. **Values land in shell history + ps output — for production tokens prefer `--auth-secret` or `--backend-secret-from-env`.** |
 
 ```bash
 # Inline KEY=VALUE pairs — useful for ad-hoc credentials or shapes
@@ -323,7 +323,7 @@ ww agent create iris \
 `--auth-secret` is the production path — pre-create a Secret with
 `kubectl create secret generic ... --from-literal=<KEY>=<value>` and
 rotate it on your own schedule; ww just references it. The three
-mint variants (`--auth`, `--secret-from-env`, `--auth-set`) are
+mint variants (`--auth`, `--backend-secret-from-env`, `--auth-set`) are
 dev-loop ergonomics — the minted Secret lives on the cluster
 forever until someone rotates or deletes it.
 
@@ -817,7 +817,7 @@ Verbs already shipped — fully documented above:
 - **Interaction:** `send`, `logs`, `events`
 - **Scaffold:** `scaffold` (single + multi-backend, `--no-heartbeat`, merge-on-existing)
 - **GitOps:** `git add / list / remove` (three auth modes, `--delete-secret` on remove)
-- **Backend lifecycle:** `backend add / remove / rename` (four auth modes — `--auth` profile / `--secret-from-env` / `--auth-secret` / `--auth-set` literal KEY=VALUE pairs — optional repo-folder scaffold on add, `--remove-repo-folder` / `--no-repo-rename` on the others)
+- **Backend lifecycle:** `backend add / remove / rename` (four auth modes — `--auth` profile / `--backend-secret-from-env` / `--auth-secret` / `--auth-set` literal KEY=VALUE pairs — optional repo-folder scaffold on add, `--remove-repo-folder` / `--no-repo-rename` on the others)
 - **Team membership (advanced, optional):** `team join / leave / list / show` — subset peer discovery
   within a namespace via the `witwave.ai/team` label. Most users don't need this; the namespace-wide
   manifest already groups agents sensibly. If you want to split one namespace into unrelated cohorts,

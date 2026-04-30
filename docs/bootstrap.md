@@ -188,14 +188,14 @@ command:
 ```bash
 ww agent create iris \
   --namespace witwave-self \
-  --backend claude \
   --workspace witwave-self \
   --with-persistence \
+  --backend claude \
+  --backend-secret-from-env claude=CLAUDE_CODE_OAUTH_TOKEN \
+  --backend-secret-from-env claude=GITHUB_TOKEN_IRIS:GITHUB_TOKEN \
+  --backend-secret-from-env claude=GITHUB_USER_IRIS:GITHUB_USER \
   --gitops https://github.com/witwave-ai/witwave.git@main:.agents/self/iris \
-  --gitsync-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD \
-  --secret-from-env claude=CLAUDE_CODE_OAUTH_TOKEN \
-  --secret-from-env claude=GITHUB_TOKEN_IRIS:GITHUB_TOKEN \
-  --secret-from-env claude=GITHUB_USER_IRIS:GITHUB_USER
+  --gitsync-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD
 ```
 
 Verify iris is `Ready` and bound to the workspace:

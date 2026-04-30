@@ -15,7 +15,7 @@ import (
 // ---------------------------------------------------------------------------
 // gitSync credential wiring for `ww agent create --gitsync-from-env`.
 //
-// Sibling of --secret-from-env (which targets backend containers via envFrom).
+// Sibling of --backend-secret-from-env (which targets backend containers via envFrom).
 // This flag lifts two shell vars (the user's PAT or password + username) into
 // a single per-agent Secret with the standard git-sync env keys, and stamps
 // the Secret reference onto every gitSyncs[] entry on the agent. One Secret

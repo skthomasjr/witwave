@@ -331,7 +331,7 @@ func newAgentBackendAddCmd(f *agentFlags) *cobra.Command {
 			"Backend spec follows the same shape as `ww agent create --backend`:\n" +
 			"  <type>         — name = type (single-backend shortcut)\n" +
 			"  <name>:<type>  — explicit name + type pair (for multiple of a type)\n\n" +
-			"Credentials: pick one of --auth / --secret-from-env / --auth-secret.\n" +
+			"Credentials: pick one of --auth / --backend-secret-from-env / --auth-secret.\n" +
 			"Omit all three when the backend type needs no credentials (echo).\n" +
 			"LLM backends added without credentials will start the pod but error\n" +
 			"on first request — a yellow warning appears in the preflight banner.",
@@ -360,14 +360,14 @@ func newAgentBackendAddCmd(f *agentFlags) *cobra.Command {
 	bindAgentMutatingFlags(cmd, f)
 	cmd.Flags().StringVar(&authProfile, "auth", "",
 		fmt.Sprintf("Named auth profile (e.g. `oauth`, `api-key`). Known: %s", agent.KnownCredentialProfiles()))
-	cmd.Flags().StringVar(&secretFromEnv, "secret-from-env", "",
+	cmd.Flags().StringVar(&secretFromEnv, "backend-secret-from-env", "",
 		"Mint a K8s Secret from arbitrary env vars. Form: <VAR1>[,VAR2,...]. Secret keys match names verbatim.")
 	cmd.Flags().StringVar(&authSecret, "auth-secret", "",
 		"Reference an existing K8s Secret (verified, not modified)")
 	cmd.Flags().StringArrayVar(&authSet, "auth-set", nil,
 		"Mint a Secret with literal KEY=VALUE pairs. Repeatable. Form: <KEY>=<VALUE>. "+
 			"SECURITY: values land in shell history + ps output — for production tokens "+
-			"prefer --auth-secret or --secret-from-env.")
+			"prefer --auth-secret or --backend-secret-from-env.")
 	cmd.Flags().BoolVar(&noRepoFolder, "no-repo-folder", false,
 		"Skip the repo-side `.agents/<…>/.<name>/` scaffold (CR-only change)")
 	cmd.Flags().StringVar(&commitMessage, "commit-message", "",
@@ -397,7 +397,7 @@ func resolveSingleBackendAuth(backend, profile, fromEnv, secret string, set []st
 	}
 	if modes > 1 {
 		return agent.BackendAuthResolver{}, fmt.Errorf(
-			"pick at most one of --auth / --secret-from-env / --auth-secret / --auth-set")
+			"pick at most one of --auth / --backend-secret-from-env / --auth-secret / --auth-set")
 	}
 	switch {
 	case profile != "":
@@ -1132,7 +1132,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 				"Known profiles: %s",
 			agent.KnownCredentialProfiles(),
 		))
-	cmd.Flags().StringArrayVar(&secretFromEnv, "secret-from-env", nil,
+	cmd.Flags().StringArrayVar(&secretFromEnv, "backend-secret-from-env", nil,
 		"Mint a K8s Secret from arbitrary env vars and wire it as `envFrom` on a "+
 			"backend container. Repeatable. Form: <backend>=<VAR1>[,VAR2,...]. Each "+
 			"VAR is either bare `<NAME>` (read $NAME, store under Secret key NAME) "+
@@ -1146,7 +1146,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 	cmd.Flags().StringArrayVar(&authSet, "auth-set", nil,
 		"Mint a Secret with literal KEY=VALUE pairs. Repeatable per (backend, KEY). "+
 			"Form: <backend>:<KEY>=<VALUE>. SECURITY: values land in shell history + ps "+
-			"output — for production tokens prefer --auth-secret or --secret-from-env.")
+			"output — for production tokens prefer --auth-secret or --backend-secret-from-env.")
 	return cmd
 }
 
@@ -1326,7 +1326,7 @@ func newAgentDeleteCmd(f *agentFlags) *cobra.Command {
 		Long: "Deletes the WitwaveAgent CR. The operator cascades pod + Service\n" +
 			"teardown via owner references — no manual cleanup needed on the\n" +
 			"cluster side. By default ww-managed backend credential Secrets\n" +
-			"(named <agent>-<backend>, minted by --secret-from-env /\n" +
+			"(named <agent>-<backend>, minted by --backend-secret-from-env /\n" +
 			"--auth / --auth-set on `ww agent create`) are also reaped — the\n" +
 			"per-agent naming makes them unambiguous orphans, and the\n" +
 			"per-backend PVCs already cascade-delete via owner refs. Pass\n" +
