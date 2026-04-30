@@ -29,12 +29,8 @@ listed here yet, it isn't part of the bootstrap yet.
 
 ## Targets
 
-This doc is currently written against **Docker Desktop** (single-node local
-Kubernetes), since that's where the self-ecosystem is being brought up first.
-A future cut will target **AWS EKS** for the production deployment. Where a
-prerequisite differs between the two, the section calls out both paths
-explicitly and the Docker Desktop path is the primary; EKS deltas appear as
-sub-bullets.
+This doc currently targets **Docker Desktop** (single-node local
+Kubernetes).
 
 Conventions used by every command in this doc:
 
@@ -49,9 +45,7 @@ Conventions used by every command in this doc:
 ### Cluster + tools
 
 - A Kubernetes cluster reachable via your current kubeconfig context.
-  - **Docker Desktop:** enable Kubernetes in Docker Desktop settings.
-  - **EKS (future):** a cluster with at least one node group sized for the
-    agent pods.
+  Enable Kubernetes in Docker Desktop settings.
 - The `ww` CLI installed (via the universal installer or Homebrew tap):
 
   ```bash
@@ -95,30 +89,13 @@ the in-container env-var names the SDK and tooling expect:
 `GITHUB_USER_IRIS` are renamed to `GITHUB_TOKEN` / `GITHUB_USER`
 inside the container.
 
-### Storage: an access mode the cluster can satisfy
+### Storage
 
-The shared-volume requirement for a WitwaveWorkspace is "every binding
-agent pod can mount the same PVC concurrently". On a multi-node cluster
-this requires a `ReadWriteMany`-capable storage class. On a single-node
-cluster `ReadWriteOnce` is sufficient — Kubernetes' RWO contract is "one
-node at a time", and a single-node cluster only has the one node, so any
-number of pods on it can share an RWO PVC.
-
-**Docker Desktop (primary):** Docker Desktop ships a single `hostpath`
-storage class which is `ReadWriteOnce`. No extra provisioner is needed —
-the workspace just declares its volume with `:rwo` so the operator
-provisions a hostpath PVC and every agent pod (all on the only node)
-mounts it directly. The shared volume lives on Docker Desktop's underlying
-Linux VM filesystem.
-
-**EKS (future):** install the [EFS CSI driver][efs-csi] and create a
-StorageClass backed by an EFS file system. EFS is natively `ReadWriteMany`
-across nodes; the workspace volume declaration in Step 2 then drops the
-`:rwo` suffix (RWM is the default) and adds `@<your-efs-class-name>` so the
-operator provisions an EFS-backed PVC. Recipe to be added when the EKS
-deployment lands.
-
-[efs-csi]: https://github.com/kubernetes-sigs/aws-efs-csi-driver
+Docker Desktop ships a single `hostpath` storage class which is
+`ReadWriteOnce`. The workspace declares its volumes with `:rwo` so the
+operator provisions hostpath PVCs and every agent pod (all on the only
+node) mounts them directly. The shared volume lives on Docker Desktop's
+underlying Linux VM filesystem.
 
 ## Step 1 — Install the witwave-operator
 
@@ -168,13 +145,9 @@ ww workspace create witwave-self \
 ```
 
 The `--volume` flag's form is `<name>=<size>[@<storageClass>][:<mode>]`.
-Omitting `@<storageClass>` lets the cluster's default storage class win — on
-Docker Desktop that's the bundled `hostpath` class. The `:rwo` suffix asks
-for `ReadWriteOnce`, which is what `hostpath` supports and what works for
-the single-node case (see the storage prerequisite above for the rationale).
-
-On EKS, drop `:rwo` and add `@<your-efs-class-name>` to point at the EFS
-storage class — RWM is the default mode and EFS supports it across nodes.
+Omitting `@<storageClass>` lets the cluster's default storage class win —
+on Docker Desktop that's the bundled `hostpath` class. The `:rwo` suffix
+asks for `ReadWriteOnce`, which is what `hostpath` supports.
 
 Verify:
 
