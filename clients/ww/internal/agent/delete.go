@@ -38,6 +38,13 @@ type DeleteOptions struct {
 	// `app.kubernetes.io/managed-by: ww` label gates deletion.
 	DeleteGitSecret bool
 
+	// DeleteBackendSecrets, when true, also deletes every ww-managed
+	// credential Secret referenced by the CR's
+	// spec.backends[].credentials.existingSecret. Same label-gated
+	// safety as DeleteGitSecret — Secrets without the
+	// `app.kubernetes.io/managed-by: ww` label are preserved.
+	DeleteBackendSecrets bool
+
 	// CommitMessage overrides the auto-generated commit subject on the
 	// repo-side wipe. Empty → "Remove agent <name>".
 	CommitMessage string
@@ -115,6 +122,10 @@ func Delete(
 	if opts.DeleteGitSecret {
 		managedSecrets = collectGitSecretNames(cr)
 	}
+	var backendSecrets []string
+	if opts.DeleteBackendSecrets {
+		backendSecrets = collectBackendCredentialSecretNames(cr)
+	}
 
 	plan := []k8s.PlanLine{
 		{Key: "Action", Value: fmt.Sprintf("delete WitwaveAgent %q", opts.Name)},
@@ -142,7 +153,20 @@ func Delete(
 		} else {
 			plan = append(plan, k8s.PlanLine{
 				Key:   "Secrets",
-				Value: fmt.Sprintf("delete ww-managed Secret(s): %s", strings.Join(managedSecrets, ", ")),
+				Value: fmt.Sprintf("delete ww-managed gitSync Secret(s): %s", strings.Join(managedSecrets, ", ")),
+			})
+		}
+	}
+	if opts.DeleteBackendSecrets {
+		if len(backendSecrets) == 0 {
+			plan = append(plan, k8s.PlanLine{
+				Key:   "Backend Secrets",
+				Value: "no backend credentials referenced — nothing to delete",
+			})
+		} else {
+			plan = append(plan, k8s.PlanLine{
+				Key:   "Backend Secrets",
+				Value: fmt.Sprintf("delete ww-managed backend Secret(s): %s", strings.Join(backendSecrets, ", ")),
 			})
 		}
 	}
@@ -182,7 +206,9 @@ func Delete(
 	// Phase 3 — credential Secret reap. Soft-failure (warn, don't
 	// error) because the CR is already gone; a stuck Secret is a
 	// minor cleanup item, not an incident.
-	if opts.DeleteGitSecret && len(managedSecrets) > 0 {
+	needSecretReap := (opts.DeleteGitSecret && len(managedSecrets) > 0) ||
+		(opts.DeleteBackendSecrets && len(backendSecrets) > 0)
+	if needSecretReap {
 		k8sClient, err := newKubernetesClient(cfg)
 		if err != nil {
 			fmt.Fprintf(opts.Out, "WARNING: build kubernetes client: %v\n", err)
@@ -193,8 +219,44 @@ func Delete(
 				fmt.Fprintf(opts.Out, "WARNING: delete Secret %s/%s: %v\n", opts.Namespace, secret, err)
 			}
 		}
+		for _, secret := range backendSecrets {
+			if err := deleteIfWWManaged(ctx, k8sClient, opts.Namespace, secret, opts.Out); err != nil {
+				fmt.Fprintf(opts.Out, "WARNING: delete Secret %s/%s: %v\n", opts.Namespace, secret, err)
+			}
+		}
 	}
 	return nil
+}
+
+// collectBackendCredentialSecretNames returns the distinct set of
+// Secret names referenced by the CR's
+// spec.backends[].credentials.existingSecret fields. Mirrors
+// collectGitSecretNames but for the backend-credential side. Callers
+// filter to ww-managed ones at deletion time via the managed-by
+// label gate.
+func collectBackendCredentialSecretNames(cr *unstructured.Unstructured) []string {
+	backends, err := readBackends(cr)
+	if err != nil {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(backends))
+	out := make([]string, 0, len(backends))
+	for _, b := range backends {
+		creds, _ := b["credentials"].(map[string]interface{})
+		if creds == nil {
+			continue
+		}
+		name, _ := creds["existingSecret"].(string)
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	return out
 }
 
 // deleteRepoScope carries the repo-wipe parameters derived once from
