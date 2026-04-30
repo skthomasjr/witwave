@@ -40,6 +40,26 @@ type BackendStorageSpec struct {
 	Mounts []BackendStorageMount
 }
 
+// BackendStorageSizeDefaults enumerates the default PVC size for each
+// known backend type. Used when --persist's <size> is omitted (bare
+// `--persist <name>`) and --with-persistence's per-backend fan-out.
+// Override via `[persist.defaults.<type>].size` in config.toml — the
+// resolver in ApplyBackendPersist consults config first, then this
+// map.
+//
+// Defaults reflect typical disk pressure per backend type:
+//
+//   - echo:   1Gi  — symbolic mount; echo writes nothing real
+//   - claude: 10Gi — projects/sessions/backups/memory accumulate
+//   - codex:  5Gi  — memory + sessions, lighter footprint
+//   - gemini: 5Gi  — JSON session store grows with conversation length
+var BackendStorageSizeDefaults = map[string]string{
+	"echo":   "1Gi",
+	"claude": "10Gi",
+	"codex":  "5Gi",
+	"gemini": "5Gi",
+}
+
 // BackendStoragePresets enumerates the default subPath → mountPath
 // fan-out for each known backend type. Mirrors the chart's example
 // values (charts/witwave/values.yaml ~line 1488) and the dirs each
@@ -140,9 +160,14 @@ func ParseBackendPersistMounts(raw []string) (map[string][]BackendStorageMount, 
 }
 
 // ParseBackendPersist converts repeatable `--persist` flag values to
-// (backend-name → BackendStorageSpec) entries. Form:
+// (backend-name → BackendStorageSpec) entries. Two shapes accepted:
 //
-//	<backend-name>=<size>[@<storage-class>]
+//	<backend-name>                            — type-default size + class
+//	<backend-name>=<size>[@<storage-class>]   — explicit size (and optional class)
+//
+// Bare `<name>` form (size omitted) leaves Size empty in the parsed
+// spec; ApplyBackendPersist fills it from the (config → code) defaults
+// chain.
 //
 // Cross-flag validation (does the backend-name reference an actual
 // --backend? does the backend's type have a default mount preset?)
@@ -155,14 +180,18 @@ func ParseBackendPersist(raw []string) (map[string]BackendStorageSpec, error) {
 		if entry == "" {
 			return nil, fmt.Errorf("--persist[%d]: empty value", i)
 		}
-		eq := strings.IndexByte(entry, '=')
-		if eq < 1 {
-			return nil, fmt.Errorf("--persist[%d] %q: form is <backend-name>=<size>[@<storage-class>]", i, entry)
-		}
-		name := strings.TrimSpace(entry[:eq])
-		rest := strings.TrimSpace(entry[eq+1:])
-		if rest == "" {
-			return nil, fmt.Errorf("--persist[%d] %q: empty size", i, entry)
+		// Two parse shapes:
+		//   <name>=<size>[@<class>]   — explicit
+		//   <name>                    — bare, size resolved from defaults
+		var name, rest string
+		if eq := strings.IndexByte(entry, '='); eq >= 0 {
+			name = strings.TrimSpace(entry[:eq])
+			rest = strings.TrimSpace(entry[eq+1:])
+			if rest == "" {
+				return nil, fmt.Errorf("--persist[%d] %q: empty size after '=' (drop the '=' to use the type-default)", i, entry)
+			}
+		} else {
+			name = strings.TrimSpace(entry)
 		}
 		if err := ValidateName(name); err != nil {
 			return nil, fmt.Errorf("--persist[%d] backend %q: %w", i, name, err)
@@ -172,23 +201,129 @@ func ParseBackendPersist(raw []string) (map[string]BackendStorageSpec, error) {
 		}
 
 		var size, class string
-		if at := strings.IndexByte(rest, '@'); at >= 0 {
-			size = strings.TrimSpace(rest[:at])
-			class = strings.TrimSpace(rest[at+1:])
-			if size == "" {
-				return nil, fmt.Errorf("--persist[%d] %q: empty size before '@'", i, entry)
+		if rest != "" {
+			if at := strings.IndexByte(rest, '@'); at >= 0 {
+				size = strings.TrimSpace(rest[:at])
+				class = strings.TrimSpace(rest[at+1:])
+				if size == "" {
+					return nil, fmt.Errorf("--persist[%d] %q: empty size before '@'", i, entry)
+				}
+				if class == "" {
+					return nil, fmt.Errorf("--persist[%d] %q: empty storage class after '@'", i, entry)
+				}
+			} else {
+				size = rest
 			}
-			if class == "" {
-				return nil, fmt.Errorf("--persist[%d] %q: empty storage class after '@'", i, entry)
-			}
-		} else {
-			size = rest
 		}
 
 		out[name] = BackendStorageSpec{
 			Size:             size,
 			StorageClassName: class,
 		}
+	}
+	return out, nil
+}
+
+// PersistDefaults captures the per-backend-type overrides supplied by
+// the user's config.toml (or any other layered source above the
+// code-level BackendStorageSizeDefaults / BackendStoragePresets
+// constants). The CLI marshals its config-side struct into this
+// shape before handing it to ApplyBackendPersist; the call-site is
+// agnostic to where the defaults came from.
+type PersistDefaults struct {
+	// Size, when non-empty, replaces the code default for this
+	// backend type. Same resource.Quantity syntax as --persist's
+	// <size>.
+	Size string
+
+	// StorageClassName, when non-empty, replaces the cluster default
+	// for this backend type.
+	StorageClassName string
+
+	// Mounts, when non-empty, replaces the BackendStoragePresets
+	// entry for this backend type. Empty falls back to the code
+	// default.
+	Mounts []BackendStorageMount
+}
+
+// ResolvePersistDefaults builds the (type → spec) map used by
+// ApplyBackendPersist when --persist's <size> is omitted (bare
+// `--persist <name>`) or when `--with-persistence` fans out across
+// every backend. Layered resolution per type:
+//
+//   - Size:   configDefaults[<type>].Size                 ?? BackendStorageSizeDefaults[<type>]
+//   - Class:  configDefaults[<type>].StorageClassName    ?? "" (cluster default)
+//   - Mounts: configDefaults[<type>].Mounts              ?? BackendStoragePresets[<type>]
+//
+// Returns the resolved per-type defaults plus a list of backend types
+// for which neither the config nor the code has any default — those
+// names show up in cross-flag validation errors so users can diagnose
+// "I asked for --with-persistence but my custom backend type X had no
+// default — add a [persist.defaults.X] block."
+func ResolvePersistDefaults(configDefaults map[string]PersistDefaults) map[string]BackendStorageSpec {
+	known := map[string]struct{}{}
+	for t := range BackendStorageSizeDefaults {
+		known[t] = struct{}{}
+	}
+	for t := range BackendStoragePresets {
+		known[t] = struct{}{}
+	}
+	for t := range configDefaults {
+		known[t] = struct{}{}
+	}
+
+	out := make(map[string]BackendStorageSpec, len(known))
+	for t := range known {
+		spec := BackendStorageSpec{}
+
+		size := BackendStorageSizeDefaults[t]
+		if c, ok := configDefaults[t]; ok && c.Size != "" {
+			size = c.Size
+		}
+		spec.Size = size
+
+		if c, ok := configDefaults[t]; ok && c.StorageClassName != "" {
+			spec.StorageClassName = c.StorageClassName
+		}
+
+		if c, ok := configDefaults[t]; ok && len(c.Mounts) > 0 {
+			spec.Mounts = append([]BackendStorageMount(nil), c.Mounts...)
+		} else if preset, ok := BackendStoragePresets[t]; ok {
+			spec.Mounts = append([]BackendStorageMount(nil), preset...)
+		}
+
+		out[t] = spec
+	}
+	return out
+}
+
+// ExpandWithPersistence fans out --with-persistence across every
+// declared --backend, producing one BackendStorageSpec per backend
+// keyed by NAME (not type). Backends already named in `explicit` are
+// skipped — explicit --persist entries always win. Errors when a
+// declared backend's TYPE has no resolved defaults (BackendStorage*
+// maps and the config block both lack an entry).
+func ExpandWithPersistence(
+	backends []BackendSpec,
+	defaults map[string]BackendStorageSpec,
+	explicit map[string]BackendStorageSpec,
+) (map[string]BackendStorageSpec, error) {
+	out := map[string]BackendStorageSpec{}
+	for k, v := range explicit {
+		out[k] = v
+	}
+	for _, b := range backends {
+		if _, already := out[b.Name]; already {
+			continue
+		}
+		def, ok := defaults[b.Type]
+		if !ok || def.Size == "" {
+			return nil, fmt.Errorf(
+				"--with-persistence: backend %q (type %q) has no default size — "+
+					"add a [persist.defaults.%s] block to your config.toml or pass --persist %s=<size>",
+				b.Name, b.Type, b.Type, b.Name)
+		}
+		out[b.Name] = def
 	}
 	return out, nil
 }
@@ -240,11 +375,41 @@ func ApplyBackendPersist(backends []BackendSpec, persist map[string]BackendStora
 			return nil, fmt.Errorf("--persist %q: no matching --backend entry with that name", name)
 		}
 
-		// Mount-list resolution: explicit override wins; otherwise
-		// fall back to the type-derived preset.
-		if explicit, ok := mounts[name]; ok && len(explicit) > 0 {
-			spec.Mounts = append(spec.Mounts, explicit...)
-		} else {
+		// Size resolution: explicit on flag > type-default from
+		// BackendStorageSizeDefaults. The bare `--persist <name>`
+		// form leaves Size empty in the parsed spec; fill it from
+		// the type-default map here so callers don't have to.
+		if spec.Size == "" {
+			def, ok := BackendStorageSizeDefaults[backends[bi].Type]
+			if !ok {
+				return nil, fmt.Errorf(
+					"--persist %q: backend type %q has no default size "+
+						"(known: %s) — provide an explicit size with "+
+						"--persist %s=<size>, or add a [persist.defaults.%s] "+
+						"config block",
+					name, backends[bi].Type, knownPresetTypes(),
+					name, backends[bi].Type)
+			}
+			spec.Size = def
+		}
+
+		// Mount-list resolution. Three sources, most-specific wins:
+		//
+		//   1. --persist-mount entries for this backend (explicit on
+		//      the command line) — replace-on-presence.
+		//   2. spec.Mounts already populated upstream (e.g. by
+		//      --with-persistence's ExpandWithPersistence using the
+		//      config-or-code defaults chain) — don't re-append, the
+		//      caller already chose them.
+		//   3. BackendStoragePresets[<type>] code default — last
+		//      resort fallback.
+		switch {
+		case len(mounts[name]) > 0:
+			spec.Mounts = append(mounts[name][:0:0], mounts[name]...)
+		case len(spec.Mounts) > 0:
+			// Already filled in by an upstream defaults resolver;
+			// leave as-is.
+		default:
 			preset, ok := BackendStoragePresets[backends[bi].Type]
 			if !ok {
 				return nil, fmt.Errorf(

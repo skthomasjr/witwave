@@ -55,6 +55,45 @@ type File struct {
 	Profile map[string]Profile `mapstructure:"profile"`
 	Update  UpdateConfig       `mapstructure:"update"`
 	TUI     TUIConfig          `mapstructure:"tui"`
+	Persist PersistConfig      `mapstructure:"persist"`
+}
+
+// PersistConfig is the on-disk [persist] block. Currently carries
+// per-backend-type defaults consumed by `ww agent create
+// --with-persistence` and the `--persist <name>` (size-omitted)
+// shortcut.
+type PersistConfig struct {
+	// Defaults is keyed by backend type (echo, claude, codex, gemini).
+	// Each entry overrides the code-level defaults
+	// (BackendStorageSizeDefaults / BackendStoragePresets) for that
+	// type. Either field can be omitted; resolver falls back to the
+	// code default for whichever isn't set.
+	Defaults map[string]PersistTypeDefaults `mapstructure:"defaults"`
+}
+
+// PersistTypeDefaults is the schema for one
+// `[persist.defaults.<type>]` block. Mirrors the shape of the
+// operator's BackendStorageSpec at the CLI surface so the override
+// path matches the on-CR shape.
+type PersistTypeDefaults struct {
+	// Size is the PVC storage request for this backend type
+	// (e.g. "10Gi"). Empty → fall back to BackendStorageSizeDefaults.
+	Size string `mapstructure:"size"`
+
+	// StorageClassName, when non-empty, overrides the cluster's
+	// default storage class for this backend type.
+	StorageClassName string `mapstructure:"storage_class_name"`
+
+	// Mounts replaces the type-default subPath/mountPath list. When
+	// empty (or the field is absent), falls back to
+	// BackendStoragePresets for the type.
+	Mounts []PersistMountDefault `mapstructure:"mounts"`
+}
+
+// PersistMountDefault is one entry in a backend type's mount list.
+type PersistMountDefault struct {
+	SubPath   string `mapstructure:"subPath"`
+	MountPath string `mapstructure:"mountPath"`
 }
 
 // TUIConfig is the on-disk [tui] block. Carries:
@@ -429,6 +468,38 @@ func LoadTUIExpectedEnvVars(getenv func(string) string) (map[string][]string, bo
 		return nil, false
 	}
 	return f.TUI.ExpectedEnvVars, true
+}
+
+// LoadPersistDefaults reads the `[persist.defaults.<type>]` blocks
+// from whichever config.toml the standard discovery chain finds
+// first. Returns the per-type override map (and ok=false) when no
+// file exists or the block isn't present — callers layer their own
+// fallbacks on top.
+//
+// Same focused-read shape as LoadTUICreateDefaults / LoadTUIExpected
+// EnvVars — no flag/env layering, just the on-disk values.
+func LoadPersistDefaults(getenv func(string) string) (map[string]PersistTypeDefaults, bool) {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	path := findExistingConfig(getenv)
+	if path == "" {
+		return nil, false
+	}
+	v := viper.New()
+	v.SetConfigType("toml")
+	v.SetConfigFile(path)
+	if err := v.ReadInConfig(); err != nil {
+		return nil, false
+	}
+	var f File
+	if err := v.Unmarshal(&f); err != nil {
+		return nil, false
+	}
+	if len(f.Persist.Defaults) == 0 {
+		return nil, false
+	}
+	return f.Persist.Defaults, true
 }
 
 // knownProfiles returns a comma-separated list of profiles defined in

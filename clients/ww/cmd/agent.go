@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/witwave-ai/witwave/clients/ww/internal/agent"
+	"github.com/witwave-ai/witwave/clients/ww/internal/config"
 	"github.com/witwave-ai/witwave/clients/ww/internal/k8s"
 )
 
@@ -940,6 +941,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 		gitSyncSecrets  []string
 		persist         []string
 		persistMounts   []string
+		withPersistence bool
 		authProfiles    []string
 		secretFromEnv   []string
 		authSecrets     []string
@@ -1012,6 +1014,22 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// --with-persistence fans out to every declared --backend
+			// using the (config → code) type-default chain. Explicit
+			// --persist entries always win — they take ownership of
+			// the named backend's spec; --with-persistence only fills
+			// in backends that weren't named explicitly.
+			if withPersistence {
+				cfgDefaults, err := loadPersistDefaults(f)
+				if err != nil {
+					return fmt.Errorf("load persist defaults: %w", err)
+				}
+				resolved := agent.ResolvePersistDefaults(cfgDefaults)
+				persistMap, err = agent.ExpandWithPersistence(specs, resolved, persistMap)
+				if err != nil {
+					return err
+				}
+			}
 			specs, err = agent.ApplyBackendPersist(specs, persistMap, persistMountMap)
 			if err != nil {
 				return err
@@ -1080,6 +1098,14 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			"for a backend takes ownership of its FULL mount list — type-derived defaults "+
 			"are skipped. Each entry adds one (subPath, mountPath) pair on the backend's PVC. "+
 			"Requires a matching --persist <backend-name>=<size> to provision the PVC.")
+	cmd.Flags().BoolVar(&withPersistence, "with-persistence", false,
+		"Provision a per-backend PVC for every declared --backend using type-derived "+
+			"defaults (size + mount layout). Echo → 1Gi/memory; claude → 10Gi with "+
+			"projects/sessions/backups/memory; codex → 5Gi with memory/sessions; gemini → "+
+			"5Gi/memory. Override per-type defaults in ~/.config/ww/config.toml under "+
+			"[persist.defaults.<type>] (size, storageClassName, and mounts). Explicit "+
+			"--persist <name>=<size> takes precedence — --with-persistence only fills in "+
+			"backends that weren't named explicitly.")
 	cmd.Flags().StringArrayVar(&authProfiles, "auth", nil,
 		fmt.Sprintf(
 			"Per-backend auth profile. Repeatable. Form: <backend>=<profile>.\n"+
@@ -1136,6 +1162,43 @@ func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []
 		Out:             os.Stdout,
 		In:              os.Stdin,
 	})
+}
+
+// loadPersistDefaults bridges the on-disk [persist.defaults.<type>]
+// config block (typed via internal/config) into the agent package's
+// PersistDefaults shape. The conversion is mechanical — the two
+// types mirror each other field-for-field; we keep them separate so
+// the agent package doesn't import internal/config.
+//
+// Empty config or absent block returns (nil, nil) — caller falls
+// back to the code-level BackendStorageSizeDefaults +
+// BackendStoragePresets maps without further plumbing.
+//
+// Errors only on a hard failure path (currently none — the focused
+// LoadPersistDefaults swallows read/parse errors and returns
+// ok=false). The error return is reserved for future config-source
+// expansions that could fail loudly.
+func loadPersistDefaults(_ *agentFlags) (map[string]agent.PersistDefaults, error) {
+	cfg, ok := config.LoadPersistDefaults(os.Getenv)
+	if !ok || len(cfg) == 0 {
+		return nil, nil
+	}
+	out := make(map[string]agent.PersistDefaults, len(cfg))
+	for typ, d := range cfg {
+		mounts := make([]agent.BackendStorageMount, 0, len(d.Mounts))
+		for _, m := range d.Mounts {
+			mounts = append(mounts, agent.BackendStorageMount{
+				SubPath:   m.SubPath,
+				MountPath: m.MountPath,
+			})
+		}
+		out[typ] = agent.PersistDefaults{
+			Size:             d.Size,
+			StorageClassName: d.StorageClassName,
+			Mounts:           mounts,
+		}
+	}
+	return out, nil
 }
 
 // ---------------------------------------------------------------------------
