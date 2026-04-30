@@ -111,12 +111,12 @@ func (r GitAuthResolver) resolve(ctx context.Context, k8s kubernetes.Interface, 
 
 	case GitAuthFromEnv:
 		if r.EnvVar == "" {
-			return "", errors.New("--auth-from-env requires the environment variable name")
+			return "", errors.New("--secret-from-env requires the environment variable name")
 		}
 		tok := strings.TrimSpace(os.Getenv(r.EnvVar))
 		if tok == "" {
 			return "", fmt.Errorf(
-				"--auth-from-env %q: environment variable is unset or empty", r.EnvVar,
+				"--secret-from-env %q: environment variable is unset or empty", r.EnvVar,
 			)
 		}
 		secretName := r.SecretName

@@ -54,7 +54,7 @@ type CreateOptions struct {
 	// joins the namespace-wide manifest before the label lands.
 	Team string
 
-	// BackendAuth carries the resolved --auth / --auth-from-env /
+	// BackendAuth carries the resolved --auth / --secret-from-env /
 	// --auth-secret flag values, one per backend the user wants to
 	// wire credentials for. Backends not referenced here create
 	// without a credentials field (fine for echo, a footgun for

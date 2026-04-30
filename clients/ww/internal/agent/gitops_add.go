@@ -99,7 +99,7 @@ type GitAddOptions struct {
 //
 //  1. Fetch the CR. Refuse if the agent doesn't exist.
 //  2. Parse --repo shorthand, resolve auth (--auth-secret / --auth-
-//     from-gh / --auth-from-env) to a K8s Secret name.
+//     from-gh / --secret-from-env) to a K8s Secret name.
 //  3. Derive the repo-relative path if --repo-path wasn't supplied.
 //  4. Patch the CR in-place:
 //     - Replace (or add) the gitSyncs[] entry with matching name.

@@ -466,9 +466,9 @@ Secret):
 | Flag              | Shape                        | Behavior                                                                                                                                                                                         |
 | ----------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `--auth`          | `<backend>=<profile>`        | Named profile reads conventional env var(s) from the shell + mints a `<agent>-<backend>-credentials` Secret. MVP profiles: `claude: api-key \| oauth`.                                           |
-| `--auth-from-env` | `<backend>=<VAR>[,VAR2,...]` | Mint a Secret from named env vars. Secret keys match var names verbatim.                                                                                                                         |
+| `--secret-from-env` | `<backend>=<VAR>[,VAR2,...]` | Mint a Secret from named env vars. Each VAR is bare `<NAME>` (Secret key matches name) or a rename `<SRC>:<DEST>` (read `$SRC`, store under key `DEST`).                                       |
 | `--auth-secret`   | `<backend>=<secret-name>`    | Reference an existing Secret (verified, never modified). Production default.                                                                                                                     |
-| `--auth-set`      | `<backend>:<KEY>=<VALUE>`    | Mint a Secret with literal `KEY=VALUE` pairs. Repeatable per `(backend, KEY)`. **Values land in shell history + ps output — for production tokens prefer `--auth-secret` or `--auth-from-env`.** |
+| `--auth-set`      | `<backend>:<KEY>=<VALUE>`    | Mint a Secret with literal `KEY=VALUE` pairs. Repeatable per `(backend, KEY)`. **Values land in shell history + ps output — for production tokens prefer `--auth-secret` or `--secret-from-env`.** |
 
 ```bash
 # OAuth path — reads $CLAUDE_CODE_OAUTH_TOKEN from the shell
@@ -500,7 +500,7 @@ ww agent backend add hello claude \
 ```
 
 Minted Secrets carry `app.kubernetes.io/managed-by: ww` so `ww agent delete --purge` reaps them label-gated. Hand-rolled
-Secrets at the same name are refused — use `--auth-secret` to reference them instead, or `--auth-from-env` with a
+Secrets at the same name are refused — use `--auth-secret` to reference them instead, or `--secret-from-env` with a
 non-colliding name. The `created-by` annotation on `--auth-set`-minted Secrets records key NAMES only (never values) so
 values don't leak into `kubectl get secret -o yaml` metadata.
 

@@ -311,7 +311,7 @@ func newAgentBackendCmd(f *agentFlags) *cobra.Command {
 func newAgentBackendAddCmd(f *agentFlags) *cobra.Command {
 	var (
 		authProfile   string
-		authFromEnv   string
+		secretFromEnv string
 		authSecret    string
 		authSet       []string
 		noRepoFolder  bool
@@ -330,7 +330,7 @@ func newAgentBackendAddCmd(f *agentFlags) *cobra.Command {
 			"Backend spec follows the same shape as `ww agent create --backend`:\n" +
 			"  <type>         — name = type (single-backend shortcut)\n" +
 			"  <name>:<type>  — explicit name + type pair (for multiple of a type)\n\n" +
-			"Credentials: pick one of --auth / --auth-from-env / --auth-secret.\n" +
+			"Credentials: pick one of --auth / --secret-from-env / --auth-secret.\n" +
 			"Omit all three when the backend type needs no credentials (echo).\n" +
 			"LLM backends added without credentials will start the pod but error\n" +
 			"on first request — a yellow warning appears in the preflight banner.",
@@ -349,7 +349,7 @@ func newAgentBackendAddCmd(f *agentFlags) *cobra.Command {
 			// Build the auth resolver — flags here drop the <backend>=
 			// prefix (and --auth-set drops the <backend>: prefix)
 			// because the backend is already named positionally.
-			auth, err := resolveSingleBackendAuth(specs[0].Name, authProfile, authFromEnv, authSecret, authSet)
+			auth, err := resolveSingleBackendAuth(specs[0].Name, authProfile, secretFromEnv, authSecret, authSet)
 			if err != nil {
 				return err
 			}
@@ -359,14 +359,14 @@ func newAgentBackendAddCmd(f *agentFlags) *cobra.Command {
 	bindAgentMutatingFlags(cmd, f)
 	cmd.Flags().StringVar(&authProfile, "auth", "",
 		fmt.Sprintf("Named auth profile (e.g. `oauth`, `api-key`). Known: %s", agent.KnownCredentialProfiles()))
-	cmd.Flags().StringVar(&authFromEnv, "auth-from-env", "",
+	cmd.Flags().StringVar(&secretFromEnv, "secret-from-env", "",
 		"Mint a K8s Secret from arbitrary env vars. Form: <VAR1>[,VAR2,...]. Secret keys match names verbatim.")
 	cmd.Flags().StringVar(&authSecret, "auth-secret", "",
 		"Reference an existing K8s Secret (verified, not modified)")
 	cmd.Flags().StringArrayVar(&authSet, "auth-set", nil,
 		"Mint a Secret with literal KEY=VALUE pairs. Repeatable. Form: <KEY>=<VALUE>. "+
 			"SECURITY: values land in shell history + ps output — for production tokens "+
-			"prefer --auth-secret or --auth-from-env.")
+			"prefer --auth-secret or --secret-from-env.")
 	cmd.Flags().BoolVar(&noRepoFolder, "no-repo-folder", false,
 		"Skip the repo-side `.agents/<…>/.<name>/` scaffold (CR-only change)")
 	cmd.Flags().StringVar(&commitMessage, "commit-message", "",
@@ -396,7 +396,7 @@ func resolveSingleBackendAuth(backend, profile, fromEnv, secret string, set []st
 	}
 	if modes > 1 {
 		return agent.BackendAuthResolver{}, fmt.Errorf(
-			"pick at most one of --auth / --auth-from-env / --auth-secret / --auth-set")
+			"pick at most one of --auth / --secret-from-env / --auth-secret / --auth-set")
 	}
 	switch {
 	case profile != "":
@@ -599,7 +599,7 @@ func newAgentGitCmd(f *agentFlags) *cobra.Command {
 			"Auth posture — three ways to provide a credential Secret:\n\n" +
 			"  --auth-secret <name>     reference an existing K8s Secret (production)\n" +
 			"  --auth-from-gh           mint one from `gh auth token` (dev laptops)\n" +
-			"  --auth-from-env <VAR>    mint one from the named env var (CI/CD / .env)\n\n" +
+			"  --secret-from-env <VAR>  mint one from the named env var (CI/CD / .env)\n\n" +
 			"Public repos need no auth flag. Secrets minted by ww carry an\n" +
 			"`app.kubernetes.io/managed-by: ww` label so detach + delete can\n" +
 			"distinguish ww-created Secrets from hand-authored ones.",
@@ -620,7 +620,7 @@ func newAgentGitAddCmd(f *agentFlags) *cobra.Command {
 		syncName       string
 		authSecret     string
 		authFromGH     bool
-		authFromEnv    string
+		secretFromEnv  string
 		authSecretName string
 	)
 	cmd := &cobra.Command{
@@ -647,9 +647,9 @@ func newAgentGitAddCmd(f *agentFlags) *cobra.Command {
 				Out:       os.Stdout,
 				In:        os.Stdin,
 				Auth: agent.GitAuthResolver{
-					Mode:           chooseAuthMode(authSecret, authFromGH, authFromEnv),
+					Mode:           chooseAuthMode(authSecret, authFromGH, secretFromEnv),
 					ExistingSecret: authSecret,
-					EnvVar:         authFromEnv,
+					EnvVar:         secretFromEnv,
 					SecretName:     authSecretName,
 				},
 			})
@@ -675,7 +675,7 @@ func newAgentGitAddCmd(f *agentFlags) *cobra.Command {
 		"Reference an existing K8s Secret with GITSYNC_USERNAME / GITSYNC_PASSWORD")
 	cmd.Flags().BoolVar(&authFromGH, "auth-from-gh", false,
 		"Mint a K8s Secret from `gh auth token` (reads gh's current session)")
-	cmd.Flags().StringVar(&authFromEnv, "auth-from-env", "",
+	cmd.Flags().StringVar(&secretFromEnv, "secret-from-env", "",
 		"Mint a K8s Secret from a named env var (e.g. GITHUB_TOKEN)")
 	cmd.Flags().StringVar(&authSecretName, "auth-secret-name", "",
 		"Name to use when minting a Secret (default: <agent>-git-credentials)")
@@ -729,7 +729,7 @@ func assertOneAuthMode(auth agent.GitAuthResolver) error {
 		set++
 	}
 	if set > 1 {
-		return fmt.Errorf("pick at most one of --auth-secret / --auth-from-gh / --auth-from-env")
+		return fmt.Errorf("pick at most one of --auth-secret / --auth-from-gh / --secret-from-env")
 	}
 	return nil
 }
