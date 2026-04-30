@@ -940,7 +940,6 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 		persist         []string
 		persistMounts   []string
 		authProfiles    []string
-		authFromEnv     []string // deprecated alias for secretFromEnv
 		secretFromEnv   []string
 		authSecrets     []string
 		authSet         []string
@@ -970,12 +969,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			// --secret-from-env is the canonical name; --auth-from-env
-			// is kept as a deprecated alias for compat. Concatenate so
-			// both surfaces feed the same parser.
-			fromEnv := append([]string(nil), secretFromEnv...)
-			fromEnv = append(fromEnv, authFromEnv...)
-			auth, err := agent.ParseBackendAuth(authProfiles, fromEnv, authSecrets, authSet)
+			auth, err := agent.ParseBackendAuth(authProfiles, secretFromEnv, authSecrets, authSet)
 			if err != nil {
 				return err
 			}
@@ -1076,22 +1070,13 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			"Rename form lets agent-suffixed shell vars land as stable in-container "+
 			"names (e.g. GITHUB_TOKEN_IRIS:GITHUB_TOKEN reads $GITHUB_TOKEN_IRIS and "+
 			"injects it as $GITHUB_TOKEN inside the container).")
-	cmd.Flags().StringArrayVar(&authFromEnv, "auth-from-env", nil,
-		"Deprecated alias for --secret-from-env. Same shape, same behaviour. "+
-			"Kept for backward compat with scripts authored before the rename; "+
-			"prefer --secret-from-env for new work.")
-	if err := cmd.Flags().MarkDeprecated("auth-from-env", "use --secret-from-env"); err != nil {
-		// MarkDeprecated only errors if the flag doesn't exist (which we
-		// just registered) — surface anything else loudly.
-		panic(fmt.Errorf("mark --auth-from-env deprecated: %w", err))
-	}
 	cmd.Flags().StringArrayVar(&authSecrets, "auth-secret", nil,
 		"Reference an existing K8s Secret (verified, not modified). Repeatable. "+
 			"Form: <backend>=<secret-name>.")
 	cmd.Flags().StringArrayVar(&authSet, "auth-set", nil,
 		"Mint a Secret with literal KEY=VALUE pairs. Repeatable per (backend, KEY). "+
 			"Form: <backend>:<KEY>=<VALUE>. SECURITY: values land in shell history + ps "+
-			"output — for production tokens prefer --auth-secret or --auth-from-env.")
+			"output — for production tokens prefer --auth-secret or --secret-from-env.")
 	return cmd
 }
 

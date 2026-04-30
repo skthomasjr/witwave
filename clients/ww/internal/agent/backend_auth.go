@@ -18,9 +18,9 @@ import (
 //
 // Mirrors the three-tier pattern `ww agent git add` uses for gitSync auth:
 //
-//   Tier 1 — named profile:     --auth claude=oauth        (MVP: claude only)
-//   Tier 2 — arbitrary env:     --auth-from-env claude=FOO  (escape hatch)
-//   Tier 3 — existing Secret:   --auth-secret claude=name   (pre-created)
+//   Tier 1 — named profile:     --auth claude=oauth          (MVP: claude only)
+//   Tier 2 — arbitrary env:     --secret-from-env claude=FOO (escape hatch)
+//   Tier 3 — existing Secret:   --auth-secret claude=name    (pre-created)
 //
 // Each choice resolves to a K8s Secret that the CR's
 // spec.backends[].credentials.existingSecret field points at; the operator
@@ -61,7 +61,7 @@ const (
 	// Caveats: command-line values land in shell history + ps output
 	// + journal scrapers. For production tokens use --auth-secret
 	// (pre-create with `kubectl create secret --from-env-file`) or
-	// --auth-from-env (lift from a sourced env file). --auth-set is
+	// --secret-from-env (lift from a sourced env file). --auth-set is
 	// for dev-loop ergonomics + custom KEY=VALUE shapes the named
 	// profile catalog doesn't cover.
 	BackendAuthInline
@@ -204,17 +204,17 @@ func (r BackendAuthResolver) resolve(ctx context.Context, k8s kubernetes.Interfa
 
 	case BackendAuthFromEnv:
 		if len(r.EnvVars) == 0 {
-			return "", fmt.Errorf("--auth-from-env %s=: env var list is required", r.Backend)
+			return "", fmt.Errorf("--secret-from-env %s=: env var list is required", r.Backend)
 		}
 		data, err := readEnvVars(r.EnvVars)
 		if err != nil {
-			return "", fmt.Errorf("--auth-from-env %s=%s: %w",
+			return "", fmt.Errorf("--secret-from-env %s=%s: %w",
 				r.Backend, strings.Join(r.EnvVars, ","), err)
 		}
 		secretName := backendCredentialSecretName(agentName, r.Backend)
 		return secretName, upsertBackendCredentialSecret(
 			ctx, k8s, namespace, secretName, agentName, r.Backend, data,
-			fmt.Sprintf("ww agent create --auth-from-env %s=%s",
+			fmt.Sprintf("ww agent create --secret-from-env %s=%s",
 				r.Backend, strings.Join(r.EnvVars, ",")),
 		)
 
@@ -228,7 +228,7 @@ func (r BackendAuthResolver) resolve(ctx context.Context, k8s kubernetes.Interfa
 		// surface as a confusing 401 from the backend later).
 		for k, v := range r.Inline {
 			if v == "" {
-				return "", fmt.Errorf("--auth-set %s: %q has an empty value (use --auth-from-env if you want to lift from the shell instead)", r.Backend, k)
+				return "", fmt.Errorf("--auth-set %s: %q has an empty value (use --secret-from-env if you want to lift from the shell instead)", r.Backend, k)
 			}
 			_ = k // shape symmetry; v is the validated piece
 		}
@@ -287,7 +287,7 @@ func readEnvVars(vars []string) (map[string]string, error) {
 	return out, nil
 }
 
-// splitEnvVarRename parses one `--auth-from-env` entry. Bare `<NAME>`
+// splitEnvVarRename parses one `--secret-from-env` entry. Bare `<NAME>`
 // means src=dest=NAME. `<SRC>:<DEST>` reads from $SRC and stores under
 // Secret key DEST. Empty SRC or DEST is an error — both halves of a
 // rename must be non-empty.
@@ -368,7 +368,7 @@ func upsertBackendCredentialSecret(
 }
 
 // ParseBackendAuth turns the four repeatable cobra flags
-// (--auth / --auth-from-env / --auth-secret / --auth-set) into a
+// (--auth / --secret-from-env / --auth-secret / --auth-set) into a
 // resolver list keyed by backend name. Each raw flag value is
 // `<backend>=<rest>` (or `<backend>:<KEY>=<VALUE>` for --auth-set's
 // shape — see splitBackendInline). Validates that a backend isn't
@@ -414,11 +414,11 @@ func ParseBackendAuth(profiles, fromEnv, fromSecret, fromSet []string) ([]Backen
 		})
 	}
 
-	// Multiple --secret-from-env / --auth-from-env entries for the same
-	// backend are additive — they accumulate into ONE resolver whose
-	// EnvVars list is the concatenation. Lets callers spread a long
-	// list across multiple flag invocations rather than packing
-	// everything into a single comma-delimited value:
+	// Multiple --secret-from-env entries for the same backend are
+	// additive — they accumulate into ONE resolver whose EnvVars list
+	// is the concatenation. Lets callers spread a long list across
+	// multiple flag invocations rather than packing everything into a
+	// single comma-delimited value:
 	//
 	//   --secret-from-env echo-1=A:X,B:Y          # combined
 	//   --secret-from-env echo-1=A:X --secret-from-env echo-1=B:Y
@@ -544,7 +544,7 @@ func SplitInlineKV(raw, flag string) (key, value string, err error) {
 		return "", "", fmt.Errorf("%s %q: KEY is empty", flag, raw)
 	}
 	if value == "" {
-		return "", "", fmt.Errorf("%s %q: VALUE is empty (use --auth-from-env if you want a placeholder lifted at runtime)", flag, raw)
+		return "", "", fmt.Errorf("%s %q: VALUE is empty (use --secret-from-env if you want a placeholder lifted at runtime)", flag, raw)
 	}
 	return key, value, nil
 }

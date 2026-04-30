@@ -96,7 +96,7 @@ The agent-suffixed shell vars let multi-agent deployments give each
 agent its own GitHub identity without collision; per-backend
 divergence within one agent isn't currently a use case (every backend
 in iris's pod authenticates as iris). The rename form on
-`--auth-from-env` (Step 3 long-hand) maps `GITHUB_TOKEN_IRIS` →
+`--secret-from-env` (Step 3 long-hand) maps `GITHUB_TOKEN_IRIS` →
 in-container `GITHUB_TOKEN` and `GITHUB_USER_IRIS` →
 in-container `GITHUB_USER`.
 
@@ -317,9 +317,7 @@ WitwaveAgent CRD fields:
   agent's credentials sourced it. Multiple `--secret-from-env` for the
   same backend accumulate — pack everything into one comma-delimited
   value, or spread it across one flag per `<VAR>` and the parser
-  produces an equivalent Secret either way. (`--auth-from-env` is the
-  deprecated former name; still accepted, but new docs use
-  `--secret-from-env`.)
+  produces an equivalent Secret either way.
 
 Iris's `--gitops` + default `--persist` lines above are exactly
 equivalent to (and additionally inject per-backend GitHub credentials
