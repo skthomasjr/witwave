@@ -353,7 +353,9 @@ func validateCors(agent *witwavev1alpha1.WitwaveAgent) error {
 func validateAppPorts(agent *witwavev1alpha1.WitwaveAgent) error {
 	const portMax = int32(64535)
 	const metricsReservation = int32(1000)
-	metricsEnabled := agent.Spec.Metrics.Enabled
+	// Local default-true read for the *bool field; mirrors
+	// controller.metricsEnabled() but avoids cross-package import.
+	metricsEnabled := agent.Spec.Metrics.Enabled == nil || *agent.Spec.Metrics.Enabled
 
 	check := func(field string, port int32) error {
 		if port == 0 {

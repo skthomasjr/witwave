@@ -24,6 +24,10 @@ import (
 // is rejected, a known-good spec passes, and edge cases around optional
 // fields do not generate spurious errors.
 
+// ptrTo returns a pointer to the given value. Equivalent to k8s.io/utils
+// /ptr.To but inlined to avoid pulling the import for one helper.
+func ptrTo[T any](v T) *T { return &v }
+
 func newBaseAgent() *witwavev1alpha1.WitwaveAgent {
 	return &witwavev1alpha1.WitwaveAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: "iris", Namespace: "witwave"},
@@ -230,7 +234,7 @@ func TestValidatePorts(t *testing.T) {
 	t.Run("port 8000 with metrics enabled accepted", func(t *testing.T) {
 		a := newBaseAgent()
 		a.Spec.Port = 8000
-		a.Spec.Metrics = witwavev1alpha1.MetricsSpec{Enabled: true}
+		a.Spec.Metrics = witwavev1alpha1.MetricsSpec{Enabled: ptrTo(true)}
 		if err := validateAppPorts(a); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -238,7 +242,7 @@ func TestValidatePorts(t *testing.T) {
 	t.Run("port 64535 with metrics disabled accepted", func(t *testing.T) {
 		a := newBaseAgent()
 		a.Spec.Port = 64535
-		a.Spec.Metrics = witwavev1alpha1.MetricsSpec{Enabled: false}
+		a.Spec.Metrics = witwavev1alpha1.MetricsSpec{Enabled: ptrTo(false)}
 		if err := validateAppPorts(a); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -246,24 +250,24 @@ func TestValidatePorts(t *testing.T) {
 	t.Run("port 64535 with metrics enabled rejected", func(t *testing.T) {
 		a := newBaseAgent()
 		a.Spec.Port = 64535
-		a.Spec.Metrics = witwavev1alpha1.MetricsSpec{Enabled: true}
+		a.Spec.Metrics = witwavev1alpha1.MetricsSpec{Enabled: ptrTo(true)}
 		assertRejectedWith(t, validateAppPorts(a), "metrics port is app_port+1000")
 	})
 	t.Run("port 65000 rejected regardless of metrics", func(t *testing.T) {
 		a := newBaseAgent()
 		a.Spec.Port = 65000
-		a.Spec.Metrics = witwavev1alpha1.MetricsSpec{Enabled: false}
+		a.Spec.Metrics = witwavev1alpha1.MetricsSpec{Enabled: ptrTo(false)}
 		assertRejectedWith(t, validateAppPorts(a), "exceeds maximum allowed port")
 
 		a2 := newBaseAgent()
 		a2.Spec.Port = 65000
-		a2.Spec.Metrics = witwavev1alpha1.MetricsSpec{Enabled: true}
+		a2.Spec.Metrics = witwavev1alpha1.MetricsSpec{Enabled: ptrTo(true)}
 		assertRejectedWith(t, validateAppPorts(a2), "exceeds maximum allowed port")
 	})
 	t.Run("backend port over-ceiling rejected", func(t *testing.T) {
 		a := newBaseAgent()
 		a.Spec.Port = 8000
-		a.Spec.Metrics = witwavev1alpha1.MetricsSpec{Enabled: true}
+		a.Spec.Metrics = witwavev1alpha1.MetricsSpec{Enabled: ptrTo(true)}
 		a.Spec.Backends = []witwavev1alpha1.BackendSpec{{
 			Name: "claude",
 			Port: 64535,
@@ -273,7 +277,7 @@ func TestValidatePorts(t *testing.T) {
 	t.Run("zero port skipped", func(t *testing.T) {
 		a := newBaseAgent()
 		a.Spec.Port = 0
-		a.Spec.Metrics = witwavev1alpha1.MetricsSpec{Enabled: true}
+		a.Spec.Metrics = witwavev1alpha1.MetricsSpec{Enabled: ptrTo(true)}
 		if err := validateAppPorts(a); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

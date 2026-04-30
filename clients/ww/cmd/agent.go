@@ -947,6 +947,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 		secretFromEnv   []string
 		authSecrets     []string
 		authSet         []string
+		noMetrics       bool
 	)
 	cmd := &cobra.Command{
 		Use:   "create <name>",
@@ -1043,7 +1044,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runAgentCreate(cmd.Context(), f, args[0], specs, !noWait, timeout, createNamespace, team, workspaces, syncs, maps, auth, gitsyncEnvSpec)
+			return runAgentCreate(cmd.Context(), f, args[0], specs, !noWait, timeout, createNamespace, team, workspaces, syncs, maps, auth, gitsyncEnvSpec, noMetrics)
 		},
 	}
 	bindAgentMutatingFlags(cmd, f)
@@ -1057,6 +1058,13 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 		))
 	cmd.Flags().BoolVar(&noWait, "no-wait", false,
 		"Return as soon as the CR is accepted; skip the readiness wait")
+	cmd.Flags().BoolVar(&noMetrics, "no-metrics", false,
+		"Disable Prometheus metrics for this agent. By default the operator "+
+			"stamps every agent with metrics on (spec.metrics.enabled=true) so "+
+			"the harness's /metrics endpoint and the internal /internal/events/* "+
+			"routes use the dedicated metrics listener. Pass --no-metrics to "+
+			"opt out — the routes fall back to the app listener and no "+
+			"ServiceMonitor / scrape annotations are rendered.")
 	cmd.Flags().DurationVar(&timeout, "timeout", 5*time.Minute,
 		"Maximum time to wait for the agent to report Ready (ignored with --no-wait). "+
 			"On timeout, recent CR + pod events are dumped so you can tell "+
@@ -1150,7 +1158,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 	return cmd
 }
 
-func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []agent.BackendSpec, wait bool, timeout time.Duration, createNamespace bool, team string, workspaces []string, gitSyncs []agent.GitSyncFlagSpec, gitMappings []agent.GitMappingFlagSpec, backendAuth []agent.BackendAuthResolver, gitsyncFromEnv *agent.GitSyncFromEnvSpec) error {
+func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []agent.BackendSpec, wait bool, timeout time.Duration, createNamespace bool, team string, workspaces []string, gitSyncs []agent.GitSyncFlagSpec, gitMappings []agent.GitMappingFlagSpec, backendAuth []agent.BackendAuthResolver, gitsyncFromEnv *agent.GitSyncFromEnvSpec, noMetrics bool) error {
 	target, resolver, err := f.resolveTarget(ctx)
 	if err != nil {
 		return err
@@ -1178,6 +1186,7 @@ func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []
 		GitSyncs:        gitSyncs,
 		GitMappings:     gitMappings,
 		GitSyncFromEnv:  gitsyncFromEnv,
+		NoMetrics:       noMetrics,
 		BackendAuth:     backendAuth,
 		Out:             os.Stdout,
 		In:              os.Stdin,

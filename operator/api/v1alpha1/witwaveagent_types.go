@@ -1196,9 +1196,22 @@ type CorsSpec struct {
 type MetricsSpec struct {
 	// Master toggle. When false, no scrape annotations are emitted on
 	// either the Service or the Pod template, regardless of the
-	// granular flags below.
+	// granular flags below. Also stamps METRICS_ENABLED=false on the
+	// pod's containers, which keeps the harness's /internal/events/*
+	// routes on the app listener (#1781) and skips the /metrics
+	// listener entirely.
+	//
+	// Defaults to true — every agent the operator provisions has metrics
+	// on by default. Disable explicitly via spec.metrics.enabled=false
+	// on the CR (or `ww agent create --no-metrics` from the CLI).
+	//
+	// Pointer type so the kubebuilder default fires at admission when
+	// the field is omitted; mirrors the BackendSpec.Enabled / top-level
+	// WitwaveAgentSpec.Enabled pattern. Read via metricsEnabled(agent)
+	// in the controller — nil dereferences as true.
+	// +kubebuilder:default=true
 	// +optional
-	Enabled bool `json:"enabled,omitempty"`
+	Enabled *bool `json:"enabled,omitempty"`
 
 	// ServiceAnnotations stamps prometheus.io/{scrape,port,path}
 	// annotations onto the agent Service for Prometheus configs using

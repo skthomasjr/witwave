@@ -671,7 +671,7 @@ func buildDeployment(agent *witwavev1alpha1.WitwaveAgent, appVersion string, pro
 	// back to it. containerMetricsPort encapsulates the rule so harness
 	// and backend rendering stay aligned.
 	harnessMetricsPort := containerMetricsPort(agent.Spec.MetricsPort, harnessPort)
-	metricsOn := agent.Spec.Metrics.Enabled
+	metricsOn := metricsEnabled(agent)
 	harnessPorts := []corev1.ContainerPort{{Name: "http", ContainerPort: harnessPort}}
 	if metricsOn {
 		// Unique container-port names per pod (#1249): "metrics" collided
@@ -916,7 +916,7 @@ func buildDeployment(agent *witwavev1alpha1.WitwaveAgent, appVersion string, pro
 	// on conflict. The Prometheus scrape set (#chart beta.35 / #472) is
 	// stamped when spec.metrics.enabled and metrics.podAnnotations are on.
 	podAnnotations := mergeStringMap(nil, agent.Spec.PodAnnotations)
-	if agent.Spec.Metrics.Enabled && metricsPodAnnotationsEnabled(agent) {
+	if metricsEnabled(agent) && metricsPodAnnotationsEnabled(agent) {
 		podAnnotations = mergeStringMap(podAnnotations, map[string]string{
 			"prometheus.io/scrape": "true",
 			"prometheus.io/port":   fmt.Sprintf("%d", harnessPort),
@@ -1098,7 +1098,7 @@ func buildService(agent *witwavev1alpha1.WitwaveAgent) *corev1.Service {
 	metricsPort := containerMetricsPort(agent.Spec.MetricsPort, port)
 
 	annotations := map[string]string{}
-	if agent.Spec.Metrics.Enabled && metricsServiceAnnotationsEnabled(agent) {
+	if metricsEnabled(agent) && metricsServiceAnnotationsEnabled(agent) {
 		annotations["prometheus.io/scrape"] = "true"
 		// Scrape the dedicated metrics listener (#643) rather than the
 		// app port.
@@ -1116,7 +1116,7 @@ func buildService(agent *witwavev1alpha1.WitwaveAgent) *corev1.Service {
 		Port:       svcPort,
 		TargetPort: intstr.FromInt(int(port)),
 	}}
-	if agent.Spec.Metrics.Enabled {
+	if metricsEnabled(agent) {
 		// Expose the harness metrics port on the Service so ServiceMonitor
 		// can target it by name (#643). Backends keep their own container
 		// ports ("metrics-<backend>") and are scraped via PodMonitor rather
@@ -1332,8 +1332,18 @@ func metricsPodAnnotationsEnabled(agent *witwavev1alpha1.WitwaveAgent) bool {
 // metricsEnabledValue renders the METRICS_ENABLED env var value for harness
 // and backend containers, mirroring the chart's quoted bool semantics
 // (#502). Backends gate their /metrics endpoint on this variable.
+// metricsEnabled returns whether metrics are on for this agent. Nil dereferences
+// as true so an agent CR submitted without spec.metrics.enabled set picks up the
+// default-on posture. Mirrors backendEnabled() for sibling-pattern consistency.
+func metricsEnabled(agent *witwavev1alpha1.WitwaveAgent) bool {
+	if agent.Spec.Metrics.Enabled != nil {
+		return *agent.Spec.Metrics.Enabled
+	}
+	return true
+}
+
 func metricsEnabledValue(agent *witwavev1alpha1.WitwaveAgent) string {
-	if agent.Spec.Metrics.Enabled {
+	if metricsEnabled(agent) {
 		return "true"
 	}
 	return "false"
@@ -1474,7 +1484,7 @@ func validateContainerMetricsPorts(agent *witwavev1alpha1.WitwaveAgent) error {
 // container is clamped (the single-clamp case is not a port collision).
 func metricsPortClampStatus(agent *witwavev1alpha1.WitwaveAgent) (clamped []string, collision error) {
 	const clampedValue int32 = 65535
-	if !agent.Spec.Metrics.Enabled {
+	if !metricsEnabled(agent) {
 		return nil, nil
 	}
 	harnessPort := agent.Spec.Port

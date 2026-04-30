@@ -97,6 +97,12 @@ type CreateOptions struct {
 	// sidecar instead of a backend container.
 	GitSyncFromEnv *GitSyncFromEnvSpec
 
+	// NoMetrics opts the agent out of the operator's default-on metrics
+	// posture. When true the CR is built with spec.metrics.enabled set
+	// to a literal false (vs left unset, which the CRD default would
+	// resolve to true). Threaded from the --no-metrics CLI flag.
+	NoMetrics bool
+
 	// Wait controls whether we block after Create until the CR's
 	// status.phase flips to Ready. Timeout bounds the wait.
 	Wait    bool
@@ -289,6 +295,7 @@ func Create(
 		WorkspaceRefs: opts.WorkspaceRefs,
 		GitSyncs:      opts.GitSyncs,
 		GitMappings:   opts.GitMappings,
+		NoMetrics:     opts.NoMetrics,
 	})
 	if err != nil {
 		return fmt.Errorf("build agent CR: %w", err)

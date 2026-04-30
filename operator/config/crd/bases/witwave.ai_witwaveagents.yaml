@@ -5020,10 +5020,23 @@ spec:
                   Service.
                 properties:
                   enabled:
+                    default: true
                     description: |-
                       Master toggle. When false, no scrape annotations are emitted on
                       either the Service or the Pod template, regardless of the
-                      granular flags below.
+                      granular flags below. Also stamps METRICS_ENABLED=false on the
+                      pod's containers, which keeps the harness's /internal/events/*
+                      routes on the app listener (#1781) and skips the /metrics
+                      listener entirely.
+
+                      Defaults to true — every agent the operator provisions has metrics
+                      on by default. Disable explicitly via spec.metrics.enabled=false
+                      on the CR (or `ww agent create --no-metrics` from the CLI).
+
+                      Pointer type so the kubebuilder default fires at admission when
+                      the field is omitted; mirrors the BackendSpec.Enabled / top-level
+                      WitwaveAgentSpec.Enabled pattern. Read via metricsEnabled(agent)
+                      in the controller — nil dereferences as true.
                     type: boolean
                   podAnnotations:
                     default: false

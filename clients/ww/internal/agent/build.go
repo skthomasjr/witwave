@@ -68,6 +68,12 @@ type BuildOptions struct {
 	// spec.backends[].gitMappings[]. Cross-flag validation is the
 	// caller's responsibility — see ValidateGitFlags.
 	GitMappings []GitMappingFlagSpec
+
+	// NoMetrics, when true, stamps spec.metrics.enabled=false on the CR
+	// to opt out of the operator's default-on metrics posture. When false
+	// (the default), the field is omitted from the CR so the CRD's
+	// kubebuilder default fires and metrics land enabled.
+	NoMetrics bool
 }
 
 // Build constructs the unstructured.Unstructured representation of a
@@ -277,6 +283,14 @@ func Build(opts BuildOptions) (*unstructured.Unstructured, error) {
 	}
 	if len(harnessMappings) > 0 {
 		spec["gitMappings"] = harnessMappings
+	}
+
+	// Only stamp spec.metrics when the user explicitly opts out. Leaving
+	// the field unset lets the CRD's kubebuilder default (true) fire at
+	// admission, which is the default-on posture every operator-managed
+	// agent gets.
+	if opts.NoMetrics {
+		spec["metrics"] = map[string]interface{}{"enabled": false}
 	}
 
 	if err := unstructured.SetNestedField(obj.Object, spec, "spec"); err != nil {

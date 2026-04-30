@@ -415,10 +415,12 @@ gitSync:
 # and the /metrics endpoint is activated on both harness and backend containers.
 # Override per agent with agents[].metrics.enabled.
 metrics:
-  # Master toggle for Prometheus metrics. When false, the harness still
-  # exposes /metrics but no scrape annotations / ServiceMonitor are
-  # rendered.
-  enabled: false
+  # Master toggle for Prometheus metrics. When false, no scrape annotations
+  # or ServiceMonitor are rendered AND the harness's /internal/events/*
+  # routes fall back to the public app listener (#1781). Defaults to true
+  # so every chart install picks up scrape integration out of the box;
+  # explicit `metrics.enabled: false` opts out for stripped-down deploys.
+  enabled: true
 
   # DEPRECATED (#687): metrics.port is no longer honored for harness or
   # backend containers — those use app_port+1000 per-container so

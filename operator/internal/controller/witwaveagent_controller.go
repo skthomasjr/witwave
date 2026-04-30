@@ -2057,7 +2057,7 @@ func (r *WitwaveAgentReconciler) serviceMonitorCRDPresent(ctx context.Context) (
 func (r *WitwaveAgentReconciler) reconcileServiceMonitor(ctx context.Context, agent *witwavev1alpha1.WitwaveAgent) (err error) {
 	ctx, _, finish := startStepSpan(ctx, "witwaveagent.reconcileServiceMonitor",
 		attribute.Bool("witwave.servicemonitor.enabled", serviceMonitorEnabled(agent)),
-		attribute.Bool("witwave.metrics.enabled", agent.Spec.Metrics.Enabled),
+		attribute.Bool("witwave.metrics.enabled", metricsEnabled(agent)),
 	)
 	defer finish(&err)
 
@@ -2071,7 +2071,7 @@ func (r *WitwaveAgentReconciler) reconcileServiceMonitor(ctx context.Context, ag
 		return fmt.Errorf("probe ServiceMonitor CRD: %w", err)
 	}
 	if !present {
-		if serviceMonitorEnabled(agent) && agent.Spec.Metrics.Enabled {
+		if serviceMonitorEnabled(agent) && metricsEnabled(agent) {
 			// Keep this at V(1) so it's visible during debugging but
 			// doesn't spam on every reconcile on clusters that
 			// intentionally omit prometheus-operator.
@@ -2083,7 +2083,7 @@ func (r *WitwaveAgentReconciler) reconcileServiceMonitor(ctx context.Context, ag
 
 	key := client.ObjectKey{Namespace: agent.Namespace, Name: agent.Name}
 
-	wantCreate := serviceMonitorEnabled(agent) && agent.Spec.Metrics.Enabled
+	wantCreate := serviceMonitorEnabled(agent) && metricsEnabled(agent)
 
 	// Delete path: spec disabled or metrics disabled. Only touch the
 	// object when we own it.
@@ -2204,7 +2204,7 @@ func (r *WitwaveAgentReconciler) podMonitorCRDPresent(ctx context.Context) (bool
 func (r *WitwaveAgentReconciler) reconcilePodMonitor(ctx context.Context, agent *witwavev1alpha1.WitwaveAgent) (err error) {
 	ctx, _, finish := startStepSpan(ctx, "witwaveagent.reconcilePodMonitor",
 		attribute.Bool("witwave.podmonitor.enabled", podMonitorEnabled(agent)),
-		attribute.Bool("witwave.metrics.enabled", agent.Spec.Metrics.Enabled),
+		attribute.Bool("witwave.metrics.enabled", metricsEnabled(agent)),
 	)
 	defer finish(&err)
 
@@ -2216,7 +2216,7 @@ func (r *WitwaveAgentReconciler) reconcilePodMonitor(ctx context.Context, agent 
 		return fmt.Errorf("probe PodMonitor CRD: %w", err)
 	}
 	if !present {
-		if podMonitorEnabled(agent) && agent.Spec.Metrics.Enabled {
+		if podMonitorEnabled(agent) && metricsEnabled(agent) {
 			log.V(1).Info("PodMonitor CRD not installed — skipping PodMonitor reconcile",
 				"group", podMonitorGVK.Group, "version", podMonitorGVK.Version)
 		}
@@ -2224,7 +2224,7 @@ func (r *WitwaveAgentReconciler) reconcilePodMonitor(ctx context.Context, agent 
 	}
 
 	key := client.ObjectKey{Namespace: agent.Namespace, Name: fmt.Sprintf("%s-backends", agent.Name)}
-	wantCreate := podMonitorEnabled(agent) && agent.Spec.Metrics.Enabled
+	wantCreate := podMonitorEnabled(agent) && metricsEnabled(agent)
 
 	if !wantCreate {
 		existing := &unstructured.Unstructured{}
