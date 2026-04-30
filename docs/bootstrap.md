@@ -306,7 +306,7 @@ WitwaveAgent CRD fields:
   presence: any `--persist-mount` for a backend takes ownership of
   the FULL mount list, so a custom layout can never accidentally
   inherit a surprise preset entry.
-- `--auth-from-env <backend-name>=<VAR>[,<VAR>…]` lifts named env vars
+- `--secret-from-env <backend-name>=<VAR>[,<VAR>…]` lifts named env vars
   out of the current shell, mints a per-backend Kubernetes Secret,
   and wires it as `envFrom` on that backend's container. Each `<VAR>`
   is either a bare `<NAME>` (read `$NAME`, store under Secret key
@@ -314,7 +314,12 @@ WitwaveAgent CRD fields:
   key `DEST`). The rename form is what lets the agent-suffixed shell
   var `GITHUB_TOKEN_IRIS` land as `GITHUB_TOKEN` inside the container,
   so the in-container env-var name is stable regardless of which
-  agent's credentials sourced it.
+  agent's credentials sourced it. Multiple `--secret-from-env` for the
+  same backend accumulate — pack everything into one comma-delimited
+  value, or spread it across one flag per `<VAR>` and the parser
+  produces an equivalent Secret either way. (`--auth-from-env` is the
+  deprecated former name; still accepted, but new docs use
+  `--secret-from-env`.)
 
 Iris's `--gitops` + default `--persist` lines above are exactly
 equivalent to (and additionally inject per-backend GitHub credentials
@@ -334,11 +339,11 @@ ww agent create iris \
   --persist-mount echo-1=memory:/home/agent/.echo/memory \
   --persist echo-2=1Gi \
   --persist-mount echo-2=memory:/home/agent/.echo/memory \
-  --auth-from-env echo-1=GITHUB_TOKEN_IRIS:GITHUB_TOKEN,GITHUB_USER_IRIS:GITHUB_USER \
-  --auth-from-env echo-2=GITHUB_TOKEN_IRIS:GITHUB_TOKEN,GITHUB_USER_IRIS:GITHUB_USER
+  --secret-from-env echo-1=GITHUB_TOKEN_IRIS:GITHUB_TOKEN,GITHUB_USER_IRIS:GITHUB_USER \
+  --secret-from-env echo-2=GITHUB_TOKEN_IRIS:GITHUB_TOKEN,GITHUB_USER_IRIS:GITHUB_USER
 ```
 
-The two `--auth-from-env` lines mint two K8s Secrets — one per
+The two `--secret-from-env` lines mint two K8s Secrets — one per
 backend, both carrying iris's `GITHUB_TOKEN` + `GITHUB_USER` lifted
 from the agent-suffixed shell vars — and wire each Secret onto its
 backend via `envFrom: secretRef`. Inside both echo containers,
@@ -347,6 +352,20 @@ Secrets carry identical content here; the per-backend split exists
 so that if a future use case calls for divergent credentials per
 backend in the same pod, the long-hand can swap one of the source
 vars without restructuring.
+
+Same result, one flag per `<VAR>` instead of comma-delimited:
+
+```bash
+  --secret-from-env echo-1=GITHUB_TOKEN_IRIS:GITHUB_TOKEN \
+  --secret-from-env echo-1=GITHUB_USER_IRIS:GITHUB_USER \
+  --secret-from-env echo-2=GITHUB_TOKEN_IRIS:GITHUB_TOKEN \
+  --secret-from-env echo-2=GITHUB_USER_IRIS:GITHUB_USER
+```
+
+Either shape produces an equivalent Secret. Pick whichever reads
+better in context — the combined form is terser, the multi-line
+form keeps each `<VAR>` reviewable on its own line per the doc's
+flag-per-line convention.
 
 The two shapes **compose** — they aren't either/or. Pass `--gitops` for
 the 95% case, then drop in extra `--gitmap` flags for paths that don't
