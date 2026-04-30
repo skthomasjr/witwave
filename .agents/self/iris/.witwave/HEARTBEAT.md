@@ -1,6 +1,6 @@
 ---
 description: Liveness check — verifies iris's claude backend can reach the Anthropic API and that CLAUDE.md is loaded.
-schedule: "* * * * *"
+schedule: "*/30 * * * *"
 enabled: true
 ---
 
