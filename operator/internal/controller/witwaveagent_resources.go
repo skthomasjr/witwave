@@ -807,7 +807,16 @@ func buildDeployment(agent *witwavev1alpha1.WitwaveAgent, appVersion string, pro
 				// falls back to TRIGGERS_AUTH_TOKEN on the backend side, so
 				// operators only need to thread one secret through both
 				// harness and backend env.
-				{Name: "HARNESS_EVENTS_URL", Value: fmt.Sprintf("http://localhost:%d", harnessPort)},
+				//
+				// Port selection: when metrics are enabled the harness binds
+				// /internal/events/{hook-decision,publish} to the dedicated
+				// metrics listener (#924) so a NetworkPolicy can lock the
+				// internal channel down to "scraper + same-pod only". When
+				// metrics are disabled the routes fall back to the app
+				// listener for availability. URL stamping has to track that
+				// split or backends 404 silently against a port where no
+				// route exists. (#1781)
+				{Name: "HARNESS_EVENTS_URL", Value: harnessEventsURL(harnessPort, harnessMetricsPort, metricsOn)},
 			}, otelEnv(agent, fmt.Sprintf("%s-%s", agent.Name, b.Name))...),
 				b.Env...),
 			EnvFrom:   backendEnvFromWithInternal(agent, b),
@@ -1328,6 +1337,20 @@ func metricsEnabledValue(agent *witwavev1alpha1.WitwaveAgent) string {
 		return "true"
 	}
 	return "false"
+}
+
+// harnessEventsURL returns the in-pod URL the backend's HARNESS_EVENTS_URL
+// env var should point at. The /internal/events/* routes live on the
+// metrics listener when metrics are enabled (#924, NetworkPolicy posture)
+// and fall back to the app listener when disabled (availability over
+// posture). Stamping the wrong port produces silent 404s on every hook-
+// decision POST — the failure mode that motivated #1781.
+func harnessEventsURL(harnessPort, harnessMetricsPort int32, metricsOn bool) string {
+	port := harnessPort
+	if metricsOn {
+		port = harnessMetricsPort
+	}
+	return fmt.Sprintf("http://localhost:%d", port)
 }
 
 // otelEnv renders the OTEL_* env-var list the operator should stamp onto
