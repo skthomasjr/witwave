@@ -230,21 +230,25 @@ concerns, each its own flag:
   three mappings: one for the harness, one for echo-1
   (`<repo-path>/.echo-1/`), and one for echo-2
   (`<repo-path>/.echo-2/`).
-- `--persist <backend-name>=<size>[@<storage-class>]` provisions a
-  **per-backend PVC for session + memory state** that survives pod
-  reboot. Repeatable (one per backend that needs persistence). Auto-
-  populates `Spec.Backends[].Storage` with type-derived default
-  mounts: claude → `projects/`, `sessions/`, `backups/`, `memory/`
-  under `/home/agent/.claude/`; codex → `memory/`, `sessions/` under
-  `/home/agent/.codex/`; gemini → `memory/` under
-  `/home/agent/.gemini/`; echo → `memory/` under `/home/agent/.echo/`
-  (symbolic — echo has no real session state per its
-  intentional-non-scope, but the convention applies uniformly so the
-  mechanic can be exercised in bootstraps that don't drag in real
-  LLM API keys). Distinct from the workspace `memory` volume:
-  workspace memory is project-wide cross-agent knowledge;
-  `--persist` is per-agent per-backend conversation history and
-  SDK session state.
+- `--with-persistence` (boolean) provisions a **per-backend PVC for
+  session + memory state** that survives pod reboot, on every
+  declared `--backend`. Type-derived default sizes + mount layouts
+  apply automatically: claude → 10Gi with `projects/`, `sessions/`,
+  `backups/`, `memory/` under `/home/agent/.claude/`; codex → 5Gi
+  with `memory/`, `sessions/` under `/home/agent/.codex/`; gemini →
+  5Gi with `memory/` under `/home/agent/.gemini/`; echo → 1Gi with
+  `memory/` under `/home/agent/.echo/` (symbolic — echo has no real
+  session state per its intentional-non-scope, but the convention
+  applies uniformly so the mechanic can be exercised in bootstraps
+  that don't drag in real LLM API keys). Distinct from the workspace
+  `memory` volume: workspace memory is project-wide cross-agent
+  knowledge; `--with-persistence` is per-agent per-backend
+  conversation history and SDK session state. Override per-type
+  defaults in `~/.config/ww/config.toml` under
+  `[persist.defaults.<type>]` (size, storage class, and mount list
+  are all configurable). For backend-specific overrides at the
+  command line, the long-hand `--persist <name>=<size>` flag (and
+  `--persist-mount` for custom mount paths) takes precedence.
 
 Together they make a single `ww agent create` the complete unit of
 deploy: CR admitted, workspace bound, identity wired, persistence
@@ -257,22 +261,31 @@ ww agent create iris \
   --backend echo-2:echo \
   --workspace witwave-self \
   --gitops https://github.com/witwave-ai/witwave.git@main:.agents/self/iris \
-  --persist echo-1=1Gi \
-  --persist echo-2=1Gi \
-  --secret-from-env echo-1=GITHUB_TOKEN_IRIS:GITHUB_TOKEN,GITHUB_USER_IRIS:GITHUB_USER \
-  --secret-from-env echo-2=GITHUB_TOKEN_IRIS:GITHUB_TOKEN,GITHUB_USER_IRIS:GITHUB_USER
+  --with-persistence \
+  --secret-from-env echo-1=GITHUB_TOKEN_IRIS:GITHUB_TOKEN \
+  --secret-from-env echo-1=GITHUB_USER_IRIS:GITHUB_USER \
+  --secret-from-env echo-2=GITHUB_TOKEN_IRIS:GITHUB_TOKEN \
+  --secret-from-env echo-2=GITHUB_USER_IRIS:GITHUB_USER
 ```
 
-Each `--persist` line provisions one PVC per backend
-(`iris-echo-1-data`, `iris-echo-2-data`) and projects a single
-`memory/` subPath into the corresponding container at
-`/home/agent/.echo/memory/`. Echo has no real session state, so
-this is a symbolic convention — useful for verifying the
-per-backend persistence mechanic without dragging in
-`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_API_KEY`. When iris
-swaps to a real LLM backend later, the same flag picks up that
-backend's type-derived preset (claude → 4 subPaths, codex → 2,
-gemini → 1).
+`--with-persistence` fans out across every declared `--backend` and
+provisions one PVC per backend using type-derived defaults — for
+echo that's a 1Gi PVC mounted at `/home/agent/.echo/memory/`. Sizes
+and mount layouts come from `BackendStorageSizeDefaults` and
+`BackendStoragePresets` in code, with optional overrides in
+`~/.config/ww/config.toml` under `[persist.defaults.<type>]`. Echo
+has no real session state, so this is a symbolic convention —
+useful for verifying the per-backend persistence mechanic without
+dragging in `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_API_KEY`.
+When iris swaps to a real LLM backend later, the same flag picks
+up that backend's type-derived preset (claude → 10Gi + 4 subPaths,
+codex → 5Gi + 2, gemini → 5Gi + 1) without any further flags.
+
+The `--secret-from-env` lines are split one VAR per line — same
+backend referenced twice accumulates into one minted Secret. The
+combined comma-delimited form
+(`echo-1=GITHUB_TOKEN_IRIS:GITHUB_TOKEN,GITHUB_USER_IRIS:GITHUB_USER`)
+is equivalent; pick whichever reads better in your editor.
 
 ### Long-hand equivalent (the explicit form)
 
@@ -304,13 +317,16 @@ WitwaveAgent CRD fields:
   value, or spread it across one flag per `<VAR>` and the parser
   produces an equivalent Secret either way.
 
-`--persist`, `--persist-mount`, and `--secret-from-env` translate
-directly between the two forms — they aren't sugar/long-form pairs
-the way `--gitops` is sugar for `--gitsync` + `--gitmap`. The
-short-form command above already uses `--persist` + `--secret-from-env`;
-the long-hand block below just adds `--persist-mount` to spell the
-type-default mount path out explicitly. Iris's short-form command is
-exactly equivalent to:
+`--persist` + `--persist-mount` are the long-hand counterparts to
+`--with-persistence` — same wiring, just spelled out per backend
+instead of relying on the type-default fan-out. `--secret-from-env`
+translates directly (it's the same flag in both forms; no sugar
+expansion). `--gitops` is sugar over `--gitsync` + `--gitmap`. The
+long-hand block below shows the explicit equivalent of iris's
+short-form command, with `--with-persistence` expanded into one
+`--persist <name>=<size>` per backend (sizes filled from the
+type-default chain — 1Gi for echo) and `--persist-mount` added to
+spell the type-default mount path out explicitly:
 
 ```bash
 ww agent create iris \
