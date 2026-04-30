@@ -1294,19 +1294,24 @@ func runAgentStatus(ctx context.Context, f *agentFlags, name string) error {
 
 func newAgentDeleteCmd(f *agentFlags) *cobra.Command {
 	var (
-		removeRepoFolder     bool
-		deleteGitSecret      bool
-		deleteBackendSecrets bool
-		purge                bool
-		commitMessage        string
+		removeRepoFolder   bool
+		deleteGitSecret    bool
+		keepBackendSecrets bool
+		purge              bool
+		commitMessage      string
 	)
 	cmd := &cobra.Command{
 		Use:   "delete <name>",
 		Short: "Delete a WitwaveAgent CR (operator cascades pod cleanup)",
 		Long: "Deletes the WitwaveAgent CR. The operator cascades pod + Service\n" +
 			"teardown via owner references — no manual cleanup needed on the\n" +
-			"cluster side.\n\n" +
-			"Optional repo-side + credential cleanup:\n\n" +
+			"cluster side. By default ww-managed backend credential Secrets\n" +
+			"(named <agent>-<backend>-credentials, minted by --secret-from-env /\n" +
+			"--auth / --auth-set on `ww agent create`) are also reaped — the\n" +
+			"per-agent naming makes them unambiguous orphans, and the\n" +
+			"per-backend PVCs already cascade-delete via owner refs. Pass\n" +
+			"--keep-backend-secrets to preserve them.\n\n" +
+			"Optional repo-side + extra credential cleanup:\n\n" +
 			"  --remove-repo-folder      Also wipe the agent's `.agents/<…>/`\n" +
 			"                            directory from the wired gitSync repo\n" +
 			"                            (clone → git rm -r → commit → push).\n" +
@@ -1317,28 +1322,25 @@ func newAgentDeleteCmd(f *agentFlags) *cobra.Command {
 			"                            and the user can retry.\n\n" +
 			"  --delete-git-secret       Also delete every ww-managed credential\n" +
 			"                            Secret referenced by the CR's\n" +
-			"                            gitSyncs[]. Secrets without the\n" +
-			"                            `app.kubernetes.io/managed-by: ww` label\n" +
-			"                            are preserved regardless.\n\n" +
-			"  --delete-backend-secrets  Also delete every ww-managed credential\n" +
-			"                            Secret referenced by the CR's\n" +
-			"                            spec.backends[].credentials.existingSecret\n" +
-			"                            (typically minted by --secret-from-env /\n" +
-			"                            --auth / --auth-set on `ww agent create`).\n" +
-			"                            Same managed-by label gate as\n" +
-			"                            --delete-git-secret.\n\n" +
+			"                            gitSyncs[]. Opt-in (not default) because\n" +
+			"                            gitSync Secrets are sometimes shared\n" +
+			"                            across agents — default-deleting one\n" +
+			"                            could break peer agents on the same\n" +
+			"                            shared credential.\n\n" +
+			"  --keep-backend-secrets    Preserve the ww-managed backend Secrets\n" +
+			"                            (opt-out — by default they're deleted\n" +
+			"                            alongside the agent).\n\n" +
 			"  --purge                   Convenience: --remove-repo-folder +\n" +
-			"                            --delete-git-secret +\n" +
-			"                            --delete-backend-secrets. For when you\n" +
-			"                            want every ww trace of this agent gone.",
+			"                            --delete-git-secret. Backend Secrets are\n" +
+			"                            already deleted by default; --purge does\n" +
+			"                            not enable --keep-backend-secrets.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if purge {
 				removeRepoFolder = true
 				deleteGitSecret = true
-				deleteBackendSecrets = true
 			}
-			return runAgentDelete(cmd.Context(), f, args[0], removeRepoFolder, deleteGitSecret, deleteBackendSecrets, commitMessage)
+			return runAgentDelete(cmd.Context(), f, args[0], removeRepoFolder, deleteGitSecret, keepBackendSecrets, commitMessage)
 		},
 	}
 	bindAgentMutatingFlags(cmd, f)
@@ -1346,20 +1348,22 @@ func newAgentDeleteCmd(f *agentFlags) *cobra.Command {
 		"Also wipe the agent's `.agents/<…>/` directory from the wired gitSync repo "+
 			"(refuses when multiple gitSyncs are configured)")
 	cmd.Flags().BoolVar(&deleteGitSecret, "delete-git-secret", false,
-		"Also delete every ww-managed credential Secret referenced by the CR's gitSyncs[]")
-	cmd.Flags().BoolVar(&deleteBackendSecrets, "delete-backend-secrets", false,
 		"Also delete every ww-managed credential Secret referenced by the CR's "+
-			"spec.backends[].credentials.existingSecret (the Secrets minted by "+
-			"--secret-from-env / --auth / --auth-set on `ww agent create`)")
+			"gitSyncs[]. Opt-in because gitSync Secrets may be shared across agents.")
+	cmd.Flags().BoolVar(&keepBackendSecrets, "keep-backend-secrets", false,
+		"Preserve the ww-managed backend credential Secrets (per-agent, named "+
+			"<agent>-<backend>-credentials). Default: delete them alongside the "+
+			"agent. Secrets without app.kubernetes.io/managed-by=ww are never "+
+			"touched regardless.")
 	cmd.Flags().BoolVar(&purge, "purge", false,
-		"Convenience flag: enables --remove-repo-folder + --delete-git-secret + "+
-			"--delete-backend-secrets")
+		"Convenience flag: enables --remove-repo-folder + --delete-git-secret. "+
+			"Backend Secrets are already deleted by default.")
 	cmd.Flags().StringVar(&commitMessage, "commit-message", "",
 		"Custom commit message for the repo wipe (default: \"Remove agent <name>\")")
 	return cmd
 }
 
-func runAgentDelete(ctx context.Context, f *agentFlags, name string, removeRepoFolder, deleteGitSecret, deleteBackendSecrets bool, commitMessage string) error {
+func runAgentDelete(ctx context.Context, f *agentFlags, name string, removeRepoFolder, deleteGitSecret, keepBackendSecrets bool, commitMessage string) error {
 	target, resolver, err := f.resolveTarget(ctx)
 	if err != nil {
 		return err
@@ -1371,16 +1375,16 @@ func runAgentDelete(ctx context.Context, f *agentFlags, name string, removeRepoF
 	ns := logAndResolveNamespace(f.namespace, target.Namespace)
 	assumeYes := f.assumeYes || os.Getenv("WW_ASSUME_YES") == "true"
 	return agent.Delete(ctx, target, cfg, agent.DeleteOptions{
-		Name:                 name,
-		Namespace:            ns,
-		RemoveRepoFolder:     removeRepoFolder,
-		DeleteGitSecret:      deleteGitSecret,
-		DeleteBackendSecrets: deleteBackendSecrets,
-		CommitMessage:        commitMessage,
-		AssumeYes:            assumeYes,
-		DryRun:               f.dryRun,
-		Out:                  os.Stdout,
-		In:                   os.Stdin,
+		Name:               name,
+		Namespace:          ns,
+		RemoveRepoFolder:   removeRepoFolder,
+		DeleteGitSecret:    deleteGitSecret,
+		KeepBackendSecrets: keepBackendSecrets,
+		CommitMessage:      commitMessage,
+		AssumeYes:          assumeYes,
+		DryRun:             f.dryRun,
+		Out:                os.Stdout,
+		In:                 os.Stdin,
 	})
 }
 

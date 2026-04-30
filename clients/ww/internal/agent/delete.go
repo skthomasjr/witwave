@@ -38,12 +38,17 @@ type DeleteOptions struct {
 	// `app.kubernetes.io/managed-by: ww` label gates deletion.
 	DeleteGitSecret bool
 
-	// DeleteBackendSecrets, when true, also deletes every ww-managed
-	// credential Secret referenced by the CR's
-	// spec.backends[].credentials.existingSecret. Same label-gated
-	// safety as DeleteGitSecret — Secrets without the
-	// `app.kubernetes.io/managed-by: ww` label are preserved.
-	DeleteBackendSecrets bool
+	// KeepBackendSecrets, when true, preserves the ww-managed
+	// credential Secrets referenced by the CR's
+	// spec.backends[].credentials.existingSecret. Default behaviour
+	// is to delete them — backend Secrets are per-agent (their name
+	// embeds the agent's name), so they're unambiguous orphans
+	// after the agent is gone, and the per-backend PVCs already
+	// cascade-delete via owner refs (data is more destructive than
+	// the Secret would be). Same label-gated safety regardless:
+	// Secrets without `app.kubernetes.io/managed-by: ww` are never
+	// touched.
+	KeepBackendSecrets bool
 
 	// CommitMessage overrides the auto-generated commit subject on the
 	// repo-side wipe. Empty → "Remove agent <name>".
@@ -122,8 +127,11 @@ func Delete(
 	if opts.DeleteGitSecret {
 		managedSecrets = collectGitSecretNames(cr)
 	}
+	// Backend Secrets default to delete (per-agent naming makes
+	// orphans unambiguous; the cascading PVCs are already more
+	// destructive). --keep-backend-secrets is the opt-out.
 	var backendSecrets []string
-	if opts.DeleteBackendSecrets {
+	if !opts.KeepBackendSecrets {
 		backendSecrets = collectBackendCredentialSecretNames(cr)
 	}
 
@@ -157,18 +165,25 @@ func Delete(
 			})
 		}
 	}
-	if opts.DeleteBackendSecrets {
-		if len(backendSecrets) == 0 {
+	if opts.KeepBackendSecrets {
+		// Opt-out path: explicit "we're preserving them" line so
+		// the banner doesn't go silent on a relevant decision.
+		preserved := collectBackendCredentialSecretNames(cr)
+		switch {
+		case len(preserved) == 0:
+			// No backend Secrets exist; nothing to preserve and
+			// nothing to delete. Skip the line entirely.
+		default:
 			plan = append(plan, k8s.PlanLine{
 				Key:   "Backend Secrets",
-				Value: "no backend credentials referenced — nothing to delete",
-			})
-		} else {
-			plan = append(plan, k8s.PlanLine{
-				Key:   "Backend Secrets",
-				Value: fmt.Sprintf("delete ww-managed backend Secret(s): %s", strings.Join(backendSecrets, ", ")),
+				Value: fmt.Sprintf("preserve ww-managed backend Secret(s): %s", strings.Join(preserved, ", ")),
 			})
 		}
+	} else if len(backendSecrets) > 0 {
+		plan = append(plan, k8s.PlanLine{
+			Key:   "Backend Secrets",
+			Value: fmt.Sprintf("delete ww-managed backend Secret(s): %s", strings.Join(backendSecrets, ", ")),
+		})
 	}
 
 	proceed, err := k8s.Confirm(opts.Out, opts.In, target, plan, k8s.PromptOptions{
@@ -207,7 +222,7 @@ func Delete(
 	// error) because the CR is already gone; a stuck Secret is a
 	// minor cleanup item, not an incident.
 	needSecretReap := (opts.DeleteGitSecret && len(managedSecrets) > 0) ||
-		(opts.DeleteBackendSecrets && len(backendSecrets) > 0)
+		(!opts.KeepBackendSecrets && len(backendSecrets) > 0)
 	if needSecretReap {
 		k8sClient, err := newKubernetesClient(cfg)
 		if err != nil {
