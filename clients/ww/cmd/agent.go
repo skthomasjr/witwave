@@ -938,6 +938,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 		gitMaps         []string
 		gitSyncSecrets  []string
 		persist         []string
+		persistMounts   []string
 		authProfiles    []string
 		authFromEnv     []string
 		authSecrets     []string
@@ -992,7 +993,11 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			specs, err = agent.ApplyBackendPersist(specs, persistMap)
+			persistMountMap, err := agent.ParseBackendPersistMounts(persistMounts)
+			if err != nil {
+				return err
+			}
+			specs, err = agent.ApplyBackendPersist(specs, persistMap, persistMountMap)
 			if err != nil {
 				return err
 			}
@@ -1042,8 +1047,14 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			"Form: <backend-name>=<size>[@<storage-class>]. Operator creates a PVC named "+
 			"<agent>-<backend>-data and projects it into the container at default mount "+
 			"paths derived from the backend's TYPE: claude → projects/sessions/backups/memory, "+
-			"codex → memory/sessions, gemini → memory. echo is intentionally stateless and "+
-			"the flag is rejected for it.")
+			"codex → memory/sessions, gemini → memory, echo → memory (symbolic). Pair with "+
+			"--persist-mount to override the default mount list with an explicit one.")
+	cmd.Flags().StringArrayVar(&persistMounts, "persist-mount", nil,
+		"Override the default mount list on a backend's PVC (repeatable). Form: "+
+			"<backend-name>=<subpath>:<mountpath>. Replace-on-presence: any --persist-mount "+
+			"for a backend takes ownership of its FULL mount list — type-derived defaults "+
+			"are skipped. Each entry adds one (subPath, mountPath) pair on the backend's PVC. "+
+			"Requires a matching --persist <backend-name>=<size> to provision the PVC.")
 	cmd.Flags().StringArrayVar(&authProfiles, "auth", nil,
 		fmt.Sprintf(
 			"Per-backend auth profile. Repeatable. Form: <backend>=<profile>.\n"+
