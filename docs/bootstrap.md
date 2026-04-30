@@ -214,9 +214,12 @@ concerns, each its own flag:
   mounts: claude → `projects/`, `sessions/`, `backups/`, `memory/`
   under `/home/agent/.claude/`; codex → `memory/`, `sessions/` under
   `/home/agent/.codex/`; gemini → `memory/` under
-  `/home/agent/.gemini/`. Echo is intentionally stateless — the
-  flag is rejected for it. Distinct from the workspace `memory`
-  volume: workspace memory is project-wide cross-agent knowledge;
+  `/home/agent/.gemini/`; echo → `memory/` under `/home/agent/.echo/`
+  (symbolic — echo has no real session state per its
+  intentional-non-scope, but the convention applies uniformly so the
+  mechanic can be exercised in bootstraps that don't drag in real
+  LLM API keys). Distinct from the workspace `memory` volume:
+  workspace memory is project-wide cross-agent knowledge;
   `--persist` is per-agent per-backend conversation history and
   SDK session state.
 
@@ -230,15 +233,21 @@ ww agent create iris \
   --backend echo-1:echo \
   --backend echo-2:echo \
   --workspace witwave-self \
-  --gitops https://github.com/witwave-ai/witwave.git@main:.agents/self/iris
+  --gitops https://github.com/witwave-ai/witwave.git@main:.agents/self/iris \
+  --persist echo-1=1Gi \
+  --persist echo-2=1Gi
 ```
 
-`--persist` is intentionally absent from this command because both
-backends are `echo` — echo doesn't have session state to persist and
-the flag rejects with a clear error if you try. When iris swaps in a
-real LLM backend in a later step, the command grows a `--persist`
-line per stateful backend. For a forward look, the same agent with
-one claude backend instead would be:
+Each `--persist` line provisions one PVC per backend
+(`iris-echo-1-data`, `iris-echo-2-data`) and projects a single
+`memory/` subPath into the corresponding container at
+`/home/agent/.echo/memory/`. Echo has no real session state, so
+this is a symbolic convention — useful for verifying the
+per-backend persistence mechanic without dragging in
+`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_API_KEY`. When iris
+swaps to a real LLM backend later, the same flag has more to chew
+on. For a forward look, the same agent with one claude backend
+instead would be:
 
 ```bash
 ww agent create iris \

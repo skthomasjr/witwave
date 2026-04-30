@@ -65,6 +65,20 @@ var BackendStoragePresets = map[string][]BackendStorageMount{
 		// memory/. One PVC, two subPaths.
 		{SubPath: "memory", MountPath: "/home/agent/.gemini/memory"},
 	},
+	"echo": {
+		// Echo's intentional non-scope (backends/echo/README.md) means
+		// it has no real session state. The single `memory/` subPath
+		// here is a symbolic convention so `--persist` exercises the
+		// mechanic uniformly across backend types — useful for
+		// bootstrap walkthroughs that want to verify the per-backend
+		// PVC story without dragging in claude/codex/gemini API keys.
+		// Path is type-keyed (`/home/agent/.echo/memory`) so two
+		// echo backends in the same agent (echo-1 + echo-2) each get
+		// their own PVC mounted at the same in-container path,
+		// distinct from any name-based gitMapping at .echo-1/ /
+		// .echo-2/.
+		{SubPath: "memory", MountPath: "/home/agent/.echo/memory"},
+	},
 }
 
 // ParseBackendPersist converts repeatable `--persist` flag values to
