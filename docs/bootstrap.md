@@ -77,28 +77,23 @@ source .env
 set +o allexport
 ```
 
-Variables this walkthrough expects in `.env` (only the long-hand block
-in Step 3 needs them — the runnable short-form command above it does
-not). Convention is per-**agent**: one GitHub credential pair per
-named operator-of-record, suffixed with the agent's name:
+Variables this walkthrough expects in `.env`:
 
 ```bash
-# iris's GitHub credentials (used by every backend in iris's pod)
+# Claude OAuth token (the iris backend's LLM credential)
+CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-replace_me
+
+# iris's GitHub credentials — agent-suffixed so future agents
+# (nova, kira, …) can carry their own without collision.
 GITHUB_TOKEN_IRIS=github_pat_replace_me
 GITHUB_USER_IRIS=iris
-
-# Future agents would follow the same convention:
-# GITHUB_TOKEN_NOVA=...
-# GITHUB_TOKEN_KIRA=...
 ```
 
-The agent-suffixed shell vars let multi-agent deployments give each
-agent its own GitHub identity without collision; per-backend
-divergence within one agent isn't currently a use case (every backend
-in iris's pod authenticates as iris). The rename form on
-`--secret-from-env` (Step 3 long-hand) maps `GITHUB_TOKEN_IRIS` →
-in-container `GITHUB_TOKEN` and `GITHUB_USER_IRIS` →
-in-container `GITHUB_USER`.
+The Step 3 command lifts these into iris's claude container at
+the in-container env-var names the SDK and tooling expect:
+`CLAUDE_CODE_OAUTH_TOKEN` lands as-is; `GITHUB_TOKEN_IRIS` and
+`GITHUB_USER_IRIS` are renamed to `GITHUB_TOKEN` / `GITHUB_USER`
+inside the container.
 
 ### Storage: an access mode the cluster can satisfy
 
@@ -194,197 +189,47 @@ provisioned. PVC names follow the pattern `<workspace>-vol-<volume>` —
 
 ## Step 3 — Deploy iris
 
-Iris is a WitwaveAgent. It lives in the same namespace as the
-WitwaveWorkspace it binds to — `v1alpha1` only supports same-namespace
-binding, and the `ww` CLI rejects cross-namespace asks loudly so users
-see the limitation up-front. Additional agents (`nova`, `kira`, …) get
-added later in the same shape; this step walks through `iris`
-end-to-end first.
-
-For the initial bootstrap iris runs **two echo backends** (`echo-1` and
-`echo-2`) — echo is the zero-dependency stub backend that requires no API
-keys and returns a canned response, and the two-backend shape is enough
-to exercise the multi-backend wiring (one harness routing to N
-backends, per-backend gitOps fan-out) without dragging in any of
-`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GOOGLE_API_KEY`. The
-`<name>:<type>` form on `--backend` lets two backends share the same
-type but stay independently addressable. Real LLM backends get
-swapped in in a later step.
-
-Iris's wiring on `ww agent create` covers three deliberately separate
-concerns, each its own flag:
-
-- `--workspace witwave-self` binds iris to the **shared workspace** —
-  every workspace volume (source, memory, …) is mounted at the same
-  path on every bound agent's pods. This is the
-  `WitwaveWorkspace.Spec.WorkspaceRefs` channel covered in Step 2.
-- `--gitops <url>[@<branch>]:<repo-path>` wires the agent's **own
-  identity** — its prompts, HEARTBEAT.md, hooks, Claude/Codex/Gemini
-  config, MCP wiring, skills — from a path inside the same repo.
-  Per-agent, private to that one agent's pod, never shared with peer
-  agents. Auto-populates the CR's `Spec.GitSyncs[]` and per-container
-  `GitMappings[]` using a convention: `<repo-path>/.witwave/` lands at
-  the harness's `/home/agent/.witwave/`, and `<repo-path>/.<backend>/`
-  lands at each backend's `/home/agent/.<backend>/` — once per declared
-  `--backend`. For iris with `echo-1` + `echo-2`, that fans out to
-  three mappings: one for the harness, one for echo-1
-  (`<repo-path>/.echo-1/`), and one for echo-2
-  (`<repo-path>/.echo-2/`).
-- `--with-persistence` (boolean) provisions a **per-backend PVC for
-  session + memory state** that survives pod reboot, on every
-  declared `--backend`. Type-derived default sizes + mount layouts
-  apply automatically: claude → 10Gi with `projects/`, `sessions/`,
-  `backups/`, `memory/` under `/home/agent/.claude/`; codex → 5Gi
-  with `memory/`, `sessions/` under `/home/agent/.codex/`; gemini →
-  5Gi with `memory/` under `/home/agent/.gemini/`; echo → 1Gi with
-  `memory/` under `/home/agent/.echo/` (symbolic — echo has no real
-  session state per its intentional-non-scope, but the convention
-  applies uniformly so the mechanic can be exercised in bootstraps
-  that don't drag in real LLM API keys). Distinct from the workspace
-  `memory` volume: workspace memory is project-wide cross-agent
-  knowledge; `--with-persistence` is per-agent per-backend
-  conversation history and SDK session state. Override per-type
-  defaults in `~/.config/ww/config.toml` under
-  `[persist.defaults.<type>]` (size, storage class, and mount list
-  are all configurable). For backend-specific overrides at the
-  command line, the long-hand `--persist <name>=<size>` flag (and
-  `--persist-mount` for custom mount paths) takes precedence.
-
-Together they make a single `ww agent create` the complete unit of
-deploy: CR admitted, workspace bound, identity wired, persistence
-provisioned.
+Iris is a WitwaveAgent with one `claude` backend, bound to the
+`witwave-self` workspace, with its identity (prompts, hooks, Claude
+Code config) sourced from `.agents/self/iris/` in this repo, and
+per-backend persistent storage for session + memory state. One
+command:
 
 ```bash
 ww agent create iris \
   --namespace witwave-self \
-  --backend echo-1:echo \
-  --backend echo-2:echo \
+  --backend claude \
   --workspace witwave-self \
   --gitops https://github.com/witwave-ai/witwave.git@main:.agents/self/iris \
   --with-persistence \
-  --secret-from-env echo-1=GITHUB_TOKEN_IRIS:GITHUB_TOKEN \
-  --secret-from-env echo-1=GITHUB_USER_IRIS:GITHUB_USER \
-  --secret-from-env echo-2=GITHUB_TOKEN_IRIS:GITHUB_TOKEN \
-  --secret-from-env echo-2=GITHUB_USER_IRIS:GITHUB_USER
+  --secret-from-env claude=CLAUDE_CODE_OAUTH_TOKEN \
+  --secret-from-env claude=GITHUB_TOKEN_IRIS:GITHUB_TOKEN \
+  --secret-from-env claude=GITHUB_USER_IRIS:GITHUB_USER
 ```
 
-`--with-persistence` fans out across every declared `--backend` and
-provisions one PVC per backend using type-derived defaults — for
-echo that's a 1Gi PVC mounted at `/home/agent/.echo/memory/`. Sizes
-and mount layouts come from `BackendStorageSizeDefaults` and
-`BackendStoragePresets` in code, with optional overrides in
-`~/.config/ww/config.toml` under `[persist.defaults.<type>]`. Echo
-has no real session state, so this is a symbolic convention —
-useful for verifying the per-backend persistence mechanic without
-dragging in `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_API_KEY`.
-When iris swaps to a real LLM backend later, the same flag picks
-up that backend's type-derived preset (claude → 10Gi + 4 subPaths,
-codex → 5Gi + 2, gemini → 5Gi + 1) without any further flags.
+What each flag does:
 
-The `--secret-from-env` lines are split one VAR per line — same
-backend referenced twice accumulates into one minted Secret. The
-combined comma-delimited form
-(`echo-1=GITHUB_TOKEN_IRIS:GITHUB_TOKEN,GITHUB_USER_IRIS:GITHUB_USER`)
-is equivalent; pick whichever reads better in your editor.
-
-### Long-hand equivalent (the explicit form)
-
-The gitOps, persist, and auth flags have convention-driven shortcuts
-plus more general long-hand counterparts that map 1:1 to the
-WitwaveAgent CRD fields:
-
-- `--gitsync <name>=<url>[@<branch>]` declares one cloned repo, named
-  so mappings can reference it. Populates one `Spec.GitSyncs[]` entry.
-- `--gitmap [<container>=]<gitsync-name>:<src>:<dest>` adds one
-  GitMappings entry. `<container>` is `harness` (the default —
-  populates `Spec.GitMappings[]`) or any backend name from `--backend`
-  (populates that backend's `BackendSpec.GitMappings[]`).
-- `--persist-mount <backend-name>=<subpath>:<mountpath>` overrides the
-  type-derived default mount list on a backend's PVC. Replace-on-
-  presence: any `--persist-mount` for a backend takes ownership of
-  the FULL mount list, so a custom layout can never accidentally
-  inherit a surprise preset entry.
-- `--secret-from-env <backend-name>=<VAR>[,<VAR>…]` lifts named env vars
-  out of the current shell, mints a per-backend Kubernetes Secret,
-  and wires it as `envFrom` on that backend's container. Each `<VAR>`
-  is either a bare `<NAME>` (read `$NAME`, store under Secret key
-  `NAME`) or a rename `<SRC>:<DEST>` (read `$SRC`, store under Secret
-  key `DEST`). The rename form is what lets the agent-suffixed shell
-  var `GITHUB_TOKEN_IRIS` land as `GITHUB_TOKEN` inside the container,
-  so the in-container env-var name is stable regardless of which
-  agent's credentials sourced it. Multiple `--secret-from-env` for the
-  same backend accumulate — pack everything into one comma-delimited
-  value, or spread it across one flag per `<VAR>` and the parser
-  produces an equivalent Secret either way.
-
-`--persist` + `--persist-mount` are the long-hand counterparts to
-`--with-persistence` — same wiring, just spelled out per backend
-instead of relying on the type-default fan-out. `--secret-from-env`
-translates directly (it's the same flag in both forms; no sugar
-expansion). `--gitops` is sugar over `--gitsync` + `--gitmap`. The
-long-hand block below shows the explicit equivalent of iris's
-short-form command, with `--with-persistence` expanded into one
-`--persist <name>=<size>` per backend (sizes filled from the
-type-default chain — 1Gi for echo) and `--persist-mount` added to
-spell the type-default mount path out explicitly:
-
-```bash
-ww agent create iris \
-  --namespace witwave-self \
-  --backend echo-1:echo \
-  --backend echo-2:echo \
-  --workspace witwave-self \
-  --gitsync witwave=https://github.com/witwave-ai/witwave.git@main \
-  --gitmap witwave:.agents/self/iris/.witwave/:/home/agent/.witwave/ \
-  --gitmap echo-1=witwave:.agents/self/iris/.echo-1/:/home/agent/.echo-1/ \
-  --gitmap echo-2=witwave:.agents/self/iris/.echo-2/:/home/agent/.echo-2/ \
-  --persist echo-1=1Gi \
-  --persist-mount echo-1=memory:/home/agent/.echo/memory \
-  --persist echo-2=1Gi \
-  --persist-mount echo-2=memory:/home/agent/.echo/memory \
-  --secret-from-env echo-1=GITHUB_TOKEN_IRIS:GITHUB_TOKEN,GITHUB_USER_IRIS:GITHUB_USER \
-  --secret-from-env echo-2=GITHUB_TOKEN_IRIS:GITHUB_TOKEN,GITHUB_USER_IRIS:GITHUB_USER
-```
-
-The two `--secret-from-env` lines mint two K8s Secrets — one per
-backend, both carrying iris's `GITHUB_TOKEN` + `GITHUB_USER` lifted
-from the agent-suffixed shell vars — and wire each Secret onto its
-backend via `envFrom: secretRef`. Inside both echo containers,
-`$GITHUB_TOKEN` and `$GITHUB_USER` resolve to iris's values. The two
-Secrets carry identical content here; the per-backend split exists
-so that if a future use case calls for divergent credentials per
-backend in the same pod, the long-hand can swap one of the source
-vars without restructuring.
-
-Same result, one flag per `<VAR>` instead of comma-delimited:
-
-```bash
-  --secret-from-env echo-1=GITHUB_TOKEN_IRIS:GITHUB_TOKEN \
-  --secret-from-env echo-1=GITHUB_USER_IRIS:GITHUB_USER \
-  --secret-from-env echo-2=GITHUB_TOKEN_IRIS:GITHUB_TOKEN \
-  --secret-from-env echo-2=GITHUB_USER_IRIS:GITHUB_USER
-```
-
-Either shape produces an equivalent Secret. Pick whichever reads
-better in context — the combined form is terser, the multi-line
-form keeps each `<VAR>` reviewable on its own line per the doc's
-flag-per-line convention.
-
-The two shapes **compose** — they aren't either/or. Pass `--gitops` for
-the 95% case, then drop in extra `--gitmap` flags for paths that don't
-follow the convention (e.g. mounting an additional skills repo, or
-pointing a backend at a non-default subdirectory). The flag layer
-merges everything into one `Spec.GitSyncs[]` and one flat
-`Spec.GitMappings[]` set on the CR; duplicate gitSync names or
-duplicate (container, dest) pairs are rejected at parse time.
-
-Private-repo support uses `--gitsync-secret <name>=<k8s-secret>`,
-which references a pre-created Kubernetes Secret holding the
-gitSync credentials (typical keys: `GITSYNC_USERNAME` /
-`GITSYNC_PASSWORD`, or `GITSYNC_SSH_KEY_FILE`). Same posture as
-`--auth-secret` for backend auth — the CLI never accepts inline
-tokens. The bootstrap repo is public, so this isn't needed in
-this walkthrough.
+- `--backend claude` — single claude sidecar, default port 8001.
+- `--workspace witwave-self` — mounts the workspace's shared
+  `source` and `memory` volumes onto the claude container at
+  `/workspaces/witwave-self/source` and
+  `/workspaces/witwave-self/memory`.
+- `--gitops <url>[@<branch>]:<repo-path>` — clones the repo into a
+  pod-local sidecar and copies `.agents/self/iris/.witwave/` into
+  the harness's `/home/agent/.witwave/` and
+  `.agents/self/iris/.claude/` into the claude container's
+  `/home/agent/.claude/`.
+- `--with-persistence` — provisions a 10Gi PVC named
+  `iris-claude-data`, projected into the claude container at
+  `projects/`, `sessions/`, `backups/`, `memory/` under
+  `/home/agent/.claude/` (claude's type-derived default).
+- `--secret-from-env claude=...` — three lines, one per env var,
+  all minted into a single `iris-claude-credentials` Secret and
+  wired as `envFrom` on the claude container. The first line
+  carries `CLAUDE_CODE_OAUTH_TOKEN` straight through; the next two
+  rename the agent-suffixed shell vars (`GITHUB_TOKEN_IRIS`,
+  `GITHUB_USER_IRIS`) into stable in-container names
+  (`GITHUB_TOKEN`, `GITHUB_USER`).
 
 Verify iris is `Ready` and bound to the workspace:
 
