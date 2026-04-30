@@ -77,6 +77,27 @@ source .env
 set +o allexport
 ```
 
+Variables this walkthrough expects in `.env` (only the long-hand block
+in Step 3 needs them — the runnable short-form command above it does
+not):
+
+```bash
+# echo-1 GitHub credentials
+ECHO1_GITHUB_TOKEN=ghp_replace_me
+ECHO1_GITHUB_USERNAME=your-github-handle-1
+
+# echo-2 GitHub credentials (potentially different from echo-1)
+ECHO2_GITHUB_TOKEN=ghp_replace_me
+ECHO2_GITHUB_USERNAME=your-github-handle-2
+```
+
+The per-backend prefix (`ECHO1_*`, `ECHO2_*`) is so each backend can
+take its own value for the same in-container env var name
+(`GITHUB_TOKEN`, `GITHUB_USERNAME`). The rename form on
+`--auth-from-env` (Step 3 long-hand) maps `ECHO1_GITHUB_TOKEN` →
+`GITHUB_TOKEN` for echo-1 and `ECHO2_GITHUB_TOKEN` → `GITHUB_TOKEN`
+for echo-2.
+
 ### Storage: an access mode the cluster can satisfy
 
 The shared-volume requirement for a WitwaveWorkspace is "every binding
@@ -268,7 +289,7 @@ defaults to the cluster default — append `@<class>` to override
 
 ### Long-hand equivalent (the explicit form)
 
-Both the gitOps and persist flags have convention-driven shortcuts
+The gitOps, persist, and auth flags have convention-driven shortcuts
 plus more general long-hand counterparts that map 1:1 to the
 WitwaveAgent CRD fields:
 
@@ -283,9 +304,19 @@ WitwaveAgent CRD fields:
   presence: any `--persist-mount` for a backend takes ownership of
   the FULL mount list, so a custom layout can never accidentally
   inherit a surprise preset entry.
+- `--auth-from-env <backend-name>=<VAR>[,<VAR>…]` lifts named env vars
+  out of the current shell, mints a per-backend Kubernetes Secret,
+  and wires it as `envFrom` on that backend's container. Each `<VAR>`
+  is either a bare `<NAME>` (read `$NAME`, store under Secret key
+  `NAME`) or a rename `<SRC>:<DEST>` (read `$SRC`, store under Secret
+  key `DEST`). The rename form is what lets two backends inject the
+  same in-container env-var name (`GITHUB_TOKEN`) from
+  differently-prefixed shell vars (`ECHO1_GITHUB_TOKEN`,
+  `ECHO2_GITHUB_TOKEN`), so each backend can carry its own value.
 
 Iris's `--gitops` + default `--persist` lines above are exactly
-equivalent to:
+equivalent to (and additionally inject per-backend GitHub credentials
+from the `.env` file you sourced earlier):
 
 ```bash
 ww agent create iris \
@@ -300,8 +331,17 @@ ww agent create iris \
   --persist echo-1=1Gi \
   --persist-mount echo-1=memory:/home/agent/.echo/memory \
   --persist echo-2=1Gi \
-  --persist-mount echo-2=memory:/home/agent/.echo/memory
+  --persist-mount echo-2=memory:/home/agent/.echo/memory \
+  --auth-from-env echo-1=ECHO1_GITHUB_TOKEN:GITHUB_TOKEN,ECHO1_GITHUB_USERNAME:GITHUB_USERNAME \
+  --auth-from-env echo-2=ECHO2_GITHUB_TOKEN:GITHUB_TOKEN,ECHO2_GITHUB_USERNAME:GITHUB_USERNAME
 ```
+
+The two `--auth-from-env` lines mint two K8s Secrets (one per
+backend, with `GITHUB_TOKEN` + `GITHUB_USERNAME` keys carrying values
+from the prefixed shell vars) and wire each Secret onto its backend
+via `envFrom: secretRef`. Inside each echo container, `$GITHUB_TOKEN`
+and `$GITHUB_USERNAME` resolve to that backend's individual values —
+echo-1 sees the `ECHO1_*` values, echo-2 sees the `ECHO2_*` values.
 
 The two shapes **compose** — they aren't either/or. Pass `--gitops` for
 the 95% case, then drop in extra `--gitmap` flags for paths that don't
