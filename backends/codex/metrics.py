@@ -1,10 +1,10 @@
 """Prometheus metrics for the codex backend agent."""
 
-import os
-
 import prometheus_client
 
-_enabled = bool(os.environ.get("METRICS_ENABLED"))
+from shared.env import parse_bool_env
+
+_enabled = parse_bool_env("METRICS_ENABLED")
 
 # Deprecated-metrics emission gate (#940). Defaults ON so pre-migration
 # dashboards keep working; operators flip to "0"/"false" once they have
@@ -12,9 +12,9 @@ _enabled = bool(os.environ.get("METRICS_ENABLED"))
 # after default flips to off, backend_codex_hooks_denials_total will be
 # removed outright. Print the resolved posture at import time so the
 # migration window is visible in kubectl logs.
-_EMIT_DEPRECATED_HOOK_METRICS = os.environ.get(
-    "EMIT_DEPRECATED_HOOK_METRICS", "true"
-).strip().lower() in {"1", "true", "yes", "on"}
+_EMIT_DEPRECATED_HOOK_METRICS = parse_bool_env(
+    "EMIT_DEPRECATED_HOOK_METRICS", default=True
+)
 
 # Service-level metrics
 backend_up: prometheus_client.Gauge | None = None

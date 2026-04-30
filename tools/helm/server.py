@@ -30,6 +30,7 @@ from typing import Any
 
 import yaml
 from mcp.server.fastmcp import FastMCP
+from shared.env import parse_bool_env
 
 # shared/otel.py is copied into the image (see Dockerfile) and imported as a
 # top-level module. Falls back to no-op shims if the shared module isn't on
@@ -2042,8 +2043,8 @@ def _get_info_doc() -> dict[str, Any]:
         "helm_diff_present": helm_diff_present,
         "features": {
             "read_only": read_only,
-            "otel": bool(os.environ.get("OTEL_ENABLED")),
-            "metrics": bool(os.environ.get("METRICS_ENABLED")),
+            "otel": parse_bool_env("OTEL_ENABLED"),
+            "metrics": parse_bool_env("METRICS_ENABLED"),
             "values_stdin": True,  # #1081
         },
         "tools": tool_names,

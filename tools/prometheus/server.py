@@ -37,6 +37,7 @@ from typing import Any
 
 import httpx
 from mcp.server.fastmcp import FastMCP
+from shared.env import parse_bool_env
 from urllib.parse import urlparse
 
 # shared/otel.py is copied into the image (see Dockerfile) and imported
@@ -638,8 +639,8 @@ def _get_info_doc() -> dict[str, Any]:
         "image_version": image_version,
         "prometheus_url_configured": bool(_PROMETHEUS_URL),
         "features": {
-            "otel": bool(os.environ.get("OTEL_ENABLED")),
-            "metrics": bool(os.environ.get("METRICS_ENABLED")),
+            "otel": parse_bool_env("OTEL_ENABLED"),
+            "metrics": parse_bool_env("METRICS_ENABLED"),
             "bearer_token": bool(_PROMETHEUS_BEARER_TOKEN),
         },
         "tools": tool_names,

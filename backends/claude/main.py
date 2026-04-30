@@ -26,6 +26,7 @@ from conversations import (
 )
 from executor import AgentExecutor
 from session_binding import derive_session_id, set_fallback_counter as _set_session_binding_fallback_counter
+from shared.env import parse_bool_env
 from metrics import (
     backend_event_loop_lag_seconds,
     backend_health_checks_total,
@@ -65,7 +66,7 @@ AGENT_OWNER = os.environ.get("AGENT_OWNER") or AGENT_NAME
 # collide on cross-agent metric joins.
 AGENT_ID = os.environ.get("AGENT_ID") or os.environ.get("HOSTNAME") or "claude"
 _BACKEND_ID = "claude"
-metrics_enabled = bool(os.environ.get("METRICS_ENABLED"))
+metrics_enabled = parse_bool_env("METRICS_ENABLED")
 WORKER_MAX_RESTARTS = int(os.environ.get("WORKER_MAX_RESTARTS", "5"))
 CONVERSATIONS_AUTH_TOKEN = os.environ.get("CONVERSATIONS_AUTH_TOKEN", "")
 # #1609: cap on MCP request body size, env-var-overridable. Default 4 MiB.

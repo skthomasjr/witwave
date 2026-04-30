@@ -27,6 +27,7 @@ import yaml
 from kubernetes import client, config, dynamic
 from kubernetes.client.rest import ApiException
 from mcp.server.fastmcp import FastMCP
+from shared.env import parse_bool_env
 
 # shared/otel.py is copied into the image (see Dockerfile) and imported as a
 # top-level module. Falls back to no-op shims if the shared module isn't on
@@ -1217,8 +1218,8 @@ def _get_info_doc() -> dict[str, Any]:
         "kube_client_version": kube_client_version,
         "features": {
             "read_only": read_only,
-            "otel": bool(os.environ.get("OTEL_ENABLED")),
-            "metrics": bool(os.environ.get("METRICS_ENABLED")),
+            "otel": parse_bool_env("OTEL_ENABLED"),
+            "metrics": parse_bool_env("METRICS_ENABLED"),
             "token_reload_on_401": True,  # #1082
             "discovery_reload_on_404": True,  # #1083
         },

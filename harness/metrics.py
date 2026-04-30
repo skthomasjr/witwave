@@ -1,10 +1,10 @@
 """Prometheus metrics for the autonomous agent."""
 
-import os
-
 import prometheus_client
 
-_enabled = bool(os.environ.get("METRICS_ENABLED"))
+from shared.env import parse_bool_env
+
+_enabled = parse_bool_env("METRICS_ENABLED")
 
 harness_a2a_last_request_timestamp_seconds: prometheus_client.Gauge | None = None
 harness_a2a_request_duration_seconds: prometheus_client.Histogram | None = None

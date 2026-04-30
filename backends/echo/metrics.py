@@ -23,9 +23,9 @@ symbol in this module is ``None`` and callers guard with ``if X is not None``.
 
 from __future__ import annotations
 
-import os
-
 import prometheus_client
+
+from shared.env import parse_bool_env
 
 _LABELS = ("agent", "agent_id", "backend")
 
@@ -38,7 +38,7 @@ def _metrics_enabled() -> bool:
     ``METRICS_ENABLED`` would see an empty registry forever. Reading at
     call time removes that footgun and costs nothing.
     """
-    return bool(os.environ.get("METRICS_ENABLED"))
+    return parse_bool_env("METRICS_ENABLED")
 
 # ---------------------------------------------------------------------------
 # Lifecycle / service-level

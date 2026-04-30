@@ -67,6 +67,7 @@ try:
     _prompt_env_mod.substitutions_total = harness_prompt_env_substitutions_total
 except Exception:
     pass
+from shared.env import parse_bool_env
 from conversations import (
     make_proxy_conversations_handler,
     make_proxy_trace_handler,
@@ -103,7 +104,7 @@ HARNESS_HOST = os.environ.get("HARNESS_HOST", "0.0.0.0")
 HARNESS_PORT = int(os.environ.get("HARNESS_PORT", "8000"))
 HARNESS_URL = os.environ.get("HARNESS_URL", f"http://localhost:{HARNESS_PORT}/")
 AGENT_VERSION = os.environ.get("AGENT_VERSION", "0.1.0")
-metrics_enabled = bool(os.environ.get("METRICS_ENABLED"))
+metrics_enabled = parse_bool_env("METRICS_ENABLED")
 WORKER_MAX_RESTARTS = int(os.environ.get("WORKER_MAX_RESTARTS", "5"))
 TASK_TIMEOUT_SECONDS = int(os.environ.get("TASK_TIMEOUT_SECONDS", "300"))
 

@@ -43,6 +43,7 @@ from starlette.routing import Mount, Route
 
 import metrics
 from executor import EchoAgentExecutor
+from shared.env import parse_bool_env
 
 logging.basicConfig(
     level=logging.INFO,
@@ -58,7 +59,7 @@ BACKEND_PORT = int(os.environ.get("BACKEND_PORT", "8000"))
 AGENT_URL = os.environ.get("AGENT_URL", f"http://localhost:{BACKEND_PORT}/")
 AGENT_VERSION = os.environ.get("AGENT_VERSION", "0.1.0")
 _BACKEND_ID = "echo"
-_metrics_enabled = bool(os.environ.get("METRICS_ENABLED"))
+_metrics_enabled = parse_bool_env("METRICS_ENABLED")
 
 _AGENT_DESCRIPTION = (
     "Echo backend — returns a canned response quoting the caller's prompt. "
