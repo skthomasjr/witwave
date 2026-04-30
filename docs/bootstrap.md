@@ -233,6 +233,30 @@ ww agent create iris \
   --gitops https://github.com/witwave-ai/witwave.git@main:.agents/self/iris
 ```
 
+`--persist` is intentionally absent from this command because both
+backends are `echo` — echo doesn't have session state to persist and
+the flag rejects with a clear error if you try. When iris swaps in a
+real LLM backend in a later step, the command grows a `--persist`
+line per stateful backend. For a forward look, the same agent with
+one claude backend instead would be:
+
+```bash
+ww agent create iris \
+  --namespace witwave-self \
+  --backend claude \
+  --workspace witwave-self \
+  --gitops https://github.com/witwave-ai/witwave.git@main:.agents/self/iris \
+  --persist claude=10Gi
+```
+
+That `--persist claude=10Gi` provisions a 10Gi PVC named
+`iris-claude-data` and projects it via subPath into four mounts on
+the claude container: `projects/`, `sessions/`, `backups/`,
+`memory/` under `/home/agent/.claude/`. Conversation history and
+Claude Code session state survive pod restart. Storage class
+defaults to the cluster default — append `@<class>` to override
+(e.g. `--persist claude=10Gi@gp3`).
+
 ### Long-hand equivalent (the explicit form)
 
 `--gitops` is convention-driven sugar over two more general repeatable
