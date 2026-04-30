@@ -13,7 +13,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// gitSync credential wiring for `ww agent create --gitsync-from-env`.
+// gitSync credential wiring for `ww agent create --gitsync-secret-from-env`.
 //
 // Sibling of --backend-secret-from-env (which targets backend containers via envFrom).
 // This flag lifts two shell vars (the user's PAT or password + username) into
@@ -23,7 +23,7 @@ import (
 // repo" path is still served by the long-form --gitsync-secret <name>=<k8s>.
 // ---------------------------------------------------------------------------
 
-// GitSyncFromEnvSpec captures one parsed --gitsync-from-env flag value.
+// GitSyncFromEnvSpec captures one parsed --gitsync-secret-from-env flag value.
 // Form: <USER_VAR>:<PASS_VAR>. The CLI reads $USER_VAR / $PASS_VAR from
 // the shell and stores them in the minted Secret under the upstream
 // kubernetes/git-sync env-var keys (GITSYNC_USERNAME / GITSYNC_PASSWORD).
@@ -39,22 +39,22 @@ type GitSyncFromEnvSpec struct {
 func ParseGitSyncFromEnv(raw string) (GitSyncFromEnvSpec, error) {
 	entry := strings.TrimSpace(raw)
 	if entry == "" {
-		return GitSyncFromEnvSpec{}, fmt.Errorf("--gitsync-from-env: empty value")
+		return GitSyncFromEnvSpec{}, fmt.Errorf("--gitsync-secret-from-env: empty value")
 	}
 	i := strings.IndexByte(entry, ':')
 	if i < 0 {
-		return GitSyncFromEnvSpec{}, fmt.Errorf("--gitsync-from-env %q: form is <USER_VAR>:<PASS_VAR>", entry)
+		return GitSyncFromEnvSpec{}, fmt.Errorf("--gitsync-secret-from-env %q: form is <USER_VAR>:<PASS_VAR>", entry)
 	}
 	user := strings.TrimSpace(entry[:i])
 	pass := strings.TrimSpace(entry[i+1:])
 	if user == "" || pass == "" {
-		return GitSyncFromEnvSpec{}, fmt.Errorf("--gitsync-from-env %q: both <USER_VAR> and <PASS_VAR> are required", entry)
+		return GitSyncFromEnvSpec{}, fmt.Errorf("--gitsync-secret-from-env %q: both <USER_VAR> and <PASS_VAR> are required", entry)
 	}
 	return GitSyncFromEnvSpec{UserVar: user, PassVar: pass}, nil
 }
 
 // gitsyncFromEnvSecretName is the per-agent gitSync credential Secret
-// minted by --gitsync-from-env. Predictable name (one per agent) so
+// minted by --gitsync-secret-from-env. Predictable name (one per agent) so
 // operators can find + rotate it; mirrors the bare backend-Secret
 // convention (<agent>-<backend>) by appending the gitsync target.
 //
@@ -87,7 +87,7 @@ func ResolveGitSyncFromEnv(
 	}
 	if len(missing) > 0 {
 		return "", fmt.Errorf(
-			"--gitsync-from-env: required environment variable(s) unset or empty: %s",
+			"--gitsync-secret-from-env: required environment variable(s) unset or empty: %s",
 			strings.Join(missing, ", "),
 		)
 	}
@@ -96,7 +96,7 @@ func ResolveGitSyncFromEnv(
 		"GITSYNC_PASSWORD": pass,
 	}
 	name := gitsyncFromEnvSecretName(agentName)
-	createdBy := fmt.Sprintf("ww agent create --gitsync-from-env %s:%s", spec.UserVar, spec.PassVar)
+	createdBy := fmt.Sprintf("ww agent create --gitsync-secret-from-env %s:%s", spec.UserVar, spec.PassVar)
 	if err := upsertGitSyncFromEnvSecret(ctx, k8s, namespace, name, agentName, data, createdBy); err != nil {
 		return "", err
 	}
@@ -159,7 +159,7 @@ func upsertGitSyncFromEnvSecret(
 
 // StampGitSyncSecretOnAll sets ExistingSecret on every GitSyncFlagSpec
 // that doesn't already have one. Per-entry --gitsync-secret values win
-// (precedence: explicit per-entry > agent-wide --gitsync-from-env).
+// (precedence: explicit per-entry > agent-wide --gitsync-secret-from-env).
 // Returns the syncs slice unchanged when secretName is empty.
 func StampGitSyncSecretOnAll(syncs []GitSyncFlagSpec, secretName string) []GitSyncFlagSpec {
 	if secretName == "" {

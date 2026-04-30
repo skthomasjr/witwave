@@ -263,7 +263,7 @@ func Create(
 		}
 	}
 
-	// Resolve --gitsync-from-env: lift two shell vars into a single
+	// Resolve --gitsync-secret-from-env: lift two shell vars into a single
 	// per-agent gitSync Secret, then stamp the Secret reference onto
 	// every GitSyncs[] entry that doesn't already carry an explicit
 	// --gitsync-secret value (per-entry wins by precedence).

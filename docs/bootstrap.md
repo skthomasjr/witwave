@@ -103,7 +103,7 @@ and `envFrom`-wired to the gitSync sidecar.
 
 For this bootstrap the repo (`witwave-ai/witwave`) is public and the
 sidecar would clone anonymously without any creds — the
-`--gitsync-from-env` wiring is shown so the pattern carries over
+`--gitsync-secret-from-env` wiring is shown so the pattern carries over
 verbatim when iris later points at a private config repo.
 
 ### Storage
@@ -195,7 +195,7 @@ ww agent create iris \
   --backend-secret-from-env claude=GITHUB_TOKEN_IRIS:GITHUB_TOKEN \
   --backend-secret-from-env claude=GITHUB_USER_IRIS:GITHUB_USER \
   --gitops https://github.com/witwave-ai/witwave.git@main:.agents/self/iris \
-  --gitsync-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD
+  --gitsync-secret-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD
 ```
 
 Verify iris is `Ready` and bound to the workspace:
@@ -224,7 +224,7 @@ command is destructive and cascade-deletes everything it owns.
 Delete iris (cascades the pod, Service, per-backend PVC
 `iris-claude-data`, and the ww-managed `iris-claude` Secret;
 `--delete-git-secret` also reaps the per-agent `iris-gitsync`
-Secret minted by `--gitsync-from-env`):
+Secret minted by `--gitsync-secret-from-env`):
 
 ```bash
 ww agent delete iris \

@@ -1096,14 +1096,14 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			"Form: <gitsync-name>=<k8s-secret>. The Secret should carry the gitSync env "+
 			"variables (typically GITSYNC_USERNAME/GITSYNC_PASSWORD or GITSYNC_SSH_KEY_FILE). "+
 			"<gitsync-name> must reference a --gitsync entry; CLI never accepts inline tokens.")
-	cmd.Flags().StringVar(&gitSyncFromEnv, "gitsync-from-env", "",
+	cmd.Flags().StringVar(&gitSyncFromEnv, "gitsync-secret-from-env", "",
 		"Lift two shell vars into a per-agent gitSync credential Secret. "+
 			"Form: <USER_VAR>:<PASS_VAR>. The CLI reads $USER_VAR and $PASS_VAR from "+
 			"the shell, mints a Secret named <agent>-gitsync with keys "+
 			"GITSYNC_USERNAME/GITSYNC_PASSWORD, and stamps it onto every gitSyncs[] "+
 			"entry that doesn't already carry an explicit --gitsync-secret. "+
 			"Per-entry --gitsync-secret values win on collision (precedence: explicit "+
-			"per-entry > agent-wide --gitsync-from-env).")
+			"per-entry > agent-wide --gitsync-secret-from-env).")
 	cmd.Flags().StringArrayVar(&persist, "persist", nil,
 		"Provision a per-backend PVC for session/memory persistence (repeatable). "+
 			"Form: <backend-name>=<size>[@<storage-class>]. Operator creates a PVC named "+
