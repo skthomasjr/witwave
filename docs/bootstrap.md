@@ -188,8 +188,8 @@ backends, per-backend gitOps fan-out) without dragging in any of
 type but stay independently addressable. Real LLM backends get
 swapped in in a later step.
 
-Iris gets two pieces of "git-backed" wiring at creation time, both
-from `ww agent create`, and they're deliberately separate concerns:
+Iris's wiring on `ww agent create` covers three deliberately separate
+concerns, each its own flag:
 
 - `--workspace witwave-self` binds iris to the **shared workspace** —
   every workspace volume (source, memory, …) is mounted at the same
@@ -207,9 +207,22 @@ from `ww agent create`, and they're deliberately separate concerns:
   three mappings: one for the harness, one for echo-1
   (`<repo-path>/.echo-1/`), and one for echo-2
   (`<repo-path>/.echo-2/`).
+- `--persist <backend-name>=<size>[@<storage-class>]` provisions a
+  **per-backend PVC for session + memory state** that survives pod
+  reboot. Repeatable (one per backend that needs persistence). Auto-
+  populates `Spec.Backends[].Storage` with type-derived default
+  mounts: claude → `projects/`, `sessions/`, `backups/`, `memory/`
+  under `/home/agent/.claude/`; codex → `memory/`, `sessions/` under
+  `/home/agent/.codex/`; gemini → `memory/` under
+  `/home/agent/.gemini/`. Echo is intentionally stateless — the
+  flag is rejected for it. Distinct from the workspace `memory`
+  volume: workspace memory is project-wide cross-agent knowledge;
+  `--persist` is per-agent per-backend conversation history and
+  SDK session state.
 
 Together they make a single `ww agent create` the complete unit of
-deploy: CR admitted, workspace bound, identity wired.
+deploy: CR admitted, workspace bound, identity wired, persistence
+provisioned.
 
 ```bash
 ww agent create iris \
