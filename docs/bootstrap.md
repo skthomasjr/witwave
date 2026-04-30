@@ -207,30 +207,6 @@ ww agent create iris \
   --secret-from-env claude=GITHUB_USER_IRIS:GITHUB_USER
 ```
 
-What each flag does:
-
-- `--backend claude` — single claude sidecar, default port 8001.
-- `--workspace witwave-self` — mounts the workspace's shared
-  `source` and `memory` volumes onto the claude container at
-  `/workspaces/witwave-self/source` and
-  `/workspaces/witwave-self/memory`.
-- `--gitops <url>[@<branch>]:<repo-path>` — clones the repo into a
-  pod-local sidecar and copies `.agents/self/iris/.witwave/` into
-  the harness's `/home/agent/.witwave/` and
-  `.agents/self/iris/.claude/` into the claude container's
-  `/home/agent/.claude/`.
-- `--with-persistence` — provisions a 10Gi PVC named
-  `iris-claude-data`, projected into the claude container at
-  `projects/`, `sessions/`, `backups/`, `memory/` under
-  `/home/agent/.claude/` (claude's type-derived default).
-- `--secret-from-env claude=...` — three lines, one per env var,
-  all minted into a single `iris-claude-credentials` Secret and
-  wired as `envFrom` on the claude container. The first line
-  carries `CLAUDE_CODE_OAUTH_TOKEN` straight through; the next two
-  rename the agent-suffixed shell vars (`GITHUB_TOKEN_IRIS`,
-  `GITHUB_USER_IRIS`) into stable in-container names
-  (`GITHUB_TOKEN`, `GITHUB_USER`).
-
 Verify iris is `Ready` and bound to the workspace:
 
 ```bash
@@ -248,3 +224,42 @@ ww workspace status witwave-self \
 section. The pod has the workspace's `source` and `memory` volumes
 mounted at `/workspaces/witwave-self/source` and
 `/workspaces/witwave-self/memory` on every backend container.
+
+## Tear it down
+
+Reverse order: agent → workspace → operator → namespaces. Each
+command is destructive and cascade-deletes everything it owns.
+
+Delete iris (cascades the pod, Service, per-backend PVC
+`iris-claude-data`, and the ww-managed `iris-claude-credentials`
+Secret):
+
+```bash
+ww agent delete iris \
+  --namespace witwave-self \
+  --yes
+```
+
+Delete the workspace (removes both `source` and `memory` PVCs —
+data is gone unless the volume's reclaim policy is `Retain`):
+
+```bash
+ww workspace delete witwave-self \
+  --namespace witwave-self \
+  --yes
+```
+
+Uninstall the operator and drop the CRDs:
+
+```bash
+ww operator uninstall \
+  --namespace witwave-system \
+  --delete-crds \
+  --yes
+```
+
+Drop the namespaces:
+
+```bash
+kubectl delete namespace witwave-self witwave-system
+```
