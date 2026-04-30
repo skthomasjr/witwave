@@ -339,6 +339,15 @@ func (r *WitwaveAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// surface every failure rather than only the first (#497).
 	var reconcileErrs []error
 
+	// Internal-state Secret. Always-on, idempotent — generates a random
+	// HOOK_EVENTS_AUTH_TOKEN on first reconcile and preserves it across
+	// subsequent reconciles. Runs before reconcileCredentialsSecrets so
+	// both Secrets exist before the kubelet resolves envFrom on the pod
+	// spec applyDeployment writes.
+	if err := r.reconcileInternalSecret(ctx, agent); err != nil {
+		reconcileErrs = append(reconcileErrs, err)
+	}
+
 	// Credentials Secrets (#witwave.resolveCredentials parity). Runs FIRST
 	// so the inline-mode path's freshly-created Secret exists by the
 	// time the kubelet resolves envFrom references for the pod spec

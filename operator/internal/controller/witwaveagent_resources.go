@@ -706,7 +706,7 @@ func buildDeployment(agent *witwavev1alpha1.WitwaveAgent, appVersion string, pro
 		}, otelEnv(agent, fmt.Sprintf("harness-%s", agent.Name))...),
 			corsEnv(agent)...),
 			agent.Spec.Env...),
-		EnvFrom:   agent.Spec.EnvFrom,
+		EnvFrom:   harnessEnvFromWithInternal(agent),
 		Resources: agent.Spec.Resources,
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: boolPtr(false),
@@ -810,7 +810,7 @@ func buildDeployment(agent *witwavev1alpha1.WitwaveAgent, appVersion string, pro
 				{Name: "HARNESS_EVENTS_URL", Value: fmt.Sprintf("http://localhost:%d", harnessPort)},
 			}, otelEnv(agent, fmt.Sprintf("%s-%s", agent.Name, b.Name))...),
 				b.Env...),
-			EnvFrom:   backendEnvFromWithCredentials(agent, b),
+			EnvFrom:   backendEnvFromWithInternal(agent, b),
 			Resources: b.Resources,
 			SecurityContext: &corev1.SecurityContext{
 				AllowPrivilegeEscalation: boolPtr(false),
