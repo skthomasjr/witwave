@@ -934,6 +934,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 		createNamespace bool
 		team            string
 		workspaces      []string
+		gitOps          string
 		gitSyncs        []string
 		gitMaps         []string
 		gitSyncSecrets  []string
@@ -989,6 +990,20 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// --gitops is convention-driven sugar over --gitsync + N+1
+			// --gitmap. Expand it AFTER explicit flags are parsed and
+			// PREPEND its synthesised entries so the explicit ones
+			// appear later in ValidateGitFlags' duplicate-check pass —
+			// duplicate (container, dest) pairs are flagged as a clear
+			// "already set by --gitmap[N]" error against the explicit
+			// override, not against the implicit convention default.
+			gitOpsSpec, err := agent.ParseGitOps(gitOps)
+			if err != nil {
+				return err
+			}
+			expandSyncs, expandMaps := agent.ExpandGitOps(gitOpsSpec, specs)
+			syncs = append(expandSyncs, syncs...)
+			maps = append(expandMaps, maps...)
 			persistMap, err := agent.ParseBackendPersist(persist)
 			if err != nil {
 				return err
@@ -1027,6 +1042,16 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			"Equivalent to a follow-up `ww workspace bind <agent> <workspace>`. "+
 			"Each named workspace must already exist in the agent's namespace; "+
 			"v1alpha1 only supports same-namespace binding.")
+	cmd.Flags().StringVar(&gitOps, "gitops", "",
+		"Convention-driven shortcut for the agent's identity-from-git wiring. "+
+			"Form: <url>[@<branch>]:<repo-path>. Expands at parse time to one --gitsync "+
+			"entry (sync name derived from the URL's basename) plus one --gitmap per "+
+			"declared --backend (mapping <repo-path>/.<backend-name>/ → "+
+			"/home/agent/.<backend-name>/) plus one harness mapping "+
+			"(<repo-path>/.witwave/ → /home/agent/.witwave/). Composes with --gitsync "+
+			"and --gitmap — additional explicit entries are merged in alongside the "+
+			"convention defaults; duplicate (container, dest) pairs reject at parse "+
+			"time so a typo can't silently shadow the convention.")
 	cmd.Flags().StringArrayVar(&gitSyncs, "gitsync", nil,
 		"Declare a gitSync entry on the agent (repeatable). Form: <name>=<url>[@<branch>]. "+
 			"Populates spec.gitSyncs[] — the operator runs an init+sidecar pair that clones "+
