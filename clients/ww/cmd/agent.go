@@ -1048,8 +1048,10 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 		))
 	cmd.Flags().BoolVar(&noWait, "no-wait", false,
 		"Return as soon as the CR is accepted; skip the readiness wait")
-	cmd.Flags().DurationVar(&timeout, "timeout", 2*time.Minute,
-		"Maximum time to wait for the agent to report Ready (ignored with --no-wait)")
+	cmd.Flags().DurationVar(&timeout, "timeout", 5*time.Minute,
+		"Maximum time to wait for the agent to report Ready (ignored with --no-wait). "+
+			"On timeout, recent CR + pod events are dumped so you can tell "+
+			"\"still pulling images\" from \"container crashlooping\" without a follow-up `ww agent events`.")
 	cmd.Flags().BoolVar(&createNamespace, "create-namespace", false,
 		"Create the target namespace if it doesn't already exist (no-op otherwise)")
 	cmd.Flags().StringVar(&team, "team", "",

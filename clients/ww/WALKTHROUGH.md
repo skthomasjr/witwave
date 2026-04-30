@@ -745,7 +745,7 @@ muscle memory carries across them:
 | `--dry-run` | Print the plan and exit. Touches nothing — no API call, no disk write, no git push. |
 | `--yes` | Skip confirmation prompts on production-looking clusters. Also via `WW_ASSUME_YES=true`. |
 | `--no-wait` | (create, some operator verbs) Return as soon as the CR is accepted. Useful in CI. |
-| `--timeout 2m` | Bound how long we wait for Ready (create) or git push (scaffold). |
+| `--timeout 5m` | Bound how long we wait for Ready (create) or git push (scaffold). |
 
 Verbs that touch git additionally support:
 

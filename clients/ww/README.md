@@ -522,7 +522,7 @@ Namespace handling follows DESIGN.md NS-1..5:
 - `-A` is only valid on `list` — never on `create`, `status`, `delete`, or any mutating verb. On `list` it's redundant
   (the default is already all-namespaces) but accepted for kubectl parity.
 
-Create waits up to `--timeout` (default `2m`) for the operator to report the agent Ready. Pass `--no-wait` to return as
+Create waits up to `--timeout` (default `5m`) for the operator to report the agent Ready. On timeout, recent CR and pod events are dumped so cold image pulls can be distinguished from real failures (crashlooping containers, ImagePullBackOff). Pass `--no-wait` to return as
 soon as the CR is accepted (scripts + CI). All mutating commands (`create`, `delete`) honour `--yes` /
 `WW_ASSUME_YES=true` and `--dry-run` the same way `ww operator install` does.
 

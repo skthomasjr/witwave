@@ -5,15 +5,19 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 
 	"github.com/witwave-ai/witwave/clients/ww/internal/k8s"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
@@ -279,10 +283,14 @@ func Create(
 
 	timeout := opts.Timeout
 	if timeout <= 0 {
-		timeout = 2 * time.Minute
+		timeout = 5 * time.Minute
 	}
 	fmt.Fprintf(opts.Out, "Waiting up to %s for agent to report Ready...\n", timeout)
-	if err := waitForReady(ctx, dyn, opts.Namespace, opts.Name, timeout, opts.Out); err != nil {
+	k8sClient, err := newKubernetesClient(cfg)
+	if err != nil {
+		return err
+	}
+	if err := waitForReady(ctx, dyn, k8sClient, opts.Namespace, opts.Name, timeout, opts.Out); err != nil {
 		return err
 	}
 	fmt.Fprintf(opts.Out, "\nAgent %s is ready.\n", opts.Name)
@@ -432,12 +440,17 @@ func summariseBackends(backends []BackendSpec) string {
 
 // waitForReady polls the CR's .status.phase until it reads "Ready" or
 // the timeout elapses. Poll interval is deliberately modest (2s) —
-// operators reconcile on a handful of events, not on a busy-loop.
-func waitForReady(ctx context.Context, dyn dynamic.Interface, ns, name string, timeout time.Duration, out io.Writer) error {
+// operators reconcile on a handful of events, not on a busy-loop. On
+// timeout, dumps the most recent CR + pod events so the user can tell
+// "still pulling images" from "container crashlooping" without a
+// follow-up `ww agent events` round-trip.
+func waitForReady(ctx context.Context, dyn dynamic.Interface, k8sClient kubernetes.Interface, ns, name string, timeout time.Duration, out io.Writer) error {
 	deadline := time.Now().Add(timeout)
 	var lastPhase string
 	for {
 		if time.Now().After(deadline) {
+			fmt.Fprintf(out, "\nTimed out after %s — recent events for %s/%s:\n", timeout, ns, name)
+			dumpRecentEvents(ctx, k8sClient, ns, name, out)
 			return fmt.Errorf("timed out after %s waiting for agent %q to report Ready (last phase: %q)", timeout, name, lastPhase)
 		}
 
@@ -462,6 +475,62 @@ func waitForReady(ctx context.Context, dyn dynamic.Interface, ns, name string, t
 		case <-time.After(2 * time.Second):
 		}
 	}
+}
+
+// dumpRecentEvents prints the last ~10 events tied to the agent's CR
+// and its pods. Best-effort: any list error is logged but doesn't
+// shadow the original timeout error the caller is about to return.
+func dumpRecentEvents(ctx context.Context, k8sClient kubernetes.Interface, ns, agent string, out io.Writer) {
+	crEvents, err := listEventsWithFieldSelector(ctx, k8sClient, ns,
+		fields.AndSelectors(
+			fields.OneTermEqualSelector("involvedObject.kind", Kind),
+			fields.OneTermEqualSelector("involvedObject.name", agent),
+		).String(),
+	)
+	if err != nil {
+		fmt.Fprintf(out, "  (could not list CR events: %v)\n", err)
+	}
+
+	pods, err := selectAgentPods(ctx, k8sClient, ns, agent, "")
+	if err != nil {
+		fmt.Fprintf(out, "  (could not list agent pods: %v)\n", err)
+	}
+	var podEvents []corev1.Event
+	for _, pod := range pods {
+		evs, err := listEventsWithFieldSelector(ctx, k8sClient, ns,
+			fields.AndSelectors(
+				fields.OneTermEqualSelector("involvedObject.kind", "Pod"),
+				fields.OneTermEqualSelector("involvedObject.name", pod),
+			).String(),
+		)
+		if err != nil {
+			continue
+		}
+		podEvents = append(podEvents, evs...)
+	}
+
+	merged := append(crEvents, podEvents...)
+	if len(merged) == 0 {
+		fmt.Fprintln(out, "  (no events found)")
+		return
+	}
+	sort.SliceStable(merged, func(i, j int) bool {
+		return eventTime(merged[i]).Before(eventTime(merged[j]))
+	})
+	const tail = 10
+	if len(merged) > tail {
+		merged = merged[len(merged)-tail:]
+	}
+	tw := tabwriter.NewWriter(out, 0, 2, 2, ' ', 0)
+	fmt.Fprintln(tw, "  AGE\tTYPE\tOBJECT\tREASON\tMESSAGE")
+	for _, e := range merged {
+		obj := fmt.Sprintf("%s/%s", e.InvolvedObject.Kind, e.InvolvedObject.Name)
+		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\n",
+			FormatAge(eventTime(e)), e.Type, obj, e.Reason, e.Message,
+		)
+	}
+	_ = tw.Flush()
+	fmt.Fprintln(out, "\n  Hint: pod may still be progressing — check `ww agent status "+agent+"` or re-run with --timeout 10m.")
 }
 
 // readPhase pulls .status.phase from an unstructured CR. Returns an
