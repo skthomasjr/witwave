@@ -22,12 +22,12 @@ func TestParseGitSyncFromEnv_HappyPath(t *testing.T) {
 func TestParseGitSyncFromEnv_RejectsMissingHalves(t *testing.T) {
 	t.Parallel()
 	cases := []string{
-		"",                 // empty value
-		"USER_ONLY",        // no colon
-		":PASS_ONLY",       // empty user half
-		"USER_ONLY:",       // empty pass half
-		":",                // both empty
-		"  :  ",            // whitespace-only halves
+		"",           // empty value
+		"USER_ONLY",  // no colon
+		":PASS_ONLY", // empty user half
+		"USER_ONLY:", // empty pass half
+		":",          // both empty
+		"  :  ",      // whitespace-only halves
 	}
 	for _, c := range cases {
 		t.Run(c, func(t *testing.T) {
