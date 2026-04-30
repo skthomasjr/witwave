@@ -258,7 +258,9 @@ ww agent create iris \
   --workspace witwave-self \
   --gitops https://github.com/witwave-ai/witwave.git@main:.agents/self/iris \
   --persist echo-1=1Gi \
-  --persist echo-2=1Gi
+  --persist echo-2=1Gi \
+  --secret-from-env echo-1=GITHUB_TOKEN_IRIS:GITHUB_TOKEN,GITHUB_USER_IRIS:GITHUB_USER \
+  --secret-from-env echo-2=GITHUB_TOKEN_IRIS:GITHUB_TOKEN,GITHUB_USER_IRIS:GITHUB_USER
 ```
 
 Each `--persist` line provisions one PVC per backend
@@ -302,9 +304,13 @@ WitwaveAgent CRD fields:
   value, or spread it across one flag per `<VAR>` and the parser
   produces an equivalent Secret either way.
 
-Iris's `--gitops` + default `--persist` lines above are exactly
-equivalent to (and additionally inject per-backend GitHub credentials
-from the `.env` file you sourced earlier):
+`--persist`, `--persist-mount`, and `--secret-from-env` translate
+directly between the two forms — they aren't sugar/long-form pairs
+the way `--gitops` is sugar for `--gitsync` + `--gitmap`. The
+short-form command above already uses `--persist` + `--secret-from-env`;
+the long-hand block below just adds `--persist-mount` to spell the
+type-default mount path out explicitly. Iris's short-form command is
+exactly equivalent to:
 
 ```bash
 ww agent create iris \
