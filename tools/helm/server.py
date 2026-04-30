@@ -30,7 +30,7 @@ from typing import Any
 
 import yaml
 from mcp.server.fastmcp import FastMCP
-from shared.env import parse_bool_env
+from env import parse_bool_env
 
 # shared/otel.py is copied into the image (see Dockerfile) and imported as a
 # top-level module. Falls back to no-op shims if the shared module isn't on

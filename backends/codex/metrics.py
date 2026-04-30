@@ -2,7 +2,7 @@
 
 import prometheus_client
 
-from shared.env import parse_bool_env
+from env import parse_bool_env
 
 _enabled = parse_bool_env("METRICS_ENABLED")
 

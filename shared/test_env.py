@@ -12,7 +12,7 @@ import os
 
 import pytest
 
-from shared.env import parse_bool_env, parse_float_env, parse_int_env
+from env import parse_bool_env, parse_float_env, parse_int_env
 
 
 # ---------------------------------------------------------------------------
@@ -115,8 +115,8 @@ def test_module_import_does_not_read_env():
     try:
         import importlib
 
-        import shared.env
+        import env  # shared/env.py — top-level on PYTHONPATH
 
-        importlib.reload(shared.env)  # would raise here if import-time read
+        importlib.reload(env)  # would raise here if import-time read
     finally:
         os.environ.pop("FLAG", None)

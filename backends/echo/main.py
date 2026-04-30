@@ -43,7 +43,7 @@ from starlette.routing import Mount, Route
 
 import metrics
 from executor import EchoAgentExecutor
-from shared.env import parse_bool_env
+from env import parse_bool_env
 
 logging.basicConfig(
     level=logging.INFO,

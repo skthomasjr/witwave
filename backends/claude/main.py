@@ -26,7 +26,7 @@ from conversations import (
 )
 from executor import AgentExecutor
 from session_binding import derive_session_id, set_fallback_counter as _set_session_binding_fallback_counter
-from shared.env import parse_bool_env
+from env import parse_bool_env
 from metrics import (
     backend_event_loop_lag_seconds,
     backend_health_checks_total,

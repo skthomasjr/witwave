@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import prometheus_client
 
-from shared.env import parse_bool_env
+from env import parse_bool_env
 
 _LABELS = ("agent", "agent_id", "backend")
 

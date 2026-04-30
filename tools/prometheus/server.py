@@ -37,7 +37,7 @@ from typing import Any
 
 import httpx
 from mcp.server.fastmcp import FastMCP
-from shared.env import parse_bool_env
+from env import parse_bool_env
 from urllib.parse import urlparse
 
 # shared/otel.py is copied into the image (see Dockerfile) and imported

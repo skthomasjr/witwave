@@ -67,7 +67,7 @@ try:
     _prompt_env_mod.substitutions_total = harness_prompt_env_substitutions_total
 except Exception:
     pass
-from shared.env import parse_bool_env
+from env import parse_bool_env
 from conversations import (
     make_proxy_conversations_handler,
     make_proxy_trace_handler,

@@ -27,7 +27,7 @@ from conversations import (
 from executor import AgentExecutor
 from mcp_body_cap import read_capped_body  # #1674
 from session_binding import derive_session_id, set_fallback_counter as _set_session_binding_fallback_counter
-from shared.env import parse_bool_env
+from env import parse_bool_env
 from validation import parse_max_tokens
 from metrics import (
     backend_event_loop_lag_seconds,
