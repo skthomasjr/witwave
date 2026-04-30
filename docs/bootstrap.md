@@ -79,24 +79,26 @@ set +o allexport
 
 Variables this walkthrough expects in `.env` (only the long-hand block
 in Step 3 needs them — the runnable short-form command above it does
-not):
+not). Convention is per-**agent**: one GitHub credential pair per
+named operator-of-record, suffixed with the agent's name:
 
 ```bash
-# echo-1 GitHub credentials
-ECHO1_GITHUB_TOKEN=ghp_replace_me
-ECHO1_GITHUB_USERNAME=your-github-handle-1
+# iris's GitHub credentials (used by every backend in iris's pod)
+GITHUB_TOKEN_IRIS=github_pat_replace_me
+GITHUB_USER_IRIS=iris
 
-# echo-2 GitHub credentials (potentially different from echo-1)
-ECHO2_GITHUB_TOKEN=ghp_replace_me
-ECHO2_GITHUB_USERNAME=your-github-handle-2
+# Future agents would follow the same convention:
+# GITHUB_TOKEN_NOVA=...
+# GITHUB_TOKEN_KIRA=...
 ```
 
-The per-backend prefix (`ECHO1_*`, `ECHO2_*`) is so each backend can
-take its own value for the same in-container env var name
-(`GITHUB_TOKEN`, `GITHUB_USERNAME`). The rename form on
-`--auth-from-env` (Step 3 long-hand) maps `ECHO1_GITHUB_TOKEN` →
-`GITHUB_TOKEN` for echo-1 and `ECHO2_GITHUB_TOKEN` → `GITHUB_TOKEN`
-for echo-2.
+The agent-suffixed shell vars let multi-agent deployments give each
+agent its own GitHub identity without collision; per-backend
+divergence within one agent isn't currently a use case (every backend
+in iris's pod authenticates as iris). The rename form on
+`--auth-from-env` (Step 3 long-hand) maps `GITHUB_TOKEN_IRIS` →
+in-container `GITHUB_TOKEN` and `GITHUB_USER_IRIS` →
+in-container `GITHUB_USER`.
 
 ### Storage: an access mode the cluster can satisfy
 
@@ -309,10 +311,10 @@ WitwaveAgent CRD fields:
   and wires it as `envFrom` on that backend's container. Each `<VAR>`
   is either a bare `<NAME>` (read `$NAME`, store under Secret key
   `NAME`) or a rename `<SRC>:<DEST>` (read `$SRC`, store under Secret
-  key `DEST`). The rename form is what lets two backends inject the
-  same in-container env-var name (`GITHUB_TOKEN`) from
-  differently-prefixed shell vars (`ECHO1_GITHUB_TOKEN`,
-  `ECHO2_GITHUB_TOKEN`), so each backend can carry its own value.
+  key `DEST`). The rename form is what lets the agent-suffixed shell
+  var `GITHUB_TOKEN_IRIS` land as `GITHUB_TOKEN` inside the container,
+  so the in-container env-var name is stable regardless of which
+  agent's credentials sourced it.
 
 Iris's `--gitops` + default `--persist` lines above are exactly
 equivalent to (and additionally inject per-backend GitHub credentials
@@ -332,16 +334,19 @@ ww agent create iris \
   --persist-mount echo-1=memory:/home/agent/.echo/memory \
   --persist echo-2=1Gi \
   --persist-mount echo-2=memory:/home/agent/.echo/memory \
-  --auth-from-env echo-1=ECHO1_GITHUB_TOKEN:GITHUB_TOKEN,ECHO1_GITHUB_USERNAME:GITHUB_USERNAME \
-  --auth-from-env echo-2=ECHO2_GITHUB_TOKEN:GITHUB_TOKEN,ECHO2_GITHUB_USERNAME:GITHUB_USERNAME
+  --auth-from-env echo-1=GITHUB_TOKEN_IRIS:GITHUB_TOKEN,GITHUB_USER_IRIS:GITHUB_USER \
+  --auth-from-env echo-2=GITHUB_TOKEN_IRIS:GITHUB_TOKEN,GITHUB_USER_IRIS:GITHUB_USER
 ```
 
-The two `--auth-from-env` lines mint two K8s Secrets (one per
-backend, with `GITHUB_TOKEN` + `GITHUB_USERNAME` keys carrying values
-from the prefixed shell vars) and wire each Secret onto its backend
-via `envFrom: secretRef`. Inside each echo container, `$GITHUB_TOKEN`
-and `$GITHUB_USERNAME` resolve to that backend's individual values —
-echo-1 sees the `ECHO1_*` values, echo-2 sees the `ECHO2_*` values.
+The two `--auth-from-env` lines mint two K8s Secrets — one per
+backend, both carrying iris's `GITHUB_TOKEN` + `GITHUB_USER` lifted
+from the agent-suffixed shell vars — and wire each Secret onto its
+backend via `envFrom: secretRef`. Inside both echo containers,
+`$GITHUB_TOKEN` and `$GITHUB_USER` resolve to iris's values. The two
+Secrets carry identical content here; the per-backend split exists
+so that if a future use case calls for divergent credentials per
+backend in the same pod, the long-hand can swap one of the source
+vars without restructuring.
 
 The two shapes **compose** — they aren't either/or. Pass `--gitops` for
 the 95% case, then drop in extra `--gitmap` flags for paths that don't
