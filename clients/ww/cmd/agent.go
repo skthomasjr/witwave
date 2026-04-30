@@ -1064,7 +1064,13 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 		))
 	cmd.Flags().StringArrayVar(&authFromEnv, "auth-from-env", nil,
 		"Escape hatch: mint a K8s Secret from arbitrary env vars. Repeatable. "+
-			"Form: <backend>=<VAR1>[,VAR2,...]. Secret keys match the env var names.")
+			"Form: <backend>=<VAR1>[,VAR2,...]. Each VAR is either bare `<NAME>` "+
+			"(read $NAME, store under Secret key NAME) or a rename `<SRC>:<DEST>` "+
+			"(read $SRC, store under Secret key DEST). Rename form lets two "+
+			"backends inject the same in-container env-var name from "+
+			"differently-prefixed shell vars (e.g. ECHO1_GITHUB_TOKEN:GITHUB_TOKEN "+
+			"+ ECHO2_GITHUB_TOKEN:GITHUB_TOKEN against shell vars "+
+			"ECHO1_GITHUB_TOKEN and ECHO2_GITHUB_TOKEN).")
 	cmd.Flags().StringArrayVar(&authSecrets, "auth-secret", nil,
 		"Reference an existing K8s Secret (verified, not modified). Repeatable. "+
 			"Form: <backend>=<secret-name>.")

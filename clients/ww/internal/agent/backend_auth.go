@@ -81,8 +81,16 @@ type BackendAuthResolver struct {
 	// Resolved against the catalog at run-time.
 	Profile string
 
-	// EnvVars (BackendAuthFromEnv) — env var names in the user's shell
-	// whose values become Secret keys of the same name.
+	// EnvVars (BackendAuthFromEnv) — env var specs in the user's shell.
+	// Each entry is one of:
+	//
+	//   <NAME>          — read $NAME, store under Secret key NAME
+	//                     (Secret key matches the source var name).
+	//   <SRC>:<DEST>    — read $SRC, store under Secret key DEST.
+	//                     Lets the same in-container env-var name (DEST)
+	//                     pull from a per-backend-prefixed shell var
+	//                     (SRC) so two backends can take different
+	//                     values for the same in-container key.
 	EnvVars []string
 
 	// ExistingSecret (BackendAuthExistingSecret) — name of a Secret
@@ -244,19 +252,31 @@ func (r BackendAuthResolver) resolve(ctx context.Context, k8s kubernetes.Interfa
 }
 
 // readEnvVars pulls the named env vars out of the process environment.
-// All must be set + non-empty, or the whole resolution fails. Returns a
-// map suitable for passing as Secret StringData. Errors name the
-// missing variable so the user can fix their shell and retry.
+// Each entry is either a bare `<NAME>` (read $NAME, store under Secret
+// key NAME) or a `<SRC>:<DEST>` rename pair (read $SRC, store under
+// Secret key DEST). The rename form lets the same in-container env-var
+// name pull from a per-backend-prefixed shell var so two backends can
+// take different values for the same in-container key (e.g.
+// ECHO1_GITHUB_TOKEN:GITHUB_TOKEN + ECHO2_GITHUB_TOKEN:GITHUB_TOKEN
+// against shell vars ECHO1_GITHUB_TOKEN and ECHO2_GITHUB_TOKEN).
+//
+// All sources must be set + non-empty, or the whole resolution fails.
+// Errors name the missing source variable so the user can fix their
+// shell and retry.
 func readEnvVars(vars []string) (map[string]string, error) {
 	out := make(map[string]string, len(vars))
 	var missing []string
 	for _, v := range vars {
-		val := strings.TrimSpace(os.Getenv(v))
+		src, dest, err := splitEnvVarRename(v)
+		if err != nil {
+			return nil, err
+		}
+		val := strings.TrimSpace(os.Getenv(src))
 		if val == "" {
-			missing = append(missing, v)
+			missing = append(missing, src)
 			continue
 		}
-		out[v] = val
+		out[dest] = val
 	}
 	if len(missing) > 0 {
 		return nil, fmt.Errorf(
@@ -265,6 +285,26 @@ func readEnvVars(vars []string) (map[string]string, error) {
 		)
 	}
 	return out, nil
+}
+
+// splitEnvVarRename parses one `--auth-from-env` entry. Bare `<NAME>`
+// means src=dest=NAME. `<SRC>:<DEST>` reads from $SRC and stores under
+// Secret key DEST. Empty SRC or DEST is an error — both halves of a
+// rename must be non-empty.
+func splitEnvVarRename(spec string) (src, dest string, err error) {
+	if i := strings.IndexByte(spec, ':'); i >= 0 {
+		src = strings.TrimSpace(spec[:i])
+		dest = strings.TrimSpace(spec[i+1:])
+		if src == "" || dest == "" {
+			return "", "", fmt.Errorf("env-var rename %q: form is <SRC>:<DEST>, both halves required", spec)
+		}
+		return src, dest, nil
+	}
+	src = strings.TrimSpace(spec)
+	if src == "" {
+		return "", "", fmt.Errorf("env-var spec is empty")
+	}
+	return src, src, nil
 }
 
 // upsertBackendCredentialSecret creates or updates a Secret carrying the
