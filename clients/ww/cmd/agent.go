@@ -939,6 +939,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 		gitSyncs        []string
 		gitMaps         []string
 		gitSyncSecrets  []string
+		gitSyncFromEnv  string
 		persist         []string
 		persistMounts   []string
 		withPersistence bool
@@ -1006,6 +1007,14 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			expandSyncs, expandMaps := agent.ExpandGitOps(gitOpsSpec, specs)
 			syncs = append(expandSyncs, syncs...)
 			maps = append(expandMaps, maps...)
+			var gitsyncEnvSpec *agent.GitSyncFromEnvSpec
+			if strings.TrimSpace(gitSyncFromEnv) != "" {
+				parsed, err := agent.ParseGitSyncFromEnv(gitSyncFromEnv)
+				if err != nil {
+					return err
+				}
+				gitsyncEnvSpec = &parsed
+			}
 			persistMap, err := agent.ParseBackendPersist(persist)
 			if err != nil {
 				return err
@@ -1034,7 +1043,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runAgentCreate(cmd.Context(), f, args[0], specs, !noWait, timeout, createNamespace, team, workspaces, syncs, maps, auth)
+			return runAgentCreate(cmd.Context(), f, args[0], specs, !noWait, timeout, createNamespace, team, workspaces, syncs, maps, auth, gitsyncEnvSpec)
 		},
 	}
 	bindAgentMutatingFlags(cmd, f)
@@ -1087,6 +1096,14 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			"Form: <gitsync-name>=<k8s-secret>. The Secret should carry the gitSync env "+
 			"variables (typically GITSYNC_USERNAME/GITSYNC_PASSWORD or GITSYNC_SSH_KEY_FILE). "+
 			"<gitsync-name> must reference a --gitsync entry; CLI never accepts inline tokens.")
+	cmd.Flags().StringVar(&gitSyncFromEnv, "gitsync-from-env", "",
+		"Lift two shell vars into a per-agent gitSync credential Secret. "+
+			"Form: <USER_VAR>:<PASS_VAR>. The CLI reads $USER_VAR and $PASS_VAR from "+
+			"the shell, mints a Secret named <agent>-gitsync with keys "+
+			"GITSYNC_USERNAME/GITSYNC_PASSWORD, and stamps it onto every gitSyncs[] "+
+			"entry that doesn't already carry an explicit --gitsync-secret. "+
+			"Per-entry --gitsync-secret values win on collision (precedence: explicit "+
+			"per-entry > agent-wide --gitsync-from-env).")
 	cmd.Flags().StringArrayVar(&persist, "persist", nil,
 		"Provision a per-backend PVC for session/memory persistence (repeatable). "+
 			"Form: <backend-name>=<size>[@<storage-class>]. Operator creates a PVC named "+
@@ -1133,7 +1150,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 	return cmd
 }
 
-func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []agent.BackendSpec, wait bool, timeout time.Duration, createNamespace bool, team string, workspaces []string, gitSyncs []agent.GitSyncFlagSpec, gitMappings []agent.GitMappingFlagSpec, backendAuth []agent.BackendAuthResolver) error {
+func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []agent.BackendSpec, wait bool, timeout time.Duration, createNamespace bool, team string, workspaces []string, gitSyncs []agent.GitSyncFlagSpec, gitMappings []agent.GitMappingFlagSpec, backendAuth []agent.BackendAuthResolver, gitsyncFromEnv *agent.GitSyncFromEnvSpec) error {
 	target, resolver, err := f.resolveTarget(ctx)
 	if err != nil {
 		return err
@@ -1160,6 +1177,7 @@ func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []
 		WorkspaceRefs:   workspaces,
 		GitSyncs:        gitSyncs,
 		GitMappings:     gitMappings,
+		GitSyncFromEnv:  gitsyncFromEnv,
 		BackendAuth:     backendAuth,
 		Out:             os.Stdout,
 		In:              os.Stdin,

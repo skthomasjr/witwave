@@ -77,17 +77,34 @@ Variables this walkthrough expects in `.env`:
 # Claude OAuth token (the iris backend's LLM credential)
 CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-replace_me
 
-# iris's GitHub credentials — agent-suffixed so future agents
-# (nova, kira, …) can carry their own without collision.
+# iris's GitHub credentials — used for in-container git operations
+# (commit/push/PRs) by the claude backend. Agent-suffixed so future
+# agents (nova, kira, …) can carry their own without collision.
 GITHUB_TOKEN_IRIS=github_pat_replace_me
 GITHUB_USER_IRIS=iris
+
+# Shared gitSync credentials — used by every agent's gitSync sidecar
+# to clone the config repo. Not agent-suffixed because the sidecar
+# typically pulls from one shared config repo; one PAT serves the
+# whole team. Override per-agent only when an agent points at a
+# different private repo.
+GITSYNC_USERNAME=iris
+GITSYNC_PASSWORD=github_pat_replace_me
 ```
 
-The Step 3 command lifts these into iris's claude container at
-the in-container env-var names the SDK and tooling expect:
-`CLAUDE_CODE_OAUTH_TOKEN` lands as-is; `GITHUB_TOKEN_IRIS` and
-`GITHUB_USER_IRIS` are renamed to `GITHUB_TOKEN` / `GITHUB_USER`
-inside the container.
+The Step 3 command lifts these into iris's containers at
+the in-container env-var names each consumer expects:
+`CLAUDE_CODE_OAUTH_TOKEN` lands on the claude container as-is;
+`GITHUB_TOKEN_IRIS` and `GITHUB_USER_IRIS` are renamed to
+`GITHUB_TOKEN` / `GITHUB_USER` inside the claude container; and
+`GITSYNC_USERNAME` / `GITSYNC_PASSWORD` are minted into a per-agent
+`iris-gitsync` Secret (keys `GITSYNC_USERNAME` / `GITSYNC_PASSWORD`)
+and `envFrom`-wired to the gitSync sidecar.
+
+For this bootstrap the repo (`witwave-ai/witwave`) is public and the
+sidecar would clone anonymously without any creds — the
+`--gitsync-from-env` wiring is shown so the pattern carries over
+verbatim when iris later points at a private config repo.
 
 ### Storage
 
@@ -173,8 +190,9 @@ ww agent create iris \
   --namespace witwave-self \
   --backend claude \
   --workspace witwave-self \
-  --gitops https://github.com/witwave-ai/witwave.git@main:.agents/self/iris \
   --with-persistence \
+  --gitops https://github.com/witwave-ai/witwave.git@main:.agents/self/iris \
+  --gitsync-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD \
   --secret-from-env claude=CLAUDE_CODE_OAUTH_TOKEN \
   --secret-from-env claude=GITHUB_TOKEN_IRIS:GITHUB_TOKEN \
   --secret-from-env claude=GITHUB_USER_IRIS:GITHUB_USER
@@ -204,12 +222,14 @@ Reverse order: agent → workspace → operator → namespaces. Each
 command is destructive and cascade-deletes everything it owns.
 
 Delete iris (cascades the pod, Service, per-backend PVC
-`iris-claude-data`, and the ww-managed `iris-claude`
-Secret):
+`iris-claude-data`, and the ww-managed `iris-claude` Secret;
+`--delete-git-secret` also reaps the per-agent `iris-gitsync`
+Secret minted by `--gitsync-from-env`):
 
 ```bash
 ww agent delete iris \
   --namespace witwave-self \
+  --delete-git-secret \
   --yes
 ```
 

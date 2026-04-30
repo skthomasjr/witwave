@@ -89,6 +89,14 @@ type CreateOptions struct {
 	// the matching BackendSpec.GitMappings[].
 	GitMappings []GitMappingFlagSpec
 
+	// GitSyncFromEnv, when non-nil, resolves a single per-agent gitSync
+	// credential Secret from the named shell vars and stamps it onto
+	// every GitSyncs[] entry that doesn't already carry an explicit
+	// --gitsync-secret reference. Mirrors --secret-from-env's
+	// "lift from .env, mint a Secret" posture but targets the gitSync
+	// sidecar instead of a backend container.
+	GitSyncFromEnv *GitSyncFromEnvSpec
+
 	// Wait controls whether we block after Create until the CR's
 	// status.phase flips to Ready. Timeout bounds the wait.
 	Wait    bool
@@ -183,6 +191,14 @@ func Create(
 			Value: summariseBackendAuth(r, opts.Name),
 		})
 	}
+	if opts.GitSyncFromEnv != nil {
+		plan = append(plan, k8s.PlanLine{
+			Key: "Auth (gitsync)",
+			Value: fmt.Sprintf("from env → mint Secret %q from (%s, %s)",
+				gitsyncFromEnvSecretName(opts.Name),
+				opts.GitSyncFromEnv.UserVar, opts.GitSyncFromEnv.PassVar),
+		})
+	}
 	if IsDevVersion(opts.CLIVersion) {
 		plan = append(plan, k8s.PlanLine{
 			Key:   "Note",
@@ -245,6 +261,22 @@ func Create(
 			}
 			backends[i].CredentialSecret = secretName
 		}
+	}
+
+	// Resolve --gitsync-from-env: lift two shell vars into a single
+	// per-agent gitSync Secret, then stamp the Secret reference onto
+	// every GitSyncs[] entry that doesn't already carry an explicit
+	// --gitsync-secret value (per-entry wins by precedence).
+	if opts.GitSyncFromEnv != nil {
+		k8sClient, err := newKubernetesClient(cfg)
+		if err != nil {
+			return err
+		}
+		secretName, err := ResolveGitSyncFromEnv(ctx, k8sClient, opts.Namespace, opts.Name, *opts.GitSyncFromEnv)
+		if err != nil {
+			return err
+		}
+		opts.GitSyncs = StampGitSyncSecretOnAll(opts.GitSyncs, secretName)
 	}
 
 	obj, err := Build(BuildOptions{
