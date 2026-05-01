@@ -105,6 +105,7 @@ func newAgentCmd() *cobra.Command {
 	bindAgentFlags(cmd, f)
 
 	cmd.AddCommand(newAgentCreateCmd(f))
+	cmd.AddCommand(newAgentUpgradeCmd(f))
 	cmd.AddCommand(newAgentListCmd(f))
 	cmd.AddCommand(newAgentStatusCmd(f))
 	cmd.AddCommand(newAgentDeleteCmd(f))
@@ -1314,6 +1315,129 @@ func runAgentStatus(ctx context.Context, f *agentFlags, name string) error {
 		Name:      name,
 		Namespace: ns,
 		Out:       os.Stdout,
+	})
+}
+
+// ---------------------------------------------------------------------------
+// upgrade
+// ---------------------------------------------------------------------------
+
+func newAgentUpgradeCmd(f *agentFlags) *cobra.Command {
+	var (
+		tag         string
+		harnessTag  string
+		backendTags []string
+		noWait      bool
+		timeout     time.Duration
+		force       bool
+	)
+	cmd := &cobra.Command{
+		Use:   "upgrade <name>",
+		Short: "Upgrade a WitwaveAgent's container image tags in place",
+		Long: "Patches spec.image.tag (harness) and each spec.backends[].image.tag\n" +
+			"on the named WitwaveAgent CR. The operator reconciles the change and\n" +
+			"rolls the Deployment via the standard kubelet rollout — pod-local PVC\n" +
+			"state survives, no agent recreation needed.\n\n" +
+			"Tag resolution priority:\n\n" +
+			"  --tag <X>                 pin every container to <X>\n" +
+			"  --harness-tag <X>         override harness only\n" +
+			"  --backend-tag <name>=<X>  override one backend (repeatable)\n" +
+			"  (none of the above)       default to the brewed `ww` binary's own version\n\n" +
+			"--tag is mutually exclusive with --harness-tag / --backend-tag.\n\n" +
+			"Idempotent fast path: when every container already at the desired tag,\n" +
+			"the command exits 0 without rolling. Pass --force to roll anyway (cache\n" +
+			"bust on dev :latest images, etc.).\n\n" +
+			"After patching, waits up to --timeout for the operator to report Ready.\n" +
+			"Pass --no-wait to return as soon as the patch lands.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if tag != "" && (harnessTag != "" || len(backendTags) > 0) {
+				return fmt.Errorf(
+					"--tag is mutually exclusive with --harness-tag / --backend-tag — pick one form")
+			}
+			parsedBackend, err := parseBackendTagFlags(backendTags)
+			if err != nil {
+				return err
+			}
+			return runAgentUpgrade(cmd.Context(), f, args[0], tag, harnessTag, parsedBackend, !noWait, timeout, force)
+		},
+	}
+	bindAgentMutatingFlags(cmd, f)
+	cmd.Flags().StringVar(&tag, "tag", "",
+		"Pin every container (harness + all backends) to this image tag. "+
+			"Mutually exclusive with --harness-tag / --backend-tag. "+
+			"Leading `v` is stripped — `0.11.14` and `v0.11.14` are equivalent.")
+	cmd.Flags().StringVar(&harnessTag, "harness-tag", "",
+		"Override the harness container's image tag only. Backends keep their "+
+			"current tag unless a per-backend --backend-tag is also set.")
+	cmd.Flags().StringArrayVar(&backendTags, "backend-tag", nil,
+		"Override one backend's image tag (repeatable). Form: <backend-name>=<tag>. "+
+			"<backend-name> must match a backend declared on the agent's CR; unknown "+
+			"names are rejected so a typo can't silently no-op.")
+	cmd.Flags().BoolVar(&noWait, "no-wait", false,
+		"Return as soon as the patch lands; skip the rollout-to-Ready wait.")
+	cmd.Flags().DurationVar(&timeout, "timeout", 5*time.Minute,
+		"Maximum time to wait for the rollout to report Ready (ignored with --no-wait). "+
+			"On timeout, recent CR + pod events are dumped — same UX as `ww agent create`.")
+	cmd.Flags().BoolVar(&force, "force", false,
+		"Roll the deployment even when every target tag already matches the current "+
+			"value. Use to cache-bust on dev :latest images.")
+	return cmd
+}
+
+// parseBackendTagFlags converts repeatable --backend-tag <name>=<tag>
+// flag values into a (name → tag) map. Empty names or empty tags are
+// rejected so a typo doesn't drop silently into an opaque downstream
+// error.
+func parseBackendTagFlags(raw []string) (map[string]string, error) {
+	out := make(map[string]string, len(raw))
+	for i, r := range raw {
+		entry := strings.TrimSpace(r)
+		if entry == "" {
+			return nil, fmt.Errorf("--backend-tag[%d]: empty value", i)
+		}
+		eq := strings.IndexByte(entry, '=')
+		if eq < 1 {
+			return nil, fmt.Errorf("--backend-tag[%d] %q: form is <backend-name>=<tag>", i, entry)
+		}
+		name := strings.TrimSpace(entry[:eq])
+		tag := strings.TrimSpace(entry[eq+1:])
+		if name == "" || tag == "" {
+			return nil, fmt.Errorf("--backend-tag[%d] %q: both name and tag required", i, entry)
+		}
+		if _, dup := out[name]; dup {
+			return nil, fmt.Errorf("--backend-tag[%d]: backend %q already given", i, name)
+		}
+		out[name] = tag
+	}
+	return out, nil
+}
+
+func runAgentUpgrade(ctx context.Context, f *agentFlags, name, tag, harnessTag string, backendTags map[string]string, wait bool, timeout time.Duration, force bool) error {
+	target, resolver, err := f.resolveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	cfg, err := resolver.REST()
+	if err != nil {
+		return err
+	}
+	ns := logAndResolveNamespace(f.namespace, target.Namespace)
+	assumeYes := f.assumeYes || os.Getenv("WW_ASSUME_YES") == "true"
+	return agent.Upgrade(ctx, target, cfg, agent.UpgradeOptions{
+		Name:        name,
+		Namespace:   ns,
+		Tag:         tag,
+		HarnessTag:  harnessTag,
+		BackendTags: backendTags,
+		CLIVersion:  Version,
+		Force:       force,
+		Wait:        wait,
+		Timeout:     timeout,
+		AssumeYes:   assumeYes,
+		DryRun:      f.dryRun,
+		Out:         os.Stdout,
+		In:          os.Stdin,
 	})
 }
 
