@@ -8,10 +8,52 @@ section of each entry.
 
 ## [Unreleased]
 
-Agent-identity refinements on iris (her CLAUDE.md, skills, A2A
-agent-card, settings.json). No ww / operator / harness / backend
-behavior changes since v0.11.16. A future release skill will own
-this section going forward.
+## [0.12.0] — 2026-05-01
+
+This release is entirely infrastructure for the self-agent ecosystem:
+iris gains a full release-captain build-out, all three self-agents are
+promoted to `bypassPermissions` mode, and gh CLI lands in the backend
+images to enable workflow-query tooling. No changes to `ww`, the
+operator, the harness, or backend runtime behaviour.
+
+### Added
+
+- **backends**: gh CLI installed in claude, codex, and gemini images,
+  enabling `gh run list` and other GitHub workflow queries inside
+  backend containers. (`GH_PROMPT_DISABLED=1` was already set in
+  anticipation of this install.)
+
+### Agent identity
+
+- **iris**: `release` skill added — covers CI-green verification,
+  bump inference (patch / minor / explicit), CHANGELOG generation,
+  annotated tagging, and tag push. Pre-1.0 semantics: `feat:` and
+  breaking markers fold into a minor bump; major is reserved for the
+  deliberate `v1.0.0` cut. Skill gaps closed post-scaffolding: git
+  identity is pinned before the changelog commit, stable-tag filtering
+  ensures beta-cycle commits aren't lost on graduation, and `BREAKING
+  CHANGE:` entries fold into **Changed** without a bold prefix in
+  the pre-1.0 period.
+- **iris**: `git-push` skill added — narrow push-only skill for
+  publishing already-made commits to `main`; handles the sibling-
+  pushed-first race via pull-rebase + one retry.
+- **iris**: Identity contract moved to CLAUDE.md — `user.name` /
+  `user.email` declared per-agent; all skills read values from the
+  agent's own prose so the same skill files work across iris, nova,
+  and kira without modification.
+- **iris**: Skills reorganised into folder-per-skill layout; HTTP
+  triggers removed in favour of A2A as the exclusive inter-agent
+  channel. `sync-source` renamed to `git-sync-source`.
+- **iris**: A2A agent-card rewritten to surface actual capabilities
+  (git plumber + release captain); Responsibilities section added to
+  CLAUDE.md scoping the role explicitly.
+- **agents**: iris, nova, and kira promoted to `bypassPermissions`
+  mode; `settings.json` trimmed to just `defaultMode`.
+
+### Documentation
+
+- Changelog backfilled from commit history covering v0.8.2 through
+  v0.11.16.
 
 ## [0.11.16] — 2026-04-30
 
