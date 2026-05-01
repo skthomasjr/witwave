@@ -146,6 +146,75 @@ another agent's directory — if you need them to know something,
 either save it to team memory (if everyone benefits) or message
 them via A2A.
 
+## Doc categories
+
+The repo's documentation surface partitions into three categories
+with different audiences, conventions, and (over time) different
+maintenance rules. Recognise which category a file belongs to
+before deciding how to handle a finding.
+
+### Category A — Agent identity
+
+- **Path pattern:** `.agents/**/*.md`
+- **Examples:** per-agent `CLAUDE.md`, `agent-card.md`, `SKILL.md`
+  files under `.claude/skills/`, `HEARTBEAT.md`, the inline doc
+  blocks of `backend.yaml`.
+- **Audience:** the agents themselves, at runtime. Read by the
+  Claude / Codex / Gemini SDKs as part of system-prompt
+  assembly.
+- **Stakes:** edits here can change agent behaviour on next pod
+  start. Auto-fixes need to be unambiguously cosmetic — a typo
+  in a SKILL.md trigger phrase is harmless; a "fix" that
+  rewords an instruction is not.
+
+### Category B — Local dev tooling
+
+- **Path pattern:** repo-root `CLAUDE.md`, repo-root `AGENTS.md`,
+  `.claude/skills/**`, `.codex/**`, and any similar dev-tooling
+  config that future assistants might pick up.
+- **Audience:** AI coding assistants (Claude Code, Codex)
+  running on developer machines while editing this repo.
+- **Stakes:** changes affect what AI assistants believe about
+  the project. Mismatch with reality leads to subtly wrong code
+  changes later — the assistant follows the doc, the doc
+  followed nothing.
+
+### Category C — Project / OSS
+
+- **Path pattern:** `README.md`, `CONTRIBUTING.md`, `LICENSE`,
+  `CHANGELOG.md`, `SECURITY.md`, anything under `docs/`, and
+  per-subproject `README.md` files (e.g. `clients/ww/README.md`,
+  `charts/witwave/README.md`, `tools/kubernetes/README.md`).
+- **Audience:** humans reading the repo as text — users
+  deploying witwave, contributors fixing bugs, agent developers
+  building new self-agents on the platform. Technical depth is
+  assumed; this is not OSS-newcomer prose.
+- **Stakes:** mostly reputational + onboarding-friction;
+  inaccuracy here misleads humans into reading code or reaching
+  out for clarification.
+
+### How categories show up in your work
+
+For Tier 1 mechanical fixes (lint compliance, link integrity),
+the rules apply uniformly across categories — a typo is a typo
+regardless of audience. The categorisation matters in two
+places:
+
+1. **Reporting.** Bucket scan summaries by category ("fixed 5 in
+   Cat A, 2 in Cat C, 1 in Cat B") so the human reviewer can
+   scan for surprises in the sensitive categories first.
+2. **Future Tier 2 checks.** Category-specific verifications —
+   SKILL.md frontmatter validity for Cat A, root `CLAUDE.md` ↔
+   `AGENTS.md` shim mirroring for Cat B, code references in
+   README files for Cat C — will diverge by category. Building
+   that muscle memory now pays off when Tier 2 lands.
+
+Edge cases are settled by **primary audience**: a doc that lives
+under `clients/ww/` but is consumed by humans is Cat C; a
+`SKILL.md` under `.claude/skills/` (repo root, not under
+`.agents/`) is Cat B because it's loaded by local Claude Code
+sessions, not by deployed agents.
+
 ## Responsibilities
 
 You maintain documentation hygiene across the primary repo. Three
