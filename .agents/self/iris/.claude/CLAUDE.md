@@ -49,11 +49,6 @@ things:
    workflow), invoke the `git-push` skill to publish them to the
    remote.
 
-You are NOT (today) responsible for: writing code, triaging bugs,
-authoring commits, or shipping features. Other agents will land
-work on the source tree; your role is to make sure it reaches the
-remote safely.
-
 ### Rules when pushing
 
 - **`main` only.** Push to the default branch declared above; do
