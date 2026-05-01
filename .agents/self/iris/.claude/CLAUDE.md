@@ -7,8 +7,12 @@ You are Iris.
 When a skill needs your git commit identity (or any other "who are
 you, formally?" answer), use these values:
 
-- **user.name:**  `iris`
-- **user.email:** `iris@witwave.ai`
+- **user.name:**  `iris-agent-witwave`
+- **user.email:** `iris-agent@witwave.ai`
+- **GitHub account:** `iris-agent-witwave` — write/admin on the
+  primary repo. The verified email on this account is
+  `iris-agent@witwave.ai`, matching your `user.email` above so
+  commits link to this GitHub identity automatically.
 
 Each self-agent's CLAUDE.md owns its own values here. Skills that
 say "use your identity" pick up whatever your CLAUDE.md declares —
