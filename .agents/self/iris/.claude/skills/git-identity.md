@@ -1,37 +1,38 @@
 ---
 name: git-identity
 description: Set the local git commit identity (user.name / user.email) on a checkout this agent is about to commit from. Run once after a fresh clone, or any time `git log` shows commits attributed to the wrong author. Trigger when the user says "set git identity", "fix commit attribution", or before the first commit on a new checkout.
-version: 0.3.0
+version: 0.4.0
 ---
 
 # git-identity
 
-Pin the agent's git author identity on a local checkout so commits
-land with a stable, recognisable name + email instead of falling
-through to the PAT owner's default identity.
+Pin your git author identity on a local checkout so commits land
+with a stable, recognisable name + email instead of falling through
+to the PAT owner's default.
 
-Generic across the self-agent family — values come from the
-**identity contract** documented in CLAUDE.md (`$AGENT_OWNER` and
-`$AGENT_EMAIL`). Same skill works for iris, nova, kira, or any
-future sibling without per-agent edits.
+The values come from your **Identity** section in CLAUDE.md (the
+agent's system prompt). Same skill works across the self-agent
+family because each agent's CLAUDE.md owns its own values; this
+file just describes the procedure.
 
 ## Instructions
 
-Verify both env vars resolve before running. If either is empty,
-**stop** and surface to the user — don't fabricate values.
-
-```sh
-# Sanity check: both must be non-empty
-[ -n "$AGENT_OWNER" ] || { echo "AGENT_OWNER unset — refusing to set git identity" >&2; exit 1; }
-[ -n "$AGENT_EMAIL" ] || { echo "AGENT_EMAIL unset — wire it via --backend-secret-from-env per CLAUDE.md, then retry" >&2; exit 1; }
-```
-
-Then set the identity from inside the checkout's working tree:
+Read `user.name` and `user.email` from CLAUDE.md's Identity section,
+then run from inside the checkout's working tree, substituting
+those literal values into the commands:
 
 ```sh
 cd /workspaces/witwave-self/source/witwave
-git config user.name  "$AGENT_OWNER"
-git config user.email "$AGENT_EMAIL"
+git config user.name  "<your user.name from CLAUDE.md>"
+git config user.email "<your user.email from CLAUDE.md>"
+```
+
+For example, if your CLAUDE.md says `user.name: iris` and
+`user.email: iris@witwave.ai`, run:
+
+```sh
+git config user.name  "iris"
+git config user.email "iris@witwave.ai"
 ```
 
 Local config (no `--global`) — confines the identity to this checkout
@@ -46,9 +47,9 @@ git config --get user.name
 git config --get user.email
 ```
 
-The two `git config --get` calls should print `$AGENT_OWNER` and
-`$AGENT_EMAIL` exactly. Anything else means a previous setting
-wasn't overwritten — re-run the set commands.
+The two `git config --get` calls should print exactly what your
+CLAUDE.md says. Anything else means a previous setting wasn't
+overwritten — re-run the set commands.
 
 ## When to invoke
 
@@ -68,5 +69,5 @@ wasn't overwritten — re-run the set commands.
 - Setting GPG signing keys (separate skill if/when we adopt signed commits)
 - Changing the identity for a single commit (use `git commit --author`
   for that — outside this skill)
-- Fabricating a value when `$AGENT_EMAIL` is unset (always ask the
-  user; the contract owns the source of truth)
+- Improvising identity values that aren't in CLAUDE.md (always ask
+  the user; the system prompt is the source of truth)
