@@ -229,28 +229,53 @@ func Build(opts BuildOptions) (*unstructured.Unstructured, error) {
 		}
 	}
 
+	// Decide whether to emit the inline backend.yaml. Skip it when a
+	// harness-level gitMapping already covers /home/agent/.witwave/ —
+	// in that case the gitSync sidecar delivers the file from the repo
+	// and the operator's overlay would race the rsync exechook (the
+	// `--delete` flag deletes any file in dest not present in source,
+	// including operator-overlaid configmap subPath files). The harness
+	// tolerates a brief no-backends window at startup until gitSync's
+	// first pull lands; the existing /health/ready degraded state is
+	// the right signal during that window.
+	harnessOwnsWitwaveDir := false
+	for _, m := range opts.GitMappings {
+		if m.Container != HarnessContainer {
+			continue
+		}
+		if m.Dest == "/home/agent/.witwave/" ||
+			m.Dest == "/home/agent/.witwave" ||
+			m.Dest == "/home/agent/.witwave/backend.yaml" {
+			harnessOwnsWitwaveDir = true
+			break
+		}
+	}
+
 	spec := map[string]interface{}{
 		"port": int64(DefaultHarnessPort),
 		"image": map[string]interface{}{
 			"repository": splitRepo(harnessImage),
 			"tag":        splitTag(harnessImage),
 		},
+		"backends": specBackends,
+	}
+	if !harnessOwnsWitwaveDir {
 		// Inline backend.yaml so the harness can route A2A requests to
 		// at least one sidecar without waiting on a gitSync pull.
-		// Without this, harness /health/ready stays 503 with
-		// reason=no-backends-configured (harness/main.py:524-534) and
-		// the pod never flips Ready. See harness/backends/config.py
-		// for the shape. For multi-backend agents every declared
-		// backend is listed, but every concern routes to the FIRST —
-		// users redistribute routing by editing the file.
-		"config": []interface{}{
+		// Without this AND without a covering gitMapping, harness
+		// /health/ready stays 503 with reason=no-backends-configured
+		// (harness/main.py:524-534) and the pod never flips Ready. See
+		// harness/backends/config.py for the shape. For multi-backend
+		// agents every declared backend is listed, but every concern
+		// routes to the FIRST — users redistribute routing by editing
+		// the file.
+		spec["config"] = []interface{}{
 			map[string]interface{}{
 				"name":      "backend.yaml",
 				"mountPath": "/home/agent/.witwave/backend.yaml",
 				"content":   renderBackendYAML(backends),
 			},
-		},
-		"backends": specBackends,
+		}
 	}
 	if workspaceRefs != nil {
 		spec["workspaceRefs"] = workspaceRefs
