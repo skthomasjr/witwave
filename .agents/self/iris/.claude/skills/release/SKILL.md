@@ -112,16 +112,44 @@ Sample failure response:
 >
 > Fix or revert main, then re-invoke `release`."
 
+#### Caveat: the changelog commit's own CI fires asynchronously
+
+The CI-green check above covers HEAD as it stands BEFORE the
+changelog commit (step 7 below) lands. The tag eventually points at
+the changelog commit, which is brand-new and not yet CI-tested at
+tag-push time. In practice this window is safe — `docs(changelog):`
+commits only edit `CHANGELOG.md` and any failure would be a
+`CI — docs` markdown-lint class issue that doesn't affect runtime
+artifacts. If the changelog-commit's CI does go red post-tag, the
+release artifacts still publish (they fire on tag, not on CI green);
+fix the markdown in a follow-up commit. Don't let the race block
+the release.
+
 ### 4. Determine current version + infer bump
 
 ```sh
-git -C <checkout> describe --tags --abbrev=0
-git -C <checkout> log $(git -C <checkout> describe --tags --abbrev=0)..HEAD --format="%s%n%b"
+PREV_TAG=$(git -C <checkout> describe --tags --abbrev=0)
+git -C <checkout> log "${PREV_TAG}..HEAD" --format="%s%n%b"
+COMMIT_COUNT=$(git -C <checkout> rev-list --count "${PREV_TAG}..HEAD")
 ```
 
 The first command gives the previous tag (e.g. `v0.11.16`). The
-second gives every commit's subject + body since that tag. Apply
-this inference table:
+second gives every commit's subject + body since that tag. The
+third counts them.
+
+#### Refuse on zero commits
+
+If `COMMIT_COUNT` is 0, **stop and surface**:
+
+> "Refusing to release — no commits between `<prev-tag>` and HEAD.
+> Last tag is `<prev-tag>`; there's nothing new to release."
+
+Catches the case where a caller fires `release` immediately after a
+prior release with no work in between.
+
+#### Inference table
+
+Apply this inference table to non-zero commit counts:
 
 | Pattern in commits since previous tag | Inferred bump |
 | --- | --- |
@@ -198,11 +226,26 @@ b. Generate entries for the new version from the commit log between
    `**operator**:` bullet). One concise prose line per scope-bucket,
    not a verbatim commit-list dump.
 
-c. Insert the new entry **between** `## [Unreleased]` and the next
-   `##` heading. Preserve `## [Unreleased]` (empty) at the top — it
-   stays as the running collector for future commits.
+c. **Handle existing `[Unreleased]` content**: if the
+   `## [Unreleased]` section already has bullets / paragraphs (e.g.
+   beta-cycle accumulation, or someone hand-wrote entries during the
+   release window), **merge them into the new version's entry** —
+   integrate manually-written prose with the auto-generated
+   commit-derived entries, deduping where they describe the same
+   change. Then leave `## [Unreleased]` empty for the next cycle.
+   Never silently discard hand-written `[Unreleased]` content.
 
-d. Format:
+d. Insert the new entry **between** the now-empty `## [Unreleased]`
+   and the next `##` heading. The result:
+
+   ```markdown
+   ## [Unreleased]
+
+   ## [X.Y.Z] — YYYY-MM-DD
+   ...
+   ```
+
+e. Format the entry body:
 
    ```markdown
    ## [X.Y.Z] — YYYY-MM-DD
@@ -220,7 +263,7 @@ d. Format:
    - **<component>**: <prose summary>
    ```
 
-e. Stage and commit:
+f. Stage and commit:
 
    ```sh
    git -C <checkout> add CHANGELOG.md
@@ -347,8 +390,8 @@ default — the caller has to ask explicitly.
   Do not retry, do not auto-rerun failed workflows, do not delegate
   to a build-fixer (no such agent exists yet — placeholder for
   future work).
-- **Breaking markers without `release major`** (step 4): refuse and
-  ask. Auto-bumping major is never safe.
+- **Zero commits since last tag** (step 4): refuse and surface;
+  there's nothing new to ship.
 - **Tag push rejected** (step 9): rare (would mean someone else
   pushed the same tag concurrently). Surface and stop.
 - **Workflow failure after tag push** (step 11, if watching): tag is
@@ -371,3 +414,9 @@ default — the caller has to ask explicitly.
 - Cross-repo releases (this skill releases the primary repo only)
 - Communicating with sibling agents to coordinate a release window
   (caller's responsibility, not the skill's)
+- **Hotfixes on old release lines** — patches cut from a previous
+  major/minor (e.g. shipping `v0.11.17` after `v0.12.0` is already
+  out for a critical fix on the v0.11 line). Requires branching off
+  the old tag, cherry-picking, and tagging from the branch — none
+  of which this skill does. Pre-1.0 the need is rare; revisit if it
+  comes up.
