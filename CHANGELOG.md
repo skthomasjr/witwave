@@ -8,6 +8,565 @@ section of each entry.
 
 ## [Unreleased]
 
+Agent-identity refinements on iris (her CLAUDE.md, skills, A2A
+agent-card, settings.json). No ww / operator / harness / backend
+behavior changes since v0.11.16. A future release skill will own
+this section going forward.
+
+## [0.11.16] — 2026-04-30
+
+Single-fix patch on `ww agent upgrade` — closes a regression where
+the merge-patch path dropped existing `spec.backends[].image.repository`
+on push, causing admission to reject with "spec.backends[i].image
+.repository: Required value."
+
+### Fixed
+
+- **ww**: `ww agent upgrade` swaps merge-patch → Update with the
+  full CR. Preserves every field on the existing CR (image
+  repository, env, volumes, gitMappings) so admission sees a valid
+  object. Verified end-to-end on a live cluster.
+
+## [0.11.15] — 2026-04-30
+
+First-cut `ww agent upgrade` — in-place image-tag rollout for a
+single agent.
+
+### Added
+
+- **ww**: `ww agent upgrade <name>` patches `spec.image.tag` (harness)
+  and each `spec.backends[].image.tag` on the WitwaveAgent CR. The
+  operator reconciles the change and rolls the Deployment via the
+  standard kubelet rollout — pod-local PVC state survives the roll.
+  Tag resolution priority: `--tag X` (everything) > `--harness-tag`
+  / `--backend-tag <name>=X` (per-container) > brewed CLI's own
+  version. Idempotent fast-path (no-op when tags match), `--force`
+  to roll regardless, dev-build guard, unknown-backend guard, event
+  dump on timeout. Bulk paths (`--all`, `--all-namespaces`) deferred
+  to a follow-up.
+
+## [0.11.14] — 2026-04-30
+
+Operator + cross-component fixes to make hook events flow correctly
+out of the box. Metrics enabled by default on every operator-
+provisioned agent; new CLI opt-out.
+
+### Added
+
+- **shared**: `shared/env.py` boundary-safe parsers —
+  `parse_bool_env`, `parse_int_env`, `parse_float_env`. Centralises
+  env-var parsing across every Python component with case-
+  insensitive truthy/falsy vocabulary and loud-failure on typos.
+- **ww**: `--no-metrics` flag on `ww agent create` to opt out of the
+  new default-on metrics posture.
+
+### Changed
+
+- **operator**: `MetricsSpec.Enabled` switched to `*bool` with
+  kubebuilder default `true`. Every agent the operator provisions
+  has metrics on by default; explicit `false` opts out.
+- **charts**: `metrics.enabled` default flipped from `false` →
+  `true` for chart-installed agents (parity with operator default).
+- **All Python components**: 16 sites of `bool(os.environ.get(...))`
+  replaced with `parse_bool_env`. The classic Python anti-pattern
+  (`bool("false") == True`) had been silently flipping
+  `METRICS_ENABLED=false` to `True` everywhere.
+
+### Fixed
+
+- **operator**: `HARNESS_EVENTS_URL` stamped at the metrics port
+  when metrics are enabled, matching where the
+  `/internal/events/{hook-decision,publish}` routes actually live
+  under #924's NetworkPolicy posture. Combined with the bool-parse
+  fix above, closes the silent 404 storm on hook event delivery
+  (#1781).
+- **shared**: import env helpers via top-level name (`from env
+  import ...`) — the previous `from shared.env import` form was
+  broken because `shared/` is on PYTHONPATH but isn't a package.
+
+### Agent identity
+
+- **iris**: heartbeat probes CLAUDE.md loading via name-substitution
+  check (HEARTBEAT_OK <name>); throttled back to every 30 minutes
+  after validation runs.
+
+## [0.11.13] — 2026-04-30
+
+Operator-side auto-mint of the per-agent internal-state Secret.
+Closes the silent-401 storm on `/internal/events/hook-decision` POSTs.
+
+### Added
+
+- **operator**: per-agent `<agent>-internal` Secret reconciler.
+  Always-on, idempotent — generates a random `HOOK_EVENTS_AUTH_TOKEN`
+  on first reconcile (32 bytes, base64url-encoded; ~43 chars) and
+  preserves it across subsequent reconciles. Cascade-deletes with
+  the agent via OwnerReference. Stamped as envFrom on harness +
+  every backend container so user-supplied envFrom can still
+  override on key collision.
+
+### Agent identity
+
+- **iris**: per-minute liveness heartbeat (later throttled back to
+  `*/30 * * * *` after validation).
+
+### Chore
+
+- **ww**: gofmt fix on `gitsync_auth_env_test.go`.
+
+## [0.11.12] — 2026-04-30
+
+`--gitsync*` flag-family closure on `ww agent create`. Six commits
+flatten the long-form into a single coherent prefix.
+
+### Added
+
+- **ww**: `--gitsync-from-env <USER_VAR>:<PASS_VAR>` (then renamed to
+  `--gitsync-secret-from-env`) — lifts shell vars into a per-agent
+  gitSync credential Secret. Closes the .env-driven gap for
+  private-repo gitSync.
+- **ww**: `--timeout` default on `ww agent create` bumped from 2m →
+  5m; recent CR + pod events dumped on timeout for actionable
+  diagnostics.
+
+### Changed
+
+- **ww**: `--gitops` → `--gitsync-bundle`. Convention-driven sugar
+  joins the `--gitsync*` family.
+- **ww**: `--gitmap` → `--gitsync-map`. The flag is conceptually
+  subordinate to a `--gitsync` entry; the prefix reflects the
+  hierarchy.
+- **ww**: `--gitsync-from-env` → `--gitsync-secret-from-env`.
+  Symmetry with the backend half.
+- **ww**: `--secret-from-env` → `--backend-secret-from-env`. Target
+  type now in the flag name; mirrors `--gitsync-secret-from-env`.
+
+## [0.11.11] — 2026-04-30
+
+Backend-credential Secret cleanup on agent delete is default-on. CLI
+sugar additions for gitOps and persistence.
+
+### Added
+
+- **ww**: `--gitops` short-form on `ww agent create` — convention-
+  driven sugar over `--gitsync` + N `--gitmap` entries.
+- **ww**: `--with-persistence` on `ww agent create` — fans out type-
+  derived persistence defaults to every declared backend without
+  per-backend `--persist` enumeration.
+- **ww**: `--delete-backend-secrets` on `ww agent delete` (later
+  flipped to default-on in this same release).
+
+### Changed
+
+- **ww**: backend-Secret cleanup on `ww agent delete` is default-on;
+  `--keep-backend-secrets` opts out. Same label-gated safety
+  regardless: Secrets without `app.kubernetes.io/managed-by=ww` are
+  never touched.
+- **ww**: minted backend Secret name drops the `-credentials`
+  suffix. `iris-claude` instead of `iris-claude-credentials`. The
+  suffix oversold what's in the Secret (arbitrary envFrom material
+  via `--secret-from-env`, not just credentials) and collided
+  visually with the operator-side `<agent>-<backend>-backend-
+  credentials` naming for the inline-CR path.
+
+### Documentation
+
+- **bootstrap**: collapsed to a down-and-dirty single-claude
+  walkthrough; dropped EKS / future-platform commitments; added a
+  Tear-it-down section.
+
+### Agent identity
+
+- **iris**: removed stale `.echo-1` / `.echo-2` scaffolds.
+
+## [0.11.10] — 2026-04-30
+
+`--auth-from-env` rename and rename-form support on `ww agent
+create`.
+
+### Added
+
+- **ww**: `--auth-from-env` accepts the `<SRC>:<DEST>` rename form
+  so agent-suffixed shell vars (`GITHUB_TOKEN_IRIS:GITHUB_TOKEN`)
+  can land as stable in-container names without the per-agent
+  prefix.
+
+### Changed
+
+- **ww**: `--auth-from-env` → `--secret-from-env` family-wide. Multi-
+  line accumulation supported (multiple `--secret-from-env` entries
+  for the same backend merge into one resolver). Old name dropped
+  without deprecation aliases.
+
+### Documentation
+
+- **bootstrap**: switched to `--secret-from-env`; demonstrates
+  combined and multi-line forms; uses real iris-suffixed shell vars
+  from `.env`.
+
+## [0.11.9] — 2026-04-29
+
+### Added
+
+- **ww**: `--persist-mount <name>=<subpath>:<mountpath>` on `ww
+  agent create` for explicit PVC mount overrides. Replace-on-
+  presence — any `--persist-mount` for a backend takes ownership of
+  its full mount list (type-derived defaults are skipped).
+
+### Documentation
+
+- **bootstrap**: `--persist-mount` documented in the long-hand block.
+
+## [0.11.8] — 2026-04-29
+
+### Added
+
+- **ww**: `--persist` accepts echo backends with a symbolic
+  `memory` mount.
+
+### Documentation
+
+- **bootstrap**: `--persist` flag documented in Step 3 with a
+  forward-looking concrete example.
+
+## [0.11.7] — 2026-04-29
+
+### Added
+
+- **ww**: `--persist <name>=<size>[@<storage-class>]` on `ww agent
+  create` — provisions a per-backend PVC for session/memory
+  persistence (`<agent>-<backend>-data`).
+
+### Agent identity
+
+- **iris**: dropped `sync-test.md` scratch file.
+
+## [0.11.6] — 2026-04-29
+
+### Added
+
+- **ww**: `--gitsync` / `--gitmap` / `--gitsync-secret` long-form on
+  `ww agent create` for per-entry gitSync wiring.
+
+### Fixed
+
+- **operator**: probe selection now uses image-repo-basename instead
+  of the backend's Name. `--backend echo-1:echo` no longer gets
+  stamped with `/health/start` 404s because the operator now
+  recognises the underlying image type.
+
+### Documentation
+
+- **bootstrap**: Step 3 focuses on iris with two backends; Step 2
+  prose aligned with the two-volume workspace.
+
+## [0.11.5] — 2026-04-29
+
+Reverts the workspace-mount-on-harness change from v0.11.4.
+
+### Reverted
+
+- **operator**: workspace volumes no longer mounted on the harness
+  container; they stay scoped to backend containers only.
+
+### Fixed
+
+- **echo**: `WORKDIR /home/agent/workspace` to match the other
+  backends.
+
+## [0.11.4] — 2026-04-29
+
+### Fixed
+
+- **harness**: `/health/ready` probe falls back to `/health` on 404
+  — supports echo backends that don't expose the readiness endpoint.
+- **operator**: stamped workspace mounts onto the harness container
+  (subsequently reverted in v0.11.5).
+
+## [0.11.3] — 2026-04-29
+
+### Added
+
+- **ww**: `--workspace` flag on `ww agent create` — bind to a
+  WitwaveWorkspace at creation time; equivalent to a follow-up `ww
+  workspace bind`.
+
+### Documentation
+
+- **bootstrap**: documented `--gitsync` / `--gitmap` explicit form;
+  collapsed Step 3 to one command per agent.
+
+### Chore
+
+- **scripts**: embedded-chart drift check uses `--checksum` so mtime
+  drift no longer false-positives.
+
+## [0.11.2] — 2026-04-28
+
+Multi-arch container images.
+
+### Added
+
+- **release**: container-image builds now produce `linux/amd64` +
+  `linux/arm64` manifest lists. Fixes `ImagePullBackOff: no
+  matching manifest for linux/arm64/v8` on Apple Silicon and AWS
+  Graviton clusters.
+
+### Fixed
+
+- **ww**: `ww operator status` enumerates all three CRDs
+  (WitwaveAgent, WitwavePrompt, WitwaveWorkspace).
+
+### Changed
+
+- **layout**: `.agents/active/` renamed to `.agents/self/`.
+
+## [0.11.1] — 2026-04-28
+
+### Added
+
+- **ww**: `--create-namespace` on `ww operator install` — provisions
+  the target namespace if missing. Parity with `ww workspace
+  create` and `ww agent create`.
+
+### Documentation
+
+- **bootstrap**: Step 3 walkthrough for iris/nova/kira deployment.
+
+## [0.11.0] — 2026-04-28
+
+WitwaveWorkspace CRD — shared per-namespace volume / Secret /
+ConfigMap envelope every agent in the namespace can bind to. End-
+to-end CRD + operator + admission webhook + chart + CLI surface.
+
+### Added
+
+- **operator**: WitwaveWorkspace CRD with shared volumes (PVC-
+  backed, per-volume access modes), Secret projection (existingSecret
+  pass-through), and ConfigMap-backed file rendering. Inverted-index
+  `Status.BoundAgents` reconciled from each agent's
+  `Spec.WorkspaceRefs`. Same-namespace binding only in v1alpha1.
+- **operator**: WitwaveWorkspace admission webhook gates the CR
+  shape.
+- **operator**: WitwaveAgent grows `Spec.WorkspaceRefs[]` for
+  declarative binding; agent reconcile stamps workspace volumes /
+  envFrom / configmap mounts on the pod.
+- **operator**: ReadWriteOncePod accepted alongside ReadWriteOnce
+  for single-node clusters (Docker Desktop, kind).
+- **ww**: `ww workspace { create, list, get, status, delete, bind,
+  unbind }` subcommand tree.
+- **charts**: WitwaveWorkspace CRD bundled, RBAC + webhook config
+  plumbed.
+
+### Fixed
+
+- **mcp-kubernetes**: retry `apply()` and `delete()` on 401 token
+  rotation (#1816, #1817).
+- **operator**: defensive logging on workspace-watch and agent-list
+  errors (#1805, #1806, #1810).
+- **harness**: re-raise TimeoutError from `_bounded` so callers see
+  timeouts (#1769); consolidate `bus.send` cleanup (#1770).
+- **codex**: log when `_release_mcp_stack` matches no tracked stack
+  (#1781) or refcount underflows (#1780).
+- **shared**: best-effort graceful shutdown for the metrics-server
+  thread (#1818).
+- **ww**: guard `Target()` against nil context value (#1800); close
+  stdout pipe when `cmd.Start` fails in credential fill (#1796).
+
+### Documentation
+
+- **bootstrap**: new `docs/bootstrap.md` for self-hosting witwave on
+  witwave (the witwave-self ecosystem).
+- **workflow**: project formally adopts trunk-based development —
+  commits land directly on main, no feature branches, fix or revert
+  immediately on break.
+
+### Agent identity
+
+- **layout**: scaffolded iris, nova, kira directories under
+  `.agents/self/`.
+
+### Skills
+
+- Bake intentional-design checklist into bug-discover, bug-refine,
+  risk, and gap skills.
+
+## [0.10.0] — 2026-04-27
+
+Cycle 17 — operator hardening, observability finishing touches, and
+security follow-ups across MCP tools, backends, and the dashboard.
+
+### Added
+
+- **operator**: per-agent PrometheusRule reconciled from chart
+  defaults (#1746); sibling NetworkPolicies for MCP tools +
+  dashboard (#1743); dashboard Ingress + auth annotations (#1741);
+  MCPToolSpec CRD additions for security parity (#1737); CORS_*
+  env stamped on harness (#1748).
+- **harness**: `_MD_CACHE_EVICTIONS` exported as Prometheus counter
+  (#1747); `PROMPT_ENV_MAX_BYTES` cap on resolved bodies (#1744).
+
+### Fixed
+
+- **gemini**: hot-reload revision gauge registered (#1751);
+  `_pre_tool_use_gate` engine signature corrected (#1724); per-
+  logger + tool-audit metrics wired (#1755, #1756); MAX_SESSIONS
+  clamped to ≥1 (#1718); chunk metric increment timing (#1721); skip
+  tool_duration histogram for prefix-paired AFC frames (#1727);
+  inbound prompt UTF-8 byte length capped at A2A entry (#1730);
+  `mcp_command_args_safe` invoked on MCP config load (#1734).
+- **claude**: `mcp_command_args_safe` on MCP config load (#1734);
+  `task_last_success_timestamp` gated on budget_exceeded (#1729).
+- **codex**: `mcp_command_args_safe` on MCP config load (#1734);
+  `MCP_CONFIG_PATH` realpath allow-list (#1731); observe
+  `backend_sqlite_task_store_lock_wait_seconds` (#1753).
+- **operator**: backend three-probe model with echo carve-out
+  (#1719); paginate WitwavePromptReconciler ConfigMap GC List
+  (#1726) and applyBackendPVCs cleanup List (#1725); paginatedList
+  routed through APIReader (#1738); renew_failures_total increment
+  on involuntary lease loss (#1739); MCP tool Service exposes the
+  metrics port (#1722); hardened security context + SA fields
+  stamped on MCP tool pods (#1737).
+- **harness**: stream-read `/validate` bodies via shared cap helper
+  (#1736); cross-backend timestamp normalised in `/trace` proxy sort
+  (#1728).
+- **ww**: timeout-free `streamHC` for SSE callers (#1733);
+  prerequisite Service Get bounded by `--timeout` (#1720).
+- **mcp**: `/info.features.read_only` honours per-tool env (#1759).
+- **dashboard**: CSV formula injection neutralised in `csvEscape`
+  (#1732).
+- **shared**: schedule session_stream sweeper + LRU-cap registry
+  insertion (#1735).
+- **charts**: unified mcp-tools Service/Pod metrics gate (#1723).
+
+### Documentation
+
+- **harness**: drop unimplemented `POST /triggers/{name}/run`
+  references (#1745).
+- **supply-chain**: per-artifact verification recipes + supply-chain
+  overview (#1598 item 5).
+- **echo**: three-probe health model added to intentional-non-scope
+  list.
+- **layout**: removed stale Docker Compose references — K8s-only
+  platform now.
+
+## [0.9.6] — 2026-04-27
+
+### Added
+
+- **release**: SLSA L3 provenance for ww binaries + embedded chart
+  bridge (#1598 items 2 + 4).
+
+## [0.9.5] — 2026-04-27
+
+### Fixed
+
+- **CI**: docker login alongside helm login for cosign chart sign
+  (#1598).
+
+## [0.9.4] — 2026-04-27
+
+### Added
+
+- **release**: cosign-sign published Helm charts (#1598 item 3).
+
+## [0.9.3] — 2026-04-27
+
+### Fixed
+
+- **CI**: buildx setup before image build — provenance / SBOM
+  prereq (#1598).
+
+## [0.9.2] — 2026-04-27
+
+### Added
+
+- **release**: SLSA provenance + SBOM emitted for every published
+  image (#1598).
+
+### Changed
+
+- **CI**: prettier + markdownlint enforced on changed `*.md` files
+  (#1481). MD018 disabled — `#NNN` issue refs at line start are
+  project convention.
+
+## [0.9.1] — 2026-04-27
+
+### Changed
+
+- **ww**: goreleaser `brews` migrated to `homebrew_casks` (#1446).
+
+### Fixed
+
+- **CI**: guard `release.extra_files` against parent-dir globs.
+
+## [0.9.0] — 2026-04-27
+
+Cycle 16 — universal curl installer, supply-chain hardening
+groundwork, ~15 metrics + observability fixes across harness /
+backends / operator, and broad test coverage across cli / operator
+/ dashboard / shared.
+
+### Added
+
+- **ww**: universal curl installer + post-release validation. Polish
+  parity with uv-class installers — existing-install detection,
+  SHELL-aware advice, post-install version exec. `-o yaml` output
+  parity for snapshot commands (#1707).
+- **charts**: #1416 harness env vars plumbed as first-class values
+  (#1691); MCP tool env vars documented under `mcpTools.*` (#1692).
+- **backends**: metric superset parity placeholders for codex +
+  gemini (#1687); `/health/start` probe added to claude / codex /
+  gemini (#1686).
+
+### Fixed
+
+- **operator**: admission gates for existingSecret presence + inline-
+  creds RBAC (#1683, #1685); cross-watches gated between WitwaveAgent
+  and WitwavePrompt (#1684); WitwavePrompt ConfigMap name made
+  injective (#1676); `ObservedGeneration` preserved when spec moves
+  mid-retry (#1677).
+- **harness**: `tasks.py` duration metric covers `resolve_prompt_env`
+  (#1675); YAML-list `continues-after` parses correctly (#1689).
+- **mcp**: surface describe events-fetch failures to callers
+  (#1680); redact stdin-delivered helm values in error messages
+  (#1681).
+- **codex / gemini**: bound `/mcp` body size on the wire (#1673,
+  #1674).
+- **dashboard**: clear stale terminal-failed error on `open()`
+  (#1702); always overwrite `error.value` on terminal-failed state.
+- **charts**: CI checks for alert↔runbook coverage (#1698) and
+  PrometheusRule metric names declared in source (#1682); operator
+  namespace Role monitoring verbs gated on `metrics.enabled` (#1678).
+- **CI**: skip SBOM and sign steps in snapshot-install goreleaser
+  run; fetch tag history; shellcheck/gofmt drift in curl-installer
+  follow-ups.
+
+### Changed
+
+- **terminology**: replaced "agenda item" with "prompt" across
+  documentation and wire contracts.
+
+## [0.8.2] — 2026-04-26
+
+Brand asset refresh; dashboard test fixture follow-on.
+
+### Added
+
+- **brand**: witwave brand assets bundled.
+
+### Fixed
+
+- **dashboard**: always overwrite `error.value` on terminal-failed
+  state. Test timeouts adjusted after #1605 + #1615 production
+  changes.
+
+### Documentation
+
+- **README**: witwave logo embedded (then reverted to non-inline
+  form) at top; FUNDING.yml updated with Buy Me A Coffee sponsorship
+  link.
+
 ## [0.8.1] — 2026-04-26
 
 Patch release re-shipping the artifacts that v0.8.0 missed.
