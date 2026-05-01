@@ -1,5 +1,7 @@
 ---
-description: Liveness check — verifies the agent's backend can reach its LLM provider and that the system-prompt file is loaded.
+description: >-
+  Liveness check — verifies the agent's backend can reach its LLM
+  provider and that the system-prompt file is loaded.
 schedule: "*/30 * * * *"
 enabled: true
 ---
