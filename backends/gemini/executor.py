@@ -2840,7 +2840,10 @@ class AgentExecutor(A2AAgentExecutor):
             import hook_events as _hev
             _hev.schedule_post(
                 {
-                    "agent": AGENT_OWNER or AGENT_NAME,
+                    # #1149: send BACKEND id (gemini/claude/codex), not
+                    # the named witwave agent — see claude/executor.py
+                    # _event_dict for the full rationale.
+                    "agent": _BACKEND_ID,
                     "session_id": session_id,
                     "tool": tool,
                     "decision": decision,

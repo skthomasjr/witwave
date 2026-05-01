@@ -1040,7 +1040,16 @@ def _make_pre_tool_use_hook(state: HookState, session_id_ref: dict | None = None
             else:
                 _resolved_sid = input_data.get("session_id") or ""
             _event_dict = {
-                "agent": AGENT_OWNER or AGENT_NAME,
+                # Per the harness's HookDecisionEvent contract
+                # (harness/bus.py:_emit_hook_decision_event_stream
+                # docstring), `agent` here is the BACKEND id
+                # (claude/codex/gemini), not the named witwave agent
+                # (iris/kira/nova). The named-agent goes on the SSE
+                # envelope's `agent_id` instead, derived from
+                # AGENT_OWNER inside the harness. Sending
+                # AGENT_OWNER here trips the "unknown agent" drop
+                # branch (#1149) and silences a real policy signal.
+                "agent": _BACKEND_ID,
                 "session_id": _resolved_sid,
                 "tool": tool_name or "",
                 "decision": decision,

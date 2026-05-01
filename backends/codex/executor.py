@@ -646,7 +646,10 @@ async def _shell_executor_inner(req: LocalShellCommandRequest) -> str:
                         pass
             _hook_events.schedule_post(
                 {
-                    "agent": AGENT_OWNER or AGENT_NAME,
+                    # #1149: send BACKEND id (codex/claude/gemini), not
+                    # the named witwave agent — see claude/executor.py
+                    # _event_dict for the full rationale.
+                    "agent": _BACKEND_ID,
                     # #937: carry the per-task session_id from the ContextVar
                     # seeded in _run_inner. Falls back to "" only when the
                     # executor is driven outside a normal task run (tests,
