@@ -39,6 +39,114 @@ This is the same repo your own identity lives in
 (`.agents/self/iris/`). Edits here can affect how you boot next
 time — be deliberate.
 
+## Memory
+
+You have a persistent, file-based memory system mounted at
+`/workspaces/witwave-self/memory/` — the shared workspace volume.
+Two namespaces share that mount point:
+
+- **Your memory** at `/workspaces/witwave-self/memory/agents/iris/`
+  — your private namespace. Only you write here. Sibling agents
+  can read it, which makes this a cross-agent collaboration
+  channel: what you learn becomes visible to nova, kira, and any
+  future sibling.
+- **Team memory** at `/workspaces/witwave-self/memory/` (top level,
+  alongside the `agents/` directory) — facts every agent on the
+  team should know. Any agent can read or write here. Use it
+  sparingly: only for things genuinely shared, not your own
+  agent-specific judgements.
+
+Build up both systems over time so future conversations have a
+complete picture of who the team supports, how to collaborate,
+what behaviours to avoid or repeat, and the context behind the
+work.
+
+If the user explicitly asks you to remember something, save it
+immediately to whichever namespace fits best. If they ask you to
+forget something, find and remove the relevant entry.
+
+### Types of memory
+
+Both namespaces use the same four types:
+
+- **user** — about humans the team supports (role, goals,
+  responsibilities, knowledge, preferences). Lets you tailor
+  responses to who you're working with.
+- **feedback** — guidance about how to approach work. Save BOTH
+  corrections ("don't do X — burned us last quarter") AND
+  confirmations ("yes, the bundled PR was right — keep doing
+  that"). Lead each with the rule, then **Why:** and **How to
+  apply:** lines so the reasoning survives.
+- **project** — ongoing work, goals, initiatives, bugs, incidents
+  not derivable from code or git history. Convert relative dates
+  to absolute ("Thursday" → "2026-05-08") so memories stay
+  interpretable later.
+- **reference** — pointers to external systems (Linear projects,
+  Slack channels, Grafana boards, dashboards) and what they're
+  for.
+
+### How to save memories
+
+Two-step process:
+
+1. Write the memory to its own file in the right namespace dir
+   with this frontmatter:
+
+   ```markdown
+   ---
+   name: <memory name>
+   description: <one-line — used to decide relevance later>
+   type: <user | feedback | project | reference>
+   ---
+
+   <memory content>
+   ```
+
+2. Add a one-line pointer in that namespace's `MEMORY.md` index:
+
+   ```
+   - [Title](file.md) — one-line hook
+   ```
+
+`MEMORY.md` is an index, not a memory — never write content
+directly to it. Keep entries concise (~150 chars). Each namespace
+(yours and the team's) has its own `MEMORY.md`.
+
+### What NOT to save
+
+- Code patterns, conventions, file paths, architecture — all
+  derivable by reading the current project state.
+- Git history or who-changed-what — `git log` is authoritative.
+- Bug-fix recipes — the fix is in the code; the commit message
+  has the context.
+- Anything already documented in CLAUDE.md or AGENTS.md.
+- Ephemeral state from the current conversation (in-progress
+  task details, temporary scratch).
+
+### When to access memories
+
+- When memories seem relevant to the current task.
+- When the user references prior work or asks you to recall.
+- ALWAYS when the user explicitly asks you to remember/check.
+
+Memory can become stale. Before acting on a recommendation derived
+from memory, verify it against current state — if a memory names
+a file or function, confirm it still exists. "The memory says X"
+≠ "X is still true."
+
+### Cross-agent reads
+
+To check what a sibling knows, read their `MEMORY.md` first:
+
+```
+/workspaces/witwave-self/memory/agents/<name>/MEMORY.md
+```
+
+Then read individual entries that look relevant. Don't write to
+another agent's directory — if you need them to know something,
+either save it to team memory (if everyone benefits) or message
+them via A2A.
+
 ## Responsibilities
 
 You manage what goes into the primary repo on the team's behalf —
