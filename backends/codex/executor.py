@@ -3040,29 +3040,18 @@ class AgentExecutor(A2AAgentExecutor):
                     logger.warning(
                         "session_stream: chunk publish failed: %r", _s_exc
                     )
-            # Await directly — see backends/claude/executor.py _emit_chunk for the
-            # rationale (event ordering + exception surfacing). Only record
-            # the text as emitted after enqueue_event succeeded; a failure
-            # here means the client never got it and the fallback is
-            # allowed to resend.
-            try:
-                await event_queue.enqueue_event(new_agent_text_message(text))
-            except Exception:
-                # Failure → client did NOT receive this chunk. Record
-                # it in _attempted_texts with success=False so the
-                # drop-fallback can reconstruct the exact gap set,
-                # then re-raise so existing _run_query_inner error
-                # handling (dropped counter, timeout path) still fires.
-                _attempted_texts.append((False, text))
-                raise
+            # Per-chunk A2A event_queue emission removed — see
+            # backends/claude/executor.py _emit_chunk for the rationale
+            # (A2A SDK's blocking handler returns on first Message event,
+            # so per-chunk Message emission caused blocking callers to
+            # see only the first chunk). _attempted_texts / _emitted_texts
+            # / drop-recovery machinery in the elif branch below is now
+            # unreachable; a follow-up commit will clean it up. For now
+            # the dead code is harmless — _chunks_emitted stays 0 so the
+            # always-emit-final-Message branch handles every turn.
             _chunks_emitted += 1
-            # Only count the emission metric AFTER the enqueue succeeded
-            # (#1199). Incrementing before enqueue previously overcounted
-            # chunks that failed to reach the client.
             if backend_streaming_events_emitted_total is not None:
                 backend_streaming_events_emitted_total.labels(**_LABELS, model=_streaming_label_model).inc()
-            _emitted_texts.append(text)
-            _attempted_texts.append((True, text))
 
         # Attach the stream state so _run_query_inner's TimeoutError
         # handler can increment ``dropped`` and bump the dropped metric
@@ -3103,15 +3092,19 @@ class AgentExecutor(A2AAgentExecutor):
                     # try so exceptions still propagate.
                     await self._release_mcp_stack(_mcp_stack_held)
                 _success = True
-                # Skip the final aggregated event when chunks were streamed —
-                # they already delivered the content. Keep it as a fallback for
-                # tool-only or non-streamed runs OR when any chunk was dropped
-                # mid-stream (#724): the aggregated response fills the gaps so
-                # the client never sees a silently-truncated reply.
+                # Always emit the final aggregated Message event (was
+                # previously gated on _chunks_emitted == 0; with the
+                # per-chunk path removed there's no duplicate-text risk
+                # and this is the ONLY Message event blocking callers
+                # see, so it must always fire when text was produced).
+                # The elif drop-recovery branches below are now dead
+                # code — _response truthy → first branch always wins.
+                # Left intact in this commit so the diff stays surgical;
+                # follow-up cleanup will remove them along with
+                # _attempted_texts / _emitted_texts / _stream_state
+                # tracking that's now also unreachable.
                 _dropped_count = _stream_state["dropped"]
-                if _response and _chunks_emitted == 0:
-                    # Pure non-streamed / tool-only path — send the full
-                    # aggregated response.
+                if _response:
                     await event_queue.enqueue_event(new_agent_text_message(_response))
                 elif _response and _dropped_count > 0:
                     # Drop fallback (#724) — only emit the text that

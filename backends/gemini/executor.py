@@ -3780,9 +3780,13 @@ class AgentExecutor(A2AAgentExecutor):
                     logger.warning(
                         "session_stream: chunk publish failed: %r", _s_exc
                     )
-            # Await directly — see backends/claude/executor.py _emit_chunk for the
-            # rationale (event ordering + exception surfacing).
-            await event_queue.enqueue_event(new_agent_text_message(text))
+            # Per-chunk A2A event_queue emission removed — see
+            # backends/claude/executor.py _emit_chunk for the rationale
+            # (A2A SDK's blocking handler returns on first Message event,
+            # so per-chunk Message emission caused blocking callers to
+            # see only the first chunk). The streaming-events metric and
+            # _chunks_emitted counter still advance: chunks DID arrive
+            # at the backend from the SDK, just not onto the A2A wire.
             _chunks_emitted += 1
             if backend_streaming_events_emitted_total is not None:
                 backend_streaming_events_emitted_total.labels(**_LABELS, model=_streaming_label_model).inc()
@@ -3819,9 +3823,12 @@ class AgentExecutor(A2AAgentExecutor):
                     # Release the hot-reload refcount (#673).
                     await self._release_mcp_stack(_mcp_stack_held)
                 _success = True
-                # Skip the final aggregated event when chunks were streamed —
-                # they already delivered the content.
-                if _response and _chunks_emitted == 0:
+                # Always emit the final aggregated Message event (was
+                # previously gated on _chunks_emitted == 0; with the
+                # per-chunk path removed there's no duplicate-text risk
+                # and this is the ONLY Message event blocking callers
+                # see, so it must always fire when text was produced).
+                if _response:
                     await event_queue.enqueue_event(new_agent_text_message(_response))
                 # Per-session stream: final marker chunk (#1110 phase 4).
                 if _sess_stream is not None:

@@ -2753,12 +2753,24 @@ class AgentExecutor(A2AAgentExecutor):
                     logger.warning(
                         "session_stream: chunk publish failed: %r", _s_exc
                     )
-            # Await directly so chunk events stay ordered on the wire and any
-            # exception surfaces to the SDK loop's wrapping try/except instead
-            # of being silently retained on a fire-and-forget task object.
-            # enqueue_event is a non-blocking asyncio.Queue.put under the hood,
-            # so the per-chunk await cost is negligible.
-            await event_queue.enqueue_event(new_agent_text_message(text))
+            # Per-chunk A2A event_queue emission removed (was: #430).
+            # The A2A SDK's ResultAggregator.consume_and_break_on_interrupt
+            # treats every Message event as terminal and returns on the
+            # first one (a2a/server/tasks/result_aggregator.py around the
+            # `if isinstance(event, Message): return event` branch).
+            # Per-chunk Message emission therefore caused blocking
+            # callers (every consumer in this repo today — dashboard's
+            # useChat.ts and `ww send` both call message/send blocking)
+            # to receive only the first chunk while the rest of the
+            # agent's turns silently completed in the background.
+            # Per-chunk visibility for the dashboard's session
+            # drill-down is preserved via _sess_stream above — that's a
+            # separate SSE channel (#1110 phase 4) and a different
+            # transport from A2A's message/stream. If a real
+            # message/stream consumer ever appears, revisit by emitting
+            # chunk events as TaskStatusUpdateEvent (which the SDK
+            # consumer doesn't treat as terminal) plus one final Message
+            # at the end.
 
         from otel import start_span as _start_span, set_span_error as _set_span_error
         try:
@@ -2786,10 +2798,13 @@ class AgentExecutor(A2AAgentExecutor):
                         hook_state=self._hook_state,
                     )
                     _success = True
-                    # Only emit the final aggregated event if we did NOT stream chunks
-                    # (e.g. tool-only turn that produced no text). Otherwise the chunks
-                    # already delivered the content and a final enqueue would duplicate.
-                    if _response and _chunks_emitted == 0:
+                    # Always emit the final aggregated Message event (was
+                    # gated on _chunks_emitted == 0 prior to the per-chunk
+                    # removal above). With the per-chunk path gone there's
+                    # no duplicate-text risk; this is the ONLY Message
+                    # event blocking callers see, so it must always fire
+                    # when text was produced.
+                    if _response:
                         await event_queue.enqueue_event(new_agent_text_message(_response))
                     # Per-session stream: publish a final assistant chunk
                     # marker so observers know the turn completed (#1110
