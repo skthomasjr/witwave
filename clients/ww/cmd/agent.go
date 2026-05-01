@@ -948,6 +948,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 		secretFromEnv   []string
 		authSecrets     []string
 		authSet         []string
+		backendEnvs     []string
 		noMetrics       bool
 	)
 	cmd := &cobra.Command{
@@ -976,6 +977,14 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 				return err
 			}
 			auth, err := agent.ParseBackendAuth(authProfiles, secretFromEnv, authSecrets, authSet)
+			if err != nil {
+				return err
+			}
+			envs, err := agent.ParseBackendEnvs(backendEnvs)
+			if err != nil {
+				return err
+			}
+			specs, err = agent.ApplyBackendEnvs(specs, envs)
 			if err != nil {
 				return err
 			}
@@ -1156,6 +1165,14 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 		"Mint a Secret with literal KEY=VALUE pairs. Repeatable per (backend, KEY). "+
 			"Form: <backend>:<KEY>=<VALUE>. SECURITY: values land in shell history + ps "+
 			"output — for production tokens prefer --auth-secret or --backend-secret-from-env.")
+	cmd.Flags().StringArrayVar(&backendEnvs, "backend-env", nil,
+		"Set plain (non-secret) env vars on a backend container. Repeatable per "+
+			"(backend, KEY). Form: <backend>:<KEY>=<VALUE>. Lands as literal "+
+			"spec.backends[].env[] entries on the CR — values are visible in "+
+			"`kubectl get -o yaml`, so use --auth-set / --backend-secret-from-env / "+
+			"--auth-secret for anything sensitive. Use this for tunables like "+
+			"TASK_TIMEOUT_SECONDS, LOG_LEVEL, STREAM_CHUNK_TIMEOUT_SECONDS, etc. "+
+			"that need to override the container's compiled-in defaults.")
 	return cmd
 }
 

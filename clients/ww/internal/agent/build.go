@@ -2,6 +2,7 @@ package agent
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -205,6 +206,23 @@ func Build(opts BuildOptions) (*unstructured.Unstructured, error) {
 		}
 		if maps := perBackendMappings[b.Name]; len(maps) > 0 {
 			entry["gitMappings"] = maps
+		}
+		if len(b.Env) > 0 {
+			// Sort keys for deterministic output — `kubectl get -o yaml`
+			// diffs and CR equality checks rely on stable ordering.
+			keys := make([]string, 0, len(b.Env))
+			for k := range b.Env {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			envList := make([]interface{}, 0, len(keys))
+			for _, k := range keys {
+				envList = append(envList, map[string]interface{}{
+					"name":  k,
+					"value": b.Env[k],
+				})
+			}
+			entry["env"] = envList
 		}
 		specBackends = append(specBackends, entry)
 	}

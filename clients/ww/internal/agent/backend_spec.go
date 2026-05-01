@@ -51,6 +51,15 @@ type BackendSpec struct {
 	// container at each Mount.MountPath. Populated by Create's
 	// `--persist` flag-resolution phase (see ApplyBackendPersist).
 	Storage *BackendStorageSpec
+
+	// Env, when non-empty, stamps `spec.backends[].env[]` on the
+	// generated CR — one {name, value} entry per (key, value) pair.
+	// Use for plain (non-secret) env vars that need to override the
+	// container's compiled-in defaults: TASK_TIMEOUT_SECONDS,
+	// LOG_LEVEL, STREAM_CHUNK_TIMEOUT_SECONDS, etc. Populated by
+	// Create's `--backend-env` flag-resolution phase (see
+	// ApplyBackendEnvs). Secrets belong on CredentialSecret instead.
+	Env map[string]string
 }
 
 // ParseBackendSpecs converts the repeatable `--backend` flag values
