@@ -21,6 +21,17 @@ RUN apt-get update && apt-get install -y \
 # including NET_ADMIN, so the binary couldn't modify kernel tables at
 # runtime — it was just dead attack surface.
 
+# GitHub CLI (gh) — used by the release skill to verify CI is green
+# before tagging. The GH_PROMPT_DISABLED env var (set above) was
+# already in place in anticipation of this install.
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+      > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update && apt-get install -y gh \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN useradd -m -s /usr/bin/zsh -u 1000 agent
 
 USER agent
