@@ -1,7 +1,7 @@
 ---
 name: git-identity
 description: Set the local git commit identity (user.name / user.email) on a checkout this agent is about to commit from. Run once after a fresh clone, or any time `git log` shows commits attributed to the wrong author. Trigger when the user says "set git identity", "fix commit attribution", or before the first commit on a new checkout.
-version: 0.4.0
+version: 0.5.0
 ---
 
 # git-identity
@@ -17,20 +17,29 @@ file just describes the procedure.
 
 ## Instructions
 
-Read `user.name` and `user.email` from CLAUDE.md's Identity section,
-then run from inside the checkout's working tree, substituting
-those literal values into the commands:
+Read these from CLAUDE.md:
+
+- **`<checkout>`** — the local working-tree path (Primary repository
+  → Local checkout)
+- **`<user.name>`**  — Identity → user.name
+- **`<user.email>`** — Identity → user.email
+
+Substitute the literal values into the commands when running them.
+Run from inside the checkout's working tree:
+
+```sh
+cd <checkout>
+git config user.name  "<user.name>"
+git config user.email "<user.email>"
+```
+
+For example, if iris's CLAUDE.md declares
+`Local checkout: /workspaces/witwave-self/source`,
+`user.name: iris`, `user.email: iris@witwave.ai`, the substituted
+commands are:
 
 ```sh
 cd /workspaces/witwave-self/source
-git config user.name  "<your user.name from CLAUDE.md>"
-git config user.email "<your user.email from CLAUDE.md>"
-```
-
-For example, if your CLAUDE.md says `user.name: iris` and
-`user.email: iris@witwave.ai`, run:
-
-```sh
 git config user.name  "iris"
 git config user.email "iris@witwave.ai"
 ```
@@ -42,7 +51,7 @@ config bleed.
 ### Verify
 
 ```sh
-cd /workspaces/witwave-self/source
+cd <checkout>
 git config --get user.name
 git config --get user.email
 ```
