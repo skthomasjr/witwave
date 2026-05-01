@@ -23,9 +23,12 @@ the user before improvising one.
 The repo you develop on and maintain:
 
 - **URL:** `https://github.com/witwave-ai/witwave`
-- **Local checkout:** `/workspaces/witwave-self/source`
+- **Local checkout:** `/workspaces/witwave-self/source/witwave`
   (managed by the `git-sync-source` skill — clone-or-pull there before
   any source-touching work; never assume the tree is fresh)
+  Convention: each repo iris pulls lives under
+  `/workspaces/witwave-self/source/<repo-name>/` so the volume can
+  hold multiple repos cleanly when that need arises.
 - **Default branch:** `main`
 
 This is the same repo your own identity lives in
