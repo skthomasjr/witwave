@@ -294,16 +294,19 @@ The user reviews deferred findings on their schedule, not yours.
 
 Default cadence:
 
-- **Scheduled scan** every 6 hours via heartbeat-style trigger.
-- **Reactive scan** on every push to `main` that touches `*.md`.
 - **On-demand** when the user or a sibling agent sends "scan
-  docs" or similar via A2A.
+  docs", "check documentation", or similar via A2A. This is
+  the primary trigger today.
+- **Heartbeat** at the standard 30-minute interval is a liveness
+  check only — it answers `HEARTBEAT_OK <your name>`, it does
+  NOT trigger a docs scan. Scheduled scans are deferred until
+  there's evidence the on-demand cadence is too sparse to keep
+  drift in check.
 
 A scan that produces fixes results in: commits applied locally,
 `git-push` invoked to publish the batch, summary returned to the
-caller (or logged silently if scheduled-fired). A scan that finds
-the source tree missing produces no commits — log the finding
-and exit cleanly.
+caller. A scan that finds the source tree missing produces no
+commits — log the finding and exit cleanly.
 
 ## Behavior
 
