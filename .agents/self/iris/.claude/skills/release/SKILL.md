@@ -24,6 +24,21 @@ your **Primary repository** section in CLAUDE.md. Generic across the
 self-agent family — same skill works for any agent whose CLAUDE.md
 declares a primary repo with a tag-driven release pipeline.
 
+## Pre-1.0 caveat
+
+The project is currently **pre-1.0** (current line is `0.x.y`). This
+skill is designed for the pre-release reality: no API-stability
+commitment to consumers, breaking changes are normal, and they fold
+into minor bumps without ceremony. Major bumps in pre-1.0 mean one
+specific thing — **going to `v1.0.0`** — and require explicit caller
+intent because that's a project-state decision (committing to
+API stability), not something inference can answer.
+
+When the project graduates to 1.0+, the bump-inference rules will
+need a revisit so that `BREAKING CHANGE:` and `!:` markers refuse
+auto-bump and demand explicit `release major`. That's a future
+edit; today's skill is shaped entirely around 0.x semantics.
+
 ## Caller interface
 
 The skill is invoked via a session prompt or A2A. Six request shapes:
@@ -110,25 +125,23 @@ this inference table:
 
 | Pattern in commits since previous tag | Inferred bump |
 | --- | --- |
-| `BREAKING CHANGE:` in any body, OR `!:` after scope (e.g. `feat(ww)!:`) | **REFUSE** — surface and demand `release major` or explicit version |
-| `feat(...)` (and no breaking markers) | **minor** |
+| `feat(...)`, OR `BREAKING CHANGE:`, OR `!:` after scope | **minor** |
 | Anything else (`fix:`, `refactor:`, `chore:`, `docs:`, etc.) | **patch** |
+
+Pre-1.0, breaking markers fold into the minor bump along with
+features — they're routine at this stage and don't demand a special
+gate. Mention any breaking markers explicitly in the bump rationale
+(step 10) so the caller still sees what's in the release, but don't
+refuse over them.
 
 If the caller passed an explicit override (`release patch` /
 `release minor` / `release major` / `release vX.Y.Z`), use that
-verbatim and skip the inference. Explicit `release major` IS the
-opt-in for major; auto-inference will not bump major on its own.
+verbatim and skip inference.
 
-If breaking markers were detected and no explicit override was given,
-**stop and surface**:
-
-> "Refusing to auto-bump — found breaking-change markers in commits
-> since `<prev-tag>`:
-> - `<commit subject>`
->
-> Reply with `release major` to confirm the breaking bump, or
-> `release vX.Y.Z` for an explicit version, or hold off if the
-> change isn't ready to ship."
+Inference will NEVER produce a major bump in pre-1.0. Going to
+`v1.0.0` is a deliberate caller decision — the only path is an
+explicit `release major` (which the skill interprets as "cut
+v1.0.0") or an explicit `release v1.0.0`.
 
 ### 5. Compute the next version
 
@@ -256,8 +269,19 @@ Respond to the caller with:
 - The bump rationale (e.g. "Inferred minor — found `feat(ww):` in 3
   commits since v0.11.16")
 - The tag URL (`https://github.com/<owner>/<repo>/releases/tag/<tag>`)
-- The release-workflow URLs (`gh run list --workflow=release-ww.yml
-  --limit 1` etc., for the three workflows that fire on tag push)
+- The three release-workflow URLs (look up via `gh run list
+  --workflow=<file>.yml --branch <tag> --limit 1`)
+- The artifact channels each workflow publishes to, so the caller
+  knows what to consume and where
+
+The artifact matrix this repo's three workflows produce on every
+tag push:
+
+| Workflow | Publishes | Channel | ETA |
+| --- | --- | --- | --- |
+| Release (release.yaml) | container images: harness, claude, codex, gemini, echo, mcp-kubernetes, mcp-helm, mcp-prometheus, git-sync (and dashboard when chart-enabled) — multi-arch amd64 + arm64 | `ghcr.io/witwave-ai/images/<name>:<X.Y.Z>` | ~24m |
+| Release — ww CLI (release-ww.yml) | ww CLI binary archives (Linux/macOS/Windows × amd64/arm64), Homebrew formula update, GitHub Release with auto-generated notes | GitHub Releases + Homebrew tap (`brew upgrade ww`) | ~5m |
+| Release — Helm charts (release-helm.yml) | charts/witwave + charts/witwave-operator, OCI-pushed | `ghcr.io/witwave-ai/charts/witwave:<X.Y.Z>` and `…/witwave-operator:<X.Y.Z>` | ~5m |
 
 Sample success response:
 
@@ -269,13 +293,42 @@ Sample success response:
 > Tag: https://github.com/witwave-ai/witwave/releases/tag/v0.12.0
 >
 > Workflows in flight:
-> - Release: https://github.com/.../runs/...
-> - Release — ww CLI: https://github.com/.../runs/...
-> - Release — Helm charts: https://github.com/.../runs/...
+> - Release (container images, ~24m): https://github.com/.../runs/...
+> - Release — ww CLI (binary + brew, ~5m): https://github.com/.../runs/...
+> - Release — Helm charts (witwave + witwave-operator, ~5m): https://github.com/.../runs/...
 >
-> Reply 'watch release' to block until they complete; otherwise
-> they'll publish artifacts in ~5–25 minutes (Helm + CLI ~5m,
-> container images ~24m)."
+> Once green, artifacts land at:
+> - `ghcr.io/witwave-ai/images/<name>:0.12.0` (9 images: harness,
+>   claude, codex, gemini, echo, mcp-{kubernetes,helm,prometheus},
+>   git-sync — plus dashboard if chart-enabled)
+> - `brew upgrade ww` (Homebrew tap auto-updated)
+> - `ghcr.io/witwave-ai/charts/witwave:0.12.0` and
+>   `ghcr.io/witwave-ai/charts/witwave-operator:0.12.0`
+>
+> Reply 'watch release' to block until they complete."
+
+#### What the skill does NOT do for artifacts
+
+The release workflows handle several housekeeping tasks at build
+time. None of them are iris's job:
+
+- **Embedded operator chart version bump**: goreleaser invokes
+  `scripts/bump-embedded-chart-version.sh` so the embedded chart
+  inside the `ww` binary's `clients/ww/internal/operator/embedded/`
+  reports the release version, not the canonical `0.1.0` placeholder.
+- **GitHub Release notes**: goreleaser auto-generates these from
+  commit messages (filtered: `^docs:`, `^test:`, `^chore:` excluded).
+  This is a separate artifact from the in-repo CHANGELOG.md.
+- **SLSA provenance + SBOM emission**: `release.yaml` and
+  `release-ww.yml` produce these as OCI referrers and release-asset
+  attestations on every tag. Cosign signatures land alongside.
+- **Dashboard image build**: only fires when chart values enable it;
+  not part of iris's flow either way.
+- **Multi-arch manifest assembly**: buildx publishes both `amd64` and
+  `arm64` variants under the same tag automatically.
+
+If any of these need adjustment, that's a workflow / goreleaser
+config edit (a code change), not a release-skill change.
 
 ### 11. Optional: watch workflows complete
 
