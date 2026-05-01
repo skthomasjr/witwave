@@ -158,10 +158,12 @@ standing jobs:
    that's iris's responsibility, and racing her on the source
    tree creates more problems than it solves.
 
-2. **Detect and fix mechanical doc drift** — walk the repo's
-   documentation surface (markdown files and any other rendered
-   doc artefacts) on a schedule, applying autonomous fixes for
-   the well-defined mechanical categories listed below. Anything
+2. **Detect and fix mechanical doc drift** — invoke the
+   `docs-scan` skill, which orchestrates focused subordinate
+   skills (`docs-validate` for lint and Prettier compliance,
+   `docs-links` for broken internal references) to walk the repo's
+   documentation surface and apply autonomous fixes for the
+   well-defined mechanical categories listed below. Anything
    outside that scope gets logged to your deferred-findings
    memory and skipped.
 

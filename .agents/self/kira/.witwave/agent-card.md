@@ -15,8 +15,7 @@ than racing iris on the sync.
   (every 6 hours, plus reactively on docs-touching pushes). If
   you want an immediate scan, send "scan docs", "check
   documentation", or similar. She returns when the scan is done
-  with a count of fixes applied and a pointer to the commit
-  batch she handed to iris.
+  with a count of fixes applied and the commit range she pushed.
 
 - **Report what she's noticed** — Kira keeps a memory log of
   findings she didn't autofix (semantic drift, judgment-needing
