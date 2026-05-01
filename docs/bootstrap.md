@@ -16,10 +16,11 @@ the cluster is running:
   volumes (`source` for the working repo state, `memory` for long-term
   per-agent memory, more as concerns accrete) that every participating
   agent mounts at the same paths.
-- One **WitwaveAgent** (`iris`) with `Spec.WorkspaceRefs` pointing at
-  `witwave-self` so it sees the shared workspace. Additional named
-  agents (e.g. `nova`, `kira`) can be added later in the same shape;
-  the bootstrap walks through `iris` end-to-end first.
+- Two **WitwaveAgent**s (`iris` and `kira`) with `Spec.WorkspaceRefs`
+  pointing at `witwave-self` so they share the workspace. Iris owns
+  source-tree initialization + release captaincy; kira owns
+  documentation hygiene. Additional named agents (e.g. `nova`) can
+  be added later in the same shape.
 - A **gitSync** sidecar that keeps the shared volume in lockstep with this
   GitHub repo.
 
@@ -77,28 +78,35 @@ Variables this walkthrough expects in `.env`:
 # Claude OAuth token (the iris backend's LLM credential)
 CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-replace_me
 
-# iris's GitHub credentials — used for in-container git operations
-# (commit/push/PRs) by the claude backend. Agent-suffixed so future
-# agents (nova, kira, …) can carry their own without collision.
+# Per-agent GitHub credentials — used for in-container git operations
+# (commit/push/PRs) by each agent's claude backend. Agent-suffixed so
+# every agent on the team carries its own credentials without collision.
+# Pattern: each agent has a dedicated GitHub account named
+# <name>-agent-witwave with a verified email <name>-agent@witwave.ai;
+# the account is a collaborator on the primary repo with the access
+# level appropriate to the agent's responsibilities.
 GITHUB_TOKEN_IRIS=github_pat_replace_me
-GITHUB_USER_IRIS=iris
+GITHUB_USER_IRIS=iris-agent-witwave
+
+GITHUB_TOKEN_KIRA=github_pat_replace_me
+GITHUB_USER_KIRA=kira-agent-witwave
 
 # Shared gitSync credentials — used by every agent's gitSync sidecar
 # to clone the config repo. Not agent-suffixed because the sidecar
 # typically pulls from one shared config repo; one PAT serves the
 # whole team. Override per-agent only when an agent points at a
 # different private repo.
-GITSYNC_USERNAME=iris
+GITSYNC_USERNAME=iris-agent-witwave
 GITSYNC_PASSWORD=github_pat_replace_me
 ```
 
-The Step 3 command lifts these into iris's containers at
-the in-container env-var names each consumer expects:
+The Step 3 / Step 4 commands lift these into each agent's containers
+at the in-container env-var names each consumer expects:
 `CLAUDE_CODE_OAUTH_TOKEN` lands on the claude container as-is;
-`GITHUB_TOKEN_IRIS` and `GITHUB_USER_IRIS` are renamed to
-`GITHUB_TOKEN` / `GITHUB_USER` inside the claude container; and
-`GITSYNC_USERNAME` / `GITSYNC_PASSWORD` are minted into a per-agent
-`iris-gitsync` Secret (keys `GITSYNC_USERNAME` / `GITSYNC_PASSWORD`)
+`GITHUB_TOKEN_<NAME>` and `GITHUB_USER_<NAME>` are renamed to
+`GITHUB_TOKEN` / `GITHUB_USER` inside that agent's claude container;
+and `GITSYNC_USERNAME` / `GITSYNC_PASSWORD` are minted into a per-agent
+`<name>-gitsync` Secret (keys `GITSYNC_USERNAME` / `GITSYNC_PASSWORD`)
 and `envFrom`-wired to the gitSync sidecar.
 
 For this bootstrap the repo (`witwave-ai/witwave`) is public and the
@@ -216,15 +224,55 @@ section. The pod has the workspace's `source` and `memory` volumes
 mounted at `/workspaces/witwave-self/source` and
 `/workspaces/witwave-self/memory` on every backend container.
 
+## Step 4 — Deploy kira
+
+Kira is the team's documentation-hygiene agent — periodic scans
+for typos, dead links, stale paths, markdown formatting drift, and
+other mechanical doc issues. Same shape as iris (one `claude`
+backend, bound to `witwave-self`, identity sourced from
+`.agents/self/kira/`); she pushes her own commits via her
+`git-push` skill rather than handing off to iris. One command:
+
+```bash
+ww agent create kira \
+  --namespace witwave-self \
+  --workspace witwave-self \
+  --with-persistence \
+  --backend claude \
+  --backend-secret-from-env claude=CLAUDE_CODE_OAUTH_TOKEN \
+  --backend-secret-from-env claude=GITHUB_TOKEN_KIRA:GITHUB_TOKEN \
+  --backend-secret-from-env claude=GITHUB_USER_KIRA:GITHUB_USER \
+  --gitsync-bundle https://github.com/witwave-ai/witwave.git@main:.agents/self/kira \
+  --gitsync-secret-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD
+```
+
+Verify both agents are now bound to the workspace:
+
+```bash
+ww agent list \
+  --namespace witwave-self
+```
+
+`ww agent list` should now show two rows (`iris`, `kira`) both in
+state `Ready`. `ww workspace status witwave-self` should report
+both under the bound-agents section.
+
 ## Tear it down
 
 Reverse order: agent → workspace → operator → namespaces. Each
 command is destructive and cascade-deletes everything it owns.
 
-Delete iris (cascades the pod, Service, per-backend PVC
-`iris-claude-data`, and the ww-managed `iris-claude` Secret;
-`--delete-git-secret` also reaps the per-agent `iris-gitsync`
+Delete each agent (cascades the pod, Service, per-backend PVC
+`<name>-claude-data`, and the ww-managed `<name>-claude` Secret;
+`--delete-git-secret` also reaps the per-agent `<name>-gitsync`
 Secret minted by `--gitsync-secret-from-env`):
+
+```bash
+ww agent delete kira \
+  --namespace witwave-self \
+  --delete-git-secret \
+  --yes
+```
 
 ```bash
 ww agent delete iris \
