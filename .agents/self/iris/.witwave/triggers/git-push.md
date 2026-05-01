@@ -1,6 +1,10 @@
 ---
 name: git-push
-description: On-demand push of local commits — fire from a sibling agent (delegate-push pattern), CI (post-build attribution), or operator (manual publish). POST /triggers/git-push returns 202 immediately and runs git-push asynchronously.
+description: >-
+  On-demand push of local commits — fire from a sibling agent
+  (delegate-push pattern), CI (post-build attribution), or operator
+  (manual publish). POST /triggers/git-push returns 202 immediately
+  and runs git-push asynchronously.
 endpoint: git-push
 enabled: true
 ---

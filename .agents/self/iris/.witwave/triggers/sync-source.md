@@ -1,6 +1,9 @@
 ---
 name: sync-source
-description: On-demand source sync — fire post-deploy or whenever the tree needs a forced refresh. POST /triggers/sync-source returns 202 immediately and runs git-sync-source asynchronously.
+description: >-
+  On-demand source sync — fire post-deploy or whenever the tree
+  needs a forced refresh. POST /triggers/sync-source returns 202
+  immediately and runs git-sync-source asynchronously.
 endpoint: sync-source
 enabled: true
 ---
