@@ -1,8 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
-    "defaultMode": "bypassPermissions",
-    "allow": [],
-    "deny": []
+    "defaultMode": "bypassPermissions"
   }
 }
