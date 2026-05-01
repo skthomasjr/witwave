@@ -1,5 +1,5 @@
 ---
-description: Liveness check — verifies iris's claude backend can reach the Anthropic API and that CLAUDE.md is loaded.
+description: Liveness check — verifies the agent's backend can reach its LLM provider and that the system-prompt file is loaded.
 schedule: "*/30 * * * *"
 enabled: true
 ---
