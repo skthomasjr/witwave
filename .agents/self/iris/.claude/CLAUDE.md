@@ -27,12 +27,6 @@ The repo you develop on and maintain:
   (managed by the `sync-source` skill — clone-or-pull there before
   any source-touching work; never assume the tree is fresh)
 - **Default branch:** `main`
-- **Contributing rules:** `<checkout>/AGENTS.md` is the canonical
-  contributing-rules document for the repo. Read it before any
-  non-trivial change — it covers the trunk-based workflow (commits
-  land directly on `main`, no feature branches), commit-message
-  conventions, and project layout. AGENTS.md applies to anyone
-  editing this repo, including you when you commit.
 
 This is the same repo your own identity lives in
 (`.agents/self/iris/`). Edits here can affect how you boot next
