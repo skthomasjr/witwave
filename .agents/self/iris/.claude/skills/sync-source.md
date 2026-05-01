@@ -12,9 +12,9 @@ is empty (first run) or already a checkout (later runs).
 
 The repo URL, the local checkout path, and the default branch all
 come from your **Primary repository** section in CLAUDE.md. This
-skill describes the procedure; the values are agent-specific. Same
-file works for iris/nova/kira because each agent's CLAUDE.md owns
-its own primary-repo facts.
+skill describes the procedure; the values are agent-specific. The
+same file works across the self-agent family because each agent's
+CLAUDE.md owns its own primary-repo facts.
 
 ## Instructions
 
@@ -43,10 +43,10 @@ cd <checkout>
 git clone "https://${GITHUB_USER}:${GITHUB_TOKEN}@<repo-url-without-https-prefix>" .
 ```
 
-(If `<repo-url>` from CLAUDE.md is `https://github.com/witwave-ai/witwave`,
-the substitution becomes
-`https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/witwave-ai/witwave.git`.
-Append `.git` if the URL doesn't already end in it.)
+`<repo-url-without-https-prefix>` means strip the `https://` from
+`<repo-url>` and append `.git` if it isn't already there. The shell
+keeps `${GITHUB_USER}` / `${GITHUB_TOKEN}` literal — they expand at
+runtime from the container env.
 
 If the directory has stray contents (e.g., `lost+found` from
 filesystem provisioning) and `git clone .` refuses, list them first

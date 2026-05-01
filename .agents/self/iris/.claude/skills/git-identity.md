@@ -24,24 +24,14 @@ Read these from CLAUDE.md:
 - **`<user.name>`**  — Identity → user.name
 - **`<user.email>`** — Identity → user.email
 
-Substitute the literal values into the commands when running them.
-Run from inside the checkout's working tree:
+Substitute the literal values into the commands when running them
+(don't type the angle-bracketed placeholder text). Run from inside
+the checkout's working tree:
 
 ```sh
 cd <checkout>
 git config user.name  "<user.name>"
 git config user.email "<user.email>"
-```
-
-For example, if iris's CLAUDE.md declares
-`Local checkout: /workspaces/witwave-self/source`,
-`user.name: iris`, `user.email: iris@witwave.ai`, the substituted
-commands are:
-
-```sh
-cd /workspaces/witwave-self/source
-git config user.name  "iris"
-git config user.email "iris@witwave.ai"
 ```
 
 Local config (no `--global`) — confines the identity to this checkout
