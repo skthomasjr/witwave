@@ -1,9 +1,10 @@
 package agent
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
+
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 // ---------------------------------------------------------------------------
@@ -153,57 +154,115 @@ func TestDiffTransitions_AllUnchangedReturnsEmpty(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// buildUpgradePatch — JSON shape the dynamic client applies
+// applyDesiredTagsInPlace — mutates the unstructured CR; preserves
+// every field the merge-patch path was clobbering
 // ---------------------------------------------------------------------------
 
-func TestBuildUpgradePatch_Shape(t *testing.T) {
+func TestApplyDesiredTagsInPlace_PreservesImageRepository(t *testing.T) {
+	// Mirror the shape of a real CR: harness image with a repository,
+	// one backend likewise. The merge-patch implementation dropped
+	// these on Update; this test pins the regression.
+	cr := &unstructured.Unstructured{Object: map[string]interface{}{
+		"spec": map[string]interface{}{
+			"image": map[string]interface{}{
+				"repository": "ghcr.io/witwave-ai/images/harness",
+				"tag":        "0.11.14",
+			},
+			"backends": []interface{}{
+				map[string]interface{}{
+					"name": "claude",
+					"image": map[string]interface{}{
+						"repository": "ghcr.io/witwave-ai/images/claude",
+						"tag":        "0.11.14",
+					},
+				},
+			},
+		},
+	}}
 	desired := imageTagSnapshot{
-		HarnessTag:  "0.11.14",
-		BackendTags: map[string]string{"claude": "0.11.14", "codex": "0.11.14"},
+		HarnessTag:  "0.11.15",
+		BackendTags: map[string]string{"claude": "0.11.15"},
 	}
-	raw, err := buildUpgradePatch(desired)
-	if err != nil {
+	if err := applyDesiredTagsInPlace(cr, desired); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	var parsed map[string]interface{}
-	if err := json.Unmarshal(raw, &parsed); err != nil {
-		t.Fatalf("patch is not valid JSON: %v\n%s", err, raw)
+	repo, _, _ := unstructured.NestedString(cr.Object, "spec", "image", "repository")
+	if repo != "ghcr.io/witwave-ai/images/harness" {
+		t.Errorf("harness image.repository lost: got %q", repo)
+	}
+	tag, _, _ := unstructured.NestedString(cr.Object, "spec", "image", "tag")
+	if tag != "0.11.15" {
+		t.Errorf("harness image.tag = %q; want 0.11.15", tag)
 	}
 
-	spec, ok := parsed["spec"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("patch missing spec object: %s", raw)
+	backends, _, _ := unstructured.NestedSlice(cr.Object, "spec", "backends")
+	if len(backends) != 1 {
+		t.Fatalf("backends count changed: got %d", len(backends))
 	}
-	image, ok := spec["image"].(map[string]interface{})
-	if !ok || image["tag"] != "0.11.14" {
-		t.Errorf("patch.spec.image.tag = %v; want 0.11.14", image)
+	be := backends[0].(map[string]interface{})
+	beImg := be["image"].(map[string]interface{})
+	if beImg["repository"] != "ghcr.io/witwave-ai/images/claude" {
+		t.Errorf("backend image.repository lost: got %v", beImg["repository"])
 	}
-
-	backends, ok := spec["backends"].([]interface{})
-	if !ok || len(backends) != 2 {
-		t.Fatalf("patch.spec.backends = %v; want 2 entries", spec["backends"])
-	}
-	// Sorted by name → claude first, codex second.
-	first := backends[0].(map[string]interface{})
-	if first["name"] != "claude" {
-		t.Errorf("patch.spec.backends[0].name = %v; want claude", first["name"])
-	}
-	if firstImg := first["image"].(map[string]interface{}); firstImg["tag"] != "0.11.14" {
-		t.Errorf("patch.spec.backends[0].image.tag = %v; want 0.11.14", firstImg["tag"])
+	if beImg["tag"] != "0.11.15" {
+		t.Errorf("backend image.tag = %v; want 0.11.15", beImg["tag"])
 	}
 }
 
-func TestBuildUpgradePatch_OmitsEmptyTags(t *testing.T) {
-	desired := imageTagSnapshot{
-		HarnessTag:  "",
-		BackendTags: map[string]string{"claude": "0.11.14"},
-	}
-	raw, err := buildUpgradePatch(desired)
-	if err != nil {
+func TestApplyDesiredTagsInPlace_SkipsBackendsNotInDesired(t *testing.T) {
+	// claude in desired, codex absent — codex should keep its tag
+	// untouched, no error on the unmentioned backend.
+	cr := &unstructured.Unstructured{Object: map[string]interface{}{
+		"spec": map[string]interface{}{
+			"backends": []interface{}{
+				map[string]interface{}{
+					"name":  "claude",
+					"image": map[string]interface{}{"repository": "r", "tag": "0.11.14"},
+				},
+				map[string]interface{}{
+					"name":  "codex",
+					"image": map[string]interface{}{"repository": "r2", "tag": "0.11.14"},
+				},
+			},
+		},
+	}}
+	desired := imageTagSnapshot{BackendTags: map[string]string{"claude": "0.11.15"}}
+	if err := applyDesiredTagsInPlace(cr, desired); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if strings.Contains(string(raw), `"image":{"tag":""`) {
-		t.Errorf("empty harness tag should be omitted from the patch; got %s", raw)
+	backends, _, _ := unstructured.NestedSlice(cr.Object, "spec", "backends")
+	codex := backends[1].(map[string]interface{})
+	codexImg := codex["image"].(map[string]interface{})
+	if codexImg["tag"] != "0.11.14" {
+		t.Errorf("untouched backend's tag changed: got %v", codexImg["tag"])
+	}
+}
+
+func TestApplyDesiredTagsInPlace_HarnessOnlyLeavesBackendsAlone(t *testing.T) {
+	cr := &unstructured.Unstructured{Object: map[string]interface{}{
+		"spec": map[string]interface{}{
+			"image": map[string]interface{}{"repository": "r", "tag": "0.11.14"},
+			"backends": []interface{}{
+				map[string]interface{}{
+					"name":  "claude",
+					"image": map[string]interface{}{"repository": "r2", "tag": "0.11.14"},
+				},
+			},
+		},
+	}}
+	desired := imageTagSnapshot{HarnessTag: "0.11.15"}
+	if err := applyDesiredTagsInPlace(cr, desired); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	tag, _, _ := unstructured.NestedString(cr.Object, "spec", "image", "tag")
+	if tag != "0.11.15" {
+		t.Errorf("harness tag = %q; want 0.11.15", tag)
+	}
+	backends, _, _ := unstructured.NestedSlice(cr.Object, "spec", "backends")
+	be := backends[0].(map[string]interface{})
+	beImg := be["image"].(map[string]interface{})
+	if beImg["tag"] != "0.11.14" {
+		t.Errorf("backend tag = %v; want untouched 0.11.14", beImg["tag"])
 	}
 }

@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"sort"
@@ -12,7 +11,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
 
@@ -170,16 +168,27 @@ func Upgrade(
 		return nil
 	}
 
-	patch, err := buildUpgradePatch(desired)
-	if err != nil {
+	// Read-modify-write the full CR rather than sending a merge-patch.
+	// RFC 7396 (the JSON merge-patch the dynamic client applies to a CR
+	// without a registered Go type) REPLACES arrays wholesale rather
+	// than merging by element key — so a partial spec.backends[]
+	// entry like `{name: claude, image: {tag: X}}` would clobber the
+	// existing image.repository and admission rejects on
+	// "spec.backends[i].image.repository: Required value".
+	//
+	// Update with the full object preserves every field. The dynamic
+	// client's optimistic concurrency on resourceVersion catches the
+	// rare race where the operator updated status between Get and
+	// Update — caller sees a clear conflict error, can re-run.
+	if err := applyDesiredTagsInPlace(cr, desired); err != nil {
 		return err
 	}
-	if _, err := dyn.Resource(GVR()).Namespace(opts.Namespace).Patch(
-		ctx, opts.Name, types.MergePatchType, patch, metav1.PatchOptions{},
+	if _, err := dyn.Resource(GVR()).Namespace(opts.Namespace).Update(
+		ctx, cr, metav1.UpdateOptions{},
 	); err != nil {
-		return fmt.Errorf("patch WitwaveAgent %s/%s: %w", opts.Namespace, opts.Name, err)
+		return fmt.Errorf("update WitwaveAgent %s/%s: %w", opts.Namespace, opts.Name, err)
 	}
-	fmt.Fprintf(opts.Out, "Patched WitwaveAgent %s/%s.\n", opts.Namespace, opts.Name)
+	fmt.Fprintf(opts.Out, "Updated WitwaveAgent %s/%s.\n", opts.Namespace, opts.Name)
 
 	if !opts.Wait {
 		fmt.Fprintln(opts.Out, "Skipping rollout wait (--no-wait). Check with `ww agent status "+opts.Name+"`.")
@@ -357,34 +366,48 @@ func displayTag(tag string) string {
 	return tag
 }
 
-// buildUpgradePatch renders the merge-patch JSON the dynamic client
-// applies. Only includes the fields that need to change — any backend
-// already at the desired tag is omitted from the patch so the operator's
-// reconciler can no-op cleanly without producing a needless rollout
-// generation bump.
-func buildUpgradePatch(desired imageTagSnapshot) ([]byte, error) {
-	spec := map[string]interface{}{}
+// applyDesiredTagsInPlace mutates the unstructured CR's
+// spec.image.tag and each spec.backends[<i>].image.tag entry to
+// match the desired snapshot. Preserves every other field (image
+// repository, env, volumes, etc.) so a subsequent Update sends a
+// complete, admission-valid object.
+//
+// Why we don't merge-patch: RFC 7396 replaces arrays wholesale. A
+// merge-patch carrying `spec.backends: [{name: claude, image: {tag: X}}]`
+// would drop the existing image.repository on every backend, and
+// the CRD's required-field validation rejects on Update.
+func applyDesiredTagsInPlace(cr *unstructured.Unstructured, desired imageTagSnapshot) error {
 	if desired.HarnessTag != "" {
-		spec["image"] = map[string]interface{}{"tag": desired.HarnessTag}
-	}
-	if len(desired.BackendTags) > 0 {
-		backends := make([]map[string]interface{}, 0, len(desired.BackendTags))
-		for _, name := range sortedKeys(desired.BackendTags) {
-			tag := desired.BackendTags[name]
-			if tag == "" {
-				continue
-			}
-			backends = append(backends, map[string]interface{}{
-				"name":  name,
-				"image": map[string]interface{}{"tag": tag},
-			})
-		}
-		if len(backends) > 0 {
-			spec["backends"] = backends
+		if err := unstructured.SetNestedField(cr.Object, desired.HarnessTag, "spec", "image", "tag"); err != nil {
+			return fmt.Errorf("set spec.image.tag: %w", err)
 		}
 	}
-	patch := map[string]interface{}{"spec": spec}
-	return json.Marshal(patch)
+	backends, _, err := unstructured.NestedSlice(cr.Object, "spec", "backends")
+	if err != nil {
+		return fmt.Errorf("read spec.backends: %w", err)
+	}
+	for i, raw := range backends {
+		entry, ok := raw.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("spec.backends[%d] is not an object", i)
+		}
+		name, _, _ := unstructured.NestedString(entry, "name")
+		tag, hasNew := desired.BackendTags[name]
+		if !hasNew || tag == "" {
+			continue
+		}
+		image, _, _ := unstructured.NestedMap(entry, "image")
+		if image == nil {
+			image = map[string]interface{}{}
+		}
+		image["tag"] = tag
+		entry["image"] = image
+		backends[i] = entry
+	}
+	if err := unstructured.SetNestedSlice(cr.Object, backends, "spec", "backends"); err != nil {
+		return fmt.Errorf("set spec.backends: %w", err)
+	}
+	return nil
 }
 
 func sortedKeys(m map[string]string) []string {
