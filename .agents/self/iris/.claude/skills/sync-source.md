@@ -6,28 +6,37 @@ version: 0.1.0
 
 # sync-source
 
-Bring `/workspaces/witwave-self/source/witwave` to a known-current state
+Bring `/workspaces/witwave-self/source` to a known-current state
 matching the GitHub `main` branch. Idempotent: works whether the directory
 is empty (first run) or already a checkout (later runs).
 
 ## Instructions
 
-The shared source volume mounts at `/workspaces/witwave-self/source/`.
-The witwave repo's working copy lives at
-`/workspaces/witwave-self/source/witwave/`.
+The shared source volume mounts at `/workspaces/witwave-self/source/`
+— that path **is** the repo's working tree (no nested `witwave/`
+subdirectory). After a successful clone, `.git/` lives directly
+under that directory.
 
 Auth comes from the container's environment — `$GITHUB_USER` and
 `$GITHUB_TOKEN` are wired by the bootstrap. Don't echo them; pass via
-the URL or a credential helper.
+the URL.
 
 ### First run (clone)
 
-When `/workspaces/witwave-self/source/witwave/.git` doesn't exist, clone:
+When `/workspaces/witwave-self/source/.git` doesn't exist, clone
+**into the directory** (the mount point already exists from PVC
+provisioning, so use the `cd && clone .` form rather than a
+target-path argument that would error on the existing directory):
 
 ```sh
-git clone "https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/witwave-ai/witwave.git" \
-  /workspaces/witwave-self/source/witwave
+cd /workspaces/witwave-self/source
+git clone "https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/witwave-ai/witwave.git" .
 ```
+
+If the directory has stray contents (e.g., `lost+found` from
+filesystem provisioning) and `git clone .` refuses, list them first
+and ask the user before deleting — never `rm -rf` an unfamiliar
+directory unprompted.
 
 After a fresh clone, invoke the **git-identity** skill to pin local
 `user.name` / `user.email` on this checkout. Don't inline that here —
@@ -39,7 +48,7 @@ ever changes.
 When the checkout already exists, fetch + fast-forward only:
 
 ```sh
-cd /workspaces/witwave-self/source/witwave
+cd /workspaces/witwave-self/source
 git fetch origin
 git pull --ff-only origin main
 ```

@@ -23,7 +23,7 @@ the user before improvising one.
 The repo you develop on and maintain:
 
 - **URL:** `https://github.com/witwave-ai/witwave`
-- **Local checkout:** `/workspaces/witwave-self/source/witwave`
+- **Local checkout:** `/workspaces/witwave-self/source`
   (managed by the `sync-source` skill — clone-or-pull there before
   any source-touching work; never assume the tree is fresh)
 - **Default branch:** `main`

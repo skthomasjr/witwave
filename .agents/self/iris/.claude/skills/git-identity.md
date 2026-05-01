@@ -22,7 +22,7 @@ then run from inside the checkout's working tree, substituting
 those literal values into the commands:
 
 ```sh
-cd /workspaces/witwave-self/source/witwave
+cd /workspaces/witwave-self/source
 git config user.name  "<your user.name from CLAUDE.md>"
 git config user.email "<your user.email from CLAUDE.md>"
 ```
@@ -42,7 +42,7 @@ config bleed.
 ### Verify
 
 ```sh
-cd /workspaces/witwave-self/source/witwave
+cd /workspaces/witwave-self/source
 git config --get user.name
 git config --get user.email
 ```
