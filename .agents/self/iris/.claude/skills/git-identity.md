@@ -1,29 +1,37 @@
 ---
 name: git-identity
 description: Set the local git commit identity (user.name / user.email) on a checkout this agent is about to commit from. Run once after a fresh clone, or any time `git log` shows commits attributed to the wrong author. Trigger when the user says "set git identity", "fix commit attribution", or before the first commit on a new checkout.
-version: 0.2.0
+version: 0.3.0
 ---
 
 # git-identity
 
 Pin the agent's git author identity on a local checkout so commits
 land with a stable, recognisable name + email instead of falling
-through to the PAT owner's default identity (whichever GitHub user
-owns the token, not the agent).
+through to the PAT owner's default identity.
 
 Generic across the self-agent family — values come from the
-**identity contract** documented in CLAUDE.md (`$AGENT_NAME` and
-`${AGENT_NAME}@witwave.ai`). Same skill works for iris, nova, kira,
-or any future sibling without per-agent edits.
+**identity contract** documented in CLAUDE.md (`$AGENT_OWNER` and
+`$AGENT_EMAIL`). Same skill works for iris, nova, kira, or any
+future sibling without per-agent edits.
 
 ## Instructions
 
-Run from inside the checkout's working tree:
+Verify both env vars resolve before running. If either is empty,
+**stop** and surface to the user — don't fabricate values.
+
+```sh
+# Sanity check: both must be non-empty
+[ -n "$AGENT_OWNER" ] || { echo "AGENT_OWNER unset — refusing to set git identity" >&2; exit 1; }
+[ -n "$AGENT_EMAIL" ] || { echo "AGENT_EMAIL unset — wire it via --backend-secret-from-env per CLAUDE.md, then retry" >&2; exit 1; }
+```
+
+Then set the identity from inside the checkout's working tree:
 
 ```sh
 cd /workspaces/witwave-self/source/witwave
-git config user.name  "$AGENT_NAME"
-git config user.email "${AGENT_NAME}@witwave.ai"
+git config user.name  "$AGENT_OWNER"
+git config user.email "$AGENT_EMAIL"
 ```
 
 Local config (no `--global`) — confines the identity to this checkout
@@ -38,10 +46,9 @@ git config --get user.name
 git config --get user.email
 ```
 
-The two `git config --get` calls should print whatever the contract
-resolves to (for iris: `iris` and `iris@witwave.ai` exactly). Anything
-else means a previous setting wasn't overwritten — re-run the set
-commands.
+The two `git config --get` calls should print `$AGENT_OWNER` and
+`$AGENT_EMAIL` exactly. Anything else means a previous setting
+wasn't overwritten — re-run the set commands.
 
 ## When to invoke
 
@@ -61,5 +68,5 @@ commands.
 - Setting GPG signing keys (separate skill if/when we adopt signed commits)
 - Changing the identity for a single commit (use `git commit --author`
   for that — outside this skill)
-- Off-convention emails (update CLAUDE.md's identity contract first;
-  this skill inherits)
+- Fabricating a value when `$AGENT_EMAIL` is unset (always ask the
+  user; the contract owns the source of truth)
