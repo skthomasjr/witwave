@@ -1,10 +1,10 @@
 ---
-name: sync-source
+name: git-sync-source
 description: Clone or update your primary repo onto its workspace source volume. Run before any task that reads from or commits to the source tree, and any time the local checkout might be stale. Trigger when the user says "sync source", "pull latest", "refresh the repo", or before starting any code-modification task.
-version: 0.2.0
+version: 0.3.0
 ---
 
-# sync-source
+# git-sync-source
 
 Bring your primary repo's local checkout to a known-current state
 matching its default branch. Idempotent: works whether the directory

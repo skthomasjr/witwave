@@ -52,7 +52,7 @@ overwritten — re-run the set commands.
 
 ## When to invoke
 
-- **After `sync-source` runs the first clone** on an empty volume.
+- **After `git-sync-source` runs the first clone** on an empty volume.
   The clone itself doesn't carry identity; the very next commit
   would otherwise fall through to global config (usually empty in
   the container) and fail with `Please tell me who you are`.
