@@ -206,9 +206,36 @@ For stable releases:
 a. Read `<checkout>/CHANGELOG.md`. The file follows Keep a Changelog
    format with an `## [Unreleased]` section at the top.
 
-b. Generate entries for the new version from the commit log between
-   `<prev-tag>` and `HEAD`. Group by Keep-a-Changelog section using
-   commit-scope prefix:
+   Before continuing, **ensure git identity is set on the checkout**
+   — invoke the `git-identity` skill (it's idempotent; safe to run
+   even if already configured). Without `user.name` / `user.email`,
+   step g's `git commit` would fail with "Please tell me who you
+   are."
+
+b. Determine the source range for the changelog entry. Use the most
+   recent **stable** tag (skip beta / rc tags), not just the most
+   recent tag overall:
+
+   ```sh
+   LAST_STABLE_TAG=$(git -C <checkout> tag --list 'v*' \
+     --sort=-v:refname | grep -v -- '-' | head -1)
+   ```
+
+   The `grep -v -- '-'` filters out anything with a SemVer pre-release
+   qualifier (`-beta.N`, `-rc.N`, etc.). The changelog range is
+   `${LAST_STABLE_TAG}..HEAD` — covering every commit since the
+   previous stable, including any commits that landed during beta
+   cycles between then and now.
+
+   (Note: this differs from step 4's bump inference, which uses the
+   most recent tag overall — correct, because bump inference cares
+   about "what changed since the last release of any kind." The
+   changelog cares about "what changed since the last stable" so
+   beta-graduation entries don't lose their beta-cycle commits.)
+
+c. Generate entries for the new version from the commit log between
+   `LAST_STABLE_TAG` and `HEAD`. Group by Keep-a-Changelog section
+   using commit-scope prefix:
 
    | Commit prefix | Section |
    | --- | --- |
@@ -219,14 +246,14 @@ b. Generate entries for the new version from the commit log between
    | `agents(...)` | **Agent identity** (this repo's witwave-self ecosystem) |
    | `docs(...)` | **Documentation** (only when substantive — skip pure prose churn) |
    | `chore:` / `test:` / pure-CI | Skip unless user-visible |
-   | `BREAKING CHANGE:` / `!:` | Surface in **Changed** with bold "BREAKING:" prefix |
+   | `BREAKING CHANGE:` / `!:` | Place in **Changed** alongside other refactors — pre-1.0 doesn't bold-prefix breaking entries (per the CHANGELOG preamble's plain treatment of "minor bumps may introduce user-visible behaviour changes"). When the project graduates to 1.0+ this becomes a "BREAKING:" prefix in **Changed**. |
 
    Inside each section, sub-group by component (the parenthesised
    scope: `feat(ww):` → `**ww**:` bullet, `fix(operator):` →
    `**operator**:` bullet). One concise prose line per scope-bucket,
    not a verbatim commit-list dump.
 
-c. **Handle existing `[Unreleased]` content**: if the
+d. **Handle existing `[Unreleased]` content**: if the
    `## [Unreleased]` section already has bullets / paragraphs (e.g.
    beta-cycle accumulation, or someone hand-wrote entries during the
    release window), **merge them into the new version's entry** —
@@ -235,7 +262,7 @@ c. **Handle existing `[Unreleased]` content**: if the
    change. Then leave `## [Unreleased]` empty for the next cycle.
    Never silently discard hand-written `[Unreleased]` content.
 
-d. Insert the new entry **between** the now-empty `## [Unreleased]`
+e. Insert the new entry **between** the now-empty `## [Unreleased]`
    and the next `##` heading. The result:
 
    ```markdown
@@ -245,7 +272,7 @@ d. Insert the new entry **between** the now-empty `## [Unreleased]`
    ...
    ```
 
-e. Format the entry body:
+f. Format the entry body:
 
    ```markdown
    ## [X.Y.Z] — YYYY-MM-DD
@@ -263,7 +290,7 @@ e. Format the entry body:
    - **<component>**: <prose summary>
    ```
 
-f. Stage and commit:
+g. Stage and commit:
 
    ```sh
    git -C <checkout> add CHANGELOG.md
