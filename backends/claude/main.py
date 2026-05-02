@@ -144,7 +144,14 @@ def build_agent_card() -> AgentCard:
         description=load_agent_description(),
         url=AGENT_URL,
         version=AGENT_VERSION,
-        capabilities=AgentCapabilities(streaming=True),
+        # streaming=False reflects the actual wire behaviour after the
+        # per-chunk Message emission was removed (see executor.py
+        # _emit_chunk comment). The previous streaming=True was honest
+        # only as long as #430's per-chunk emission was active. If
+        # streaming gets reintroduced — emitting chunks as
+        # TaskStatusUpdateEvent so blocking callers aren't tripped —
+        # flip this back to True alongside the executor change.
+        capabilities=AgentCapabilities(streaming=False),
         default_input_modes=["text/plain"],
         default_output_modes=["text/plain"],
         skills=[

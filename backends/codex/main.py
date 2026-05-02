@@ -88,7 +88,11 @@ def build_agent_card() -> AgentCard:
         description=load_agent_description(),
         url=AGENT_URL,
         version=AGENT_VERSION,
-        capabilities=AgentCapabilities(streaming=True),
+        # streaming=False — see backends/claude/main.py for the
+        # rationale. Per-chunk Message emission was removed for
+        # blocking-call correctness; the agent card now reflects
+        # that wire behaviour honestly.
+        capabilities=AgentCapabilities(streaming=False),
         default_input_modes=["text/plain"],
         default_output_modes=["text/plain"],
         skills=[
