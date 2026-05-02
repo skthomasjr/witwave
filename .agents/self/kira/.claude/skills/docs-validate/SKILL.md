@@ -45,7 +45,7 @@ markdownlint and prettier versions used in production. Pull them
 from there so kira's local runs match what the PR gate expects:
 
 ```sh
-grep -E "markdownlint-cli2@|prettier@" <checkout>/.github/workflows/ci-docs.yml
+grep -E "markdownlint-cli@|prettier@" <checkout>/.github/workflows/ci-docs.yml
 ```
 
 Capture each pinned version. If the grep returns nothing, the
@@ -69,17 +69,24 @@ Capture the list of files Prettier reported as `(reformatted)`.
 
 ### 4. Apply markdownlint auto-fixes
 
-markdownlint-cli2's `--fix` mode applies the rule-level fixes
+`markdownlint-cli`'s `--fix` mode applies the rule-level fixes
 that are safe. Rules without auto-fix capability are reported as
 diagnostics (no edits) — log those for human review later via
 `docs-scan`.
 
 ```sh
 cd <checkout> \
-  && npx --yes markdownlint-cli2@<pinned-version> \
+  && npx --yes markdownlint-cli@<pinned-version> \
+       --config .markdownlint.yaml \
+       --ignore-path .markdownlintignore \
        --fix \
        "**/*.md"
 ```
+
+(Note: `markdownlint-cli` — NOT `markdownlint-cli2`. The `cli2`
+variant is a different package with a different CLI shape; CI
+pins the original `cli` and we mirror it. If a future CI bump
+switches to `cli2`, update this skill too.)
 
 Capture: (a) the list of files fixed; (b) the list of remaining
 diagnostics that need human attention. The latter goes to
