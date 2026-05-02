@@ -2984,18 +2984,7 @@ class AgentExecutor(A2AAgentExecutor):
         # complete text regardless of which mid-stream events were
         # truncated.
         _chunks_emitted = 0
-        _stream_state = {"dropped": 0}
         _streaming_label_model = _resolve_model_label(model)
-        # Track successfully-emitted text so the drop-fallback below can
-        # emit only the missing suffix rather than re-sending the whole
-        # aggregated response and duplicating content the client already
-        # has (#876). Also track the full attempted sequence so a
-        # mid-chunk enqueue failure does not produce a non-contiguous
-        # _emitted_texts (which would defeat the prefix-match and force
-        # the full-response fallback, reintroducing the ~2x duplication
-        # #876 closed) — #988.
-        _emitted_texts: list[str] = []
-        _attempted_texts: list[tuple[bool, str]] = []
 
         # Per-session SSE drill-down stream (#1110 phase 4). Best-effort
         # — a broadcaster fault must not break the A2A response path.
@@ -3047,21 +3036,11 @@ class AgentExecutor(A2AAgentExecutor):
             # backends/claude/executor.py _emit_chunk for the rationale
             # (A2A SDK's blocking handler returns on first Message event,
             # so per-chunk Message emission caused blocking callers to
-            # see only the first chunk). _attempted_texts / _emitted_texts
-            # / drop-recovery machinery in the elif branch below is now
-            # unreachable; a follow-up commit will clean it up. For now
-            # the dead code is harmless — _chunks_emitted stays 0 so the
-            # always-emit-final-Message branch handles every turn.
+            # see only the first chunk). _chunks_emitted is retained for
+            # the streaming-events metric only.
             _chunks_emitted += 1
             if backend_streaming_events_emitted_total is not None:
                 backend_streaming_events_emitted_total.labels(**_LABELS, model=_streaming_label_model).inc()
-
-        # Attach the stream state so _run_query_inner's TimeoutError
-        # handler can increment ``dropped`` and bump the dropped metric
-        # via a single shared reference instead of plumbing a separate
-        # callback through run -> run_query -> _run_query_inner (#724).
-        _emit_chunk.stream_state = _stream_state  # type: ignore[attr-defined]
-        _emit_chunk.label_model = _streaming_label_model  # type: ignore[attr-defined]
 
         from otel import start_span as _start_span, set_span_error as _set_span_error
         _otel_span = None
@@ -3100,71 +3079,8 @@ class AgentExecutor(A2AAgentExecutor):
                 # per-chunk path removed there's no duplicate-text risk
                 # and this is the ONLY Message event blocking callers
                 # see, so it must always fire when text was produced).
-                # The elif drop-recovery branches below are now dead
-                # code — _response truthy → first branch always wins.
-                # Left intact in this commit so the diff stays surgical;
-                # follow-up cleanup will remove them along with
-                # _attempted_texts / _emitted_texts / _stream_state
-                # tracking that's now also unreachable.
-                _dropped_count = _stream_state["dropped"]
                 if _response:
                     await event_queue.enqueue_event(new_agent_text_message(_response))
-                elif _response and _dropped_count > 0:
-                    # Drop fallback (#724) — only emit the text that
-                    # streaming did NOT deliver (#876, #988). Prefer
-                    # _attempted_texts (records both enqueue successes
-                    # and failures) over _emitted_texts so a mid-chunk
-                    # enqueue failure doesn't produce a non-contiguous
-                    # successful-text list whose join wouldn't prefix
-                    # _response. When the concatenation of the
-                    # attempted sequence prefixes _response (expected
-                    # under append-only streaming), the "missing" text
-                    # is the union of explicitly-failed chunks plus any
-                    # trailing remainder of _response not yet
-                    # attempted. Otherwise fall back to the full
-                    # response so we never silently truncate.
-                    _attempted_joined = "".join(t for _ok, t in _attempted_texts)
-                    if _attempted_joined and _response.startswith(_attempted_joined):
-                        _missing_parts: list[str] = [t for _ok, t in _attempted_texts if not _ok]
-                        _tail = _response[len(_attempted_joined):]
-                        if _tail:
-                            _missing_parts.append(_tail)
-                        _missing = "".join(_missing_parts)
-                        if _missing:
-                            logger.info(
-                                "Session %r: %d chunk(s) dropped during streaming — "
-                                "emitting %d-byte reconstructed missing text so client "
-                                "sees complete output (#724, #876, #988).",
-                                session_id, _dropped_count, len(_missing),
-                            )
-                            await event_queue.enqueue_event(
-                                new_agent_text_message(_missing)
-                            )
-                    else:
-                        _streamed = "".join(_emitted_texts)
-                        if _response.startswith(_streamed):
-                            _missing = _response[len(_streamed):]
-                            if _missing:
-                                logger.info(
-                                    "Session %r: %d chunk(s) dropped during streaming — "
-                                    "emitting %d-byte missing suffix so client sees "
-                                    "complete text (#724, #876).",
-                                    session_id, _dropped_count, len(_missing),
-                                )
-                                await event_queue.enqueue_event(
-                                    new_agent_text_message(_missing)
-                                )
-                        else:
-                            logger.warning(
-                                "Session %r: streamed prefix does not match final "
-                                "response (%d chunks dropped); emitting full "
-                                "aggregated response — may duplicate streamed text "
-                                "but avoids silent truncation (#876 fallback).",
-                                session_id, _dropped_count,
-                            )
-                            await event_queue.enqueue_event(
-                                new_agent_text_message(_response)
-                            )
                 # Per-session stream: final marker chunk (#1110 phase 4).
                 if _sess_stream is not None:
                     try:
