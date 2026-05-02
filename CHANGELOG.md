@@ -8,6 +8,83 @@ section of each entry.
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-05-02
+
+A2A correctness arc: blocking-call response truncation fixed,
+hook-event field corrected, and the streaming capability flag
+flipped to match actual wire behaviour. `ww` gains `--backend-env`
+for non-secret per-backend env overrides and stops clobbering
+operator-overlaid `backend.yaml` when a harness gitMapping owns the
+`.witwave/` directory. Kira's identity scaffolding fleshes out with
+Tier 1 docs skills, a liveness heartbeat, and a docs-drift sibling.
+
+### Added
+
+- **ww**: `--backend-env <backend>:<KEY>=<VALUE>` flag on `ww agent
+  create`, repeatable per (backend, KEY). Stamps
+  `spec.backends[].env[]` directly on the CR for non-sensitive
+  tunables (`TASK_TIMEOUT_SECONDS`, `LOG_LEVEL`,
+  `STREAM_CHUNK_TIMEOUT_SECONDS`, etc.). Secret values continue to
+  flow through `--auth-set` / `--backend-secret-from-env`.
+
+### Fixed
+
+- **backends**: blocking A2A callers (`message/send` with
+  `configuration.blocking=true`) now receive the agent's complete
+  output instead of just the first turn. The A2A SDK's result
+  aggregator treats every `Message` event as terminal; reverting
+  per-chunk emission to a single final aggregated `Message`
+  closes the truncation. (Follow-up to #430 — chunks belong on
+  `TaskStatusUpdateEvent` if streaming consumers ever appear.)
+- **backends**: hook-decision events send the backend id
+  (`claude` / `codex` / `gemini`) instead of the named-agent name
+  (`iris` / `kira`). Ends the per-turn `hook.decision SSE drop:
+  unknown agent` warning that was swallowing real policy signal.
+  (#1149)
+- **backends**: `AgentCapabilities.streaming=False` on agent cards,
+  matching the post-revert wire behaviour. Clients querying
+  `/.well-known/agent.json` no longer see a dishonest streaming
+  flag. Per-chunk dashboard drill-down is unaffected — that's a
+  separate `_sess_stream` SSE channel.
+- **ww**: `ww agent create` skips emitting the inline
+  `backend.yaml` Config entry when a harness-level `gitMapping`
+  covers `/home/agent/.witwave/`. Closes the rsync-delete race
+  where the gitSync sidecar's `rsync --delete` was wiping
+  operator-overlaid `backend.yaml` on every pull (the operator
+  subPath wasn't present in the synced source, so rsync removed
+  it from the dest).
+
+### Changed
+
+- **codex**: removed the now-unreachable drop-recovery machinery
+  in `executor.py` (`_attempted_texts`, `_emitted_texts`,
+  `_stream_state`, and the elif drop-recovery branches in
+  `execute()`). With per-chunk emission gone, the chunk-enqueue
+  timeout it guarded against can no longer fire. ~60 lines
+  deleted.
+
+### Agent identity
+
+- **kira**: Tier 1 docs skills scaffolded and named in CLAUDE.md;
+  `docs-validate` skill fixed to invoke `markdownlint-cli` (no
+  `2`). Doc-categories section added to CLAUDE.md.
+- **kira**: 30-minute heartbeat added — liveness signal only,
+  does not trigger a docs scan.
+- **kira**: docs-drift sibling identity scaffolded.
+- **iris**: identity updated to the `iris-agent-witwave` GitHub
+  account; commits now link to that account via the matching
+  verified email.
+- **iris**: Memory section added to CLAUDE.md — file-based memory
+  on the shared workspace volume with private (`agents/iris/`) and
+  team (top-level) namespaces.
+- **iris**: `backend.yaml` lands as gitSync content under
+  `.agents/self/iris/.witwave/`. Pairs with the `ww` fix above so
+  iris no longer needs an operator-overlaid `backend.yaml`.
+
+### Documentation
+
+- **bootstrap**: kira deploy step added.
+
 ## [0.12.0] — 2026-05-01
 
 This release is entirely infrastructure for the self-agent ecosystem:
