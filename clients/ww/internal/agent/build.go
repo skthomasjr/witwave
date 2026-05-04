@@ -75,6 +75,16 @@ type BuildOptions struct {
 	// (the default), the field is omitted from the CR so the CRD's
 	// kubebuilder default fires and metrics land enabled.
 	NoMetrics bool
+
+	// HarnessEnv, when non-empty, stamps `spec.env[]` on the generated
+	// CR — one {name, value} entry per (key, value) pair. Use for plain
+	// (non-secret) env vars on the harness container that need to
+	// override compiled-in defaults: TASK_TIMEOUT_SECONDS, A2A_RETRY_*,
+	// HARNESS_PROXY_MAX_RESPONSE_BYTES, etc. Populated by Create's
+	// `--harness-env` flag-resolution phase (see ParseHarnessEnvs).
+	// Backend-targeted env vars go on BackendSpec.Env instead; this
+	// field is harness-only.
+	HarnessEnv map[string]string
 }
 
 // Build constructs the unstructured.Unstructured representation of a
@@ -297,6 +307,24 @@ func Build(opts BuildOptions) (*unstructured.Unstructured, error) {
 	}
 	if workspaceRefs != nil {
 		spec["workspaceRefs"] = workspaceRefs
+	}
+	if len(opts.HarnessEnv) > 0 {
+		// Sort keys for deterministic CR output — same rationale as
+		// per-backend env emission above (kubectl get -o yaml diffs +
+		// CR equality checks rely on stable ordering).
+		keys := make([]string, 0, len(opts.HarnessEnv))
+		for k := range opts.HarnessEnv {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		envList := make([]interface{}, 0, len(keys))
+		for _, k := range keys {
+			envList = append(envList, map[string]interface{}{
+				"name":  k,
+				"value": opts.HarnessEnv[k],
+			})
+		}
+		spec["env"] = envList
 	}
 
 	// spec.gitSyncs[] — one entry per declared --gitsync. The buildGitSyncEntry

@@ -949,6 +949,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 		authSecrets     []string
 		authSet         []string
 		backendEnvs     []string
+		harnessEnvs     []string
 		noMetrics       bool
 	)
 	cmd := &cobra.Command{
@@ -985,6 +986,10 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 				return err
 			}
 			specs, err = agent.ApplyBackendEnvs(specs, envs)
+			if err != nil {
+				return err
+			}
+			harnessEnv, err := agent.ParseHarnessEnvs(harnessEnvs)
 			if err != nil {
 				return err
 			}
@@ -1054,7 +1059,7 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runAgentCreate(cmd.Context(), f, args[0], specs, !noWait, timeout, createNamespace, team, workspaces, syncs, maps, auth, gitsyncEnvSpec, noMetrics)
+			return runAgentCreate(cmd.Context(), f, args[0], specs, !noWait, timeout, createNamespace, team, workspaces, syncs, maps, auth, gitsyncEnvSpec, noMetrics, harnessEnv)
 		},
 	}
 	bindAgentMutatingFlags(cmd, f)
@@ -1173,10 +1178,18 @@ func newAgentCreateCmd(f *agentFlags) *cobra.Command {
 			"--auth-secret for anything sensitive. Use this for tunables like "+
 			"TASK_TIMEOUT_SECONDS, LOG_LEVEL, STREAM_CHUNK_TIMEOUT_SECONDS, etc. "+
 			"that need to override the container's compiled-in defaults.")
+	cmd.Flags().StringArrayVar(&harnessEnvs, "harness-env", nil,
+		"Set plain (non-secret) env vars on the harness container. Repeatable. "+
+			"Form: <KEY>=<VALUE> (no <backend>: prefix — harness is the implicit "+
+			"target). Lands as spec.env[] on the CR. Use for harness-side tunables "+
+			"like TASK_TIMEOUT_SECONDS (the harness's A2A relay read-timeout is "+
+			"derived from this), A2A_RETRY_POLICY, A2A_RETRY_FAST_ONLY_MS, "+
+			"HARNESS_PROXY_MAX_RESPONSE_BYTES, etc. Backend-targeted env vars use "+
+			"--backend-env instead (they go on a different field).")
 	return cmd
 }
 
-func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []agent.BackendSpec, wait bool, timeout time.Duration, createNamespace bool, team string, workspaces []string, gitSyncs []agent.GitSyncFlagSpec, gitMappings []agent.GitMappingFlagSpec, backendAuth []agent.BackendAuthResolver, gitsyncFromEnv *agent.GitSyncFromEnvSpec, noMetrics bool) error {
+func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []agent.BackendSpec, wait bool, timeout time.Duration, createNamespace bool, team string, workspaces []string, gitSyncs []agent.GitSyncFlagSpec, gitMappings []agent.GitMappingFlagSpec, backendAuth []agent.BackendAuthResolver, gitsyncFromEnv *agent.GitSyncFromEnvSpec, noMetrics bool, harnessEnv map[string]string) error {
 	target, resolver, err := f.resolveTarget(ctx)
 	if err != nil {
 		return err
@@ -1206,6 +1219,7 @@ func runAgentCreate(ctx context.Context, f *agentFlags, name string, backends []
 		GitSyncFromEnv:  gitsyncFromEnv,
 		NoMetrics:       noMetrics,
 		BackendAuth:     backendAuth,
+		HarnessEnv:      harnessEnv,
 		Out:             os.Stdout,
 		In:              os.Stdin,
 	})

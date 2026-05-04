@@ -86,3 +86,32 @@ func backendNames(backends []BackendSpec) []string {
 	}
 	return out
 }
+
+// ParseHarnessEnvs converts repeatable `--harness-env <KEY>=<VALUE>`
+// flag values into a key→value map. Mirrors ParseBackendEnvs but without
+// the `<backend>:` prefix — harness is the only target and is implicit.
+//
+// Use for plain (non-secret) env vars on the harness container that need
+// to override compiled-in defaults: TASK_TIMEOUT_SECONDS, A2A_RETRY_*,
+// HARNESS_PROXY_MAX_RESPONSE_BYTES, etc. Lands on spec.env[] (the
+// harness-level field, not spec.backends[].env[]).
+//
+// Form per entry: `<KEY>=<VALUE>`. Empty raw → empty map. Duplicate
+// KEYs are a hard error so silent overwrites can't hide a typo.
+func ParseHarnessEnvs(raw []string) (map[string]string, error) {
+	out := make(map[string]string)
+	for _, entry := range raw {
+		key, value, err := SplitInlineKV(entry, "--harness-env")
+		if err != nil {
+			return nil, err
+		}
+		if existing, dup := out[key]; dup {
+			return nil, fmt.Errorf(
+				"--harness-env: key %q given twice (first=%q, second=%q) — pick one",
+				key, existing, value,
+			)
+		}
+		out[key] = value
+	}
+	return out, nil
+}

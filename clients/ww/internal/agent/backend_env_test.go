@@ -183,6 +183,83 @@ func TestBuild_EmitsBackendEnv(t *testing.T) {
 	}
 }
 
+func TestParseHarnessEnvs_HappyPath(t *testing.T) {
+	t.Parallel()
+	got, err := ParseHarnessEnvs([]string{
+		"TASK_TIMEOUT_SECONDS=2700",
+		"A2A_RETRY_POLICY=fast-only",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got["TASK_TIMEOUT_SECONDS"] != "2700" {
+		t.Errorf("TASK_TIMEOUT_SECONDS = %q, want 2700", got["TASK_TIMEOUT_SECONDS"])
+	}
+	if got["A2A_RETRY_POLICY"] != "fast-only" {
+		t.Errorf("A2A_RETRY_POLICY = %q, want fast-only", got["A2A_RETRY_POLICY"])
+	}
+}
+
+func TestParseHarnessEnvs_RejectsDuplicate(t *testing.T) {
+	t.Parallel()
+	_, err := ParseHarnessEnvs([]string{
+		"TASK_TIMEOUT_SECONDS=2700",
+		"TASK_TIMEOUT_SECONDS=900",
+	})
+	if err == nil {
+		t.Fatal("want error on duplicate KEY; got nil")
+	}
+	if !strings.Contains(err.Error(), "given twice") {
+		t.Errorf("error %q should mention dup; got: %v", err, err)
+	}
+}
+
+func TestParseHarnessEnvs_BadShape(t *testing.T) {
+	t.Parallel()
+	cases := []string{
+		"TASK_TIMEOUT_SECONDS",   // missing =
+		"=2700",                  // empty key
+		"TASK_TIMEOUT_SECONDS=",  // empty value
+	}
+	for _, raw := range cases {
+		t.Run(raw, func(t *testing.T) {
+			t.Parallel()
+			_, err := ParseHarnessEnvs([]string{raw})
+			if err == nil {
+				t.Fatalf("want error for %q; got nil", raw)
+			}
+		})
+	}
+}
+
+func TestBuild_EmitsHarnessEnv(t *testing.T) {
+	t.Parallel()
+	obj, err := Build(BuildOptions{
+		Name:       "test-agent",
+		Namespace:  "test-ns",
+		Backends:   []BackendSpec{{Name: "claude", Type: "claude", Port: 8001}},
+		CLIVersion: "dev",
+		HarnessEnv: map[string]string{
+			"TASK_TIMEOUT_SECONDS": "2700",
+			"A2A_RETRY_POLICY":     "fast-only",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	envRaw, _, err := unstructuredNestedSlice(obj.Object, "spec", "env")
+	if err != nil || envRaw == nil {
+		t.Fatalf("spec.env should be set when HarnessEnv is non-empty; raw=%v err=%v", envRaw, err)
+	}
+	if len(envRaw) != 2 {
+		t.Fatalf("want 2 env entries on spec.env, got %d", len(envRaw))
+	}
+	first := envRaw[0].(map[string]interface{})
+	if first["name"] != "A2A_RETRY_POLICY" {
+		t.Errorf("env[0].name = %q, want A2A_RETRY_POLICY (sort order)", first["name"])
+	}
+}
+
 // unstructuredNestedSlice is the test-local twin of
 // k8s.io/apimachinery/pkg/apis/meta/v1/unstructured's NestedSlice
 // — keeps this test free of the wider import path while still

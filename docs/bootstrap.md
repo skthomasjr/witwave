@@ -199,6 +199,7 @@ ww agent create iris \
   --workspace witwave-self \
   --with-persistence \
   --backend claude \
+  --harness-env TASK_TIMEOUT_SECONDS=2700 \
   --backend-env claude:TASK_TIMEOUT_SECONDS=2700 \
   --backend-secret-from-env claude=CLAUDE_CODE_OAUTH_TOKEN \
   --backend-secret-from-env claude=GITHUB_TOKEN_IRIS:GITHUB_TOKEN \
@@ -207,12 +208,17 @@ ww agent create iris \
   --gitsync-secret-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD
 ```
 
-`--backend-env claude:TASK_TIMEOUT_SECONDS=2700` raises iris's
-per-task timeout from the 5-minute default to 45 minutes. Most of
-iris's work (releases, pushes, syncs) finishes well under either
-limit; the headroom matters when she watches release workflows
-(the container-build job alone can take ~25 minutes) so she
-doesn't hit the timeout mid-flight.
+`TASK_TIMEOUT_SECONDS=2700` is set on **both** the harness and
+the claude backend so the timeout headroom (45 minutes vs the
+5-minute default) applies end-to-end. The harness uses it to
+size the A2A relay's read timeout (`_HTTP_TIMEOUT_SECONDS =
+TASK_TIMEOUT_SECONDS - 10` in `harness/backends/a2a.py`); the
+backend uses it as the per-task LLM-call timeout. Mismatch
+between them causes confusing failures — the harness gives up
+mid-call and retries, leaving the backend running and producing
+duplicate work. The headroom matters when iris watches release
+workflows (the container-build job alone can take ~25 minutes)
+or delegates a long-running task to a sibling.
 
 Verify iris is `Ready` and bound to the workspace:
 
@@ -247,6 +253,7 @@ ww agent create kira \
   --workspace witwave-self \
   --with-persistence \
   --backend claude \
+  --harness-env TASK_TIMEOUT_SECONDS=2700 \
   --backend-env claude:TASK_TIMEOUT_SECONDS=2700 \
   --backend-secret-from-env claude=CLAUDE_CODE_OAUTH_TOKEN \
   --backend-secret-from-env claude=GITHUB_TOKEN_KIRA:GITHUB_TOKEN \
@@ -255,13 +262,13 @@ ww agent create kira \
   --gitsync-secret-from-env GITSYNC_USERNAME:GITSYNC_PASSWORD
 ```
 
-Same `--backend-env` lift as iris. Kira's full docs scans walk
-every markdown file in the repo and on first run also npx-download
-prettier and markdownlint-cli2 — that combination eats through the
-default 5-minute timeout fast on a cold container. 45 minutes is
-generous headroom; we can dial it back later if it turns out scans
-typically finish in under a minute and the wider ceiling never
-gets used.
+Same paired-timeout lift as iris (harness + backend both set to
+2700s). Kira's full docs scans walk every markdown file in the
+repo and on first run also npx-download prettier and
+markdownlint-cli — that combination eats through the default
+5-minute timeout fast on a cold container. 45 minutes is generous
+headroom; dial it back later if scans typically finish well under
+the ceiling.
 
 Verify both agents are now bound to the workspace:
 
