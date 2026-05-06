@@ -75,7 +75,7 @@ filters per analyzer:
 | `hadolint`    | `hadolint --no-fail --ignore=DL3008 --ignore=DL3015 --ignore=DL3018 --ignore=DL3059 --ignore=DL4001 <Dockerfile>` |
 | `shellcheck`  | `shellcheck --severity=warning --include=SC2086,SC2046,SC2155,SC2207,SC1090,SC2236,SC2068,SC2206,SC2128,SC2178 <script.sh>` |
 | `actionlint`  | `actionlint <workflow.yml>` (actionlint is mostly correctness already)                                             |
-| `controller-gen` (operator only) | `cd <checkout>/operator && controller-gen object paths=./... && cd <checkout> && git diff --exit-code charts/witwave-operator/crds/ operator/config/` |
+| `controller-gen` (operator only) | `cd <checkout>/operator && make manifests && cd <checkout> && git diff --exit-code operator/config/crd/bases/` (uses the project's existing `manifests` target — `controller-gen rbac:roleName=manager-role crd webhook paths=./...` — so we stay in lockstep with however the operator regenerates CRDs in CI). The chart-side mirror at `charts/witwave-operator/crds/` is sync'd by a separate script + CI guard, not by this drift check. |
 
 Concatenate all hits into the **candidate list**. Each candidate carries: section, file, line, rule, message, raw
 analyzer output. Order doesn't matter at this stage.
@@ -180,8 +180,14 @@ For each candidate in the fix bin, processed in the order from step 3:
 
 ### 6. Log flag-only findings
 
-Append to `/workspaces/witwave-self/memory/agents/evan/project_evan_findings.md` in your private memory namespace.
-Group by sweep run (newest first); within a run, group by section; within a section, order by severity:
+Ensure your memory namespace exists (idempotent):
+
+```sh
+mkdir -p /workspaces/witwave-self/memory/agents/evan
+```
+
+Then append to `/workspaces/witwave-self/memory/agents/evan/project_evan_findings.md`. Group by sweep run (newest
+first); within a run, group by section; within a section, order by severity:
 
 1. Data loss / corruption
 2. Crashes (null deref, panic, unrecoverable error path)
@@ -205,45 +211,44 @@ Format:
 If `project_evan_findings.md` doesn't exist yet, create it with a header explaining what it contains. Update the
 `MEMORY.md` index in your namespace to point to it.
 
-### 7. Push + watch CI
+### 7. Push + watch CI (via iris)
 
 If `PRE_SWEEP_SHA` equals current `HEAD` (no commits produced), skip this entire step. Report "no fixes committed
 this run; M findings logged to memory" and exit cleanly.
 
-Otherwise:
+Otherwise: this step is **fully delegated to iris** via `call-peer`. Iris owns the publishing posture (push race
+handling, conflict surfacing, no-force rules) AND has a working `GITHUB_TOKEN` for `gh` CLI authentication. Evan's
+`GITHUB_TOKEN` is bound from `GITHUB_TOKEN_EVAN` which is a placeholder until the `evan-agent-witwave` GitHub account
+exists, so `gh run watch` from evan's container would fail authentication. Delegating to iris solves both concerns
+in one round-trip.
 
-1. **Delegate the push to iris** via `call-peer`. Send a self-contained prompt of the form:
+1. **Delegate push + CI watch to iris** via `call-peer`. Send a self-contained prompt of the form:
 
-   > Hi iris — evan here. I just landed N bug-fix commits in the local checkout. Please run `git-push`. Commits:
+   > Hi iris — evan here. I just landed N bug-fix commits in the local checkout. Please:
+   >
+   > 1. Run `git-push` to publish them.
+   > 2. Watch the CI workflows that trigger on this push. Report each workflow's conclusion (green / red) and its
+   >    `gh` run URL.
+   > 3. **If any workflow goes red**, do NOT take action — report the failure back to me and I'll handle the
+   >    batch-revert. (Trunk-based-dev contract: I committed; I'm responsible for reverting if CI fails.)
+   >
+   > Commits:
    >
    > - `<SHA1>` `fix(<section>): <subject>`
    > - `<SHA2>` `fix(<section>): <subject>`
    > - …
    >
-   > After the push, please report the push outcome. I'll watch CI from here.
+   > Pre-sweep SHA was `<PRE_SWEEP_SHA>`.
 
-   Wait for her reply. Capture the push outcome.
+   Wait for her reply. Capture the push outcome and the per-workflow CI outcomes.
 
 2. **If iris reports push failure** (rebase conflict she couldn't resolve, etc.): STOP. Don't improvise. Surface the
    situation in the run summary. The next bug-sweep run will re-attempt the delegation naturally.
 
-3. **If iris reports push success**, watch CI:
+3. **If iris reports push success and all CI workflows green**: done. Capture per-workflow conclusion + duration in
+   the run summary.
 
-   ```sh
-   gh run list --branch <branch> --limit 5 --json databaseId,name,status,conclusion,headSha \
-     | jq '.[] | select(.headSha == "'"<last commit SHA>"'")'
-   ```
-
-   For each workflow with status `in_progress` or `queued`, watch sequentially:
-
-   ```sh
-   gh run watch <run-id> --exit-status
-   ```
-
-   - **All green** → done. Capture per-workflow conclusion + duration.
-   - **Any red** → batch-revert (next step).
-
-4. **Batch-revert on red CI:**
+4. **If iris reports any CI workflow went red**: batch-revert (next step). Iris reports; evan acts on the report.
 
    ```sh
    git -C <checkout> revert --no-commit ${PRE_SWEEP_SHA}..HEAD

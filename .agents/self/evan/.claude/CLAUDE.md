@@ -263,8 +263,11 @@ Run the toolchain analyzers for the section's file types. Filter to bug-class ru
   exit, `SC2207` array-splitting, `SC1090` non-constant source, `SC2236` if/-z confusion, etc.).
 - `actionlint` filtered to bug-class — invalid expression syntax, missing required `with:` inputs, conditional logic
   errors, shellcheck-inside-`run:`. Style rules excluded.
-- For `operator/`: `controller-gen object paths=./... && git diff --exit-code` — any drift between the markers in the
-  Go types and the rendered CRDs is a real bug.
+- For `operator/`: `cd <checkout>/operator && make manifests && cd <checkout> && git diff --exit-code
+  operator/config/crd/bases/` — runs the project's existing `manifests` target (which calls `controller-gen
+  rbac:roleName=manager-role crd webhook paths=./...` per `operator/Makefile`) and checks the rendered output. Any
+  drift between the markers in the Go types and the rendered CRDs is a real bug. The chart-side mirror at
+  `charts/witwave-operator/crds/` is sync'd separately by a script + CI guard, not by this drift check.
 
 Concatenate the raw candidate list. Each candidate has: file, line, rule, message, confidence-from-tool.
 
@@ -353,9 +356,9 @@ For each candidate in the fix bin:
 3. **Write the fix.** Apply it. Use the analyzer's suggestion if obvious; otherwise apply a minimal fix that addresses
    the bug without expanding scope.
 4. **Run scoped tests locally.** Run the test suite that covers the affected path:
-   - Go: `cd <section> && go test ./...`
-   - Python: `cd /workspaces/witwave-self/source/witwave && pytest <section>/` (or the project's test runner if
-     different)
+   - Go: `cd <checkout>/<section> && go test ./...`
+   - Python: `cd <checkout> && pytest <section>/` (pytest + pytest-asyncio + httpx + python-kubernetes are pre-
+     installed in the backend image alongside nova's hygiene tools)
    - If tests fail → DO NOT COMMIT. Revert the working-tree change. Move the candidate to flag-only with a "fix broke
      local tests: <test name>" note. Move on.
 5. **Verify the bug condition is gone** by re-reading the changed code. Confirm: the analyzer rule that originally
@@ -395,20 +398,25 @@ Format per finding:
 Severity is your judgement based on what the analyzer found and what the surrounding code shows; not a number. Order is
 the signal.
 
-### Step 7 — Push + watch CI
+### Step 7 — Push + watch CI (via iris)
 
-Once all candidates have been processed (step 5 commits + step 6 memory writes):
+Once all candidates have been processed (step 5 commits + step 6 memory writes), delegate **both** the push AND the CI
+watch to iris. Iris owns the publishing posture (push race handling, conflict surfacing, no-force rules) AND has a
+working `GITHUB_TOKEN` for `gh` CLI authentication. Your `GITHUB_TOKEN` is bound from `GITHUB_TOKEN_EVAN` which is a
+placeholder until the `evan-agent-witwave` GitHub account exists, so a `gh run watch` from your container would fail
+authentication. Single round-trip to iris solves both concerns; once the evan-agent GitHub account is created with a
+real PAT, this step can simplify to a direct evan-side CI watch.
 
-1. **Delegate the push to iris** via `call-peer`. Send a self-contained prompt listing the commit subjects and ask her
-   to run `git-push`. Wait for her reply.
-2. **If iris reports a push success**, watch CI:
-   - Identify the workflows that triggered on this push. The simplest signal is `gh run list --branch main --limit 5
-     --json databaseId,name,status,conclusion,headSha` filtered to `headSha == <last commit>`.
-   - For each workflow with `status: in_progress` or `queued`, run `gh run watch <id> --exit-status` (sequential, not
-     parallel — easier to reason about and we don't burn rate limit).
-   - If all watched workflows complete with `conclusion: success` → done. Report green and the per-workflow durations.
-3. **If any watched workflow goes red, revert the batch.** Trunk-based dev's contract from `AGENTS.md`: "If you break
-   `main`, fix or revert immediately." Batch-revert posture for v1 — we don't surgically bisect. Steps:
+1. **Delegate push + CI watch to iris** via `call-peer`. Send a self-contained prompt that asks her to (a) run
+   `git-push`, (b) watch the CI workflows that trigger on the push, and (c) report each workflow's conclusion + run
+   URL back without taking remediation action — the trunk-based-dev contract is "I committed; I revert if CI fails."
+   Include the commit SHAs and subjects in the prompt so iris can echo them in her summary.
+
+2. **If iris reports a push success and all CI workflows green**: done. Capture the per-workflow durations + iris's
+   summary in your run report.
+
+3. **If iris reports any CI workflow went red, revert the batch.** Trunk-based dev's contract from `AGENTS.md`: "If
+   you break `main`, fix or revert immediately." Batch-revert posture for v1 — we don't surgically bisect. Steps:
    - Identify the range of commits you pushed in this run (the SHAs you committed in step 5).
    - Build a single revert commit that reverts ALL of them in one shot:
      ```sh
@@ -419,6 +427,7 @@ Once all candidates have been processed (step 5 commits + step 6 memory writes):
    - Delegate the revert push to iris (same `call-peer` flow).
    - Log the revert + the failing workflow's run URL to `project_evan_findings.md` so the candidates can be
      re-evaluated next run with the test failure in mind. The candidates are NOT lost — they re-surface.
+
 4. **If iris reports a push failure** (rebase conflict she couldn't resolve, etc.), STOP. Don't improvise. Surface the
    situation to the caller. The next bug-sweep run will re-attempt the delegation naturally.
 
@@ -463,9 +472,20 @@ missing `with:` inputs, conditional logic errors, shellcheck-inside-`run:` block
 
 ### Operator: `controller-gen` drift check
 
-Run `controller-gen object paths=./... && git diff --exit-code charts/witwave-operator/crds/ operator/config/`. Any
-diff means the CRD schemas or RBAC roles drifted from the Go types — a real bug that would cause the deployed operator
-to silently mismatch the cluster's CRD shape.
+Use the project's existing `manifests` target (defined in `operator/Makefile`):
+
+```sh
+cd <checkout>/operator && make manifests
+cd <checkout> && git diff --exit-code operator/config/crd/bases/
+```
+
+The `manifests` target calls `controller-gen rbac:roleName=manager-role crd webhook paths=./...
+output:crd:artifacts:config=config/crd/bases` — staying with `make manifests` keeps the drift check in lockstep with
+however the operator regenerates CRDs in CI. Any diff means the CRD schemas or RBAC roles drifted from the Go types —
+a real bug that would cause the deployed operator to silently mismatch the cluster's CRD shape.
+
+The chart-side mirror at `charts/witwave-operator/crds/` is sync'd by a separate script + CI guard, not by this drift
+check.
 
 ## Code categories
 

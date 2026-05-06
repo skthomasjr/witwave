@@ -134,6 +134,18 @@ RUN pip install --no-cache-dir -r /home/agent/claude/requirements.txt
 # because tooling drift could change auto-fix behaviour silently.
 RUN pip install --no-cache-dir 'ruff==0.6.9' 'yamllint==1.35.1'
 
+# Bug-class verification tooling for evan. pytest + pytest-asyncio run
+# the project's scoped tests locally before evan commits a fix (Step 5
+# of bug-sweep). httpx and the python kubernetes client are the test
+# dependencies CI installs ad-hoc per ci-charts.yml's mcp-tools-pytest
+# job; pinning them in the image so evan's local-test runs match what
+# CI runs. Pinned for reproducibility.
+RUN pip install --no-cache-dir \
+    'pytest==8.3.3' \
+    'pytest-asyncio==0.24.0' \
+    'httpx==0.27.2' \
+    'kubernetes==31.0.0'
+
 COPY --chown=agent:agent backends/claude/ /home/agent/claude/
 COPY --chown=agent:agent shared/ /home/agent/shared/
 
