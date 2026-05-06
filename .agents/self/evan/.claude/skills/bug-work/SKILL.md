@@ -147,6 +147,52 @@ If a section's toolchain isn't installed in this image (v2 sections requested be
 clear "section `<name>` requires toolchain not yet available" entry in the run summary. Don't improvise a partial
 scan.
 
+### 1.5. Persist the candidate list to memory IMMEDIATELY
+
+Before doing any per-candidate work in steps 2-5, dump the full raw candidate list to your deferred-findings memory
+file. This is a durability guard against a failure mode observed 2026-05-06 evening: a wide low-depth pass found ~37
+candidates, then the LLM session ended mid-loop (likely context exhaustion from per-candidate fix-bar reads) before
+any commits or memory writes happened. **Findings were lost.** This step makes the candidate list survive that
+failure mode by writing it to disk before any per-candidate work begins.
+
+Ensure the memory directory exists:
+
+```sh
+mkdir -p /workspaces/witwave-self/memory/agents/evan
+```
+
+Append a new "in-progress" run section to
+`/workspaces/witwave-self/memory/agents/evan/project_evan_findings.md`:
+
+```markdown
+## YYYY-MM-DD HH:MM UTC — bug-work run STARTED (depth=N, sections=...)
+
+**Status: in-progress.** Pre-sweep SHA: `<sha>`. Will be finalised at step 6.
+
+### Raw candidates discovered (M total)
+
+#### <section name>
+
+- **<file>:<line>** `<analyzer rule>` — <one-line analyzer message>  [pending]
+- **<file>:<line>** `<analyzer rule>` — <one-line analyzer message>  [pending]
+- ...
+
+#### <next section name>
+
+- ...
+```
+
+Each candidate gets a `[pending]` marker. As the run progresses, step 5 will mutate `[pending]` → `[fixed: <SHA>]` for
+committed fixes, and step 6 will mutate `[pending]` → `[flagged: <reason>]` for the rest. If the run dies between
+steps 1.5 and 6, the leftover `[pending]` markers tell the next run (or a human reader) exactly which candidates
+weren't processed.
+
+This step is mandatory regardless of candidate count. Even an empty sweep (zero candidates) writes a one-line
+"empty sweep" entry to memory so the run is auditable from the memory file alone.
+
+**Cost:** writing the candidate list is O(M) file IO and a few hundred to a few thousand bytes. The cost of NOT
+writing is losing every finding when a session dies — observed once, will happen again at higher candidate volumes.
+
 ### 2. Validate per candidate (depth-gated)
 
 For each candidate, walk the **intentional-design gauntlet** at the configured depth's intensity. The gauntlet is
@@ -249,19 +295,29 @@ For each candidate in the fix bin, processed in the order from step 3:
 
    No unrelated changes in the same commit.
 
-7. **At depth 9-10**, also write a regression test that fails on the pre-fix code and passes on the fixed code, in the
+7. **Update the candidate's marker in memory.** Mutate `[pending]` → `[fixed: <SHA>]` in
+   `project_evan_findings.md` for this candidate. This makes partial progress durable: if the run dies between
+   candidates, the next run / human reader knows exactly which candidates landed and which still need work. **Do
+   this immediately after the commit, not at end of run** — the whole point is per-candidate durability.
+
+8. **At depth 9-10**, also write a regression test that fails on the pre-fix code and passes on the fixed code, in the
    same commit. Skip this beat at depth 1-8.
 
-### 6. Log flag-only findings
+### 6. Finalise flag-only findings in memory
 
-Ensure your memory namespace exists (idempotent):
+By this point the in-progress run section in
+`/workspaces/witwave-self/memory/agents/evan/project_evan_findings.md` (created in step 1.5) has every candidate
+marked `[fixed: <SHA>]`, `[pending]`, or `[flagged]`. Step 5.7 already mutates each fixed candidate's marker.
+This step finalises the rest:
 
-```sh
-mkdir -p /workspaces/witwave-self/memory/agents/evan
-```
+1. Walk every `[pending]` marker that survived step 5 (because step 4 binned the candidate to flag, or step 5 had
+   to drop the candidate due to test failure / unfamiliar-API confirmation needed).
+2. Mutate `[pending]` → `[flagged: <reason>]` with one of the reasons enumerated below, plus a short note
+   describing the suggested fix and why-it's-a-bug.
+3. Mutate the run section's `**Status: in-progress.**` header to `**Status: complete.**`. Add a one-line summary:
+   "M total candidates: F fixed, G flagged, D dropped at gauntlet."
 
-Then append to `/workspaces/witwave-self/memory/agents/evan/project_evan_findings.md`. Group by sweep run (newest
-first); within a run, group by section; within a section, order by severity:
+Group flagged candidates within each section by severity:
 
 1. Data loss / corruption
 2. Crashes (null deref, panic, unrecoverable error path)
@@ -269,21 +325,20 @@ first); within a run, group by section; within a section, order by severity:
 4. Resource leaks (file handles, goroutines, contexts)
 5. Edge cases / latent
 
-Format:
+The finalised candidate entry under each section reads:
 
 ```markdown
-## YYYY-MM-DD HH:MM UTC — bug-work run (depth=N, sections=...)
-
-### <section name>
-
-- **<file>:<line>** `<analyzer rule>` — <one-line summary of what>
+- **<file>:<line>** `<analyzer rule>` — <one-line summary of what>  [flagged: <reason>]
   - Why: <one-line summary of why it's a bug>
   - Suggested fix: <one-line summary of approach>
-  - Why flagged not fixed: <one of: function-body not contained, blast radius unclear, no test coverage, ambiguous analyzer rule, fix broke local tests "<test name>", fix needs unfamiliar API confirmation>
 ```
 
-If `project_evan_findings.md` doesn't exist yet, create it with a header explaining what it contains. Update the
-`MEMORY.md` index in your namespace to point to it.
+Where `<reason>` is one of: `function-body-not-contained`, `blast-radius-unclear`, `no-test-coverage`,
+`ambiguous-analyzer-rule`, `fix-broke-local-tests "<test name>"`, `fix-needs-unfamiliar-api-confirmation`,
+`gauntlet-dropped` (for candidates that didn't survive step 2's intentional-design gauntlet at depth ≥3).
+
+The `MEMORY.md` index in your namespace must point at `project_evan_findings.md`. Create it (and the index entry)
+on first run — see step 1.5's mkdir-p; same scaffolding applies here.
 
 ### 7. Push + watch CI (via iris)
 

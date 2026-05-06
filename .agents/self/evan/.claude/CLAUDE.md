@@ -341,6 +341,27 @@ Run the toolchain analyzers for the section's file types. Filter to bug-class ru
 
 Concatenate the raw candidate list. Each candidate has: file, line, rule, message, confidence-from-tool.
 
+### Step 1.5 — Persist the candidate list to memory IMMEDIATELY
+
+Before any per-candidate work in steps 2-5, write the full raw candidate list to your deferred-findings memory file.
+This is a durability guard against a failure mode observed 2026-05-06: a wide low-depth pass found ~37 candidates,
+the LLM session ended mid-loop (likely context exhaustion from per-candidate fix-bar reads) before any commits or
+memory writes happened, **and every finding was lost.** Persisting after scan turns "session died, all work lost"
+into "session died, candidate list survives — next run can pick up from the leftover `[pending]` markers."
+
+Each candidate gets a status marker in memory:
+
+- `[pending]` — written at this step. Default for every fresh candidate.
+- `[fixed: <SHA>]` — written by step 5 right after the commit lands locally. Per-candidate, not at end of run.
+- `[flagged: <reason>]` — written by step 6 for candidates that step 4 binned to flag-only or step 5 had to drop
+  (test failure, unfamiliar-API confirmation needed).
+
+If the run dies between steps 1.5 and 6, the leftover `[pending]` markers tell the next run / human reader exactly
+which candidates weren't processed. The full procedure (the markdown shape, the section grouping) lives in the
+bug-work SKILL.md under "Step 1.5 — Persist the candidate list to memory IMMEDIATELY." This step is mandatory
+regardless of candidate count; even an empty sweep writes a one-line "empty sweep" entry so the run is auditable
+from memory alone.
+
 ### Step 2 — Validate per candidate (depth-gated)
 
 For each candidate, apply the **intentional-design gauntlet** at the depth's intensity. The gauntlet is the same
@@ -448,29 +469,46 @@ For each candidate in the fix bin:
    ```
    One bug per commit. No unrelated changes. No "while I'm here" cleanup.
 
-### Step 6 — Log flag-only findings
+7. **Update the candidate's marker in memory IMMEDIATELY after the commit.** Mutate `[pending]` →
+   `[fixed: <commit-SHA>]` in `project_evan_findings.md` for this candidate. Do this per-candidate, not at end of
+   run — the whole point of step 1.5 was per-candidate durability, and that benefit only survives if step 5 keeps
+   updating the markers as commits land.
 
-For each candidate in the flag bin, append an entry to `project_evan_findings.md` in your private memory namespace
-(`/workspaces/witwave-self/memory/agents/evan/project_evan_findings.md`). Group by sweep run; within a run, group by
-section; within a section, order by severity:
+### Step 6 — Finalise flag-only findings in memory
 
-1. Data loss / corruption (e.g. unhandled error in a write path)
-2. Crashes (null deref, unrecoverable panic)
-3. Logic errors that produce wrong output
-4. Resource leaks (file handles, goroutines, contexts)
-5. Edge cases / latent issues
+The in-progress run section in `project_evan_findings.md` (created by step 1.5) by now has every candidate marked
+`[fixed: <SHA>]`, `[pending]`, or `[flagged]`. Step 5.7 already mutates each fixed candidate's marker. This step
+finalises the rest:
 
-Format per finding:
+1. Walk every `[pending]` marker still present and mutate it to `[flagged: <reason>]`. Reasons (one of):
+   `function-body-not-contained`, `blast-radius-unclear`, `no-test-coverage`, `ambiguous-analyzer-rule`,
+   `fix-broke-local-tests "<test name>"`, `fix-needs-unfamiliar-api-confirmation`, `gauntlet-dropped` (for candidates
+   that didn't survive step 2's intentional-design gauntlet at depth ≥3).
 
-```markdown
-- **<file>:<line>** `<analyzer rule>` — <one-line summary of what>
-  - Why: <one-line summary of why it's a bug>
-  - Suggested fix: <one-line summary of approach>
-  - Why flagged not fixed: <one of: function-body not contained, blast radius unclear, no test coverage, ambiguous analyzer rule, fix broke local tests, fix needs unfamiliar API confirmation>
-```
+2. For each flagged candidate, append the descriptive sub-bullets if not already present:
 
-Severity is your judgement based on what the analyzer found and what the surrounding code shows; not a number. Order is
-the signal.
+   ```markdown
+   - **<file>:<line>** `<analyzer rule>` — <one-line summary of what>  [flagged: <reason>]
+     - Why: <one-line summary of why it's a bug>
+     - Suggested fix: <one-line summary of approach>
+   ```
+
+3. Mutate the run section's header from `**Status: in-progress.**` to `**Status: complete.**`. Add a one-line
+   summary: "M total candidates: F fixed, G flagged, D dropped at gauntlet."
+
+4. Within each section, order flagged candidates by severity:
+
+   - Data loss / corruption (e.g. unhandled error in a write path)
+   - Crashes (null deref, unrecoverable panic)
+   - Logic errors that produce wrong output
+   - Resource leaks (file handles, goroutines, contexts)
+   - Edge cases / latent issues
+
+   Severity is your judgement based on what the analyzer found and what the surrounding code shows; not a number.
+   Order is the signal.
+
+If `project_evan_findings.md` doesn't exist on a fresh agent (first run ever), create it in step 1.5 with a header
+explaining what it contains. Update the `MEMORY.md` index in your namespace to point to it.
 
 ### Step 7 — Push + watch CI (via iris)
 
