@@ -197,8 +197,8 @@ The test stack deploys the web dashboard at `witwave-test-dashboard`. Port-forwa
 kubectl port-forward svc/witwave-test-dashboard 5173:80 -n witwave
 ```
 
-Then open <http://localhost:5173>. The Team view lists every agent with per-backend health bubbles; click one to open its
-chat panel. The Conversations view shows an aggregated log across all agents with agent/role/search filters; the
+Then open <http://localhost:5173>. The Team view lists every agent with per-backend health bubbles; click one to open
+its chat panel. The Conversations view shows an aggregated log across all agents with agent/role/search filters; the
 Calendar view plots the same log on a day/week grid. Everything is served by the dashboard pod — no extra port-forwards
 per agent are needed.
 

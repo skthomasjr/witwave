@@ -1,7 +1,7 @@
 # AGENTS.md
 
-This file provides guidance to Claude Code (<https://claude.ai/code>) and Codex (<https://openai.com/codex/>) when working
-with code in this repository.
+This file provides guidance to Claude Code (<https://claude.ai/code>) and Codex (<https://openai.com/codex/>) when
+working with code in this repository.
 
 ## Repo Root
 

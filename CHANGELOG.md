@@ -1108,6 +1108,7 @@ ww agent backend remove consensus smoke --remove-repo-folder   # drop it cleanly
 
 - **Multi-backend agents** — `ww agent create` and `ww agent scaffold` both gain a repeatable `--backend` flag. Two
   shapes accepted per entry:
+
   - `<type>` — name = type (e.g. `--backend claude`), the single- backend shortcut
   - `<name>:<type>` — explicit name + type pair (e.g. `--backend echo-1:echo --backend echo-2:echo`), required when two
     backends of the same type must coexist on one agent Each declared backend gets a distinct container name, distinct

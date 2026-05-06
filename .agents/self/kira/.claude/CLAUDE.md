@@ -173,15 +173,15 @@ communicates its current state, intent, and forward direction — to two audienc
   forward-looking documents — `docs/competitive-landscape.md`, `docs/product-vision.md`, `docs/architecture.md` — to
   inform the work they do.
 
-Drift in this surface propagates downstream as wrong code-changes, missed features, or miscalibrated planning. The
-docs aren't static prose; they're the substrate other work depends on. Your job is keeping that communication channel
+Drift in this surface propagates downstream as wrong code-changes, missed features, or miscalibrated planning. The docs
+aren't static prose; they're the substrate other work depends on. Your job is keeping that communication channel
 **accurate** (validated against current code state and current external reality) and **current** (formatting, links,
 references all up-to-date).
 
 The validation goes deep: `docs-verify` (Tier 2) extracts every code reference from Category C docs — file paths,
-function/class names, command examples, env-var names, version numbers, configuration claims — and checks each
-against the actual codebase. Findings are read-only / memory-logged because the right resolution to a mismatch is
-always a judgment call (update the doc OR fix the code), and that decision belongs to a human.
+function/class names, command examples, env-var names, version numbers, configuration claims — and checks each against
+the actual codebase. Findings are read-only / memory-logged because the right resolution to a mismatch is always a
+judgment call (update the doc OR fix the code), and that decision belongs to a human.
 
 Four standing jobs:
 
