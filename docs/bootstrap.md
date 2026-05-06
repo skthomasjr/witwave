@@ -18,10 +18,10 @@ is running:
   code-internal hygiene (formatting, comment-vs-code verification, comment authoring). Each delegates publishing to iris
   via `call-peer`. A fourth agent (`evan`) is scaffolded under `.agents/self/evan/` for correctness bug discovery
   (logic-defect lens — unchecked errors, null derefs, races, dead writes, format-string mismatches). His v1 design is
-  burned in (CLAUDE.md, agent-card, `bug-sweep` skill, three cross-agent skills) but the deploy step waits on adding
-  `staticcheck`, `errcheck`, `ineffassign`, and `controller-gen` to the claude image — the day-one toolchain his
-  bug-sweep skill needs. Once those land, evan deploys identically to nova. Additional named agents can be added later
-  in the same shape.
+  burned in (CLAUDE.md, agent-card, `bug-work` skill, three cross-agent skills) and deployed alongside iris/kira/nova
+  on the team's claude images. The verb "work" is the team's forward-compatible naming convention for product-
+  engineering agents; future siblings would be `risk-work`, `gap-work`, `feature-work`. Additional named agents can
+  be added later in the same shape.
 - A **gitSync** sidecar that keeps the shared volume in lockstep with this GitHub repo.
 
 The doc is intentionally incremental — each section is a copy-pasteable command. Sections are added as the bootstrap

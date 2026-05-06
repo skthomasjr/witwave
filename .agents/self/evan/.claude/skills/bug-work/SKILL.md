@@ -1,25 +1,40 @@
 ---
-name: bug-sweep
+name: bug-work
 description:
-  Single-pass correctness bug discovery + validation + fix for one or more sections of the witwave-ai/witwave repo.
-  Runs analyzers (go vet / staticcheck SA / errcheck / ineffassign for Go; ruff B-class for Python; hadolint bug-class
-  for Dockerfiles; shellcheck bug-class for shell; actionlint bug-class for workflows; controller-gen drift for
-  operator), validates each candidate through an eight-concern intentional-design gauntlet at the configured depth,
-  reasons about candidates as a set (common root causes, conflicts), decides fix-vs-flag per a strict fix-bar (depth,
-  function-body containment, blast radius, test coverage, analyzer signal strength), commits safe fixes one bug at a
-  time, logs the rest to deferred-findings memory, delegates the push to iris via call-peer, watches CI, and reverts
-  the entire batch if any workflow goes red. Trigger when the user says "find bugs", "scan for bugs", "bug sweep",
-  "look for bugs", or specifies a section or depth (e.g. "find bugs in operator depth 7").
-version: 0.1.0
+  Single-pass **find AND fix** for correctness bugs in one or more sections of the witwave-ai/witwave repo. Runs
+  analyzers (go vet / staticcheck SA / errcheck / ineffassign for Go; ruff B-class for Python; hadolint bug-class for
+  Dockerfiles; shellcheck bug-class for shell; actionlint bug-class for workflows; controller-gen drift for operator),
+  validates each candidate through an eight-concern intentional-design gauntlet at the configured depth, reasons
+  about candidates as a set (common root causes, conflicts), decides fix-vs-flag per a strict fix-bar (depth,
+  function-body containment, blast radius, test coverage, analyzer signal strength), **commits the safe fixes one bug
+  at a time**, logs the rest to deferred-findings memory, delegates the push to iris via call-peer, watches CI, and
+  reverts the entire batch if any workflow goes red. The verb is "work" — engaging with a problem, finding AND
+  fixing AND triaging — to slot cleanly alongside future product-engineering siblings (`risk-work`, `gap-work`,
+  `feature-work`). Distinct from nova's `code-cleanup` and kira's `docs-cleanup`, which are hygiene-class work
+  (formatting drift, lint compliance) — bugs are not hygiene, they're product-engineering defects. Trigger when the
+  user says "work bugs", "work the bugs", "fix bugs", "find and fix bugs", "do bug work", "find bugs", "scan for
+  bugs", or "look for bugs", or specifies a section or depth (e.g. "fix bugs in operator depth 7").
+version: 0.3.0
 ---
 
-# bug-sweep
+# bug-work
 
-Single-pass correctness bug discovery + validation + fix. One run = one or more sections = one session. State lives in
-two places only: **commits** (resolved bugs) and your `project_evan_findings.md` memory file (deferred queue). No
-GitHub issues. No labels. No multi-session funnel.
+Single-pass **find AND fix** for correctness bugs. One run = one or more sections = one session. State lives in two
+places only: **commits** (the bugs you fixed) and your `project_evan_findings.md` memory file (the bugs that needed
+human judgement before fixing). No GitHub issues. No labels. No multi-session funnel.
 
-The full process design lives in `<repo>/.agents/self/evan/.claude/CLAUDE.md` under "The bug-sweep process (7 steps)"
+The verb is "work" because that's what evan does: he engages with each candidate — investigates it, validates it
+against intentional-design context, decides whether to fix it directly or surface it for human review, and either
+way takes the next correct action. The naming is forward-compatible with future product-engineering siblings:
+`risk-work`, `gap-work`, `feature-work` slot in alongside `bug-work` cleanly. (nova's `code-cleanup` and kira's
+`docs-cleanup` use a different verb because they ARE hygiene work — tidying formatting drift and lint compliance is
+genuinely "cleanup" in the literal sense; bugs aren't dirt.)
+
+Discovery-only is NOT the pattern — that's the heavyweight local pipeline at
+`<repo>/.claude/skills/bug-{discover,refine,approve,implement}` and is explicitly not the team's deployed-agent
+shape. The pass IS supposed to fix what it can.
+
+The full process design lives in `<repo>/.agents/self/evan/.claude/CLAUDE.md` under "The bug-work process (7 steps)"
 and "Sections" / "Depth scale". This skill is the procedural walkthrough; the design rationale is in CLAUDE.md.
 
 ## Inputs
@@ -32,7 +47,7 @@ Parse from the user's prompt:
   the 17-section list in CLAUDE.md, or if a v2-deferred section (`clients/dashboard`, `charts/witwave`,
   `charts/witwave-operator`) is requested before its toolchain has landed.
 
-The user prompt forms can be free-form: `bug-sweep depth=5 sections=harness,shared`, or `find bugs in operator depth
+The user prompt forms can be free-form: `bug-work depth=5 sections=harness,shared`, or `find bugs in operator depth
 7`, or just `find bugs`. Parse permissively; reject only if the values themselves are invalid.
 
 ## Instructions
@@ -97,7 +112,7 @@ eight concerns; depth controls how rigorously you walk it:
 | 7-8   | Full source file                                         | All eight: #1 `#NNNN` refs, #2 adjacent handlers, #3 synchronization, #4 earlier defensive checks, #5 documented tradeoffs, #6 idempotent operations, #7 still-present-in-current-code, #8 stale line numbers |
 | 9-10  | Full subsystem (file + callers + callees) + READMEs      | All eight + adversarial "what could go wrong" pass + web-search any unfamiliar APIs                    |
 
-The eight concerns in detail (full text in CLAUDE.md → "The bug-sweep process" → "Step 2"):
+The eight concerns in detail (full text in CLAUDE.md → "The bug-work process" → "Step 2"):
 
 1. Inline `#NNNN` reference within ±20 lines documents the choice as intentional → drop.
 2. Adjacent existing handler within ±10 lines (`else`, `finally`, early-return guard, broader `except`) → drop.
@@ -198,7 +213,7 @@ first); within a run, group by section; within a section, order by severity:
 Format:
 
 ```markdown
-## YYYY-MM-DD HH:MM UTC — bug-sweep run (depth=N, sections=...)
+## YYYY-MM-DD HH:MM UTC — bug-work run (depth=N, sections=...)
 
 ### <section name>
 
@@ -248,7 +263,7 @@ correctness, not gh-CLI plumbing), and scales cleanly when future agents join th
    Wait for her reply. Capture the push outcome and the per-workflow CI outcomes.
 
 2. **If iris reports push failure** (rebase conflict she couldn't resolve, etc.): STOP. Don't improvise. Surface the
-   situation in the run summary. The next bug-sweep run will re-attempt the delegation naturally.
+   situation in the run summary. The next bug-work run will re-attempt the delegation naturally.
 
 3. **If iris reports push success and all CI workflows green**: done. Capture per-workflow conclusion + duration in
    the run summary.
@@ -257,9 +272,9 @@ correctness, not gh-CLI plumbing), and scales cleanly when future agents join th
 
    ```sh
    git -C <checkout> revert --no-commit ${PRE_SWEEP_SHA}..HEAD
-   git -C <checkout> commit -m "Revert evan bug-sweep batch (CI red on <workflow-name>)
+   git -C <checkout> commit -m "Revert evan bug-work batch (CI red on <workflow-name>)
 
-   Auto-revert: one or more bug-sweep commits broke <workflow-name>. Per
+   Auto-revert: one or more bug-work commits broke <workflow-name>. Per
    trunk-based dev contract (\"if you break main, fix or revert immediately\")
    the entire batch reverts at once. The candidates re-surface on the next
    sweep run with the test failure noted in deferred-findings.
